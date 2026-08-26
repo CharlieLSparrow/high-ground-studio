@@ -46,6 +46,18 @@ report_http \
   "200"
 report_http "LiveKit conversation" "${livekit_url}/" "200"
 
+transcript_worker_label="com.quipsly.recovery-lab.transcript-worker"
+if [[ "$(uname -s)" == "Darwin" ]] && \
+  launchctl print "gui/$(id -u)/${transcript_worker_label}" >/dev/null 2>&1; then
+  printf "PASS  %-26s job %s\n" "Transcript worker" "${transcript_worker_label}"
+elif [[ "$(uname -s)" != "Darwin" && -f "${state_dir}/transcript-worker.pid" ]] && \
+  kill -0 "$(sed -n '1p' "${state_dir}/transcript-worker.pid")" 2>/dev/null; then
+  printf "PASS  %-26s PID %s\n" "Transcript worker" "$(sed -n '1p' "${state_dir}/transcript-worker.pid")"
+else
+  printf "FAIL  %-26s not running\n" "Transcript worker"
+  failed=1
+fi
+
 listener="$(quipsly_local_port_listener_pid 3022)"
 actual_cwd=""
 if [[ -n "${listener}" ]]; then
@@ -116,5 +128,5 @@ else
   failed=1
 fi
 
-printf "PASS  %-26s Nest 3022, LiveKit 7890-7892, Auth 9199, DB 55432\n" "Canonical lane isolation"
+printf "PASS  %-26s Nest 3022, LiveKit 7890-7892, Auth 9199, DB 55432, owned worker\n" "Canonical lane isolation"
 exit "${failed}"

@@ -14,6 +14,7 @@ docker_start_timeout_seconds="$(quipsly_local_docker_start_timeout_seconds)"
 nest_label="com.quipsly.recovery-lab.nest"
 firebase_label="com.quipsly.recovery-lab.firebase"
 livekit_label="com.quipsly.recovery-lab.livekit"
+transcript_worker_label="com.quipsly.recovery-lab.transcript-worker"
 
 if [[ $# -gt 0 ]]; then
   echo "Usage: $0" >&2
@@ -96,10 +97,12 @@ if [[ "$(uname -s)" == "Darwin" ]]; then
   stop_macos_job "nest" "${nest_label}"
   stop_macos_job "firebase" "${firebase_label}"
   stop_macos_job "livekit" "${livekit_label}"
+  stop_macos_job "transcript-worker" "${transcript_worker_label}"
 else
   stop_owned_process "nest"
   stop_owned_process "firebase"
   stop_owned_process "livekit"
+  stop_owned_process "transcript-worker"
 fi
 
 if quipsly_local_run_docker \

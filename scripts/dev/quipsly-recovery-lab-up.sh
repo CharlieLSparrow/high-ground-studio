@@ -13,12 +13,15 @@ database_label="com.quipsly.recovery-lab"
 firebase_label="com.quipsly.recovery-lab.firebase"
 nest_label="com.quipsly.recovery-lab.nest"
 livekit_label="com.quipsly.recovery-lab.livekit"
+transcript_worker_label="com.quipsly.recovery-lab.transcript-worker"
 firebase_url="http://127.0.0.1:9199"
 nest_url="http://127.0.0.1:3022"
 livekit_url="ws://127.0.0.1:7890"
 livekit_http_url="http://127.0.0.1:7890"
 livekit_api_key="recoverykey"
 livekit_api_secret="recoverysecret"
+whisper_executable="${QUIPSLY_RECOVERY_LAB_WHISPER_EXECUTABLE:-/opt/homebrew/Caskroom/miniconda/base/bin/whisper}"
+whisper_model="${QUIPSLY_RECOVERY_LAB_WHISPER_MODEL:-tiny.en}"
 firebase_project="quipsly-recovery-lab"
 pnpm_bin="${QUIPSLY_RECOVERY_LAB_PNPM_BIN:-$(command -v pnpm)}"
 
@@ -34,6 +37,25 @@ if [[ "${1:-}" == "--run-livekit" ]]; then
     --node-ip 127.0.0.1 \
     --config-body $'port: 7890\nrtc:\n  tcp_port: 7891\n  udp_port: 7892\n  use_external_ip: false\n' \
     --keys "${livekit_api_key}: ${livekit_api_secret}"
+fi
+
+if [[ "${1:-}" == "--run-transcript-worker" ]]; then
+  if [[ ! -x "${whisper_executable}" ]]; then
+    echo "Recovery lab requires a local Whisper executable." >&2
+    exit 1
+  fi
+  cd "${repo_root}"
+  exec /usr/bin/env \
+    DATABASE_URL="${database_url}" \
+    QUIPSLY_LOCAL_MEDIA_UPLOAD_ROOT="${media_state_dir}/media" \
+    QUIPSLY_LOCAL_MEDIA_WORKSPACE_ROOT="${media_state_dir}/media-workspace" \
+    QUIPSLY_LOCAL_CAPTURE_VAULT_ROOT="${media_state_dir}/capture-vault" \
+    QUIPSLY_LOCAL_WHISPER_EXECUTABLE="${whisper_executable}" \
+    QUIPSLY_LOCAL_WHISPER_MODEL="${whisper_model}" \
+    QUIPSLY_LOCAL_WHISPER_DEVICE=cpu \
+    QUIPSLY_LOCAL_WHISPER_LANGUAGE=en \
+    QUIPSLY_LOCAL_TRANSCRIPT_WORKER_BUILD_ID="$(git rev-parse HEAD)" \
+    node "${repo_root}/scripts/dev/quipsly-local-transcript-worker.mjs"
 fi
 
 if [[ "${1:-}" == "--run-firebase" ]]; then
@@ -82,6 +104,7 @@ if [[ "${1:-}" == "--run-nest" ]]; then
     LIVEKIT_URL="${livekit_url}" \
     LIVEKIT_API_KEY="${livekit_api_key}" \
     LIVEKIT_API_SECRET="${livekit_api_secret}" \
+    QUIPSLY_LOCAL_TRANSCRIPT_WORKER_AVAILABLE=1 \
     QUIPSLY_SESSION_INVITATION_DELIVERY_MODE=local-receipt \
     QUIPSLY_OWNER_OVERRIDE=false \
     "${pnpm_bin:?Missing launcher pnpm path}" dev
@@ -279,6 +302,46 @@ else
     "${state_dir}/livekit.log"
 fi
 
+if [[ ! -x "${whisper_executable}" ]]; then
+  echo "Recovery coaching flight requires Whisper at ${whisper_executable}." >&2
+  exit 1
+fi
+if [[ "$(uname -s)" == "Darwin" ]]; then
+  if launchctl_job_exists "${transcript_worker_label}"; then
+    printf "REUSE %-24s job %s\n" "Transcript worker" "${transcript_worker_label}"
+  else
+    start_macos_job \
+      "transcript-worker" \
+      "${transcript_worker_label}" \
+      "--run-transcript-worker"
+    sleep 1
+    if ! launchctl_job_exists "${transcript_worker_label}"; then
+      echo "Recovery transcript worker did not remain running." >&2
+      tail -60 "${state_dir}/transcript-worker.log" >&2 2>/dev/null || true
+      exit 1
+    fi
+    printf "PASS  %-24s local Whisper model %s\n" "Transcript worker" "${whisper_model}"
+  fi
+else
+  if [[ -f "${state_dir}/transcript-worker.pid" ]] && \
+    kill -0 "$(sed -n '1p' "${state_dir}/transcript-worker.pid")" 2>/dev/null; then
+    printf "REUSE %-24s PID %s\n" "Transcript worker" "$(sed -n '1p' "${state_dir}/transcript-worker.pid")"
+  else
+    (
+      cd "${repo_root}"
+      nohup /bin/bash "${repo_root}/scripts/dev/quipsly-recovery-lab-up.sh" --run-transcript-worker \
+        >"${state_dir}/transcript-worker.log" 2>&1 &
+      record_process "transcript-worker" "$!" "${repo_root}"
+    )
+    sleep 1
+    if ! kill -0 "$(sed -n '1p' "${state_dir}/transcript-worker.pid")" 2>/dev/null; then
+      echo "Recovery transcript worker did not remain running." >&2
+      tail -60 "${state_dir}/transcript-worker.log" >&2 2>/dev/null || true
+      exit 1
+    fi
+  fi
+fi
+
 firebase_status="$(quipsly_recovery_lab_http_status "${firebase_url}/emulator/v1/projects/${firebase_project}/config")"
 if [[ "${firebase_status}" == "200" ]]; then
   recorded_root="$(sed -n '1p' "${state_dir}/repo-root" 2>/dev/null || true)"
@@ -353,6 +416,6 @@ git rev-parse HEAD >"${state_dir}/source-revision"
 
 echo
 echo "Quipsly recovery lab is ready: ${nest_url}"
-echo "It uses separate Nest, LiveKit, auth, media, and disposable database state."
+echo "It uses separate Nest, LiveKit, auth, media, transcript-worker, and disposable database state."
 echo "Run: pnpm quipsly:recovery-lab:doctor"
 echo "Stop and permanently delete the lab database: pnpm quipsly:recovery-lab:down"

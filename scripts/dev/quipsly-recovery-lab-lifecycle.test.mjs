@@ -20,12 +20,17 @@ test("the recovery lab is isolated from the canonical local lane", () => {
   for (const source of [up, doctor]) {
     assert.match(source, /3022/);
     assert.match(source, /9199/);
+    assert.match(source, /7890/);
     assert.match(source, /55432/);
     assert.doesNotMatch(source, /localhost:5432\/high_ground_studio/);
   }
   assert.match(state, /55432/);
   assert.doesNotMatch(state, /localhost:5432\/high_ground_studio/);
   assert.match(up, /QUIPSLY_BUILD_DIST_DIR=\.next-recovery-lab/);
+  assert.match(up, /LIVEKIT_URL="\$\{livekit_url\}"/);
+  assert.match(up, /QUIPSLY_LOCAL_TRANSCRIPT_WORKER_AVAILABLE=1/);
+  assert.match(up, /--run-transcript-worker/);
+  assert.match(state, /TMPDIR:-\/tmp/);
   assert.match(firebaseConfig, /"port": 9199/);
   assert.match(firebaseConfig, /"host": "127\.0\.0\.1"/);
 });
@@ -43,6 +48,8 @@ test("shutdown is confined to exact owned jobs and the disposable database", () 
   for (const source of [up, down]) {
     assert.match(source, /com\.quipsly\.recovery-lab\.nest/);
     assert.match(source, /com\.quipsly\.recovery-lab\.firebase/);
+    assert.match(source, /com\.quipsly\.recovery-lab\.livekit/);
+    assert.match(source, /com\.quipsly\.recovery-lab\.transcript-worker/);
     assert.match(source, /com\.quipsly\.recovery-lab/);
   }
   assert.match(down, /actual_database_label/);
