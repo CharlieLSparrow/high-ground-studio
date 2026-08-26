@@ -556,6 +556,12 @@ const assignmentInclude = {
   assignedBy: { select: { id: true, name: true, primaryEmail: true } },
   assignedTo: { select: { id: true, name: true, primaryEmail: true } },
   responseRevisions: { orderBy: { revision: "desc" as const }, take: 1 },
+  outcomePromotions: {
+    where: { removedAt: null },
+    orderBy: { createdAt: "desc" as const },
+    take: 50,
+    include: { responseRevision: { select: { revision: true } } },
+  },
 } as const;
 
 async function assignmentContext(input: {
@@ -654,6 +660,21 @@ function assignmentProjection(
   const isClient = assignment.assignedToUserId === actorUserId;
   const visibleResponse =
     latest && (isClient || latest.state === "SUBMITTED") ? latest : null;
+  const visibleOutcomePromotions = (assignment.outcomePromotions || [])
+    .filter((receipt: any) => {
+      if (!isClient) return true;
+      return record(receipt.reviewedPayloadJson).visibility === "SHARED";
+    })
+    .map((receipt: any) => ({
+      id: receipt.id,
+      kind: receipt.kind,
+      targetId: receipt.targetId,
+      responseRevision: receipt.responseRevision?.revision ?? null,
+      selectedFieldIds: receipt.selectedFieldIdsJson,
+      sourceSha256: receipt.sourceSha256,
+      reviewedPayload: receipt.reviewedPayloadJson,
+      createdAt: iso(receipt.createdAt),
+    }));
   return {
     id: assignment.id,
     requestId: assignment.requestId,
@@ -689,12 +710,16 @@ function assignmentProjection(
           submittedAt: iso(visibleResponse.submittedAt),
         }
       : null,
+    outcomePromotions: visibleOutcomePromotions,
     idempotentReplay,
     boundaries: {
       clientCanEditOwnResponse: isClient,
       coachCanReadSubmittedResponse:
         !isClient && visibleResponse?.state === "SUBMITTED",
       coachCanReadDraftResponse: false,
+      coachInitiatedPromotion: true,
+      editableAfterCreation: true,
+      sourceReceiptVisible: true,
       externalSideEffects: false,
     },
   };

@@ -3,7 +3,7 @@
 import { getPrismaClient } from "@/lib/prisma";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 
-import { GET, PATCH, POST } from "./route";
+import { DELETE, GET, PATCH, POST, PUT } from "./route";
 
 jest.mock("@/lib/prisma", () => ({ getPrismaClient: jest.fn() }));
 jest.mock("@/lib/server/quipsly-session", () => ({
@@ -20,7 +20,10 @@ const coachMember = { userId: actor.id };
 const clientMember = { userId: "client-1" };
 const now = new Date("2026-08-19T21:00:00.000Z");
 
-function request(method: "GET" | "POST" | "PATCH", body?: Record<string, unknown>) {
+function request(
+  method: "GET" | "POST" | "PATCH" | "DELETE" | "PUT",
+  body?: Record<string, unknown>,
+) {
   return new Request(
     `http://localhost/api/coaching/engagements/${engagementId}/work`,
     {
@@ -175,7 +178,8 @@ describe("coaching engagement work", () => {
         visibility: "SHARED",
       },
       boundaries: {
-        explicitHumanCapture: true,
+        reversibleInProductWork: true,
+        sourceProvenanceVisible: true,
         engagementScoped: true,
         externalSideEffects: false,
       },
@@ -352,5 +356,137 @@ describe("coaching engagement work", () => {
       }),
       select: expect.any(Object),
     });
+  });
+
+  it("removes relationship work immediately and restores it with undo", async () => {
+    const removedAt = new Date("2026-08-19T21:06:00.000Z");
+    const restoredAt = new Date("2026-08-19T21:07:00.000Z");
+    const actionItem = {
+      findFirst: jest
+        .fn()
+        .mockResolvedValueOnce({
+          id: "task-1",
+          assignedUserId: "client-1",
+          title: "Practice the opening question",
+          detail: null,
+          status: "OPEN",
+          dueAt: null,
+          sourceJson: { schema: "quipsly-coaching-engagement-work-v1" },
+          createdAt: now,
+          updatedAt: now,
+          assignedUser: { name: "Client", primaryEmail: "client@example.test" },
+        })
+        .mockResolvedValueOnce({
+          id: "task-1",
+          assignedUserId: "client-1",
+          title: "Practice the opening question",
+          detail: null,
+          status: "CANCELED",
+          dueAt: null,
+          sourceJson: {
+            schema: "quipsly-coaching-engagement-work-v1",
+            relationshipWorkRemoval: {
+              active: true,
+              previousStatus: "OPEN",
+              removedAt: removedAt.toISOString(),
+            },
+          },
+          createdAt: now,
+          updatedAt: removedAt,
+          assignedUser: { name: "Client", primaryEmail: "client@example.test" },
+        }),
+      update: jest
+        .fn()
+        .mockResolvedValueOnce({
+          id: "task-1",
+          assignedUserId: "client-1",
+          title: "Practice the opening question",
+          detail: null,
+          status: "CANCELED",
+          dueAt: null,
+          sourceJson: {},
+          createdAt: now,
+          updatedAt: removedAt,
+          assignedUser: { name: "Client", primaryEmail: "client@example.test" },
+        })
+        .mockResolvedValueOnce({
+          id: "task-1",
+          assignedUserId: "client-1",
+          title: "Practice the opening question",
+          detail: null,
+          status: "OPEN",
+          dueAt: null,
+          sourceJson: {},
+          createdAt: now,
+          updatedAt: restoredAt,
+          assignedUser: { name: "Client", primaryEmail: "client@example.test" },
+        }),
+    };
+    const receiptUpdateMany = jest.fn().mockResolvedValue({ count: 1 });
+    transaction({
+      coachingEngagement: {
+        findFirst: jest.fn().mockResolvedValue({ id: engagementId }),
+      },
+      actionItem,
+      coachingNote: { findFirst: jest.fn(), update: jest.fn() },
+      goal: { findFirst: jest.fn(), update: jest.fn() },
+      coachingFormOutcomePromotionReceipt: { updateMany: receiptUpdateMany },
+    });
+
+    const removed = await DELETE(
+      request("DELETE", {
+        id: "task-1",
+        kind: "TASK",
+        expectedUpdatedAt: now.toISOString(),
+      }),
+      { params: Promise.resolve({ engagementId }) },
+    );
+    const removalPayload = await removed.json();
+    expect(removed.status).toBe(200);
+    expect(removalPayload).toMatchObject({
+      ok: true,
+      undoAvailable: true,
+      removal: { id: "task-1", kind: "TASK" },
+    });
+    expect(actionItem.update).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        data: expect.objectContaining({
+          status: "CANCELED",
+          sourceJson: expect.objectContaining({
+            relationshipWorkRemoval: expect.objectContaining({
+              active: true,
+              previousStatus: "OPEN",
+            }),
+          }),
+        }),
+      }),
+    );
+
+    const restored = await PUT(
+      request("PUT", {
+        id: "task-1",
+        kind: "TASK",
+        expectedUpdatedAt: removalPayload.removal.updatedAt,
+      }),
+      { params: Promise.resolve({ engagementId }) },
+    );
+    expect(restored.status).toBe(200);
+    expect(await restored.json()).toMatchObject({
+      ok: true,
+      entry: { id: "task-1", kind: "TASK", status: "OPEN" },
+    });
+    expect(actionItem.update).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        data: expect.objectContaining({
+          status: "OPEN",
+          sourceJson: expect.objectContaining({
+            relationshipWorkRemoval: expect.objectContaining({ active: false }),
+          }),
+        }),
+      }),
+    );
+    expect(receiptUpdateMany).toHaveBeenCalledTimes(2);
   });
 });

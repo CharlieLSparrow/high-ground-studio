@@ -1,6 +1,6 @@
 # Quipsly AI drafting policy
 
-Last updated: 2026-06-20
+Last updated: 2026-08-26
 
 ## Core rule
 
@@ -26,7 +26,11 @@ Generated writing should be labeled as a draft, rewrite, example, option, freefo
 
 Any serious factual, historical, academic, research, coaching, quote, or citation-based claim should point back to source records, excerpts, citations, or explicit uncertainty.
 
-When AI output would change canon, manuscript text, storyboard order, publishing packets, public pages, or project state, it should flow through visible approval, diff, ledger, or undoable action history. Users may still intentionally accept an AI draft as their own work; the product's job is to make that choice clear and recoverable, not to shame it.
+When AI output creates or changes ordinary project work, Quipsly should prefer
+doing the useful work with visible provenance and an easy edit, delete, undo,
+or recovery path. A proposal or approval step is not required merely because
+AI helped. Already approved canon, external publication, communication,
+billing, permissions, and destructive actions retain proportionate confirmation.
 
 ## What is not allowed
 
@@ -34,7 +38,7 @@ When AI output would change canon, manuscript text, storyboard order, publishing
 - Publishing AI-generated work as final without user intent or approval.
 - Fabricating citations or pretending a claim came from a source it did not come from.
 - Hiding the fact that a passage is an AI draft when the user needs to know.
-- Mutating private project state without visible approval.
+- Hiding project changes or making generated work difficult to edit, delete, undo, or recover.
 - Treating AI-generated prose as canon merely because it exists.
 - Collapsing source text, AI edits, and human edits into one indistinguishable version of truth.
 
@@ -44,7 +48,7 @@ Use language like:
 
 - "Quipslys are source-aware research assistants and co-drafters."
 - "AI can write with you or for you; you decide what becomes canon."
-- "Draft boldly, approve deliberately."
+- "Do useful work, show your work, keep it reversible."
 - "Freeform drafting is allowed."
 - "Receipts when claims matter."
 - "No silent canon mutation."
@@ -58,7 +62,7 @@ Avoid language like:
 - "Quipsly never writes your content."
 - "Humans author, AI only organizes."
 
-Those phrases overcorrect and make the product worse. The real promise is control, provenance, and approval, not an artificial ban on useful drafting.
+Those phrases overcorrect and make the product worse. The real promise is useful automation, visible provenance, reversibility, and proportionate confirmation—not an artificial ban on useful drafting or a queue of paperwork.
 
 ## Product posture
 

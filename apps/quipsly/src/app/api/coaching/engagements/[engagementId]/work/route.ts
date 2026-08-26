@@ -66,6 +66,24 @@ function priorReceipts(source: Record<string, unknown>) {
     : [];
 }
 
+function activeRemoval(sourceJson: unknown) {
+  const removal = record(record(sourceJson).relationshipWorkRemoval);
+  return removal.active === true ? removal : null;
+}
+
+function removalInput(input: Record<string, unknown>) {
+  const workKind = kind(input.kind);
+  const id = text(input.id, 240);
+  const expectedUpdatedAt = new Date(text(input.expectedUpdatedAt, 100));
+  return {
+    workKind,
+    id,
+    expectedUpdatedAt,
+    valid:
+      Boolean(workKind && id) && Number.isFinite(expectedUpdatedAt.getTime()),
+  };
+}
+
 function notePayload(row: any, actorUserId: string) {
   return {
     id: row.id,
@@ -135,6 +153,7 @@ const NOTE_SELECT = {
   visibility: true,
   createdAt: true,
   updatedAt: true,
+  sourceJson: true,
   authorUser: { select: { name: true, primaryEmail: true } },
 } as const;
 
@@ -147,6 +166,7 @@ const TASK_SELECT = {
   dueAt: true,
   createdAt: true,
   updatedAt: true,
+  sourceJson: true,
   assignedUser: { select: { name: true, primaryEmail: true } },
 } as const;
 
@@ -159,6 +179,7 @@ const GOAL_SELECT = {
   targetAt: true,
   createdAt: true,
   updatedAt: true,
+  sourceJson: true,
   owner: { select: { name: true, primaryEmail: true } },
 } as const;
 
@@ -263,9 +284,15 @@ export async function GET(
     }
 
     const entries = [
-      ...engagement.notes.map((row: any) => notePayload(row, session.user.id)),
-      ...engagement.actionItems.map((row: any) => taskPayload(row)),
-      ...engagement.goals.map((row: any) => goalPayload(row)),
+      ...engagement.notes
+        .filter((row: any) => !activeRemoval(row.sourceJson))
+        .map((row: any) => notePayload(row, session.user.id)),
+      ...engagement.actionItems
+        .filter((row: any) => !activeRemoval(row.sourceJson))
+        .map((row: any) => taskPayload(row)),
+      ...engagement.goals
+        .filter((row: any) => !activeRemoval(row.sourceJson))
+        .map((row: any) => goalPayload(row)),
     ].sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
 
     return privateJson({
@@ -387,7 +414,7 @@ export async function POST(
           clientRequestId,
           requestFingerprint: fingerprint,
           createdByUserId: session.user.id,
-          origin: "explicit-human-capture",
+          origin: "in-product-create",
           visibility:
             workKind === "NOTE" && noteVisibility === "AUTHOR_PRIVATE"
               ? "author-private"
@@ -553,7 +580,8 @@ export async function POST(
       idempotentReplay: result.replay,
       entry: result.entry,
       boundaries: {
-        explicitHumanCapture: true,
+        reversibleInProductWork: true,
+        sourceProvenanceVisible: true,
         engagementScoped: true,
         externalSideEffects: false,
         messageSent: false,
@@ -808,6 +836,323 @@ export async function PATCH(
     return NextResponse.json(
       { ok: false, error: "Quipsly could not update this coaching work." },
       { status: 503 },
+    );
+  }
+}
+
+export async function DELETE(
+  request: Request,
+  context: { params: Promise<{ engagementId: string }> },
+) {
+  const session = await getQuipslySessionFromRequest(request);
+  if (!session?.user?.id) {
+    return privateJson(
+      { ok: false, error: "Sign in before removing coaching work." },
+      401,
+    );
+  }
+  const { engagementId } = await context.params;
+  const input = record(await request.json().catch(() => ({})));
+  const { workKind, id, expectedUpdatedAt, valid } = removalInput(input);
+  if (!valid || !workKind) {
+    return privateJson(
+      { ok: false, error: "Refresh this item before removing it." },
+      400,
+    );
+  }
+
+  const prisma = getPrismaClient() as any;
+  try {
+    const result = await prisma.$transaction(
+      async (tx: any) => {
+        const engagement = await tx.coachingEngagement.findFirst({
+          where: coachingEngagementAccessWhere(
+            engagementId,
+            session.user,
+            "write",
+          ),
+          select: { id: true },
+        });
+        if (!engagement) return { kind: "unavailable" as const };
+
+        const current =
+          workKind === "NOTE"
+            ? await tx.coachingNote.findFirst({
+                where: {
+                  id,
+                  engagementId,
+                  authorUserId: session.user.id,
+                  updatedAt: expectedUpdatedAt,
+                },
+                select: {
+                  ...NOTE_SELECT,
+                  _count: { select: { revisions: true } },
+                },
+              })
+            : workKind === "TASK"
+              ? await tx.actionItem.findFirst({
+                  where: { id, engagementId, updatedAt: expectedUpdatedAt },
+                  select: TASK_SELECT,
+                })
+              : await tx.goal.findFirst({
+                  where: { id, engagementId, updatedAt: expectedUpdatedAt },
+                  select: GOAL_SELECT,
+                });
+        if (!current || activeRemoval(current.sourceJson)) {
+          return { kind: "conflict" as const };
+        }
+
+        const removedAt = new Date();
+        const source = record(current.sourceJson);
+        const relationshipWorkRemoval = {
+          schema: "quipsly-coaching-engagement-work-removal-v1",
+          active: true,
+          removedAt: removedAt.toISOString(),
+          removedByUserId: session.user.id,
+          previousStatus: workKind === "NOTE" ? null : String(current.status),
+        };
+        const nextSource = { ...source, relationshipWorkRemoval };
+
+        const updated =
+          workKind === "NOTE"
+            ? await tx.coachingNote.update({
+                where: { id },
+                data: {
+                  sourceJson: nextSource,
+                  revisions: {
+                    create: {
+                      id: randomUUID(),
+                      revision: current._count.revisions + 1,
+                      operation: "removed-from-relationship-work",
+                      actorUserId: session.user.id,
+                      snapshotJson: relationshipWorkRemoval,
+                    },
+                  },
+                },
+                select: NOTE_SELECT,
+              })
+            : workKind === "TASK"
+              ? await tx.actionItem.update({
+                  where: { id },
+                  data: {
+                    sourceJson: nextSource,
+                    status: "CANCELED",
+                    completedAt: null,
+                  },
+                  select: TASK_SELECT,
+                })
+              : await tx.goal.update({
+                  where: { id },
+                  data: {
+                    sourceJson: nextSource,
+                    status: "ARCHIVED",
+                    achievedAt: null,
+                  },
+                  select: GOAL_SELECT,
+                });
+
+        await tx.coachingFormOutcomePromotionReceipt.updateMany({
+          where: { kind: workKind, targetId: id, removedAt: null },
+          data: { removedAt, removedByUserId: session.user.id },
+        });
+        return {
+          kind: "removed" as const,
+          updatedAt: updated.updatedAt.toISOString(),
+        };
+      },
+      { isolationLevel: "Serializable" },
+    );
+
+    if (result.kind === "unavailable") {
+      return privateJson(
+        {
+          ok: false,
+          error: "This coaching relationship is unavailable or read-only.",
+        },
+        404,
+      );
+    }
+    if (result.kind === "conflict") {
+      return privateJson(
+        { ok: false, error: "This item changed. Refresh before removing it." },
+        409,
+      );
+    }
+    return privateJson({
+      ok: true,
+      removal: { id, kind: workKind, updatedAt: result.updatedAt },
+      undoAvailable: true,
+    });
+  } catch (error) {
+    console.error("Coaching engagement work removal failed", error);
+    return privateJson(
+      { ok: false, error: "Quipsly could not remove this coaching work." },
+      503,
+    );
+  }
+}
+
+export async function PUT(
+  request: Request,
+  context: { params: Promise<{ engagementId: string }> },
+) {
+  const session = await getQuipslySessionFromRequest(request);
+  if (!session?.user?.id) {
+    return privateJson(
+      { ok: false, error: "Sign in before restoring coaching work." },
+      401,
+    );
+  }
+  const { engagementId } = await context.params;
+  const input = record(await request.json().catch(() => ({})));
+  const { workKind, id, expectedUpdatedAt, valid } = removalInput(input);
+  if (!valid || !workKind) {
+    return privateJson(
+      { ok: false, error: "Refresh this item before restoring it." },
+      400,
+    );
+  }
+
+  const prisma = getPrismaClient() as any;
+  try {
+    const result = await prisma.$transaction(
+      async (tx: any) => {
+        const engagement = await tx.coachingEngagement.findFirst({
+          where: coachingEngagementAccessWhere(
+            engagementId,
+            session.user,
+            "write",
+          ),
+          select: { id: true },
+        });
+        if (!engagement) return { kind: "unavailable" as const };
+
+        const current =
+          workKind === "NOTE"
+            ? await tx.coachingNote.findFirst({
+                where: {
+                  id,
+                  engagementId,
+                  authorUserId: session.user.id,
+                  updatedAt: expectedUpdatedAt,
+                },
+                select: {
+                  ...NOTE_SELECT,
+                  _count: { select: { revisions: true } },
+                },
+              })
+            : workKind === "TASK"
+              ? await tx.actionItem.findFirst({
+                  where: { id, engagementId, updatedAt: expectedUpdatedAt },
+                  select: TASK_SELECT,
+                })
+              : await tx.goal.findFirst({
+                  where: { id, engagementId, updatedAt: expectedUpdatedAt },
+                  select: GOAL_SELECT,
+                });
+        const removal = current ? activeRemoval(current.sourceJson) : null;
+        if (!current || !removal) return { kind: "conflict" as const };
+
+        const restoredAt = new Date();
+        const source = record(current.sourceJson);
+        const nextSource = {
+          ...source,
+          relationshipWorkRemoval: {
+            ...removal,
+            active: false,
+            restoredAt: restoredAt.toISOString(),
+            restoredByUserId: session.user.id,
+          },
+        };
+        const previousStatus = text(removal.previousStatus, 40).toUpperCase();
+        const taskStatus = ["OPEN", "DONE", "CANCELED"].includes(previousStatus)
+          ? previousStatus
+          : "OPEN";
+        const goalStatus = [
+          "ACTIVE",
+          "PAUSED",
+          "ACHIEVED",
+          "ARCHIVED",
+        ].includes(previousStatus)
+          ? previousStatus
+          : "ACTIVE";
+
+        const updated =
+          workKind === "NOTE"
+            ? await tx.coachingNote.update({
+                where: { id },
+                data: {
+                  sourceJson: nextSource,
+                  revisions: {
+                    create: {
+                      id: randomUUID(),
+                      revision: current._count.revisions + 1,
+                      operation: "restored-to-relationship-work",
+                      actorUserId: session.user.id,
+                      snapshotJson: nextSource.relationshipWorkRemoval,
+                    },
+                  },
+                },
+                select: NOTE_SELECT,
+              })
+            : workKind === "TASK"
+              ? await tx.actionItem.update({
+                  where: { id },
+                  data: {
+                    sourceJson: nextSource,
+                    status: taskStatus,
+                    completedAt: taskStatus === "DONE" ? restoredAt : null,
+                  },
+                  select: TASK_SELECT,
+                })
+              : await tx.goal.update({
+                  where: { id },
+                  data: {
+                    sourceJson: nextSource,
+                    status: goalStatus,
+                    achievedAt: goalStatus === "ACHIEVED" ? restoredAt : null,
+                  },
+                  select: GOAL_SELECT,
+                });
+
+        await tx.coachingFormOutcomePromotionReceipt.updateMany({
+          where: { kind: workKind, targetId: id, removedAt: { not: null } },
+          data: { removedAt: null, removedByUserId: null, restoredAt },
+        });
+        return {
+          kind: "restored" as const,
+          entry:
+            workKind === "NOTE"
+              ? notePayload(updated, session.user.id)
+              : workKind === "TASK"
+                ? taskPayload(updated)
+                : goalPayload(updated),
+        };
+      },
+      { isolationLevel: "Serializable" },
+    );
+
+    if (result.kind === "unavailable") {
+      return privateJson(
+        {
+          ok: false,
+          error: "This coaching relationship is unavailable or read-only.",
+        },
+        404,
+      );
+    }
+    if (result.kind === "conflict") {
+      return privateJson(
+        { ok: false, error: "This item changed. Refresh before restoring it." },
+        409,
+      );
+    }
+    return privateJson({ ok: true, entry: result.entry });
+  } catch (error) {
+    console.error("Coaching engagement work restore failed", error);
+    return privateJson(
+      { ok: false, error: "Quipsly could not restore this coaching work." },
+      503,
     );
   }
 }

@@ -1,8 +1,25 @@
 # Quipsly Assistant Boundaries
 
 Date: 2026-06-04
+Last corrected: 2026-08-26
 
-Purpose: define the first safe product boundary for Quipslys as source-aware research assistants and optional co-drafters that support freeform drafting without deceptive automation.
+Purpose: define a useful, low-anxiety product boundary for Quipslys as source-aware collaborators that can do real work without deceptive automation or approval bureaucracy.
+
+## Reversible work, not approval paperwork
+
+Quipsly may create notes, tasks, goals, tags, summaries, drafts, organization,
+and other ordinary in-product work without waiting for a human approval step.
+The default safety system is visible provenance plus fast edit, delete, undo,
+and recovery—not a proposal queue.
+
+Approval or confirmation is reserved for a narrower class of consequential
+actions: contacting another person, publishing externally, spending money,
+changing permissions or identity, changing an external calendar, destructive
+retention cleanup, and declaring canon or final publication state.
+
+Do not add a review screen merely because an assistant helped. If a sensible
+default can be created safely and reversed easily, create it, show it where the
+user expects it, and let them adjust or remove it in place.
 
 ## Product promise
 
@@ -25,7 +42,7 @@ They should not:
 - secretly rewrite manuscript prose
 - imitate the user's voice without request, labeling, and approval
 - publish public content directly
-- mutate private project state without visible approval
+- hide meaningful changes or make ordinary generated work hard to edit, delete, or undo
 - hide what changed
 - make provider, billing, or entitlement changes invisibly
 
@@ -45,8 +62,8 @@ This does not weaken the anti-black-box principle. It clarifies it:
 
 - agent-created work can be real work
 - agent-created work should carry visible authorship/provenance when the workflow needs it
-- canon, publication, billing, permission, and destructive state changes still need explicit control
-- review and approval are workflow controls, not moral scolding
+- canon, external publication, billing, permission, communication, and destructive state changes still need explicit control
+- review is optional for ordinary reversible work and mandatory only where the consequence genuinely warrants it
 
 The system should distinguish disposable test content from serious agent-authored content. Do not call everything a placeholder just because an assistant created it.
 
@@ -59,12 +76,14 @@ The preferred user experience is:
 1. agent creates or gathers enough material to move the workflow forward
 2. Quipsly records the work as `agent-authored`, `mixed-authorship`, or source-derived
 3. Quipsly shows why it exists and what context informed it
-4. humans or agents revise it deliberately
-5. canon or publication status changes only through visible approval or receipt-backed workflow.
+4. humans or agents may revise, delete, undo, or simply keep it
+5. canon, external publication, or other consequential state changes use a visible confirmation or receipt-backed workflow.
 
-## Proposed action ledger
+## Activity and recovery ledger
 
-Assistant actions should flow through a visible ledger backed by these durable models:
+Assistant actions should write a visible activity and recovery ledger without
+forcing the user to process an inbox of proposals. The same durable models may
+record proposed, completed, corrected, undone, or deleted work:
 - `StudioAssistantSession`
 - `StudioAssistantMessage`
 - `StudioAssistantAction`
@@ -90,9 +109,11 @@ It returns:
 
 - a plain-English assistant message
 - suggestions
-- proposed tool intents
+- completed actions, optional suggestions, and concise recovery controls
 
-It does not directly mutate manuscript text.
+It may create new drafts and other reversible project work directly. Changes to
+already approved canon must remain diffable and recoverable; changing canon or
+publication state is a separate consequential action.
 
 ## Durable assistant persistence models
 
@@ -100,21 +121,21 @@ To support auditing, human-in-the-loop review, and rollback capabilities, the as
 
 1. **`StudioAssistantSession`**: Grouping container for a chat or research context. Belongs to a `StudioProject` and optionally a `StudioDocument`.
 2. **`StudioAssistantMessage`**: Individual messages (role, content, optional `contextJson`).
-3. **`StudioAssistantAction`**: Individual proposed tool operations (kind, label, explanation, riskLevel, payloadJson, status).
-4. **`StudioAssistantLedger`**: Audit trail mapping status changes of actions (e.g. from PENDING to APPROVED or REJECTED to UNDONE) with comments.
+3. **`StudioAssistantAction`**: Individual tool operations or suggestions (kind, label, explanation, riskLevel, payloadJson, status).
+4. **`StudioAssistantLedger`**: Compact audit and recovery trail for completed, corrected, undone, deleted, or consequentially approved actions.
 
 ## Interaction boundaries & validation
 
-### Core Rule: “Draft boldly, approve deliberately”
-The assistant is a research helper, librarian, continuity checker, freeform drafting partner, and optional co-drafter. It may write rough drafts, propose rewrites, test alternate voices, and generate example passages when requested. It must not silently replace manuscript prose or mutate canon without visibility. Generated text should be presented as a draft, option, example, or suggestion when that distinction matters to the workflow.
+### Core rule: “Do useful work, show it, keep it reversible”
+The assistant is a research helper, librarian, continuity checker, freeform drafting partner, and optional co-drafter. It may create rough drafts, notes, tasks, goals, rewrites, alternate voices, and example passages directly. It must not silently replace approved canon or hide what changed. Generated work should carry lightweight provenance when that distinction matters, without turning authorship metadata into a required user process.
 
-### Human-in-the-Loop review flow (Approve / Reject / Undo / Audit)
-1. **Proposal**: Every mutating action suggested by the assistant is recorded as a `StudioAssistantAction` with status `PENDING`.
-2. **Review UI**: The user reviews the explanation, riskLevel, and payload details in the sidebar panel.
-3. **Approve**: Clicking "Accept" shifts the action status to `APPROVED`, writes a ledger event, and executes the mutation.
-4. **Reject**: Clicking "Dismiss" changes the action status to `REJECTED` and writes a ledger event.
-5. **Undo**: Approved actions can be undone. Clicking "Undo" executes a reversion, transitions the action status to `UNDONE`, and logs the event.
-6. **Audit**: All state transitions are logged in `StudioAssistantLedger`, enabling full timeline trace and rollback diagnostics.
+### Low-anxiety action flow (Do / Show / Adjust / Undo)
+1. **Do**: For ordinary reversible work, create the useful result immediately with sensible defaults.
+2. **Show**: Put the result in its normal home and show a concise source/activity indicator.
+3. **Adjust**: Let the user edit, reassign, retag, or delete it in place; details are optional.
+4. **Undo**: Offer a direct undo or recoverable trash path for recent and bulk changes.
+5. **Confirm only consequences**: Ask before external communication, publication, billing, permissions, destructive cleanup, or canon/final-state changes.
+6. **Audit quietly**: Keep the ledger available for diagnostics and trust without making the user administer it.
 
 ## Voice rule
 
@@ -133,7 +154,10 @@ The assistant may propose a `propose-output-plan` action. This is safe and non-d
 - It may show a starter packet skeleton.
 - It may suggest an Art Foundry visual helper.
 
-It must not publish, render, upload, mutate manuscript text, or send content to a destination without explicit human approval and a separate destination-specific workflow.
+It may create drafts, previews, local renders, packets, and other recoverable
+in-product results. It must not publish or upload externally, send content to
+another person, spend money, or silently replace approved canon without a
+destination-specific confirmation and receipt.
 
 ## Future capabilities
 
@@ -149,15 +173,14 @@ Good next capabilities:
 - identify citation gaps
 - prepare a publish checklist
 
-Risky capabilities that require stronger controls:
+Capabilities that require stronger controls:
 
-- editing manuscript text
-- bulk retagging
-- deleting blocks
-- importing external files
+- replacing approved canon without a diff/undo path
+- irreversible bulk deletion rather than recoverable trash
 - publishing to public sites
 - reconciling Patreon or billing events
 - changing project permissions
+- contacting people or changing external calendars
 
 ## North star
 

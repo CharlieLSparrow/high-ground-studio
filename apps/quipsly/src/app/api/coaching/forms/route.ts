@@ -13,6 +13,7 @@ import {
   saveCoachingFormAutomationOverride,
   saveCoachingFormAutomationPolicy,
 } from "@/lib/server/coaching-form-automation";
+import { promoteCoachingFormOutcome } from "@/lib/server/coaching-form-outcomes";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 
 export const dynamic = "force-dynamic";
@@ -122,6 +123,14 @@ export async function POST(request: Request) {
       const result = await reconcileCoachingFormAutomationForCoach({
         prisma,
         actor: session.user,
+      });
+      return json({ ok: true, result });
+    }
+    if (action === "PROMOTE_RESPONSE_OUTCOME") {
+      const result = await promoteCoachingFormOutcome({
+        prisma,
+        actor: session.user,
+        body,
       });
       return json({ ok: true, result });
     }

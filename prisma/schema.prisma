@@ -302,6 +302,12 @@ enum CoachingFormAutomationOverrideAction {
   CLEAR
 }
 
+enum CoachingFormOutcomeKind {
+  NOTE
+  TASK
+  GOAL
+}
+
 enum CoachingEngagementStatus {
   ACTIVE
   PAUSED
@@ -910,6 +916,7 @@ model User {
   coachingFormAutomationPoliciesOwned   CoachingFormAutomationPolicy[]              @relation("CoachingFormAutomationPolicyOwner")
   coachingFormAutomationPolicyRevisions CoachingFormAutomationPolicyRevision[]      @relation("CoachingFormAutomationPolicyRevisionActor")
   coachingFormAutomationOverrides       CoachingFormAutomationOverride[]            @relation("CoachingFormAutomationOverrideActor")
+  coachingFormOutcomePromotions         CoachingFormOutcomePromotionReceipt[]       @relation("CoachingFormOutcomePromotionActor")
   coachingEngagementsCreated            CoachingEngagement[]                        @relation("CoachingEngagementCreatedBy")
   coachingEngagementsAsClient           CoachingEngagement[]                        @relation("CoachingEngagementPrimaryClient")
   coachingEngagementsAsCoach            CoachingEngagement[]                        @relation("CoachingEngagementPrimaryCoach")
@@ -1791,6 +1798,7 @@ model CoachingFormAssignment {
   assignedTo        User                           @relation("CoachingFormAssignmentAssignedTo", fields: [assignedToUserId], references: [id], onDelete: Cascade)
   responseRevisions CoachingFormResponseRevision[]
   automationReceipt CoachingFormAutomationReceipt?
+  outcomePromotions CoachingFormOutcomePromotionReceipt[]
 
   @@index([assignedToUserId, status, dueAt], map: "CoachFormAssignment_recipient_status_due_idx")
   @@index([assignedByUserId, status, dueAt], map: "CoachFormAssignment_coach_status_due_idx")
@@ -1816,6 +1824,7 @@ model CoachingFormResponseRevision {
 
   assignment CoachingFormAssignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
   actor      User                   @relation("CoachingFormResponseRevisionActor", fields: [actorUserId], references: [id], onDelete: Restrict)
+  outcomePromotions CoachingFormOutcomePromotionReceipt[]
 
   @@unique([assignmentId, revision], map: "CoachFormResponse_assignment_revision_key")
   @@index([actorUserId, createdAt], map: "CoachFormResponse_actor_created_idx")
@@ -1918,6 +1927,37 @@ model CoachingFormAutomationOverride {
   @@unique([policyId, bookingId, revision], map: "CoachFormAutomationOverride_policy_booking_revision_key")
   @@index([policyId, bookingId, createdAt], map: "CoachFormAutomationOverride_policy_booking_created_idx")
   @@index([actorUserId, createdAt], map: "CoachFormAutomationOverride_actor_created_idx")
+}
+
+// Records where a note, task, or goal came from so people can understand and
+// change AI- or human-created work without adding an approval workflow.
+model CoachingFormOutcomePromotionReceipt {
+  id                   String                  @id @default(cuid())
+  requestId            String                  @unique @db.Uuid
+  assignmentId         String
+  responseRevisionId   String
+  actorUserId          String
+  kind                 CoachingFormOutcomeKind
+  targetId             String
+  inputSha256          String
+  sourceSha256         String
+  selectedFieldIdsJson Json                    @default("[]")
+  sourceSnapshotJson   Json                    @default("{}")
+  reviewedPayloadJson  Json                    @default("{}")
+  removedAt            DateTime?
+  removedByUserId      String?
+  restoredAt           DateTime?
+  createdAt            DateTime                @default(now())
+
+  assignment       CoachingFormAssignment       @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  responseRevision CoachingFormResponseRevision @relation(fields: [responseRevisionId], references: [id], onDelete: Cascade)
+  actor            User                         @relation("CoachingFormOutcomePromotionActor", fields: [actorUserId], references: [id], onDelete: Restrict)
+
+  @@unique([kind, targetId], map: "CoachFormOutcomePromotion_kind_target_key")
+  @@index([assignmentId, createdAt], map: "CoachFormOutcomePromotion_assignment_created_idx")
+  @@index([responseRevisionId, createdAt], map: "CoachFormOutcomePromotion_response_created_idx")
+  @@index([actorUserId, createdAt], map: "CoachFormOutcomePromotion_actor_created_idx")
+  @@index([removedAt, createdAt], map: "CoachFormOutcomePromotion_removed_created_idx")
 }
 
 // A Coaching Engagement is the durable, private collaboration boundary for a

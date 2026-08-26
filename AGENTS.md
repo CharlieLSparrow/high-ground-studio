@@ -61,7 +61,7 @@ Recent stabilization history lives in:
 - Do not remove the episodes loader guard casually. It exists because the Fumadocs collection import was implicated in earlier build instability.
 - Treat the build-success state as current truth, and the earlier Turbopack/session instability as historical context documented under `docs/sessions/`.
 - Treat `apps/web/src/app/schedule/page.backup.tsx`, `pnpm-workspace.yaml.save`, `prisma.config.ts.bak`, and scattered `.DS_Store` files as signs of a repo that needs careful reading before cleanup.
-- The top-level docs under `docs/` are now the durable memory layer. Promote important chat/session conclusions into docs when they become stable.
+- The product and its tests are the primary durable record. Update documentation only when an architecture contract, operator procedure, public behavior, or non-obvious recovery fact would otherwise be lost.
 
 ## Standard Commands
 
@@ -126,5 +126,7 @@ Keep `.env.example` synchronized with `docs/runbooks/local-dev.md` if env usage 
 
 - Verify from files before asserting product state.
 - Prefer narrow changes that preserve current working paths.
-- For any meaningful task, leave a short durable note under `docs/` if the conclusion is likely to matter again.
-- If a task touches auth, Prisma, content loading, or build behavior, update the relevant doc instead of leaving the knowledge only in chat.
+- Prefer user-visible product capability and focused verification over plans, reports, ledgers, or process artifacts.
+- Do not create a new plan, report, handoff, or session note for routine implementation work. Git history, tests, and clear code are sufficient.
+- Update an existing operator or architecture document only when auth, schema, deployment, or recovery behavior actually changes and a future operator needs the information.
+- Ordinary reversible product work should use sensible defaults plus visible edit, remove, undo, and recovery. Do not add an approval or proposal workflow merely because AI helped create it.

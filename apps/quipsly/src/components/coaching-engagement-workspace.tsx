@@ -11,6 +11,7 @@ import {
   Plus,
   RotateCcw,
   Target,
+  Trash2,
   UsersRound,
 } from "lucide-react";
 
@@ -81,6 +82,10 @@ export function CoachingEngagementWorkspace({
   const [createOwnerUserId, setCreateOwnerUserId] = useState(defaultOwner);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [lastRemoved, setLastRemoved] = useState<{
+    entry: CoachingEngagementWorkEntry;
+    removalUpdatedAt: string;
+  } | null>(null);
   const createForm = useRef<HTMLFormElement>(null);
   const counts = useMemo(
     () => ({
@@ -106,6 +111,7 @@ export function CoachingEngagementWorkspace({
   async function createEntry(formData: FormData) {
     setBusyId("create");
     setNotice(null);
+    setLastRemoved(null);
     try {
       const response = await fetch(
         `/api/coaching/engagements/${encodeURIComponent(engagementId)}/work`,
@@ -168,6 +174,7 @@ export function CoachingEngagementWorkspace({
   ) {
     setBusyId(entry.id);
     setNotice(null);
+    setLastRemoved(null);
     try {
       const response = await fetch(
         `/api/coaching/engagements/${encodeURIComponent(engagementId)}/work`,
@@ -202,6 +209,83 @@ export function CoachingEngagementWorkspace({
         error instanceof Error
           ? error.message
           : "The coaching work was not updated.",
+      );
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function removeEntry(entry: CoachingEngagementWorkEntry) {
+    setBusyId(entry.id);
+    setNotice(null);
+    try {
+      const response = await fetch(
+        `/api/coaching/engagements/${encodeURIComponent(engagementId)}/work`,
+        {
+          method: "DELETE",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            id: entry.id,
+            kind: entry.kind,
+            expectedUpdatedAt: entry.updatedAt,
+          }),
+        },
+      );
+      const payload = (await response.json()) as {
+        ok?: boolean;
+        error?: string;
+        removal?: { updatedAt: string };
+      };
+      if (!response.ok || !payload.ok || !payload.removal) {
+        throw new Error(payload.error || "The item was not removed.");
+      }
+      setEntries((current) =>
+        current.filter((candidate) => candidate.id !== entry.id),
+      );
+      setLastRemoved({
+        entry,
+        removalUpdatedAt: payload.removal.updatedAt,
+      });
+      setNotice(`${entry.title || "Item"} removed.`);
+    } catch (error) {
+      setNotice(
+        error instanceof Error ? error.message : "The item was not removed.",
+      );
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function restoreLastRemoved() {
+    if (!lastRemoved) return;
+    setBusyId(lastRemoved.entry.id);
+    try {
+      const response = await fetch(
+        `/api/coaching/engagements/${encodeURIComponent(engagementId)}/work`,
+        {
+          method: "PUT",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            id: lastRemoved.entry.id,
+            kind: lastRemoved.entry.kind,
+            expectedUpdatedAt: lastRemoved.removalUpdatedAt,
+          }),
+        },
+      );
+      const payload = (await response.json()) as {
+        ok?: boolean;
+        error?: string;
+        entry?: CoachingEngagementWorkEntry;
+      };
+      if (!response.ok || !payload.ok || !payload.entry) {
+        throw new Error(payload.error || "The item was not restored.");
+      }
+      replaceEntry(payload.entry);
+      setLastRemoved(null);
+      setNotice(`${payload.entry.title || "Item"} restored.`);
+    } catch (error) {
+      setNotice(
+        error instanceof Error ? error.message : "The item was not restored.",
       );
     } finally {
       setBusyId(null);
@@ -245,12 +329,22 @@ export function CoachingEngagementWorkspace({
       </div>
 
       {notice ? (
-        <p
+        <div
           role="status"
-          className="mt-4 rounded-xl border border-violet-200 bg-violet-50 px-4 py-3 text-xs font-bold leading-5 text-violet-950"
+          className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-violet-200 bg-violet-50 px-4 py-3 text-xs font-bold leading-5 text-violet-950"
         >
-          {notice}
-        </p>
+          <span>{notice}</span>
+          {lastRemoved ? (
+            <button
+              type="button"
+              disabled={busyId === lastRemoved.entry.id}
+              onClick={() => void restoreLastRemoved()}
+              className="inline-flex min-h-9 items-center gap-2 rounded-full bg-violet-800 px-4 text-xs font-black text-white disabled:opacity-50"
+            >
+              <RotateCcw size={14} aria-hidden="true" /> Undo
+            </button>
+          ) : null}
+        </div>
       ) : null}
 
       {canWrite ? (
@@ -442,96 +536,106 @@ export function CoachingEngagementWorkspace({
                   ) : null}
                 </div>
                 {canWrite && entry.canEdit ? (
-                  <details className="mt-4 border-t border-[#eee4d1] pt-3">
-                    <summary className="flex min-h-11 cursor-pointer items-center gap-2 text-xs font-black uppercase tracking-wide text-violet-900">
-                      <Pencil size={14} aria-hidden="true" /> Edit
-                    </summary>
-                    <form
-                      action={(formData) =>
-                        void updateEntry(entry, {
-                          title: String(formData.get("title") || ""),
-                          body: String(formData.get("body") || ""),
-                          ownerUserId: String(
-                            formData.get("ownerUserId") ||
-                              entry.owner?.id ||
-                              currentUserId,
-                          ),
-                          targetAt: String(formData.get("targetAt") || ""),
-                          visibility: String(
-                            formData.get("visibility") || entry.visibility,
-                          ),
-                          status: String(
-                            formData.get("status") || entry.status || "",
-                          ),
-                        })
-                      }
-                      className="mt-3 grid gap-3"
-                    >
-                      <input
-                        name="title"
-                        defaultValue={entry.title || ""}
-                        required
-                        className="min-h-11 rounded-xl border border-[#d8c7a7] px-3 text-sm"
-                        aria-label={`${entry.kind.toLowerCase()} name`}
-                      />
-                      <textarea
-                        name="body"
-                        defaultValue={entry.body || ""}
-                        rows={3}
-                        className="rounded-xl border border-[#d8c7a7] px-3 py-2 text-sm"
-                        aria-label={`${entry.kind.toLowerCase()} details`}
-                      />
-                      <div className="grid gap-3 sm:grid-cols-2">
-                        {entry.kind !== "NOTE" ? (
-                          <select
-                            name="ownerUserId"
-                            defaultValue={entry.owner?.id || defaultOwner}
-                            className="min-h-11 rounded-xl border border-[#d8c7a7] bg-white px-3 text-sm"
-                            aria-label="Owner"
-                          >
-                            {members.map((member) => (
-                              <option key={member.id} value={member.id}>
-                                {member.label}
-                              </option>
-                            ))}
-                          </select>
-                        ) : (
-                          <select
-                            name="visibility"
-                            defaultValue={entry.visibility}
-                            className="min-h-11 rounded-xl border border-[#d8c7a7] bg-white px-3 text-sm"
-                            aria-label="Note privacy"
-                          >
-                            <option value="SHARED">Shared</option>
-                            <option value="PRIVATE">Only me</option>
-                          </select>
-                        )}
+                  <div className="mt-4 border-t border-[#eee4d1] pt-3">
+                    <details>
+                      <summary className="flex min-h-11 cursor-pointer items-center gap-2 text-xs font-black uppercase tracking-wide text-violet-900">
+                        <Pencil size={14} aria-hidden="true" /> Edit
+                      </summary>
+                      <form
+                        action={(formData) =>
+                          void updateEntry(entry, {
+                            title: String(formData.get("title") || ""),
+                            body: String(formData.get("body") || ""),
+                            ownerUserId: String(
+                              formData.get("ownerUserId") ||
+                                entry.owner?.id ||
+                                currentUserId,
+                            ),
+                            targetAt: String(formData.get("targetAt") || ""),
+                            visibility: String(
+                              formData.get("visibility") || entry.visibility,
+                            ),
+                            status: String(
+                              formData.get("status") || entry.status || "",
+                            ),
+                          })
+                        }
+                        className="mt-3 grid gap-3"
+                      >
+                        <input
+                          name="title"
+                          defaultValue={entry.title || ""}
+                          required
+                          className="min-h-11 rounded-xl border border-[#d8c7a7] px-3 text-sm"
+                          aria-label={`${entry.kind.toLowerCase()} name`}
+                        />
+                        <textarea
+                          name="body"
+                          defaultValue={entry.body || ""}
+                          rows={3}
+                          className="rounded-xl border border-[#d8c7a7] px-3 py-2 text-sm"
+                          aria-label={`${entry.kind.toLowerCase()} details`}
+                        />
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          {entry.kind !== "NOTE" ? (
+                            <select
+                              name="ownerUserId"
+                              defaultValue={entry.owner?.id || defaultOwner}
+                              className="min-h-11 rounded-xl border border-[#d8c7a7] bg-white px-3 text-sm"
+                              aria-label="Owner"
+                            >
+                              {members.map((member) => (
+                                <option key={member.id} value={member.id}>
+                                  {member.label}
+                                </option>
+                              ))}
+                            </select>
+                          ) : (
+                            <select
+                              name="visibility"
+                              defaultValue={entry.visibility}
+                              className="min-h-11 rounded-xl border border-[#d8c7a7] bg-white px-3 text-sm"
+                              aria-label="Note privacy"
+                            >
+                              <option value="SHARED">Shared</option>
+                              <option value="PRIVATE">Only me</option>
+                            </select>
+                          )}
+                          {entry.kind !== "NOTE" ? (
+                            <input
+                              name="targetAt"
+                              type="date"
+                              defaultValue={inputDate(entry.dueAt)}
+                              className="min-h-11 rounded-xl border border-[#d8c7a7] px-3 text-sm"
+                              aria-label="Target date"
+                            />
+                          ) : null}
+                        </div>
                         {entry.kind !== "NOTE" ? (
                           <input
-                            name="targetAt"
-                            type="date"
-                            defaultValue={inputDate(entry.dueAt)}
-                            className="min-h-11 rounded-xl border border-[#d8c7a7] px-3 text-sm"
-                            aria-label="Target date"
+                            type="hidden"
+                            name="status"
+                            value={entry.status || ""}
                           />
                         ) : null}
-                      </div>
-                      {entry.kind !== "NOTE" ? (
-                        <input
-                          type="hidden"
-                          name="status"
-                          value={entry.status || ""}
-                        />
-                      ) : null}
-                      <button
-                        type="submit"
-                        disabled={busyId === entry.id}
-                        className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-violet-800 px-4 py-2 text-sm font-black text-white disabled:opacity-50"
-                      >
-                        <Check size={15} aria-hidden="true" /> Save changes
-                      </button>
-                    </form>
-                  </details>
+                        <button
+                          type="submit"
+                          disabled={busyId === entry.id}
+                          className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-violet-800 px-4 py-2 text-sm font-black text-white disabled:opacity-50"
+                        >
+                          <Check size={15} aria-hidden="true" /> Save changes
+                        </button>
+                      </form>
+                    </details>
+                    <button
+                      type="button"
+                      disabled={busyId === entry.id}
+                      onClick={() => void removeEntry(entry)}
+                      className="mt-2 inline-flex min-h-10 items-center gap-2 rounded-full px-3 text-xs font-black text-rose-800 hover:bg-rose-50 disabled:opacity-50"
+                    >
+                      <Trash2 size={14} aria-hidden="true" /> Remove
+                    </button>
+                  </div>
                 ) : null}
               </article>
             );

@@ -110,4 +110,70 @@ describe("CoachingEngagementWorkspace", () => {
       expect(screen.getByText(/Task saved/i)).toBeInTheDocument(),
     );
   });
+
+  it("removes an item without a confirmation ritual and offers immediate undo", async () => {
+    const entry = {
+      id: "task-1",
+      kind: "TASK" as const,
+      title: "Practice reflective listening",
+      body: "Try it twice before Friday.",
+      status: "OPEN",
+      owner: { id: "client-1", label: "Riley Client" },
+      visibility: "SHARED" as const,
+      dueAt: null,
+      canEdit: true,
+      createdAt: "2026-08-19T21:00:00.000Z",
+      updatedAt: "2026-08-19T21:00:00.000Z",
+    };
+    const fetchMock = jest
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          ok: true,
+          undoAvailable: true,
+          removal: {
+            id: entry.id,
+            kind: entry.kind,
+            updatedAt: "2026-08-19T21:01:00.000Z",
+          },
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          ok: true,
+          entry: { ...entry, updatedAt: "2026-08-19T21:02:00.000Z" },
+        }),
+      });
+    Object.defineProperty(globalThis, "fetch", {
+      value: fetchMock,
+      writable: true,
+      configurable: true,
+    });
+    render(
+      <CoachingEngagementWorkspace
+        engagementId="engagement-1"
+        initialEntries={[entry]}
+        members={members}
+        currentUserId="coach-1"
+        canWrite
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Remove" }));
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("heading", { name: entry.title }),
+      ).not.toBeInTheDocument(),
+    );
+    expect(screen.getByRole("button", { name: "Undo" })).toBeInTheDocument();
+    expect(fetchMock.mock.calls[0][1]).toMatchObject({ method: "DELETE" });
+
+    fireEvent.click(screen.getByRole("button", { name: "Undo" }));
+    expect(
+      await screen.findByRole("heading", { name: entry.title }),
+    ).toBeInTheDocument();
+    expect(fetchMock.mock.calls[1][1]).toMatchObject({ method: "PUT" });
+  });
 });

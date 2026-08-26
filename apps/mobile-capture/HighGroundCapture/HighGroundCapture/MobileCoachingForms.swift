@@ -143,6 +143,33 @@ struct MobileCoachingFormTemplate: Codable, Equatable, Identifiable {
     let updatedAt: String
 }
 
+struct MobileCoachingFormOutcomePromotion: Codable, Equatable, Identifiable {
+    struct ReviewedPayload: Codable, Equatable {
+        struct Owner: Codable, Equatable {
+            let id: String
+            let name: String
+            let email: String?
+        }
+
+        let schema: String
+        let title: String
+        let body: String?
+        let owner: Owner
+        let visibility: String
+        let targetAt: String?
+        let coachInitiated: Bool
+    }
+
+    let id: String
+    let kind: String
+    let targetId: String
+    let responseRevision: Int?
+    let selectedFieldIds: [String]
+    let sourceSha256: String
+    let reviewedPayload: ReviewedPayload
+    let createdAt: String
+}
+
 struct MobileCoachingFormAssignment: Codable, Equatable, Identifiable {
     struct Template: Codable, Equatable {
         let id: String
@@ -179,6 +206,9 @@ struct MobileCoachingFormAssignment: Codable, Equatable, Identifiable {
         let clientCanEditOwnResponse: Bool
         let coachCanReadSubmittedResponse: Bool
         let coachCanReadDraftResponse: Bool
+        let coachInitiatedPromotion: Bool?
+        let editableAfterCreation: Bool?
+        let sourceReceiptVisible: Bool?
         let externalSideEffects: Bool
     }
 
@@ -197,6 +227,7 @@ struct MobileCoachingFormAssignment: Codable, Equatable, Identifiable {
     let assignedTo: MobileCoachingFormPerson?
     let viewerRole: String
     let response: Response?
+    let outcomePromotions: [MobileCoachingFormOutcomePromotion]?
     let idempotentReplay: Bool?
     let boundaries: Boundaries
 
@@ -211,6 +242,16 @@ struct MobileCoachingFormAssignment: Codable, Equatable, Identifiable {
         viewerRole == "COACH"
             && boundaries.coachCanReadSubmittedResponse
             && response?.state == "SUBMITTED"
+    }
+    var visibleOutcomePromotions: [MobileCoachingFormOutcomePromotion] {
+        outcomePromotions ?? []
+    }
+    var canCoachPromoteOutcome: Bool {
+        coachCanRead
+            && boundaries.coachInitiatedPromotion == true
+            && boundaries.editableAfterCreation == true
+            && boundaries.sourceReceiptVisible == true
+            && !boundaries.externalSideEffects
     }
 }
 
@@ -354,6 +395,42 @@ private struct MobileCoachingFormAutomationReconcileEnvelope: Decodable {
     let result: Result?
 }
 
+private struct MobileCoachingFormOutcomeRequest: Encodable {
+    let action = "PROMOTE_RESPONSE_OUTCOME"
+    let requestId: UUID
+    let assignmentId: String
+    let responseRevision: Int
+    let kind: String
+    let selectedFieldIds: [String]
+    let title: String
+    let body: String
+    let ownerUserId: String
+    let visibility: String
+    let targetAt: String?
+}
+
+private struct MobileCoachingFormOutcomeEnvelope: Decodable {
+    struct Result: Decodable {
+        struct Receipt: Decodable {
+            let id: String
+            let assignmentId: String
+            let responseRevisionId: String
+            let kind: String
+            let targetId: String
+            let selectedFieldIds: [String]
+            let sourceSha256: String
+        }
+
+        let receipt: Receipt
+        let idempotentReplay: Bool
+        let externalSideEffects: Bool
+    }
+
+    let ok: Bool
+    let error: String?
+    let result: Result?
+}
+
 // MARK: - Protected recovery and authenticated client
 
 struct MobileCoachingFormLocalDraft: Codable, Equatable {
@@ -376,6 +453,11 @@ private struct MobileCoachingFormPendingAutomationMutation: Codable, Equatable {
     let fingerprint: String
 }
 
+private struct MobileCoachingFormPendingOutcomeMutation: Codable, Equatable {
+    let requestID: UUID
+    let fingerprint: String
+}
+
 private struct MobileCoachingFormsProtectedLedger: Codable {
     let schemaVersion: Int
     let ownerAccountID: String
@@ -383,6 +465,7 @@ private struct MobileCoachingFormsProtectedLedger: Codable {
     var drafts: [String: MobileCoachingFormLocalDraft]
     var pendingSend: MobileCoachingFormPendingSend?
     var pendingAutomationMutations: [String: MobileCoachingFormPendingAutomationMutation]?
+    var pendingOutcomeMutations: [String: MobileCoachingFormPendingOutcomeMutation]?
 }
 
 private struct MobileCoachingFormsProtectedWorkspace: Codable {
@@ -401,6 +484,7 @@ final class MobileCoachingFormsClient: ObservableObject {
     @Published private(set) var activeMutationAssignmentID: String?
     @Published private(set) var isSending = false
     @Published private(set) var isAutomationBusy = false
+    @Published private(set) var activeOutcomeAssignmentID: String?
     @Published private(set) var isUsingProtectedCache = false
     @Published private(set) var cachedAt: Date?
     @Published private(set) var statusMessage: String?
@@ -411,6 +495,7 @@ final class MobileCoachingFormsClient: ObservableObject {
     private var observedOwnerEmail: String?
     private var pendingSend: MobileCoachingFormPendingSend?
     private var pendingAutomationMutations: [String: MobileCoachingFormPendingAutomationMutation] = [:]
+    private var pendingOutcomeMutations: [String: MobileCoachingFormPendingOutcomeMutation] = [:]
     private var ledgerWriteTask: Task<Void, Never>?
     private var accountCancellable: AnyCancellable?
 
@@ -960,6 +1045,143 @@ final class MobileCoachingFormsClient: ObservableObject {
         }
     }
 
+    @discardableResult
+    func promoteOutcome(
+        assignment: MobileCoachingFormAssignment,
+        selectedFieldIDs: [String],
+        kind: String,
+        title: String,
+        body: String,
+        ownerUserID: String,
+        visibility: String,
+        targetAt: Date?
+    ) async -> Bool {
+        guard let current = workspace,
+              current.actor.isCoach,
+              let canonical = current.coachAssignments.first(where: { $0.id == assignment.id }),
+              canonical.response?.revision == assignment.response?.revision,
+              canonical.canCoachPromoteOutcome,
+              !isUsingProtectedCache,
+              AuthManager.shared.networkActionsAllowed else {
+            errorMessage = "Connect to Nest and refresh this shared response before creating follow-through."
+            return false
+        }
+        let normalizedKind = kind.uppercased()
+        let normalizedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedBody = body.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedVisibility = visibility == "PRIVATE" ? "PRIVATE" : "SHARED"
+        let availableFieldIDs = Set(
+            canonical.template.definition.fields.compactMap { field in
+                canonical.response?.answers[field.id] == nil ? nil : field.id
+            }
+        )
+        let selected = canonical.template.definition.fields
+            .map(\.id)
+            .filter { selectedFieldIDs.contains($0) }
+        guard ["NOTE", "TASK", "GOAL"].contains(normalizedKind),
+              !normalizedTitle.isEmpty,
+              normalizedTitle.count <= 500,
+              normalizedBody.count <= 20_000,
+              !selected.isEmpty,
+              selected.count == Set(selectedFieldIDs).count,
+              Set(selected).isSubset(of: availableFieldIDs),
+              normalizedKind == "NOTE" || [canonical.assignedBy?.id, canonical.assignedTo?.id]
+                .compactMap({ $0 })
+                .contains(ownerUserID) else {
+            errorMessage = "Review the selected answers, name, and owner before creating follow-through."
+            return false
+        }
+        guard let responseRevision = canonical.response?.revision else { return false }
+        let target = normalizedKind == "NOTE" ? nil : targetAt.map(Self.outcomeDateOnly.string(from:))
+        struct Fingerprint: Encodable {
+            let assignmentId: String
+            let responseRevision: Int
+            let kind: String
+            let selectedFieldIds: [String]
+            let title: String
+            let body: String
+            let ownerUserId: String
+            let visibility: String
+            let targetAt: String?
+        }
+        let intent = Fingerprint(
+            assignmentId: canonical.id,
+            responseRevision: responseRevision,
+            kind: normalizedKind,
+            selectedFieldIds: selected,
+            title: normalizedTitle,
+            body: normalizedBody,
+            ownerUserId: normalizedKind == "NOTE" ? current.actor.id : ownerUserID,
+            visibility: normalizedKind == "NOTE" ? normalizedVisibility : "SHARED",
+            targetAt: target
+        )
+        let fingerprint = Self.fingerprint(intent)
+        let operationKey = "outcome:\(canonical.id):\(responseRevision):\(normalizedKind)"
+        let requestID: UUID
+        if let pending = pendingOutcomeMutations[operationKey],
+           pending.fingerprint == fingerprint {
+            requestID = pending.requestID
+        } else {
+            requestID = UUID()
+            pendingOutcomeMutations[operationKey] = MobileCoachingFormPendingOutcomeMutation(
+                requestID: requestID,
+                fingerprint: fingerprint
+            )
+            flushProtectedDrafts()
+        }
+
+        activeOutcomeAssignmentID = canonical.id
+        errorMessage = nil
+        statusMessage = nil
+        defer { activeOutcomeAssignmentID = nil }
+        do {
+            var request = URLRequest(url: formsEndpoint)
+            request.httpMethod = "POST"
+            request.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData
+            request.setValue("application/json", forHTTPHeaderField: "Accept")
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = try Self.makeEncoder().encode(
+                MobileCoachingFormOutcomeRequest(
+                    requestId: requestID,
+                    assignmentId: intent.assignmentId,
+                    responseRevision: intent.responseRevision,
+                    kind: intent.kind,
+                    selectedFieldIds: intent.selectedFieldIds,
+                    title: intent.title,
+                    body: intent.body,
+                    ownerUserId: intent.ownerUserId,
+                    visibility: intent.visibility,
+                    targetAt: intent.targetAt
+                )
+            )
+            let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
+            guard response.url?.host == baseURL.host else { throw URLError(.badServerResponse) }
+            let payload = try JSONDecoder().decode(MobileCoachingFormOutcomeEnvelope.self, from: data)
+            guard response.statusCode < 400,
+                  payload.ok,
+                  let result = payload.result,
+                  !result.externalSideEffects,
+                  result.receipt.assignmentId == canonical.id,
+                  result.receipt.kind == normalizedKind,
+                  Set(result.receipt.selectedFieldIds) == Set(selected),
+                  result.receipt.sourceSha256.range(
+                    of: #"^[0-9a-f]{64}$"#,
+                    options: .regularExpression
+                  ) != nil else {
+                throw Self.failure(payload.error ?? "The reviewed follow-through could not be verified.")
+            }
+            pendingOutcomeMutations.removeValue(forKey: operationKey)
+            flushProtectedDrafts()
+            await load()
+            let label = normalizedKind == "NOTE" ? "Note" : normalizedKind == "TASK" ? "Task" : "Goal"
+            statusMessage = "\(label) added to \(canonical.engagement.title)."
+            return true
+        } catch {
+            errorMessage = error.localizedDescription
+            return false
+        }
+    }
+
     func clearMessages() {
         statusMessage = nil
         errorMessage = nil
@@ -1004,7 +1226,22 @@ final class MobileCoachingFormsClient: ObservableObject {
               candidate.assignments.allSatisfy({ assignment in
                   guard assignment.template.definition.isSupported,
                         !assignment.boundaries.coachCanReadDraftResponse,
-                        !assignment.boundaries.externalSideEffects else { return false }
+                        !assignment.boundaries.externalSideEffects,
+                        assignment.visibleOutcomePromotions.allSatisfy({ promotion in
+                            ["NOTE", "TASK", "GOAL"].contains(promotion.kind)
+                                && promotion.reviewedPayload.coachInitiated
+                                && ["PRIVATE", "SHARED"].contains(promotion.reviewedPayload.visibility)
+                                && promotion.sourceSha256.range(
+                                    of: #"^[0-9a-f]{64}$"#,
+                                    options: .regularExpression
+                                ) != nil
+                                && !promotion.selectedFieldIds.isEmpty
+                                && Set(promotion.selectedFieldIds).isSubset(
+                                    of: Set(assignment.template.definition.fields.map(\.id))
+                                )
+                                && (assignment.viewerRole != "CLIENT"
+                                    || promotion.reviewedPayload.visibility == "SHARED")
+                        }) else { return false }
                   if assignment.viewerRole == "CLIENT" {
                       return assignment.boundaries.clientCanEditOwnResponse
                   }
@@ -1104,6 +1341,7 @@ final class MobileCoachingFormsClient: ObservableObject {
         localDrafts = [:]
         pendingSend = nil
         pendingAutomationMutations = [:]
+        pendingOutcomeMutations = [:]
         restoreLedger()
     }
 
@@ -1190,6 +1428,7 @@ final class MobileCoachingFormsClient: ObservableObject {
         localDrafts = ledger.drafts
         pendingSend = ledger.pendingSend
         pendingAutomationMutations = ledger.pendingAutomationMutations ?? [:]
+        pendingOutcomeMutations = ledger.pendingOutcomeMutations ?? [:]
     }
 
     private func persistLedger() {
@@ -1212,7 +1451,8 @@ final class MobileCoachingFormsClient: ObservableObject {
                 ownerEmail: ownerEmail,
                 drafts: localDrafts,
                 pendingSend: pendingSend,
-                pendingAutomationMutations: pendingAutomationMutations
+                pendingAutomationMutations: pendingAutomationMutations,
+                pendingOutcomeMutations: pendingOutcomeMutations
             ),
             to: url
         )
@@ -1293,6 +1533,11 @@ final class MobileCoachingFormsClient: ObservableObject {
         return SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
     }
 
+    nonisolated private static func fingerprint<Value: Encodable>(_ value: Value) -> String {
+        let data = (try? makeEncoder().encode(value)) ?? Data()
+        return SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+    }
+
     nonisolated private static func assignmentTiming(_ purpose: String) -> String {
         switch purpose {
         case "INTAKE": return "ENGAGEMENT_START"
@@ -1362,6 +1607,15 @@ final class MobileCoachingFormsClient: ObservableObject {
     private static let iso8601: ISO8601DateFormatter = {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime]
+        return formatter
+    }()
+
+    private static let outcomeDateOnly: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        formatter.dateFormat = "yyyy-MM-dd"
         return formatter
     }()
 
@@ -1450,15 +1704,40 @@ final class MobileCoachingFormsClient: ObservableObject {
             assignedTo: .init(id: "preview-client", name: "Homer", email: "homer@example.com"),
             viewerRole: viewerRole,
             response: response,
+            outcomePromotions: response?.state == "SUBMITTED"
+                ? [previewOutcomePromotion]
+                : [],
             idempotentReplay: false,
             boundaries: .init(
                 clientCanEditOwnResponse: viewerRole == "CLIENT",
                 coachCanReadSubmittedResponse: viewerRole == "COACH" && response?.state == "SUBMITTED",
                 coachCanReadDraftResponse: false,
+                coachInitiatedPromotion: true,
+                editableAfterCreation: true,
+                sourceReceiptVisible: true,
                 externalSideEffects: false
             )
         )
     }
+
+    private static let previewOutcomePromotion = MobileCoachingFormOutcomePromotion(
+        id: "preview-outcome-receipt",
+        kind: "GOAL",
+        targetId: "preview-goal",
+        responseRevision: 1,
+        selectedFieldIds: ["what-matters"],
+        sourceSha256: String(repeating: "a", count: 64),
+        reviewedPayload: .init(
+            schema: "quipsly-coaching-form-outcome-reviewed-v1",
+            title: "Choose the next honest step",
+            body: "Keep the next decision small enough to begin.",
+            owner: .init(id: "preview-client", name: "Homer", email: "homer@example.com"),
+            visibility: "SHARED",
+            targetAt: nil,
+            coachInitiated: true
+        ),
+        createdAt: ISO8601DateFormatter().string(from: Date().addingTimeInterval(-900))
+    )
 }
 
 // MARK: - Phone-first forms experience
@@ -1895,6 +2174,13 @@ struct MobileCoachingFormResponseView: View {
                             .id(field.id)
                         }
 
+                        if !assignment.visibleOutcomePromotions.isEmpty {
+                            MobileCoachingFormOutcomeReceipts(
+                                promotions: assignment.visibleOutcomePromotions,
+                                relationshipTitle: assignment.engagement.title
+                            )
+                        }
+
                         if let error = client.errorMessage {
                             Label(error, systemImage: "exclamationmark.triangle.fill")
                                 .font(.caption.weight(.semibold))
@@ -2258,6 +2544,8 @@ private struct MobileCoachingFormAnswerField: View {
 struct MobileCoachingFormCoachReviewView: View {
     @ObservedObject var client: MobileCoachingFormsClient
     let assignmentID: String
+    @State private var selectedFieldIDs = Set<String>()
+    @State private var showsOutcomeReview = false
 
     private var assignment: MobileCoachingFormAssignment? {
         client.workspace?.coachAssignments.first { $0.id == assignmentID }
@@ -2285,11 +2573,73 @@ struct MobileCoachingFormCoachReviewView: View {
                         Label("Shared by your client", systemImage: "checkmark.circle.fill")
                             .font(.caption.weight(.bold))
                             .foregroundStyle(.green)
-                        ForEach(assignment.template.definition.fields) { field in
-                            MobileCoachingFormAnswerReadback(
-                                field: field,
-                                answer: response.answers[field.id]
+                        Text("Choose only the answers that belong in one useful next step.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        ForEach(assignment.template.definition.fields.filter { response.answers[$0.id] != nil }) { field in
+                            Button {
+                                if selectedFieldIDs.contains(field.id) {
+                                    selectedFieldIDs.remove(field.id)
+                                } else {
+                                    selectedFieldIDs.insert(field.id)
+                                }
+                            } label: {
+                                MobileCoachingFormAnswerReadback(
+                                    field: field,
+                                    answer: response.answers[field.id],
+                                    selected: selectedFieldIDs.contains(field.id)
+                                )
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Use answer to \(field.label)")
+                            .accessibilityValue(selectedFieldIDs.contains(field.id) ? "Selected" : "Not selected")
+                            .accessibilityAddTraits(selectedFieldIDs.contains(field.id) ? .isSelected : [])
+                        }
+
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("One tap with sensible defaults")
+                                .font(.subheadline.weight(.black))
+                            Text("Notes are shared. Tasks and goals belong to the client. Everything stays editable afterward.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            HStack(spacing: 8) {
+                                quickOutcomeButton("Save note", symbol: "note.text", kind: "NOTE", assignment: assignment)
+                                quickOutcomeButton("Add task", symbol: "checklist", kind: "TASK", assignment: assignment)
+                                quickOutcomeButton("Set goal", symbol: "target", kind: "GOAL", assignment: assignment)
+                            }
+                            Button {
+                                showsOutcomeReview = true
+                            } label: {
+                                Label("Adjust details first", systemImage: "slider.horizontal.3")
+                                    .frame(maxWidth: .infinity)
+                            }
+                            .buttonStyle(.bordered)
+                            .controlSize(.large)
+                            .disabled(
+                                selectedFieldIDs.isEmpty
+                                    || !assignment.canCoachPromoteOutcome
+                                    || client.isUsingProtectedCache
                             )
+                            .accessibilityIdentifier("CaptureCoachingFormAdjustFollowThrough")
+                        }
+                        .padding(14)
+                        .background(.purple.opacity(0.08), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+
+                        if !assignment.visibleOutcomePromotions.isEmpty {
+                            MobileCoachingFormOutcomeReceipts(
+                                promotions: assignment.visibleOutcomePromotions,
+                                relationshipTitle: assignment.engagement.title
+                            )
+                        }
+                        if let status = client.statusMessage {
+                            Label(status, systemImage: "checkmark.circle.fill")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.green)
+                        }
+                        if let error = client.errorMessage {
+                            Label(error, systemImage: "exclamationmark.triangle.fill")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.orange)
                         }
                     } else {
                         VStack(alignment: .leading, spacing: 8) {
@@ -2316,38 +2666,319 @@ struct MobileCoachingFormCoachReviewView: View {
         .background(CaptureCanvas())
         .navigationTitle("Review")
         .navigationBarTitleDisplayMode(.inline)
+        .sheet(isPresented: $showsOutcomeReview) {
+            if let assignment {
+                NavigationStack {
+                    MobileCoachingFormOutcomeReviewSheet(
+                        client: client,
+                        assignment: assignment,
+                        selectedFieldIDs: assignment.template.definition.fields
+                            .map(\.id)
+                            .filter { selectedFieldIDs.contains($0) },
+                        onComplete: {
+                            selectedFieldIDs = []
+                            showsOutcomeReview = false
+                        }
+                    )
+                }
+            }
+        }
         .accessibilityIdentifier("CaptureCoachingFormCoachReview")
+    }
+
+    private func quickOutcomeButton(
+        _ label: String,
+        symbol: String,
+        kind: String,
+        assignment: MobileCoachingFormAssignment
+    ) -> some View {
+        Button {
+            Task {
+                let intent = defaultOutcomeIntent(assignment)
+                let saved = await client.promoteOutcome(
+                    assignment: assignment,
+                    selectedFieldIDs: intent.fieldIDs,
+                    kind: kind,
+                    title: intent.title,
+                    body: intent.body,
+                    ownerUserID: assignment.assignedTo?.id ?? assignment.assignedBy?.id ?? "",
+                    visibility: "SHARED",
+                    targetAt: nil
+                )
+                if saved { selectedFieldIDs = [] }
+            }
+        } label: {
+            VStack(spacing: 4) {
+                Image(systemName: symbol)
+                Text(label)
+                    .font(.caption2.weight(.black))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
+            }
+            .frame(maxWidth: .infinity, minHeight: 48)
+        }
+        .buttonStyle(.borderedProminent)
+        .tint(.purple)
+        .disabled(
+            selectedFieldIDs.isEmpty
+                || !assignment.canCoachPromoteOutcome
+                || client.isUsingProtectedCache
+                || client.activeOutcomeAssignmentID == assignment.id
+                || CaptureLaunchConfiguration.usesPreviewData
+        )
+        .accessibilityIdentifier("CaptureCoachingFormQuick\(kind)")
+    }
+
+    private func defaultOutcomeIntent(
+        _ assignment: MobileCoachingFormAssignment
+    ) -> (fieldIDs: [String], title: String, body: String) {
+        let answers = assignment.response?.answers ?? [:]
+        let fields = assignment.template.definition.fields.filter {
+            selectedFieldIDs.contains($0.id) && answers[$0.id] != nil
+        }
+        let first = fields.first.map { mobileCoachingFormAnswerText(answers[$0.id]) } ?? "Follow-through"
+        return (
+            fields.map(\.id),
+            first.count <= 140 ? first : fields.first?.label ?? "Follow-through",
+            fields.map {
+                "\($0.label)\n\(mobileCoachingFormAnswerText(answers[$0.id]))"
+            }.joined(separator: "\n\n")
+        )
     }
 }
 
 private struct MobileCoachingFormAnswerReadback: View {
     let field: MobileCoachingFormField
     let answer: MobileCoachingFormAnswerValue?
+    let selected: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 7) {
             Text(field.label)
                 .font(.caption.weight(.black))
                 .foregroundStyle(.secondary)
-            Text(answerText)
+            Text(mobileCoachingFormAnswerText(answer))
                 .font(.body.weight(.semibold))
                 .textSelection(.enabled)
                 .fixedSize(horizontal: false, vertical: true)
+            if selected {
+                Label("Selected for follow-through", systemImage: "checkmark.circle.fill")
+                    .font(.caption2.weight(.black))
+                    .foregroundStyle(.purple)
+            }
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .background(selected ? Color.purple.opacity(0.1) : Color.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(selected ? Color.purple.opacity(0.55) : Color.clear, lineWidth: 1.5)
+        }
         .accessibilityIdentifier("CaptureCoachingFormAnswer_\(field.id)")
     }
+}
 
-    private var answerText: String {
-        guard let answer else { return "Not answered" }
-        switch answer {
-        case .text(let value): return value.isEmpty ? "Not answered" : value
-        case .number(let value): return value.rounded() == value ? String(Int(value)) : String(value)
-        case .boolean(let value): return value ? "Yes" : "No"
-        case .choices(let value): return value.isEmpty ? "Not answered" : value.joined(separator: ", ")
+private func mobileCoachingFormAnswerText(_ answer: MobileCoachingFormAnswerValue?) -> String {
+    guard let answer else { return "Not answered" }
+    switch answer {
+    case .text(let value): return value.isEmpty ? "Not answered" : value
+    case .number(let value): return value.rounded() == value ? String(Int(value)) : String(value)
+    case .boolean(let value): return value ? "Yes" : "No"
+    case .choices(let value): return value.isEmpty ? "Not answered" : value.joined(separator: ", ")
+    }
+}
+
+private struct MobileCoachingFormOutcomeReceipts: View {
+    let promotions: [MobileCoachingFormOutcomePromotion]
+    let relationshipTitle: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label("Follow-through created together", systemImage: "checkmark.seal.fill")
+                .font(.headline)
+                .foregroundStyle(.green)
+            ForEach(promotions) { promotion in
+                HStack(alignment: .top, spacing: 12) {
+                    Image(systemName: symbol(promotion.kind))
+                        .font(.headline.weight(.bold))
+                        .foregroundStyle(.green)
+                        .frame(width: 34, height: 34)
+                        .background(.green.opacity(0.1), in: Circle())
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(promotion.reviewedPayload.title)
+                            .font(.subheadline.weight(.black))
+                            .fixedSize(horizontal: false, vertical: true)
+                        Text(detail(promotion))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                .padding(12)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(.background, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            }
+            Text("Find and update these in \(relationshipTitle).")
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.secondary)
         }
+        .padding(16)
+        .background(.green.opacity(0.07), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .accessibilityIdentifier("CaptureCoachingFormOutcomeReceipts")
+    }
+
+    private func symbol(_ kind: String) -> String {
+        kind == "NOTE" ? "note.text" : kind == "TASK" ? "checklist" : "target"
+    }
+
+    private func detail(_ promotion: MobileCoachingFormOutcomePromotion) -> String {
+        let kind = promotion.kind == "NOTE" ? "Note" : promotion.kind == "TASK" ? "Task" : "Goal"
+        let target = promotion.reviewedPayload.targetAt
+            .flatMap(coachingFormsDate)
+            .map { " · \($0.formatted(date: .abbreviated, time: .omitted))" }
+            ?? ""
+        return "\(kind) · \(promotion.reviewedPayload.owner.name)\(target)"
+    }
+}
+
+private struct MobileCoachingFormOutcomeReviewSheet: View {
+    @ObservedObject var client: MobileCoachingFormsClient
+    let assignment: MobileCoachingFormAssignment
+    let selectedFieldIDs: [String]
+    let onComplete: () -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var kind = "TASK"
+    @State private var title: String
+    @State private var detail: String
+    @State private var ownerUserID: String
+    @State private var visibility = "SHARED"
+    @State private var hasTargetDate = false
+    @State private var targetDate = Date().addingTimeInterval(7 * 86_400)
+
+    init(
+        client: MobileCoachingFormsClient,
+        assignment: MobileCoachingFormAssignment,
+        selectedFieldIDs: [String],
+        onComplete: @escaping () -> Void
+    ) {
+        self.client = client
+        self.assignment = assignment
+        self.selectedFieldIDs = selectedFieldIDs
+        self.onComplete = onComplete
+        let fields = assignment.template.definition.fields.filter { selectedFieldIDs.contains($0.id) }
+        let answers = assignment.response?.answers ?? [:]
+        let firstAnswer = fields.first.map { mobileCoachingFormAnswerText(answers[$0.id]) } ?? ""
+        _title = State(initialValue: firstAnswer.count <= 140 ? firstAnswer : fields.first?.label ?? "Follow-through")
+        _detail = State(initialValue: fields.map {
+            "\($0.label)\n\(mobileCoachingFormAnswerText(answers[$0.id]))"
+        }.joined(separator: "\n\n"))
+        _ownerUserID = State(initialValue: assignment.assignedTo?.id ?? assignment.assignedBy?.id ?? "")
+    }
+
+    private var ownerOptions: [MobileCoachingFormPerson] {
+        var seen = Set<String>()
+        return [assignment.assignedTo, assignment.assignedBy]
+            .compactMap { $0 }
+            .filter { seen.insert($0.id).inserted }
+    }
+
+    var body: some View {
+        Form {
+            Section {
+                Picker("Type", selection: $kind) {
+                    Label("Note", systemImage: "note.text").tag("NOTE")
+                    Label("Task", systemImage: "checklist").tag("TASK")
+                    Label("Goal", systemImage: "target").tag("GOAL")
+                }
+                .pickerStyle(.segmented)
+                .accessibilityIdentifier("CaptureCoachingOutcomeKind")
+            } header: {
+                Text("One useful next step")
+            } footer: {
+                Text("Selected from revision \(assignment.response?.revision ?? 0) of the shared response.")
+            }
+
+            Section("Details") {
+                TextField("Name", text: $title, axis: .vertical)
+                    .lineLimit(1...4)
+                    .accessibilityIdentifier("CaptureCoachingOutcomeTitle")
+                TextEditor(text: $detail)
+                    .frame(minHeight: 140)
+                    .accessibilityIdentifier("CaptureCoachingOutcomeBody")
+            }
+
+            if kind == "NOTE" {
+                Section("Who can read it?") {
+                    Picker("Visibility", selection: $visibility) {
+                        Text("Everyone in this relationship").tag("SHARED")
+                        Text("Only me").tag("PRIVATE")
+                    }
+                }
+            } else {
+                Section("Owner and timing") {
+                    Picker("Owner", selection: $ownerUserID) {
+                        ForEach(ownerOptions, id: \.id) { person in
+                            Text(person.name).tag(person.id)
+                        }
+                    }
+                    Toggle("Add target date", isOn: $hasTargetDate)
+                    if hasTargetDate {
+                        DatePicker("Target date", selection: $targetDate, displayedComponents: .date)
+                    }
+                }
+            }
+
+            Section {
+                Label(
+                    "Saved in the relationship home with its source attached. Edit or remove it there anytime.",
+                    systemImage: "arrow.uturn.backward.circle.fill"
+                )
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            }
+
+            if CaptureLaunchConfiguration.usesPreviewData {
+                Section {
+                    Label("Preview only — saving is intentionally disabled.", systemImage: "eye.fill")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.orange)
+                }
+            }
+        }
+        .navigationTitle("Adjust details")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .cancellationAction) {
+                Button("Cancel") { dismiss() }
+            }
+            ToolbarItem(placement: .confirmationAction) {
+                Button(client.activeOutcomeAssignmentID == assignment.id ? "Creating…" : "Create") {
+                    Task {
+                        let saved = await client.promoteOutcome(
+                            assignment: assignment,
+                            selectedFieldIDs: selectedFieldIDs,
+                            kind: kind,
+                            title: title,
+                            body: detail,
+                            ownerUserID: ownerUserID,
+                            visibility: visibility,
+                            targetAt: kind == "NOTE" || !hasTargetDate ? nil : targetDate
+                        )
+                        if saved { onComplete() }
+                    }
+                }
+                .fontWeight(.bold)
+                .disabled(
+                    title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                        || client.activeOutcomeAssignmentID == assignment.id
+                        || client.isUsingProtectedCache
+                        || CaptureLaunchConfiguration.usesPreviewData
+                )
+                .accessibilityIdentifier("CaptureCoachingOutcomeCreate")
+            }
+        }
+        .accessibilityIdentifier("CaptureCoachingOutcomeReview")
     }
 }
 

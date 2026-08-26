@@ -17,17 +17,21 @@ import {
   Copy,
   Eye,
   FilePlus2,
+  ListTodo,
   LoaderCircle,
   LockKeyhole,
+  NotebookPen,
   Pencil,
   Plus,
   RefreshCw,
   Save,
   Send,
   Sparkles,
+  Target,
   Trash2,
   X,
 } from "lucide-react";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
@@ -53,7 +57,7 @@ type Template = {
   assignmentCount: number;
   updatedAt: string;
 };
-type Assignment = {
+export type Assignment = {
   id: string;
   status: "ASSIGNED" | "IN_PROGRESS" | "SUBMITTED" | "CANCELED";
   timing: string;
@@ -80,11 +84,35 @@ type Assignment = {
     answers: Record<string, unknown>;
     submittedAt: string | null;
   } | null;
+  outcomePromotions: OutcomePromotion[];
   boundaries: {
     clientCanEditOwnResponse: boolean;
     coachCanReadSubmittedResponse: boolean;
     coachCanReadDraftResponse: false;
+    coachInitiatedPromotion: boolean;
+    editableAfterCreation: boolean;
+    sourceReceiptVisible: boolean;
+    externalSideEffects: false;
   };
+};
+type OutcomeKind = "NOTE" | "TASK" | "GOAL";
+type OutcomePromotion = {
+  id: string;
+  kind: OutcomeKind;
+  targetId: string;
+  responseRevision: number | null;
+  selectedFieldIds: string[];
+  sourceSha256: string;
+  reviewedPayload: {
+    schema: string;
+    title: string;
+    body: string | null;
+    owner: { id: string; name: string; email: string | null };
+    visibility: "PRIVATE" | "SHARED";
+    targetAt: string | null;
+    coachInitiated: true;
+  };
+  createdAt: string;
 };
 type AutomationOverride = {
   id: string;
@@ -578,7 +606,14 @@ export function CoachingFormsClient() {
         ) : null}
 
         {workflows.actor.isCoach ? (
-          <CoachAssignmentHistory assignments={coachAssignments} />
+          <CoachAssignmentHistory
+            assignments={coachAssignments}
+            onPromoted={async (message) => {
+              await load();
+              setActionState({ tone: "success", message });
+            }}
+            onError={(message) => setActionState({ tone: "error", message })}
+          />
         ) : null}
       </div>
 
@@ -630,10 +665,9 @@ function FormBuilder(props: {
   onCancel: () => void;
   onPublished: (templateId: string, message: string) => Promise<void>;
 }) {
-  const [definition, setDefinition] =
-    useState<QuipslyCoachingFormDefinition>(() =>
-      structuredClone(props.seed.definition),
-    );
+  const [definition, setDefinition] = useState<QuipslyCoachingFormDefinition>(
+    () => structuredClone(props.seed.definition),
+  );
   const [selectedFieldId, setSelectedFieldId] = useState<string | null>(
     props.seed.definition.fields[0]?.id ?? null,
   );
@@ -651,7 +685,9 @@ function FormBuilder(props: {
     try {
       const stored = localStorage.getItem(draftKey);
       if (stored) {
-        const candidate = JSON.parse(stored) as Partial<QuipslyCoachingFormDefinition>;
+        const candidate = JSON.parse(
+          stored,
+        ) as Partial<QuipslyCoachingFormDefinition>;
         if (
           candidate.schema === QUIPSLY_COACHING_FORM_DEFINITION_SCHEMA &&
           candidate.key === props.seed.definition.key &&
@@ -678,9 +714,7 @@ function FormBuilder(props: {
     localStorage.setItem(draftKey, JSON.stringify(definition));
   }, [definition, draftKey, draftReady]);
 
-  function updateDefinition(
-    patch: Partial<QuipslyCoachingFormDefinition>,
-  ) {
+  function updateDefinition(patch: Partial<QuipslyCoachingFormDefinition>) {
     setDefinition((current) => ({ ...current, ...patch }));
   }
 
@@ -749,7 +783,7 @@ function FormBuilder(props: {
     setDefinition((current) => {
       const fields = current.fields.filter((field) => field.id !== fieldId);
       setSelectedFieldId((selected) =>
-        selected === fieldId ? fields[0]?.id ?? null : selected,
+        selected === fieldId ? (fields[0]?.id ?? null) : selected,
       );
       return { ...current, fields };
     });
@@ -930,19 +964,23 @@ function FormBuilder(props: {
                   Questions
                 </h3>
                 <p className="mt-1 text-sm font-semibold text-[#806d55]">
-                  {definition.fields.length}/40 · Reorder with the arrow buttons.
+                  {definition.fields.length}/40 · Reorder with the arrow
+                  buttons.
                 </p>
               </div>
               <div className="flex min-w-0 flex-1 flex-wrap justify-end gap-2 sm:flex-none">
-                <label className="sr-only" htmlFor="coaching-form-new-field-type">
+                <label
+                  className="sr-only"
+                  htmlFor="coaching-form-new-field-type"
+                >
                   New question type
                 </label>
                 <select
                   id="coaching-form-new-field-type"
                   value={newFieldType}
                   onChange={(event) => {
-                    const type =
-                      event.target.value as QuipslyCoachingFormFieldType;
+                    const type = event.target
+                      .value as QuipslyCoachingFormFieldType;
                     newFieldTypeRef.current = type;
                     setNewFieldType(type);
                   }}
@@ -1086,7 +1124,10 @@ function BuilderTextField(props: {
   const className =
     "mt-2 min-h-12 w-full rounded-2xl border border-[#d9c9ad] bg-white px-4 py-3 font-semibold text-[#3d3122] outline-none focus:ring-2 focus:ring-violet-500";
   return (
-    <label htmlFor={props.id} className="block text-sm font-black text-[#4b3a27]">
+    <label
+      htmlFor={props.id}
+      className="block text-sm font-black text-[#4b3a27]"
+    >
       {props.label}
       {props.multiline ? (
         <textarea
@@ -1199,9 +1240,14 @@ function BuilderFieldCard(props: {
                   type="number"
                   min={1}
                   max={field.type === "SHORT_TEXT" ? 500 : 10_000}
-                  value={field.maximumLength ?? (field.type === "SHORT_TEXT" ? 500 : 4_000)}
+                  value={
+                    field.maximumLength ??
+                    (field.type === "SHORT_TEXT" ? 500 : 4_000)
+                  }
                   onChange={(event) =>
-                    props.onChange({ maximumLength: Number(event.target.value) })
+                    props.onChange({
+                      maximumLength: Number(event.target.value),
+                    })
                   }
                   className="mt-2 min-h-12 w-full rounded-2xl border border-[#d9c9ad] bg-white px-4 font-semibold"
                 />
@@ -1517,6 +1563,9 @@ function ResponseForm(props: {
               : definition.submitLabel}
           </button>
         </div>
+        {props.assignment.outcomePromotions.length ? (
+          <SharedFollowThrough assignment={props.assignment} />
+        ) : null}
       </div>
     </div>
   );
@@ -1865,12 +1914,10 @@ function FormAutomationWorkspace(props: {
   const [relationshipId, setRelationshipId] = useState(
     props.relationships[0]?.id ?? "",
   );
-  const [trigger, setTrigger] = useState<AutomationPolicy["trigger"]>(
-    "BEFORE_SESSION",
-  );
-  const [versionMode, setVersionMode] = useState<
-    AutomationPolicy["versionMode"]
-  >("LATEST_PUBLISHED");
+  const [trigger, setTrigger] =
+    useState<AutomationPolicy["trigger"]>("BEFORE_SESSION");
+  const [versionMode, setVersionMode] =
+    useState<AutomationPolicy["versionMode"]>("LATEST_PUBLISHED");
   const [releaseOffsetMinutes, setReleaseOffsetMinutes] = useState(-1_440);
   const [dueOffsetMinutes, setDueOffsetMinutes] = useState(0);
   const [busy, setBusy] = useState<string | null>(null);
@@ -1912,7 +1959,8 @@ function FormAutomationWorkspace(props: {
     patch?: Partial<Pick<AutomationPolicy, "status">>,
     sourcePolicy?: AutomationPolicy,
   ) {
-    const identityPolicy = sourcePolicy ??
+    const identityPolicy =
+      sourcePolicy ??
       props.policies.find((item) => item.id === editingPolicyId) ??
       null;
     const selectedTemplate = props.templates.find(
@@ -2030,7 +2078,8 @@ function FormAutomationWorkspace(props: {
     }
   }
 
-  const canCreate = props.templates.length > 0 && props.relationships.length > 0;
+  const canCreate =
+    props.templates.length > 0 && props.relationships.length > 0;
   return (
     <section
       className="min-w-0 rounded-[2rem] border border-[#d7c6e8] bg-[#faf7ff] p-5 shadow-sm sm:p-7"
@@ -2049,8 +2098,8 @@ function FormAutomationWorkspace(props: {
           </h2>
           <p className="mt-2 max-w-2xl font-semibold leading-6 text-[#765f40]">
             Quipsly can place the right reflection before or after each
-            confirmed Session. Every send keeps a visible receipt and exact
-            form version.
+            confirmed Session. Every send keeps a visible receipt and exact form
+            version.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -2153,7 +2202,9 @@ function FormAutomationWorkspace(props: {
                 className="mt-2 min-h-12 w-full min-w-0 rounded-2xl border border-[#d9c9ad] bg-white px-4 font-semibold disabled:bg-stone-100"
               >
                 <option value="BEFORE_SESSION">Before every Session</option>
-                <option value="AFTER_SESSION">After every completed Session</option>
+                <option value="AFTER_SESSION">
+                  After every completed Session
+                </option>
               </select>
             </label>
             <label className="min-w-0 text-sm font-black text-[#4b3a27]">
@@ -2180,10 +2231,18 @@ function FormAutomationWorkspace(props: {
                   }
                   className="mt-2 min-h-12 w-full min-w-0 rounded-2xl border border-[#d9c9ad] bg-white px-4 font-semibold"
                 >
-                  <option value={1_440}>Send when complete · due in 1 day</option>
-                  <option value={2_880}>Send when complete · due in 2 days</option>
-                  <option value={4_320}>Send when complete · due in 3 days</option>
-                  <option value={10_080}>Send when complete · due in 1 week</option>
+                  <option value={1_440}>
+                    Send when complete · due in 1 day
+                  </option>
+                  <option value={2_880}>
+                    Send when complete · due in 2 days
+                  </option>
+                  <option value={4_320}>
+                    Send when complete · due in 3 days
+                  </option>
+                  <option value={10_080}>
+                    Send when complete · due in 1 week
+                  </option>
                 </select>
               )}
             </label>
@@ -2358,7 +2417,11 @@ function FormAutomationWorkspace(props: {
                                     <button
                                       type="button"
                                       onClick={() =>
-                                        void override(policy, session.id, "SKIP")
+                                        void override(
+                                          policy,
+                                          session.id,
+                                          "SKIP",
+                                        )
                                       }
                                       disabled={overrideBusy}
                                       className="min-h-11 rounded-full border border-[#d8c7aa] px-3 text-xs font-black text-[#5b472f] disabled:opacity-50"
@@ -2404,8 +2467,12 @@ function automationTimingLabel(policy: AutomationPolicy) {
 
 function CoachAssignmentHistory({
   assignments,
+  onPromoted,
+  onError,
 }: {
   assignments: Assignment[];
+  onPromoted: (message: string) => Promise<void>;
+  onError: (message: string) => void;
 }) {
   const ordered = useMemo(
     () =>
@@ -2473,7 +2540,11 @@ function CoachAssignmentHistory({
               </summary>
               {assignment.response?.state === "SUBMITTED" ? (
                 <div className="border-t border-[#eadfc9] p-4">
-                  <ResponseReadback assignment={assignment} />
+                  <CoachingFormOutcomeReview
+                    assignment={assignment}
+                    onPromoted={onPromoted}
+                    onError={onError}
+                  />
                 </div>
               ) : (
                 <p className="border-t border-[#eadfc9] p-4 text-sm font-semibold leading-6 text-[#765f40]">
@@ -2493,29 +2564,453 @@ function CoachAssignmentHistory({
   );
 }
 
-function ResponseReadback({ assignment }: { assignment: Assignment }) {
-  const answers = assignment.response?.answers || {};
+function answerText(value: unknown) {
+  if (Array.isArray(value)) return value.join(", ");
+  if (typeof value === "boolean") return value ? "Yes" : "No";
+  return String(value);
+}
+
+function outcomeLabel(kind: OutcomeKind) {
+  return kind === "NOTE" ? "note" : kind === "TASK" ? "task" : "goal";
+}
+
+function outcomeIcon(kind: OutcomeKind) {
+  return kind === "NOTE" ? NotebookPen : kind === "TASK" ? ListTodo : Target;
+}
+
+function SharedFollowThrough({ assignment }: { assignment: Assignment }) {
   return (
-    <dl className="space-y-4">
-      {assignment.template.definition.fields
-        .filter((field) => answers[field.id] !== undefined)
-        .map((field) => (
-          <div key={field.id}>
-            <dt className="text-xs font-black uppercase tracking-wide text-[#806d55]">
-              {field.label}
-            </dt>
-            <dd className="mt-1 whitespace-pre-wrap font-semibold leading-6 text-[#3d3122]">
-              {Array.isArray(answers[field.id])
-                ? (answers[field.id] as unknown[]).join(", ")
-                : typeof answers[field.id] === "boolean"
-                  ? answers[field.id]
-                    ? "Yes"
-                    : "No"
-                  : String(answers[field.id])}
-            </dd>
+    <section
+      className="mt-6 rounded-2xl border border-emerald-200 bg-emerald-50 p-4"
+      aria-labelledby={`shared-follow-through-${assignment.id}`}
+    >
+      <p
+        id={`shared-follow-through-${assignment.id}`}
+        className="text-xs font-black uppercase tracking-wide text-emerald-900"
+      >
+        Follow-through created together
+      </p>
+      <div className="mt-3 space-y-2">
+        {assignment.outcomePromotions.map((promotion) => {
+          const Icon = outcomeIcon(promotion.kind);
+          return (
+            <div
+              key={promotion.id}
+              className="flex items-start gap-3 rounded-xl bg-white p-3 text-[#3d3122]"
+            >
+              <Icon size={18} className="mt-0.5 shrink-0 text-emerald-700" />
+              <div className="min-w-0 flex-1">
+                <p className="break-words font-black">
+                  {promotion.reviewedPayload.title}
+                </p>
+                <p className="mt-1 text-xs font-semibold text-[#765f40]">
+                  {outcomeLabel(promotion.kind)} ·{" "}
+                  {promotion.reviewedPayload.owner.name}
+                  {promotion.reviewedPayload.targetAt
+                    ? ` · ${formatDate(promotion.reviewedPayload.targetAt)}`
+                    : ""}
+                </p>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      <Link
+        href={`/coaching/engagements/${encodeURIComponent(assignment.engagement.id)}#relationship-work`}
+        className="mt-3 inline-flex min-h-11 items-center gap-2 rounded-full border border-emerald-300 bg-white px-4 text-sm font-black text-emerald-950"
+      >
+        Open notes, tasks, and goals <ChevronRight size={16} />
+      </Link>
+    </section>
+  );
+}
+
+export function CoachingFormOutcomeReview({
+  assignment,
+  onPromoted,
+  onError,
+}: {
+  assignment: Assignment;
+  onPromoted: (message: string) => Promise<void>;
+  onError: (message: string) => void;
+}) {
+  const answers = assignment.response?.answers || {};
+  const availableFields = assignment.template.definition.fields.filter(
+    (field) => answers[field.id] !== undefined,
+  );
+  const [selectedFieldIds, setSelectedFieldIds] = useState<string[]>([]);
+  const [reviewing, setReviewing] = useState(false);
+  const [kind, setKind] = useState<OutcomeKind>("TASK");
+  const [title, setTitle] = useState("");
+  const [body, setBody] = useState("");
+  const [ownerUserId, setOwnerUserId] = useState(
+    assignment.assignedTo?.id || assignment.assignedBy?.id || "",
+  );
+  const [visibility, setVisibility] = useState<"PRIVATE" | "SHARED">("SHARED");
+  const [targetAt, setTargetAt] = useState("");
+  const [busy, setBusy] = useState(false);
+  const requestIdentity = useRef<{ fingerprint: string; id: string } | null>(
+    null,
+  );
+  const ownerOptions = [assignment.assignedTo, assignment.assignedBy].filter(
+    (person, index, people): person is NonNullable<Person> =>
+      Boolean(person) &&
+      people.findIndex((candidate) => candidate?.id === person?.id) === index,
+  );
+
+  function toggle(fieldId: string) {
+    setReviewing(false);
+    requestIdentity.current = null;
+    setSelectedFieldIds((current) =>
+      current.includes(fieldId)
+        ? current.filter((candidate) => candidate !== fieldId)
+        : [...current, fieldId],
+    );
+  }
+
+  function defaultIntent(candidate: OutcomeKind) {
+    const selectedFields = availableFields.filter((field) =>
+      selectedFieldIds.includes(field.id),
+    );
+    if (!selectedFields.length) return null;
+    const firstAnswer = answerText(answers[selectedFields[0].id]).trim();
+    return {
+      kind: candidate,
+      title:
+        firstAnswer && firstAnswer.length <= 140
+          ? firstAnswer
+          : selectedFields[0].label,
+      body: selectedFields
+        .map((field) => `${field.label}\n${answerText(answers[field.id])}`)
+        .join("\n\n"),
+      ownerUserId: assignment.assignedTo?.id || assignment.assignedBy?.id || "",
+      visibility: "SHARED" as const,
+      targetAt: "",
+    };
+  }
+
+  function openAdjust() {
+    const defaults = defaultIntent("TASK");
+    if (!defaults) return;
+    setKind(defaults.kind);
+    setTitle(defaults.title);
+    setBody(defaults.body);
+    setOwnerUserId(defaults.ownerUserId);
+    setVisibility(defaults.visibility);
+    setTargetAt(defaults.targetAt);
+    setReviewing(true);
+    requestIdentity.current = null;
+  }
+
+  async function promote(intentValues: {
+    kind: OutcomeKind;
+    title: string;
+    body: string;
+    ownerUserId: string;
+    visibility: "PRIVATE" | "SHARED";
+    targetAt: string;
+  }) {
+    const orderedFieldIds = availableFields
+      .map((field) => field.id)
+      .filter((fieldId) => selectedFieldIds.includes(fieldId));
+    if (
+      !assignment.response ||
+      !orderedFieldIds.length ||
+      !intentValues.title.trim()
+    ) {
+      onError(
+        "Choose shared answers and give the follow-through a clear name.",
+      );
+      return;
+    }
+    const intent = {
+      assignmentId: assignment.id,
+      responseRevision: assignment.response.revision,
+      kind: intentValues.kind,
+      selectedFieldIds: orderedFieldIds,
+      title: intentValues.title.trim(),
+      body: intentValues.body.trim(),
+      ownerUserId: intentValues.ownerUserId,
+      visibility: intentValues.visibility,
+      targetAt: intentValues.targetAt,
+    };
+    const fingerprint = JSON.stringify(intent);
+    if (requestIdentity.current?.fingerprint !== fingerprint) {
+      requestIdentity.current = { fingerprint, id: crypto.randomUUID() };
+    }
+    setBusy(true);
+    try {
+      await api("/api/coaching/forms", {
+        method: "POST",
+        body: JSON.stringify({
+          action: "PROMOTE_RESPONSE_OUTCOME",
+          requestId: requestIdentity.current.id,
+          ...intent,
+        }),
+      });
+      const label = outcomeLabel(intentValues.kind);
+      setSelectedFieldIds([]);
+      setReviewing(false);
+      requestIdentity.current = null;
+      await onPromoted(
+        `${label[0].toUpperCase()}${label.slice(1)} added to ${assignment.engagement.title}.`,
+      );
+    } catch (error) {
+      onError(
+        error instanceof Error
+          ? error.message
+          : "The follow-through could not be created.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="text-xs font-black uppercase tracking-wide text-violet-800">
+            Shared response · revision {assignment.response?.revision}
+          </p>
+          <p className="mt-1 text-sm font-semibold leading-6 text-[#765f40]">
+            Select only the answers that belong in one useful next step.
+          </p>
+        </div>
+        <span className="rounded-full bg-[#f4eddf] px-3 py-1.5 text-xs font-black text-[#6f583c]">
+          {selectedFieldIds.length} selected
+        </span>
+      </div>
+      <div className="mt-4 space-y-3">
+        {availableFields.map((field) => {
+          const selected = selectedFieldIds.includes(field.id);
+          return (
+            <label
+              key={field.id}
+              className={`flex cursor-pointer items-start gap-3 rounded-2xl border p-4 transition ${selected ? "border-violet-500 bg-violet-50" : "border-[#e4d6bd] bg-white"}`}
+            >
+              <input
+                type="checkbox"
+                checked={selected}
+                onChange={() => toggle(field.id)}
+                className="mt-1 h-5 w-5 accent-violet-700"
+                aria-label={`Use answer to ${field.label}`}
+              />
+              <span className="min-w-0">
+                <span className="block text-xs font-black uppercase tracking-wide text-[#806d55]">
+                  {field.label}
+                </span>
+                <span className="mt-1 block whitespace-pre-wrap font-semibold leading-6 text-[#3d3122]">
+                  {answerText(answers[field.id])}
+                </span>
+              </span>
+            </label>
+          );
+        })}
+      </div>
+
+      {!reviewing ? (
+        <section className="mt-4 rounded-2xl border border-violet-200 bg-violet-50 p-4">
+          <p className="text-sm font-black text-violet-950">
+            One tap with sensible defaults
+          </p>
+          <p className="mt-1 text-xs font-semibold leading-5 text-violet-900">
+            Notes are shared. Tasks and goals belong to the client. Everything
+            stays editable afterward.
+          </p>
+          <div className="mt-3 grid grid-cols-3 gap-2">
+            {(["NOTE", "TASK", "GOAL"] as const).map((candidate) => {
+              const Icon = outcomeIcon(candidate);
+              const label =
+                candidate === "NOTE"
+                  ? "Save note"
+                  : candidate === "TASK"
+                    ? "Add task"
+                    : "Set goal";
+              return (
+                <button
+                  key={candidate}
+                  type="button"
+                  onClick={() => {
+                    const defaults = defaultIntent(candidate);
+                    if (defaults) void promote(defaults);
+                  }}
+                  disabled={!selectedFieldIds.length || busy}
+                  className="inline-flex min-h-12 items-center justify-center gap-1.5 rounded-xl bg-violet-800 px-2 text-xs font-black text-white disabled:cursor-not-allowed disabled:opacity-40 sm:text-sm"
+                >
+                  {busy ? (
+                    <LoaderCircle size={15} className="animate-spin" />
+                  ) : (
+                    <Icon size={15} />
+                  )}
+                  {label}
+                </button>
+              );
+            })}
           </div>
-        ))}
-    </dl>
+          <button
+            type="button"
+            onClick={openAdjust}
+            disabled={!selectedFieldIds.length || busy}
+            className="mt-2 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-violet-300 bg-white px-4 text-sm font-black text-violet-950 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <Pencil size={15} /> Adjust details first
+          </button>
+        </section>
+      ) : (
+        <section
+          className="mt-5 rounded-3xl border border-violet-300 bg-[#fffaf0] p-5"
+          aria-labelledby={`outcome-review-${assignment.id}`}
+        >
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="text-xs font-black uppercase tracking-wide text-violet-800">
+                Optional details
+              </p>
+              <h4
+                id={`outcome-review-${assignment.id}`}
+                className="mt-1 font-serif text-2xl font-black text-[#3d3122]"
+              >
+                Adjust anything that needs adjusting.
+              </h4>
+            </div>
+            <button
+              type="button"
+              onClick={() => setReviewing(false)}
+              className="inline-flex min-h-11 items-center gap-2 rounded-full border border-[#d8c7aa] bg-white px-4 text-sm font-black text-[#5a452e]"
+            >
+              <X size={15} /> Cancel
+            </button>
+          </div>
+
+          <div
+            className="mt-4 grid grid-cols-3 gap-2"
+            aria-label="Follow-through type"
+          >
+            {(["NOTE", "TASK", "GOAL"] as const).map((candidate) => {
+              const Icon = outcomeIcon(candidate);
+              return (
+                <button
+                  key={candidate}
+                  type="button"
+                  aria-pressed={kind === candidate}
+                  onClick={() => setKind(candidate)}
+                  className={`inline-flex min-h-12 items-center justify-center gap-2 rounded-xl border text-sm font-black ${kind === candidate ? "border-violet-700 bg-violet-800 text-white" : "border-[#d8c7aa] bg-white text-[#5a452e]"}`}
+                >
+                  <Icon size={16} /> {outcomeLabel(candidate)}
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="mt-4 grid gap-4">
+            <label className="text-xs font-black uppercase tracking-wide text-[#765f40]">
+              Name
+              <input
+                value={title}
+                onChange={(event) => setTitle(event.target.value)}
+                maxLength={500}
+                className="mt-1 min-h-11 w-full rounded-xl border border-[#d8c7a7] bg-white px-3 text-sm font-semibold normal-case tracking-normal text-[#3d3122]"
+              />
+            </label>
+            <label className="text-xs font-black uppercase tracking-wide text-[#765f40]">
+              Useful context
+              <textarea
+                value={body}
+                onChange={(event) => setBody(event.target.value)}
+                rows={5}
+                maxLength={20_000}
+                className="mt-1 w-full rounded-xl border border-[#d8c7a7] bg-white px-3 py-2 text-sm font-semibold normal-case tracking-normal text-[#3d3122]"
+              />
+            </label>
+            {kind === "NOTE" ? (
+              <label className="text-xs font-black uppercase tracking-wide text-[#765f40]">
+                Who can read it?
+                <select
+                  value={visibility}
+                  onChange={(event) =>
+                    setVisibility(event.target.value as "PRIVATE" | "SHARED")
+                  }
+                  className="mt-1 min-h-11 w-full rounded-xl border border-[#d8c7a7] bg-white px-3 text-sm font-semibold normal-case tracking-normal text-[#3d3122]"
+                >
+                  <option value="SHARED">Everyone in this relationship</option>
+                  <option value="PRIVATE">Only me</option>
+                </select>
+              </label>
+            ) : (
+              <>
+                <label className="text-xs font-black uppercase tracking-wide text-[#765f40]">
+                  Owner
+                  <select
+                    value={ownerUserId}
+                    onChange={(event) => setOwnerUserId(event.target.value)}
+                    className="mt-1 min-h-11 w-full rounded-xl border border-[#d8c7a7] bg-white px-3 text-sm font-semibold normal-case tracking-normal text-[#3d3122]"
+                  >
+                    {ownerOptions.map((person) => (
+                      <option key={person.id} value={person.id}>
+                        {person.name || person.email || "Relationship member"}
+                        {person.id === assignment.assignedTo?.id
+                          ? " · client"
+                          : " · coach"}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="text-xs font-black uppercase tracking-wide text-[#765f40]">
+                  Target date{" "}
+                  <span className="normal-case tracking-normal">
+                    (optional)
+                  </span>
+                  <input
+                    type="date"
+                    value={targetAt}
+                    onChange={(event) => setTargetAt(event.target.value)}
+                    className="mt-1 min-h-11 w-full rounded-xl border border-[#d8c7a7] bg-white px-3 text-sm font-semibold normal-case tracking-normal text-[#3d3122]"
+                  />
+                </label>
+              </>
+            )}
+          </div>
+
+          <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-xs font-semibold leading-5 text-emerald-950">
+            This {outcomeLabel(kind)} will live in the relationship home with
+            its source attached. You can edit or remove it there anytime.
+          </div>
+          <button
+            type="button"
+            onClick={() =>
+              void promote({
+                kind,
+                title,
+                body,
+                ownerUserId,
+                visibility,
+                targetAt,
+              })
+            }
+            disabled={
+              busy || !title.trim() || (kind !== "NOTE" && !ownerUserId)
+            }
+            className="mt-4 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#3d3122] px-5 font-black text-white disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {busy ? (
+              <LoaderCircle size={17} className="animate-spin" />
+            ) : (
+              <CheckCircle2 size={17} />
+            )}
+            {busy
+              ? "Creating…"
+              : `Create ${visibility === "PRIVATE" && kind === "NOTE" ? "private " : ""}${outcomeLabel(kind)}`}
+          </button>
+        </section>
+      )}
+
+      {assignment.outcomePromotions.length ? (
+        <div className="mt-5 border-t border-[#eadfc9] pt-5">
+          <SharedFollowThrough assignment={assignment} />
+        </div>
+      ) : null}
+    </div>
   );
 }
 
