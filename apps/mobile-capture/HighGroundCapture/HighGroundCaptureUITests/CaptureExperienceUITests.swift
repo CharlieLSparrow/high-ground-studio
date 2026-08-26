@@ -1513,7 +1513,7 @@ final class CaptureExperienceUITests: XCTestCase {
         app.buttons["Home Nest"].tap()
         XCTAssertEqual(destination.value as? String, "Home Nest")
         XCTAssertTrue(app.staticTexts[
-            "Saved privately by default. If you are offline, Quipsly syncs it when you reconnect."
+            "Saved privately. If you are offline, Quipsly syncs it when you reconnect."
         ].exists)
         XCTAssertTrue(
             app.buttons["CaptureQuickEntryTag_preview-home-personal"].exists,
@@ -1548,7 +1548,7 @@ final class CaptureExperienceUITests: XCTestCase {
 
         XCTAssertEqual(destination.value as? String, "High Ground Odyssey")
         XCTAssertTrue(app.staticTexts[
-            "Saved privately by default. If you are offline, Quipsly syncs it when you reconnect."
+            "Saved privately. If you are offline, Quipsly syncs it when you reconnect."
         ].waitForExistence(timeout: 3))
 
         let episodeTag = app.buttons["CaptureQuickEntryTag_preview-episode-4"].firstMatch

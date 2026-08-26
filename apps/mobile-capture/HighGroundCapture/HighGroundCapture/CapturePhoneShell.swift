@@ -6582,6 +6582,18 @@ private struct CaptureRecorderView: View {
                     )
                     .captureCard()
 
+                    // Quick capture is a primary Session action, not a footer.
+                    // Keeping it beside the room controls makes notes, tasks,
+                    // goals, and sources reachable before the much larger
+                    // recording and collaboration workspace is materialized.
+                    // This also avoids repeatedly forcing SwiftUI to lay out a
+                    // deep LazyVStack just to save a thought during a call.
+                    CaptureQuickEntryBar(session: session) { kind in
+                        quickEntryKind = kind
+                    }
+
+                    CaptureQuickEntrySyncStatus(model: model)
+
                     if model.providerRoom.isConnected
                         || localOnlyRecordingSessionID == session.id
                         || audioCapture.activeSessionID == session.id
@@ -7065,12 +7077,6 @@ private struct CaptureRecorderView: View {
                     }
 
                     CaptureSourcePlanStatusView(outbox: model.sourcePlanOutbox)
-
-                    CaptureQuickEntryBar(session: session) { kind in
-                        quickEntryKind = kind
-                    }
-
-                    CaptureQuickEntrySyncStatus(model: model)
 
                     CaptureSessionNotesCard(
                         session: session,
