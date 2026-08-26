@@ -57,6 +57,25 @@ export function quipslyAppStoreProducts(
   ] as const;
 }
 
+export function quipslyStripeProducts(
+  environment: Readonly<Record<string, string | undefined>> = process.env,
+) {
+  return [
+    {
+      planKey: QUIPSLY_COACH_PLAN_KEYS.monthly,
+      priceId: environment.QUIPSLY_STRIPE_COACH_MONTHLY_PRICE_ID || null,
+      priceCents: 2_999,
+      interval: "month",
+    },
+    {
+      planKey: QUIPSLY_COACH_PLAN_KEYS.annual,
+      priceId: environment.QUIPSLY_STRIPE_COACH_ANNUAL_PRICE_ID || null,
+      priceCents: 29_999,
+      interval: "year",
+    },
+  ] as const;
+}
+
 function entitlementEnforcementEnabled(
   environment: Readonly<Record<string, string | undefined>>,
 ) {
@@ -136,6 +155,7 @@ export async function readQuipslyEntitlement(input: {
 
 async function upsertQuipslyPlans(prisma: any, environment: Readonly<Record<string, string | undefined>>) {
   const products = quipslyAppStoreProducts(environment);
+  const stripeProducts = quipslyStripeProducts(environment);
   const capabilitiesJson = [...QUIPSLY_COACH_CAPABILITIES];
   const earlyAccess = await prisma.subscriptionPlan.upsert({
     where: { stableKey: QUIPSLY_COACH_PLAN_KEYS.earlyAccess },
@@ -166,10 +186,15 @@ async function upsertQuipslyPlans(prisma: any, environment: Readonly<Record<stri
     },
   });
   for (const [index, product] of products.entries()) {
+    const stripeProduct = stripeProducts.find((candidate) => candidate.planKey === product.planKey)!;
     await prisma.subscriptionPlan.upsert({
       where: { stableKey: product.planKey },
       update: {
         appleProductId: product.productId,
+        ...(stripeProduct.priceId ? { stripePriceId: stripeProduct.priceId } : {}),
+        price: stripeProduct.priceCents,
+        currency: "usd",
+        interval: stripeProduct.interval,
         capabilitiesJson,
         purchasable: true,
         displayOrder: 100 + index,
@@ -178,9 +203,10 @@ async function upsertQuipslyPlans(prisma: any, environment: Readonly<Record<stri
         stableKey: product.planKey,
         name: product.billingPeriod === "P1Y" ? "Quipsly Coach annual" : "Quipsly Coach monthly",
         appleProductId: product.productId,
-        price: 0,
+        stripePriceId: stripeProduct.priceId,
+        price: stripeProduct.priceCents,
         currency: "usd",
-        interval: product.billingPeriod === "P1Y" ? "year" : "month",
+        interval: stripeProduct.interval,
         capabilitiesJson,
         purchasable: true,
         displayOrder: 100 + index,

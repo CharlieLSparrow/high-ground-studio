@@ -98,4 +98,34 @@ describe("SettingsClientView truth UX", () => {
     expect(screen.queryByText(/internal plan catalog|checkout unavailable|billing changes are not connected/i)).not.toBeInTheDocument();
     expect(screen.queryByLabelText(/card number|expiry|cvc/i)).not.toBeInTheDocument();
   });
+
+  it("offers ordinary monthly and annual web checkout when subscription access is needed", () => {
+    render(<SettingsClientView
+      {...props}
+      initialEntitlement={{
+        ...props.initialEntitlement,
+        entitled: false,
+        accessMode: "FREE",
+        provider: null,
+        status: "UNPAID",
+        planName: "Quipsly Coach",
+      }}
+    />);
+    fireEvent.click(screen.getByRole("button", { name: "Billing & Plans" }));
+
+    expect(screen.getByRole("button", { name: "Annual · $299.99/year" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Monthly · $29.99/month" })).toBeInTheDocument();
+    expect(screen.getByText(/clients continue to join free/i)).toBeInTheDocument();
+  });
+
+  it("manages a web purchase through the web billing portal", () => {
+    render(<SettingsClientView
+      {...props}
+      initialEntitlement={{ ...props.initialEntitlement, provider: "STRIPE" }}
+    />);
+    fireEvent.click(screen.getByRole("button", { name: "Billing & Plans" }));
+
+    expect(screen.getByRole("button", { name: /manage subscription/i })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /manage subscription/i })).not.toBeInTheDocument();
+  });
 });

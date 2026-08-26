@@ -21,13 +21,13 @@ describe("Quipsly for Coaches", () => {
     expect(screen.queryByText(/approval queue/i)).not.toBeInTheDocument();
   });
 
-  it("sends a coach into the ordinary signed-in coaching surface", () => {
+  it("sends a coach into the ordinary signed-in subscription surface", () => {
     render(<CoachesPage />);
 
     for (const link of screen.getAllByRole("link", { name: /start .*free trial/i })) {
       expect(link).toHaveAttribute(
         "href",
-        "https://nest.quipsly.com/login?callbackUrl=%2Fcoaching",
+        "https://nest.quipsly.com/login?callbackUrl=%2Fsettings%3Fsubscribe%3Dannual%23subscription",
       );
     }
   });

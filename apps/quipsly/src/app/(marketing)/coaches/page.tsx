@@ -90,7 +90,7 @@ export default function CoachesPage() {
             <Link href="/support" className="hover:text-[#1f493e]">Support</Link>
           </div>
           <Link
-            href="https://nest.quipsly.com/login?callbackUrl=%2Fcoaching"
+            href="https://nest.quipsly.com/login?callbackUrl=%2Fsettings%3Fsubscribe%3Dannual%23subscription"
             className="rounded-full bg-[#315d4f] px-4 py-2 font-sans text-xs font-black uppercase tracking-[0.12em] text-[#fff8ec] shadow-sm"
           >
             Start free trial
@@ -112,7 +112,7 @@ export default function CoachesPage() {
           </p>
           <div className="mt-9 flex flex-col gap-3 font-sans sm:flex-row">
             <Link
-              href="https://nest.quipsly.com/login?callbackUrl=%2Fcoaching"
+              href="https://nest.quipsly.com/login?callbackUrl=%2Fsettings%3Fsubscribe%3Dannual%23subscription"
               className="inline-flex min-h-14 items-center justify-center rounded-2xl bg-[#3b2418] px-7 py-4 text-sm font-black uppercase tracking-[0.14em] text-[#fff8ec] shadow-lg shadow-[#3b2418]/15"
             >
               Start 14-day free trial

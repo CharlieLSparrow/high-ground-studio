@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { 
   Users, 
   CreditCard, 
@@ -136,6 +136,54 @@ export function SettingsClientView({
   const [members, setMembers] = useState<Member[]>(initialMembers);
 
   const entitlement = initialEntitlement;
+  const [billingAction, setBillingAction] = useState<string | null>(null);
+  const [billingMessage, setBillingMessage] = useState("");
+
+  useEffect(() => {
+    const parameters = new URLSearchParams(window.location.search);
+    if (window.location.hash === "#subscription" || parameters.has("subscribe") || parameters.has("subscription")) {
+      setActiveTab("billing");
+    }
+    if (parameters.get("subscription") === "success") {
+      setBillingMessage("Your purchase is complete. Quipsly is confirming your subscription now.");
+    }
+  }, []);
+
+  const startWebSubscription = async (plan: "quipsly-coach-monthly" | "quipsly-coach-annual") => {
+    setBillingAction(plan);
+    setBillingMessage("");
+    try {
+      const response = await fetch("/api/billing/stripe/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ plan }),
+      });
+      const payload = await response.json();
+      if (!response.ok || !payload?.checkout?.url) {
+        throw new Error(payload?.error || "Checkout could not be opened.");
+      }
+      window.location.assign(payload.checkout.url);
+    } catch (error) {
+      setBillingMessage(error instanceof Error ? error.message : "Checkout could not be opened.");
+      setBillingAction(null);
+    }
+  };
+
+  const openWebSubscriptionPortal = async () => {
+    setBillingAction("portal");
+    setBillingMessage("");
+    try {
+      const response = await fetch("/api/billing/stripe/portal", { method: "POST" });
+      const payload = await response.json();
+      if (!response.ok || !payload?.portal?.url) {
+        throw new Error(payload?.error || "Subscription management could not be opened.");
+      }
+      window.location.assign(payload.portal.url);
+    } catch (error) {
+      setBillingMessage(error instanceof Error ? error.message : "Subscription management could not be opened.");
+      setBillingAction(null);
+    }
+  };
 
   // Audit state
   const events = initialEvents as LogEvent[];
@@ -539,7 +587,7 @@ export function SettingsClientView({
 
         {/* TAB 2: BILLING & PLANS */}
         {activeTab === "billing" && (
-          <div className="flex flex-col gap-6 animate-in fade-in duration-200">
+          <div id="subscription" className="flex flex-col gap-6 animate-in fade-in duration-200">
             <div className="bg-[#032321]/90 border border-studio-line rounded-2xl p-6 shadow-studio-panel flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
               <div className="flex gap-4 items-center">
                 <div className="w-12 h-12 rounded-xl bg-studio-tag/10 border border-studio-tag/30 flex items-center justify-center text-studio-tag">
@@ -580,6 +628,16 @@ export function SettingsClientView({
                     Manage subscription <ExternalLink size={13} />
                   </a>
                 )}
+                {entitlement.provider === "STRIPE" && (
+                  <button
+                    type="button"
+                    onClick={openWebSubscriptionPortal}
+                    disabled={billingAction !== null}
+                    className="inline-flex items-center gap-2 rounded-xl border border-studio-line px-4 py-2.5 text-xs font-black text-studio-ink transition hover:border-studio-tag disabled:cursor-wait disabled:opacity-60"
+                  >
+                    {billingAction === "portal" ? "Opening…" : "Manage subscription"} <ExternalLink size={13} />
+                  </button>
+                )}
               </div>
             </div>
 
@@ -599,9 +657,34 @@ export function SettingsClientView({
                 <span className="font-black">People you invite join free.</span> Clients can join your Session, participate in the call, and collaborate on its shared work without buying a coach subscription.
               </div>
               {entitlement.accessMode === "FREE" && (
-                <div role="status" className="mt-6 rounded-xl border border-amber-300/30 bg-amber-300/10 p-4 text-sm leading-6 text-amber-100">
-                  Open Quipsly Capture on iPhone to subscribe or restore a purchase. Your existing Sessions and work remain saved.
+                <div className="mt-6 rounded-2xl border border-studio-tag/30 bg-studio-tag/10 p-5">
+                  <h4 className="font-black text-studio-ink">Start your 14-day free trial</h4>
+                  <p className="mt-1 text-sm leading-6 text-studio-muted">Choose either plan now. Your clients continue to join free.</p>
+                  <div className="mt-4 flex flex-col gap-3 sm:flex-row">
+                    <button
+                      type="button"
+                      onClick={() => startWebSubscription("quipsly-coach-annual")}
+                      disabled={billingAction !== null}
+                      className="inline-flex min-h-12 items-center justify-center rounded-xl bg-studio-tag px-5 py-3 text-sm font-black text-[#032321] disabled:cursor-wait disabled:opacity-60"
+                    >
+                      {billingAction === "quipsly-coach-annual" ? "Opening checkout…" : "Annual · $299.99/year"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => startWebSubscription("quipsly-coach-monthly")}
+                      disabled={billingAction !== null}
+                      className="inline-flex min-h-12 items-center justify-center rounded-xl border border-studio-line px-5 py-3 text-sm font-black text-studio-ink disabled:cursor-wait disabled:opacity-60"
+                    >
+                      {billingAction === "quipsly-coach-monthly" ? "Opening checkout…" : "Monthly · $29.99/month"}
+                    </button>
+                  </div>
+                  <p className="mt-3 text-xs leading-5 text-studio-dim">Cancel anytime. Your subscription renews automatically after the trial until canceled.</p>
                 </div>
+              )}
+              {billingMessage && (
+                <p role="alert" className="mt-4 rounded-xl border border-rose-400/30 bg-rose-400/10 p-4 text-sm font-bold text-rose-100">
+                  {billingMessage}
+                </p>
               )}
             </div>
           </div>

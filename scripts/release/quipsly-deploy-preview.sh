@@ -17,6 +17,7 @@ Important environment controls:
   MIN_INSTANCES, MAX_INSTANCES, CONCURRENCY
   PRISMA_PG_POOL_MAX, PRISMA_ROLLOUT_CONNECTION_BUDGET
   ENABLE_SESSION_INVITATION_EMAIL, ENABLE_TRANSCRIPT_WORKER
+  ENABLE_STRIPE_SAAS
   ENABLE_GOOGLE_CALENDAR_OAUTH, ENABLE_GOOGLE_DRIVE_OAUTH
   ENABLE_LIVEKIT_PROVIDER, CONFIGURE_LIVEKIT_EGRESS, ENABLE_LIVEKIT_EGRESS
 
@@ -70,6 +71,7 @@ ENABLE_GOOGLE_DRIVE_OAUTH="${ENABLE_GOOGLE_DRIVE_OAUTH:-0}"
 ENABLE_TRANSCRIPT_WORKER="${ENABLE_TRANSCRIPT_WORKER:-0}"
 ENABLE_ACCOUNT_DELETION_WORKER="${ENABLE_ACCOUNT_DELETION_WORKER:-0}"
 ENABLE_SESSION_INVITATION_EMAIL="${ENABLE_SESSION_INVITATION_EMAIL:-0}"
+ENABLE_STRIPE_SAAS="${ENABLE_STRIPE_SAAS:-0}"
 ENABLE_LIVEKIT_PROVIDER="${ENABLE_LIVEKIT_PROVIDER:-1}"
 CONFIGURE_LIVEKIT_EGRESS="${CONFIGURE_LIVEKIT_EGRESS:-1}"
 ENABLE_LIVEKIT_EGRESS="${ENABLE_LIVEKIT_EGRESS:-0}"
@@ -105,6 +107,10 @@ GOOGLE_DRIVE_PICKER_API_KEY_SECRET_NAME="${GOOGLE_DRIVE_PICKER_API_KEY_SECRET_NA
 GOOGLE_DRIVE_PICKER_APP_ID_SECRET_NAME="${GOOGLE_DRIVE_PICKER_APP_ID_SECRET_NAME:-quipsly-google-drive-picker-app-id}"
 SESSION_INVITATION_RESEND_API_KEY_SECRET_NAME="${SESSION_INVITATION_RESEND_API_KEY_SECRET_NAME:-quipsly-session-invitation-resend-api-key}"
 SESSION_INVITATION_EMAIL_FROM="${SESSION_INVITATION_EMAIL_FROM:-invites@notify.quipsly.com}"
+STRIPE_SECRET_KEY_SECRET_NAME="${STRIPE_SECRET_KEY_SECRET_NAME:-quipsly-stripe-secret-key}"
+STRIPE_SAAS_WEBHOOK_SECRET_NAME="${STRIPE_SAAS_WEBHOOK_SECRET_NAME:-quipsly-stripe-saas-webhook-secret}"
+STRIPE_COACH_MONTHLY_PRICE_SECRET_NAME="${STRIPE_COACH_MONTHLY_PRICE_SECRET_NAME:-quipsly-stripe-coach-monthly-price-id}"
+STRIPE_COACH_ANNUAL_PRICE_SECRET_NAME="${STRIPE_COACH_ANNUAL_PRICE_SECRET_NAME:-quipsly-stripe-coach-annual-price-id}"
 
 if [[ -z "${PROJECT_ID}" ]]; then
   echo "PROJECT_ID is required or gcloud must have a default project." >&2
@@ -172,6 +178,11 @@ fi
 
 if [[ "${ENABLE_SESSION_INVITATION_EMAIL}" != "0" && "${ENABLE_SESSION_INVITATION_EMAIL}" != "1" ]]; then
   echo "ENABLE_SESSION_INVITATION_EMAIL must be 0 or 1." >&2
+  exit 2
+fi
+
+if [[ "${ENABLE_STRIPE_SAAS}" != "0" && "${ENABLE_STRIPE_SAAS}" != "1" ]]; then
+  echo "ENABLE_STRIPE_SAAS must be 0 or 1." >&2
   exit 2
 fi
 
@@ -252,6 +263,8 @@ google_calendar_push_env_vars=""
 transcript_follow_through_env_vars=""
 google_drive_oauth_secrets=""
 session_invitation_email_secret=""
+stripe_saas_secrets=""
+stripe_saas_env_vars=""
 session_invitation_email_env_vars=""
 
 require_enabled_secret() {
@@ -264,6 +277,19 @@ require_enabled_secret() {
     exit 2
   fi
 }
+
+if [[ "${ENABLE_STRIPE_SAAS}" == "1" ]]; then
+  for secret_name in \
+    "${STRIPE_SECRET_KEY_SECRET_NAME}" \
+    "${STRIPE_SAAS_WEBHOOK_SECRET_NAME}" \
+    "${STRIPE_COACH_MONTHLY_PRICE_SECRET_NAME}" \
+    "${STRIPE_COACH_ANNUAL_PRICE_SECRET_NAME}"; do
+    require_enabled_secret "${secret_name}"
+  done
+  stripe_saas_secrets=",STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY_SECRET_NAME}:latest,STRIPE_SAAS_WEBHOOK_SECRET=${STRIPE_SAAS_WEBHOOK_SECRET_NAME}:latest,QUIPSLY_STRIPE_COACH_MONTHLY_PRICE_ID=${STRIPE_COACH_MONTHLY_PRICE_SECRET_NAME}:latest,QUIPSLY_STRIPE_COACH_ANNUAL_PRICE_ID=${STRIPE_COACH_ANNUAL_PRICE_SECRET_NAME}:latest"
+  stripe_saas_env_vars=",QUIPSLY_ALLOW_LIVE_STRIPE_SAAS=true,QUIPSLY_SAAS_ENTITLEMENT_ENFORCEMENT=true,QUIPSLY_COACH_TRIAL_DAYS=14"
+  echo "Quipsly SaaS subscription secrets have enabled versions."
+fi
 
 validate_private_secret() {
   local secret_name="$1"
@@ -753,8 +779,8 @@ gcloud run deploy "${SERVICE_NAME}" \
   --no-traffic \
   --tag="${PREVIEW_TAG}" \
   --remove-secrets="NEXTAUTH_SECRET,PATREON_WEBHOOK_SECRET,PATREON_RECONCILE_SECRET" \
-  --update-secrets="QUIPSLY_RELEASE_SMOKE_SECRET=${RELEASE_SMOKE_SECRET_NAME}:${RELEASE_SMOKE_SECRET_VERSION},REEFBALL_IMAGE_PROXY_TOKEN_SECRET=${IMAGE_PROXY_TOKEN_SECRET_NAME}:${IMAGE_PROXY_TOKEN_SECRET_VERSION}${livekit_secret_mounts}${google_calendar_oauth_secrets}${google_drive_oauth_secrets}${account_deletion_worker_secret}${session_invitation_email_secret}" \
-  --update-env-vars="FIREBASE_CUSTOM_TOKEN_SERVICE_ACCOUNT=firebase-adminsdk-fbsvc@quipsly-reef.iam.gserviceaccount.com,PRISMA_PG_POOL_MAX=${PRISMA_PG_POOL_MAX},QUIPSLY_IMAGE_TAG=${IMAGE_TAG},QUIPSLY_SOURCE_SHA=${SOURCE_SHA},QUIPSLY_RELEASE_CHANNEL=preview,QUIPSLY_DEPLOYED_BY=${DEPLOYED_BY},QUIPSLY_APP_HOST=nest.quipsly.com,QUIPSLY_MARKETING_HOST=quipsly.com,QUIPSLY_LEGACY_STUDIO_HOST=studio-hm2odnvjga-uc.a.run.app,NEXT_PUBLIC_STUDIO_COLLAB_URL=wss://studio-collab-hm2odnvjga-uc.a.run.app,STUDIO_COLLAB_URL=wss://studio-collab-hm2odnvjga-uc.a.run.app,LIVEKIT_EGRESS_ENABLED=${livekit_egress_enabled_value}${google_calendar_push_env_vars}${transcript_worker_env_vars}${transcript_follow_through_env_vars}${account_deletion_worker_env_vars}${session_invitation_email_env_vars}" \
+  --update-secrets="QUIPSLY_RELEASE_SMOKE_SECRET=${RELEASE_SMOKE_SECRET_NAME}:${RELEASE_SMOKE_SECRET_VERSION},REEFBALL_IMAGE_PROXY_TOKEN_SECRET=${IMAGE_PROXY_TOKEN_SECRET_NAME}:${IMAGE_PROXY_TOKEN_SECRET_VERSION}${livekit_secret_mounts}${google_calendar_oauth_secrets}${google_drive_oauth_secrets}${account_deletion_worker_secret}${session_invitation_email_secret}${stripe_saas_secrets}" \
+  --update-env-vars="FIREBASE_CUSTOM_TOKEN_SERVICE_ACCOUNT=firebase-adminsdk-fbsvc@quipsly-reef.iam.gserviceaccount.com,PRISMA_PG_POOL_MAX=${PRISMA_PG_POOL_MAX},QUIPSLY_IMAGE_TAG=${IMAGE_TAG},QUIPSLY_SOURCE_SHA=${SOURCE_SHA},QUIPSLY_RELEASE_CHANNEL=preview,QUIPSLY_DEPLOYED_BY=${DEPLOYED_BY},QUIPSLY_APP_HOST=nest.quipsly.com,QUIPSLY_MARKETING_HOST=quipsly.com,QUIPSLY_LEGACY_STUDIO_HOST=studio-hm2odnvjga-uc.a.run.app,NEXT_PUBLIC_STUDIO_COLLAB_URL=wss://studio-collab-hm2odnvjga-uc.a.run.app,STUDIO_COLLAB_URL=wss://studio-collab-hm2odnvjga-uc.a.run.app,LIVEKIT_EGRESS_ENABLED=${livekit_egress_enabled_value}${google_calendar_push_env_vars}${transcript_worker_env_vars}${transcript_follow_through_env_vars}${account_deletion_worker_env_vars}${session_invitation_email_env_vars}${stripe_saas_env_vars}" \
   --quiet
 
 echo "Preview revision deployed."

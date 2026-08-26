@@ -37,7 +37,7 @@ export function CoachPricing({ compact = false }: { compact?: boolean }) {
             </p>
             <div className="mt-7 flex flex-col gap-3 sm:flex-row">
               <Link
-                href="https://nest.quipsly.com/login?callbackUrl=%2Fcoaching"
+                href="https://nest.quipsly.com/login?callbackUrl=%2Fsettings%3Fsubscribe%3Dannual%23subscription"
                 className="inline-flex min-h-12 items-center justify-center rounded-2xl bg-[#f4d58e] px-6 py-3 font-sans text-sm font-black uppercase tracking-[0.12em] text-[#263f36] shadow-lg"
               >
                 Start {QUIPSLY_COACH_TRIAL_DAYS}-day free trial

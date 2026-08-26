@@ -72,11 +72,23 @@ test("preview deploy mounts the required secrets and privately validates the rel
   assert.match(source, /!\/\[\\u0000-\\u001f\\u007f\]\//);
   assert.match(
     source,
-    /--update-secrets="QUIPSLY_RELEASE_SMOKE_SECRET=\$\{RELEASE_SMOKE_SECRET_NAME\}:\$\{RELEASE_SMOKE_SECRET_VERSION\},REEFBALL_IMAGE_PROXY_TOKEN_SECRET=\$\{IMAGE_PROXY_TOKEN_SECRET_NAME\}:\$\{IMAGE_PROXY_TOKEN_SECRET_VERSION\}\$\{livekit_secret_mounts\}\$\{google_calendar_oauth_secrets\}\$\{google_drive_oauth_secrets\}\$\{account_deletion_worker_secret\}\$\{session_invitation_email_secret\}"/,
+    /--update-secrets="QUIPSLY_RELEASE_SMOKE_SECRET=\$\{RELEASE_SMOKE_SECRET_NAME\}:\$\{RELEASE_SMOKE_SECRET_VERSION\},REEFBALL_IMAGE_PROXY_TOKEN_SECRET=\$\{IMAGE_PROXY_TOKEN_SECRET_NAME\}:\$\{IMAGE_PROXY_TOKEN_SECRET_VERSION\}\$\{livekit_secret_mounts\}\$\{google_calendar_oauth_secrets\}\$\{google_drive_oauth_secrets\}\$\{account_deletion_worker_secret\}\$\{session_invitation_email_secret\}\$\{stripe_saas_secrets\}"/,
   );
   assert.match(source, /The value was not printed/);
   assert.doesNotMatch(source, /echo "\$\{?QUIPSLY_RELEASE_SMOKE_SECRET/);
   assert.doesNotMatch(source, /set -x/);
+});
+
+test("SaaS subscription activation is explicit and Secret Manager backed", () => {
+  const source = readFileSync(deployScript, "utf8");
+
+  assert.match(source, /ENABLE_STRIPE_SAAS="\$\{ENABLE_STRIPE_SAAS:-0\}"/);
+  assert.match(source, /ENABLE_STRIPE_SAAS must be 0 or 1/);
+  assert.match(source, /STRIPE_SECRET_KEY=\$\{STRIPE_SECRET_KEY_SECRET_NAME\}:latest/);
+  assert.match(source, /STRIPE_SAAS_WEBHOOK_SECRET=\$\{STRIPE_SAAS_WEBHOOK_SECRET_NAME\}:latest/);
+  assert.match(source, /QUIPSLY_STRIPE_COACH_MONTHLY_PRICE_ID=\$\{STRIPE_COACH_MONTHLY_PRICE_SECRET_NAME\}:latest/);
+  assert.match(source, /QUIPSLY_STRIPE_COACH_ANNUAL_PRICE_ID=\$\{STRIPE_COACH_ANNUAL_PRICE_SECRET_NAME\}:latest/);
+  assert.match(source, /QUIPSLY_SAAS_ENTITLEMENT_ENFORCEMENT=true/);
 });
 
 test("session invitation email is explicit, Secret Manager backed, and safe to disable", () => {
