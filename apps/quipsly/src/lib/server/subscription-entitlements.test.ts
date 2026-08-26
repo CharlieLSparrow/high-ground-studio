@@ -106,7 +106,7 @@ describe("Quipsly SaaS entitlement projection", () => {
     ]);
   });
 
-  it("activates one full coach trial instead of writing an invalid subscription status", async () => {
+  it("prepares purchase identity without activating access before Apple verifies a transaction", async () => {
     const tx = {
       subscriptionPlan: {
         upsert: jest.fn()
@@ -131,7 +131,15 @@ describe("Quipsly SaaS entitlement projection", () => {
     };
     const prisma = {
       $transaction: jest.fn().mockImplementation((callback) => callback(tx)),
-      subscription: { findFirst: jest.fn().mockResolvedValue(null) },
+      subscription: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        findUnique: jest.fn().mockResolvedValue({
+          id: "sub-new",
+          organizationId: "org-new",
+          appAccountToken: "760af700-b296-4b3f-b0fe-3f5648c299b4",
+          plan: { stableKey: "quipsly-early-access", name: "Quipsly early access" },
+        }),
+      },
     };
 
     await ensureQuipslyBillingContext({
@@ -143,19 +151,15 @@ describe("Quipsly SaaS entitlement projection", () => {
     expect(tx.subscription.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         billingOwnerUserId: "coach-new",
-        planId: "plan-trial",
-        providerStatus: "TRIAL",
-        status: "TRIALING",
-        verifiedAt: expect.any(Date),
-        currentPeriodStart: expect.any(Date),
-        currentPeriodEnd: expect.any(Date),
-        trialEnd: expect.any(Date),
+        planId: "plan-early",
+        providerStatus: "AWAITING_APP_STORE_PURCHASE",
+        status: "INCOMPLETE",
+        verifiedAt: null,
+        currentPeriodStart: null,
+        currentPeriodEnd: null,
+        trialEnd: null,
       }),
     });
-    const created = tx.subscription.create.mock.calls[0][0].data;
-    expect(
-      created.trialEnd.getTime() - created.currentPeriodStart.getTime(),
-    ).toBe(DEFAULT_QUIPSLY_COACH_TRIAL_DAYS * 24 * 60 * 60 * 1_000);
   });
 
   it("projects an active coach trial separately from permanent early access", async () => {

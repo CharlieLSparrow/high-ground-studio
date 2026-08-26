@@ -48,6 +48,7 @@ private struct QuipslyAppStoreTransactionRequest: Encodable {
 final class QuipslySubscriptionStore: ObservableObject {
     @Published private(set) var entitlement: QuipslySaaSEntitlement?
     @Published private(set) var products: [Product] = []
+    @Published private(set) var eligibleIntroProductIDs: Set<String> = []
     @Published private(set) var isLoading = false
     @Published private(set) var purchasingProductID: String?
     @Published var message: String?
@@ -116,22 +117,6 @@ final class QuipslySubscriptionStore: ObservableObject {
         }
     }
 
-    func startTrial() async {
-        guard purchasingProductID == nil else { return }
-        purchasingProductID = "trial"
-        errorMessage = nil
-        message = nil
-        defer { purchasingProductID = nil }
-        do {
-            entitlement = try await requestEntitlement(method: "POST")
-            message = entitlement?.accessMode == "TRIAL"
-                ? "Your full Quipsly Coach trial is active."
-                : "Your Quipsly access is active."
-        } catch {
-            errorMessage = error.localizedDescription
-        }
-    }
-
     func restorePurchases() async {
         guard purchasingProductID == nil else { return }
         purchasingProductID = "restore"
@@ -192,12 +177,22 @@ final class QuipslySubscriptionStore: ObservableObject {
         let ids = entitlement?.products.map(\.productId) ?? []
         guard !ids.isEmpty else {
             products = []
+            eligibleIntroProductIDs = []
             return
         }
-        products = try await Product.products(for: ids).sorted { left, right in
+        let loadedProducts = try await Product.products(for: ids).sorted { left, right in
             if left.price == right.price { return left.id < right.id }
             return left.price < right.price
         }
+        products = loadedProducts
+        var eligibleProductIDs = Set<String>()
+        for product in loadedProducts {
+            guard let subscription = product.subscription,
+                  subscription.introductoryOffer != nil,
+                  await subscription.isEligibleForIntroOffer else { continue }
+            eligibleProductIDs.insert(product.id)
+        }
+        eligibleIntroProductIDs = eligibleProductIDs
     }
 
     private func requestEntitlement(method: String) async throws -> QuipslySaaSEntitlement {
@@ -276,30 +271,11 @@ struct QuipslySubscriptionView: View {
             VStack(spacing: 16) {
                 currentPlanCard
 
-                if let entitlement = store.entitlement,
-                   entitlement.enforcementEnabled,
-                   !entitlement.entitled {
-                    Button {
-                        Task { await store.startTrial() }
-                    } label: {
-                        HStack {
-                            if store.purchasingProductID == "trial" {
-                                ProgressView().tint(.white)
-                            }
-                            Label("Start \(entitlement.trialDays ?? 14)-day free trial", systemImage: "sparkles")
-                        }
-                        .frame(maxWidth: .infinity, minHeight: 44)
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(store.purchasingProductID != nil)
-                    .accessibilityIdentifier("CaptureStartQuipslyTrial")
-                }
-
                 if store.products.isEmpty {
                     VStack(alignment: .leading, spacing: 8) {
-                        Label("Plans are coming online", systemImage: "sparkles")
+                        Label("Subscriptions temporarily unavailable", systemImage: "arrow.clockwise")
                             .font(.headline)
-                        Text("App Store products are not available in this build yet. Your current Quipsly access continues, and none of your Sessions or recordings are affected.")
+                        Text("Quipsly could not load the App Store plans. Pull to refresh or try again later. Your Sessions and recordings are unchanged.")
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                     }
@@ -327,6 +303,8 @@ struct QuipslySubscriptionView: View {
                     }
                     .buttonStyle(.bordered)
                 }
+
+                subscriptionTerms
 
                 if let message = store.message {
                     Text(message)
@@ -403,7 +381,19 @@ struct QuipslySubscriptionView: View {
                         .foregroundStyle(.secondary)
                 }
                 Spacer(minLength: 12)
-                Text(product.displayPrice).font(.headline)
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text(product.displayPrice).font(.title3.bold())
+                    if let period = product.subscription?.subscriptionPeriod {
+                        Text("per \(periodUnitLabel(period))")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+            if let offer = introductoryOfferLabel(for: product) {
+                Label(offer, systemImage: "sparkles")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(Color.accentColor)
             }
             Button {
                 Task { await store.purchase(product) }
@@ -412,7 +402,11 @@ struct QuipslySubscriptionView: View {
                     if store.purchasingProductID == product.id {
                         ProgressView().tint(.white)
                     }
-                    Text(store.entitlement?.planKey == planKey(for: product.id) ? "Current plan" : "Subscribe")
+                    Text(store.entitlement?.planKey == planKey(for: product.id)
+                        ? "Current plan"
+                        : store.eligibleIntroProductIDs.contains(product.id)
+                            ? "Start free trial"
+                            : "Subscribe")
                 }
                 .frame(maxWidth: .infinity, minHeight: 44)
             }
@@ -425,6 +419,45 @@ struct QuipslySubscriptionView: View {
 
     private func planKey(for productID: String) -> String? {
         store.entitlement?.products.first(where: { $0.productId == productID })?.planKey
+    }
+
+    private var subscriptionTerms: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Subscriptions renew automatically unless canceled at least 24 hours before the current period ends. Apple charges your Apple Account when you confirm the purchase. You can cancel anytime in App Store subscriptions.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: 18) {
+                Link("Terms of Use", destination: URL(string: "https://quipsly.com/terms")!)
+                Link("Privacy Policy", destination: URL(string: "https://quipsly.com/privacy")!)
+            }
+            .font(.caption.weight(.semibold))
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .captureCard()
+        .accessibilityIdentifier("CaptureQuipslySubscriptionTerms")
+    }
+
+    private func introductoryOfferLabel(for product: Product) -> String? {
+        guard store.eligibleIntroProductIDs.contains(product.id),
+              let offer = product.subscription?.introductoryOffer,
+              offer.paymentMode == .freeTrial else { return nil }
+        return "\(periodLabel(offer.period)) free, then \(product.displayPrice) per \(product.subscription.map { periodUnitLabel($0.subscriptionPeriod) } ?? "billing period")."
+    }
+
+    private func periodLabel(_ period: Product.SubscriptionPeriod) -> String {
+        let unit = periodUnitLabel(period)
+        return "\(period.value) \(unit)\(period.value == 1 ? "" : "s")"
+    }
+
+    private func periodUnitLabel(_ period: Product.SubscriptionPeriod) -> String {
+        switch period.unit {
+        case .day: "day"
+        case .week: "week"
+        case .month: "month"
+        case .year: "year"
+        @unknown default: "billing period"
+        }
     }
 
     private func formattedDate(_ value: String?) -> String? {

@@ -90,6 +90,10 @@ export async function readQuipslyEntitlement(input: {
     orderBy: { plan: { displayOrder: "desc" } },
     include: { plan: true },
   });
+  const billingContext = subscription ?? await input.prisma.subscription.findUnique?.({
+    where: { billingOwnerUserId: input.userId },
+    include: { plan: true },
+  }) ?? null;
   const enforcementEnabled = entitlementEnforcementEnabled(environment);
   const provider = subscription?.provider ?? null;
   const entitled = Boolean(subscription) || !enforcementEnabled;
@@ -119,9 +123,9 @@ export async function readQuipslyEntitlement(input: {
     capabilities: entitled
       ? planCapabilities(subscription?.plan)
       : [],
-    organizationId: subscription?.organizationId ?? null,
-    subscriptionId: subscription?.id ?? null,
-    appAccountToken: subscription?.appAccountToken ?? null,
+    organizationId: billingContext?.organizationId ?? null,
+    subscriptionId: billingContext?.id ?? null,
+    appAccountToken: billingContext?.appAccountToken ?? null,
     products: quipslyAppStoreProducts(environment),
     management: {
       appStoreURL: "https://apps.apple.com/account/subscriptions",
@@ -255,25 +259,19 @@ export async function ensureQuipslyBillingContext(input: {
     if (!subscription) {
       const grantEarlyAccess = !entitlementEnforcementEnabled(environment);
       const activatedAt = new Date();
-      const trialEnd = grantEarlyAccess
-        ? null
-        : new Date(
-            activatedAt.getTime()
-              + coachTrialDays(environment) * 24 * 60 * 60 * 1_000,
-          );
       await tx.subscription.create({
         data: {
           organizationId: membership.organizationId,
           billingOwnerUserId: input.user.id,
-          planId: grantEarlyAccess ? plans.earlyAccess.id : plans.trial.id,
+          planId: plans.earlyAccess.id,
           provider: "MANUAL",
-          providerStatus: grantEarlyAccess ? "EARLY_ACCESS" : "TRIAL",
-          status: grantEarlyAccess ? "ACTIVE" : "TRIALING",
+          providerStatus: grantEarlyAccess ? "EARLY_ACCESS" : "AWAITING_APP_STORE_PURCHASE",
+          status: grantEarlyAccess ? "ACTIVE" : "INCOMPLETE",
           appAccountToken: randomUUID(),
-          currentPeriodStart: activatedAt,
-          currentPeriodEnd: trialEnd,
-          trialEnd,
-          verifiedAt: activatedAt,
+          currentPeriodStart: grantEarlyAccess ? activatedAt : null,
+          currentPeriodEnd: null,
+          trialEnd: null,
+          verifiedAt: grantEarlyAccess ? activatedAt : null,
         },
       });
     } else if (!subscription.appAccountToken || !subscription.billingOwnerUserId) {
