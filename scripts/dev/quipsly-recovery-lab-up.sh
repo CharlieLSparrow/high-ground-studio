@@ -101,6 +101,8 @@ if [[ "${1:-}" == "--run-nest" ]]; then
     AUTH_URL="${nest_url}" \
     NEXTAUTH_URL="${nest_url}" \
     AUTH_TRUST_HOST=true \
+    QUIPSLY_SOURCE_SHA="$(git rev-parse HEAD)" \
+    QUIPSLY_RELEASE_CHANNEL=recovery-lab \
     FIREBASE_AUTH_EMULATOR_HOST=127.0.0.1:9199 \
     NEXT_PUBLIC_QUIPSLY_FIREBASE_AUTH_EMULATOR_URL="${firebase_url}" \
     FIREBASE_PROJECT_ID="${firebase_project}" \
@@ -148,6 +150,13 @@ if [[ -n "${dirty_source}" && "${QUIPSLY_RECOVERY_LAB_ALLOW_DIRTY:-0}" != "1" ]]
   echo "Recovery rehearsal requires a clean committed source revision." >&2
   echo "Commit the intended slice, or set QUIPSLY_RECOVERY_LAB_ALLOW_DIRTY=1 for development only." >&2
   exit 1
+fi
+
+current_revision="$(git rev-parse HEAD)"
+recorded_revision="$(sed -n '1p' "${state_dir}/source-revision" 2>/dev/null || true)"
+source_revision_changed=0
+if [[ -n "${recorded_revision}" && "${recorded_revision}" != "${current_revision}" ]]; then
+  source_revision_changed=1
 fi
 
 if [[ "${replace_existing}" == "1" ]]; then
@@ -222,6 +231,7 @@ fi
 echo "Applying committed migrations to the disposable database..."
 DATABASE_URL="${database_url}" pnpm exec prisma migrate deploy
 DATABASE_URL="${database_url}" pnpm exec prisma migrate status
+pnpm exec prisma generate
 
 if [[ ! -s "${state_dir}/auth-secret" ]]; then
   openssl rand -base64 48 | tr -d '\n' >"${state_dir}/auth-secret"
@@ -280,6 +290,76 @@ start_macos_job() {
       /bin/bash "${repo_root}/scripts/dev/quipsly-recovery-lab-up.sh" "${mode}"
   printf "%s\n" "${label}" >"${state_dir}/${name}.label"
 }
+
+descendants() {
+  local parent="$1"
+  local child
+  while IFS= read -r child; do
+    [[ -n "${child}" ]] || continue
+    descendants "${child}"
+    printf "%s\n" "${child}"
+  done < <(pgrep -P "${parent}" 2>/dev/null || true)
+}
+
+restart_owned_macos_job() {
+  local name="$1"
+  local expected_label="$2"
+  local label_file="${state_dir}/${name}.label"
+  [[ -f "${label_file}" ]] || return 0
+  local actual_label
+  actual_label="$(tr -d '[:space:]' <"${label_file}")"
+  if [[ "${actual_label}" != "${expected_label}" ]]; then
+    echo "REFUSE ${name}: state names '${actual_label}', expected '${expected_label}'." >&2
+    exit 1
+  fi
+  if launchctl_job_exists "${actual_label}"; then
+    launchctl remove "${actual_label}"
+    printf "RESTART %-22s source revision changed\n" "${name}"
+  fi
+  rm -f "${label_file}"
+}
+
+restart_owned_process() {
+  local name="$1"
+  local expected_cwd="$2"
+  local pid_file="${state_dir}/${name}.pid"
+  local cwd_file="${state_dir}/${name}.cwd"
+  [[ -f "${pid_file}" && -f "${cwd_file}" ]] || return 0
+  local pid recorded_cwd actual_cwd child_pids
+  pid="$(tr -d '[:space:]' <"${pid_file}")"
+  recorded_cwd="$(sed -n '1p' "${cwd_file}")"
+  actual_cwd="$(quipsly_local_process_cwd "${pid}")"
+  if [[ "${recorded_cwd}" != "${expected_cwd}" || "${actual_cwd}" != "${expected_cwd}" ]]; then
+    echo "REFUSE ${name}: running cwd is '${actual_cwd:-unknown}', expected '${expected_cwd}'." >&2
+    exit 1
+  fi
+  child_pids="$(descendants "${pid}")"
+  if [[ -n "${child_pids}" ]]; then
+    while IFS= read -r child; do
+      [[ -n "${child}" ]] && kill -TERM "${child}" 2>/dev/null || true
+    done <<<"${child_pids}"
+  fi
+  kill -TERM "${pid}" 2>/dev/null || true
+  rm -f "${pid_file}" "${cwd_file}"
+  printf "RESTART %-22s source revision changed\n" "${name}"
+}
+
+if [[ "${source_revision_changed}" == "1" ]]; then
+  recorded_root="$(sed -n '1p' "${state_dir}/repo-root" 2>/dev/null || true)"
+  if [[ "${recorded_root}" != "${repo_root}" ]]; then
+    echo "Recovery source revision changed, but its recorded worktree owner is '${recorded_root:-unknown}'." >&2
+    exit 1
+  fi
+  if [[ "$(uname -s)" == "Darwin" ]]; then
+    restart_owned_macos_job "nest" "${nest_label}"
+    restart_owned_macos_job "transcript-worker" "${transcript_worker_label}"
+    restart_owned_macos_job "media-worker" "${media_worker_label}"
+  else
+    restart_owned_process "nest" "${repo_root}/apps/quipsly"
+    restart_owned_process "transcript-worker" "${repo_root}"
+    restart_owned_process "media-worker" "${repo_root}"
+  fi
+fi
 
 mkdir -p \
   "${media_root}" \
@@ -461,7 +541,7 @@ wait_for_http \
   "${state_dir}/nest.log"
 
 printf "%s\n" "${repo_root}" >"${state_dir}/repo-root"
-git rev-parse HEAD >"${state_dir}/source-revision"
+printf "%s\n" "${current_revision}" >"${state_dir}/source-revision"
 
 echo
 echo "Quipsly recovery lab is ready: ${nest_url}"

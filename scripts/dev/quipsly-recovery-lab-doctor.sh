@@ -132,6 +132,27 @@ else
   failed=1
 fi
 
+live_revision="$(
+  curl -fsS --max-time 4 "${nest_url}/api/health" 2>/dev/null |
+    node -e '
+      let input = "";
+      process.stdin.on("data", (chunk) => (input += chunk));
+      process.stdin.on("end", () => {
+        try { process.stdout.write(JSON.parse(input)?.quipsly?.release?.sourceSha || ""); }
+        catch {}
+      });
+    ' 2>/dev/null || true
+)"
+if [[ "${live_revision}" == "${current_revision}" ]]; then
+  printf "PASS  %-26s %s\n" "Live Nest revision" "${live_revision}"
+else
+  printf "FAIL  %-26s running %s current %s\n" \
+    "Live Nest revision" \
+    "${live_revision:-unknown}" \
+    "${current_revision}"
+  failed=1
+fi
+
 dirty_source="$(git status --porcelain=v1 --untracked-files=all)"
 if [[ -z "${dirty_source}" ]]; then
   printf "PASS  %-26s clean committed source\n" "Worktree"

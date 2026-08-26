@@ -43,6 +43,7 @@ test("the recovery lab is isolated from the canonical local lane", () => {
 test("fresh environments are migration-built and loopback-only", () => {
   assert.match(up, /pnpm exec prisma migrate deploy/);
   assert.match(up, /pnpm exec prisma migrate status/);
+  assert.match(up, /pnpm exec prisma generate/);
   assert.doesNotMatch(up, /prisma db push/);
   assert.match(up, /-p 127\.0\.0\.1:55432:5432/);
   assert.match(up, /pgvector\/pgvector:pg15/);
@@ -70,8 +71,15 @@ test("shutdown is confined to exact owned jobs and the disposable database", () 
 
 test("acceptance defaults to a clean exact committed revision", () => {
   assert.match(up, /QUIPSLY_RECOVERY_LAB_ALLOW_DIRTY/);
-  assert.match(up, /git rev-parse HEAD >"\$\{state_dir\}\/source-revision"/);
+  assert.match(
+    up,
+    /printf "%s\\n" "\$\{current_revision\}" >"\$\{state_dir\}\/source-revision"/,
+  );
   assert.match(doctor, /Exact source revision/);
+  assert.match(up, /source_revision_changed/);
+  assert.match(up, /restart_owned_macos_job "nest"/);
+  assert.match(up, /QUIPSLY_SOURCE_SHA="\$\(git rev-parse HEAD\)"/);
+  assert.match(doctor, /Live Nest revision/);
   assert.match(doctor, /clean committed source/);
 });
 
