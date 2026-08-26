@@ -23,6 +23,7 @@ import {
   canonicalMobileSessionProject,
   mobilePacketReviewLanes,
   mobileSessionCanControlRecording,
+  mobileTranscriptResults,
   releasedClientFollowUpForUser,
   registeredParticipantConsentSummary,
 } from "./mobile-capture-sessions";
@@ -31,6 +32,76 @@ import {
   MOBILE_CAPTURE_CONSENT_POLICY_VERSION,
   MOBILE_CAPTURE_CONSENT_TEXT_SHA256,
 } from "./mobile-capture-consent-readiness.js";
+
+describe("mobile transcript result projection", () => {
+  it("returns the ordinary notes, tasks, and goals already created for this transcript", () => {
+    const result = mobileTranscriptResults({
+      roomId: "room-1",
+      transcriptJobId: "job-1",
+      summary: { id: "summary-1", title: "Session recap", body: "You chose a next step." },
+      highlights: [{
+        id: "note-1",
+        title: "Keep this",
+        body: "A useful insight",
+        sourceJson: { segmentId: "segment-1", startSeconds: 12, endSeconds: 19, speakerLabel: "Client" },
+      }],
+      actionItems: [
+        {
+          id: "task-1",
+          title: "Send the outline",
+          detail: "Before Friday",
+          status: "OPEN",
+          assignedUserId: "client-1",
+          sourceJson: {
+            origin: "quipsly-session-follow-through",
+            roomId: "room-1",
+            transcriptJobId: "job-1",
+            segmentId: "segment-2",
+            startSeconds: 22,
+            endSeconds: 28,
+            speakerLabel: "Client",
+          },
+        },
+        {
+          id: "other-task",
+          title: "Unrelated work",
+          status: "OPEN",
+          sourceJson: { origin: "manual" },
+        },
+      ],
+      goals: [{
+        id: "goal-1",
+        title: "Practice the conversation",
+        status: "ACTIVE",
+        ownerUserId: "client-1",
+        sourceJson: {
+          origin: "quipsly-session-follow-through",
+          roomId: "room-1",
+          transcriptJobId: "job-1",
+          segmentId: "segment-3",
+          startSeconds: 31,
+          endSeconds: 38,
+          speakerLabel: "Client",
+        },
+      }],
+    });
+
+    expect(result).toMatchObject({
+      automaticallyCreated: true,
+      editable: true,
+      removable: true,
+      summary: { id: "summary-1", title: "Session recap" },
+      notes: [{ id: "note-1", source: { startSeconds: 12, endSeconds: 19 } }],
+      tasks: [{ id: "task-1", status: "OPEN", source: { segmentId: "segment-2" } }],
+      goals: [{ id: "goal-1", status: "ACTIVE", source: { segmentId: "segment-3" } }],
+    });
+    expect(result?.tasks).toHaveLength(1);
+  });
+
+  it("does not invent results before a transcript-backed summary exists", () => {
+    expect(mobileTranscriptResults({ roomId: "room-1", transcriptJobId: "job-1" })).toBeNull();
+  });
+});
 
 describe("mobile packet review lane projection", () => {
   it("projects only persisted lane review truth and preserves no-side-effect receipts", () => {

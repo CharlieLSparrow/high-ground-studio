@@ -1017,6 +1017,7 @@ struct MobileCaptureSession: Codable, Identifiable, Hashable {
     let coachingPacketFirstOpenActionItemId: String?
     let coachingPacketStatus: String?
     var coachingPacketReviewLanes: [MobileCapturePacketReviewLane]? = nil
+    var coachingTranscriptResults: MobileCaptureTranscriptResults? = nil
     var clientFollowUp: MobileCaptureClientFollowUp? = nil
     var clientFollowUpWorkspace: MobileCaptureClientFollowUpWorkspace? = nil
     var priorContinuity: MobileCapturePriorContinuity? = nil
@@ -2532,6 +2533,60 @@ struct MobileCapturePacketLaneHumanReview: Codable, Hashable {
     let externalSideEffects: Bool?
     let deliveryClaimed: Bool?
     let publicationClaimed: Bool?
+}
+
+struct MobileCaptureTranscriptResultSource: Codable, Hashable {
+    let segmentId: String?
+    let startSeconds: Double?
+    let endSeconds: Double?
+    let speakerLabel: String?
+}
+
+struct MobileCaptureTranscriptResultSummary: Codable, Hashable, Identifiable {
+    let id: String
+    let title: String?
+    let body: String
+}
+
+struct MobileCaptureTranscriptResultNote: Codable, Hashable, Identifiable {
+    let id: String
+    let title: String?
+    let body: String
+    let source: MobileCaptureTranscriptResultSource?
+}
+
+struct MobileCaptureTranscriptResultTask: Codable, Hashable, Identifiable {
+    let id: String
+    let title: String
+    let detail: String?
+    let status: String
+    let assignedUserId: String?
+    let dueAt: String?
+    let completedAt: String?
+    let source: MobileCaptureTranscriptResultSource?
+}
+
+struct MobileCaptureTranscriptResultGoal: Codable, Hashable, Identifiable {
+    let id: String
+    let title: String
+    let description: String?
+    let status: String
+    let ownerUserId: String?
+    let targetAt: String?
+    let achievedAt: String?
+    let source: MobileCaptureTranscriptResultSource?
+}
+
+struct MobileCaptureTranscriptResults: Codable, Hashable {
+    let automaticallyCreated: Bool
+    let editable: Bool
+    let removable: Bool
+    let summary: MobileCaptureTranscriptResultSummary
+    let notes: [MobileCaptureTranscriptResultNote]
+    let tasks: [MobileCaptureTranscriptResultTask]
+    let goals: [MobileCaptureTranscriptResultGoal]
+
+    var itemCount: Int { notes.count + tasks.count + goals.count }
 }
 
 struct MobileCapturePacketReviewLane: Codable, Hashable, Identifiable {

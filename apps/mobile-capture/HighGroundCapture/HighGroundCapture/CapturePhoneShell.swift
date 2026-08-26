@@ -6882,6 +6882,35 @@ private struct CaptureRecorderView: View {
                         }
                     }
 
+                    CaptureSessionResultsCard(
+                        session: session,
+                        onOpenNotes: {
+                            sessionNotesSession = session
+                        },
+                        onOpenTask: { task in
+                            if let projectID = session.projectId {
+                                model.requestWorkNavigation(
+                                    kind: .task,
+                                    entityID: task.id,
+                                    title: task.title,
+                                    projectID: projectID
+                                )
+                            }
+                            visibleTab = .work
+                        },
+                        onOpenGoal: { goal in
+                            if let projectID = session.projectId {
+                                model.requestWorkNavigation(
+                                    kind: .goal,
+                                    entityID: goal.id,
+                                    title: goal.title,
+                                    projectID: projectID
+                                )
+                            }
+                            visibleTab = .work
+                        }
+                    )
+
                     CaptureSessionTranscriptReviewCard(
                         session: session,
                         sessionClient: model.sessionClient,
@@ -6982,11 +7011,6 @@ private struct CaptureRecorderView: View {
                         session: session,
                         model: model,
                         onOpen: { sessionNotesSession = $0 }
-                    )
-
-                    CapturePacketReviewLanesCard(
-                        session: session,
-                        model: model
                     )
 
                     CaptureSessionFollowUpStatus(
@@ -8166,6 +8190,173 @@ private struct MobilePriorSessionContinuityCard: View {
     }
 }
 
+private struct CaptureSessionResultsCard: View {
+    let session: MobileCaptureSession
+    let onOpenNotes: () -> Void
+    let onOpenTask: (MobileCaptureTranscriptResultTask) -> Void
+    let onOpenGoal: (MobileCaptureTranscriptResultGoal) -> Void
+    @State private var isExpanded = true
+
+    var body: some View {
+        if let results = session.coachingTranscriptResults {
+            DisclosureGroup(isExpanded: $isExpanded) {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text(results.summary.body)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(6)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    if !results.notes.isEmpty {
+                        resultSection(
+                            title: "Notes",
+                            systemImage: "note.text",
+                            tint: .teal
+                        ) {
+                            ForEach(results.notes.prefix(4)) { note in
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text(note.title?.nonempty ?? "Session note")
+                                        .font(.caption.weight(.bold))
+                                    Text(note.body)
+                                        .font(.caption2)
+                                        .foregroundStyle(.secondary)
+                                        .lineLimit(3)
+                                    sourceLabel(note.source)
+                                }
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                            }
+                            Button("Open and edit notes", action: onOpenNotes)
+                                .buttonStyle(.bordered)
+                                .controlSize(.small)
+                                .accessibilityIdentifier("CaptureSessionResultsOpenNotes")
+                        }
+                    }
+
+                    if !results.tasks.isEmpty {
+                        resultSection(
+                            title: "Tasks",
+                            systemImage: "checklist",
+                            tint: .orange
+                        ) {
+                            ForEach(results.tasks.prefix(5)) { task in
+                                Button {
+                                    onOpenTask(task)
+                                } label: {
+                                    HStack(alignment: .top, spacing: 8) {
+                                        Image(systemName: task.status == "DONE" ? "checkmark.circle.fill" : "circle")
+                                            .foregroundStyle(task.status == "DONE" ? Color.green : Color.secondary)
+                                        VStack(alignment: .leading, spacing: 3) {
+                                            Text(task.title)
+                                                .font(.caption.weight(.bold))
+                                            if let detail = task.detail?.nonempty {
+                                                Text(detail)
+                                                    .font(.caption2)
+                                                    .foregroundStyle(.secondary)
+                                                    .lineLimit(2)
+                                            }
+                                            sourceLabel(task.source)
+                                        }
+                                        Spacer(minLength: 0)
+                                        Image(systemName: "chevron.right")
+                                            .font(.caption2.weight(.bold))
+                                            .foregroundStyle(.secondary)
+                                    }
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .contentShape(Rectangle())
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityIdentifier("CaptureSessionResultTask_\(task.id)")
+                            }
+                        }
+                    }
+
+                    if !results.goals.isEmpty {
+                        resultSection(
+                            title: "Goals",
+                            systemImage: "target",
+                            tint: .purple
+                        ) {
+                            ForEach(results.goals.prefix(5)) { goal in
+                                Button {
+                                    onOpenGoal(goal)
+                                } label: {
+                                    HStack(alignment: .top, spacing: 8) {
+                                        Image(systemName: goal.status == "ACHIEVED" ? "checkmark.circle.fill" : "target")
+                                            .foregroundStyle(goal.status == "ACHIEVED" ? Color.green : Color.purple)
+                                        VStack(alignment: .leading, spacing: 3) {
+                                            Text(goal.title)
+                                                .font(.caption.weight(.bold))
+                                            if let description = goal.description?.nonempty {
+                                                Text(description)
+                                                    .font(.caption2)
+                                                    .foregroundStyle(.secondary)
+                                                    .lineLimit(2)
+                                            }
+                                            sourceLabel(goal.source)
+                                        }
+                                        Spacer(minLength: 0)
+                                        Image(systemName: "chevron.right")
+                                            .font(.caption2.weight(.bold))
+                                            .foregroundStyle(.secondary)
+                                    }
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .contentShape(Rectangle())
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityIdentifier("CaptureSessionResultGoal_\(goal.id)")
+                            }
+                        }
+                    }
+
+                    Text("Quipsly made these from the transcript. Adjust or remove them like any other work; the original recording stays unchanged.")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(.top, 10)
+            } label: {
+                VStack(alignment: .leading, spacing: 3) {
+                    Label("Session results", systemImage: "sparkles")
+                        .font(.headline)
+                        .foregroundStyle(.teal)
+                    Text("\(results.notes.count) notes · \(results.tasks.count) tasks · \(results.goals.count) goals")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .accessibilityIdentifier("CaptureSessionResults")
+            }
+            .captureCard()
+        }
+    }
+
+    @ViewBuilder
+    private func resultSection<Content: View>(
+        title: String,
+        systemImage: String,
+        tint: Color,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label(title, systemImage: systemImage)
+                .font(.caption.weight(.bold))
+                .foregroundStyle(tint)
+            content()
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(tint.opacity(0.06), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+
+    @ViewBuilder
+    private func sourceLabel(_ source: MobileCaptureTranscriptResultSource?) -> some View {
+        if let start = source?.startSeconds, let end = source?.endSeconds {
+            Text("\(source?.speakerLabel?.nonempty.map { "\($0) · " } ?? "")\(start.captureDurationLabel)–\(end.captureDurationLabel)")
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.blue)
+        }
+    }
+}
+
 private struct CaptureSessionFollowUpStatus: View {
     let session: MobileCaptureSession
     let errorMessage: String?
@@ -8745,15 +8936,15 @@ private struct CaptureSessionTranscriptReviewCard: View {
                         .foregroundStyle(.purple)
                         .accessibilityHidden(true)
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("Review transcript and follow-up")
+                        Text("Transcript and text editing")
                             .font(.subheadline.weight(.bold))
                         Text(transcriptReviewSummary)
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
                         Text(matchingTranscriptRecording == nil
-                            ? "Review only — exact local source unavailable"
-                            : "Exact local source ready for playback review")
+                            ? "Transcript ready · local playback source unavailable on this phone"
+                            : "Exact local source ready for playback and editing")
                             .font(.caption2.weight(.semibold))
                             .foregroundStyle(matchingTranscriptRecording == nil ? Color.orange : Color.green)
                             .fixedSize(horizontal: false, vertical: true)
@@ -8768,7 +8959,7 @@ private struct CaptureSessionTranscriptReviewCard: View {
             }
             .buttonStyle(.plain)
             .captureCard()
-            .accessibilityHint("Opens the transcript and suggested follow-up. It does not start playback or keep any suggestion.")
+            .accessibilityHint("Opens transcript correction, exact-source playback, and text-based recording editing. Playback does not start automatically.")
             .accessibilityIdentifier("CaptureSessionTranscriptReviewLink_\(session.callRoomId)")
         } else if transcriptLifecycleVisible {
             VStack(alignment: .leading, spacing: 10) {
@@ -13780,7 +13971,7 @@ private struct CaptureRecordingEditCard: View {
                     .accessibilityHidden(true)
 
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Review recording")
+                    Text("Edit recording")
                         .font(.subheadline.weight(.semibold))
                     Text("Trim, listen, and share a private copy without changing the original recording.")
                         .font(.caption)

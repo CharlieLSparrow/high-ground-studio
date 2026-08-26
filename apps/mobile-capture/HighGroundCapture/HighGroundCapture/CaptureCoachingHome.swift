@@ -3320,8 +3320,8 @@ private struct CaptureCoachingEngagementWorkspaceView: View {
         if relationshipPulseIsLive(session) { return "Join Session" }
         if session.status?.uppercased() == "ENDED" {
             return session.latestTranscriptStatus?.uppercased() == "COMPLETED"
-                ? "Review transcript"
-                : "Review Session"
+                ? "Open transcript"
+                : "Open Session"
         }
         if let start = session.scheduledStart.flatMap(coachingISO8601Date), start < Date() {
             return "Open Session"
