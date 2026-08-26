@@ -1537,6 +1537,28 @@ export function BrowserSourceRecorder({
     async (ledger: BrowserSourceCaptureLedger) => {
       let attempted = ledger;
       try {
+        if (
+          browserSourceInterruptedRecoveryCandidate(
+            attempted,
+            recorderRef.current?.state === "recording"
+              ? ledgerRef.current?.captureId
+              : null,
+          )
+        ) {
+          setStatus("uploading");
+          setMessage(
+            "Reconciling the recording protected before this browser stopped…",
+          );
+          const file = await loadBrowserSourceFile(attempted.opfsFileName);
+          const hash = await hashBrowserSourceFile(file);
+          attempted = finalizeInterruptedBrowserSourceLedger({
+            ledger: attempted,
+            sha256: hash.sha256,
+            sizeBytes: hash.sizeBytes,
+            recoveredAt: new Date().toISOString(),
+          });
+          await updateLedger(attempted);
+        }
         try {
           attempted = await repairStopReceipt(attempted);
         } catch (error) {
@@ -1628,27 +1650,7 @@ export function BrowserSourceRecorder({
         );
         for (const ledger of interrupted) {
           automaticUploadRecoveryAttemptedRef.current.add(ledger.captureId);
-          setStatus("uploading");
-          setMessage(
-            "Recovering the recording saved before this browser closed…",
-          );
-          const file = await loadBrowserSourceFile(ledger.opfsFileName);
-          const hash = await hashBrowserSourceFile(file);
-          let recovered = finalizeInterruptedBrowserSourceLedger({
-            ledger,
-            sha256: hash.sha256,
-            sizeBytes: hash.sizeBytes,
-            recoveredAt: new Date().toISOString(),
-          });
-          await updateLedger(recovered);
-          try {
-            recovered = await repairStopReceipt(recovered);
-          } catch (error) {
-            // Local bytes and their inferred interruption boundary remain the
-            // authority. The coordination receipt is repaired opportunistically.
-            recovered = await rememberStopReceiptFailure(recovered, error);
-          }
-          await retryUploadLedger(recovered);
+          await retryUploadLedger(ledger);
         }
         await resumeBrowserSourceUploads({
           attemptedCaptureIds: automaticUploadRecoveryAttemptedRef.current,
@@ -2125,6 +2127,7 @@ export function BrowserSourceRecorder({
         uploadedBytes: 0,
         sha256: null,
         chunks: [],
+        pendingChunk: null,
         startReceiptId,
         stopReceiptId,
         startReceiptPersisted: false,
@@ -2160,6 +2163,11 @@ export function BrowserSourceRecorder({
                 : null,
               receivedAt: new Date().toISOString(),
             };
+            await updateLedger({
+              ...current,
+              pendingChunk: chunk,
+              updatedAt: chunk.receivedAt,
+            });
             const committed = await durableWriter.write(
               event.data,
               current.sizeBytes,
@@ -2170,12 +2178,25 @@ export function BrowserSourceRecorder({
                 `Local source committed ${committed.committedSizeBytes} bytes; expected ${expectedSizeBytes}.`,
               );
             }
+            const acknowledged = ledgerRef.current;
+            if (
+              !acknowledged ||
+              acknowledged.captureId !== current.captureId ||
+              acknowledged.pendingChunk?.index !== chunk.index ||
+              acknowledged.pendingChunk.byteOffset !== chunk.byteOffset ||
+              acknowledged.pendingChunk.sizeBytes !== chunk.sizeBytes
+            ) {
+              throw new Error(
+                "The local source chunk intent changed before durable acknowledgement.",
+              );
+            }
             await updateLedger({
-              ...current,
+              ...acknowledged,
               state: "recording",
               sizeBytes: committed.committedSizeBytes,
-              chunks: [...current.chunks, chunk],
-              updatedAt: chunk.receivedAt,
+              chunks: [...acknowledged.chunks, chunk],
+              pendingChunk: null,
+              updatedAt: new Date().toISOString(),
             });
             lastDurableChunkAtRef.current = Date.now();
           })
@@ -3327,7 +3348,13 @@ export function BrowserSourceRecorder({
                     >
                       <Download size={13} /> Download
                     </button>
-                    {browserSourceManualUploadRetryAvailable(ledger) ? (
+                    {browserSourceManualUploadRetryAvailable(ledger) ||
+                    browserSourceInterruptedRecoveryCandidate(
+                      ledger,
+                      recorderRef.current?.state === "recording"
+                        ? ledgerRef.current?.captureId
+                        : null,
+                    ) ? (
                       <button
                         type="button"
                         onClick={() => void retryUploadLedger(ledger)}
@@ -3337,7 +3364,14 @@ export function BrowserSourceRecorder({
                         {ledger.state === "verified" &&
                         browserSourceStopReceiptNeedsRepair(ledger)
                           ? "Retry Session status"
-                          : ledger.state === "verifying"
+                          : browserSourceInterruptedRecoveryCandidate(
+                                ledger,
+                                recorderRef.current?.state === "recording"
+                                  ? ledgerRef.current?.captureId
+                                  : null,
+                              )
+                            ? "Recover recording"
+                            : ledger.state === "verifying"
                             ? "Check verification"
                           : "Retry upload"}
                       </button>

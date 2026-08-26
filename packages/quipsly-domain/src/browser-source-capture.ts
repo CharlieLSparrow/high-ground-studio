@@ -123,6 +123,7 @@ export type BrowserSourceCaptureProfile = {
     readonly lastDurableChunkAt: string;
     readonly stopBoundaryInferredFromLastDurableChunk: true;
     readonly mediaTailMayBeIncomplete: true;
+    readonly pendingChunkDisposition?: "committed" | "not-committed";
   };
 };
 
@@ -148,6 +149,11 @@ export type BrowserSourceCaptureLedger = {
   readonly uploadedBytes: number;
   readonly sha256: string | null;
   readonly chunks: readonly BrowserSourceCaptureChunk[];
+  /**
+   * Write-ahead intent for the one serialized MediaRecorder chunk that may be
+   * inside OPFS but is not yet acknowledged by the durable chunk journal.
+   */
+  readonly pendingChunk?: BrowserSourceCaptureChunk | null;
   readonly callTransportGaps?: readonly {
     readonly startedAt: string;
     readonly stoppedAt: string;

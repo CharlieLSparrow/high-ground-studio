@@ -230,6 +230,116 @@ describe("browser source upload recovery", () => {
     });
   });
 
+  it("uses a write-ahead chunk intent to reconcile an ambiguous committed tail", () => {
+    const pending = {
+      index: 1,
+      byteOffset: 5,
+      sizeBytes: 7,
+      recorderTimecodeMs: 4_000,
+      receivedAt: "2026-08-22T12:00:04.000Z",
+    };
+    const interrupted = ledger("held", {
+      captureId: "ambiguous-tail",
+      stoppedAt: null,
+      sha256: null,
+      sizeBytes: 5,
+      chunks: [
+        {
+          index: 0,
+          byteOffset: 0,
+          sizeBytes: 5,
+          recorderTimecodeMs: 2_000,
+          receivedAt: "2026-08-22T12:00:02.000Z",
+        },
+      ],
+      pendingChunk: pending,
+      sourceProfile: {
+        monotonicStartedNanoseconds: "1000000000",
+      } as unknown as BrowserSourceCaptureLedger["sourceProfile"],
+    });
+
+    expect(browserSourceInterruptedRecoveryCandidate(interrupted)).toBe(true);
+    expect(
+      finalizeInterruptedBrowserSourceLedger({
+        ledger: interrupted,
+        sha256: "c".repeat(64),
+        sizeBytes: 12,
+        recoveredAt: "2026-08-22T12:01:00.000Z",
+      }),
+    ).toMatchObject({
+      state: "stopped",
+      sizeBytes: 12,
+      chunks: [interrupted.chunks[0], pending],
+      pendingChunk: null,
+      stoppedAt: pending.receivedAt,
+      sourceProfile: {
+        interruptionRecovery: {
+          pendingChunkDisposition: "committed",
+        },
+      },
+    });
+
+    const uncommitted = finalizeInterruptedBrowserSourceLedger({
+      ledger: interrupted,
+      sha256: "d".repeat(64),
+      sizeBytes: 5,
+      recoveredAt: "2026-08-22T12:01:00.000Z",
+    });
+    expect(uncommitted).toMatchObject({
+      sizeBytes: 5,
+      chunks: interrupted.chunks,
+      pendingChunk: null,
+      sourceProfile: {
+        interruptionRecovery: {
+          pendingChunkDisposition: "not-committed",
+        },
+      },
+    });
+
+    expect(() =>
+      finalizeInterruptedBrowserSourceLedger({
+        ledger: interrupted,
+        sha256: "e".repeat(64),
+        sizeBytes: 9,
+        recoveredAt: "2026-08-22T12:01:00.000Z",
+      }),
+    ).toThrow("pending chunk intent");
+  });
+
+  it("recovers a fully committed first chunk whose acknowledgement was lost", () => {
+    const pending = {
+      index: 0,
+      byteOffset: 0,
+      sizeBytes: 8,
+      recorderTimecodeMs: 2_000,
+      receivedAt: "2026-08-22T12:00:02.000Z",
+    };
+    const interrupted = ledger("recording", {
+      stoppedAt: null,
+      sha256: null,
+      sizeBytes: 0,
+      chunks: [],
+      pendingChunk: pending,
+      sourceProfile: {
+        monotonicStartedNanoseconds: "1000000000",
+      } as unknown as BrowserSourceCaptureLedger["sourceProfile"],
+    });
+
+    expect(browserSourceInterruptedRecoveryCandidate(interrupted)).toBe(true);
+    expect(
+      finalizeInterruptedBrowserSourceLedger({
+        ledger: interrupted,
+        sha256: "f".repeat(64),
+        sizeBytes: 8,
+        recoveredAt: "2026-08-22T12:01:00.000Z",
+      }),
+    ).toMatchObject({
+      sizeBytes: 8,
+      chunks: [pending],
+      pendingChunk: null,
+    });
+  });
+
   it("selects the next unattempted source and provides calm safety labels", () => {
     const first = ledger("stopped", { captureId: "first" });
     const second = ledger("uploading", { captureId: "second" });

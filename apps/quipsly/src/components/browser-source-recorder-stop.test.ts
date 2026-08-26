@@ -41,6 +41,26 @@ describe("browser source stop confidence", () => {
     expect(handler).not.toContain('setStatus("error")');
   });
 
+  it("journals each chunk intent before OPFS and acknowledges it only afterward", () => {
+    const source = fs.readFileSync(
+      path.resolve(process.cwd(), "src/components/browser-source-recorder.tsx"),
+      "utf8",
+    );
+    const start = source.indexOf("recorder.ondataavailable =");
+    const end = source.indexOf("recorder.onstop =", start);
+    const handler = source.slice(start, end);
+    const intent = handler.indexOf("pendingChunk: chunk");
+    const write = handler.indexOf("await durableWriter.write(");
+    const acknowledge = handler.indexOf("pendingChunk: null", write);
+
+    expect(intent).toBeGreaterThan(0);
+    expect(write).toBeGreaterThan(intent);
+    expect(acknowledge).toBeGreaterThan(write);
+    expect(handler).toContain(
+      "The local source chunk intent changed before durable acknowledgement.",
+    );
+  });
+
   it("does not let background recovery replace the live recorder ledger", () => {
     const source = fs.readFileSync(
       path.resolve(process.cwd(), "src/components/browser-source-recorder.tsx"),

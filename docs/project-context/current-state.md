@@ -4481,3 +4481,25 @@ rehearsal`) in an iPhone 17 Pro simulator. The signed-in UI acceptance opened
   worker termination, immediate close rejection, and absence of a late close
   command. Real worker termination during an OPFS flush followed by exact-byte
   ledger recovery and playback remains explicit flight evidence.
+
+### 2026-08-25 browser chunks use a recoverable write-ahead journal
+
+- Every serialized `MediaRecorder` chunk now writes a transactionally committed
+  intent to the participant-owned IndexedDB ledger before OPFS receives its
+  bytes. Only an exact worker acknowledgement advances `sizeBytes`, appends the
+  durable chunk, and clears that intent.
+- After interruption, Quipsly compares the actual protected file with both
+  defensible boundaries. If the file ends at the acknowledged ledger, the
+  pending chunk was not committed; if it ends exactly after the pending chunk,
+  that chunk is promoted once. Both paths clear the intent, retain an explicit
+  recovery disposition, hash the reconciled bytes, and continue the same STOP,
+  resumable-upload, canonical-finalization, and transcript path.
+- A partial or otherwise unexplained tail is never truncated, uploaded, or
+  described as durable media. It remains Held and downloadable with a visible
+  reason. Manual **Recover recording** invokes the same reconciliation as
+  online/visible/relaunch automation, including the first-chunk case where the
+  OPFS acknowledgement was lost before ledger size advanced above zero.
+- Eight focused recorder, journal, recovery, vault, endpoint, receipt, and
+  segment suites pass (41 tests); Quipsly and shared-domain TypeScript pass.
+  Real crash timing at each write boundary, OPFS byte inspection, exact hash,
+  upload, canonical playback, and transcript handoff remain flight evidence.

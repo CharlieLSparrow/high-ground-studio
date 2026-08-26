@@ -92,9 +92,9 @@ export function browserSourceInterruptedRecoveryCandidate(
 ): ledger is InterruptedBrowserSourceLedger {
   if (ledger.captureId === activeCaptureId) return false;
   if (!INTERRUPTED_STATES.has(ledger.state)) return false;
-  if (ledger.stoppedAt || ledger.sha256 || ledger.sizeBytes <= 0) return false;
+  if (ledger.stoppedAt || ledger.sha256 || ledger.sizeBytes < 0) return false;
   if (!ledger.recordingConsentId || !ledger.participantId) return false;
-  if (!ledger.chunks.length) return false;
+  if (!ledger.chunks.length && !ledger.pendingChunk) return false;
   let expectedOffset = 0;
   for (const chunk of ledger.chunks) {
     if (
@@ -105,7 +105,14 @@ export function browserSourceInterruptedRecoveryCandidate(
       return false;
     expectedOffset += chunk.sizeBytes;
   }
-  return expectedOffset === ledger.sizeBytes;
+  if (expectedOffset !== ledger.sizeBytes) return false;
+  const pending = ledger.pendingChunk;
+  if (!pending) return ledger.sizeBytes > 0;
+  return Boolean(
+    pending.index === ledger.chunks.length &&
+      pending.byteOffset === ledger.sizeBytes &&
+      pending.sizeBytes > 0,
+  );
 }
 
 function inferredMonotonicStop(ledger: BrowserSourceCaptureLedger) {
@@ -142,18 +149,46 @@ export function finalizeInterruptedBrowserSourceLedger(input: {
       "This browser source is not a complete durable interruption candidate.",
     );
   }
-  if (
-    input.sizeBytes !== ledger.sizeBytes ||
-    !/^[a-f0-9]{64}$/i.test(input.sha256)
-  ) {
+  if (!/^[a-f0-9]{64}$/i.test(input.sha256)) {
     throw new Error(
       "Recovered browser source bytes do not match the durable chunk ledger.",
     );
   }
-  const lastDurableChunkAt = ledger.chunks.at(-1)!.receivedAt;
-  const monotonicStoppedNanoseconds = inferredMonotonicStop(ledger);
-  return {
+  const pending = ledger.pendingChunk;
+  const pendingChunkDisposition = pending
+    ? input.sizeBytes === ledger.sizeBytes
+      ? "not-committed"
+      : input.sizeBytes === ledger.sizeBytes + pending.sizeBytes
+        ? "committed"
+        : null
+    : null;
+  if (
+    (!pending && input.sizeBytes !== ledger.sizeBytes) ||
+    (pending && !pendingChunkDisposition)
+  ) {
+    throw new Error(
+      "Recovered browser source bytes do not match either the acknowledged ledger or its pending chunk intent. The original remains held for download.",
+    );
+  }
+  const chunks =
+    pendingChunkDisposition === "committed"
+      ? [...ledger.chunks, pending!]
+      : ledger.chunks;
+  if (!chunks.length || input.sizeBytes <= 0) {
+    throw new Error(
+      "The interrupted browser source does not contain a complete committed media chunk.",
+    );
+  }
+  const lastDurableChunkAt = chunks.at(-1)!.receivedAt;
+  const reconciledLedger = {
     ...ledger,
+    sizeBytes: input.sizeBytes,
+    chunks,
+    pendingChunk: null,
+  } satisfies BrowserSourceCaptureLedger;
+  const monotonicStoppedNanoseconds = inferredMonotonicStop(reconciledLedger);
+  return {
+    ...reconciledLedger,
     state: "stopped" as const,
     stoppedAt: lastDurableChunkAt,
     sha256: input.sha256.toLowerCase(),
@@ -168,6 +203,9 @@ export function finalizeInterruptedBrowserSourceLedger(input: {
         lastDurableChunkAt,
         stopBoundaryInferredFromLastDurableChunk: true as const,
         mediaTailMayBeIncomplete: true as const,
+        ...(pendingChunkDisposition
+          ? { pendingChunkDisposition }
+          : {}),
       },
     },
     failureReason: null,
