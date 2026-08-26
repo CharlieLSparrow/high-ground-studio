@@ -21,6 +21,9 @@ test("coaching capacity rehearsal remains local, adversarial, and non-credential
   assert.match(source, /finiteSeriesCreatedAtomically/);
   assert.match(source, /create-session-invitation/);
   assert.match(source, /foreign-engagement-refusal/);
+  assert.match(source, /quipsly-coaching-practice-command-v1/);
+  assert.match(source, /canonicalPracticeCommandProjectedForEveryCoach/);
+  assert.match(source, /practiceCommandRingNeighborIsolationProven/);
   assert.match(source, /productApiWritesOnly: true/);
   assert.match(source, /directDatabaseWrites: false/);
   assert.match(source, /renderedNoviceExperienceProven: false/);

@@ -258,6 +258,34 @@ async function verifyPractice(practice, neighbor) {
     runway.payload.upcomingBookings?.some((booking) => booking.id === practice.bookingId),
     "A coach could not read back the booking created through their own product session.",
   );
+  assert.equal(
+    runway.payload?.practiceCommand?.schema,
+    "quipsly-coaching-practice-command-v1",
+    "A coach did not receive the canonical practice command projection.",
+  );
+  assert.equal(
+    runway.payload?.practiceCommand?.deterministic,
+    true,
+    "A coach practice command was not deterministic.",
+  );
+  assert.equal(
+    runway.payload?.practiceCommand?.externalSideEffects,
+    false,
+    "Reading a coach practice command claimed an external side effect.",
+  );
+  assert(
+    runway.payload.practiceCommand.items?.some(
+      (item) => item.bookingId === practice.bookingId || item.roomId === practice.callRoomId,
+    ),
+    "A coach practice command omitted its own exact Session.",
+  );
+  assert.equal(
+    runway.payload.practiceCommand.items?.some(
+      (item) => item.bookingId === neighbor.bookingId || item.roomId === neighbor.callRoomId,
+    ),
+    false,
+    "A coach practice command leaked a neighboring practice.",
+  );
   assert(
     sessions.payload.sessions?.some((session) => session.callRoomId === practice.callRoomId),
     "A coach could not read back the Session created through their own product session.",
@@ -374,6 +402,10 @@ async function main() {
       productionScaleProven: false,
       finiteSeriesCreatedAtomically: seriesProbe?.occurrenceCount === 4,
       finiteSeriesRetryWasIdempotent: Boolean(seriesProbe),
+      canonicalPracticeCommandProjectedForEveryCoach:
+        error === null && practices.length === requestedCount,
+      practiceCommandRingNeighborIsolationProven:
+        error === null && practices.length === requestedCount,
     },
   };
   await mkdir(artifactDirectory, { recursive: true, mode: 0o700 });
