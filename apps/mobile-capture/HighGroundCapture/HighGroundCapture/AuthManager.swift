@@ -424,7 +424,7 @@ final class AuthManager: ObservableObject {
                     return
                 }
 
-                setOnlineState()
+                await setOnlineState()
                 finishInteractiveAuthAttempt(attemptID)
             } catch AppleSignInCoordinator.FlowError.cancelled {
                 finishInteractiveAuthAttempt(attemptID)
@@ -497,7 +497,7 @@ final class AuthManager: ObservableObject {
                     return
                 }
 
-                setOnlineState()
+                await setOnlineState()
                 finishInteractiveAuthAttempt(attemptID)
             } catch {
                 if Self.isGoogleSignInCancellation(error) {
@@ -556,7 +556,7 @@ final class AuthManager: ObservableObject {
                     return
                 }
 
-                setOnlineState()
+                await setOnlineState()
                 finishInteractiveAuthAttempt(attemptID)
             } catch {
                 failInteractiveAuthAttempt(attemptID, error: error)
@@ -728,7 +728,7 @@ final class AuthManager: ObservableObject {
                     errorMessage = storageMessage
                     return false
                 }
-                setOnlineState()
+                await setOnlineState()
                 return true
             } catch {
                 if error is CancellationError || !storedSessionBindingMatches(storedSessionBinding, expectedRefreshToken: refreshToken) {
@@ -1097,7 +1097,7 @@ final class AuthManager: ObservableObject {
                 errorMessage = storageMessage
                 return false
             }
-            setOnlineState()
+            await setOnlineState()
             return true
         } catch {
             if error is CancellationError
@@ -1603,7 +1603,16 @@ final class AuthManager: ObservableObject {
         )
     }
 
-    private func setOnlineState() {
+    private func setOnlineState() async {
+        // A fast cached-token verification can finish while SwiftUI is still
+        // mounting the checking/offline shell. Cross one main-queue turn
+        // before publishing the authenticated shell so Combine never sends a
+        // nested view update from that launch transaction.
+        await withCheckedContinuation { continuation in
+            DispatchQueue.main.async {
+                continuation.resume()
+            }
+        }
         isAuthenticated = true
         accessMode = .online
         offlineAccessMessage = nil
