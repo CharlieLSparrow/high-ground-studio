@@ -1701,7 +1701,11 @@ export function BrowserSourceRecorder({
       !participantId ||
       navigator.onLine === false ||
       activeCaptureOperationRef.current ||
-      !recoveryRows.some(browserSourceUploadCanResumeAutomatically)
+      !recoveryRows.some(
+        (ledger) =>
+          browserSourceUploadCanResumeAutomatically(ledger) ||
+          browserSourceStopReceiptNeedsRepair(ledger),
+      )
     )
       return;
     const timer = window.setTimeout(

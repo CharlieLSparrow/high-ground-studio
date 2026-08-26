@@ -123,6 +123,9 @@ describe("browser source stop confidence", () => {
       "serverRecordingAssetId: finalizationProjection.recordingAssetId",
     );
     expect(source).toContain("resumeProtectedUploads(true)");
+    expect(source).toContain(
+      "browserSourceStopReceiptNeedsRepair(ledger)",
+    );
     expect(source).toContain('ledger.state === "verifying"');
     expect(source).not.toContain(
       'finalized.uploadStage === "verified" ||',
