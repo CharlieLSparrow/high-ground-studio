@@ -201,9 +201,15 @@ final class CaptureExperienceUITests: XCTestCase {
                 .waitForExistence(timeout: 5),
             "A client space should lead with the next Session and relationship work instead of making a coach hunt through cards."
         )
+        let primaryAction = app.buttons["CaptureCoachingRelationshipPrimaryAction"]
         XCTAssertTrue(
-            app.buttons["CaptureCoachingRelationshipPrimaryAction"].exists,
+            primaryAction.exists,
             "The relationship pulse should provide one status-aware primary Session action."
+        )
+        XCTAssertEqual(
+            primaryAction.label,
+            "Prepare Session",
+            "The same upcoming canonical Session should drive the relationship's next action."
         )
     }
 
