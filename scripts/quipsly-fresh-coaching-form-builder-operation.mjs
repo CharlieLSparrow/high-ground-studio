@@ -59,7 +59,21 @@ try {
     password,
     callbackPath: `/coaching/forms?relationship=${encodeURIComponent(target.engagementId)}`,
   });
-  await page.getByRole("button", { name: "Create your own", exact: true }).click();
+  const createButton = page.getByRole("button", {
+    name: "Create your own",
+    exact: true,
+  });
+  try {
+    await createButton.click();
+  } catch (error) {
+    const visibleMainText = await page.locator("main").last().innerText().catch(
+      () => "The page did not render a main surface.",
+    );
+    throw new Error(
+      `The coach could not open the custom form builder. Visible page: ${visibleMainText.slice(0, 1_500)}`,
+      { cause: error },
+    );
+  }
   await page
     .getByRole("heading", {
       name: "Build something your clients will actually finish.",
