@@ -4345,3 +4345,24 @@ rehearsal`) in an iPhone 17 Pro simulator. The signed-in UI acceptance opened
   provider connection resolved only after safe-exit acknowledgement. Full
   Quipsly TypeScript and the shared Capture contract pass; real delayed network
   and browser permission behavior remain flight evidence.
+
+### 2026-08-25 participant-owned browser recovery vault
+
+- Browser source recovery no longer projects every local ledger for a Session.
+  IndexedDB schema v2 adds an exact `[callRoomId, participantId]` compound
+  index, and recovery listing, interrupted finalization, automatic upload,
+  retry, download UI, and endpoint-queue publication all require the canonical
+  participant returned by the authenticated Session consent boundary.
+- Missing participant identity fails closed. Legacy entries without a canonical
+  participant remain preserved in OPFS/IndexedDB but are not exposed or
+  uploaded for whichever account happens to sign in next.
+- Endpoint queue cursors now include participant identity as well as room and
+  capture group. A shared browser therefore cannot replay one participant's
+  pending local snapshot while operating as another participant. Server upload
+  creation already rechecks the signed-in actor against the participant and
+  consent receipt; the client now enforces the matching boundary before any
+  recovery network action.
+- Six focused ownership, endpoint queue, receipt outbox, upload recovery,
+  consent, and stop suites pass (27 tests). Full Quipsly TypeScript and the
+  shared Capture contract pass. Real browser schema upgrade, account switching,
+  OPFS recovery, and exact-source playback remain flight-ledger evidence.

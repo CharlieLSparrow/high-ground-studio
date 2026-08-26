@@ -34,7 +34,7 @@ import {
   createBrowserSourceDurableWriter,
   downloadBrowserSource,
   hashBrowserSourceFile,
-  listBrowserSourceLedgers,
+  listBrowserSourceLedgersForParticipant,
   loadBrowserSourceFile,
   saveBrowserSourceLedger,
   type BrowserSourceDurableWriter,
@@ -484,15 +484,16 @@ export function BrowserSourceRecorder({
   }, [flushRecordingReceipts, participantId]);
 
   const reconcileEndpointQueue = useCallback(() => {
+    if (!participantId) return;
     if (endpointQueueTimerRef.current !== null)
       window.clearTimeout(endpointQueueTimerRef.current);
     endpointQueueTimerRef.current = window.setTimeout(() => {
       endpointQueueTimerRef.current = null;
-      void publishBrowserEndpointQueue({ callRoomId, captureGroupId }).catch(
+      void publishBrowserEndpointQueue({ callRoomId, captureGroupId, participantId }).catch(
         () => undefined,
       );
     }, 350);
-  }, [callRoomId, captureGroupId]);
+  }, [callRoomId, captureGroupId, participantId]);
 
   useEffect(() => {
     reconcileEndpointQueue();
@@ -508,9 +509,16 @@ export function BrowserSourceRecorder({
   }, [onSourceLockChange, sourceLocked]);
 
   const refreshRecovery = useCallback(async () => {
-    const rows = await listBrowserSourceLedgers(callRoomId).catch(() => []);
+    if (!participantId) {
+      setRecoveryRows([]);
+      return;
+    }
+    const rows = await listBrowserSourceLedgersForParticipant({
+      callRoomId,
+      participantId,
+    }).catch(() => []);
     setRecoveryRows(rows);
-  }, [callRoomId]);
+  }, [callRoomId, participantId]);
 
   const refreshStudioHandoff = useCallback(
     async (announce = true) => {
@@ -636,9 +644,18 @@ export function BrowserSourceRecorder({
     void Promise.all([
       browserSourceVaultReadiness(),
       policyRequest,
-      listBrowserSourceLedgers(callRoomId).catch(() => []),
     ])
-      .then(([vault, consentPacket, rows]) => {
+      .then(async ([vault, consentPacket]) => {
+        const currentParticipantId =
+          typeof consentPacket?.session?.participantId === "string"
+            ? consentPacket.session.participantId
+            : "";
+        const rows = currentParticipantId
+          ? await listBrowserSourceLedgersForParticipant({
+              callRoomId,
+              participantId: currentParticipantId,
+            }).catch(() => [])
+          : [];
         if (cancelled) return;
         const savedAudioConsent =
           consentPacket?.session?.recordingConsentCanRecordAudio === true;
@@ -665,7 +682,7 @@ export function BrowserSourceRecorder({
           canTranscribe:
             consentPacket?.session?.recordingConsentCanTranscribe === true,
         }));
-        setParticipantId(consentPacket?.session?.participantId ?? null);
+        setParticipantId(currentParticipantId || null);
         setAllPartyAudioReady(
           consentPacket?.session?.allRegisteredParticipantConsentGranted ===
             true,
@@ -1469,6 +1486,7 @@ export function BrowserSourceRecorder({
   const resumeProtectedUploads = useCallback(
     async (resetAttempts = false) => {
       if (
+        !participantId ||
         navigator.onLine === false ||
         automaticUploadRecoveryInFlightRef.current
       )
@@ -1476,7 +1494,10 @@ export function BrowserSourceRecorder({
       if (resetAttempts) automaticUploadRecoveryAttemptedRef.current.clear();
       automaticUploadRecoveryInFlightRef.current = true;
       try {
-        const interrupted = (await listBrowserSourceLedgers(callRoomId)).filter(
+        const interrupted = (await listBrowserSourceLedgersForParticipant({
+          callRoomId,
+          participantId,
+        })).filter(
           (ledger) =>
             browserSourceInterruptedRecoveryCandidate(
               ledger,
@@ -1523,7 +1544,10 @@ export function BrowserSourceRecorder({
         }
         await resumeBrowserSourceUploads({
           attemptedCaptureIds: automaticUploadRecoveryAttemptedRef.current,
-          list: () => listBrowserSourceLedgers(callRoomId).catch(() => []),
+          list: () => listBrowserSourceLedgersForParticipant({
+            callRoomId,
+            participantId,
+          }).catch(() => []),
           resume: async (ledger) => {
             setMessage("Finishing a recording already saved on this device…");
             await retryUploadLedger(ledger);
@@ -1540,7 +1564,7 @@ export function BrowserSourceRecorder({
         automaticUploadRecoveryInFlightRef.current = false;
       }
     },
-    [callRoomId, retryUploadLedger, updateLedger],
+    [callRoomId, participantId, retryUploadLedger, updateLedger],
   );
 
   useEffect(() => {

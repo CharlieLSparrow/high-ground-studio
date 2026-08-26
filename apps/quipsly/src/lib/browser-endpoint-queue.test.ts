@@ -6,10 +6,10 @@ jest.mock("@/lib/browser-client-instance", () => ({
   browserClientInstanceId: () => "web-installation",
 }));
 jest.mock("@/lib/browser-source-vault", () => ({
-  listBrowserSourceLedgers: jest.fn(),
+  listBrowserSourceLedgersForParticipant: jest.fn(),
 }));
 
-import { listBrowserSourceLedgers } from "@/lib/browser-source-vault";
+import { listBrowserSourceLedgersForParticipant } from "@/lib/browser-source-vault";
 
 import { buildBrowserEndpointQueueSnapshot, publishBrowserEndpointQueue } from "./browser-endpoint-queue";
 
@@ -74,6 +74,8 @@ function jsonResponse(body: unknown, status = 200) {
 }
 
 describe("browser endpoint queue snapshot", () => {
+  const participantId = "participant-1";
+  const queueKey = "quipsly-endpoint-queue:v3:participant-1:room-1:02878899-33af-4d5c-a7b9-d52df81a86f6";
   beforeEach(() => {
     window.localStorage.clear();
     jest.clearAllMocks();
@@ -102,7 +104,7 @@ describe("browser endpoint queue snapshot", () => {
   });
 
   it("persists and replays the exact pending request when the first response is lost", async () => {
-    jest.mocked(listBrowserSourceLedgers).mockResolvedValue([
+    jest.mocked(listBrowserSourceLedgersForParticipant).mockResolvedValue([
       ledger({ state: "verified", serverRecordingAssetId: "asset-1" }),
     ]);
     const fetchMock = jest.fn()
@@ -114,32 +116,33 @@ describe("browser endpoint queue snapshot", () => {
       }));
     global.fetch = fetchMock;
 
-    await expect(publishBrowserEndpointQueue({ callRoomId: "room-1", captureGroupId: "02878899-33af-4d5c-a7b9-d52df81a86f6" }))
+    await expect(publishBrowserEndpointQueue({ callRoomId: "room-1", captureGroupId: "02878899-33af-4d5c-a7b9-d52df81a86f6", participantId }))
       .rejects.toThrow("response lost");
-    const durablePending = JSON.parse(window.localStorage.getItem("quipsly-endpoint-queue:room-1:02878899-33af-4d5c-a7b9-d52df81a86f6") || "null");
+    expect(listBrowserSourceLedgersForParticipant).toHaveBeenCalledWith({ callRoomId: "room-1", participantId });
+    const durablePending = JSON.parse(window.localStorage.getItem(queueKey) || "null");
     expect(durablePending).toMatchObject({
       version: 2,
       lastRevision: "1",
       pending: { fingerprint: expect.any(String), queueRevision: "1", requestId: expect.any(String), reconciledAt: expect.any(String) },
     });
 
-    await expect(publishBrowserEndpointQueue({ callRoomId: "room-1", captureGroupId: "02878899-33af-4d5c-a7b9-d52df81a86f6" }))
+    await expect(publishBrowserEndpointQueue({ callRoomId: "room-1", captureGroupId: "02878899-33af-4d5c-a7b9-d52df81a86f6", participantId }))
       .resolves.toMatchObject({ acknowledged: true, unchanged: false });
 
     const firstPost = JSON.parse(fetchMock.mock.calls[1][1].body);
     const replayPost = JSON.parse(fetchMock.mock.calls[2][1].body);
     expect(replayPost).toEqual(firstPost);
     expect(fetchMock).toHaveBeenCalledTimes(3);
-    expect(JSON.parse(window.localStorage.getItem("quipsly-endpoint-queue:room-1:02878899-33af-4d5c-a7b9-d52df81a86f6") || "null"))
+    expect(JSON.parse(window.localStorage.getItem(queueKey) || "null"))
       .toMatchObject({ acknowledgedFingerprint: expect.any(String), lastRevision: "1", pending: null });
   });
 
   it("repairs a corrupt local revision from server readback before advancing", async () => {
-    jest.mocked(listBrowserSourceLedgers).mockResolvedValue([
+    jest.mocked(listBrowserSourceLedgersForParticipant).mockResolvedValue([
       ledger({ state: "verified", serverRecordingAssetId: "asset-1" }),
     ]);
     window.localStorage.setItem(
-      "quipsly-endpoint-queue:room-1:02878899-33af-4d5c-a7b9-d52df81a86f6",
+      queueKey,
       JSON.stringify({ version: 2, lastRevision: "corrupt", pending: { nope: true } }),
     );
     const fetchMock = jest.fn()
@@ -153,8 +156,21 @@ describe("browser endpoint queue snapshot", () => {
       }));
     global.fetch = fetchMock;
 
-    await publishBrowserEndpointQueue({ callRoomId: "room-1", captureGroupId: "02878899-33af-4d5c-a7b9-d52df81a86f6" });
+    await publishBrowserEndpointQueue({ callRoomId: "room-1", captureGroupId: "02878899-33af-4d5c-a7b9-d52df81a86f6", participantId });
 
     expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toMatchObject({ queueRevision: "8" });
+  });
+
+  it("does not read or publish a queue without an exact participant owner", async () => {
+    global.fetch = jest.fn();
+
+    await expect(publishBrowserEndpointQueue({
+      callRoomId: "room-1",
+      captureGroupId: "02878899-33af-4d5c-a7b9-d52df81a86f6",
+      participantId: " ",
+    })).resolves.toBeNull();
+
+    expect(listBrowserSourceLedgersForParticipant).not.toHaveBeenCalled();
+    expect(global.fetch).not.toHaveBeenCalled();
   });
 });

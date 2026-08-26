@@ -4,8 +4,9 @@ import type { BrowserSourceCaptureLedger } from "@high-ground/quipsly-domain";
 import { createSHA256 } from "hash-wasm";
 
 const DATABASE_NAME = "QuipslyBrowserSourceVault";
-const DATABASE_VERSION = 1;
+const DATABASE_VERSION = 2;
 const LEDGER_STORE = "capture-ledgers";
+const ROOM_PARTICIPANT_INDEX = "callRoomId-participantId";
 const OPFS_DIRECTORY = "quipsly-browser-sources-v1";
 
 let databasePromise: Promise<IDBDatabase> | null = null;
@@ -18,10 +19,21 @@ function database() {
   databasePromise = new Promise<IDBDatabase>((resolve, reject) => {
     const request = window.indexedDB.open(DATABASE_NAME, DATABASE_VERSION);
     request.onupgradeneeded = () => {
-      if (!request.result.objectStoreNames.contains(LEDGER_STORE)) {
-        const store = request.result.createObjectStore(LEDGER_STORE, { keyPath: "captureId" });
+      const store = request.result.objectStoreNames.contains(LEDGER_STORE)
+        ? request.transaction!.objectStore(LEDGER_STORE)
+        : request.result.createObjectStore(LEDGER_STORE, { keyPath: "captureId" });
+      if (!store.indexNames.contains("callRoomId")) {
         store.createIndex("callRoomId", "callRoomId", { unique: false });
+      }
+      if (!store.indexNames.contains("updatedAt")) {
         store.createIndex("updatedAt", "updatedAt", { unique: false });
+      }
+      if (!store.indexNames.contains(ROOM_PARTICIPANT_INDEX)) {
+        store.createIndex(
+          ROOM_PARTICIPANT_INDEX,
+          ["callRoomId", "participantId"],
+          { unique: false },
+        );
       }
     };
     request.onsuccess = () => resolve(request.result);
@@ -80,6 +92,37 @@ export async function listBrowserSourceLedgers(callRoomId?: string) {
     : store.getAll();
   const rows = await transactionRequest(request, transaction) as BrowserSourceCaptureLedger[];
   return rows.sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+}
+
+export function browserSourceLedgersOwnedByParticipant(
+  ledgers: readonly BrowserSourceCaptureLedger[],
+  participantId: string,
+) {
+  const ownerParticipantId = participantId.trim();
+  if (!ownerParticipantId) return [];
+  return ledgers.filter(
+    (ledger) => ledger.participantId === ownerParticipantId,
+  );
+}
+
+export async function listBrowserSourceLedgersForParticipant(input: {
+  callRoomId: string;
+  participantId: string;
+}) {
+  const callRoomId = input.callRoomId.trim();
+  const participantId = input.participantId.trim();
+  if (!callRoomId || !participantId) return [];
+  const db = await database();
+  const transaction = db.transaction(LEDGER_STORE, "readonly");
+  const request = transaction.objectStore(LEDGER_STORE)
+    .index(ROOM_PARTICIPANT_INDEX)
+    .getAll(IDBKeyRange.only([callRoomId, participantId]));
+  const rows = await transactionRequest(
+    request,
+    transaction,
+  ) as BrowserSourceCaptureLedger[];
+  return browserSourceLedgersOwnedByParticipant(rows, participantId)
+    .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
 }
 
 export type BrowserSourceDurableWriter = {

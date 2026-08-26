@@ -1,7 +1,7 @@
 import type { BrowserSourceCaptureLedger } from "@high-ground/quipsly-domain";
 
 import { browserClientInstanceId } from "@/lib/browser-client-instance";
-import { listBrowserSourceLedgers } from "@/lib/browser-source-vault";
+import { listBrowserSourceLedgersForParticipant } from "@/lib/browser-source-vault";
 
 export type BrowserEndpointQueueSnapshot = {
   clientInstanceId: string;
@@ -135,13 +135,19 @@ function largerRevision(left: string, right: string) {
 export async function publishBrowserEndpointQueue(input: {
   callRoomId: string;
   captureGroupId: string;
+  participantId: string;
 }, retriedAfterStale = false) {
-  const ledgers = (await listBrowserSourceLedgers(input.callRoomId))
+  const participantId = input.participantId.trim();
+  if (!participantId) return null;
+  const ledgers = (await listBrowserSourceLedgersForParticipant({
+    callRoomId: input.callRoomId,
+    participantId,
+  }))
     .filter((ledger) => ledger.captureGroupId === input.captureGroupId);
   const snapshot = buildBrowserEndpointQueueSnapshot(ledgers, browserClientInstanceId());
   if (!snapshot) return null;
   const fingerprint = snapshotFingerprint(snapshot);
-  const key = `quipsly-endpoint-queue:${input.callRoomId}:${input.captureGroupId}`;
+  const key = `quipsly-endpoint-queue:v3:${encodeURIComponent(participantId)}:${input.callRoomId}:${input.captureGroupId}`;
   let cursor = readPublishCursor(key);
   if (cursor.acknowledgedFingerprint === fingerprint) return { acknowledged: true as const, unchanged: true as const };
   let pending = cursor.pending?.fingerprint === fingerprint ? cursor.pending : null;
