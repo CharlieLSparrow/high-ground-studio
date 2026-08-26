@@ -2526,15 +2526,15 @@ final class CaptureExperienceUITests: XCTestCase {
         reviewLink.tap()
 
         XCTAssertTrue(app.scrollViews["CaptureTranscriptReviewView"].waitForExistence(timeout: 5))
-        let followUpReady = app.descendants(matching: .any)["CaptureTranscriptPacketLoadedBoundary"].firstMatch
-        reveal(followUpReady, searchAboveFirst: false)
+        let moreSuggestions = app.descendants(matching: .any)["CapturePacketAdditionalSuggestionsDisclosure"].firstMatch
+        reveal(moreSuggestions, searchAboveFirst: false)
         XCTAssertTrue(
-            followUpReady.exists,
-            "A completed transcript should make its prepared follow-up easy to find."
+            moreSuggestions.exists,
+            "Optional transcript suggestions should remain easy to find without becoming a required follow-up queue."
         )
-        XCTAssertTrue(followUpReady.label.contains("Follow-up suggestions ready"))
-        XCTAssertFalse(followUpReady.label.contains("Review packet loaded"))
-        XCTAssertTrue(followUpReady.label.contains("Nothing is shared with a client automatically"))
+        XCTAssertTrue(moreSuggestions.label.contains("More suggestions"))
+        XCTAssertTrue(moreSuggestions.label.contains("never block"))
+        XCTAssertFalse(moreSuggestions.label.contains("Review packet"))
     }
 
     func testTranscriptPreviewVoiceIdentityStaysDisabled() throws {
@@ -2591,9 +2591,11 @@ final class CaptureExperienceUITests: XCTestCase {
             .hitRegion,
             .sufficientElementDescription,
         ])
-        let packetQueueProgress = app.descendants(matching: .any)["CapturePacketCandidateReviewCounts"]
-        reveal(packetQueueProgress)
-        XCTAssertTrue(packetQueueProgress.exists)
+        let moreSuggestions = app.descendants(matching: .any)["CapturePacketAdditionalSuggestionsDisclosure"].firstMatch
+        reveal(moreSuggestions)
+        XCTAssertTrue(moreSuggestions.exists)
+        moreSuggestions.tap()
+        XCTAssertFalse(app.descendants(matching: .any)["CaptureTranscriptReviewProgressCount"].exists)
         XCTAssertTrue(app.descendants(matching: .any)["CapturePacketCandidateReviewFilter"].exists)
         let packetTaskAccept = app.buttons["CapturePacketTaskAcceptButton"]
         reveal(packetTaskAccept)

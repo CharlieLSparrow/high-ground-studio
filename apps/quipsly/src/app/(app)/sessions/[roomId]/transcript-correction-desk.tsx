@@ -2095,9 +2095,9 @@ export function TranscriptCorrectionDesk({
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <p className="text-xs font-black uppercase tracking-[0.18em] text-[#987443]">Transcript</p>
-            <h2 id="transcript-correction-heading" className="mt-2 font-serif text-3xl font-black text-[#3d3122]">Review and edit the transcript</h2>
-            <p className="mt-2 max-w-3xl text-sm font-semibold leading-relaxed text-[#765f40]">Play any passage to check it, then correct the words or speaker name. Transcript corrections never cut the recording.</p>
-            {desk.segments.length > 0 && <p className="mt-3 text-sm font-black text-emerald-800">{reviewedSegmentCount} of {desk.segments.length} passages checked</p>}
+            <h2 id="transcript-correction-heading" className="mt-2 font-serif text-3xl font-black text-[#3d3122]">Edit the transcript</h2>
+            <p className="mt-2 max-w-3xl text-sm font-semibold leading-relaxed text-[#765f40]">Correct any words or speaker names directly. Play a passage whenever hearing the source would help. Transcript corrections never cut the recording.</p>
+            {desk.segments.length > 0 && <p className="mt-3 text-sm font-black text-emerald-800">{desk.segments.length} timed passage{desk.segments.length === 1 ? "" : "s"}{reviewedSegmentCount > 0 ? ` · ${reviewedSegmentCount} checked against audio` : ""}</p>}
           </div>
           <div className="flex flex-wrap gap-2">
             {canEditRecording ? recordingEditor ? <button type="button" aria-expanded={showRecordingEditor} aria-controls="inline-recording-editor" onClick={() => { setRecordingEditorFocus(null); setShowRecordingEditor((current) => !current); }} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-sky-300 bg-sky-50 px-4 py-2 text-xs font-black uppercase tracking-wide text-sky-950"><Scissors size={15} aria-hidden="true" />{showRecordingEditor ? "Close recording editor" : "Trim or cut recording"}</button> : <Link href={`/sessions/${encodeURIComponent(roomId)}?mode=outputs#recording-share`} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-sky-300 bg-sky-50 px-4 py-2 text-xs font-black uppercase tracking-wide text-sky-950"><Scissors size={15} aria-hidden="true" />Trim or cut recording</Link> : null}
@@ -2200,9 +2200,9 @@ export function TranscriptCorrectionDesk({
         <section aria-labelledby="linear-transcript-heading" className="rounded-2xl border border-[#e5d5b7] bg-white p-4 shadow-sm sm:p-5">
           <div className="mb-5 flex flex-wrap items-end justify-between gap-4">
             <div>
-              <p className="text-xs font-black uppercase tracking-[0.18em] text-[#987443]">Review and correct</p>
+              <p className="text-xs font-black uppercase tracking-[0.18em] text-[#987443]">Transcript</p>
               <h3 id="linear-transcript-heading" className="mt-1 font-serif text-2xl font-black text-[#3d3122]">Transcript</h3>
-              <p className="mt-1 max-w-3xl text-sm font-semibold leading-6 text-[#765f40]">Play any passage, correct the words or speaker, or confirm it as heard. Notes, tasks, and goals stay attached to the exact source moment.</p>
+              <p className="mt-1 max-w-3xl text-sm font-semibold leading-6 text-[#765f40]">Edit the words or speaker directly, and play any moment you want to check. Notes, tasks, and goals stay attached to the exact source moment.</p>
             </div>
             <div role="group" aria-label="Transcript view" className="inline-flex rounded-full border border-[#d9c7a5] bg-[#fffaf1] p-1">
               <button type="button" aria-pressed={transcriptView === "transcript"} onClick={() => setTranscriptView("transcript")} className={`min-h-10 rounded-full px-4 text-xs font-black ${transcriptView === "transcript" ? "bg-[#3d3122] text-white shadow-sm" : "text-[#5b472f]"}`}>Transcript</button>
