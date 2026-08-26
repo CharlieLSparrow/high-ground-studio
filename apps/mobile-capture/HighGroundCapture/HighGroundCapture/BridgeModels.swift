@@ -1142,6 +1142,12 @@ struct MobileCaptureSession: Codable, Identifiable, Hashable {
         recordingConsentGranted || recordingConsentVideoGranted == true
     }
 
+    var hasDeclinedRecordingConsent: Bool {
+        recordingConsentStatus?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .uppercased() == "DECLINED"
+    }
+
     var captureReadinessDetail: String {
         let detail = captureReadiness?.detail?.trimmingCharacters(in: .whitespacesAndNewlines)
         if let detail, !detail.isEmpty { return detail }

@@ -2822,6 +2822,45 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertEqual(app.staticTexts["CaptureRecorderStateLabel"].label, "Consent ready · mic checks on tap")
     }
 
+    func testParticipantCanDeclineRecordingWithoutBlockingTheCall() {
+        app.tabBars.buttons["Record"].tap()
+        let chooser = app.buttons["CaptureSessionChooser"]
+        XCTAssertTrue(chooser.waitForExistence(timeout: 5))
+        chooser.tap()
+
+        let consentNeededSession = app.staticTexts["High Ground pre-show"]
+        XCTAssertTrue(consentNeededSession.waitForExistence(timeout: 5))
+        consentNeededSession.tap()
+
+        openLocalRecorderIfNeeded()
+        let confirm = app.buttons["CaptureConfirmConsentButton"]
+        XCTAssertTrue(confirm.waitForExistence(timeout: 5))
+        confirm.tap()
+
+        let consentSheet = app.otherElements["CaptureConsentConfirmationSheet"]
+        XCTAssertTrue(consentSheet.waitForExistence(timeout: 5))
+        let decline = app.buttons["CaptureConsentDeclineButton"]
+        XCTAssertTrue(decline.exists)
+        XCTAssertTrue(decline.isHittable)
+        decline.tap()
+
+        expectation(
+            for: NSPredicate(format: "exists == false"),
+            evaluatedWith: consentSheet
+        )
+        waitForExpectations(timeout: 5)
+        XCTAssertTrue(
+            app.descendants(matching: .any)["CaptureProviderRoomControls"].exists,
+            "Declining recording must not remove the ordinary call controls."
+        )
+        let start = app.buttons["CaptureStartButton"]
+        XCTAssertTrue(start.exists)
+        XCTAssertFalse(start.isEnabled, "A declined participant must remain outside the retained recording.")
+        XCTAssertTrue(
+            app.staticTexts["You chose not to be recorded in this preview Session. You can still join the call."].exists
+        )
+    }
+
     func testReadyParticipantSeesWaitingStatusInsteadOfDisabledRecord() {
         app.tabBars.buttons["Record"].tap()
         openLocalRecorderIfNeeded()

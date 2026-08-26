@@ -1040,6 +1040,7 @@ for (const needle of [
   "CaptureConsentRecordVideoToggle",
   "CaptureConsentTranscriptionToggle",
   "CaptureConsentSaveChoicesButton",
+  "CaptureConsentDeclineButton",
   "Local source is production truth",
   "GlobalCaptureBanner",
   "model.activeCaptureSession?.id == session.id",
@@ -1065,6 +1066,7 @@ for (const needle of [
   "Record this Session?",
   "Quipsly remembers your choice for this Session. Recording starts only when the coach or host presses Record.",
   "Allow recording",
+  "Don't record me",
   "Recording options",
   "transcriptionConsentGrantedParticipantCount",
   "the transcript waits for everyone to enable it",
@@ -1848,6 +1850,9 @@ requireIncludes(capturePhoneShellText, 'accessibilityIdentifier: "ProviderLeaveR
 requireIncludes(capturePhoneShellText, "Finish or stop the current take first.", "shipping room controls cannot reconfigure active local capture");
 requireIncludes(capturePhoneShellText, "Joins the conversation. Recording starts only when someone taps Record.", "shipping call control hint preserves explicit recording start");
 requireIncludes(capturePhoneShellText, "CaptureConsentConfirmationSheet(", "shipping recorder reaches explicit participant consent");
+requireIncludes(capturePhoneShellText, "await model.declineConsent(for: session.id)", "shipping recorder persists an explicit participant decline without blocking the call");
+requireIncludes(captureExperienceModelText, "sessionClient.declineRecordingConsent(for: session)", "native decline uses the canonical participant consent route");
+requireIncludes(captureExperienceModelText, "You can still join the call and change this choice later.", "native decline preserves ordinary call participation and a reversible choice");
 requireIncludes(capturePhoneShellText, "Recording still starts separately.", "shipping consent does not imply recording");
 requireIncludes(capturePhoneShellText, "CaptureSessionContextPanel(", "shipping recorder reaches session context");
 requireIncludes(capturePhoneShellText, "CaptureCalendarContinuityCard(", "shipping Today surface reaches calendar continuity without a sixth tab");

@@ -1238,6 +1238,53 @@ final class CaptureExperienceModel: ObservableObject {
         return "\(sourceChoice) consent is saved.\(transcriptChoice)\(readiness)"
     }
 
+    @discardableResult
+    func declineConsent(for expectedSessionID: String) async -> Bool {
+        guard !isChangingConsent else { return false }
+        guard let session = selectedSession,
+              session.id == expectedSessionID else {
+            errorMessage = "The selected Quipsly session changed. Review the recording choice again before saving."
+            return false
+        }
+        guard activeCaptureSession == nil, activeVideoCaptureSession == nil else {
+            errorMessage = "The recording choice cannot change while this iPhone is recording. Stop and save the take first."
+            return false
+        }
+        let ownerSnapshot = usesPreviewData ? nil : AuthManager.shared.stableOwnerSnapshot()
+        guard usesPreviewData || ownerSnapshot != nil else {
+            errorMessage = "Verify the current Quipsly account before saving this recording choice."
+            return false
+        }
+        isChangingConsent = true
+        defer { isChangingConsent = false }
+        errorMessage = nil
+
+        if usesPreviewData {
+            replacePreviewSession(session, consentGranted: false)
+            message = "You chose not to be recorded in this preview Session. You can still join the call."
+            return true
+        }
+
+        let consentUpdate = await sessionClient.declineRecordingConsent(for: session)
+        guard let ownerSnapshot,
+              AuthManager.shared.matchesStableOwnerSnapshot(ownerSnapshot) else {
+            errorMessage = "The Quipsly account changed while the recording choice was being saved. Review the current account before continuing."
+            return false
+        }
+        guard consentUpdate != nil else {
+            errorMessage = sessionClient.errorMessage ?? "The recording choice could not be saved."
+            return false
+        }
+        await sessionClient.load()
+        guard AuthManager.shared.matchesStableOwnerSnapshot(ownerSnapshot) else {
+            errorMessage = "The Quipsly account changed while the recording choice was being refreshed. Review the current account before continuing."
+            return false
+        }
+        selectedSessionID = session.id
+        message = "You won't be recorded in this Session. You can still join the call and change this choice later."
+        return true
+    }
+
     func revokeConsent() async {
         guard let session = selectedSession, !isChangingConsent else { return }
         guard activeCaptureSession == nil, activeVideoCaptureSession == nil else {

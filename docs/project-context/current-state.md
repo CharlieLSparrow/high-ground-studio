@@ -4123,3 +4123,20 @@ rehearsal`) in an iPhone 17 Pro simulator. The signed-in UI acceptance opened
 - The 1,281-check Capture/App Store static contract, release-source gate, and
   dual-architecture iOS Simulator build pass. Physical iPhone camera, audio,
   Session-switch, and retained-source evidence remains deferred explicitly.
+
+### 2026-08-25 explicit native recording decline
+
+- The iPhone consent sheet now gives every participant an explicit **Don't
+  record me** action beside **Allow recording**. Declining is persisted through
+  the canonical consent route, closes the choice sheet, keeps ordinary call
+  controls available, and keeps retained recording disabled for that person.
+  It is not disguised as Cancel and it does not prevent joining the call.
+- A declined Session reads back as **You won't be recorded**, explains that the
+  saved choice can be changed later, and continues to expose **Allow
+  recording** as the reversible action. Account ownership and active-capture
+  checks protect both grant and decline writes.
+- One operated iPhone 17 Pro Simulator UI test proves the visible decline path,
+  sheet dismissal, retained-recording gate, and surviving call controls. The
+  1,286-check Capture/App Store contract and dual-architecture Simulator build
+  also pass. Real two-account provider media and physical-device persistence
+  remain acceptance-ledger evidence rather than inferred success.

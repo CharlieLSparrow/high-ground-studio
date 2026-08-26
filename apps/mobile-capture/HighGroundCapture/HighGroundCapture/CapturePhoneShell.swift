@@ -7286,6 +7286,8 @@ private struct CaptureRecorderView: View {
                         allAudibleParticipantsNotifiedAndAgreed: allAudibleParticipantsNotifiedAndAgreed,
                         presentedAt: presentedAt
                     )
+                } onDecline: {
+                    await model.declineConsent(for: session.id)
                 }
             }
         }
@@ -11240,7 +11242,9 @@ private struct ConsentStrip: View {
     }
 
     private var consentTitle: String {
-        session.hasCurrentRecordingConsent ? "Your consent is saved" : "Recording consent"
+        if session.hasCurrentRecordingConsent { return "Your consent is saved" }
+        if session.hasDeclinedRecordingConsent { return "You won't be recorded" }
+        return "Recording consent"
     }
 
     private var consentDetail: String {
@@ -11269,6 +11273,9 @@ private struct ConsentStrip: View {
             }
         }
         guard session.hasCurrentRecordingConsent else {
+            if session.hasDeclinedRecordingConsent {
+                return "Your choice is saved for this Session. You can still join the call, or allow recording here later."
+            }
             return "Choose once for this Session. Recording starts only when the coach or host presses Record."
         }
         let sources = [
@@ -11290,6 +11297,7 @@ struct CaptureConsentConfirmationSheet: View {
     let session: MobileCaptureSession
     let requiresStableOwner: Bool
     let onSave: @MainActor @Sendable (Bool, Bool, Bool, Bool, Date) async -> Bool
+    let onDecline: @MainActor @Sendable () async -> Bool
 
     @State private var canRecordAudio: Bool
     @State private var canRecordVideo: Bool
@@ -11304,11 +11312,13 @@ struct CaptureConsentConfirmationSheet: View {
     init(
         session: MobileCaptureSession,
         requiresStableOwner: Bool = true,
-        onSave: @escaping @MainActor @Sendable (Bool, Bool, Bool, Bool, Date) async -> Bool
+        onSave: @escaping @MainActor @Sendable (Bool, Bool, Bool, Bool, Date) async -> Bool,
+        onDecline: @escaping @MainActor @Sendable () async -> Bool
     ) {
         self.session = session
         self.requiresStableOwner = requiresStableOwner
         self.onSave = onSave
+        self.onDecline = onDecline
         _presentationOwnerSnapshot = State(
             initialValue: requiresStableOwner
                 ? AuthManager.shared.stableOwnerSnapshot()
@@ -11467,7 +11477,19 @@ struct CaptureConsentConfirmationSheet: View {
             )
             .accessibilityIdentifier("CaptureConsentSaveChoicesButton")
             .padding(.horizontal, 18)
-            .padding(.vertical, 12)
+
+            Button("Don't record me") {
+                submitDecline()
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.large)
+            .frame(minHeight: 44)
+            .disabled(isSubmitting)
+            .accessibilityHint("Saves this choice for the Session without preventing you from joining the call.")
+            .accessibilityIdentifier("CaptureConsentDeclineButton")
+            .padding(.horizontal, 18)
+            .padding(.top, 8)
+            .padding(.bottom, 12)
         }
         .background(.bar)
     }
@@ -11495,6 +11517,24 @@ struct CaptureConsentConfirmationSheet: View {
                 true,
                 consentPresentationDate
             )
+            isSubmitting = false
+            if saved { dismiss() }
+        }
+    }
+
+    private func submitDecline() {
+        guard !isSubmitting else { return }
+        if requiresStableOwner {
+            guard let presentationOwnerSnapshot,
+                  AuthManager.shared.matchesStableOwnerSnapshot(presentationOwnerSnapshot) else {
+                localErrorMessage = "The Quipsly account changed after this choice was shown. Close this sheet and review consent again under the current account."
+                return
+            }
+        }
+        localErrorMessage = nil
+        isSubmitting = true
+        Task { @MainActor in
+            let saved = await onDecline()
             isSubmitting = false
             if saved { dismiss() }
         }
