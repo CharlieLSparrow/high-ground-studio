@@ -10,6 +10,9 @@ jest.mock("./transcript-correction-desk", () => ({ TranscriptCorrectionDesk: () 
 jest.mock("./session-source-alignment-card", () => ({
   SessionSourceAlignmentCard: () => <div>Source alignment evidence</div>,
 }));
+jest.mock("./coaching-session-plan-card", () => ({
+  CoachingSessionPlanCard: () => <div>Optional coaching Session plan</div>,
+}));
 jest.mock("@/components/session-invitations", () => ({ SessionInvitations: () => <div>Session invitation manager</div> }));
 const mockRouterRefresh = jest.fn();
 jest.mock("next/navigation", () => ({ useRouter: () => ({ refresh: mockRouterRefresh }) }));

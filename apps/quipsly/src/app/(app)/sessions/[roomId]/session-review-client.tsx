@@ -1401,10 +1401,6 @@ function SessionPreparationCard({
 
       <SessionEntryReadinessLive roomId={roomId} initial={entry} />
 
-      {preparation.purpose.toUpperCase() === "COACHING" ? (
-        <CoachingSessionPlanCard roomId={roomId} />
-      ) : null}
-
       <dl className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <div className="rounded-xl border border-white/90 bg-white/85 p-3">
           <dt className="text-[10px] font-black uppercase tracking-wide text-[#8a7354]">
@@ -6284,6 +6280,10 @@ export function SessionReviewClient({
           contentReadiness={contentReadiness}
           finishingEvidence={finishingEvidence}
         />
+      ) : null}
+
+      {(mode === "overview" || mode === "prepare") && purpose === "COACHING" ? (
+        <CoachingSessionPlanCard roomId={roomId} />
       ) : null}
 
       {mode === "overview" ? (
