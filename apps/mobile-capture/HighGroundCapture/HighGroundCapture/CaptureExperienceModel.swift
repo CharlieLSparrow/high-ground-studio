@@ -344,6 +344,7 @@ final class CaptureExperienceModel: ObservableObject {
     let workClient = CaptureWorkClient()
     let calendarSubscriptionClient = CaptureCalendarSubscriptionClient()
     let coachingRunwayClient = MobileCoachingRunwayClient()
+    let coachingFormsClient = MobileCoachingFormsClient()
     let sourceInboxClient = CaptureSourceInboxClient()
     let providerRoom = ProviderRoomController()
     let recordingCoordinator = CaptureRecordingCoordinator()
@@ -399,6 +400,10 @@ final class CaptureExperienceModel: ObservableObject {
             .sink { [weak self] _ in self?.objectWillChange.send() }
             .store(in: &cancellables)
         coachingRunwayClient.objectWillChange
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in self?.objectWillChange.send() }
+            .store(in: &cancellables)
+        coachingFormsClient.objectWillChange
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in self?.objectWillChange.send() }
             .store(in: &cancellables)
@@ -680,6 +685,22 @@ final class CaptureExperienceModel: ObservableObject {
             workClient.loadPreview()
             calendarSubscriptionClient.loadPreview()
             coachingRunwayClient.loadPreview()
+            let configuredCoachingRole = ProcessInfo.processInfo.environment[
+                "CAPTURE_COACHING_PREVIEW_ROLE"
+            ]?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            let explicitCoachPreview = configuredCoachingRole == "coach"
+                || ProcessInfo.processInfo.arguments.contains(
+                "--capture-coach-booking-preview"
+            ) || ProcessInfo.processInfo.arguments.contains(
+                "--capture-coaching-forms-coach-preview"
+            )
+            coachingFormsClient.loadPreview(
+                isCoach: configuredCoachingRole != "client"
+                    && (explicitCoachPreview
+                        || !ProcessInfo.processInfo.arguments.contains(
+                        "--capture-client-booking-preview"
+                    ))
+            )
             sourceInboxClient.loadPreview()
             reviewDigestClient.loadPreview()
             sessionClient.status = "Preview ready"
@@ -714,6 +735,7 @@ final class CaptureExperienceModel: ObservableObject {
         async let workLoad: Void = workClient.load(projectID: workClient.selectedProjectID)
         async let calendarLoad: Void = calendarSubscriptionClient.load()
         async let coachingLoad: Void = coachingRunwayClient.load()
+        async let coachingFormsLoad: Void = coachingFormsClient.load()
         async let sourceInboxLoad: Void = sourceInboxClient.load()
         async let readinessLoad: Void = readinessClient.load()
         async let reviewDigestLoad: Void = reviewDigestClient.load()
@@ -725,6 +747,7 @@ final class CaptureExperienceModel: ObservableObject {
             workLoad,
             calendarLoad,
             coachingLoad,
+            coachingFormsLoad,
             sourceInboxLoad,
             readinessLoad,
             reviewDigestLoad,

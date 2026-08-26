@@ -635,18 +635,28 @@ final class MobileCoachingRunwayClient: ObservableObject {
     }
 
     func loadPreview() {
+        let configuredPreviewRole = ProcessInfo.processInfo.environment[
+            "CAPTURE_COACHING_PREVIEW_ROLE"
+        ]?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         let conflictPreview = ProcessInfo.processInfo.arguments.contains(
             "--capture-conflict-scheduling-preview"
         )
         let availabilityPreview = ProcessInfo.processInfo.arguments.contains(
             "--capture-availability-scheduling-preview"
         )
-        let clientRequestPreview = ProcessInfo.processInfo.arguments.contains(
-            "--capture-client-booking-preview"
-        )
         let coachRequestPreview = ProcessInfo.processInfo.arguments.contains(
             "--capture-coach-requests-preview"
         )
+        let explicitCoachPreview = configuredPreviewRole == "coach"
+            || coachRequestPreview
+            || ProcessInfo.processInfo.arguments.contains(
+                "--capture-coach-booking-preview"
+            )
+        let clientRequestPreview = configuredPreviewRole == "client"
+            || (!explicitCoachPreview
+                && ProcessInfo.processInfo.arguments.contains(
+                    "--capture-client-booking-preview"
+                ))
         let offlineSnapshotPreview = ProcessInfo.processInfo.arguments.contains(
             "--capture-coaching-offline-preview"
         )
@@ -1683,6 +1693,8 @@ struct CaptureCoachingHomeView: View {
                         coachingChoiceCard
                     }
 
+                    MobileCoachingFormsSummaryCard(client: model.coachingFormsClient)
+
                     if client.isCoach {
                         incomingRequestsSection
                             .id("CaptureCoachingIncomingRequests")
@@ -1717,8 +1729,9 @@ struct CaptureCoachingHomeView: View {
         .refreshable {
             guard !model.usesPreviewData else { return }
             async let coachingLoad: Void = client.load()
+            async let formsLoad: Void = model.coachingFormsClient.load()
             async let sessionLoad = model.sessionClient.load()
-            _ = await (coachingLoad, sessionLoad)
+            _ = await (coachingLoad, formsLoad, sessionLoad)
         }
     }
 

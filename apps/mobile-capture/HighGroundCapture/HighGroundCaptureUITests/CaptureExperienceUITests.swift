@@ -7,6 +7,12 @@ final class CaptureExperienceUITests: XCTestCase {
         continueAfterFailure = false
         app = XCUIApplication()
         app.launchArguments = ["--capture-ui-preview"]
+        let clientPreview = name.contains("testClientCanSeePublishedTimesAndOwnPendingRequest")
+            || name.contains("testOfflineCoachingSnapshotIsClearlyReadOnly")
+            || name.contains("testClientCoachingFormDraftSurvivesRelaunchOnPhone")
+        app.launchEnvironment["CAPTURE_COACHING_PREVIEW_ROLE"] = clientPreview
+            ? "client"
+            : "coach"
         if name.contains(
             "testConsentNeededNextEpisodeOpensRecorderWithoutCrashing"
         ) {
@@ -38,6 +44,21 @@ final class CaptureExperienceUITests: XCTestCase {
         }
         if name.contains("testConfirmedRequestHasImmediateSessionHandoff") {
             app.launchArguments.append("--capture-confirmed-request-preview")
+        }
+        if name.contains("testClientCoachingFormDraftSurvivesRelaunchOnPhone") {
+            app.launchArguments += [
+                "--capture-client-booking-preview",
+                "--capture-share-owner-ui-preview=coaching-forms-client-recovery",
+            ]
+        }
+        if name.contains("testCoachReviewsSharedFormWithoutSeeingPrivateDraftAnswers") {
+            app.launchArguments += [
+                "--capture-coach-booking-preview",
+                "--capture-coaching-forms-coach-preview",
+            ]
+        }
+        if name.contains("testCoachingHomeMakesThePhoneOnlyWorkflowConcrete") {
+            app.launchArguments.append("--capture-coach-booking-preview")
         }
         if name.contains(
             "testEpisodeThreadKeepsCollaborationBesideTheRecorderWithoutStartingCapture"
@@ -135,6 +156,7 @@ final class CaptureExperienceUITests: XCTestCase {
     }
 
     func testCoachingHomeMakesThePhoneOnlyWorkflowConcrete() {
+        relaunchCoachingPreview(role: "coach")
         let coaching = app.buttons["CaptureOpenCoachingHome"]
         XCTAssertTrue(
             coaching.waitForExistence(timeout: 5),
@@ -213,7 +235,138 @@ final class CaptureExperienceUITests: XCTestCase {
         )
     }
 
+    func testClientCoachingFormDraftSurvivesRelaunchOnPhone() throws {
+        relaunchCoachingPreview(
+            role: "client",
+            additionalArguments: [
+                "--capture-client-booking-preview",
+                "--capture-share-owner-ui-preview=coaching-forms-client-recovery",
+            ]
+        )
+        openCoachingForms()
+
+        let draft = app.descendants(matching: .any)[
+            "CaptureCoachingFormAssignment_preview-form-draft"
+        ]
+        XCTAssertTrue(
+            draft.waitForExistence(timeout: 5),
+            "A client should see the exact assigned form in Capture without a browser handoff."
+        )
+        draft.tap()
+        XCTAssertTrue(
+            app.scrollViews["CaptureCoachingFormResponse"].waitForExistence(timeout: 5),
+            "The assigned form should open as a native phone surface."
+        )
+
+        let reflection = app.textViews["CaptureCoachingFormInput_what-matters"]
+        XCTAssertTrue(reflection.waitForExistence(timeout: 5))
+        let valueBeforeEditing = reflection.value as? String
+        reflection.tap()
+        for character in " 804217" {
+            reflection.typeText(String(character))
+        }
+        let keyboardDone = app.buttons["CaptureCoachingFormKeyboardDone"]
+        XCTAssertTrue(
+            keyboardDone.waitForExistence(timeout: 3),
+            "Long-form coaching answers need a standard way to finish editing."
+        )
+        keyboardDone.tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 3))
+        let committedValue = reflection.value as? String
+        XCTAssertTrue(
+            committedValue?.isEmpty == false && committedValue != valueBeforeEditing,
+            "The keyboard must commit a changed draft before persistence is evaluated."
+        )
+
+        let submit = app.buttons["CaptureCoachingFormSubmit"]
+        XCTAssertTrue(submit.exists)
+        XCTAssertFalse(
+            submit.isEnabled,
+            "Deterministic preview must exercise the form without pretending to share externally."
+        )
+
+        app.terminate()
+        app.launch()
+        XCTAssertTrue(
+            app.descendants(matching: .any)["CapturePreviewModeBadge"]
+                .waitForExistence(timeout: 12)
+        )
+        openCoachingForms()
+        app.descendants(matching: .any)["CaptureCoachingFormAssignment_preview-form-draft"].tap()
+
+        let recovered = app.textViews["CaptureCoachingFormInput_what-matters"]
+        XCTAssertTrue(recovered.waitForExistence(timeout: 5))
+        XCTAssertEqual(
+            recovered.value as? String,
+            committedValue,
+            "A protected, account-scoped private draft should survive an ordinary app relaunch."
+        )
+        try app.performAccessibilityAudit(for: [
+            .hitRegion,
+            .sufficientElementDescription,
+            .textClipped,
+        ])
+    }
+
+    func testCoachReviewsSharedFormWithoutSeeingPrivateDraftAnswers() throws {
+        relaunchCoachingPreview(
+            role: "coach",
+            additionalArguments: [
+                "--capture-coach-booking-preview",
+                "--capture-coaching-forms-coach-preview",
+            ]
+        )
+        openCoachingForms()
+
+        let sendForm = app.buttons["CaptureCoachingSendFormButton"]
+        reveal(sendForm, searchAboveFirst: false)
+        XCTAssertTrue(sendForm.exists)
+        XCTAssertFalse(
+            sendForm.isEnabled,
+            "Preview should expose the native send workflow without issuing an external mutation."
+        )
+
+        let shared = app.descendants(matching: .any)[
+            "CaptureCoachingCoachForm_preview-form-shared"
+        ]
+        reveal(shared)
+        XCTAssertTrue(shared.exists)
+        shared.tap()
+        XCTAssertTrue(
+            app.descendants(matching: .any)["CaptureCoachingFormAnswer_what-matters"]
+                .waitForExistence(timeout: 5),
+            "A coach should read a response only after the client shares it."
+        )
+        XCTAssertTrue(app.staticTexts["Choose the next honest step instead of solving everything at once."].exists)
+
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        let privateDraft = app.descendants(matching: .any)[
+            "CaptureCoachingCoachForm_preview-form-draft"
+        ]
+        reveal(privateDraft)
+        XCTAssertTrue(privateDraft.exists)
+        privateDraft.tap()
+        XCTAssertTrue(
+            app.descendants(matching: .any)["CaptureCoachingFormPrivateDraftBoundary"]
+                .waitForExistence(timeout: 5),
+            "The coach may see draft status, but never the client's private answers."
+        )
+        XCTAssertFalse(
+            app.staticTexts["I want to make the decision smaller."].exists,
+            "A private draft answer must not leak into the coach projection."
+        )
+        try app.performAccessibilityAudit(for: [
+            .hitRegion,
+            .sufficientElementDescription,
+            .textClipped,
+        ])
+    }
+
     func testClientCanSeePublishedTimesAndOwnPendingRequest() {
+        relaunchCoachingPreview(
+            role: "client",
+            additionalArguments: ["--capture-client-booking-preview"]
+        )
         let coaching = app.buttons["CaptureOpenCoachingHome"]
         XCTAssertTrue(coaching.waitForExistence(timeout: 5))
         coaching.tap()
@@ -3654,6 +3807,39 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(app.scrollViews["CaptureTranscriptReviewView"].waitForExistence(timeout: 8))
     }
 
+    private func relaunchCoachingPreview(
+        role: String,
+        additionalArguments: [String] = []
+    ) {
+        app.terminate()
+        app.launchArguments = ["--capture-ui-preview"] + additionalArguments
+        app.launchEnvironment["CAPTURE_COACHING_PREVIEW_ROLE"] = role
+        app.launch()
+        XCTAssertTrue(
+            app.descendants(matching: .any)["CapturePreviewModeBadge"]
+                .waitForExistence(timeout: 12),
+            "The explicit \(role) coaching persona must settle before UI acceptance begins."
+        )
+    }
+
+    private func openCoachingForms() {
+        let coaching = app.buttons["CaptureOpenCoachingHome"]
+        XCTAssertTrue(coaching.waitForExistence(timeout: 5))
+        coaching.tap()
+        XCTAssertTrue(app.scrollViews["CaptureCoachingHome"].waitForExistence(timeout: 5))
+        let forms = app.buttons["CaptureCoachingFormsButton"]
+        reveal(forms, searchAboveFirst: false)
+        XCTAssertTrue(
+            forms.exists && forms.isHittable,
+            "Coaching forms should be directly reachable from the native coaching home."
+        )
+        forms.tap()
+        XCTAssertTrue(
+            app.scrollViews["CaptureCoachingFormsHome"].waitForExistence(timeout: 5),
+            "Capture should open native coaching forms without bouncing to the web."
+        )
+    }
+
     private func reveal(
         _ element: XCUIElement,
         searchAboveFirst: Bool = true
@@ -3674,9 +3860,15 @@ final class CaptureExperienceUITests: XCTestCase {
         // below a short control when a full-page swipe overshoots it.
         let namedForm = app.descendants(matching: .any)["CaptureQuickEntryForm"].firstMatch
         let transcriptReview = app.scrollViews["CaptureTranscriptReviewView"].firstMatch
+        let coachingFormResponse = app.scrollViews["CaptureCoachingFormResponse"].firstMatch
+        let coachingFormsHome = app.scrollViews["CaptureCoachingFormsHome"].firstMatch
         let scrollSurface = namedForm.exists
             ? namedForm
-            : transcriptReview.exists ? transcriptReview : app.scrollViews.firstMatch
+            : transcriptReview.exists
+                ? transcriptReview
+                : coachingFormResponse.exists
+                    ? coachingFormResponse
+                    : coachingFormsHome.exists ? coachingFormsHome : app.scrollViews.firstMatch
         // A LazyVStack removes distant rows from the accessibility tree. If a
         // target does not currently exist, search above first, then below,
         // instead of assuming every unseen control is farther down the page.
