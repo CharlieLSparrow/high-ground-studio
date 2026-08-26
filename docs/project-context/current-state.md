@@ -4140,3 +4140,20 @@ rehearsal`) in an iPhone 17 Pro simulator. The signed-in UI acceptance opened
   1,286-check Capture/App Store contract and dual-architecture Simulator build
   also pass. Real two-account provider media and physical-device persistence
   remain acceptance-ledger evidence rather than inferred success.
+
+### 2026-08-25 native call-camera rejoin recovery
+
+- Manual Rejoin now restores the participant's remembered live-camera choice
+  even when the shared camera owner is already recording the protected local
+  video master. The prior callback restored live video only from the idle
+  `ready` state, which could leave the conversation camera dark precisely while
+  the higher-quality 4K source continued safely in the background.
+- Camera restoration is now an idempotent model operation: it does nothing when
+  the camera is already published and otherwise reattaches the provider frame
+  bridge to the existing video-only source. It does not reopen the camera,
+  replace the local master, or confuse call publication with retained
+  recording.
+- The 1,290-check Capture/App Store static contract, release-source gate, and
+  dual-architecture iOS Simulator build pass. A real network-loss flight must
+  still prove that the other participant sees restored video while the exact
+  local source remains continuous and playable.

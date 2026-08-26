@@ -2610,6 +2610,25 @@ final class CaptureExperienceModel: ObservableObject {
         errorMessage = providerRoom.lastError
     }
 
+    /// Restores the person's remembered live-camera choice after a fresh join
+    /// or an exhausted reconnect. Unlike a generic toggle, this can never turn
+    /// an already-published camera off. `toggleRoomCamera` deliberately accepts
+    /// an active video-only local master, so rejoining republishes those exact
+    /// frames without reopening the camera or replacing retained-source truth.
+    func restoreRoomCameraAfterJoin(
+        using videoCapture: VideoCaptureController,
+        position: VideoCaptureCameraPosition,
+        qualityIntent: VideoCaptureQualityIntent = .production4K24
+    ) async {
+        guard providerRoom.isConnected,
+              !providerRoom.isLocalVideoPublished else { return }
+        await toggleRoomCamera(
+            using: videoCapture,
+            position: position,
+            qualityIntent: qualityIntent
+        )
+    }
+
     func switchRoomCamera(
         using videoCapture: VideoCaptureController,
         qualityIntent: VideoCaptureQualityIntent = .production4K24

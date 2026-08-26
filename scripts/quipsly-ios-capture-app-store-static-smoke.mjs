@@ -1728,6 +1728,14 @@ requireIncludes(captureAudioSessionCoordinatorText, "func toggleBuiltInSpeaker()
 requireIncludes(captureAudioSessionCoordinatorText, "overrideOutputAudioPort(", "in-call speaker control uses the supported AVAudioSession override boundary");
 requireIncludes(capturePhoneShellText, 'accessibilityIdentifier("CaptureJoinCameraPreview")', "shipping call entry exposes a real pre-join camera preview after explicit preparation");
 requireIncludes(capturePhoneShellText, 'accessibilityIdentifier("CaptureJoinSwitchCameraButton")', "shipping call entry can switch front and back cameras before joining");
+requireIncludes(capturePhoneShellText, "await model.restoreRoomCameraAfterJoin(", "shipping join and manual rejoin restore the remembered live-camera choice");
+requireIncludes(captureExperienceModelText, "func restoreRoomCameraAfterJoin(", "native camera restoration is idempotent instead of using a state-blind toggle");
+requireIncludes(captureExperienceModelText, "[.ready, .arming, .recording, .finalizing, .paused]", "native camera publication accepts an active participant-owned video master after rejoin");
+assert(
+  !capturePhoneShellText.includes("!joinCameraOff,\n                               videoCapture.state == .ready"),
+  "Manual Rejoin must not drop live camera publication merely because the protected local video master is already recording.",
+  { forbidden: "videoCapture.state == .ready" },
+);
 requireIncludes(capturePhoneShellText, "await model.dismissRoomCameraPreview(using: videoCapture)", "turning the call camera off releases an unowned pre-join preview");
 requireIncludes(capturePhoneShellText, "if model.providerRoom.isConnected,", "the remembered camera-on choice is published only after provider-room connection succeeds");
 requireIncludes(captureExperienceModelText, "func dismissRoomCameraPreview(", "native call-camera preview has an explicit privacy shutdown boundary");

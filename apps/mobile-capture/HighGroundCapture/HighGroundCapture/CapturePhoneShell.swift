@@ -13070,9 +13070,8 @@ private struct ProviderRoomControls: View {
                                 joinMuted: callAudioOnAnotherDevice || joinMuted
                             )
                             if model.providerRoom.isConnected,
-                               !joinCameraOff,
-                               videoCapture.state == .ready {
-                                await model.toggleRoomCamera(
+                               !joinCameraOff {
+                                await model.restoreRoomCameraAfterJoin(
                                     using: videoCapture,
                                     position: cameraPosition,
                                     qualityIntent: videoQualityIntent
