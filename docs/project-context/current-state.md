@@ -2,6 +2,28 @@
 
 Date: 2026-08-26
 
+## Native Capture coaching forms checkpoint
+
+- Quipsly Capture now owns the ordinary coaching-forms loop on iPhone rather
+  than handing it to a browser. A client can open assigned forms, complete all
+  eight bounded question kinds, finish long-form entry with a standard Done
+  control, retain a private draft through process death, and deliberately share
+  or correct it. A coach can send an exact immutable version and review shared
+  answers without receiving private draft answers.
+- The native client validates the canonical Nest boundary before rendering it,
+  uses authenticated same-host requests, and binds protected recovery to the
+  exact account and template revision. Draft and send retries retain request
+  identity; cached data cannot issue writes.
+- Sequential coach/client UI flights now use explicit personas. That work caught
+  and repaired both role-state bleed and a final-composed-keystroke recovery
+  race that isolated tests had hidden. The resulting four-scenario iPhone 17 Pro
+  simulator flight passed with accessibility audits at source `371f08de`;
+  result bundle:
+  `Test-HighGroundCapture-2026.08.26_04-44-39--0600.xcresult`.
+- This is native simulator and controlled-service evidence. Physical-device,
+  real-account, minimally instructed coach/client, live deployment, and cohort
+  scale remain explicit acceptance work rather than inferred claims.
+
 ## Coach-controlled pre/post form automation checkpoint
 
 - A coach can now attach an explicit **before Session** or **after Session**

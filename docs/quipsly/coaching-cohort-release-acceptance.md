@@ -140,6 +140,21 @@ feature work continues.
 
 ## Reusable forms integrated checkpoint — 2026-08-26
 
+Native Capture source `371f08de` now carries the same client and coach Forms
+loop on iPhone. Four sequential iPhone 17 Pro simulator scenarios passed:
+ordinary coach workflow continuity, ordinary client scheduling continuity,
+exact client private-draft recovery after process death, and coach review of a
+shared response without draft-answer disclosure. The run also audited hit
+regions, element descriptions, and clipped text. Result bundle:
+`Test-HighGroundCapture-2026.08.26_04-44-39--0600.xcresult`.
+
+The sequential run matters: earlier isolated passes hid a preview-persona bleed
+and a final composed keystroke that had not reached the protected ledger before
+termination. Capture now receives an explicit launch persona in acceptance,
+provides a conventional keyboard Done action, and flushes the account-scoped
+complete-file-protected ledger. This is simulator evidence, not physical-device,
+real-account, TestFlight, or minimally instructed human acceptance.
+
 Candidate `8748cb83a331b544edf941298d2646b5320c3eb8` passed the entire local
 fresh-product flight from an empty 131-migration database. Its generated coach
 published a starter form, assigned its exact immutable version to the generated
