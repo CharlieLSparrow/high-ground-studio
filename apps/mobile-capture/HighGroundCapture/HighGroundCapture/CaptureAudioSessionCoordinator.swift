@@ -18,6 +18,7 @@ final class CaptureAudioSessionCoordinator: ObservableObject {
     @Published private(set) var isLocalCaptureActive = false
     @Published private(set) var isProviderRoomActive = false
     @Published private(set) var isCallKitAudioActive = false
+    @Published private(set) var isProviderInputRetentionActive = false
     @Published private(set) var isLocalPlaybackActive = false
     @Published private(set) var isSharedWatchPlaybackActive = false
     @Published private(set) var sharedWatchRouteFailureMessage: String?
@@ -87,7 +88,43 @@ final class CaptureAudioSessionCoordinator: ObservableObject {
 
     func releaseLocalCapture() {
         isLocalCaptureActive = false
+        releaseProviderInputRetention()
         reconcileAfterLeaseChange()
+    }
+
+    /// A provider-backed master observes LiveKit's local input and must keep
+    /// that engine request alive across a room reconnect or CallKit
+    /// deactivation. This lease never publishes audio and never grants a
+    /// permission; it only preserves an input the participant already opened
+    /// for an explicit recording.
+    func retainProviderInputForLocalCapture() throws {
+        #if canImport(LiveKit)
+        guard isLocalCaptureActive,
+              isProviderRoomActive,
+              isCallKitAudioActive else {
+            throw NSError(
+                domain: "CaptureAudioSession",
+                code: 4,
+                userInfo: [
+                    NSLocalizedDescriptionKey:
+                        "The live-room microphone is not active enough to protect a local master."
+                ]
+            )
+        }
+        isProviderInputRetentionActive = true
+        do {
+            try AudioManager.shared.setEngineAvailability(.default)
+        } catch {
+            isProviderInputRetentionActive = false
+            throw error
+        }
+        #else
+        throw NSError(
+            domain: "CaptureAudioSession",
+            code: 4,
+            userInfo: [NSLocalizedDescriptionKey: "Provider microphone retention requires the LiveKit build."]
+        )
+        #endif
     }
 
     func providerWillConnect() throws {
@@ -96,7 +133,9 @@ final class CaptureAudioSessionCoordinator: ObservableObject {
             try applySharedCategory()
             #if canImport(LiveKit)
             AudioManager.shared.audioSession.isAutomaticConfigurationEnabled = false
-            try AudioManager.shared.setEngineAvailability(.none)
+            try AudioManager.shared.setEngineAvailability(
+                isProviderInputRetentionActive ? .default : .none
+            )
             #endif
             if isLocalCaptureActive {
                 try audioSession.setActive(true)
@@ -141,7 +180,9 @@ final class CaptureAudioSessionCoordinator: ObservableObject {
 
         #if canImport(LiveKit)
         do {
-            try AudioManager.shared.setEngineAvailability(.none)
+            try AudioManager.shared.setEngineAvailability(
+                isProviderInputRetentionActive ? .default : .none
+            )
         } catch {
             cleanupFailures.append("provider engine: \(error.localizedDescription)")
         }
@@ -360,6 +401,16 @@ final class CaptureAudioSessionCoordinator: ObservableObject {
             mode: mode,
             options: [.defaultToSpeaker, .allowBluetoothHFP, .mixWithOthers]
         )
+    }
+
+    private func releaseProviderInputRetention() {
+        guard isProviderInputRetentionActive else { return }
+        isProviderInputRetentionActive = false
+        #if canImport(LiveKit)
+        if !isCallKitAudioActive {
+            try? AudioManager.shared.setEngineAvailability(.none)
+        }
+        #endif
     }
 
     private func reconcileAfterLeaseChange() {

@@ -1507,7 +1507,7 @@ assert(callKitDeactivateStart >= 0 && callKitDeactivateEnd > callKitDeactivateSt
 });
 assert(
   callKitDeactivateBody.indexOf("isCallKitAudioActive = false")
-    < callKitDeactivateBody.indexOf("AudioManager.shared.setEngineAvailability(.none)"),
+    < callKitDeactivateBody.indexOf("AudioManager.shared.setEngineAvailability("),
   "CallKit lease cleanup must happen before throwable provider-engine shutdown.",
   { label: "CallKit lease clears before LiveKit shutdown" },
 );
@@ -1727,6 +1727,11 @@ requireIncludes(capturePhoneShellText, "AVRoutePickerView", "native call routing
 requireIncludes(captureAudioSessionCoordinatorText, '@Published private(set) var currentOutputRouteName', "shared native audio policy publishes the actual current listening route");
 requireIncludes(captureAudioSessionCoordinatorText, "AVAudioSession.routeChangeNotification", "shared native audio policy refreshes route truth after hardware or system changes");
 requireIncludes(captureAudioSessionCoordinatorText, "private func refreshRouteSnapshot()", "shared native audio policy derives display routes from the active AVAudioSession");
+requireIncludes(captureAudioSessionCoordinatorText, "isProviderInputRetentionActive", "provider-backed local masters retain an explicit input-engine lease across room lifecycle changes");
+requireIncludes(captureAudioSessionCoordinatorText, "func retainProviderInputForLocalCapture() throws", "provider input retention is an explicit recording boundary rather than an inferred CallKit side effect");
+requireIncludes(captureAudioSessionCoordinatorText, "isProviderInputRetentionActive ? .default : .none", "CallKit connect and deactivate preserve only an explicitly retained provider input");
+requireIncludes(captureAudioSessionCoordinatorText, "releaseProviderInputRetention()", "ending the local capture releases its provider input retention lease");
+requireIncludes(audioText, "try audioSessionCoordinator.retainProviderInputForLocalCapture()", "provider recorder acquires input retention before claiming a durable local master");
 requireIncludes(captureAudioSessionCoordinatorText, "func toggleBuiltInSpeaker() throws", "shared native audio policy owns the conventional in-call speaker override");
 requireIncludes(captureAudioSessionCoordinatorText, "overrideOutputAudioPort(", "in-call speaker control uses the supported AVAudioSession override boundary");
 requireIncludes(capturePhoneShellText, 'accessibilityIdentifier("CaptureJoinCameraPreview")', "shipping call entry exposes a real pre-join camera preview after explicit preparation");

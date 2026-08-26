@@ -992,6 +992,7 @@ final class AudioCaptureController: NSObject, ObservableObject {
         #if canImport(LiveKit)
         if let providerRecorder {
             providerAudioMaster = providerRecorder
+            try audioSessionCoordinator.retainProviderInputForLocalCapture()
             pendingProviderSegmentStart = startedAt
             providerRecorder.onFirstPCMBuffer = { [weak self] in
                 Task { @MainActor [weak self] in

@@ -4201,3 +4201,23 @@ rehearsal`) in an iPhone 17 Pro simulator. The signed-in UI acceptance opened
   for a clean isolated source. Shared Watch still holds itself when an output
   change removes its required private listening route, and an unavailable
   microphone route still pauses recording for deliberate recovery.
+
+### 2026-08-25 provider-input continuity through exhausted reconnect
+
+- A provider-backed local master now acquires an explicit input-retention lease
+  when it begins. CallKit deactivation and a fresh provider connection keep the
+  LiveKit engine available only while that lease exists, so an exhausted room
+  reconnect cannot stop the microphone merely because the conversation
+  transport and native call surface are being rebuilt.
+- Ending or failing the local capture releases the retention lease. Initial
+  muted joins still do not open a microphone: the lease can exist only after a
+  real provider input, explicit recording action, consent, and durable START
+  evidence already exist.
+- LiveKit's audio input request is designed to persist across Room lifecycles,
+  while engine availability remains the highest-priority stop/start gate.
+  Quipsly now models those as separate facts instead of allowing CallKit
+  teardown to win over source preservation. [Reviewed SDK boundary](https://github.com/livekit/client-sdk-swift/blob/2.16.0/Sources/LiveKit/Audio/Manager/AudioManager.swift#L445-L480).
+- This is compiled policy, not physical proof. The flight ledger requires
+  continuous speaking, PCM/clock evidence, and exact-source playback across
+  transient reconnect, exhausted disconnect, muted Rejoin, and deliberate
+  system hang-up.
