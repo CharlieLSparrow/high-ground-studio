@@ -354,6 +354,13 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             password: identityPassword,
             restoringTab: initialTab
         )
+        // iOS correctly preserves the last visible tab across process
+        // recovery. Operate the requested surface explicitly instead of
+        // treating that user-friendly restoration as an authentication
+        // failure or relying on hidden TabView descendants.
+        let requestedTab = app.tabBars.buttons[initialTab.capitalized].firstMatch
+        XCTAssertTrue(requestedTab.waitForExistence(timeout: 8))
+        requestedTab.tap()
         let initialSurfaceIdentifier: String
         switch initialTab {
         case "record": initialSurfaceIdentifier = "CaptureRecorderView"

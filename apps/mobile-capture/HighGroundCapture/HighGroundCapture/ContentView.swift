@@ -63,6 +63,9 @@ struct ContentView: View {
             // Today and making the just-saved source appear to disappear.
             visibleTab = .library
         }
+        .task {
+            await LocalRecordingLibrary.shared.validatePendingRecoveredSources()
+        }
     }
 
     /// Authentication can expire while a source recording is in progress. The recorder must

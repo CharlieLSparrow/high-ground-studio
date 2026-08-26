@@ -651,7 +651,6 @@ final class LocalRecordingLibrary: ObservableObject {
                 self?.activateOwner(ownerAccountID)
             }
         }
-        scheduleDeepRecoveryValidation()
     }
 
     /// Changes only the visible account partition. Source files and ledger rows
@@ -1614,49 +1613,52 @@ final class LocalRecordingLibrary: ObservableObject {
         }
     }
 
-    private func scheduleDeepRecoveryValidation() {
+    /// Completes any launch-recovered source validation after SwiftUI has
+    /// mounted the application lifecycle. Starting this work from the
+    /// ObservableObject initializer can finish while SwiftUI is still
+    /// installing subscribers, which turns legitimate recovery publications
+    /// into undefined view-update reentrancy. Candidates remain fail-closed in
+    /// `validatingRecovery` until this lifecycle-owned operation commits them.
+    func validatePendingRecoveredSources() async {
         let candidates = pendingDeepValidations
         pendingDeepValidations.removeAll()
         guard !candidates.isEmpty else { return }
 
-        Task { [weak self] in
-            for candidate in candidates {
-                let validation = await Task.detached(priority: .utility) {
-                    await Self.validateSourceThroughEnd(
-                        at: candidate.fileURL,
-                        mediaKind: candidate.mediaKind,
-                        expectedSourceProfile: candidate.expectedSourceProfile
-                    )
-                }.value
-                guard let self else { return }
-                do {
-                    try self.mutate(candidate.recordingID, allowInactiveOwner: true) { recording in
-                        guard recording.status == .validatingRecovery else { return }
-                        if let recordedMedia = validation.recordedMedia,
-                           var sourceProfile = recording.sourceProfile {
-                            sourceProfile.recordedMedia = recordedMedia
-                            sourceProfile.audioSignal = validation.audioSignal
-                            sourceProfile.audibleEventAnalysis = validation.audibleEventAnalysis
-                            recording.sourceProfile = sourceProfile
-                        }
-                        recording.sourceIntegrityHoldReason =
-                            validation.sourceIntegrityHoldReason
-                        if validation.isPlayable {
-                            recording.status = .recovered
-                            recording.statusMessage =
-                                validation.sourceIntegrityHoldReason
-                                ?? candidate.playableMessage
-                            if let durationSeconds = validation.durationSeconds {
-                                recording.durationSeconds = durationSeconds
-                            }
-                        } else {
-                            recording.status = .needsRepair
-                            recording.statusMessage = validation.failureMessage
-                        }
+        for candidate in candidates {
+            let validation = await Task.detached(priority: .utility) {
+                await Self.validateSourceThroughEnd(
+                    at: candidate.fileURL,
+                    mediaKind: candidate.mediaKind,
+                    expectedSourceProfile: candidate.expectedSourceProfile
+                )
+            }.value
+            do {
+                try mutate(candidate.recordingID, allowInactiveOwner: true) { recording in
+                    guard recording.status == .validatingRecovery else { return }
+                    if let recordedMedia = validation.recordedMedia,
+                       var sourceProfile = recording.sourceProfile {
+                        sourceProfile.recordedMedia = recordedMedia
+                        sourceProfile.audioSignal = validation.audioSignal
+                        sourceProfile.audibleEventAnalysis = validation.audibleEventAnalysis
+                        recording.sourceProfile = sourceProfile
                     }
-                } catch {
-                    self.persistenceError = "Recovery validation finished, but its protected result could not be committed: \(error.localizedDescription)"
+                    recording.sourceIntegrityHoldReason =
+                        validation.sourceIntegrityHoldReason
+                    if validation.isPlayable {
+                        recording.status = .recovered
+                        recording.statusMessage =
+                            validation.sourceIntegrityHoldReason
+                            ?? candidate.playableMessage
+                        if let durationSeconds = validation.durationSeconds {
+                            recording.durationSeconds = durationSeconds
+                        }
+                    } else {
+                        recording.status = .needsRepair
+                        recording.statusMessage = validation.failureMessage
+                    }
                 }
+            } catch {
+                persistenceError = "Recovery validation finished, but its protected result could not be committed: \(error.localizedDescription)"
             }
         }
     }
