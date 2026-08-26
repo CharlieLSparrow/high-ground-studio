@@ -12,6 +12,8 @@ test("fresh coaching flight retains a private receipt without claiming human acc
 
   assert.match(source, /schema: "quipsly-fresh-coaching-flight-receipt-v3"/);
   assert.match(source, /"fresh-coaching-flight-receipt\.json"/);
+  assert.match(source, /quipsly-fresh-session-preparation-operation\.mjs/);
+  assert.match(source, /preSessionPlanningOperated/);
   assert.match(source, /testLane: "fresh-product-automation"/);
   assert.match(source, /sourceContextLane: start\.testLane/);
   assert.match(source, /--experimental-transform-types/);

@@ -115,6 +115,12 @@ const isolation = await run(
   "QUIPSLY_FRESH_COACHING_ISOLATION_OPERATION",
   continuationEnv,
 );
+const preparation = await run(
+  "Client check-in, coach-private preparation, retry, and privacy boundaries",
+  "scripts/quipsly-fresh-session-preparation-operation.mjs",
+  "QUIPSLY_FRESH_SESSION_PREPARATION_OPERATION",
+  continuationEnv,
+);
 const artifactDirectory = path.dirname(start.contextPath);
 let controlledSpeech = null;
 if (controlledSpeechFlight) {
@@ -216,6 +222,7 @@ if (controlledSpeechFlight) {
 for (const [label, packet] of Object.entries({
   start,
   isolation,
+  preparation,
   call,
   transcript,
   work,
@@ -388,6 +395,14 @@ const result = {
     isolation.normalNavigationLeakageObserved === false &&
     isolation.directUrlLeakageObserved === false &&
     isolation.directApiLeakageObserved === false,
+  preSessionPlanningOperated:
+    preparation.renderedClientPlanSaved === true
+    && preparation.renderedCoachSharedReadback === true
+    && preparation.renderedCoachPrivatePlanSaved === true
+    && preparation.clientPrivateProjectionAbsent === true
+    && preparation.neighboringCoachDirectRouteDenied === true
+    && preparation.exactRetryConverged === true
+    && preparation.unrelatedSideEffectsAbsent === true,
   participantsConnected: call.participantsConnected,
   independentParticipantSourcesVerified:
     call.independentParticipantSourcesVerified,
