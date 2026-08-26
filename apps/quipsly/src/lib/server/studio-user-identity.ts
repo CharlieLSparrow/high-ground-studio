@@ -256,12 +256,12 @@ export async function ensureStudioUserFromFirebaseIdentity(input: {
     // UserEmail is a contact/access alias, not authentication authority. A
     // brand-new Firebase subject may bind automatically only to its exact
     // primary mailbox. Alternate credentials must already have an explicit
-    // UserAuthIdentity ledger row created by a reviewed account-link flow.
+    // UserAuthIdentity ledger row created by an account-link flow.
     // This prevents an old convenience alias from silently collapsing two
     // Google accounts into one Quipsly person.
     if (!bySubject && !byPrimaryEmail && emailAlias) {
       throw new Error(
-        "Firebase identity requires explicit review before a contact email alias can become a login.",
+        "This email is saved as contact information for another account and is not linked as a sign-in.",
       );
     }
 
@@ -407,21 +407,26 @@ export async function ensureStudioUserFromAuthIdentity(input: {
       `quipsly:identity:email:${normalizedEmail}`,
     );
 
-    const existing = await tx.user.findFirst({
-      where: {
-        OR: [
-          { primaryEmail: normalizedEmail },
-          {
-            aliases: {
-              some: {
-                email: normalizedEmail,
-              },
-            },
-          },
-        ],
-      },
+    // A contact email is not a login credential. This compatibility resolver
+    // has no provider subject to prove an intentional account link, so it may
+    // only bind the exact primary mailbox. Firebase callers use the stronger
+    // subject ledger above.
+    const existing = await tx.user.findUnique({
+      where: { primaryEmail: normalizedEmail },
       include: userIdentityInclude,
     });
+
+    if (!existing) {
+      const contactAlias = await tx.userEmail.findUnique({
+        where: { email: normalizedEmail },
+        select: { id: true },
+      });
+      if (contactAlias) {
+        throw new Error(
+          "This email is saved as contact information for another account and is not linked as a sign-in.",
+        );
+      }
+    }
 
     if (existing) {
       const missingRoles = bootstrapRoles.filter(

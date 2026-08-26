@@ -3,7 +3,10 @@
 import { randomUUID } from "node:crypto";
 
 import { getPrismaClient } from "@/lib/prisma";
-import { ensureStudioUserFromFirebaseIdentity } from "./studio-user-identity";
+import {
+  ensureStudioUserFromAuthIdentity,
+  ensureStudioUserFromFirebaseIdentity,
+} from "./studio-user-identity";
 
 const runLocalDatabaseSmoke =
   process.env.QUIPSLY_LOCAL_DB_SMOKE === "1" ? describe : describe.skip;
@@ -105,7 +108,7 @@ runLocalDatabaseSmoke("Firebase identity reconciliation local database smoke", (
         provider: "google.com",
       }),
     ).rejects.toThrow(
-      "Firebase identity requires explicit review before a contact email alias can become a login.",
+      "This email is saved as contact information for another account and is not linked as a sign-in.",
     );
 
     await prisma.userAuthIdentity.create({
@@ -167,6 +170,39 @@ runLocalDatabaseSmoke("Firebase identity reconciliation local database smoke", (
         },
       ],
     });
+  });
+
+  it("never treats a contact alias as a sign-in credential without a provider subject", async () => {
+    const primaryEmail = `compat-primary-${nonce}@example.test`;
+    const contactEmail = `compat-contact-${nonce}@example.test`;
+    const existing = await prisma.user.create({
+      data: {
+        primaryEmail,
+        emailVerified: new Date(),
+        aliases: {
+          create: {
+            email: contactEmail,
+            label: "contact",
+          },
+        },
+      },
+    });
+    userIds.push(existing.id);
+
+    await expect(
+      ensureStudioUserFromAuthIdentity({
+        email: contactEmail,
+        name: "Separate person",
+      }),
+    ).rejects.toThrow(
+      "This email is saved as contact information for another account and is not linked as a sign-in.",
+    );
+    await expect(
+      prisma.userEmail.findUnique({ where: { email: contactEmail } }),
+    ).resolves.toMatchObject({ userId: existing.id });
+    await expect(
+      prisma.user.findUnique({ where: { primaryEmail: contactEmail } }),
+    ).resolves.toBeNull();
   });
 
   it("keeps two deliberately separated email accounts bound to their own Firebase subjects", async () => {
