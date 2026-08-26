@@ -4383,3 +4383,20 @@ rehearsal`) in an iPhone 17 Pro simulator. The signed-in UI acceptance opened
   status-ownership source contract, and full Quipsly TypeScript passes. A real
   induced OPFS failure followed by exact-source recovery and playback remains
   explicit flight evidence.
+
+### 2026-08-25 live recorder identity is isolated from recovery
+
+- Browser recovery and upload no longer assign an arbitrary protected ledger to
+  the mutable reference used by live `MediaRecorder` chunk writes. Persisting an
+  interrupted or retrying capture updates that capture's IndexedDB row, while
+  only an exact capture-ID match may advance the active recorder projection.
+- Starting a new source explicitly activates its ledger. Automatic recovery is
+  held while start, recording, stop, hashing, receipt persistence, or active
+  upload owns that source; deferred recovery resumes after the live operation
+  releases ownership. A coordinated or manual start also refuses the narrow
+  recovery race instead of opening a second writer against ambiguous state.
+- Seven focused recorder, recovery, ownership, consent, and receipt suites pass
+  (30 tests), including the active-ledger isolation contract, and full Quipsly
+  TypeScript passes. A real visible-tab/network recovery arriving during a
+  browser recording, followed by exact-byte playback of both captures, remains
+  explicit flight evidence.

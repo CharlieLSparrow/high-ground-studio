@@ -40,4 +40,29 @@ describe("browser source stop confidence", () => {
     expect(handler).toContain("onstop still owns writer close, hash, ledger, and recovery UI");
     expect(handler).not.toContain('setStatus("error")');
   });
+
+  it("does not let background recovery replace the live recorder ledger", () => {
+    const source = fs.readFileSync(
+      path.resolve(process.cwd(), "src/components/browser-source-recorder.tsx"),
+      "utf8",
+    );
+    const persistStart = source.indexOf("const persistLedger = useCallback(");
+    const updateStart = source.indexOf("const updateLedger = useCallback(", persistStart);
+    const activateStart = source.indexOf("const activateLedger = useCallback(", updateStart);
+    const closeGapStart = source.indexOf("const closeCallTransportGap", activateStart);
+    const persist = source.slice(persistStart, updateStart);
+    const update = source.slice(updateStart, activateStart);
+    const activate = source.slice(activateStart, closeGapStart);
+
+    expect(persist).not.toContain("ledgerRef.current = ledger");
+    expect(update).toContain(
+      "ledgerRef.current?.captureId === ledger.captureId",
+    );
+    expect(update).toContain("await persistLedger(ledger)");
+    expect(activate).toContain("ledgerRef.current = ledger");
+    expect(activate).toContain("await persistLedger(ledger)");
+    expect(source).toContain("await activateLedger(ledger)");
+    expect(source).toContain("activeCaptureOperationRef.current ||");
+    expect(source).toContain("void resumeProtectedUploads()");
+  });
 });

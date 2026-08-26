@@ -412,6 +412,7 @@ export function BrowserSourceRecorder({
   const guardianCleanupRef = useRef<(() => void) | null>(null);
   const lastDurableChunkAtRef = useRef<number | null>(null);
   const endpointQueueTimerRef = useRef<number | null>(null);
+  const activeCaptureOperationRef = useRef(false);
   const automaticUploadRecoveryInFlightRef = useRef(false);
   const automaticUploadRecoveryAttemptedRef = useRef(new Set<string>());
   const directiveHandlingRef = useRef(new Map<string, string>());
@@ -929,14 +930,35 @@ export function BrowserSourceRecorder({
     }
   }, [callRoomId]);
 
-  const updateLedger = useCallback(
+  const persistLedger = useCallback(
     async (ledger: BrowserSourceCaptureLedger) => {
-      ledgerRef.current = ledger;
-      setActiveLedger(ledger);
       await saveBrowserSourceLedger(ledger);
       reconcileEndpointQueue();
     },
     [reconcileEndpointQueue],
+  );
+
+  const updateLedger = useCallback(
+    async (ledger: BrowserSourceCaptureLedger) => {
+      // Recovery and upload work may continue while this component owns a newer
+      // recorder. Persist every capture independently, but never let an older
+      // ledger replace the identity used by live MediaRecorder chunk writes.
+      if (ledgerRef.current?.captureId === ledger.captureId) {
+        ledgerRef.current = ledger;
+        setActiveLedger(ledger);
+      }
+      await persistLedger(ledger);
+    },
+    [persistLedger],
+  );
+
+  const activateLedger = useCallback(
+    async (ledger: BrowserSourceCaptureLedger) => {
+      ledgerRef.current = ledger;
+      setActiveLedger(ledger);
+      await persistLedger(ledger);
+    },
+    [persistLedger],
   );
 
   const closeCallTransportGap = useCallback(
@@ -1488,6 +1510,7 @@ export function BrowserSourceRecorder({
       if (
         !participantId ||
         navigator.onLine === false ||
+        activeCaptureOperationRef.current ||
         automaticUploadRecoveryInFlightRef.current
       )
         return;
@@ -1846,10 +1869,20 @@ export function BrowserSourceRecorder({
   }, [callRoomId, sourceType, status, stop]);
 
   const start = useCallback(async () => {
+    if (
+      activeCaptureOperationRef.current ||
+      automaticUploadRecoveryInFlightRef.current
+    ) {
+      setMessage(
+        "Quipsly is finishing a protected recording on this device. Recording will be ready again as soon as that source is safe.",
+      );
+      return null;
+    }
     if (!retainedReadiness.ok || !consentId) {
       setMessage(retainedReadiness.reason);
       return null;
     }
+    activeCaptureOperationRef.current = true;
     setStatus("starting");
     setMessage("Opening your microphone and recording…");
     setOperationalIssue(null);
@@ -1990,7 +2023,7 @@ export function BrowserSourceRecorder({
         failureReason: null,
         updatedAt: startedAt,
       };
-      await updateLedger(ledger);
+      await activateLedger(ledger);
       try {
         await startRetainedSourceMeter(stream, startedAt);
       } catch {
@@ -2152,24 +2185,29 @@ export function BrowserSourceRecorder({
           );
           await refreshRecovery();
           if (current.state === "stopped") await uploadLedger(current);
-        })().catch(async (error) => {
-          const current = ledgerRef.current;
-          if (current)
-            await updateLedger({
-              ...current,
-              state: "held",
-              failureReason:
-                error instanceof Error ? error.message : "Finalization failed.",
-              updatedAt: new Date().toISOString(),
-            });
-          setStatus("held");
-          setMessage(
-            error instanceof Error
-              ? `Source protected locally: ${error.message}`
-              : "Source protected locally; finalization needs attention.",
-          );
-          await refreshRecovery();
-        });
+        })()
+          .catch(async (error) => {
+            const current = ledgerRef.current;
+            if (current)
+              await updateLedger({
+                ...current,
+                state: "held",
+                failureReason:
+                  error instanceof Error ? error.message : "Finalization failed.",
+                updatedAt: new Date().toISOString(),
+              });
+            setStatus("held");
+            setMessage(
+              error instanceof Error
+                ? `Source protected locally: ${error.message}`
+                : "Source protected locally; finalization needs attention.",
+            );
+            await refreshRecovery();
+          })
+          .finally(() => {
+            activeCaptureOperationRef.current = false;
+            void resumeProtectedUploads();
+          });
       };
       recorder.onerror = () => {
         const detail = "The browser encoder reported an error.";
@@ -2225,6 +2263,7 @@ export function BrowserSourceRecorder({
         stream?.getTracks().forEach((track) => track.stop());
         await durableWriterRef.current?.close().catch(() => undefined);
         durableWriterRef.current = null;
+        activeCaptureOperationRef.current = false;
       }
       const failure = browserRetainedStartFailure(error, sourceType);
       setOperationalIssue({
@@ -2263,6 +2302,8 @@ export function BrowserSourceRecorder({
     startRetainedSourceMeter,
     stop,
     stopRetainedSourceMeter,
+    activateLedger,
+    resumeProtectedUploads,
     updateLedger,
     uploadLedger,
   ]);
