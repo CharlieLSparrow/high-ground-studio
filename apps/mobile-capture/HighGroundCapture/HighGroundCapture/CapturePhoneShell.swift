@@ -7677,7 +7677,7 @@ private struct CaptureRecorderView: View {
     private func requestCoordinatedStop(for session: MobileCaptureSession) async {
         guard shouldCoordinateRecording(for: session) else {
             await stopLocalRecording()
-            revealSavedSourceIfStopped()
+            announceSavedSourceIfStopped()
             return
         }
         if session.canControlRecording == true {
@@ -7686,23 +7686,21 @@ private struct CaptureRecorderView: View {
                 action: .stop
             ) else { return }
             await applyRecordingDirective(directive, for: session)
-            revealSavedSourceIfStopped()
+            announceSavedSourceIfStopped()
             return
         }
         await stopLocalRecording()
-        revealSavedSourceIfStopped()
+        announceSavedSourceIfStopped()
     }
 
-    /// Stopping is complete only when the local recorder has reached a
-    /// terminal state. Put the immutable source in front of the person at that
-    /// point so the ordinary next step is verify/play/review, rather than
-    /// leaving them midway down a long recorder workspace with the primary
-    /// control lazily off-screen.
-    private func revealSavedSourceIfStopped() {
+    /// Stop protects this participant's source without ending or navigating
+    /// away from the conversation. Upload and transcript work continue in the
+    /// background; leaving the call remains a separate, ordinary action.
+    private func announceSavedSourceIfStopped() {
         guard !captureIsActive else { return }
-        withAnimation(.easeInOut(duration: 0.2)) {
-            visibleTab = .library
-        }
+        model.message = model.providerRoom.isConnected
+            ? "Recording saved on this iPhone. You can keep talking or leave the call when you are ready."
+            : "Recording saved on this iPhone. Quipsly is verifying the cloud copy and will start the transcript automatically."
     }
 
     /// Leaving a conversation is an endpoint action, not a room-wide recording

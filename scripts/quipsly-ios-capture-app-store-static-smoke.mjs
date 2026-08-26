@@ -1749,8 +1749,9 @@ requireIncludes(capturePhoneShellText, "for: model.selectedSession?.purpose", "s
 requireIncludes(capturePhoneShellText, "CaptureCallPreferences.setRecordingMode(", "shipping recorder persists recording-mode choices only within the current purpose lane");
 requireIncludes(capturePhoneShellText, "VideoRecorderHero(", "shipping recorder reaches local video capture");
 requireIncludes(capturePhoneShellText, "onSwitchCamera:", "shipping video recorder exposes deliberate camera switching");
-requireIncludes(capturePhoneShellText, "private func revealSavedSourceIfStopped()", "shipping recorder owns an explicit stop-to-source transition");
-requireIncludes(capturePhoneShellText, "visibleTab = .library", "completed native capture reveals the protected local source library");
+requireIncludes(capturePhoneShellText, "private func announceSavedSourceIfStopped()", "shipping recorder owns an explicit post-stop confirmation");
+requireIncludes(capturePhoneShellText, "You can keep talking or leave the call when you are ready", "stopping a recording does not force the coach out of an active call");
+requireIncludes(capturePhoneShellText, "will start the transcript automatically", "local-only capture explains the automatic post-call path without an approval step");
 requireIncludes(runtimeUISmokeTestsText, "The completed take should appear as a new immutable local source.", "runtime iPhone flight proves Stop reaches a new immutable local source row");
 requireIncludes(capturePhoneShellText, "CaptureRehearsalReadinessCard(", "shipping recorder exposes a preflight check");
 requireIncludes(capturePhoneShellText, "CaptureSessionGuardianCard(", "shipping recorder reaches one ranked operational Guardian");
