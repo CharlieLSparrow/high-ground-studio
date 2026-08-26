@@ -21,10 +21,15 @@ type BuildCoachingPacketArgs = {
   force?: boolean;
 };
 
-type SessionPacketPurpose = "COACHING" | "PODCAST" | "RESEARCH_INTERVIEW" | "INTERNAL_MEETING";
+type SessionPacketPurpose =
+  | "COACHING"
+  | "PODCAST"
+  | "RESEARCH_INTERVIEW"
+  | "INTERNAL_MEETING";
 
 export { SESSION_PACKET_TEMPLATE_VERSION } from "@high-ground/quipsly-domain/coaching-packet";
-export const TRANSCRIPT_PACKET_SNAPSHOT_SCHEMA = "quipsly-transcript-packet-snapshot-v2";
+export const TRANSCRIPT_PACKET_SNAPSHOT_SCHEMA =
+  "quipsly-transcript-packet-snapshot-v2";
 export const TRANSCRIPT_PACKET_SEGMENT_ORDER_BY = [
   { startSeconds: "asc" as const },
   { id: "asc" as const },
@@ -36,6 +41,7 @@ const ACTION_PATTERNS = [
   /\b(next step|action item|homework|before next time|for next time)\b/i,
   /\b(goal|commitment|objective)\s+is\s+to\b/i,
 ];
+const GOAL_PATTERN = /\b(goal|objective|long[- ]term|commitment)\b/i;
 
 export type { TranscriptActionCandidate } from "@high-ground/quipsly-domain/coaching-packet";
 
@@ -43,84 +49,108 @@ const REVIEW_LANE_DEFINITIONS = [
   {
     id: "client-follow-up",
     label: "Client follow-up notes",
-    meaning: "Candidate notes that may become client-facing recap material after human review.",
-    pattern: /\b(client|coachee|you|goal|stuck|decision|commitment|homework|follow up|next step)\b/i,
+    meaning: "Source-linked recap notes shared in the coaching relationship.",
+    pattern:
+      /\b(client|coachee|you|goal|stuck|decision|commitment|homework|follow up|next step)\b/i,
     purposes: ["COACHING"],
   },
   {
     id: "coaching-insights",
     label: "Insights and decisions",
-    meaning: "Candidate insights and decisions to review without exposing private coach interpretation.",
-    pattern: /\b(insight|realized|learned|decision|decided|pattern|meaning|important|changed|understand)\b/i,
+    meaning:
+      "Source-linked insights and decisions that remain easy to edit or remove.",
+    pattern:
+      /\b(insight|realized|learned|decision|decided|pattern|meaning|important|changed|understand)\b/i,
     purposes: ["COACHING"],
   },
   {
     id: "obstacles-and-support",
     label: "Obstacles and support",
-    meaning: "Candidate obstacles, resources, and support to revisit with the client.",
-    pattern: /\b(stuck|block|obstacle|hard|difficult|support|help|resource|accountability|challenge)\b/i,
+    meaning: "Obstacles, resources, and support to revisit with the client.",
+    pattern:
+      /\b(stuck|block|obstacle|hard|difficult|support|help|resource|accountability|challenge)\b/i,
     purposes: ["COACHING"],
   },
   {
     id: "goals-and-tasks",
     label: "Goals and tasks",
-    meaning: "Candidate commitments, goals, and todos that may become Nest tasks or coaching goals.",
-    pattern: /\b(goal|task|todo|to-do|commit|commitment|before next|for next|need to|should|will|finish|prepare)\b/i,
+    meaning: "Commitments Quipsly turns into editable tasks or coaching goals.",
+    pattern:
+      /\b(goal|task|todo|to-do|commit|commitment|before next|for next|need to|should|will|finish|prepare)\b/i,
     purposes: ["COACHING", "PODCAST", "RESEARCH_INTERVIEW", "INTERNAL_MEETING"],
   },
   {
     id: "next-session-prep",
     label: "Next-session prep",
-    meaning: "Material that helps prepare the next coaching, podcast, or research session.",
-    pattern: /\b(next session|next time|before we meet|bring back|follow up|prep|prepare|homework|review)\b/i,
+    meaning:
+      "Material that helps prepare the next coaching, podcast, or research session.",
+    pattern:
+      /\b(next session|next time|before we meet|bring back|follow up|prep|prepare|homework|review)\b/i,
     purposes: ["COACHING", "PODCAST", "RESEARCH_INTERVIEW", "INTERNAL_MEETING"],
   },
   {
     id: "podcast-production",
     label: "Podcast and episode notes",
-    meaning: "Candidate beats, episode notes, title ideas, and production hooks for podcast or video work.",
-    pattern: /\b(podcast|episode|clip|short|youtube|video|publish|title|hook|segment|chapter|article|post)\b/i,
+    meaning:
+      "Beats, episode notes, title ideas, and production hooks for podcast or video work.",
+    pattern:
+      /\b(podcast|episode|clip|short|youtube|video|publish|title|hook|segment|chapter|article|post)\b/i,
     purposes: ["PODCAST"],
   },
   {
     id: "fact-checks-and-rights",
     label: "Fact checks and source rights",
-    meaning: "Claims, sources, clips, sponsors, and rights questions to verify before publication.",
-    pattern: /\b(fact|check|source|citation|claim|rights|license|permission|copyright|sponsor|verify)\b/i,
+    meaning:
+      "Claims, sources, clips, sponsors, and rights questions to verify before publication.",
+    pattern:
+      /\b(fact|check|source|citation|claim|rights|license|permission|copyright|sponsor|verify)\b/i,
     purposes: ["PODCAST", "RESEARCH_INTERVIEW"],
   },
   {
     id: "quote-candidates",
     label: "Quote candidates",
-    meaning: "Memorable lines that may become quote cards, social copy, article pull quotes, or QuipLore seeds.",
-    pattern: /\b(remember|truth|lesson|means|because|story|wisdom|quote|important|realized|learned)\b/i,
+    meaning:
+      "Memorable lines that may become quote cards, social copy, article pull quotes, or QuipLore seeds.",
+    pattern:
+      /\b(remember|truth|lesson|means|because|story|wisdom|quote|important|realized|learned)\b/i,
     purposes: ["PODCAST", "RESEARCH_INTERVIEW"],
   },
   {
     id: "article-seeds",
     label: "Article and post seeds",
-    meaning: "Ideas that may become articles, posts, book notes, or research packets.",
-    pattern: /\b(article|post|write|draft|book|research|source|example|lesson|story|framework|principle)\b/i,
+    meaning:
+      "Ideas that may become articles, posts, book notes, or research packets.",
+    pattern:
+      /\b(article|post|write|draft|book|research|source|example|lesson|story|framework|principle)\b/i,
     purposes: ["PODCAST", "RESEARCH_INTERVIEW"],
   },
   {
     id: "clip-candidates",
     label: "Clip candidates",
-    meaning: "Moments with enough shape or energy to review as possible short clips.",
-    pattern: /\?|\b(wait|wow|love|huge|funny|story|example|realized|important|problem|answer|mistake)\b/i,
+    meaning:
+      "Moments with enough shape or energy to review as possible short clips.",
+    pattern:
+      /\?|\b(wait|wow|love|huge|funny|story|example|realized|important|problem|answer|mistake)\b/i,
     purposes: ["PODCAST"],
   },
 ] as const;
 
 function packetPurpose(value: unknown): SessionPacketPurpose {
-  return ["COACHING", "PODCAST", "RESEARCH_INTERVIEW", "INTERNAL_MEETING"].includes(cleanText(value))
-    ? cleanText(value) as SessionPacketPurpose
+  return [
+    "COACHING",
+    "PODCAST",
+    "RESEARCH_INTERVIEW",
+    "INTERNAL_MEETING",
+  ].includes(cleanText(value))
+    ? (cleanText(value) as SessionPacketPurpose)
     : "COACHING";
 }
 
 export function reviewLaneDefinitionsForPurpose(value: unknown) {
   const purpose = packetPurpose(value);
-  return REVIEW_LANE_DEFINITIONS.filter((lane) => (lane.purposes as readonly string[]).includes(purpose));
+  return REVIEW_LANE_DEFINITIONS.filter((lane) =>
+    (lane.purposes as readonly string[]).includes(purpose),
+  );
 }
 
 function cleanText(value: unknown) {
@@ -129,6 +159,18 @@ function cleanText(value: unknown) {
 
 function packetSha256(value: string) {
   return createHash("sha256").update(value, "utf8").digest("hex");
+}
+
+function packetWorkId(
+  kind: "task" | "goal",
+  transcriptJobId: string,
+  segmentId: string,
+) {
+  const digest = createHash("sha256")
+    .update(`${kind}|${transcriptJobId}|${segmentId}`)
+    .digest("hex")
+    .slice(0, 32);
+  return `transcript-${kind}-${digest}`;
 }
 
 function reviewTime(value: unknown) {
@@ -152,7 +194,12 @@ export type PacketTranscriptSegment = {
   acceptedReviewId: string | null;
   acceptedCorrectionId: string | null;
   acceptedSpeakerAttributionId: string | null;
-  speakerAuthority: "correction" | "attribution" | "source-binding" | "provider" | "unresolved";
+  speakerAuthority:
+    | "correction"
+    | "attribution"
+    | "source-binding"
+    | "provider"
+    | "unresolved";
   sourceBoundParticipantId: string | null;
 };
 
@@ -162,16 +209,28 @@ export type PacketTranscriptEvidenceSpan = PacketTranscriptSegment & {
   evidenceSegments: PacketTranscriptSegment[];
 };
 
-function packetSpeakerProviderSnapshotSha256(segments: any[], providerSpeakerLabel: string) {
+function packetSpeakerProviderSnapshotSha256(
+  segments: any[],
+  providerSpeakerLabel: string,
+) {
   const evidence = segments
-    .filter((segment) => (cleanText(segment?.speakerLabel) || null) === providerSpeakerLabel)
+    .filter(
+      (segment) =>
+        (cleanText(segment?.speakerLabel) || null) === providerSpeakerLabel,
+    )
     .map((segment) => ({
       id: cleanText(segment?.id),
       startSeconds: Number(segment?.startSeconds),
       endSeconds: Number(segment?.endSeconds),
-      textSha256: packetSha256(typeof segment?.text === "string" ? segment.text : ""),
+      textSha256: packetSha256(
+        typeof segment?.text === "string" ? segment.text : "",
+      ),
     }))
-    .sort((left, right) => left.startSeconds - right.startSeconds || left.id.localeCompare(right.id));
+    .sort(
+      (left, right) =>
+        left.startSeconds - right.startSeconds ||
+        left.id.localeCompare(right.id),
+    );
   return packetSha256(JSON.stringify({ providerSpeakerLabel, evidence }));
 }
 
@@ -181,21 +240,31 @@ function packetSpeakerProviderSnapshotSha256(segments: any[], providerSpeakerLab
  * advances review status without changing provider text.
  */
 function sourceBoundTranscriptRouting(job: unknown) {
-  const transcriptJob = typeof job === "object" && job !== null && !Array.isArray(job)
-    ? job as Record<string, unknown>
-    : {};
-  const result = typeof transcriptJob.resultJson === "object" && transcriptJob.resultJson !== null && !Array.isArray(transcriptJob.resultJson)
-    ? transcriptJob.resultJson as Record<string, unknown>
-    : {};
-  const control = typeof result.processingControl === "object" && result.processingControl !== null && !Array.isArray(result.processingControl)
-    ? result.processingControl as Record<string, unknown>
-    : {};
-  const routing = typeof control.routing === "object" && control.routing !== null && !Array.isArray(control.routing)
-    ? control.routing as Record<string, unknown>
-    : {};
-  return routing.schema !== "quipsly-transcript-routing-summary-v1"
-      || routing.sourceTopology !== "participant-isolated"
-      || routing.speakerAuthority !== "source-binding"
+  const transcriptJob =
+    typeof job === "object" && job !== null && !Array.isArray(job)
+      ? (job as Record<string, unknown>)
+      : {};
+  const result =
+    typeof transcriptJob.resultJson === "object" &&
+    transcriptJob.resultJson !== null &&
+    !Array.isArray(transcriptJob.resultJson)
+      ? (transcriptJob.resultJson as Record<string, unknown>)
+      : {};
+  const control =
+    typeof result.processingControl === "object" &&
+    result.processingControl !== null &&
+    !Array.isArray(result.processingControl)
+      ? (result.processingControl as Record<string, unknown>)
+      : {};
+  const routing =
+    typeof control.routing === "object" &&
+    control.routing !== null &&
+    !Array.isArray(control.routing)
+      ? (control.routing as Record<string, unknown>)
+      : {};
+  return routing.schema !== "quipsly-transcript-routing-summary-v1" ||
+    routing.sourceTopology !== "participant-isolated" ||
+    routing.speakerAuthority !== "source-binding"
     ? null
     : routing;
 }
@@ -207,12 +276,16 @@ export function sourceBoundTranscriptSpeakerLabel(job: unknown) {
 
 export function sourceBoundTranscriptParticipantId(job: unknown) {
   if (!sourceBoundTranscriptRouting(job)) return null;
-  const transcriptJob = typeof job === "object" && job !== null && !Array.isArray(job)
-    ? job as Record<string, unknown>
-    : {};
-  const asset = typeof transcriptJob.asset === "object" && transcriptJob.asset !== null && !Array.isArray(transcriptJob.asset)
-    ? transcriptJob.asset as Record<string, unknown>
-    : {};
+  const transcriptJob =
+    typeof job === "object" && job !== null && !Array.isArray(job)
+      ? (job as Record<string, unknown>)
+      : {};
+  const asset =
+    typeof transcriptJob.asset === "object" &&
+    transcriptJob.asset !== null &&
+    !Array.isArray(transcriptJob.asset)
+      ? (transcriptJob.asset as Record<string, unknown>)
+      : {};
   return cleanText(asset.participantId) || null;
 }
 
@@ -227,45 +300,85 @@ export function projectTranscriptSegmentsForPacket(
   const exactSourceParticipantId = cleanText(sourceBoundParticipantId) || null;
   const activeSpeakerAttributions = new Map(
     (Array.isArray(speakerAttributions) ? speakerAttributions : [])
-      .filter((attribution) => attribution?.status === "active"
-        && cleanText(attribution?.providerSpeakerLabel)
-        && cleanText(attribution?.participantId)
-        && cleanText(attribution?.participantDisplaySnapshot)
-        && cleanText(attribution?.providerSnapshotSha256) === packetSpeakerProviderSnapshotSha256(
-          providerSegments,
-          cleanText(attribution?.providerSpeakerLabel),
-        ))
-      .map((attribution) => [cleanText(attribution.providerSpeakerLabel), attribution]),
+      .filter(
+        (attribution) =>
+          attribution?.status === "active" &&
+          cleanText(attribution?.providerSpeakerLabel) &&
+          cleanText(attribution?.participantId) &&
+          cleanText(attribution?.participantDisplaySnapshot) &&
+          cleanText(attribution?.providerSnapshotSha256) ===
+            packetSpeakerProviderSnapshotSha256(
+              providerSegments,
+              cleanText(attribution?.providerSpeakerLabel),
+            ),
+      )
+      .map((attribution) => [
+        cleanText(attribution.providerSpeakerLabel),
+        attribution,
+      ]),
   );
   return providerSegments.map((segment) => {
     const providerText = typeof segment?.text === "string" ? segment.text : "";
     const providerSpeakerLabel = cleanText(segment?.speakerLabel) || null;
     const providerTextSha256 = packetSha256(providerText);
-    const acceptedCorrection = [...(Array.isArray(segment?.corrections) ? segment.corrections : [])]
-      .filter((correction) => correction?.status === "accepted"
-        && correction?.baseTextSha256 === providerTextSha256
-        && (cleanText(correction?.expectedSpeakerLabel) || null) === providerSpeakerLabel)
-      .sort((left, right) => reviewTime(right?.updatedAt) - reviewTime(left?.updatedAt))[0] ?? null;
-    const acceptedVerification = acceptedCorrection ? null : [...(Array.isArray(segment?.verifications) ? segment.verifications : [])]
-      .filter((verification) => verification?.reviewKind === "confirmed-as-is"
-        && verification?.providerTextSha256 === providerTextSha256
-        && (cleanText(verification?.providerSpeakerLabel) || null) === providerSpeakerLabel)
-      .sort((left, right) => reviewTime(right?.createdAt) - reviewTime(left?.createdAt))[0] ?? null;
+    const acceptedCorrection =
+      [...(Array.isArray(segment?.corrections) ? segment.corrections : [])]
+        .filter(
+          (correction) =>
+            correction?.status === "accepted" &&
+            correction?.baseTextSha256 === providerTextSha256 &&
+            (cleanText(correction?.expectedSpeakerLabel) || null) ===
+              providerSpeakerLabel,
+        )
+        .sort(
+          (left, right) =>
+            reviewTime(right?.updatedAt) - reviewTime(left?.updatedAt),
+        )[0] ?? null;
+    const acceptedVerification = acceptedCorrection
+      ? null
+      : ([
+          ...(Array.isArray(segment?.verifications)
+            ? segment.verifications
+            : []),
+        ]
+          .filter(
+            (verification) =>
+              verification?.reviewKind === "confirmed-as-is" &&
+              verification?.providerTextSha256 === providerTextSha256 &&
+              (cleanText(verification?.providerSpeakerLabel) || null) ===
+                providerSpeakerLabel,
+          )
+          .sort(
+            (left, right) =>
+              reviewTime(right?.createdAt) - reviewTime(left?.createdAt),
+          )[0] ?? null);
     const correctedText = cleanText(acceptedCorrection?.correctedText);
-    const correctedSpeaker = cleanText(acceptedCorrection?.correctedSpeakerLabel);
-    const speakerAttribution = activeSpeakerAttributions.get(providerSpeakerLabel || "") ?? null;
-    const attributedSpeaker = cleanText(speakerAttribution?.participantDisplaySnapshot);
-    const acceptedReviewId = cleanText(acceptedCorrection?.id) || cleanText(acceptedVerification?.id) || null;
-    const resolvedSpeakerLabel = correctedSpeaker || attributedSpeaker || exactSourceSpeaker || providerSpeakerLabel;
+    const correctedSpeaker = cleanText(
+      acceptedCorrection?.correctedSpeakerLabel,
+    );
+    const speakerAttribution =
+      activeSpeakerAttributions.get(providerSpeakerLabel || "") ?? null;
+    const attributedSpeaker = cleanText(
+      speakerAttribution?.participantDisplaySnapshot,
+    );
+    const acceptedReviewId =
+      cleanText(acceptedCorrection?.id) ||
+      cleanText(acceptedVerification?.id) ||
+      null;
+    const resolvedSpeakerLabel =
+      correctedSpeaker ||
+      attributedSpeaker ||
+      exactSourceSpeaker ||
+      providerSpeakerLabel;
     const speakerAuthority = correctedSpeaker
-      ? "correction" as const
+      ? ("correction" as const)
       : attributedSpeaker
-        ? "attribution" as const
+        ? ("attribution" as const)
         : exactSourceSpeaker
-          ? "source-binding" as const
+          ? ("source-binding" as const)
           : providerSpeakerLabel
-            ? "provider" as const
-            : "unresolved" as const;
+            ? ("provider" as const)
+            : ("unresolved" as const);
 
     return {
       id: String(segment?.id ?? ""),
@@ -273,7 +386,8 @@ export function projectTranscriptSegmentsForPacket(
       startSeconds: Number(segment?.startSeconds),
       endSeconds: Number(segment?.endSeconds),
       text: correctedText || cleanText(providerText),
-      confidence: typeof segment?.confidence === "number" ? segment.confidence : null,
+      confidence:
+        typeof segment?.confidence === "number" ? segment.confidence : null,
       providerText,
       providerSpeakerLabel,
       providerTextSha256,
@@ -287,7 +401,9 @@ export function projectTranscriptSegmentsForPacket(
   });
 }
 
-export function projectTranscriptJobSegmentsForPacket(job: any): PacketTranscriptSegment[] {
+export function projectTranscriptJobSegmentsForPacket(
+  job: any,
+): PacketTranscriptSegment[] {
   return projectTranscriptSegmentsForPacket(
     job?.segments,
     job?.speakerAttributions,
@@ -301,29 +417,56 @@ const MAX_PACKET_SPAN_DURATION_SECONDS = 45;
 const MAX_PACKET_SPAN_TEXT_LENGTH = 1_600;
 const MAX_PACKET_SPAN_GAP_SECONDS = 1.5;
 
-function shouldContinuePacketSpan(current: PacketTranscriptSegment[], next: PacketTranscriptSegment) {
+function shouldContinuePacketSpan(
+  current: PacketTranscriptSegment[],
+  next: PacketTranscriptSegment,
+) {
   const last = current.at(-1);
   if (!last || current.length >= MAX_PACKET_SPAN_SEGMENTS) return false;
   const currentSpeaker = cleanText(last.speakerLabel);
   const nextSpeaker = cleanText(next.speakerLabel);
-  if (currentSpeaker && nextSpeaker && currentSpeaker !== nextSpeaker) return false;
+  if (currentSpeaker && nextSpeaker && currentSpeaker !== nextSpeaker)
+    return false;
   const gap = next.startSeconds - last.endSeconds;
-  if (!Number.isFinite(gap) || gap < -0.5 || gap > MAX_PACKET_SPAN_GAP_SECONDS) return false;
-  if (next.endSeconds - current[0]!.startSeconds > MAX_PACKET_SPAN_DURATION_SECONDS) return false;
-  const combinedText = [...current, next].map((segment) => cleanText(segment.text)).join(" ");
+  if (!Number.isFinite(gap) || gap < -0.5 || gap > MAX_PACKET_SPAN_GAP_SECONDS)
+    return false;
+  if (
+    next.endSeconds - current[0]!.startSeconds >
+    MAX_PACKET_SPAN_DURATION_SECONDS
+  )
+    return false;
+  const combinedText = [...current, next]
+    .map((segment) => cleanText(segment.text))
+    .join(" ");
   if (combinedText.length > MAX_PACKET_SPAN_TEXT_LENGTH) return false;
   const lastText = cleanText(last.text);
-  const continuation = /(?:[,;:]|\b(?:and|or|but|because|so|to|that|which|who|if|when|while|until|unless|with|without))["')\]]*$/i.test(lastText);
+  const continuation =
+    /(?:[,;:]|\b(?:and|or|but|because|so|to|that|which|who|if|when|while|until|unless|with|without))["')\]]*$/i.test(
+      lastText,
+    );
   const terminal = /[.!?]["')\]]*$/.test(lastText);
   return continuation || !terminal;
 }
 
-function packetEvidenceSpan(segments: PacketTranscriptSegment[]): PacketTranscriptEvidenceSpan {
+function packetEvidenceSpan(
+  segments: PacketTranscriptSegment[],
+): PacketTranscriptEvidenceSpan {
   const first = segments[0]!;
   const last = segments.at(-1)!;
-  const text = segments.map((segment) => cleanText(segment.text)).filter(Boolean).join(" ");
-  const speakerLabels = [...new Set(segments.map((segment) => cleanText(segment.speakerLabel)).filter(Boolean))];
-  const confidences = segments.map((segment) => segment.confidence).filter((value): value is number => typeof value === "number");
+  const text = segments
+    .map((segment) => cleanText(segment.text))
+    .filter(Boolean)
+    .join(" ");
+  const speakerLabels = [
+    ...new Set(
+      segments
+        .map((segment) => cleanText(segment.speakerLabel))
+        .filter(Boolean),
+    ),
+  ];
+  const confidences = segments
+    .map((segment) => segment.confidence)
+    .filter((value): value is number => typeof value === "number");
   return {
     ...first,
     segmentIds: segments.map((segment) => segment.id),
@@ -331,18 +474,27 @@ function packetEvidenceSpan(segments: PacketTranscriptSegment[]): PacketTranscri
     speakerLabel: speakerLabels.length === 1 ? speakerLabels[0]! : null,
     endSeconds: last.endSeconds,
     text,
-    confidence: confidences.length ? confidences.reduce((sum, value) => sum + value, 0) / confidences.length : null,
-    reviewStatus: segments.every((segment) => segment.reviewStatus === "human-reviewed") ? "human-reviewed" : "provider",
+    confidence: confidences.length
+      ? confidences.reduce((sum, value) => sum + value, 0) / confidences.length
+      : null,
+    reviewStatus: segments.every(
+      (segment) => segment.reviewStatus === "human-reviewed",
+    )
+      ? "human-reviewed"
+      : "provider",
     sourceTextSha256: packetSha256(text),
   };
 }
 
 /** Deterministically joins adjacent provider segments only while a thought remains syntactically open. */
-export function buildTranscriptEvidenceSpans(segments: PacketTranscriptSegment[]) {
+export function buildTranscriptEvidenceSpans(
+  segments: PacketTranscriptSegment[],
+) {
   const spans: PacketTranscriptEvidenceSpan[] = [];
   let current: PacketTranscriptSegment[] = [];
   for (const segment of segments) {
-    if (!current.length || shouldContinuePacketSpan(current, segment)) current.push(segment);
+    if (!current.length || shouldContinuePacketSpan(current, segment))
+      current.push(segment);
     else {
       spans.push(packetEvidenceSpan(current));
       current = [segment];
@@ -353,31 +505,57 @@ export function buildTranscriptEvidenceSpans(segments: PacketTranscriptSegment[]
 }
 
 /** Resolves and validates an immutable packet item against the current ordered transcript projection. */
-export function resolvePacketEvidenceSpan(item: unknown, projected: PacketTranscriptSegment[]) {
-  const candidate = typeof item === "object" && item !== null && !Array.isArray(item)
-    ? item as Record<string, unknown>
-    : {};
+export function resolvePacketEvidenceSpan(
+  item: unknown,
+  projected: PacketTranscriptSegment[],
+) {
+  const candidate =
+    typeof item === "object" && item !== null && !Array.isArray(item)
+      ? (item as Record<string, unknown>)
+      : {};
   const primarySegmentId = cleanText(candidate.segmentId);
   const segmentIds = Array.isArray(candidate.segmentIds)
     ? candidate.segmentIds.map(cleanText).filter(Boolean)
-    : primarySegmentId ? [primarySegmentId] : [];
-  if (!primarySegmentId || !segmentIds.length || segmentIds.length > MAX_PACKET_SPAN_SEGMENTS
-      || segmentIds[0] !== primarySegmentId || new Set(segmentIds).size !== segmentIds.length) return null;
-  const indexes = segmentIds.map((id) => projected.findIndex((segment) => segment.id === id));
-  if (indexes.some((index) => index < 0)
-      || indexes.some((index, position) => position > 0 && index !== indexes[position - 1]! + 1)) return null;
+    : primarySegmentId
+      ? [primarySegmentId]
+      : [];
+  if (
+    !primarySegmentId ||
+    !segmentIds.length ||
+    segmentIds.length > MAX_PACKET_SPAN_SEGMENTS ||
+    segmentIds[0] !== primarySegmentId ||
+    new Set(segmentIds).size !== segmentIds.length
+  )
+    return null;
+  const indexes = segmentIds.map((id) =>
+    projected.findIndex((segment) => segment.id === id),
+  );
+  if (
+    indexes.some((index) => index < 0) ||
+    indexes.some(
+      (index, position) => position > 0 && index !== indexes[position - 1]! + 1,
+    )
+  )
+    return null;
   const resolved = indexes.map((index) => projected[index]!);
-  const sourceText = resolved.map((segment) => cleanText(segment.text)).join(" ");
+  const sourceText = resolved
+    .map((segment) => cleanText(segment.text))
+    .join(" ");
   const expectedSha256 = cleanText(candidate.sourceTextSha256).toLowerCase();
-  if (segmentIds.length > 1 && !/^[a-f0-9]{64}$/.test(expectedSha256)) return null;
-  if (expectedSha256 && expectedSha256 !== packetSha256(sourceText)) return null;
+  if (segmentIds.length > 1 && !/^[a-f0-9]{64}$/.test(expectedSha256))
+    return null;
+  if (expectedSha256 && expectedSha256 !== packetSha256(sourceText))
+    return null;
   return resolved;
 }
 
 export function packetTemplateMatches(sourceJson: unknown) {
-  const source = typeof sourceJson === "object" && sourceJson !== null && !Array.isArray(sourceJson)
-    ? sourceJson as Record<string, unknown>
-    : {};
+  const source =
+    typeof sourceJson === "object" &&
+    sourceJson !== null &&
+    !Array.isArray(sourceJson)
+      ? (sourceJson as Record<string, unknown>)
+      : {};
   return source.packetTemplateVersion === SESSION_PACKET_TEMPLATE_VERSION;
 }
 
@@ -412,8 +590,12 @@ export function transcriptPacketSnapshot(
     schema: TRANSCRIPT_PACKET_SNAPSHOT_SCHEMA,
     sha256,
     segmentCount: projected.length,
-    humanReviewedSegmentCount: projected.filter((segment) => segment.reviewStatus === "human-reviewed").length,
-    providerOnlySegmentCount: projected.filter((segment) => segment.reviewStatus === "provider").length,
+    humanReviewedSegmentCount: projected.filter(
+      (segment) => segment.reviewStatus === "human-reviewed",
+    ).length,
+    providerOnlySegmentCount: projected.filter(
+      (segment) => segment.reviewStatus === "provider",
+    ).length,
     segmentReviews,
     projected,
   };
@@ -435,23 +617,34 @@ export function packetSnapshotMatches(
   sourceBoundSpeakerLabel: unknown = null,
   sourceBoundParticipantId: unknown = null,
 ) {
-  const source = typeof sourceJson === "object" && sourceJson !== null && !Array.isArray(sourceJson)
-    ? sourceJson as Record<string, unknown>
-    : {};
-  const snapshot = typeof source.transcriptSnapshot === "object" && source.transcriptSnapshot !== null && !Array.isArray(source.transcriptSnapshot)
-    ? source.transcriptSnapshot as Record<string, unknown>
-    : {};
+  const source =
+    typeof sourceJson === "object" &&
+    sourceJson !== null &&
+    !Array.isArray(sourceJson)
+      ? (sourceJson as Record<string, unknown>)
+      : {};
+  const snapshot =
+    typeof source.transcriptSnapshot === "object" &&
+    source.transcriptSnapshot !== null &&
+    !Array.isArray(source.transcriptSnapshot)
+      ? (source.transcriptSnapshot as Record<string, unknown>)
+      : {};
   const current = transcriptPacketSnapshot(
     segments,
     speakerAttributions,
     sourceBoundSpeakerLabel,
     sourceBoundParticipantId,
   );
-  return snapshot.schema === TRANSCRIPT_PACKET_SNAPSHOT_SCHEMA
-    && snapshot.sha256 === current.sha256;
+  return (
+    snapshot.schema === TRANSCRIPT_PACKET_SNAPSHOT_SCHEMA &&
+    snapshot.sha256 === current.sha256
+  );
 }
 
-export function packetSnapshotMatchesTranscriptJob(sourceJson: unknown, job: any) {
+export function packetSnapshotMatchesTranscriptJob(
+  sourceJson: unknown,
+  job: any,
+) {
   return packetSnapshotMatches(
     sourceJson,
     job?.segments,
@@ -481,16 +674,20 @@ export function selectLatestCorrelatedPacketNotes(packetNotes: any[]) {
     .filter((note) => note?.kind === "SUMMARY")
     .sort(newestPacketNote);
   const summary = summaries[0] || null;
-  const summarySource = typeof summary?.sourceJson === "object" && summary.sourceJson !== null
-    ? summary.sourceJson as Record<string, unknown>
-    : {};
+  const summarySource =
+    typeof summary?.sourceJson === "object" && summary.sourceJson !== null
+      ? (summary.sourceJson as Record<string, unknown>)
+      : {};
   const packetBuildId = cleanText(summarySource.packetBuildId);
-  const allHighlights = packetNotes.filter((note) => note?.kind === "HIGHLIGHT");
+  const allHighlights = packetNotes.filter(
+    (note) => note?.kind === "HIGHLIGHT",
+  );
   const highlights = packetBuildId
     ? allHighlights.filter((note) => {
-        const source = typeof note?.sourceJson === "object" && note.sourceJson !== null
-          ? note.sourceJson as Record<string, unknown>
-          : {};
+        const source =
+          typeof note?.sourceJson === "object" && note.sourceJson !== null
+            ? (note.sourceJson as Record<string, unknown>)
+            : {};
         return cleanText(source.packetBuildId) === packetBuildId;
       })
     : allHighlights;
@@ -499,12 +696,17 @@ export function selectLatestCorrelatedPacketNotes(packetNotes: any[]) {
     summary,
     highlights,
     packetBuildId: packetBuildId || null,
-    correlationMode: packetBuildId ? "PACKET_BUILD_ID" as const : "LEGACY_TRANSCRIPT_FALLBACK" as const,
+    correlationMode: packetBuildId
+      ? ("PACKET_BUILD_ID" as const)
+      : ("LEGACY_TRANSCRIPT_FALLBACK" as const),
   };
 }
 
 function formatTime(seconds: unknown) {
-  const numeric = typeof seconds === "number" && Number.isFinite(seconds) ? Math.max(0, seconds) : 0;
+  const numeric =
+    typeof seconds === "number" && Number.isFinite(seconds)
+      ? Math.max(0, seconds)
+      : 0;
   const whole = Math.floor(numeric);
   const minutes = Math.floor(whole / 60);
   const remainingSeconds = whole % 60;
@@ -520,7 +722,12 @@ function scoreHighlight(segment: any) {
   const text = cleanText(segment.text);
   let score = Math.min(50, text.length / 8);
   if (/\?/.test(text)) score += 8;
-  if (/\b(important|remember|realized|because|means|story|lesson|goal|stuck|change|decision|commitment)\b/i.test(text)) score += 12;
+  if (
+    /\b(important|remember|realized|because|means|story|lesson|goal|stuck|change|decision|commitment)\b/i.test(
+      text,
+    )
+  )
+    score += 12;
   if (ACTION_PATTERNS.some((pattern) => pattern.test(text))) score += 8;
   if (typeof segment.confidence === "number") score += segment.confidence * 5;
   return score;
@@ -528,17 +735,29 @@ function scoreHighlight(segment: any) {
 
 function titleFromSegment(segment: any) {
   const text = cleanText(segment.text);
-  const sentence = text.split(/[.!?]/).map((part) => part.trim()).find(Boolean) || text;
+  const sentence =
+    text
+      .split(/[.!?]/)
+      .map((part) => part.trim())
+      .find(Boolean) || text;
   const clipped = sentence.slice(0, 82);
-  return clipped.length < sentence.length ? `${clipped}...` : clipped || "Session highlight";
+  return clipped.length < sentence.length
+    ? `${clipped}...`
+    : clipped || "Session highlight";
 }
 
 function actionTitle(segment: any) {
   const text = cleanText(segment.text);
   const normalized = text.replace(/^(so|okay|ok|yeah|well|and|but)\s+/i, "");
-  const sentence = normalized.split(/[.!?]/).map((part) => part.trim()).find(Boolean) || normalized;
+  const sentence =
+    normalized
+      .split(/[.!?]/)
+      .map((part) => part.trim())
+      .find(Boolean) || normalized;
   const clipped = sentence.slice(0, 96);
-  return clipped.length < sentence.length ? `${clipped}...` : clipped || "Review this follow-up";
+  return clipped.length < sentence.length
+    ? `${clipped}...`
+    : clipped || "Review this follow-up";
 }
 
 function transcriptActionCandidate(input: {
@@ -547,10 +766,13 @@ function transcriptActionCandidate(input: {
   recordingAssetId: string;
   roomId: string;
   packetBuildId: string;
+  committedActionItemId?: string | null;
 }): TranscriptActionCandidate {
   const segmentId = String(input.segment.id);
   const sourceAnchor = buildTranscriptSourceAnchorFields(
-    Array.isArray(input.segment.evidenceSegments) ? input.segment.evidenceSegments : [input.segment],
+    Array.isArray(input.segment.evidenceSegments)
+      ? input.segment.evidenceSegments
+      : [input.segment],
   );
   return createTranscriptActionCandidate({
     id: `${TRANSCRIPT_ACTION_CANDIDATE_KIND}:${input.transcriptJobId}:${segmentId}`,
@@ -561,68 +783,106 @@ function transcriptActionCandidate(input: {
     roomId: input.roomId,
     packetBuildId: input.packetBuildId,
     segmentId,
-    segmentIds: Array.isArray(input.segment.segmentIds) ? input.segment.segmentIds : [segmentId],
+    segmentIds: Array.isArray(input.segment.segmentIds)
+      ? input.segment.segmentIds
+      : [segmentId],
     sourceText: cleanText(input.segment.text),
-    sourceTextSha256: cleanText(input.segment.sourceTextSha256) || packetSha256(cleanText(input.segment.text)),
+    sourceTextSha256:
+      cleanText(input.segment.sourceTextSha256) ||
+      packetSha256(cleanText(input.segment.text)),
     sourceSpan: sourceAnchor?.sourceSpan ?? null,
-    transcriptReviewStatus: input.segment.reviewStatus === "human-reviewed" ? "human-reviewed" : "provider",
+    transcriptReviewStatus:
+      input.segment.reviewStatus === "human-reviewed"
+        ? "human-reviewed"
+        : "provider",
     speakerLabel: cleanText(input.segment.speakerLabel) || null,
     speakerAuthority: input.segment.speakerAuthority,
     startSeconds: Number(input.segment.startSeconds) || 0,
     endSeconds: Number(input.segment.endSeconds) || 0,
+    committedActionItemId: input.committedActionItemId,
   });
 }
 
-export function packetActionCandidatesFromSource(value: unknown): TranscriptActionCandidate[] {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) return [];
+export function packetActionCandidatesFromSource(
+  value: unknown,
+): TranscriptActionCandidate[] {
+  if (typeof value !== "object" || value === null || Array.isArray(value))
+    return [];
   const source = value as Record<string, unknown>;
   const candidates = source.actionCandidates;
   if (!Array.isArray(candidates)) return [];
   return candidates.flatMap((candidate) => {
     if (isTranscriptActionCandidate(candidate)) return [candidate];
-    if (typeof candidate !== "object" || candidate === null || Array.isArray(candidate)) return [];
+    if (
+      typeof candidate !== "object" ||
+      candidate === null ||
+      Array.isArray(candidate)
+    )
+      return [];
     const record = candidate as Record<string, unknown>;
     if (
-      record.kind !== TRANSCRIPT_ACTION_CANDIDATE_KIND
-      || !cleanText(record.id)
-      || !cleanText(record.title)
-      || !cleanText(record.segmentId)
-    ) return [];
+      record.kind !== TRANSCRIPT_ACTION_CANDIDATE_KIND ||
+      !cleanText(record.id) ||
+      !cleanText(record.title) ||
+      !cleanText(record.segmentId)
+    )
+      return [];
     // Read compatibility for packet candidates created before the correlated
     // provenance fields were required. The enclosing summary supplies any
     // evidence that existed at that time; review still fails closed if a
     // complete binding cannot be reconstructed.
-    return [{
-      id: cleanText(record.id),
-      kind: TRANSCRIPT_ACTION_CANDIDATE_KIND,
-      reviewStatus: isTranscriptActionReviewStatus(record.reviewStatus)
-        ? record.reviewStatus
-        : "READY_FOR_HUMAN_REVIEW",
-      title: cleanText(record.title),
-      detail: cleanText(record.detail),
-      transcriptJobId: cleanText(record.transcriptJobId) || cleanText(source.transcriptJobId),
-      recordingAssetId: cleanText(record.recordingAssetId) || cleanText(source.recordingAssetId),
-      roomId: cleanText(record.roomId) || cleanText(source.roomId),
-      packetBuildId: cleanText(record.packetBuildId) || cleanText(source.packetBuildId),
-      segmentId: cleanText(record.segmentId),
-      segmentIds: Array.isArray(record.segmentIds)
-        ? record.segmentIds.map(cleanText).filter(Boolean)
-        : [cleanText(record.segmentId)],
-      sourceText: cleanText(record.sourceText),
-      sourceTextSha256: cleanText(record.sourceTextSha256),
-      sourceSpan: null,
-      transcriptReviewStatus: record.transcriptReviewStatus === "human-reviewed" ? "human-reviewed" : "provider",
-      speakerLabel: cleanText(record.speakerLabel) || null,
-      speakerAuthority: ["correction", "attribution", "source-binding", "provider", "unresolved"].includes(cleanText(record.speakerAuthority))
-        ? cleanText(record.speakerAuthority) as TranscriptActionCandidate["speakerAuthority"]
-        : undefined,
-      startSeconds: typeof record.startSeconds === "number" ? record.startSeconds : 0,
-      endSeconds: typeof record.endSeconds === "number" ? record.endSeconds : 0,
-      humanApprovalRequired: typeof record.humanApprovalRequired === "boolean"
-        ? record.humanApprovalRequired
-        : true,
-      committedActionItemId: cleanText(record.committedActionItemId) || null,
-    } satisfies TranscriptActionCandidate];
+    return [
+      {
+        id: cleanText(record.id),
+        kind: TRANSCRIPT_ACTION_CANDIDATE_KIND,
+        reviewStatus: isTranscriptActionReviewStatus(record.reviewStatus)
+          ? record.reviewStatus
+          : "READY_FOR_HUMAN_REVIEW",
+        title: cleanText(record.title),
+        detail: cleanText(record.detail),
+        transcriptJobId:
+          cleanText(record.transcriptJobId) ||
+          cleanText(source.transcriptJobId),
+        recordingAssetId:
+          cleanText(record.recordingAssetId) ||
+          cleanText(source.recordingAssetId),
+        roomId: cleanText(record.roomId) || cleanText(source.roomId),
+        packetBuildId:
+          cleanText(record.packetBuildId) || cleanText(source.packetBuildId),
+        segmentId: cleanText(record.segmentId),
+        segmentIds: Array.isArray(record.segmentIds)
+          ? record.segmentIds.map(cleanText).filter(Boolean)
+          : [cleanText(record.segmentId)],
+        sourceText: cleanText(record.sourceText),
+        sourceTextSha256: cleanText(record.sourceTextSha256),
+        sourceSpan: null,
+        transcriptReviewStatus:
+          record.transcriptReviewStatus === "human-reviewed"
+            ? "human-reviewed"
+            : "provider",
+        speakerLabel: cleanText(record.speakerLabel) || null,
+        speakerAuthority: [
+          "correction",
+          "attribution",
+          "source-binding",
+          "provider",
+          "unresolved",
+        ].includes(cleanText(record.speakerAuthority))
+          ? (cleanText(
+              record.speakerAuthority,
+            ) as TranscriptActionCandidate["speakerAuthority"])
+          : undefined,
+        startSeconds:
+          typeof record.startSeconds === "number" ? record.startSeconds : 0,
+        endSeconds:
+          typeof record.endSeconds === "number" ? record.endSeconds : 0,
+        humanApprovalRequired:
+          typeof record.humanApprovalRequired === "boolean"
+            ? record.humanApprovalRequired
+            : true,
+        committedActionItemId: cleanText(record.committedActionItemId) || null,
+      } satisfies TranscriptActionCandidate,
+    ];
   });
 }
 
@@ -655,9 +915,13 @@ function legacyActionCandidate(item: any): TranscriptActionCandidate | null {
     roomId,
     packetBuildId,
     segmentId,
-    transcriptReviewStatus: source.transcriptReviewStatus === "human-reviewed" ? "human-reviewed" : "provider",
+    transcriptReviewStatus:
+      source.transcriptReviewStatus === "human-reviewed"
+        ? "human-reviewed"
+        : "provider",
     speakerLabel: cleanText(source.speakerLabel) || null,
-    startSeconds: typeof source.startSeconds === "number" ? source.startSeconds : 0,
+    startSeconds:
+      typeof source.startSeconds === "number" ? source.startSeconds : 0,
     endSeconds: typeof source.endSeconds === "number" ? source.endSeconds : 0,
     humanApprovalRequired: true,
     committedActionItemId: null,
@@ -669,7 +933,9 @@ export function mergePacketActionCandidates(input: {
   legacyActionItems?: any[];
 }) {
   const candidates = packetActionCandidatesFromSource(input.sourceJson);
-  const byId = new Map(candidates.map((candidate) => [candidate.id, candidate]));
+  const byId = new Map(
+    candidates.map((candidate) => [candidate.id, candidate]),
+  );
   for (const item of input.legacyActionItems || []) {
     const candidate = legacyActionCandidate(item);
     if (candidate && !byId.has(candidate.id)) byId.set(candidate.id, candidate);
@@ -681,7 +947,9 @@ function segmentPreview(segment: any) {
   const text = cleanText(segment.text);
   return {
     segmentId: segment.id,
-    segmentIds: Array.isArray(segment.segmentIds) ? segment.segmentIds : [segment.id],
+    segmentIds: Array.isArray(segment.segmentIds)
+      ? segment.segmentIds
+      : [segment.id],
     sourceTextSha256: cleanText(segment.sourceTextSha256) || packetSha256(text),
     speakerLabel: cleanText(segment.speakerLabel) || "Unknown speaker",
     startSeconds: segment.startSeconds,
@@ -693,40 +961,51 @@ function segmentPreview(segment: any) {
 
 export { buildTranscriptPacketBrief } from "@high-ground/quipsly-domain/coaching-packet";
 
-function buildTranscriptPacketReviewLanes(purpose: SessionPacketPurpose, segments: any[], highlights: any[], actionSegments: any[]) {
-  const laneCandidates = reviewLaneDefinitionsForPurpose(purpose).map((lane) => {
-    const seen = new Set<string>();
-    const matches = [];
-    const pool = lane.id === "goals-and-tasks" || lane.id === "next-session-prep"
-      ? [...actionSegments, ...highlights, ...segments]
-      : [...highlights, ...segments];
+function buildTranscriptPacketReviewLanes(
+  purpose: SessionPacketPurpose,
+  segments: any[],
+  highlights: any[],
+  actionSegments: any[],
+) {
+  const laneCandidates = reviewLaneDefinitionsForPurpose(purpose).map(
+    (lane) => {
+      const seen = new Set<string>();
+      const matches = [];
+      const pool =
+        lane.id === "goals-and-tasks" || lane.id === "next-session-prep"
+          ? [...actionSegments, ...highlights, ...segments]
+          : [...highlights, ...segments];
 
-    for (const segment of pool) {
-      if (matches.length >= 5) break;
-      const id = String(segment.id || `${segment.startSeconds}-${segment.endSeconds}`);
-      if (seen.has(id)) continue;
-      seen.add(id);
-      const text = cleanText(segment.text);
-      if (!text || !lane.pattern.test(text)) continue;
-      matches.push(segmentPreview(segment));
-    }
+      for (const segment of pool) {
+        if (matches.length >= 5) break;
+        const id = String(
+          segment.id || `${segment.startSeconds}-${segment.endSeconds}`,
+        );
+        if (seen.has(id)) continue;
+        seen.add(id);
+        const text = cleanText(segment.text);
+        if (!text || !lane.pattern.test(text)) continue;
+        matches.push(segmentPreview(segment));
+      }
 
-    return {
-      id: lane.id,
-      label: lane.label,
-      status: matches.length ? "READY_FOR_HUMAN_REVIEW" : "EMPTY",
-      itemCount: matches.length,
-      meaning: lane.meaning,
-      sourceTruth: "Derived from transcript segments only; recording assets remain source truth.",
-      reviewRule:
-        "Human approval is required before this lane becomes client notes, goals, podcast copy, shorts, articles, quotes, or published material.",
-      items: matches,
-    };
-  });
+      return {
+        id: lane.id,
+        label: lane.label,
+        status: matches.length ? "APPROVED_FOR_INTERNAL_USE" : "EMPTY",
+        itemCount: matches.length,
+        meaning: lane.meaning,
+        sourceTruth:
+          "Derived from transcript segments only; recording assets remain source truth.",
+        reviewRule:
+          "Quipsly created ordinary in-product work with source links. Edit, remove, or keep it; external publishing remains separate.",
+        items: matches,
+      };
+    },
+  );
 
   return laneCandidates.map((lane) => ({
     ...lane,
-    humanApprovalRequired: true,
+    humanApprovalRequired: false,
     externalSideEffects: false,
   }));
 }
@@ -746,16 +1025,18 @@ function summarizeSegments(
     .map(([speaker, count]) => `${speaker} (${count} turns)`);
   const first = segments[0];
   const last = segments[segments.length - 1];
-  const duration = last ? `${formatTime(first?.startSeconds ?? 0)}-${formatTime(last.endSeconds ?? 0)}` : "unknown duration";
+  const duration = last
+    ? `${formatTime(first?.startSeconds ?? 0)}-${formatTime(last.endSeconds ?? 0)}`
+    : "unknown duration";
   const opening = segments.slice(0, 3).map(segmentLine);
   const closing = segments.slice(-3).map(segmentLine);
 
   return [
     purpose === "PODCAST"
-      ? "Candidate podcast production packet generated from transcript timing and speaker labels."
+      ? "Podcast production packet generated from transcript timing and speaker labels."
       : purpose === "COACHING"
-        ? "Candidate private coaching packet generated from transcript timing and speaker labels."
-        : "Candidate session packet generated from transcript timing and speaker labels.",
+        ? "Shared coaching follow-through generated from transcript timing and speaker labels."
+        : "Session follow-through generated from transcript timing and speaker labels.",
     "",
     `Range: ${duration}`,
     `Speaker turn map: ${speakers.length ? speakers.join(", ") : "No speaker labels available"}`,
@@ -763,25 +1044,44 @@ function summarizeSegments(
     ...brief.sections.flatMap((section) => [
       `${section.label}:`,
       ...(section.items.length
-        ? section.items.map((item) => `- ${item.timeLabel} ${item.speakerLabel}: ${item.text}`)
+        ? section.items.map(
+            (item) => `- ${item.timeLabel} ${item.speakerLabel}: ${item.text}`,
+          )
         : ["- No source-linked candidates found."]),
       "",
     ]),
     "Opening context:",
-    ...(opening.length ? opening : ["- No opening transcript segments available."]),
+    ...(opening.length
+      ? opening
+      : ["- No opening transcript segments available."]),
     "",
     "Closing context:",
-    ...(closing.length ? closing : ["- No closing transcript segments available."]),
+    ...(closing.length
+      ? closing
+      : ["- No closing transcript segments available."]),
     "",
-    "Review note: this is a deterministic candidate packet, not a final interpretation or publication. Human review must adjust emphasis, names, visibility, and follow-through commitments.",
+    "Quipsly created editable follow-through from the transcript. Source timestamps stay attached; publication and external delivery remain separate.",
   ].join("\n");
 }
 
-export async function buildCoachingPacketFromTranscriptJob(args: BuildCoachingPacketArgs) {
+export async function buildCoachingPacketFromTranscriptJob(
+  args: BuildCoachingPacketArgs,
+) {
   const job = await args.prisma.transcriptJob.findUnique({
     where: { id: args.transcriptJobId },
     include: {
-      room: { include: { booking: true } },
+      room: {
+        include: {
+          booking: true,
+          coachingEngagement: {
+            select: {
+              id: true,
+              primaryClientUserId: true,
+              primaryCoachUserId: true,
+            },
+          },
+        },
+      },
       asset: true,
       speakerAttributions: {
         where: { status: "active" },
@@ -805,7 +1105,11 @@ export async function buildCoachingPacketFromTranscriptJob(args: BuildCoachingPa
   }
 
   if (!job.asset) {
-    return { ok: false, status: 409, error: "Transcript job has no recording asset evidence." };
+    return {
+      ok: false,
+      status: 409,
+      error: "Transcript job has no recording asset evidence.",
+    };
   }
 
   const transcriptGate = await mobileCaptureTranscriptProcessingGate({
@@ -823,16 +1127,25 @@ export async function buildCoachingPacketFromTranscriptJob(args: BuildCoachingPa
   }
 
   if (job.status !== "COMPLETED") {
-    return { ok: false, status: 409, error: "Transcript must be completed before building a coaching packet." };
+    return {
+      ok: false,
+      status: 409,
+      error: "Transcript must be completed before building a coaching packet.",
+    };
   }
 
   if (!job.segments.length) {
-    return { ok: false, status: 409, error: "Transcript has no segments to turn into a coaching packet." };
+    return {
+      ok: false,
+      status: 409,
+      error: "Transcript has no segments to turn into a coaching packet.",
+    };
   }
 
   const transcriptSnapshot = transcriptJobPacketSnapshot(job);
   const packetSegments = transcriptSnapshot.projected;
-  const { projected: _projected, ...transcriptSnapshotEvidence } = transcriptSnapshot;
+  const { projected: _projected, ...transcriptSnapshotEvidence } =
+    transcriptSnapshot;
 
   const packetTitle = `Transcript packet: ${job.id}`;
   const purpose = packetPurpose(job.room?.purpose);
@@ -847,11 +1160,19 @@ export async function buildCoachingPacketFromTranscriptJob(args: BuildCoachingPa
     orderBy: { createdAt: "desc" },
   });
 
-  if (existing && !args.force && packetTemplateMatches(existing.sourceJson) && packetSnapshotMatchesTranscriptJob(existing.sourceJson, job)) {
-    const existingSource = typeof existing.sourceJson === "object" && existing.sourceJson !== null
-      ? existing.sourceJson as Record<string, any>
-      : {};
-    const existingReviewLanes = Array.isArray(existingSource.reviewLanes) ? existingSource.reviewLanes : [];
+  if (
+    existing &&
+    !args.force &&
+    packetTemplateMatches(existing.sourceJson) &&
+    packetSnapshotMatchesTranscriptJob(existing.sourceJson, job)
+  ) {
+    const existingSource =
+      typeof existing.sourceJson === "object" && existing.sourceJson !== null
+        ? (existing.sourceJson as Record<string, any>)
+        : {};
+    const existingReviewLanes = Array.isArray(existingSource.reviewLanes)
+      ? existingSource.reviewLanes
+      : [];
     const existingActionCandidates = mergePacketActionCandidates({
       sourceJson: existingSource,
       legacyActionItems: existing.actionItems,
@@ -866,12 +1187,16 @@ export async function buildCoachingPacketFromTranscriptJob(args: BuildCoachingPa
       summaryNoteId: existing.id,
       packetBuildId: cleanText(existingSource.packetBuildId) || null,
       packetPurpose: packetPurpose(existingSource.packetPurpose || purpose),
-      actionCandidateIds: existingActionCandidates.map((candidate) => candidate.id),
+      actionCandidateIds: existingActionCandidates.map(
+        (candidate) => candidate.id,
+      ),
       actionCandidateCount: existingActionCandidates.length,
       actionItemCount: committedActionItems.length,
       reviewLanes: existingReviewLanes,
       reviewLaneCount: existingReviewLanes.length,
-      reviewLaneReadyCount: existingReviewLanes.filter((lane: any) => lane?.status === "READY_FOR_HUMAN_REVIEW").length,
+      reviewLaneReadyCount: existingReviewLanes.filter(
+        (lane: any) => lane?.status === "READY_FOR_HUMAN_REVIEW",
+      ).length,
       reusedExistingPacket: true,
       transcriptSnapshotSha256: transcriptSnapshot.sha256,
       humanReviewedSegmentCount: transcriptSnapshot.humanReviewedSegmentCount,
@@ -887,7 +1212,9 @@ export async function buildCoachingPacketFromTranscriptJob(args: BuildCoachingPa
     .map((entry) => entry.segment);
 
   const actionSegments = packetSpans
-    .filter((segment: any) => ACTION_PATTERNS.some((pattern) => pattern.test(cleanText(segment.text))))
+    .filter((segment: any) =>
+      ACTION_PATTERNS.some((pattern) => pattern.test(cleanText(segment.text))),
+    )
     .slice(0, 10);
 
   const packetBuildId = randomUUID();
@@ -902,7 +1229,7 @@ export async function buildCoachingPacketFromTranscriptJob(args: BuildCoachingPa
     packetTemplateVersion: SESSION_PACKET_TEMPLATE_VERSION,
     generatedAt: new Date().toISOString(),
     deterministic: true,
-    reviewRequired: true,
+    reviewRequired: false,
     transcriptSnapshot: transcriptSnapshotEvidence,
     transcriptReviewCoverage: {
       segmentCount: transcriptSnapshot.segmentCount,
@@ -912,14 +1239,38 @@ export async function buildCoachingPacketFromTranscriptJob(args: BuildCoachingPa
     },
   };
 
-  const reviewLanes = buildTranscriptPacketReviewLanes(purpose, packetSpans, highlights, actionSegments);
-  const packetBrief = buildTranscriptPacketBrief(packetSpans, highlights, actionSegments);
-  const actionCandidates: TranscriptActionCandidate[] = actionSegments.map((segment: any) => transcriptActionCandidate({
+  const reviewLanes = buildTranscriptPacketReviewLanes(
+    purpose,
+    packetSpans,
+    highlights,
+    actionSegments,
+  );
+  const packetBrief = buildTranscriptPacketBrief(
+    packetSpans,
+    highlights,
+    actionSegments,
+  );
+  const goalSegments = actionSegments.filter((segment: any) =>
+    GOAL_PATTERN.test(cleanText(segment.text)),
+  );
+  const taskSegments = actionSegments.filter(
+    (segment: any) => !GOAL_PATTERN.test(cleanText(segment.text)),
+  );
+  const actionCandidates: TranscriptActionCandidate[] = taskSegments.map(
+    (segment: any) =>
+      transcriptActionCandidate({
+        segment,
+        transcriptJobId: job.id,
+        recordingAssetId: job.assetId,
+        roomId: job.roomId,
+        packetBuildId,
+        committedActionItemId: packetWorkId("task", job.id, String(segment.id)),
+      }),
+  );
+  const goalOutputs = goalSegments.map((segment: any) => ({
+    id: packetWorkId("goal", job.id, String(segment.id)),
     segment,
-    transcriptJobId: job.id,
-    recordingAssetId: job.assetId,
-    roomId: job.roomId,
-    packetBuildId,
+    title: actionTitle(segment),
   }));
 
   const summaryNote = await args.prisma.coachingNote.create({
@@ -928,7 +1279,7 @@ export async function buildCoachingPacketFromTranscriptJob(args: BuildCoachingPa
       bookingId: job.room?.bookingId ?? null,
       authorUserId: args.authorUserId || null,
       kind: "SUMMARY",
-      visibility: "AUTHOR_PRIVATE",
+      visibility: "SESSION_SHARED",
       title: packetTitle,
       body: summarizeSegments(purpose, packetSegments, packetBrief),
       sourceJson: {
@@ -936,15 +1287,127 @@ export async function buildCoachingPacketFromTranscriptJob(args: BuildCoachingPa
         packetBrief,
         reviewLanes,
         reviewLaneCount: reviewLanes.length,
-        reviewLaneReadyCount: reviewLanes.filter((lane) => lane.status === "READY_FOR_HUMAN_REVIEW").length,
+        reviewLaneReadyCount: reviewLanes.filter(
+          (lane) => lane.status === "READY_FOR_HUMAN_REVIEW",
+        ).length,
         actionCandidateKind: TRANSCRIPT_ACTION_CANDIDATE_KIND,
         actionCandidates,
         actionCandidateCount: actionCandidates.length,
-        actionCandidateReviewBoundary:
-          "Transcript inference remains a review candidate until a human explicitly accepts it into a separate ActionItem record.",
+        outcomeBehavior:
+          "Quipsly created editable follow-through in the Session. Source timing remains visible and every item can be changed or removed.",
+        goalOutputs: goalOutputs.map((goal) => ({
+          id: goal.id,
+          segmentId: String(goal.segment.id),
+          title: goal.title,
+        })),
       },
     },
   });
+
+  const defaultOwnerUserId =
+    job.room?.coachingEngagement?.primaryClientUserId ||
+    args.authorUserId ||
+    job.room?.createdByUserId ||
+    null;
+  const actionItems = [];
+  for (const candidate of actionCandidates) {
+    const sourceJson = {
+      schema: "quipsly-transcript-follow-through-v1",
+      origin: "quipsly-session-follow-through",
+      automaticallyCreated: true,
+      editableAfterCreation: true,
+      removableInProduct: true,
+      sourceProvenanceVisible: true,
+      transcriptJobId: job.id,
+      recordingAssetId: job.assetId,
+      roomId: job.roomId,
+      packetBuildId,
+      packetSummaryNoteId: summaryNote.id,
+      actionCandidateId: candidate.id,
+      segmentId: candidate.segmentId,
+      segmentIds: candidate.segmentIds,
+      sourceTextSha256: candidate.sourceTextSha256,
+      sourceSpan: candidate.sourceSpan,
+      startSeconds: candidate.startSeconds,
+      endSeconds: candidate.endSeconds,
+      speakerLabel: candidate.speakerLabel,
+      visibility: "engagement-shared",
+      externalSideEffects: false,
+    };
+    const existing = await args.prisma.actionItem.findUnique({
+      where: { id: candidate.committedActionItemId },
+    });
+    const item =
+      existing ||
+      (await args.prisma.actionItem.create({
+        data: {
+          id: candidate.committedActionItemId,
+          roomId: job.roomId,
+          bookingId: job.room?.bookingId ?? null,
+          projectId: job.room?.projectId ?? null,
+          engagementId: job.room?.coachingEngagementId ?? null,
+          noteId: summaryNote.id,
+          assignedUserId: defaultOwnerUserId,
+          title: candidate.title,
+          detail: candidate.detail || null,
+          status: "OPEN",
+          sourceJson,
+        },
+      }));
+    actionItems.push(item);
+  }
+
+  const goals = [];
+  if (defaultOwnerUserId) {
+    for (const output of goalOutputs) {
+      const sourceAnchor = buildTranscriptSourceAnchorFields(
+        Array.isArray(output.segment.evidenceSegments)
+          ? output.segment.evidenceSegments
+          : [output.segment],
+      );
+      const existing = await args.prisma.goal.findUnique({
+        where: { id: output.id },
+      });
+      const goal =
+        existing ||
+        (await args.prisma.goal.create({
+          data: {
+            id: output.id,
+            ownerUserId: defaultOwnerUserId,
+            roomId: job.roomId,
+            bookingId: job.room?.bookingId ?? null,
+            projectId: job.room?.projectId ?? null,
+            engagementId: job.room?.coachingEngagementId ?? null,
+            title: output.title,
+            description: segmentLine(output.segment),
+            status: "ACTIVE",
+            sourceJson: {
+              schema: "quipsly-transcript-follow-through-v1",
+              origin: "quipsly-session-follow-through",
+              automaticallyCreated: true,
+              editableAfterCreation: true,
+              removableInProduct: true,
+              sourceProvenanceVisible: true,
+              transcriptJobId: job.id,
+              recordingAssetId: job.assetId,
+              roomId: job.roomId,
+              packetBuildId,
+              packetSummaryNoteId: summaryNote.id,
+              segmentId: String(output.segment.id),
+              segmentIds: output.segment.segmentIds,
+              sourceTextSha256: output.segment.sourceTextSha256,
+              sourceSpan: sourceAnchor?.sourceSpan ?? null,
+              startSeconds: output.segment.startSeconds,
+              endSeconds: output.segment.endSeconds,
+              speakerLabel: output.segment.speakerLabel,
+              visibility: "engagement-shared",
+              externalSideEffects: false,
+            },
+          },
+        }));
+      goals.push(goal);
+    }
+  }
 
   const highlightNotes = [];
   for (const segment of highlights) {
@@ -954,14 +1417,18 @@ export async function buildCoachingPacketFromTranscriptJob(args: BuildCoachingPa
         bookingId: job.room?.bookingId ?? null,
         authorUserId: args.authorUserId || null,
         kind: "HIGHLIGHT",
-        visibility: "AUTHOR_PRIVATE",
+        visibility: "SESSION_SHARED",
         title: titleFromSegment(segment),
         body: segmentLine(segment),
         sourceJson: {
           ...sourceJson,
           segmentId: segment.id,
-          segmentIds: Array.isArray(segment.segmentIds) ? segment.segmentIds : [segment.id],
-          sourceTextSha256: cleanText(segment.sourceTextSha256) || packetSha256(cleanText(segment.text)),
+          segmentIds: Array.isArray(segment.segmentIds)
+            ? segment.segmentIds
+            : [segment.id],
+          sourceTextSha256:
+            cleanText(segment.sourceTextSha256) ||
+            packetSha256(cleanText(segment.text)),
           startSeconds: segment.startSeconds,
           endSeconds: segment.endSeconds,
           speakerLabel: segment.speakerLabel,
@@ -980,13 +1447,17 @@ export async function buildCoachingPacketFromTranscriptJob(args: BuildCoachingPa
     packetPurpose: purpose,
     highlightNoteIds: highlightNotes.map((note: any) => note.id),
     actionCandidateIds: actionCandidates.map((candidate) => candidate.id),
-    actionItemIds: [],
+    actionItemIds: actionItems.map((item: any) => item.id),
+    goalIds: goals.map((goal: any) => goal.id),
     highlightCount: highlightNotes.length,
     actionCandidateCount: actionCandidates.length,
-    actionItemCount: 0,
+    actionItemCount: actionItems.length,
+    goalCount: goals.length,
     reviewLanes,
     reviewLaneCount: reviewLanes.length,
-    reviewLaneReadyCount: reviewLanes.filter((lane) => lane.status === "READY_FOR_HUMAN_REVIEW").length,
+    reviewLaneReadyCount: reviewLanes.filter(
+      (lane) => lane.status === "READY_FOR_HUMAN_REVIEW",
+    ).length,
     reusedExistingPacket: false,
     rebuiltForTranscriptReviewChange: Boolean(existing && !args.force),
     transcriptSnapshotSha256: transcriptSnapshot.sha256,

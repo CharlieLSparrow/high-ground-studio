@@ -55,7 +55,6 @@ import {
   committedTasks,
   goalCandidateReviewRequest,
   noteCandidateReviewRequest,
-  packetLaneReviewRequest,
   sessionCandidateReviewProgress,
   sessionCandidateReviewQueue,
   timestampForSeconds,
@@ -65,8 +64,6 @@ import {
   type SessionReviewGoalMergeTarget,
   type SessionReviewGovernedActionReference,
   type SessionReviewTaskMergeTarget,
-  type SessionReviewLane,
-  type SessionReviewLaneStatus,
   type SessionReviewNoteCandidate,
   type SessionReviewNoteMergeTarget,
   type SessionReviewPacket,
@@ -180,80 +177,203 @@ function SessionPostCallPath({
   held: boolean;
   followUpReady: boolean;
 }) {
-  const transcriptReady = transcriptStatus === "COMPLETED" && transcriptSegmentCount > 0;
-  const reviewReady = reviewMaterialReady && !packetStale;
+  const transcriptReady =
+    transcriptStatus === "COMPLETED" && transcriptSegmentCount > 0;
+  const resultsReady = reviewMaterialReady && !packetStale;
   const steps = [
     { label: "Recording", ready: hasRecording },
     { label: "Transcript", ready: transcriptReady },
-    ...(canReviewPrivatePacket ? [{ label: "Review", ready: reviewReady }] : []),
+    ...(canReviewPrivatePacket
+      ? [{ label: "Results", ready: resultsReady }]
+      : []),
     { label: "Follow-up", ready: followUpReady },
   ];
-  const running = ["QUEUED", "RUNNING", "PROCESSING"].includes(transcriptStatus);
+  const running = ["QUEUED", "RUNNING", "PROCESSING"].includes(
+    transcriptStatus,
+  );
   const next = !hasRecording
-    ? { label: "Review recordings", href: sessionWorkspaceHref(roomId, "recordings"), detail: "A verified recording is needed before transcription." }
+    ? {
+        label: "Review recordings",
+        href: sessionWorkspaceHref(roomId, "recordings"),
+        detail: "A verified recording is needed before transcription.",
+      }
     : held
-      ? { label: "Check recording permission", href: sessionWorkspaceHref(roomId, "prepare"), detail: "The transcript is waiting for a participant to allow recording or transcription." }
+      ? {
+          label: "Check recording permission",
+          href: sessionWorkspaceHref(roomId, "prepare"),
+          detail:
+            "The transcript is waiting for a participant to allow recording or transcription.",
+        }
       : !transcriptReady
-        ? { label: running ? "Transcription is running" : "Start or retry transcription", href: "#transcript-status", detail: running ? "Quipsly is processing the source in the background; this page refreshes automatically." : "Use the verified recording to create the timed transcript." }
+        ? {
+            label: running
+              ? "Transcription is running"
+              : "Start or retry transcription",
+            href: "#transcript-status",
+            detail: running
+              ? "Quipsly is processing the source in the background; this page refreshes automatically."
+              : "Use the verified recording to create the timed transcript.",
+          }
         : !canReviewPrivatePacket
           ? followUpReady
-            ? { label: "Open shared follow-up", href: sessionWorkspaceHref(roomId, "outputs"), detail: "The follow-up deliberately shared with you is ready." }
-            : { label: "Review transcript", href: "#transcript-correction-review", detail: "Your timed transcript is ready. Shared follow-up will appear here only after the coach deliberately shares it." }
-        : !reviewReady
-          ? preparingReviewMaterial
-            ? { label: "Preparing your follow-up", href: "#review-material", detail: "Quipsly is turning the completed transcript into editable suggestions. Nothing is assigned, sent, or shared automatically." }
-            : { label: "Review follow-up", href: "#review-material", detail: packetStale ? "Quipsly could not refresh the suggestions automatically. Try again without changing the saved transcript." : "Quipsly could not prepare the suggestions automatically. Try again without changing the saved transcript." }
-          : !followUpReady
-            ? { label: "Review transcript and suggestions", href: "#transcript-correction-review", detail: "Correct words and speakers, then choose which notes, tasks, and goals to keep." }
-            : { label: "Open shared follow-up", href: sessionWorkspaceHref(roomId, "outputs"), detail: "The released follow-up is ready to review or share." };
+            ? {
+                label: "Open shared follow-up",
+                href: sessionWorkspaceHref(roomId, "outputs"),
+                detail: "The follow-up deliberately shared with you is ready.",
+              }
+            : {
+                label: "Open transcript",
+                href: "#transcript-correction-review",
+                detail:
+                  "Your timed transcript is ready. Shared follow-up will appear here only after the coach deliberately shares it.",
+              }
+          : !resultsReady
+            ? preparingReviewMaterial
+              ? {
+                  label: "Preparing your follow-up",
+                  href: "#review-material",
+                  detail:
+                    "Quipsly is turning the completed transcript into editable notes, tasks, and goals.",
+                }
+              : {
+                  label: "Retry Session results",
+                  href: "#review-material",
+                  detail: packetStale
+                    ? "Quipsly could not refresh the Session results automatically. Try again without changing the saved transcript."
+                    : "Quipsly could not prepare the Session results automatically. Try again without changing the saved transcript.",
+                }
+            : !followUpReady
+              ? {
+                  label: "Use Session results",
+                  href: "#session-results",
+                  detail:
+                    "Your editable notes, tasks, and goals are ready. The transcript remains available for corrections.",
+                }
+              : {
+                  label: "Open shared follow-up",
+                  href: sessionWorkspaceHref(roomId, "outputs"),
+                  detail: "The released follow-up is ready to read or share.",
+                };
 
   return (
-    <section className="rounded-2xl border border-violet-200 bg-violet-50/70 p-4 shadow-sm" aria-label="Post-call workflow">
+    <section
+      className="rounded-2xl border border-violet-200 bg-violet-50/70 p-4 shadow-sm"
+      aria-label="Post-call workflow"
+    >
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-violet-800">After the call</p>
-          <h2 className="mt-1 font-serif text-2xl font-black text-[#3d3122]">Recording to useful follow-up</h2>
+          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-violet-800">
+            After the call
+          </p>
+          <h2 className="mt-1 font-serif text-2xl font-black text-[#3d3122]">
+            Recording to useful follow-up
+          </h2>
         </div>
-        <a href={next.href} className="inline-flex min-h-11 items-center gap-2 rounded-full bg-violet-800 px-5 py-2 text-xs font-black uppercase tracking-wide text-white">
+        <a
+          href={next.href}
+          className="inline-flex min-h-11 items-center gap-2 rounded-full bg-violet-800 px-5 py-2 text-xs font-black uppercase tracking-wide text-white"
+        >
           {next.label} <ArrowRight size={14} aria-hidden="true" />
         </a>
       </div>
       <ol className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
         {steps.map((step) => (
-          <li key={step.label} className={`flex min-h-11 items-center gap-2 rounded-xl border px-3 py-2 text-[10px] font-black uppercase tracking-wide ${step.ready ? "border-emerald-200 bg-white text-emerald-900" : "border-violet-100 bg-white/65 text-violet-800"}`}>
-            {step.ready ? <CheckCircle2 size={15} aria-label="Done" /> : <CircleDashed size={15} aria-label="Not finished" />}
+          <li
+            key={step.label}
+            className={`flex min-h-11 items-center gap-2 rounded-xl border px-3 py-2 text-[10px] font-black uppercase tracking-wide ${step.ready ? "border-emerald-200 bg-white text-emerald-900" : "border-violet-100 bg-white/65 text-violet-800"}`}
+          >
+            {step.ready ? (
+              <CheckCircle2 size={15} aria-label="Done" />
+            ) : (
+              <CircleDashed size={15} aria-label="Not finished" />
+            )}
             {step.label}
           </li>
         ))}
       </ol>
-      <p className="mt-3 text-xs font-bold leading-5 text-violet-950">{next.detail}</p>
+      <p className="mt-3 text-xs font-bold leading-5 text-violet-950">
+        {next.detail}
+      </p>
     </section>
   );
 }
 
-function TranscriptConfidenceSummary({ confidence }: {
-  confidence: NonNullable<NonNullable<SessionReviewPacket["transcriptJob"]>["readiness"]>;
+function TranscriptConfidenceSummary({
+  confidence,
+}: {
+  confidence: NonNullable<
+    NonNullable<SessionReviewPacket["transcriptJob"]>["readiness"]
+  >;
 }) {
   const checks = [
-    { label: confidence.exactSourceBound ? "Exact recording" : "Check recording", ready: confidence.exactSourceBound },
-    { label: confidence.segmentTimingReady ? "Timed transcript" : "Timing attention", ready: confidence.segmentTimingReady },
-    { label: confidence.wordEditingReady ? "Text editing ready" : "Word timing needed", ready: confidence.wordEditingReady },
-    { label: `${confidence.attributedSpeakerClusterCount}/${confidence.speakerClusterCount} speakers identified`, ready: confidence.speakerAttributionComplete },
-    { label: `${confidence.reviewedSegmentCount}/${confidence.segmentCount} segments reviewed`, ready: confidence.humanReviewComplete },
+    {
+      label: confidence.exactSourceBound
+        ? "Exact recording"
+        : "Check recording",
+      ready: confidence.exactSourceBound,
+    },
+    {
+      label: confidence.segmentTimingReady
+        ? "Timed transcript"
+        : "Timing attention",
+      ready: confidence.segmentTimingReady,
+    },
+    {
+      label: confidence.wordEditingReady
+        ? "Text editing ready"
+        : "Word timing needed",
+      ready: confidence.wordEditingReady,
+    },
+    {
+      label: `${confidence.attributedSpeakerClusterCount}/${confidence.speakerClusterCount} speakers identified`,
+      ready: confidence.speakerAttributionComplete,
+    },
+    {
+      label: `${confidence.reviewedSegmentCount}/${confidence.segmentCount} segments reviewed`,
+      ready: confidence.humanReviewComplete,
+    },
   ];
-  const healthy = confidence.state === "READY_TO_REVIEW" || confidence.state === "REVIEWED";
-  return <div className={`mt-4 rounded-xl border p-4 ${healthy ? "border-emerald-200 bg-emerald-50/70" : "border-amber-200 bg-amber-50/70"}`} data-testid="transcript-confidence-summary">
-    <p className="text-sm font-black text-[#3d3122]">{confidence.label}</p>
-    <p className="mt-1 text-xs font-semibold leading-5 text-[#765f40]">{confidence.detail}</p>
-    <ul className="mt-3 flex flex-wrap gap-2" aria-label="Transcript readiness checks">
-      {checks.map((check) => <li key={check.label} className={`rounded-full border px-2.5 py-1 text-[9px] font-black uppercase tracking-wide ${check.ready ? "border-emerald-200 bg-white text-emerald-900" : "border-amber-200 bg-white text-amber-950"}`}>{check.ready ? "✓ " : ""}{check.label}</li>)}
-    </ul>
-    <p className="mt-3 text-xs font-bold leading-5 text-[#3d3122]">{confidence.nextAction}</p>
-    <details className="mt-3 border-t border-current/10 pt-3">
-      <summary className="cursor-pointer text-[10px] font-black uppercase tracking-wide text-[#765f40]">How Quipsly decides</summary>
-      <p className="mt-2 text-[10px] font-semibold leading-4 text-[#765f40]">A completed provider job is not enough by itself. Quipsly separately checks exact recording bytes, usable timing, reviewed speaker identities, and playback-reviewed corrections. Provider confidence is never presented as measured accuracy.</p>
-    </details>
-  </div>;
+  const healthy =
+    confidence.state === "READY_TO_REVIEW" || confidence.state === "REVIEWED";
+  return (
+    <div
+      className={`mt-4 rounded-xl border p-4 ${healthy ? "border-emerald-200 bg-emerald-50/70" : "border-amber-200 bg-amber-50/70"}`}
+      data-testid="transcript-confidence-summary"
+    >
+      <p className="text-sm font-black text-[#3d3122]">{confidence.label}</p>
+      <p className="mt-1 text-xs font-semibold leading-5 text-[#765f40]">
+        {confidence.detail}
+      </p>
+      <ul
+        className="mt-3 flex flex-wrap gap-2"
+        aria-label="Transcript readiness checks"
+      >
+        {checks.map((check) => (
+          <li
+            key={check.label}
+            className={`rounded-full border px-2.5 py-1 text-[9px] font-black uppercase tracking-wide ${check.ready ? "border-emerald-200 bg-white text-emerald-900" : "border-amber-200 bg-white text-amber-950"}`}
+          >
+            {check.ready ? "✓ " : ""}
+            {check.label}
+          </li>
+        ))}
+      </ul>
+      <p className="mt-3 text-xs font-bold leading-5 text-[#3d3122]">
+        {confidence.nextAction}
+      </p>
+      <details className="mt-3 border-t border-current/10 pt-3">
+        <summary className="cursor-pointer text-[10px] font-black uppercase tracking-wide text-[#765f40]">
+          How Quipsly decides
+        </summary>
+        <p className="mt-2 text-[10px] font-semibold leading-4 text-[#765f40]">
+          A completed provider job is not enough by itself. Quipsly separately
+          checks exact recording bytes, usable timing, reviewed speaker
+          identities, and playback-reviewed corrections. Provider confidence is
+          never presented as measured accuracy.
+        </p>
+      </details>
+    </div>
+  );
 }
 
 function record(value: unknown): Record<string, unknown> {
@@ -416,159 +536,10 @@ function ReviewPacketSummary({ summary }: { summary: PacketSummary }) {
   );
 }
 
-function PacketReviewLaneCard({
-  lane,
-  busy,
-  onDecision,
-}: {
-  lane: SessionReviewLane;
-  busy: boolean;
-  onDecision: (
-    lane: SessionReviewLane,
-    status: SessionReviewLaneStatus,
-    note: string,
-  ) => Promise<void>;
-}) {
-  const [note, setNote] = useState(lane.humanReview?.note ?? "");
-  const ready = lane.status === "READY_FOR_HUMAN_REVIEW";
-
-  useEffect(() => {
-    setNote(lane.humanReview?.note ?? "");
-  }, [lane.humanReview?.note, lane.id]);
-
-  if (lane.itemCount <= 0) return null;
-
-  return (
-    <article className="rounded-2xl border border-[#e5d5b7] bg-white p-5 shadow-sm">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#987443]">
-            {lane.itemCount} source-linked item{lane.itemCount === 1 ? "" : "s"}
-          </p>
-          <h3 className="mt-1 font-serif text-2xl font-black text-[#3d3122]">
-            {lane.label}
-          </h3>
-        </div>
-        <span
-          className={`inline-flex rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-wide ${statusTone(lane.status)}`}
-        >
-          {humanize(lane.status)}
-        </span>
-      </div>
-      <p className="mt-4 text-sm font-semibold leading-relaxed text-[#765f40]">
-        {lane.meaning}
-      </p>
-      <dl className="mt-4 grid gap-3 text-xs font-semibold leading-relaxed text-[#765f40]">
-        <div className="rounded-xl border border-sky-100 bg-sky-50/60 p-3">
-          <dt className="font-black uppercase tracking-wide text-sky-900">
-            Source truth
-          </dt>
-          <dd className="mt-1">{lane.sourceTruth}</dd>
-        </div>
-        <div className="rounded-xl border border-violet-100 bg-violet-50/60 p-3">
-          <dt className="font-black uppercase tracking-wide text-violet-900">
-            Review rule
-          </dt>
-          <dd className="mt-1">{lane.reviewRule}</dd>
-        </div>
-      </dl>
-      {lane.humanReview?.reviewedAt ? (
-        <p className="mt-3 text-xs font-bold text-[#8a7354]">
-          Last reviewed {new Date(lane.humanReview.reviewedAt).toLocaleString()}
-        </p>
-      ) : null}
-      <label
-        className="mt-4 block text-xs font-black uppercase tracking-wide text-[#5b472f]"
-        htmlFor={`packet-lane-note-${lane.id}`}
-      >
-        Review note
-      </label>
-      <textarea
-        id={`packet-lane-note-${lane.id}`}
-        value={note}
-        onChange={(event) => setNote(event.target.value)}
-        rows={3}
-        disabled={busy}
-        placeholder="Record why this lane is ready, needs work, or should be rejected."
-        className="mt-2 w-full rounded-xl border border-[#d8c7a7] bg-[#fffdf8] px-3 py-2 text-sm font-semibold text-[#3d3122] outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-100 disabled:opacity-60"
-      />
-      <div className="mt-4 flex flex-wrap gap-2">
-        {ready ? (
-          <>
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() =>
-                void onDecision(lane, "APPROVED_FOR_INTERNAL_USE", note)
-              }
-              className="rounded-full bg-emerald-800 px-4 py-2 text-xs font-black uppercase tracking-wide text-white disabled:opacity-50"
-            >
-              Approve inside Quipsly
-            </button>
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => void onDecision(lane, "NEEDS_REVISION", note)}
-              className="rounded-full border border-amber-300 bg-amber-50 px-4 py-2 text-xs font-black uppercase tracking-wide text-amber-950 disabled:opacity-50"
-            >
-              Needs revision
-            </button>
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => void onDecision(lane, "REJECTED_BY_HUMAN", note)}
-              className="rounded-full border border-rose-300 bg-rose-50 px-4 py-2 text-xs font-black uppercase tracking-wide text-rose-950 disabled:opacity-50"
-            >
-              Reject lane
-            </button>
-          </>
-        ) : (
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() =>
-              void onDecision(lane, "READY_FOR_HUMAN_REVIEW", note)
-            }
-            className="rounded-full border border-[#d8c7a7] bg-[#fffaf0] px-4 py-2 text-xs font-black uppercase tracking-wide text-[#5b472f] disabled:opacity-50"
-          >
-            Reopen for review
-          </button>
-        )}
-        {busy ? (
-          <span className="inline-flex items-center gap-2 px-2 text-xs font-bold text-[#765f40]">
-            <LoaderCircle
-              size={14}
-              className="animate-spin"
-              aria-hidden="true"
-            />
-            Saving review…
-          </span>
-        ) : null}
-      </div>
-      <p className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs font-bold leading-relaxed text-emerald-950">
-        Internal review only. This decision creates no canonical note, task,
-        goal, client delivery, message, calendar event, or publication.
-      </p>
-    </article>
-  );
-}
-
 export type SessionTaxonomy = {
   project: { id: string; name: string; slug: string };
-  tags: Array<{
-    id: string;
-    label: string;
-    slug: string;
-    category: string;
-    projectId: string;
-  }>;
-  catalog: Array<{
-    id: string;
-    label: string;
-    slug: string;
-    category: string;
-    projectId: string;
-  }>;
+  tags: Array<{ id: string; label: string; slug: string; category: string; projectId: string }>;
+  catalog: Array<{ id: string; label: string; slug: string; category: string; projectId: string }>;
   canManage: boolean;
   canManageVocabulary: boolean;
   updatedAt: string;
@@ -581,12 +552,7 @@ export type SessionStudioHandoff = {
     fileName: string;
     kind: string;
     recordingStatus: string;
-    status:
-      | "READY_FOR_HANDOFF"
-      | "NOT_READY"
-      | "ATTACHED"
-      | "RECEIPT_MISSING"
-      | "PROJECT_CONFLICT";
+    status: "READY_FOR_HANDOFF" | "NOT_READY" | "ATTACHED" | "RECEIPT_MISSING" | "PROJECT_CONFLICT";
     mediaAssetId: string | null;
     attachmentId: string | null;
     attachmentUpdatedAt: string | null;
@@ -1015,9 +981,7 @@ function SessionConsentControl({
     requestedConsent ? true : (consent?.canRecordAudio ?? true),
   );
   const [canRecordVideo, setCanRecordVideo] = useState(
-    requestedConsent || !consent
-      ? defaultVideoConsent
-      : consent.canRecordVideo,
+    requestedConsent || !consent ? defaultVideoConsent : consent.canRecordVideo,
   );
   const [canTranscribe, setCanTranscribe] = useState(
     requestedConsent ? true : (consent?.canTranscribe ?? true),
@@ -1030,13 +994,17 @@ function SessionConsentControl({
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    setCanRecordAudio(requestedConsent ? true : (consent?.canRecordAudio ?? true));
+    setCanRecordAudio(
+      requestedConsent ? true : (consent?.canRecordAudio ?? true),
+    );
     setCanRecordVideo(
       requestedConsent || !consent
         ? defaultVideoConsent
         : consent.canRecordVideo,
     );
-    setCanTranscribe(requestedConsent ? true : (consent?.canTranscribe ?? true));
+    setCanTranscribe(
+      requestedConsent ? true : (consent?.canTranscribe ?? true),
+    );
     setIsEditingConsent(consent?.recordingReady !== true);
   }, [
     actor?.id,
@@ -1115,10 +1083,7 @@ function SessionConsentControl({
   }
 
   const grantDisabled =
-    busy ||
-    closed ||
-    !actor ||
-    (!canRecordAudio && !canRecordVideo);
+    busy || closed || !actor || (!canRecordAudio && !canRecordVideo);
 
   return (
     <section
@@ -1135,7 +1100,9 @@ function SessionConsentControl({
             id="my-session-consent-heading"
             className="mt-1 text-xl font-black text-[#3d3122]"
           >
-            {consent?.recordingReady ? "You’re ready" : "Choose what Quipsly may record"}
+            {consent?.recordingReady
+              ? "You’re ready"
+              : "Choose what Quipsly may record"}
           </h3>
           <p className="mt-2 text-sm font-semibold leading-6 text-[#6b5538]">
             Everyone confirms for themselves before recording. Nothing starts
@@ -1146,9 +1113,7 @@ function SessionConsentControl({
         <span
           className={`rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-wide ${statusTone(consent?.recordingReady ? "READY" : "HELD")}`}
         >
-          {consent?.recordingReady
-            ? "Saved"
-            : "Action needed"}
+          {consent?.recordingReady ? "Saved" : "Action needed"}
         </span>
       </div>
 
@@ -1162,13 +1127,19 @@ function SessionConsentControl({
         <div className="mt-4">
           <div className="flex flex-wrap gap-2 text-xs font-black text-emerald-900">
             {consent.canRecordAudio ? (
-              <span className="rounded-full border border-emerald-200 bg-white px-3 py-1.5">Audio</span>
+              <span className="rounded-full border border-emerald-200 bg-white px-3 py-1.5">
+                Audio
+              </span>
             ) : null}
             {consent.canRecordVideo ? (
-              <span className="rounded-full border border-emerald-200 bg-white px-3 py-1.5">Video</span>
+              <span className="rounded-full border border-emerald-200 bg-white px-3 py-1.5">
+                Video
+              </span>
             ) : null}
             {consent.canTranscribe ? (
-              <span className="rounded-full border border-emerald-200 bg-white px-3 py-1.5">Transcript</span>
+              <span className="rounded-full border border-emerald-200 bg-white px-3 py-1.5">
+                Transcript
+              </span>
             ) : null}
           </div>
           <div className="mt-4 flex flex-wrap items-center gap-3">
@@ -1195,10 +1166,12 @@ function SessionConsentControl({
           <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-emerald-300 bg-emerald-50 p-3 text-emerald-950">
             <div>
               <p className="text-sm font-black">
-                {canRecordVideo ? "Camera and audio" : "Audio"} on this device · {canTranscribe ? "Transcript on" : "Transcript off"}
+                {canRecordVideo ? "Camera and audio" : "Audio"} on this device ·{" "}
+                {canTranscribe ? "Transcript on" : "Transcript off"}
               </p>
               <p className="mt-1 text-xs font-semibold leading-5">
-                Continue only after everyone who may be heard or seen has agreed. Recording starts separately.
+                Continue only after everyone who may be heard or seen has
+                agreed. Recording starts separately.
               </p>
             </div>
             <button
@@ -1252,7 +1225,9 @@ function SessionConsentControl({
               </label>
             </div>
             <details className="mt-3 text-xs font-semibold leading-5 text-[#765f40]">
-              <summary className="cursor-pointer font-black">Recording and privacy details</summary>
+              <summary className="cursor-pointer font-black">
+                Recording and privacy details
+              </summary>
               <p className="mt-2">{MOBILE_CAPTURE_CONSENT_TEXT}</p>
             </details>
           </details>
@@ -1332,28 +1307,50 @@ function SessionPreparationCard({
     : "No Quipsly schedule time";
   const audioReady =
     preparation.participants.length > 0 && preparation.allAudioReady;
-  const currentActor = preparation.participants.find((participant) => participant.isCurrentActor) ?? null;
-  const requiredParticipantCount = preparation.purpose.toUpperCase() === "COACHING" ? 2 : 1;
-  const entry = preparation.entryReadiness ?? buildQuipslySessionEntryReadiness({
-    roomStatus: preparation.status,
-    purpose: preparation.purpose,
-    actorAttached: Boolean(currentActor),
-    actorAudioConsentGranted: currentActor?.consent?.recordingReady === true,
-    actorVideoConsentGranted: currentActor?.consent?.canRecordVideo === true,
-    actorTranscriptionConsentGranted: currentActor?.consent?.transcriptionReady === true,
-    participantCount: preparation.participants.length,
-    requiredParticipantCount,
-    audioConsentGrantedParticipantCount: preparation.participants.filter((participant) => participant.consent?.recordingReady).length,
-    videoConsentGrantedParticipantCount: preparation.participants.filter((participant) => participant.consent?.canRecordVideo).length,
-    transcriptionConsentGrantedParticipantCount: preparation.participants.filter((participant) => participant.consent?.transcriptionReady).length,
-    allParticipantAudioConsentGranted: preparation.participants.length >= requiredParticipantCount && preparation.allAudioReady,
-    allParticipantVideoConsentGranted: preparation.participants.length >= requiredParticipantCount && preparation.participants.every((participant) => participant.consent?.canRecordVideo === true),
-    allParticipantTranscriptionConsentGranted: preparation.participants.length >= requiredParticipantCount && preparation.allTranscriptionReady,
-    providerCanJoin: preparation.providerCanJoin,
-    providerReadiness: preparation.providerReadiness,
-    localCaptureAvailable: true,
-    paymentBlocked: false,
-  });
+  const currentActor =
+    preparation.participants.find(
+      (participant) => participant.isCurrentActor,
+    ) ?? null;
+  const requiredParticipantCount =
+    preparation.purpose.toUpperCase() === "COACHING" ? 2 : 1;
+  const entry =
+    preparation.entryReadiness ??
+    buildQuipslySessionEntryReadiness({
+      roomStatus: preparation.status,
+      purpose: preparation.purpose,
+      actorAttached: Boolean(currentActor),
+      actorAudioConsentGranted: currentActor?.consent?.recordingReady === true,
+      actorVideoConsentGranted: currentActor?.consent?.canRecordVideo === true,
+      actorTranscriptionConsentGranted:
+        currentActor?.consent?.transcriptionReady === true,
+      participantCount: preparation.participants.length,
+      requiredParticipantCount,
+      audioConsentGrantedParticipantCount: preparation.participants.filter(
+        (participant) => participant.consent?.recordingReady,
+      ).length,
+      videoConsentGrantedParticipantCount: preparation.participants.filter(
+        (participant) => participant.consent?.canRecordVideo,
+      ).length,
+      transcriptionConsentGrantedParticipantCount:
+        preparation.participants.filter(
+          (participant) => participant.consent?.transcriptionReady,
+        ).length,
+      allParticipantAudioConsentGranted:
+        preparation.participants.length >= requiredParticipantCount &&
+        preparation.allAudioReady,
+      allParticipantVideoConsentGranted:
+        preparation.participants.length >= requiredParticipantCount &&
+        preparation.participants.every(
+          (participant) => participant.consent?.canRecordVideo === true,
+        ),
+      allParticipantTranscriptionConsentGranted:
+        preparation.participants.length >= requiredParticipantCount &&
+        preparation.allTranscriptionReady,
+      providerCanJoin: preparation.providerCanJoin,
+      providerReadiness: preparation.providerReadiness,
+      localCaptureAvailable: true,
+      paymentBlocked: false,
+    });
 
   return (
     <section
@@ -1856,7 +1853,8 @@ function SessionSourceEvidenceCard({
         : "Still processing";
     const audioHealthLabel = !visibleSignal
       ? "Audio analysis pending"
-      : visibleSignal.status === "signal-present" && signalObservationCount === 0
+      : visibleSignal.status === "signal-present" &&
+          signalObservationCount === 0
         ? "Audio looks clear"
         : visibleSignal.status === "near-digital-silence"
           ? "Audio may be too quiet"
@@ -1971,155 +1969,156 @@ function SessionSourceEvidenceCard({
             Technical recording details
           </summary>
           <dl className="mt-4 grid gap-2 sm:grid-cols-2">
-          <div className="rounded-lg border border-[#eadfc9] bg-[#fffdf8] p-3">
-            <dt className="text-[10px] font-black uppercase tracking-wide text-[#8a7354]">
-              Capture runtime
-            </dt>
-            <dd className="mt-1 text-xs font-black text-[#3d3122]">
-              {appLabel}
-            </dd>
-            <dd className="mt-1 text-[10px] font-semibold leading-4 text-[#765f40]">
-              {[
-                source.captureRuntime.deviceModel,
-                source.captureRuntime.operatingSystem,
-              ]
-                .filter(Boolean)
-                .join(" · ") || "Device/OS not preserved"}
-            </dd>
-            <dd className="mt-1 text-[10px] font-semibold leading-4 text-[#765f40]">
-              {source.captureRuntime.audioRoute || "No captured audio route"}
-              {source.captureRuntime.audioInputDataSource
-                ? ` · ${source.captureRuntime.audioInputDataSource}`
-                : ""}
-            </dd>
-            <dd className="mt-1 text-[10px] font-black leading-4 text-sky-800">
-              {audioFormatLabel}
-            </dd>
-          </div>
-          <div className="rounded-lg border border-[#eadfc9] bg-[#fffdf8] p-3">
-            <dt className="text-[10px] font-black uppercase tracking-wide text-[#8a7354]">
-              Cloud copy
-            </dt>
-            <dd className="mt-1 text-xs font-black text-[#3d3122]">
-              {byteSizeLabel(source.cloud.byteSize)} · generation{" "}
-              {source.cloud.generation || "absent"}
-            </dd>
-            <dd className="mt-1 text-[10px] font-semibold leading-4 text-[#765f40]">
-              {source.cloud.verifiedAt
-                ? `Verified ${new Date(source.cloud.verifiedAt).toLocaleString()}`
-                : "No server verification time"}
-            </dd>
-          </div>
-          {source.analysis ? (
-            <div
-              className={`rounded-lg border p-3 sm:col-span-2 ${source.analysis.status === "failed" ? "border-rose-200 bg-rose-50" : source.analysis.completeDecode ? "border-sky-200 bg-sky-50" : "border-amber-200 bg-amber-50"}`}
-            >
+            <div className="rounded-lg border border-[#eadfc9] bg-[#fffdf8] p-3">
               <dt className="text-[10px] font-black uppercase tracking-wide text-[#8a7354]">
-                Derived complete-decode evidence
+                Capture runtime
               </dt>
               <dd className="mt-1 text-xs font-black text-[#3d3122]">
-                {humanize(source.analysis.status)} ·{" "}
-                {source.analysis.exactSourceBound
-                  ? "exact SHA-256 and byte count bound"
-                  : "source binding failed"}
-              </dd>
-              <dd className="mt-1 break-all font-mono text-[10px] font-semibold leading-4 text-[#765f40]">
-                Job {source.analysis.jobId}
+                {appLabel}
               </dd>
               <dd className="mt-1 text-[10px] font-semibold leading-4 text-[#765f40]">
-                {source.analysis.completeDecode && source.analysis.media
-                  ? `${source.analysis.media.durationSeconds.toFixed(2)} sec · ${source.analysis.media.sampleRateHz} Hz · ${source.analysis.media.channelCount} ch`
-                  : source.analysis.error || "Result is not complete yet."}
+                {[
+                  source.captureRuntime.deviceModel,
+                  source.captureRuntime.operatingSystem,
+                ]
+                  .filter(Boolean)
+                  .join(" · ") || "Device/OS not preserved"}
               </dd>
-              <dd className="mt-2 text-[10px] font-black uppercase tracking-wide text-sky-800">
-                Read-only projection · capture manifest unchanged · replica
-                generations stay distinct
+              <dd className="mt-1 text-[10px] font-semibold leading-4 text-[#765f40]">
+                {source.captureRuntime.audioRoute || "No captured audio route"}
+                {source.captureRuntime.audioInputDataSource
+                  ? ` · ${source.captureRuntime.audioInputDataSource}`
+                  : ""}
+              </dd>
+              <dd className="mt-1 text-[10px] font-black leading-4 text-sky-800">
+                {audioFormatLabel}
               </dd>
             </div>
-          ) : null}
-          {video ? (
-            <div className="rounded-lg border border-violet-200 bg-violet-50/55 p-3 sm:col-span-2">
-              <dt className="text-[10px] font-black uppercase tracking-wide text-violet-800">
-                Video source truth
+            <div className="rounded-lg border border-[#eadfc9] bg-[#fffdf8] p-3">
+              <dt className="text-[10px] font-black uppercase tracking-wide text-[#8a7354]">
+                Cloud copy
               </dt>
               <dd className="mt-1 text-xs font-black text-[#3d3122]">
-                Requested {videoQualityLabel(video.requestedQuality)} ·{" "}
-                {video.intentFulfilled === true
-                  ? "resolved exactly"
-                  : video.intentFulfilled === false
-                    ? "intent not fulfilled"
-                    : "fulfillment not preserved"}
+                {byteSizeLabel(source.cloud.byteSize)} · generation{" "}
+                {source.cloud.generation || "absent"}
               </dd>
               <dd className="mt-1 text-[10px] font-semibold leading-4 text-[#765f40]">
-                Configured {configuredVideoLabel}
-              </dd>
-              <dd className="mt-1 text-[10px] font-semibold leading-4 text-[#765f40]">
-                Recorded {recordedVideoLabel}
-              </dd>
-              <dd className="mt-1 text-[10px] font-black leading-4 text-violet-800">
-                {humanize(video.configured.cameraPosition)} camera ·{" "}
-                {humanize(video.configured.orientation)} · pressure at Start{" "}
-                {humanize(video.systemPressureAtStart)}
-              </dd>
-              <dd className="mt-2 text-[10px] font-semibold leading-4 text-violet-900">
-                Requested and configured settings are capture evidence. Recorded
-                values come from complete movie decoding; neither edits the
-                immutable source.
+                {source.cloud.verifiedAt
+                  ? `Verified ${new Date(source.cloud.verifiedAt).toLocaleString()}`
+                  : "No server verification time"}
               </dd>
             </div>
-          ) : null}
+            {source.analysis ? (
+              <div
+                className={`rounded-lg border p-3 sm:col-span-2 ${source.analysis.status === "failed" ? "border-rose-200 bg-rose-50" : source.analysis.completeDecode ? "border-sky-200 bg-sky-50" : "border-amber-200 bg-amber-50"}`}
+              >
+                <dt className="text-[10px] font-black uppercase tracking-wide text-[#8a7354]">
+                  Derived complete-decode evidence
+                </dt>
+                <dd className="mt-1 text-xs font-black text-[#3d3122]">
+                  {humanize(source.analysis.status)} ·{" "}
+                  {source.analysis.exactSourceBound
+                    ? "exact SHA-256 and byte count bound"
+                    : "source binding failed"}
+                </dd>
+                <dd className="mt-1 break-all font-mono text-[10px] font-semibold leading-4 text-[#765f40]">
+                  Job {source.analysis.jobId}
+                </dd>
+                <dd className="mt-1 text-[10px] font-semibold leading-4 text-[#765f40]">
+                  {source.analysis.completeDecode && source.analysis.media
+                    ? `${source.analysis.media.durationSeconds.toFixed(2)} sec · ${source.analysis.media.sampleRateHz} Hz · ${source.analysis.media.channelCount} ch`
+                    : source.analysis.error || "Result is not complete yet."}
+                </dd>
+                <dd className="mt-2 text-[10px] font-black uppercase tracking-wide text-sky-800">
+                  Read-only projection · capture manifest unchanged · replica
+                  generations stay distinct
+                </dd>
+              </div>
+            ) : null}
+            {video ? (
+              <div className="rounded-lg border border-violet-200 bg-violet-50/55 p-3 sm:col-span-2">
+                <dt className="text-[10px] font-black uppercase tracking-wide text-violet-800">
+                  Video source truth
+                </dt>
+                <dd className="mt-1 text-xs font-black text-[#3d3122]">
+                  Requested {videoQualityLabel(video.requestedQuality)} ·{" "}
+                  {video.intentFulfilled === true
+                    ? "resolved exactly"
+                    : video.intentFulfilled === false
+                      ? "intent not fulfilled"
+                      : "fulfillment not preserved"}
+                </dd>
+                <dd className="mt-1 text-[10px] font-semibold leading-4 text-[#765f40]">
+                  Configured {configuredVideoLabel}
+                </dd>
+                <dd className="mt-1 text-[10px] font-semibold leading-4 text-[#765f40]">
+                  Recorded {recordedVideoLabel}
+                </dd>
+                <dd className="mt-1 text-[10px] font-black leading-4 text-violet-800">
+                  {humanize(video.configured.cameraPosition)} camera ·{" "}
+                  {humanize(video.configured.orientation)} · pressure at Start{" "}
+                  {humanize(video.systemPressureAtStart)}
+                </dd>
+                <dd className="mt-2 text-[10px] font-semibold leading-4 text-violet-900">
+                  Requested and configured settings are capture evidence.
+                  Recorded values come from complete movie decoding; neither
+                  edits the immutable source.
+                </dd>
+              </div>
+            ) : null}
           </dl>
 
           {visibleSignal ? (
-          <div className="mt-3 rounded-lg border border-sky-200 bg-sky-50 p-3 text-xs font-bold leading-5 text-sky-950">
-            <p className="font-black uppercase tracking-wide">
-              Complete decoded signal scan · {humanize(visibleSignal.status)}
-            </p>
-            <p className="mt-1">
-              RMS {visibleSignal.rmsDbfs.toFixed(1)} dBFS · peak{" "}
-              {visibleSignal.samplePeakDbfs.toFixed(1)} dBFS ·{" "}
-              {visibleSignal.clippedFrameCount.toLocaleString()} clipped frames
-              · {(visibleSignal.nearSilentFrameFraction * 100).toFixed(1)}%
-              near-silent frames
-            </p>
-            <p className="mt-1 text-[10px] text-sky-800">
-              RMS is not LUFS. {visibleSignal.observations.length} exact-time
-              signal observation
-              {visibleSignal.observations.length === 1 ? "" : "s"} require
-              {visibleSignal.observations.length === 1 ? "s" : ""} listening in
-              Transcript review.
-            </p>
-          </div>
+            <div className="mt-3 rounded-lg border border-sky-200 bg-sky-50 p-3 text-xs font-bold leading-5 text-sky-950">
+              <p className="font-black uppercase tracking-wide">
+                Complete decoded signal scan · {humanize(visibleSignal.status)}
+              </p>
+              <p className="mt-1">
+                RMS {visibleSignal.rmsDbfs.toFixed(1)} dBFS · peak{" "}
+                {visibleSignal.samplePeakDbfs.toFixed(1)} dBFS ·{" "}
+                {visibleSignal.clippedFrameCount.toLocaleString()} clipped
+                frames ·{" "}
+                {(visibleSignal.nearSilentFrameFraction * 100).toFixed(1)}%
+                near-silent frames
+              </p>
+              <p className="mt-1 text-[10px] text-sky-800">
+                RMS is not LUFS. {visibleSignal.observations.length} exact-time
+                signal observation
+                {visibleSignal.observations.length === 1 ? "" : "s"} require
+                {visibleSignal.observations.length === 1 ? "s" : ""} listening
+                in Transcript review.
+              </p>
+            </div>
           ) : (
-          <p className="mt-3 rounded-lg border border-dashed border-sky-200 bg-white p-3 text-xs font-bold leading-5 text-sky-950">
-            No complete decoded signal scan is attached to this source. Nest
-            does not infer audio health from transcript confidence.
-          </p>
+            <p className="mt-3 rounded-lg border border-dashed border-sky-200 bg-white p-3 text-xs font-bold leading-5 text-sky-950">
+              No complete decoded signal scan is attached to this source. Nest
+              does not infer audio health from transcript confidence.
+            </p>
           )}
 
           <div className="mt-3 grid gap-2 text-[10px] font-bold text-[#765f40] sm:grid-cols-2">
-          <div>
-            <p className="font-black uppercase tracking-wide text-[#8a7354]">
-              Capture / group
-            </p>
-            <p className="mt-1 break-all font-mono">
-              {source.captureId || "Capture ID absent"}
-            </p>
-            <p className="mt-1 break-all font-mono">
-              {source.captureGroupId || "Group ID absent"}
-            </p>
-          </div>
-          <div>
-            <p className="font-black uppercase tracking-wide text-[#8a7354]">
-              Server boundaries
-            </p>
-            <p className="mt-1 break-all font-mono">
-              START {source.startBoundary?.receiptId || "absent"}
-            </p>
-            <p className="mt-1 break-all font-mono">
-              STOP {source.stopBoundary?.receiptId || "absent"}
-            </p>
-          </div>
+            <div>
+              <p className="font-black uppercase tracking-wide text-[#8a7354]">
+                Capture / group
+              </p>
+              <p className="mt-1 break-all font-mono">
+                {source.captureId || "Capture ID absent"}
+              </p>
+              <p className="mt-1 break-all font-mono">
+                {source.captureGroupId || "Group ID absent"}
+              </p>
+            </div>
+            <div>
+              <p className="font-black uppercase tracking-wide text-[#8a7354]">
+                Server boundaries
+              </p>
+              <p className="mt-1 break-all font-mono">
+                START {source.startBoundary?.receiptId || "absent"}
+              </p>
+              <p className="mt-1 break-all font-mono">
+                STOP {source.stopBoundary?.receiptId || "absent"}
+              </p>
+            </div>
           </div>
         </details>
 
@@ -2584,8 +2583,12 @@ function SessionQuickEntryCard({
     }
   }
   const noteScope = scope === "notes";
-  const taskCount = currentEntries.filter((entry) => entry.kind === "TASK").length;
-  const goalCount = currentEntries.filter((entry) => entry.kind === "GOAL").length;
+  const taskCount = currentEntries.filter(
+    (entry) => entry.kind === "TASK",
+  ).length;
+  const goalCount = currentEntries.filter(
+    (entry) => entry.kind === "GOAL",
+  ).length;
   const title = noteScope
     ? `${currentEntries.length} deliberate Session note${currentEntries.length === 1 ? "" : "s"}`
     : "Tasks and goals";
@@ -2897,7 +2900,7 @@ function SessionQuickEntryCard({
         <div className="mt-4 rounded-xl border border-dashed border-emerald-200 bg-white/70 p-4 text-xs font-bold text-emerald-900">
           {noteScope
             ? "No deliberate Session note has been added yet. Quipsly does not substitute transcript text or an Inbox count."
-            : "No task or goal has been added to this Session yet. Transcript candidates stay separate until a person accepts them."}
+            : "No task or goal has been added to this Session yet. When the transcript is ready, Quipsly can create editable follow-through here automatically."}
         </div>
       )}
     </section>
@@ -3210,478 +3213,6 @@ function SessionTaxonomyCard({
   );
 }
 
-function localDateInputValue(value: Date) {
-  return [
-    value.getFullYear(),
-    String(value.getMonth() + 1).padStart(2, "0"),
-    String(value.getDate()).padStart(2, "0"),
-  ].join("-");
-}
-
-function TranscriptSpanProvenance({ segmentIds }: { segmentIds?: string[] }) {
-  const count = segmentIds?.length ?? 1;
-  if (count <= 1) return null;
-  return (
-    <p className="mt-2 text-xs font-black text-sky-800">
-      Complete thought · {count} immutable transcript segments
-    </p>
-  );
-}
-
-function GoalCandidateCard({
-  candidate,
-  busy,
-  onDecision,
-  projectTags,
-  defaultTagIds,
-  mergeTargets,
-}: {
-  candidate: SessionReviewGoalCandidate;
-  busy: boolean;
-  onDecision: (
-    candidate: SessionReviewGoalCandidate,
-    decision: TranscriptGoalReviewDecision,
-    draft?: {
-      title?: string;
-      description?: string;
-      targetAt?: string | null;
-      tagIds?: string[];
-      mergeTargetGoalId?: string;
-      mergeExpectedUpdatedAt?: string;
-    },
-  ) => void;
-  projectTags: SessionTaxonomy["catalog"];
-  defaultTagIds: string[];
-  mergeTargets: SessionReviewGoalMergeTarget[];
-}) {
-  const [editing, setEditing] = useState(false);
-  const [creating, setCreating] = useState(false);
-  const [merging, setMerging] = useState(false);
-  const [mergeTargetId, setMergeTargetId] = useState("");
-  const [title, setTitle] = useState(candidate.suggestedTitle);
-  const [description, setDescription] = useState(
-    candidate.suggestedDescription,
-  );
-  const [hasTargetDate, setHasTargetDate] = useState(false);
-  const [targetDate, setTargetDate] = useState(() => {
-    const value = new Date();
-    value.setDate(value.getDate() + 30);
-    return localDateInputValue(value);
-  });
-  const [tagIds, setTagIds] = useState(() => new Set(defaultTagIds));
-  const defaultTagKey = defaultTagIds.join("\u0000");
-  const accepted =
-    Boolean(candidate.committedGoalId) ||
-    candidate.reviewStatus === "ACCEPTED_AS_GOAL" ||
-    candidate.reviewStatus === "MERGED_INTO_GOAL";
-  const sourceReviewed = candidate.transcriptReviewStatus === "human-reviewed";
-  const selectedMergeTarget =
-    mergeTargets.find((target) => target.id === mergeTargetId) ?? null;
-
-  useEffect(() => {
-    setTitle(candidate.suggestedTitle);
-    setDescription(candidate.suggestedDescription);
-    setEditing(false);
-    setCreating(false);
-    setMerging(false);
-    setMergeTargetId("");
-    setHasTargetDate(false);
-    setTagIds(new Set(defaultTagIds));
-  }, [
-    candidate.reviewStatus,
-    candidate.suggestedDescription,
-    candidate.suggestedTitle,
-    defaultTagKey,
-  ]);
-
-  function toggleTag(tagId: string) {
-    setTagIds((current) => {
-      const next = new Set(current);
-      if (next.has(tagId)) next.delete(tagId);
-      else next.add(tagId);
-      return next;
-    });
-  }
-
-  return (
-    <article className="rounded-2xl border border-violet-200 bg-white p-5 shadow-sm">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <p className="text-xs font-black uppercase tracking-[0.16em] text-violet-700">
-            {timestampForSeconds(candidate.startSeconds)}–
-            {timestampForSeconds(candidate.endSeconds)} ·{" "}
-            {candidate.speakerLabel || "Unlabelled speaker"}
-          </p>
-          <h3 className="mt-1 text-lg font-black text-[#3d3122]">
-            {candidate.suggestedTitle}
-          </h3>
-        </div>
-        <span
-          className={`rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-wide ${statusTone(candidate.reviewStatus)}`}
-        >
-          {humanize(candidate.reviewStatus)}
-        </span>
-      </div>
-      <p className="mt-3 text-sm font-semibold leading-relaxed text-[#765f40]">
-        {candidate.sourceText}
-      </p>
-      <TranscriptSpanProvenance segmentIds={candidate.segmentIds} />
-      <TranscriptSpeakerEvidenceBadge authority={candidate.speakerAuthority} />
-      <a
-        href={`#transcript-segment-${encodeURIComponent(candidate.segmentId)}`}
-        className="mt-3 inline-flex min-h-11 items-center rounded-full border border-violet-200 bg-violet-50 px-3 py-2 text-xs font-black text-violet-900 hover:underline"
-      >
-        Play this moment
-      </a>
-      {!accepted && !sourceReviewed ? (
-        <p className="mt-3 text-xs font-semibold leading-5 text-[#765f40]">
-          Suggested from the transcript. Edit it now, or play this moment if
-          anything looks off.
-        </p>
-      ) : null}
-      {accepted && candidate.committedGoalId ? (
-        <div className="mt-4 space-y-1">
-          <p className="flex flex-wrap items-center gap-2 text-sm font-black text-emerald-700">
-            <CheckCircle2 size={16} aria-hidden="true" />
-            {candidate.reviewStatus === "MERGED_INTO_GOAL"
-              ? "Added as reviewed evidence to one existing goal."
-              : "Saved as a goal."}{" "}
-            <Link
-              href={`/work?goal=${encodeURIComponent(candidate.committedGoalId)}`}
-              className="underline"
-            >
-              Open goal and source evidence
-            </Link>
-          </p>
-          {candidate.lastHumanReview?.governance?.actionId ? (
-            <p className="text-xs font-bold text-[#765f40]">
-              Governed receipt{" "}
-              <span className="font-mono">
-                {candidate.lastHumanReview.governance.actionId.slice(-8)}
-              </span>
-            </p>
-          ) : null}
-        </div>
-      ) : creating ? (
-        <div className="mt-4 space-y-4 rounded-xl border border-violet-200 bg-violet-50/50 p-4">
-          <div>
-            <p className="text-xs font-black uppercase tracking-wide text-violet-950">
-              Save goal
-            </p>
-            <p className="mt-1 text-xs font-semibold leading-5 text-violet-900">
-              Review every field. Only the title, definition, target date, and
-              tags shown here become goal state.
-            </p>
-          </div>
-          <label className="block text-xs font-black uppercase tracking-wide text-violet-950">
-            Goal title
-            <input
-              value={title}
-              onChange={(event) => setTitle(event.target.value)}
-              maxLength={240}
-              className="mt-1 block min-h-11 w-full rounded-lg border border-violet-200 bg-white px-3 py-2 text-sm font-semibold normal-case tracking-normal text-[#3d3122]"
-            />
-          </label>
-          <label className="block text-xs font-black uppercase tracking-wide text-violet-950">
-            Definition of progress{" "}
-            <span className="normal-case tracking-normal text-violet-700">
-              (optional)
-            </span>
-            <textarea
-              value={description}
-              onChange={(event) => setDescription(event.target.value)}
-              maxLength={5000}
-              rows={3}
-              className="mt-1 block w-full rounded-lg border border-violet-200 bg-white px-3 py-2 text-sm font-semibold normal-case tracking-normal text-[#3d3122]"
-            />
-          </label>
-          <label className="flex min-h-11 items-center gap-3 text-sm font-black text-violet-950">
-            <input
-              type="checkbox"
-              checked={hasTargetDate}
-              onChange={(event) => setHasTargetDate(event.target.checked)}
-            />{" "}
-            Add a target date
-          </label>
-          {hasTargetDate ? (
-            <label className="block text-xs font-black uppercase tracking-wide text-violet-950">
-              Target date
-              <input
-                type="date"
-                value={targetDate}
-                min={localDateInputValue(new Date())}
-                onChange={(event) => setTargetDate(event.target.value)}
-                className="mt-1 block min-h-11 rounded-lg border border-violet-200 bg-white px-3 py-2 text-sm font-semibold normal-case tracking-normal text-[#3d3122]"
-              />
-            </label>
-          ) : null}
-          {projectTags.length ? (
-            <fieldset>
-              <legend className="text-xs font-black uppercase tracking-wide text-violet-950">
-                Project tags
-              </legend>
-              <div className="mt-2 flex flex-wrap gap-2">
-                {projectTags.map((tag) => (
-                  <button
-                    key={tag.id}
-                    type="button"
-                    aria-pressed={tagIds.has(tag.id)}
-                    onClick={() => toggleTag(tag.id)}
-                    className={`min-h-11 rounded-full border px-3 py-2 text-xs font-black ${tagIds.has(tag.id) ? "border-violet-700 bg-violet-700 text-white" : "border-violet-300 bg-white text-violet-950"}`}
-                  >
-                    {tagIds.has(tag.id) ? "✓ " : ""}
-                    {tag.label}
-                  </button>
-                ))}
-              </div>
-            </fieldset>
-          ) : (
-            <p className="text-xs font-semibold text-violet-900">
-              This Session has no active project tags yet. Its canonical project
-              identity will still be preserved.
-            </p>
-          )}
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              disabled={
-                busy ||
-                !title.trim() ||
-                (hasTargetDate && !targetDate)
-              }
-              onClick={() =>
-                onDecision(candidate, "ACCEPT", {
-                  title,
-                  description,
-                  targetAt: hasTargetDate
-                    ? new Date(`${targetDate}T12:00:00`).toISOString()
-                    : null,
-                  tagIds: [...tagIds],
-                })
-              }
-              className="rounded-full bg-[#3e2f21] px-4 py-2 text-xs font-black uppercase tracking-wide text-white disabled:opacity-50"
-            >
-              {busy ? "Creating…" : "Create goal"}
-            </button>
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => setCreating(false)}
-              className="rounded-full border border-violet-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-violet-900 disabled:opacity-50"
-            >
-              Cancel
-            </button>
-          </div>
-          <p className="text-xs font-bold leading-relaxed text-violet-950">
-            Every transcript segment in this evidence span and the protected
-            playback source stay attached. Tasks, focus blocks, reminders,
-            calendar placement, messages, delivery, and publication remain
-            separate decisions.
-          </p>
-        </div>
-      ) : merging ? (
-        <div className="mt-4 space-y-4 rounded-xl border border-sky-200 bg-sky-50/60 p-4">
-          <div>
-            <p className="text-xs font-black uppercase tracking-wide text-sky-950">
-              Add this evidence to one existing goal
-            </p>
-            <p className="mt-1 text-xs font-semibold leading-5 text-sky-900">
-              Choose deliberately. Quipsly will append this reviewed transcript
-              and playback pointer as evidence; it will not rewrite the selected
-              goal.
-            </p>
-          </div>
-          <label className="block text-xs font-black uppercase tracking-wide text-sky-950">
-            Existing goal
-            <select
-              aria-label="Add evidence to goal"
-              value={mergeTargetId}
-              onChange={(event) => setMergeTargetId(event.target.value)}
-              className="mt-1 block min-h-11 w-full rounded-lg border border-sky-200 bg-white px-3 text-sm font-semibold normal-case tracking-normal text-[#3d3122]"
-            >
-              <option value="">Choose a goal…</option>
-              {mergeTargets.map((target) => (
-                <option key={target.id} value={target.id}>
-                  {target.title} · {humanize(target.status)} ·{" "}
-                  {target.evidenceCount} evidence receipt
-                  {target.evidenceCount === 1 ? "" : "s"}
-                </option>
-              ))}
-            </select>
-          </label>
-          {selectedMergeTarget ? (
-            <div className="rounded-xl border border-sky-200 bg-white p-4">
-              <div className="flex flex-wrap items-start justify-between gap-2">
-                <p className="font-black text-[#3d3122]">
-                  {selectedMergeTarget.title}
-                </p>
-                <span className="rounded-full border border-sky-200 bg-sky-50 px-2 py-1 text-[10px] font-black uppercase text-sky-900">
-                  {humanize(selectedMergeTarget.status)}
-                </span>
-              </div>
-              {selectedMergeTarget.description ? (
-                <p className="mt-2 whitespace-pre-wrap text-xs font-semibold leading-5 text-[#765f40]">
-                  {selectedMergeTarget.description}
-                </p>
-              ) : (
-                <p className="mt-2 text-xs font-semibold text-[#8a7354]">
-                  No goal definition recorded.
-                </p>
-              )}
-              <p className="mt-3 text-[10px] font-black uppercase tracking-wide text-sky-800">
-                {selectedMergeTarget.targetAt
-                  ? `Target ${new Date(selectedMergeTarget.targetAt).toLocaleDateString()}`
-                  : "No target date"}{" "}
-                · {selectedMergeTarget.evidenceCount} existing evidence receipt
-                {selectedMergeTarget.evidenceCount === 1 ? "" : "s"}
-              </p>
-            </div>
-          ) : null}
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              disabled={busy || !mergeTargetId}
-              onClick={() => {
-                const target = mergeTargets.find(
-                  (entry) => entry.id === mergeTargetId,
-                );
-                if (target)
-                  onDecision(candidate, "MERGE", {
-                    mergeTargetGoalId: target.id,
-                    mergeExpectedUpdatedAt: target.updatedAt,
-                  });
-              }}
-              className="rounded-full bg-sky-800 px-4 py-2 text-xs font-black uppercase tracking-wide text-white disabled:opacity-50"
-            >
-              {busy ? "Adding evidence…" : "Add reviewed evidence"}
-            </button>
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => {
-                setMerging(false);
-                setMergeTargetId("");
-              }}
-              className="rounded-full border border-sky-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-sky-900 disabled:opacity-50"
-            >
-              Cancel
-            </button>
-          </div>
-          <p className="text-xs font-bold leading-relaxed text-sky-950">
-            The goal keeps its current identity, title, definition, status,
-            target date, tags, linked tasks, progress percentage, and project.
-            No focus block, reminder, calendar event, message, delivery, Studio
-            edit, or publication is created.
-          </p>
-        </div>
-      ) : editing ? (
-        <div className="mt-4 space-y-3 rounded-xl border border-violet-200 bg-violet-50/50 p-4">
-          <label className="block text-xs font-black uppercase tracking-wide text-violet-900">
-            Goal title
-            <input
-              value={title}
-              onChange={(event) => setTitle(event.target.value)}
-              maxLength={240}
-              className="mt-1 block w-full rounded-lg border border-violet-200 bg-white px-3 py-2 text-sm font-semibold text-[#3d3122]"
-            />
-          </label>
-          <label className="block text-xs font-black uppercase tracking-wide text-violet-900">
-            Definition of progress{" "}
-            <span className="normal-case tracking-normal text-violet-700">
-              (optional)
-            </span>
-            <textarea
-              value={description}
-              onChange={(event) => setDescription(event.target.value)}
-              maxLength={5000}
-              rows={3}
-              className="mt-1 block w-full rounded-lg border border-violet-200 bg-white px-3 py-2 text-sm font-semibold text-[#3d3122]"
-            />
-          </label>
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              disabled={busy || !title.trim()}
-              onClick={() =>
-                onDecision(candidate, "EDIT", { title, description })
-              }
-              className="rounded-full bg-violet-700 px-4 py-2 text-xs font-black uppercase tracking-wide text-white disabled:opacity-50"
-            >
-              Save for review
-            </button>
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => setEditing(false)}
-              className="rounded-full border border-violet-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-violet-900 disabled:opacity-50"
-            >
-              Cancel
-            </button>
-          </div>
-        </div>
-      ) : (
-        <div className="mt-4 flex flex-wrap gap-2">
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => setCreating(true)}
-            className="rounded-full bg-[#3e2f21] px-4 py-2 text-xs font-black uppercase tracking-wide text-white disabled:opacity-50"
-          >
-            Review and save goal
-          </button>
-          <button
-            type="button"
-            disabled={busy || mergeTargets.length === 0}
-            onClick={() => setMerging(true)}
-            className="rounded-full border border-sky-300 bg-sky-50 px-4 py-2 text-xs font-black uppercase tracking-wide text-sky-900 disabled:opacity-50"
-          >
-            Add evidence to existing goal
-          </button>
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => setEditing(true)}
-            className="rounded-full border border-violet-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-violet-900 disabled:opacity-50"
-          >
-            Edit suggestion
-          </button>
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => onDecision(candidate, "DEFER")}
-            className="rounded-full border border-amber-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-amber-900 disabled:opacity-50"
-          >
-            Defer
-          </button>
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => onDecision(candidate, "REJECT")}
-            className="rounded-full border border-rose-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-rose-800 disabled:opacity-50"
-          >
-            Reject
-          </button>
-          {mergeTargets.length === 0 ? (
-            <p className="w-full text-xs font-bold text-[#8a7354]">
-              Create an actor-owned active goal in this Nest first to add
-              evidence without creating a duplicate.
-            </p>
-          ) : null}
-        </div>
-      )}
-      {!accepted && !creating && !merging && (
-        <p className="mt-3 text-xs font-bold leading-relaxed text-[#8a7354]">
-          “Review and save goal” creates one editable goal.
-          “Add evidence to existing goal” appends one source receipt to an
-          explicitly selected goal without changing its state. Edit, defer, and
-          reject create no goal, task, date, focus block, reminder, calendar
-          event, message, delivery, or publication.
-        </p>
-      )}
-    </article>
-  );
-}
-
 function statusTone(value: string | null | undefined) {
   const normalized = (value || "").toUpperCase();
   if (/(COMPLETED|READY|GRANTED|ACCEPTED|OPEN)/.test(normalized))
@@ -3689,1236 +3220,6 @@ function statusTone(value: string | null | undefined) {
   if (/(HELD|REJECTED|FAILED|DECLINED|REVOKED)/.test(normalized))
     return "border-rose-200 bg-rose-50 text-rose-800";
   return "border-amber-200 bg-amber-50 text-amber-800";
-}
-
-function PacketNoteCandidateCard({
-  candidate,
-  busy,
-  canUseProjectTeamNotes,
-  mergeTargets,
-  onDecision,
-}: {
-  candidate: SessionReviewNoteCandidate;
-  busy: boolean;
-  canUseProjectTeamNotes: boolean;
-  mergeTargets: SessionReviewNoteMergeTarget[];
-  onDecision: (
-    candidate: SessionReviewNoteCandidate,
-    decision: TranscriptNoteReviewDecision,
-    draft?: {
-      title: string;
-      body: string;
-      kind: EditableSessionNoteKind;
-      visibility: SessionNoteVisibility;
-      mergeTargetNoteId?: string;
-      mergeExpectedUpdatedAt?: string;
-      mergedTitle?: string;
-      mergedBody?: string;
-      mergedKind?: EditableSessionNoteKind;
-      mergedVisibility?: SessionNoteVisibility;
-    },
-  ) => void;
-}) {
-  const [reviewMode, setReviewMode] = useState<
-    "ACCEPT" | "EDIT" | "MERGE" | null
-  >(null);
-  const [mergeTargetId, setMergeTargetId] = useState("");
-  const [title, setTitle] = useState(candidate.suggestedTitle);
-  const [body, setBody] = useState(candidate.suggestedBody);
-  const [kind, setKind] = useState<EditableSessionNoteKind>(
-    candidate.suggestedKind,
-  );
-  const [visibility, setVisibility] = useState<SessionNoteVisibility>(
-    candidate.suggestedVisibility,
-  );
-  const accepted =
-    Boolean(candidate.committedNoteId) ||
-    candidate.reviewStatus === "ACCEPTED_AS_NOTE" ||
-    candidate.reviewStatus === "MERGED_INTO_NOTE";
-  const laneRejected = candidate.laneStatus === "REJECTED_BY_HUMAN";
-  const sourceReviewed = candidate.transcriptReviewStatus === "human-reviewed";
-  const allowedKinds = EDITABLE_SESSION_NOTE_KINDS.filter(
-    (value) => value !== "PRODUCTION" || canUseProjectTeamNotes,
-  );
-  const allowedVisibilities = SESSION_NOTE_VISIBILITIES.filter(
-    (value) => value !== "PROJECT_TEAM" || canUseProjectTeamNotes,
-  );
-
-  useEffect(() => {
-    setTitle(candidate.suggestedTitle);
-    setBody(candidate.suggestedBody);
-    setKind(
-      canUseProjectTeamNotes || candidate.suggestedKind !== "PRODUCTION"
-        ? candidate.suggestedKind
-        : "SESSION_NOTE",
-    );
-    setVisibility(
-      canUseProjectTeamNotes || candidate.suggestedVisibility !== "PROJECT_TEAM"
-        ? candidate.suggestedVisibility
-        : "AUTHOR_PRIVATE",
-    );
-    setReviewMode(null);
-    setMergeTargetId("");
-  }, [
-    canUseProjectTeamNotes,
-    candidate.id,
-    candidate.reviewStatus,
-    candidate.suggestedBody,
-    candidate.suggestedKind,
-    candidate.suggestedTitle,
-    candidate.suggestedVisibility,
-  ]);
-
-  function chooseMergeTarget(targetId: string) {
-    setMergeTargetId(targetId);
-    const target = mergeTargets.find((entry) => entry.id === targetId);
-    if (!target) return;
-    setTitle(target.title || candidate.suggestedTitle);
-    setBody(
-      [target.body.trim(), candidate.suggestedBody.trim()]
-        .filter(Boolean)
-        .join("\n\n"),
-    );
-    setKind(target.kind);
-    setVisibility(target.visibility);
-  }
-
-  return (
-    <article className="rounded-2xl border border-orange-200 bg-white p-5 shadow-sm">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <p className="text-xs font-black uppercase tracking-[0.16em] text-orange-800">
-            {candidate.laneLabel} ·{" "}
-            {timestampForSeconds(candidate.startSeconds)}–
-            {timestampForSeconds(candidate.endSeconds)}
-          </p>
-          <h3 className="mt-1 text-lg font-black text-[#3d3122]">
-            {candidate.speakerLabel || "Unlabelled speaker"}
-          </h3>
-        </div>
-        <span
-          className={`rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-wide ${statusTone(accepted ? "ACCEPTED" : candidate.reviewStatus)}`}
-        >
-          {accepted ? "Saved" : humanize(candidate.reviewStatus)}
-        </span>
-      </div>
-      <p className="mt-3 whitespace-pre-wrap text-sm font-semibold leading-relaxed text-[#765f40]">
-        {candidate.sourceText}
-      </p>
-      <TranscriptSpanProvenance segmentIds={candidate.segmentIds} />
-      <TranscriptSpeakerEvidenceBadge authority={candidate.speakerAuthority} />
-      <a
-        href={`#transcript-segment-${encodeURIComponent(candidate.segmentId)}`}
-        className="mt-3 inline-flex min-h-11 items-center rounded-full border border-orange-200 bg-orange-50 px-3 py-2 text-xs font-black text-orange-950 hover:underline"
-      >
-        Play this moment
-      </a>
-      {!accepted && !sourceReviewed ? (
-        <p className="mt-3 text-xs font-semibold leading-5 text-[#765f40]">
-          Suggested from the transcript. Edit it now, or play this moment if
-          anything looks off.
-        </p>
-      ) : null}
-      {accepted ? (
-        <div className="mt-4 space-y-1">
-          <p className="flex flex-wrap items-center gap-2 text-sm font-black text-emerald-700">
-            <CheckCircle2 size={16} aria-hidden="true" />
-            {candidate.reviewStatus === "MERGED_INTO_NOTE"
-              ? "Merged into one revisioned Session note."
-              : "Saved as a Session note."}{" "}
-            <Link
-              href={`/sessions/${encodeURIComponent(candidate.roomId)}?mode=notes`}
-              className="underline"
-            >
-              Open notes
-            </Link>
-          </p>
-          {candidate.lastHumanReview?.governance?.actionId ? (
-            <p className="text-xs font-bold text-[#765f40]">
-              Governed receipt{" "}
-              <span className="font-mono">
-                {candidate.lastHumanReview.governance.actionId.slice(-8)}
-              </span>
-            </p>
-          ) : null}
-        </div>
-      ) : reviewMode ? (
-        <div className="mt-4 space-y-4 rounded-xl border border-orange-200 bg-orange-50/60 p-4">
-          <div>
-            <p className="text-xs font-black uppercase tracking-wide text-orange-950">
-              {reviewMode === "ACCEPT"
-                ? "Save one source-linked Session note"
-                : reviewMode === "MERGE"
-                  ? "Merge into one existing Session note"
-                  : "Refine candidate for later review"}
-            </p>
-            <p className="mt-1 text-xs font-semibold leading-5 text-orange-900">
-              Review the wording, purpose, and audience. The source remains
-              attached;{" "}
-              {reviewMode === "ACCEPT"
-                ? "nothing is sent or shared outside its selected in-app visibility."
-                : reviewMode === "MERGE"
-                  ? "the existing note is revisioned and its prior content remains recoverable."
-                  : "saving this draft creates no canonical note."}
-            </p>
-          </div>
-          {reviewMode === "MERGE" ? (
-            <label className="block text-xs font-black uppercase tracking-wide text-orange-950">
-              Existing note
-              <select
-                aria-label="Merge into note"
-                value={mergeTargetId}
-                onChange={(event) => chooseMergeTarget(event.target.value)}
-                className="mt-1 block min-h-11 w-full rounded-lg border border-orange-200 bg-white px-3 text-sm font-semibold normal-case tracking-normal text-[#3d3122]"
-              >
-                <option value="">Choose a note…</option>
-                {mergeTargets.map((target) => (
-                  <option key={target.id} value={target.id}>
-                    {target.title || target.body.slice(0, 72)} · revision{" "}
-                    {target.revisionCount}
-                  </option>
-                ))}
-              </select>
-            </label>
-          ) : null}
-          <label className="block text-xs font-black uppercase tracking-wide text-orange-950">
-            Note title{" "}
-            <span className="normal-case tracking-normal text-orange-800">
-              (optional)
-            </span>
-            <input
-              value={title}
-              onChange={(event) => setTitle(event.target.value)}
-              maxLength={500}
-              className="mt-1 block min-h-11 w-full rounded-lg border border-orange-200 bg-white px-3 py-2 text-sm font-semibold normal-case tracking-normal text-[#3d3122]"
-            />
-          </label>
-          <label className="block text-xs font-black uppercase tracking-wide text-orange-950">
-            Note
-            <textarea
-              value={body}
-              onChange={(event) => setBody(event.target.value)}
-              maxLength={20000}
-              rows={4}
-              className="mt-1 block w-full rounded-lg border border-orange-200 bg-white px-3 py-2 text-sm font-semibold normal-case tracking-normal text-[#3d3122]"
-            />
-          </label>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <label className="block text-xs font-black uppercase tracking-wide text-orange-950">
-              Purpose
-              <select
-                value={kind}
-                onChange={(event) =>
-                  setKind(event.target.value as EditableSessionNoteKind)
-                }
-                className="mt-1 block min-h-11 w-full rounded-lg border border-orange-200 bg-white px-3 text-sm font-semibold normal-case tracking-normal text-[#3d3122]"
-              >
-                {allowedKinds.map((value) => (
-                  <option key={value} value={value}>
-                    {sessionNoteKindLabel(value)}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="block text-xs font-black uppercase tracking-wide text-orange-950">
-              Audience
-              <select
-                value={visibility}
-                onChange={(event) =>
-                  setVisibility(event.target.value as SessionNoteVisibility)
-                }
-                className="mt-1 block min-h-11 w-full rounded-lg border border-orange-200 bg-white px-3 text-sm font-semibold normal-case tracking-normal text-[#3d3122]"
-              >
-                {allowedVisibilities.map((value) => (
-                  <option key={value} value={value}>
-                    {sessionNoteVisibilityLabel(value)}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
-          <p className="rounded-lg border border-orange-200 bg-white p-3 text-xs font-bold leading-relaxed text-orange-950">
-            {visibility === "AUTHOR_PRIVATE"
-              ? "Only your account can read this note."
-              : visibility === "SESSION_SHARED"
-                ? "People who can access this Session can read it inside Quipsly."
-                : visibility === "CLIENT_SAFE"
-                  ? "Eligible for a separately reviewed client follow-up; it is not sent automatically."
-                  : "Visible to Nest owners and editors; it is not public."}
-          </p>
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              disabled={
-                busy ||
-                !body.trim() ||
-                (reviewMode === "MERGE" && !mergeTargetId)
-              }
-              onClick={() => {
-                const target = mergeTargets.find(
-                  (entry) => entry.id === mergeTargetId,
-                );
-                onDecision(candidate, reviewMode, {
-                  title,
-                  body,
-                  kind,
-                  visibility,
-                  ...(reviewMode === "MERGE" && target
-                    ? {
-                        mergeTargetNoteId: target.id,
-                        mergeExpectedUpdatedAt: target.updatedAt,
-                        mergedTitle: title,
-                        mergedBody: body,
-                        mergedKind: kind,
-                        mergedVisibility: visibility,
-                      }
-                    : {}),
-                });
-              }}
-              className="rounded-full bg-orange-800 px-4 py-2 text-xs font-black uppercase tracking-wide text-white disabled:opacity-50"
-            >
-              {busy
-                ? "Saving…"
-                : reviewMode === "ACCEPT"
-                  ? "Save source-linked note"
-                  : reviewMode === "MERGE"
-                    ? "Merge as new revision"
-                    : "Save for review"}
-            </button>
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => setReviewMode(null)}
-              className="rounded-full border border-orange-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-orange-950 disabled:opacity-50"
-            >
-              Cancel
-            </button>
-          </div>
-          <p className="text-xs font-bold leading-relaxed text-orange-950">
-            {reviewMode === "ACCEPT"
-              ? "Creates one revisioned canonical note."
-              : reviewMode === "MERGE"
-                ? "Updates exactly one existing note and retains its prior revision plus this source receipt."
-                : "Preserves one reviewed draft and audit receipt; no note is created."}{" "}
-            It creates no task, goal, reminder, calendar event, message, client
-            delivery, Studio edit, or publication.
-          </p>
-        </div>
-      ) : (
-        <div className="mt-4 flex flex-wrap gap-2">
-          <button
-            type="button"
-            disabled={busy || laneRejected}
-            onClick={() => setReviewMode("ACCEPT")}
-            className="rounded-full bg-orange-800 px-4 py-2 text-xs font-black uppercase tracking-wide text-white disabled:opacity-50"
-          >
-            Review &amp; save note
-          </button>
-          <button
-            type="button"
-            disabled={
-              busy ||
-              laneRejected ||
-              mergeTargets.length === 0
-            }
-            onClick={() => setReviewMode("MERGE")}
-            className="rounded-full border border-orange-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-orange-950 disabled:opacity-50"
-          >
-            Merge into note
-          </button>
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => setReviewMode("EDIT")}
-            className="rounded-full border border-orange-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-orange-950 disabled:opacity-50"
-          >
-            Edit suggestion
-          </button>
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => onDecision(candidate, "DEFER")}
-            className="rounded-full border border-amber-300 bg-amber-50 px-4 py-2 text-xs font-black uppercase tracking-wide text-amber-950 disabled:opacity-50"
-          >
-            Defer
-          </button>
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => onDecision(candidate, "REJECT")}
-            className="rounded-full border border-rose-300 bg-rose-50 px-4 py-2 text-xs font-black uppercase tracking-wide text-rose-900 disabled:opacity-50"
-          >
-            Reject
-          </button>
-          {laneRejected ? (
-            <p className="w-full text-xs font-bold text-rose-800">
-              This lane was rejected. Reopen the lane before turning its
-              candidates into notes.
-            </p>
-          ) : null}
-          {!mergeTargets.length ? (
-            <p className="w-full text-xs font-bold text-[#8a7354]">
-              Create an actor-owned Session note first to use merge.
-            </p>
-          ) : null}
-        </div>
-      )}
-    </article>
-  );
-}
-
-function CandidateCard({
-  candidate,
-  busy,
-  onDecision,
-  projectTags,
-  defaultTagIds,
-  mergeTargets,
-}: {
-  candidate: SessionReviewCandidate;
-  busy: boolean;
-  onDecision: (
-    candidate: SessionReviewCandidate,
-    decision: TranscriptActionReviewDecision,
-    draft?: {
-      title?: string;
-      detail?: string;
-      assignToMe?: boolean;
-      dueAt?: string | null;
-      tagIds?: string[];
-      mergeTargetTaskId?: string;
-      mergeExpectedUpdatedAt?: string;
-    },
-  ) => void;
-  projectTags: SessionTaxonomy["catalog"];
-  defaultTagIds: string[];
-  mergeTargets: SessionReviewTaskMergeTarget[];
-}) {
-  const [editing, setEditing] = useState(false);
-  const [creating, setCreating] = useState(false);
-  const [merging, setMerging] = useState(false);
-  const [mergeTargetId, setMergeTargetId] = useState(mergeTargets[0]?.id ?? "");
-  const [title, setTitle] = useState(candidate.title);
-  const [detail, setDetail] = useState(candidate.detail);
-  const [assignToMe, setAssignToMe] = useState(true);
-  const [dueLocal, setDueLocal] = useState("");
-  const [tagIds, setTagIds] = useState(defaultTagIds);
-  const defaultTagIdsKey = [...defaultTagIds].sort().join("\u0000");
-  const accepted =
-    candidate.committedActionItemId ||
-    candidate.reviewStatus === "ACCEPTED_AS_ACTION_ITEM" ||
-    candidate.reviewStatus === "MERGED_INTO_ACTION_ITEM";
-  const sourceReviewed = candidate.transcriptReviewStatus === "human-reviewed";
-  const mergeTarget =
-    mergeTargets.find((target) => target.id === mergeTargetId) ?? null;
-
-  useEffect(() => {
-    setTitle(candidate.title);
-    setDetail(candidate.detail);
-    setEditing(false);
-    setCreating(false);
-    setMerging(false);
-    setAssignToMe(true);
-    setDueLocal("");
-  }, [candidate.detail, candidate.reviewStatus, candidate.title]);
-
-  useEffect(() => {
-    if (!mergeTargets.some((target) => target.id === mergeTargetId))
-      setMergeTargetId(mergeTargets[0]?.id ?? "");
-  }, [mergeTargetId, mergeTargets]);
-
-  useEffect(() => {
-    if (!creating) {
-      setTagIds(defaultTagIdsKey ? defaultTagIdsKey.split("\u0000") : []);
-    }
-  }, [creating, defaultTagIdsKey]);
-
-  function toggleTag(tagId: string) {
-    setTagIds((current) =>
-      current.includes(tagId)
-        ? current.filter((candidateId) => candidateId !== tagId)
-        : [...current, tagId].sort(),
-    );
-  }
-
-  function accept() {
-    let dueAt: string | null = null;
-    if (dueLocal) {
-      const parsed = new Date(dueLocal);
-      if (!Number.isFinite(parsed.getTime())) return;
-      dueAt = parsed.toISOString();
-    }
-    onDecision(candidate, "ACCEPT", {
-      title: title.trim(),
-      detail: detail.trim(),
-      assignToMe,
-      dueAt,
-      tagIds,
-    });
-  }
-
-  return (
-    <article className="rounded-2xl border border-[#e5d5b7] bg-white p-5 shadow-sm">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <p className="text-xs font-black uppercase tracking-[0.16em] text-violet-700">
-            {timestampForSeconds(candidate.startSeconds)}–
-            {timestampForSeconds(candidate.endSeconds)} ·{" "}
-            {candidate.speakerLabel || "Unlabelled speaker"}
-          </p>
-          <h3 className="mt-1 text-lg font-black text-[#3d3122]">
-            {candidate.title}
-          </h3>
-        </div>
-        <span
-          className={`rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-wide ${statusTone(candidate.reviewStatus)}`}
-        >
-          {humanize(candidate.reviewStatus)}
-        </span>
-      </div>
-      <p className="mt-3 whitespace-pre-wrap text-sm font-semibold leading-relaxed text-[#765f40]">
-        {candidate.detail}
-      </p>
-      <TranscriptSpanProvenance segmentIds={candidate.segmentIds} />
-      <TranscriptSpeakerEvidenceBadge authority={candidate.speakerAuthority} />
-      <a
-        href={`#transcript-segment-${encodeURIComponent(candidate.segmentId)}`}
-        className="mt-3 inline-flex min-h-11 items-center rounded-full border border-violet-200 bg-violet-50 px-3 py-2 text-xs font-black text-violet-900 hover:underline"
-      >
-        Play this moment
-      </a>
-      {!accepted && !sourceReviewed ? (
-        <p className="mt-3 text-xs font-semibold leading-5 text-[#765f40]">
-          Suggested from the transcript. Edit it now, or play this moment if
-          anything looks off.
-        </p>
-      ) : null}
-      {accepted ? (
-        <div className="mt-4 space-y-1">
-          <p className="flex flex-wrap items-center gap-2 text-sm font-black text-emerald-700">
-            <CheckCircle2 size={16} aria-hidden="true" />
-            {candidate.reviewStatus === "MERGED_INTO_ACTION_ITEM"
-              ? "Reviewed evidence added to canonical Quipsly work."
-              : "Saved as a task."}
-            {candidate.committedActionItemId ? (
-              <Link
-                href={`/work?task=${encodeURIComponent(candidate.committedActionItemId)}`}
-                className="underline"
-              >
-                Open task
-              </Link>
-            ) : null}
-          </p>
-          {candidate.lastHumanReview?.governance?.actionId ? (
-            <p className="text-xs font-bold text-[#765f40]">
-              Governed receipt{" "}
-              <span className="font-mono">
-                {candidate.lastHumanReview.governance.actionId.slice(-8)}
-              </span>
-            </p>
-          ) : null}
-        </div>
-      ) : merging ? (
-        <div className="mt-4 space-y-4 rounded-xl border border-sky-200 bg-sky-50/60 p-4">
-          <div>
-            <p className="text-xs font-black uppercase tracking-wide text-sky-950">
-              Add evidence to an existing task
-            </p>
-            <p className="mt-1 text-xs font-semibold leading-5 text-sky-900">
-              Select the exact actor-owned task. This appends one source
-              receipt; it does not edit task state.
-            </p>
-          </div>
-          <label className="block text-xs font-black uppercase tracking-wide text-sky-950">
-            Existing task
-            <select
-              value={mergeTargetId}
-              onChange={(event) => setMergeTargetId(event.target.value)}
-              className="mt-1 block min-h-11 w-full rounded-lg border border-sky-200 bg-white px-3 text-sm font-semibold normal-case tracking-normal text-[#3d3122]"
-            >
-              {mergeTargets.map((target) => (
-                <option key={target.id} value={target.id}>
-                  {target.title}
-                </option>
-              ))}
-            </select>
-          </label>
-          {mergeTarget ? (
-            <div className="rounded-lg border border-sky-200 bg-white p-3 text-xs font-semibold leading-5 text-sky-950">
-              <p className="font-black">{mergeTarget.title}</p>
-              <p>{mergeTarget.detail || "No task detail"}</p>
-              <p>
-                {mergeTarget.dueAt
-                  ? `Due ${new Date(mergeTarget.dueAt).toLocaleString()}`
-                  : "No due date"}{" "}
-                · {mergeTarget.evidenceCount} existing evidence receipt
-                {mergeTarget.evidenceCount === 1 ? "" : "s"}
-              </p>
-            </div>
-          ) : null}
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              disabled={busy || !mergeTarget}
-              onClick={() =>
-                mergeTarget &&
-                onDecision(candidate, "MERGE", {
-                  mergeTargetTaskId: mergeTarget.id,
-                  mergeExpectedUpdatedAt: mergeTarget.updatedAt,
-                })
-              }
-              className="rounded-full bg-sky-800 px-4 py-2 text-xs font-black uppercase tracking-wide text-white disabled:opacity-50"
-            >
-              {busy ? "Adding…" : "Add reviewed evidence"}
-            </button>
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => setMerging(false)}
-              className="rounded-full border border-sky-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-sky-950 disabled:opacity-50"
-            >
-              Cancel
-            </button>
-          </div>
-          <p className="text-xs font-bold leading-relaxed text-sky-950">
-            Title, detail, status, owner, due date, completion, reminder,
-            recurrence, tags, goal links, and project remain unchanged. The
-            exact transcript span and playback source are retained.
-          </p>
-        </div>
-      ) : creating ? (
-        <div className="mt-4 space-y-4 rounded-xl border border-emerald-200 bg-emerald-50/60 p-4">
-          <div>
-            <p className="text-xs font-black uppercase tracking-wide text-emerald-950">
-              Save task
-            </p>
-            <p className="mt-1 text-xs font-semibold leading-5 text-emerald-900">
-              Review every field. Nothing is assigned, dated, tagged, reminded,
-              shared, or placed on a calendar unless it is shown here.
-            </p>
-          </div>
-          <label className="block text-xs font-black uppercase tracking-wide text-emerald-950">
-            Task title
-            <input
-              value={title}
-              onChange={(event) => setTitle(event.target.value)}
-              maxLength={500}
-              className="mt-1 block min-h-11 w-full rounded-lg border border-emerald-200 bg-white px-3 py-2 text-sm font-semibold normal-case tracking-normal text-[#3d3122]"
-            />
-          </label>
-          <label className="block text-xs font-black uppercase tracking-wide text-emerald-950">
-            Detail{" "}
-            <span className="normal-case tracking-normal text-emerald-800">
-              (optional)
-            </span>
-            <textarea
-              value={detail}
-              onChange={(event) => setDetail(event.target.value)}
-              maxLength={5000}
-              rows={3}
-              className="mt-1 block w-full rounded-lg border border-emerald-200 bg-white px-3 py-2 text-sm font-semibold normal-case tracking-normal text-[#3d3122]"
-            />
-          </label>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <label className="block text-xs font-black uppercase tracking-wide text-emerald-950">
-              Owner
-              <select
-                value={assignToMe ? "me" : "unassigned"}
-                onChange={(event) => setAssignToMe(event.target.value === "me")}
-                className="mt-1 block min-h-11 w-full rounded-lg border border-emerald-200 bg-white px-3 text-sm font-semibold normal-case tracking-normal text-[#3d3122]"
-              >
-                <option value="me">Me</option>
-                <option value="unassigned">Unassigned</option>
-              </select>
-            </label>
-            <label className="block text-xs font-black uppercase tracking-wide text-emerald-950">
-              Due{" "}
-              <span className="normal-case tracking-normal text-emerald-800">
-                (optional)
-              </span>
-              <input
-                type="datetime-local"
-                value={dueLocal}
-                onChange={(event) => setDueLocal(event.target.value)}
-                className="mt-1 block min-h-11 w-full rounded-lg border border-emerald-200 bg-white px-3 text-sm font-semibold normal-case tracking-normal text-[#3d3122]"
-              />
-            </label>
-          </div>
-          {projectTags.length ? (
-            <fieldset>
-              <legend className="text-xs font-black uppercase tracking-wide text-emerald-950">
-                Project tags{" "}
-                <span className="normal-case tracking-normal text-emerald-800">
-                  (optional)
-                </span>
-              </legend>
-              <div className="mt-2 flex flex-wrap gap-2">
-                {projectTags.map((tag) => (
-                  <label
-                    key={tag.id}
-                    className="inline-flex min-h-11 items-center gap-2 rounded-full border border-emerald-200 bg-white px-3 py-2 text-xs font-bold text-emerald-950"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={tagIds.includes(tag.id)}
-                      onChange={() => toggleTag(tag.id)}
-                    />
-                    {tag.label}
-                  </label>
-                ))}
-              </div>
-            </fieldset>
-          ) : (
-            <p className="text-xs font-semibold text-emerald-900">
-              This Session has no active project tags yet. The task will still
-              keep its Session and project identity.
-            </p>
-          )}
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              disabled={busy || !title.trim()}
-              onClick={accept}
-              className="rounded-full bg-emerald-800 px-4 py-2 text-xs font-black uppercase tracking-wide text-white disabled:opacity-50"
-            >
-              {busy ? "Creating…" : "Create task"}
-            </button>
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => setCreating(false)}
-              className="rounded-full border border-emerald-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-emerald-950 disabled:opacity-50"
-            >
-              Cancel
-            </button>
-          </div>
-          <p className="text-xs font-bold leading-relaxed text-emerald-950">
-            Every transcript segment in this evidence span and the protected
-            playback source stay attached. Reminder, calendar placement, client
-            delivery, and publication remain separate decisions.
-          </p>
-        </div>
-      ) : editing ? (
-        <div className="mt-4 space-y-3 rounded-xl border border-violet-200 bg-violet-50/50 p-4">
-          <label className="block text-xs font-black uppercase tracking-wide text-violet-900">
-            Title
-            <input
-              value={title}
-              onChange={(event) => setTitle(event.target.value)}
-              maxLength={500}
-              className="mt-1 block w-full rounded-lg border border-violet-200 bg-white px-3 py-2 text-sm font-semibold text-[#3d3122]"
-            />
-          </label>
-          <label className="block text-xs font-black uppercase tracking-wide text-violet-900">
-            Evidence-backed detail
-            <textarea
-              value={detail}
-              onChange={(event) => setDetail(event.target.value)}
-              maxLength={5000}
-              rows={3}
-              className="mt-1 block w-full rounded-lg border border-violet-200 bg-white px-3 py-2 text-sm font-semibold text-[#3d3122]"
-            />
-          </label>
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              disabled={busy || !title.trim()}
-              onClick={() =>
-                onDecision(candidate, "EDIT", {
-                  title: title.trim(),
-                  detail: detail.trim(),
-                })
-              }
-              className="rounded-full bg-violet-700 px-4 py-2 text-xs font-black uppercase tracking-wide text-white disabled:opacity-50"
-            >
-              Save for review
-            </button>
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => setEditing(false)}
-              className="rounded-full border border-violet-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-violet-900 disabled:opacity-50"
-            >
-              Cancel
-            </button>
-          </div>
-        </div>
-      ) : (
-        <div className="mt-4 flex flex-wrap gap-2">
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => setCreating(true)}
-            className="rounded-full bg-[#3e2f21] px-4 py-2 text-xs font-black uppercase tracking-wide text-white disabled:opacity-50"
-          >
-            Review and save task
-          </button>
-          <button
-            type="button"
-            disabled={busy || mergeTargets.length === 0}
-            onClick={() => setMerging(true)}
-            className="rounded-full border border-sky-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-sky-900 disabled:opacity-50"
-          >
-            Add to existing task
-          </button>
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => setEditing(true)}
-            className="rounded-full border border-violet-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-violet-900 disabled:opacity-50"
-          >
-            Edit suggestion
-          </button>
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => onDecision(candidate, "DEFER")}
-            className="rounded-full border border-amber-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-amber-900 disabled:opacity-50"
-          >
-            Defer
-          </button>
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => onDecision(candidate, "REJECT")}
-            className="rounded-full border border-rose-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-rose-800 disabled:opacity-50"
-          >
-            Reject
-          </button>
-        </div>
-      )}
-      {!accepted && !creating && !merging && (
-        <p className="mt-3 text-xs font-bold leading-relaxed text-[#8a7354]">
-          “Review and save task” creates one editable task after you
-          inspect owner, due date, and tags. “Add to existing task” appends one
-          source receipt without changing task state. Edit, defer, and reject
-          preserve review history without creating work, assigning anyone,
-          sending follow-up, or publishing.
-          {mergeTargets.length
-            ? ""
-            : " Create an actor-owned task in this Nest to enable evidence merge."}
-        </p>
-      )}
-    </article>
-  );
-}
-
-type SessionCandidateReviewFilter = "open" | "deferred" | "decided" | "all";
-
-function candidateKindLabel(kind: SessionCandidateReviewQueueItem["kind"]) {
-  if (kind === "note") return "Note";
-  if (kind === "goal") return "Goal";
-  return "Task";
-}
-
-function candidateStateLabel(state: SessionCandidateReviewQueueItem["state"]) {
-  if (state === "ready") return "Ready";
-  if (state === "listen-first") return "Source check available";
-  if (state === "deferred") return "Later";
-  return "Done";
-}
-
-function candidateStateTone(state: SessionCandidateReviewQueueItem["state"]) {
-  if (state === "ready")
-    return "border-emerald-200 bg-emerald-50 text-emerald-900";
-  if (state === "listen-first")
-    return "border-amber-200 bg-amber-50 text-amber-950";
-  if (state === "deferred")
-    return "border-orange-200 bg-orange-50 text-orange-950";
-  return "border-sky-200 bg-sky-50 text-sky-900";
-}
-
-function SessionCandidateReviewQueue({
-  roomId,
-  packet,
-  reviewHeld,
-  packetStale,
-  busyCandidateId,
-  canUseProjectTeamNotes,
-  taxonomy,
-  onNoteDecision,
-  onTaskDecision,
-  onGoalDecision,
-}: {
-  roomId: string;
-  packet: SessionReviewPacket;
-  reviewHeld: boolean;
-  packetStale: boolean;
-  busyCandidateId: string | null;
-  canUseProjectTeamNotes: boolean;
-  taxonomy: SessionTaxonomy | null | undefined;
-  onNoteDecision: (
-    candidate: SessionReviewNoteCandidate,
-    decision: TranscriptNoteReviewDecision,
-    draft?: {
-      title: string;
-      body: string;
-      kind: EditableSessionNoteKind;
-      visibility: SessionNoteVisibility;
-      mergeTargetNoteId?: string;
-      mergeExpectedUpdatedAt?: string;
-      mergedTitle?: string;
-      mergedBody?: string;
-      mergedKind?: EditableSessionNoteKind;
-      mergedVisibility?: SessionNoteVisibility;
-    },
-  ) => Promise<void>;
-  onTaskDecision: (
-    candidate: SessionReviewCandidate,
-    decision: TranscriptActionReviewDecision,
-    draft?: {
-      title?: string;
-      detail?: string;
-      assignToMe?: boolean;
-      dueAt?: string | null;
-      tagIds?: string[];
-      mergeTargetTaskId?: string;
-      mergeExpectedUpdatedAt?: string;
-    },
-  ) => Promise<void>;
-  onGoalDecision: (
-    candidate: SessionReviewGoalCandidate,
-    decision: TranscriptGoalReviewDecision,
-    draft?: {
-      title?: string;
-      description?: string;
-      targetAt?: string | null;
-      tagIds?: string[];
-      mergeTargetGoalId?: string;
-      mergeExpectedUpdatedAt?: string;
-    },
-  ) => Promise<void>;
-}) {
-  const [filter, setFilter] = useState<SessionCandidateReviewFilter>("open");
-  const [focusAnchorId, setFocusAnchorId] = useState<string | null>(null);
-  const [recentDecisionKey, setRecentDecisionKey] = useState<string | null>(
-    null,
-  );
-  const previousStates = useRef(
-    new Map<string, SessionCandidateReviewQueueItem["state"]>(),
-  );
-  const items = sessionCandidateReviewQueue(packet);
-  const progress = sessionCandidateReviewProgress(items);
-  const openItems = items.filter(
-    (item) => item.state === "ready" || item.state === "listen-first",
-  );
-  const filteredItems = items.filter(
-    (item) =>
-      filter === "all" ||
-      (filter === "open" &&
-        (item.state === "ready" || item.state === "listen-first")) ||
-      item.state === filter,
-  );
-  const recentDecision = recentDecisionKey
-    ? items.find(
-        (item) =>
-          `${item.kind}:${item.id}` === recentDecisionKey &&
-          item.state === "decided",
-      )
-    : null;
-  const visibleItems =
-    filter === "open" &&
-    recentDecision &&
-    !filteredItems.some(
-      (item) =>
-        item.kind === recentDecision.kind && item.id === recentDecision.id,
-    )
-      ? [recentDecision, ...filteredItems]
-      : filteredItems;
-  const completionPercent = progress.total
-    ? Math.round((progress.handled / progress.total) * 100)
-    : 0;
-  const queueStateKey = items
-    .map((item) => `${item.kind}:${item.id}:${item.state}`)
-    .join("|");
-
-  useEffect(() => {
-    const current = new Map(
-      items.map((item) => [`${item.kind}:${item.id}`, item.state] as const),
-    );
-    const newlyDecided = items.find(
-      (item) =>
-        item.state === "decided" &&
-        previousStates.current.has(`${item.kind}:${item.id}`) &&
-        previousStates.current.get(`${item.kind}:${item.id}`) !== "decided",
-    );
-    if (newlyDecided)
-      setRecentDecisionKey(`${newlyDecided.kind}:${newlyDecided.id}`);
-    previousStates.current = current;
-    // queueStateKey is the stable state-transition ledger for this projection.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [queueStateKey]);
-
-  useEffect(() => {
-    if (!focusAnchorId) return;
-    const target = document.getElementById(focusAnchorId);
-    if (!target) return;
-    target.scrollIntoView({ behavior: "smooth", block: "start" });
-    target.focus({ preventScroll: true });
-    setFocusAnchorId(null);
-  }, [filter, focusAnchorId, items.length]);
-
-  function continueReview() {
-    const next = openItems[0];
-    if (!next) return;
-    setFilter("open");
-    setFocusAnchorId(next.anchorId);
-  }
-
-  const filters: Array<{
-    id: SessionCandidateReviewFilter;
-    label: string;
-    count: number;
-  }> = [
-    {
-      id: "open",
-      label: "To do",
-      count: progress.ready + progress.listenFirst,
-    },
-    { id: "deferred", label: "Later", count: progress.deferred },
-    { id: "decided", label: "Done", count: progress.decided },
-    { id: "all", label: "All", count: progress.total },
-  ];
-
-  return (
-    <section
-      aria-labelledby="candidate-review-queue-heading"
-      className="rounded-3xl border border-[#dfcfb2] bg-[#fffdf8] p-5 shadow-sm sm:p-7"
-    >
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div className="max-w-3xl">
-          <p className="text-xs font-black uppercase tracking-[0.2em] text-[#987443]">
-            After the call
-          </p>
-          <h2
-            id="candidate-review-queue-heading"
-            className="mt-2 font-serif text-3xl font-black text-[#3d3122]"
-          >
-            Session follow-up
-          </h2>
-          <p className="mt-2 text-sm font-semibold leading-relaxed text-[#765f40]">
-            Review Quipsly’s suggestions, make any quick edits, and save the
-            notes, goals, and tasks that matter. Every suggestion stays linked
-            to the exact moment in the conversation.
-          </p>
-        </div>
-        {openItems.length ? (
-          <button
-            type="button"
-            onClick={continueReview}
-            disabled={reviewHeld}
-            className="inline-flex min-h-11 items-center rounded-full bg-[#3e2f21] px-4 py-2 text-xs font-black uppercase tracking-wide text-white disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            Review next suggestion
-          </button>
-        ) : items.length ? (
-          <span className="inline-flex min-h-11 items-center rounded-full border border-emerald-200 bg-emerald-50 px-4 py-2 text-xs font-black uppercase tracking-wide text-emerald-900">
-            All caught up
-          </span>
-        ) : (
-          <span className="inline-flex min-h-11 items-center rounded-full border border-[#d8c7a7] bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-[#765f40]">
-            No suggestions yet
-          </span>
-        )}
-      </div>
-
-      {items.length ? (
-        <>
-          <div
-            className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-5"
-            aria-label="Candidate review progress"
-          >
-            <div className="rounded-xl border border-[#eadfc9] bg-white p-3 sm:col-span-2 xl:col-span-1">
-              <p className="text-[10px] font-black uppercase tracking-wide text-[#8a7354]">
-                Reviewed
-              </p>
-              <p className="mt-1 text-2xl font-black text-[#3d3122]">
-                {progress.handled}/{progress.total}
-              </p>
-              <div
-                className="mt-2 h-2 overflow-hidden rounded-full bg-[#eee4d2]"
-                role="progressbar"
-                aria-label="Suggestions reviewed"
-                aria-valuemin={0}
-                aria-valuemax={progress.total}
-                aria-valuenow={progress.handled}
-              >
-                <div
-                  className="h-full rounded-full bg-emerald-700"
-                  style={{ width: `${completionPercent}%` }}
-                />
-              </div>
-            </div>
-            <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3">
-              <p className="text-[10px] font-black uppercase tracking-wide text-emerald-800">
-                Ready
-              </p>
-              <p className="mt-1 text-2xl font-black text-emerald-950">
-                {progress.ready}
-              </p>
-            </div>
-            <div className="rounded-xl border border-amber-200 bg-amber-50 p-3">
-              <p className="text-[10px] font-black uppercase tracking-wide text-amber-800">
-                Source check
-              </p>
-              <p className="mt-1 text-2xl font-black text-amber-950">
-                {progress.listenFirst}
-              </p>
-            </div>
-            <div className="rounded-xl border border-orange-200 bg-orange-50 p-3">
-              <p className="text-[10px] font-black uppercase tracking-wide text-orange-800">
-                Later
-              </p>
-              <p className="mt-1 text-2xl font-black text-orange-950">
-                {progress.deferred}
-              </p>
-            </div>
-            <div className="rounded-xl border border-sky-200 bg-sky-50 p-3">
-              <p className="text-[10px] font-black uppercase tracking-wide text-sky-800">
-                Done
-              </p>
-              <p className="mt-1 text-2xl font-black text-sky-950">
-                {progress.decided}
-              </p>
-            </div>
-          </div>
-
-          <div
-            className="mt-5 flex flex-wrap gap-2"
-            role="group"
-            aria-label="Filter candidate review queue"
-          >
-            {filters.map((option) => (
-              <button
-                key={option.id}
-                type="button"
-                aria-pressed={filter === option.id}
-                onClick={() => {
-                  setFilter(option.id);
-                  if (option.id !== "open") setRecentDecisionKey(null);
-                }}
-                className={`min-h-11 rounded-full border px-4 py-2 text-xs font-black transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-700 ${filter === option.id ? "border-violet-700 bg-violet-800 text-white" : "border-[#d8c7a7] bg-white text-[#5b472f] hover:border-violet-300"}`}
-              >
-                {option.label} <span aria-hidden="true">·</span> {option.count}
-              </button>
-            ))}
-          </div>
-
-          {!reviewHeld && progress.remaining === 0 ? (
-            <div
-              aria-labelledby="candidate-review-finish-heading"
-              className="mt-5 flex flex-col gap-4 rounded-2xl border border-emerald-300 bg-emerald-50 p-5 text-emerald-950 sm:flex-row sm:items-center sm:justify-between"
-            >
-              <div className="max-w-3xl">
-                <p id="candidate-review-finish-heading" className="font-black">
-                  All caught up
-                </p>
-                <p className="mt-1 text-sm font-semibold leading-relaxed">
-                  Every suggestion is either saved, dismissed, or left for later.{" "}
-                  {progress.deferred
-                    ? `${progress.deferred} ${progress.deferred === 1 ? "suggestion is" : "suggestions are"} waiting for whenever you want to revisit ${progress.deferred === 1 ? "it" : "them"}.`
-                    : "Your saved notes, goals, and tasks are ready in this Session."}
-                </p>
-              </div>
-              <Link
-                href={sessionWorkspaceHref(roomId, "outputs")}
-                className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-full bg-emerald-900 px-5 py-2 text-xs font-black uppercase tracking-wide text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-950"
-              >
-                View session results
-              </Link>
-            </div>
-          ) : null}
-
-          {reviewHeld ? (
-            <div className="mt-5 rounded-2xl border border-rose-200 bg-rose-50 p-5 text-sm font-bold text-rose-900">
-              {packetStale
-                ? "Quipsly is refreshing these suggestions after transcript changes. Your existing notes, tasks, and goals are safe."
-                : "Follow-up will be available as soon as the recording and transcript finish processing."}
-            </div>
-          ) : visibleItems.length ? (
-            <ol
-              className="mt-6 space-y-5"
-              aria-label={`${filters.find((option) => option.id === filter)?.label ?? "Candidate"} candidates`}
-            >
-              {visibleItems.map((item) => (
-                <li key={`${item.kind}:${item.id}`}>
-                  <div
-                    id={item.anchorId}
-                    tabIndex={-1}
-                    className="scroll-mt-28 rounded-3xl outline-none focus-visible:ring-4 focus-visible:ring-violet-300"
-                  >
-                    <div className="mb-2 flex flex-wrap items-center gap-2 px-1">
-                      {recentDecision?.kind === item.kind &&
-                      recentDecision.id === item.id &&
-                      filter === "open" ? (
-                        <span className="rounded-full border border-emerald-300 bg-emerald-100 px-3 py-1 text-[10px] font-black uppercase tracking-wide text-emerald-950">
-                          Just decided
-                        </span>
-                      ) : null}
-                      <span className="rounded-full border border-[#d8c7a7] bg-white px-3 py-1 text-[10px] font-black uppercase tracking-wide text-[#5b472f]">
-                        Suggested {candidateKindLabel(item.kind).toLowerCase()}
-                      </span>
-                      <span
-                        className={`rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-wide ${candidateStateTone(item.state)}`}
-                      >
-                        {candidateStateLabel(item.state)}
-                      </span>
-                      <span className="text-[10px] font-black uppercase tracking-wide text-[#8a7354]">
-                        Source {timestampForSeconds(item.startSeconds)}–
-                        {timestampForSeconds(item.endSeconds)}
-                      </span>
-                    </div>
-                    {item.kind === "note" ? (
-                      <PacketNoteCandidateCard
-                        candidate={item.candidate}
-                        busy={busyCandidateId === item.id}
-                        canUseProjectTeamNotes={canUseProjectTeamNotes}
-                        mergeTargets={packet.packet?.noteMergeTargets ?? []}
-                        onDecision={onNoteDecision}
-                      />
-                    ) : item.kind === "goal" ? (
-                      <GoalCandidateCard
-                        candidate={item.candidate}
-                        busy={busyCandidateId === item.id}
-                        onDecision={onGoalDecision}
-                        projectTags={taxonomy?.catalog ?? []}
-                        defaultTagIds={
-                          taxonomy?.tags.map((tag) => tag.id) ?? []
-                        }
-                        mergeTargets={packet.packet?.goalMergeTargets ?? []}
-                      />
-                    ) : (
-                      <CandidateCard
-                        candidate={item.candidate}
-                        busy={busyCandidateId === item.id}
-                        onDecision={onTaskDecision}
-                        projectTags={taxonomy?.catalog ?? []}
-                        defaultTagIds={
-                          taxonomy?.tags.map((tag) => tag.id) ?? []
-                        }
-                        mergeTargets={packet.packet?.taskMergeTargets ?? []}
-                      />
-                    )}
-                  </div>
-                </li>
-              ))}
-            </ol>
-          ) : (
-            <div className="mt-6 rounded-2xl border border-dashed border-[#d8c7a7] bg-white/70 p-6 text-sm font-semibold text-[#765f40]">
-              {filter === "open"
-                ? "No candidates need an active decision. Deferred and decided proposals remain available through the filters above."
-                : `No ${filter} candidates are in this packet.`}
-            </div>
-          )}
-        </>
-      ) : (
-        <div className="mt-6 rounded-2xl border border-dashed border-[#d8c7a7] bg-white/70 p-6 text-sm font-semibold text-[#765f40]">
-          This packet contains no source-linked note, goal, or task candidates.
-          Quipsly will not invent follow-through to fill the queue.
-        </div>
-      )}
-    </section>
-  );
 }
 
 function WorkspaceModeIcon({ mode }: { mode: SessionWorkspaceMode }) {
@@ -5049,8 +3350,8 @@ function SessionCollaborationScopes({
           </h2>
           <p className="mt-1 max-w-4xl text-xs font-semibold leading-5 text-sky-950">
             The call, chat, recordings, transcript, notes, and next steps stay
-            together. Ongoing work continues in the related coaching,
-            episode, research, or project space.
+            together. Ongoing work continues in the related coaching, episode,
+            research, or project space.
           </p>
         </div>
         <span className="rounded-full border border-sky-300 bg-white px-3 py-1 text-[10px] font-black uppercase tracking-wide text-sky-950">
@@ -5192,8 +3493,8 @@ function SessionCollaborationScopes({
                   : "Decisions, tasks, and handoffs"}
           </h3>
           <p className="mt-2 text-xs font-semibold leading-5 text-[#765f40]">
-            Turn useful moments into notes, goals, and tasks. Nothing is sent
-            to a client or published until someone chooses to share it.
+            Turn useful moments into notes, goals, and tasks. Nothing is sent to
+            a client or published until someone chooses to share it.
           </p>
           <div className="mt-3 flex flex-wrap gap-2">
             <Link
@@ -5542,42 +3843,44 @@ export function SessionReviewClient({
   const [runningTranscript, setRunningTranscript] = useState(false);
   const [buildingPacket, setBuildingPacket] = useState(false);
   const [busyCandidateId, setBusyCandidateId] = useState<string | null>(null);
-  const [busyLaneId, setBusyLaneId] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const automaticPacketAttempts = useRef(new Set<string>());
   const liveDock = useLiveSessionDock();
 
-  const load = useCallback(async (options?: { background?: boolean }) => {
-    const background = options?.background === true;
-    if (!background) {
-      setLoading(true);
-      setMessage(null);
-    }
-    try {
-      const packetParams = new URLSearchParams({ callRoomId: roomId });
-      if (focusedRecordingAssetId)
-        packetParams.set("recordingAssetId", focusedRecordingAssetId);
-      const response = await fetch(
-        `/api/mobile/capture/transcripts/packet?${packetParams.toString()}`,
-        { cache: "no-store" },
-      );
-      const body = (await response.json()) as SessionReviewPacket;
-      if (!response.ok || !body.ok)
-        throw new Error(
-          body.error || "Quipsly could not read this session packet.",
+  const load = useCallback(
+    async (options?: { background?: boolean }) => {
+      const background = options?.background === true;
+      if (!background) {
+        setLoading(true);
+        setMessage(null);
+      }
+      try {
+        const packetParams = new URLSearchParams({ callRoomId: roomId });
+        if (focusedRecordingAssetId)
+          packetParams.set("recordingAssetId", focusedRecordingAssetId);
+        const response = await fetch(
+          `/api/mobile/capture/transcripts/packet?${packetParams.toString()}`,
+          { cache: "no-store" },
         );
-      setPacket(body);
-    } catch (error) {
-      if (!background) setPacket(null);
-      setMessage(
-        error instanceof Error
-          ? error.message
-          : "Quipsly could not read this session packet.",
-      );
-    } finally {
-      if (!background) setLoading(false);
-    }
-  }, [focusedRecordingAssetId, roomId]);
+        const body = (await response.json()) as SessionReviewPacket;
+        if (!response.ok || !body.ok)
+          throw new Error(
+            body.error || "Quipsly could not read this session packet.",
+          );
+        setPacket(body);
+      } catch (error) {
+        if (!background) setPacket(null);
+        setMessage(
+          error instanceof Error
+            ? error.message
+            : "Quipsly could not read this session packet.",
+        );
+      } finally {
+        if (!background) setLoading(false);
+      }
+    },
+    [focusedRecordingAssetId, roomId],
+  );
 
   useEffect(() => {
     if (mode !== "transcript") {
@@ -5601,44 +3904,47 @@ export function SessionReviewClient({
     return () => window.clearInterval(interval);
   }, [load, mode, transcriptJobStatus]);
 
-  const buildPacket = useCallback(async (options?: { automatic?: boolean }) => {
-    const transcriptJobId = packet?.transcriptJob?.id;
-    if (!transcriptJobId) return;
-    setBuildingPacket(true);
-    setMessage(null);
-    try {
-      const response = await fetch("/api/mobile/capture/transcripts/packet", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ transcriptJobId, force: false }),
-      });
-      const body = (await response.json()) as {
-        ok?: boolean;
-        error?: string;
-        idempotentReplay?: boolean;
-      };
-      if (!response.ok || !body.ok)
-        throw new Error(body.error || "The review packet was not built.");
-      await load();
-      setMessage(
-        options?.automatic
-          ? "Your session summary and suggested next steps are ready to review. Nothing was assigned, sent, or shared."
-          : body.idempotentReplay
-          ? "The current source-bound review packet already existed; no duplicate review artifacts were created."
-          : "Review packet built from the completed transcript. Its summary and candidates remain internal until you explicitly review them.",
-      );
-    } catch (error) {
-      setMessage(
-        options?.automatic
-          ? "Quipsly could not prepare the follow-up yet. Your transcript is safe; try again below."
-          : error instanceof Error
-          ? error.message
-          : "The review packet was not built.",
-      );
-    } finally {
-      setBuildingPacket(false);
-    }
-  }, [load, packet?.transcriptJob?.id]);
+  const buildPacket = useCallback(
+    async (options?: { automatic?: boolean }) => {
+      const transcriptJobId = packet?.transcriptJob?.id;
+      if (!transcriptJobId) return;
+      setBuildingPacket(true);
+      setMessage(null);
+      try {
+        const response = await fetch("/api/mobile/capture/transcripts/packet", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ transcriptJobId, force: false }),
+        });
+        const body = (await response.json()) as {
+          ok?: boolean;
+          error?: string;
+          idempotentReplay?: boolean;
+        };
+        if (!response.ok || !body.ok)
+          throw new Error(body.error || "The review packet was not built.");
+        await load();
+        setMessage(
+          options?.automatic
+            ? "Your session summary and suggested next steps are ready to review. Nothing was assigned, sent, or shared."
+            : body.idempotentReplay
+              ? "The current source-bound review packet already existed; no duplicate review artifacts were created."
+              : "Review packet built from the completed transcript. Its summary and candidates remain internal until you explicitly review them.",
+        );
+      } catch (error) {
+        setMessage(
+          options?.automatic
+            ? "Quipsly could not prepare the follow-up yet. Your transcript is safe; try again below."
+            : error instanceof Error
+              ? error.message
+              : "The review packet was not built.",
+        );
+      } finally {
+        setBuildingPacket(false);
+      }
+    },
+    [load, packet?.transcriptJob?.id],
+  );
 
   async function runTranscript() {
     const transcriptJobId = packet?.transcriptJob?.id;
@@ -6016,47 +4322,6 @@ export function SessionReviewClient({
     }
   }
 
-  async function reviewLane(
-    lane: SessionReviewLane,
-    status: SessionReviewLaneStatus,
-    note: string,
-  ) {
-    if (!packet) return;
-    const request = packetLaneReviewRequest({ packet, lane, status, note });
-    if (!request) {
-      setMessage(
-        "This packet lane is missing its correlated transcript evidence. Refresh the packet before deciding.",
-      );
-      return;
-    }
-    setBusyLaneId(lane.id);
-    setMessage(null);
-    try {
-      const response = await fetch("/api/mobile/capture/transcripts/packet", {
-        method: "PATCH",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(request),
-      });
-      const body = (await response.json()) as { ok?: boolean; error?: string };
-      if (!response.ok || !body.ok)
-        throw new Error(body.error || "The packet lane review was not saved.");
-      await load();
-      setMessage(
-        status === "APPROVED_FOR_INTERNAL_USE"
-          ? "Lane approved inside Quipsly. No canonical note, task, goal, client delivery, message, calendar event, or publication was created."
-          : `${humanize(status)} saved as internal packet review state. No downstream work or delivery was created.`,
-      );
-    } catch (error) {
-      setMessage(
-        error instanceof Error
-          ? error.message
-          : "The packet lane review was not saved.",
-      );
-    } finally {
-      setBusyLaneId(null);
-    }
-  }
-
   const tasks = committedTasks(packet);
   const held = packet?.transcriptProcessingGate?.allowed === false;
   const packetStale = packet?.packet?.transcriptReview?.packetStale === true;
@@ -6064,35 +4329,39 @@ export function SessionReviewClient({
   const packetBuildAction = packet?.packet?.safeActions?.find(
     (action) => action.id === "build-review-packet" && action.enabled,
   );
-  const canReviewPrivatePacket = packet?.packet?.reviewAccess?.canReviewPrivatePacket !== false;
+  const canReviewPrivatePacket =
+    packet?.packet?.reviewAccess?.canReviewPrivatePacket !== false;
   const canPrepareReviewMaterial = Boolean(
     mode === "transcript" &&
-      canReviewPrivatePacket &&
-      packet?.transcriptJob?.status === "COMPLETED" &&
-      (packet?.transcriptJob?.segmentCount ?? 0) > 0 &&
-      !held &&
-      packetBuildAction &&
-      (!packet?.packet?.summary || packetStale),
+    canReviewPrivatePacket &&
+    packet?.transcriptJob?.status === "COMPLETED" &&
+    (packet?.transcriptJob?.segmentCount ?? 0) > 0 &&
+    !held &&
+    packetBuildAction &&
+    (!packet?.packet?.summary || packetStale),
   );
   const packetAttemptKey = packet?.transcriptJob?.id
     ? `${packet.transcriptJob.id}:${packet.packet?.transcriptReview?.snapshotSha256 || "missing"}`
     : null;
-  const transcriptPermissionReady = packet?.transcriptProcessingGate?.allowed === true;
+  const transcriptPermissionReady =
+    packet?.transcriptProcessingGate?.allowed === true;
   const clientFollowUpReady = finishingEvidence.outputs.some(
-    (output) => output.kind === "CLIENT_FOLLOW_UP" && output.status === "RELEASED",
+    (output) =>
+      output.kind === "CLIENT_FOLLOW_UP" && output.status === "RELEASED",
   );
-  const followUpReadyForReview = canReviewPrivatePacket && Boolean(packet?.packet?.summary) && !packetStale;
+  const followUpReadyForReview =
+    canReviewPrivatePacket && Boolean(packet?.packet?.summary) && !packetStale;
   const followUpStatusLabel = !canReviewPrivatePacket
     ? clientFollowUpReady
       ? "Shared with you"
       : "Not shared yet"
     : followUpReadyForReview
-    ? "Ready to review"
-    : buildingPacket && canPrepareReviewMaterial
-      ? "Preparing"
-      : packetStale
-        ? "Refreshing"
-        : "Waiting for transcript";
+      ? "Ready to review"
+      : buildingPacket && canPrepareReviewMaterial
+        ? "Preparing"
+        : packetStale
+          ? "Refreshing"
+          : "Waiting for transcript";
 
   useEffect(() => {
     if (
@@ -6113,12 +4382,14 @@ export function SessionReviewClient({
   );
   const emptyReviewLanes = reviewLanes.filter((lane) => lane.itemCount <= 0);
   const purpose = preparation?.purpose || "COACHING";
-  const transcriptRecordingAssetId = packet?.transcriptJob?.asset?.id
-    || packet?.selectedRecordingAsset?.id
-    || focusedRecordingAssetId;
-  const transcriptAudioMastery = sourceEvidence.sources.find((source) => (
-    source.recordingAssetId === transcriptRecordingAssetId
-  ))?.audioMastery ?? null;
+  const transcriptRecordingAssetId =
+    packet?.transcriptJob?.asset?.id ||
+    packet?.selectedRecordingAsset?.id ||
+    focusedRecordingAssetId;
+  const transcriptAudioMastery =
+    sourceEvidence.sources.find(
+      (source) => source.recordingAssetId === transcriptRecordingAssetId,
+    )?.audioMastery ?? null;
   const activeMode = sessionWorkspaceDefinitionForPurpose(mode, purpose);
   const liveProjectSlug =
     collaborationContext.project?.slug ||
@@ -6243,8 +4514,7 @@ export function SessionReviewClient({
               disabled={
                 loading ||
                 buildingPacket ||
-                busyCandidateId !== null ||
-                busyLaneId !== null
+                busyCandidateId !== null
               }
               className="inline-flex min-h-11 items-center gap-2 rounded-full border border-[#d9c7a5] bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-[#5b472f] disabled:opacity-50"
             >
@@ -6537,13 +4807,17 @@ export function SessionReviewClient({
           <>
             <SessionPostCallPath
               roomId={roomId}
-              hasRecording={Boolean(packet.selectedRecordingAsset || packet.transcriptJob?.asset)}
+              hasRecording={Boolean(
+                packet.selectedRecordingAsset || packet.transcriptJob?.asset,
+              )}
               transcriptStatus={packet.transcriptJob?.status || "NOT_STARTED"}
               transcriptSegmentCount={packet.transcriptJob?.segmentCount ?? 0}
               canReviewPrivatePacket={canReviewPrivatePacket}
               reviewMaterialReady={Boolean(packet.packet?.summary)}
               packetStale={packetStale}
-              preparingReviewMaterial={buildingPacket && canPrepareReviewMaterial}
+              preparingReviewMaterial={
+                buildingPacket && canPrepareReviewMaterial
+              }
               held={held}
               followUpReady={clientFollowUpReady}
             />
@@ -6553,15 +4827,27 @@ export function SessionReviewClient({
               recordingAssetId={focusedRecordingAssetId}
               canUseProjectTeamNotes={canUseProjectTeamNotes}
               canEditRecording={purpose === "COACHING"}
-              recordingEditor={purpose === "COACHING"
-                ? (focus) => <SessionRecordingShareCard
-                    roomId={roomId}
-                    focusTranscriptKey={focus ? `${focus.transcriptJobId}:${focus.segmentId}` : null}
+              recordingEditor={
+                purpose === "COACHING"
+                  ? (focus) => (
+                      <SessionRecordingShareCard
+                        roomId={roomId}
+                        focusTranscriptKey={
+                          focus
+                            ? `${focus.transcriptJobId}:${focus.segmentId}`
+                            : null
+                        }
+                      />
+                    )
+                  : null
+              }
+              audioMastery={
+                transcriptAudioMastery ? (
+                  <SessionAudioMasteryCard
+                    coordinates={transcriptAudioMastery}
                   />
-                : null}
-              audioMastery={transcriptAudioMastery
-                ? <SessionAudioMasteryCard coordinates={transcriptAudioMastery} />
-                : null}
+                ) : null
+              }
             />
             <section
               className={`grid gap-4 ${transcriptPermissionReady ? "lg:grid-cols-2" : "lg:grid-cols-3"}`}
@@ -6590,8 +4876,10 @@ export function SessionReviewClient({
                       Details
                     </summary>
                     <p className="mt-2 font-semibold leading-5">
-                      {consentSnapshot.granted}/{consentSnapshot.total} participants allowed recording ·{" "}
-                      {consentSnapshot.transcriptionPermitted} allow transcription
+                      {consentSnapshot.granted}/{consentSnapshot.total}{" "}
+                      participants allowed recording ·{" "}
+                      {consentSnapshot.transcriptionPermitted} allow
+                      transcription
                     </p>
                   </details>
                 </div>
@@ -6612,16 +4900,21 @@ export function SessionReviewClient({
                   )}
                 </p>
                 <p className="mt-3 text-sm font-semibold text-[#765f40]">
-                  {packet.transcriptJob?.segmentCount ?? 0} timed passage(s)
-                  ·{" "}
+                  {packet.transcriptJob?.segmentCount ?? 0} timed passage(s) ·{" "}
                   {packet.transcriptJob?.asset?.fileName ||
                     packet.selectedRecordingAsset?.fileName ||
                     "no bound recording asset"}
                 </p>
-                {packet.transcriptJob?.readiness ? <TranscriptConfidenceSummary confidence={packet.transcriptJob.readiness} /> : null}
+                {packet.transcriptJob?.readiness ? (
+                  <TranscriptConfidenceSummary
+                    confidence={packet.transcriptJob.readiness}
+                  />
+                ) : null}
                 {packet.selectedRecordingAsset?.explicitlySelected ? (
                   <details className="mt-3 text-xs text-violet-900">
-                    <summary className="cursor-pointer font-black">Recording details</summary>
+                    <summary className="cursor-pointer font-black">
+                      Recording details
+                    </summary>
                     <p className="mt-2 break-all font-mono text-[10px] font-bold">
                       RecordingAsset · {packet.selectedRecordingAsset.id}
                     </p>
@@ -6681,256 +4974,277 @@ export function SessionReviewClient({
                 <p className="mt-3 text-sm font-semibold text-[#765f40]">
                   {!canReviewPrivatePacket
                     ? clientFollowUpReady
-                      ? "A reviewed follow-up has been shared with you in this Session."
-                      : "Nothing has been shared yet. Your transcript remains available while the coach prepares any private review."
+                      ? "A follow-up has been shared with you in this Session."
+                      : "Nothing has been shared yet. Your transcript and shared Session tools remain available."
                     : followUpReadyForReview
-                    ? "Your summary and suggested notes, tasks, and goals are ready to review."
-                    : buildingPacket && canPrepareReviewMaterial
-                      ? "Quipsly is preparing editable suggestions from the transcript."
-                      : "Quipsly will prepare editable suggestions when the transcript is ready."}
+                      ? "Your recap, notes, tasks, and goals are ready to use."
+                      : buildingPacket && canPrepareReviewMaterial
+                        ? "Quipsly is organizing the transcript into editable Session work."
+                        : "Quipsly will organize the transcript into editable Session work when it is ready."}
                 </p>
               </div>
             </section>
 
-            {canReviewPrivatePacket ? <>
-            <section
-              id="review-material"
-              aria-labelledby="summary-heading"
-              className="scroll-mt-24 rounded-2xl border border-[#e5d5b7] bg-white p-6 shadow-sm"
-            >
-              <p className="text-xs font-black uppercase tracking-[0.18em] text-[#987443]">
-                Suggested follow-up
-              </p>
-              <h2
-                id="summary-heading"
-                className="mt-2 font-serif text-3xl font-black text-[#3d3122]"
-              >
-                {packet.packet?.summary?.title || "Preparing your follow-up"}
-              </h2>
-              {packet.packet?.summary ? (
-                <>
-                  <ReviewPacketSummary summary={packet.packet.summary} />
-                  {packetStale ? (
-                    <div
-                      className="mt-5 rounded-xl border border-amber-300 bg-amber-50 p-4"
-                      role="status"
-                    >
-                      <p className="text-sm font-black text-amber-950">
-                        Your transcript changed, so Quipsly is refreshing these suggestions.
-                      </p>
-                      <p className="mt-2 text-xs font-bold leading-relaxed text-amber-900">
-                        The earlier suggestions remain visible, but they cannot
-                        be accepted until the refreshed version is ready.
-                      </p>
-                      <button
-                        type="button"
-                        onClick={() => void buildPacket()}
-                        disabled={buildingPacket || loading}
-                        className="mt-4 inline-flex items-center gap-2 rounded-full bg-amber-900 px-4 py-2 text-xs font-black uppercase tracking-wide text-white disabled:opacity-50"
-                      >
-                        {buildingPacket ? (
-                          <LoaderCircle
-                            size={15}
-                            className="animate-spin"
-                            aria-hidden="true"
-                          />
-                        ) : (
-                          <RefreshCw size={15} aria-hidden="true" />
-                        )}
-                        {buildingPacket
-                          ? "Refreshing suggestions…"
-                          : "Try again"}
-                      </button>
-                    </div>
-                  ) : null}
-                </>
-              ) : (
-                <>
-                  <p className="mt-3 text-sm font-semibold text-[#765f40]">
-                    Quipsly prepares the summary and suggestions automatically
-                    from the completed transcript.
-                  </p>
-                  {packetBuildAction ? (
-                    <div className="mt-5 rounded-xl border border-violet-200 bg-violet-50/60 p-4">
-                      <button
-                        type="button"
-                        onClick={() => void buildPacket()}
-                        disabled={buildingPacket || loading}
-                        className="inline-flex items-center gap-2 rounded-full bg-violet-800 px-4 py-2 text-xs font-black uppercase tracking-wide text-white disabled:cursor-not-allowed disabled:opacity-50"
-                      >
-                        {buildingPacket ? (
-                          <LoaderCircle
-                            size={15}
-                            className="animate-spin"
-                            aria-hidden="true"
-                          />
-                        ) : (
-                          <MessageSquareText size={15} aria-hidden="true" />
-                        )}
-                        {buildingPacket
-                          ? "Preparing your follow-up…"
-                          : "Try again"}
-                      </button>
-                      <p className="mt-3 text-xs font-bold leading-relaxed text-violet-900">
-                        Quipsly normally prepares this automatically from the
-                        exact transcript. Retrying creates no task or goal and
-                        sends or publishes nothing.
-                      </p>
-                    </div>
-                  ) : null}
-                </>
-              )}
-            </section>
-
-            <section aria-labelledby="packet-lanes-heading">
-              <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
-                <div className="flex items-center gap-3">
-                  <span className="rounded-xl bg-sky-50 p-2 text-sky-700">
-                    <ClipboardList aria-hidden="true" />
-                  </span>
-                  <div>
-                    <p className="text-xs font-black uppercase tracking-[0.18em] text-[#987443]">
-                      Internal editorial decisions
-                    </p>
-                    <h2
-                      id="packet-lanes-heading"
-                      className="font-serif text-3xl font-black text-[#3d3122]"
-                    >
-                      Review notes by purpose
-                    </h2>
-                  </div>
-                </div>
-                <Link
-                  href={sessionWorkspaceHref(roomId, "notes")}
-                  className="rounded-full border border-[#d8c7a7] bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-[#5b472f] hover:border-sky-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-700"
+            {canReviewPrivatePacket ? (
+              <>
+                <section
+                  id="review-material"
+                  aria-labelledby="summary-heading"
+                  className="scroll-mt-24 rounded-2xl border border-[#e5d5b7] bg-white p-6 shadow-sm"
                 >
-                  Open Notes
-                </Link>
-              </div>
-              <p className="mb-4 max-w-4xl text-sm font-semibold leading-relaxed text-[#765f40]">
-                Review the suggestions by purpose, then choose what should
-                become a shared note, task, or goal. Nothing is sent to a client
-                until you choose to share it.
-              </p>
-              {reviewHeld ? (
-                <div className="rounded-2xl border border-rose-200 bg-rose-50 p-5 text-sm font-bold text-rose-900">
-                  {packetStale
-                    ? "Quipsly is refreshing these suggestions after the transcript changed."
-                    : "These suggestions are waiting for the required recording permission."}
-                </div>
-              ) : actionableReviewLanes.length ? (
-                <div className="grid gap-4 xl:grid-cols-2">
-                  {actionableReviewLanes.map((lane) => (
-                    <PacketReviewLaneCard
-                      key={lane.id}
-                      lane={lane}
-                      busy={busyLaneId === lane.id}
-                      onDecision={reviewLane}
-                    />
-                  ))}
-                </div>
-              ) : (
-                <div className="rounded-2xl border border-dashed border-[#d8c7a7] bg-white/55 p-5 text-sm font-semibold text-[#7a6548]">
-                  No suggestions are available in these categories yet.
-                </div>
-              )}
-              {!reviewHeld && emptyReviewLanes.length ? (
-                <details className="mt-4 rounded-xl border border-[#eadfc9] bg-white p-4 text-sm text-[#765f40]">
-                  <summary className="cursor-pointer text-xs font-black uppercase tracking-wide text-[#5b472f]">
-                    {emptyReviewLanes.length}{" "}
-                    {emptyReviewLanes.length === 1
-                      ? "review category has"
-                      : "review categories have"}{" "}
-                    no candidates
-                  </summary>
-                  <p className="mt-3 font-semibold leading-relaxed">
-                    {emptyReviewLanes.map((lane) => lane.label).join(" · ")}.
-                    Empty categories have no decision controls.
-                  </p>
-                </details>
-              ) : null}
-            </section>
-
-            <SessionCandidateReviewQueue
-              roomId={roomId}
-              packet={packet}
-              reviewHeld={reviewHeld}
-              packetStale={packetStale}
-              busyCandidateId={busyCandidateId}
-              canUseProjectTeamNotes={canUseProjectTeamNotes}
-              taxonomy={sessionTaxonomy}
-              onNoteDecision={reviewPacketNote}
-              onTaskDecision={review}
-              onGoalDecision={reviewGoal}
-            />
-
-            <section aria-labelledby="tasks-heading">
-              <div className="mb-4 flex items-center gap-3">
-                <span className="rounded-xl bg-emerald-50 p-2 text-emerald-700">
-                  <CheckCircle2 aria-hidden="true" />
-                </span>
-                <div>
                   <p className="text-xs font-black uppercase tracking-[0.18em] text-[#987443]">
-                    Committed work only
+                    Session recap
                   </p>
                   <h2
-                    id="tasks-heading"
-                    className="font-serif text-3xl font-black text-[#3d3122]"
+                    id="summary-heading"
+                    className="mt-2 font-serif text-3xl font-black text-[#3d3122]"
                   >
-                    Tasks accepted from this packet
+                    {packet.packet?.summary?.title ||
+                      "Preparing your follow-up"}
                   </h2>
-                </div>
-              </div>
-              {tasks.length ? (
-                <div className="grid gap-3 lg:grid-cols-2">
-                  {tasks.map((task) => (
-                    <article
-                      key={task.id}
-                      className="rounded-2xl border border-[#e5d5b7] bg-white p-5"
-                    >
-                      <p className="font-black text-[#3d3122]">
-                        <Link
-                          href={`/work?task=${encodeURIComponent(task.id)}`}
-                          className="rounded-sm hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-700"
+                  {packet.packet?.summary ? (
+                    <>
+                      <ReviewPacketSummary summary={packet.packet.summary} />
+                      {packetStale ? (
+                        <div
+                          className="mt-5 rounded-xl border border-amber-300 bg-amber-50 p-4"
+                          role="status"
                         >
-                          {task.title}
-                        </Link>
+                          <p className="text-sm font-black text-amber-950">
+                            Your transcript changed, so Quipsly is refreshing
+                            the Session results.
+                          </p>
+                          <p className="mt-2 text-xs font-bold leading-relaxed text-amber-900">
+                            Your existing work remains editable while the
+                            refreshed version is prepared.
+                          </p>
+                          <button
+                            type="button"
+                            onClick={() => void buildPacket()}
+                            disabled={buildingPacket || loading}
+                            className="mt-4 inline-flex items-center gap-2 rounded-full bg-amber-900 px-4 py-2 text-xs font-black uppercase tracking-wide text-white disabled:opacity-50"
+                          >
+                            {buildingPacket ? (
+                              <LoaderCircle
+                                size={15}
+                                className="animate-spin"
+                                aria-hidden="true"
+                              />
+                            ) : (
+                              <RefreshCw size={15} aria-hidden="true" />
+                            )}
+                            {buildingPacket
+                              ? "Refreshing results…"
+                              : "Try again"}
+                          </button>
+                        </div>
+                      ) : null}
+                    </>
+                  ) : (
+                    <>
+                      <p className="mt-3 text-sm font-semibold text-[#765f40]">
+                        Quipsly prepares the recap and follow-through
+                        automatically from the completed transcript.
                       </p>
-                      {task.detail && (
-                        <p className="mt-2 text-sm font-semibold leading-relaxed text-[#765f40]">
-                          {task.detail}
-                        </p>
-                      )}
-                      <p className="mt-3 text-xs font-black uppercase tracking-wide text-[#8a7354]">
-                        {humanize(task.status)} ·{" "}
-                        {task.dueAt
-                          ? `Due ${new Date(task.dueAt).toLocaleDateString()}`
-                          : "No due date"}{" "}
-                        · assignment not implied
-                      </p>
-                    </article>
-                  ))}
-                </div>
-              ) : (
-                <div className="rounded-2xl border border-dashed border-[#d8c7a7] bg-white/55 p-5 text-sm font-semibold text-[#7a6548]">
-                  No committed tasks from this packet. Suggestions remain
-                  separate until someone accepts one.
-                </div>
-              )}
-            </section>
+                      {packetBuildAction ? (
+                        <div className="mt-5 rounded-xl border border-violet-200 bg-violet-50/60 p-4">
+                          <button
+                            type="button"
+                            onClick={() => void buildPacket()}
+                            disabled={buildingPacket || loading}
+                            className="inline-flex items-center gap-2 rounded-full bg-violet-800 px-4 py-2 text-xs font-black uppercase tracking-wide text-white disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            {buildingPacket ? (
+                              <LoaderCircle
+                                size={15}
+                                className="animate-spin"
+                                aria-hidden="true"
+                              />
+                            ) : (
+                              <MessageSquareText size={15} aria-hidden="true" />
+                            )}
+                            {buildingPacket
+                              ? "Preparing your follow-up…"
+                              : "Try again"}
+                          </button>
+                          <p className="mt-3 text-xs font-bold leading-relaxed text-violet-900">
+                            Quipsly normally prepares this automatically from
+                            the exact transcript. Retrying creates no task or
+                            goal and sends or publishes nothing.
+                          </p>
+                        </div>
+                      ) : null}
+                    </>
+                  )}
+                </section>
 
-            </> : (
+                <section id="session-results" className="scroll-mt-24" aria-labelledby="packet-lanes-heading">
+                  <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                      <span className="rounded-xl bg-sky-50 p-2 text-sky-700">
+                        <ClipboardList aria-hidden="true" />
+                      </span>
+                      <div>
+                        <p className="text-xs font-black uppercase tracking-[0.18em] text-[#987443]">
+                          Ready to use
+                        </p>
+                        <h2
+                          id="packet-lanes-heading"
+                          className="font-serif text-3xl font-black text-[#3d3122]"
+                        >
+                          Session results
+                        </h2>
+                      </div>
+                    </div>
+                    <Link
+                      href={sessionWorkspaceHref(roomId, "notes")}
+                      className="rounded-full border border-[#d8c7a7] bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-[#5b472f] hover:border-sky-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-700"
+                    >
+                      Open Notes
+                    </Link>
+                  </div>
+                  <p className="mb-4 max-w-4xl text-sm font-semibold leading-relaxed text-[#765f40]">
+                    Quipsly organized the transcript and created editable notes,
+                    tasks, and goals. Keep what helps, change anything, or
+                    remove it.
+                  </p>
+                  {reviewHeld ? (
+                    <div className="rounded-2xl border border-rose-200 bg-rose-50 p-5 text-sm font-bold text-rose-900">
+                      {packetStale
+                        ? "Quipsly is refreshing the Session results after the transcript changed."
+                        : "Session results will be ready after recording permission is complete."}
+                    </div>
+                  ) : actionableReviewLanes.length ? (
+                    <div className="grid gap-4 xl:grid-cols-2">
+                      {actionableReviewLanes.map((lane) => (
+                        <article
+                          key={lane.id}
+                          className="rounded-2xl border border-[#e5d5b7] bg-white p-5 shadow-sm"
+                        >
+                          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#987443]">
+                            {lane.itemCount} source-linked item
+                            {lane.itemCount === 1 ? "" : "s"}
+                          </p>
+                          <h3 className="mt-1 font-serif text-2xl font-black text-[#3d3122]">
+                            {lane.label}
+                          </h3>
+                          <p className="mt-3 text-sm font-semibold leading-relaxed text-[#765f40]">
+                            {lane.meaning}
+                          </p>
+                          <p className="mt-3 rounded-xl border border-sky-100 bg-sky-50/60 p-3 text-xs font-semibold leading-5 text-sky-950">
+                            {lane.sourceTruth}
+                          </p>
+                        </article>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="rounded-2xl border border-dashed border-[#d8c7a7] bg-white/55 p-5 text-sm font-semibold text-[#7a6548]">
+                      No Session results are available in these categories yet.
+                    </div>
+                  )}
+                  {!reviewHeld && emptyReviewLanes.length ? (
+                    <details className="mt-4 rounded-xl border border-[#eadfc9] bg-white p-4 text-sm text-[#765f40]">
+                      <summary className="cursor-pointer text-xs font-black uppercase tracking-wide text-[#5b472f]">
+                        {emptyReviewLanes.length}{" "}
+                        {emptyReviewLanes.length === 1
+                          ? "category has"
+                          : "categories have"}{" "}
+                        no results
+                      </summary>
+                      <p className="mt-3 font-semibold leading-relaxed">
+                        {emptyReviewLanes.map((lane) => lane.label).join(" · ")}
+                        . Quipsly leaves empty categories quiet instead of
+                        creating filler.
+                      </p>
+                    </details>
+                  ) : null}
+                </section>
+
+                <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5">
+                  <h2 className="font-serif text-2xl font-black text-emerald-950">
+                    Follow-through is ready
+                  </h2>
+                  <p className="mt-2 text-sm font-semibold leading-6 text-emerald-950">
+                    Notes, tasks, and goals now live with the Session work. They
+                    are ordinary editable items, not proposals waiting for
+                    approval.
+                  </p>
+                  <Link
+                    href={sessionWorkspaceHref(roomId, "work")}
+                    className="mt-4 inline-flex min-h-11 items-center rounded-full bg-emerald-800 px-5 text-xs font-black uppercase tracking-wide text-white"
+                  >
+                    Open session work
+                  </Link>
+                </div>
+
+                <section aria-labelledby="tasks-heading">
+                  <div className="mb-4 flex items-center gap-3">
+                    <span className="rounded-xl bg-emerald-50 p-2 text-emerald-700">
+                      <CheckCircle2 aria-hidden="true" />
+                    </span>
+                    <div>
+                      <p className="text-xs font-black uppercase tracking-[0.18em] text-[#987443]">
+                        Session work
+                      </p>
+                      <h2
+                        id="tasks-heading"
+                        className="font-serif text-3xl font-black text-[#3d3122]"
+                      >
+                        Tasks from this Session
+                      </h2>
+                    </div>
+                  </div>
+                  {tasks.length ? (
+                    <div className="grid gap-3 lg:grid-cols-2">
+                      {tasks.map((task) => (
+                        <article
+                          key={task.id}
+                          className="rounded-2xl border border-[#e5d5b7] bg-white p-5"
+                        >
+                          <p className="font-black text-[#3d3122]">
+                            <Link
+                              href={`/work?task=${encodeURIComponent(task.id)}`}
+                              className="rounded-sm hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-700"
+                            >
+                              {task.title}
+                            </Link>
+                          </p>
+                          {task.detail && (
+                            <p className="mt-2 text-sm font-semibold leading-relaxed text-[#765f40]">
+                              {task.detail}
+                            </p>
+                          )}
+                          <p className="mt-3 text-xs font-black uppercase tracking-wide text-[#8a7354]">
+                            {humanize(task.status)} ·{" "}
+                            {task.dueAt
+                              ? `Due ${new Date(task.dueAt).toLocaleDateString()}`
+                              : "No due date"}{" "}
+                            · editable in Work
+                          </p>
+                        </article>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="rounded-2xl border border-dashed border-[#d8c7a7] bg-white/55 p-5 text-sm font-semibold text-[#7a6548]">
+                      No tasks were created from this Session.
+                    </div>
+                  )}
+                </section>
+              </>
+            ) : (
               <section className="rounded-2xl border border-[#e5d5b7] bg-white p-6 shadow-sm">
                 <p className="text-xs font-black uppercase tracking-[0.18em] text-[#987443]">
                   Shared follow-up
                 </p>
                 <h2 className="mt-2 font-serif text-3xl font-black text-[#3d3122]">
-                  {clientFollowUpReady ? "Your follow-up is ready" : "Nothing shared yet"}
+                  {clientFollowUpReady
+                    ? "Your follow-up is ready"
+                    : "Nothing shared yet"}
                 </h2>
                 <p className="mt-3 max-w-2xl text-sm font-semibold leading-relaxed text-[#765f40]">
                   {clientFollowUpReady
-                    ? "Open Client follow-up to review the recap deliberately shared with you."
-                    : "You can keep using the transcript, Conversation, Notes, and Work. A coach's private review stays private unless they deliberately share a client follow-up."}
+                    ? "Open Client follow-up to read the recap shared with you."
+                    : "You can keep using the transcript, Conversation, Notes, and Work. Private coach notes stay private unless they are shared with you."}
                 </p>
               </section>
             )}
@@ -6977,7 +5291,6 @@ export function SessionReviewClient({
                 ))}
               </section>
             ) : null}
-
           </>
         )
       ) : null}

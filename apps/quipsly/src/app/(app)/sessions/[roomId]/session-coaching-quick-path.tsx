@@ -85,7 +85,7 @@ export function buildCoachingQuickPath(input: {
     },
     {
       id: "transcript" as const,
-      label: "Review the transcript",
+      label: "Read and edit the transcript",
       detail: transcriptReady
         ? "Source-backed transcript text is ready for review."
         : transcriptEvidenceReady
