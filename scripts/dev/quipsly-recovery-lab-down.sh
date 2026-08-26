@@ -12,6 +12,7 @@ docker_timeout_seconds="$(quipsly_local_docker_timeout_seconds)"
 docker_start_timeout_seconds="$(quipsly_local_docker_start_timeout_seconds)"
 nest_label="com.quipsly.recovery-lab.nest"
 firebase_label="com.quipsly.recovery-lab.firebase"
+livekit_label="com.quipsly.recovery-lab.livekit"
 
 if [[ $# -gt 0 ]]; then
   echo "Usage: $0" >&2
@@ -93,9 +94,11 @@ stop_macos_job() {
 if [[ "$(uname -s)" == "Darwin" ]]; then
   stop_macos_job "nest" "${nest_label}"
   stop_macos_job "firebase" "${firebase_label}"
+  stop_macos_job "livekit" "${livekit_label}"
 else
   stop_owned_process "nest"
   stop_owned_process "firebase"
+  stop_owned_process "livekit"
 fi
 
 if quipsly_local_run_docker \
@@ -123,6 +126,18 @@ rm -f \
   "${state_dir}/repo-root" \
   "${state_dir}/source-revision"
 
+retained_media_suffix="$(date -u +%Y%m%dT%H%M%SZ)-$$"
+if [[ -d "${state_dir}/media" ]]; then
+  mv "${state_dir}/media" "${state_dir}/media-retained-${retained_media_suffix}"
+fi
+if [[ -d "${state_dir}/media-workspace" ]]; then
+  mv "${state_dir}/media-workspace" "${state_dir}/media-workspace-retained-${retained_media_suffix}"
+fi
+if [[ -d "${state_dir}/capture-vault" ]]; then
+  mv "${state_dir}/capture-vault" "${state_dir}/capture-vault-retained-${retained_media_suffix}"
+fi
+
 echo
 echo "The isolated recovery database and its synthetic accounts/work were permanently deleted."
+echo "Any synthetic media bytes were retained under the recovery-lab state directory for inspection."
 echo "The canonical Quipsly database and local lane were not stopped or changed."

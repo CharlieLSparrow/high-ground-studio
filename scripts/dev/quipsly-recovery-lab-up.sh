@@ -11,10 +11,29 @@ database_container="quipsly-portable-recovery-lab-db"
 database_label="com.quipsly.recovery-lab"
 firebase_label="com.quipsly.recovery-lab.firebase"
 nest_label="com.quipsly.recovery-lab.nest"
+livekit_label="com.quipsly.recovery-lab.livekit"
 firebase_url="http://127.0.0.1:9199"
 nest_url="http://127.0.0.1:3022"
+livekit_url="ws://127.0.0.1:7890"
+livekit_http_url="http://127.0.0.1:7890"
+livekit_api_key="recoverykey"
+livekit_api_secret="recoverysecret"
 firebase_project="quipsly-recovery-lab"
 pnpm_bin="${QUIPSLY_RECOVERY_LAB_PNPM_BIN:-$(command -v pnpm)}"
+
+if [[ "${1:-}" == "--run-livekit" ]]; then
+  livekit_bin="${QUIPSLY_RECOVERY_LAB_LIVEKIT_BIN:-$(command -v livekit-server 2>/dev/null || true)}"
+  if [[ -z "${livekit_bin}" || ! -x "${livekit_bin}" ]]; then
+    echo "Recovery lab requires the LiveKit server executable." >&2
+    exit 1
+  fi
+  exec "${livekit_bin}" \
+    --dev \
+    --bind 127.0.0.1 \
+    --node-ip 127.0.0.1 \
+    --config-body $'port: 7890\nrtc:\n  tcp_port: 7891\n  udp_port: 7892\n  use_external_ip: false\n' \
+    --keys "${livekit_api_key}: ${livekit_api_secret}"
+fi
 
 if [[ "${1:-}" == "--run-firebase" ]]; then
   cd "${repo_root}"
@@ -53,6 +72,15 @@ if [[ "${1:-}" == "--run-nest" ]]; then
     NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=quipsly-recovery-lab.appspot.com \
     NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=123456789 \
     NEXT_PUBLIC_FIREBASE_APP_ID=1:123456789:web:recoverylab \
+    QUIPSLY_LOCAL_MEDIA_UPLOADS=true \
+    QUIPSLY_LOCAL_MEDIA_UPLOAD_ROOT="${state_dir}/media" \
+    QUIPSLY_LOCAL_MEDIA_WORKSPACE_ROOT="${state_dir}/media-workspace" \
+    QUIPSLY_LOCAL_CAPTURE_VAULT_ROOT="${state_dir}/capture-vault" \
+    QUIPSLY_LOCAL_CAPTURE_UPLOAD_ORIGIN="${nest_url}" \
+    QUIPSLY_APP_HOST="${nest_url}" \
+    LIVEKIT_URL="${livekit_url}" \
+    LIVEKIT_API_KEY="${livekit_api_key}" \
+    LIVEKIT_API_SECRET="${livekit_api_secret}" \
     QUIPSLY_SESSION_INVITATION_DELIVERY_MODE=local-receipt \
     QUIPSLY_OWNER_OVERRIDE=false \
     "${pnpm_bin:?Missing launcher pnpm path}" dev
@@ -212,6 +240,44 @@ start_macos_job() {
   printf "%s\n" "${label}" >"${state_dir}/${name}.label"
 }
 
+mkdir -p \
+  "${state_dir}/media" \
+  "${state_dir}/media-workspace" \
+  "${state_dir}/capture-vault"
+
+livekit_status="$(quipsly_recovery_lab_http_status "${livekit_http_url}/")"
+if [[ "${livekit_status}" == "200" ]]; then
+  recorded_root="$(sed -n '1p' "${state_dir}/repo-root" 2>/dev/null || true)"
+  if [[ "${recorded_root}" != "${repo_root}" ]]; then
+    echo "Port 7890 has a recovery LiveKit service not owned by this worktree. Use --replace only after inspection." >&2
+    exit 1
+  fi
+  printf "REUSE %-24s %s\n" "LiveKit conversation" "${livekit_http_url}"
+elif [[ -n "$(quipsly_local_port_listener_pid 7890)" ]]; then
+  echo "Port 7890 is occupied by a process that is not this recovery lab." >&2
+  exit 1
+else
+  if [[ "$(uname -s)" == "Darwin" ]]; then
+    if launchctl_job_exists "${livekit_label}"; then
+      echo "Recovery LiveKit job exists without a healthy endpoint. Use --replace." >&2
+      exit 1
+    fi
+    start_macos_job "livekit" "${livekit_label}" "--run-livekit"
+  else
+    (
+      cd "${repo_root}"
+      nohup /bin/bash "${repo_root}/scripts/dev/quipsly-recovery-lab-up.sh" --run-livekit \
+        >"${state_dir}/livekit.log" 2>&1 &
+      record_process "livekit" "$!" "${repo_root}"
+    )
+  fi
+  wait_for_http \
+    "LiveKit conversation" \
+    "${livekit_http_url}/" \
+    "200" \
+    "${state_dir}/livekit.log"
+fi
+
 firebase_status="$(quipsly_recovery_lab_http_status "${firebase_url}/emulator/v1/projects/${firebase_project}/config")"
 if [[ "${firebase_status}" == "200" ]]; then
   recorded_root="$(sed -n '1p' "${state_dir}/repo-root" 2>/dev/null || true)"
@@ -286,6 +352,6 @@ git rev-parse HEAD >"${state_dir}/source-revision"
 
 echo
 echo "Quipsly recovery lab is ready: ${nest_url}"
-echo "It uses separate ports, auth state, and a disposable migrated database."
+echo "It uses separate Nest, LiveKit, auth, media, and disposable database state."
 echo "Run: pnpm quipsly:recovery-lab:doctor"
 echo "Stop and permanently delete the lab database: pnpm quipsly:recovery-lab:down"

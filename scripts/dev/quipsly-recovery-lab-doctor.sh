@@ -12,6 +12,7 @@ database_label="com.quipsly.recovery-lab"
 nest_url="http://127.0.0.1:3022"
 firebase_url="http://127.0.0.1:9199"
 firebase_project="quipsly-recovery-lab"
+livekit_url="http://127.0.0.1:7890"
 docker_timeout_seconds="$(quipsly_local_docker_timeout_seconds)"
 failed=0
 
@@ -43,6 +44,7 @@ report_http \
   "Firebase Auth emulator" \
   "${firebase_url}/emulator/v1/projects/${firebase_project}/config" \
   "200"
+report_http "LiveKit conversation" "${livekit_url}/" "200"
 
 listener="$(quipsly_local_port_listener_pid 3022)"
 actual_cwd=""
@@ -114,5 +116,5 @@ else
   failed=1
 fi
 
-printf "PASS  %-26s Nest 3022, Auth 9199, DB 55432\n" "Canonical lane isolation"
+printf "PASS  %-26s Nest 3022, LiveKit 7890-7892, Auth 9199, DB 55432\n" "Canonical lane isolation"
 exit "${failed}"
