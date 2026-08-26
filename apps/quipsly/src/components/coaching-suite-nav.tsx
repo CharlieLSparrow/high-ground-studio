@@ -3,6 +3,7 @@
 import Link from "next/link";
 import {
   CalendarDays,
+  ClipboardList,
   Clock3,
   Plus,
   UsersRound,
@@ -23,6 +24,7 @@ const items: ReadonlyArray<{
     icon: UsersRound,
   },
   { href: "/coaching/sessions", label: "Sessions", icon: CalendarDays },
+  { href: "/coaching/forms", label: "Forms", icon: ClipboardList },
 ];
 
 export function CoachingSuiteNav({ canSchedule }: { canSchedule: boolean }) {

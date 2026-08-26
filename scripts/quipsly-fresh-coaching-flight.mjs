@@ -209,6 +209,12 @@ const work = await run(
   "QUIPSLY_FRESH_COACHING_WORK_OPERATION",
   continuationEnv,
 );
+const forms = await run(
+  "Reusable intake, private draft, submission, and cross-account form isolation",
+  "scripts/quipsly-fresh-coaching-forms-operation.mjs",
+  "QUIPSLY_FRESH_COACHING_FORMS_OPERATION",
+  continuationEnv,
+);
 const share = await run(
   "Light edit, private preview, client release, and revoke",
   "scripts/quipsly-local-recording-share-operation.mjs",
@@ -233,6 +239,7 @@ for (const [label, packet] of Object.entries({
   call,
   transcript,
   work,
+  forms,
   share,
 })) {
   assert.equal(
@@ -447,6 +454,15 @@ const result = {
     work.clientCreatedSharedNote &&
     work.clientCreatedPrivateNote &&
     work.privateNoteHiddenFromCoach,
+  reusableCoachingFormsOperated:
+    forms.coachPublishedStarterThroughRenderedProduct === true &&
+    forms.coachAssignedExactVersionThroughRenderedProduct === true &&
+    forms.clientSavedPrivateDraftThroughRenderedProduct === true &&
+    forms.draftHiddenFromCoach === true &&
+    forms.clientSubmittedThroughRenderedProduct === true &&
+    forms.submittedResponseVisibleToCoach === true &&
+    forms.neighboringAccountDenied?.listContainsAssignment === false &&
+    forms.neighboringAccountDenied?.writeStatus === 404,
   crossAccountTaskCompletionOperated: work.clientObservedCoachCompletion,
   lightEditPreviewAndRecipientPlaybackOperated:
     share.coachPreviewDecoded && share.clientPlaybackDecoded,
@@ -527,6 +543,10 @@ const result = {
       participantRecordingCompleteness:
         call.allExpectedParticipantsRecordingVisible === true,
       relationshipWork: work.boundaries?.productFormsOnlyForWrites === true,
+      reusableForms:
+        forms.boundaries?.productFormsOnlyForWrites === true &&
+        forms.draftHiddenFromCoach === true &&
+        forms.submittedResponseVisibleToCoach === true,
       lightEditPreviewReleaseAndRevoke:
         share.boundaries?.releaseWasExplicit === true &&
         share.boundaries?.revokeWasExplicit === true,

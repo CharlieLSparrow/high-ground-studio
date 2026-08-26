@@ -247,6 +247,40 @@ enum CoachingSessionPreparationLane {
   COACH_PRIVATE
 }
 
+enum CoachingFormPurpose {
+  INTAKE
+  PRE_SESSION
+  POST_SESSION
+  REFLECTION
+  ASSESSMENT
+  FEEDBACK
+}
+
+enum CoachingFormTemplateStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum CoachingFormAssignmentTiming {
+  ENGAGEMENT_START
+  BEFORE_SESSION
+  AFTER_SESSION
+  ON_DEMAND
+}
+
+enum CoachingFormAssignmentStatus {
+  ASSIGNED
+  IN_PROGRESS
+  SUBMITTED
+  CANCELED
+}
+
+enum CoachingFormResponseState {
+  DRAFT
+  SUBMITTED
+}
+
 enum CoachingEngagementStatus {
   ACTIVE
   PAUSED
@@ -847,6 +881,11 @@ model User {
   coachingSessionPreparationsAsClient CoachingSessionPreparation[]                @relation("CoachingSessionPreparationClient")
   coachingSessionPreparationsAsCoach  CoachingSessionPreparation[]                @relation("CoachingSessionPreparationCoach")
   coachingSessionPreparationRevisions CoachingSessionPreparationRevision[]        @relation("CoachingSessionPreparationRevisionActor")
+  coachingFormTemplatesOwned          CoachingFormTemplate[]                       @relation("CoachingFormTemplateOwner")
+  coachingFormTemplateVersionsCreated CoachingFormTemplateVersion[]                @relation("CoachingFormTemplateVersionCreatedBy")
+  coachingFormAssignmentsCreated      CoachingFormAssignment[]                     @relation("CoachingFormAssignmentAssignedBy")
+  coachingFormAssignmentsReceived     CoachingFormAssignment[]                     @relation("CoachingFormAssignmentAssignedTo")
+  coachingFormResponseRevisions       CoachingFormResponseRevision[]                @relation("CoachingFormResponseRevisionActor")
   coachingEngagementsCreated          CoachingEngagement[]                        @relation("CoachingEngagementCreatedBy")
   coachingEngagementsAsClient         CoachingEngagement[]                        @relation("CoachingEngagementPrimaryClient")
   coachingEngagementsAsCoach          CoachingEngagement[]                        @relation("CoachingEngagementPrimaryCoach")
@@ -1551,6 +1590,7 @@ model CoachingBooking {
   checkoutSessionLedgers StripeCheckoutSessionLedger[]
   calendarLinks          CalendarEventLink[]
   sessionPreparation     CoachingSessionPreparation?
+  coachingFormAssignments CoachingFormAssignment[]
 
   @@unique([seriesId, seriesSequence])
   @@index([clientUserId, scheduledStart])
@@ -1647,6 +1687,110 @@ model CoachingSessionPreparationRevision {
   @@index([actorUserId, createdAt], map: "CoachSessionPrepRevision_actor_created_idx")
 }
 
+// Reusable coaching forms are owned by one coach and published as immutable
+// versions. An assignment always points at the exact published definition that
+// the client received, so later template improvements never rewrite history.
+model CoachingFormTemplate {
+  id                String                     @id @default(cuid())
+  ownerCoachUserId  String
+  title             String
+  description       String?                    @db.Text
+  purpose           CoachingFormPurpose
+  status            CoachingFormTemplateStatus @default(DRAFT)
+  publishedRevision Int?
+  createdAt         DateTime                   @default(now())
+  updatedAt         DateTime                   @updatedAt
+
+  owner       User                          @relation("CoachingFormTemplateOwner", fields: [ownerCoachUserId], references: [id], onDelete: Cascade)
+  versions    CoachingFormTemplateVersion[]
+  assignments CoachingFormAssignment[]
+
+  @@index([ownerCoachUserId, status, updatedAt], map: "CoachFormTemplate_owner_status_updated_idx")
+  @@index([ownerCoachUserId, purpose, updatedAt], map: "CoachFormTemplate_owner_purpose_updated_idx")
+}
+
+model CoachingFormTemplateVersion {
+  id              String   @id @default(cuid())
+  requestId       String   @unique @db.Uuid
+  templateId      String
+  revision        Int
+  definitionSha256 String
+  inputSha256     String
+  definitionJson  Json
+  createdByUserId String
+  createdAt       DateTime @default(now())
+
+  template    CoachingFormTemplate   @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  createdBy   User                   @relation("CoachingFormTemplateVersionCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  assignments CoachingFormAssignment[]
+
+  @@unique([templateId, revision], map: "CoachFormTemplateVersion_template_revision_key")
+  @@unique([id, templateId], map: "CoachFormTemplateVersion_id_template_key")
+  @@index([createdByUserId, createdAt], map: "CoachFormTemplateVersion_creator_created_idx")
+}
+
+// A form assignment is a private coaching artifact. It can belong to the
+// durable relationship, one booking, and one Session, but none of those links
+// broadens access beyond the assigned client and exact relationship coach.
+model CoachingFormAssignment {
+  id                      String                       @id @default(cuid())
+  requestId               String                       @unique @db.Uuid
+  inputSha256             String
+  templateId              String
+  templateVersionId       String
+  engagementId            String
+  bookingId               String?
+  callRoomId              String?
+  assignedByUserId        String
+  assignedToUserId        String
+  timing                   CoachingFormAssignmentTiming @default(ON_DEMAND)
+  status                   CoachingFormAssignmentStatus @default(ASSIGNED)
+  dueAt                    DateTime?
+  startedAt                DateTime?
+  submittedAt              DateTime?
+  canceledAt               DateTime?
+  currentResponseRevision  Int                          @default(0)
+  createdAt                DateTime                     @default(now())
+  updatedAt                DateTime                     @updatedAt
+
+  template          CoachingFormTemplate          @relation(fields: [templateId], references: [id], onDelete: Restrict)
+  templateVersion   CoachingFormTemplateVersion   @relation(fields: [templateVersionId, templateId], references: [id, templateId], onDelete: Restrict)
+  engagement        CoachingEngagement             @relation(fields: [engagementId], references: [id], onDelete: Cascade)
+  booking           CoachingBooking?               @relation(fields: [bookingId], references: [id], onDelete: SetNull)
+  callRoom          CallRoom?                      @relation(fields: [callRoomId], references: [id], onDelete: SetNull)
+  assignedBy        User                           @relation("CoachingFormAssignmentAssignedBy", fields: [assignedByUserId], references: [id], onDelete: Restrict)
+  assignedTo        User                           @relation("CoachingFormAssignmentAssignedTo", fields: [assignedToUserId], references: [id], onDelete: Cascade)
+  responseRevisions CoachingFormResponseRevision[]
+
+  @@index([assignedToUserId, status, dueAt], map: "CoachFormAssignment_recipient_status_due_idx")
+  @@index([assignedByUserId, status, dueAt], map: "CoachFormAssignment_coach_status_due_idx")
+  @@index([engagementId, status, updatedAt], map: "CoachFormAssignment_engagement_status_updated_idx")
+  @@index([bookingId, status], map: "CoachFormAssignment_booking_status_idx")
+  @@index([callRoomId, status], map: "CoachFormAssignment_room_status_idx")
+}
+
+// Every client save is an immutable, intent-bound revision. Draft saves and the
+// final submission share one ledger, making offline retries and uncertain
+// network outcomes observable without creating duplicate answers.
+model CoachingFormResponseRevision {
+  id            String                    @id @default(cuid())
+  requestId     String                    @unique @db.Uuid
+  assignmentId  String
+  actorUserId   String
+  revision      Int
+  state         CoachingFormResponseState
+  inputSha256   String
+  answersJson   Json
+  submittedAt   DateTime?
+  createdAt     DateTime                  @default(now())
+
+  assignment CoachingFormAssignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  actor      User                   @relation("CoachingFormResponseRevisionActor", fields: [actorUserId], references: [id], onDelete: Restrict)
+
+  @@unique([assignmentId, revision], map: "CoachFormResponse_assignment_revision_key")
+  @@index([actorUserId, createdAt], map: "CoachFormResponse_actor_created_idx")
+}
+
 // A Coaching Engagement is the durable, private collaboration boundary for a
 // coach/client relationship. It can use a Nest for shared tools and storage,
 // but membership here never grants access to that surrounding Nest.
@@ -1675,6 +1819,7 @@ model CoachingEngagement {
   notes          CoachingNote[]
   actionItems    ActionItem[]
   goals          Goal[]
+  formAssignments CoachingFormAssignment[]
 
   @@index([projectId, status, updatedAt])
   @@index([primaryClientUserId, status, updatedAt])
@@ -2168,6 +2313,7 @@ model CallRoom {
   governedActionRuns            GovernedActionRun[]
   conversationMessages          SessionConversationMessage[]
   conversationReadCursors       SessionConversationReadCursor[]
+  coachingFormAssignments       CoachingFormAssignment[]
 
   @@index([purpose, status, scheduledStart])
   @@index([createdByUserId, createdAt])

@@ -52,6 +52,10 @@
       "types": "./src/coaching-practice-command.ts",
       "import": "./src/coaching-practice-command.ts"
     },
+    "./coaching-forms": {
+      "types": "./src/coaching-forms.ts",
+      "import": "./src/coaching-forms.ts"
+    },
     "./session-entry-readiness": {
       "types": "./src/session-entry-readiness.ts",
       "import": "./src/session-entry-readiness.ts"

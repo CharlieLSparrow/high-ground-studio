@@ -2,6 +2,7 @@ import Link from "next/link";
 import {
   ArrowLeft,
   CalendarDays,
+  ClipboardList,
   LayoutDashboard,
   LockKeyhole,
   UsersRound,
@@ -152,6 +153,18 @@ export default async function CoachingEngagementPage({
           createdAt: true,
           updatedAt: true,
           owner: { select: { name: true, primaryEmail: true } },
+        },
+      },
+      formAssignments: {
+        where: { status: { not: "CANCELED" } },
+        orderBy: [{ dueAt: "asc" }, { createdAt: "desc" }],
+        take: 100,
+        select: {
+          id: true,
+          status: true,
+          assignedToUserId: true,
+          dueAt: true,
+          template: { select: { title: true } },
         },
       },
     },
@@ -370,6 +383,32 @@ export default async function CoachingEngagementPage({
             canSchedule={canSchedule}
           />
         </div>
+        <section className="mt-6 flex flex-wrap items-center justify-between gap-5 rounded-[1.75rem] border border-violet-200 bg-violet-50 p-5 shadow-sm">
+          <div className="flex items-start gap-3">
+            <span className="rounded-2xl bg-white p-3 text-violet-800 shadow-sm">
+              <ClipboardList size={22} aria-hidden="true" />
+            </span>
+            <div>
+              <p className="text-xs font-black uppercase tracking-[0.17em] text-violet-800">
+                Reflections and intake
+              </p>
+              <h2 className="mt-1 font-serif text-2xl font-black text-[#34291d]">
+                {engagement.formAssignments.length
+                  ? `${engagement.formAssignments.filter((item) => item.status === "SUBMITTED").length} shared · ${engagement.formAssignments.filter((item) => item.status !== "SUBMITTED").length} waiting`
+                  : "No forms assigned yet"}
+              </h2>
+              <p className="mt-1 text-sm font-semibold leading-6 text-[#765f40]">
+                Complete or send short forms without leaving this private coaching relationship.
+              </p>
+            </div>
+          </div>
+          <Link
+            href={`/coaching/forms?relationship=${encodeURIComponent(engagement.id)}`}
+            className="inline-flex min-h-11 items-center rounded-full bg-violet-800 px-5 text-sm font-black text-white"
+          >
+            Open forms
+          </Link>
+        </section>
         {canManage ? (
           <div className="mt-6">
             <CoachingEngagementMemberManager engagementId={engagement.id} />
