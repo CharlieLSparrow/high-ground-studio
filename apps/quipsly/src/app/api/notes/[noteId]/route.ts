@@ -37,7 +37,7 @@ async function body(request: Request) {
 
 function statusFor(code: string) {
   if (code === "NOT_FOUND") return 404;
-  if (code === "PROJECT_ROLE_REQUIRED" || code === "TAGS_UNAVAILABLE") return 403;
+  if (code === "AUDIENCE_AUTHOR_REQUIRED" || code === "PROJECT_ROLE_REQUIRED" || code === "TAGS_UNAVAILABLE") return 403;
   if (code === "CONFLICT" || code === "REQUEST_ID_CONFLICT") return 409;
   return 400;
 }
@@ -105,7 +105,8 @@ export async function PATCH(request: Request, context: { params: Promise<{ noteI
   return NextResponse.json({
     ...result,
     boundaries: {
-      actorOwned: true,
+      authorizedCollaborator: true,
+      privateAuthorOnly: true,
       canonicalSessionMutationAccess: true,
       sessionAccessRechecked: true,
       projectAuthorityRechecked: true,

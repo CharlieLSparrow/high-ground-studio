@@ -15,6 +15,7 @@ function note(input: Partial<SessionWorkspaceNote> & Pick<SessionWorkspaceNote, 
     author: input.author ?? { id: "actor-1", label: "Charlie", isCurrentActor: true },
     originLabel: input.originLabel ?? "iPhone Capture",
     canEdit: input.canEdit ?? true,
+    canChangeVisibility: input.canChangeVisibility ?? true,
     revisionCount: input.revisionCount ?? 1,
     createdAt: input.createdAt ?? "2026-07-24T12:00:00.000Z",
     updatedAt: input.updatedAt ?? "2026-07-24T12:00:00.000Z",
@@ -39,7 +40,7 @@ describe("Session Notes workspace", () => {
     jest.restoreAllMocks();
   });
 
-  it("makes every visibility lane explicit and keeps another author's shared note read-only", () => {
+  it("makes every visibility lane explicit and lets collaborators edit shared note content", () => {
     render(<SessionNotesWorkspace
       roomId="room-1"
       activeView="all"
@@ -52,7 +53,8 @@ describe("Session Notes workspace", () => {
           title: "Shared coaching context",
           visibility: "SESSION_SHARED",
           author: { id: "actor-2", label: "Homer", isCurrentActor: false },
-          canEdit: false,
+          canEdit: true,
+          canChangeVisibility: false,
         }),
         note({ id: "client", visibility: "CLIENT_SAFE" }),
         note({ id: "production", kind: "PRODUCTION", visibility: "PROJECT_TEAM" }),
@@ -66,8 +68,11 @@ describe("Session Notes workspace", () => {
     expect(screen.getByRole("link", { name: "Client-safe 1" })).toHaveAttribute("href", "/sessions/room-1?mode=notes&view=client-safe");
     expect(screen.getByRole("link", { name: "Production 1" })).toHaveAttribute("href", "/sessions/room-1?mode=notes&view=production");
     expect(screen.getByRole("link", { name: "Decisions 1" })).toHaveAttribute("href", "/sessions/room-1?mode=notes&view=decisions");
-    expect(screen.getByText("Read-only here. Only the note author can edit its text or audience.")).toBeInTheDocument();
-    expect(screen.getByText(/only the author can read this note—even staff do not get an override/i)).toBeInTheDocument();
+    const shared = screen.getByRole("heading", { name: "Shared coaching context" }).closest("article")!;
+    expect(within(shared).getByText("Edit note, audience, and tags")).toBeInTheDocument();
+    expect(within(shared).getByText("Session", { selector: "p" })).toBeInTheDocument();
+    expect(within(shared).queryByRole("combobox", { name: "Who can read it" })).not.toBeInTheDocument();
+    expect(screen.getByText(/By you · Only you\./i)).toBeInTheDocument();
   });
 
   it("shows only notes in the selected URL-addressable view", () => {
@@ -166,7 +171,7 @@ describe("Session Notes workspace", () => {
       kind: "DECISION",
       visibility: "SESSION_SHARED",
     });
-    expect(await screen.findByRole("status")).toHaveTextContent("Note saved. People who can access this Session can read it. Nothing is messaged or delivered.");
+    expect(await screen.findByRole("status")).toHaveTextContent("Note saved. Everyone in this Session.");
     expect(screen.getByRole("heading", { name: "Opening decision" })).toBeInTheDocument();
   });
 
@@ -211,7 +216,7 @@ describe("Session Notes workspace", () => {
     expect(await screen.findByRole("status")).toHaveTextContent("Note updated. Its earlier versions remain available in the history.");
     const updated = screen.getByRole("heading", { name: "Shared reflection" }).closest("article")!;
     expect(updated).toBeInTheDocument();
-    expect(screen.getByText(/2 retained revisions/)).toBeInTheDocument();
+    expect(screen.getByText(/2 versions/)).toBeInTheDocument();
     expect(within(updated).getByRole("combobox", { name: "Who can read it" })).toHaveValue("CLIENT_SAFE");
   });
 });

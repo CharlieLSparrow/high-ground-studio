@@ -41,6 +41,7 @@ export type SessionWorkspaceNote = {
   };
   originLabel: string;
   canEdit: boolean;
+  canChangeVisibility?: boolean;
   revisionCount: number;
   createdAt: string;
   updatedAt: string;

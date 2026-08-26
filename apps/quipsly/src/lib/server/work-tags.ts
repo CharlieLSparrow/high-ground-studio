@@ -392,13 +392,37 @@ export async function createWorkTagTaxonomy(input: {
   throw new Error("The bounded canonical tag creation retry was exhausted.");
 }
 
-function entityWhere(entityKind: WorkTagEntityKind, entityId: string, actorUserId: string) {
+function entityWhere(
+  entityKind: WorkTagEntityKind,
+  entityId: string,
+  actorUserId: string,
+  actorEmail = "",
+) {
   return entityKind === "task"
     ? { id: entityId, assignedUserId: actorUserId }
     : entityKind === "goal"
       ? { id: entityId, ownerUserId: actorUserId }
       : entityKind === "note"
-        ? { id: entityId, authorUserId: actorUserId }
+        ? {
+            id: entityId,
+            OR: [
+              { authorUserId: actorUserId },
+              ...(actorEmail ? [{
+                visibility: { in: ["SESSION_SHARED", "CLIENT_SAFE", "PROJECT_TEAM"] },
+                room: {
+                  project: {
+                    accessGrants: {
+                      some: {
+                        email: actorEmail,
+                        status: "ACTIVE",
+                        role: { in: ["OWNER", "EDITOR"] },
+                      },
+                    },
+                  },
+                },
+              }] : []),
+            ],
+          }
         : entityKind === "document"
           ? {
               id: entityId,
@@ -431,7 +455,9 @@ function entitySourceField(entityKind: WorkTagEntityKind) {
 }
 
 function entityMutationLabel(entityKind: WorkTagEntityKind) {
-  return entityKind === "document" ? "Nest editor" : `${entityKind} owner`;
+  if (entityKind === "document") return "Nest editor";
+  if (entityKind === "note") return "note author or Nest editor";
+  return `${entityKind} owner`;
 }
 
 async function findOwnedTagEntity(
@@ -439,13 +465,14 @@ async function findOwnedTagEntity(
   entityKind: WorkTagEntityKind,
   entityId: string,
   actorUserId: string,
+  actorEmail: string,
   expectedUpdatedAt?: Date,
   expectedProjectId?: string,
   receiptId?: string,
   expectedTagRevision?: number,
 ) {
   const where: any = {
-    ...entityWhere(entityKind, entityId, actorUserId),
+    ...entityWhere(entityKind, entityId, actorUserId, actorEmail),
     ...(expectedUpdatedAt ? { updatedAt: expectedUpdatedAt } : {}),
   };
   if (entityKind === "note") {
@@ -526,9 +553,9 @@ export async function createAndAssignWorkEntityTag(input: {
   }
 
   const prisma = input.prisma as any;
-  const ownerWhere = entityWhere(input.entityKind, entityId, actorUserId);
+  const ownerWhere = entityWhere(input.entityKind, entityId, actorUserId, actorEmail);
   const sourceField = entitySourceField(input.entityKind);
-  const entity = await findOwnedTagEntity(prisma, input.entityKind, entityId, actorUserId);
+  const entity = await findOwnedTagEntity(prisma, input.entityKind, entityId, actorUserId, actorEmail);
   if (!entity) return { ok: false, code: "NOT_FOUND", error: `Only a ${entityMutationLabel(input.entityKind)} can create and apply these tags.` };
   if (!entity.projectId) return { ok: false, code: "PROJECT_REQUIRED", error: "Choose a Nest before creating a reusable tag." };
   if (input.entityKind === "document") {
@@ -556,6 +583,7 @@ export async function createAndAssignWorkEntityTag(input: {
       input.entityKind,
       entityId,
       actorUserId,
+      actorEmail,
       input.entityKind === "document" ? undefined : input.expectedUpdatedAt,
       entity.projectId,
       undefined,
@@ -700,7 +728,7 @@ export async function createAndAssignWorkEntityTag(input: {
 }
 
 /**
- * Replace one private entity's complete tag set. This deliberately does not
+ * Replace one writable entity's complete tag set. This deliberately does not
  * offer a polymorphic public write: each branch enforces the entity's own
  * ownership rule and writes its own explicit join table.
  */
@@ -741,6 +769,7 @@ export async function replaceWorkEntityTags(input: {
     input.entityKind,
     entityId,
     actorUserId,
+    actorEmail,
     undefined,
     undefined,
     input.entityKind === "document" ? receiptId : undefined,
@@ -887,6 +916,7 @@ export async function replaceWorkEntityTags(input: {
         "document",
         entityId,
         actorUserId,
+        actorEmail,
         undefined,
         entity.projectId,
         receiptId,
@@ -964,7 +994,7 @@ export async function replaceWorkEntityTags(input: {
       : input.entityKind === "goal"
         ? await tx.goal.updateMany({ where: { id: entityId, ownerUserId: actorUserId, projectId: entity.projectId, updatedAt: input.expectedUpdatedAt }, data: { sourceJson: { ...safeRecord(entity.sourceJson), lastTagReceipt: receipt } } })
         : input.entityKind === "note"
-          ? await tx.coachingNote.updateMany({ where: { id: entityId, authorUserId: actorUserId, room: { projectId: entity.projectId }, updatedAt: input.expectedUpdatedAt }, data: { sourceJson: { ...safeRecord(entity.sourceJson), lastTagReceipt: receipt } } })
+          ? await tx.coachingNote.updateMany({ where: { ...entityWhere("note", entityId, actorUserId, actorEmail), room: { projectId: entity.projectId }, updatedAt: input.expectedUpdatedAt }, data: { sourceJson: { ...safeRecord(entity.sourceJson), lastTagReceipt: receipt } } })
           : await tx.callRoom.updateMany({ where: { id: entityId, createdByUserId: actorUserId, projectId: entity.projectId, updatedAt: input.expectedUpdatedAt }, data: { metadataJson: { ...safeRecord(entity.metadataJson), lastTagReceipt: receipt } } });
     if (update.count !== 1) return { kind: "conflict" as const };
 

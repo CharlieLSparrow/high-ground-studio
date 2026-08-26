@@ -3715,6 +3715,7 @@ extension MobileCaptureSession {
                     authorLabel: "Charlie",
                     isMine: true,
                     canEdit: true,
+                    canChangeVisibility: true,
                     origin: "iPhone Capture",
                     revisionCount: 1,
                     tags: [

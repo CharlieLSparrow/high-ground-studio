@@ -1,5 +1,7 @@
 import {
+  canEditSessionNoteProjection,
   mobileSessionNoteVisibilityWhere,
+  sessionNoteMutationWhere,
   sessionNoteVisibilityWhere,
 } from "./session-note-access";
 
@@ -68,5 +70,40 @@ describe("Session note visibility policy", () => {
         { visibility: "PROJECT_TEAM" },
       ],
     });
+  });
+
+  it("lets writable Session participants mutate shared notes without widening private notes", () => {
+    expect(sessionNoteMutationWhere({ id: "participant-1", primaryEmail: "person@example.test" })).toMatchObject({
+      kind: { in: ["SESSION_NOTE", "DECISION", "PRODUCTION"] },
+      OR: [
+        { authorUserId: "participant-1" },
+        { visibility: { in: ["SESSION_SHARED", "CLIENT_SAFE"] } },
+        expect.objectContaining({ visibility: "PROJECT_TEAM" }),
+      ],
+    });
+    expect(canEditSessionNoteProjection({
+      actorUserId: "participant-1",
+      authorUserId: "participant-2",
+      kind: "SESSION_NOTE",
+      visibility: "SESSION_SHARED",
+      canMutateSession: true,
+      canUseProjectTeam: false,
+    })).toBe(true);
+    expect(canEditSessionNoteProjection({
+      actorUserId: "participant-1",
+      authorUserId: "participant-2",
+      kind: "SESSION_NOTE",
+      visibility: "AUTHOR_PRIVATE",
+      canMutateSession: true,
+      canUseProjectTeam: false,
+    })).toBe(false);
+    expect(canEditSessionNoteProjection({
+      actorUserId: "observer-1",
+      authorUserId: "participant-2",
+      kind: "SESSION_NOTE",
+      visibility: "SESSION_SHARED",
+      canMutateSession: false,
+      canUseProjectTeam: false,
+    })).toBe(false);
   });
 });

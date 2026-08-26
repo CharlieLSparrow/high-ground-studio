@@ -4,7 +4,6 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import {
   Clapperboard,
-  Gavel,
   LockKeyhole,
   MessageSquarePlus,
   NotebookPen,
@@ -41,10 +40,10 @@ function NoteAudienceIcon({ visibility }: { visibility: SessionNoteVisibility })
 }
 
 function audienceHelp(visibility: SessionNoteVisibility) {
-  if (visibility === "AUTHOR_PRIVATE") return "Only the author can read this note—even staff do not get an override.";
-  if (visibility === "SESSION_SHARED") return "People who can access this Session can read it. Nothing is messaged or delivered.";
-  if (visibility === "CLIENT_SAFE") return "Visible in this Session and explicitly eligible for a reviewed client follow-up. It has not been sent.";
-  return "Visible to the Nest production team. This is not public and is never included in client follow-up automatically.";
+  if (visibility === "AUTHOR_PRIVATE") return "Only you.";
+  if (visibility === "SESSION_SHARED") return "Everyone in this Session.";
+  if (visibility === "CLIENT_SAFE") return "Everyone in this Session; available in client follow-up.";
+  return "Your project team.";
 }
 
 function editableKinds(canUseProjectTeamNotes: boolean) {
@@ -99,7 +98,7 @@ export function SessionNotesWorkspace({
           title: String(formData.get("title") || ""),
           body: String(formData.get("body") || ""),
           kind: String(formData.get("kind") || "SESSION_NOTE"),
-          visibility: String(formData.get("visibility") || "AUTHOR_PRIVATE"),
+          visibility: String(formData.get("visibility") || "SESSION_SHARED"),
         }),
       });
       const payload = await response.json() as {
@@ -290,14 +289,14 @@ export function SessionNotesWorkspace({
               </label>
               <label className="text-[10px] font-black uppercase tracking-wide text-orange-900">
                 Who can read it
-                <select name="visibility" defaultValue="AUTHOR_PRIVATE" className="mt-1 block min-h-11 w-full rounded-lg border border-orange-200 bg-white px-3 py-2 text-sm font-semibold normal-case tracking-normal">
+                <select name="visibility" defaultValue="SESSION_SHARED" className="mt-1 block min-h-11 w-full rounded-lg border border-orange-200 bg-white px-3 py-2 text-sm font-semibold normal-case tracking-normal">
                   {editableVisibilities(canUseProjectTeamNotes).map((visibility) => <option key={visibility} value={visibility}>{sessionNoteVisibilityLabel(visibility)}</option>)}
                 </select>
               </label>
             </div>
           </details>
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <p className="text-xs font-bold leading-5 text-orange-950">Private by default. Saving does not send a message.</p>
+            <p className="text-xs font-bold leading-5 text-orange-950">Shared with this Session by default. Choose Only me when a note is private.</p>
             <button type="submit" disabled={busyId === "create"} className="min-h-11 rounded-full bg-orange-800 px-5 py-2 text-xs font-black text-white disabled:opacity-50">{busyId === "create" ? "Saving…" : "Save note"}</button>
           </div>
         </form>
@@ -339,11 +338,8 @@ export function SessionNotesWorkspace({
               ) : null}
               <TagSearchChips tags={note.tags} label={`${note.title || "Session note"} tags`} />
               <div className="mt-4 rounded-xl border border-orange-100 bg-orange-50/45 p-3 text-xs font-semibold leading-5 text-orange-950">
-                <p className="font-black">{audienceHelp(note.visibility)}</p>
-                <p className="mt-1">{note.author.isCurrentActor ? "Authored by you" : `Authored by ${note.author.label}`} · {note.revisionCount} retained revision{note.revisionCount === 1 ? "" : "s"} · updated {new Date(note.updatedAt).toLocaleString()}</p>
+                <p>{note.author.isCurrentActor ? "By you" : `By ${note.author.label}`} · {audienceHelp(note.visibility)} · {note.revisionCount} version{note.revisionCount === 1 ? "" : "s"} · updated {new Date(note.updatedAt).toLocaleString()}</p>
               </div>
-
-              {note.kind === "DECISION" ? <p className="mt-3 inline-flex items-center gap-2 text-xs font-black text-violet-900"><Gavel className="h-4 w-4" aria-hidden="true" />A decision note records context; it does not complete a task or goal.</p> : null}
 
               {note.canEdit ? (
                 <details className="mt-4 rounded-xl border border-orange-100 bg-orange-50/35 p-3">
@@ -356,16 +352,23 @@ export function SessionNotesWorkspace({
                           {editableKinds(canUseProjectTeamNotes).map((kind) => <option key={kind} value={kind}>{sessionNoteKindLabel(kind)}</option>)}
                         </select>
                       </label>
-                      <label className="text-[10px] font-black uppercase tracking-wide text-orange-900">
-                        Who can read it
-                        <select name="visibility" defaultValue={note.visibility} className="mt-1 block min-h-11 w-full rounded-lg border border-orange-200 bg-white px-3 py-2 text-sm font-semibold normal-case tracking-normal">
-                          {editableVisibilities(canUseProjectTeamNotes).map((visibility) => <option key={visibility} value={visibility}>{sessionNoteVisibilityLabel(visibility)}</option>)}
-                        </select>
-                      </label>
+                      {note.canChangeVisibility !== false ? (
+                        <label className="text-[10px] font-black uppercase tracking-wide text-orange-900">
+                          Who can read it
+                          <select name="visibility" defaultValue={note.visibility} className="mt-1 block min-h-11 w-full rounded-lg border border-orange-200 bg-white px-3 py-2 text-sm font-semibold normal-case tracking-normal">
+                            {editableVisibilities(canUseProjectTeamNotes).map((visibility) => <option key={visibility} value={visibility}>{sessionNoteVisibilityLabel(visibility)}</option>)}
+                          </select>
+                        </label>
+                      ) : (
+                        <div className="text-[10px] font-black uppercase tracking-wide text-orange-900">
+                          Shared with
+                          <input type="hidden" name="visibility" value={note.visibility} />
+                          <p className="mt-1 flex min-h-11 items-center rounded-lg border border-orange-100 bg-orange-50 px-3 py-2 text-sm font-semibold normal-case tracking-normal text-orange-950">{sessionNoteVisibilityLabel(note.visibility)}</p>
+                        </div>
+                      )}
                     </div>
                     <label className="text-[10px] font-black uppercase tracking-wide text-orange-900">Title<input name="title" maxLength={500} defaultValue={note.title ?? ""} className="mt-1 block min-h-11 w-full rounded-lg border border-orange-200 bg-white px-3 py-2 text-sm font-semibold normal-case tracking-normal" /></label>
                     <label className="text-[10px] font-black uppercase tracking-wide text-orange-900">Note<textarea name="body" required maxLength={20_000} defaultValue={note.body} rows={6} className="mt-1 block w-full rounded-lg border border-orange-200 bg-white px-3 py-2 text-sm font-semibold normal-case tracking-normal" /></label>
-                    <p className="text-xs font-bold leading-5 text-orange-950">Saving retains the previous text, type, and audience in append-only history. Sharing still causes no delivery or notification.</p>
                     <button type="submit" disabled={busyId === note.id} className="min-h-11 justify-self-start rounded-full bg-orange-800 px-4 py-2 text-xs font-black text-white disabled:opacity-50">Save revision</button>
                   </form>
 
@@ -390,7 +393,7 @@ export function SessionNotesWorkspace({
                   ) : null}
                 </details>
               ) : (
-                <p className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs font-bold text-slate-700">Read-only here. Only the note author can edit its text or audience.</p>
+                <p className="mt-4 text-xs font-bold text-slate-600">Read-only</p>
               )}
             </article>
           ))}
@@ -399,7 +402,7 @@ export function SessionNotesWorkspace({
         <section className="rounded-2xl border border-dashed border-orange-200 bg-white/65 p-6 text-center" aria-label="No notes in this view">
           <MessageSquarePlus className="mx-auto text-orange-600" aria-hidden="true" />
           <h3 className="mt-3 font-serif text-2xl font-black text-[#3d3122]">No notes in this view</h3>
-          <p className="mt-2 text-sm font-semibold text-[#765f40]">Quipsly does not substitute transcript text, tasks, another person’s private notes, or sample content.</p>
+          <p className="mt-2 text-sm font-semibold text-[#765f40]">Add the first note for this Session.</p>
         </section>
       )}
     </div>

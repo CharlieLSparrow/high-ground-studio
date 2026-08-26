@@ -21,8 +21,10 @@ runLocalDatabaseSmoke("Session note editing local database smoke", () => {
   const nonce = randomUUID().slice(0, 8);
   const actorEmail = `note-edit-${nonce}@example.test`;
   const otherEmail = `note-edit-other-${nonce}@example.test`;
+  const outsiderEmail = `note-edit-outsider-${nonce}@example.test`;
   let actorUserId = "";
   let otherUserId = "";
+  let outsiderUserId = "";
   let workspaceId = "";
   let projectId = "";
   let roomId = "";
@@ -31,12 +33,14 @@ runLocalDatabaseSmoke("Session note editing local database smoke", () => {
   let retiredTagId = "";
 
   beforeAll(async () => {
-    const [actor, other] = await Promise.all([
+    const [actor, other, outsider] = await Promise.all([
       prisma.user.create({ data: { primaryEmail: actorEmail, name: "Note author" } }),
       prisma.user.create({ data: { primaryEmail: otherEmail, name: "Other actor" } }),
+      prisma.user.create({ data: { primaryEmail: outsiderEmail, name: "Outside actor" } }),
     ]);
     actorUserId = actor.id;
     otherUserId = other.id;
+    outsiderUserId = outsider.id;
     const workspace = await prisma.studioWorkspace.create({ data: { slug: `note-edit-${nonce}`, name: "Note edit smoke" } });
     workspaceId = workspace.id;
     const project = await prisma.studioProject.create({ data: { workspaceId, slug: `note-edit-${nonce}`, name: "High Ground Odyssey" } });
@@ -91,7 +95,7 @@ runLocalDatabaseSmoke("Session note editing local database smoke", () => {
       if (roomId) await prisma.callRoom.deleteMany({ where: { id: roomId } });
       if (projectId) await prisma.studioProject.deleteMany({ where: { id: projectId } });
       if (workspaceId) await prisma.studioWorkspace.deleteMany({ where: { id: workspaceId } });
-      if (actorUserId || otherUserId) await prisma.user.deleteMany({ where: { id: { in: [actorUserId, otherUserId].filter(Boolean) } } });
+      if (actorUserId || otherUserId || outsiderUserId) await prisma.user.deleteMany({ where: { id: { in: [actorUserId, otherUserId, outsiderUserId].filter(Boolean) } } });
     } finally {
       await prisma.$disconnect();
     }
@@ -123,7 +127,8 @@ runLocalDatabaseSmoke("Session note editing local database smoke", () => {
       ok: true,
       note: { id: noteId, title: "Opening rhythm", body: "Pause, then let the first question breathe." },
       boundaries: {
-        actorOwned: true,
+        authorizedCollaborator: true,
+        privateAuthorOnly: true,
         canonicalSessionMutationAccess: true,
         sessionAccessRechecked: true,
         explicitVisibility: true,
@@ -202,7 +207,7 @@ runLocalDatabaseSmoke("Session note editing local database smoke", () => {
     });
   });
 
-  it("rejects a stale revision and another account without changing saved text", async () => {
+  it("lets the Session owner update shared content without taking over its audience", async () => {
     const current = await prisma.coachingNote.findUniqueOrThrow({ where: { id: noteId } });
     signedInAs(actorUserId, actorEmail);
     const stale = await patch(new Date(0), "Stale title", "Stale body");
@@ -210,12 +215,25 @@ runLocalDatabaseSmoke("Session note editing local database smoke", () => {
     expect(await stale.json()).toMatchObject({ ok: false, code: "CONFLICT", current: { updatedAt: current.updatedAt.toISOString() } });
 
     signedInAs(otherUserId, otherEmail);
-    const denied = await patch(current.updatedAt, "Other title", "Other body");
-    expect(denied.status).toBe(404);
+    const collaboration = await patch(current.updatedAt, "Shared title", "Shared Session context.");
+    expect(collaboration.status).toBe(200);
+    const collaborated = await prisma.coachingNote.findUniqueOrThrow({ where: { id: noteId } });
+    const audienceDenied = await patch(
+      collaborated.updatedAt,
+      "Shared title",
+      "Shared Session context.",
+      { visibility: "AUTHOR_PRIVATE" },
+    );
+    expect(audienceDenied.status).toBe(403);
+    expect(await audienceDenied.json()).toMatchObject({ ok: false, code: "AUDIENCE_AUTHOR_REQUIRED" });
     await expect(prisma.coachingNote.findUnique({ where: { id: noteId }, select: { title: true, body: true } })).resolves.toEqual({
-      title: "Opening decision",
-      body: "Pause, then lead with the listener question.",
+      title: "Shared title",
+      body: "Shared Session context.",
     });
+
+    signedInAs(outsiderUserId, outsiderEmail);
+    const outside = await patch(collaborated.updatedAt, "Outside title", "Outside body");
+    expect(outside.status).toBe(404);
   });
 
   it("atomically applies protected iPhone content, audience, and tags exactly once", async () => {

@@ -14,6 +14,7 @@ import { sessionRelationMatchesProject } from "@/lib/server/session-episode-bind
 import { loadSessionContinuityState } from "@/lib/server/session-continuity";
 import { readTranscriptCorrectionImpactSummary } from "@/lib/server/transcript-corrections";
 import {
+  canEditSessionNoteProjection,
   canUseProjectTeamNotes,
   sessionNoteVisibilityWhere,
 } from "@/lib/server/session-note-access";
@@ -741,7 +742,15 @@ export default async function SessionReviewPage({
           isCurrentActor: row.authorUserId === session.user.id,
         },
         originLabel: noteOriginLabel(row.sourceJson),
-        canEdit: row.authorUserId === session.user.id && row.kind !== "FOLLOW_UP",
+        canEdit: canEditSessionNoteProjection({
+          actorUserId: session.user.id,
+          authorUserId: row.authorUserId,
+          kind: String(row.kind),
+          visibility: String(row.visibility || "AUTHOR_PRIVATE") as SessionNoteVisibility,
+          canMutateSession: canManageSourcePlan,
+          canUseProjectTeam: canViewProjectTeamNotes,
+        }),
+        canChangeVisibility: row.authorUserId === session.user.id,
         revisionCount: row._count?.revisions ?? 0,
         createdAt: row.createdAt.toISOString(),
         updatedAt: row.updatedAt.toISOString(),

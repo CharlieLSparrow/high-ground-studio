@@ -64,13 +64,13 @@ enum MobileSessionNoteVisibility: String, Codable, CaseIterable, Identifiable {
     var boundary: String {
         switch self {
         case .authorPrivate:
-            "Only your verified Quipsly account can read it."
+            "Only you."
         case .sessionShared:
-            "People with access to this Session can read it."
+            "Everyone in this Session."
         case .clientSafe:
-            "It is marked ready for reviewed client follow-up. It is not sent."
+            "Everyone in this Session; available in client follow-up."
         case .projectTeam:
-            "Nest owners and editors can read it. It is not published or delivered."
+            "Your project team."
         }
     }
 }
@@ -291,7 +291,7 @@ final class MobileQuickEntryOutbox: ObservableObject {
             throw MobileQuickEntryStoreError.invalidDestination
         }
         let resolvedNoteKind: MobileSessionNoteKind? = isSessionNote ? noteKind ?? .sessionNote : nil
-        let resolvedNoteVisibility: MobileSessionNoteVisibility? = isSessionNote ? noteVisibility ?? .authorPrivate : nil
+        let resolvedNoteVisibility: MobileSessionNoteVisibility? = isSessionNote ? noteVisibility ?? .sessionShared : nil
 
         let entry = PendingMobileQuickEntry(
             id: UUID(),

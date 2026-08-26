@@ -9360,7 +9360,7 @@ private struct CaptureSessionNotesSheetContent: View {
                 ForEach(pendingNotes.prefix(4)) { entry in
                     VStack(alignment: .leading, spacing: 5) {
                         HStack(spacing: 6) {
-                            Label(entry.disposition == .held ? "Needs review" : "Saving", systemImage: "iphone.gen3.radiowaves.left.and.right")
+                            Label(entry.disposition == .held ? "Needs attention" : "Saving", systemImage: "iphone.gen3.radiowaves.left.and.right")
                                 .font(.caption2.weight(.bold))
                                 .foregroundStyle(.orange)
                             Spacer(minLength: 0)
@@ -9495,7 +9495,7 @@ private struct CaptureSessionNotesSheetContent: View {
                         if let protectedEdit {
                             Label(
                                 protectedEdit.disposition == .held
-                                    ? "Changes need review"
+                                    ? "Changes need attention"
                                     : "Saving changes",
                                 systemImage: protectedEdit.disposition == .held
                                     ? "exclamationmark.triangle.fill"
@@ -9521,7 +9521,7 @@ private struct CaptureSessionNotesSheetContent: View {
                                 )
                             } label: {
                                 Label(
-                                    protectedEdit == nil ? "Edit note" : "Review changes",
+                                    protectedEdit == nil ? "Edit note" : "Resolve changes",
                                     systemImage: protectedEdit == nil ? "pencil" : "doc.text.magnifyingglass"
                                 )
                             }
@@ -9617,7 +9617,8 @@ private struct CaptureSessionNoteEditSheet: View {
 
     private var availableVisibilities: [MobileSessionNoteVisibility] {
         MobileSessionNoteVisibility.allCases.filter {
-            $0 != .projectTeam || canUseProjectTeamNotes || $0 == noteVisibility
+            ($0 != .projectTeam || canUseProjectTeamNotes || $0 == noteVisibility)
+                && (note.canChangeVisibility != false || $0 == noteVisibility)
         }
     }
 
@@ -9648,7 +9649,7 @@ private struct CaptureSessionNoteEditSheet: View {
                     Section("Unsaved changes") {
                         LabeledContent(
                             "State",
-                            value: protectedEdit.disposition == .held ? "Held for review" : "Waiting for Nest"
+                            value: protectedEdit.disposition == .held ? "Needs attention" : "Waiting for Nest"
                         )
                         if protectedEdit.disposition == .held {
                             Text("A newer version was saved elsewhere. Compare it below before choosing Save.")
@@ -9803,7 +9804,7 @@ private struct CaptureSessionNoteEditSheet: View {
                     Text("Earlier versions stay available after you save.")
                 }
             }
-            .navigationTitle(protectedEdit == nil ? "Edit note" : "Review changes")
+            .navigationTitle(protectedEdit == nil ? "Edit note" : "Resolve changes")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -9854,7 +9855,7 @@ struct CaptureQuickEntrySheet: View {
     @State private var oneTimeReminderAt = Date().addingTimeInterval(3_600)
     @State private var destination = "SESSION"
     @State private var noteKind = MobileSessionNoteKind.sessionNote
-    @State private var noteVisibility = MobileSessionNoteVisibility.authorPrivate
+    @State private var noteVisibility = MobileSessionNoteVisibility.sessionShared
     @State private var showsNoteDetails = false
     @State private var savesWhenDismissed = false
     @FocusState private var focusedField: FocusedField?
@@ -10195,7 +10196,9 @@ struct CaptureQuickEntrySheet: View {
                 } footer: {
                     Text(kind == .source
                         ? "Saved privately to Inbox until you file it."
-                        : "Saved privately by default. If you are offline, Quipsly syncs it when you reconnect.")
+                        : savesSessionNote
+                            ? "Shared with this Session. Choose Only me for a private note."
+                            : "Saved privately. If you are offline, Quipsly syncs it when you reconnect.")
                 }
 
                 Section(kind == .note ? "Note" : kind.title) {
@@ -10389,7 +10392,7 @@ struct CaptureQuickEntrySheet: View {
                 noteVisibility = .authorPrivate
             } else {
                 if !availableNoteKinds.contains(noteKind) { noteKind = .sessionNote }
-                if !availableNoteVisibilities.contains(noteVisibility) { noteVisibility = .authorPrivate }
+                noteVisibility = .sessionShared
             }
         }
         .onDisappear {

@@ -171,7 +171,10 @@ final class CaptureExperienceUITests: XCTestCase {
             app.scrollViews["CaptureCoachingHome"].waitForExistence(timeout: 5),
             "Coaching should open as a native iPhone surface, not a web handoff."
         )
-        XCTAssertTrue(app.staticTexts["Coach from this iPhone"].exists)
+        XCTAssertTrue(app.staticTexts["Coaching"].exists)
+        XCTAssertTrue(
+            app.staticTexts["Sessions, clients, recordings, transcripts, notes, goals, and tasks—together on this iPhone."].exists
+        )
         let newAppointment = app.buttons["CaptureCoachingNewAppointmentButton"]
         XCTAssertTrue(newAppointment.exists)
         XCTAssertFalse(
@@ -3045,9 +3048,8 @@ final class CaptureExperienceUITests: XCTestCase {
         let consentSheet = app.otherElements["CaptureConsentConfirmationSheet"]
         XCTAssertTrue(consentSheet.waitForExistence(timeout: 5))
 
-        let recordingOptions = app.buttons["Recording options"]
+        let recordingOptions = app.staticTexts["Recording options"]
         XCTAssertTrue(recordingOptions.waitForExistence(timeout: 3))
-        recordingOptions.tap()
 
         let saveChoices = app.buttons["CaptureConsentSaveChoicesButton"]
         XCTAssertTrue(saveChoices.exists)

@@ -3,12 +3,14 @@ import { createHash, randomUUID } from "node:crypto";
 import type { PrismaClient } from "@prisma/client";
 
 import {
-  EDITABLE_SESSION_NOTE_KINDS,
   type EditableSessionNoteKind,
   type SessionNoteVisibility,
 } from "@/lib/session-note-contract";
 import { sessionMutationAccessWhere } from "@/lib/server/session-access";
-import { canUseProjectTeamNotes } from "@/lib/server/session-note-access";
+import {
+  canUseProjectTeamNotes,
+  sessionNoteMutationWhere,
+} from "@/lib/server/session-note-access";
 
 type SessionActor = {
   id: string;
@@ -57,6 +59,7 @@ export type EditSessionNoteResult =
         | "NOT_FOUND"
         | "CONFLICT"
         | "REQUEST_ID_CONFLICT"
+        | "AUDIENCE_AUTHOR_REQUIRED"
         | "PROJECT_ROLE_REQUIRED"
         | "TAGS_UNAVAILABLE";
       error: string;
@@ -166,7 +169,7 @@ async function replayResult(input: {
     select: NOTE_SELECT,
   });
   if (!current) {
-    return { ok: false, code: "NOT_FOUND", error: "This actor-owned Session note is no longer available." };
+    return { ok: false, code: "NOT_FOUND", error: "This Session note is no longer available." };
   }
   return {
     ok: true,
@@ -197,13 +200,12 @@ export async function editSessionNote(input: EditSessionNoteInput): Promise<Edit
   const note = await prisma.coachingNote.findFirst({
     where: {
       id: input.noteId,
-      authorUserId: input.actor.id,
-      kind: { in: [...EDITABLE_SESSION_NOTE_KINDS] },
+      ...sessionNoteMutationWhere(input.actor),
     },
     select: NOTE_SELECT,
   });
   if (!note?.roomId) {
-    return { ok: false, code: "NOT_FOUND", error: "This actor-owned Session note is no longer available." };
+    return { ok: false, code: "NOT_FOUND", error: "This Session note is no longer available." };
   }
 
   const room = await prisma.callRoom.findFirst({
@@ -228,6 +230,17 @@ export async function editSessionNote(input: EditSessionNoteInput): Promise<Edit
 
   const nextKind = input.kind ?? note.kind as EditableSessionNoteKind;
   const nextVisibility = input.visibility ?? note.visibility as SessionNoteVisibility;
+  if (
+    input.visibility !== null
+    && nextVisibility !== note.visibility
+    && note.authorUserId !== input.actor.id
+  ) {
+    return {
+      ok: false,
+      code: "AUDIENCE_AUTHOR_REQUIRED",
+      error: "Only the note author can change who sees this shared note.",
+    };
+  }
   const currentTagIds: string[] = note.tagLinks
     .map((link: any) => String(link.tag.id))
     .sort();
@@ -324,8 +337,7 @@ export async function editSessionNote(input: EditSessionNoteInput): Promise<Edit
         where: {
           id: note.id,
           roomId: currentRoom.id,
-          authorUserId: input.actor.id,
-          kind: { in: [...EDITABLE_SESSION_NOTE_KINDS] },
+          ...sessionNoteMutationWhere(input.actor),
           updatedAt: input.expectedUpdatedAt,
         },
         select: NOTE_SELECT,
@@ -377,8 +389,7 @@ export async function editSessionNote(input: EditSessionNoteInput): Promise<Edit
         where: {
           id: note.id,
           roomId: currentRoom.id,
-          authorUserId: input.actor.id,
-          kind: { in: [...EDITABLE_SESSION_NOTE_KINDS] },
+          ...sessionNoteMutationWhere(input.actor),
           updatedAt: input.expectedUpdatedAt,
         },
         data: {

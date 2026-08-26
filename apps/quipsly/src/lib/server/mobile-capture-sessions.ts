@@ -22,8 +22,10 @@ import {
   buildCaptureSourceAlignmentProposal,
 } from "./capture-source-alignment";
 import { mobileSessionScheduledTimezone } from "./mobile-capture-session-schedule";
+import { canEditSessionNoteProjection } from "./session-note-access";
 import { sessionProtectedPlaybackBinding } from "./session-protected-playback";
 import { sessionTranscriptResults } from "./session-transcript-results";
+import type { SessionNoteVisibility } from "../session-note-contract";
 
 const MOBILE_CAPTURE_ACTION_PACKET_KIND = "quipsly-capture-action-packet-v1";
 const DELIBERATE_SESSION_NOTE_KINDS = new Set([
@@ -1150,6 +1152,14 @@ export function mapMobileCaptureSessionsForUser(input: {
       (note: any) => note.kind === "HIGHLIGHT",
     );
     const packetReviewLanes = mobilePacketReviewLanes(packetSummary);
+    const canMutateSession = input.isStaff === true
+      || room.createdByUserId === input.userId
+      || Boolean(participant && participant.role !== "OBSERVER")
+      || booking?.clientUserId === input.userId
+      || booking?.coachUserId === input.userId
+      || (sessionProject.projectId != null && productionNoteProjectIds.has(sessionProject.projectId));
+    const canUseProjectTeam = input.isStaff === true
+      || (sessionProject.projectId != null && productionNoteProjectIds.has(sessionProject.projectId));
     const sessionNotes = room.notes
       .filter((note: any) => DELIBERATE_SESSION_NOTE_KINDS.has(note.kind))
       .map((note: any) => {
@@ -1177,8 +1187,15 @@ export function mapMobileCaptureSessionsForUser(input: {
             note.authorUser?.primaryEmail ||
             "Note author",
           isMine: note.authorUserId === input.userId,
-          canEdit:
-            note.authorUserId === input.userId && note.kind !== "FOLLOW_UP",
+          canEdit: canEditSessionNoteProjection({
+            actorUserId: input.userId,
+            authorUserId: note.authorUserId,
+            kind: String(note.kind),
+            visibility: String(note.visibility || "AUTHOR_PRIVATE") as SessionNoteVisibility,
+            canMutateSession,
+            canUseProjectTeam,
+          }),
+          canChangeVisibility: note.authorUserId === input.userId,
           origin,
           revisionCount: note._count?.revisions ?? 0,
           tags: (note.tagLinks || [])
@@ -1568,10 +1585,7 @@ export function mapMobileCaptureSessionsForUser(input: {
       priorContinuity: input.priorContinuityByRoomId?.[room.id] ?? null,
       priorFollowThrough: input.priorFollowThroughByRoomId?.[room.id] ?? null,
       currentFollowThrough: input.currentFollowThroughByRoomId?.[room.id] ?? null,
-      canUseProjectTeamNotes:
-        input.isStaff === true ||
-        (sessionProject.projectId != null &&
-          productionNoteProjectIds.has(sessionProject.projectId)),
+      canUseProjectTeamNotes: canUseProjectTeam,
       sessionNotes,
       afterCaptureNextAction: afterCaptureLine,
       nextAction:

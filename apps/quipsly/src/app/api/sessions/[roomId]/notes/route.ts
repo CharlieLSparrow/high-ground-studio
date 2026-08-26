@@ -87,6 +87,7 @@ function serializedNote(row: any, actorUserId: string) {
     },
     originLabel: "Nest Session note",
     canEdit: row.authorUserId === actorUserId,
+    canChangeVisibility: row.authorUserId === actorUserId,
     revisionCount: row._count?.revisions ?? 0,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),

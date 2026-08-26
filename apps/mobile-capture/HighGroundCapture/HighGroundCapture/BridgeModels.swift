@@ -391,6 +391,7 @@ struct MobileCaptureSessionNote: Codable, Identifiable, Hashable {
     let authorLabel: String
     let isMine: Bool
     let canEdit: Bool
+    let canChangeVisibility: Bool?
     let origin: String
     let revisionCount: Int
     let tags: [MobileCaptureTag]
@@ -420,13 +421,13 @@ struct MobileCaptureSessionNote: Codable, Identifiable, Hashable {
     var audienceBoundary: String {
         switch visibility.uppercased() {
         case "SESSION_SHARED":
-            "Visible to people with access to this Session."
+            "Everyone in this Session."
         case "CLIENT_SAFE":
-            "Ready for reviewed client follow-up. It has not been sent."
+            "Everyone in this Session; available in client follow-up."
         case "PROJECT_TEAM":
-            "Visible to the production-capable Nest team. It is not published."
+            "Your project team."
         default:
-            "Visible only to the author, including against staff access."
+            "Only you."
         }
     }
 }
