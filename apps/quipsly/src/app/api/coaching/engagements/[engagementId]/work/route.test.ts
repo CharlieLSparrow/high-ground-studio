@@ -84,6 +84,16 @@ describe("coaching engagement work", () => {
             updatedAt: now,
             authorUser: { name: "Coach", primaryEmail: actor.primaryEmail },
           },
+          {
+            id: "note-shared",
+            authorUserId: "client-1",
+            title: "Shared reflection",
+            body: "Keep the next step small.",
+            visibility: "SESSION_SHARED",
+            createdAt: now,
+            updatedAt: now,
+            authorUser: { name: "Client", primaryEmail: "client@example.test" },
+          },
         ],
         actionItems: [],
         goals: [],
@@ -114,6 +124,14 @@ describe("coaching engagement work", () => {
             kind: "NOTE",
             visibility: "PRIVATE",
             canEdit: true,
+            canChangeVisibility: true,
+          },
+          {
+            id: "note-shared",
+            kind: "NOTE",
+            visibility: "SHARED",
+            canEdit: true,
+            canChangeVisibility: false,
           },
         ],
       },
@@ -128,6 +146,68 @@ describe("coaching engagement work", () => {
         { authorUserId: actor.id },
       ],
     });
+  });
+
+  it("keeps every mutation affordance off for a read-only relationship member", async () => {
+    const findFirst = jest
+      .fn()
+      .mockResolvedValueOnce({
+        id: engagementId,
+        title: "Client and observer",
+        status: "ACTIVE",
+        members: [],
+        notes: [{
+          id: "note-shared",
+          authorUserId: actor.id,
+          title: "Shared note",
+          body: "Visible without mutation authority.",
+          visibility: "SESSION_SHARED",
+          sourceJson: {},
+          createdAt: now,
+          updatedAt: now,
+          authorUser: { name: "Coach", primaryEmail: actor.primaryEmail },
+        }],
+        actionItems: [{
+          id: "task-1",
+          assignedUserId: "client-1",
+          title: "Try the exercise",
+          detail: null,
+          status: "OPEN",
+          dueAt: null,
+          sourceJson: {},
+          createdAt: now,
+          updatedAt: now,
+          assignedUser: { name: "Client", primaryEmail: "client@example.test" },
+        }],
+        goals: [{
+          id: "goal-1",
+          ownerUserId: "client-1",
+          title: "Build consistency",
+          description: null,
+          status: "ACTIVE",
+          targetAt: null,
+          sourceJson: {},
+          createdAt: now,
+          updatedAt: now,
+          owner: { name: "Client", primaryEmail: "client@example.test" },
+        }],
+      })
+      .mockResolvedValueOnce(null);
+    jest.mocked(getPrismaClient).mockReturnValue({
+      coachingEngagement: { findFirst },
+    } as any);
+
+    const response = await GET(request("GET"), {
+      params: Promise.resolve({ engagementId }),
+    });
+    const payload = await response.json();
+
+    expect(payload.engagement.canWrite).toBe(false);
+    expect(payload.engagement.entries).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: "note-shared", canEdit: false, canChangeVisibility: false }),
+      expect.objectContaining({ id: "task-1", canEdit: false }),
+      expect.objectContaining({ id: "goal-1", canEdit: false }),
+    ]));
   });
 
   it("creates a retry-safe client-owned task on the relationship boundary", async () => {
@@ -253,6 +333,119 @@ describe("coaching engagement work", () => {
       }),
       select: expect.any(Object),
     });
+  });
+
+  it("lets an active collaborator edit a shared note without taking it private", async () => {
+    const shared = {
+      id: "note-shared",
+      authorUserId: "client-1",
+      title: "Shared reflection",
+      body: "Keep the next step small.",
+      visibility: "SESSION_SHARED",
+      sourceJson: { schema: "quipsly-coaching-engagement-work-v1" },
+      createdAt: now,
+      updatedAt: now,
+      authorUser: { name: "Client", primaryEmail: "client@example.test" },
+      _count: { revisions: 1 },
+    };
+    const update = jest.fn().mockResolvedValue({
+      ...shared,
+      body: "Keep the next step tiny and specific.",
+      updatedAt: new Date("2026-08-19T21:06:00.000Z"),
+    });
+    const prisma = transaction({
+      coachingEngagement: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: engagementId,
+          members: [coachMember, clientMember],
+        }),
+      },
+      coachingNote: { findFirst: jest.fn().mockResolvedValue(shared), update },
+      actionItem: { findFirst: jest.fn(), update: jest.fn() },
+      goal: { findFirst: jest.fn(), update: jest.fn() },
+    });
+
+    const response = await PATCH(
+      request("PATCH", {
+        id: shared.id,
+        kind: "NOTE",
+        title: shared.title,
+        body: "Keep the next step tiny and specific.",
+        visibility: "SHARED",
+        expectedUpdatedAt: now.toISOString(),
+      }),
+      { params: Promise.resolve({ engagementId }) },
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.entry).toMatchObject({
+      id: shared.id,
+      canEdit: true,
+      canChangeVisibility: false,
+    });
+    expect(prisma.coachingNote.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        id: shared.id,
+        engagementId,
+        OR: [
+          { authorUserId: actor.id },
+          { visibility: { in: ["SESSION_SHARED", "CLIENT_SAFE"] } },
+        ],
+      }),
+    }));
+    expect(update).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        body: "Keep the next step tiny and specific.",
+        revisions: { create: expect.objectContaining({ actorUserId: actor.id }) },
+      }),
+    }));
+  });
+
+  it("keeps another author's shared note shared", async () => {
+    const shared = {
+      id: "note-shared",
+      authorUserId: "client-1",
+      title: "Shared reflection",
+      body: "Keep the next step small.",
+      visibility: "SESSION_SHARED",
+      sourceJson: {},
+      createdAt: now,
+      updatedAt: now,
+      authorUser: { name: "Client", primaryEmail: "client@example.test" },
+      _count: { revisions: 1 },
+    };
+    const update = jest.fn();
+    transaction({
+      coachingEngagement: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: engagementId,
+          members: [coachMember, clientMember],
+        }),
+      },
+      coachingNote: { findFirst: jest.fn().mockResolvedValue(shared), update },
+      actionItem: { findFirst: jest.fn(), update: jest.fn() },
+      goal: { findFirst: jest.fn(), update: jest.fn() },
+    });
+
+    const response = await PATCH(
+      request("PATCH", {
+        id: shared.id,
+        kind: "NOTE",
+        title: shared.title,
+        body: shared.body,
+        visibility: "PRIVATE",
+        expectedUpdatedAt: now.toISOString(),
+      }),
+      { params: Promise.resolve({ engagementId }) },
+    );
+
+    expect(response.status).toBe(403);
+    expect(await response.json()).toEqual({
+      ok: false,
+      error: "Only the note author can make a shared note private.",
+    });
+    expect(update).not.toHaveBeenCalled();
   });
 
   it("refuses to assign shared work outside the active relationship", async () => {

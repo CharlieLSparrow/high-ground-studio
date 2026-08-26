@@ -84,7 +84,18 @@ function removalInput(input: Record<string, unknown>) {
   };
 }
 
-function notePayload(row: any, actorUserId: string) {
+function collaborativeNoteWhere(actorUserId: string) {
+  return {
+    OR: [
+      { authorUserId: actorUserId },
+      { visibility: { in: ["SESSION_SHARED", "CLIENT_SAFE"] } },
+    ],
+  };
+}
+
+function notePayload(row: any, actorUserId: string, canWrite = true) {
+  const isAuthor = row.authorUserId === actorUserId;
+  const isShared = ["SESSION_SHARED", "CLIENT_SAFE"].includes(row.visibility);
   return {
     id: row.id,
     kind: "NOTE" as const,
@@ -99,13 +110,14 @@ function notePayload(row: any, actorUserId: string) {
       : null,
     visibility: row.visibility === "AUTHOR_PRIVATE" ? "PRIVATE" : "SHARED",
     dueAt: null,
-    canEdit: row.authorUserId === actorUserId,
+    canEdit: canWrite && (isAuthor || isShared),
+    canChangeVisibility: canWrite && isAuthor,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
 }
 
-function taskPayload(row: any) {
+function taskPayload(row: any, canWrite = true) {
   return {
     id: row.id,
     kind: "TASK" as const,
@@ -120,13 +132,13 @@ function taskPayload(row: any) {
       : null,
     visibility: "SHARED" as const,
     dueAt: row.dueAt?.toISOString() ?? null,
-    canEdit: true,
+    canEdit: canWrite,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
 }
 
-function goalPayload(row: any) {
+function goalPayload(row: any, canWrite = true) {
   return {
     id: row.id,
     kind: "GOAL" as const,
@@ -139,7 +151,7 @@ function goalPayload(row: any) {
     },
     visibility: "SHARED" as const,
     dueAt: row.targetAt?.toISOString() ?? null,
-    canEdit: true,
+    canEdit: canWrite,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
@@ -286,13 +298,13 @@ export async function GET(
     const entries = [
       ...engagement.notes
         .filter((row: any) => !activeRemoval(row.sourceJson))
-        .map((row: any) => notePayload(row, session.user.id)),
+        .map((row: any) => notePayload(row, session.user.id, Boolean(writable))),
       ...engagement.actionItems
         .filter((row: any) => !activeRemoval(row.sourceJson))
-        .map((row: any) => taskPayload(row)),
+        .map((row: any) => taskPayload(row, Boolean(writable))),
       ...engagement.goals
         .filter((row: any) => !activeRemoval(row.sourceJson))
-        .map((row: any) => goalPayload(row)),
+        .map((row: any) => goalPayload(row, Boolean(writable))),
     ].sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
 
     return privateJson({
@@ -677,7 +689,7 @@ export async function PATCH(
             where: {
               id,
               engagementId,
-              authorUserId: session.user.id,
+              ...collaborativeNoteWhere(session.user.id),
               updatedAt: expectedUpdatedAt,
             },
             select: {
@@ -691,6 +703,12 @@ export async function PATCH(
             text(input.visibility, 20).toUpperCase() === "PRIVATE"
               ? "AUTHOR_PRIVATE"
               : "SESSION_SHARED";
+          if (
+            visibility === "AUTHOR_PRIVATE" &&
+            current.authorUserId !== session.user.id
+          ) {
+            return { kind: "private-author-required" as const };
+          }
           const updated = await tx.coachingNote.update({
             where: { id },
             data: {
@@ -816,6 +834,15 @@ export async function PATCH(
         { status: 400 },
       );
     }
+    if (result.kind === "private-author-required") {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "Only the note author can make a shared note private.",
+        },
+        { status: 403 },
+      );
+    }
     if (result.kind === "conflict") {
       return NextResponse.json(
         { ok: false, error: "This item changed. Refresh before saving again." },
@@ -881,7 +908,7 @@ export async function DELETE(
                 where: {
                   id,
                   engagementId,
-                  authorUserId: session.user.id,
+                  ...collaborativeNoteWhere(session.user.id),
                   updatedAt: expectedUpdatedAt,
                 },
                 select: {
@@ -1033,7 +1060,7 @@ export async function PUT(
                 where: {
                   id,
                   engagementId,
-                  authorUserId: session.user.id,
+                  ...collaborativeNoteWhere(session.user.id),
                   updatedAt: expectedUpdatedAt,
                 },
                 select: {

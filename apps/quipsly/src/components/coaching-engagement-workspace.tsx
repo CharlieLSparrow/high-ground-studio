@@ -25,6 +25,7 @@ export type CoachingEngagementWorkEntry = {
   visibility: "PRIVATE" | "SHARED";
   dueAt: string | null;
   canEdit: boolean;
+  canChangeVisibility?: boolean;
   createdAt: string;
   updatedAt: string;
 };
@@ -591,15 +592,19 @@ export function CoachingEngagementWorkspace({
                               ))}
                             </select>
                           ) : (
-                            <select
-                              name="visibility"
-                              defaultValue={entry.visibility}
-                              className="min-h-11 rounded-xl border border-[#d8c7a7] bg-white px-3 text-sm"
-                              aria-label="Note privacy"
-                            >
-                              <option value="SHARED">Shared</option>
-                              <option value="PRIVATE">Only me</option>
-                            </select>
+                            entry.canChangeVisibility ? (
+                              <select
+                                name="visibility"
+                                defaultValue={entry.visibility}
+                                className="min-h-11 rounded-xl border border-[#d8c7a7] bg-white px-3 text-sm"
+                                aria-label="Note privacy"
+                              >
+                                <option value="SHARED">Shared</option>
+                                <option value="PRIVATE">Only me</option>
+                              </select>
+                            ) : (
+                              <input type="hidden" name="visibility" value="SHARED" />
+                            )
                           )}
                           {entry.kind !== "NOTE" ? (
                             <input

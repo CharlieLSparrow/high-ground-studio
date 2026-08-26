@@ -309,6 +309,7 @@ struct MobileCoachingEngagementWorkEntry: Codable, Identifiable, Hashable {
     let visibility: String
     let dueAt: String?
     let canEdit: Bool
+    let canChangeVisibility: Bool?
     let createdAt: String
     let updatedAt: String
 
@@ -3618,21 +3619,19 @@ private struct MobileCoachingWorkEditorSheet: View {
 
                 if kind == "NOTE" {
                     Section("Who can see it?") {
-                        Toggle(
-                            "Only me",
-                            isOn: Binding(
-                                get: { visibility == "PRIVATE" },
-                                set: { visibility = $0 ? "PRIVATE" : "SHARED" }
+                        if entry?.canChangeVisibility != false {
+                            Toggle(
+                                "Only me",
+                                isOn: Binding(
+                                    get: { visibility == "PRIVATE" },
+                                    set: { visibility = $0 ? "PRIVATE" : "SHARED" }
+                                )
                             )
-                        )
-                        .accessibilityIdentifier("CaptureCoachingNoteVisibility")
-                        Text(
-                            visibility == "PRIVATE"
-                                ? "Only you can read this note. Room access, staff status, and the shared client space do not widen it."
-                                : "Every active member of this client space can read this note."
-                        )
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                            .accessibilityIdentifier("CaptureCoachingNoteVisibility")
+                        }
+                        Text(visibility == "PRIVATE" ? "Only you" : "Everyone in this coaching space")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
                 } else {
                     Section(kind == "TASK" ? "Task owner" : "Goal owner") {

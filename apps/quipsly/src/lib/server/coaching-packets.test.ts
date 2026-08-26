@@ -153,7 +153,10 @@ describe("transcript coaching follow-through", () => {
         committedActionItemId: expect.stringMatching(/^transcript-task-/),
       }),
     ]);
-    expect(summaryWrite).toMatchObject({ visibility: "SESSION_SHARED" });
+    expect(summaryWrite).toMatchObject({
+      visibility: "SESSION_SHARED",
+      engagementId: "engagement-1",
+    });
     expect(summaryWrite?.sourceJson).toMatchObject({
       packetPurpose: "COACHING",
       packetTemplateVersion: "quipsly-session-packet-v4",

@@ -30,6 +30,17 @@ function personLabel(person: { name: string | null; primaryEmail: string }) {
   return person.name || person.primaryEmail;
 }
 
+function isRelationshipWorkRemoved(sourceJson: unknown) {
+  if (!sourceJson || typeof sourceJson !== "object" || Array.isArray(sourceJson)) return false;
+  const removal = (sourceJson as Record<string, unknown>).relationshipWorkRemoval;
+  return Boolean(
+    removal &&
+    typeof removal === "object" &&
+    !Array.isArray(removal) &&
+    (removal as Record<string, unknown>).active === true,
+  );
+}
+
 export default async function CoachingEngagementPage({
   params,
 }: {
@@ -114,6 +125,7 @@ export default async function CoachingEngagementPage({
           body: true,
           visibility: true,
           authorUserId: true,
+          sourceJson: true,
           createdAt: true,
           updatedAt: true,
           authorUser: { select: { name: true, primaryEmail: true } },
@@ -132,6 +144,7 @@ export default async function CoachingEngagementPage({
           status: true,
           dueAt: true,
           assignedUserId: true,
+          sourceJson: true,
           createdAt: true,
           updatedAt: true,
           assignedUser: { select: { name: true, primaryEmail: true } },
@@ -150,6 +163,7 @@ export default async function CoachingEngagementPage({
           status: true,
           targetAt: true,
           ownerUserId: true,
+          sourceJson: true,
           createdAt: true,
           updatedAt: true,
           owner: { select: { name: true, primaryEmail: true } },
@@ -191,8 +205,11 @@ export default async function CoachingEngagementPage({
       select: { id: true },
     }),
   );
+  const activeNotes = engagement.notes.filter((note) => !isRelationshipWorkRemoved(note.sourceJson));
+  const activeTasks = engagement.actionItems.filter((task) => !isRelationshipWorkRemoved(task.sourceJson));
+  const activeGoals = engagement.goals.filter((goal) => !isRelationshipWorkRemoved(goal.sourceJson));
   const workEntries: CoachingEngagementWorkEntry[] = [
-    ...engagement.notes.map((note) => ({
+    ...activeNotes.map((note) => ({
       id: note.id,
       kind: "NOTE" as const,
       title: note.title,
@@ -206,11 +223,15 @@ export default async function CoachingEngagementPage({
           ? ("PRIVATE" as const)
           : ("SHARED" as const),
       dueAt: null,
-      canEdit: note.authorUserId === session.user.id,
+      canEdit: canPost && (
+        note.authorUserId === session.user.id ||
+        note.visibility !== "AUTHOR_PRIVATE"
+      ),
+      canChangeVisibility: note.authorUserId === session.user.id,
       createdAt: note.createdAt.toISOString(),
       updatedAt: note.updatedAt.toISOString(),
     })),
-    ...engagement.actionItems.map((task) => ({
+    ...activeTasks.map((task) => ({
       id: task.id,
       kind: "TASK" as const,
       title: task.title,
@@ -222,10 +243,11 @@ export default async function CoachingEngagementPage({
       visibility: "SHARED" as const,
       dueAt: task.dueAt?.toISOString() ?? null,
       canEdit: canPost,
+      canChangeVisibility: false,
       createdAt: task.createdAt.toISOString(),
       updatedAt: task.updatedAt.toISOString(),
     })),
-    ...engagement.goals.map((goal) => ({
+    ...activeGoals.map((goal) => ({
       id: goal.id,
       kind: "GOAL" as const,
       title: goal.title,
@@ -235,6 +257,7 @@ export default async function CoachingEngagementPage({
       visibility: "SHARED" as const,
       dueAt: goal.targetAt?.toISOString() ?? null,
       canEdit: canPost,
+      canChangeVisibility: false,
       createdAt: goal.createdAt.toISOString(),
       updatedAt: goal.updatedAt.toISOString(),
     })),
@@ -302,7 +325,7 @@ export default async function CoachingEngagementPage({
           followUpReleased: lastRoom.outputs.length > 0,
         }
       : null,
-    tasks: engagement.actionItems
+    tasks: activeTasks
       .filter((task) => task.status === "OPEN")
       .map((task) => ({
         id: task.id,
@@ -311,7 +334,7 @@ export default async function CoachingEngagementPage({
         ownerLabel: task.assignedUser ? personLabel(task.assignedUser) : null,
         overdue: Boolean(task.dueAt && task.dueAt.getTime() < now),
       })),
-    goals: engagement.goals
+    goals: activeGoals
       .filter((goal) => goal.status === "ACTIVE")
       .map((goal) => ({
         id: goal.id,
@@ -319,25 +342,25 @@ export default async function CoachingEngagementPage({
         targetAt: goal.targetAt?.toISOString() ?? null,
         ownerLabel: personLabel(goal.owner),
       })),
-    recentNotes: engagement.notes.map((note) => ({
+    recentNotes: activeNotes.map((note) => ({
       id: note.id,
       title: note.title || "Note",
       body: note.body,
       private: note.visibility === "AUTHOR_PRIVATE",
     })),
-    openTaskCount: engagement.actionItems.filter(
+    openTaskCount: activeTasks.filter(
       (task) => task.status === "OPEN",
     ).length,
-    overdueTaskCount: engagement.actionItems.filter(
+    overdueTaskCount: activeTasks.filter(
       (task) =>
         task.status === "OPEN" && task.dueAt && task.dueAt.getTime() < now,
     ).length,
-    activeGoalCount: engagement.goals.filter((goal) => goal.status === "ACTIVE")
+    activeGoalCount: activeGoals.filter((goal) => goal.status === "ACTIVE")
       .length,
-    sharedNoteCount: engagement.notes.filter(
+    sharedNoteCount: activeNotes.filter(
       (note) => note.visibility !== "AUTHOR_PRIVATE",
     ).length,
-    privateNoteCount: engagement.notes.filter(
+    privateNoteCount: activeNotes.filter(
       (note) => note.visibility === "AUTHOR_PRIVATE",
     ).length,
   };

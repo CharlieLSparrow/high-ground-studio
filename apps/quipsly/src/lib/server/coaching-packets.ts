@@ -1302,6 +1302,7 @@ export async function buildCoachingPacketFromTranscriptJob(
     data: {
       roomId: job.roomId,
       bookingId: job.room?.bookingId ?? null,
+      engagementId: job.room?.coachingEngagementId ?? null,
       authorUserId: args.authorUserId || null,
       kind: "SUMMARY",
       visibility: "SESSION_SHARED",
@@ -1440,6 +1441,7 @@ export async function buildCoachingPacketFromTranscriptJob(
       data: {
         roomId: job.roomId,
         bookingId: job.room?.bookingId ?? null,
+        engagementId: job.room?.coachingEngagementId ?? null,
         authorUserId: args.authorUserId || null,
         kind: "HIGHLIGHT",
         visibility: "SESSION_SHARED",
