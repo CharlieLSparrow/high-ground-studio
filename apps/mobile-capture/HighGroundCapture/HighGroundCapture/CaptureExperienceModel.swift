@@ -382,6 +382,7 @@ final class CaptureExperienceModel: ObservableObject {
     private var videoConsentMonitorTask: Task<Void, Never>?
     private var isStoppingCoordinatedCapture = false
     private var didReconcileReceiptOutbox = false
+    private var initialSessionAuthorityVerifiedAt: Date?
     private var observedReceiptOwnerAccountID: String?
     private var automaticallyQueuedRecoveredRecordingIDs = Set<UUID>()
     private var cancellables = Set<AnyCancellable>()
@@ -782,6 +783,10 @@ final class CaptureExperienceModel: ObservableObject {
     /// independently without holding the requested room behind a dashboard.
     private func loadInitialSessionAuthority() async -> CaptureSessionLoadOutcome {
         let outcome = await sessionClient.load()
+        initialSessionAuthorityVerifiedAt = outcome == .loaded
+            && !sessionClient.sessionsAreStale
+            ? Date()
+            : nil
         hasCompletedInitialSessionAuthorityLoad = true
         return outcome
     }
@@ -1132,24 +1137,32 @@ final class CaptureExperienceModel: ObservableObject {
             return .retryWhenOnline
         }
 
-        let outcome = await sessionClient.load(
-            authoritativeSessionID: deepLink.roomID
-        )
-        switch outcome {
-        case .loaded:
-            break
-        case .transportUnavailable:
-            errorMessage = sessionClient.errorMessage
-                ?? "Nest is temporarily unavailable. The Session app link remains pending for retry."
-            return .retryWhenOnline
-        case .forbidden, .authoritativeAbsent:
-            errorMessage = sessionClient.errorMessage
-                ?? "This account cannot open the linked Session. No access was granted."
-            return .rejected
-        case .invalidResponse:
-            errorMessage = sessionClient.errorMessage
-                ?? "Nest could not verify the linked Session. Nothing was opened or changed."
-            return .rejected
+        let initialAuthorityIsFresh = initialSessionAuthorityVerifiedAt.map {
+            Date().timeIntervalSince($0) <= 15
+        } == true
+        let initialAuthorityIncludesRoom = initialAuthorityIsFresh
+            && !sessionClient.sessionsAreStale
+            && sessions.contains(where: { $0.id == deepLink.roomID })
+        if !initialAuthorityIncludesRoom {
+            let outcome = await sessionClient.load(
+                authoritativeSessionID: deepLink.roomID
+            )
+            switch outcome {
+            case .loaded:
+                break
+            case .transportUnavailable:
+                errorMessage = sessionClient.errorMessage
+                    ?? "Nest is temporarily unavailable. The Session app link remains pending for retry."
+                return .retryWhenOnline
+            case .forbidden, .authoritativeAbsent:
+                errorMessage = sessionClient.errorMessage
+                    ?? "This account cannot open the linked Session. No access was granted."
+                return .rejected
+            case .invalidResponse:
+                errorMessage = sessionClient.errorMessage
+                    ?? "Nest could not verify the linked Session. Nothing was opened or changed."
+                return .rejected
+            }
         }
         guard let session = sessions.first(where: { $0.id == deepLink.roomID }) else {
             errorMessage = "Nest did not return the linked Session for this account. No access was granted."
