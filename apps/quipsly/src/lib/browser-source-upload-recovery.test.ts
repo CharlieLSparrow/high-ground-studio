@@ -14,6 +14,7 @@ import {
   browserSourceUploadRetryDelayMs,
   finalizeInterruptedBrowserSourceLedger,
   nextBrowserSourceUploadRecovery,
+  projectBrowserSourceFinalization,
   resumeBrowserSourceUploads,
 } from "./browser-source-upload-recovery";
 
@@ -28,6 +29,7 @@ function ledger(
     stoppedAt: "2026-08-22T12:00:00.000Z",
     recordingConsentId: "consent-1",
     participantId: "participant-1",
+    serverRecordingAssetId: state === "verified" ? "asset-default" : null,
     sizeBytes: 4_096,
     failureReason: null,
     ...overrides,
@@ -35,6 +37,36 @@ function ledger(
 }
 
 describe("browser source upload recovery", () => {
+  it("requires a canonical recording identity before verified media can drain", () => {
+    expect(projectBrowserSourceFinalization({
+      uploadStage: "verified",
+      verification: { status: "verified" },
+      finalization: { recordingAssetId: "asset-1", transcriptJobId: "job-1" },
+    })).toEqual({
+      state: "verified",
+      recordingAssetId: "asset-1",
+      transcriptJobId: "job-1",
+      failureReason: null,
+    });
+    expect(projectBrowserSourceFinalization({
+      uploadStage: "verified",
+      verification: { status: "verified" },
+      finalization: null,
+    })).toMatchObject({
+      state: "verifying",
+      recordingAssetId: null,
+      failureReason: expect.stringContaining("canonical recording identity"),
+    });
+    expect(projectBrowserSourceFinalization({
+      uploadStage: "verifying",
+      finalization: { recordingAssetId: "asset-early" },
+    })).toMatchObject({
+      state: "verifying",
+      recordingAssetId: "asset-early",
+      failureReason: null,
+    });
+  });
+
   it("retries transient reservation failures without retrying user or binding errors", () => {
     expect(
       browserSourceUploadRetryDelayMs({
@@ -111,6 +143,9 @@ describe("browser source upload recovery", () => {
       title: "Recording saved · Session status syncing",
       safeToClose: true,
     });
+    expect(browserSourceManualUploadRetryAvailable(ledger("verifying"))).toBe(
+      true,
+    );
   });
 
   it("does not loop on incomplete, verified, or non-transient failed sources", () => {
@@ -119,9 +154,12 @@ describe("browser source upload recovery", () => {
         ledger("recording", { stoppedAt: null, sha256: null }),
       ),
     ).toBe(false);
-    expect(browserSourceUploadCanResumeAutomatically(ledger("verified"))).toBe(
-      false,
-    );
+    expect(browserSourceUploadCanResumeAutomatically(
+      ledger("verified", { serverRecordingAssetId: "asset-1" }),
+    )).toBe(false);
+    expect(browserSourceUploadCanResumeAutomatically(
+      ledger("verified", { serverRecordingAssetId: null }),
+    )).toBe(true);
     expect(
       browserSourceUploadCanResumeAutomatically(
         ledger("failed", { failureReason: "Checksum mismatch" }),
@@ -258,7 +296,10 @@ describe("browser source upload recovery", () => {
         ledger("uploading", { serverRecordingAssetId: "asset-1" }),
       ),
     ).toBeNull();
-    expect(browserSourceReviewHref("room-1", ledger("verified"))).toBeNull();
+    expect(browserSourceReviewHref(
+      "room-1",
+      ledger("verified", { serverRecordingAssetId: null }),
+    )).toBeNull();
   });
 
   it("makes automatic transcription the next action without hiding recording review", () => {
@@ -338,7 +379,7 @@ describe("browser source upload recovery", () => {
     expect(resumed).toEqual(["first", "second"]);
   });
 
-  it("offers manual retry only for complete sources that are not already uploading", () => {
+  it("offers manual retry for complete sources and pending verification", () => {
     expect(browserSourceManualUploadRetryAvailable(ledger("stopped"))).toBe(
       true,
     );
@@ -366,7 +407,7 @@ describe("browser source upload recovery", () => {
       false,
     );
     expect(browserSourceManualUploadRetryAvailable(ledger("verifying"))).toBe(
-      false,
+      true,
     );
     expect(
       browserSourceManualUploadRetryAvailable(

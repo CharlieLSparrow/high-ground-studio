@@ -110,6 +110,16 @@ describe("browser endpoint queue snapshot", () => {
     });
   });
 
+  it("cannot drain a verified ledger without its canonical recording asset", () => {
+    expect(buildBrowserEndpointQueueSnapshot([
+      ledger({ state: "verified", serverRecordingAssetId: null }),
+    ], "web-installation"))?.toMatchObject({
+      queueState: "NOT_EMPTY",
+      pendingSourceCount: 1,
+      recordingAssetIds: [],
+    });
+  });
+
   it("keeps held and failed sources visible as failed local work", () => {
     expect(buildBrowserEndpointQueueSnapshot([ledger({ state: "held" })], "web-installation"))?.toMatchObject({
       queueState: "NOT_EMPTY",

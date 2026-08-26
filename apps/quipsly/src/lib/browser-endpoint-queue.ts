@@ -28,7 +28,9 @@ export function buildBrowserEndpointQueueSnapshot(
   const pendingSourceCount = sorted.filter(
     (ledger) =>
       !FAILURE_STATES.has(ledger.state) &&
-      (ledger.state !== "verified" || !ledger.stopReceiptPersisted),
+      (ledger.state !== "verified" ||
+        !ledger.stopReceiptPersisted ||
+        !ledger.serverRecordingAssetId?.trim()),
   ).length;
   const recordingAssetIds = sorted
     .map((ledger) => ledger.serverRecordingAssetId)

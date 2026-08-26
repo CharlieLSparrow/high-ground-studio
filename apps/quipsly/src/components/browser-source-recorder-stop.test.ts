@@ -108,4 +108,24 @@ describe("browser source stop confidence", () => {
     expect(onStop).toContain("durableWriterRef.current = null");
     expect(onStop).toContain("const captureMeter = await captureMeterPromise");
   });
+
+  it("does not claim verification before the canonical recording exists", () => {
+    const source = fs.readFileSync(
+      path.resolve(process.cwd(), "src/components/browser-source-recorder.tsx"),
+      "utf8",
+    );
+
+    expect(source).toContain(
+      "const finalizationProjection = projectBrowserSourceFinalization(finalized)",
+    );
+    expect(source).toContain("state: finalizationProjection.state");
+    expect(source).toContain(
+      "serverRecordingAssetId: finalizationProjection.recordingAssetId",
+    );
+    expect(source).toContain("resumeProtectedUploads(true)");
+    expect(source).toContain('ledger.state === "verifying"');
+    expect(source).not.toContain(
+      'finalized.uploadStage === "verified" ||',
+    );
+  });
 });

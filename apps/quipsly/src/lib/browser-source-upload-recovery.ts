@@ -11,6 +11,43 @@ const INTERRUPTED_STATES = new Set([
   "held",
   "failed",
 ]);
+
+function object(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function text(value: unknown) {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+export function projectBrowserSourceFinalization(packet: unknown) {
+  const root = object(packet);
+  const finalization = object(root.finalization);
+  const verification = object(root.verification);
+  const recordingAssetId =
+    text(finalization.recordingAssetId) ||
+    text(verification.recordingAssetId) ||
+    null;
+  const transcriptJobId =
+    text(finalization.transcriptJobId) ||
+    text(verification.transcriptJobId) ||
+    null;
+  const bytesVerified =
+    text(root.uploadStage).toLowerCase() === "verified" ||
+    text(verification.status).toLowerCase() === "verified";
+  const ready = bytesVerified && Boolean(recordingAssetId);
+  return {
+    state: ready ? ("verified" as const) : ("verifying" as const),
+    recordingAssetId,
+    transcriptJobId,
+    failureReason:
+      bytesVerified && !recordingAssetId
+        ? "Exact bytes verified, but Quipsly has not returned the canonical recording identity yet. Finalization will retry."
+        : null,
+  };
+}
 type InterruptedBrowserSourceLedger = BrowserSourceCaptureLedger & {
   state: "preparing" | "recording" | "held" | "failed";
 };
@@ -149,6 +186,11 @@ export function browserSourceUploadCanResumeAutomatically(
     ledger.sizeBytes > 0,
   );
   if (!hasCompletedLocalSource) return false;
+  if (
+    ledger.state === "verified" &&
+    !ledger.serverRecordingAssetId?.trim()
+  )
+    return true;
   if (AUTO_RESUMABLE_STATES.has(ledger.state)) return true;
   return (
     ledger.state === "held" &&
@@ -202,6 +244,8 @@ export async function resumeBrowserSourceUploads(input: {
 }
 
 export function browserSourceSafetyLabel(ledger: BrowserSourceCaptureLedger) {
+  if (ledger.state === "verified" && !ledger.serverRecordingAssetId?.trim())
+    return "Verification needs recording identity";
   if (
     ledger.state === "verified" &&
     browserSourceStopReceiptNeedsRepair(ledger)
@@ -254,7 +298,7 @@ export function browserSourcePostStopReceipt(
       safeToClose: verified,
     };
   }
-  if (ledger.state === "verified") {
+  if (ledger.state === "verified" && ledger.serverRecordingAssetId?.trim()) {
     return {
       tone: "ready",
       title: "Saved and ready",
@@ -351,6 +395,9 @@ export function browserSourceManualUploadRetryAvailable(
   ledger: BrowserSourceCaptureLedger,
 ) {
   if (browserSourceStopReceiptNeedsRepair(ledger)) return true;
+  if (ledger.state === "verified" && !ledger.serverRecordingAssetId?.trim())
+    return true;
+  if (ledger.state === "verifying") return true;
   const complete = Boolean(
     ledger.sha256 && ledger.stoppedAt && ledger.sizeBytes > 0,
   );
@@ -366,7 +413,9 @@ export function browserSourceRecoverySummary(
   ledgers: readonly BrowserSourceCaptureLedger[],
 ) {
   const verifiedCount = ledgers.filter(
-    (ledger) => ledger.state === "verified",
+    (ledger) =>
+      ledger.state === "verified" &&
+      Boolean(ledger.serverRecordingAssetId?.trim()),
   ).length;
   const uploadingCount = ledgers.filter((ledger) =>
     browserSourceUploadCanResumeAutomatically(ledger),
@@ -377,6 +426,8 @@ export function browserSourceRecoverySummary(
   const attentionCount = ledgers.filter(
     (ledger) =>
       ["preparing", "recording", "failed"].includes(ledger.state) ||
+      (ledger.state === "verified" &&
+        !ledger.serverRecordingAssetId?.trim()) ||
       (ledger.state === "held" &&
         Boolean((ledger.failureReason || "").trim()) &&
         !TRANSIENT_FAILURE.test(ledger.failureReason || "")),

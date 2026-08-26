@@ -84,8 +84,10 @@ import {
   browserSourceRecoverySummary,
   browserSourceSafetyLabel,
   browserSourceStopReceiptNeedsRepair,
+  browserSourceUploadCanResumeAutomatically,
   browserSourceUploadRetryDelayMs,
   finalizeInterruptedBrowserSourceLedger,
+  projectBrowserSourceFinalization,
   resumeBrowserSourceUploads,
 } from "@/lib/browser-source-upload-recovery";
 import {
@@ -123,6 +125,8 @@ const RETAINED_SOURCE_STALL_MS = 10_000;
 const RETAINED_SOURCE_MUTE_GRACE_MS = 5_000;
 const RETAINED_SOURCE_SIGNAL_GRACE_MS = 5_000;
 const STOP_RECEIPT_PENDING_PREFIX = "Session STOP receipt pending: ";
+const FINALIZATION_IDENTITY_PENDING_PREFIX =
+  "Exact bytes verified, but Quipsly has not returned the canonical recording identity yet.";
 
 function safeTrackSettings(settings: MediaTrackSettings) {
   return Object.fromEntries(
@@ -1415,21 +1419,19 @@ export function BrowserSourceRecorder({
         throw new Error(
           finalized?.error || "Source verification needs a retry.",
         );
-      const verification = finalized.verification ?? {};
-      const finalization = finalized.finalization ?? {};
+      const finalizationProjection = projectBrowserSourceFinalization(finalized);
       current = {
         ...current,
-        state:
-          finalized.uploadStage === "verified" ||
-          verification.status === "verified"
-            ? "verified"
-            : "verifying",
-        serverRecordingAssetId:
-          finalization.recordingAssetId ??
-          verification.recordingAssetId ??
-          null,
-        serverTranscriptJobId:
-          finalization.transcriptJobId ?? verification.transcriptJobId ?? null,
+        state: finalizationProjection.state,
+        serverRecordingAssetId: finalizationProjection.recordingAssetId,
+        serverTranscriptJobId: finalizationProjection.transcriptJobId,
+        failureReason:
+          finalizationProjection.failureReason ??
+          (current.failureReason?.startsWith(
+            FINALIZATION_IDENTITY_PENDING_PREFIX,
+          )
+            ? null
+            : current.failureReason),
         updatedAt: new Date().toISOString(),
       };
       await updateLedger(current);
@@ -1540,7 +1542,10 @@ export function BrowserSourceRecorder({
         } catch (error) {
           attempted = await rememberStopReceiptFailure(attempted, error);
         }
-        if (attempted.state === "verified") {
+        if (
+          attempted.state === "verified" &&
+          attempted.serverRecordingAssetId?.trim()
+        ) {
           setStatus("ready");
           setMessage(
             attempted.stopReceiptPersisted
@@ -1690,6 +1695,21 @@ export function BrowserSourceRecorder({
       document.removeEventListener("visibilitychange", visible);
     };
   }, [resumeProtectedUploads]);
+
+  useEffect(() => {
+    if (
+      !participantId ||
+      navigator.onLine === false ||
+      activeCaptureOperationRef.current ||
+      !recoveryRows.some(browserSourceUploadCanResumeAutomatically)
+    )
+      return;
+    const timer = window.setTimeout(
+      () => void resumeProtectedUploads(true),
+      15_000,
+    );
+    return () => window.clearTimeout(timer);
+  }, [participantId, recoveryRows, resumeProtectedUploads]);
 
   const stop = useCallback(
     (reason?: string) => {
@@ -3313,6 +3333,8 @@ export function BrowserSourceRecorder({
                         {ledger.state === "verified" &&
                         browserSourceStopReceiptNeedsRepair(ledger)
                           ? "Retry Session status"
+                          : ledger.state === "verifying"
+                            ? "Check verification"
                           : "Retry upload"}
                       </button>
                     ) : null}

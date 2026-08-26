@@ -4431,3 +4431,18 @@ rehearsal`) in an iPhone 17 Pro simulator. The signed-in UI acceptance opened
   tests), including the cleanup-order contract, and full Quipsly TypeScript
   passes. Real device-indicator shutdown plus recovery after an induced OPFS
   close failure remains explicit flight evidence.
+
+### 2026-08-25 browser verification requires a canonical recording
+
+- A generic byte-verification flag can no longer move a browser ledger to
+  Verified by itself. Finalization must also return the canonical
+  `RecordingAsset` identity that protected playback, transcription, Studio, and
+  post-call review actually consume.
+- A malformed or still-converging finalization remains Verifying, keeps its
+  local original, preserves a visible explanation, and keeps the participant's
+  endpoint queue non-drained. The open Session retries pending finalization on a
+  bounded 15-second cadence and exposes **Check verification** manually.
+- Focused finalization, recorder, and endpoint-queue suites pass (28 tests) and
+  full Quipsly TypeScript passes. A real long-source 202 sequence, deliberately
+  delayed app-owned finalization, canonical asset readback, playback, and
+  automatic transcript handoff remain explicit flight evidence.
