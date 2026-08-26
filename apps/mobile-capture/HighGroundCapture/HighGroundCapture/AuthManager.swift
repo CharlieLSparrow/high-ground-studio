@@ -345,6 +345,14 @@ final class AuthManager: ObservableObject {
         userName = getKeychainItem(account: "userName")
         userEmail = getKeychainItem(account: "userEmail")
         accountOwnerID = Self.currentStoredOwnerID()
+        // This owner was restored before any account transition occurred in
+        // the current process. Seed the publication boundary so a successful
+        // refresh for the same person does not synchronously rebroadcast a
+        // false identity change while SwiftUI is mounting the signed-in shell.
+        // Local protected stores restore this same owner directly from
+        // Keychain during their own initialization.
+        lastPublishedOwnerAccountID = Self.normalizedOwnerID(accountOwnerID)
+        ShareCaptureBridge.publishOwner(lastPublishedOwnerAccountID)
 
         if getKeychainItem(account: "refreshToken") != nil {
             isAuthenticated = false
@@ -1715,11 +1723,10 @@ final class AuthManager: ObservableObject {
 
     private func publishAccountIdentityChange() {
         let publishedOwnerAccountID = Self.normalizedOwnerID(accountOwnerID)
+        guard publishedOwnerAccountID != lastPublishedOwnerAccountID else { return }
+        accountIdentityGeneration &+= 1
+        lastPublishedOwnerAccountID = publishedOwnerAccountID
         ShareCaptureBridge.publishOwner(publishedOwnerAccountID)
-        if publishedOwnerAccountID != lastPublishedOwnerAccountID {
-            accountIdentityGeneration &+= 1
-            lastPublishedOwnerAccountID = publishedOwnerAccountID
-        }
         NotificationCenter.default.post(
             name: .quipslyCaptureAccountIdentityDidChange,
             object: publishedOwnerAccountID
