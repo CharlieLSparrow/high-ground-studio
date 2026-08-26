@@ -2488,3 +2488,46 @@ or novice-human proof. The deliberately concurrent read phase also measured a
 roughly 6-second p95 for the heavyweight runway endpoint. The release remains
 held from claiming a fast first-paint coach home until a focused command read
 can load independently of the complete scheduling/operations payload.
+
+## Fast first-useful screen and full-regression checkpoint — 2026-08-26
+
+The held first-paint claim now has local evidence. The ordinary coach home and
+Quipsly Capture start a focused `/api/coaching/practice-command` read separately
+from the complete runway. The endpoint is authenticated, exact-coach scoped,
+bounded, read-only, and uses the same canonical domain policy as the complete
+runway fallback. It neither creates a second work store nor loads calendar,
+provider, billing, or staff operations inventory.
+
+The rendered browser operation deliberately delayed the complete runway by
+eight seconds. The phone-width command appeared before that response, opened
+the exact Session, remained absent for the client, and excluded a separately
+created neighboring practice while that neighboring coach retained their own
+command. The service regression also proved that a valid near-term booking can
+surface **Prepare Session** even when its long-lived planned room is outside the
+recent-room query.
+
+On exact committed source `ac3473245a8f1bca961448a6e14d972c358865ae`, the
+isolated 50-practice rehearsal completed 503 requests with zero failures. Each
+coach received the focused canonical command and never the ring-neighbor
+Session. The focused command read measured 814ms p95 and 816ms maximum, versus
+5,011ms p95 and 5,017ms maximum for the full runway during the same local
+synchronized cohort. This is approximately 84% lower p95 latency.
+
+Capacity receipt:
+`artifacts/coaching-capacity/capacity-mt9ruoi4-fdb3ae/capacity-rehearsal-receipt.json`.
+
+The unchanged full flight then passed the whole product loop on the same exact
+revision: fresh accounts and coach setup, invitation entry, adversarial tenant
+isolation, shared check-in and private prep, fast command, two endpoints,
+remembered consent, chat and local capture, two retained sources,
+participant-attributed transcription, protected playback, mentor DOCX,
+shared/private relationship work, cross-account task completion, light edit,
+private preview, release/revoke, and automatic audio readiness.
+
+Full-flight receipt:
+`artifacts/coaching-acceptance/d3200f0a/fresh-coaching-flight-receipt.json`.
+
+The command is now locally proven as a fast first useful screen. Production
+latency, real mailbox delivery, physical iPhone behavior, natural speech,
+human listening, and minimally instructed coach/client comprehension remain
+explicit continuous acceptance lanes.

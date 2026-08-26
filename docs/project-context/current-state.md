@@ -4761,3 +4761,37 @@ rehearsal`) in an iPhone 17 Pro simulator. The signed-in UI acceptance opened
   protected playback, mentor DOCX, shared/private work, cross-account task
   completion, inline editing, release/revoke, and automatic audio readiness.
   Receipt: `artifacts/coaching-acceptance/56297c34/fresh-coaching-flight-receipt.json`.
+
+### 2026-08-26 fast coach first-useful screen
+
+- The coach practice command now has a separate exact-coach, bounded, read-only
+  endpoint. It queries only the active coach profile, bounded bookings, active
+  time requests, and recent coaching rooms required to choose the next useful
+  action. It deliberately excludes provider administration and the complete
+  scheduling runway.
+- Nest and Quipsly Capture start that focused read concurrently with the full
+  runway and retain the runway/protected snapshot as the authoritative fallback.
+  The command is still built by the same shared domain policy, so this split does
+  not create another task store, inbox, or source of truth.
+- The operated browser proof delayed the complete runway by eight seconds. At
+  390px width, the command rendered first, opened the exact Session, remained
+  absent for the client, and stayed isolated from a separately created coach.
+  Receipt: `artifacts/coaching-acceptance/d3200f0a/practice-command-receipt.json`.
+- The focused service test caught and repaired a real long-lived-booking edge:
+  near-term preparation no longer depends on the planned room also appearing in
+  the recent-room query. The already authorized booking is sufficient evidence.
+- On exact committed source `ac3473245a8f1bca961448a6e14d972c358865ae`,
+  50 isolated practices completed 503 requests with zero failures. Every coach
+  received only their own bounded command. Focused-command p95 was 814ms versus
+  5,011ms for the complete runway under the same synchronized local cohort—an
+  approximately 84% reduction. Receipt:
+  `artifacts/coaching-capacity/capacity-mt9ruoi4-fdb3ae/capacity-rehearsal-receipt.json`.
+- The unchanged full coaching flight then passed signup, planning, the fast
+  command, two-endpoint consent and capture, two independent sources,
+  participant-attributed transcription, protected playback, mentor DOCX,
+  shared/private work, cross-account task completion, inline light editing,
+  release/revoke, and automatic audio readiness. Receipt:
+  `artifacts/coaching-acceptance/d3200f0a/fresh-coaching-flight-receipt.json`.
+- This is local controlled-media and cohort proof, not a production SLO,
+  physical-iPhone result, real-mailbox result, natural-speech result, or
+  minimally instructed human acceptance.
