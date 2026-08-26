@@ -17,6 +17,11 @@ struct HighGroundCaptureApp: App {
     init() {
         AuthManager.configureRuntimeSmokeAccountResetIfRequested()
         AuthManager.configureShareExtensionUITestOwnerIfRequested()
+        // The DEBUG runtime link is a launch argument, not a UIKit URL event.
+        // Capture it before authentication can replace the root shell; a
+        // SwiftUI task attached to that transition can be legitimately
+        // cancelled and would make the operated app-link proof nondeterministic.
+        CaptureDeepLinkRouter.shared.receiveConfiguredLaunchLinkIfNeeded()
     }
 
     var body: some Scene {
@@ -27,9 +32,6 @@ struct HighGroundCaptureApp: App {
                 .environmentObject(deepLinkRouter)
                 .onOpenURL { url in
                     deepLinkRouter.receive(url)
-                }
-                .task {
-                    deepLinkRouter.receiveConfiguredLaunchLinkIfNeeded()
                 }
         }
     }
