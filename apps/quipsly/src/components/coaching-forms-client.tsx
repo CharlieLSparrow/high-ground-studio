@@ -86,6 +86,48 @@ type Assignment = {
     coachCanReadDraftResponse: false;
   };
 };
+type AutomationOverride = {
+  id: string;
+  action: "SEND_NOW" | "SKIP" | "CLEAR";
+  reason: string | null;
+  revision: number;
+  createdAt: string;
+};
+type AutomationPolicy = {
+  id: string;
+  status: "ACTIVE" | "PAUSED";
+  trigger: "BEFORE_SESSION" | "AFTER_SESSION";
+  versionMode: "LATEST_PUBLISHED" | "PINNED_VERSION";
+  pinnedTemplateVersion: { id: string; revision: number } | null;
+  releaseOffsetMinutes: number;
+  dueOffsetMinutes: number;
+  revision: number;
+  template: { id: string; title: string; publishedRevision: number };
+  relationship: { id: string; title: string; client: Person };
+  sessions: Array<{
+    id: string;
+    status: string;
+    scheduledStart: string;
+    scheduledEnd: string;
+    room: { id: string; title: string; endedAt: string | null } | null;
+    eligibleAt: string | null;
+    dueAt: string | null;
+    assignmentCreated: boolean;
+    override: AutomationOverride | null;
+  }>;
+  receipts: Array<{
+    id: string;
+    trigger: "BEFORE_SESSION" | "AFTER_SESSION";
+    eventAt: string;
+    eligibleAt: string;
+    dueAt: string;
+    manualOverride: boolean;
+    createdAt: string;
+    assignment: { id: string; status: Assignment["status"] };
+    templateRevision: number;
+    booking: { id: string; scheduledStart: string };
+  }>;
+};
 type Workflows = {
   schema: string;
   actor: { id: string; isCoach: boolean };
@@ -93,6 +135,10 @@ type Workflows = {
   relationships: Relationship[];
   templates: Template[];
   assignments: Assignment[];
+  automation: {
+    schema: string;
+    policies: AutomationPolicy[];
+  };
 };
 
 type RequestState = {
@@ -516,6 +562,19 @@ export function CoachingFormsClient() {
               </div>
             ) : null}
           </section>
+        ) : null}
+
+        {workflows.actor.isCoach ? (
+          <FormAutomationWorkspace
+            templates={workflows.templates}
+            relationships={workflows.relationships}
+            policies={workflows.automation.policies}
+            onChanged={async (message) => {
+              await load();
+              setActionState({ tone: "success", message });
+            }}
+            onError={(message) => setActionState({ tone: "error", message })}
+          />
         ) : null}
 
         {workflows.actor.isCoach ? (
@@ -1791,6 +1850,556 @@ function AssignFormPanel(props: {
       </div>
     </section>
   );
+}
+
+function FormAutomationWorkspace(props: {
+  templates: Template[];
+  relationships: Relationship[];
+  policies: AutomationPolicy[];
+  onChanged: (message: string) => Promise<void>;
+  onError: (message: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [editingPolicyId, setEditingPolicyId] = useState<string | null>(null);
+  const [templateId, setTemplateId] = useState(props.templates[0]?.id ?? "");
+  const [relationshipId, setRelationshipId] = useState(
+    props.relationships[0]?.id ?? "",
+  );
+  const [trigger, setTrigger] = useState<AutomationPolicy["trigger"]>(
+    "BEFORE_SESSION",
+  );
+  const [versionMode, setVersionMode] = useState<
+    AutomationPolicy["versionMode"]
+  >("LATEST_PUBLISHED");
+  const [releaseOffsetMinutes, setReleaseOffsetMinutes] = useState(-1_440);
+  const [dueOffsetMinutes, setDueOffsetMinutes] = useState(0);
+  const [busy, setBusy] = useState<string | null>(null);
+
+  function reset() {
+    setOpen(false);
+    setEditingPolicyId(null);
+    setTemplateId(props.templates[0]?.id ?? "");
+    setRelationshipId(props.relationships[0]?.id ?? "");
+    setTrigger("BEFORE_SESSION");
+    setVersionMode("LATEST_PUBLISHED");
+    setReleaseOffsetMinutes(-1_440);
+    setDueOffsetMinutes(0);
+  }
+
+  function beginEdit(policy: AutomationPolicy) {
+    setEditingPolicyId(policy.id);
+    setTemplateId(policy.template.id);
+    setRelationshipId(policy.relationship.id);
+    setTrigger(policy.trigger);
+    setVersionMode(policy.versionMode);
+    setReleaseOffsetMinutes(policy.releaseOffsetMinutes);
+    setDueOffsetMinutes(policy.dueOffsetMinutes);
+    setOpen(true);
+  }
+
+  function changeTrigger(value: AutomationPolicy["trigger"]) {
+    setTrigger(value);
+    if (value === "BEFORE_SESSION") {
+      setReleaseOffsetMinutes(-1_440);
+      setDueOffsetMinutes(0);
+    } else {
+      setReleaseOffsetMinutes(0);
+      setDueOffsetMinutes(2_880);
+    }
+  }
+
+  async function savePolicy(
+    patch?: Partial<Pick<AutomationPolicy, "status">>,
+    sourcePolicy?: AutomationPolicy,
+  ) {
+    const identityPolicy = sourcePolicy ??
+      props.policies.find((item) => item.id === editingPolicyId) ??
+      null;
+    const selectedTemplate = props.templates.find(
+      (item) => item.id === (identityPolicy?.template.id || templateId),
+    );
+    const submittedVersionMode = sourcePolicy
+      ? sourcePolicy.versionMode
+      : versionMode;
+    const payload = {
+      action: "SAVE_AUTOMATION_POLICY",
+      requestId: crypto.randomUUID(),
+      policyId: identityPolicy?.id || editingPolicyId,
+      templateId: identityPolicy?.template.id || templateId,
+      engagementId: identityPolicy?.relationship.id || relationshipId,
+      trigger: identityPolicy?.trigger || trigger,
+      status: patch?.status || identityPolicy?.status || "ACTIVE",
+      versionMode: submittedVersionMode,
+      pinnedTemplateVersionId:
+        submittedVersionMode === "PINNED_VERSION"
+          ? sourcePolicy?.pinnedTemplateVersion?.id || null
+          : null,
+      releaseOffsetMinutes:
+        sourcePolicy?.releaseOffsetMinutes ?? releaseOffsetMinutes,
+      dueOffsetMinutes: sourcePolicy?.dueOffsetMinutes ?? dueOffsetMinutes,
+    };
+    if (!payload.templateId || !payload.engagementId) {
+      props.onError("Choose a form and client before saving this rhythm.");
+      return;
+    }
+    const operation = identityPolicy?.id || editingPolicyId || "new";
+    setBusy(`policy:${operation}`);
+    try {
+      await api("/api/coaching/forms", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
+      if (!sourcePolicy) reset();
+      await props.onChanged(
+        patch?.status === "PAUSED"
+          ? `${identityPolicy?.template.title || selectedTemplate?.title || "Form"} automation is paused.`
+          : patch?.status === "ACTIVE"
+            ? `${identityPolicy?.template.title || selectedTemplate?.title || "Form"} automation is active.`
+            : `${selectedTemplate?.title || "Form"} now follows this client’s Session rhythm.`,
+      );
+    } catch (error) {
+      props.onError(
+        error instanceof Error
+          ? error.message
+          : "The automation rule could not be saved.",
+      );
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function override(
+    policy: AutomationPolicy,
+    bookingId: string,
+    overrideAction: "SEND_NOW" | "SKIP" | "CLEAR",
+  ) {
+    setBusy(`override:${policy.id}:${bookingId}`);
+    try {
+      await api("/api/coaching/forms", {
+        method: "POST",
+        body: JSON.stringify({
+          action: "SAVE_AUTOMATION_OVERRIDE",
+          requestId: crypto.randomUUID(),
+          policyId: policy.id,
+          bookingId,
+          overrideAction,
+        }),
+      });
+      await props.onChanged(
+        overrideAction === "SEND_NOW"
+          ? `${policy.template.title} was sent now.`
+          : overrideAction === "SKIP"
+            ? `This Session will skip ${policy.template.title}.`
+            : `${policy.template.title} is back on its ordinary schedule.`,
+      );
+    } catch (error) {
+      props.onError(
+        error instanceof Error
+          ? error.message
+          : "That Session override could not be saved.",
+      );
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function reconcile() {
+    setBusy("reconcile");
+    try {
+      const result = await api<{
+        created: number;
+        alreadyAssigned: number;
+        waitingForTime: number;
+      }>("/api/coaching/forms", {
+        method: "POST",
+        body: JSON.stringify({ action: "RECONCILE_AUTOMATION" }),
+      });
+      await props.onChanged(
+        result.created
+          ? `${result.created} due form${result.created === 1 ? " was" : "s were"} assigned.`
+          : "All automatic forms are on schedule.",
+      );
+    } catch (error) {
+      props.onError(
+        error instanceof Error
+          ? error.message
+          : "The automation schedule could not be checked.",
+      );
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  const canCreate = props.templates.length > 0 && props.relationships.length > 0;
+  return (
+    <section
+      className="min-w-0 rounded-[2rem] border border-[#d7c6e8] bg-[#faf7ff] p-5 shadow-sm sm:p-7"
+      aria-labelledby="form-automation-title"
+    >
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-xs font-black uppercase tracking-[0.17em] text-violet-800">
+            Automatic rhythm
+          </p>
+          <h2
+            id="form-automation-title"
+            className="mt-2 font-serif text-3xl font-black text-[#34291d]"
+          >
+            Set it once. Stay in control.
+          </h2>
+          <p className="mt-2 max-w-2xl font-semibold leading-6 text-[#765f40]">
+            Quipsly can place the right reflection before or after each
+            confirmed Session. Every send keeps a visible receipt and exact
+            form version.
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => void reconcile()}
+            disabled={busy !== null || !props.policies.length}
+            className="inline-flex min-h-11 items-center gap-2 rounded-full border border-violet-300 bg-white px-4 text-sm font-black text-violet-950 disabled:opacity-40"
+          >
+            <RefreshCw
+              size={15}
+              className={busy === "reconcile" ? "animate-spin" : ""}
+            />{" "}
+            Check schedule
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              reset();
+              setOpen(true);
+            }}
+            disabled={!canCreate}
+            className="inline-flex min-h-11 items-center gap-2 rounded-full bg-violet-800 px-4 text-sm font-black text-white disabled:opacity-40"
+          >
+            <Plus size={16} /> Add rhythm
+          </button>
+        </div>
+      </div>
+
+      {!canCreate ? (
+        <p className="mt-5 rounded-2xl bg-white p-4 text-sm font-semibold leading-6 text-[#6f583c]">
+          Publish a form and invite a coaching client before adding an automatic
+          rhythm.
+        </p>
+      ) : null}
+
+      {open ? (
+        <div className="mt-6 min-w-0 rounded-3xl border border-violet-200 bg-white p-5">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-wide text-violet-800">
+                {editingPolicyId ? "Edit rhythm" : "New rhythm"}
+              </p>
+              <h3 className="mt-1 font-serif text-2xl font-black text-[#3d3122]">
+                What should happen around each Session?
+              </h3>
+            </div>
+            <button
+              type="button"
+              onClick={reset}
+              aria-label="Close automation setup"
+              className="min-h-11 min-w-11 rounded-full border border-[#d8c7aa] bg-white"
+            >
+              <X size={17} className="mx-auto" />
+            </button>
+          </div>
+          <div className="mt-5 grid min-w-0 gap-4 sm:grid-cols-2">
+            <label className="min-w-0 text-sm font-black text-[#4b3a27]">
+              Form
+              <select
+                value={templateId}
+                disabled={Boolean(editingPolicyId)}
+                onChange={(event) => setTemplateId(event.target.value)}
+                className="mt-2 min-h-12 w-full min-w-0 rounded-2xl border border-[#d9c9ad] bg-white px-4 font-semibold disabled:bg-stone-100"
+              >
+                {props.templates.map((template) => (
+                  <option key={template.id} value={template.id}>
+                    {template.title} · v{template.publishedRevision}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="min-w-0 text-sm font-black text-[#4b3a27]">
+              Client
+              <select
+                value={relationshipId}
+                disabled={Boolean(editingPolicyId)}
+                onChange={(event) => setRelationshipId(event.target.value)}
+                className="mt-2 min-h-12 w-full min-w-0 rounded-2xl border border-[#d9c9ad] bg-white px-4 font-semibold disabled:bg-stone-100"
+              >
+                {props.relationships.map((relationship) => (
+                  <option key={relationship.id} value={relationship.id}>
+                    {relationship.client?.name ||
+                      relationship.client?.email ||
+                      relationship.title}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="min-w-0 text-sm font-black text-[#4b3a27]">
+              When
+              <select
+                value={trigger}
+                disabled={Boolean(editingPolicyId)}
+                onChange={(event) =>
+                  changeTrigger(
+                    event.target.value as AutomationPolicy["trigger"],
+                  )
+                }
+                className="mt-2 min-h-12 w-full min-w-0 rounded-2xl border border-[#d9c9ad] bg-white px-4 font-semibold disabled:bg-stone-100"
+              >
+                <option value="BEFORE_SESSION">Before every Session</option>
+                <option value="AFTER_SESSION">After every completed Session</option>
+              </select>
+            </label>
+            <label className="min-w-0 text-sm font-black text-[#4b3a27]">
+              Timing
+              {trigger === "BEFORE_SESSION" ? (
+                <select
+                  value={releaseOffsetMinutes}
+                  onChange={(event) =>
+                    setReleaseOffsetMinutes(Number(event.target.value))
+                  }
+                  className="mt-2 min-h-12 w-full min-w-0 rounded-2xl border border-[#d9c9ad] bg-white px-4 font-semibold"
+                >
+                  <option value={-1_440}>Send 1 day before</option>
+                  <option value={-2_880}>Send 2 days before</option>
+                  <option value={-4_320}>Send 3 days before</option>
+                  <option value={-10_080}>Send 1 week before</option>
+                  <option value={0}>Send at Session start</option>
+                </select>
+              ) : (
+                <select
+                  value={dueOffsetMinutes}
+                  onChange={(event) =>
+                    setDueOffsetMinutes(Number(event.target.value))
+                  }
+                  className="mt-2 min-h-12 w-full min-w-0 rounded-2xl border border-[#d9c9ad] bg-white px-4 font-semibold"
+                >
+                  <option value={1_440}>Send when complete · due in 1 day</option>
+                  <option value={2_880}>Send when complete · due in 2 days</option>
+                  <option value={4_320}>Send when complete · due in 3 days</option>
+                  <option value={10_080}>Send when complete · due in 1 week</option>
+                </select>
+              )}
+            </label>
+            <label className="sm:col-span-2 flex min-h-14 items-center gap-3 rounded-2xl border border-[#d9c9ad] bg-[#fffaf0] px-4 text-sm font-black text-[#4b3a27]">
+              <input
+                type="checkbox"
+                checked={versionMode === "LATEST_PUBLISHED"}
+                onChange={(event) =>
+                  setVersionMode(
+                    event.target.checked
+                      ? "LATEST_PUBLISHED"
+                      : "PINNED_VERSION",
+                  )
+                }
+                className="h-5 w-5 accent-violet-700"
+              />
+              Use the latest published version for future Sessions
+            </label>
+          </div>
+          <p className="mt-4 rounded-2xl bg-violet-50 p-4 text-sm font-semibold leading-6 text-violet-950">
+            Existing assignments never change. “Latest” only affects a future
+            Session when its form is actually assigned.
+          </p>
+          <div className="mt-5 flex flex-wrap gap-3">
+            <button
+              type="button"
+              onClick={() => void savePolicy()}
+              disabled={busy !== null}
+              className="inline-flex min-h-11 items-center gap-2 rounded-full bg-violet-800 px-5 text-sm font-black text-white disabled:opacity-50"
+            >
+              {busy?.startsWith("policy:") ? (
+                <LoaderCircle size={16} className="animate-spin" />
+              ) : (
+                <Save size={16} />
+              )}{" "}
+              Save rhythm
+            </button>
+            <button
+              type="button"
+              onClick={reset}
+              className="min-h-11 rounded-full border border-[#d8c7a9] px-5 text-sm font-black text-[#5b472f]"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      {props.policies.length ? (
+        <div className="mt-6 grid min-w-0 gap-4">
+          {props.policies.map((policy) => (
+            <article
+              key={policy.id}
+              className="min-w-0 rounded-3xl border border-[#ded0eb] bg-white p-5"
+            >
+              <div className="flex min-w-0 flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <span
+                    className={`inline-flex rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-wide ${policy.status === "ACTIVE" ? "bg-emerald-100 text-emerald-900" : "bg-stone-200 text-stone-700"}`}
+                  >
+                    {policy.status === "ACTIVE" ? "Active" : "Paused"}
+                  </span>
+                  <h3 className="mt-2 break-words font-serif text-2xl font-black text-[#3d3122]">
+                    {policy.template.title}
+                  </h3>
+                  <p className="mt-1 text-sm font-semibold text-[#765f40]">
+                    {policy.relationship.client?.name ||
+                      policy.relationship.client?.email ||
+                      policy.relationship.title}
+                    {" · "}
+                    {automationTimingLabel(policy)}
+                  </p>
+                  <p className="mt-1 text-xs font-bold text-[#8a7458]">
+                    {policy.versionMode === "LATEST_PUBLISHED"
+                      ? "Uses latest published version"
+                      : `Keeps version ${policy.pinnedTemplateVersion?.revision || policy.template.publishedRevision}`}
+                    {policy.receipts.length
+                      ? ` · ${policy.receipts.length} receipt${policy.receipts.length === 1 ? "" : "s"}`
+                      : " · No forms sent yet"}
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => beginEdit(policy)}
+                    disabled={busy !== null}
+                    className="min-h-11 rounded-full border border-[#d8c7aa] bg-white px-4 text-sm font-black text-[#5b472f]"
+                  >
+                    Edit
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      void savePolicy(
+                        {
+                          status:
+                            policy.status === "ACTIVE" ? "PAUSED" : "ACTIVE",
+                        },
+                        policy,
+                      )
+                    }
+                    disabled={busy !== null}
+                    className="min-h-11 rounded-full border border-violet-300 bg-violet-50 px-4 text-sm font-black text-violet-950 disabled:opacity-50"
+                  >
+                    {policy.status === "ACTIVE" ? "Pause" : "Resume"}
+                  </button>
+                </div>
+              </div>
+
+              {policy.sessions.length ? (
+                <details className="mt-5 rounded-2xl border border-[#e6dcef] bg-[#fcfaff]">
+                  <summary className="min-h-12 cursor-pointer list-none px-4 py-3 text-sm font-black text-violet-950">
+                    Upcoming and completed Sessions · manual control
+                  </summary>
+                  <div className="space-y-3 border-t border-[#e6dcef] p-3">
+                    {policy.sessions.map((session) => {
+                      const overrideBusy =
+                        busy === `override:${policy.id}:${session.id}`;
+                      const skipped = session.override?.action === "SKIP";
+                      return (
+                        <div
+                          key={session.id}
+                          className="min-w-0 rounded-2xl bg-white p-3"
+                        >
+                          <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
+                            <div className="min-w-0">
+                              <span className="block break-words text-sm font-black text-[#493824]">
+                                {formatDate(session.scheduledStart, {
+                                  dateStyle: "medium",
+                                  timeStyle: "short",
+                                })}
+                              </span>
+                              <span className="mt-1 block text-xs font-semibold text-[#806d55]">
+                                {session.assignmentCreated
+                                  ? "Assigned · receipt retained"
+                                  : skipped
+                                    ? "Skipped by coach"
+                                    : session.eligibleAt
+                                      ? `Scheduled ${formatDate(session.eligibleAt, { dateStyle: "medium", timeStyle: "short" })}`
+                                      : "Waiting for Session completion"}
+                              </span>
+                            </div>
+                            {!session.assignmentCreated ? (
+                              <div className="flex flex-wrap gap-2">
+                                {skipped ? (
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      void override(policy, session.id, "CLEAR")
+                                    }
+                                    disabled={overrideBusy}
+                                    className="min-h-11 rounded-full border border-[#d8c7aa] px-3 text-xs font-black text-[#5b472f]"
+                                  >
+                                    Restore schedule
+                                  </button>
+                                ) : (
+                                  <>
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        void override(
+                                          policy,
+                                          session.id,
+                                          "SEND_NOW",
+                                        )
+                                      }
+                                      disabled={overrideBusy}
+                                      className="min-h-11 rounded-full bg-violet-800 px-3 text-xs font-black text-white disabled:opacity-50"
+                                    >
+                                      Send now
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        void override(policy, session.id, "SKIP")
+                                      }
+                                      disabled={overrideBusy}
+                                      className="min-h-11 rounded-full border border-[#d8c7aa] px-3 text-xs font-black text-[#5b472f] disabled:opacity-50"
+                                    >
+                                      Skip once
+                                    </button>
+                                  </>
+                                )}
+                              </div>
+                            ) : null}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </details>
+              ) : null}
+            </article>
+          ))}
+        </div>
+      ) : !open && canCreate ? (
+        <p className="mt-5 rounded-2xl border border-dashed border-violet-300 bg-white p-5 text-sm font-semibold leading-6 text-[#6f583c]">
+          No automatic rhythms yet. Manual sending still works exactly as it
+          does now.
+        </p>
+      ) : null}
+    </section>
+  );
+}
+
+function automationTimingLabel(policy: AutomationPolicy) {
+  if (policy.trigger === "BEFORE_SESSION") {
+    if (policy.releaseOffsetMinutes === 0) return "when a Session is confirmed";
+    const days = Math.abs(policy.releaseOffsetMinutes) / 1_440;
+    return `${days} day${days === 1 ? "" : "s"} before each Session`;
+  }
+  if (policy.releaseOffsetMinutes === 0) {
+    const dueDays = policy.dueOffsetMinutes / 1_440;
+    return `after completion · due in ${dueDays} day${dueDays === 1 ? "" : "s"}`;
+  }
+  return "after each completed Session";
 }
 
 function CoachAssignmentHistory({

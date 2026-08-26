@@ -215,6 +215,12 @@ const formBuilder = await run(
   "QUIPSLY_FRESH_COACHING_FORM_BUILDER_OPERATION",
   continuationEnv,
 );
+const formAutomation = await run(
+  "Coach-controlled pre/post form automation and exactly-once receipts",
+  "scripts/quipsly-fresh-coaching-form-automation-operation.mjs",
+  "QUIPSLY_FRESH_COACHING_FORM_AUTOMATION_OPERATION",
+  continuationEnv,
+);
 const forms = await run(
   "Reusable intake, private draft, submission, and cross-account form isolation",
   "scripts/quipsly-fresh-coaching-forms-operation.mjs",
@@ -245,6 +251,8 @@ for (const [label, packet] of Object.entries({
   call,
   transcript,
   work,
+  formBuilder,
+  formAutomation,
   forms,
   share,
 })) {
@@ -465,6 +473,12 @@ const result = {
     formBuilder.browserDraftRecoveredAfterReload === true &&
     formBuilder.immutableVersionsPublished === 2 &&
     formBuilder.assignedVersionRemained === 1,
+  coachingFormAutomationOperated:
+    formAutomation.coachCreatedPoliciesInRenderedProduct === 2 &&
+    formAutomation.automaticAssignmentReceipts === 2 &&
+    formAutomation.policyPauseResumeRevisions === 3 &&
+    formAutomation.manualSendNowReceipt === true &&
+    formAutomation.clientReadback === true,
   reusableCoachingFormsOperated:
     forms.coachPublishedStarterThroughRenderedProduct === true &&
     forms.coachAssignedExactVersionThroughRenderedProduct === true &&
@@ -558,6 +572,12 @@ const result = {
         formBuilder.productFormsOnlyForWrites === true &&
         formBuilder.customBuilderOperatedAtPhoneWidth === true &&
         formBuilder.browserDraftRecoveredAfterReload === true,
+      coachingFormAutomation:
+        formAutomation.productFormsOnlyForWrites === true &&
+        formAutomation.coachCreatedPoliciesInRenderedProduct === 2 &&
+        formAutomation.automaticAssignmentReceipts === 2 &&
+        formAutomation.manualSendNowReceipt === true &&
+        formAutomation.clientReadback === true,
       reusableForms:
         forms.boundaries?.productFormsOnlyForWrites === true &&
         forms.draftHiddenFromCoach === true &&

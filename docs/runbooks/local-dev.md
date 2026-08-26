@@ -93,6 +93,7 @@ Derived from source usage:
 - `QUIPSLY_SESSION_INVITATION_RESEND_API_KEY`
 - `QUIPSLY_SESSION_INVITATION_EMAIL_FROM`
 - `QUIPSLY_SITE_URL`
+- `QUIPSLY_COACHING_FORM_AUTOMATION_SECRET`
 - `ENABLE_EPISODES_FUMADOCS`
 - `QUIPSLY_LOCAL_MEDIA_UPLOADS`
 - `QUIPSLY_LOCAL_MEDIA_UPLOAD_ROOT`
@@ -118,6 +119,13 @@ Notes:
   Resend settings. `QUIPSLY_SITE_URL` is the trusted public origin placed in
   invitation mail. Local acceptance may continue with the rendered copy/share
   fallback; it must not report that as real mailbox delivery.
+- `/api/cron/coaching-form-automation` reconciles explicit pre/post-Session
+  form policies. It fails closed unless
+  `QUIPSLY_COACHING_FORM_AUTOMATION_SECRET` is configured and the caller sends
+  that exact value as a bearer token. Use a dedicated random value; do not
+  reuse auth, invitation, calendar, or provider credentials. The reconciler
+  assigns immutable form versions and writes exact-once receipts only. It does
+  not send email, create work, or alter recordings.
 - WorldHub provider env vars are optional readiness inputs for the internal
   `/team/worldhub` command center. The app stores only env names and provider
   connection status, not secret values.

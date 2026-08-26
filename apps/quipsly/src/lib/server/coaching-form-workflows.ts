@@ -203,7 +203,7 @@ export async function assignCoachingForm(input: {
     timing,
     dueAt: dueAt?.toISOString() ?? null,
   };
-  const inputSha256 = hash(intent);
+  const inputSha256 = coachingFormAssignmentInputSha256(intent);
 
   return input.prisma.$transaction(
     async (tx: any) => {
@@ -829,4 +829,21 @@ function hash(value: unknown) {
   return createHash("sha256")
     .update(JSON.stringify(stable(value)))
     .digest("hex");
+}
+
+export function coachingFormAssignmentInputSha256(input: {
+  templateId: string;
+  templateVersionId: string;
+  engagementId: string;
+  bookingId: string | null;
+  callRoomId: string | null;
+  assignedByUserId: string;
+  assignedToUserId: string;
+  timing: string;
+  dueAt: string | null;
+}) {
+  return hash({
+    schema: "quipsly-coaching-form-assignment-v1",
+    ...input,
+  });
 }

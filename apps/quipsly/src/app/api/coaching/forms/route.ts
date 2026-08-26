@@ -7,6 +7,12 @@ import {
   publishCoachingFormTemplate,
   readCoachingFormWorkflows,
 } from "@/lib/server/coaching-form-workflows";
+import {
+  readCoachingFormAutomationOverview,
+  reconcileCoachingFormAutomationForCoach,
+  saveCoachingFormAutomationOverride,
+  saveCoachingFormAutomationPolicy,
+} from "@/lib/server/coaching-form-automation";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 
 export const dynamic = "force-dynamic";
@@ -45,7 +51,17 @@ export async function GET(request: Request) {
       prisma: getPrismaClient(),
       actor: session.user,
     });
-    return json({ ok: true, result });
+    const automation = result.actor.isCoach
+      ? await readCoachingFormAutomationOverview({
+          prisma: getPrismaClient(),
+          actor: session.user,
+        })
+      : {
+          schema: "quipsly-coaching-form-automation-v1",
+          policies: [],
+          boundaries: { externalSideEffects: false },
+        };
+    return json({ ok: true, result: { ...result, automation } });
   } catch (error) {
     return failure(error);
   }
@@ -83,6 +99,29 @@ export async function POST(request: Request) {
         prisma,
         actor: session.user,
         body,
+      });
+      return json({ ok: true, result });
+    }
+    if (action === "SAVE_AUTOMATION_POLICY") {
+      const result = await saveCoachingFormAutomationPolicy({
+        prisma,
+        actor: session.user,
+        body,
+      });
+      return json({ ok: true, result });
+    }
+    if (action === "SAVE_AUTOMATION_OVERRIDE") {
+      const result = await saveCoachingFormAutomationOverride({
+        prisma,
+        actor: session.user,
+        body,
+      });
+      return json({ ok: true, result });
+    }
+    if (action === "RECONCILE_AUTOMATION") {
+      const result = await reconcileCoachingFormAutomationForCoach({
+        prisma,
+        actor: session.user,
       });
       return json({ ok: true, result });
     }
