@@ -18,6 +18,14 @@ Date: 2026-08-24
   client invitation, and read back all four canonical rooms. This is local
   operated evidence, not calendar-provider, physical-device, or novice-human
   acceptance.
+- The first ordinary post-series regression exposed a real media-boundary bug:
+  a browser WebM's provisional wall-clock duration can exceed its exact decoded
+  audio clock because encoder startup is not retained media. The alignment
+  worker now deterministically fits its opening and later correlation windows
+  to the immutable decoded sources, keeps a small EOF margin, and still fails
+  closed when two separated windows genuinely do not fit. The exact clean
+  follow-up flight passed dual-source alignment, transcription, work, editing,
+  release/revocation, and automatic audio readiness.
 
 ## Cloud coaching recording render checkpoint
 

@@ -2382,3 +2382,20 @@ This proves local production-shaped persistence, retry safety, rendered
 discoverability, and first-invitation client entry. It does not claim real
 calendar-provider recurrence, real mailbox delivery, physical-device use, or
 minimally instructed human comprehension.
+
+The required ordinary single-Session regression initially failed after both
+fresh retained browser sources were verified. The source-alignment proposal had
+used the honest but provisional 26.219-second capture-boundary duration for a
+WebM whose exact decoded audio clock was 24.240 seconds. Its requested later
+window therefore crossed decoded EOF. The processor now fits both requested
+windows to the exact immutable decoded clocks with an EOF safety margin; it
+does not mutate media, move a timeline, weaken correlation thresholds, or call
+one window two. Insufficient exact overlap still fails closed.
+
+On clean exact source `183891a2ab7a027be28580265126efe8c419da30`, the
+unchanged full fresh coaching flight then passed with two connected endpoints,
+two independently verified sources, 24.275 seconds of overlap, exact-source
+alignment, two-source participant-attributed transcription, mentor DOCX,
+shared/private relationship work, cross-account task completion, inline light
+editing, client release/revocation, and automatic audio readiness. Receipt:
+`artifacts/coaching-acceptance/7363ccae/fresh-coaching-flight-receipt.json`.
