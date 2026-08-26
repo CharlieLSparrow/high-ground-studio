@@ -34,17 +34,17 @@ const STATUS_COPY: Record<
   { label: string; detail: string; nextAction: string; active: boolean }
 > = {
   REQUESTED: {
-    label: "Request received",
-    detail: "Your request is in the review queue.",
+    label: "Deletion scheduled",
+    detail: "Your account deletion is scheduled and no further action is required.",
     nextAction:
-      "Quipsly will review account-owned data, shared work, payment and consent evidence, recordings, and any records that must be retained.",
+      "Quipsly is processing your account, personal data, shared work, and any records that must be retained.",
     active: true,
   },
   REVIEWING: {
-    label: "Review in progress",
-    detail: "Quipsly is reviewing the data attached to your account.",
+    label: "Deletion in progress",
+    detail: "Quipsly is processing the data attached to your account.",
     nextAction:
-      "No action is required unless Quipsly contacts you to verify the request or clarify export and retention choices.",
+      "No action is required unless Quipsly needs to verify your identity.",
     active: true,
   },
   EXPORT_PREPARING: {
@@ -52,39 +52,39 @@ const STATUS_COPY: Record<
     detail:
       "Quipsly is preparing any requested or required account export before deletion.",
     nextAction:
-      "Keep access to your account email. Quipsly will contact you if an export needs to be delivered or confirmed.",
+      "No action is required. Quipsly will continue automatically.",
     active: true,
   },
   READY_FOR_DELETION: {
-    label: "Deletion review complete",
+    label: "Ready to delete",
     detail:
-      "The request has passed review and is ready for the final deletion step.",
+      "Your account is ready for the final deletion step.",
     nextAction:
-      "Quipsly will complete the approved deletion work and send confirmation to your account email.",
+      "Quipsly will complete deletion and send confirmation to your account email.",
     active: true,
   },
   EXECUTING: {
     label: "Deletion in progress",
     detail:
-      "Quipsly is revoking account access and applying the approved deletion and retention plan.",
+      "Quipsly is removing account access and applying the deletion and retention rules.",
     nextAction:
-      "Keep access to your account email for the final completion confirmation. Retried work resumes from the durable execution receipt.",
+      "No action is required. Quipsly will send completion confirmation to your account email.",
     active: true,
   },
   COMPLETED: {
     label: "Deletion completed",
     detail:
-      "Quipsly completed the approved account deletion work and recorded a durable executor receipt.",
+      "Quipsly completed account deletion.",
     nextAction:
       "Check your account email for the completion confirmation and the disclosed categories of records that were retained or anonymized.",
     active: false,
   },
   FAILED: {
-    label: "Deletion needs recovery",
+    label: "Deletion needs attention",
     detail:
-      "Quipsly could not finish every approved deletion step. Account access remains disabled while the operation is safely retried or reviewed.",
+      "Quipsly could not finish every deletion step. Account access remains disabled while the operation is retried.",
     nextAction:
-      "Quipsly will resume from the durable execution record. Contact support if you need an update before the retry completes.",
+      "Quipsly will retry automatically. Contact support if you need an update.",
     active: true,
   },
   CANCELED: {

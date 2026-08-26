@@ -41,7 +41,7 @@ describe("account deletion policy", () => {
       }),
     ).toMatchObject({
       status: "FAILED",
-      statusLabel: "Deletion needs recovery",
+      statusLabel: "Deletion needs attention",
       active: true,
       recoveryRequired: true,
       completionReceiptAvailable: false,

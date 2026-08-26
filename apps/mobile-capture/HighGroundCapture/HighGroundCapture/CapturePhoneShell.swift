@@ -11197,7 +11197,7 @@ private struct CaptureAccountView: View {
             }
             Divider().padding(.leading, 42)
             Button(role: .destructive) { showsDeletion = true } label: {
-                AccountLinkRow(label: "Request account deletion", systemImage: "trash")
+                AccountLinkRow(label: "Delete account", systemImage: "trash")
             }
             .disabled(model.isSessionContextLocked)
         }
@@ -15083,8 +15083,7 @@ private struct AccountDeletionSheet: View {
     @Binding var isPresented: Bool
     @ObservedObject var client: AccountDeletionClient
     let usesPreviewData: Bool
-    @State private var reason = ""
-    @State private var confirmsRequest = false
+    @State private var showsFinalConfirmation = false
 
     private var hasActiveRequest: Bool {
         client.latestRequest?.active == true
@@ -15094,27 +15093,38 @@ private struct AccountDeletionSheet: View {
         NavigationStack {
             Form {
                 Section {
-                    Text("Request deletion of your Quipsly account and associated app-owned data. The request is reviewed so recording retention and legal obligations can be handled honestly.")
+                    Text("Delete your Quipsly account and eligible personal data. You do not need to remove every Session or file first.")
                         .font(.subheadline)
                 }
 
-                Section("Expected timing") {
-                    Text(client.policy?.timing ?? "Quipsly targets completion within 30 days. If legal retention or unusually complex attached records require more time, Quipsly will explain the delay.")
-                    Text(client.policy?.completionConfirmation ?? "Reopen Account to follow progress. Quipsly also sends completion confirmation to your account email.")
-                        .foregroundStyle(.secondary)
+                if !hasActiveRequest {
+                    Section("What happens") {
+                        Label("Your access is removed", systemImage: "person.crop.circle.badge.minus")
+                        Label("Eligible personal data is deleted", systemImage: "trash")
+                        Label("Required shared or legal records may be anonymized or retained", systemImage: "person.text.rectangle")
+                        Text("Deleting your account does not cancel an App Store subscription. Cancel it separately in your Apple Account.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                } else {
+                    Section("Timing") {
+                        Text(client.policy?.timing ?? "Quipsly targets completion within 30 days. If required retention or unusually complex attached records require more time, Quipsly will explain the delay.")
+                        Text(client.policy?.completionConfirmation ?? "Reopen Account to follow progress. Quipsly also sends completion confirmation to your account email.")
+                            .foregroundStyle(.secondary)
+                    }
                 }
 
                 if let request = client.latestRequest {
                     AccountDeletionRequestStatusSection(request: request)
                 }
 
-                if !hasActiveRequest {
-                    Section("Optional note") {
-                        TextField("Why are you leaving?", text: $reason, axis: .vertical)
-                            .lineLimit(2...4)
-                    }
+                if !hasActiveRequest,
+                   let appStoreURL = URL(string: "https://apps.apple.com/account/subscriptions") {
                     Section {
-                        Toggle("I want to submit an account deletion request", isOn: $confirmsRequest)
+                        Link(destination: appStoreURL) {
+                            Label("Manage Apple subscriptions", systemImage: "arrow.up.right.square")
+                        }
+                        .foregroundStyle(.secondary)
                     }
                 }
 
@@ -15138,12 +15148,24 @@ private struct AccountDeletionSheet: View {
                         }
                         .disabled(client.isLoading)
                     } else {
-                        Button("Submit", role: .destructive) {
-                            Task { await client.requestDeletion(reason: reason) }
+                        Button("Delete…", role: .destructive) {
+                            showsFinalConfirmation = true
                         }
-                        .disabled(!confirmsRequest || client.isSubmitting || usesPreviewData)
+                        .disabled(client.isSubmitting || usesPreviewData)
                     }
                 }
+            }
+            .confirmationDialog(
+                "Delete your Quipsly account?",
+                isPresented: $showsFinalConfirmation,
+                titleVisibility: .visible
+            ) {
+                Button("Delete account", role: .destructive) {
+                    Task { await client.requestDeletion(reason: "") }
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("This starts account deletion and removes your access. This cannot be undone after deletion completes.")
             }
             .task {
                 guard !usesPreviewData else { return }
@@ -15157,7 +15179,7 @@ private struct AccountDeletionRequestStatusSection: View {
     let request: AccountDeletionRequestPayload
 
     var body: some View {
-        Section("Request status") {
+        Section("Deletion status") {
             LabeledContent("Status", value: request.statusLabel ?? request.status ?? "Recorded")
             if let requested = accountDeletionDate(request.requestedAt) {
                 LabeledContent("Requested", value: requested)

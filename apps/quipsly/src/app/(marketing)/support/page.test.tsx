@@ -27,7 +27,7 @@ describe("Quipsly support page", () => {
       screen.getByRole("link", { name: "Read the privacy policy" }),
     ).toHaveAttribute("href", "/privacy");
     expect(
-      screen.getByRole("link", { name: "Review account deletion" }),
+      screen.getByRole("link", { name: "Delete your account" }),
     ).toHaveAttribute("href", "/privacy/account-deletion");
     expect(screen.getByRole("link", { name: "Review pricing" })).toHaveAttribute(
       "href",

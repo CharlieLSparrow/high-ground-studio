@@ -95,7 +95,7 @@ export default function SupportPage() {
                 className="text-[#9a541f] underline underline-offset-4"
                 href="/privacy/account-deletion"
               >
-                Review account deletion
+                Delete your account
               </a>
             </div>
           </section>
