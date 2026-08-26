@@ -5,6 +5,7 @@ jest.mock("@/lib/server/prisma-advisory-lock", () => ({
 
 import {
   QUIPSLY_COACH_CAPABILITIES,
+  DEFAULT_QUIPSLY_COACH_TRIAL_DAYS,
   ensureQuipslyBillingContext,
   quipslyAppStoreProducts,
   readQuipslyEntitlement,
@@ -27,6 +28,7 @@ describe("Quipsly SaaS entitlement projection", () => {
       accessMode: "EARLY_ACCESS",
       status: "ACTIVE",
       appAccountToken: null,
+      trialDays: DEFAULT_QUIPSLY_COACH_TRIAL_DAYS,
     });
     expect(entitlement.capabilities).toEqual(QUIPSLY_COACH_CAPABILITIES);
   });
@@ -104,11 +106,12 @@ describe("Quipsly SaaS entitlement projection", () => {
     ]);
   });
 
-  it("prepares account linking without granting new early access after enforcement", async () => {
+  it("activates one full coach trial instead of writing an invalid subscription status", async () => {
     const tx = {
       subscriptionPlan: {
         upsert: jest.fn()
           .mockResolvedValueOnce({ id: "plan-early" })
+          .mockResolvedValueOnce({ id: "plan-trial" })
           .mockResolvedValue({ id: "plan-paid" }),
       },
       subscription: {
@@ -140,9 +143,175 @@ describe("Quipsly SaaS entitlement projection", () => {
     expect(tx.subscription.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         billingOwnerUserId: "coach-new",
-        providerStatus: "AWAITING_PURCHASE",
-        status: "INCOMPLETE",
-        verifiedAt: null,
+        planId: "plan-trial",
+        providerStatus: "TRIAL",
+        status: "TRIALING",
+        verifiedAt: expect.any(Date),
+        currentPeriodStart: expect.any(Date),
+        currentPeriodEnd: expect.any(Date),
+        trialEnd: expect.any(Date),
+      }),
+    });
+    const created = tx.subscription.create.mock.calls[0][0].data;
+    expect(
+      created.trialEnd.getTime() - created.currentPeriodStart.getTime(),
+    ).toBe(DEFAULT_QUIPSLY_COACH_TRIAL_DAYS * 24 * 60 * 60 * 1_000);
+  });
+
+  it("projects an active coach trial separately from permanent early access", async () => {
+    const entitlement = await readQuipslyEntitlement({
+      prisma: {
+        subscription: {
+          findFirst: jest.fn().mockResolvedValue({
+            id: "sub-trial",
+            organizationId: "org-trial",
+            provider: "MANUAL",
+            status: "TRIALING",
+            currentPeriodEnd: new Date("2026-09-09T12:00:00.000Z"),
+            trialEnd: new Date("2026-09-09T12:00:00.000Z"),
+            cancelAtPeriodEnd: false,
+            verifiedAt: new Date("2026-08-26T12:00:00.000Z"),
+            appAccountToken: "760af700-b296-4b3f-b0fe-3f5648c299b4",
+            plan: {
+              stableKey: "quipsly-coach-trial",
+              name: "Quipsly Coach trial",
+              displayOrder: 20,
+              capabilitiesJson: [...QUIPSLY_COACH_CAPABILITIES],
+            },
+          }),
+        },
+      },
+      userId: "coach-trial",
+      environment: { QUIPSLY_SAAS_ENTITLEMENT_ENFORCEMENT: "true" },
+      now: new Date("2026-08-26T12:00:00.000Z"),
+    });
+
+    expect(entitlement).toMatchObject({
+      entitled: true,
+      accessMode: "TRIAL",
+      planKey: "quipsly-coach-trial",
+      trialEnd: "2026-09-09T12:00:00.000Z",
+      trialDays: DEFAULT_QUIPSLY_COACH_TRIAL_DAYS,
+    });
+  });
+
+  it("treats an expired trial as free without hiding the account or its work", async () => {
+    const findFirst = jest.fn().mockResolvedValue(null);
+    const now = new Date("2026-09-10T12:00:00.000Z");
+
+    const entitlement = await readQuipslyEntitlement({
+      prisma: { subscription: { findFirst } },
+      userId: "coach-expired",
+      environment: { QUIPSLY_SAAS_ENTITLEMENT_ENFORCEMENT: "true" },
+      now,
+    });
+
+    expect(findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        billingOwnerUserId: "coach-expired",
+        status: { in: ["ACTIVE", "TRIALING"] },
+        OR: [{ currentPeriodEnd: null }, { currentPeriodEnd: { gt: now } }],
+      }),
+    }));
+    expect(entitlement).toMatchObject({
+      entitled: false,
+      accessMode: "FREE",
+      capabilities: [],
+      management: {
+        appStoreURL: "https://apps.apple.com/account/subscriptions",
+        webURL: "/settings#subscription",
+      },
+    });
+  });
+
+  it("never replaces an existing subscription to restart a trial", async () => {
+    const subscription = {
+      id: "sub-existing",
+      organizationId: "org-existing",
+      billingOwnerUserId: "coach-existing",
+      appAccountToken: "760af700-b296-4b3f-b0fe-3f5648c299b4",
+      organization: { id: "org-existing" },
+    };
+    const membership = {
+      organizationId: "org-existing",
+      organization: { subscription },
+    };
+    const tx = {
+      subscriptionPlan: {
+        upsert: jest.fn()
+          .mockResolvedValueOnce({ id: "plan-early" })
+          .mockResolvedValueOnce({ id: "plan-trial" })
+          .mockResolvedValue({ id: "plan-paid" }),
+      },
+      subscription: {
+        findUnique: jest.fn().mockResolvedValue(subscription),
+        update: jest.fn(),
+        create: jest.fn(),
+      },
+      organizationMember: {
+        findFirst: jest.fn().mockResolvedValue(membership),
+        findMany: jest.fn(),
+        create: jest.fn(),
+      },
+      organization: { create: jest.fn() },
+    };
+    const prisma = {
+      $transaction: jest.fn().mockImplementation((callback) => callback(tx)),
+      subscription: { findFirst: jest.fn().mockResolvedValue(null) },
+    };
+
+    await ensureQuipslyBillingContext({
+      prisma,
+      user: { id: "coach-existing", name: "Existing Coach" },
+      environment: { QUIPSLY_SAAS_ENTITLEMENT_ENFORCEMENT: "true" },
+    });
+
+    expect(tx.subscription.create).not.toHaveBeenCalled();
+    expect(tx.subscription.update).not.toHaveBeenCalled();
+    expect(tx.organization.create).not.toHaveBeenCalled();
+  });
+
+  it("continues permanent early access when commercial enforcement is off", async () => {
+    const tx = {
+      subscriptionPlan: {
+        upsert: jest.fn()
+          .mockResolvedValueOnce({ id: "plan-early" })
+          .mockResolvedValueOnce({ id: "plan-trial" })
+          .mockResolvedValue({ id: "plan-paid" }),
+      },
+      subscription: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        create: jest.fn(),
+      },
+      organizationMember: {
+        findMany: jest.fn().mockResolvedValue([]),
+        create: jest.fn().mockResolvedValue({
+          organizationId: "org-early",
+          organization: { subscription: null },
+        }),
+      },
+      organization: {
+        create: jest.fn().mockResolvedValue({ id: "org-early" }),
+      },
+    };
+    const prisma = {
+      $transaction: jest.fn().mockImplementation((callback) => callback(tx)),
+      subscription: { findFirst: jest.fn().mockResolvedValue(null) },
+    };
+
+    await ensureQuipslyBillingContext({
+      prisma,
+      user: { id: "coach-early", name: "Early Coach" },
+      environment: {},
+    });
+
+    expect(tx.subscription.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        planId: "plan-early",
+        providerStatus: "EARLY_ACCESS",
+        status: "ACTIVE",
+        currentPeriodEnd: null,
+        trialEnd: null,
       }),
     });
   });

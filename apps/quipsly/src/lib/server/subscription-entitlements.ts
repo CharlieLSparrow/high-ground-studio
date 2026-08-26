@@ -21,9 +21,20 @@ export type QuipslyCoachCapability = typeof QUIPSLY_COACH_CAPABILITIES[number];
 
 export const QUIPSLY_COACH_PLAN_KEYS = {
   earlyAccess: "quipsly-early-access",
+  trial: "quipsly-coach-trial",
   monthly: "quipsly-coach-monthly",
   annual: "quipsly-coach-annual",
 } as const;
+
+export const DEFAULT_QUIPSLY_COACH_TRIAL_DAYS = 14;
+
+function coachTrialDays(
+  environment: Readonly<Record<string, string | undefined>>,
+) {
+  const configured = Number(environment.QUIPSLY_COACH_TRIAL_DAYS);
+  if (!Number.isInteger(configured)) return DEFAULT_QUIPSLY_COACH_TRIAL_DAYS;
+  return Math.min(60, Math.max(1, configured));
+}
 
 export function quipslyAppStoreProducts(
   environment: Readonly<Record<string, string | undefined>> = process.env,
@@ -88,7 +99,9 @@ export async function readQuipslyEntitlement(input: {
     entitled,
     enforcementEnabled,
     accessMode: subscription
-      ? provider === "MANUAL"
+      ? subscription.status === "TRIALING"
+        ? "TRIAL"
+        : provider === "MANUAL"
         ? "EARLY_ACCESS"
         : "SUBSCRIBED"
       : enforcementEnabled
@@ -99,6 +112,8 @@ export async function readQuipslyEntitlement(input: {
     provider,
     status: subscription?.status ?? (enforcementEnabled ? "INACTIVE" : "ACTIVE"),
     currentPeriodEnd: subscription?.currentPeriodEnd?.toISOString?.() ?? null,
+    trialEnd: subscription?.trialEnd?.toISOString?.() ?? null,
+    trialDays: coachTrialDays(environment),
     cancelAtPeriodEnd: subscription?.cancelAtPeriodEnd === true,
     verifiedAt: subscription?.verifiedAt?.toISOString?.() ?? null,
     capabilities: entitled
@@ -132,6 +147,20 @@ async function upsertQuipslyPlans(prisma: any, environment: Readonly<Record<stri
       displayOrder: 10,
     },
   });
+  const trial = await prisma.subscriptionPlan.upsert({
+    where: { stableKey: QUIPSLY_COACH_PLAN_KEYS.trial },
+    update: { capabilitiesJson, displayOrder: 20 },
+    create: {
+      stableKey: QUIPSLY_COACH_PLAN_KEYS.trial,
+      name: "Quipsly Coach trial",
+      price: 0,
+      currency: "usd",
+      interval: "trial",
+      capabilitiesJson,
+      purchasable: false,
+      displayOrder: 20,
+    },
+  });
   for (const [index, product] of products.entries()) {
     await prisma.subscriptionPlan.upsert({
       where: { stableKey: product.planKey },
@@ -154,7 +183,7 @@ async function upsertQuipslyPlans(prisma: any, environment: Readonly<Record<stri
       },
     });
   }
-  return earlyAccess;
+  return { earlyAccess, trial };
 }
 
 export async function ensureQuipslyBillingContext(input: {
@@ -165,7 +194,7 @@ export async function ensureQuipslyBillingContext(input: {
   const environment = input.environment ?? process.env;
   await input.prisma.$transaction(async (tx: any) => {
     await acquirePrismaAdvisoryTransactionLock(tx, `quipsly-billing-context:${input.user.id}`);
-    const earlyAccess = await upsertQuipslyPlans(tx, environment);
+    const plans = await upsertQuipslyPlans(tx, environment);
     let subscription = await tx.subscription.findUnique({
       where: { billingOwnerUserId: input.user.id },
       include: { organization: true },
@@ -225,16 +254,26 @@ export async function ensureQuipslyBillingContext(input: {
     subscription = membership.organization.subscription ?? subscription;
     if (!subscription) {
       const grantEarlyAccess = !entitlementEnforcementEnabled(environment);
+      const activatedAt = new Date();
+      const trialEnd = grantEarlyAccess
+        ? null
+        : new Date(
+            activatedAt.getTime()
+              + coachTrialDays(environment) * 24 * 60 * 60 * 1_000,
+          );
       await tx.subscription.create({
         data: {
           organizationId: membership.organizationId,
           billingOwnerUserId: input.user.id,
-          planId: earlyAccess.id,
+          planId: grantEarlyAccess ? plans.earlyAccess.id : plans.trial.id,
           provider: "MANUAL",
-          providerStatus: grantEarlyAccess ? "EARLY_ACCESS" : "AWAITING_PURCHASE",
-          status: grantEarlyAccess ? "ACTIVE" : "INCOMPLETE",
+          providerStatus: grantEarlyAccess ? "EARLY_ACCESS" : "TRIAL",
+          status: grantEarlyAccess ? "ACTIVE" : "TRIALING",
           appAccountToken: randomUUID(),
-          verifiedAt: grantEarlyAccess ? new Date() : null,
+          currentPeriodStart: activatedAt,
+          currentPeriodEnd: trialEnd,
+          trialEnd,
+          verifiedAt: activatedAt,
         },
       });
     } else if (!subscription.appAccountToken || !subscription.billingOwnerUserId) {

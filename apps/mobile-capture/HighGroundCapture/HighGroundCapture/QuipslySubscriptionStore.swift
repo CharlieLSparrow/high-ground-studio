@@ -17,6 +17,8 @@ struct QuipslySaaSEntitlement: Decodable {
     let provider: String?
     let status: String
     let currentPeriodEnd: String?
+    let trialEnd: String?
+    let trialDays: Int?
     let cancelAtPeriodEnd: Bool
     let verifiedAt: String?
     let capabilities: [String]
@@ -109,6 +111,22 @@ final class QuipslySubscriptionStore: ObservableObject {
             @unknown default:
                 throw SubscriptionStoreError.unknownPurchaseResult
             }
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func startTrial() async {
+        guard purchasingProductID == nil else { return }
+        purchasingProductID = "trial"
+        errorMessage = nil
+        message = nil
+        defer { purchasingProductID = nil }
+        do {
+            entitlement = try await requestEntitlement(method: "POST")
+            message = entitlement?.accessMode == "TRIAL"
+                ? "Your full Quipsly Coach trial is active."
+                : "Your Quipsly access is active."
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -258,6 +276,25 @@ struct QuipslySubscriptionView: View {
             VStack(spacing: 16) {
                 currentPlanCard
 
+                if let entitlement = store.entitlement,
+                   entitlement.enforcementEnabled,
+                   !entitlement.entitled {
+                    Button {
+                        Task { await store.startTrial() }
+                    } label: {
+                        HStack {
+                            if store.purchasingProductID == "trial" {
+                                ProgressView().tint(.white)
+                            }
+                            Label("Start \(entitlement.trialDays ?? 14)-day free trial", systemImage: "sparkles")
+                        }
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(store.purchasingProductID != nil)
+                    .accessibilityIdentifier("CaptureStartQuipslyTrial")
+                }
+
                 if store.products.isEmpty {
                     VStack(alignment: .leading, spacing: 8) {
                         Label("Plans are coming online", systemImage: "sparkles")
@@ -341,6 +378,9 @@ struct QuipslySubscriptionView: View {
         }
         if entitlement.accessMode == "EARLY_ACCESS" {
             return "Full early access is active. Quipsly will not remove access or hide your work while paid plans are being introduced."
+        }
+        if entitlement.accessMode == "TRIAL", let end = formattedDate(entitlement.trialEnd) {
+            return "Your complete Quipsly Coach trial is active through \(end). Invitees join and collaborate free."
         }
         if entitlement.cancelAtPeriodEnd, let end = formattedDate(entitlement.currentPeriodEnd) {
             return "Your subscription remains active through \(end)."
