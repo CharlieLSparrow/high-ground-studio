@@ -366,22 +366,22 @@ export default async function CoachingEngagementPage({
   };
 
   return (
-    <main className="min-h-full bg-[#f5efe4] px-5 py-8 lg:px-10">
-      <div className="mx-auto max-w-[92rem]">
+    <main className="min-h-full min-w-0 w-full bg-[#f5efe4] px-0 py-4 sm:px-5 sm:py-8 lg:px-10">
+      <div className="mx-auto min-w-0 w-full max-w-[92rem]">
         <Link
           href="/coaching/engagements"
           className="inline-flex items-center gap-2 text-sm font-black text-[#765f40]"
         >
           <ArrowLeft size={16} /> All clients
         </Link>
-        <header className="mt-5 rounded-[2rem] border border-[#dfcfb4] bg-[#fffdf8] p-7 shadow-sm">
+        <header className="mt-5 min-w-0 rounded-[2rem] border border-[#dfcfb4] bg-[#fffdf8] p-5 shadow-sm sm:p-7">
           <div className="flex flex-wrap items-start justify-between gap-6">
             <div>
               <p className="text-xs font-black uppercase tracking-[0.22em] text-violet-800">
                 Coaching ·{" "}
                 {viewerRole === "COACH" ? "Client space" : "My coaching space"}
               </p>
-              <h1 className="mt-2 font-serif text-5xl font-black text-[#34291d]">
+              <h1 className="mt-2 break-words font-serif text-4xl font-black text-[#34291d] sm:text-5xl">
                 {engagement.title}
               </h1>
               <p className="mt-4 flex flex-wrap items-center gap-3 text-sm font-bold text-[#765f40]">
@@ -437,9 +437,9 @@ export default async function CoachingEngagementPage({
             <CoachingEngagementMemberManager engagementId={engagement.id} />
           </div>
         ) : null}
-        <div className="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1.4fr)_minmax(22rem,0.8fr)]">
-          <div className="space-y-6">
-            <section className="rounded-[1.75rem] border border-[#dfcfb4] bg-[#fffdf8] p-6">
+        <div className="mt-6 grid min-w-0 gap-6 xl:grid-cols-[minmax(0,1.4fr)_minmax(22rem,0.8fr)]">
+          <div className="min-w-0 space-y-6">
+            <section className="min-w-0 rounded-[1.75rem] border border-[#dfcfb4] bg-[#fffdf8] p-4 sm:p-6">
               <p className="text-[10px] font-black uppercase tracking-[0.2em] text-violet-800">
                 Your history
               </p>
@@ -541,7 +541,7 @@ export default async function CoachingEngagementPage({
               canWrite={canPost}
             />
           </div>
-          <div id="relationship-conversation">
+          <div id="relationship-conversation" className="min-w-0">
             <CollaborationThread
               projectSlug={engagement.project.slug}
               threadKey={`engagement:${engagement.id}`}

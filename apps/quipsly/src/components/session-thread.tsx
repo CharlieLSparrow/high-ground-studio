@@ -147,7 +147,7 @@ export function CollaborationThread({
   }
 
   return (
-    <section className="flex min-h-[30rem] flex-col overflow-hidden rounded-[1.75rem] border border-[#d8c7a7] bg-[#fffdf8] shadow-sm" aria-labelledby={headingId}>
+    <section className="flex min-h-[30rem] min-w-0 w-full flex-col overflow-hidden rounded-[1.75rem] border border-[#d8c7a7] bg-[#fffdf8] shadow-sm" aria-labelledby={headingId}>
       <header className="border-b border-[#e5d5b7] px-5 py-4">
         <p className="text-[10px] font-black uppercase tracking-[0.2em] text-violet-800">{scopeLabel}</p>
         <h2 id={headingId} className="mt-1 flex items-center gap-2 font-serif text-2xl font-black text-[#3d3122]"><MessageCircle size={20} aria-hidden="true" /> {heading}</h2>
@@ -164,7 +164,7 @@ export function CollaborationThread({
       <form onSubmit={send} className="border-t border-[#e5d5b7] p-3">
         {error ? <p className="mb-2 rounded-xl bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-800">{error}</p> : null}
         <div className="flex items-end gap-2">
-          <textarea value={draft} onChange={(event) => setDraft(event.target.value)} disabled={!canPost} placeholder={canPost ? composerPlaceholder : viewOnlyPlaceholder} className="min-h-20 flex-1 resize-none rounded-2xl border border-[#d8c7a7] bg-white px-3 py-2 text-sm text-[#3d3122] outline-none placeholder:text-[#9a876c] focus:border-violet-500 focus:ring-4 focus:ring-violet-100 disabled:bg-[#f4eee2]" />
+          <textarea value={draft} onChange={(event) => setDraft(event.target.value)} disabled={!canPost} placeholder={canPost ? composerPlaceholder : viewOnlyPlaceholder} className="min-h-20 min-w-0 flex-1 resize-none rounded-2xl border border-[#d8c7a7] bg-white px-3 py-2 text-sm text-[#3d3122] outline-none placeholder:text-[#9a876c] focus:border-violet-500 focus:ring-4 focus:ring-violet-100 disabled:bg-[#f4eee2]" />
           <button type="submit" disabled={!canPost || !draft.trim() || status === "sending"} className="inline-flex min-h-11 items-center gap-2 rounded-2xl bg-violet-800 px-4 font-black text-white disabled:opacity-45" aria-label="Send collaboration message">{status === "sending" ? <LoaderCircle size={17} className="animate-spin" /> : <Send size={17} />}</button>
         </div>
         {!canPost ? <p className="mt-2 text-xs font-bold text-[#8a7354]">You can read this recording thread, but editor access is required to post.</p> : null}

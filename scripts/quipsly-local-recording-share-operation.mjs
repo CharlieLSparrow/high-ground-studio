@@ -37,43 +37,14 @@ async function decodeAndAdvance(card) {
   });
 }
 
-async function completeRequiredPreviewReview(card, recipientLabel) {
-  const progress = card.getByRole("progressbar", {
-    name: "Private preview listening review",
-  });
-  await progress.waitFor({ state: "visible", timeout: 30_000 });
-  const required = Number(await progress.getAttribute("aria-valuemax"));
-  let observed = Number(await progress.getAttribute("aria-valuenow"));
-  assert(
-    Number.isInteger(required) && required > 0,
-    `Private preview did not disclose required listening checkpoints (${required}).`,
-  );
-  while (observed < required) {
-    const before = observed;
-    await card
-      .getByRole("button", { name: "Play next review point", exact: true })
-      .click();
-    const deadline = Date.now() + 10_000;
-    while (Date.now() < deadline) {
-      observed = Number(await progress.getAttribute("aria-valuenow"));
-      if (observed > before) break;
-      await new Promise((resolve) => setTimeout(resolve, 100));
-    }
-    assert(
-      observed > before,
-      `Preview listening checkpoint did not advance beyond ${before}/${required}.`,
-    );
-  }
-  await card
-    .getByText("Listening review saved for this exact revision", { exact: false })
-    .waitFor({ timeout: 30_000 });
+async function assertShareAvailableWithoutListeningCeremony(card, recipientLabel) {
   const release = card.getByRole("button", {
     name: `Share with ${recipientLabel}`,
     exact: true,
   });
   await release.waitFor({ state: "visible", timeout: 30_000 });
-  assert(await release.isEnabled(), "Reviewed private preview remained held from release.");
-  return { requiredCheckpointCount: required, observedCheckpointCount: observed };
+  assert(await release.isEnabled(), "A verified private preview was held behind a listening ceremony.");
+  return { previewRemainsAvailable: true, listeningReceiptOptional: true, shareAvailableNow: true };
 }
 
 assert(enabled, "Set QUIPSLY_LOCAL_RECORDING_SHARE_OPERATION=1 to authorize retained local recording-share artifacts.");
@@ -191,7 +162,7 @@ try {
   await coachCard.getByText("VERIFIED", { exact: true }).waitFor({ timeout: 120_000 });
   results.coachPreview = await decodeAndAdvance(coachCard);
   assert(results.coachPreview.readyState >= 1 && results.coachPreview.currentTimeSeconds > 0, "Coach preview did not decode and advance.");
-  results.playbackReview = await completeRequiredPreviewReview(
+  results.playbackReview = await assertShareAvailableWithoutListeningCeremony(
     coachCard,
     identities.client.displayName,
   );
@@ -212,7 +183,7 @@ try {
 
   await clientPage.reload({ waitUntil: "domcontentloaded" });
   const clientCard = clientPage.locator("#recording-share");
-  await clientCard.getByText("Your coach released this reviewed copy to your private Session.", { exact: true }).waitFor({ timeout: 30_000 });
+  await clientCard.getByText("Your coach shared this private recording in your Session.", { exact: true }).waitFor({ timeout: 30_000 });
   await assertNoHorizontalOverflow(clientCard, "client recording share at phone width");
   results.clientPlayback = await decodeAndAdvance(clientCard);
   assert(results.clientPlayback.readyState >= 1 && results.clientPlayback.currentTimeSeconds > 0, "Recipient playback did not decode and advance.");
@@ -263,13 +234,14 @@ console.log(JSON.stringify({
   derivedSha256: results.derived.checksum,
   derivedSizeBytes: Number(results.derived.byteSize),
   coachPreviewDecoded: true,
+  shareAvailableWithoutListeningCeremony: results.playbackReview.shareAvailableNow,
   clientPlaybackDecoded: true,
   clientMediaStatusBeforeRevoke: results.clientMediaStatusBeforeRevoke,
   clientMediaStatusAfterRevoke: results.clientMediaStatusAfterRevoke,
   releaseRetryIdempotent: true,
   revokeRetryIdempotent: true,
   releaseAndRevokeEvents: deliveryEvents,
-  boundaries: { originalSourcesMutated: false, clientDraftVisibility: false, releaseWasExplicit: true, revokeWasExplicit: true, externalMessageSent: false, publicLinkCreated: false, realSpeechAccuracyProven: false, humanListeningProven: false, freshNoviceJourneyProven: false, freshContextMutatedOutsideProduct: false },
+  boundaries: { originalSourcesMutated: false, clientDraftVisibility: false, releaseWasExplicit: true, revokeWasExplicit: true, listeningReceiptOptional: true, externalMessageSent: false, publicLinkCreated: false, realSpeechAccuracyProven: false, humanListeningProven: false, freshNoviceJourneyProven: false, freshContextMutatedOutsideProduct: false },
 }, null, 2));
 
 await prisma.$disconnect();

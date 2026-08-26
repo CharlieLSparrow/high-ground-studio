@@ -290,6 +290,27 @@ describe("SessionRecordingShareCard", () => {
     expect(screen.getByRole("button", { name: "Share with Client" })).toBeEnabled();
   });
 
+  it("describes a client release without claiming somebody completed an optional review", async () => {
+    const output = {
+      id: "session_output_released_0001",
+      status: "RELEASED",
+      title: "First coaching session recording",
+      revision: 3,
+      contentSha256: "d".repeat(64),
+      recipient: { id: "client_user_0001", label: "Client" },
+      render: { status: "VERIFIED", durationSeconds: 30, sizeBytes: 4_000, sha256: "e".repeat(64) },
+      mediaUrl: "/api/sessions/session_room_0001/recording-share/media/session_output_released_0001",
+      playbackReview: { schema: "quipsly-session-recording-share-playback-review-v1", requiredSecondBins: [0, 15, 29], joinSecondBins: [], reviewed: false, reviewedAt: null, clientTrackedPlaybackIsNotProofOfAudibility: true },
+      body: { edit: { startSeconds: 0, endSeconds: 30, transcriptExclusions: [] } },
+    };
+    global.fetch = jest.fn(async (_input: RequestInfo | URL) => response({ ...snapshot, role: "CLIENT", output })) as jest.MockedFunction<typeof fetch>;
+
+    render(<SessionRecordingShareCard roomId="session_room_0001" />);
+
+    expect(await screen.findByText("Your coach shared this private recording in your Session.")).toBeInTheDocument();
+    expect(screen.queryByText(/released this reviewed copy/i)).not.toBeInTheDocument();
+  });
+
   it("reopens the current edit without losing transcript cuts and cancels safely", async () => {
     const output = {
       id: "session_output_0002",

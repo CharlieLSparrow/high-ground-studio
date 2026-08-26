@@ -296,7 +296,7 @@ export function CoachingEngagementWorkspace({
   return (
     <section
       id="relationship-work"
-      className="rounded-[1.75rem] border border-[#dfcfb4] bg-[#fffdf8] p-6"
+      className="min-w-0 rounded-[1.75rem] border border-[#dfcfb4] bg-[#fffdf8] p-4 sm:p-6"
       aria-labelledby="engagement-work-heading"
     >
       <div className="flex flex-wrap items-start justify-between gap-4">
