@@ -191,6 +191,39 @@ type CoachingRunway = {
     roomsWithRecordings: number;
     roomsWithPackets: number;
   };
+  practiceCommand?: {
+    schema: "quipsly-coaching-practice-command-v1";
+    generatedAt: string;
+    headline: string;
+    detail: string;
+    allCaughtUp: boolean;
+    counts: {
+      live: number;
+      requests: number;
+      attention: number;
+      prepare: number;
+      followUp: number;
+      today: number;
+    };
+    items: Array<{
+      id: string;
+      kind: string;
+      tone: "live" | "attention" | "upcoming" | "follow-up" | "steady";
+      priority: number;
+      title: string;
+      detail: string;
+      actionLabel: string;
+      href: string;
+      roomId: string | null;
+      bookingId: string | null;
+      engagementId: string | null;
+      requestId: string | null;
+      scheduledAt: string | null;
+      personLabel: string | null;
+    }>;
+    deterministic: true;
+    externalSideEffects: false;
+  } | null;
   coaches?: Array<{
     id: string;
     slug: string;
@@ -353,6 +386,102 @@ type CoachingRunway = {
     nextAction: string;
   }>;
 };
+
+function PracticeCommandCenter({
+  command,
+}: {
+  command: NonNullable<CoachingRunway["practiceCommand"]>;
+}) {
+  const toneClasses = {
+    live: "border-emerald-300 bg-emerald-50 text-emerald-950",
+    attention: "border-amber-300 bg-amber-50 text-amber-950",
+    upcoming: "border-sky-200 bg-sky-50 text-sky-950",
+    "follow-up": "border-violet-200 bg-violet-50 text-violet-950",
+    steady: "border-[#dfcfb4] bg-[#fffaf1] text-[#3d3122]",
+  } as const;
+
+  return (
+    <section
+      className="mx-auto max-w-7xl px-8 pb-6"
+      aria-labelledby="practice-command-heading"
+      data-testid="coaching-practice-command"
+    >
+      <div className="overflow-hidden rounded-[2rem] border border-[#d9c8ab] bg-[#3d3122] shadow-lg">
+        <div className="grid gap-5 px-6 py-6 text-white lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center lg:px-8">
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.24em] text-amber-200">
+              Your practice today
+            </p>
+            <h2 id="practice-command-heading" className="mt-2 font-serif text-3xl font-black">
+              {command.headline}
+            </h2>
+            <p className="mt-2 max-w-3xl text-sm font-semibold leading-6 text-[#f2dfbf]">
+              {command.detail}
+            </p>
+          </div>
+          <div className="grid grid-cols-3 gap-2 text-center sm:grid-cols-6 lg:grid-cols-3">
+            {[
+              ["Today", command.counts.today],
+              ["Live", command.counts.live],
+              ["Requests", command.counts.requests],
+              ["Attention", command.counts.attention],
+              ["Prepare", command.counts.prepare],
+              ["Follow-up", command.counts.followUp],
+            ].map(([label, count]) => (
+              <div key={label} className="min-w-20 rounded-2xl bg-white/10 px-3 py-2">
+                <p className="text-xl font-black">{count}</p>
+                <p className="text-[10px] font-black uppercase tracking-wide text-[#f2dfbf]">{label}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {command.items.length ? (
+          <ol className="grid gap-3 bg-[#fffaf1] p-4 sm:p-6" aria-label="Prioritized coaching work">
+            {command.items.map((item, index) => (
+              <li
+                key={item.id}
+                className={`rounded-2xl border p-4 ${toneClasses[item.tone]}`}
+                data-command-kind={item.kind}
+              >
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="inline-flex h-7 min-w-7 items-center justify-center rounded-full bg-current/10 px-2 text-xs font-black">
+                        {index + 1}
+                      </span>
+                      <h3 className="text-lg font-black">{item.title}</h3>
+                      {item.scheduledAt ? (
+                        <span className="rounded-full border border-current/15 bg-white/70 px-2 py-1 text-[10px] font-black uppercase tracking-wide">
+                          {formatDateTime(item.scheduledAt)}
+                        </span>
+                      ) : null}
+                    </div>
+                    <p className="mt-2 max-w-3xl text-sm font-semibold leading-6 opacity-80">
+                      {item.detail}
+                    </p>
+                  </div>
+                  <a
+                    href={item.href}
+                    className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-full bg-[#3d3122] px-5 py-3 text-sm font-black text-white shadow-sm transition hover:bg-[#5a472f]"
+                  >
+                    {item.actionLabel} <ExternalLink size={14} aria-hidden="true" />
+                  </a>
+                </div>
+              </li>
+            ))}
+          </ol>
+        ) : (
+          <div className="bg-emerald-50 px-6 py-5 text-emerald-950">
+            <p className="flex items-center gap-2 font-black">
+              <CheckCircle2 size={18} aria-hidden="true" /> Nothing needs repair, preparation, or follow-through right now.
+            </p>
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
 
 function formatDateTime(value?: string | null) {
   if (!value) return "Unscheduled";
@@ -2275,7 +2404,7 @@ export default function CoachingPage() {
               product workflow.
             </p>
           ) : null}
-          {!isLoading && runway?.user ? (
+          {!isLoading && runway?.user && (!runway.practiceCommand || isClientOnly) ? (
             <div className="mt-5 flex flex-col gap-4 rounded-2xl border border-violet-200 bg-violet-50/80 p-4 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <p className="text-[10px] font-black uppercase tracking-[0.2em] text-violet-700">
@@ -2357,6 +2486,10 @@ export default function CoachingPage() {
           </div>
         </div>
       </header>
+
+      {canManageCoaching && runway?.practiceCommand ? (
+        <PracticeCommandCenter command={runway.practiceCommand} />
+      ) : null}
 
       <div className="mx-auto grid max-w-7xl grid-cols-1 gap-6 px-8 pb-10 xl:grid-cols-[1.5fr_0.95fr]">
         <section className="space-y-6">

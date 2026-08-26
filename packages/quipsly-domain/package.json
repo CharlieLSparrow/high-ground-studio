@@ -48,6 +48,10 @@
       "types": "./src/coaching-client-priority.ts",
       "import": "./src/coaching-client-priority.ts"
     },
+    "./coaching-practice-command": {
+      "types": "./src/coaching-practice-command.ts",
+      "import": "./src/coaching-practice-command.ts"
+    },
     "./session-entry-readiness": {
       "types": "./src/session-entry-readiness.ts",
       "import": "./src/session-entry-readiness.ts"

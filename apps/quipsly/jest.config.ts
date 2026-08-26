@@ -29,6 +29,7 @@ const config: Config = {
     '^@/(.*)$': '<rootDir>/src/$1',
     '^@high-ground/quipsly-domain$': '<rootDir>/../../packages/quipsly-domain/src/index.ts',
     '^@high-ground/quipsly-domain/coaching-client-priority$': '<rootDir>/../../packages/quipsly-domain/src/coaching-client-priority.ts',
+    '^@high-ground/quipsly-domain/coaching-practice-command$': '<rootDir>/../../packages/quipsly-domain/src/coaching-practice-command.ts',
     '^@high-ground/quipsly-domain/session-entry-readiness$': '<rootDir>/../../packages/quipsly-domain/src/session-entry-readiness.ts',
     '^@high-ground/quipsly-document-kernel$': '<rootDir>/../../packages/quipsly-document-kernel/src/index.ts',
     '^@high-ground/quipsly-media-processing$': '<rootDir>/../../packages/quipsly-media-processing/src/index.ts',

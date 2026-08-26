@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
 import { Temporal } from "@js-temporal/polyfill";
 import { buildQuipslyCoachingLifecycle } from "@high-ground/quipsly-domain/coaching-lifecycle";
+import { buildQuipslyCoachingPracticeCommand } from "@high-ground/quipsly-domain/coaching-practice-command";
 import {
   isTranscriptPacketSource,
   isUnreviewedTranscriptActionItemSource,
@@ -756,6 +757,12 @@ export async function GET(request: Request) {
               },
             },
           },
+          sessionPreparation: {
+            select: {
+              clientSubmittedAt: true,
+              coachPreparedAt: true,
+            },
+          },
           calendarLinks: { orderBy: { createdAt: "desc" }, take: 3 },
           callRoom: {
             include: {
@@ -885,6 +892,11 @@ export async function GET(request: Request) {
             select: { id: true, sourceJson: true },
             take: 100,
           },
+          outputs: {
+            orderBy: { createdAt: "desc" },
+            take: 12,
+            select: { id: true, kind: true, status: true, createdAt: true },
+          },
         },
       }),
       prisma.coachingRequest.findMany({
@@ -962,6 +974,8 @@ export async function GET(request: Request) {
 
     return {
       id: room.id,
+      bookingId: room.bookingId || room.booking?.id || null,
+      coachingEngagementId: room.coachingEngagementId || room.booking?.engagementId || null,
       title: room.title || room.booking?.offering?.title || "Quipsly capture room",
       purpose: room.purpose,
       status: room.status,
@@ -969,6 +983,7 @@ export async function GET(request: Request) {
       providerRoomId: room.providerRoomId,
       scheduledStart: room.scheduledStart,
       scheduledEnd: room.scheduledEnd,
+      endedAt: room.endedAt,
       calendarStatus: calendarPacket.status,
       calendarReadyPacket: calendarPacket,
       client: person(room.booking?.clientUser),
@@ -1011,6 +1026,9 @@ export async function GET(request: Request) {
           ).length)
         : 0,
       packetStatus: roomPacketStatus(room, finalizationReceipts),
+      followUpReleased: Boolean(
+        room.outputs?.some((output: any) => output.status === "RELEASED"),
+      ),
       journeySummary,
       lifecycle,
       nextAction: nextRoomAction(room, finalizationReceipts),
@@ -1178,6 +1196,64 @@ export async function GET(request: Request) {
     convertedBookingId: hold.convertedBookingId || null,
     nextAction: nextHoldAction(hold, now),
   }));
+  const actorIsCoach = coachProfiles.some(
+    (profile: any) => profile.user?.id === userId,
+  );
+  const practiceCommand = actorIsCoach
+    ? buildQuipslyCoachingPracticeCommand({
+        now: now.toISOString(),
+        bookings: upcomingBookings
+          .filter((booking: any) => booking.coachUserId === userId)
+          .map((booking: any) => ({
+            id: booking.id,
+            title: booking.callRoom?.title || booking.offering?.title || "Coaching Session",
+            status: booking.status,
+            scheduledStart: booking.scheduledStart.toISOString(),
+            scheduledEnd: booking.scheduledEnd?.toISOString() || null,
+            roomId: booking.callRoom?.id || null,
+            roomStatus: booking.callRoom?.status || null,
+            engagementId: booking.engagementId || booking.callRoom?.coachingEngagementId || null,
+            clientLabel: booking.clientUser?.name || booking.clientUser?.primaryEmail || null,
+            clientCheckInSubmittedAt:
+              booking.sessionPreparation?.clientSubmittedAt?.toISOString() || null,
+            coachPreparedAt:
+              booking.sessionPreparation?.coachPreparedAt?.toISOString() || null,
+          })),
+        timeRequests: bookingHolds
+          .filter((hold: any) => hold.coachProfile?.user?.id === userId)
+          .map((hold: any) => ({
+            id: hold.id,
+            status: hold.status,
+            expiresAt: hold.expiresAt.toISOString(),
+            scheduledStart: hold.scheduledStart.toISOString(),
+            scheduledEnd: hold.scheduledEnd?.toISOString() || null,
+            title: hold.offering?.title || null,
+            clientLabel:
+              hold.clientUser?.name || hold.clientUser?.primaryEmail || hold.contactEmail || null,
+          })),
+        rooms: recentRooms
+          .filter((room: any) => room.booking?.coachUserId === userId)
+          .map((room: any) => {
+            const mapped = mappedRooms.find((candidate: any) => candidate.id === room.id);
+            return {
+              id: room.id,
+              bookingId: room.bookingId || room.booking?.id || null,
+              engagementId: room.coachingEngagementId || room.booking?.engagementId || null,
+              title: room.title || room.booking?.offering?.title || "Coaching Session",
+              status: room.status,
+              scheduledStart: room.scheduledStart?.toISOString() || null,
+              endedAt: room.endedAt?.toISOString() || null,
+              clientLabel: room.booking?.clientUser?.name || room.booking?.clientUser?.primaryEmail || null,
+              recordingCount: mapped?.recordingCount || 0,
+              recordingStatus: mapped?.latestRecordingAssetStatus || null,
+              providerRecordingState: mapped?.providerRecordingState || null,
+              transcriptStatus: mapped?.latestTranscriptStatus || null,
+              packetStatus: mapped?.packetStatus || null,
+              followUpReleased: mapped?.followUpReleased === true,
+            };
+          }),
+      })
+    : null;
   const liveKitEgressReadiness = getQuipslyLiveKitEgressReadiness();
   const calendarReadiness = getCoachingCalendarReadiness();
   const invitationEmailReadiness = sessionInvitationEmailReadiness(request.url);
@@ -1189,7 +1265,7 @@ export async function GET(request: Request) {
       email: session.user.primaryEmail,
       name: session.user.name,
       isStaff: session.user.isStaff,
-      isCoach: coachProfiles.length > 0,
+      isCoach: actorIsCoach,
       isClient: session.user.roles.includes("CLIENT"),
     },
     generatedAt: new Date().toISOString(),
@@ -1265,6 +1341,7 @@ export async function GET(request: Request) {
     })),
     availabilityWindows: mappedAvailabilityWindows,
     bookingHolds: mappedBookingHolds,
+    practiceCommand,
     upcomingBookings: mappedBookings,
     captureRooms: mappedRooms,
     openRequests: openRequests.map((request: any) => ({

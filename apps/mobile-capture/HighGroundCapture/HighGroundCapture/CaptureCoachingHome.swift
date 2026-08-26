@@ -149,9 +149,53 @@ struct MobileCoachingRunwayResponse: Codable {
     let error: String?
     let user: MobileCoachingRunwayUser?
     let readiness: MobileCoachingRunwayReadiness?
+    let practiceCommand: MobileCoachingPracticeCommand?
     let upcomingBookings: [MobileCoachingBooking]?
     let availabilityWindows: [MobileCoachingAvailabilityWindow]?
     let bookingHolds: [MobileCoachingBookingHold]?
+}
+
+struct MobileCoachingPracticeCommand: Codable, Hashable {
+    let schema: String
+    let generatedAt: String
+    let headline: String
+    let detail: String
+    let allCaughtUp: Bool
+    let counts: MobileCoachingPracticeCommandCounts
+    let items: [MobileCoachingPracticeCommandItem]
+    let deterministic: Bool
+    let externalSideEffects: Bool
+}
+
+struct MobileCoachingPracticeCommandCounts: Codable, Hashable {
+    let live: Int
+    let requests: Int
+    let attention: Int
+    let prepare: Int
+    let followUp: Int
+    let today: Int
+}
+
+struct MobileCoachingPracticeCommandItem: Codable, Identifiable, Hashable {
+    let id: String
+    let kind: String
+    let tone: String
+    let priority: Int
+    let title: String
+    let detail: String
+    let actionLabel: String
+    let href: String
+    let roomId: String?
+    let bookingId: String?
+    let engagementId: String?
+    let requestId: String?
+    let scheduledAt: String?
+    let personLabel: String?
+
+    var scheduledDate: Date? {
+        guard let scheduledAt else { return nil }
+        return coachingISO8601Date(scheduledAt)
+    }
 }
 
 struct MobileCoachingAvailabilityWindow: Codable, Identifiable, Hashable {
@@ -634,6 +678,45 @@ final class MobileCoachingRunwayClient: ObservableObject {
                 invitationEmailConfigured: true,
                 invitationEmailStatus: "AVAILABLE"
             ),
+            practiceCommand: previewIsCoach ? MobileCoachingPracticeCommand(
+                schema: "quipsly-coaching-practice-command-v1",
+                generatedAt: ISO8601DateFormatter().string(from: Date()),
+                headline: "1 thing needs your attention.",
+                detail: "Work from the top. Live conversations and client requests stay ahead of preparation and follow-through.",
+                allCaughtUp: false,
+                counts: MobileCoachingPracticeCommandCounts(
+                    live: 0,
+                    requests: coachRequestPreview ? 1 : 0,
+                    attention: coachRequestPreview ? 1 : 0,
+                    prepare: coachRequestPreview ? 0 : 1,
+                    followUp: 0,
+                    today: 1
+                ),
+                items: [
+                    MobileCoachingPracticeCommandItem(
+                        id: coachRequestPreview ? "REVIEW_TIME_REQUEST:preview-booking-request" : "PREPARE_SESSION:room-preview-coaching-ready",
+                        kind: coachRequestPreview ? "REVIEW_TIME_REQUEST" : "PREPARE_SESSION",
+                        tone: coachRequestPreview ? "attention" : "upcoming",
+                        priority: coachRequestPreview ? 10 : 70,
+                        title: coachRequestPreview ? "Homer requested a time" : "Prepare for Homer",
+                        detail: coachRequestPreview
+                            ? "Confirm to create the private Session, or decline to reopen the time."
+                            : "Review the client space and add your private preparation.",
+                        actionLabel: coachRequestPreview ? "Review request" : "Prepare Session",
+                        href: coachRequestPreview
+                            ? "/coaching#incoming-time-requests"
+                            : "/sessions/room-preview-coaching-ready?mode=prepare",
+                        roomId: coachRequestPreview ? nil : "room-preview-coaching-ready",
+                        bookingId: coachRequestPreview ? nil : "preview-booking",
+                        engagementId: coachRequestPreview ? nil : "preview-engagement",
+                        requestId: coachRequestPreview ? "preview-booking-request" : nil,
+                        scheduledAt: ISO8601DateFormatter().string(from: start),
+                        personLabel: "Homer"
+                    )
+                ],
+                deterministic: true,
+                externalSideEffects: false
+            ) : nil,
             upcomingBookings: (availabilityPreview || clientRequestPreview || coachRequestPreview) && !confirmedRequestPreview ? [] : [
                 MobileCoachingBooking(
                     id: "preview-booking",
@@ -1531,46 +1614,67 @@ struct CaptureCoachingHomeView: View {
     }
 
     private var coachingScrollView: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
-                header
+        ScrollViewReader { proxy in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    header
 
-                if client.isUsingProtectedCache {
-                    offlineSnapshotCard
+                    if client.isCoach,
+                       let practiceCommand = client.response?.practiceCommand {
+                        practiceCommandSection(practiceCommand) { commandItem in
+                            if let roomID = commandItem.roomId {
+                                Task { await refreshAndOpen(roomID: roomID, navigate: true) }
+                            } else if commandItem.requestId != nil {
+                                withAnimation {
+                                    proxy.scrollTo("CaptureCoachingIncomingRequests", anchor: .top)
+                                }
+                            } else {
+                                withAnimation {
+                                    proxy.scrollTo("CaptureCoachingUpcoming", anchor: .top)
+                                }
+                            }
+                        }
+                    }
+
+                    if client.isUsingProtectedCache {
+                        offlineSnapshotCard
+                    }
+
+                    if client.isCoach {
+                        createCard
+                    } else if client.isCoachingClient {
+                        clientWelcomeCard
+                    } else {
+                        coachingChoiceCard
+                    }
+
+                    if client.isCoach {
+                        incomingRequestsSection
+                            .id("CaptureCoachingIncomingRequests")
+                    } else {
+                        clientRequestsSection
+                        publishedTimesSection
+                    }
+
+                    if let handoff = client.latestHandoff {
+                        handoffCard(handoff)
+                    }
+
+                    if let error = client.errorMessage {
+                        Label(error, systemImage: "exclamationmark.triangle.fill")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.orange)
+                            .captureCard()
+                            .accessibilityIdentifier("CaptureCoachingError")
+                    }
+
+                    upcomingSection
+                        .id("CaptureCoachingUpcoming")
+                    relationshipsSection
                 }
-
-                if client.isCoach {
-                    createCard
-                } else if client.isCoachingClient {
-                    clientWelcomeCard
-                } else {
-                    coachingChoiceCard
-                }
-
-                if client.isCoach {
-                    incomingRequestsSection
-                } else {
-                    clientRequestsSection
-                    publishedTimesSection
-                }
-
-                if let handoff = client.latestHandoff {
-                    handoffCard(handoff)
-                }
-
-                if let error = client.errorMessage {
-                    Label(error, systemImage: "exclamationmark.triangle.fill")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.orange)
-                        .captureCard()
-                        .accessibilityIdentifier("CaptureCoachingError")
-                }
-
-                upcomingSection
-                relationshipsSection
+                .padding(.horizontal, 18)
+                .padding(.bottom, 96)
             }
-            .padding(.horizontal, 18)
-            .padding(.bottom, 96)
         }
         .background(CaptureCanvas())
         .navigationTitle("Coaching")
@@ -1580,6 +1684,134 @@ struct CaptureCoachingHomeView: View {
             async let coachingLoad: Void = client.load()
             async let sessionLoad = model.sessionClient.load()
             _ = await (coachingLoad, sessionLoad)
+        }
+    }
+
+    private func practiceCommandSection(
+        _ command: MobileCoachingPracticeCommand,
+        onOpen: @escaping (MobileCoachingPracticeCommandItem) -> Void
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("YOUR PRACTICE TODAY")
+                    .font(.caption2.weight(.black))
+                    .tracking(1.5)
+                    .foregroundStyle(.orange)
+                Text(command.headline)
+                    .font(.title2.weight(.black))
+                Text(command.detail)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+
+            LazyVGrid(
+                columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 3),
+                spacing: 8
+            ) {
+                practiceCommandMetric("Today", value: command.counts.today)
+                practiceCommandMetric("Live", value: command.counts.live)
+                practiceCommandMetric("Requests", value: command.counts.requests)
+                practiceCommandMetric("Attention", value: command.counts.attention)
+                practiceCommandMetric("Prepare", value: command.counts.prepare)
+                practiceCommandMetric("Follow-up", value: command.counts.followUp)
+            }
+
+            if command.items.isEmpty {
+                Label(
+                    "Nothing needs repair, preparation, or follow-through right now.",
+                    systemImage: "checkmark.circle.fill"
+                )
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.green)
+                .padding(.vertical, 4)
+            } else {
+                ForEach(Array(command.items.enumerated()), id: \.element.id) { index, item in
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack(alignment: .top, spacing: 10) {
+                            Text("\(index + 1)")
+                                .font(.caption.weight(.black))
+                                .frame(width: 28, height: 28)
+                                .background(practiceCommandColor(item.tone).opacity(0.13), in: Circle())
+                                .foregroundStyle(practiceCommandColor(item.tone))
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(item.title)
+                                    .font(.headline)
+                                if let scheduledDate = item.scheduledDate {
+                                    Text(scheduledDate.formatted(date: .abbreviated, time: .shortened))
+                                        .font(.caption.weight(.bold))
+                                        .foregroundStyle(practiceCommandColor(item.tone))
+                                }
+                            }
+                        }
+                        Text(item.detail)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Button {
+                            onOpen(item)
+                        } label: {
+                            Label(item.actionLabel, systemImage: practiceCommandSymbol(item.kind))
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(practiceCommandColor(item.tone))
+                        .accessibilityIdentifier("CaptureCoachingCommand_\(item.kind)_\(index)")
+                    }
+                    .padding(14)
+                    .background(
+                        practiceCommandColor(item.tone).opacity(0.07),
+                        in: RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    )
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 18, style: .continuous)
+                            .stroke(practiceCommandColor(item.tone).opacity(0.2), lineWidth: 1)
+                    }
+                }
+            }
+        }
+        .padding(18)
+        .background(Color.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .stroke(.primary.opacity(0.08), lineWidth: 1)
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("CaptureCoachingPracticeCommand")
+    }
+
+    private func practiceCommandMetric(_ label: String, value: Int) -> some View {
+        VStack(spacing: 2) {
+            Text("\(value)")
+                .font(.headline.weight(.black))
+            Text(label)
+                .font(.caption2.weight(.bold))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 8)
+        .background(.background.opacity(0.75), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+
+    private func practiceCommandColor(_ tone: String) -> Color {
+        switch tone {
+        case "live": return .green
+        case "attention": return .orange
+        case "upcoming": return .blue
+        case "follow-up": return .purple
+        default: return .teal
+        }
+    }
+
+    private func practiceCommandSymbol(_ kind: String) -> String {
+        switch kind {
+        case "JOIN_LIVE_SESSION": return "video.fill"
+        case "REVIEW_TIME_REQUEST": return "calendar.badge.clock"
+        case "REPAIR_RECORDING": return "waveform.badge.exclamationmark"
+        case "REPAIR_TRANSCRIPT": return "text.badge.exclamationmark"
+        case "REVIEW_FOLLOW_UP", "SHARE_FOLLOW_UP": return "sparkles"
+        case "PREPARE_SESSION": return "checklist"
+        default: return "arrow.right.circle.fill"
         }
     }
 
