@@ -1099,12 +1099,8 @@ for (const needle of [
   "The proposed cut is still unapplied.",
   'accessibilityIdentifier("CaptureRecordingShareAudition_',
   'accessibilityIdentifier("CaptureRecordingShareFocusedAudition_',
-  "Listen before sharing",
-  "Play next review point",
   "clientTrackedPlaybackIsNotProofOfAudibility",
-  'accessibilityIdentifier("CaptureRecordingShareReviewProgress")',
-  'accessibilityIdentifier("CaptureRecordingShareReviewNext")',
-  'accessibilityIdentifier("CaptureRecordingShareReviewRetry")',
+  "You can preview this edit above, or share it now.",
   "Share with \\(output.recipient.label)",
   'accessibilityIdentifier("CaptureRecordingSharePrepare")',
   'accessibilityIdentifier("CaptureRecordingShareRelease")',
@@ -1116,6 +1112,17 @@ requireExcludes(
   "I listened and intend to share only with",
   "redundant native share attestation",
 );
+for (const forbidden of [
+  "Listen before sharing",
+  "Play next review point",
+  "CaptureRecordingShareReviewProgress",
+]) {
+  requireExcludes(
+    captureRecordingShareText,
+    forbidden,
+    "recording-share listening remains optional",
+  );
+}
 for (const needle of [
   "Help & diagnostics",
   "Share support snapshot",

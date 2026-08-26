@@ -269,10 +269,6 @@ final class CaptureRecordingShareClient: NSObject, ObservableObject, AVAudioPlay
             notice = "Refresh before changing recording visibility."
             return false
         }
-        if action == "RELEASE", output.playbackReview?.reviewed != true {
-            notice = "Listen through the private preview review points before sharing."
-            return false
-        }
         return await mutate(
             roomID: roomID,
             action: action,
@@ -492,7 +488,7 @@ final class CaptureRecordingShareClient: NSObject, ObservableObject, AVAudioPlay
             }
             clearPlayback()
             let destination = FileManager.default.temporaryDirectory
-                .appendingPathComponent(Self.reviewedExportFileName(output))
+                .appendingPathComponent(Self.editedExportFileName(output))
             try FileManager.default.moveItem(at: temporaryURL, to: destination)
             try FileManager.default.setAttributes(
                 [.protectionKey: FileProtectionType.complete],
@@ -649,9 +645,9 @@ final class CaptureRecordingShareClient: NSObject, ObservableObject, AVAudioPlay
             requestIDs[action] = nil
             switch action {
             case "PREPARE":
-                notice = "Private preview queued. Your client cannot see it until you listen and release it."
+                notice = "Private preview queued. Your client cannot see it until you share it."
             case "REVIEW":
-                notice = "Listening review saved for this exact private preview. It is ready to share."
+                notice = "You listened through this exact private preview."
             case "RELEASE":
                 notice = "Released only inside this client's private Session."
             default:
@@ -707,7 +703,7 @@ final class CaptureRecordingShareClient: NSObject, ObservableObject, AVAudioPlay
         return normalized
     }
 
-    private nonisolated static func reviewedExportFileName(_ output: CaptureRecordingShareOutput) -> String {
+    private nonisolated static func editedExportFileName(_ output: CaptureRecordingShareOutput) -> String {
         let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-_ "))
         let filtered = output.title.unicodeScalars.map { allowed.contains($0) ? String($0) : "-" }.joined()
         let collapsed = filtered
@@ -717,7 +713,7 @@ final class CaptureRecordingShareClient: NSObject, ObservableObject, AVAudioPlay
         let stem = collapsed.isEmpty ? "Quipsly-session" : String(collapsed.prefix(80))
         let fileExtension = output.render.mediaKind == "video" ? "mp4" : "m4a"
         let uniqueSuffix = UUID().uuidString.lowercased().prefix(8)
-        return "\(stem)-reviewed-r\(output.revision)-\(uniqueSuffix).\(fileExtension)"
+        return "\(stem)-edited-r\(output.revision)-\(uniqueSuffix).\(fileExtension)"
     }
 
     private nonisolated static func encodedPathComponent(_ value: String) -> String? {
@@ -876,7 +872,7 @@ struct CaptureRecordingShareEditor: View {
             if let exportURL {
                 CaptureRecordingShareSheet(
                     fileURL: exportURL,
-                    title: "Quipsly reviewed \(client.snapshot?.output?.render.mediaKind == "video" ? "video" : "audio") copy"
+                    title: "Quipsly edited \(client.snapshot?.output?.render.mediaKind == "video" ? "video" : "audio") copy"
                 ) { completed, error in
                     isPresentingExport = false
                     if let error {
@@ -884,7 +880,7 @@ struct CaptureRecordingShareEditor: View {
                     } else if completed {
                         exportNotice = "The system share sheet finished. Quipsly does not claim who received the file."
                     } else {
-                        exportNotice = "Export canceled. The reviewed copy and original recordings are unchanged."
+                        exportNotice = "Export canceled. The edited copy and original recordings are unchanged."
                     }
                 }
             }
@@ -1262,7 +1258,7 @@ struct CaptureRecordingShareEditor: View {
         if let output = snapshot.output, output.status == "RELEASED" {
             outputCard(output, coach: false)
         } else {
-            Text("No reviewed recording has been shared in this Session yet.")
+            Text("No edited recording has been shared in this Session yet.")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
         }
@@ -1309,32 +1305,30 @@ struct CaptureRecordingShareEditor: View {
                 .disabled(client.busyAction != nil)
                 .accessibilityIdentifier("CaptureRecordingSharePlay")
 
-                if !coach || output.playbackReview?.reviewed == true {
-                    Button {
-                        Task {
-                            exportNotice = nil
-                            guard let url = await client.preparePreviewExport(roomID: roomID) else { return }
-                            exportURL = url
-                            isPresentingExport = true
-                        }
-                    } label: {
-                        if client.busyAction == "EXPORT" {
-                            ProgressView().frame(maxWidth: .infinity)
-                        } else {
-                            Label(
-                                output.render.mediaKind == "video"
-                                    ? "Export reviewed video"
-                                    : "Export reviewed audio",
-                                systemImage: "square.and.arrow.up"
-                            )
-                            .frame(maxWidth: .infinity)
-                        }
+                Button {
+                    Task {
+                        exportNotice = nil
+                        guard let url = await client.preparePreviewExport(roomID: roomID) else { return }
+                        exportURL = url
+                        isPresentingExport = true
                     }
-                    .buttonStyle(.bordered)
-                    .disabled(client.busyAction != nil)
-                    .accessibilityIdentifier("CaptureRecordingShareExport")
-                    .accessibilityHint("Verifies the exact reviewed bytes, then opens the standard iPhone share sheet. Quipsly does not choose or claim a recipient.")
+                } label: {
+                    if client.busyAction == "EXPORT" {
+                        ProgressView().frame(maxWidth: .infinity)
+                    } else {
+                        Label(
+                            output.render.mediaKind == "video"
+                                ? "Export edited video"
+                                : "Export edited audio",
+                            systemImage: "square.and.arrow.up"
+                        )
+                        .frame(maxWidth: .infinity)
+                    }
                 }
+                .buttonStyle(.bordered)
+                .disabled(client.busyAction != nil)
+                .accessibilityIdentifier("CaptureRecordingShareExport")
+                .accessibilityHint("Verifies the exact edited bytes, then opens the standard iPhone share sheet. Quipsly does not choose or claim a recipient.")
 
                 if let exportNotice {
                     Text(exportNotice)
@@ -1395,65 +1389,23 @@ struct CaptureRecordingShareEditor: View {
             if coach && output.status == "DRAFT" && output.render.status == "VERIFIED" {
                 if output.playbackReview?.reviewed == true {
                     Label(
-                        "This exact private preview passed its listening review.",
-                        systemImage: "checkmark.shield.fill"
+                        "Listened through this version",
+                        systemImage: "ear.fill"
                     )
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.green)
                 } else {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Listen before sharing")
-                            .font(.caption.weight(.bold))
-                        Text("Quipsly guides you through the beginning, middle, ending, and every edit join. Playback tracking only confirms that the preview played; use your ears to decide whether it sounds right.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-
-                        ProgressView(
-                            value: Double(client.observedRequiredPreviewSecondCount),
-                            total: Double(max(1, client.requiredPreviewSecondBins.count))
-                        )
-                        .tint(.indigo)
-                        .accessibilityIdentifier("CaptureRecordingShareReviewProgress")
-
-                        Text("\(client.observedRequiredPreviewSecondCount) of \(client.requiredPreviewSecondBins.count) review checkpoints played")
-                            .font(.caption2.monospacedDigit().weight(.semibold))
-                            .foregroundStyle(.secondary)
-
-                        if !client.previewReviewComplete {
-                            Button {
-                                Task { await client.playNextReviewPoint(roomID: roomID) }
-                            } label: {
-                                Label("Play next review point", systemImage: "forward.end.fill")
-                                    .frame(maxWidth: .infinity)
-                            }
-                            .buttonStyle(.bordered)
-                            .disabled(client.busyAction != nil || client.requiredPreviewSecondBins.isEmpty)
-                            .accessibilityIdentifier("CaptureRecordingShareReviewNext")
-                        } else if client.previewReviewSaveFailed {
-                            Button("Retry saving listening review") {
-                                Task { await client.retryPlaybackReview(roomID: roomID) }
-                            }
-                            .buttonStyle(.bordered)
-                            .disabled(client.busyAction != nil)
-                            .accessibilityIdentifier("CaptureRecordingShareReviewRetry")
-                        } else {
-                            HStack(spacing: 8) {
-                                ProgressView()
-                                Text("Saving this preview's listening review…")
-                                    .font(.caption.weight(.semibold))
-                            }
-                        }
-                    }
-                    .padding(10)
-                    .background(Color.indigo.opacity(0.06), in: RoundedRectangle(cornerRadius: 12))
+                    Text("You can preview this edit above, or share it now. The original recording stays unchanged.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
 
-                Button(output.playbackReview?.reviewed == true ? "Share with \(output.recipient.label)" : "Listen before sharing") {
+                Button("Share with \(output.recipient.label)") {
                     Task { _ = await client.changeVisibility(roomID: roomID, action: "RELEASE") }
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(.green)
-                .disabled(client.busyAction != nil || output.playbackReview?.reviewed != true)
+                .disabled(client.busyAction != nil)
                 .accessibilityIdentifier("CaptureRecordingShareRelease")
             }
 

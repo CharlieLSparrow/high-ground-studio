@@ -1604,7 +1604,7 @@ export async function recordSessionRecordingSharePlaybackReview(
     throw new SessionRecordingShareError(
       409,
       "PLAYBACK_REVIEW_INCOMPLETE",
-      `Listen through the remaining ${missing.length || plan.requiredSecondBins.length} review checkpoint${(missing.length || plan.requiredSecondBins.length) === 1 ? "" : "s"} before sharing.`,
+      `Play the remaining ${missing.length || plan.requiredSecondBins.length} checkpoint${(missing.length || plan.requiredSecondBins.length) === 1 ? "" : "s"} to save a complete listening receipt for this edit.`,
       {
         requiredSecondBins: plan.requiredSecondBins,
         missingSecondBins: missing.length ? missing : plan.requiredSecondBins,
@@ -1760,14 +1760,7 @@ export async function transitionSessionRecordingShare(
     throw new SessionRecordingShareError(
       409,
       "STALE_RECORDING_SHARE",
-      "The prepared recording changed before this visibility decision. Refresh and review it again.",
-    );
-  }
-  if (input.action === "RELEASE" && !currentPlaybackReview(current).current) {
-    throw new SessionRecordingShareError(
-      409,
-      "PLAYBACK_REVIEW_REQUIRED",
-      "Listen to the current private preview before sharing it with the client.",
+      "The prepared recording changed before this visibility decision. Refresh before sharing the current version.",
     );
   }
   const now = new Date();

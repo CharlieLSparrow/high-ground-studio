@@ -321,7 +321,7 @@ describe("Session recording share playback review", () => {
     expect(client.$transaction).not.toHaveBeenCalled();
   });
 
-  it("persists an exact-revision review and requires it before release", async () => {
+  it("persists an optional exact-revision listening receipt without making it paperwork", async () => {
     const { actor, client, output, room } = fixture();
     const plan = sessionRecordingSharePlaybackPlan(output.bodyJson);
     const reviewInput = {
@@ -352,20 +352,24 @@ describe("Session recording share playback review", () => {
     expect(output.revision).toBe(4);
   });
 
-  it("refuses recipient release when the current rendered revision has no review receipt", async () => {
+  it("shares a verified private edit without forcing a listening receipt", async () => {
     const { actor, client, output, room } = fixture();
-    await expect(transitionSessionRecordingShare(client, {
+    const released = await transitionSessionRecordingShare(client, {
       roomId: room.id,
       outputId: output.id,
       actor,
       clientRequestId: "44444444-4444-4444-8444-444444444444",
       expectedRevision: output.revision,
       action: "RELEASE",
-    })).rejects.toMatchObject({ code: "PLAYBACK_REVIEW_REQUIRED", status: 409 });
-    expect(client.$transaction).not.toHaveBeenCalled();
+    });
+    expect(released.output).toMatchObject({
+      status: "RELEASED",
+      playbackReview: { reviewed: false },
+    });
+    expect(client.$transaction).toHaveBeenCalledTimes(1);
   });
 
-  it("invalidates a prior review after the derivative revision changes", async () => {
+  it("keeps a stale listening receipt visible as stale without blocking a later share", async () => {
     const { actor, client, output, room } = fixture();
     const plan = sessionRecordingSharePlaybackPlan(output.bodyJson);
     await recordSessionRecordingSharePlaybackReview(client, {
@@ -384,13 +388,17 @@ describe("Session recording share playback review", () => {
       render: { ...output.bodyJson.render, sha256: "b".repeat(64) },
     };
 
-    await expect(transitionSessionRecordingShare(client, {
+    const released = await transitionSessionRecordingShare(client, {
       roomId: room.id,
       outputId: output.id,
       actor,
       clientRequestId: "66666666-6666-4666-8666-666666666666",
       expectedRevision: output.revision,
       action: "RELEASE",
-    })).rejects.toMatchObject({ code: "PLAYBACK_REVIEW_REQUIRED", status: 409 });
+    });
+    expect(released.output).toMatchObject({
+      status: "RELEASED",
+      playbackReview: { reviewed: false },
+    });
   });
 });
