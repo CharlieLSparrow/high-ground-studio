@@ -362,6 +362,83 @@ final class CaptureExperienceUITests: XCTestCase {
         ])
     }
 
+    func testCoachCanInspectNativeAutomaticFormRhythmWithoutTriggeringSideEffects() throws {
+        relaunchCoachingPreview(
+            role: "coach",
+            additionalArguments: [
+                "--capture-coach-booking-preview",
+                "--capture-coaching-forms-coach-preview",
+            ]
+        )
+        openCoachingForms()
+
+        let automation = app.buttons["CaptureCoachingAutomationButton"]
+        reveal(automation, searchAboveFirst: false)
+        XCTAssertTrue(automation.exists && automation.isHittable)
+        automation.tap()
+        XCTAssertTrue(
+            app.scrollViews["CaptureCoachingFormAutomation"].waitForExistence(timeout: 5)
+        )
+
+        let addRhythm = app.buttons["CaptureCoachingAutomationAdd"]
+        XCTAssertTrue(addRhythm.exists && addRhythm.isEnabled)
+        addRhythm.tap()
+        XCTAssertTrue(
+            app.descendants(matching: .any)["CaptureCoachingAutomationEditor"]
+                .waitForExistence(timeout: 5),
+            "A coach should be able to inspect the complete setup flow without producing a side effect."
+        )
+        let saveRhythm = app.buttons["CaptureCoachingAutomationSave"]
+        reveal(saveRhythm, searchAboveFirst: false)
+        XCTAssertTrue(saveRhythm.exists)
+        XCTAssertFalse(
+            saveRhythm.isEnabled,
+            "Preview evidence may inspect policy setup, but must never persist a policy."
+        )
+        app.buttons["CaptureCoachingAutomationCancel"].tap()
+
+        XCTAssertTrue(
+            app.descendants(matching: .any)["CaptureCoachingAutomationPolicy_preview-policy-before"].exists,
+            "The coach should see the exact canonical policy and its retained version strategy."
+        )
+        let sessionControls = app.buttons["Sessions · manual control"]
+        reveal(sessionControls, searchAboveFirst: false)
+        XCTAssertTrue(sessionControls.exists)
+        sessionControls.tap()
+        let sendNow = app.buttons[
+            "CaptureCoachingAutomationSendNow_preview-policy-before_preview-booking"
+        ]
+        reveal(sendNow, searchAboveFirst: false)
+        XCTAssertTrue(sendNow.exists)
+        XCTAssertFalse(
+            sendNow.isEnabled,
+            "A deterministic UI flight must show manual control without assigning a form."
+        )
+        let evidence = XCTAttachment(screenshot: app.screenshot())
+        evidence.name = "Native coaching form rhythm with manual Session controls"
+        evidence.lifetime = .keepAlways
+        add(evidence)
+        try app.performAccessibilityAudit(for: [
+            .hitRegion,
+            .sufficientElementDescription,
+            .textClipped,
+        ])
+    }
+
+    func testClientNeverReceivesCoachFormAutomationControls() {
+        relaunchCoachingPreview(
+            role: "client",
+            additionalArguments: ["--capture-client-booking-preview"]
+        )
+        openCoachingForms()
+        XCTAssertFalse(
+            app.buttons["CaptureCoachingAutomationButton"].exists,
+            "Automation policy and Session override controls are coach-only operational state."
+        )
+        XCTAssertFalse(app.buttons["CaptureCoachingAutomationAdd"].exists)
+        XCTAssertFalse(app.scrollViews["CaptureCoachingFormAutomation"].exists)
+    }
+
     func testClientCanSeePublishedTimesAndOwnPendingRequest() {
         relaunchCoachingPreview(
             role: "client",

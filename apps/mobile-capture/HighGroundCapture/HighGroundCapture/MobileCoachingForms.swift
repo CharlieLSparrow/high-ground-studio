@@ -233,6 +233,7 @@ struct MobileCoachingFormsWorkspace: Codable, Equatable {
     let relationships: [MobileCoachingFormRelationship]
     let templates: [MobileCoachingFormTemplate]
     let assignments: [MobileCoachingFormAssignment]
+    let automation: MobileCoachingFormAutomationOverview?
     let boundaries: Boundaries
 
     var clientAssignments: [MobileCoachingFormAssignment] {
@@ -293,6 +294,66 @@ private struct MobileCoachingFormAssignmentRequest: Encodable {
     let dueAt: String?
 }
 
+private struct MobileCoachingFormAutomationPolicyRequest: Encodable {
+    let action = "SAVE_AUTOMATION_POLICY"
+    let requestId: UUID
+    let policyId: String?
+    let templateId: String
+    let engagementId: String
+    let trigger: String
+    let status: String
+    let versionMode: String
+    let pinnedTemplateVersionId: String?
+    let releaseOffsetMinutes: Int
+    let dueOffsetMinutes: Int
+}
+
+private struct MobileCoachingFormAutomationOverrideRequest: Encodable {
+    let action = "SAVE_AUTOMATION_OVERRIDE"
+    let requestId: UUID
+    let policyId: String
+    let bookingId: String
+    let overrideAction: String
+}
+
+private struct MobileCoachingFormAutomationReconcileRequest: Encodable {
+    let action = "RECONCILE_AUTOMATION"
+}
+
+private struct MobileCoachingFormAutomationPolicyEnvelope: Decodable {
+    struct Result: Decodable {
+        let policy: MobileCoachingFormAutomationPolicy
+        let externalSideEffects: Bool
+    }
+
+    let ok: Bool
+    let error: String?
+    let result: Result?
+}
+
+private struct MobileCoachingFormAutomationOverrideEnvelope: Decodable {
+    struct Result: Decodable {
+        let override: MobileCoachingFormAutomationOverride
+        let externalSideEffects: Bool
+    }
+
+    let ok: Bool
+    let error: String?
+    let result: Result?
+}
+
+private struct MobileCoachingFormAutomationReconcileEnvelope: Decodable {
+    struct Result: Decodable {
+        let created: Int
+        let alreadyAssigned: Int
+        let waitingForTime: Int
+    }
+
+    let ok: Bool
+    let error: String?
+    let result: Result?
+}
+
 // MARK: - Protected recovery and authenticated client
 
 struct MobileCoachingFormLocalDraft: Codable, Equatable {
@@ -310,12 +371,18 @@ private struct MobileCoachingFormPendingSend: Codable, Equatable {
     let fingerprint: String
 }
 
+private struct MobileCoachingFormPendingAutomationMutation: Codable, Equatable {
+    let requestID: UUID
+    let fingerprint: String
+}
+
 private struct MobileCoachingFormsProtectedLedger: Codable {
     let schemaVersion: Int
     let ownerAccountID: String
     let ownerEmail: String
     var drafts: [String: MobileCoachingFormLocalDraft]
     var pendingSend: MobileCoachingFormPendingSend?
+    var pendingAutomationMutations: [String: MobileCoachingFormPendingAutomationMutation]?
 }
 
 private struct MobileCoachingFormsProtectedWorkspace: Codable {
@@ -333,6 +400,7 @@ final class MobileCoachingFormsClient: ObservableObject {
     @Published private(set) var isLoading = false
     @Published private(set) var activeMutationAssignmentID: String?
     @Published private(set) var isSending = false
+    @Published private(set) var isAutomationBusy = false
     @Published private(set) var isUsingProtectedCache = false
     @Published private(set) var cachedAt: Date?
     @Published private(set) var statusMessage: String?
@@ -342,6 +410,7 @@ final class MobileCoachingFormsClient: ObservableObject {
     private var observedOwnerAccountID: String?
     private var observedOwnerEmail: String?
     private var pendingSend: MobileCoachingFormPendingSend?
+    private var pendingAutomationMutations: [String: MobileCoachingFormPendingAutomationMutation] = [:]
     private var ledgerWriteTask: Task<Void, Never>?
     private var accountCancellable: AnyCancellable?
 
@@ -406,6 +475,7 @@ final class MobileCoachingFormsClient: ObservableObject {
             relationships: [Self.previewRelationship],
             templates: [Self.previewTemplate],
             assignments: [draftAssignment, sharedAssignment],
+            automation: .preview(isCoach: coachPreview),
             boundaries: Self.expectedBoundaries
         )
         if coachPreview {
@@ -689,6 +759,207 @@ final class MobileCoachingFormsClient: ObservableObject {
         }
     }
 
+    @discardableResult
+    func saveAutomationPolicy(
+        _ draft: MobileCoachingFormAutomationDraft,
+        statusOverride: String? = nil
+    ) async -> Bool {
+        guard let current = workspace,
+              current.actor.isCoach,
+              !isUsingProtectedCache,
+              AuthManager.shared.networkActionsAllowed,
+              let template = current.templates.first(where: { $0.id == draft.templateID }),
+              let relationship = current.relationships.first(where: { $0.id == draft.relationshipID }) else {
+            errorMessage = "Connect to Nest and choose one published form and client."
+            return false
+        }
+        let status = statusOverride ?? draft.status
+        guard ["ACTIVE", "PAUSED"].contains(status),
+              ["BEFORE_SESSION", "AFTER_SESSION"].contains(draft.trigger),
+              ["LATEST_PUBLISHED", "PINNED_VERSION"].contains(draft.versionMode),
+              Self.validAutomationOffsets(
+                trigger: draft.trigger,
+                release: draft.releaseOffsetMinutes,
+                due: draft.dueOffsetMinutes
+              ) else {
+            errorMessage = "Choose a conventional before- or after-Session timing."
+            return false
+        }
+        if let policyID = draft.policyID {
+            guard let policy = current.automation?.policies.first(where: { $0.id == policyID }),
+                  policy.template.id == draft.templateID,
+                  policy.relationship.id == draft.relationshipID,
+                  policy.trigger == draft.trigger else {
+                errorMessage = "This rhythm changed in Nest. Refresh before editing it."
+                return false
+            }
+        }
+
+        let identity = draft.policyID
+            ?? [draft.templateID, draft.relationshipID, draft.trigger].joined(separator: ":")
+        let operationKey = "policy:\(identity)"
+        let fingerprint = [
+            identity,
+            status,
+            draft.versionMode,
+            draft.pinnedTemplateVersionID ?? "",
+            String(draft.releaseOffsetMinutes),
+            String(draft.dueOffsetMinutes),
+        ].joined(separator: "\u{1f}")
+        let requestID = automationRequestID(key: operationKey, fingerprint: fingerprint)
+
+        isAutomationBusy = true
+        errorMessage = nil
+        statusMessage = nil
+        defer { isAutomationBusy = false }
+        do {
+            var request = URLRequest(url: formsEndpoint)
+            request.httpMethod = "POST"
+            request.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData
+            request.setValue("application/json", forHTTPHeaderField: "Accept")
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = try Self.makeEncoder().encode(
+                MobileCoachingFormAutomationPolicyRequest(
+                    requestId: requestID,
+                    policyId: draft.policyID,
+                    templateId: draft.templateID,
+                    engagementId: draft.relationshipID,
+                    trigger: draft.trigger,
+                    status: status,
+                    versionMode: draft.versionMode,
+                    pinnedTemplateVersionId: draft.versionMode == "PINNED_VERSION"
+                        ? draft.pinnedTemplateVersionID
+                        : nil,
+                    releaseOffsetMinutes: draft.releaseOffsetMinutes,
+                    dueOffsetMinutes: draft.dueOffsetMinutes
+                )
+            )
+            let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
+            guard response.url?.host == baseURL.host else { throw URLError(.badServerResponse) }
+            let payload = try JSONDecoder().decode(MobileCoachingFormAutomationPolicyEnvelope.self, from: data)
+            guard response.statusCode < 400,
+                  payload.ok,
+                  let result = payload.result,
+                  !result.externalSideEffects,
+                  result.policy.template.id == template.id,
+                  result.policy.relationship.id == relationship.id,
+                  result.policy.trigger == draft.trigger else {
+                throw Self.failure(payload.error ?? "The coaching rhythm could not be saved safely.")
+            }
+            replaceAutomationPolicy(result.policy)
+            pendingAutomationMutations.removeValue(forKey: operationKey)
+            flushProtectedDrafts()
+            statusMessage = status == "PAUSED"
+                ? "\(template.title) is paused."
+                : "\(template.title) will follow this client’s Session rhythm."
+            return true
+        } catch {
+            errorMessage = error.localizedDescription
+            return false
+        }
+    }
+
+    @discardableResult
+    func saveAutomationOverride(
+        policyID: String,
+        bookingID: String,
+        action: String
+    ) async -> Bool {
+        guard let policy = workspace?.automation?.policies.first(where: { $0.id == policyID }),
+              policy.sessions.contains(where: { $0.id == bookingID && !$0.assignmentCreated }),
+              ["SEND_NOW", "SKIP", "CLEAR"].contains(action),
+              workspace?.actor.isCoach == true,
+              !isUsingProtectedCache,
+              AuthManager.shared.networkActionsAllowed else {
+            errorMessage = "Refresh this Session before changing its form schedule."
+            return false
+        }
+        let operationKey = "override:\(policyID):\(bookingID)"
+        let requestID = automationRequestID(
+            key: operationKey,
+            fingerprint: [policyID, bookingID, action].joined(separator: "\u{1f}")
+        )
+        isAutomationBusy = true
+        errorMessage = nil
+        statusMessage = nil
+        defer { isAutomationBusy = false }
+        do {
+            var request = URLRequest(url: formsEndpoint)
+            request.httpMethod = "POST"
+            request.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData
+            request.setValue("application/json", forHTTPHeaderField: "Accept")
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = try Self.makeEncoder().encode(
+                MobileCoachingFormAutomationOverrideRequest(
+                    requestId: requestID,
+                    policyId: policyID,
+                    bookingId: bookingID,
+                    overrideAction: action
+                )
+            )
+            let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
+            guard response.url?.host == baseURL.host else { throw URLError(.badServerResponse) }
+            let payload = try JSONDecoder().decode(MobileCoachingFormAutomationOverrideEnvelope.self, from: data)
+            guard response.statusCode < 400,
+                  payload.ok,
+                  let result = payload.result,
+                  !result.externalSideEffects,
+                  result.override.action == action else {
+                throw Self.failure(payload.error ?? "That Session control could not be saved safely.")
+            }
+            pendingAutomationMutations.removeValue(forKey: operationKey)
+            flushProtectedDrafts()
+            await load()
+            statusMessage = action == "SEND_NOW"
+                ? "\(policy.template.title) was sent now."
+                : action == "SKIP"
+                    ? "This Session will skip \(policy.template.title)."
+                    : "\(policy.template.title) is back on its ordinary schedule."
+            return true
+        } catch {
+            errorMessage = error.localizedDescription
+            return false
+        }
+    }
+
+    @discardableResult
+    func reconcileAutomation() async -> Bool {
+        guard workspace?.actor.isCoach == true,
+              !isUsingProtectedCache,
+              AuthManager.shared.networkActionsAllowed else {
+            errorMessage = "Connect to Nest to check the form schedule."
+            return false
+        }
+        isAutomationBusy = true
+        errorMessage = nil
+        statusMessage = nil
+        defer { isAutomationBusy = false }
+        do {
+            var request = URLRequest(url: formsEndpoint)
+            request.httpMethod = "POST"
+            request.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData
+            request.setValue("application/json", forHTTPHeaderField: "Accept")
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = try Self.makeEncoder().encode(
+                MobileCoachingFormAutomationReconcileRequest()
+            )
+            let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
+            guard response.url?.host == baseURL.host else { throw URLError(.badServerResponse) }
+            let payload = try JSONDecoder().decode(MobileCoachingFormAutomationReconcileEnvelope.self, from: data)
+            guard response.statusCode < 400, payload.ok, let result = payload.result else {
+                throw Self.failure(payload.error ?? "The form schedule could not be checked safely.")
+            }
+            await load()
+            statusMessage = result.created == 0
+                ? "All automatic forms are on schedule."
+                : "\(result.created) due form\(result.created == 1 ? " was" : "s were") assigned."
+            return true
+        } catch {
+            errorMessage = error.localizedDescription
+            return false
+        }
+    }
+
     func clearMessages() {
         statusMessage = nil
         errorMessage = nil
@@ -719,6 +990,7 @@ final class MobileCoachingFormsClient: ObservableObject {
               candidate.boundaries.immutableTemplateVersion,
               candidate.boundaries.draftAnswersRemainPrivate,
               !candidate.boundaries.externalSideEffects,
+              Self.validAutomationProjection(candidate.automation, isCoach: candidate.actor.isCoach),
               candidate.templates.allSatisfy({
                   !$0.id.isEmpty
                       && $0.status == "PUBLISHED"
@@ -747,6 +1019,47 @@ final class MobileCoachingFormsClient: ObservableObject {
         }
     }
 
+    private func replaceAutomationPolicy(_ policy: MobileCoachingFormAutomationPolicy) {
+        guard let current = workspace,
+              var automation = current.automation else { return }
+        var policies = automation.policies
+        if let index = policies.firstIndex(where: { $0.id == policy.id }) {
+            policies[index] = policy
+        } else {
+            policies.insert(policy, at: 0)
+        }
+        automation = MobileCoachingFormAutomationOverview(
+            schema: automation.schema,
+            policies: policies,
+            boundaries: automation.boundaries
+        )
+        let updated = MobileCoachingFormsWorkspace(
+            schema: current.schema,
+            actor: current.actor,
+            relationships: current.relationships,
+            templates: current.templates,
+            assignments: current.assignments,
+            automation: automation,
+            boundaries: current.boundaries
+        )
+        workspace = updated
+        if !CaptureLaunchConfiguration.usesPreviewData { persistWorkspace(updated) }
+    }
+
+    private func automationRequestID(key: String, fingerprint: String) -> UUID {
+        if let pending = pendingAutomationMutations[key],
+           pending.fingerprint == fingerprint {
+            return pending.requestID
+        }
+        let requestID = UUID()
+        pendingAutomationMutations[key] = MobileCoachingFormPendingAutomationMutation(
+            requestID: requestID,
+            fingerprint: fingerprint
+        )
+        flushProtectedDrafts()
+        return requestID
+    }
+
     private func replaceAssignment(_ assignment: MobileCoachingFormAssignment) {
         guard let current = workspace else { return }
         var assignments = current.assignments
@@ -761,6 +1074,7 @@ final class MobileCoachingFormsClient: ObservableObject {
             relationships: current.relationships,
             templates: current.templates,
             assignments: assignments,
+            automation: current.automation,
             boundaries: current.boundaries
         )
         workspace = updated
@@ -789,6 +1103,7 @@ final class MobileCoachingFormsClient: ObservableObject {
         observedOwnerEmail = ownerEmail
         localDrafts = [:]
         pendingSend = nil
+        pendingAutomationMutations = [:]
         restoreLedger()
     }
 
@@ -874,6 +1189,7 @@ final class MobileCoachingFormsClient: ObservableObject {
               ledger.ownerEmail == ownerEmail else { return }
         localDrafts = ledger.drafts
         pendingSend = ledger.pendingSend
+        pendingAutomationMutations = ledger.pendingAutomationMutations ?? [:]
     }
 
     private func persistLedger() {
@@ -895,7 +1211,8 @@ final class MobileCoachingFormsClient: ObservableObject {
                 ownerAccountID: ownerID,
                 ownerEmail: ownerEmail,
                 drafts: localDrafts,
-                pendingSend: pendingSend
+                pendingSend: pendingSend,
+                pendingAutomationMutations: pendingAutomationMutations
             ),
             to: url
         )
@@ -982,6 +1299,50 @@ final class MobileCoachingFormsClient: ObservableObject {
         case "PRE_SESSION": return "BEFORE_SESSION"
         case "POST_SESSION", "FEEDBACK": return "AFTER_SESSION"
         default: return "ON_DEMAND"
+        }
+    }
+
+    nonisolated private static func validAutomationOffsets(
+        trigger: String,
+        release: Int,
+        due: Int
+    ) -> Bool {
+        let limit = 365 * 24 * 60
+        guard abs(release) <= limit, abs(due) <= limit else { return false }
+        if trigger == "BEFORE_SESSION" { return release <= 0 && due >= 0 }
+        if trigger == "AFTER_SESSION" { return release >= 0 && due >= release }
+        return false
+    }
+
+    nonisolated private static func validAutomationProjection(
+        _ automation: MobileCoachingFormAutomationOverview?,
+        isCoach: Bool
+    ) -> Bool {
+        guard let automation else { return !isCoach }
+        guard automation.schema == "quipsly-coaching-form-automation-v1",
+              !automation.boundaries.externalSideEffects else { return false }
+        if isCoach {
+            guard automation.boundaries.relationshipScoped == true,
+                  automation.boundaries.exactTemplateVersionReceipts == true,
+                  automation.boundaries.exactlyOncePerPolicyEvent == true,
+                  automation.boundaries.appendOnlyOverrides == true else { return false }
+        } else if !automation.policies.isEmpty {
+            return false
+        }
+        return automation.policies.allSatisfy { policy in
+            !policy.id.isEmpty
+                && ["ACTIVE", "PAUSED"].contains(policy.status)
+                && ["BEFORE_SESSION", "AFTER_SESSION"].contains(policy.trigger)
+                && ["LATEST_PUBLISHED", "PINNED_VERSION"].contains(policy.versionMode)
+                && validAutomationOffsets(
+                    trigger: policy.trigger,
+                    release: policy.releaseOffsetMinutes,
+                    due: policy.dueOffsetMinutes
+                )
+                && policy.sessions.allSatisfy { session in
+                    !session.id.isEmpty
+                        && (session.override.map { ["SEND_NOW", "SKIP", "CLEAR"].contains($0.action) } ?? true)
+                }
         }
     }
 
@@ -1305,6 +1666,39 @@ struct MobileCoachingFormsHomeView: View {
         )
         .accessibilityIdentifier("CaptureCoachingSendFormButton")
 
+        NavigationLink {
+            MobileCoachingFormAutomationView(client: client)
+        } label: {
+            HStack(spacing: 13) {
+                Image(systemName: "clock.arrow.trianglehead.counterclockwise.rotate.90")
+                    .font(.headline.weight(.bold))
+                    .foregroundStyle(.purple)
+                    .frame(width: 42, height: 42)
+                    .background(.purple.opacity(0.12), in: Circle())
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Automatic rhythm")
+                        .font(.headline)
+                        .foregroundStyle(.primary)
+                    Text(automationSummary)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 8)
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.black))
+                    .foregroundStyle(.secondary)
+            }
+            .padding(16)
+            .background(.background, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                    .stroke(.purple.opacity(0.16), lineWidth: 1)
+            }
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("CaptureCoachingAutomationButton")
+
         let coachAssignments = client.workspace?.coachAssignments ?? []
         let shared = coachAssignments.filter(\.coachCanRead)
         let waiting = coachAssignments.filter { !$0.coachCanRead }
@@ -1349,6 +1743,13 @@ struct MobileCoachingFormsHomeView: View {
                 .background(Color.primary.opacity(0.08), in: Capsule())
         }
         .padding(.top, 4)
+    }
+
+    private var automationSummary: String {
+        let policies = client.workspace?.automation?.policies ?? []
+        guard !policies.isEmpty else { return "Optional before- and after-Session forms." }
+        let active = policies.filter(\.isActive).count
+        return "\(active) active rhythm\(active == 1 ? "" : "s") · every send keeps a receipt."
     }
 
     private func clientAssignmentCard(_ assignment: MobileCoachingFormAssignment) -> some View {
