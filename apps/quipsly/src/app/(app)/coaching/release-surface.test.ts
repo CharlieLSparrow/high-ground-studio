@@ -72,6 +72,27 @@ describe("coaching release surfaces", () => {
     );
   });
 
+  it("turns paid scheduling access into a clear trial path instead of a raw API failure", () => {
+    const pageSource = readFileSync(join(coachingRoot, "page.tsx"), "utf8");
+    const routeSource = readFileSync(
+      join(process.cwd(), "src/app/api/coaching/runway/route.ts"),
+      "utf8",
+    );
+    const page = pageSource.replace(/\s+/g, " ");
+    const route = routeSource.replace(/\s+/g, " ");
+
+    expect(route).toContain('capability: "coaching.schedule"');
+    expect(route).toContain("canScheduleNewWork: scheduleAccess.allowed");
+    expect(route).toContain('code: "QUIPSLY_SUBSCRIPTION_REQUIRED"');
+    expect(route).toContain('managementURL: "/settings#subscription"');
+    expect(page).toContain("const needsCoachSubscription =");
+    expect(page).toContain("captureSubscriptionRequirement(response, payload)");
+    expect(page).toContain("Start scheduling with Quipsly Coach");
+    expect(page).toContain("Clients you invite never need a paid coach plan");
+    expect(page).toContain("Your client joins free");
+    expect(page).not.toContain("Runway returned HTTP 402");
+  });
+
   it("creates durable coach defaults on the first scheduled Session instead of blocking on setup", () => {
     const source = readFileSync(
       join(process.cwd(), "src/app/api/coaching/runway/route.ts"),

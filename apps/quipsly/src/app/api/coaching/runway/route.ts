@@ -693,8 +693,15 @@ export async function GET(request: Request) {
         ],
       };
 
-  const [coachProfiles, offerings, upcomingBookings, bookingHolds, recentRooms, openRequests] =
+  const [scheduleAccess, coachProfiles, offerings, upcomingBookings, bookingHolds, recentRooms, openRequests] =
     await Promise.all([
+      quipslyCoachCapabilityAccess({
+        prisma,
+        userId,
+        capability: "coaching.schedule",
+        isStaff: session.user.isStaff,
+        now,
+      }),
       prisma.coachProfile.findMany({
         where: session.user.isStaff ? {} : { userId },
         orderBy: [{ isActive: "desc" }, { updatedAt: "desc" }],
@@ -1269,6 +1276,13 @@ export async function GET(request: Request) {
       isCoach: actorIsCoach,
       isClient: session.user.roles.includes("CLIENT"),
     },
+    subscription: {
+      canScheduleNewWork: scheduleAccess.allowed,
+      accessMode: scheduleAccess.accessMode,
+      planName: scheduleAccess.entitlement?.planName ?? null,
+      trialDays: scheduleAccess.entitlement?.trialDays ?? 14,
+      managementURL: scheduleAccess.entitlement?.management?.webURL ?? "/settings#subscription",
+    },
     generatedAt: new Date().toISOString(),
     boundaries: {
       stripeScope: "Stripe is evidence for eligible one-to-one real-time coaching only. SaaS, courses, group coaching, and libraries stay separate.",
@@ -1421,6 +1435,7 @@ export async function POST(request: Request) {
           error:
             "Start or restore a Quipsly Coach plan to schedule new coaching work. Existing Sessions, client access, and past work remain available.",
           code: "QUIPSLY_SUBSCRIPTION_REQUIRED",
+          managementURL: "/settings#subscription",
         },
         { status: 402 },
       );

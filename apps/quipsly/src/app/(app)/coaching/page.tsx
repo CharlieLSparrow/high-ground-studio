@@ -140,6 +140,13 @@ type CoachingRunway = {
     isCoach?: boolean;
     isClient?: boolean;
   };
+  subscription?: {
+    canScheduleNewWork: boolean;
+    accessMode: string;
+    planName: string | null;
+    trialDays: number;
+    managementURL: string;
+  };
   boundaries?: {
     stripeScope: string;
     publicationScope: string;
@@ -1010,6 +1017,10 @@ export default function CoachingPage() {
   const [createdHandoff, setCreatedHandoff] =
     useState<CoachingCreatedHandoff | null>(null);
   const [isCreating, setIsCreating] = useState(false);
+  const [subscriptionPrompt, setSubscriptionPrompt] = useState<{
+    message: string;
+    managementURL: string;
+  } | null>(null);
   const [checkoutStatusByBooking, setCheckoutStatusByBooking] = useState<
     Record<string, string>
   >({});
@@ -1144,6 +1155,16 @@ export default function CoachingPage() {
           payload.error || `Runway returned HTTP ${response.status}.`,
         );
       setRunway(payload);
+      setSubscriptionPrompt(
+        payload.subscription?.canScheduleNewWork === false
+          ? {
+              message:
+                "Start your Quipsly Coach trial to schedule new Sessions. Your existing Sessions and client work stay available.",
+              managementURL:
+                payload.subscription.managementURL || "/settings#subscription",
+            }
+          : null,
+      );
       if (payload.practiceCommand)
         setFastPracticeCommand(payload.practiceCommand);
       if (refreshCommand) void loadPracticeCommand();
@@ -1202,6 +1223,29 @@ export default function CoachingPage() {
     } finally {
       setIsLoading(false);
     }
+  }
+
+  function captureSubscriptionRequirement(
+    response: Response,
+    payload: {
+      code?: string;
+      error?: string;
+      managementURL?: string;
+    },
+  ) {
+    if (
+      response.status !== 402 &&
+      payload.code !== "QUIPSLY_SUBSCRIPTION_REQUIRED"
+    ) {
+      return false;
+    }
+    setSubscriptionPrompt({
+      message:
+        payload.error ||
+        "Start your Quipsly Coach trial to create new coaching work.",
+      managementURL: payload.managementURL || "/settings#subscription",
+    });
+    return true;
   }
 
   async function createCheckoutSession(bookingId: string) {
@@ -1976,10 +2020,18 @@ export default function CoachingPage() {
         }),
       });
       const payload = await response.json();
-      if (!response.ok || !payload.ok)
+      if (!response.ok || !payload.ok) {
+        if (captureSubscriptionRequirement(response, payload)) {
+          setHoldStatusById((current) => ({
+            ...current,
+            [holdId]: "Start your free trial to confirm this Session.",
+          }));
+          return;
+        }
         throw new Error(
           payload.error || `Runway returned HTTP ${response.status}.`,
         );
+      }
       setHoldStatusById((current) => ({
         ...current,
         [holdId]: payload.result?.nextAction || "Hold converted to booking.",
@@ -2155,6 +2207,10 @@ export default function CoachingPage() {
       });
       const payload = await response.json();
       if (!response.ok || !payload.ok) {
+        if (captureSubscriptionRequirement(response, payload)) {
+          setPublicBookingStatus("Choose a plan to publish your booking page.");
+          return;
+        }
         throw new Error(
           payload.error || "Public booking could not be updated.",
         );
@@ -2230,10 +2286,15 @@ export default function CoachingPage() {
         }),
       });
       const payload = await response.json();
-      if (!response.ok || !payload.ok)
+      if (!response.ok || !payload.ok) {
+        if (captureSubscriptionRequirement(response, payload)) {
+          setCreateStatus("Choose a plan to schedule this Session.");
+          return;
+        }
         throw new Error(
           payload.error || `Runway returned HTTP ${response.status}.`,
         );
+      }
       setCreateStatus(payload.result?.nextAction || "Session created.");
       if (
         ["create-booking-room", "create-booking-series"].includes(
@@ -2326,7 +2387,12 @@ export default function CoachingPage() {
         bookingHolds.some((hold) => hold.client?.id === runway.user?.id))),
   );
   const isClientOnly = isCoachingClient && !canManageCoaching;
-  const canScheduleCoaching = Boolean(runway?.user) && !isClientOnly;
+  const needsCoachSubscription =
+    Boolean(runway?.user) &&
+    !isClientOnly &&
+    runway?.subscription?.canScheduleNewWork === false;
+  const canScheduleCoaching =
+    Boolean(runway?.user) && !isClientOnly && !needsCoachSubscription;
   const actorAvailabilityWindows = availabilityWindows.filter(
     (window) => !runway?.user?.id || window.coach?.id === runway.user.id,
   );
@@ -2361,6 +2427,18 @@ export default function CoachingPage() {
       new Date(hold.expiresAt).getTime() > Date.now(),
   );
   const journeyAction = (() => {
+    if (needsCoachSubscription) {
+      return {
+        eyebrow: "Quipsly Coach",
+        title: `Try every coaching feature free for ${runway?.subscription?.trialDays ?? 14} days`,
+        detail:
+          "Schedule Sessions, invite clients for free, record and transcribe calls, make basic edits, and share notes, tasks, and goals.",
+        label: "Start free trial",
+        href:
+          runway?.subscription?.managementURL ||
+          "/settings?subscribe=1#subscription",
+      };
+    }
     if (!canManageCoaching && !isClientOnly) {
       return {
         eyebrow: "First step",
@@ -2464,7 +2542,7 @@ export default function CoachingPage() {
               <p className="mt-3 max-w-3xl text-[#7b5c3b]">
                 {isClientOnly
                   ? "See your requested time, open the private Session when it is confirmed, and keep shared notes, goals, and tasks in one place."
-                  : "Coaches get one calm place to create sessions, invite clients, record only after consent, and review follow-up. Clients get the simple version: time, consent, join, shared notes, goals, and tasks. Payment stays optional while a coach is getting started."}
+                  : "Coaches get one calm place to create sessions, invite clients, record only after consent, and review follow-up. Clients get the simple version: time, consent, join, shared notes, goals, and tasks. Charging a client for a Session is always optional."}
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-3">
@@ -2500,6 +2578,28 @@ export default function CoachingPage() {
               {error}
             </div>
           )}
+          {subscriptionPrompt ? (
+            <div
+              role="status"
+              className="mt-5 flex flex-col gap-4 rounded-2xl border border-amber-300 bg-amber-50 p-5 text-amber-950 sm:flex-row sm:items-center sm:justify-between"
+            >
+              <div>
+                <p className="text-base font-black">
+                  Start scheduling with Quipsly Coach
+                </p>
+                <p className="mt-1 max-w-3xl text-sm font-semibold leading-6 text-amber-900/80">
+                  {subscriptionPrompt.message} Clients you invite never need a
+                  paid coach plan.
+                </p>
+              </div>
+              <a
+                href={subscriptionPrompt.managementURL}
+                className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-xl bg-amber-900 px-5 py-3 text-sm font-black text-white transition hover:bg-amber-800"
+              >
+                Start {runway?.subscription?.trialDays ?? 14}-day free trial
+              </a>
+            </div>
+          ) : null}
           {isStaff ? (
             <p className="mt-6 rounded-2xl border border-[#eadbc6] bg-[#fffaf1] p-4 text-sm font-bold leading-relaxed text-[#6f5c42]">
               Operator view: these cards report evidence Quipsly can see. They
@@ -4343,6 +4443,25 @@ export default function CoachingPage() {
                   Add the client and time. Quipsly creates the private coaching
                   home and invitation; the rest stays out of your way.
                 </p>
+                {needsCoachSubscription ? (
+                  <div className="mb-4 rounded-2xl border border-amber-300 bg-amber-50 p-4 text-amber-950">
+                    <p className="font-black">Ready when you are</p>
+                    <p className="mt-1 text-sm font-semibold leading-6 text-amber-900/80">
+                      Start the {runway?.subscription?.trialDays ?? 14}-day
+                      trial, then this form schedules the Session and sends the
+                      invite. Your client joins free.
+                    </p>
+                    <a
+                      href={
+                        runway?.subscription?.managementURL ||
+                        "/settings?subscribe=1#subscription"
+                      }
+                      className="mt-3 inline-flex min-h-11 items-center justify-center rounded-xl bg-amber-900 px-5 py-3 text-sm font-black text-white"
+                    >
+                      Start free trial
+                    </a>
+                  </div>
+                ) : null}
                 <form className="space-y-3" onSubmit={createLocalSession}>
                   <label className="block text-xs font-black uppercase tracking-wide text-[#7b5c3b]">
                     Client email
