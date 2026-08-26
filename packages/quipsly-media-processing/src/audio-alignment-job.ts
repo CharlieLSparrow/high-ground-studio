@@ -289,14 +289,26 @@ export function parseAudioAlignmentResult(value: unknown, expectedJob?: AudioAli
       placementApplied: false,
     },
   };
+  const windowFit = evidence.analyzer.windowFit;
+  const openingMatchesProposal = !job
+    || Math.abs(job.proposal.openingTargetSeconds - evidence.opening.targetStartSeconds) <= 0.000001;
+  const laterMatchesProposal = !job
+    || Math.abs(job.proposal.laterTargetSeconds - evidence.later.targetStartSeconds) <= 0.000001;
+  const fittedWindowMatchesJob = !job || !windowFit || (
+    Math.abs(windowFit.initialOffsetSeconds - job.proposal.initialOffsetSeconds) <= 0.000001
+    && Math.abs(windowFit.requestedOpeningTargetSeconds - job.proposal.openingTargetSeconds) <= 0.000001
+    && Math.abs(windowFit.requestedLaterTargetSeconds - job.proposal.laterTargetSeconds) <= 0.000001
+    && Math.abs(windowFit.windowSeconds - job.proposal.windowSeconds) <= 0.000001
+  );
   if (
     parsed.kind !== AUDIO_ALIGNMENT_RESULT_KIND
     || parsed.version !== AUDIO_ALIGNMENT_JOB_VERSION
     || (job && parsed.jobId !== job.jobId)
     || (job && !sameSource(job.spine, evidence.spine))
     || (job && !sameSource(job.target, evidence.target))
-    || (job && Math.abs(job.proposal.openingTargetSeconds - evidence.opening.targetStartSeconds) > 0.000001)
-    || (job && Math.abs(job.proposal.laterTargetSeconds - evidence.later.targetStartSeconds) > 0.000001)
+    || (!openingMatchesProposal && !windowFit)
+    || (!laterMatchesProposal && !windowFit)
+    || !fittedWindowMatchesJob
     || boundaries.sourceBytesImmutable !== true
     || boundaries.outputIsEvidenceOnly !== true
     || boundaries.placementApplied !== false

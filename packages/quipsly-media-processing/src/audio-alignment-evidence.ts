@@ -1,4 +1,9 @@
 import type { AudioMasterySourceBinding } from "./audio-mastery.js";
+import type { AudioAlignmentWindowFit } from "./audio-alignment-window-fit.js";
+import {
+  AUDIO_ALIGNMENT_WINDOW_FIT_POLICY,
+  fitAudioAlignmentWindows,
+} from "./audio-alignment-window-fit.js";
 
 export const AUDIO_ALIGNMENT_EVIDENCE_KIND = "quipsly-audio-alignment-evidence-v1" as const;
 export const AUDIO_ALIGNMENT_ALGORITHM = "normalized-fft-cross-correlation-v1" as const;
@@ -24,6 +29,7 @@ export type AudioAlignmentEvidence = {
     windowSeconds: number;
     searchRadiusSeconds: number;
     ffmpegVersion: string;
+    windowFit?: AudioAlignmentWindowFit;
   };
   opening: AudioAlignmentMoment;
   later: AudioAlignmentMoment;
@@ -69,6 +75,9 @@ export function parseAudioAlignmentEvidence(value: unknown): AudioAlignmentEvide
     && later.normalizedCorrelation >= minimumCorrelation
     && opening.peakMargin >= minimumPeakMargin
     && later.peakMargin >= minimumPeakMargin;
+  const windowFit = analyzer.windowFit == null
+    ? null
+    : parseWindowFit(analyzer.windowFit, opening, later);
 
   if (
     row.kind !== AUDIO_ALIGNMENT_EVIDENCE_KIND
@@ -80,6 +89,7 @@ export function parseAudioAlignmentEvidence(value: unknown): AudioAlignmentEvide
     || positiveNumber(analyzer.windowSeconds, "analyzer.windowSeconds") > 30
     || positiveNumber(analyzer.searchRadiusSeconds, "analyzer.searchRadiusSeconds") > 30
     || !requiredText(analyzer.ffmpegVersion, "analyzer.ffmpegVersion")
+    || (windowFit && windowFit.windowSeconds !== Number(analyzer.windowSeconds))
     || later.targetStartSeconds <= opening.targetStartSeconds
     || Math.abs(observedPartsPerMillion - expectedPpm) > 0.000001
     || qualification.qualifiedForAuthorizedAgentReview !== qualifies
@@ -91,6 +101,69 @@ export function parseAudioAlignmentEvidence(value: unknown): AudioAlignmentEvide
   ) throw new Error("Audio alignment evidence integrity is invalid.");
 
   return row as AudioAlignmentEvidence;
+}
+
+function parseWindowFit(
+  value: unknown,
+  opening: AudioAlignmentMoment,
+  later: AudioAlignmentMoment,
+): AudioAlignmentWindowFit {
+  const row = record(value);
+  const parsed: AudioAlignmentWindowFit = {
+    policy: row.policy as AudioAlignmentWindowFit["policy"],
+    spineDecodedDurationSeconds: positiveNumber(
+      row.spineDecodedDurationSeconds,
+      "analyzer.windowFit.spineDecodedDurationSeconds",
+    ),
+    targetDecodedDurationSeconds: positiveNumber(
+      row.targetDecodedDurationSeconds,
+      "analyzer.windowFit.targetDecodedDurationSeconds",
+    ),
+    initialOffsetSeconds: finiteNumber(
+      row.initialOffsetSeconds,
+      "analyzer.windowFit.initialOffsetSeconds",
+    ),
+    requestedOpeningTargetSeconds: nonNegativeNumber(
+      row.requestedOpeningTargetSeconds,
+      "analyzer.windowFit.requestedOpeningTargetSeconds",
+    ),
+    requestedLaterTargetSeconds: nonNegativeNumber(
+      row.requestedLaterTargetSeconds,
+      "analyzer.windowFit.requestedLaterTargetSeconds",
+    ),
+    analyzedOpeningTargetSeconds: nonNegativeNumber(
+      row.analyzedOpeningTargetSeconds,
+      "analyzer.windowFit.analyzedOpeningTargetSeconds",
+    ),
+    analyzedLaterTargetSeconds: nonNegativeNumber(
+      row.analyzedLaterTargetSeconds,
+      "analyzer.windowFit.analyzedLaterTargetSeconds",
+    ),
+    windowSeconds: boundedNumber(
+      row.windowSeconds,
+      1,
+      30,
+      "analyzer.windowFit.windowSeconds",
+    ),
+    adjustedToDecodedDuration: row.adjustedToDecodedDuration === true,
+  };
+  const fitted = fitAudioAlignmentWindows({
+    spineDurationSeconds: parsed.spineDecodedDurationSeconds,
+    targetDurationSeconds: parsed.targetDecodedDurationSeconds,
+    initialOffsetSeconds: parsed.initialOffsetSeconds,
+    requestedOpeningTargetSeconds: parsed.requestedOpeningTargetSeconds,
+    requestedLaterTargetSeconds: parsed.requestedLaterTargetSeconds,
+    windowSeconds: parsed.windowSeconds,
+  });
+  if (
+    parsed.policy !== AUDIO_ALIGNMENT_WINDOW_FIT_POLICY
+    || parsed.adjustedToDecodedDuration !== fitted.adjustedToDecodedDuration
+    || Math.abs(parsed.analyzedOpeningTargetSeconds - fitted.openingTargetSeconds) > 0.000001
+    || Math.abs(parsed.analyzedLaterTargetSeconds - fitted.laterTargetSeconds) > 0.000001
+    || Math.abs(opening.targetStartSeconds - fitted.openingTargetSeconds) > 0.000001
+    || Math.abs(later.targetStartSeconds - fitted.laterTargetSeconds) > 0.000001
+  ) throw new Error("Audio alignment decoded-window fit integrity is invalid.");
+  return parsed;
 }
 
 function parseMoment(value: unknown, label: string): AudioAlignmentMoment {

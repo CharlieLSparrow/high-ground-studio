@@ -3,6 +3,7 @@ export * from "./artifact-portability.js";
 export * from "./audio-mastery.js";
 export * from "./audio-alignment-evidence.js";
 export * from "./audio-alignment-job.js";
+export * from "./audio-alignment-window-fit.js";
 export * from "./audio-mastery-review.js";
 export * from "./audio-delivery.js";
 export * from "./episode-program-delivery.js";

@@ -122,6 +122,80 @@ test("job and result preserve two exact source bindings and evidence-only bounda
   assert.throws(() => parseAudioAlignmentResult({ ...result, evidence: { ...result.evidence, target: { ...result.evidence.target, sha256: "0".repeat(64) } } }, job));
 });
 
+test("result accepts only a reproducible decoded-duration window adjustment", () => {
+  const job = newAudioAlignmentJob({
+    jobId: "audio_alignment_windowfit1",
+    projectId: "project_windowfit1",
+    projectSlug: "window-fit-project",
+    episodeProductionId: "production_windowfit1",
+    episodeSlug: "window-fit-episode",
+    requestedByUserId: "user_windowfit1",
+    requestedByEmail: "tester@example.test",
+    queuedAt: "2026-08-05T12:00:00.000Z",
+    spine: source("asset_spine_windowfit", "/tmp/spine-fit.wav", "spine-fit"),
+    target: source("asset_target_windowfit", "/tmp/target-fit.wav", "target-fit"),
+    proposal,
+  });
+  const analyzedLater = 59.648;
+  const observationIntervalSeconds = analyzedLater - 10;
+  const fittedEvidence = parseAudioAlignmentEvidence({
+    ...evidence(job),
+    analyzer: {
+      ...evidence(job).analyzer,
+      windowFit: {
+        policy: "fit-to-exact-decoded-overlap-v1",
+        spineDecodedDurationSeconds: 66,
+        targetDecodedDurationSeconds: 66,
+        initialOffsetSeconds: 0.35,
+        requestedOpeningTargetSeconds: 10,
+        requestedLaterTargetSeconds: 70,
+        analyzedOpeningTargetSeconds: 10,
+        analyzedLaterTargetSeconds: analyzedLater,
+        windowSeconds: 6,
+        adjustedToDecodedDuration: true,
+      },
+    },
+    later: {
+      ...evidence(job).later,
+      targetStartSeconds: analyzedLater,
+      expectedSpineStartSeconds: analyzedLater + 0.35,
+      measuredSpineStartSeconds: analyzedLater + 0.352,
+      measuredOffsetSeconds: 0.352,
+    },
+    drift: {
+      observationIntervalSeconds,
+      residualDriftMilliseconds: 1,
+      observedPartsPerMillion: Math.round((1_000 / observationIntervalSeconds) * 1_000_000) / 1_000_000,
+    },
+  });
+  const result = newAudioAlignmentResult({
+    jobId: job.jobId,
+    completedAt: "2026-08-05T12:00:02.000Z",
+    evidence: fittedEvidence,
+    worker: { executionId: "execution_windowfit1", buildId: "test-build", imageDigest: null, attempt: 1 },
+  });
+  assert.equal(
+    parseAudioAlignmentResult(result, job).evidence.later.targetStartSeconds,
+    analyzedLater,
+  );
+  assert.throws(
+    () => parseAudioAlignmentResult({
+      ...result,
+      evidence: {
+        ...result.evidence,
+        analyzer: {
+          ...result.evidence.analyzer,
+          windowFit: {
+            ...result.evidence.analyzer.windowFit,
+            requestedLaterTargetSeconds: 69,
+          },
+        },
+      },
+    }, job),
+    /integrity|invalid/,
+  );
+});
+
 test("Session jobs preserve room and take identity without fabricated Studio scope", () => {
   const job = newSessionAudioAlignmentJob({
     jobId: "session_alignment_12345678",
