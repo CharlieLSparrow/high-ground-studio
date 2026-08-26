@@ -30,6 +30,7 @@ test("the recovery lab is isolated from the canonical local lane", () => {
   assert.match(up, /LIVEKIT_URL="\$\{livekit_url\}"/);
   assert.match(up, /QUIPSLY_LOCAL_TRANSCRIPT_WORKER_AVAILABLE=1/);
   assert.match(up, /--run-transcript-worker/);
+  assert.match(up, /--run-media-worker/);
   assert.match(up, /QUIPSLY_RECOVERY_LAB_WHISPER_MODEL:-small/);
   assert.match(state, /TMPDIR:-\/tmp/);
   assert.match(firebaseConfig, /"port": 9199/);
@@ -51,6 +52,7 @@ test("shutdown is confined to exact owned jobs and the disposable database", () 
     assert.match(source, /com\.quipsly\.recovery-lab\.firebase/);
     assert.match(source, /com\.quipsly\.recovery-lab\.livekit/);
     assert.match(source, /com\.quipsly\.recovery-lab\.transcript-worker/);
+    assert.match(source, /com\.quipsly\.recovery-lab\.media-worker/);
     assert.match(source, /com\.quipsly\.recovery-lab/);
   }
   assert.match(down, /actual_database_label/);

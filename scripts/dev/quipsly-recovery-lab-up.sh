@@ -14,6 +14,7 @@ firebase_label="com.quipsly.recovery-lab.firebase"
 nest_label="com.quipsly.recovery-lab.nest"
 livekit_label="com.quipsly.recovery-lab.livekit"
 transcript_worker_label="com.quipsly.recovery-lab.transcript-worker"
+media_worker_label="com.quipsly.recovery-lab.media-worker"
 firebase_url="http://127.0.0.1:9199"
 nest_url="http://127.0.0.1:3022"
 livekit_url="ws://127.0.0.1:7890"
@@ -56,6 +57,20 @@ if [[ "${1:-}" == "--run-transcript-worker" ]]; then
     QUIPSLY_LOCAL_WHISPER_LANGUAGE=en \
     QUIPSLY_LOCAL_TRANSCRIPT_WORKER_BUILD_ID="$(git rev-parse HEAD)" \
     node "${repo_root}/scripts/dev/quipsly-local-transcript-worker.mjs"
+fi
+
+if [[ "${1:-}" == "--run-media-worker" ]]; then
+  cd "${repo_root}"
+  exec /usr/bin/env \
+    DATABASE_URL="${database_url}" \
+    QUIPSLY_LOCAL_MEDIA_UPLOAD_ROOT="${media_state_dir}/media" \
+    QUIPSLY_LOCAL_MEDIA_WORKSPACE_ROOT="${media_state_dir}/media-workspace" \
+    QUIPSLY_LOCAL_CAPTURE_VAULT_ROOT="${media_state_dir}/capture-vault" \
+    QUIPSLY_LOCAL_MEDIA_WORKER_BUILD_ID="$(git rev-parse HEAD)" \
+    node \
+      --experimental-transform-types \
+      --import "${repo_root}/scripts/register-ts-extension-loader.mjs" \
+      "${repo_root}/apps/quipsly-media-processor/src/local-episode-worker.ts"
 fi
 
 if [[ "${1:-}" == "--run-firebase" ]]; then
@@ -342,6 +357,39 @@ else
   fi
 fi
 
+if [[ "$(uname -s)" == "Darwin" ]]; then
+  if launchctl_job_exists "${media_worker_label}"; then
+    printf "REUSE %-24s job %s\n" "Media worker" "${media_worker_label}"
+  else
+    start_macos_job "media-worker" "${media_worker_label}" "--run-media-worker"
+    sleep 1
+    if ! launchctl_job_exists "${media_worker_label}"; then
+      echo "Recovery media worker did not remain running." >&2
+      tail -60 "${state_dir}/media-worker.log" >&2 2>/dev/null || true
+      exit 1
+    fi
+    printf "PASS  %-24s isolated media processor\n" "Media worker"
+  fi
+else
+  if [[ -f "${state_dir}/media-worker.pid" ]] && \
+    kill -0 "$(sed -n '1p' "${state_dir}/media-worker.pid")" 2>/dev/null; then
+    printf "REUSE %-24s PID %s\n" "Media worker" "$(sed -n '1p' "${state_dir}/media-worker.pid")"
+  else
+    (
+      cd "${repo_root}"
+      nohup /bin/bash "${repo_root}/scripts/dev/quipsly-recovery-lab-up.sh" --run-media-worker \
+        >"${state_dir}/media-worker.log" 2>&1 &
+      record_process "media-worker" "$!" "${repo_root}"
+    )
+    sleep 1
+    if ! kill -0 "$(sed -n '1p' "${state_dir}/media-worker.pid")" 2>/dev/null; then
+      echo "Recovery media worker did not remain running." >&2
+      tail -60 "${state_dir}/media-worker.log" >&2 2>/dev/null || true
+      exit 1
+    fi
+  fi
+fi
+
 firebase_status="$(quipsly_recovery_lab_http_status "${firebase_url}/emulator/v1/projects/${firebase_project}/config")"
 if [[ "${firebase_status}" == "200" ]]; then
   recorded_root="$(sed -n '1p' "${state_dir}/repo-root" 2>/dev/null || true)"
@@ -416,6 +464,6 @@ git rev-parse HEAD >"${state_dir}/source-revision"
 
 echo
 echo "Quipsly recovery lab is ready: ${nest_url}"
-echo "It uses separate Nest, LiveKit, auth, media, transcript-worker, and disposable database state."
+echo "It uses separate Nest, LiveKit, auth, media, processing workers, and disposable database state."
 echo "Run: pnpm quipsly:recovery-lab:doctor"
 echo "Stop and permanently delete the lab database: pnpm quipsly:recovery-lab:down"
