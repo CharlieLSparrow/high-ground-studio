@@ -757,6 +757,37 @@ final class CaptureExperienceModel: ObservableObject {
         return outcome
     }
 
+    /// Refreshes the narrow, authoritative Session projection when Record
+    /// becomes visible or Capture returns to the foreground. This keeps remote
+    /// participant consent and room readiness current without turning the
+    /// phone's idle lobby into a permanent polling client. Active recording
+    /// coordination has its own tighter monitor and remains the safety owner
+    /// once a take starts.
+    func refreshSelectedSessionEntryReadiness() async {
+        guard !usesPreviewData,
+              !isRefreshing,
+              AuthManager.shared.networkActionsAllowed else { return }
+
+        isRefreshing = true
+        defer { isRefreshing = false }
+        let selectedID = selectedSession?.id
+        let outcome = await sessionClient.load(authoritativeSessionID: selectedID)
+
+        if let selectedID,
+           sessionClient.sessions.contains(where: { $0.id == selectedID }) {
+            selectedSessionID = selectedID
+        }
+
+        switch outcome {
+        case .loaded, .transportUnavailable:
+            // Preserve the last protected projection during a transient outage.
+            // The inline authority status already communicates stale state.
+            break
+        case .forbidden, .authoritativeAbsent, .invalidResponse:
+            errorMessage = sessionClient.errorMessage
+        }
+    }
+
     @discardableResult
     func saveQuickEntry(
         kind: MobileQuickEntryKind,

@@ -145,24 +145,41 @@ struct CapturePhoneShell: View {
             showRejectedLinkNotice()
         }
         .onChange(of: visibleTab) { _, tab in
-            guard tab == .today, !model.usesPreviewData else { return }
-            // Today is a projection over work that can be created from Record,
-            // Work, or a Session review. Refresh on entry so a successful
-            // cross-surface mutation is visible without manual pull-to-refresh.
-            Task {
-                async let todayLoad: Void = model.todayClient.load()
-                async let finishLoad: Void = model.reviewDigestClient.load()
-                _ = await (todayLoad, finishLoad)
+            guard !model.usesPreviewData else { return }
+            switch tab {
+            case .today:
+                // Today is a projection over work that can be created from
+                // Record, Work, or a Session review. Refresh on entry so a
+                // successful cross-surface mutation is visible without manual
+                // pull-to-refresh.
+                Task {
+                    async let todayLoad: Void = model.todayClient.load()
+                    async let finishLoad: Void = model.reviewDigestClient.load()
+                    _ = await (todayLoad, finishLoad)
+                }
+            case .record:
+                // Another participant may have joined or granted consent while
+                // this phone was elsewhere. Refresh the narrow Session truth as
+                // Record opens; active capture has its own tighter monitor.
+                Task { await model.refreshSelectedSessionEntryReadiness() }
+            default:
+                break
             }
         }
         .onChange(of: scenePhase) { _, phase in
             guard phase == .active,
                   !model.usesPreviewData,
                   AuthManager.shared.networkActionsAllowed else { return }
-            // OAuth completes in the system browser. Refresh the credential-free
-            // summary when Capture becomes active again so the person sees the
-            // resulting account and lane selections without a full app reload.
-            Task { await model.calendarSubscriptionClient.refreshGoogleCalendarSummary() }
+            // OAuth and participant actions can complete while Capture is in
+            // the background. Reconcile both projections on return without
+            // requiring a pull-to-refresh or an always-on idle polling loop.
+            Task {
+                async let calendarRefresh: Void = model.calendarSubscriptionClient
+                    .refreshGoogleCalendarSummary()
+                async let sessionRefresh: Void = model
+                    .refreshSelectedSessionEntryReadiness()
+                _ = await (calendarRefresh, sessionRefresh)
+            }
         }
         .onChange(of: audioCapture.captureState) { _, state in
             model.reconcileCaptureState(state)

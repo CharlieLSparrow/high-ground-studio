@@ -81,6 +81,7 @@ import { SessionClientFollowUpCard } from "./session-client-follow-up-card";
 import { SessionRecordingShareCard } from "./session-recording-share-card";
 import type { SessionContinuityState } from "./session-continuity-model";
 import { SessionEpisodeBindingRepair } from "./session-episode-binding-repair";
+import { SessionEntryReadinessLive } from "./session-entry-readiness-live";
 import { SessionFinishingCockpitCard } from "./session-finishing-cockpit-card";
 import type { SessionFinishingEvidence } from "./session-finishing-cockpit";
 import type { SessionPreparation } from "./session-preparation-model";
@@ -1352,11 +1353,6 @@ function SessionPreparationCard({
     localCaptureAvailable: true,
     paymentBlocked: false,
   });
-  const entryHref = entry.primaryAction.id === "confirm-consent"
-    ? "#my-session-consent-heading"
-    : entry.primaryAction.id === "join-call"
-      ? `#live-room-${roomId}`
-      : null;
 
   return (
     <section
@@ -1402,34 +1398,7 @@ function SessionPreparationCard({
         </div>
       </div>
 
-      <div
-        className={`mt-5 flex flex-col gap-4 rounded-2xl border p-4 sm:flex-row sm:items-center sm:justify-between ${entry.permissions.canJoinCall || entry.permissions.canStartAudioRecording ? "border-emerald-300 bg-emerald-50" : "border-amber-300 bg-amber-50"}`}
-        data-testid="session-entry-next-action"
-      >
-        <div>
-          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#765f40]">
-            Your next step
-          </p>
-          <p className="mt-1 text-xl font-black text-[#3d3122]">
-            {entry.label}
-          </p>
-          <p className="mt-1 max-w-3xl text-sm font-semibold leading-6 text-[#6b5538]">
-            {entry.detail}
-          </p>
-        </div>
-        {entryHref ? (
-          <a
-            href={entryHref}
-            className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-full bg-[#2f6f62] px-5 py-3 text-xs font-black uppercase tracking-wide text-white"
-          >
-            {entry.primaryAction.label}
-          </a>
-        ) : (
-          <span className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-full border border-current px-4 py-2 text-xs font-black uppercase tracking-wide text-[#765f40]">
-            {entry.primaryAction.label}
-          </span>
-        )}
-      </div>
+      <SessionEntryReadinessLive roomId={roomId} initial={entry} />
 
       <dl className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <div className="rounded-xl border border-white/90 bg-white/85 p-3">

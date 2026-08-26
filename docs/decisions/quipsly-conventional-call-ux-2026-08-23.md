@@ -93,6 +93,20 @@ Ordinary UI leads with the projection's single `primaryAction`. Participant
 counts, consent counts, blockers, provider state, and device receipts remain
 available as support evidence rather than a mandatory user checklist.
 
+### Live convergence without refresh work
+
+- The browser reads readiness through an authenticated, side-effect-free route.
+  It polls every six seconds while setup is incomplete, backs off after recording
+  becomes available, slows further after the room closes, and pauses while hidden.
+- A changed readiness signature updates the single next action immediately and
+  refreshes the surrounding server projection. A transient request failure keeps
+  the last safe state instead of replacing it with an error ceremony.
+- Capture refreshes the selected Session when Record becomes visible and whenever
+  the app returns to the foreground. Once recording begins, the existing recording
+  coordinator owns the tighter consent and source-safety cadence.
+- Readiness refreshes do not create participants, grant consent, mint provider
+  tokens, join rooms, start recording, or mutate external services.
+
 ## Where Quipsly should surprise people
 
 - live microphone confidence and route-change visibility;
