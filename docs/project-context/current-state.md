@@ -4548,3 +4548,32 @@ rehearsal`) in an iPhone 17 Pro simulator. The signed-in UI acceptance opened
   browser again timed out attaching its webview, so authenticated visual and
   minimally instructed coach/client evidence remains deferred rather than
   inferred from DOM tests.
+
+### 2026-08-25 relationship-first coaching client home
+
+- An individual coaching relationship now opens as a client home instead of an
+  engineering-oriented engagement record. Its first surface identifies the one
+  useful next action: join a live Session, reopen a late planned Session,
+  prepare an upcoming Session, schedule the next Session, or message the coach.
+- The continuity brief projects current shared commitments, overdue work,
+  active goals, recent actor-visible notes, and the latest completed Session
+  from the canonical relationship. The last-Session receipt distinguishes
+  retained recordings, transcript state, and deliberately released follow-up;
+  it does not claim that processing or sharing happened when it did not.
+- Session history is status-aware. Live and planned Sessions enter the room;
+  ended Sessions open the transcript or review workspace; canceled and failed
+  Sessions open their details. Device-selection instructions moved back to the
+  actual Session lobby instead of cluttering the relationship home.
+- Client-facing language is now **client space**, **coaching space**,
+  **conversation**, and **Session history**. The underlying engagement remains
+  the canonical authorization and continuity model, but users do not have to
+  learn that implementation vocabulary.
+- A pre-existing authorization edge was repaired: a readable relationship with
+  no active membership can no longer become writable because an absent role is
+  not the `OBSERVER` string. Posting now requires staff authority or an exact
+  active non-observer membership; scheduling remains staff/coach-only; private
+  notes remain author-filtered.
+- The new overview and boundary suites plus the relationship workspace
+  regression pass (7 tests); the expanded portfolio/relationship set passes 12
+  tests; Quipsly TypeScript and the full production build pass. Authenticated
+  phone/desktop visual and two-role comprehension evidence remains deferred.

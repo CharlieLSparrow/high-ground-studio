@@ -2,12 +2,8 @@ import Link from "next/link";
 import {
   ArrowLeft,
   CalendarDays,
-  CheckCircle2,
-  CircleDot,
   LayoutDashboard,
   LockKeyhole,
-  ShieldCheck,
-  Target,
   UsersRound,
   Video,
 } from "lucide-react";
@@ -19,6 +15,10 @@ import {
   CoachingEngagementWorkspace,
   type CoachingEngagementWorkEntry,
 } from "@/components/coaching-engagement-workspace";
+import {
+  CoachingRelationshipOverview,
+  type CoachingRelationshipOverviewItem,
+} from "@/components/coaching-relationship-overview";
 import { getPrismaClient } from "@/lib/prisma";
 import { coachingEngagementAccessWhere } from "@/lib/server/coaching-engagement";
 import { getQuipslySession } from "@/lib/server/quipsly-session";
@@ -42,7 +42,7 @@ export default async function CoachingEngagementPage({
         <section className="mx-auto max-w-3xl rounded-3xl border border-[#ead8b4] bg-[#fffaf0] p-8">
           <LockKeyhole className="text-violet-800" />
           <h1 className="mt-4 font-serif text-4xl font-black text-[#3d3122]">
-            This coaching engagement is private.
+            Your coaching space is private.
           </h1>
           <Link
             href={`/login?callbackUrl=${encodeURIComponent(`/coaching/engagements/${engagementId}`)}`}
@@ -83,6 +83,19 @@ export default async function CoachingEngagementPage({
           status: true,
           scheduledStart: true,
           scheduledEnd: true,
+          endedAt: true,
+          createdAt: true,
+          transcriptJobs: {
+            orderBy: { createdAt: "desc" },
+            take: 1,
+            select: { status: true },
+          },
+          outputs: {
+            where: { status: "RELEASED" },
+            take: 1,
+            select: { id: true },
+          },
+          _count: { select: { recordingAssets: true } },
         },
       },
       notes: {
@@ -147,7 +160,14 @@ export default async function CoachingEngagementPage({
   const ownMembership = engagement.members.find(
     (member) => member.userId === session.user.id,
   );
-  const canPost = session.user.isStaff || ownMembership?.role !== "OBSERVER";
+  const viewerRole = session.user.isStaff
+    ? "COACH"
+    : ownMembership?.role || "OBSERVER";
+  const canPost = Boolean(
+    session.user.isStaff ||
+    (ownMembership && ownMembership.role !== "OBSERVER"),
+  );
+  const canSchedule = session.user.isStaff || ownMembership?.role === "COACH";
   const canManage = Boolean(
     await prisma.coachingEngagement.findFirst({
       where: coachingEngagementAccessWhere(
@@ -207,6 +227,108 @@ export default async function CoachingEngagementPage({
     })),
   ].sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
 
+  const now = Date.now();
+  const liveRoom = engagement.callRooms.find((room) =>
+    ["OPEN", "RECORDING"].includes(room.status),
+  );
+  const lateRoom = engagement.callRooms
+    .filter(
+      (room) =>
+        room.status === "PLANNED" &&
+        room.scheduledStart &&
+        room.scheduledStart.getTime() < now,
+    )
+    .sort(
+      (left, right) =>
+        (right.scheduledStart?.getTime() || 0) -
+        (left.scheduledStart?.getTime() || 0),
+    )[0];
+  const upcomingRoom = engagement.callRooms
+    .filter(
+      (room) =>
+        room.status === "PLANNED" &&
+        room.scheduledStart &&
+        room.scheduledStart.getTime() >= now,
+    )
+    .sort(
+      (left, right) =>
+        (left.scheduledStart?.getTime() || 0) -
+        (right.scheduledStart?.getTime() || 0),
+    )[0];
+  const nextRoom = liveRoom || lateRoom || upcomingRoom || null;
+  const lastRoom = engagement.callRooms
+    .filter((room) => room.status === "ENDED")
+    .sort(
+      (left, right) =>
+        (right.endedAt ?? right.scheduledStart ?? right.createdAt).getTime() -
+        (left.endedAt ?? left.scheduledStart ?? left.createdAt).getTime(),
+    )[0];
+  const overview: CoachingRelationshipOverviewItem = {
+    nextSession: nextRoom
+      ? {
+          id: nextRoom.id,
+          title: nextRoom.title || "Coaching Session",
+          startsAt: nextRoom.scheduledStart?.toISOString() ?? null,
+          status:
+            nextRoom === lateRoom && nextRoom.status === "PLANNED"
+              ? "PLANNED_LATE"
+              : nextRoom.status,
+        }
+      : null,
+    lastSession: lastRoom
+      ? {
+          id: lastRoom.id,
+          title: lastRoom.title || "Coaching Session",
+          startsAt: (
+            lastRoom.scheduledStart ??
+            lastRoom.endedAt ??
+            lastRoom.createdAt
+          ).toISOString(),
+          recordingCount: lastRoom._count.recordingAssets,
+          transcriptStatus: lastRoom.transcriptJobs[0]?.status ?? null,
+          followUpReleased: lastRoom.outputs.length > 0,
+        }
+      : null,
+    tasks: engagement.actionItems
+      .filter((task) => task.status === "OPEN")
+      .map((task) => ({
+        id: task.id,
+        title: task.title,
+        dueAt: task.dueAt?.toISOString() ?? null,
+        ownerLabel: task.assignedUser ? personLabel(task.assignedUser) : null,
+        overdue: Boolean(task.dueAt && task.dueAt.getTime() < now),
+      })),
+    goals: engagement.goals
+      .filter((goal) => goal.status === "ACTIVE")
+      .map((goal) => ({
+        id: goal.id,
+        title: goal.title,
+        targetAt: goal.targetAt?.toISOString() ?? null,
+        ownerLabel: personLabel(goal.owner),
+      })),
+    recentNotes: engagement.notes.map((note) => ({
+      id: note.id,
+      title: note.title || "Note",
+      body: note.body,
+      private: note.visibility === "AUTHOR_PRIVATE",
+    })),
+    openTaskCount: engagement.actionItems.filter(
+      (task) => task.status === "OPEN",
+    ).length,
+    overdueTaskCount: engagement.actionItems.filter(
+      (task) =>
+        task.status === "OPEN" && task.dueAt && task.dueAt.getTime() < now,
+    ).length,
+    activeGoalCount: engagement.goals.filter((goal) => goal.status === "ACTIVE")
+      .length,
+    sharedNoteCount: engagement.notes.filter(
+      (note) => note.visibility !== "AUTHOR_PRIVATE",
+    ).length,
+    privateNoteCount: engagement.notes.filter(
+      (note) => note.visibility === "AUTHOR_PRIVATE",
+    ).length,
+  };
+
   return (
     <main className="min-h-full bg-[#f5efe4] px-5 py-8 lg:px-10">
       <div className="mx-auto max-w-[92rem]">
@@ -214,13 +336,14 @@ export default async function CoachingEngagementPage({
           href="/coaching/engagements"
           className="inline-flex items-center gap-2 text-sm font-black text-[#765f40]"
         >
-          <ArrowLeft size={16} /> All engagements
+          <ArrowLeft size={16} /> All clients
         </Link>
         <header className="mt-5 rounded-[2rem] border border-[#dfcfb4] bg-[#fffdf8] p-7 shadow-sm">
           <div className="flex flex-wrap items-start justify-between gap-6">
             <div>
               <p className="text-xs font-black uppercase tracking-[0.22em] text-violet-800">
-                Private coaching engagement · {engagement.status.toLowerCase()}
+                Coaching ·{" "}
+                {viewerRole === "COACH" ? "Client space" : "My coaching space"}
               </p>
               <h1 className="mt-2 font-serif text-5xl font-black text-[#34291d]">
                 {engagement.title}
@@ -235,17 +358,18 @@ export default async function CoachingEngagementPage({
                   .join("  /  ")}
               </p>
             </div>
-            <div className="max-w-md rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-semibold leading-6 text-emerald-900">
-              <p className="flex items-center gap-2 font-black">
-                <ShieldCheck size={18} /> Engagement-scoped privacy
-              </p>
-              <p className="mt-1">
-                Members can use this shared coaching home without receiving
-                access to {engagement.project.name} or anyone else’s work.
-              </p>
-            </div>
+            <p className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-4 py-2 text-xs font-black text-emerald-900">
+              <LockKeyhole size={15} aria-hidden="true" /> Private to the people
+              shown here
+            </p>
           </div>
         </header>
+        <div className="mt-6">
+          <CoachingRelationshipOverview
+            overview={overview}
+            canSchedule={canSchedule}
+          />
+        </div>
         {canManage ? (
           <div className="mt-6">
             <CoachingEngagementMemberManager engagementId={engagement.id} />
@@ -255,60 +379,87 @@ export default async function CoachingEngagementPage({
           <div className="space-y-6">
             <section className="rounded-[1.75rem] border border-[#dfcfb4] bg-[#fffdf8] p-6">
               <p className="text-[10px] font-black uppercase tracking-[0.2em] text-violet-800">
-                Continuity
+                Your history
               </p>
               <h2 className="mt-2 flex items-center gap-2 font-serif text-3xl font-black text-[#3d3122]">
-                <CalendarDays size={22} /> Sessions
+                <CalendarDays size={22} /> Session history
               </h2>
               <p className="mt-2 max-w-3xl text-sm font-semibold leading-6 text-[#765f40]">
-                Open the coaching room in a browser to choose an external
-                microphone, camera, and supported headphone output. Another
-                participant can join the same private Session from a browser or
-                Quipsly Capture on iPhone.
+                Every call returns to the same client space, so the recording,
+                transcript, follow-up, and work between Sessions stay easy to
+                find.
               </p>
               {engagement.callRooms.length ? (
                 <div className="mt-5 grid gap-3">
-                  {engagement.callRooms.map((room) => (
-                    <article
-                      key={room.id}
-                      className="rounded-2xl border border-[#eadfc9] bg-white p-4 transition hover:border-violet-300"
-                    >
-                      <div className="flex flex-wrap items-start justify-between gap-4">
-                        <div>
-                          <p className="font-black text-[#3d3122]">
-                            {room.title || "Coaching Session"}
-                          </p>
-                          <p className="mt-1 text-xs font-semibold uppercase tracking-wide text-[#8a7354]">
-                            {room.scheduledStart
-                              ? new Intl.DateTimeFormat("en", {
-                                  dateStyle: "medium",
-                                  timeStyle: "short",
-                                }).format(room.scheduledStart)
-                              : "Time not set"}
-                          </p>
+                  {engagement.callRooms.map((room) => {
+                    const roomIsLive = ["OPEN", "RECORDING"].includes(
+                      room.status,
+                    );
+                    const roomEnded = room.status === "ENDED";
+                    const transcriptReady =
+                      room.transcriptJobs[0]?.status === "COMPLETED";
+                    const primaryHref = roomEnded
+                      ? `/sessions/${encodeURIComponent(room.id)}${transcriptReady ? "?mode=transcript" : ""}`
+                      : roomIsLive || room.status === "PLANNED"
+                        ? `/sessions/${encodeURIComponent(room.id)}?mode=live`
+                        : `/sessions/${encodeURIComponent(room.id)}`;
+                    const primaryLabel = roomIsLive
+                      ? "Join session"
+                      : room.status === "PLANNED"
+                        ? "Prepare session"
+                        : roomEnded
+                          ? transcriptReady
+                            ? "Review transcript"
+                            : "Review session"
+                          : "Session details";
+                    return (
+                      <article
+                        key={room.id}
+                        className="rounded-2xl border border-[#eadfc9] bg-white p-4 transition hover:border-violet-300"
+                      >
+                        <div className="flex flex-wrap items-start justify-between gap-4">
+                          <div>
+                            <p className="font-black text-[#3d3122]">
+                              {room.title || "Coaching Session"}
+                            </p>
+                            <p className="mt-1 text-xs font-semibold uppercase tracking-wide text-[#8a7354]">
+                              {room.scheduledStart
+                                ? new Intl.DateTimeFormat("en", {
+                                    dateStyle: "medium",
+                                    timeStyle: "short",
+                                  }).format(room.scheduledStart)
+                                : "Time not set"}
+                            </p>
+                          </div>
+                          <span className="rounded-full bg-[#f0e7d8] px-3 py-1 text-[10px] font-black uppercase tracking-wide text-[#765f40]">
+                            {room.status.toLowerCase()}
+                          </span>
                         </div>
-                        <span className="rounded-full bg-[#f0e7d8] px-3 py-1 text-[10px] font-black uppercase tracking-wide text-[#765f40]">
-                          {room.status.toLowerCase()}
-                        </span>
-                      </div>
-                      <div className="mt-4 flex flex-wrap gap-2">
-                        <Link
-                          href={`/sessions/${encodeURIComponent(room.id)}?mode=live`}
-                          className="inline-flex min-h-11 items-center gap-2 rounded-full bg-violet-800 px-4 py-2 text-xs font-black uppercase tracking-wide text-white"
-                        >
-                          <Video size={15} aria-hidden="true" /> Open coaching
-                          room
-                        </Link>
-                        <Link
-                          href={`/sessions/${encodeURIComponent(room.id)}`}
-                          className="inline-flex min-h-11 items-center gap-2 rounded-full border border-[#d8c7a7] px-4 py-2 text-xs font-black uppercase tracking-wide text-[#5b472f]"
-                        >
-                          <LayoutDashboard size={15} aria-hidden="true" />{" "}
-                          Session workspace
-                        </Link>
-                      </div>
-                    </article>
-                  ))}
+                        <div className="mt-4 flex flex-wrap gap-2">
+                          <Link
+                            href={primaryHref}
+                            className={`inline-flex min-h-11 items-center gap-2 rounded-full px-4 py-2 text-xs font-black uppercase tracking-wide text-white ${roomIsLive ? "bg-rose-700" : "bg-violet-800"}`}
+                          >
+                            {roomIsLive || room.status === "PLANNED" ? (
+                              <Video size={15} aria-hidden="true" />
+                            ) : (
+                              <LayoutDashboard size={15} aria-hidden="true" />
+                            )}
+                            {primaryLabel}
+                          </Link>
+                          {roomEnded && transcriptReady ? (
+                            <Link
+                              href={`/sessions/${encodeURIComponent(room.id)}?mode=outputs`}
+                              className="inline-flex min-h-11 items-center gap-2 rounded-full border border-[#d8c7a7] px-4 py-2 text-xs font-black uppercase tracking-wide text-[#5b472f]"
+                            >
+                              <LayoutDashboard size={15} aria-hidden="true" />
+                              Follow-up
+                            </Link>
+                          ) : null}
+                        </div>
+                      </article>
+                    );
+                  })}
                 </div>
               ) : (
                 <p className="mt-4 text-[#765f40]">
@@ -328,16 +479,18 @@ export default async function CoachingEngagementPage({
               canWrite={canPost}
             />
           </div>
-          <CollaborationThread
-            projectSlug={engagement.project.slug}
-            threadKey={`engagement:${engagement.id}`}
-            collaborationTitle={engagement.title}
-            heading="Engagement thread"
-            clientSurface="engagement-room-web"
-            canPost={canPost}
-            scopeLabel="Across this coaching engagement"
-            scopeDescription="Coordinate between calls without exposing private coach notes or the surrounding Nest. Session-specific conversation remains attached to each individual call."
-          />
+          <div id="relationship-conversation">
+            <CollaborationThread
+              projectSlug={engagement.project.slug}
+              threadKey={`engagement:${engagement.id}`}
+              collaborationTitle={engagement.title}
+              heading="Conversation"
+              clientSurface="engagement-room-web"
+              canPost={canPost}
+              scopeLabel="Across this coaching relationship"
+              scopeDescription="Use this conversation between calls. Messages about one specific Session remain with that Session."
+            />
+          </div>
         </div>
       </div>
     </main>

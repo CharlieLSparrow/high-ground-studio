@@ -210,6 +210,7 @@ export function CoachingEngagementWorkspace({
 
   return (
     <section
+      id="relationship-work"
       className="rounded-[1.75rem] border border-[#dfcfb4] bg-[#fffdf8] p-6"
       aria-labelledby="engagement-work-heading"
     >
