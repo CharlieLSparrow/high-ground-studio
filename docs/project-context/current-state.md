@@ -4521,3 +4521,30 @@ rehearsal`) in an iPhone 17 Pro simulator. The signed-in UI acceptance opened
   retry timing, deliberate local mutation, pre-network hold, unchanged
   download, repaired source, upload, and canonical playback remain flight
   evidence.
+
+### 2026-08-25 actionable coaching client portfolio
+
+- Coaching now has one persistent, responsive information architecture across
+  **Today**, **Clients**, and **Sessions**, plus a role-bound **New session**
+  action. Client-only members retain navigation to their private work but never
+  receive the coach creation control.
+- **Clients** is now an actionable practice portfolio rather than a title list.
+  It projects live rooms, next Sessions, protected recordings awaiting reviewed
+  follow-up, released client follow-up, overdue shared commitments, active
+  shared goals, and actor-visible notes from canonical engagement records. It
+  prioritizes **Join now**, **Review follow-up**, **Prepare session**, **Review
+  commitments**, or **Open client space** without copying CRM state.
+- Search, **Needs attention**, **Upcoming**, and **All clients** views work at
+  phone and desktop breakpoints. Summary receipts show active clients, the next
+  seven days, follow-up load, and open shared commitments; each client card
+  returns to the exact Session or durable engagement workspace.
+- Engagement access remains the outer query boundary. Tasks/goals require the
+  existing `engagement-shared` projection; notes require a shared/client-safe
+  visibility or the signed-in author; draft follow-up urgency is coach-only;
+  clients see only deliberately released follow-up actions.
+- Six focused portfolio/navigation, invitation, workspace, session-list,
+  release-surface, and boundary suites pass (22 tests), Quipsly TypeScript passes, and the production build
+  passes. The local app server compiled and served the route, but the in-app
+  browser again timed out attaching its webview, so authenticated visual and
+  minimally instructed coach/client evidence remains deferred rather than
+  inferred from DOM tests.

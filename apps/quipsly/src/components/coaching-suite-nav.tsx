@@ -1,0 +1,72 @@
+"use client";
+
+import Link from "next/link";
+import {
+  CalendarDays,
+  Clock3,
+  Plus,
+  UsersRound,
+  type LucideIcon,
+} from "lucide-react";
+import { usePathname } from "next/navigation";
+
+const items: ReadonlyArray<{
+  href: string;
+  label: string;
+  icon: LucideIcon;
+  exact?: boolean;
+}> = [
+  { href: "/coaching", label: "Today", icon: Clock3, exact: true },
+  {
+    href: "/coaching/engagements",
+    label: "Clients",
+    icon: UsersRound,
+  },
+  { href: "/coaching/sessions", label: "Sessions", icon: CalendarDays },
+];
+
+export function CoachingSuiteNav({ canSchedule }: { canSchedule: boolean }) {
+  const pathname = usePathname();
+
+  return (
+    <nav
+      aria-label="Coaching"
+      className="sticky top-0 z-30 border-b border-[#e5d8c0] bg-[#fffdf8]/95 px-3 py-2 shadow-[0_1px_0_rgba(91,71,47,0.04)] backdrop-blur sm:px-6"
+    >
+      <div className="mx-auto flex max-w-[92rem] items-center gap-2">
+        <div className="flex min-w-0 flex-1 gap-1 overflow-x-auto" role="list">
+          {items.map((item) => {
+            const active = item.exact
+              ? pathname === item.href
+              : pathname === item.href || pathname.startsWith(`${item.href}/`);
+            const Icon = item.icon;
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                aria-current={active ? "page" : undefined}
+                className={`inline-flex min-h-11 shrink-0 items-center gap-2 rounded-full px-4 text-sm font-black transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-700 ${
+                  active
+                    ? "bg-violet-100 text-violet-950"
+                    : "text-[#6f5a3f] hover:bg-[#f4ecdd] hover:text-[#3d3122]"
+                }`}
+              >
+                <Icon size={16} aria-hidden="true" /> {item.label}
+              </Link>
+            );
+          })}
+        </div>
+        {canSchedule ? (
+          <Link
+            href="/coaching#create-appointment"
+            className="inline-flex min-h-11 shrink-0 items-center gap-2 rounded-full bg-violet-800 px-4 text-sm font-black text-white shadow-sm transition hover:bg-violet-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-700"
+          >
+            <Plus size={16} aria-hidden="true" />
+            <span className="hidden sm:inline">New session</span>
+            <span className="sm:hidden">New</span>
+          </Link>
+        ) : null}
+      </div>
+    </nav>
+  );
+}
