@@ -1,7 +1,7 @@
 import "server-only";
 
 import { createHash } from "node:crypto";
-import type { Prisma } from "@prisma/client";
+import type { CoachingBookingStatus, Prisma } from "@prisma/client";
 import {
   parseQuipslyCoachingFormDefinition,
   QUIPSLY_COACHING_STARTER_FORMS,
@@ -17,6 +17,11 @@ const TIMINGS = new Set([
   "AFTER_SESSION",
   "ON_DEMAND",
 ]);
+const ASSIGNABLE_BOOKING_STATUSES = [
+  "REQUESTED",
+  "HOLDING_PAYMENT",
+  "CONFIRMED",
+] satisfies CoachingBookingStatus[];
 
 export class CoachingFormWorkflowError extends Error {
   constructor(
@@ -421,7 +426,7 @@ export async function readCoachingFormWorkflows(input: {
             },
           },
           bookings: {
-            where: { status: { in: ["PENDING", "CONFIRMED", "IN_PROGRESS"] } },
+            where: { status: { in: ASSIGNABLE_BOOKING_STATUSES } },
             orderBy: { scheduledStart: "asc" },
             take: 12,
             select: {

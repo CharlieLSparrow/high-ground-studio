@@ -99,11 +99,16 @@ try {
       has: coachPage.getByRole("heading", { name: "First conversation" }),
     })
     .first();
+  await firstConversationCard.waitFor({ timeout: 30_000 });
   const addButton = firstConversationCard.getByRole("button", {
     name: "Add to library",
     exact: true,
   });
-  if (await addButton.count()) {
+  const starterAction = firstConversationCard.getByRole("button", {
+    name: /^(Add to library|Send to a client)$/,
+  });
+  await starterAction.waitFor({ timeout: 20_000 });
+  if ((await starterAction.innerText()).trim() === "Add to library") {
     const [publishResponse] = await Promise.all([
       coachPage.waitForResponse(
         (candidate) =>
