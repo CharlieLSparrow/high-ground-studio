@@ -18,7 +18,7 @@ describe("Episode audio mix listening and promotion ledger", () => {
     expect(prisma.studioEpisodeAudioMixReviewReceipt.create).not.toHaveBeenCalled();
   });
 
-  it("appends approval first, then separately promotes the exact approved bytes", async () => {
+  it("can retain an optional listening note with the selected enhanced result", async () => {
     const prisma = ledgerPrisma();
     const review = await appendEpisodeAudioMixReview({ prisma, projectSlug: "nest-one", episodeProductionId: "episode_0001", jobId: "mix_job_0001", actor: { email: "Editor@Example.test" }, clientRequestId: "review_request_0002", decision: "approved", playbackEvidence: evidence([{ from: "proposal", to: "baseline", atSecond: 30 }], [2, 30, 58], [2, 30, 58]), note: "The proposal keeps the dialogue intact." });
     expect(review.receipt.decision).toBe("approved");
@@ -26,6 +26,17 @@ describe("Episode audio mix listening and promotion ledger", () => {
     const promotion = await appendEpisodeAudioMixPromotion({ prisma, projectSlug: "nest-one", episodeProductionId: "episode_0001", jobId: "mix_job_0001", actor: { email: "Editor@Example.test" }, clientRequestId: "promotion_request_0001", operation: "promote", reviewReceiptId: review.receipt.id });
     expect(promotion.receipt.operation).toBe("promote");
     expect(prisma.studioEpisodeAudioMixPromotionReceipt.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ operation: "PROMOTE", reviewReceiptId: review.receipt.id, previewSha256: "d".repeat(64), baselineSha256: "c".repeat(64) }) }));
+  });
+
+  it("selects and restores a reversible enhanced result without requiring paperwork", async () => {
+    const prisma = ledgerPrisma();
+    const promotion = await appendEpisodeAudioMixPromotion({ prisma, projectSlug: "nest-one", episodeProductionId: "episode_0001", jobId: "mix_job_0001", actor: { email: "Editor@Example.test" }, clientRequestId: "promotion_request_automatic", operation: "promote" });
+    expect(promotion.receipt.operation).toBe("promote");
+    expect(prisma.studioEpisodeAudioMixPromotionReceipt.create).toHaveBeenLastCalledWith(expect.objectContaining({ data: expect.objectContaining({ operation: "PROMOTE", reviewReceiptId: null, evidenceJson: expect.objectContaining({ reversibleUserSelection: true }) }) }));
+
+    const withdrawal = await appendEpisodeAudioMixPromotion({ prisma, projectSlug: "nest-one", episodeProductionId: "episode_0001", jobId: "mix_job_0001", actor: { email: "Editor@Example.test" }, clientRequestId: "promotion_request_original", operation: "withdraw" });
+    expect(withdrawal.receipt.operation).toBe("withdraw");
+    expect(prisma.studioEpisodeAudioMixPromotionReceipt.create).toHaveBeenLastCalledWith(expect.objectContaining({ data: expect.objectContaining({ operation: "WITHDRAW", reason: null }) }));
   });
 });
 

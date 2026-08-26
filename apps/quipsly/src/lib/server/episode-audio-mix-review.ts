@@ -84,8 +84,6 @@ export async function appendEpisodeAudioMixPromotion(input: Coordinates & { acto
   const reviewReceiptId = input.operation === "promote" ? text(input.reviewReceiptId, 180) || null : null;
   const reason = text(input.reason, 2_000) || null;
   if (!clientRequestId) throw new EpisodeAudioMixReviewError("A stable client request id is required.", 400, "INVALID_EPISODE_MIX_PROMOTION_REQUEST");
-  if (input.operation === "promote" && !reviewReceiptId) throw new EpisodeAudioMixReviewError("Promotion requires the exact approved listening receipt.", 400, "EPISODE_MIX_PROMOTION_REVIEW_REQUIRED");
-  if (input.operation === "withdraw" && (!reason || reason.length < 3)) throw new EpisodeAudioMixReviewError("Withdrawal requires a short reason.", 400, "EPISODE_MIX_WITHDRAWAL_REASON_REQUIRED");
   const context = await reviewContext(input);
   const actorEmail = input.actor.email.toLowerCase();
   const identity = exactIdentity(context);
@@ -100,19 +98,21 @@ export async function appendEpisodeAudioMixPromotion(input: Coordinates & { acto
     const replay = await tx.studioEpisodeAudioMixPromotionReceipt.findUnique({ where: { projectId_actorEmail_clientRequestId: { projectId: context.project.id, actorEmail, clientRequestId } } });
     if (replay) { if (replay.requestSha256 !== requestSha256) conflict("That request id won a race with a different promotion action.", "EPISODE_MIX_PROMOTION_IDEMPOTENCY_CONFLICT"); return replay; }
     const latestJob = await tx.studioAssetProcessingJob.findFirst({ where: { projectId: context.project.id, type: "episode-audio-mix", AND: [{ inputJson: { path: ["episodeProductionId"], equals: context.episode.id } }] }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], select: { id: true } });
-    if (!latestJob || latestJob.id !== context.row.id) conflict("A newer Episode mix exists. Refresh and review that exact proposal before promotion.", "EPISODE_MIX_PROMOTION_JOB_STALE");
+      if (!latestJob || latestJob.id !== context.row.id) conflict("A newer Episode mix exists. Refresh before using this result.", "EPISODE_MIX_PROMOTION_JOB_STALE");
     const latestPromotion = await tx.studioEpisodeAudioMixPromotionReceipt.findFirst({ where: { episodeProductionId: context.episode.id }, orderBy: [{ occurredAt: "desc" }, { id: "desc" }] });
     let boundReviewId: string | null = null;
     if (input.operation === "promote") {
-      const latestReview = await tx.studioEpisodeAudioMixReviewReceipt.findFirst({ where: { mixJobId: context.row.id }, orderBy: [{ occurredAt: "desc" }, { id: "desc" }] });
-      if (!latestReview || latestReview.id !== reviewReceiptId || latestReview.decision !== "APPROVED" || !sameIdentity(latestReview, identity)) conflict("Promotion requires the latest exact playback-bound approval.", "EPISODE_MIX_PROMOTION_APPROVAL_STALE");
+      if (reviewReceiptId) {
+        const latestReview = await tx.studioEpisodeAudioMixReviewReceipt.findFirst({ where: { mixJobId: context.row.id }, orderBy: [{ occurredAt: "desc" }, { id: "desc" }] });
+        if (!latestReview || latestReview.id !== reviewReceiptId || latestReview.decision !== "APPROVED" || !sameIdentity(latestReview, identity)) conflict("That optional listening note belongs to a different audio result.", "EPISODE_MIX_PROMOTION_REVIEW_STALE");
+        boundReviewId = latestReview.id;
+      }
       if (latestPromotion?.operation === "PROMOTE") conflict("An Episode mix is already promoted. Withdraw it before promoting another.", "EPISODE_MIX_ALREADY_PROMOTED");
-      boundReviewId = latestReview.id;
     } else {
       if (!latestPromotion || latestPromotion.operation !== "PROMOTE" || latestPromotion.mixJobId !== context.row.id) conflict("This proposal is not the active promoted Episode mix.", "EPISODE_MIX_NOT_PROMOTED");
       boundReviewId = latestPromotion.reviewReceiptId;
     }
-    return tx.studioEpisodeAudioMixPromotionReceipt.create({ data: { projectId: context.project.id, episodeProductionId: context.episode.id, mixJobId: context.row.id, reviewReceiptId: boundReviewId, actorEmail, clientRequestId, operation: input.operation === "promote" ? "PROMOTE" : "WITHDRAW", ...identity, requestSha256, evidenceJson: json({ candidatePlaybackUrl, sourceTracksRemainImmutable: true, episodeProgramUnchanged: true, deliveryEncodingNotCreated: true, publicationNotStarted: true, withdrawalPreservesHistory: true }), reason, occurredAt: now } });
+    return tx.studioEpisodeAudioMixPromotionReceipt.create({ data: { projectId: context.project.id, episodeProductionId: context.episode.id, mixJobId: context.row.id, reviewReceiptId: boundReviewId, actorEmail, clientRequestId, operation: input.operation === "promote" ? "PROMOTE" : "WITHDRAW", ...identity, requestSha256, evidenceJson: json({ candidatePlaybackUrl, reversibleUserSelection: true, optionalListeningReceiptId: boundReviewId, sourceTracksRemainImmutable: true, episodeProgramUnchanged: true, deliveryEncodingNotCreated: true, publicationNotStarted: true, withdrawalPreservesHistory: true }), reason, occurredAt: now } });
   }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
   return { ok: true, idempotentReplay: false, receipt: promotionReceipt(receipt), ...await readEpisodeAudioMixDecisionSummary({ prisma: input.prisma, episodeProductionId: context.episode.id, jobId: context.row.id }) };
 }

@@ -87,10 +87,10 @@ export function EpisodeAudioMixDesk({ projectId, projectSlug, episodeProductionI
 
   const queue = async () => {
     setBusy(true);
-    setNotice("Building an immutable proposal from the current program, reviews, and exact source receipts.");
+    setNotice("Analyzing the current program and polishing each voice from its exact source audio.");
     try {
       const next = await request("queue");
-      setNotice(next.actionCount ? `Proposed ${next.actionCount} evidence-linked gain move${next.actionCount === 1 ? "" : "s"}. Rendering a mastered preview now.` : "No reviewed event safely authorized gain automation. Rendering a transparent baseline mix for comparison.");
+      setNotice(next.actionCount ? `Polishing ${next.actionCount} section${next.actionCount === 1 ? "" : "s"}. Quipsly is rendering the enhanced audio now.` : "The recording already looks balanced. Quipsly is rendering a transparent enhanced version for comparison.");
     } catch (error) { setNotice(error instanceof Error ? error.message : "Could not queue the Episode mix."); }
     finally { setBusy(false); }
   };
@@ -102,29 +102,28 @@ export function EpisodeAudioMixDesk({ projectId, projectSlug, episodeProductionI
     <section className="rounded-2xl border border-violet-300 bg-gradient-to-br from-violet-950 via-slate-950 to-slate-900 p-4 text-white shadow-xl sm:p-5" aria-labelledby="episode-mix-heading">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div>
-          <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.15em] text-violet-200"><Sparkles className="h-4 w-4" aria-hidden="true" /> Mix proposal lab</div>
-          <h2 id="episode-mix-heading" className="mt-1 text-xl font-black">Automatic, inspectable, undoable</h2>
-          <p className="mt-2 max-w-3xl text-xs font-semibold leading-5 text-slate-300">Quipsly may write gain automation only from a protected human listening conclusion and an unambiguous canonical primary. It never edits retained tracks or promotes the result automatically.</p>
+          <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.15em] text-violet-200"><Sparkles className="h-4 w-4" aria-hidden="true" /> Audio polish</div>
+          <h2 id="episode-mix-heading" className="mt-1 text-xl font-black">Clear, balanced voices—automatically</h2>
+          <p className="mt-2 max-w-3xl text-xs font-semibold leading-5 text-slate-300">Quipsly analyzes the complete program, balances the voices, and keeps every source untouched. Listen, compare, undo, or open the measurements whenever you want.</p>
         </div>
         <span className={`self-start rounded-full border px-3 py-1.5 text-[9px] font-black uppercase tracking-[0.12em] ${status.status === "completed" && !stale ? "border-emerald-500 bg-emerald-950 text-emerald-100" : status.status === "failed" || stale ? "border-rose-500 bg-rose-950 text-rose-100" : working ? "border-amber-400 bg-amber-950 text-amber-100" : "border-slate-600 bg-slate-900 text-slate-200"}`}>{stale ? "program changed" : status.status.replaceAll("-", " ")}</span>
       </div>
       <div className="mt-4 grid gap-2 sm:grid-cols-3">
-        <Metric label="Proposed moves" value={status.actionCount} detail="Every move names its review receipt." />
-        <Metric label="Held for judgment" value={status.unresolvedCount} detail="Ambiguity stays visible, never guessed." />
+        <Metric label="Enhanced sections" value={status.actionCount} detail="Each change stays linked to its exact time range." />
+        <Metric label="Kept unchanged" value={status.unresolvedCount} detail="Uncertain sections stay natural instead of being guessed." />
         <Metric label="Delivery target" value="−16" detail="LUFS dialogue · true peak independently checked." />
       </div>
       {!eligible ? <div className="mt-4 flex gap-2 rounded-xl border border-amber-500/50 bg-amber-950/60 px-3 py-3 text-xs font-bold leading-5 text-amber-100"><TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />{eligibilityDetail}</div> : null}
-      {status.actions.length > 0 ? <MixActionMap actions={status.actions} durationSeconds={status.preview?.durationSeconds ?? Math.max(...status.actions.map((action) => action.endSeconds), 1)} /> : status.status === "completed" ? <div className="mt-4 rounded-xl border border-sky-700/60 bg-sky-950/40 px-3 py-3 text-xs font-bold leading-5 text-sky-100">Transparent result: no protected listening receipt authorized a gain move. {status.preview?.outputByteRelationship === "bit-identical" ? "Quipsly independently proved the proposal is bit-identical to its baseline." : "The output relationship is still awaiting verification."}</div> : null}
-      {status.unresolved.length > 0 ? <div className="mt-3 rounded-xl border border-amber-700/60 bg-amber-950/40 p-3"><div className="text-[10px] font-black uppercase tracking-[0.1em] text-amber-200">Held for human judgment</div>{status.unresolved.map((event) => <div key={`${event.eventId}:${event.reason}`} className="mt-2 text-[10px] font-bold text-amber-100">{event.eventId} · {event.reason.replaceAll("-", " ")} · {event.involvedAssetIds.length} track{event.involvedAssetIds.length === 1 ? "" : "s"}</div>)}</div> : null}
+      {status.actions.length > 0 || status.unresolved.length > 0 ? <details className="mt-4 rounded-xl border border-violet-700/60 bg-violet-950/40 p-3"><summary className="cursor-pointer text-[10px] font-black uppercase tracking-[0.1em] text-violet-200">What Quipsly changed</summary>{status.actions.length > 0 ? <MixActionMap actions={status.actions} durationSeconds={status.preview?.durationSeconds ?? Math.max(...status.actions.map((action) => action.endSeconds), 1)} /> : null}{status.unresolved.length > 0 ? <div className="mt-3 rounded-xl border border-amber-700/50 bg-amber-950/30 p-3"><div className="text-[10px] font-black uppercase tracking-[0.1em] text-amber-200">Left natural</div>{status.unresolved.map((event) => <div key={`${event.eventId}:${event.reason}`} className="mt-2 text-[10px] font-bold text-amber-100">{event.reason.replaceAll("-", " ")} · {event.involvedAssetIds.length} track{event.involvedAssetIds.length === 1 ? "" : "s"}</div>)}</div> : null}</details> : status.status === "completed" ? <div className="mt-4 rounded-xl border border-sky-700/60 bg-sky-950/40 px-3 py-3 text-xs font-bold leading-5 text-sky-100">This recording was already balanced, so Quipsly preserved its natural levels. {status.preview?.outputByteRelationship === "bit-identical" ? "The enhanced result is bit-for-bit identical to the original." : "You can still compare both versions below."}</div> : null}
       {status.preview?.playbackUrl && !stale ? auditionReady(status.preview)
         ? <EpisodeMixAudition key={status.jobId} preview={status.preview} jobId={status.jobId!} requiredSecondBins={status.requiredReviewSecondBins} transcriptReview={status.transcriptReview} initialWaveformReview={status.waveformReview} actions={status.actions} coordinates={coordinates()} canWrite={canWrite} />
-        : <div className="mt-4 rounded-xl border border-amber-700 bg-amber-950/50 p-3"><div className="flex items-center gap-2 text-xs font-black text-amber-100"><CheckCircle2 className="h-4 w-4" aria-hidden="true" /> Verified legacy preview retained</div><audio className="mt-3 w-full" controls preload="metadata" src={status.preview.playbackUrl} aria-label="Verified Episode mix preview" /><p className="mt-2 text-[10px] font-bold leading-4 text-amber-200">This earlier result predates matched baseline rendering. Build a new proposal for trustworthy A/B review.</p></div>
+        : <div className="mt-4 rounded-xl border border-amber-700 bg-amber-950/50 p-3"><div className="flex items-center gap-2 text-xs font-black text-amber-100"><CheckCircle2 className="h-4 w-4" aria-hidden="true" /> Earlier enhanced audio</div><audio className="mt-3 w-full" controls preload="metadata" src={status.preview.playbackUrl} aria-label="Enhanced Episode audio" /><p className="mt-2 text-[10px] font-bold leading-4 text-amber-200">Create a fresh result to unlock instant original/enhanced comparison and current measurements.</p></div>
         : null}
       {notice ? <div className="mt-3 rounded-xl border border-sky-600/60 bg-sky-950/60 px-3 py-2 text-xs font-bold leading-5 text-sky-100" role="status" aria-live="polite">{notice}</div> : null}
       {status.error ? <div className="mt-3 rounded-xl border border-rose-600 bg-rose-950/70 px-3 py-2 text-xs font-bold text-rose-100" role="alert">{status.error}</div> : null}
       <div className="mt-4 flex flex-wrap items-center gap-3">
-        <button type="button" onClick={() => void queue()} disabled={!canWrite || !eligible || working} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-violet-400 px-4 text-xs font-black text-violet-950 transition hover:bg-violet-300 disabled:cursor-not-allowed disabled:opacity-50">{working ? <LoaderCircle className="h-4 w-4 animate-spin" aria-hidden="true" /> : <SlidersHorizontal className="h-4 w-4" aria-hidden="true" />}{working ? "Rendering verified preview…" : status.status === "completed" ? "Build a new proposal" : "Build mix proposal"}</button>
-        <span className="text-[10px] font-bold leading-4 text-slate-400">Preview creation is reversible. Approval and promotion are deliberately separate.</span>
+        <button type="button" onClick={() => void queue()} disabled={!canWrite || !eligible || working} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-violet-400 px-4 text-xs font-black text-violet-950 transition hover:bg-violet-300 disabled:cursor-not-allowed disabled:opacity-50">{working ? <LoaderCircle className="h-4 w-4 animate-spin" aria-hidden="true" /> : <SlidersHorizontal className="h-4 w-4" aria-hidden="true" />}{working ? "Polishing audio…" : status.status === "completed" ? "Polish again" : "Polish audio"}</button>
+        <span className="text-[10px] font-bold leading-4 text-slate-400">Sources stay untouched. Enhanced audio can be turned off or regenerated at any time.</span>
       </div>
     </section>
   );
@@ -132,14 +131,14 @@ export function EpisodeAudioMixDesk({ projectId, projectSlug, episodeProductionI
 
 function Metric({ label, value, detail }: { label: string; value: string | number; detail: string }) { return <div className="rounded-xl border border-white/10 bg-white/5 p-3"><div className="text-[9px] font-black uppercase tracking-[0.12em] text-violet-200">{label}</div><div className="mt-1 text-2xl font-black">{value}</div><div className="mt-1 text-[10px] font-semibold leading-4 text-slate-400">{detail}</div></div>; }
 
-function MixActionMap({ actions, durationSeconds }: { actions: MixStatus["actions"]; durationSeconds: number }) { return <div className="mt-4 rounded-xl border border-violet-700/60 bg-violet-950/40 p-3"><div className="text-[10px] font-black uppercase tracking-[0.1em] text-violet-200">Explainable automation map</div><p className="mt-1 text-[10px] font-bold leading-4 text-slate-300">Every bar is an exact program-clock change authorized by a named listening receipt.</p><div className="relative mt-3 h-7 overflow-hidden rounded-md border border-violet-800 bg-slate-950" aria-label="Episode mix automation timeline">{actions.map((action) => <span key={action.id} className="absolute inset-y-0 min-w-1 border-x border-fuchsia-200 bg-fuchsia-500/70" style={{ left: `${Math.max(0, Math.min(100, action.startSeconds / durationSeconds * 100))}%`, width: `${Math.max(0.5, Math.min(100, (action.endSeconds - action.startSeconds) / durationSeconds * 100))}%` }} title={`${action.targetTitle}: ${action.gainDb} dB at ${clock(action.startSeconds)}–${clock(action.endSeconds)}`} />)}</div><div className="mt-3 space-y-2">{actions.map((action) => <div key={action.id} className="rounded-lg border border-white/10 bg-slate-950/70 p-2 text-[10px] font-bold leading-4 text-slate-200"><div className="flex flex-wrap justify-between gap-2"><span>{action.targetTitle}{action.participantLabel ? ` · ${action.participantLabel}` : ""}</span><span className="font-mono text-fuchsia-200">{clock(action.startSeconds)}–{clock(action.endSeconds)} · {action.gainDb.toFixed(1)} dB</span></div><div className="mt-1 text-slate-400">{action.reason.replaceAll("-", " ")} · {action.evidenceReviewReceiptIds.length} listening receipt{action.evidenceReviewReceiptIds.length === 1 ? "" : "s"}</div></div>)}</div></div>; }
+function MixActionMap({ actions, durationSeconds }: { actions: MixStatus["actions"]; durationSeconds: number }) { return <div className="mt-3"><p className="text-[10px] font-bold leading-4 text-slate-300">Each bar marks an exact section where Quipsly balanced a voice.</p><div className="relative mt-3 h-7 overflow-hidden rounded-md border border-violet-800 bg-slate-950" aria-label="Episode mix automation timeline">{actions.map((action) => <span key={action.id} className="absolute inset-y-0 min-w-1 border-x border-fuchsia-200 bg-fuchsia-500/70" style={{ left: `${Math.max(0, Math.min(100, action.startSeconds / durationSeconds * 100))}%`, width: `${Math.max(0.5, Math.min(100, (action.endSeconds - action.startSeconds) / durationSeconds * 100))}%` }} title={`${action.targetTitle}: ${action.gainDb} dB at ${clock(action.startSeconds)}–${clock(action.endSeconds)}`} />)}</div><div className="mt-3 space-y-2">{actions.map((action) => <div key={action.id} className="rounded-lg border border-white/10 bg-slate-950/70 p-2 text-[10px] font-bold leading-4 text-slate-200"><div className="flex flex-wrap justify-between gap-2"><span>{action.targetTitle}{action.participantLabel ? ` · ${action.participantLabel}` : ""}</span><span className="font-mono text-fuchsia-200">{clock(action.startSeconds)}–{clock(action.endSeconds)} · {action.gainDb.toFixed(1)} dB</span></div><div className="mt-1 text-slate-400">{action.reason.replaceAll("-", " ")}</div></div>)}</div></div>; }
 
 type MixDecisionSummary = {
   review: { latest: null | { id: string; decision: "approved" | "rejected"; note: string | null; reviewedAt: string; actorEmail: string }; approvalCount: number; rejectionCount: number };
-  promotion: { active: boolean; activePromotion: null | { id: string; jobId: string; reviewReceiptId: string | null }; candidatePlaybackUrl: string | null; promoteCount: number; withdrawalCount: number };
+  promotion: { active: boolean; latest: null | { id: string; jobId: string; reviewReceiptId: string | null; operation: "promote" | "withdraw" }; activePromotion: null | { id: string; jobId: string; reviewReceiptId: string | null }; candidatePlaybackUrl: string | null; promoteCount: number; withdrawalCount: number };
 };
 
-const EMPTY_DECISIONS: MixDecisionSummary = { review: { latest: null, approvalCount: 0, rejectionCount: 0 }, promotion: { active: false, activePromotion: null, candidatePlaybackUrl: null, promoteCount: 0, withdrawalCount: 0 } };
+const EMPTY_DECISIONS: MixDecisionSummary = { review: { latest: null, approvalCount: 0, rejectionCount: 0 }, promotion: { active: false, latest: null, activePromotion: null, candidatePlaybackUrl: null, promoteCount: 0, withdrawalCount: 0 } };
 
 function EpisodeMixAudition({ preview, jobId, requiredSecondBins, transcriptReview, initialWaveformReview, actions, coordinates, canWrite }: { preview: AuditionReadyMixPreview; jobId: string; requiredSecondBins: number[]; transcriptReview: MixTranscriptReview; initialWaveformReview: MixWaveformReview; actions: MixStatus["actions"]; coordinates: { projectId: string; projectSlug: string; episodeProductionId: string }; canWrite: boolean }) {
   const baselineRef = useRef<HTMLAudioElement>(null);
@@ -151,6 +150,8 @@ function EpisodeMixAudition({ preview, jobId, requiredSecondBins, transcriptRevi
   const [proposalBins, setProposalBins] = useState<number[]>([]);
   const [switches, setSwitches] = useState<Array<{ from: "baseline" | "proposal"; to: "baseline" | "proposal"; atSecond: number }>>([]);
   const [decisions, setDecisions] = useState<MixDecisionSummary>(EMPTY_DECISIONS);
+  const [decisionsLoaded, setDecisionsLoaded] = useState(false);
+  const automaticSelectionAttempted = useRef(false);
   const [reviewNote, setReviewNote] = useState("");
   const [withdrawalReason, setWithdrawalReason] = useState("");
   const [decisionBusy, setDecisionBusy] = useState(false);
@@ -166,7 +167,7 @@ function EpisodeMixAudition({ preview, jobId, requiredSecondBins, transcriptRevi
     const controller = new AbortController();
     const query = new URLSearchParams({ ...coordinates, jobId });
     void fetch(`/api/media-vault/episode-audio-program/mix/review?${query}`, { cache: "no-store", signal: controller.signal })
-      .then(async (response) => { const payload = await response.json() as ({ ok?: boolean; error?: string } & Partial<MixDecisionSummary>); if (!response.ok || !payload.ok || !payload.review || !payload.promotion) throw new Error(payload.error || "Could not read mix decisions."); setDecisions(payload as MixDecisionSummary); })
+      .then(async (response) => { const payload = await response.json() as ({ ok?: boolean; error?: string } & Partial<MixDecisionSummary>); if (!response.ok || !payload.ok || !payload.review || !payload.promotion) throw new Error(payload.error || "Could not read the enhanced-audio setting."); setDecisions(payload as MixDecisionSummary); setDecisionsLoaded(true); })
       .catch((error) => { if (!controller.signal.aborted) setDecisionMessage(error instanceof Error ? error.message : "Could not read mix decisions."); });
     return () => controller.abort();
   }, [coordinates, jobId]);
@@ -260,27 +261,33 @@ function EpisodeMixAudition({ preview, jobId, requiredSecondBins, transcriptRevi
     finally { setDecisionBusy(false); }
   };
 
-  const changePromotion = async (operation: "promote" | "withdraw") => {
+  const changePromotion = async (operation: "promote" | "withdraw", automatic = false) => {
     setDecisionBusy(true);
-    setDecisionMessage(operation === "promote" ? "Marking the approved proposal as a finishing candidate…" : "Withdrawing the candidate while preserving every receipt…");
+    setDecisionMessage(operation === "promote" ? "Turning on enhanced audio…" : "Returning to the original audio…");
     try {
-      const response = await fetch("/api/media-vault/episode-audio-program/mix/promotion", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...coordinates, jobId, clientRequestId: crypto.randomUUID(), operation, reviewReceiptId: decisions.review.latest?.decision === "approved" ? decisions.review.latest.id : null, reason: operation === "withdraw" ? withdrawalReason.trim() || null : null }) });
+      const response = await fetch("/api/media-vault/episode-audio-program/mix/promotion", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...coordinates, jobId, clientRequestId: automatic ? `automatic-enhanced-audio:${jobId}` : crypto.randomUUID(), operation, reviewReceiptId: null, reason: null }) });
       const payload = await response.json() as ({ ok?: boolean; error?: string } & Partial<MixDecisionSummary>);
-      if (!response.ok || !payload.ok || !payload.review || !payload.promotion) throw new Error(payload.error || "The finishing candidate was not changed.");
+      if (!response.ok || !payload.ok || !payload.review || !payload.promotion) throw new Error(payload.error || "The enhanced-audio setting was not changed.");
       setDecisions(payload as MixDecisionSummary);
-      setDecisionMessage(operation === "promote" ? "Finishing candidate selected. Sources, Episode program, delivery encoding, and publication are still unchanged." : "Candidate withdrawn. Its bytes, approval, and history remain available.");
+      setDecisionMessage(operation === "promote" ? "Enhanced audio is on. Your original sources remain untouched." : "Original audio is active. You can turn the enhancement back on at any time.");
       if (operation === "withdraw") setWithdrawalReason("");
-    } catch (error) { setDecisionMessage(error instanceof Error ? error.message : "The finishing candidate was not changed."); }
+    } catch (error) { setDecisionMessage(error instanceof Error ? error.message : "The enhanced-audio setting was not changed."); }
     finally { setDecisionBusy(false); }
   };
 
+  useEffect(() => {
+    if (!canWrite || !decisionsLoaded || decisions.promotion.latest || automaticSelectionAttempted.current) return;
+    automaticSelectionAttempted.current = true;
+    void changePromotion("promote", true);
+  }, [canWrite, decisions.promotion.latest, decisionsLoaded]);
+
   return <div className="mt-4 rounded-xl border border-emerald-700 bg-emerald-950/50 p-3">
     <div className="flex flex-wrap items-start justify-between gap-2">
-      <div><div className="flex items-center gap-2 text-xs font-black text-emerald-100"><CheckCircle2 className="h-4 w-4" aria-hidden="true" /> Matched A/B ready for a deliberate listen</div><p className="mt-1 text-[10px] font-bold leading-4 text-emerald-200">Switch instantly at the same playhead. Both files were independently mastered and measured, so louder-is-better bias stays below 0.2 LU.</p></div>
+      <div><div className="flex items-center gap-2 text-xs font-black text-emerald-100"><CheckCircle2 className="h-4 w-4" aria-hidden="true" /> Enhanced audio is ready</div><p className="mt-1 text-[10px] font-bold leading-4 text-emerald-200">Switch instantly between the original and enhanced versions at the same playhead. Both are level-matched for an honest comparison.</p></div>
       <div className="flex flex-wrap gap-2"><span className="rounded-full border border-emerald-600 bg-emerald-950 px-2 py-1 text-[9px] font-black uppercase tracking-[0.1em] text-emerald-100">{(preview.levelMatchedDeltaLufs ?? 0).toFixed(2)} LU apart</span><span className="rounded-full border border-sky-600 bg-sky-950 px-2 py-1 text-[9px] font-black uppercase tracking-[0.1em] text-sky-100">{preview.outputByteRelationship === "bit-identical" ? "Bit-exact no-op" : "Verified changed bytes"}</span></div>
     </div>
     <div className="mt-3 grid grid-cols-2 overflow-hidden rounded-lg border border-emerald-800 bg-slate-950 p-1" role="group" aria-label="Episode mix audition version">
-      {(["baseline", "proposal"] as const).map((candidate) => <button key={candidate} type="button" aria-pressed={version === candidate} onClick={() => void switchVersion(candidate)} className={`rounded-md px-3 py-2 text-xs font-black ${version === candidate ? "bg-white text-slate-950" : "text-slate-300 hover:bg-slate-900"}`}>{candidate === "baseline" ? "Baseline · no gain moves" : "Proposal · reviewed moves"}</button>)}
+      {(["baseline", "proposal"] as const).map((candidate) => <button key={candidate} type="button" aria-pressed={version === candidate} onClick={() => void switchVersion(candidate)} className={`rounded-md px-3 py-2 text-xs font-black ${version === candidate ? "bg-white text-slate-950" : "text-slate-300 hover:bg-slate-900"}`}>{candidate === "baseline" ? "Original" : "Enhanced"}</button>)}
     </div>
     <audio ref={baselineRef} src={preview.baselinePlaybackUrl} preload="metadata" data-audition-version="baseline" onTimeUpdate={(event) => observePlayback("baseline", event.currentTarget.currentTime)} onEnded={() => setPlaying(false)} />
     <audio ref={proposalRef} src={preview.playbackUrl} preload="metadata" data-audition-version="proposal" onTimeUpdate={(event) => observePlayback("proposal", event.currentTarget.currentTime)} onEnded={() => setPlaying(false)} />
@@ -297,26 +304,21 @@ function EpisodeMixAudition({ preview, jobId, requiredSecondBins, transcriptRevi
         {!["queued", "processing"].includes(waveformReview.status) ? <button type="button" disabled={!canWrite || waveformBusy} onClick={() => void analyzeWaveforms()} className="mt-3 inline-flex min-h-10 items-center gap-2 rounded-md border border-cyan-600 bg-cyan-950 px-3 text-[10px] font-black text-cyan-100 hover:bg-cyan-900 disabled:cursor-not-allowed disabled:opacity-50">{waveformBusy ? <LoaderCircle className="h-4 w-4 animate-spin" aria-hidden="true" /> : <SlidersHorizontal className="h-4 w-4" aria-hidden="true" />}Analyze real A/B waveforms</button> : <div className="mt-3 inline-flex items-center gap-2 text-[10px] font-black text-amber-200"><LoaderCircle className="h-4 w-4 animate-spin" aria-hidden="true" />Complete decode in progress</div>}
         {waveformMessage ? <p className="mt-2 text-[9px] font-bold leading-4 text-cyan-100" role="status" aria-live="polite">{waveformMessage}</p> : null}
       </div>}
-    <div className="mt-3 rounded-lg border border-emerald-800/80 bg-slate-950/80 p-3">
-      <div className="flex flex-wrap items-center justify-between gap-2"><div className="text-[10px] font-black uppercase tracking-[0.1em] text-emerald-200">Required review checkpoints</div><span className={`rounded-full px-2 py-1 text-[9px] font-black ${approvalReady ? "bg-emerald-200 text-emerald-950" : "bg-slate-800 text-slate-300"}`}>{approvalReady ? "Coverage ready" : "Listen to both at each point"}</span></div>
-      <div className="mt-2 flex flex-wrap gap-2">{requiredSecondBins.map((second) => <button key={second} type="button" onClick={() => seek(second)} className={`rounded-md border px-2 py-1 font-mono text-[9px] font-black ${covered(baselineBins, second) && covered(proposalBins, second) ? "border-emerald-500 bg-emerald-950 text-emerald-100" : "border-slate-700 bg-slate-900 text-slate-300"}`}>{clock(second)} {covered(baselineBins, second) ? "B✓" : "B○"} {covered(proposalBins, second) ? "P✓" : "P○"}</button>)}</div>
-    </div>
-    <TranscriptCheckpointContext review={transcriptReview} requiredSecondBins={requiredSecondBins} seek={seek} />
-    <div className="mt-3 grid grid-cols-2 gap-2 text-center text-[10px] font-bold sm:grid-cols-4">
-      <AuditionMetric value={preview.baselineIntegratedLufs.toFixed(1)} label="Baseline LUFS" />
-      <AuditionMetric value={preview.integratedLufs.toFixed(1)} label="Proposal LUFS" />
-      <AuditionMetric value={preview.baselineTruePeakDbtp.toFixed(1)} label="Baseline dBTP" />
-      <AuditionMetric value={preview.truePeakDbtp.toFixed(1)} label="Proposal dBTP" />
-    </div>
-    <p className="mt-2 text-[9px] font-bold text-emerald-300" aria-live="polite">Listening evidence: baseline {baselineBins.length}s · proposal {proposalBins.length}s · {switches.length} same-clock switch{switches.length === 1 ? "" : "es"}. Client-observed playback is useful review evidence, not proof of audibility.</p>
     <div className="mt-3 rounded-lg border border-violet-700/70 bg-violet-950/50 p-3">
-      <div className="flex flex-wrap items-start justify-between gap-2"><div><div className="text-xs font-black text-violet-100">Listening decision</div><p className="mt-1 text-[9px] font-bold leading-4 text-violet-200">Approval creates a receipt only. Selecting a finishing candidate is a separate reversible action.</p></div>{decisions.review.latest ? <span className={`rounded-full border px-2 py-1 text-[9px] font-black uppercase ${decisions.review.latest.decision === "approved" ? "border-emerald-600 text-emerald-200" : "border-rose-600 text-rose-200"}`}>{decisions.review.latest.decision}</span> : null}</div>
-      <textarea value={reviewNote} onChange={(event) => setReviewNote(event.currentTarget.value)} placeholder="What did you hear? Required for rejection; useful for approval." className="mt-2 min-h-20 w-full rounded-md border border-violet-800 bg-slate-950 p-2 text-xs text-white placeholder:text-slate-500" />
-      <div className="mt-2 grid gap-2 sm:grid-cols-2"><button type="button" disabled={!canWrite || decisionBusy || !approvalReady} onClick={() => void saveReview("approved")} className="rounded-md border border-emerald-600 bg-emerald-950 px-3 py-2 text-left text-[10px] font-black text-emerald-100 disabled:cursor-not-allowed disabled:border-slate-700 disabled:bg-slate-950 disabled:text-slate-500">Approve as heard<span className="mt-1 block text-[9px] opacity-75">Receipt only · no promotion or timeline change</span></button><button type="button" disabled={!canWrite || decisionBusy || proposalBins.length === 0 || reviewNote.trim().length < 3} onClick={() => void saveReview("rejected")} className="rounded-md border border-rose-700 bg-rose-950 px-3 py-2 text-left text-[10px] font-black text-rose-100 disabled:cursor-not-allowed disabled:border-slate-700 disabled:bg-slate-950 disabled:text-slate-500">Reject proposal<span className="mt-1 block text-[9px] opacity-75">Preserves files and records what failed</span></button></div>
-      {decisions.review.latest?.decision === "approved" && !decisions.promotion.active ? <button type="button" disabled={!canWrite || decisionBusy} onClick={() => void changePromotion("promote")} className="mt-2 w-full rounded-md bg-violet-300 px-3 py-2 text-left text-[10px] font-black text-violet-950">Use as finishing candidate<span className="mt-1 block text-[9px] opacity-75">Still does not encode delivery or publish</span></button> : null}
-      {decisions.promotion.active ? <div className="mt-2 rounded-md border border-amber-700 bg-amber-950/70 p-2"><div className="text-[10px] font-black text-amber-100">Active finishing candidate</div><input value={withdrawalReason} onChange={(event) => setWithdrawalReason(event.currentTarget.value)} placeholder="Reason for withdrawal" className="mt-2 w-full rounded border border-amber-800 bg-slate-950 px-2 py-2 text-xs text-white" /><button type="button" disabled={!canWrite || decisionBusy || withdrawalReason.trim().length < 3} onClick={() => void changePromotion("withdraw")} className="mt-2 rounded-md border border-amber-600 px-3 py-2 text-[10px] font-black text-amber-100 disabled:opacity-50">Withdraw candidate</button></div> : null}
+      <div className="flex flex-wrap items-center justify-between gap-3"><div><div className="text-xs font-black text-violet-100">Enhanced audio</div><p className="mt-1 text-[9px] font-bold leading-4 text-violet-200">On by default for this result. Your original sources are never changed.</p></div><span className={`rounded-full border px-2 py-1 text-[9px] font-black uppercase ${decisions.promotion.active ? "border-emerald-600 text-emerald-200" : "border-slate-600 text-slate-300"}`}>{decisions.promotion.active ? "On" : decisionsLoaded ? "Off" : "Loading"}</span></div>
+      <div className="mt-3 grid grid-cols-2 overflow-hidden rounded-lg border border-violet-700 bg-slate-950 p-1" role="group" aria-label="Enhanced audio setting"><button type="button" aria-pressed={!decisions.promotion.active} disabled={!canWrite || decisionBusy || !decisionsLoaded} onClick={() => void changePromotion("withdraw")} className={`rounded-md px-3 py-2 text-xs font-black ${!decisions.promotion.active ? "bg-white text-slate-950" : "text-slate-300"}`}>Use original</button><button type="button" aria-pressed={decisions.promotion.active} disabled={!canWrite || decisionBusy || !decisionsLoaded} onClick={() => void changePromotion("promote")} className={`rounded-md px-3 py-2 text-xs font-black ${decisions.promotion.active ? "bg-violet-300 text-violet-950" : "text-slate-300"}`}>Use enhanced</button></div>
       {decisionMessage ? <p className="mt-2 text-[10px] font-bold leading-4 text-violet-100" role="status" aria-live="polite">{decisionMessage}</p> : null}
     </div>
+    <details className="mt-3 rounded-lg border border-sky-800/70 bg-sky-950/25 p-3">
+      <summary className="cursor-pointer text-[10px] font-black uppercase tracking-[0.1em] text-sky-200">Audio details and transcript context</summary>
+      <TranscriptCheckpointContext review={transcriptReview} requiredSecondBins={requiredSecondBins} seek={seek} />
+      <div className="mt-3 grid grid-cols-2 gap-2 text-center text-[10px] font-bold sm:grid-cols-4">
+        <AuditionMetric value={preview.baselineIntegratedLufs.toFixed(1)} label="Original LUFS" />
+        <AuditionMetric value={preview.integratedLufs.toFixed(1)} label="Enhanced LUFS" />
+        <AuditionMetric value={preview.baselineTruePeakDbtp.toFixed(1)} label="Original dBTP" />
+        <AuditionMetric value={preview.truePeakDbtp.toFixed(1)} label="Enhanced dBTP" />
+      </div>
+    </details>
   </div>;
 }
 
