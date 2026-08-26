@@ -209,6 +209,12 @@ const work = await run(
   "QUIPSLY_FRESH_COACHING_WORK_OPERATION",
   continuationEnv,
 );
+const formBuilder = await run(
+  "Custom coaching form builder, draft recovery, and immutable versioning",
+  "scripts/quipsly-fresh-coaching-form-builder-operation.mjs",
+  "QUIPSLY_FRESH_COACHING_FORM_BUILDER_OPERATION",
+  continuationEnv,
+);
 const forms = await run(
   "Reusable intake, private draft, submission, and cross-account form isolation",
   "scripts/quipsly-fresh-coaching-forms-operation.mjs",
@@ -454,6 +460,11 @@ const result = {
     work.clientCreatedSharedNote &&
     work.clientCreatedPrivateNote &&
     work.privateNoteHiddenFromCoach,
+  customCoachingFormBuilderOperated:
+    formBuilder.customBuilderOperatedAtPhoneWidth === true &&
+    formBuilder.browserDraftRecoveredAfterReload === true &&
+    formBuilder.immutableVersionsPublished === 2 &&
+    formBuilder.assignedVersionRemained === 1,
   reusableCoachingFormsOperated:
     forms.coachPublishedStarterThroughRenderedProduct === true &&
     forms.coachAssignedExactVersionThroughRenderedProduct === true &&
@@ -543,6 +554,10 @@ const result = {
       participantRecordingCompleteness:
         call.allExpectedParticipantsRecordingVisible === true,
       relationshipWork: work.boundaries?.productFormsOnlyForWrites === true,
+      customFormBuilder:
+        formBuilder.productFormsOnlyForWrites === true &&
+        formBuilder.customBuilderOperatedAtPhoneWidth === true &&
+        formBuilder.browserDraftRecoveredAfterReload === true,
       reusableForms:
         forms.boundaries?.productFormsOnlyForWrites === true &&
         forms.draftHiddenFromCoach === true &&

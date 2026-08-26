@@ -3,22 +3,33 @@
 import type {
   QuipslyCoachingFormDefinition,
   QuipslyCoachingFormField,
+  QuipslyCoachingFormFieldType,
 } from "@high-ground/quipsly-domain/coaching-forms";
+import { QUIPSLY_COACHING_FORM_DEFINITION_SCHEMA } from "@high-ground/quipsly-domain/coaching-forms";
 import {
+  ArrowDown,
+  ArrowUp,
   Check,
   CheckCircle2,
   ChevronRight,
   ClipboardCheck,
   Clock3,
+  Copy,
+  Eye,
   FilePlus2,
   LoaderCircle,
   LockKeyhole,
+  Pencil,
+  Plus,
   RefreshCw,
+  Save,
   Send,
   Sparkles,
+  Trash2,
+  X,
 } from "lucide-react";
 import { useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 type Person = { id: string; name: string; email: string | null } | null;
 type Relationship = {
@@ -89,6 +100,39 @@ type RequestState = {
   message: string;
 };
 const idle: RequestState = { tone: "idle", message: "" };
+type BuilderSeed = {
+  mode: "CREATE" | "EDIT" | "DUPLICATE";
+  templateId: string | null;
+  publishedRevision: number | null;
+  definition: QuipslyCoachingFormDefinition;
+};
+
+const FIELD_TYPE_LABELS: Record<QuipslyCoachingFormFieldType, string> = {
+  SHORT_TEXT: "Short answer",
+  LONG_TEXT: "Long answer",
+  NUMBER: "Number",
+  SCALE: "Scale",
+  BOOLEAN: "Yes or no",
+  SINGLE_SELECT: "Choose one",
+  MULTI_SELECT: "Choose several",
+  DATE: "Date",
+};
+
+function customKey(prefix = "custom") {
+  return `${prefix}-${crypto.randomUUID().replaceAll("-", "").slice(0, 24)}`;
+}
+
+function newCustomDefinition(): QuipslyCoachingFormDefinition {
+  return {
+    schema: QUIPSLY_COACHING_FORM_DEFINITION_SCHEMA,
+    key: customKey(),
+    title: "Untitled coaching form",
+    description: "",
+    purpose: "REFLECTION",
+    submitLabel: "Share with my coach",
+    fields: [],
+  };
+}
 
 function formatDate(
   value: string | null,
@@ -162,6 +206,7 @@ export function CoachingFormsClient() {
   const [selectedAssignmentId, setSelectedAssignmentId] = useState<
     string | null
   >(linkedAssignmentId);
+  const [builderSeed, setBuilderSeed] = useState<BuilderSeed | null>(null);
 
   const load = useCallback(async () => {
     setLoadState({ tone: "busy", message: "Loading your private forms…" });
@@ -273,6 +318,23 @@ export function CoachingFormsClient() {
     workflows.templates.map((item) => item.definition.key),
   );
 
+  if (builderSeed && workflows.actor.isCoach) {
+    return (
+      <FormBuilder
+        key={`${builderSeed.mode}:${builderSeed.templateId || builderSeed.definition.key}`}
+        actorId={workflows.actor.id}
+        seed={builderSeed}
+        onCancel={() => setBuilderSeed(null)}
+        onPublished={async (templateId, message) => {
+          await load();
+          setBuilderSeed(null);
+          setSelectedTemplateId(templateId);
+          setActionState({ tone: "success", message });
+        }}
+      />
+    );
+  }
+
   return (
     <div className="mt-6 grid min-w-0 gap-6 xl:grid-cols-[minmax(0,1.12fr)_minmax(22rem,0.88fr)]">
       <div className="min-w-0 space-y-6">
@@ -314,9 +376,25 @@ export function CoachingFormsClient() {
                   version to the right client and Session.
                 </p>
               </div>
-              <span className="rounded-full bg-violet-50 px-3 py-2 text-xs font-black text-violet-900">
-                {workflows.templates.length} in your library
-              </span>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="rounded-full bg-violet-50 px-3 py-2 text-xs font-black text-violet-900">
+                  {workflows.templates.length} in your library
+                </span>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setBuilderSeed({
+                      mode: "CREATE",
+                      templateId: null,
+                      publishedRevision: null,
+                      definition: newCustomDefinition(),
+                    })
+                  }
+                  className="inline-flex min-h-11 items-center gap-2 rounded-full bg-[#3d3122] px-4 text-sm font-black text-white"
+                >
+                  <Plus size={16} /> Create your own
+                </button>
+              </div>
             </div>
 
             <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -374,31 +452,65 @@ export function CoachingFormsClient() {
                 </h3>
                 <div className="mt-4 grid gap-3 sm:grid-cols-2">
                   {workflows.templates.map((template) => (
-                    <button
-                      type="button"
+                    <article
                       key={template.id}
-                      onClick={() => setSelectedTemplateId(template.id)}
-                      className={`flex min-h-24 items-center justify-between gap-4 rounded-2xl border p-4 text-left transition ${selectedTemplateId === template.id ? "border-violet-500 bg-violet-50" : "border-[#e4d6bd] bg-white hover:border-violet-300"}`}
+                      className={`min-w-0 rounded-2xl border p-4 transition ${selectedTemplateId === template.id ? "border-violet-500 bg-violet-50" : "border-[#e4d6bd] bg-white"}`}
                     >
-                      <span>
-                        <span className="block text-[10px] font-black uppercase tracking-wide text-violet-800">
-                          {purposeLabel(template.purpose)} · v
-                          {template.publishedRevision}
-                        </span>
-                        <span className="mt-1 block font-black text-[#3d3122]">
-                          {template.title}
-                        </span>
-                        <span className="mt-1 block text-xs font-semibold text-[#806d55]">
-                          Sent {template.assignmentCount} time
-                          {template.assignmentCount === 1 ? "" : "s"}
-                        </span>
+                      <span className="block text-[10px] font-black uppercase tracking-wide text-violet-800">
+                        {purposeLabel(template.purpose)} · v
+                        {template.publishedRevision}
                       </span>
-                      <ChevronRight
-                        size={19}
-                        className="shrink-0 text-violet-700"
-                        aria-hidden="true"
-                      />
-                    </button>
+                      <h4 className="mt-1 break-words font-black text-[#3d3122]">
+                        {template.title}
+                      </h4>
+                      <span className="mt-1 block text-xs font-semibold text-[#806d55]">
+                        Sent {template.assignmentCount} time
+                        {template.assignmentCount === 1 ? "" : "s"}
+                      </span>
+                      <div className="mt-4 flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setSelectedTemplateId(template.id)}
+                          className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-full bg-violet-800 px-4 text-sm font-black text-white"
+                        >
+                          <Send size={15} /> Send
+                        </button>
+                        <button
+                          type="button"
+                          aria-label={`Edit ${template.title}`}
+                          onClick={() =>
+                            setBuilderSeed({
+                              mode: "EDIT",
+                              templateId: template.id,
+                              publishedRevision: template.publishedRevision,
+                              definition: structuredClone(template.definition),
+                            })
+                          }
+                          className="inline-flex min-h-11 items-center justify-center rounded-full border border-[#d8c7aa] bg-white px-3 text-[#5a452e]"
+                        >
+                          <Pencil size={16} />
+                        </button>
+                        <button
+                          type="button"
+                          aria-label={`Duplicate ${template.title}`}
+                          onClick={() =>
+                            setBuilderSeed({
+                              mode: "DUPLICATE",
+                              templateId: null,
+                              publishedRevision: null,
+                              definition: {
+                                ...structuredClone(template.definition),
+                                key: customKey("copy"),
+                                title: `${template.title} copy`,
+                              },
+                            })
+                          }
+                          className="inline-flex min-h-11 items-center justify-center rounded-full border border-[#d8c7aa] bg-white px-3 text-[#5a452e]"
+                        >
+                          <Copy size={16} />
+                        </button>
+                      </div>
+                    </article>
                   ))}
                 </div>
               </div>
@@ -450,6 +562,675 @@ export function CoachingFormsClient() {
         {actionState.message ? <Status state={actionState} /> : null}
       </aside>
     </div>
+  );
+}
+
+function FormBuilder(props: {
+  actorId: string;
+  seed: BuilderSeed;
+  onCancel: () => void;
+  onPublished: (templateId: string, message: string) => Promise<void>;
+}) {
+  const [definition, setDefinition] =
+    useState<QuipslyCoachingFormDefinition>(() =>
+      structuredClone(props.seed.definition),
+    );
+  const [selectedFieldId, setSelectedFieldId] = useState<string | null>(
+    props.seed.definition.fields[0]?.id ?? null,
+  );
+  const [newFieldType, setNewFieldType] =
+    useState<QuipslyCoachingFormFieldType>("LONG_TEXT");
+  const newFieldTypeRef = useRef<QuipslyCoachingFormFieldType>("LONG_TEXT");
+  const [previewAnswers, setPreviewAnswers] = useState<Record<string, unknown>>(
+    {},
+  );
+  const [status, setStatus] = useState<RequestState>(idle);
+  const [draftReady, setDraftReady] = useState(false);
+  const draftKey = `quipsly:coaching-form-builder:${props.actorId}:${props.seed.templateId || props.seed.definition.key}`;
+
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(draftKey);
+      if (stored) {
+        const candidate = JSON.parse(stored) as Partial<QuipslyCoachingFormDefinition>;
+        if (
+          candidate.schema === QUIPSLY_COACHING_FORM_DEFINITION_SCHEMA &&
+          candidate.key === props.seed.definition.key &&
+          typeof candidate.title === "string" &&
+          Array.isArray(candidate.fields)
+        ) {
+          setDefinition(candidate as QuipslyCoachingFormDefinition);
+          setSelectedFieldId(candidate.fields[0]?.id ?? null);
+          setStatus({
+            tone: "success",
+            message: "Your unfinished browser draft was restored.",
+          });
+        }
+      }
+    } catch {
+      localStorage.removeItem(draftKey);
+    } finally {
+      setDraftReady(true);
+    }
+  }, [draftKey, props.seed.definition.key]);
+
+  useEffect(() => {
+    if (!draftReady) return;
+    localStorage.setItem(draftKey, JSON.stringify(definition));
+  }, [definition, draftKey, draftReady]);
+
+  function updateDefinition(
+    patch: Partial<QuipslyCoachingFormDefinition>,
+  ) {
+    setDefinition((current) => ({ ...current, ...patch }));
+  }
+
+  function updateField(
+    fieldId: string,
+    patch: Partial<QuipslyCoachingFormField>,
+  ) {
+    setDefinition((current) => ({
+      ...current,
+      fields: current.fields.map((field) =>
+        field.id === fieldId ? { ...field, ...patch } : field,
+      ),
+    }));
+  }
+
+  function addField() {
+    const fieldType = newFieldTypeRef.current;
+    const id = `question-${crypto.randomUUID().replaceAll("-", "").slice(0, 20)}`;
+    const choices = ["SINGLE_SELECT", "MULTI_SELECT"].includes(fieldType)
+      ? { options: ["First choice", "Second choice"] }
+      : {};
+    const range = fieldType === "SCALE" ? { minimum: 0, maximum: 10 } : {};
+    const field: QuipslyCoachingFormField = {
+      id,
+      type: fieldType,
+      label: "New question",
+      required: false,
+      ...choices,
+      ...range,
+    };
+    setDefinition((current) => ({
+      ...current,
+      fields: [...current.fields, field],
+    }));
+    setSelectedFieldId(id);
+  }
+
+  function moveField(fieldId: string, direction: -1 | 1) {
+    setDefinition((current) => {
+      const fields = [...current.fields];
+      const index = fields.findIndex((field) => field.id === fieldId);
+      const next = index + direction;
+      if (index < 0 || next < 0 || next >= fields.length) return current;
+      [fields[index], fields[next]] = [fields[next], fields[index]];
+      return { ...current, fields };
+    });
+  }
+
+  function duplicateField(fieldId: string) {
+    setDefinition((current) => {
+      const index = current.fields.findIndex((field) => field.id === fieldId);
+      if (index < 0 || current.fields.length >= 40) return current;
+      const copy = {
+        ...current.fields[index],
+        id: `question-${crypto.randomUUID().replaceAll("-", "").slice(0, 20)}`,
+        label: `${current.fields[index].label} copy`,
+      };
+      const fields = [...current.fields];
+      fields.splice(index + 1, 0, copy);
+      setSelectedFieldId(copy.id);
+      return { ...current, fields };
+    });
+  }
+
+  function removeField(fieldId: string) {
+    setDefinition((current) => {
+      const fields = current.fields.filter((field) => field.id !== fieldId);
+      setSelectedFieldId((selected) =>
+        selected === fieldId ? fields[0]?.id ?? null : selected,
+      );
+      return { ...current, fields };
+    });
+    setPreviewAnswers((current) => {
+      const next = { ...current };
+      delete next[fieldId];
+      return next;
+    });
+  }
+
+  async function publish() {
+    if (!definition.title.trim()) {
+      setStatus({ tone: "error", message: "Give this form a clear title." });
+      return;
+    }
+    if (!definition.fields.length) {
+      setStatus({
+        tone: "error",
+        message: "Add at least one useful question before publishing.",
+      });
+      return;
+    }
+    const unnamed = definition.fields.find((field) => !field.label.trim());
+    if (unnamed) {
+      setSelectedFieldId(unnamed.id);
+      setStatus({ tone: "error", message: "Every question needs a label." });
+      return;
+    }
+    setStatus({ tone: "busy", message: "Publishing an immutable version…" });
+    try {
+      const result = await api<{
+        template: { id: string };
+        version: { revision: number };
+      }>("/api/coaching/forms", {
+        method: "POST",
+        body: JSON.stringify({
+          action: "PUBLISH_TEMPLATE",
+          requestId: crypto.randomUUID(),
+          templateId: props.seed.templateId,
+          definition,
+        }),
+      });
+      localStorage.removeItem(draftKey);
+      await props.onPublished(
+        result.template.id,
+        `${definition.title} version ${result.version.revision} is published and ready to send.`,
+      );
+    } catch (error) {
+      setStatus({
+        tone: "error",
+        message:
+          error instanceof Error
+            ? error.message
+            : "This version could not be published.",
+      });
+    }
+  }
+
+  const revisionLabel = props.seed.publishedRevision
+    ? `Version ${props.seed.publishedRevision + 1}`
+    : "First version";
+
+  return (
+    <section
+      className="mt-6 min-w-0 overflow-hidden rounded-[2rem] border border-[#dfceb0] bg-white shadow-sm"
+      aria-labelledby="form-builder-title"
+    >
+      <header className="border-b border-[#eadfc9] bg-[#3d3122] p-5 text-[#fffaf0] sm:p-7">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="min-w-0">
+            <p className="text-xs font-black uppercase tracking-[0.17em] text-amber-300">
+              {props.seed.mode === "EDIT"
+                ? "New immutable version"
+                : props.seed.mode === "DUPLICATE"
+                  ? "Independent copy"
+                  : "Custom coaching form"}
+            </p>
+            <h2
+              id="form-builder-title"
+              className="mt-2 break-words font-serif text-3xl font-black sm:text-4xl"
+            >
+              Build something your clients will actually finish.
+            </h2>
+            <p className="mt-2 max-w-3xl font-semibold leading-6 text-[#eadfcf]">
+              Keep it short, ask one thing at a time, and preview the exact
+              client experience before publishing. Existing assignments never
+              change when you publish a new version.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={props.onCancel}
+            className="inline-flex min-h-11 items-center gap-2 rounded-full border border-white/30 px-4 text-sm font-black"
+          >
+            <X size={16} /> Back to library
+          </button>
+        </div>
+      </header>
+
+      <div className="grid min-w-0 lg:grid-cols-[minmax(0,1.05fr)_minmax(22rem,0.95fr)]">
+        <div className="min-w-0 space-y-6 p-5 sm:p-7">
+          <section aria-labelledby="form-details-title">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h3
+                id="form-details-title"
+                className="font-serif text-2xl font-black text-[#3d3122]"
+              >
+                Form details
+              </h3>
+              <span className="rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-black text-emerald-900">
+                <Save size={13} className="mr-1 inline" /> Draft saved on this
+                device
+              </span>
+            </div>
+            <div className="mt-4 grid gap-4 sm:grid-cols-2">
+              <BuilderTextField
+                id="coaching-form-builder-title"
+                label="Title"
+                value={definition.title}
+                maximumLength={160}
+                onChange={(title) => updateDefinition({ title })}
+              />
+              <label className="text-sm font-black text-[#4b3a27]">
+                Use
+                <select
+                  value={definition.purpose}
+                  onChange={(event) =>
+                    updateDefinition({
+                      purpose: event.target
+                        .value as QuipslyCoachingFormDefinition["purpose"],
+                    })
+                  }
+                  className="mt-2 min-h-12 w-full rounded-2xl border border-[#d9c9ad] bg-white px-4 font-semibold"
+                >
+                  {(
+                    [
+                      "INTAKE",
+                      "PRE_SESSION",
+                      "POST_SESSION",
+                      "REFLECTION",
+                      "ASSESSMENT",
+                      "FEEDBACK",
+                    ] as const
+                  ).map((purpose) => (
+                    <option key={purpose} value={purpose}>
+                      {purposeLabel(purpose)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <div className="sm:col-span-2">
+                <BuilderTextField
+                  id="coaching-form-builder-description"
+                  label="Short introduction"
+                  value={definition.description}
+                  maximumLength={2_000}
+                  multiline
+                  onChange={(description) => updateDefinition({ description })}
+                />
+              </div>
+              <BuilderTextField
+                id="coaching-form-builder-submit-label"
+                label="Share button"
+                value={definition.submitLabel}
+                maximumLength={80}
+                onChange={(submitLabel) => updateDefinition({ submitLabel })}
+              />
+            </div>
+          </section>
+
+          <section aria-labelledby="form-questions-title">
+            <div className="flex flex-wrap items-end justify-between gap-3">
+              <div>
+                <h3
+                  id="form-questions-title"
+                  className="font-serif text-2xl font-black text-[#3d3122]"
+                >
+                  Questions
+                </h3>
+                <p className="mt-1 text-sm font-semibold text-[#806d55]">
+                  {definition.fields.length}/40 · Reorder with the arrow buttons.
+                </p>
+              </div>
+              <div className="flex min-w-0 flex-1 flex-wrap justify-end gap-2 sm:flex-none">
+                <label className="sr-only" htmlFor="coaching-form-new-field-type">
+                  New question type
+                </label>
+                <select
+                  id="coaching-form-new-field-type"
+                  value={newFieldType}
+                  onChange={(event) => {
+                    const type =
+                      event.target.value as QuipslyCoachingFormFieldType;
+                    newFieldTypeRef.current = type;
+                    setNewFieldType(type);
+                  }}
+                  className="min-h-11 min-w-0 flex-1 rounded-full border border-[#d9c9ad] bg-white px-3 text-sm font-black sm:flex-none"
+                >
+                  {Object.entries(FIELD_TYPE_LABELS).map(([type, label]) => (
+                    <option key={type} value={type}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={addField}
+                  disabled={definition.fields.length >= 40}
+                  className="inline-flex min-h-11 items-center gap-2 rounded-full bg-violet-800 px-4 text-sm font-black text-white disabled:opacity-50"
+                >
+                  <Plus size={16} /> Add
+                </button>
+              </div>
+            </div>
+
+            {definition.fields.length ? (
+              <div className="mt-4 space-y-3">
+                {definition.fields.map((field, index) => (
+                  <BuilderFieldCard
+                    key={field.id}
+                    field={field}
+                    index={index}
+                    count={definition.fields.length}
+                    expanded={selectedFieldId === field.id}
+                    onExpand={() => setSelectedFieldId(field.id)}
+                    onChange={(patch) => updateField(field.id, patch)}
+                    onMove={(direction) => moveField(field.id, direction)}
+                    onDuplicate={() => duplicateField(field.id)}
+                    onRemove={() => removeField(field.id)}
+                  />
+                ))}
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={addField}
+                className="mt-4 flex min-h-32 w-full flex-col items-center justify-center rounded-3xl border-2 border-dashed border-violet-200 bg-violet-50/50 p-5 text-center text-violet-950"
+              >
+                <Plus size={24} />
+                <span className="mt-2 font-black">Add your first question</span>
+                <span className="mt-1 text-sm font-semibold">
+                  Long answer is a comfortable place to begin.
+                </span>
+              </button>
+            )}
+          </section>
+        </div>
+
+        <aside className="min-w-0 border-t border-[#eadfc9] bg-[#fffaf0] p-5 sm:p-7 lg:border-l lg:border-t-0">
+          <div className="lg:sticky lg:top-24">
+            <p className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.17em] text-violet-800">
+              <Eye size={16} /> Client preview
+            </p>
+            <div className="mt-4 rounded-3xl border border-[#e4d6bd] bg-white p-5 shadow-sm">
+              <span className="text-[10px] font-black uppercase tracking-wide text-violet-800">
+                {purposeLabel(definition.purpose)}
+              </span>
+              <h3 className="mt-2 break-words font-serif text-3xl font-black text-[#34291d]">
+                {definition.title.trim() || "Untitled coaching form"}
+              </h3>
+              {definition.description ? (
+                <p className="mt-2 whitespace-pre-wrap font-semibold leading-6 text-[#765f40]">
+                  {definition.description}
+                </p>
+              ) : null}
+              <div className="mt-6 space-y-6">
+                {definition.fields.map((field) => (
+                  <AnswerField
+                    key={field.id}
+                    field={field}
+                    value={previewAnswers[field.id]}
+                    invalid={false}
+                    onChange={(value) =>
+                      setPreviewAnswers((current) => ({
+                        ...current,
+                        [field.id]: value,
+                      }))
+                    }
+                  />
+                ))}
+                {!definition.fields.length ? (
+                  <p className="rounded-2xl bg-[#f4eddf] p-4 text-sm font-semibold text-[#765f40]">
+                    Questions appear here as you add them.
+                  </p>
+                ) : null}
+              </div>
+              <button
+                type="button"
+                disabled
+                className="mt-6 min-h-11 w-full rounded-full bg-violet-800 px-4 text-sm font-black text-white opacity-80"
+              >
+                {definition.submitLabel.trim() || "Share with my coach"}
+              </button>
+            </div>
+            <div className="mt-5 rounded-3xl bg-[#3d3122] p-5 text-[#fffaf0]">
+              <p className="text-xs font-black uppercase tracking-wide text-amber-300">
+                {revisionLabel}
+              </p>
+              <p className="mt-2 text-sm font-semibold leading-6 text-[#eadfcf]">
+                Publishing freezes this version for future assignments. Clients
+                already assigned an earlier version keep exactly what they
+                received.
+              </p>
+              <button
+                type="button"
+                onClick={() => void publish()}
+                disabled={status.tone === "busy"}
+                className="mt-4 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-full bg-amber-300 px-5 font-black text-[#3d3122] disabled:opacity-50"
+              >
+                {status.tone === "busy" ? (
+                  <LoaderCircle size={17} className="animate-spin" />
+                ) : (
+                  <CheckCircle2 size={17} />
+                )}
+                Publish {revisionLabel.toLowerCase()}
+              </button>
+            </div>
+            {status.message ? <Status state={status} /> : null}
+          </div>
+        </aside>
+      </div>
+    </section>
+  );
+}
+
+function BuilderTextField(props: {
+  id: string;
+  label: string;
+  value: string;
+  maximumLength: number;
+  multiline?: boolean;
+  onChange: (value: string) => void;
+}) {
+  const className =
+    "mt-2 min-h-12 w-full rounded-2xl border border-[#d9c9ad] bg-white px-4 py-3 font-semibold text-[#3d3122] outline-none focus:ring-2 focus:ring-violet-500";
+  return (
+    <label htmlFor={props.id} className="block text-sm font-black text-[#4b3a27]">
+      {props.label}
+      {props.multiline ? (
+        <textarea
+          id={props.id}
+          value={props.value}
+          maxLength={props.maximumLength}
+          rows={3}
+          onChange={(event) => props.onChange(event.target.value)}
+          className={className}
+        />
+      ) : (
+        <input
+          id={props.id}
+          value={props.value}
+          maxLength={props.maximumLength}
+          onChange={(event) => props.onChange(event.target.value)}
+          className={className}
+        />
+      )}
+    </label>
+  );
+}
+
+function BuilderFieldCard(props: {
+  field: QuipslyCoachingFormField;
+  index: number;
+  count: number;
+  expanded: boolean;
+  onExpand: () => void;
+  onChange: (patch: Partial<QuipslyCoachingFormField>) => void;
+  onMove: (direction: -1 | 1) => void;
+  onDuplicate: () => void;
+  onRemove: () => void;
+}) {
+  const field = props.field;
+  const choices = ["SINGLE_SELECT", "MULTI_SELECT"].includes(field.type);
+  const ranged = ["NUMBER", "SCALE"].includes(field.type);
+  const textField = ["SHORT_TEXT", "LONG_TEXT"].includes(field.type);
+  return (
+    <article className="min-w-0 rounded-3xl border border-[#e2d4bb] bg-[#fffaf0] p-4">
+      <div className="flex min-w-0 items-center gap-2">
+        <button
+          type="button"
+          onClick={props.onExpand}
+          aria-expanded={props.expanded}
+          className="min-w-0 flex-1 text-left"
+        >
+          <span className="block text-[10px] font-black uppercase tracking-wide text-violet-800">
+            {props.index + 1}. {FIELD_TYPE_LABELS[field.type]}
+            {field.required ? " · Required" : ""}
+          </span>
+          <span className="mt-1 block truncate font-black text-[#3d3122]">
+            {field.label || "Untitled question"}
+          </span>
+        </button>
+        <button
+          type="button"
+          aria-label={`Move ${field.label} up`}
+          onClick={() => props.onMove(-1)}
+          disabled={props.index === 0}
+          className="min-h-11 min-w-11 rounded-full border border-[#d8c7aa] bg-white disabled:opacity-30"
+        >
+          <ArrowUp size={16} className="mx-auto" />
+        </button>
+        <button
+          type="button"
+          aria-label={`Move ${field.label} down`}
+          onClick={() => props.onMove(1)}
+          disabled={props.index === props.count - 1}
+          className="min-h-11 min-w-11 rounded-full border border-[#d8c7aa] bg-white disabled:opacity-30"
+        >
+          <ArrowDown size={16} className="mx-auto" />
+        </button>
+      </div>
+      {props.expanded ? (
+        <div className="mt-4 grid gap-4 border-t border-[#e6d8bf] pt-4 sm:grid-cols-2">
+          <div className="sm:col-span-2">
+            <BuilderTextField
+              id={`builder-label-${field.id}`}
+              label="Question"
+              value={field.label}
+              maximumLength={240}
+              onChange={(label) => props.onChange({ label })}
+            />
+          </div>
+          <div className="sm:col-span-2">
+            <BuilderTextField
+              id={`builder-help-${field.id}`}
+              label="Optional help text"
+              value={field.help || ""}
+              maximumLength={1_000}
+              multiline
+              onChange={(help) => props.onChange({ help: help || null })}
+            />
+          </div>
+          {textField ? (
+            <>
+              <BuilderTextField
+                id={`builder-placeholder-${field.id}`}
+                label="Optional placeholder"
+                value={field.placeholder || ""}
+                maximumLength={240}
+                onChange={(placeholder) =>
+                  props.onChange({ placeholder: placeholder || null })
+                }
+              />
+              <label className="text-sm font-black text-[#4b3a27]">
+                Maximum characters
+                <input
+                  type="number"
+                  min={1}
+                  max={field.type === "SHORT_TEXT" ? 500 : 10_000}
+                  value={field.maximumLength ?? (field.type === "SHORT_TEXT" ? 500 : 4_000)}
+                  onChange={(event) =>
+                    props.onChange({ maximumLength: Number(event.target.value) })
+                  }
+                  className="mt-2 min-h-12 w-full rounded-2xl border border-[#d9c9ad] bg-white px-4 font-semibold"
+                />
+              </label>
+            </>
+          ) : null}
+          {choices ? (
+            <label className="sm:col-span-2 text-sm font-black text-[#4b3a27]">
+              Choices, one per line
+              <textarea
+                value={(field.options || []).join("\n")}
+                rows={4}
+                onChange={(event) =>
+                  props.onChange({
+                    options: event.target.value
+                      .split("\n")
+                      .map((value) => value.trim())
+                      .filter(Boolean),
+                  })
+                }
+                className="mt-2 min-h-12 w-full rounded-2xl border border-[#d9c9ad] bg-white px-4 py-3 font-semibold"
+              />
+            </label>
+          ) : null}
+          {ranged ? (
+            <>
+              <label className="text-sm font-black text-[#4b3a27]">
+                Minimum
+                <input
+                  type="number"
+                  value={field.minimum ?? ""}
+                  onChange={(event) =>
+                    props.onChange({
+                      minimum: event.target.value
+                        ? Number(event.target.value)
+                        : null,
+                    })
+                  }
+                  className="mt-2 min-h-12 w-full rounded-2xl border border-[#d9c9ad] bg-white px-4 font-semibold"
+                />
+              </label>
+              <label className="text-sm font-black text-[#4b3a27]">
+                Maximum
+                <input
+                  type="number"
+                  value={field.maximum ?? ""}
+                  onChange={(event) =>
+                    props.onChange({
+                      maximum: event.target.value
+                        ? Number(event.target.value)
+                        : null,
+                    })
+                  }
+                  className="mt-2 min-h-12 w-full rounded-2xl border border-[#d9c9ad] bg-white px-4 font-semibold"
+                />
+              </label>
+            </>
+          ) : null}
+          <label className="flex min-h-12 items-center gap-3 rounded-2xl border border-[#d9c9ad] bg-white px-4 text-sm font-black text-[#4b3a27]">
+            <input
+              type="checkbox"
+              checked={field.required}
+              onChange={(event) =>
+                props.onChange({ required: event.target.checked })
+              }
+              className="h-5 w-5 accent-violet-700"
+            />
+            Required before sharing
+          </label>
+          <div className="flex flex-wrap justify-end gap-2 sm:col-span-2">
+            <button
+              type="button"
+              onClick={props.onDuplicate}
+              className="inline-flex min-h-11 items-center gap-2 rounded-full border border-[#d8c7aa] bg-white px-4 text-sm font-black text-[#5a452e]"
+            >
+              <Copy size={15} /> Duplicate
+            </button>
+            <button
+              type="button"
+              onClick={props.onRemove}
+              className="inline-flex min-h-11 items-center gap-2 rounded-full border border-red-200 bg-red-50 px-4 text-sm font-black text-red-900"
+            >
+              <Trash2 size={15} /> Remove
+            </button>
+          </div>
+        </div>
+      ) : null}
+    </article>
   );
 }
 

@@ -58,6 +58,60 @@ describe("coaching form workflows", () => {
     ).rejects.toMatchObject({ status: 404, code: "COACHING_FORM_UNAVAILABLE" });
   });
 
+  it("publishes a coach-owned revision without rewriting an assigned version", async () => {
+    const prisma = fakePrisma();
+    const firstDefinition = {
+      ...QUIPSLY_COACHING_STARTER_FORMS[0],
+      key: "coach-owned-reflection",
+      title: "Coach-owned reflection",
+    };
+    const first = await publishCoachingFormTemplate({
+      prisma,
+      actor: { id: COACH_ID },
+      body: { requestId: PUBLISH_REQUEST, definition: firstDefinition },
+    });
+    const assignment = await assignCoachingForm({
+      prisma,
+      actor: { id: COACH_ID },
+      body: {
+        requestId: ASSIGN_REQUEST,
+        templateId: first.template.id,
+        engagementId: ENGAGEMENT_ID,
+      },
+    });
+    const revisedDefinition = {
+      ...firstDefinition,
+      title: "Coach-owned reflection refined",
+      fields: firstDefinition.fields.map((field, index) =>
+        index === 0
+          ? { ...field, label: "What matters most before we meet?" }
+          : field,
+      ),
+    };
+    const second = await publishCoachingFormTemplate({
+      prisma,
+      actor: { id: COACH_ID },
+      body: {
+        requestId: "778f149d-4525-4c3b-9a18-ccf582552f3a",
+        templateId: first.template.id,
+        definition: revisedDefinition,
+      },
+    });
+
+    expect(second).toMatchObject({
+      template: { id: first.template.id, publishedRevision: 2 },
+      version: { revision: 2, definition: revisedDefinition },
+    });
+    expect(prisma.state.versions).toHaveLength(2);
+    expect(prisma.state.versions[0].definitionJson.title).toBe(
+      "Coach-owned reflection",
+    );
+    expect(assignment.template.revision).toBe(1);
+    expect(prisma.state.assignments[0].templateVersionId).toBe(
+      prisma.state.versions[0].id,
+    );
+  });
+
   it("binds the exact published version, relationship, client, booking, and room", async () => {
     const prisma = fakePrisma();
     const published = await publishCoachingFormTemplate({

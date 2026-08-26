@@ -98,6 +98,7 @@
     "quipsly:fresh:coaching-native-recovery": "QUIPSLY_FRESH_COACHING_NATIVE_RECOVERY=1 node scripts/quipsly-fresh-coaching-native-recovery-flight.mjs",
     "quipsly:fresh:coaching-work": "QUIPSLY_FRESH_COACHING_WORK_OPERATION=1 node --experimental-strip-types --import ./scripts/register-ts-extension-loader.mjs scripts/quipsly-fresh-coaching-work-operation.mjs",
     "quipsly:fresh:coaching-forms": "QUIPSLY_FRESH_COACHING_FORMS_OPERATION=1 node --experimental-transform-types --import ./scripts/register-ts-extension-loader.mjs scripts/quipsly-fresh-coaching-forms-operation.mjs",
+    "quipsly:fresh:coaching-form-builder": "QUIPSLY_FRESH_COACHING_FORM_BUILDER_OPERATION=1 node --experimental-transform-types --import ./scripts/register-ts-extension-loader.mjs scripts/quipsly-fresh-coaching-form-builder-operation.mjs",
     "quipsly:fresh:coaching-flight": "QUIPSLY_FRESH_COACHING_FLIGHT=1 node scripts/quipsly-fresh-coaching-flight.mjs",
     "quipsly:fresh:session-audio-polish": "QUIPSLY_FRESH_SESSION_AUDIO_POLISH=1 node --env-file-if-exists=apps/quipsly/.env.local scripts/quipsly-fresh-session-audio-polish-operation.mjs",
     "quipsly:fresh:session-audio-polish:test": "node --test scripts/quipsly-fresh-session-audio-polish-operation.test.mjs",
