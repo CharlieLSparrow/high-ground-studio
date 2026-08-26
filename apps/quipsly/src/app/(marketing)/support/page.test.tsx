@@ -20,7 +20,7 @@ describe("Quipsly support page", () => {
     ).toBeInTheDocument();
   });
 
-  it("keeps privacy and account deletion reachable without Patreon", () => {
+  it("keeps privacy, deletion, and subscription help reachable", () => {
     render(<SupportPage />);
 
     expect(
@@ -29,8 +29,12 @@ describe("Quipsly support page", () => {
     expect(
       screen.getByRole("link", { name: "Review account deletion" }),
     ).toHaveAttribute("href", "/privacy/account-deletion");
+    expect(screen.getByRole("link", { name: "Review pricing" })).toHaveAttribute(
+      "href",
+      "/pricing",
+    );
     expect(
-      screen.getByText(/optional and is not the support channel/i),
-    ).toBeInTheDocument();
+      screen.getByRole("link", { name: "Manage Apple subscriptions" }),
+    ).toHaveAttribute("href", "https://apps.apple.com/account/subscriptions");
   });
 });

@@ -1,7 +1,3 @@
-const patreonUrl =
-  process.env.NEXT_PUBLIC_PATREON_URL ||
-  "https://www.patreon.com/c/HighGroundOdyssey";
-
 const supportEmail = "charlie@highgroundodyssey.com";
 
 export default function SupportPage() {
@@ -106,23 +102,26 @@ export default function SupportPage() {
 
           <section className="rounded-3xl border border-[#ead9bc] bg-white p-6">
             <p className="text-xs font-black uppercase tracking-[0.18em] text-[#b36b24]">
-              Support the beta
+              Subscription
             </p>
             <h2 className="mt-2 font-serif text-2xl font-black">
-              Help shape Quipsly
+              Plan and billing help
             </h2>
             <p className="mt-3 text-sm leading-6 text-[#6b5b45]">
-              Patreon supports early access and development. It is optional and
-              is not the support channel.
+              Review Quipsly Coach pricing here. Purchases made in the iPhone
+              app are managed through your Apple Account subscriptions.
             </p>
-            <a
-              href={patreonUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="mt-4 inline-flex font-bold text-[#9a541f] underline underline-offset-4"
-            >
-              Visit Patreon
-            </a>
+            <div className="mt-4 flex flex-col items-start gap-2 text-sm font-bold">
+              <a className="text-[#9a541f] underline underline-offset-4" href="/pricing">
+                Review pricing
+              </a>
+              <a
+                className="text-[#9a541f] underline underline-offset-4"
+                href="https://apps.apple.com/account/subscriptions"
+              >
+                Manage Apple subscriptions
+              </a>
+            </div>
           </section>
         </div>
       </section>

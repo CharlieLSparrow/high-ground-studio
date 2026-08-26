@@ -69,11 +69,11 @@ export default function QuipslysPage() {
                 Quipslys are enthusiastic research assistants, librarians, producers, curators, writing partners, and tiny keepers of context. They collect, organize, compare, retrieve, cite, draft, prepare, and package so creative people can see the work clearly and decide what comes next.
               </p>
               <p className="mt-4 max-w-3xl font-sans text-base leading-7 text-[#745b3c]">
-                They are allowed to help write. The Quipsly promise is not silence or scolding. The promise is that sources, drafts, edits, and approvals stay visible.
+                They are allowed to help write and to do useful work. The Quipsly promise is that sources, drafts, edits, and results remain easy to understand and change.
               </p>
               <div className="mt-8 flex flex-col gap-3 font-sans sm:flex-row">
-                <Link href="https://patreon.com/HighGroundOdyssey" className="inline-flex items-center justify-center rounded-2xl bg-[#315d4f] px-6 py-3 text-sm font-black uppercase tracking-[0.12em] text-[#fff8ec] shadow-sm">
-                  Support beta access
+                <Link href="/coaches" className="inline-flex items-center justify-center rounded-2xl bg-[#315d4f] px-6 py-3 text-sm font-black uppercase tracking-[0.12em] text-[#fff8ec] shadow-sm">
+                  Explore Quipsly Coaching
                 </Link>
                 <Link href="https://nest.quipsly.com/projects" className="inline-flex items-center justify-center rounded-2xl border border-[#b99052] bg-transparent px-6 py-3 text-sm font-black uppercase tracking-[0.12em] text-[#6d4b22]">
                   Visit the Nest

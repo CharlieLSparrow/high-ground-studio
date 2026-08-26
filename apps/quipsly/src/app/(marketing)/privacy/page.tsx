@@ -20,10 +20,10 @@ export default function PrivacyPage() {
           Quipsly Privacy
         </p>
         <h1 className="text-3xl md:text-5xl font-bold text-[#3d2618] tracking-tight mb-4">
-          Your work stays inspectable, consented, and yours.
+          Your work stays private, understandable, and yours.
         </h1>
         <p className="text-[#8c552e] font-sans leading-relaxed mb-8 text-lg">
-          Quipsly Nest is the private workspace side of Quipsly: notes, manuscripts, coaching sessions, podcast recordings, transcripts, research packets, and publishing preparation. We design it so people and agents can see what happened, why it happened, and what still needs approval.
+          Quipsly Nest is the private workspace side of Quipsly: notes, manuscripts, coaching sessions, podcast recordings, transcripts, research packets, and publishing preparation. We keep your work connected and editable so automation can help without taking control away from you.
         </p>
 
         <div className="grid gap-4 md:grid-cols-2">
@@ -31,14 +31,14 @@ export default function PrivacyPage() {
             <Mic className="mb-3 h-6 w-6 text-[#a96735]" />
             <h2 className="mb-2 font-serif text-2xl font-bold text-[#3d2618]">Recording and transcription</h2>
             <p className="leading-relaxed text-[#7a604c]">
-              Coaching calls, podcast sessions, interviews, and field notes are recorded only after an explicit user action and visible consent flow. Participants can grant, decline, or revoke recording consent. Transcripts, notes, and action items are review artifacts, not hidden automation.
+              Coaching calls, podcast sessions, interviews, and field notes are recorded only after an explicit user action and visible consent flow. Participants can grant, decline, or revoke recording consent. Transcripts, notes, tasks, and goals are ordinary editable work that you can change, share, or remove.
             </p>
           </section>
           <section className="rounded-3xl border border-[#ead8c2] bg-[#fffaf3] p-6 font-sans">
             <Shield className="mb-3 h-6 w-6 text-[#a96735]" />
             <h2 className="mb-2 font-serif text-2xl font-bold text-[#3d2618]">What Quipsly stores</h2>
             <p className="leading-relaxed text-[#7a604c]">
-              Quipsly may store account identity, email, workspace access, bookings, Stripe payment evidence, call-room state, consent records, recordings you upload, transcript jobs, transcript segments, notes, action items, diagnostics, and publishing receipts.
+              Quipsly may store account identity, email, workspace access, bookings, subscription and payment records, call-room state, consent records, recordings you upload, transcript jobs, transcript segments, notes, action items, diagnostics, and publishing records.
             </p>
           </section>
           <section className="rounded-3xl border border-[#ead8c2] bg-[#fffaf3] p-6 font-sans md:col-span-2">
@@ -90,7 +90,7 @@ export default function PrivacyPage() {
             <Trash2 className="mb-3 h-6 w-6 text-[#a96735]" />
             <h2 className="mb-2 font-serif text-2xl font-bold text-[#3d2618]">Deletion requests</h2>
             <p className="leading-relaxed text-[#7a604c]">
-              You can request account deletion from the mobile app or from the deletion page below. Deletion is reviewed before destructive action because a Quipsly account can be attached to bookings, payments, consent evidence, recordings, transcripts, and coaching records that may require export, retention, or legal review.
+              You can start account deletion from the mobile app or the deletion page below. Quipsly handles attached work and required retention in the background, explains anything that cannot be removed immediately, and completes eligible deletion without asking you to inventory the system yourself.
             </p>
             <Link href="/privacy/account-deletion" className="mt-5 inline-flex rounded-full bg-[#3d2618] px-5 py-3 text-sm font-black uppercase tracking-[0.2em] text-white transition hover:bg-[#6c4329]">
               Account deletion
@@ -102,7 +102,7 @@ export default function PrivacyPage() {
           <p>
             Privacy questions: <a className="font-bold underline underline-offset-4" href="mailto:charlie@highgroundodyssey.com">charlie@highgroundodyssey.com</a>
           </p>
-          <p className="italic">Beta policy surface. Last updated: August 2026.</p>
+          <p className="italic">Last updated: August 26, 2026.</p>
         </div>
       </div>
       </main>

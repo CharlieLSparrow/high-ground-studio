@@ -2,6 +2,21 @@
 
 Date: 2026-08-26
 
+## Paid coaching launch checkpoint
+
+- Quipsly now presents one commercial coaching plan at $29.99 monthly or
+  $299.99 annually with a 14-day introductory trial; coaches subscribe and
+  invited clients join free. `/coaches`, `/pricing`, `/welcome`, `/support`,
+  `/terms`, and `/privacy` describe the same customer journey instead of the
+  retired private-beta and Patreon-reconciliation flow.
+- Starting purchase preparation creates only an inactive billing identity.
+  Access begins only after a verified App Store transaction; canceling Apple's
+  purchase sheet cannot activate a server-side trial.
+- Subscription products and introductory offers still require explicit App
+  Store Connect creation before the paid path can ship. The checked-in product
+  identifiers are `com.quipsly.capture.coach.monthly` and
+  `com.quipsly.capture.coach.annual`.
+
 ## Native Capture coaching forms checkpoint
 
 - Quipsly Capture now owns the ordinary coaching-forms loop on iPhone rather

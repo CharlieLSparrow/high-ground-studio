@@ -18,6 +18,7 @@ import {
   Video,
   Waypoints,
 } from "lucide-react";
+import { CoachPricing } from "./components/CoachPricing";
 
 const audienceCards = [
   {
@@ -27,7 +28,7 @@ const audienceCards = [
   },
   {
     title: "Coaches",
-    href: "/coaching",
+    href: "/coaches",
     Icon: HeartHandshake,
     copy: "Turn sessions, frameworks, reflection prompts, client notes, and teaching assets into clear packets you can reuse with care and consent.",
   },
@@ -65,7 +66,7 @@ const pillars = [
     tagline: "Package, publish, learn",
     image: "/marketing/quipsly_tower_mockup.png",
     Icon: TowerControl,
-    copy: "The publishing layer prepares platform packets, calendars, receipt slots, analytics views, Patreon workflows, episode pages, and social queues without pretending something shipped before it did.",
+    copy: "The publishing layer prepares platform packets, calendars, episode pages, social queues, and performance views, then keeps the result connected to the work that created it.",
     details: ["Platform packets", "Publishing runway", "Receipt truth", "Analytics planning"],
   },
 ];
@@ -166,8 +167,8 @@ export default function QuipslyLandingPage() {
             <Link href="https://nest.quipsly.com/projects" className="hidden rounded-full border border-[#caa96f] bg-white/80 px-4 py-2 text-[#5d4527] shadow-sm sm:inline-flex">
               Open Nest
             </Link>
-            <Link href="https://patreon.com/HighGroundOdyssey" className="rounded-full bg-[#315d4f] px-4 py-2 text-[#fff8ec] shadow-sm">
-              Support Beta
+            <Link href="/coaches" className="rounded-full bg-[#315d4f] px-4 py-2 text-[#fff8ec] shadow-sm">
+              Start free trial
             </Link>
           </div>
         </div>
@@ -343,7 +344,7 @@ export default function QuipslyLandingPage() {
               <div className="inline-flex rounded-2xl bg-[#315d4f] p-3 text-[#fff8ec]"><ShieldCheck className="h-7 w-7" /></div>
               <h2 className="mt-5 font-serif text-4xl font-black leading-tight md:text-6xl">A philosophy of visible work.</h2>
               <p className="mt-5 font-sans text-lg leading-8 text-[#745b3c]">
-                AI can be a collaborator, draft partner, librarian, producer, and analyst. Quipsly’s job is to make that power less slippery by keeping context, evidence, decisions, and approvals where people can see them.
+                AI can be a collaborator, draft partner, librarian, producer, and analyst. Quipsly keeps the sources, drafts, edits, and results easy to understand and change while doing the repetitive work for you.
               </p>
               <Link href="/philosophy/systems-anxiety" className="mt-7 inline-flex rounded-full bg-[#3b2418] px-5 py-3 font-sans text-xs font-black uppercase tracking-[0.14em] text-[#fff8ec] shadow-sm">
                 Read the systems anxiety thesis
@@ -361,6 +362,8 @@ export default function QuipslyLandingPage() {
         </div>
       </section>
 
+      <CoachPricing />
+
       <footer className="relative z-10 border-t border-[#dbc295] bg-[#fff8ec] px-5 py-10 md:px-8">
         <div className="mx-auto flex max-w-7xl flex-col gap-6 md:flex-row md:items-center md:justify-between">
           <div className="flex items-center gap-3">
@@ -374,7 +377,8 @@ export default function QuipslyLandingPage() {
           </div>
           <div className="flex flex-wrap gap-3 font-sans text-xs font-black uppercase tracking-[0.12em]">
             <Link href="https://nest.quipsly.com/projects" className="rounded-full border border-[#b99052] px-4 py-2 text-[#6d4b22]">Open Nest</Link>
-            <Link href="https://patreon.com/HighGroundOdyssey" className="rounded-full border border-[#b99052] px-4 py-2 text-[#6d4b22]">Support Beta</Link>
+            <Link href="/pricing" className="rounded-full border border-[#b99052] px-4 py-2 text-[#6d4b22]">Pricing</Link>
+            <Link href="/support" className="rounded-full border border-[#b99052] px-4 py-2 text-[#6d4b22]">Support</Link>
             <Link href="https://highgroundodyssey.com" className="rounded-full border border-[#b99052] px-4 py-2 text-[#6d4b22]">High Ground Odyssey</Link>
           </div>
         </div>

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowLeft, ClipboardCheck, Mail, ShieldCheck } from "lucide-react";
+import { ArrowLeft, CheckCircle2, Mail, Trash2 } from "lucide-react";
 
 export default function AccountDeletionPage() {
   return (
@@ -19,37 +19,35 @@ export default function AccountDeletionPage() {
             Account deletion
           </p>
           <h1 className="text-3xl md:text-5xl font-bold text-[#3d2618] tracking-tight mb-4">
-            Request deletion without losing the paper trail.
+            Delete your account without a scavenger hunt.
           </h1>
           <p className="text-[#8c552e] font-sans leading-relaxed mb-8 text-lg">
-            Quipsly supports account deletion requests from inside the iOS
-            capture app and from this page. Because Quipsly can hold coaching
-            bookings, payment evidence, consent records, recordings,
-            transcripts, notes, action items, and publishing receipts, deletion
-            is a reviewed process instead of an instant blind erase.
+            Start from Account in Quipsly Capture. Confirm once, and Quipsly
+            begins the deletion process for your account and eligible personal
+            data. You do not need to find every Session, file, or setting first.
           </p>
 
           <div className="grid gap-4 md:grid-cols-3">
             <section className="rounded-3xl border border-[#ead8c2] bg-[#fffaf3] p-6 font-sans">
-              <ClipboardCheck className="mb-3 h-6 w-6 text-[#a96735]" />
+              <Trash2 className="mb-3 h-6 w-6 text-[#a96735]" />
               <h2 className="mb-2 font-serif text-xl font-bold text-[#3d2618]">
                 1. Start the request
               </h2>
               <p className="leading-relaxed text-[#7a604c]">
-                In the app, open Account and choose the account deletion review
-                request. If you cannot access the app, email support with the
-                email tied to your Quipsly account.
+                In the app, open Account, choose Delete account, and confirm.
+                If you cannot sign in, email support from the address tied to
+                your Quipsly account.
               </p>
             </section>
             <section className="rounded-3xl border border-[#ead8c2] bg-[#fffaf3] p-6 font-sans">
-              <ShieldCheck className="mb-3 h-6 w-6 text-[#a96735]" />
+              <CheckCircle2 className="mb-3 h-6 w-6 text-[#a96735]" />
               <h2 className="mb-2 font-serif text-xl font-bold text-[#3d2618]">
-                2. Review attached records
+                2. Quipsly handles the work
               </h2>
               <p className="leading-relaxed text-[#7a604c]">
-                Quipsly reviews exports, retention obligations, coaching/payment
-                records, consent evidence, and publication receipts before
-                destructive account deletion.
+                Quipsly removes eligible personal data and disconnects your
+                access. Shared records or legally required evidence are retained
+                only when necessary and are deleted or anonymized when possible.
               </p>
             </section>
             <section className="rounded-3xl border border-[#ead8c2] bg-[#fffaf3] p-6 font-sans">
@@ -58,9 +56,9 @@ export default function AccountDeletionPage() {
                 3. Follow progress
               </h2>
               <p className="leading-relaxed text-[#7a604c]">
-                Reopen Account in the iPhone app to see the latest status.
-                Quipsly also uses the account email for questions and final
-                completion confirmation.
+                Reopen Account to see progress. Quipsly uses your account email
+                only if identity confirmation is needed and to confirm
+                completion.
               </p>
             </section>
           </div>

@@ -34,7 +34,7 @@ export async function bootstrapHelpDocsAction() {
     data: {
       name: "Getting Started",
       slug: "getting-started",
-      description: "Learn the foundational concepts and setting up your workspace.",
+      description: "Schedule a Session, invite a client, record, and follow through.",
       order: 1,
     },
   });
@@ -43,7 +43,7 @@ export async function bootstrapHelpDocsAction() {
     data: {
       name: "Billing & Subscriptions",
       slug: "billing-subscriptions",
-      description: "Details on subscription tiers, invoicing, and Stripe setups.",
+      description: "Quipsly Coach pricing, free trials, renewals, and cancellation.",
       order: 2,
     },
   });
@@ -52,7 +52,7 @@ export async function bootstrapHelpDocsAction() {
     data: {
       name: "Support & Ticketing",
       slug: "support-ticketing",
-      description: "How to report issues or submit feedback features to our team.",
+      description: "Get help with accounts, Sessions, recordings, and recovery.",
       order: 3,
     },
   });
@@ -65,14 +65,16 @@ export async function bootstrapHelpDocsAction() {
       slug: "welcome-to-quipsly",
       content: `# Welcome to Quipsly!
 
-Quipsly is the all-in-one operating platform built specifically for small-team content creators, authors, and coaches. Our mission is to help you build tools that adapt to the way you think, not the other way around.
+Quipsly brings the conversation and the work it creates into one calm place. Coaches can schedule a Session, invite a client, meet and record, correct the transcript, and keep shared notes, tasks, and goals moving together.
 
-## Core Features
-1. **Pre-Production Storyboarding**: Visually map out your shots and link script dialogue seamlessly.
-2. **Growth CRM & Campaign Builder**: Group leads, create target email lists, and dispatch landing sequences.
-3. **Analytics Pipeline**: Audit performance metrics and view data rollups in real-time.
+## Your first coaching Session
+1. Open **Coaching** and choose **Schedule Session**.
+2. Add the client email, time, and timezone, then send the invitation.
+3. Open the Session a few minutes early to check your microphone and camera.
+4. Join the call and choose Record after everyone has consented.
+5. After the call, open the transcript, recording, notes, tasks, and goals from the same Session.
 
-Get started by navigating to **The Nest** and starting your first project!`,
+Invited clients join free from a phone, tablet, or computer.`,
       isPublished: true,
       order: 1,
     },
@@ -85,15 +87,15 @@ Get started by navigating to **The Nest** and starting your first project!`,
       slug: "managing-your-workspace",
       content: `# Managing Your Workspace
 
-With Quipsly, you can collaborate with your team in a shared workspace. Members carry specific authorization grants.
+Quipsly keeps personal work, practice administration, client relationships, and shared Session work separate. People see only the spaces and Sessions available to their account.
 
 ## Workspace Roles
-- **Owner**: Full access to settings, invitation, role modification, and Stripe configurations.
-- **Admin**: Invites members and configures settings, but cannot delete the organization.
-- **Editor**: Can create and edit storyboards, landing pages, and email sequences.
-- **Viewer**: Read-only access to browse assets.
+- **Owner**: Manages the practice, subscription, members, and settings.
+- **Admin**: Helps manage members and practice settings.
+- **Coach**: Schedules Sessions and works with assigned coaching relationships.
+- **Client**: Joins invited Sessions and uses the work shared with them.
 
-Invite team members under **Settings -> Profile & Team** to start collaborating!`,
+Invite practice members from **Settings**. Invite coaching clients while scheduling or from the client relationship.`,
       isPublished: true,
       order: 2,
     },
@@ -106,14 +108,14 @@ Invite team members under **Settings -> Profile & Team** to start collaborating!
       slug: "how-subscriptions-work",
       content: `# How Subscriptions Work
 
-Quipsly scales with your production demands. We offer transparent subscription tiers built directly into our platform.
+Quipsly Coach is one complete plan. Coaches subscribe; invited clients join and collaborate free.
 
-## Pricing Plans
-1. **Free Tier**: Access for 1 creator, basic pre-production mapping, and simple support channels.
-2. **Pro Creator ($29/mo)**: Multi-user support, unlimited assets upload, and extended CRM campaigns.
-3. **Agency Studio ($99/mo)**: Full team seats, custom BI event logs tracking, and advanced templates.
+## Pricing
+- **Monthly:** $29.99 per month.
+- **Annual:** $299.99 per year.
+- **Free trial:** 14 days for eligible new subscribers.
 
-Modify your active plan under **Settings -> Billing & Plans** instantly!`,
+Every plan includes scheduling, client invitations, calls, participant-owned recording, transcription, basic editing, and shared notes, tasks, and goals. Subscriptions purchased on iPhone renew automatically until canceled and are managed from **Settings -> Subscription** or your Apple Account.`,
       isPublished: true,
       order: 1,
     },
@@ -126,7 +128,7 @@ Modify your active plan under **Settings -> Billing & Plans** instantly!`,
       slug: "submitting-feedback-bugs",
       content: `# Submitting Feedback & Bugs
 
-Spotted a bug or have a feature recommendation? Submit it directly to our core engineering queue without leaving the app.
+Spotted a bug or have a feature idea? Send it from Quipsly so the app version and useful diagnostics can travel with the report.
 
 ## Steps to Submit
 1. Navigate to **Settings**.
@@ -134,7 +136,7 @@ Spotted a bug or have a feature recommendation? Submit it directly to our core e
 3. Choose the type of ticket (Bug Report, Feature Request, or General).
 4. Fill out the subject and description details, then click **Submit Ticket**.
 
-Our engineering team will review it and update the status tag (OPEN -> IN_PROGRESS -> RESOLVED) in real-time.`,
+Never include a password, authentication code, private recording, coaching transcript, or unpublished source file in a support message.`,
       isPublished: true,
       order: 1,
     },
