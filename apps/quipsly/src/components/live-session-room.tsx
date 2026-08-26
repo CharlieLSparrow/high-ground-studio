@@ -933,7 +933,7 @@ export function LiveSessionRoom({
   const refreshDevices = useCallback(async (
     permission: "none" | "microphone" | "camera" | "media" = "none",
     cause: "initial" | "manual" | "devicechange" = "manual",
-  ) => {
+  ): Promise<boolean> => {
     const generation = ++deviceRefreshGenerationRef.current;
     const room = roomRef.current;
     const preserveLiveConnection = Boolean(room && room.state !== ConnectionState.Disconnected);
@@ -943,7 +943,7 @@ export function LiveSessionRoom({
     if (!navigator.mediaDevices?.enumerateDevices) {
       if (!preserveLiveConnection) setStatus("error");
       setMessage("This browser cannot access media devices. Use HTTPS, localhost, or Quipsly Capture on iPhone.");
-      return;
+      return false;
     }
     if (!preserveLiveConnection && (permission !== "none" || cause !== "initial")) {
       setStatus("checking");
@@ -966,7 +966,7 @@ export function LiveSessionRoom({
         preflightStreamRef.current = null;
       }
       const devices = await navigator.mediaDevices.enumerateDevices();
-      if (generation !== deviceRefreshGenerationRef.current) return;
+      if (generation !== deviceRefreshGenerationRef.current) return false;
       const rawMicrophones = devices.filter((device) => device.kind === "audioinput");
       const rawCameras = devices.filter((device) => device.kind === "videoinput");
       const nextMicrophones = rawMicrophones.filter((device) => device.deviceId).map((device, index) => ({ deviceId: device.deviceId, label: readableDeviceLabel(device, index) }));
@@ -1178,10 +1178,12 @@ export function LiveSessionRoom({
             : "Microphone access is available. Use the confidence check to verify the selected source.");
       }
       setTechnicalMessage(null);
+      return true;
     } catch (error) {
       if (!preserveLiveConnection) setStatus("error");
       setTechnicalMessage(error instanceof Error ? error.message : "The browser did not return a media-device error.");
       setMessage("Device access couldn't be completed. Check this site's microphone and camera permissions, then try again.");
+      return false;
     }
   }, [attachLocalCameraTrack, clearPreflightPreview, startAudioMeter, stopAudioMeter]);
 
@@ -1332,18 +1334,63 @@ export function LiveSessionRoom({
   const join = useCallback(async () => {
     const recoveringCall = callRecoveryAvailable;
     const useCallAudioHere = callAudioModeRef.current === "this-device";
+    const microphoneNeededNow = useCallAudioHere && !joinMuted;
+    const cameraNeededNow = cameraWanted;
     let selectedMicrophoneId = microphoneIdRef.current;
     let selectedCameraId = cameraIdRef.current;
-    if ((useCallAudioHere && !selectedMicrophoneId) || (cameraWanted && !selectedCameraId)) {
+
+    // Join is the familiar, person-owned permission boundary. If the browser
+    // can expose permission state, reuse an existing grant without another
+    // prompt. Otherwise a bounded getUserMedia request runs from this click so
+    // an abandoned prompt cannot strand the room on "Joining…". A deliberately
+    // muted join never opens the microphone merely to enumerate it.
+    const requiredPermissions = [
+      microphoneNeededNow ? "microphone" as const : null,
+      cameraNeededNow ? "camera" as const : null,
+    ].filter((name): name is "microphone" | "camera" => name !== null);
+    let permissionPreparationAttempted = false;
+    if (
+      requiredPermissions.length
+      && typeof navigator.mediaDevices?.getUserMedia === "function"
+    ) {
+      const permissionStates = await Promise.all(
+        requiredPermissions.map((name) => retainedMediaPermissionState(name)),
+      );
+      if (permissionStates.some((state) => state !== "granted")) {
+        permissionPreparationAttempted = true;
+        const requestedPermission = microphoneNeededNow && cameraNeededNow
+          ? "media"
+          : microphoneNeededNow
+            ? "microphone"
+            : "camera";
+        const prepared = await refreshDevices(requestedPermission, "manual");
+        selectedMicrophoneId = microphoneIdRef.current;
+        selectedCameraId = cameraIdRef.current;
+        if (!prepared && microphoneNeededNow && cameraNeededNow) {
+          // A busy or unavailable camera must not cost the participant their
+          // conversation. Retry only the microphone, then join camera-off.
+          const microphonePrepared = await refreshDevices("microphone", "manual");
+          selectedMicrophoneId = microphonePrepared ? microphoneIdRef.current : "";
+          selectedCameraId = "";
+        } else if (!prepared) {
+          if (microphoneNeededNow) selectedMicrophoneId = "";
+          if (cameraNeededNow) selectedCameraId = "";
+        }
+      }
+    }
+    if (
+      !permissionPreparationAttempted
+      && ((microphoneNeededNow && !selectedMicrophoneId) || (cameraNeededNow && !selectedCameraId))
+    ) {
       await refreshDevices(
-        useCallAudioHere ? (cameraWanted ? "media" : "microphone") : (cameraWanted ? "camera" : "none"),
+        microphoneNeededNow ? (cameraNeededNow ? "media" : "microphone") : "camera",
         "manual",
       );
       selectedMicrophoneId = microphoneIdRef.current;
       selectedCameraId = cameraIdRef.current;
     }
-    const joinWithoutMicrophone = useCallAudioHere && !selectedMicrophoneId;
-    const joinWithoutCamera = cameraWanted && !selectedCameraId;
+    const joinWithoutMicrophone = microphoneNeededNow && !selectedMicrophoneId;
+    const joinWithoutCamera = cameraNeededNow && !selectedCameraId;
     const joinRecoveryMessages: string[] = [];
     const joinTechnicalMessages: string[] = [];
     if (joinWithoutMicrophone) {
@@ -1477,7 +1524,7 @@ export function LiveSessionRoom({
 
       await room.connect(packet.serverUrl, packet.participantToken);
       let microphonePublication;
-      if (useCallAudioHere && selectedMicrophoneId) {
+      if (microphoneNeededNow && selectedMicrophoneId) {
         try {
           await room.switchActiveDevice("audioinput", selectedMicrophoneId);
           microphonePublication = await room.localParticipant.setMicrophoneEnabled(!joinMuted, {

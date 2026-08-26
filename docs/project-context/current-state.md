@@ -4256,3 +4256,23 @@ rehearsal`) in an iPhone 17 Pro simulator. The signed-in UI acceptance opened
   background entry, plus its bounded background-execution API. Physical proof
   remains in the deferred ledger because Simulator lifecycle and compilation
   cannot prove camera hardware closure or recoverable movie bytes.
+
+### 2026-08-25 bounded browser Join permissions
+
+- Browser Join is now the conventional person-owned permission boundary even
+  when a browser exposes device IDs before it has granted media access. An
+  unmuted first Join completes the bounded microphone/camera request before the
+  provider connection, so a pending browser prompt cannot leave the room
+  stranded behind an indefinite `Joining…` state.
+- A deliberately muted first Join does not request the microphone. The person
+  enters privately and can grant access later through the ordinary Unmute
+  action. Existing grants are reused; browsers without a usable Permissions
+  API may re-run `getUserMedia`, but an already-retained grant does not create a
+  new human prompt.
+- If a combined microphone-and-camera request fails, Quipsly retries the
+  microphone alone and joins camera-off. A busy or denied camera therefore no
+  longer costs the participant the conversation.
+- The focused browser room suite passes 34/34, Quipsly TypeScript passes, and
+  the shared Capture and LiveKit token contracts pass. Actual Safari/Chrome
+  prompts, provider tracks, and two-person audibility remain explicit flight
+  evidence in the deferred ledger.

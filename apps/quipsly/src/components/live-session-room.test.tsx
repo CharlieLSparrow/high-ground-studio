@@ -249,11 +249,98 @@ describe("LiveSessionRoom", () => {
     expect(screen.queryByTestId("call-status-message")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Record private sample" })).toBeEnabled();
     fireEvent.click(join);
-    expect(getUserMedia).toHaveBeenCalledWith({ audio: true, video: false });
+    await waitFor(() => expect(getUserMedia).toHaveBeenCalledWith({ audio: true, video: false }));
     expect(await screen.findByRole("button", { name: "Leave" })).toBeInTheDocument();
     expect(screen.getByText(/You joined muted/i)).toBeInTheDocument();
     expect(mockLiveKitRoom.localParticipant.setMicrophoneEnabled).toHaveBeenCalledWith(false);
     expect(screen.getByRole("button", { name: "Unmute" })).toBeDisabled();
+  });
+
+  it("uses Join as the bounded permission boundary even when device ids are already visible", async () => {
+    const stop = jest.fn();
+    const getUserMedia = jest.fn().mockResolvedValue({
+      getTracks: () => [{ stop }],
+    });
+    const query = jest.fn().mockResolvedValue({ state: "prompt" });
+    Object.defineProperty(navigator, "permissions", {
+      configurable: true,
+      value: { query },
+    });
+    Object.defineProperty(navigator, "mediaDevices", {
+      configurable: true,
+      value: {
+        enumerateDevices: jest.fn().mockResolvedValue([
+          { kind: "audioinput", deviceId: "visible-before-grant", label: "Coach microphone" },
+        ]),
+        getUserMedia,
+        addEventListener: jest.fn(),
+        removeEventListener: jest.fn(),
+      },
+    });
+    global.fetch = jest.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        ok: true,
+        canJoin: true,
+        serverUrl: "wss://live.test",
+        participantToken: "room-scoped-test-token",
+        recordingConsentGranted: false,
+      }),
+    })) as unknown as typeof fetch;
+
+    await act(async () => {
+      render(<LiveSessionRoom callRoomId="room-visible-before-grant" captureGroupId="55555555-5555-4555-8555-555555555553" sessionTitle="Join permission" kind="coaching" />);
+    });
+    expect(getUserMedia).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Join call" }));
+
+    await waitFor(() => expect(getUserMedia).toHaveBeenCalledWith({ audio: true, video: false }));
+    expect(stop).toHaveBeenCalledTimes(1);
+    expect(await screen.findByRole("button", { name: "Leave" })).toBeInTheDocument();
+    expect(mockLiveKitRoom.localParticipant.setMicrophoneEnabled).toHaveBeenCalledWith(true, expect.objectContaining({
+      deviceId: "visible-before-grant",
+    }));
+  });
+
+  it("joins deliberately muted without opening a first-time microphone prompt", async () => {
+    const getUserMedia = jest.fn();
+    const query = jest.fn().mockResolvedValue({ state: "prompt" });
+    Object.defineProperty(navigator, "permissions", {
+      configurable: true,
+      value: { query },
+    });
+    Object.defineProperty(navigator, "mediaDevices", {
+      configurable: true,
+      value: {
+        enumerateDevices: jest.fn().mockResolvedValue([]),
+        getUserMedia,
+        addEventListener: jest.fn(),
+        removeEventListener: jest.fn(),
+      },
+    });
+    global.fetch = jest.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        ok: true,
+        canJoin: true,
+        serverUrl: "wss://live.test",
+        participantToken: "room-scoped-test-token",
+        recordingConsentGranted: false,
+      }),
+    })) as unknown as typeof fetch;
+
+    await act(async () => {
+      render(<LiveSessionRoom callRoomId="room-muted-first-join" captureGroupId="55555555-5555-4555-8555-555555555554" sessionTitle="Muted join" kind="coaching" />);
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Mic on" }));
+    fireEvent.click(screen.getByRole("button", { name: "Join call" }));
+
+    expect(await screen.findByRole("button", { name: "Unmute" })).toBeEnabled();
+    expect(getUserMedia).not.toHaveBeenCalled();
+    expect(query).not.toHaveBeenCalledWith({ name: "microphone" });
+    expect(mockLiveKitRoom.localParticipant.setMicrophoneEnabled).toHaveBeenCalledWith(false);
   });
 
   it("reopens a remembered setup automatically only when browser permission is already granted", async () => {
@@ -1085,7 +1172,7 @@ describe("LiveSessionRoom", () => {
     const join = screen.getByRole("button", { name: /Join call/i });
     expect(join).toBeEnabled();
     fireEvent.click(join);
-    expect(getUserMedia).toHaveBeenCalledWith({ audio: true, video: true });
+    await waitFor(() => expect(getUserMedia).toHaveBeenCalledWith({ audio: true, video: true }));
     expect(await screen.findByRole("button", { name: "Leave" })).toBeInTheDocument();
     expect(screen.getByText(/Your camera is off/i)).toBeInTheDocument();
     expect(mockLiveKitRoom.localParticipant.setCameraEnabled).toHaveBeenCalledWith(false);
