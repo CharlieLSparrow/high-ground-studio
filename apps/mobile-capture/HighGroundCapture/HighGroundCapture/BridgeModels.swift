@@ -3333,7 +3333,7 @@ struct MobileCaptureReviewDigestSession: Codable, Identifiable {
     }
 
     var isReviewReady: Bool {
-        coachingPacketStatus == "READY_FOR_REVIEW"
+        coachingPacketStatus == "RESULTS_READY" || coachingPacketStatus == "READY_FOR_REVIEW"
     }
 }
 

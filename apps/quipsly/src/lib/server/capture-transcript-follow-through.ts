@@ -20,7 +20,7 @@ export function captureTranscriptFollowThroughAuthorId(authority: any): string |
 }
 
 /**
- * Reconciles durable worker evidence and prepares private, candidate-only
+ * Reconciles durable worker evidence and creates ordinary, editable Session
  * follow-through without depending on a particular browser remaining open.
  * Authorship comes from canonical transcript/coach ownership, never from the
  * account that happened to poll the Session.
@@ -51,7 +51,7 @@ export async function reconcileCaptureTranscriptFollowThrough(input: {
           tx,
           `capture-transcript-follow-through:${input.transcriptJobId}`,
         );
-        return preparePrivateFollowThrough({
+        return prepareSessionFollowThrough({
           prisma: tx,
           transcriptJobId: input.transcriptJobId,
           refreshExistingPacket: input.refreshExistingPacket,
@@ -68,7 +68,7 @@ function isSerializableWriteConflict(error: unknown) {
   return Boolean(error && typeof error === "object" && "code" in error && error.code === "P2034");
 }
 
-async function preparePrivateFollowThrough(input: {
+async function prepareSessionFollowThrough(input: {
   prisma: any;
   transcriptJobId: string;
   refreshExistingPacket?: boolean;
@@ -87,8 +87,9 @@ async function preparePrivateFollowThrough(input: {
       resultJson: true,
     },
   });
-  // A booked coaching Session belongs in the assigned coach's private review
-  // lane even when the client's phone uploaded or queued the source first.
+  // A booked coaching Session belongs to the assigned coach even when the
+  // client's phone uploaded or queued the source first. Canonical Session and
+  // booking access determines who can see the generated work.
   // Non-booked production/research Sessions retain the transcript requester.
   const authorUserId = captureTranscriptFollowThroughAuthorId(authority);
   if (!authorUserId) {
@@ -188,10 +189,13 @@ async function recordReadyFollowThrough(prisma: any, input: {
           packetBuildId: input.packetBuildId,
           summaryNoteId: input.summaryNoteId,
           reusedExistingPacket: input.reusedExistingPacket,
-          candidateOnly: true,
-          authorPrivate: true,
-          automaticAssignment: false,
-          automaticSharing: false,
+          ordinarySessionWorkCreated: true,
+          candidateOnly: false,
+          canonicalAccessApplied: true,
+          authorPrivate: false,
+          automaticAssignment: true,
+          automaticSharing: true,
+          automaticExternalDelivery: false,
           externalSideEffects: false,
           preparedAt: new Date().toISOString(),
         },

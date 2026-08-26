@@ -237,13 +237,14 @@ function finishAction(session: ReturnType<typeof digestSession>) {
       kind: "run-transcript",
       label: "Create the timed transcript",
       detail:
-        "Transcription is authorized and available for the retained Session source; starting it remains an explicit action.",
+        "Automatic transcription did not finish. Retry it from the retained Session source without changing the recording.",
       priority: 20,
     };
   }
   if (
-    capabilities.canReviewPacket === true ||
-    session.coachingPacketStatus === "READY_FOR_REVIEW"
+    session.coachingPacketStatus !== "RESULTS_READY" &&
+    (capabilities.canReviewPacket === true ||
+      session.coachingPacketStatus === "READY_FOR_REVIEW")
   ) {
     return {
       callRoomId: session.callRoomId,
@@ -253,10 +254,10 @@ function finishAction(session: ReturnType<typeof digestSession>) {
       kind: "review-packet",
       label:
         session.purpose === "COACHING"
-          ? "Review coaching notes and actions"
-          : "Review Session proposals",
+          ? "Open coaching notes and actions"
+          : "Open Session results",
       detail:
-        "A source-bound packet is ready for human review. Nothing becomes canonical until an explicit reviewed action.",
+        "Source-bound results are ready to use and remain easy to edit. Opening them does not publish or send anything externally.",
       priority: 40,
     };
   }
@@ -269,10 +270,10 @@ function finishAction(session: ReturnType<typeof digestSession>) {
       kind: "build-review-packet",
       label:
         session.purpose === "COACHING"
-          ? "Build the coaching review packet"
-          : "Build the Session review packet",
+          ? "Recover coaching notes and actions"
+          : "Recover Session results",
       detail:
-        "The timed transcript is ready. Quipsly can prepare cited proposals without creating canonical notes, tasks, goals, or edits.",
+        "The timed transcript is ready, but automatic Session results did not finish. Retry the editable notes, tasks, and goals from the same cited source.",
       priority: 30,
     };
   }
@@ -417,7 +418,7 @@ function buildDigest(
     ),
     packetReady: countWhere(
       sessions,
-      (session) => session.coachingPacketStatus === "READY_FOR_REVIEW",
+      (session) => ["RESULTS_READY", "READY_FOR_REVIEW"].includes(session.coachingPacketStatus),
     ),
     reviewReady: countWhere(
       sessions,

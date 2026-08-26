@@ -175,7 +175,7 @@ function paymentResolvedFor(session: MobileCaptureSession) {
 
 function toneForSession(session: MobileCaptureSession): SessionTone {
   if (session.bookingStatus === "CANCELED" || session.status === "CANCELED") return "bad";
-  if (session.coachingPacketStatus === "READY_FOR_REVIEW") return "good";
+  if (["RESULTS_READY", "READY_FOR_REVIEW"].includes(session.coachingPacketStatus || "")) return "good";
   if (session.canRecordNow || session.providerCanJoin) return "good";
   if (session.recordingConsentStatus && session.recordingConsentStatus !== "GRANTED") return "warn";
   if (paymentRequiredFor(session) && !paymentResolvedFor(session)) return "warn";
@@ -239,11 +239,11 @@ function consentLine(session: MobileCaptureSession) {
 }
 
 function packetLine(session: MobileCaptureSession) {
-  if (session.coachingPacketStatus === "READY_FOR_REVIEW") {
-    return `${session.coachingPacketTitle || "Follow-up packet"} is ready with ${session.coachingPacketHighlightCount ?? 0} highlight(s) and ${session.coachingPacketActionItemCount ?? 0} action item(s).`;
+  if (["RESULTS_READY", "READY_FOR_REVIEW"].includes(session.coachingPacketStatus || "")) {
+    return `${session.coachingPacketTitle || "Session results"} is ready with ${session.coachingPacketHighlightCount ?? 0} highlight(s) and ${session.coachingPacketActionItemCount ?? 0} action item(s). Everything is ready to use and easy to edit.`;
   }
-  if (session.latestTranscriptStatus === "COMPLETED") return "Transcript is ready. A permitted coach can build the follow-up packet next.";
-  if (session.latestTranscriptStatus) return `Transcript is ${normalize(session.latestTranscriptStatus)}. The follow-up packet comes after transcript review.`;
+  if (session.latestTranscriptStatus === "COMPLETED") return "Transcript is ready. Quipsly is creating the Session notes and follow-through.";
+  if (session.latestTranscriptStatus) return `Transcript is ${normalize(session.latestTranscriptStatus)}. Notes and follow-through appear automatically when it finishes.`;
   return "Follow-up notes appear here after recording and transcription.";
 }
 
@@ -263,7 +263,7 @@ function sessionIsCompleted(session: MobileCaptureSession) {
 function sessionIsReady(session: MobileCaptureSession) {
   return session.canRecordNow === true
     || session.providerCanJoin === true
-    || session.coachingPacketStatus === "READY_FOR_REVIEW";
+    || ["RESULTS_READY", "READY_FOR_REVIEW"].includes(session.coachingPacketStatus || "");
 }
 
 function SessionCard({ session }: { session: MobileCaptureSession }) {
@@ -496,7 +496,7 @@ export default function CoachingSessionsPage() {
               }
             />
             <HumanStep icon={<Video size={18} />} title="Recording" detail={nextSession ? consentLine(nextSession) : "Recording stays off until consent is clear."} tone={nextSession?.recordingConsentGranted ? "good" : "warm"} />
-            <HumanStep icon={<Sparkles size={18} />} title="Afterward" detail={nextSession ? packetLine(nextSession) : "Follow-up notes appear after the session is captured and reviewed."} tone={nextSession?.coachingPacketStatus === "READY_FOR_REVIEW" ? "good" : "blue"} />
+            <HumanStep icon={<Sparkles size={18} />} title="Afterward" detail={nextSession ? packetLine(nextSession) : "Follow-up notes appear automatically after recording and transcription."} tone={["RESULTS_READY", "READY_FOR_REVIEW"].includes(nextSession?.coachingPacketStatus || "") ? "good" : "blue"} />
           </div> : null}
         </div>
       </header>

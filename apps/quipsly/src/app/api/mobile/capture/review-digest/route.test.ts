@@ -489,4 +489,42 @@ describe("mobile Capture review digest", () => {
       ),
     ).toBe(true);
   });
+
+  it("does not treat automatically created Session results as unfinished work", async () => {
+    jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({
+      user: {
+        id: "user-1",
+        primaryEmail: "coach@example.com",
+        name: "Coach",
+        isStaff: false,
+      },
+    } as any);
+    jest.mocked(getPrismaClient).mockReturnValue({
+      callRoom: { findMany: jest.fn().mockResolvedValue([]) },
+      mobileCaptureFinalizationReceipt: { findMany: jest.fn() },
+    } as any);
+    jest.mocked(mapMobileCaptureSessionsForUser).mockReturnValue([
+      {
+        id: "room-results",
+        callRoomId: "room-results",
+        title: "Completed coaching session",
+        purpose: "COACHING",
+        recordingCount: 1,
+        latestRecordingMediaAssetId: "media-1",
+        latestTranscriptStatus: "COMPLETED",
+        coachingPacketStatus: "RESULTS_READY",
+        actionPacket: { capabilities: { canReviewPacket: true } },
+        lifecycle: { checks: [] },
+      },
+    ] as any);
+
+    const response = await GET(
+      new Request("http://localhost/api/mobile/capture/review-digest"),
+    );
+    const payload = await response.json();
+
+    expect(payload.digest.needsFinish).toBe(0);
+    expect(payload.digest.finishActions).toEqual([]);
+    expect(payload.digest.packetReady).toBe(1);
+  });
 });

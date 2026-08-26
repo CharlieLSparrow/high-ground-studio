@@ -57,10 +57,13 @@ describe("capture transcript follow-through worker", () => {
       held: 0,
       failed: 0,
       boundaries: {
-        candidateOnly: true,
-        authorPrivate: true,
-        automaticAssignment: false,
-        automaticSharing: false,
+        ordinarySessionWorkCreated: true,
+        candidateOnly: false,
+        canonicalAccessApplied: true,
+        authorPrivate: false,
+        automaticAssignment: true,
+        automaticSharing: true,
+        automaticExternalDelivery: false,
         externalSideEffects: false,
       },
     });

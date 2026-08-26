@@ -982,7 +982,7 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
             packetTaskProjectName = "High Ground Odyssey"
             packetGoalReviewContext = .init(summaryNoteId: "preview-summary", packetBuildId: "preview-build")
             packetReviewError = nil
-            packetStatus = "READY_FOR_REVIEW"
+            packetStatus = "RESULTS_READY"
             canReviewPrivatePacket = true
             privatePacketBoundary = nil
             packetSegmentCount = 0

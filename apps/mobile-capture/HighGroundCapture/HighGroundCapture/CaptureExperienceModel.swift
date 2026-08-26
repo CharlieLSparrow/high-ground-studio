@@ -3625,7 +3625,7 @@ extension MobileCaptureSession {
             coachingPacketActionItemCount: packetReviewLanes.isEmpty ? nil : 0,
             coachingPacketLatestActivityAt: packetReviewLanes.isEmpty ? nil : ISO8601DateFormatter().string(from: Date()),
             coachingPacketFirstOpenActionItemId: nil,
-            coachingPacketStatus: packetReviewLanes.isEmpty ? nil : "READY_FOR_REVIEW",
+            coachingPacketStatus: packetReviewLanes.isEmpty ? nil : "RESULTS_READY",
             coachingPacketReviewLanes: packetReviewLanes.isEmpty ? nil : packetReviewLanes,
             clientFollowUpWorkspace: clientFollowUpWorkspace,
             canUseProjectTeamNotes: true,

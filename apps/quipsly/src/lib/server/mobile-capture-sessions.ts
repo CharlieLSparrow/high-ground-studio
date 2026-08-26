@@ -1536,7 +1536,7 @@ export function mapMobileCaptureSessionsForUser(input: {
       coachingPacketStatus: !transcriptProcessingGate.allowed
         ? "TRANSCRIPT_HELD"
         : packetSummaryNoteId
-          ? "READY_FOR_REVIEW"
+          ? "RESULTS_READY"
           : latestTranscriptStatus === "COMPLETED"
             ? "PACKET_READY_TO_BUILD"
             : "NOT_READY",

@@ -90,10 +90,13 @@ export async function runCaptureTranscriptFollowThroughMaintenance(input: {
     failed: settled.filter((result) => result.status === "rejected").length,
     results,
     boundaries: {
-      candidateOnly: true,
-      authorPrivate: true,
-      automaticAssignment: false,
-      automaticSharing: false,
+      ordinarySessionWorkCreated: true,
+      candidateOnly: false,
+      canonicalAccessApplied: true,
+      authorPrivate: false,
+      automaticAssignment: true,
+      automaticSharing: true,
+      automaticExternalDelivery: false,
       externalSideEffects: false,
     },
   };

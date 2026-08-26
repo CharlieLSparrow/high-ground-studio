@@ -153,10 +153,13 @@ describe("automatic transcript follow-through", () => {
           packetStatus: "ready",
           packetBuildId: "packet-existing",
           summaryNoteId: "summary-existing",
-          candidateOnly: true,
-          authorPrivate: true,
-          automaticAssignment: false,
-          automaticSharing: false,
+          ordinarySessionWorkCreated: true,
+          candidateOnly: false,
+          canonicalAccessApplied: true,
+          authorPrivate: false,
+          automaticAssignment: true,
+          automaticSharing: true,
+          automaticExternalDelivery: false,
           externalSideEffects: false,
         }),
       }) },
@@ -186,7 +189,7 @@ describe("automatic transcript follow-through", () => {
     }));
   });
 
-  it("serializes one candidate-only private build for a transcript", async () => {
+  it("serializes one ordinary editable Session result build for a transcript", async () => {
     const prisma = transactionalPrisma({
       coachingNote: { findFirst: jest.fn().mockResolvedValue(null) },
       transcriptJob: {
@@ -223,10 +226,13 @@ describe("automatic transcript follow-through", () => {
         followThrough: expect.objectContaining({
           packetBuildId: "packet-1",
           summaryNoteId: "summary-1",
-          candidateOnly: true,
-          authorPrivate: true,
-          automaticAssignment: false,
-          automaticSharing: false,
+          ordinarySessionWorkCreated: true,
+          candidateOnly: false,
+          canonicalAccessApplied: true,
+          authorPrivate: false,
+          automaticAssignment: true,
+          automaticSharing: true,
+          automaticExternalDelivery: false,
         }),
       }) },
     }));
