@@ -4101,3 +4101,25 @@ rehearsal`) in an iPhone 17 Pro simulator. The signed-in UI acceptance opened
   plus strict TypeScript pass locally. The in-app browser webview attachment
   timed out, so phone/desktop rendered hierarchy remains deferred rather than
   inferred.
+
+### 2026-08-25 purpose-specific native recording defaults
+
+- Quipsly Capture no longer stores one recording-mode preference across every
+  kind of Session. Coaching Sessions default to the least-surprising audio
+  master, while podcast Sessions default to coordinated podcast A/V: a
+  dedicated microphone master plus a video-only camera source in one capture
+  group.
+- Coaching and podcast choices now persist in separate preference lanes. The
+  legacy setting is migrated only when it safely matches the likely purpose:
+  legacy audio can seed coaching, and a legacy video mode can seed podcast.
+  This prevents a prior coaching habit from silently downgrading a podcast to
+  audio-only, and prevents a prior camera workflow from surprising a coaching
+  client.
+- Capture reloads the appropriate preference whenever the selected Session
+  changes, but it does not repurpose an active capture. The native requested-
+  versus-granted consent boundary was audited alongside this change and
+  already defaults correctly: requested consent remains an actionable choice,
+  not granted authority.
+- The 1,281-check Capture/App Store static contract, release-source gate, and
+  dual-architecture iOS Simulator build pass. Physical iPhone camera, audio,
+  Session-switch, and retained-source evidence remains deferred explicitly.

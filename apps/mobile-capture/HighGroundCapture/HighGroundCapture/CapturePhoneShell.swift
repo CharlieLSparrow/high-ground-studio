@@ -6352,22 +6352,48 @@ private struct NewCaptureProjectSheet: View {
 /// are convenience preferences only: session authority, recording consent,
 /// and capture readiness are always revalidated by their canonical services.
 private enum CaptureCallPreferences {
-    private static let recordingModeKey = "quipsly.capture.preferred-recording-mode.v1"
+    private static let legacyRecordingModeKey = "quipsly.capture.preferred-recording-mode.v1"
+    private static let coachingRecordingModeKey = "quipsly.capture.preferred-recording-mode.coaching.v2"
+    private static let podcastRecordingModeKey = "quipsly.capture.preferred-recording-mode.podcast.v2"
     private static let cameraPositionKey = "quipsly.capture.preferred-camera-position.v1"
     private static let videoQualityKey = "quipsly.capture.preferred-video-quality.v1"
 
-    static var recordingMode: CaptureRecordingMode {
-        get {
-            if ProcessInfo.processInfo.arguments.contains("--capture-ui-preview") {
-                return .audio
-            }
-            guard let rawValue = UserDefaults.standard.string(forKey: recordingModeKey),
-                  let value = CaptureRecordingMode(rawValue: rawValue) else {
-                return .audio
-            }
+    static func recordingMode(for sessionPurpose: String?) -> CaptureRecordingMode {
+        if ProcessInfo.processInfo.arguments.contains("--capture-ui-preview") {
+            return .audio
+        }
+        let podcast = isPodcast(sessionPurpose)
+        let purposeKey = podcast ? podcastRecordingModeKey : coachingRecordingModeKey
+        if let rawValue = UserDefaults.standard.string(forKey: purposeKey),
+           let value = CaptureRecordingMode(rawValue: rawValue) {
             return value
         }
-        set { UserDefaults.standard.set(newValue.rawValue, forKey: recordingModeKey) }
+
+        // Migrate only a legacy choice that matches the old surface's most
+        // likely purpose. This prevents an audio coaching habit from silently
+        // downgrading a new podcast Session, and prevents a camera podcast
+        // habit from surprising a coaching client.
+        if let rawValue = UserDefaults.standard.string(forKey: legacyRecordingModeKey),
+           let legacy = CaptureRecordingMode(rawValue: rawValue) {
+            if podcast, legacy.recordsVideo { return legacy }
+            if !podcast, legacy == .audio { return legacy }
+        }
+        return podcast ? .podcastAV : .audio
+    }
+
+    static func setRecordingMode(
+        _ mode: CaptureRecordingMode,
+        for sessionPurpose: String?
+    ) {
+        let key = isPodcast(sessionPurpose)
+            ? podcastRecordingModeKey
+            : coachingRecordingModeKey
+        UserDefaults.standard.set(mode.rawValue, forKey: key)
+    }
+
+    private static func isPodcast(_ purpose: String?) -> Bool {
+        purpose?.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+            == "PODCAST"
     }
 
     static var cameraPosition: VideoCaptureCameraPosition {
@@ -6412,7 +6438,7 @@ private struct CaptureRecorderView: View {
     @State private var showsConsentConfirmation = false
     @State private var quickEntryKind: MobileQuickEntryKind?
     @State private var sessionNotesSession: MobileCaptureSession?
-    @State private var recordingMode: CaptureRecordingMode = CaptureCallPreferences.recordingMode
+    @State private var recordingMode: CaptureRecordingMode = CaptureCallPreferences.recordingMode(for: nil)
     @State private var cameraPosition: VideoCaptureCameraPosition = CaptureCallPreferences.cameraPosition
     @State private var videoQualityIntent: VideoCaptureQualityIntent = CaptureCallPreferences.videoQualityIntent
     @State private var isRunningRehearsalCheck = false
@@ -7302,9 +7328,26 @@ private struct CaptureRecorderView: View {
             }
         }
         .interactiveDismissDisabled(captureIsActive)
+        .onAppear {
+            guard !captureIsActive else { return }
+            recordingMode = CaptureCallPreferences.recordingMode(
+                for: model.selectedSession?.purpose
+            )
+        }
+        .onChange(of: model.selectedSession?.id) { oldSessionID, newSessionID in
+            guard oldSessionID != newSessionID,
+                  !captureIsActive,
+                  !model.isChangingCapture else { return }
+            recordingMode = CaptureCallPreferences.recordingMode(
+                for: model.selectedSession?.purpose
+            )
+        }
         .onChange(of: recordingMode) { oldMode, newMode in
             guard oldMode != newMode else { return }
-            CaptureCallPreferences.recordingMode = newMode
+            CaptureCallPreferences.setRecordingMode(
+                newMode,
+                for: model.selectedSession?.purpose
+            )
             if newMode == .audio {
                 guard !model.providerRoom.isLocalVideoPublished,
                       !model.ownsRoomCameraPreview else { return }

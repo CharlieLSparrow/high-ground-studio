@@ -1676,6 +1676,12 @@ requireIncludes(bridgeText, "Research interview", "native research interview mod
 // controls and copy that are actually reachable from that root instead of
 // accepting strings from disconnected component prototypes.
 requireIncludes(capturePhoneShellText, "CaptureRecordingModePicker(", "shipping recorder exposes explicit audio and video modes");
+requireIncludes(capturePhoneShellText, "return podcast ? .podcastAV : .audio", "shipping recorder defaults podcast Sessions to coordinated A/V and coaching Sessions to audio");
+requireIncludes(capturePhoneShellText, "quipsly.capture.preferred-recording-mode.coaching.v2", "shipping recorder keeps coaching recording preferences in a purpose-specific lane");
+requireIncludes(capturePhoneShellText, "quipsly.capture.preferred-recording-mode.podcast.v2", "shipping recorder keeps podcast recording preferences in a purpose-specific lane");
+requireIncludes(capturePhoneShellText, "CaptureCallPreferences.recordingMode(", "shipping recorder reloads the recording preference for the selected Session purpose");
+requireIncludes(capturePhoneShellText, "for: model.selectedSession?.purpose", "shipping recorder binds recording-mode reads and writes to the selected Session purpose");
+requireIncludes(capturePhoneShellText, "CaptureCallPreferences.setRecordingMode(", "shipping recorder persists recording-mode choices only within the current purpose lane");
 requireIncludes(capturePhoneShellText, "VideoRecorderHero(", "shipping recorder reaches local video capture");
 requireIncludes(capturePhoneShellText, "onSwitchCamera:", "shipping video recorder exposes deliberate camera switching");
 requireIncludes(capturePhoneShellText, "private func revealSavedSourceIfStopped()", "shipping recorder owns an explicit stop-to-source transition");
