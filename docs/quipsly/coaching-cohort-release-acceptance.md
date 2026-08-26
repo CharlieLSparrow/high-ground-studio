@@ -113,6 +113,32 @@ A green build or seeded script is not enough. The release note must name:
 The retained regression lane should continue to run. It complements this gate;
 it never replaces it.
 
+## Reusable forms integrated checkpoint — 2026-08-26
+
+Candidate `31a673f1ecf24ca0ef93ab80f43d3ab37426db0a` passed the entire local
+fresh-product flight from an empty 131-migration database. Its generated coach
+published a starter form, assigned its exact immutable version to the generated
+client relationship, and the client saved a private draft through the rendered
+390-pixel product. The coach saw only draft progress, not answers. After the
+client submitted, the coach read the response. An independently created
+neighboring coach could not list the assignment and received 404 on direct
+mutation. The page did not overflow at phone width.
+
+That same uninterrupted candidate also passed fresh account creation,
+neighboring-tenant isolation, Session preparation, the practice command, an
+89.8-second two-endpoint call, consent, chat, two independently verified local
+sources, decoded-duration alignment, participant-attributed transcript and
+protected playback, shared/private work, light editing, private preview,
+explicit release/revocation, and automatic post-call audio readiness. The
+machine receipt is
+`artifacts/coaching-acceptance/2317b78e/fresh-coaching-flight-receipt.json`.
+
+This materially raises automated readiness. It still does not satisfy the
+cohort gate by itself: the run used a local mailbox adapter, fake browser media,
+controlled text-to-speech, and experienced test automation. Real mailbox
+delivery, physical devices, natural speech/listening, minimally instructed
+coach/client comprehension, and production-scale evidence remain required.
+
 ## Invitation delivery checkpoint — 2026-08-19
 
 The ordinary Session and Coaching interfaces now treat delivery as a product

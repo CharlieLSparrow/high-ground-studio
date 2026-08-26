@@ -1,6 +1,51 @@
 # Current State
 
-Date: 2026-08-24
+Date: 2026-08-26
+
+## Reusable coaching forms checkpoint
+
+- Coaching now has a phone-first Forms workspace for intake, preparation,
+  reflection, assessment, and feedback. A coach can add one of three calm
+  starting forms to a private library, send an immutable published version to
+  the exact active client relationship and optional Session, and read the
+  answer only after the client deliberately shares it.
+- Client drafts are private. Coaches can see that a draft is in progress but
+  cannot read its answers. Submission and later corrections create immutable
+  response revisions; a submitted form cannot be downgraded to a private draft.
+- Form reads and writes require the current coach/client relationship. A
+  neighboring coach cannot list or mutate another relationship's assignment,
+  and assignment retry/collision behavior is bound to request identity and
+  input hash. The forms lane deliberately does not create tasks, reminders,
+  messages, goals, or calendar activity as a hidden side effect.
+- The exact-commit clean flight at
+  `31a673f1ecf24ca0ef93ab80f43d3ab37426db0a` applied all 131 migrations from an
+  empty database and passed fresh signup, an adversarial neighboring tenant,
+  invitation and Session entry, consent, a two-endpoint 89.8-second call, two
+  immutable participant sources, decoded-duration alignment, attributed
+  transcript/playback, shared and private work, reusable forms, light editing,
+  private preview, release/revocation, and automatic post-call audio readiness.
+  Receipt: `artifacts/coaching-acceptance/2317b78e/fresh-coaching-flight-receipt.json`.
+- This is strong local operated evidence with rendered 390-pixel browser
+  surfaces and no product database writes. It is not physical-device,
+  real-mailbox, natural-speech, minimally instructed human, production-scale,
+  or live-deployment acceptance.
+- Detailed architecture and next extensions:
+  `docs/quipsly/coaching-forms.md`.
+
+## Decoded-duration alignment evidence checkpoint
+
+- Browser capture duration is provisional until immutable bytes are decoded.
+  The shared media contract now owns the deterministic window-fitting rule used
+  by both worker and registrar, instead of letting the worker silently adjust a
+  late correlation window that registration then rejects.
+- Any adjustment records requested windows, analyzed windows, exact decoded
+  durations, initial offset, and policy. Registration recomputes the fit and
+  fails closed if the receipt cannot be reproduced or no longer matches the
+  immutable job. Legacy receipts remain readable when their analyzed windows
+  exactly match the original proposal.
+- This repair was found by the full coaching flight, not the alignment unit
+  suite. Focused evidence, job, cloud-worker, media-processor, Quipsly type, and
+  Session-alignment tests pass, followed by the exact full flight above.
 
 ## Finite recurring coaching Session checkpoint
 
