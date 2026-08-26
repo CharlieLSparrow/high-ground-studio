@@ -26,7 +26,7 @@ test("fresh Session audio polish operation protects source truth and acceptance 
   assert.match(subject, /completedStateRecognizedAtEntry: initialState === "completed"/);
   assert.match(subject, /name: "Recording \+ transcript"/);
   assert.match(subject, /recordingAndTranscriptRenderedSideBySide: true/);
-  assert.match(subject, /correctionPlaybackStartedAutomatically: true/);
+  assert.match(subject, /correctionAvailableWithoutPlaybackGate: true/);
   assert.match(subject, /repeatedPlaybackAttestationAbsent: true/);
   assert.match(subject, /humanAcceptanceSatisfied: false/);
   assert.match(subject, /physicalDeviceProven: false/);

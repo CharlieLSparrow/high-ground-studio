@@ -405,7 +405,7 @@ async function operateRenderedSession({ baseURL, context, password }) {
     const transcriptDesk = page.locator("#transcript-correction-review");
     const packetReview = page.locator("#review-material");
     await transcriptDesk
-      .getByRole("heading", { name: "Review and edit the transcript" })
+      .getByRole("heading", { name: "Edit the transcript", exact: true })
       .waitFor({ timeout: 30_000 });
     await packetReview.waitFor({ timeout: 30_000 });
     const transcriptBox = await transcriptDesk.boundingBox();
@@ -422,7 +422,7 @@ async function operateRenderedSession({ baseURL, context, password }) {
     await editRecording.click();
     const inlineEditor = transcriptDesk.locator("#inline-recording-editor");
     await inlineEditor
-      .getByRole("heading", { name: "Trim, listen, then share" })
+      .getByRole("heading", { name: "Trim and share", exact: true })
       .waitFor({ timeout: 30_000 });
     assert(
       new URL(page.url()).searchParams.get("mode") === "transcript",
@@ -466,10 +466,10 @@ async function operateRenderedSession({ baseURL, context, password }) {
       .locator('[id^="transcript-segment-"]')
       .first();
     await firstPassage
-      .getByRole("button", { name: "Correct transcript", exact: true })
+      .getByRole("button", { name: "Edit transcript", exact: true })
       .click();
     await firstPassage
-      .getByText(/Recording checked from \d{2}:\d{2}/)
+      .getByText(/Save directly, or play the passage first when the audio will help/i)
       .waitFor({ timeout: 15_000 });
     assert(
       await firstPassage.getByRole("checkbox", { name: /listened/i }).count() === 0,
@@ -503,7 +503,7 @@ async function operateRenderedSession({ baseURL, context, password }) {
       recordingEditorOpenedInline: true,
       transcriptViewModesOperated: true,
       recordingAndTranscriptRenderedSideBySide: true,
-      correctionPlaybackStartedAutomatically: true,
+      correctionAvailableWithoutPlaybackGate: true,
       repeatedPlaybackAttestationAbsent: true,
     };
   } finally {

@@ -364,9 +364,9 @@ if (controlledSpeechFlight) {
     "The recording-plus-transcript workspace did not render side by side on a wide screen.",
   );
   assert.equal(
-    audioPolish?.correctionPlaybackStartedAutomatically,
+    audioPolish?.correctionAvailableWithoutPlaybackGate,
     true,
-    "Correcting a transcript passage did not begin evidence playback automatically.",
+    "Correcting a transcript passage was held behind mandatory playback.",
   );
   assert.equal(
     audioPolish?.repeatedPlaybackAttestationAbsent,
@@ -526,8 +526,8 @@ const result = {
           audioPolish.transcriptViewModesOperated,
         recordingAndTranscriptRenderedSideBySide:
           audioPolish.recordingAndTranscriptRenderedSideBySide,
-        correctionPlaybackStartedAutomatically:
-          audioPolish.correctionPlaybackStartedAutomatically,
+        correctionAvailableWithoutPlaybackGate:
+          audioPolish.correctionAvailableWithoutPlaybackGate,
         repeatedPlaybackAttestationAbsent:
           audioPolish.repeatedPlaybackAttestationAbsent,
       }
@@ -597,7 +597,7 @@ const result = {
         audioPolish?.recordingEditorOpenedInline === true &&
         audioPolish?.transcriptViewModesOperated === true &&
         audioPolish?.recordingAndTranscriptRenderedSideBySide === true &&
-        audioPolish?.correctionPlaybackStartedAutomatically === true &&
+        audioPolish?.correctionAvailableWithoutPlaybackGate === true &&
         audioPolish?.repeatedPlaybackAttestationAbsent === true,
       mentorTranscriptReport:
         transcript.mentorReport?.downloadedThroughRenderedUi === true &&
