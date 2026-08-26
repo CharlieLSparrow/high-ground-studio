@@ -12812,7 +12812,7 @@ private struct ProviderRoomControls: View {
                         ? "Reconnecting"
                         : model.providerRoom.isConnected
                             ? "Call in progress"
-                            : model.providerRoom.canRejoin
+                            : canRejoinSession
                                 ? "Call disconnected"
                                 : "Ready to join",
                     systemImage: model.providerRoom.isConnected
@@ -13085,7 +13085,7 @@ private struct ProviderRoomControls: View {
                                 ProgressView()
                             } else {
                                 Label(
-                                    model.providerRoom.canRejoin ? "Rejoin call" : "Join call",
+                                    canRejoinSession ? "Rejoin call" : "Join call",
                                     systemImage: "phone.fill"
                                 )
                             }
@@ -13095,7 +13095,7 @@ private struct ProviderRoomControls: View {
                     }
                     .buttonStyle(.borderedProminent)
                     .controlSize(.large)
-                    .disabled((providerControlsLocked && !model.providerRoom.canRejoin) || model.isChangingRoom || session.providerCanJoin != true)
+                    .disabled((providerControlsLocked && !canRejoinSession) || model.isChangingRoom || session.providerCanJoin != true)
                     .accessibilityHint(providerControlHint)
                     .accessibilityIdentifier("ProviderJoinRoomButton")
                 }
@@ -13187,6 +13187,10 @@ private struct ProviderRoomControls: View {
         model.providerRoom.isPermanentlyClosed(callRoomID: session.callRoomId)
     }
 
+    private var canRejoinSession: Bool {
+        model.providerRoom.canRejoin(callRoomID: session.callRoomId)
+    }
+
     private var cameraLobbyLabel: String {
         let permission = AVCaptureDevice.authorizationStatus(for: .video)
         if permission == .denied || permission == .restricted {
@@ -13232,7 +13236,7 @@ private struct ProviderRoomControls: View {
     private var providerControlHint: String {
         callPermanentlyClosed
             ? "The call is closed. Local source controls remain available."
-            : model.providerRoom.canRejoin
+            : canRejoinSession
             ? "Reconnects the conversation with the saved call-audio and microphone choices. Your local recording remains separate."
             : providerControlsLocked
             ? "Finish or stop the current take first."

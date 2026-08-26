@@ -4221,3 +4221,19 @@ rehearsal`) in an iPhone 17 Pro simulator. The signed-in UI acceptance opened
   continuous speaking, PCM/clock evidence, and exact-source playback across
   transient reconnect, exhausted disconnect, muted Rejoin, and deliberate
   system hang-up.
+
+### 2026-08-25 room-scoped native call recovery
+
+- Manual Rejoin is no longer a global provider-room boolean. Recovery stores
+  the exact disconnected `callRoomId`, and both the shipping UI and join
+  authority compare that identity with the currently displayed Session. A
+  participant cannot navigate elsewhere and accidentally borrow another
+  Session's route-lock bypass or closed-room handling.
+- CallKit reset now snapshots the affected room before asynchronous provider
+  teardown, treats the SDK disconnect as one intentional cleanup, and restores
+  a Rejoin affordance only for that room. Redundant late SDK-disconnected
+  callbacks cannot erase or broaden the scoped recovery result.
+- Static contracts cover the identity comparison and teardown ordering. The
+  deferred flight still requires a physical CallKit reset plus cross-Session
+  navigation to prove the original Session alone offers Rejoin and the retained
+  source remains playable.

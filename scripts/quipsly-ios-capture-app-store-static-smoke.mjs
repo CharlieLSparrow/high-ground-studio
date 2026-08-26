@@ -1764,7 +1764,14 @@ requireIncludes(providerRoomText, "case reconnectExhausted", "native CallKit cle
 requireIncludes(providerRoomText, "var protectsLocalSource: Bool", "native CallKit end policy keeps source protection separate from rejoin eligibility");
 requireIncludes(providerRoomText, "var allowsRejoin: Bool", "native CallKit end policy exposes manual-rejoin eligibility explicitly");
 requireIncludes(providerRoomText, "allowRejoin: reconnectWasExhausted", "provider reconnect exhaustion preserves the manual Rejoin path through CallKit cleanup");
-requireIncludes(providerRoomText, "self.canRejoin = shouldAllowRejoin", "CallKit's asynchronous end handler cannot erase the exhausted provider Rejoin state");
+requireIncludes(providerRoomText, "@Published private(set) var rejoinableCallRoomID", "manual Rejoin eligibility is scoped to the Session that actually disconnected");
+requireIncludes(providerRoomText, "func canRejoin(callRoomID: String) -> Bool", "native call recovery cannot unlock a different Session");
+requireIncludes(providerRoomText, "let rejoinCallRoomID = shouldAllowRejoin ? self.activeCallRoomID : nil", "CallKit cleanup snapshots the exact room before asynchronous teardown clears its live bridge");
+requireIncludes(providerRoomText, "self.rejoinableCallRoomID = rejoinCallRoomID", "CallKit's asynchronous end handler preserves only the exhausted room's Rejoin state");
+requireIncludes(providerRoomText, "let resetCallRoomID = self.activeCallRoomID", "CallKit reset snapshots the exact affected room before provider cleanup");
+requireIncludes(providerRoomText, "self.intentionalProviderDisconnect = true", "CallKit reset owns one deterministic recovery result rather than racing room-delegate inference");
+requireIncludes(captureExperienceModelText, "providerRoom.canRejoin(callRoomID: session.callRoomId)", "room preparation bypasses route locks only for the selected disconnected Session");
+requireIncludes(capturePhoneShellText, "model.providerRoom.canRejoin(callRoomID: session.callRoomId)", "the visible Rejoin affordance is scoped to the displayed Session");
 requireIncludes(providerRoomText, "self.intentionalProviderDisconnect = !shouldAllowRejoin", "provider-exhausted cleanup remains distinct from a deliberate person-owned hang-up");
 requireIncludes(providerRoomText, "didSubscribeTrack publication: RemoteTrackPublication", "native call refreshes its remote-video surface when a participant publishes video");
 requireIncludes(providerRoomText, "didUnsubscribeTrack publication: RemoteTrackPublication", "native call removes stale remote video when a participant stops video");

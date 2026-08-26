@@ -2378,7 +2378,7 @@ final class CaptureExperienceModel: ObservableObject {
         // ordinary route-change lock. The coordinator preserves the active
         // local-capture lease while source evidence records the call-transport
         // span without guessing what the independent local microphone retained.
-        if !providerRoom.canRejoin {
+        if !providerRoom.canRejoin(callRoomID: session.callRoomId) {
             guard providerControlsAreAvailable() else { return }
         }
         guard let ownerSnapshot = AuthManager.shared.stableOwnerSnapshot() else {
@@ -2420,7 +2420,7 @@ final class CaptureExperienceModel: ObservableObject {
             return
         }
         guard let join = preparedJoin else {
-            if providerRoom.canRejoin,
+            if providerRoom.canRejoin(callRoomID: session.callRoomId),
                sessionClient.roomJoinFailureCode == "ROOM_NOT_OPEN" {
                 providerRoom.markCallPermanentlyClosed(
                     callRoomID: session.callRoomId

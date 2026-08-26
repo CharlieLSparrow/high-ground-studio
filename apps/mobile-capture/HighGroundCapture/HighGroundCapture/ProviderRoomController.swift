@@ -49,7 +49,7 @@ final class ProviderRoomController: NSObject, ObservableObject {
     @Published var isConnecting = false
     @Published var isConnected = false
     @Published var isReconnecting = false
-    @Published private(set) var canRejoin = false
+    @Published private(set) var rejoinableCallRoomID: String?
     @Published private(set) var permanentlyClosedCallRoomID: String?
     @Published var isMuted = true
     @Published private(set) var usesCallAudio = false
@@ -88,8 +88,12 @@ final class ProviderRoomController: NSObject, ObservableObject {
         permanentlyClosedCallRoomID == callRoomID
     }
 
+    func canRejoin(callRoomID: String) -> Bool {
+        rejoinableCallRoomID == callRoomID
+    }
+
     func markCallPermanentlyClosed(callRoomID: String) {
-        canRejoin = false
+        rejoinableCallRoomID = nil
         permanentlyClosedCallRoomID = callRoomID
         connectionStateLabel = "Call ended"
         statusText = "This Session is closed. Your local recording remains separate and protected."
@@ -253,7 +257,7 @@ final class ProviderRoomController: NSObject, ObservableObject {
 
         isConnecting = true
         isReconnecting = false
-        canRejoin = false
+        rejoinableCallRoomID = nil
         intentionalProviderDisconnect = false
         if permanentlyClosedCallRoomID != session.callRoomId {
             permanentlyClosedCallRoomID = nil
@@ -340,7 +344,7 @@ final class ProviderRoomController: NSObject, ObservableObject {
                 : "Joined as a second device. Call audio stays on your other device."
         } catch {
             stopCallAudioMeter()
-            canRejoin = false
+            rejoinableCallRoomID = nil
             intentionalProviderDisconnect = true
             await room.disconnect()
             await endNativeCallPresentation(reason: .failed)
@@ -571,7 +575,7 @@ final class ProviderRoomController: NSObject, ObservableObject {
     }
 
     func disconnect() async {
-        canRejoin = false
+        rejoinableCallRoomID = nil
         intentionalProviderDisconnect = true
         #if canImport(LiveKit)
         await unpublishSharedCamera()
@@ -891,7 +895,7 @@ final class ProviderRoomController: NSObject, ObservableObject {
 
     private func abortForAccountChange() async {
         stopCallAudioMeter()
-        canRejoin = false
+        rejoinableCallRoomID = nil
         intentionalProviderDisconnect = true
         #if canImport(LiveKit)
         localVideoSource?.setLiveVideoFrameConsumer(nil)
@@ -922,7 +926,7 @@ final class ProviderRoomController: NSObject, ObservableObject {
     private func abortAfterCallAudioActivationFailure(_ error: Error) async {
         let technicalMessage = "Provider audio could not activate safely, so Quipsly left the room instead of showing a silent connection: \(error.localizedDescription)"
         stopCallAudioMeter()
-        canRejoin = false
+        rejoinableCallRoomID = nil
         intentionalProviderDisconnect = true
         #if canImport(LiveKit)
         localVideoSource?.setLiveVideoFrameConsumer(nil)
@@ -964,6 +968,13 @@ final class ProviderRoomController: NSObject, ObservableObject {
 extension ProviderRoomController: CXProviderDelegate {
     nonisolated func providerDidReset(_ provider: CXProvider) {
         Task { @MainActor in
+            let resetCallRoomID = self.activeCallRoomID
+            let shouldAllowRejoin = resetCallRoomID != nil
+                && self.permanentlyClosedCallRoomID != resetCallRoomID
+            // Treat the SDK disconnect as cleanup for this known CallKit
+            // reset. The room delegate must not independently infer a second
+            // reconnect outcome while this path owns recovery state.
+            self.intentionalProviderDisconnect = true
             #if canImport(LiveKit)
             self.localVideoSource?.setLiveVideoFrameConsumer(nil)
             if self.isConnected || self.isConnecting {
@@ -986,7 +997,10 @@ extension ProviderRoomController: CXProviderDelegate {
             self.connectionStateLabel = "Disconnected"
             self.activeOwnerSnapshot = nil
             self.clearEpisodeWatchBridge()
-            self.statusText = "CallKit reset the native call surface. Quipsly recording truth remains separate."
+            self.rejoinableCallRoomID = shouldAllowRejoin ? resetCallRoomID : nil
+            self.statusText = shouldAllowRejoin
+                ? "The iPhone call surface restarted. Your local recording remains protected; tap Rejoin call when ready."
+                : "CallKit reset the native call surface. Quipsly recording truth remains separate."
         }
     }
 
@@ -1005,13 +1019,14 @@ extension ProviderRoomController: CXProviderDelegate {
             self.pendingCallKitEndDisposition = nil
             let shouldProtectLocalSource = disposition.protectsLocalSource
             let shouldAllowRejoin = disposition.allowsRejoin
+            let rejoinCallRoomID = shouldAllowRejoin ? self.activeCallRoomID : nil
             let localSourceProtected: Bool
             if shouldProtectLocalSource {
                 localSourceProtected = await self.protectLocalSourceBeforeNativeCallEnd?() ?? true
             } else {
                 localSourceProtected = true
             }
-            self.canRejoin = shouldAllowRejoin
+            self.rejoinableCallRoomID = rejoinCallRoomID
             self.intentionalProviderDisconnect = !shouldAllowRejoin
             #if canImport(LiveKit)
             self.localVideoSource?.setLiveVideoFrameConsumer(nil)
@@ -1096,7 +1111,7 @@ extension ProviderRoomController: RoomDelegate {
                 self.isConnecting = false
                 self.isConnected = true
                 self.isReconnecting = false
-                self.canRejoin = false
+                self.rejoinableCallRoomID = nil
                 self.permanentlyClosedCallRoomID = nil
                 self.onCallTransportRestored?(Date())
                 self.lastError = nil
@@ -1109,15 +1124,26 @@ extension ProviderRoomController: RoomDelegate {
                 self.isConnecting = false
                 self.isConnected = true
                 self.isReconnecting = true
-                self.canRejoin = false
+                self.rejoinableCallRoomID = nil
                 self.onCallTransportInterrupted?(Date())
                 self.lastError = nil
                 self.lastTechnicalError = nil
                 self.connectionStateLabel = "Reconnecting"
                 self.statusText = "Reconnecting…"
             case .disconnected:
+                let disconnectedCallRoomID = self.activeCallRoomID
+                let ownedLiveRoomState = disconnectedCallRoomID != nil
+                    || self.isConnected
+                    || self.isConnecting
+                    || self.isReconnecting
+                guard ownedLiveRoomState else {
+                    // CallKit reset can finish its explicit teardown before a
+                    // redundant SDK-disconnected callback arrives. That stale
+                    // callback must not erase the room-scoped recovery result.
+                    return
+                }
                 let reconnectWasExhausted = !self.intentionalProviderDisconnect
-                    && self.activeCallRoomID != nil
+                    && disconnectedCallRoomID != nil
                 if reconnectWasExhausted {
                     // Some provider/server terminations move directly from
                     // connected to disconnected without a reconnecting event.
@@ -1140,7 +1166,12 @@ extension ProviderRoomController: RoomDelegate {
                 self.activeOwnerSnapshot = nil
                 self.clearEpisodeWatchBridge()
                 self.clearRemoteVideoTrack()
-                self.canRejoin = reconnectWasExhausted
+                if reconnectWasExhausted {
+                    self.rejoinableCallRoomID = disconnectedCallRoomID
+                } else if let disconnectedCallRoomID,
+                          self.rejoinableCallRoomID == disconnectedCallRoomID {
+                    self.rejoinableCallRoomID = nil
+                }
                 self.statusText = reconnectWasExhausted
                     ? "The call disconnected. Your recording is still protected on this iPhone. Tap Rejoin call when ready."
                     : "Provider room disconnected. Local recording and preserved uploads remain separate."
