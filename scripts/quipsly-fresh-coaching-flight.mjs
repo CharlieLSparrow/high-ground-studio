@@ -121,6 +121,12 @@ const preparation = await run(
   "QUIPSLY_FRESH_SESSION_PREPARATION_OPERATION",
   continuationEnv,
 );
+const practiceCommand = await run(
+  "Coach practice command, exact Session action, client boundary, and neighboring-practice isolation",
+  "scripts/quipsly-fresh-coaching-practice-command-operation.mjs",
+  "QUIPSLY_FRESH_COACHING_PRACTICE_COMMAND_OPERATION",
+  continuationEnv,
+);
 const artifactDirectory = path.dirname(start.contextPath);
 let controlledSpeech = null;
 if (controlledSpeechFlight) {
@@ -223,6 +229,7 @@ for (const [label, packet] of Object.entries({
   start,
   isolation,
   preparation,
+  practiceCommand,
   call,
   transcript,
   work,
@@ -403,6 +410,13 @@ const result = {
     && preparation.neighboringCoachDirectRouteDenied === true
     && preparation.exactRetryConverged === true
     && preparation.unrelatedSideEffectsAbsent === true,
+  coachPracticeCommandOperated:
+    practiceCommand.renderedPhoneWidthCommand === true
+    && practiceCommand.renderedNextActionOpenedExactSession === true
+    && practiceCommand.exactCoachProjectionOperated === true
+    && practiceCommand.clientCoachCommandAbsent === true
+    && practiceCommand.neighboringPracticeAbsent === true
+    && practiceCommand.neighboringCoachOwnPracticePreserved === true,
   participantsConnected: call.participantsConnected,
   independentParticipantSourcesVerified:
     call.independentParticipantSourcesVerified,
@@ -488,6 +502,11 @@ const result = {
       invitationHandoff:
         start.clientEntryCopiedFromRenderedProduct === true &&
         start.primaryInvitationActionAttempted === true,
+      coachPracticeCommand:
+        practiceCommand.renderedPhoneWidthCommand === true
+        && practiceCommand.renderedNextActionOpenedExactSession === true
+        && practiceCommand.clientCoachCommandAbsent === true
+        && practiceCommand.neighboringPracticeAbsent === true,
       oneTimeInvitationAcceptance:
         start.clientInvitationAcceptedThroughRenderedProduct === true,
       clientEntryAndReturn:
