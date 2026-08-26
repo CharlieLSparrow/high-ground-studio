@@ -4310,3 +4310,22 @@ rehearsal`) in an iPhone 17 Pro simulator. The signed-in UI acceptance opened
 - The focused browser room suite passes 37/37, full Quipsly TypeScript passes,
   and the shared Capture contract passes. Real two-person provider publication,
   audibility, and retained-source continuity remain flight-ledger evidence.
+
+### 2026-08-25 safe call-dock navigation
+
+- The persistent browser call dock no longer unmounts a room directly when a
+  person chooses **Leave & switch** or **Leave & close**. Those shell actions
+  now send a versioned safe-leave request into the actual room and wait for its
+  completion acknowledgement.
+- If a retained browser source is active, the existing room first requests its
+  stop, waits for the recorder to finish protecting it, disconnects provider
+  transport, and only then lets the dock mount the requested Session or close.
+  A disconnected call with a still-active source remains protected by the same
+  boundary.
+- The room reports protected-source state to the dock, so a Session cannot be
+  treated as replaceable merely because provider status says Ended. The switch
+  buttons expose a busy state and reject duplicate exit actions while the
+  handshake is in flight.
+- The combined room/dock suite passes 40/40 and full Quipsly TypeScript passes.
+  Real MediaRecorder finalization, offline recovery, upload, and cross-Session
+  navigation remain explicit flight evidence.

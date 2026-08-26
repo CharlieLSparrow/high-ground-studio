@@ -1410,6 +1410,8 @@ describe("LiveSessionRoom", () => {
   });
 
   it("stops and protects a retained source before leaving the call", async () => {
+    const onExitComplete = jest.fn();
+    const onProtectionChange = jest.fn();
     Object.defineProperty(navigator, "mediaDevices", {
       configurable: true,
       value: {
@@ -1440,14 +1442,16 @@ describe("LiveSessionRoom", () => {
       } as Response;
     }) as typeof fetch;
 
+    let rerender!: ReturnType<typeof render>["rerender"];
     await act(async () => {
-      render(<LiveSessionRoom callRoomId="room-safe-leave" captureGroupId="55555555-5555-4555-8555-555555555544" sessionTitle="Safe leave" kind="coaching" />);
+      ({ rerender } = render(<LiveSessionRoom callRoomId="room-safe-leave" captureGroupId="55555555-5555-4555-8555-555555555544" sessionTitle="Safe leave" kind="coaching" onProtectionChange={onProtectionChange} onExitComplete={onExitComplete} />));
     });
     fireEvent.click(screen.getByRole("button", { name: "Join call" }));
     expect(await screen.findByRole("button", { name: "Leave" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Simulate retained source start" }));
 
-    fireEvent.click(screen.getByRole("button", { name: "Stop recording & leave" }));
+    await waitFor(() => expect(onProtectionChange).toHaveBeenLastCalledWith(true));
+    rerender(<LiveSessionRoom callRoomId="room-safe-leave" captureGroupId="55555555-5555-4555-8555-555555555544" sessionTitle="Safe leave" kind="coaching" onProtectionChange={onProtectionChange} onExitComplete={onExitComplete} leaveRequestVersion={1} />);
 
     expect(await screen.findByText("Call ended")).toBeInTheDocument();
     expect(screen.getByTestId("call-status-message")).toHaveTextContent(
@@ -1456,6 +1460,8 @@ describe("LiveSessionRoom", () => {
     expect(screen.getByTestId("browser-source-conversation")).toHaveTextContent("lobby");
     expect(screen.getByTestId("browser-source-ended")).toHaveTextContent("ended");
     expect(mockLiveKitRoom.disconnect).toHaveBeenCalledWith(true);
+    expect(onProtectionChange).toHaveBeenLastCalledWith(false);
+    expect(onExitComplete).toHaveBeenCalledTimes(1);
   });
 
   it("keeps device testing and conversation available while missing capture identity holds retained recording", async () => {

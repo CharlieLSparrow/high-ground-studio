@@ -82,21 +82,25 @@ export function LiveSessionDockProvider({ children }: { children: ReactNode }) {
   const [pending, setPending] = useState<LiveSessionDockConfig | null>(null);
   const [isOpen, setIsOpen] = useState(false);
   const [status, setStatus] = useState<LiveSessionRoomStatus>("preflight");
+  const [sourceProtected, setSourceProtected] = useState(false);
   const [showLeaveDecision, setShowLeaveDecision] = useState(false);
+  const [exitIntent, setExitIntent] = useState<"close" | "switch" | null>(null);
+  const [leaveRequestVersion, setLeaveRequestVersion] = useState(0);
 
   const requestSession = useCallback((config: LiveSessionDockConfig, requestOpen: boolean) => {
     setActive((current) => {
       if (!current || sameSession(current, config)) return config;
       if (!requestOpen) return current;
-      if (callIsActive(status)) {
+      if (callIsActive(status) || sourceProtected) {
         setPending(config);
         return current;
       }
       setStatus("preflight");
+      setSourceProtected(false);
       return config;
     });
     if (requestOpen) setIsOpen(true);
-  }, [status]);
+  }, [sourceProtected, status]);
 
   const register = useCallback((config: LiveSessionDockConfig, options?: { requestOpen?: boolean }) => {
     requestSession(config, options?.requestOpen === true);
@@ -112,31 +116,45 @@ export function LiveSessionDockProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const requestClose = useCallback(() => {
-    if (callIsActive(status)) {
+    if (callIsActive(status) || sourceProtected) {
       setIsOpen(true);
       setShowLeaveDecision(true);
       return;
     }
     setActive(null);
     setIsOpen(false);
-  }, [status]);
+  }, [sourceProtected, status]);
 
   const leaveAndClose = useCallback(() => {
     setShowLeaveDecision(false);
-    setPending(null);
-    setActive(null);
-    setIsOpen(false);
-    setStatus("ended");
+    setExitIntent("close");
+    setLeaveRequestVersion((version) => version + 1);
   }, []);
 
   const switchSession = useCallback(() => {
-    if (!pending) return;
-    setActive(pending);
-    setPending(null);
+    if (!pending || exitIntent) return;
     setShowLeaveDecision(false);
-    setStatus("preflight");
-    setIsOpen(true);
-  }, [pending]);
+    setExitIntent("switch");
+    setLeaveRequestVersion((version) => version + 1);
+  }, [exitIntent, pending]);
+
+  const finishRequestedExit = useCallback(() => {
+    if (!exitIntent) return;
+    if (exitIntent === "switch" && pending) {
+      setActive(pending);
+      setPending(null);
+      setStatus("preflight");
+      setSourceProtected(false);
+      setIsOpen(true);
+    } else {
+      setPending(null);
+      setActive(null);
+      setIsOpen(false);
+      setStatus("ended");
+      setSourceProtected(false);
+    }
+    setExitIntent(null);
+  }, [exitIntent, pending]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -206,8 +224,8 @@ export function LiveSessionDockProvider({ children }: { children: ReactNode }) {
                 <p className="flex items-center gap-2 text-xs font-black uppercase tracking-wide"><Repeat2 size={15} /> Another Session requested</p>
                 <p className="mt-2 text-sm font-semibold">Leave <strong>{active.sessionTitle}</strong> and open <strong>{pending.sessionTitle}</strong>?</p>
                 <div className="mt-3 flex flex-wrap gap-2">
-                  <button type="button" onClick={switchSession} className="min-h-10 rounded-full bg-amber-950 px-4 text-xs font-black text-white">Leave & switch</button>
-                  <button type="button" onClick={() => setPending(null)} className="min-h-10 rounded-full border border-amber-400 bg-white px-4 text-xs font-black">Stay here</button>
+                  <button type="button" onClick={switchSession} disabled={Boolean(exitIntent)} className="min-h-10 rounded-full bg-amber-950 px-4 text-xs font-black text-white disabled:cursor-wait disabled:opacity-60">{exitIntent === "switch" ? "Protecting & switching…" : "Leave & switch"}</button>
+                  <button type="button" onClick={() => setPending(null)} disabled={Boolean(exitIntent)} className="min-h-10 rounded-full border border-amber-400 bg-white px-4 text-xs font-black disabled:opacity-50">Stay here</button>
                 </div>
               </section>
             ) : null}
@@ -217,7 +235,7 @@ export function LiveSessionDockProvider({ children }: { children: ReactNode }) {
                 <p className="flex items-center gap-2 text-xs font-black uppercase tracking-wide"><PhoneOff size={15} /> Leave this live call?</p>
                 <p className="mt-2 text-sm font-semibold">Closing disconnects this browser. Minimizing keeps the mic, camera, participant audio, and local source controls alive.</p>
                 <div className="mt-3 flex flex-wrap gap-2">
-                  <button type="button" onClick={leaveAndClose} className="min-h-10 rounded-full bg-rose-900 px-4 text-xs font-black text-white">Leave & close</button>
+                  <button type="button" onClick={leaveAndClose} disabled={Boolean(exitIntent)} className="min-h-10 rounded-full bg-rose-900 px-4 text-xs font-black text-white disabled:cursor-wait disabled:opacity-60">{exitIntent === "close" ? "Protecting & closing…" : "Leave & close"}</button>
                   <button type="button" onClick={minimize} className="min-h-10 rounded-full border border-rose-300 bg-white px-4 text-xs font-black">Keep call & minimize</button>
                 </div>
               </section>
@@ -234,6 +252,9 @@ export function LiveSessionDockProvider({ children }: { children: ReactNode }) {
                 projectSlug={active.projectSlug || null}
                 episodeSlug={active.episodeSlug || null}
                 onStatusChange={setStatus}
+                onProtectionChange={setSourceProtected}
+                leaveRequestVersion={leaveRequestVersion}
+                onExitComplete={finishRequestedExit}
                 compact
                 narrow
               />

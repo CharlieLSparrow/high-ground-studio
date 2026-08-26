@@ -453,6 +453,9 @@ export function LiveSessionRoom({
   episodeWatchHint = null,
   onEpisodeWatchHint,
   onStatusChange,
+  onProtectionChange,
+  leaveRequestVersion = 0,
+  onExitComplete,
   compact = false,
   narrow = false,
 }: {
@@ -466,6 +469,9 @@ export function LiveSessionRoom({
   episodeWatchHint?: EpisodeWatchLiveHint | null;
   onEpisodeWatchHint?: (hint: EpisodeWatchLiveHint) => void;
   onStatusChange?: (status: LiveSessionRoomStatus) => void;
+  onProtectionChange?: (protectedSourceActive: boolean) => void;
+  leaveRequestVersion?: number;
+  onExitComplete?: () => void;
   compact?: boolean;
   narrow?: boolean;
 }) {
@@ -538,6 +544,7 @@ export function LiveSessionRoom({
   const meterCleanupRef = useRef<(() => void) | null>(null);
   const audioMeterGenerationRef = useRef(0);
   const automaticPreviewAttemptedRef = useRef(false);
+  const lastLeaveRequestVersionRef = useRef(leaveRequestVersion);
   const providerRecordingRequestIdsRef = useRef<Record<"START_EGRESS" | "STOP_EGRESS", string | undefined>>({
     START_EGRESS: undefined,
     STOP_EGRESS: undefined,
@@ -656,6 +663,10 @@ export function LiveSessionRoom({
   useEffect(() => {
     onStatusChange?.(status);
   }, [onStatusChange, status]);
+
+  useEffect(() => {
+    onProtectionChange?.(sourceLocked || leaveAfterSourceStops);
+  }, [leaveAfterSourceStops, onProtectionChange, sourceLocked]);
 
   const updateRoster = useCallback((room: Room) => {
     const active = new Set(room.activeSpeakers.map((participant) => participant.identity));
@@ -1317,7 +1328,8 @@ export function LiveSessionRoom({
         ? "Call ended. Your local recording is protected. Keep Quipsly open until the recording panel says Safe to close."
         : "You left the call.",
     );
-  }, [attachLocalCameraTrack, clearPreflightPreview, clearRemoteMedia]);
+    onExitComplete?.();
+  }, [attachLocalCameraTrack, clearPreflightPreview, clearRemoteMedia, onExitComplete]);
 
   const leave = useCallback(async () => {
     if (sourceLocked) {
@@ -1334,6 +1346,15 @@ export function LiveSessionRoom({
     setLeaveAfterSourceStops(false);
     completeLeave(true);
   }, [completeLeave, leaveAfterSourceStops, sourceLocked]);
+
+  useEffect(() => {
+    if (
+      leaveRequestVersion <= 0
+      || leaveRequestVersion === lastLeaveRequestVersionRef.current
+    ) return;
+    lastLeaveRequestVersionRef.current = leaveRequestVersion;
+    void leave();
+  }, [leave, leaveRequestVersion]);
 
   const join = useCallback(async () => {
     const recoveringCall = callRecoveryAvailable;

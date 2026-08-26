@@ -11,6 +11,7 @@ import {
 const mockRoomLifecycle = {
   mounted: jest.fn(),
   unmounted: jest.fn(),
+  leaveRequested: jest.fn(),
 };
 
 jest.mock("./live-session-room", () => ({
@@ -18,13 +19,29 @@ jest.mock("./live-session-room", () => ({
     callRoomId,
     captureGroupId,
     onStatusChange,
+    onProtectionChange,
+    leaveRequestVersion = 0,
+    onExitComplete,
   }: {
     callRoomId: string;
     captureGroupId: string;
     onStatusChange?: (status: string) => void;
+    onProtectionChange?: (protectedSourceActive: boolean) => void;
+    leaveRequestVersion?: number;
+    onExitComplete?: () => void;
   }) => {
     const mountedRoomId = useRef(callRoomId).current;
+    const handledLeaveRequest = useRef(0);
     useEffect(() => onStatusChange?.("connected"), [onStatusChange]);
+    useEffect(() => onProtectionChange?.(true), [onProtectionChange]);
+    useEffect(() => {
+      if (leaveRequestVersion <= 0 || leaveRequestVersion === handledLeaveRequest.current) return;
+      handledLeaveRequest.current = leaveRequestVersion;
+      mockRoomLifecycle.leaveRequested(mountedRoomId);
+      onProtectionChange?.(false);
+      onStatusChange?.("ended");
+      onExitComplete?.();
+    }, [leaveRequestVersion, mountedRoomId, onExitComplete, onProtectionChange, onStatusChange]);
     useEffect(() => {
       mockRoomLifecycle.mounted(mountedRoomId);
       return () => mockRoomLifecycle.unmounted(mountedRoomId);
@@ -64,6 +81,7 @@ describe("LiveSessionDockProvider", () => {
   beforeEach(() => {
     mockRoomLifecycle.mounted.mockClear();
     mockRoomLifecycle.unmounted.mockClear();
+    mockRoomLifecycle.leaveRequested.mockClear();
   });
 
   it("keeps the real room mounted while the controls are minimized", async () => {
@@ -121,7 +139,11 @@ describe("LiveSessionDockProvider", () => {
     await user.click(screen.getByRole("button", { name: "Leave & switch" }));
     expect(await screen.findByTestId("live-room-coaching-session-2")).toBeInTheDocument();
     expect(screen.queryByTestId("live-room-episode-session-1")).not.toBeInTheDocument();
+    expect(mockRoomLifecycle.leaveRequested).toHaveBeenCalledWith("episode-session-1");
     expect(mockRoomLifecycle.unmounted).toHaveBeenCalledWith("episode-session-1");
     expect(mockRoomLifecycle.mounted).toHaveBeenCalledWith("coaching-session-2");
+    expect(mockRoomLifecycle.leaveRequested.mock.invocationCallOrder[0]).toBeLessThan(
+      mockRoomLifecycle.unmounted.mock.invocationCallOrder[0],
+    );
   });
 });
