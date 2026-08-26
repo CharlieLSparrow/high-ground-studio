@@ -23,7 +23,7 @@ test("fresh coaching flight retains a private receipt without claiming human acc
   );
   assert.match(source, /coachAndClientTenantIsolationOperated:/);
   assert.match(source, /authorizedListsAndUnauthorizedDirectProbes:/);
-  assert.match(source, /neighboringTenantDataPresentDuringIsolationProof:/);
+  assert.match(source, /adversarialNeighborCreatedThroughRenderedProduct:/);
   assert.match(source, /unrelatedPodcastLeakageObserved:/);
   assert.match(source, /interactionSurfaceEvidence:/);
   assert.match(source, /automaticCoachDefaultsOperated:/);

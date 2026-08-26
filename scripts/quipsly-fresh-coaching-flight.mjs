@@ -541,8 +541,8 @@ const result = {
     combinedReceiptIsNotPureUIAutomation: true,
     localInvitationDeliveryBoundaryUsed:
       start.localInvitationDeliveryReceiptRecorded === true,
-    neighboringTenantDataPresentDuringIsolationProof:
-      isolation.boundaries?.localRetainedDatabaseHadNeighboringTenantData === true,
+    adversarialNeighborCreatedThroughRenderedProduct:
+      isolation.boundaries?.adversarialNeighborCreatedThroughRenderedProduct === true,
     unrelatedPodcastLeakageObserved:
       isolation.unrelatedPodcastLeakageObserved === true,
     privateTestArtifactLeakageObserved:
