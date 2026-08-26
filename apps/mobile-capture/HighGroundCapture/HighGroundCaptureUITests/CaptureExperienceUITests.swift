@@ -1393,38 +1393,26 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(boundary.label.contains("not sent"))
     }
 
-    func testPacketNoteLanesExposeSourceTruthAndKeepPreviewReviewReadOnly() {
+    func testTranscriptFollowThroughAppearsAsOrdinaryEditableSessionWork() {
         app.tabBars.buttons["Record"].tap()
-        let lanesToggle = app.descendants(matching: .any)["CapturePacketReviewLanesToggle"].firstMatch
-        reveal(lanesToggle)
-        XCTAssertTrue(lanesToggle.isHittable)
-        XCTAssertTrue(lanesToggle.label.contains("Follow-up suggestions"))
-        XCTAssertFalse(lanesToggle.label.contains("Packet review"))
-        lanesToggle.tap()
-
-        let clientLane = app.descendants(matching: .any)["CapturePacketReviewLane_client-follow-up"].firstMatch
-        reveal(clientLane)
-        XCTAssertTrue(clientLane.waitForExistence(timeout: 5))
+        let results = app.descendants(matching: .any)["CaptureSessionResults"].firstMatch
+        reveal(results)
+        XCTAssertTrue(results.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Session results"].exists)
+        XCTAssertTrue(app.staticTexts["1 notes · 1 tasks · 1 goals"].exists)
+        XCTAssertTrue(app.staticTexts["What matters now"].exists)
+        XCTAssertTrue(app.buttons["CaptureSessionResultTask_preview-result-task"].exists)
+        XCTAssertTrue(app.buttons["CaptureSessionResultGoal_preview-result-goal"].exists)
+        let openNotes = app.buttons["CaptureSessionResultsOpenNotes"]
+        reveal(openNotes)
+        XCTAssertTrue(openNotes.isHittable)
+        XCTAssertFalse(
+            app.descendants(matching: .any)["CapturePacketReviewLanesToggle"].exists,
+            "Modern transcript work must not become a second approval queue."
+        )
         XCTAssertTrue(app.staticTexts.matching(
-            NSPredicate(format: "label CONTAINS %@", "nothing is shared with the client")
+            NSPredicate(format: "label CONTAINS %@", "Adjust or remove them like any other work")
         ).firstMatch.exists)
-        XCTAssertTrue(app.descendants(matching: .any)["CapturePacketReviewEmptyLaneSummary"].exists)
-        XCTAssertFalse(app.descendants(matching: .any)["CapturePacketReviewLane_empty-quotes"].exists)
-        clientLane.tap()
-
-        XCTAssertTrue(app.descendants(matching: .any)["CapturePacketLaneReviewSheet"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts.matching(
-            NSPredicate(format: "label CONTAINS %@", "Derived from transcript packet summary evidence only")
-        ).firstMatch.exists)
-        XCTAssertTrue(app.staticTexts.matching(
-            NSPredicate(format: "label CONTAINS %@", "does not create a note, task, or goal")
-        ).firstMatch.exists)
-        let approve = app.buttons["CapturePacketLaneApprove"].firstMatch
-        reveal(approve)
-        XCTAssertTrue(approve.exists)
-        XCTAssertEqual(approve.label, "Keep for follow-up")
-        XCTAssertFalse(approve.isEnabled, "Preview must demonstrate lane review without mutating saved packet state.")
-        XCTAssertTrue(app.staticTexts["Preview shows the real review workflow without keeping any suggestion."].exists)
     }
 
     func testCanonicalSessionNoteEditMakesRevisionAudienceAndNestTagsObviousWithoutFakingPreviewWrites() {

@@ -3455,7 +3455,7 @@ extension MobileCaptureSession {
                 consentGranted: true,
                 scheduledStart: ISO8601DateFormatter().string(from: coachingStart),
                 scheduledEnd: ISO8601DateFormatter().string(from: coachingStart.addingTimeInterval(50 * 60)),
-                packetReviewLanes: capturePreviewPacketReviewLanes,
+                transcriptResults: capturePreviewTranscriptResults,
                 clientFollowUpWorkspace: capturePreviewClientFollowUpWorkspace
             ),
             capturePreview(
@@ -3573,7 +3573,7 @@ extension MobileCaptureSession {
         scheduledStart: String?,
         scheduledEnd: String? = nil,
         captureSources: [MobileCaptureSourceSummary] = [],
-        packetReviewLanes: [MobileCapturePacketReviewLane] = [],
+        transcriptResults: MobileCaptureTranscriptResults? = nil,
         clientFollowUpWorkspace: MobileCaptureClientFollowUpWorkspace? = nil
     ) -> MobileCaptureSession {
         let appStoreCoachingPresentation = CaptureLaunchConfiguration.usesAppStorePresentation
@@ -3689,19 +3689,20 @@ extension MobileCaptureSession {
                 : captureSources.allSatisfy(\.isPromotedToStudio)
                     ? "promoted"
                     : "ready-to-promote",
-            latestTranscriptJobId: packetReviewLanes.isEmpty ? nil : "preview-transcript-job",
-            latestTranscriptStatus: packetReviewLanes.isEmpty ? nil : "COMPLETED",
-            latestTranscriptProvider: packetReviewLanes.isEmpty ? nil : "preview-provider",
-            latestTranscriptSegmentCount: packetReviewLanes.isEmpty ? nil : 3,
-            coachingPacketSummaryNoteId: packetReviewLanes.isEmpty ? nil : "preview-packet-summary",
-            coachingPacketTitle: packetReviewLanes.isEmpty ? nil : "Source-grounded Session brief",
-            coachingPacketPreview: packetReviewLanes.isEmpty ? nil : "Review each purpose lane before creating canonical work.",
-            coachingPacketHighlightCount: packetReviewLanes.isEmpty ? nil : 1,
-            coachingPacketActionItemCount: packetReviewLanes.isEmpty ? nil : 0,
-            coachingPacketLatestActivityAt: packetReviewLanes.isEmpty ? nil : ISO8601DateFormatter().string(from: Date()),
-            coachingPacketFirstOpenActionItemId: nil,
-            coachingPacketStatus: packetReviewLanes.isEmpty ? nil : "RESULTS_READY",
-            coachingPacketReviewLanes: packetReviewLanes.isEmpty ? nil : packetReviewLanes,
+            latestTranscriptJobId: transcriptResults == nil ? nil : "preview-transcript-job",
+            latestTranscriptStatus: transcriptResults == nil ? nil : "COMPLETED",
+            latestTranscriptProvider: transcriptResults == nil ? nil : "preview-provider",
+            latestTranscriptSegmentCount: transcriptResults == nil ? nil : 3,
+            coachingPacketSummaryNoteId: transcriptResults == nil ? nil : "preview-packet-summary",
+            coachingPacketTitle: transcriptResults?.summary.title,
+            coachingPacketPreview: transcriptResults?.summary.body,
+            coachingPacketHighlightCount: transcriptResults?.notes.count,
+            coachingPacketActionItemCount: transcriptResults?.tasks.count,
+            coachingPacketLatestActivityAt: transcriptResults == nil ? nil : ISO8601DateFormatter().string(from: Date()),
+            coachingPacketFirstOpenActionItemId: transcriptResults?.tasks.first?.id,
+            coachingPacketStatus: transcriptResults == nil ? nil : "RESULTS_READY",
+            coachingPacketReviewLanes: nil,
+            coachingTranscriptResults: transcriptResults,
             clientFollowUpWorkspace: clientFollowUpWorkspace,
             canUseProjectTeamNotes: true,
             sessionNotes: [
@@ -3745,65 +3746,55 @@ extension MobileCaptureSession {
         )
     }
 
-    private static var capturePreviewPacketReviewLanes: [MobileCapturePacketReviewLane] {
-        [
-            MobileCapturePacketReviewLane(
-                id: "client-follow-up",
-                label: "Client follow-up notes",
-                status: "READY_FOR_HUMAN_REVIEW",
-                itemCount: 1,
-                meaning: "Candidate recap material for the client or coachee.",
-                sourceTruth: "Derived from transcript packet summary evidence only.",
-                reviewRule: "Human approval is required before client delivery.",
-                humanApprovalRequired: true,
-                externalSideEffects: false,
-                humanReview: nil
+    private static var capturePreviewTranscriptResults: MobileCaptureTranscriptResults {
+        let source = MobileCaptureTranscriptResultSource(
+            segmentId: "preview-segment",
+            startSeconds: 3.66,
+            endSeconds: 4.84,
+            speakerLabel: "Charlie"
+        )
+        return MobileCaptureTranscriptResults(
+            automaticallyCreated: true,
+            editable: true,
+            removable: true,
+            summary: MobileCaptureTranscriptResultSummary(
+                id: "preview-packet-summary",
+                title: "Coaching Session recap",
+                body: "The client chose one clear next move and named the support that will make it easier to follow through."
             ),
-            MobileCapturePacketReviewLane(
-                id: "goals-and-tasks",
-                label: "Goals and tasks",
-                status: "NEEDS_REVISION",
-                itemCount: 1,
-                meaning: "Candidate commitments that may become tasks, goals, or next-session prep.",
-                sourceTruth: "Derived from transcript-backed candidates that are not committed work.",
-                reviewRule: "Review candidate by candidate before assigning or promising work.",
-                humanApprovalRequired: true,
-                externalSideEffects: false,
-                humanReview: MobileCapturePacketLaneHumanReview(
-                    status: "NEEDS_REVISION",
-                    note: "Clarify ownership before committing anything.",
-                    reviewedAt: "2026-08-01T12:00:00Z",
-                    reviewedByUserId: "preview-reviewer",
-                    externalSideEffects: false,
-                    deliveryClaimed: false,
-                    publicationClaimed: false
-                )
-            ),
-            MobileCapturePacketReviewLane(
-                id: "podcast-production",
-                label: "Podcast production",
-                status: "READY_FOR_HUMAN_REVIEW",
-                itemCount: 1,
-                meaning: "Candidate clips, beats, and production notes for an episode.",
-                sourceTruth: "Derived from the same transcript packet; no edit or publication is implied.",
-                reviewRule: "A producer must review before routing anything into Studio.",
-                humanApprovalRequired: true,
-                externalSideEffects: false,
-                humanReview: nil
-            ),
-            MobileCapturePacketReviewLane(
-                id: "empty-quotes",
-                label: "Quote candidates",
-                status: "EMPTY",
-                itemCount: 0,
-                meaning: "Candidate quotes for deliberate editorial review.",
-                sourceTruth: "No source-linked quote candidates were found.",
-                reviewRule: "Empty categories have no decision controls.",
-                humanApprovalRequired: true,
-                externalSideEffects: false,
-                humanReview: nil
-            ),
-        ]
+            notes: [
+                MobileCaptureTranscriptResultNote(
+                    id: "preview-result-note",
+                    title: "What matters now",
+                    body: "Protect time for the first concrete step before the next Session.",
+                    source: source
+                ),
+            ],
+            tasks: [
+                MobileCaptureTranscriptResultTask(
+                    id: "preview-result-task",
+                    title: "Block 30 minutes for the first step",
+                    detail: "Put the first attempt on the calendar this week.",
+                    status: "OPEN",
+                    assignedUserId: "preview-client",
+                    dueAt: nil,
+                    completedAt: nil,
+                    source: source
+                ),
+            ],
+            goals: [
+                MobileCaptureTranscriptResultGoal(
+                    id: "preview-result-goal",
+                    title: "Build a repeatable weekly practice",
+                    description: "Start small enough to keep the commitment consistently.",
+                    status: "ACTIVE",
+                    ownerUserId: "preview-client",
+                    targetAt: nil,
+                    achievedAt: nil,
+                    source: source
+                ),
+            ]
+        )
     }
 
     private static var capturePreviewClientFollowUpWorkspace: MobileCaptureClientFollowUpWorkspace {

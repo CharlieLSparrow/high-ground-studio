@@ -6861,11 +6861,41 @@ private struct CaptureRecorderView: View {
                         )
                     }
 
-                    // Follow-through remains a primary Session outcome, but it
-                    // must never sit between the live call and the controls that
-                    // grant consent or preserve the participant-owned source.
-                    // Outside an active/local recording workspace it remains
-                    // directly beneath the ordinary call lobby.
+                    // Generated notes, tasks, and goals are the primary outcome
+                    // of a completed coaching session. Put the ordinary editable
+                    // work before the secondary client-sharing workflow so a
+                    // coach can act immediately without clearing a review lane.
+                    CaptureSessionResultsCard(
+                        session: session,
+                        onOpenNotes: {
+                            sessionNotesSession = session
+                        },
+                        onOpenTask: { task in
+                            if let projectID = session.projectId {
+                                model.requestWorkNavigation(
+                                    kind: .task,
+                                    entityID: task.id,
+                                    title: task.title,
+                                    projectID: projectID
+                                )
+                            }
+                            visibleTab = .work
+                        },
+                        onOpenGoal: { goal in
+                            if let projectID = session.projectId {
+                                model.requestWorkNavigation(
+                                    kind: .goal,
+                                    entityID: goal.id,
+                                    title: goal.title,
+                                    projectID: projectID
+                                )
+                            }
+                            visibleTab = .work
+                        }
+                    )
+
+                    // Sharing stays directly available, but remains optional.
+                    // It never blocks the automatically created Session work.
                     if session.clientFollowUpWorkspace?.isCoach == true {
                         MobileCoachClientFollowUpCard(
                             session: session,
@@ -6931,35 +6961,6 @@ private struct CaptureRecorderView: View {
                             }
                         }
                     }
-
-                    CaptureSessionResultsCard(
-                        session: session,
-                        onOpenNotes: {
-                            sessionNotesSession = session
-                        },
-                        onOpenTask: { task in
-                            if let projectID = session.projectId {
-                                model.requestWorkNavigation(
-                                    kind: .task,
-                                    entityID: task.id,
-                                    title: task.title,
-                                    projectID: projectID
-                                )
-                            }
-                            visibleTab = .work
-                        },
-                        onOpenGoal: { goal in
-                            if let projectID = session.projectId {
-                                model.requestWorkNavigation(
-                                    kind: .goal,
-                                    entityID: goal.id,
-                                    title: goal.title,
-                                    projectID: projectID
-                                )
-                            }
-                            visibleTab = .work
-                        }
-                    )
 
                     CaptureSessionTranscriptReviewCard(
                         session: session,
@@ -8426,226 +8427,6 @@ private struct CaptureSessionFollowUpStatus: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .fixedSize(horizontal: false, vertical: true)
         .accessibilityIdentifier("CaptureSessionSyncStatus")
-    }
-}
-
-private struct CapturePacketReviewLanesCard: View {
-    let session: MobileCaptureSession
-    @ObservedObject var model: CaptureExperienceModel
-    @State private var isExpanded = false
-    @State private var selectedLane: MobileCapturePacketReviewLane?
-
-    private var lanes: [MobileCapturePacketReviewLane] {
-        if let saved = session.coachingPacketReviewLanes, !saved.isEmpty {
-            return saved
-        }
-        guard model.sessionClient.latestPacketBuildResponse?.roomId == session.callRoomId else {
-            return []
-        }
-        return model.sessionClient.latestPacketBuildResponse?.reviewLanes ?? []
-    }
-
-    private var actionableLanes: [MobileCapturePacketReviewLane] {
-        lanes.filter { ($0.itemCount ?? 0) > 0 }
-    }
-
-    private var emptyLanes: [MobileCapturePacketReviewLane] {
-        lanes.filter { ($0.itemCount ?? 0) <= 0 }
-    }
-
-    var body: some View {
-        if session.coachingPacketSummaryNoteId != nil || !lanes.isEmpty {
-            DisclosureGroup(isExpanded: $isExpanded) {
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("Quipsly grouped private suggestions from the conversation. Open a group to keep, revise, or dismiss it; nothing is shared with the client from here.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-
-                    if actionableLanes.isEmpty {
-                        Text(lanes.isEmpty
-                            ? "No follow-up suggestions are ready yet. Quipsly will not invent or keep anything on your behalf."
-                            : "There are no suggestions to review in these groups.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-
-                    ForEach(actionableLanes) { lane in
-                        Button {
-                            selectedLane = lane
-                        } label: {
-                            VStack(alignment: .leading, spacing: 6) {
-                                HStack(alignment: .firstTextBaseline) {
-                                    Text(lane.titleLabel)
-                                        .font(.subheadline.weight(.bold))
-                                    Spacer(minLength: 8)
-                                    Text(lane.displayStatus)
-                                        .font(.caption2.weight(.bold))
-                                        .foregroundStyle(.secondary)
-                                        .multilineTextAlignment(.trailing)
-                                }
-                                if let meaning = lane.meaning?.nonempty {
-                                    Text(meaning)
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                        .multilineTextAlignment(.leading)
-                                        .fixedSize(horizontal: false, vertical: true)
-                                }
-                                Text(lane.boundaryLine)
-                                    .font(.caption2.weight(.semibold))
-                                    .foregroundStyle(CapturePalette.accent)
-                                    .multilineTextAlignment(.leading)
-                                    .fixedSize(horizontal: false, vertical: true)
-                            }
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(10)
-                            .background(Color.purple.opacity(0.06), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityIdentifier("CapturePacketReviewLane_\(lane.id)")
-                    }
-
-                    if !emptyLanes.isEmpty {
-                        Text("Nothing suggested for: \(emptyLanes.map(\.titleLabel).joined(separator: " · ")).")
-                            .font(.caption2.weight(.semibold))
-                            .foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .accessibilityIdentifier("CapturePacketReviewEmptyLaneSummary")
-                    }
-
-                    Text("Private review only · keeping a group does not create work or send anything")
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                .padding(.top, 8)
-            } label: {
-                Label("Follow-up suggestions (\(actionableLanes.count))", systemImage: "list.bullet.clipboard")
-                    .font(.subheadline.weight(.semibold))
-                    .accessibilityIdentifier("CapturePacketReviewLanesToggle")
-            }
-            .captureCard()
-            .sheet(item: $selectedLane) { lane in
-                CapturePacketLaneReviewSheet(session: session, lane: lane, model: model)
-            }
-        }
-    }
-}
-
-private struct CapturePacketLaneReviewSheet: View {
-    let session: MobileCaptureSession
-    let lane: MobileCapturePacketReviewLane
-    @ObservedObject var model: CaptureExperienceModel
-    @Environment(\.dismiss) private var dismiss
-    @State private var note: String
-    @State private var isSaving = false
-
-    init(session: MobileCaptureSession, lane: MobileCapturePacketReviewLane, model: CaptureExperienceModel) {
-        self.session = session
-        self.lane = lane
-        self.model = model
-        _note = State(initialValue: lane.humanReview?.note ?? "")
-    }
-
-    private var canSave: Bool {
-        (lane.itemCount ?? 0) > 0
-            && !model.usesPreviewData
-            && !model.isSessionContextLocked
-            && AuthManager.shared.networkActionsAllowed
-            && !isSaving
-    }
-
-    var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    Text("Follow-up suggestion group")
-                        .font(.caption.weight(.bold))
-                        .foregroundStyle(.secondary)
-                        .accessibilityIdentifier("CapturePacketLaneReviewSheet")
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text(lane.displayStatus)
-                            .font(.caption.weight(.bold))
-                            .foregroundStyle(.secondary)
-                        Text(lane.meaning?.nonempty ?? "Review this source-grounded packet lane.")
-                            .font(.body.weight(.semibold))
-                        Text(lane.sourceTruth?.nonempty ?? lane.boundaryLine)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        Text(lane.reviewRule?.nonempty ?? "Review this before keeping or sharing anything.")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.purple)
-                    }
-                    .captureCard()
-
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Review note")
-                            .font(.caption.weight(.bold))
-                        TextEditor(text: $note)
-                            .frame(minHeight: 110)
-                            .padding(8)
-                            .background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                            .accessibilityIdentifier("CapturePacketLaneReviewNote")
-                    }
-
-                    if lane.status == "READY_FOR_HUMAN_REVIEW" {
-                        Button("Keep for follow-up") { save("APPROVED_FOR_INTERNAL_USE") }
-                            .buttonStyle(.borderedProminent)
-                            .tint(.green)
-                            .disabled(!canSave)
-                            .accessibilityIdentifier("CapturePacketLaneApprove")
-                        Button("Revise first") { save("NEEDS_REVISION") }
-                            .buttonStyle(.bordered)
-                            .disabled(!canSave)
-                            .accessibilityIdentifier("CapturePacketLaneNeedsRevision")
-                        Button("Dismiss suggestions", role: .destructive) { save("REJECTED_BY_HUMAN") }
-                            .buttonStyle(.bordered)
-                            .disabled(!canSave)
-                            .accessibilityIdentifier("CapturePacketLaneReject")
-                    } else {
-                        Button("Review again") { save("READY_FOR_HUMAN_REVIEW") }
-                            .buttonStyle(.bordered)
-                            .disabled(!canSave)
-                            .accessibilityIdentifier("CapturePacketLaneReopen")
-                    }
-
-                    if model.usesPreviewData {
-                        Text("Preview shows the real review workflow without keeping any suggestion.")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.orange)
-                    }
-
-                    Text("This choice only updates this private suggestion group. It does not create a note, task, or goal, and it does not send or publish anything.")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                .padding()
-            }
-            .navigationTitle("Review suggestions")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Close") { dismiss() }
-                }
-            }
-        }
-    }
-
-    private func save(_ status: String) {
-        guard canSave else { return }
-        isSaving = true
-        Task {
-            let saved = await model.sessionClient.reviewPacketLane(
-                for: session,
-                laneId: lane.id,
-                reviewStatus: status,
-                note: note
-            )
-            isSaving = false
-            if saved { dismiss() }
-        }
     }
 }
 

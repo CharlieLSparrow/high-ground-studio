@@ -497,7 +497,15 @@ requireIncludes(capturePhoneShellText, "Skip missed occurrence…", "Capture exp
 requireIncludes(capturePhoneShellText, 'decisionReason: "MISSED_OCCURRENCE_SKIPPED"', "Capture sends the exact bounded missed-occurrence decision reason");
 requireIncludes(capturePhoneShellText, "retain the overdue task and occurrence as skipped", "Capture confirmation explains immutable history before the missed-occurrence mutation");
 requireIncludes(capturePhoneShellText, "CaptureSessionFollowUpStatus", "the production phone recorder owns client follow-up readiness");
-requireIncludes(capturePhoneShellText, "CapturePacketReviewLanesCard", "the production phone recorder reaches persisted transcript packet note lanes");
+requireIncludes(capturePhoneShellText, "CaptureSessionResultsCard", "the production phone recorder reaches automatically created editable Session results");
+requireIncludes(capturePhoneShellText, "session.coachingTranscriptResults", "Capture renders canonical transcript-derived work without a second approval queue");
+requireIncludes(capturePhoneShellText, "Adjust or remove them like any other work", "Capture explains that generated Session work is ordinary editable work");
+requireExcludes(capturePhoneShellText, "private struct CapturePacketReviewLanesCard", "retired transcript suggestion approval queue");
+assert(
+  capturePhoneShellText.indexOf("CaptureSessionResultsCard(")
+    < capturePhoneShellText.indexOf("MobileCoachClientFollowUpCard("),
+  "Capture must present editable Session results before the optional client-sharing workflow.",
+);
 for (const needle of [
   "CaptureOnDeviceTranscriptAction_",
   "Download model & transcribe",
@@ -554,8 +562,6 @@ for (const needle of [
   );
 }
 requireIncludes(uploadText, "lastRecordingAssetId", "Capture preserves canonical RecordingAsset identity separately from Studio MediaAsset identity");
-requireIncludes(capturePhoneShellText, "This choice only updates this private suggestion group. It does not create a note, task, or goal, and it does not send or publish anything.", "packet lane review states its no-side-effect boundary on the phone");
-requireIncludes(capturePhoneShellText, "Preview shows the real review workflow without keeping any suggestion.", "packet lane preview remains demonstrative and read-only");
 assert(!mobileText.includes("struct RecorderControlBoard"), "the retired duplicate recorder board is absent from the shipping target");
 requireIncludes(capturePhoneShellText, "MobileClientFollowUpCard(", "the production phone recorder reaches the released client follow-up card");
 requireIncludes(capturePhoneShellText, "MobileCoachClientFollowUpCard(", "the production phone recorder reaches the assigned-coach follow-up editor");
@@ -592,11 +598,9 @@ requireIncludes(bridgeText, '"action": "EXPORT"', "the native bridge records a r
 requireIncludes(bridgeText, '"expectedContentSha256": output.contentSha256', "the native export receipt is bound to the exact client-safe content hash");
 requireIncludes(bridgeText, '"action": "RELEASE"', "the native bridge uses the canonical bounded release action");
 requireIncludes(bridgeText, '"expectedRevision"', "the native bridge binds revisions and release to current canonical truth");
-requireIncludes(bridgeText, '"callRoomId": session.callRoomId', "packet lane review targets the canonical call-room identity rather than the local session row ID");
 requireIncludes(bridgeText, '"clientInstanceId": CaptureClientInstallation.id', "native provider-room join keeps a stable installation-scoped endpoint identity");
 requireIncludes(bridgeText, '"clientKind": "ios"', "native provider-room join identifies its iOS client kind");
 requireIncludes(bridgeText, '"endpointRole": endpointRole == "companion" ? "companion" : "primary"', "native provider-room join declares the call-audio endpoint role");
-requireIncludes(bridgeText, "func reviewPacketLane", "the native bridge owns the bounded packet lane review mutation");
 requireIncludes(canonicalTaskStatusText, 'CanonicalTaskDecisionReason = "MISSED_OCCURRENCE_SKIPPED"', "canonical task status bounds the missed-occurrence decision vocabulary");
 requireIncludes(canonicalTaskStatusText, 'kind: "quipsly-task-occurrence-resolution-v1"', "canonical missed-occurrence resolution writes an inspectable occurrence receipt");
 requireIncludes(canonicalTaskStatusText, "historicalRecordPreserved: true", "canonical missed-occurrence receipts declare preserved history");
@@ -1661,10 +1665,11 @@ requireIncludes(bridgeText, "struct MobileCaptureActionCapabilities: Codable", "
 requireIncludes(bridgeText, "struct MobileCaptureActionBoundaries: Codable", "native action boundaries model");
 requireIncludes(bridgeText, "struct MobileCaptureTranscriptPacketBoundaries: Codable", "native transcript packet boundary model");
 requireIncludes(bridgeText, "let boundaries: MobileCaptureTranscriptPacketBoundaries?", "native packet build decodes boundaries");
-requireIncludes(bridgeText, "struct MobileCapturePacketReviewLane: Codable", "native packet review lane model");
-requireIncludes(bridgeText, "let reviewLanes: [MobileCapturePacketReviewLane]?", "native packet build decodes review lanes");
-requireIncludes(bridgeText, "reviewLaneSummaryLine", "native packet review lane summary");
-requireIncludes(bridgeText, "packetTruthLine", "native packet truth summary");
+requireIncludes(bridgeText, "struct MobileCaptureTranscriptResults: Codable", "native transcript results model");
+requireIncludes(bridgeText, "let automaticallyCreated: Bool", "native transcript results preserve their automatic origin");
+requireIncludes(bridgeText, "let editable: Bool", "native transcript results expose ordinary editability");
+requireIncludes(bridgeText, "let removable: Bool", "native transcript results expose ordinary removability");
+requireIncludes(bridgeText, "var coachingTranscriptResults: MobileCaptureTranscriptResults?", "native Session decodes transcript-derived work");
 requireIncludes(bridgeText, "latestPacketBuildResponse", "native latest packet build response readback");
 requireIncludes(bridgeText, "let actionPacket: MobileCaptureActionPacket?", "native session decodes action packet");
 requireIncludes(bridgeText, "let actionPackets: [MobileCaptureActionPacket]?", "native review digest decodes action packet list");

@@ -3512,8 +3512,8 @@ final class CaptureReviewDigestClient: ObservableObject {
                         purpose: "COACHING",
                         stage: "review",
                         kind: "review-packet",
-                        label: "Review coaching notes and actions",
-                        detail: "A source-bound packet is ready for explicit human review.",
+                        label: "Use coaching notes and actions",
+                        detail: "Editable Session notes, tasks, and goals are ready to use.",
                         priority: 40,
                         sourceExitReadiness: nil
                     ),
