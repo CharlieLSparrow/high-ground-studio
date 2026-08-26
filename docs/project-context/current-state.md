@@ -4446,3 +4446,23 @@ rehearsal`) in an iPhone 17 Pro simulator. The signed-in UI acceptance opened
   full Quipsly TypeScript passes. A real long-source 202 sequence, deliberately
   delayed app-owned finalization, canonical asset readback, playback, and
   automatic transcript handoff remain explicit flight evidence.
+
+### 2026-08-25 browser vault upgrades are recoverable and commit-bound
+
+- IndexedDB schema upgrades can no longer wait invisibly behind a Quipsly tab
+  holding an older vault connection. Current connections close on
+  `versionchange`; a genuinely blocked legacy connection returns a specific,
+  retryable readiness failure while leaving OPFS sources untouched. Failed or
+  blocked opens clear only their own cached attempt, so closing the old tab and
+  trying again opens a fresh vault instead of replaying a poisoned promise.
+- A late success from an already-failed open is closed immediately rather than
+  becoming an unowned connection. Transaction aborts are also explicit.
+- Ledger operations now resolve only after the whole IndexedDB transaction
+  completes, not merely when its individual request reports success. Capture
+  therefore cannot call a ledger row durable during the interval in which the
+  transaction may still abort.
+- Six focused vault, ownership, recorder, recovery, endpoint, and consent
+  suites pass (36 tests), full Quipsly TypeScript passes, and the complete
+  production build passes. A real multi-tab v1-to-v2 upgrade, forced late
+  transaction abort, retry, exact-byte recovery, and playback remain explicit
+  flight evidence.

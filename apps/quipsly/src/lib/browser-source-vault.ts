@@ -10,13 +10,21 @@ const ROOM_PARTICIPANT_INDEX = "callRoomId-participantId";
 const OPFS_DIRECTORY = "quipsly-browser-sources-v1";
 
 let databasePromise: Promise<IDBDatabase> | null = null;
+let activeDatabase: IDBDatabase | null = null;
 
 function database() {
   if (typeof window === "undefined" || !window.indexedDB) {
     return Promise.reject(new Error("IndexedDB is unavailable."));
   }
   if (databasePromise) return databasePromise;
-  databasePromise = new Promise<IDBDatabase>((resolve, reject) => {
+  const opening = new Promise<IDBDatabase>((resolve, reject) => {
+    let settled = false;
+    const fail = (error: Error) => {
+      if (settled) return;
+      settled = true;
+      if (databasePromise === opening) databasePromise = null;
+      reject(error);
+    };
     const request = window.indexedDB.open(DATABASE_NAME, DATABASE_VERSION);
     request.onupgradeneeded = () => {
       const store = request.result.objectStoreNames.contains(LEDGER_STORE)
@@ -36,17 +44,80 @@ function database() {
         );
       }
     };
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error || new Error("Browser source ledger could not open."));
+    request.onsuccess = () => {
+      const opened = request.result;
+      if (settled) {
+        opened.close();
+        return;
+      }
+      settled = true;
+      activeDatabase = opened;
+      opened.onversionchange = () => {
+        opened.close();
+        if (activeDatabase === opened) activeDatabase = null;
+        if (databasePromise === opening) databasePromise = null;
+      };
+      resolve(opened);
+    };
+    request.onerror = () =>
+      fail(
+        request.error || new Error("Browser source ledger could not open."),
+      );
+    request.onblocked = () =>
+      fail(
+        new Error(
+          "Recording storage is waiting on another older Quipsly tab. Close that tab, then try recording again; protected local sources are unchanged.",
+        ),
+      );
   });
-  return databasePromise;
+  databasePromise = opening;
+  return opening;
 }
 
 function transactionRequest<T>(request: IDBRequest<T>, transaction: IDBTransaction) {
   return new Promise<T>((resolve, reject) => {
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error || transaction.error || new Error("Browser source ledger request failed."));
-    transaction.onerror = () => reject(transaction.error || new Error("Browser source ledger transaction failed."));
+    let settled = false;
+    let requestSucceeded = false;
+    let result: T;
+    const fail = (error: Error) => {
+      if (settled) return;
+      settled = true;
+      reject(error);
+    };
+
+    request.onsuccess = () => {
+      requestSucceeded = true;
+      result = request.result;
+    };
+    request.onerror = () =>
+      fail(
+        request.error ||
+          transaction.error ||
+          new Error("Browser source ledger request failed."),
+      );
+    transaction.oncomplete = () => {
+      if (!requestSucceeded) {
+        fail(
+          new Error(
+            "Browser source ledger transaction completed without a request result.",
+          ),
+        );
+        return;
+      }
+      if (settled) return;
+      settled = true;
+      resolve(result);
+    };
+    transaction.onerror = () =>
+      fail(
+        transaction.error ||
+          new Error("Browser source ledger transaction failed."),
+      );
+    transaction.onabort = () =>
+      fail(
+        transaction.error ||
+          new Error("Browser source ledger transaction was interrupted."),
+      );
   });
 }
 
