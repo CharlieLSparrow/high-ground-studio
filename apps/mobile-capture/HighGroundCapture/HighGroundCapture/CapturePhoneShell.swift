@@ -10879,6 +10879,7 @@ private struct CaptureAccountView: View {
     @StateObject private var auth = AuthManager.shared
     @StateObject private var library = LocalRecordingLibrary.shared
     @StateObject private var deletionClient = AccountDeletionClient()
+    @StateObject private var subscriptionStore = QuipslySubscriptionStore()
     @AppStorage("com.quipsly.capture.upload.allowsCellular") private var allowsCellular = true
     @AppStorage("com.quipsly.capture.upload.allowsExpensive") private var allowsExpensive = true
     @AppStorage("com.quipsly.capture.upload.allowsConstrained") private var allowsConstrained = true
@@ -10893,6 +10894,35 @@ private struct CaptureAccountView: View {
         ScrollView {
             VStack(spacing: 16) {
                 accountHeader
+
+                NavigationLink {
+                    QuipslySubscriptionView(store: subscriptionStore)
+                } label: {
+                    HStack(spacing: 12) {
+                        Image(systemName: "checkmark.seal.fill")
+                            .font(.title3)
+                            .foregroundStyle(CapturePalette.accent)
+                            .frame(width: 28)
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(subscriptionStore.entitlement?.planName ?? "Quipsly plan")
+                                .font(.headline)
+                                .foregroundStyle(.primary)
+                            Text(subscriptionStore.entitlement?.accessMode == "EARLY_ACCESS"
+                                ? "Full early access is active"
+                                : "Subscription, restore, and App Store access")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer(minLength: 8)
+                        Image(systemName: "chevron.right")
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(.tertiary)
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .captureCard()
+                .accessibilityIdentifier("CaptureAccountQuipslyPlan")
 
                 NavigationLink {
                     CaptureNestPortabilityView(
@@ -11056,7 +11086,9 @@ private struct CaptureAccountView: View {
         }
         .task {
             guard !model.usesPreviewData else { return }
-            await deletionClient.loadStatus()
+            async let deletion: Void = deletionClient.loadStatus()
+            async let subscription: Void = subscriptionStore.load()
+            _ = await (deletion, subscription)
         }
     }
 

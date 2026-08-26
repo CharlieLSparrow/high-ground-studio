@@ -12,6 +12,7 @@ import {
 import { getMobileCaptureLocalVaultConfig } from "@/lib/server/mobile-capture-local-vault";
 import { longSourceVerifierEnabled } from "@/lib/server/mobile-capture-long-verification";
 import { sessionInvitationEmailReadiness } from "@/lib/server/session-invitation-email";
+import { appStoreServerVerificationReadiness } from "@/lib/server/app-store-subscriptions";
 import {
   MAX_LONG_VIDEO_SOURCE_BYTES,
   SYNCHRONOUS_CAPTURE_VERIFICATION_LIMIT_BYTES,
@@ -103,6 +104,8 @@ export async function GET(request: Request) {
       uploadsChunk: "/api/mobile/capture/uploads/chunk",
       uploadsChunkCompatibility: "/api/mobile/capture/uploads/chunk",
       reviewDigest: "/api/mobile/capture/review-digest",
+      entitlements: "/api/mobile/capture/entitlements",
+      appStoreTransaction: "/api/mobile/capture/entitlements/app-store/transaction",
     },
     mediaVaultRoutes: {
       readiness: "/api/media-vault/readiness",
@@ -196,6 +199,7 @@ export async function GET(request: Request) {
         "Customer Portal requires existing Stripe customer evidence and does not create bookings, subscriptions, recordings, or entitlements.",
     },
     appStoreReadiness: {
+      serverVerification: appStoreServerVerificationReadiness(),
       accountDeletionInitiation: "available-via-app-and-policy-route",
       privacyPolicyRoute: "available",
       microphonePurposeStringRequired: true,

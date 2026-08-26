@@ -1789,13 +1789,13 @@ model CoachingFormAssignment {
   createdAt               DateTime                     @default(now())
   updatedAt               DateTime                     @updatedAt
 
-  template          CoachingFormTemplate           @relation(fields: [templateId], references: [id], onDelete: Restrict)
-  templateVersion   CoachingFormTemplateVersion    @relation(fields: [templateVersionId, templateId], references: [id, templateId], onDelete: Restrict)
-  engagement        CoachingEngagement             @relation(fields: [engagementId], references: [id], onDelete: Cascade)
-  booking           CoachingBooking?               @relation(fields: [bookingId], references: [id], onDelete: SetNull)
-  callRoom          CallRoom?                      @relation(fields: [callRoomId], references: [id], onDelete: SetNull)
-  assignedBy        User                           @relation("CoachingFormAssignmentAssignedBy", fields: [assignedByUserId], references: [id], onDelete: Restrict)
-  assignedTo        User                           @relation("CoachingFormAssignmentAssignedTo", fields: [assignedToUserId], references: [id], onDelete: Cascade)
+  template          CoachingFormTemplate                  @relation(fields: [templateId], references: [id], onDelete: Restrict)
+  templateVersion   CoachingFormTemplateVersion           @relation(fields: [templateVersionId, templateId], references: [id, templateId], onDelete: Restrict)
+  engagement        CoachingEngagement                    @relation(fields: [engagementId], references: [id], onDelete: Cascade)
+  booking           CoachingBooking?                      @relation(fields: [bookingId], references: [id], onDelete: SetNull)
+  callRoom          CallRoom?                             @relation(fields: [callRoomId], references: [id], onDelete: SetNull)
+  assignedBy        User                                  @relation("CoachingFormAssignmentAssignedBy", fields: [assignedByUserId], references: [id], onDelete: Restrict)
+  assignedTo        User                                  @relation("CoachingFormAssignmentAssignedTo", fields: [assignedToUserId], references: [id], onDelete: Cascade)
   responseRevisions CoachingFormResponseRevision[]
   automationReceipt CoachingFormAutomationReceipt?
   outcomePromotions CoachingFormOutcomePromotionReceipt[]
@@ -1822,8 +1822,8 @@ model CoachingFormResponseRevision {
   submittedAt  DateTime?
   createdAt    DateTime                  @default(now())
 
-  assignment CoachingFormAssignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
-  actor      User                   @relation("CoachingFormResponseRevisionActor", fields: [actorUserId], references: [id], onDelete: Restrict)
+  assignment        CoachingFormAssignment                @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  actor             User                                  @relation("CoachingFormResponseRevisionActor", fields: [actorUserId], references: [id], onDelete: Restrict)
   outcomePromotions CoachingFormOutcomePromotionReceipt[]
 
   @@unique([assignmentId, revision], map: "CoachFormResponse_assignment_revision_key")
@@ -8100,14 +8100,15 @@ model Organization {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  members            OrganizationMember[]
-  feedbackTickets    FeedbackTicket[]
-  userEvents         UserEvent[]
-  subscription       Subscription?
-  landingPages       LandingPage[]
-  marketingLeads     MarketingLead[]
-  emailSequences     EmailSequence[]
-  marketingCampaigns MarketingCampaign[]
+  members               OrganizationMember[]
+  feedbackTickets       FeedbackTicket[]
+  userEvents            UserEvent[]
+  subscription          Subscription?
+  landingPages          LandingPage[]
+  marketingLeads        MarketingLead[]
+  emailSequences        EmailSequence[]
+  marketingCampaigns    MarketingCampaign[]
+  billingProviderEvents SubscriptionProviderEvent[]
 }
 
 model OrganizationMember {
@@ -8186,37 +8187,94 @@ enum SubscriptionStatus {
   UNPAID
 }
 
+enum SubscriptionProvider {
+  APP_STORE
+  STRIPE
+  MANUAL
+}
+
+enum SubscriptionProviderEventStatus {
+  RECEIVED
+  PROCESSED
+  IGNORED
+  FAILED
+}
+
 model SubscriptionPlan {
-  id              String   @id @default(cuid())
-  name            String
-  stripeProductId String?  @unique
-  price           Int
-  currency        String   @default("usd")
-  interval        String   @default("month")
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id               String   @id @default(cuid())
+  name             String
+  stableKey        String?  @unique
+  stripeProductId  String?  @unique
+  stripePriceId    String?  @unique
+  appleProductId   String?  @unique
+  capabilitiesJson Json?
+  purchasable      Boolean  @default(false)
+  displayOrder     Int      @default(0)
+  price            Int
+  currency         String   @default("usd")
+  interval         String   @default("month")
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 
   subscriptions Subscription[]
 }
 
 model Subscription {
-  id                   String             @id @default(cuid())
-  organizationId       String             @unique
-  planId               String
-  stripeCustomerId     String?            @unique
-  stripeSubscriptionId String?            @unique
-  status               SubscriptionStatus @default(TRIALING)
-  currentPeriodEnd     DateTime?
-  createdAt            DateTime           @default(now())
-  updatedAt            DateTime           @updatedAt
+  id                     String                @id @default(cuid())
+  organizationId         String                @unique
+  planId                 String
+  stripeCustomerId       String?               @unique
+  stripeSubscriptionId   String?               @unique
+  billingOwnerUserId     String?               @unique
+  provider               SubscriptionProvider?
+  providerCustomerId     String?
+  providerSubscriptionId String?               @unique
+  originalTransactionId  String?               @unique
+  appAccountToken        String?               @unique
+  providerStatus         String?
+  status                 SubscriptionStatus    @default(TRIALING)
+  currentPeriodStart     DateTime?
+  currentPeriodEnd       DateTime?
+  trialEnd               DateTime?
+  cancelAtPeriodEnd      Boolean               @default(false)
+  verifiedAt             DateTime?
+  createdAt              DateTime              @default(now())
+  updatedAt              DateTime              @updatedAt
 
-  organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  plan         SubscriptionPlan @relation(fields: [planId], references: [id], onDelete: Restrict)
+  organization   Organization                @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  plan           SubscriptionPlan            @relation(fields: [planId], references: [id], onDelete: Restrict)
+  providerEvents SubscriptionProviderEvent[]
 
   @@index([organizationId])
   @@index([planId])
   @@index([stripeCustomerId])
   @@index([stripeSubscriptionId])
+  @@index([billingOwnerUserId, status])
+  @@index([provider, providerStatus])
+  @@index([providerCustomerId])
+}
+
+model SubscriptionProviderEvent {
+  id              String                          @id @default(cuid())
+  provider        SubscriptionProvider
+  externalEventId String
+  eventType       String
+  status          SubscriptionProviderEventStatus @default(RECEIVED)
+  payloadSha256   String
+  organizationId  String?
+  subscriptionId  String?
+  occurredAt      DateTime?
+  receivedAt      DateTime                        @default(now())
+  processedAt     DateTime?
+  errorCode       String?
+
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  subscription Subscription? @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+
+  @@unique([provider, externalEventId])
+  @@index([organizationId, receivedAt])
+  @@index([subscriptionId, receivedAt])
+  @@index([status, receivedAt])
 }
 
 // -----------------------------------------------------------------------------
