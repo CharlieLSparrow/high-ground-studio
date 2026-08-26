@@ -17,14 +17,21 @@ Date: 2026-08-26
   and assignment retry/collision behavior is bound to request identity and
   input hash. The forms lane deliberately does not create tasks, reminders,
   messages, goals, or calendar activity as a hidden side effect.
+- Coaches can create their own forms in the same workspace. The builder supports
+  all eight bounded field kinds, accessible arrow reordering,
+  duplication/removal, per-field help and constraints, a live client preview,
+  and an account/template-scoped browser draft that recovers after reload.
+  Editing publishes a new immutable version; previously assigned versions do
+  not change.
 - The exact-commit clean flight at
-  `31a673f1ecf24ca0ef93ab80f43d3ab37426db0a` applied all 131 migrations from an
+  `8748cb83a331b544edf941298d2646b5320c3eb8` applied all 131 migrations from an
   empty database and passed fresh signup, an adversarial neighboring tenant,
-  invitation and Session entry, consent, a two-endpoint 89.8-second call, two
+  invitation and Session entry, consent, a two-endpoint 84.2-second call, two
   immutable participant sources, decoded-duration alignment, attributed
-  transcript/playback, shared and private work, reusable forms, light editing,
-  private preview, release/revocation, and automatic post-call audio readiness.
-  Receipt: `artifacts/coaching-acceptance/2317b78e/fresh-coaching-flight-receipt.json`.
+  transcript/playback, shared and private work, custom authoring/reload
+  recovery/two immutable revisions, reusable forms, light editing, private
+  preview, release/revocation, and automatic post-call audio readiness.
+  Receipt: `artifacts/coaching-acceptance/26958043/fresh-coaching-flight-receipt.json`.
 - This is strong local operated evidence with rendered 390-pixel browser
   surfaces and no product database writes. It is not physical-device,
   real-mailbox, natural-speech, minimally instructed human, production-scale,

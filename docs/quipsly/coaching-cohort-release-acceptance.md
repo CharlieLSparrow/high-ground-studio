@@ -115,7 +115,7 @@ it never replaces it.
 
 ## Reusable forms integrated checkpoint — 2026-08-26
 
-Candidate `31a673f1ecf24ca0ef93ab80f43d3ab37426db0a` passed the entire local
+Candidate `8748cb83a331b544edf941298d2646b5320c3eb8` passed the entire local
 fresh-product flight from an empty 131-migration database. Its generated coach
 published a starter form, assigned its exact immutable version to the generated
 client relationship, and the client saved a private draft through the rendered
@@ -124,14 +124,21 @@ client submitted, the coach read the response. An independently created
 neighboring coach could not list the assignment and received 404 on direct
 mutation. The page did not overflow at phone width.
 
+Before assigning the starter, the same coach created a custom form at phone
+width, added long-text and single-select fields, reordered them, used the live
+client preview, and published version one. After assignment, the coach edited
+the template, reloaded the browser, recovered the account-scoped draft, and
+published version two. Database readback proved the existing assignment still
+held version one.
+
 That same uninterrupted candidate also passed fresh account creation,
 neighboring-tenant isolation, Session preparation, the practice command, an
-89.8-second two-endpoint call, consent, chat, two independently verified local
+84.2-second two-endpoint call, consent, chat, two independently verified local
 sources, decoded-duration alignment, participant-attributed transcript and
 protected playback, shared/private work, light editing, private preview,
 explicit release/revocation, and automatic post-call audio readiness. The
 machine receipt is
-`artifacts/coaching-acceptance/2317b78e/fresh-coaching-flight-receipt.json`.
+`artifacts/coaching-acceptance/26958043/fresh-coaching-flight-receipt.json`.
 
 This materially raises automated readiness. It still does not satisfy the
 cohort gate by itself: the run used a local mailbox adapter, fake browser media,

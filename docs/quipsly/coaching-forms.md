@@ -62,6 +62,13 @@ single-select, multi-select, and date. Definitions and answers have explicit
 size/count bounds, and draft validation remains distinct from submission
 validation.
 
+The coach-owned builder uses those same server contracts. It can create,
+duplicate, reorder, configure, preview, and publish all supported question
+types. Unfinished edits are retained in browser storage under the exact signed
+in account and template identity. Publishing clears that local draft only after
+the server returns the immutable version receipt. Editing never mutates a
+version already held by an assignment.
+
 ## Acceptance evidence
 
 Focused proof:
@@ -77,28 +84,30 @@ Focused proof:
   horizontal overflow, neighboring-list isolation, and unauthorized write 404.
 
 Integrated proof is the exact clean candidate
-`31a673f1ecf24ca0ef93ab80f43d3ab37426db0a`, with receipt
-`artifacts/coaching-acceptance/2317b78e/fresh-coaching-flight-receipt.json`.
+`8748cb83a331b544edf941298d2646b5320c3eb8`, with receipt
+`artifacts/coaching-acceptance/26958043/fresh-coaching-flight-receipt.json`.
 That flight passed the form journey inside the complete fresh coach/client
-product journey. It used local mailbox and fake browser-media adapters plus
+product journey. It also authored a two-question custom form at 390 pixels,
+reordered fields, previewed it, published and assigned version one, recovered a
+version-two edit after reload, and proved the assignment still referenced
+version one. It used local mailbox and fake browser-media adapters plus
 controlled text-to-speech. It did not prove physical devices, real inboxes,
 natural human comprehension, production deployment, or cohort scale.
 
 ## Next mature extensions
 
-The implemented storage and version contracts are ready for, but do not yet
-claim:
+The implemented builder, storage, and version contracts are ready for, but do
+not yet claim:
 
-1. a coach-facing custom form builder with add, reorder, configure, preview,
-   publish, retire, duplicate, and version-difference workflows;
-2. explicit automation policies that assign pre/post forms exactly once from a
+1. explicit automation policies that assign pre/post forms exactly once from a
    booking or Session lifecycle event;
-3. quiet in-product reminders and optional provider delivery backed by a
+2. quiet in-product reminders and optional provider delivery backed by a
    durable outbox and visible receipt, never hidden notification side effects;
-4. Quipsly Capture parity for completing and reviewing forms without a browser;
-5. reviewed promotion of submitted answers into notes, goals, or tasks;
+3. Quipsly Capture parity for completing and reviewing forms without a browser;
+4. reviewed promotion of submitted answers into notes, goals, or tasks;
+5. template retirement/restore and an explicit version-difference view;
 6. client export, accessibility, locale/timezone, and aggregate outcome tools.
 
-The next build lane should start with the custom builder and preview because it
-makes the form system genuinely coach-owned without prematurely automating
-messages or follow-through.
+The next build lane should add explicit pre/post assignment policies with
+exactly-once receipts and visible manual override, without prematurely coupling
+the form lifecycle to email or automatic task/goal creation.
