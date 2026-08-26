@@ -24,6 +24,103 @@ export type AudioAlignmentAnalysisOptions = {
   minimumPeakMargin?: number;
 };
 
+export type FittedAudioAlignmentWindows = {
+  openingTargetSeconds: number;
+  laterTargetSeconds: number;
+  windowSeconds: number;
+  adjustedToDecodedDuration: boolean;
+};
+
+/**
+ * Fits a queue-time alignment proposal to the exact decoded media clocks.
+ *
+ * Browser MediaRecorder containers often omit a format duration. The Capture
+ * boundary therefore retains an honest provisional wall-clock duration until
+ * the worker decodes the immutable bytes. Encoder startup and shutdown can
+ * make that provisional duration a little longer than the decoded stream.
+ * Queue-time windows are useful intent, but the exact bytes are authoritative.
+ */
+export function fitAudioAlignmentWindows(input: {
+  spineDurationSeconds: number;
+  targetDurationSeconds: number;
+  initialOffsetSeconds: number;
+  requestedOpeningTargetSeconds: number;
+  requestedLaterTargetSeconds: number;
+  windowSeconds: number;
+}): FittedAudioAlignmentWindows {
+  const spineDuration = boundedNumber(
+    input.spineDurationSeconds,
+    0.001,
+    86_400,
+    "spineDurationSeconds",
+  );
+  const targetDuration = boundedNumber(
+    input.targetDurationSeconds,
+    0.001,
+    86_400,
+    "targetDurationSeconds",
+  );
+  const initialOffsetSeconds = finiteNumber(
+    input.initialOffsetSeconds,
+    "initialOffsetSeconds",
+  );
+  const requestedOpening = nonNegativeNumber(
+    input.requestedOpeningTargetSeconds,
+    "requestedOpeningTargetSeconds",
+  );
+  const requestedLater = nonNegativeNumber(
+    input.requestedLaterTargetSeconds,
+    "requestedLaterTargetSeconds",
+  );
+  const windowSeconds = boundedNumber(
+    input.windowSeconds,
+    1,
+    30,
+    "windowSeconds",
+  );
+  if (requestedLater <= requestedOpening) {
+    throw new Error("The later alignment point must follow the opening point.");
+  }
+
+  const overlapStart = Math.max(0, -initialOffsetSeconds);
+  const overlapEnd = Math.min(
+    targetDuration,
+    spineDuration - initialOffsetSeconds,
+  );
+  // Stay just inside EOF so microsecond rounding in different FFmpeg builds
+  // cannot turn an exactly fitting window into a false overrun.
+  const latestStart = overlapEnd - windowSeconds - 0.002;
+  const minimumSeparation = Math.max(2, windowSeconds / 2);
+  if (latestStart - overlapStart < minimumSeparation) {
+    throw new Error(
+      "The exact decoded sources do not share enough duration for two separated alignment windows.",
+    );
+  }
+
+  const openingTargetSeconds = rounded(
+    clamp(
+      requestedOpening,
+      overlapStart,
+      latestStart - minimumSeparation,
+    ),
+  );
+  const laterTargetSeconds = rounded(
+    clamp(
+      requestedLater,
+      openingTargetSeconds + minimumSeparation,
+      latestStart,
+    ),
+  );
+  return {
+    openingTargetSeconds,
+    laterTargetSeconds,
+    windowSeconds,
+    adjustedToDecodedDuration:
+      Math.abs(openingTargetSeconds - requestedOpening) > 0.000001 ||
+      Math.abs(laterTargetSeconds - requestedLater) > 0.000001,
+  };
+}
+
 export class FfmpegAudioAlignmentAnalyzer {
   private readonly ffmpegPath: string;
   private readonly ffprobePath: string;
@@ -47,9 +144,9 @@ export class FfmpegAudioAlignmentAnalyzer {
     const minimumCorrelation = boundedNumber(input.options.minimumCorrelation ?? 0.78, 0, 1, "minimumCorrelation");
     const minimumPeakMargin = boundedNumber(input.options.minimumPeakMargin ?? 0.04, 0, 1, "minimumPeakMargin");
     const initialOffsetSeconds = finiteNumber(input.options.initialOffsetSeconds, "initialOffsetSeconds");
-    const openingTargetSeconds = nonNegativeNumber(input.options.openingTargetSeconds, "openingTargetSeconds");
-    const laterTargetSeconds = nonNegativeNumber(input.options.laterTargetSeconds, "laterTargetSeconds");
-    if (laterTargetSeconds <= openingTargetSeconds) throw new Error("The later alignment point must follow the opening point.");
+    const requestedOpeningTargetSeconds = nonNegativeNumber(input.options.openingTargetSeconds, "openingTargetSeconds");
+    const requestedLaterTargetSeconds = nonNegativeNumber(input.options.laterTargetSeconds, "laterTargetSeconds");
+    if (requestedLaterTargetSeconds <= requestedOpeningTargetSeconds) throw new Error("The later alignment point must follow the opening point.");
 
     const spinePath = path.resolve(input.spinePath);
     const targetPath = path.resolve(input.targetPath);
@@ -60,6 +157,15 @@ export class FfmpegAudioAlignmentAnalyzer {
       verifySourceBinding(spinePath, input.spine),
       verifySourceBinding(targetPath, input.target),
     ]).then(([spine, target, version]) => [spine, target, version] as const);
+    const fittedWindows = fitAudioAlignmentWindows({
+      spineDurationSeconds: spineDuration,
+      targetDurationSeconds: targetDuration,
+      initialOffsetSeconds,
+      requestedOpeningTargetSeconds,
+      requestedLaterTargetSeconds,
+      windowSeconds,
+    });
+    const { openingTargetSeconds, laterTargetSeconds } = fittedWindows;
     for (const [label, point] of [["opening", openingTargetSeconds], ["later", laterTargetSeconds]] as const) {
       if (point + windowSeconds > targetDuration + 0.001) throw new Error(`The ${label} target window exceeds the target duration.`);
       const expectedSpine = point + initialOffsetSeconds;
@@ -390,4 +496,8 @@ function boundedInteger(value: unknown, minimum: number, maximum: number, label:
 function rounded(value: number, places = 6) {
   const scale = 10 ** places;
   return Math.round((value + Number.EPSILON) * scale) / scale;
+}
+
+function clamp(value: number, minimum: number, maximum: number) {
+  return Math.min(maximum, Math.max(minimum, value));
 }

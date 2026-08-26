@@ -10,7 +10,11 @@ import path from "node:path";
 import test from "node:test";
 import { promisify } from "node:util";
 
-import { FfmpegAudioAlignmentAnalyzer, normalizedCrossCorrelation } from "../apps/quipsly-media-processor/src/audio-alignment-ffmpeg.ts";
+import {
+  FfmpegAudioAlignmentAnalyzer,
+  fitAudioAlignmentWindows,
+  normalizedCrossCorrelation,
+} from "../apps/quipsly-media-processor/src/audio-alignment-ffmpeg.ts";
 import { parseAudioAlignmentEvidence } from "../packages/quipsly-media-processing/src/audio-alignment-evidence.ts";
 
 const run = promisify(execFile);
@@ -25,6 +29,56 @@ test("FFT correlation finds a distinct offset without mutating samples", () => {
   assert.equal(result.startSample, 437);
   assert.ok(result.best > 0.999999);
   assert.ok(result.best - result.secondBest > 0.05);
+});
+
+test("exact decoded duration safely pulls a provisional late window inside EOF", () => {
+  const fitted = fitAudioAlignmentWindows({
+    spineDurationSeconds: 26.28,
+    targetDurationSeconds: 24.24,
+    initialOffsetSeconds: -0.021,
+    requestedOpeningTargetSeconds: 1.021,
+    requestedLaterTargetSeconds: 21.219,
+    windowSeconds: 4,
+  });
+
+  assert.equal(fitted.openingTargetSeconds, 1.021);
+  assert.equal(fitted.laterTargetSeconds, 20.238);
+  assert.equal(fitted.adjustedToDecodedDuration, true);
+  assert.ok(
+    fitted.laterTargetSeconds + fitted.windowSeconds < 24.24,
+    "the exact target decoder must retain a small EOF safety margin",
+  );
+});
+
+test("exact decoded duration preserves an already safe proposal and rejects insufficient overlap", () => {
+  assert.deepEqual(
+    fitAudioAlignmentWindows({
+      spineDurationSeconds: 120,
+      targetDurationSeconds: 120,
+      initialOffsetSeconds: 0.35,
+      requestedOpeningTargetSeconds: 1,
+      requestedLaterTargetSeconds: 112,
+      windowSeconds: 6,
+    }),
+    {
+      openingTargetSeconds: 1,
+      laterTargetSeconds: 112,
+      windowSeconds: 6,
+      adjustedToDecodedDuration: false,
+    },
+  );
+  assert.throws(
+    () =>
+      fitAudioAlignmentWindows({
+        spineDurationSeconds: 5,
+        targetDurationSeconds: 5,
+        initialOffsetSeconds: 0,
+        requestedOpeningTargetSeconds: 0,
+        requestedLaterTargetSeconds: 2,
+        windowSeconds: 3,
+      }),
+    /do not share enough duration/,
+  );
 });
 
 test("FFmpeg analysis binds two separated waveform peaks and measured drift to exact source bytes", async () => {
