@@ -195,12 +195,10 @@ try {
     "fresh client form at phone width",
   );
   await clientPage
-    .getByLabel("What brings you to coaching right now? required")
+    .getByLabel(/^What brings you to coaching right now\?/)
     .fill(clientWhyNow);
   await clientPage
-    .getByLabel(
-      "What change would make this coaching feel worthwhile? required",
-    )
+    .getByLabel(/^What change would make this coaching feel worthwhile\?/)
     .fill(clientChange);
   const [draftResponse] = await Promise.all([
     clientPage.waitForResponse(

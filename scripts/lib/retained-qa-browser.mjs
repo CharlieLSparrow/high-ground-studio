@@ -32,13 +32,42 @@ export async function loadPlaywright() {
 }
 
 export async function assertNoHorizontalOverflow(locator, role) {
-  let fits = null;
+  let measurement = null;
   for (let attempt = 0; attempt < 2; attempt += 1) {
     try {
       await locator.waitFor({ state: "visible" });
-      fits = await locator.evaluate(
-        (element) => element.scrollWidth <= element.clientWidth + 1,
-      );
+      measurement = await locator.evaluate((element) => {
+        const root = element;
+        const rootRect = root.getBoundingClientRect();
+        const overflow = [...root.querySelectorAll("*")]
+          .map((candidate) => {
+            const rect = candidate.getBoundingClientRect();
+            return {
+              tag: candidate.tagName.toLowerCase(),
+              className:
+                typeof candidate.className === "string"
+                  ? candidate.className.slice(0, 180)
+                  : "",
+              text: (candidate.textContent || "").trim().replace(/\s+/g, " ").slice(0, 120),
+              left: Math.round(rect.left),
+              right: Math.round(rect.right),
+              width: Math.round(rect.width),
+            };
+          })
+          .filter(
+            (candidate) =>
+              candidate.right > Math.ceil(rootRect.right) + 1 ||
+              candidate.left < Math.floor(rootRect.left) - 1,
+          )
+          .sort((left, right) => right.right - left.right)
+          .slice(0, 5);
+        return {
+          fits: root.scrollWidth <= root.clientWidth + 1,
+          clientWidth: root.clientWidth,
+          scrollWidth: root.scrollWidth,
+          overflow,
+        };
+      });
       break;
     } catch (error) {
       if (
@@ -51,7 +80,10 @@ export async function assertNoHorizontalOverflow(locator, role) {
       }
     }
   }
-  assert(fits, `${role} surface overflowed its rendered viewport.`);
+  assert(
+    measurement?.fits,
+    `${role} surface overflowed its rendered viewport: ${JSON.stringify(measurement)}.`,
+  );
 }
 
 export async function signInThroughRenderedLogin({

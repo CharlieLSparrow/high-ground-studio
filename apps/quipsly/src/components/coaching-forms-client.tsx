@@ -274,8 +274,8 @@ export function CoachingFormsClient() {
   );
 
   return (
-    <div className="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1.12fr)_minmax(22rem,0.88fr)]">
-      <div className="space-y-6">
+    <div className="mt-6 grid min-w-0 gap-6 xl:grid-cols-[minmax(0,1.12fr)_minmax(22rem,0.88fr)]">
+      <div className="min-w-0 space-y-6">
         {clientAssignments.length ? (
           <ClientAssignments
             assignments={clientAssignments}
@@ -411,7 +411,7 @@ export function CoachingFormsClient() {
         ) : null}
       </div>
 
-      <aside className="space-y-6 xl:sticky xl:top-24 xl:self-start">
+      <aside className="min-w-0 space-y-6 xl:sticky xl:top-24 xl:self-start">
         {selectedTemplate ? (
           <AssignFormPanel
             template={selectedTemplate}
@@ -469,7 +469,7 @@ function ClientAssignments(props: {
   const selected = props.selected ?? outstanding[0] ?? null;
   return (
     <section
-      className="rounded-[2rem] border border-[#e3d4b9] bg-white p-5 shadow-sm sm:p-7"
+      className="min-w-0 rounded-[2rem] border border-[#e3d4b9] bg-white p-5 shadow-sm sm:p-7"
       aria-labelledby="forms-for-you-title"
     >
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -495,7 +495,7 @@ function ClientAssignments(props: {
       </div>
       {props.assignments.length > 1 ? (
         <div
-          className="mt-5 flex gap-2 overflow-x-auto pb-2"
+          className="mt-5 flex max-w-full gap-2 overflow-x-auto pb-2"
           aria-label="Assigned forms"
         >
           {props.assignments
