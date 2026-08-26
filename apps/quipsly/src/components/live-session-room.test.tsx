@@ -1144,6 +1144,67 @@ describe("LiveSessionRoom", () => {
     expect(screen.getByTestId("browser-source-call-transport")).toHaveTextContent("available");
   });
 
+  it("preserves deliberate microphone and camera privacy through manual Rejoin", async () => {
+    const livekit = jest.requireActual("livekit-client") as typeof import("livekit-client");
+    Object.defineProperty(navigator, "mediaDevices", {
+      configurable: true,
+      value: {
+        enumerateDevices: jest.fn().mockResolvedValue([
+          { kind: "audioinput", deviceId: "podcast-mic", label: "Podcast microphone" },
+          { kind: "videoinput", deviceId: "podcast-camera", label: "Podcast camera" },
+        ]),
+        addEventListener: jest.fn(),
+        removeEventListener: jest.fn(),
+      },
+    });
+    let joinRequests = 0;
+    global.fetch = jest.fn(async (input: RequestInfo | URL) => ({
+      ok: true,
+      status: 200,
+      json: async () => {
+        if (String(input).includes("/api/mobile/capture/rooms/join")) {
+          joinRequests += 1;
+          return {
+            ok: true,
+            canJoin: true,
+            serverUrl: "wss://live.test",
+            participantToken: `privacy-rejoin-token-${joinRequests}`,
+            recordingConsentGranted: true,
+          };
+        }
+        return { ok: true };
+      },
+    })) as unknown as typeof fetch;
+
+    await act(async () => {
+      render(<LiveSessionRoom callRoomId="room-private-rejoin" captureGroupId="55555555-5555-4555-8555-555555555544" sessionTitle="Private rejoin" kind="episode" />);
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Join call" }));
+    expect(await screen.findByRole("button", { name: "Leave" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Mute" }));
+    fireEvent.click(screen.getByRole("button", { name: "Stop camera" }));
+    expect(await screen.findByRole("button", { name: "Unmute" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Start camera" })).toBeEnabled();
+
+    await act(async () => {
+      mockLiveKitRoom.__emit(livekit.RoomEvent.Disconnected);
+    });
+    expect(screen.getByRole("button", { name: "Rejoin call" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Muted" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "Camera off" })).toHaveAttribute("aria-pressed", "false");
+    mockLiveKitRoom.localParticipant.setMicrophoneEnabled.mockClear();
+    mockLiveKitRoom.localParticipant.setCameraEnabled.mockClear();
+
+    fireEvent.click(screen.getByRole("button", { name: "Rejoin call" }));
+    expect(await screen.findByRole("button", { name: "Leave" })).toBeInTheDocument();
+    expect(mockLiveKitRoom.localParticipant.setMicrophoneEnabled).toHaveBeenCalledWith(false);
+    expect(mockLiveKitRoom.localParticipant.setCameraEnabled).toHaveBeenCalledWith(false);
+    expect(screen.getByRole("button", { name: "Unmute" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Start camera" })).toBeEnabled();
+    expect(screen.getByTestId("call-status-message")).toHaveTextContent(/rejoined muted.*camera stayed off/i);
+    expect(joinRequests).toBe(2);
+  });
+
   it("ends the rejoin loop when Nest confirms the call is closed while preserving source controls", async () => {
     const livekit = jest.requireActual("livekit-client") as typeof import("livekit-client");
     Object.defineProperty(navigator, "mediaDevices", {

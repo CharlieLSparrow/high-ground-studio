@@ -4293,3 +4293,20 @@ rehearsal`) in an iPhone 17 Pro simulator. The signed-in UI acceptance opened
 - The focused browser room suite passes 36/36 and full Quipsly TypeScript
   passes. Real cross-device echo, provider audibility, and retained-source
   continuity during the handoff remain explicit flight evidence.
+
+### 2026-08-25 browser Rejoin preserves live privacy
+
+- Manual browser Rejoin now derives microphone and camera publication from the
+  participant's last live choices, not the original lobby defaults. Muting or
+  stopping camera before an exhausted reconnect cannot unexpectedly return
+  either source to the conversation.
+- The recovery lobby displays those retained choices and lets the participant
+  deliberately change either one before Rejoin. A muted Rejoin requests no new
+  microphone access; an intentionally stopped camera remains off and is
+  acknowledged after the connection returns.
+- This does not change the protected local recording boundary. Conversation
+  mute/camera choices remain provider controls, while the retained-source panel
+  continues to own recording state and gap evidence independently.
+- The focused browser room suite passes 37/37, full Quipsly TypeScript passes,
+  and the shared Capture contract passes. Real two-person provider publication,
+  audibility, and retained-source continuity remain flight-ledger evidence.

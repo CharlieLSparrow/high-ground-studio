@@ -563,6 +563,8 @@ export function LiveSessionRoom({
   }, []);
 
   const connected = status === "connected" || status === "reconnecting";
+  const mutedForNextJoin = callRecoveryAvailable ? microphoneMuted : joinMuted;
+  const cameraEnabledForNextJoin = cameraWanted && !(callRecoveryAvailable && cameraMuted);
   const statusLabel = useMemo(() => {
     switch (status) {
       case "preflight": return "Ready to join";
@@ -1336,8 +1338,10 @@ export function LiveSessionRoom({
   const join = useCallback(async () => {
     const recoveringCall = callRecoveryAvailable;
     const useCallAudioHere = callAudioModeRef.current === "this-device";
-    const microphoneNeededNow = useCallAudioHere && !joinMuted;
-    const cameraNeededNow = cameraWanted;
+    const shouldJoinMuted = recoveringCall ? microphoneMutedRef.current : joinMuted;
+    const shouldJoinWithCamera = cameraWanted && !(recoveringCall && cameraMutedRef.current);
+    const microphoneNeededNow = useCallAudioHere && !shouldJoinMuted;
+    const cameraNeededNow = shouldJoinWithCamera;
     let selectedMicrophoneId = microphoneIdRef.current;
     let selectedCameraId = cameraIdRef.current;
 
@@ -1404,6 +1408,12 @@ export function LiveSessionRoom({
       joinRecoveryMessages.push(
         "Your camera is off. Choose a camera in settings whenever you’re ready.",
       );
+    }
+    if (recoveringCall && shouldJoinMuted && !joinWithoutMicrophone) {
+      joinRecoveryMessages.push("You rejoined muted.");
+    }
+    if (recoveringCall && !shouldJoinWithCamera && cameraWanted) {
+      joinRecoveryMessages.push("Your camera stayed off.");
     }
     setStatus("joining");
     setMessage("Joining…");
@@ -1529,18 +1539,18 @@ export function LiveSessionRoom({
       if (microphoneNeededNow && selectedMicrophoneId) {
         try {
           await room.switchActiveDevice("audioinput", selectedMicrophoneId);
-          microphonePublication = await room.localParticipant.setMicrophoneEnabled(!joinMuted, {
+          microphonePublication = await room.localParticipant.setMicrophoneEnabled(!shouldJoinMuted, {
             deviceId: selectedMicrophoneId,
             echoCancellation: true,
             noiseSuppression: true,
             autoGainControl: true,
           });
-          if (!joinMuted) {
+          if (!shouldJoinMuted) {
             await startAudioMeter(microphonePublication?.track?.mediaStreamTrack);
           }
           setMicrophoneRecoveryHeld(false);
-          setMicrophoneMuted(joinMuted);
-          microphoneMutedRef.current = joinMuted;
+          setMicrophoneMuted(shouldJoinMuted);
+          microphoneMutedRef.current = shouldJoinMuted;
         } catch (error) {
           await room.localParticipant.setMicrophoneEnabled(false).catch(() => undefined);
           stopAudioMeter();
@@ -1554,9 +1564,9 @@ export function LiveSessionRoom({
         await room.localParticipant.setMicrophoneEnabled(false);
         setMicrophoneMuted(true);
         microphoneMutedRef.current = true;
-        setMicrophoneRecoveryHeld(joinWithoutMicrophone);
+        setMicrophoneRecoveryHeld(recoveringCall ? microphoneRecoveryHeld : joinWithoutMicrophone);
       }
-      if (cameraWanted && selectedCameraId) {
+      if (shouldJoinWithCamera && selectedCameraId) {
         try {
           await room.switchActiveDevice("videoinput", selectedCameraId);
           const publication = await room.localParticipant.setCameraEnabled(true, {
@@ -1574,7 +1584,7 @@ export function LiveSessionRoom({
           joinRecoveryMessages.push("You joined with the camera off because it couldn't start. The conversation is still connected.");
           joinTechnicalMessages.push(error instanceof Error ? `Camera: ${error.message}` : "Camera: device start failed.");
         }
-      } else if (joinWithoutCamera) {
+      } else {
         await room.localParticipant.setCameraEnabled(false).catch(() => undefined);
         await attachLocalCameraTrack(null);
         setCameraMuted(true);
@@ -1629,7 +1639,7 @@ export function LiveSessionRoom({
             ? "The live call couldn't connect. Retry Join call, or continue with the protected recorder on this device."
             : "The call couldn't connect. Check your internet connection and try again.");
     }
-  }, [attachLocalCameraTrack, attachRemoteTrack, callRecoveryAvailable, callRoomId, cameraWanted, clearPreflightPreview, clearRemoteMedia, detachRemoteTrack, episodeSlug, joinMuted, onEpisodeWatchHint, projectSlug, refreshDevices, startAudioMeter, stopAudioMeter, updateRoster]);
+  }, [attachLocalCameraTrack, attachRemoteTrack, callRecoveryAvailable, callRoomId, cameraWanted, clearPreflightPreview, clearRemoteMedia, detachRemoteTrack, episodeSlug, joinMuted, microphoneRecoveryHeld, onEpisodeWatchHint, projectSlug, refreshDevices, startAudioMeter, stopAudioMeter, updateRoster]);
 
   useEffect(() => {
     const threadKeys = new Set([
@@ -2077,7 +2087,7 @@ export function LiveSessionRoom({
                     {callAudioMode === "other-device"
                       ? "Call audio on your other device"
                       : microphones.find((device) => device.deviceId === microphoneId)?.label || "Microphone not available yet"}
-                    {cameraWanted ? ` · ${cameras.find((device) => device.deviceId === cameraId)?.label || "Camera not available yet"}` : " · Camera off"}
+                    {cameraEnabledForNextJoin ? ` · ${cameras.find((device) => device.deviceId === cameraId)?.label || "Camera not available yet"}` : " · Camera off"}
                   </p>
                 </div>
                 {previewTested ? <span className="rounded-full bg-emerald-100 px-3 py-1.5 text-[10px] font-black uppercase tracking-wide text-emerald-950">Preview ready</span> : null}
@@ -2086,19 +2096,36 @@ export function LiveSessionRoom({
               <div className="mt-4 flex flex-wrap gap-2">
                 {callAudioMode === "this-device" ? <button
                   type="button"
-                  onClick={() => setJoinMuted((current) => !current)}
-                  className={`inline-flex min-h-11 items-center gap-2 rounded-full px-4 text-xs font-black ${joinMuted ? "bg-rose-100 text-rose-950" : "border border-violet-200 bg-white text-violet-950"}`}
-                  aria-pressed={joinMuted}
+                  onClick={() => {
+                    if (callRecoveryAvailable) {
+                      const nextMuted = !microphoneMutedRef.current;
+                      setMicrophoneMuted(nextMuted);
+                      microphoneMutedRef.current = nextMuted;
+                      return;
+                    }
+                    setJoinMuted((current) => !current);
+                  }}
+                  className={`inline-flex min-h-11 items-center gap-2 rounded-full px-4 text-xs font-black ${mutedForNextJoin ? "bg-rose-100 text-rose-950" : "border border-violet-200 bg-white text-violet-950"}`}
+                  aria-pressed={mutedForNextJoin}
                 >
-                  {joinMuted ? <MicOff size={16} /> : <Mic size={16} />}{joinMuted ? "Muted" : "Mic on"}
+                  {mutedForNextJoin ? <MicOff size={16} /> : <Mic size={16} />}{mutedForNextJoin ? "Muted" : "Mic on"}
                 </button> : null}
                 <button
                   type="button"
-                  onClick={() => setCameraWanted((current) => !current)}
-                  className={`inline-flex min-h-11 items-center gap-2 rounded-full px-4 text-xs font-black ${cameraWanted ? "border border-violet-200 bg-white text-violet-950" : "bg-rose-100 text-rose-950"}`}
-                  aria-pressed={cameraWanted}
+                  onClick={() => {
+                    if (callRecoveryAvailable) {
+                      const nextEnabled = !cameraEnabledForNextJoin;
+                      setCameraWanted(nextEnabled);
+                      setCameraMuted(!nextEnabled);
+                      cameraMutedRef.current = !nextEnabled;
+                      return;
+                    }
+                    setCameraWanted((current) => !current);
+                  }}
+                  className={`inline-flex min-h-11 items-center gap-2 rounded-full px-4 text-xs font-black ${cameraEnabledForNextJoin ? "border border-violet-200 bg-white text-violet-950" : "bg-rose-100 text-rose-950"}`}
+                  aria-pressed={cameraEnabledForNextJoin}
                 >
-                  {cameraWanted ? <Camera size={16} /> : <CameraOff size={16} />}{cameraWanted ? "Camera on" : "Camera off"}
+                  {cameraEnabledForNextJoin ? <Camera size={16} /> : <CameraOff size={16} />}{cameraEnabledForNextJoin ? "Camera on" : "Camera off"}
                 </button>
                 <button type="button" onClick={() => void join()} disabled={status === "checking" || status === "joining"} className="inline-flex min-h-11 items-center gap-2 rounded-full bg-violet-800 px-6 text-xs font-black text-white disabled:opacity-50">
                   {status === "joining" ? <LoaderCircle size={15} className="animate-spin" /> : <Radio size={15} />} {callRecoveryAvailable ? "Rejoin call" : "Join call"}
@@ -2107,13 +2134,13 @@ export function LiveSessionRoom({
               {callAudioMode === "this-device" && previewTested ? (
                 <PreJoinMicrophoneActivity
                   evidence={meterEvidence}
-                  muted={joinMuted}
+                  muted={mutedForNextJoin}
                 />
               ) : null}
               <p className="mt-3 text-[11px] font-bold leading-5 text-violet-900">
                 {callAudioMode === "other-device"
                   ? "Quipsly keeps this device’s call microphone and speakers off to prevent echo."
-                  : joinMuted
+                  : mutedForNextJoin
                     ? "This device will join muted."
                     : "This device will handle the conversation audio."}
                 {" "}Joining doesn’t start recording.
