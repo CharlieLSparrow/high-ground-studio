@@ -67,6 +67,44 @@ Record:
 The package contains private work. Keep it outside Git and do not paste its
 contents into an issue or pull request.
 
+## Coaching product and cohort rehearsals
+
+The same isolated services support two separate coaching proofs. Keep their
+claims separate:
+
+```bash
+pnpm quipsly:recovery-lab:coaching-flight
+pnpm quipsly:recovery-lab:coaching-capacity
+```
+
+`coaching-flight` is the deep rendered journey. It creates fresh coach and
+client accounts, operates scheduling and invitation entry, rejects a separate
+neighboring practice, connects two browser endpoints, captures independent
+local sources, transcribes, plays protected media, operates relationship work,
+previews and releases a light edit, and checks automatic audio readiness.
+
+`coaching-capacity` is the broad local cohort journey. By default it creates 50
+distinct verified coach accounts and 50 reserved-domain clients through the
+Firebase emulator. Each coach establishes a Quipsly server session, schedules
+a private Session through the product API, attempts a fail-closed local email
+invitation, reads the result back, and receives 404 for a neighboring
+relationship. It performs no direct database writes and stores no session
+cookies or custom tokens in its mode-0600 receipt.
+
+Run the capacity rehearsal only in this disposable lab. Override the bounded
+count when diagnosing a cohort threshold:
+
+```bash
+QUIPSLY_COACHING_CAPACITY_COUNT=10 pnpm quipsly:recovery-lab:coaching-capacity
+```
+
+The accepted range is 2 through 100. A green capacity receipt proves bounded
+local product-API throughput and ring-neighbor isolation. It does not prove 50
+simultaneous media calls, production infrastructure scale, real mailbox
+delivery, physical-device behavior, or novice comprehension. After changing a
+product path to address a capacity failure, rerun `coaching-flight` so the
+ordinary human-shaped journey remains intact.
+
 ## Replace or stop
 
 Replace only this exact owned lab:
@@ -88,6 +126,8 @@ does not stop or change the canonical local database, Nest, or Auth emulator.
 ## Completion boundary
 
 This closes local second-environment disaster recovery for the included Nest
-knowledge-work package. It does not prove production deployment, provider
-delivery, media recovery, physical-iPhone behavior, TestFlight availability,
-or App Store submission.
+knowledge-work package. The optional coaching rehearsals add product and
+bounded cohort evidence without broadening that recovery claim. None of these
+commands proves production deployment, provider delivery, physical-iPhone
+behavior, TestFlight availability, real-human comprehension, or App Store
+submission.

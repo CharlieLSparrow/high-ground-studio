@@ -2310,3 +2310,41 @@ Simulator test build also pass. This remains local Simulator evidence—not
 physical-iPhone, real-mailbox, production deployment, minimally instructed
 human, or 50-coach concurrency proof—and those validations remain on the
 continuous ledger instead of blocking independent product work.
+
+## Isolated 50-practice write, readback, and tenant-boundary rehearsal — 2026-08-25
+
+The recovery lab now has a cohort lane that complements the earlier
+single-account authenticated-read smoke. On exact committed source
+`2cfd551a838061f7ff2030b78711a58bcc0e8f8b`, it created 50 distinct verified
+coach identities, 50 private client relationships, 50 bookings, 50 call rooms,
+and 50 reserved-domain invitation attempts through Firebase and Quipsly
+product APIs. Every coach read back their own runway, Capture Session,
+relationship work, and invitation state. Every coach also probed the next
+practice in a ring and received a non-echoing 404.
+
+The rehearsal completed 451 requests in 13.178 seconds with zero unexpected
+failures: 351 expected HTTP 200 responses, 50 invitation-create HTTP 201
+responses, and 50 expected foreign-access HTTP 404 responses. Under the
+deliberately synchronized local burst, p95 request latency was 5.962 seconds
+and maximum latency was 5.975 seconds. This is a useful optimization target,
+not evidence of failed isolation or a production SLO.
+
+Receipt:
+`artifacts/coaching-capacity/capacity-mt9nx69v-cd3a37/capacity-rehearsal-receipt.json`.
+The receipt is mode 0600 and contains no cookies or Firebase custom tokens.
+Invitation delivery stayed local and failed closed; no external messages were
+sent.
+
+The full rendered fresh coaching flight then passed on the same source SHA. It
+again operated fresh signup, automatic coach setup, client entry, neighboring
+tenant refusal, two connected endpoints, two independent controlled-speech
+recordings, participant-attributed transcription, protected playback, mentor
+DOCX export, shared/private relationship work, cross-account task completion,
+light edit preview/release/revoke, and automatic post-call audio readiness.
+
+Receipt:
+`artifacts/coaching-acceptance/045b3cf9/fresh-coaching-flight-receipt.json`.
+This combined checkpoint remains local automation. It does not prove 50
+simultaneous calls or uploads, production scale, real email delivery, natural
+human speech, physical iPhone behavior, human listening, or minimally
+instructed novice success.
