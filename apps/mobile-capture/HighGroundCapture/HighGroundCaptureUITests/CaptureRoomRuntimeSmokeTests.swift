@@ -5495,8 +5495,14 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
 
             let recordAudio = app.switches["CaptureConsentRecordAudioToggle"]
             let transcription = app.switches["CaptureConsentTranscriptionToggle"]
-            XCTAssertTrue(recordAudio.exists)
-            XCTAssertTrue(transcription.exists)
+            XCTAssertTrue(
+                recordAudio.waitForExistence(timeout: 5),
+                "Expanding recording options should reveal the standard audio choice after the sheet grows."
+            )
+            XCTAssertTrue(
+                transcription.waitForExistence(timeout: 5),
+                "Expanding recording options should reveal the standard transcription choice after the sheet grows."
+            )
             turnOn(recordAudio, in: app)
             XCTAssertEqual(transcription.value as? String, "1", "The standard Session workflow includes transcription unless the person turns it off.")
 
