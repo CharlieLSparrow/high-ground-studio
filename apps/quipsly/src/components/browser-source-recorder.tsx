@@ -83,6 +83,7 @@ import {
   browserSourceReceiptExitStatus,
   browserSourceRecoverySummary,
   browserSourceSafetyLabel,
+  browserSourceStopReceiptNeedsRepair,
   browserSourceUploadRetryDelayMs,
   finalizeInterruptedBrowserSourceLedger,
   resumeBrowserSourceUploads,
@@ -121,6 +122,7 @@ const IN_TAKE_CLOCK_SAMPLE_INTERVAL_MS = 5 * 60 * 1_000;
 const RETAINED_SOURCE_STALL_MS = 10_000;
 const RETAINED_SOURCE_MUTE_GRACE_MS = 5_000;
 const RETAINED_SOURCE_SIGNAL_GRACE_MS = 5_000;
+const STOP_RECEIPT_PENDING_PREFIX = "Session STOP receipt pending: ";
 
 function safeTrackSettings(settings: MediaTrackSettings) {
   return Object.fromEntries(
@@ -415,6 +417,7 @@ export function BrowserSourceRecorder({
   const activeCaptureOperationRef = useRef(false);
   const automaticUploadRecoveryInFlightRef = useRef(false);
   const automaticUploadRecoveryAttemptedRef = useRef(new Set<string>());
+  const automaticStopReceiptRepairAttemptedRef = useRef(new Set<string>());
   const directiveHandlingRef = useRef(new Map<string, string>());
   const directiveInFlightRef = useRef(new Set<string>());
   const directiveBaselineEstablishedRef = useRef(false);
@@ -961,6 +964,52 @@ export function BrowserSourceRecorder({
     [persistLedger],
   );
 
+  const repairStopReceipt = useCallback(
+    async (ledger: BrowserSourceCaptureLedger) => {
+      if (!browserSourceStopReceiptNeedsRepair(ledger)) return ledger;
+      const receipt = await postRoomReceipt({
+        callRoomId,
+        action: "STOP_RECORDING",
+        receiptId: ledger.stopReceiptId,
+        captureId: ledger.captureId,
+        occurredAt: ledger.stoppedAt!,
+      });
+      if (receipt.receiptPersisted !== true) {
+        throw new Error(
+          "The Session accepted the request without confirming its durable STOP receipt.",
+        );
+      }
+      const repaired = {
+        ...ledger,
+        stopReceiptPersisted: true,
+        failureReason: ledger.failureReason?.startsWith(
+          STOP_RECEIPT_PENDING_PREFIX,
+        )
+          ? null
+          : ledger.failureReason,
+        updatedAt: new Date().toISOString(),
+      } satisfies BrowserSourceCaptureLedger;
+      await updateLedger(repaired);
+      return repaired;
+    },
+    [callRoomId, updateLedger],
+  );
+
+  const rememberStopReceiptFailure = useCallback(
+    async (ledger: BrowserSourceCaptureLedger, error: unknown) => {
+      const pending = {
+        ...ledger,
+        failureReason: `${STOP_RECEIPT_PENDING_PREFIX}${
+          error instanceof Error ? error.message : "retry required"
+        }`,
+        updatedAt: new Date().toISOString(),
+      } satisfies BrowserSourceCaptureLedger;
+      await updateLedger(pending);
+      return pending;
+    },
+    [updateLedger],
+  );
+
   const closeCallTransportGap = useCallback(
     (stoppedAt: string, resolution: string) => {
       const startedAt = callTransportGapStartedAtRef.current;
@@ -1387,9 +1436,11 @@ export function BrowserSourceRecorder({
       setStatus(current.state === "verified" ? "ready" : "uploading");
       setMessage(
         current.state === "verified"
-          ? current.sourceProfile.interruptionRecovery
-            ? "Recording saved. Quipsly is preparing it for reliable playback."
-            : "Recording saved and verified in Quipsly."
+          ? !current.stopReceiptPersisted
+            ? "Recording saved and verified. Quipsly will keep retrying the Session stop status automatically."
+            : current.sourceProfile.interruptionRecovery
+              ? "Recording saved. Quipsly is preparing it for reliable playback."
+              : "Recording saved and verified in Quipsly."
           : "The source is durable and server verification is still running. Keep the local source and retry status later.",
       );
       await refreshRecovery();
@@ -1482,15 +1533,31 @@ export function BrowserSourceRecorder({
 
   const retryUploadLedger = useCallback(
     async (ledger: BrowserSourceCaptureLedger) => {
+      let attempted = ledger;
       try {
-        await uploadLedger(ledger);
+        try {
+          attempted = await repairStopReceipt(attempted);
+        } catch (error) {
+          attempted = await rememberStopReceiptFailure(attempted, error);
+        }
+        if (attempted.state === "verified") {
+          setStatus("ready");
+          setMessage(
+            attempted.stopReceiptPersisted
+              ? "Recording saved and its Session status is current."
+              : "Recording remains verified. Quipsly will retry the Session stop status automatically.",
+          );
+          await refreshRecovery();
+          return;
+        }
+        await uploadLedger(attempted);
       } catch (error) {
         const failureReason =
           error instanceof Error ? error.message : "Upload retry failed.";
         const current =
-          ledgerRef.current?.captureId === ledger.captureId
+          ledgerRef.current?.captureId === attempted.captureId
             ? ledgerRef.current
-            : ledger;
+            : attempted;
         await updateLedger({
           ...current,
           state: "held",
@@ -1502,7 +1569,13 @@ export function BrowserSourceRecorder({
         await refreshRecovery();
       }
     },
-    [refreshRecovery, updateLedger, uploadLedger],
+    [
+      refreshRecovery,
+      rememberStopReceiptFailure,
+      repairStopReceipt,
+      updateLedger,
+      uploadLedger,
+    ],
   );
 
   const resumeProtectedUploads = useCallback(
@@ -1514,13 +1587,31 @@ export function BrowserSourceRecorder({
         automaticUploadRecoveryInFlightRef.current
       )
         return;
-      if (resetAttempts) automaticUploadRecoveryAttemptedRef.current.clear();
+      if (resetAttempts) {
+        automaticUploadRecoveryAttemptedRef.current.clear();
+        automaticStopReceiptRepairAttemptedRef.current.clear();
+      }
       automaticUploadRecoveryInFlightRef.current = true;
       try {
-        const interrupted = (await listBrowserSourceLedgersForParticipant({
+        const ownedLedgers = await listBrowserSourceLedgersForParticipant({
           callRoomId,
           participantId,
-        })).filter(
+        });
+        for (const ledger of ownedLedgers.filter(
+          (candidate) =>
+            browserSourceStopReceiptNeedsRepair(candidate) &&
+            !automaticStopReceiptRepairAttemptedRef.current.has(
+              candidate.captureId,
+            ),
+        )) {
+          automaticStopReceiptRepairAttemptedRef.current.add(ledger.captureId);
+          try {
+            await repairStopReceipt(ledger);
+          } catch (error) {
+            await rememberStopReceiptFailure(ledger, error);
+          }
+        }
+        const interrupted = ownedLedgers.filter(
           (ledger) =>
             browserSourceInterruptedRecoveryCandidate(
               ledger,
@@ -1546,22 +1637,11 @@ export function BrowserSourceRecorder({
           });
           await updateLedger(recovered);
           try {
-            await postRoomReceipt({
-              callRoomId,
-              action: "STOP_RECORDING",
-              receiptId: ledger.stopReceiptId,
-              captureId: ledger.captureId,
-              occurredAt: recovered.stoppedAt!,
-            });
-            recovered = {
-              ...recovered,
-              stopReceiptPersisted: true,
-              updatedAt: new Date().toISOString(),
-            };
-            await updateLedger(recovered);
-          } catch {
+            recovered = await repairStopReceipt(recovered);
+          } catch (error) {
             // Local bytes and their inferred interruption boundary remain the
             // authority. The coordination receipt is repaired opportunistically.
+            recovered = await rememberStopReceiptFailure(recovered, error);
           }
           await retryUploadLedger(recovered);
         }
@@ -1587,7 +1667,14 @@ export function BrowserSourceRecorder({
         automaticUploadRecoveryInFlightRef.current = false;
       }
     },
-    [callRoomId, participantId, retryUploadLedger, updateLedger],
+    [
+      callRoomId,
+      participantId,
+      rememberStopReceiptFailure,
+      repairStopReceipt,
+      retryUploadLedger,
+      updateLedger,
+    ],
   );
 
   useEffect(() => {
@@ -2139,30 +2226,12 @@ export function BrowserSourceRecorder({
           };
           await updateLedger(current);
           try {
-            await postRoomReceipt({
-              callRoomId,
-              action: "STOP_RECORDING",
-              receiptId: stopReceiptId,
-              captureId,
-              occurredAt: stoppedAt,
-            });
-            current = {
-              ...current,
-              stopReceiptPersisted: true,
-              updatedAt: new Date().toISOString(),
-            };
-            await updateLedger(current);
+            current = await repairStopReceipt(current);
           } catch (error) {
-            current = {
-              ...current,
-              state: "held",
-              failureReason:
-                error instanceof Error
-                  ? error.message
-                  : "STOP receipt needs retry.",
-              updatedAt: new Date().toISOString(),
-            };
-            await updateLedger(current);
+            // Coordination delivery must not withhold protected media. The
+            // exact STOP request remains in this durable ledger and retries
+            // independently while upload preserves the participant source.
+            current = await rememberStopReceiptFailure(current, error);
           }
           const activeDirective = recordingDirectiveRef.current;
           if (activeDirective?.action === "START" && participantId) {
@@ -2177,14 +2246,14 @@ export function BrowserSourceRecorder({
             }).catch(() => undefined);
             directiveHandlingRef.current.set(activeDirective.id, "STOPPED");
           }
-          setStatus(current.state === "held" ? "held" : "ready");
+          setStatus("ready");
           setMessage(
-            current.state === "held"
-              ? "The source is protected locally, but its STOP receipt needs attention. It was not uploaded."
-              : "Local source stopped cleanly and hashed. Upload it now, or keep it protected for recovery.",
+            current.stopReceiptPersisted
+              ? "Local source stopped cleanly and hashed. Quipsly is uploading and verifying it now."
+              : "Local source is protected. Quipsly is uploading it while the Session stop status retries independently.",
           );
           await refreshRecovery();
-          if (current.state === "stopped") await uploadLedger(current);
+          await uploadLedger(current);
         })()
           .catch(async (error) => {
             const current = ledgerRef.current;
@@ -2294,6 +2363,8 @@ export function BrowserSourceRecorder({
     microphoneId,
     microphoneLabel,
     participantId,
+    rememberStopReceiptFailure,
+    repairStopReceipt,
     refreshRecovery,
     retainedReadiness,
     sessionTitle,
@@ -3231,7 +3302,11 @@ export function BrowserSourceRecorder({
                         onClick={() => void retryUploadLedger(ledger)}
                         className="inline-flex min-h-9 items-center gap-1 rounded-full border border-violet-300 bg-violet-50 px-3 text-[10px] uppercase text-violet-950"
                       >
-                        <UploadCloud size={13} /> Retry upload
+                        <UploadCloud size={13} />{" "}
+                        {ledger.state === "verified" &&
+                        browserSourceStopReceiptNeedsRepair(ledger)
+                          ? "Retry Session status"
+                          : "Retry upload"}
                       </button>
                     ) : null}
                     {ledger.state === "verified" ? (

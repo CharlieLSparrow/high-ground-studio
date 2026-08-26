@@ -156,6 +156,18 @@ export function browserSourceUploadCanResumeAutomatically(
   );
 }
 
+export function browserSourceStopReceiptNeedsRepair(
+  ledger: BrowserSourceCaptureLedger,
+) {
+  return Boolean(
+    !ledger.stopReceiptPersisted &&
+    ledger.stopReceiptId?.trim() &&
+    ledger.stoppedAt &&
+    ledger.sha256 &&
+    ledger.sizeBytes > 0,
+  );
+}
+
 export function nextBrowserSourceUploadRecovery(
   ledgers: readonly BrowserSourceCaptureLedger[],
   attemptedCaptureIds: ReadonlySet<string>,
@@ -190,6 +202,11 @@ export async function resumeBrowserSourceUploads(input: {
 }
 
 export function browserSourceSafetyLabel(ledger: BrowserSourceCaptureLedger) {
+  if (
+    ledger.state === "verified" &&
+    browserSourceStopReceiptNeedsRepair(ledger)
+  )
+    return "Verified · Session status syncing";
   if (ledger.state === "verified") return "Verified in Quipsly";
   if (ledger.state === "uploading" || ledger.state === "verifying")
     return "Uploading";
@@ -224,6 +241,17 @@ export function browserSourcePostStopReceipt(
       detail:
         "Quipsly is finishing the local file and its exact-byte checksum. Keep this page open.",
       safeToClose: false,
+    };
+  }
+  if (browserSourceStopReceiptNeedsRepair(ledger)) {
+    const verified = ledger.state === "verified";
+    return {
+      tone: "attention",
+      title: verified ? "Recording saved · Session status syncing" : "Recording saved on this device",
+      detail: verified
+        ? "Exact bytes are verified in Quipsly. The durable Session stop receipt will retry automatically."
+        : "The local original is protected and can upload while Quipsly retries its durable Session stop receipt.",
+      safeToClose: verified,
     };
   }
   if (ledger.state === "verified") {
@@ -322,6 +350,7 @@ export function browserSourceReceiptExitStatus(
 export function browserSourceManualUploadRetryAvailable(
   ledger: BrowserSourceCaptureLedger,
 ) {
+  if (browserSourceStopReceiptNeedsRepair(ledger)) return true;
   const complete = Boolean(
     ledger.sha256 && ledger.stoppedAt && ledger.sizeBytes > 0,
   );

@@ -25,7 +25,11 @@ export function buildBrowserEndpointQueueSnapshot(
   if (!ledgers.length) return null;
   const sorted = [...ledgers].sort((left, right) => left.captureId.localeCompare(right.captureId));
   const failedSourceCount = sorted.filter((ledger) => FAILURE_STATES.has(ledger.state)).length;
-  const pendingSourceCount = sorted.filter((ledger) => ledger.state !== "verified" && !FAILURE_STATES.has(ledger.state)).length;
+  const pendingSourceCount = sorted.filter(
+    (ledger) =>
+      !FAILURE_STATES.has(ledger.state) &&
+      (ledger.state !== "verified" || !ledger.stopReceiptPersisted),
+  ).length;
   const recordingAssetIds = sorted
     .map((ledger) => ledger.serverRecordingAssetId)
     .filter((id): id is string => Boolean(id))

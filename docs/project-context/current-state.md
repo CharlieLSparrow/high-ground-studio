@@ -4400,3 +4400,20 @@ rehearsal`) in an iPhone 17 Pro simulator. The signed-in UI acceptance opened
   TypeScript passes. A real visible-tab/network recovery arriving during a
   browser recording, followed by exact-byte playback of both captures, remains
   explicit flight evidence.
+
+### 2026-08-25 browser STOP delivery no longer withholds media
+
+- A transient durable Session STOP-receipt failure no longer moves a complete
+  browser source to a media-blocking Held state. The local file, checksum, and
+  upload proceed independently; the immutable STOP request remains in the
+  participant-owned IndexedDB ledger as a separate repair obligation.
+- Initial recovery, online/visible recovery, manual retry, ordinary stop, and
+  interrupted-source finalization now share the same idempotent STOP repair
+  function. Verified media with a pending receipt remains visibly labelled
+  **Session status syncing**, and its endpoint queue cannot claim Drained until
+  the receipt is durable.
+- Eight focused recorder, upload, ownership, endpoint-queue, consent, and
+  receipt suites pass (38 tests), full Quipsly TypeScript passes, and the shared
+  Capture contract passes. A real lost STOP response followed by upload,
+  relaunch repair, room-state convergence, and exact playback remains explicit
+  flight evidence.

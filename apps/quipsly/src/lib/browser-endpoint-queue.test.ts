@@ -95,6 +95,21 @@ describe("browser endpoint queue snapshot", () => {
     });
   });
 
+  it("stays not empty while verified media still owes its durable STOP receipt", () => {
+    expect(buildBrowserEndpointQueueSnapshot([
+      ledger({
+        state: "verified",
+        serverRecordingAssetId: "asset-1",
+        stopReceiptPersisted: false,
+      }),
+    ], "web-installation"))?.toMatchObject({
+      queueState: "NOT_EMPTY",
+      pendingSourceCount: 1,
+      failedSourceCount: 0,
+      recordingAssetIds: ["asset-1"],
+    });
+  });
+
   it("keeps held and failed sources visible as failed local work", () => {
     expect(buildBrowserEndpointQueueSnapshot([ledger({ state: "held" })], "web-installation"))?.toMatchObject({
       queueState: "NOT_EMPTY",

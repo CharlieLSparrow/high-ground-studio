@@ -6,6 +6,7 @@ import {
   browserSourceReviewHref,
   browserSourceReceiptExitStatus,
   browserSourceSafetyLabel,
+  browserSourceStopReceiptNeedsRepair,
   browserSourceExitSafety,
   browserSourceManualUploadRetryAvailable,
   browserSourceRecoverySummary,
@@ -87,6 +88,29 @@ describe("browser source upload recovery", () => {
         ledger("held", { failureReason: "Failed to fetch" }),
       ),
     ).toBe(true);
+  });
+
+  it("retains a durable repair obligation when media stops before its room receipt arrives", () => {
+    const pending = ledger("verified", {
+      stopReceiptId: "stop-receipt-1",
+      stopReceiptPersisted: false,
+      serverRecordingAssetId: "asset-1",
+    });
+    expect(browserSourceStopReceiptNeedsRepair(pending)).toBe(true);
+    expect(browserSourceStopReceiptNeedsRepair({
+      ...pending,
+      stoppedAt: null,
+      sha256: null,
+    })).toBe(false);
+    expect(browserSourceSafetyLabel(pending)).toBe(
+      "Verified · Session status syncing",
+    );
+    expect(browserSourceManualUploadRetryAvailable(pending)).toBe(true);
+    expect(browserSourcePostStopReceipt("ready", pending)).toMatchObject({
+      tone: "attention",
+      title: "Recording saved · Session status syncing",
+      safeToClose: true,
+    });
   });
 
   it("does not loop on incomplete, verified, or non-transient failed sources", () => {

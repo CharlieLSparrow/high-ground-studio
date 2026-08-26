@@ -65,4 +65,25 @@ describe("browser source stop confidence", () => {
     expect(source).toContain("activeCaptureOperationRef.current ||");
     expect(source).toContain("void resumeProtectedUploads()");
   });
+
+  it("uploads protected bytes even when durable Session STOP delivery needs repair", () => {
+    const source = fs.readFileSync(
+      path.resolve(process.cwd(), "src/components/browser-source-recorder.tsx"),
+      "utf8",
+    );
+    const onStopStart = source.indexOf("recorder.onstop =");
+    const onErrorStart = source.indexOf("recorder.onerror =", onStopStart);
+    const onStop = source.slice(onStopStart, onErrorStart);
+
+    expect(onStop).toContain("current = await repairStopReceipt(current)");
+    expect(onStop).toContain(
+      "current = await rememberStopReceiptFailure(current, error)",
+    );
+    expect(onStop).toContain("await uploadLedger(current)");
+    expect(onStop).toContain(
+      "Coordination delivery must not withhold protected media",
+    );
+    expect(onStop).not.toContain("It was not uploaded");
+    expect(source).toContain("Retry Session status");
+  });
 });
