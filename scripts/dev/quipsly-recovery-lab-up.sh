@@ -314,6 +314,16 @@ restart_owned_macos_job() {
   fi
   if launchctl_job_exists "${actual_label}"; then
     launchctl remove "${actual_label}"
+    for _ in $(seq 1 100); do
+      if ! launchctl_job_exists "${actual_label}"; then
+        break
+      fi
+      sleep 0.1
+    done
+    if launchctl_job_exists "${actual_label}"; then
+      echo "Recovery ${name} job did not stop after its source revision changed." >&2
+      exit 1
+    fi
     printf "RESTART %-22s source revision changed\n" "${name}"
   fi
   rm -f "${label_file}"
