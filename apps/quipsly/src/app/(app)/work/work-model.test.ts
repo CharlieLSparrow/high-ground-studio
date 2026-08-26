@@ -176,12 +176,13 @@ describe("Work Queue model", () => {
     expect(snapshot.tasks.find((item) => item.id === "canceled")?.reminderAt).toBeNull();
   });
 
-  it("allows only the assigned owner to edit an open, one-time canonical task", () => {
+  it("allows an assigned owner or verified coaching collaborator to edit an open one-time task", () => {
     const snapshot = buildWorkSnapshot({
       now,
       actorUserId: "user-1",
       tasks: [
         task({ id: "editable", assignedUserId: "user-1" }),
+        task({ id: "shared-coaching", assignedUserId: "user-2", canEditByActor: true }),
         task({ id: "other-owner", assignedUserId: "user-2" }),
         task({ id: "closed", assignedUserId: "user-1", status: "DONE" }),
         task({
@@ -209,6 +210,7 @@ describe("Work Queue model", () => {
     const editability = Object.fromEntries(snapshot.tasks.map((item) => [item.id, item.canEdit]));
     expect(editability).toEqual({
       editable: true,
+      "shared-coaching": true,
       "other-owner": false,
       recurring: false,
       closed: false,

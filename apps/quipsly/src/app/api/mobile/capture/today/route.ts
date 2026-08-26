@@ -13,6 +13,7 @@ import { updateCanonicalGoalStatusInTransaction } from "@/lib/server/canonical-g
 import { updateCanonicalTaskStatusInTransaction } from "@/lib/server/canonical-task-status";
 import { editCanonicalTaskInTransaction } from "@/lib/server/canonical-task-edit";
 import { isUnreviewedTranscriptActionItem } from "@/lib/server/coaching-packets";
+import { personalOrSharedCoachingGoalAccessWhere } from "@/lib/server/coaching-work-access";
 import { listProjectsVisibleToEmail } from "@/lib/server/home-nest";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 import {
@@ -155,12 +156,20 @@ export async function GET(request: Request) {
         orderBy: [{ dueAt: "asc" }, { updatedAt: "desc" }],
         take: 200,
         select: {
-          id: true, title: true, detail: true, status: true, dueAt: true, updatedAt: true, sourceJson: true,
+          id: true, title: true, detail: true, status: true, dueAt: true, updatedAt: true, sourceJson: true, assignedUserId: true,
           evidenceReceipts: { where: { kind: "TRANSCRIPT_CANDIDATE_MERGED" }, orderBy: [{ occurredAt: "desc" }, { id: "desc" }], take: 1, select: { evidenceJson: true } },
           reminder: { select: { id: true, remindAt: true, status: true, updatedAt: true } },
           project: { select: { id: true, name: true, slug: true } },
           tagLinks: { orderBy: { createdAt: "asc" }, select: { tag: { select: { id: true, label: true, slug: true, projectId: true, isActive: true } } } },
           room: { select: { id: true, title: true } },
+          booking: { select: { clientUserId: true, coachUserId: true } },
+          engagement: { select: {
+            members: {
+              where: { userId, status: "ACTIVE", role: { in: ["CLIENT", "COACH", "SUPPORT"] } },
+              take: 1,
+              select: { id: true },
+            },
+          } },
           recurrenceOccurrence: { select: {
             occurrenceKey: true,
             scheduledLocalDate: true,
@@ -172,10 +181,23 @@ export async function GET(request: Request) {
         },
       }),
       prisma.goal.findMany({
-        where: { ownerUserId: userId, status: "ACTIVE" },
+        where: { status: "ACTIVE", OR: personalOrSharedCoachingGoalAccessWhere(userId) },
         orderBy: [{ targetAt: "asc" }, { updatedAt: "desc" }],
         take: 20,
-        select: { id: true, title: true, description: true, status: true, targetAt: true, updatedAt: true, sourceJson: true, project: { select: { id: true, name: true, slug: true } }, tagLinks: { orderBy: { createdAt: "asc" }, select: { tag: { select: { id: true, label: true, slug: true, projectId: true, isActive: true } } } }, room: { select: { id: true, title: true } } },
+        select: {
+          id: true, ownerUserId: true, title: true, description: true, status: true, targetAt: true, updatedAt: true, sourceJson: true,
+          project: { select: { id: true, name: true, slug: true } },
+          tagLinks: { orderBy: { createdAt: "asc" }, select: { tag: { select: { id: true, label: true, slug: true, projectId: true, isActive: true } } } },
+          room: { select: { id: true, title: true } },
+          booking: { select: { clientUserId: true, coachUserId: true } },
+          engagement: { select: {
+            members: {
+              where: { userId, status: "ACTIVE", role: { in: ["CLIENT", "COACH", "SUPPORT"] } },
+              take: 1,
+              select: { id: true },
+            },
+          } },
+        },
       }),
       prisma.workPlanBlock.findMany({
         where: { ownerUserId: userId, startsAt: { gte: new Date(Math.min(reviewWindowStartsAt.getTime(), now.getTime() - 12 * 3_600_000)), lte: new Date(Math.max(reviewWindowEndsAt.getTime(), now.getTime() + 7 * 86_400_000)) }, status: { in: ["PLANNED", "COMPLETED", "SKIPPED"] } },
@@ -315,6 +337,10 @@ export async function GET(request: Request) {
         roomId: task.room?.id ?? null,
         sessionTitle: task.room?.title ?? null,
         project: projectVisible ? task.project : null,
+        canEdit: task.assignedUserId === userId
+          || (!task.engagement && task.booking?.clientUserId === userId)
+          || (!task.engagement && task.booking?.coachUserId === userId)
+          || Boolean(task.engagement?.members?.length),
         canEditTags: projectVisible ? writableProjectIds.has(task.project.id) : false,
         tagIds: projectVisible ? task.tagLinks.filter((link: any) => link.tag.projectId === task.project.id).map((link: any) => link.tag.id) : [],
         tagLabels: projectVisible ? task.tagLinks.filter((link: any) => link.tag.projectId === task.project.id).map((link: any) => link.tag.label) : [],
@@ -374,6 +400,10 @@ export async function GET(request: Request) {
         roomId: goal.room?.id ?? null,
         sessionTitle: goal.room?.title ?? null,
         project: projectVisible ? goal.project : null,
+        canEdit: goal.ownerUserId === userId
+          || (!goal.engagement && goal.booking?.clientUserId === userId)
+          || (!goal.engagement && goal.booking?.coachUserId === userId)
+          || Boolean(goal.engagement?.members?.length),
         canEditTags: projectVisible ? writableProjectIds.has(goal.project.id) : false,
         tagIds: projectVisible ? goal.tagLinks.filter((link: any) => link.tag.projectId === goal.project.id).map((link: any) => link.tag.id) : [],
         tagLabels: projectVisible ? goal.tagLinks.filter((link: any) => link.tag.projectId === goal.project.id).map((link: any) => link.tag.label) : [],
@@ -702,6 +732,7 @@ export async function POST(request: Request) {
           tx,
           taskId: id,
           actorUserId: userId,
+          accessOr: personalOrSharedSessionTaskAccessWhere(userId, "write"),
           expectedUpdatedAt: expected,
           title,
           detail,
@@ -721,7 +752,7 @@ export async function POST(request: Request) {
       if (result.kind === "not-found") {
         return NextResponse.json({
           ok: false,
-          error: "Only the assigned task owner can edit this task.",
+          error: "This task is not available in your coaching collaboration.",
         }, { status: 404 });
       }
       if (result.kind === "closed") {
@@ -812,6 +843,7 @@ export async function POST(request: Request) {
           tx,
           goalId: id,
           actorUserId: userId,
+          accessOr: personalOrSharedCoachingGoalAccessWhere(userId, "write"),
           expectedUpdatedAt: expected,
           title,
           description,
@@ -833,7 +865,7 @@ export async function POST(request: Request) {
       if (result.kind === "not-found") {
         return NextResponse.json({
           ok: false,
-          error: "Only the goal owner can edit this goal.",
+          error: "This goal is not available in your coaching collaboration.",
         }, { status: 404 });
       }
       if (result.kind === "closed") {
@@ -871,6 +903,7 @@ export async function POST(request: Request) {
           tx,
           goalId: id,
           actorUserId: userId,
+          accessOr: personalOrSharedCoachingGoalAccessWhere(userId, "write"),
           expectedUpdatedAt: expected,
           nextStatus: nextStatus as "ACTIVE" | "PAUSED" | "ACHIEVED" | "ARCHIVED",
           surface: "ios-capture-work",
@@ -880,7 +913,7 @@ export async function POST(request: Request) {
         { isolationLevel: "Serializable" },
       );
       if (result.kind === "not-found") {
-        return NextResponse.json({ ok: false, error: "Only the goal owner can change this goal." }, { status: 404 });
+        return NextResponse.json({ ok: false, error: "This goal is not available in your coaching collaboration." }, { status: 404 });
       }
       if (result.kind === "conflict") {
         return NextResponse.json({ ok: false, code: "CONFLICT", error: "This goal changed elsewhere. Refresh before trying again." }, { status: 409 });
@@ -998,7 +1031,7 @@ export async function POST(request: Request) {
         tx,
         taskId: id,
         actorUserId: userId,
-        accessOr: personalOrSharedSessionTaskAccessWhere(userId),
+        accessOr: personalOrSharedSessionTaskAccessWhere(userId, "write"),
         expectedUpdatedAt: expected,
         nextStatus: nextStatus as "OPEN" | "DONE" | "CANCELED",
         decisionReason: decisionReason === "MISSED_OCCURRENCE_SKIPPED" ? decisionReason : undefined,
@@ -1142,7 +1175,7 @@ export async function POST(request: Request) {
       }
       const result = await prisma.$transaction(async (tx: any) => {
         const current = await tx.goal.findFirst({
-          where: { id, ownerUserId: userId },
+          where: { id, OR: personalOrSharedCoachingGoalAccessWhere(userId, "write") },
           select: { id: true, status: true, sourceJson: true, updatedAt: true },
         });
         if (!current) return { kind: "not-found" as const };
@@ -1160,7 +1193,7 @@ export async function POST(request: Request) {
           goalStatusMutated: false,
         };
         const updated = await tx.goal.updateMany({
-          where: { id, ownerUserId: userId, updatedAt: expected },
+          where: { id, OR: personalOrSharedCoachingGoalAccessWhere(userId, "write"), updatedAt: expected },
           data: { sourceJson: { ...source, lastProgressReceipt: receipt } },
         });
         if (updated.count !== 1) return { kind: "conflict" as const };
@@ -1180,7 +1213,7 @@ export async function POST(request: Request) {
           record: await tx.goal.findUnique({ where: { id }, select: { status: true, updatedAt: true } }),
         };
       });
-      if (result.kind === "not-found") return NextResponse.json({ ok: false, error: "Only the goal owner can record this check-in." }, { status: 404 });
+      if (result.kind === "not-found") return NextResponse.json({ ok: false, error: "This goal is not available in your coaching collaboration." }, { status: 404 });
       if (result.kind === "conflict" || !result.record) return NextResponse.json({ ok: false, error: "This goal changed elsewhere. Refresh Today before checking in again.", code: "CONFLICT" }, { status: 409 });
       return NextResponse.json({
         ok: true,

@@ -1,6 +1,7 @@
 import "server-only";
 
 import { randomUUID } from "node:crypto";
+import type { Prisma } from "@prisma/client";
 
 export type CanonicalGoalStatus = "ACTIVE" | "PAUSED" | "ACHIEVED" | "ARCHIVED";
 
@@ -14,6 +15,7 @@ export async function updateCanonicalGoalStatusInTransaction(input: {
   tx: any;
   goalId: string;
   actorUserId: string;
+  accessOr?: Prisma.GoalWhereInput[];
   expectedUpdatedAt: Date;
   nextStatus: CanonicalGoalStatus;
   surface: "nest-work" | "ios-capture-work";
@@ -22,8 +24,11 @@ export async function updateCanonicalGoalStatusInTransaction(input: {
 }) {
   const now = input.now ?? new Date();
   const receiptId = input.receiptId ?? randomUUID();
+  const accessWhere: Prisma.GoalWhereInput = input.accessOr?.length
+    ? { OR: input.accessOr }
+    : { ownerUserId: input.actorUserId };
   const current = await input.tx.goal.findFirst({
-    where: { id: input.goalId, ownerUserId: input.actorUserId },
+    where: { id: input.goalId, ...accessWhere },
     select: { id: true, status: true, sourceJson: true, updatedAt: true },
   });
   if (!current) return { kind: "not-found" as const };
@@ -45,7 +50,7 @@ export async function updateCanonicalGoalStatusInTransaction(input: {
   const updated = await input.tx.goal.updateMany({
     where: {
       id: input.goalId,
-      ownerUserId: input.actorUserId,
+      ...accessWhere,
       updatedAt: input.expectedUpdatedAt,
     },
     data: {

@@ -1,6 +1,7 @@
 import "server-only";
 
 import { randomUUID } from "node:crypto";
+import type { Prisma } from "@prisma/client";
 
 const EDIT_RECEIPT_LIMIT = 24;
 
@@ -22,6 +23,7 @@ export async function editCanonicalGoalInTransaction(input: {
   tx: any;
   goalId: string;
   actorUserId: string;
+  accessOr?: Prisma.GoalWhereInput[];
   expectedUpdatedAt: Date;
   title: string;
   description: string | null;
@@ -41,10 +43,13 @@ export async function editCanonicalGoalInTransaction(input: {
 }) {
   const now = input.now ?? new Date();
   const receiptId = input.receiptId ?? randomUUID();
+  const accessWhere: Prisma.GoalWhereInput = input.accessOr?.length
+    ? { OR: input.accessOr }
+    : { ownerUserId: input.actorUserId };
   const current = await input.tx.goal.findFirst({
     where: {
       id: input.goalId,
-      ownerUserId: input.actorUserId,
+      ...accessWhere,
     },
     select: {
       id: true,
@@ -106,7 +111,7 @@ export async function editCanonicalGoalInTransaction(input: {
   const updated = await input.tx.goal.updateMany({
     where: {
       id: input.goalId,
-      ownerUserId: input.actorUserId,
+      ...accessWhere,
       status: { in: ["ACTIVE", "PAUSED"] },
       updatedAt: input.expectedUpdatedAt,
     },

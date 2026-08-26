@@ -1,6 +1,7 @@
 import "server-only";
 
 import { randomUUID } from "node:crypto";
+import type { Prisma } from "@prisma/client";
 
 import { isUnreviewedTranscriptActionItemSource } from "@high-ground/quipsly-domain/coaching-packet";
 
@@ -24,6 +25,7 @@ export async function editCanonicalTaskInTransaction(input: {
   tx: any;
   taskId: string;
   actorUserId: string;
+  accessOr?: Prisma.ActionItemWhereInput[];
   expectedUpdatedAt: Date;
   title: string;
   detail: string | null;
@@ -40,10 +42,13 @@ export async function editCanonicalTaskInTransaction(input: {
 }) {
   const now = input.now ?? new Date();
   const receiptId = input.receiptId ?? randomUUID();
+  const accessWhere: Prisma.ActionItemWhereInput = input.accessOr?.length
+    ? { OR: input.accessOr }
+    : { assignedUserId: input.actorUserId };
   const current = await input.tx.actionItem.findFirst({
     where: {
       id: input.taskId,
-      assignedUserId: input.actorUserId,
+      ...accessWhere,
     },
     select: {
       id: true,
@@ -99,7 +104,7 @@ export async function editCanonicalTaskInTransaction(input: {
   const updated = await input.tx.actionItem.updateMany({
     where: {
       id: input.taskId,
-      assignedUserId: input.actorUserId,
+      ...accessWhere,
       status: "OPEN",
       updatedAt: input.expectedUpdatedAt,
     },

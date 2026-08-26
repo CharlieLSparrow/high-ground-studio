@@ -107,7 +107,11 @@ describe("Work Queue task decisions", () => {
     expect(tx.actionItem.updateMany).toHaveBeenCalledWith(expect.objectContaining({
       where: expect.objectContaining({
         id: "task-1",
-        assignedUserId: "user-1",
+        OR: expect.arrayContaining([
+          { assignedUserId: "user-1" },
+          expect.objectContaining({ engagement: expect.any(Object) }),
+          expect.objectContaining({ booking: expect.any(Object) }),
+        ]),
         status: "OPEN",
         updatedAt: expected,
       }),
@@ -500,7 +504,7 @@ describe("Work Queue task decisions", () => {
     const tx = { goal: {
       findFirst: jest.fn().mockResolvedValue({ id: "goal-1", status: "ACTIVE", sourceJson: {}, updatedAt: expected }),
       updateMany: jest.fn().mockResolvedValue({ count: 1 }),
-      findUnique: jest.fn().mockResolvedValue({ updatedAt: persisted }),
+      findUnique: jest.fn().mockResolvedValue({ status: "ACHIEVED", updatedAt: persisted }),
     }, goalProgressReceipt: { create: jest.fn().mockResolvedValue({ id: "progress-1" }) } };
     const prisma = {
       goal: { findFirst: jest.fn().mockResolvedValue({ id: "goal-1", status: "ACTIVE", sourceJson: {}, updatedAt: expected }) },

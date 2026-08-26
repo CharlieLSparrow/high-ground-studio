@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 
 import { getPrismaClient } from "@/lib/prisma";
+import { personalOrSharedCoachingGoalAccessWhere } from "@/lib/server/coaching-work-access";
 import { editCanonicalGoalInTransaction } from "@/lib/server/canonical-goal-edit";
 import { updateCanonicalGoalStatusInTransaction } from "@/lib/server/canonical-goal-status";
 import { editCanonicalTaskInTransaction } from "@/lib/server/canonical-task-edit";
@@ -360,6 +361,7 @@ export async function editWorkGoal(input: {
         tx,
         goalId,
         actorUserId: session.user.id,
+        accessOr: personalOrSharedCoachingGoalAccessWhere(session.user.id, "write"),
         expectedUpdatedAt,
         title,
         description,
@@ -379,7 +381,7 @@ export async function editWorkGoal(input: {
     );
 
     if (result.kind === "not-found") {
-      return { ok: false, code: "NOT_FOUND", error: "Only the goal owner can edit this goal." };
+      return { ok: false, code: "NOT_FOUND", error: "This goal is not available in your coaching collaboration." };
     }
     if (result.kind === "closed") {
       return { ok: false, code: "INVALID_INPUT", error: "Make this goal active or paused before editing its definition or target." };
@@ -433,6 +435,7 @@ export async function updateWorkGoalStatus(input: {
         tx,
         goalId,
         actorUserId: userId,
+        accessOr: personalOrSharedCoachingGoalAccessWhere(userId, "write"),
         expectedUpdatedAt: expected,
         nextStatus: input.nextStatus,
         surface: "nest-work",
@@ -440,7 +443,7 @@ export async function updateWorkGoalStatus(input: {
       { isolationLevel: "Serializable" },
     );
     if (result.kind === "not-found") {
-      return { ok: false, code: "NOT_FOUND", error: "Only the goal owner can change this goal." };
+      return { ok: false, code: "NOT_FOUND", error: "This goal is not available in your coaching collaboration." };
     }
     if (result.kind === "conflict") {
       return { ok: false, code: "CONFLICT", error: "This goal changed elsewhere. The current goal is being refreshed." };
@@ -480,7 +483,7 @@ export async function recordWorkGoalProgress(input: {
     const now = new Date();
     const receiptId = randomUUID();
     const result = await prisma.$transaction(async (tx: any) => {
-      const current = await tx.goal.findFirst({ where: { id: goalId, ownerUserId: userId }, select: { id: true, status: true, sourceJson: true, updatedAt: true } });
+      const current = await tx.goal.findFirst({ where: { id: goalId, OR: personalOrSharedCoachingGoalAccessWhere(userId, "write") }, select: { id: true, status: true, sourceJson: true, updatedAt: true } });
       if (!current) return { kind: "not-found" as const };
       if (current.updatedAt.getTime() !== expected.getTime()) return { kind: "conflict" as const };
       const receipt = {
@@ -493,7 +496,7 @@ export async function recordWorkGoalProgress(input: {
         externalSideEffects: false,
       };
       const updated = await tx.goal.updateMany({
-        where: { id: goalId, ownerUserId: userId, updatedAt: expected },
+        where: { id: goalId, OR: personalOrSharedCoachingGoalAccessWhere(userId, "write"), updatedAt: expected },
         data: { sourceJson: { ...safeRecord(current.sourceJson), lastProgressReceipt: receipt } },
       });
       if (updated.count !== 1) return { kind: "conflict" as const };
@@ -501,7 +504,7 @@ export async function recordWorkGoalProgress(input: {
       const persisted = await tx.goal.findUnique({ where: { id: goalId }, select: { status: true, updatedAt: true } });
       return { kind: "saved" as const, persisted };
     });
-    if (result?.kind === "not-found") return { ok: false, code: "NOT_FOUND", error: "Only the goal owner can record progress." };
+    if (result?.kind === "not-found") return { ok: false, code: "NOT_FOUND", error: "This goal is not available in your coaching collaboration." };
     if (!result || result.kind === "conflict" || !result.persisted) return { ok: false, code: "CONFLICT", error: "This goal changed elsewhere. The current goal is being refreshed." };
     revalidatePath("/work");
     return { ok: true, goalId, status: result.persisted.status, updatedAt: result.persisted.updatedAt.toISOString(), receiptId };
@@ -532,13 +535,13 @@ export async function linkWorkGoalTask(input: {
     const now = new Date();
     const result = await prisma.$transaction(async (tx: any) => {
       const [goal, task] = await Promise.all([
-        tx.goal.findFirst({ where: { id: goalId, ownerUserId: userId }, select: { id: true, status: true, sourceJson: true, updatedAt: true } }),
+        tx.goal.findFirst({ where: { id: goalId, OR: personalOrSharedCoachingGoalAccessWhere(userId, "write") }, select: { id: true, status: true, sourceJson: true, updatedAt: true } }),
         tx.actionItem.findFirst({ where: { id: taskId, OR: personalOrSharedSessionTaskAccessWhere(userId) }, select: { id: true, sourceJson: true } }),
       ]);
       if (!goal || !task || isUnreviewedTranscriptActionItemSource(task.sourceJson)) return { kind: "not-found" as const };
       if (goal.updatedAt.getTime() !== expected.getTime()) return { kind: "conflict" as const };
       const receipt = { id: receiptId, kind: "quipsly-goal-task-link-v1", relationship: input.relationship, linkedAt: now.toISOString(), linkedByUserId: userId, externalSideEffects: false };
-      const updated = await tx.goal.updateMany({ where: { id: goalId, ownerUserId: userId, updatedAt: expected }, data: { sourceJson: { ...safeRecord(goal.sourceJson), lastTaskLinkReceipt: receipt } } });
+      const updated = await tx.goal.updateMany({ where: { id: goalId, OR: personalOrSharedCoachingGoalAccessWhere(userId, "write"), updatedAt: expected }, data: { sourceJson: { ...safeRecord(goal.sourceJson), lastTaskLinkReceipt: receipt } } });
       if (updated.count !== 1) return { kind: "conflict" as const };
       await tx.goalTaskLink.upsert({
         where: { goalId_actionItemId: { goalId, actionItemId: taskId } },
@@ -548,7 +551,7 @@ export async function linkWorkGoalTask(input: {
       const persisted = await tx.goal.findUnique({ where: { id: goalId }, select: { status: true, updatedAt: true } });
       return { kind: "saved" as const, persisted };
     });
-    if (result?.kind === "not-found") return { ok: false, code: "NOT_FOUND", error: "The owned goal and committed task must both be available to this account." };
+    if (result?.kind === "not-found") return { ok: false, code: "NOT_FOUND", error: "The goal and committed task must both be available in this collaboration." };
     if (!result || result.kind === "conflict" || !result.persisted) return { ok: false, code: "CONFLICT", error: "This goal changed elsewhere. The current goal is being refreshed." };
     revalidatePath("/work");
     return { ok: true, goalId, status: result.persisted.status, updatedAt: result.persisted.updatedAt.toISOString(), receiptId };
@@ -575,17 +578,17 @@ export async function unlinkWorkGoalTask(input: {
     const receiptId = randomUUID();
     const now = new Date();
     const result = await prisma.$transaction(async (tx: any) => {
-      const goal = await tx.goal.findFirst({ where: { id: goalId, ownerUserId: userId }, select: { id: true, status: true, sourceJson: true, updatedAt: true } });
+      const goal = await tx.goal.findFirst({ where: { id: goalId, OR: personalOrSharedCoachingGoalAccessWhere(userId, "write") }, select: { id: true, status: true, sourceJson: true, updatedAt: true } });
       if (!goal) return { kind: "not-found" as const };
       if (goal.updatedAt.getTime() !== expected.getTime()) return { kind: "conflict" as const };
       const receipt = { id: receiptId, kind: "quipsly-goal-task-unlink-v1", taskId, unlinkedAt: now.toISOString(), unlinkedByUserId: userId, externalSideEffects: false };
-      const updated = await tx.goal.updateMany({ where: { id: goalId, ownerUserId: userId, updatedAt: expected }, data: { sourceJson: { ...safeRecord(goal.sourceJson), lastTaskLinkReceipt: receipt } } });
+      const updated = await tx.goal.updateMany({ where: { id: goalId, OR: personalOrSharedCoachingGoalAccessWhere(userId, "write"), updatedAt: expected }, data: { sourceJson: { ...safeRecord(goal.sourceJson), lastTaskLinkReceipt: receipt } } });
       if (updated.count !== 1) return { kind: "conflict" as const };
       await tx.goalTaskLink.deleteMany({ where: { goalId, actionItemId: taskId } });
       const persisted = await tx.goal.findUnique({ where: { id: goalId }, select: { status: true, updatedAt: true } });
       return { kind: "saved" as const, persisted };
     });
-    if (result?.kind === "not-found") return { ok: false, code: "NOT_FOUND", error: "Only the goal owner can disconnect linked work." };
+    if (result?.kind === "not-found") return { ok: false, code: "NOT_FOUND", error: "This linked work is not available in your collaboration." };
     if (!result || result.kind === "conflict" || !result.persisted) return { ok: false, code: "CONFLICT", error: "This goal changed elsewhere. The current goal is being refreshed." };
     revalidatePath("/work");
     return { ok: true, goalId, status: result.persisted.status, updatedAt: result.persisted.updatedAt.toISOString(), receiptId };
@@ -841,6 +844,7 @@ export async function editWorkTask(input: {
         tx,
         taskId,
         actorUserId: session.user.id,
+        accessOr: personalOrSharedSessionTaskAccessWhere(session.user.id, "write"),
         expectedUpdatedAt,
         title,
         detail,
@@ -858,7 +862,7 @@ export async function editWorkTask(input: {
     );
 
     if (result.kind === "not-found") {
-      return { ok: false, code: "NOT_FOUND", error: "Only the assigned task owner can edit this task." };
+      return { ok: false, code: "NOT_FOUND", error: "This task is not available in your coaching collaboration." };
     }
     if (result.kind === "closed") {
       return { ok: false, code: "INVALID_INPUT", error: "Reopen this task before editing its contents or due date." };
@@ -1524,7 +1528,7 @@ export async function updateWorkTaskStatus(input: {
 
   const prisma = getPrismaClient() as any;
   const userId = session.user.id;
-  const accessOr = personalOrSharedSessionTaskAccessWhere(userId);
+  const accessOr = personalOrSharedSessionTaskAccessWhere(userId, "write");
   try {
     const result = await prisma.$transaction((tx: any) => updateCanonicalTaskStatusInTransaction({
       tx,

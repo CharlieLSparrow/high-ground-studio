@@ -85,6 +85,7 @@ export type RawWorkTask = {
   createdAt: Date | string;
   updatedAt: Date | string;
   assignedUserId?: string | null;
+  canEditByActor?: boolean;
   sourceJson?: unknown;
   project?: WorkProject | null;
   tagLinks?: Array<{ tag: WorkTag }>;
@@ -96,6 +97,7 @@ export type RawWorkTask = {
     coachUser?: { name?: string | null; primaryEmail?: string | null } | null;
     callRoom?: { id: string; title?: string | null } | null;
   } | null;
+  engagement?: { id: string; members?: Array<{ id: string }> } | null;
   assignedUser?: { name?: string | null; primaryEmail?: string | null } | null;
   recurrenceOccurrence?: {
     occurrenceKey: string;
@@ -128,6 +130,7 @@ export type RawWorkGoal = {
 export type RawCanonicalGoal = {
   id: string;
   ownerUserId?: string;
+  canEditByActor?: boolean;
   title: string;
   description?: string | null;
   status: WorkGoalStatus;
@@ -138,6 +141,7 @@ export type RawCanonicalGoal = {
   updatedAt: Date | string;
   room?: { id: string; title?: string | null } | null;
   booking?: { id: string; scheduledStart?: Date | string | null; callRoom?: { id: string; title?: string | null } | null } | null;
+  engagement?: { id: string; members?: Array<{ id: string }> } | null;
   project?: { id: string; name: string; slug: string } | null;
   tagLinks?: Array<{ tag: WorkTag }>;
   parent?: { id: string; title: string } | null;
@@ -246,6 +250,7 @@ export type WorkGoal = {
   sessionStart: string | null;
   project: { id: string; name: string; slug: string } | null;
   tags: WorkTag[];
+  canEdit: boolean;
   canManageTags: boolean;
   parent: { id: string; title: string } | null;
   childCount: number;
@@ -481,7 +486,7 @@ export function buildWorkSnapshot(input: {
         project: task.project ? { id: task.project.id, name: task.project.name, slug: task.project.slug } : null,
         tags: (task.tagLinks ?? []).map((link) => link.tag),
         canEdit: Boolean(input.actorUserId)
-          && task.assignedUserId === input.actorUserId
+          && (task.assignedUserId === input.actorUserId || task.canEditByActor === true)
           && task.status === "OPEN"
           && !recurrence
           && !historicalLocked,
@@ -535,6 +540,8 @@ export function buildWorkSnapshot(input: {
         sessionStart: iso(goal.booking?.scheduledStart),
         project: goal.project ? { id: goal.project.id, name: goal.project.name, slug: goal.project.slug } : null,
         tags: (goal.tagLinks ?? []).map((link) => link.tag),
+        canEdit: Boolean(input.actorUserId)
+          && (goal.ownerUserId === input.actorUserId || goal.canEditByActor === true),
         canManageTags: Boolean(input.actorUserId) && goal.ownerUserId === input.actorUserId,
         parent: goal.parent ? { id: goal.parent.id, title: goal.parent.title } : null,
         childCount: goal._count?.children ?? 0,
@@ -566,6 +573,7 @@ export function buildWorkSnapshot(input: {
         sessionStart: iso(goal.booking?.scheduledStart),
         project: null,
         tags: [],
+        canEdit: false,
         canManageTags: false,
         parent: null,
         childCount: 0,

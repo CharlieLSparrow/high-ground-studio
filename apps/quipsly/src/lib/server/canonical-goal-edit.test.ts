@@ -1,5 +1,7 @@
 jest.mock("server-only", () => ({}));
 
+import type { Prisma } from "@prisma/client";
+
 import { editCanonicalGoalInTransaction } from "./canonical-goal-edit";
 
 const expected = new Date("2026-07-30T06:00:00.000Z");
@@ -102,6 +104,42 @@ describe("canonical goal editing", () => {
     const savedSource = tx.goal.updateMany.mock.calls[0][0].data.sourceJson;
     expect(savedSource.editReceipts).toHaveLength(24);
     expect(savedSource.editReceipts[0]).toEqual({ id: "old-7" });
+  });
+
+  it("lets an active coaching collaborator refine the goal without taking ownership", async () => {
+    const tx = txWith();
+    const accessOr: Prisma.GoalWhereInput[] = [
+      { ownerUserId: "coach-1" },
+      { engagement: { is: { status: "ACTIVE", members: { some: { userId: "coach-1", status: "ACTIVE", role: "COACH" } } } } },
+    ];
+    const result = await editCanonicalGoalInTransaction({
+      tx,
+      goalId: "goal-1",
+      actorUserId: "coach-1",
+      accessOr,
+      expectedUpdatedAt: expected,
+      title: "Practice a grounded pause",
+      description: "Use the pause once before the next Session.",
+      targetDecision: { kind: "KEEP" },
+      surface: "nest-work",
+      receiptId: "coach-goal-edit",
+    });
+
+    expect(result.kind).toBe("saved");
+    expect(tx.goal.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: "goal-1", OR: accessOr },
+    }));
+    expect(tx.goal.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ id: "goal-1", OR: accessOr }),
+      data: expect.objectContaining({
+        sourceJson: expect.objectContaining({
+          editReceipts: expect.arrayContaining([
+            expect.objectContaining({ id: "coach-goal-edit", changedByUserId: "coach-1" }),
+          ]),
+        }),
+      }),
+    }));
+    expect(tx.goal.updateMany.mock.calls[0][0].data).not.toHaveProperty("ownerUserId");
   });
 
   it("keeps the exact stored target instant when only the goal definition changes", async () => {

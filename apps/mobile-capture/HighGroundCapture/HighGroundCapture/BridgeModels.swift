@@ -1766,6 +1766,7 @@ struct MobileCaptureTodayTask: Codable, Identifiable, Hashable {
     let roomId: String?
     let sessionTitle: String?
     let project: MobileCaptureTodayProject?
+    let canEdit: Bool? = nil
     let canEditTags: Bool?
     let tagIds: [String]?
     let tagLabels: [String]?
@@ -1788,6 +1789,7 @@ struct MobileCaptureTodayGoal: Codable, Identifiable, Hashable {
     let roomId: String?
     let sessionTitle: String?
     let project: MobileCaptureTodayProject?
+    let canEdit: Bool? = nil
     let canEditTags: Bool?
     let tagIds: [String]?
     let tagLabels: [String]?

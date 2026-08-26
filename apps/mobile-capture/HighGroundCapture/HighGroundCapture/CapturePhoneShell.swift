@@ -1877,7 +1877,7 @@ private struct CaptureWorkView: View {
                     .font(.title3)
                     .foregroundStyle(task.status == "OPEN" ? CapturePalette.accent : .green)
             }
-            .disabled(decisionsDisabled)
+            .disabled(decisionsDisabled || task.canEdit != true)
             .accessibilityLabel(task.status == "OPEN" ? "Mark \(task.title) done" : "Reopen \(task.title)")
             .accessibilityIdentifier("CaptureWorkTaskStatus_\(task.id)")
 
@@ -1930,7 +1930,7 @@ private struct CaptureWorkView: View {
                 }
                 workTagLabels(effectiveTagLabels(kind: .task, entityID: task.id, tagIDs: visibleTagIDs))
                 workTagDecisionStatus(kind: .task, entityID: task.id)
-                if task.status == "OPEN" {
+                if task.status == "OPEN", task.canEdit == true {
                     Button {
                         if task.recurrence == nil {
                             taskToEdit = task
@@ -2003,14 +2003,16 @@ private struct CaptureWorkView: View {
                     }
                 }
                 Spacer()
-                TodayGoalCheckInControls(
-                    client: model.todayClient,
-                    goal: goal,
-                    decisionsDisabled: decisionsDisabled,
-                    onSaved: {
-                        Task { await client.load(projectID: selectedProject?.id) }
-                    }
-                )
+                if goal.canEdit == true {
+                    TodayGoalCheckInControls(
+                        client: model.todayClient,
+                        goal: goal,
+                        decisionsDisabled: decisionsDisabled,
+                        onSaved: {
+                            Task { await client.load(projectID: selectedProject?.id) }
+                        }
+                    )
+                }
             }
             if let progress = goal.progressPercent {
                 ProgressView(value: Double(progress), total: 100)
@@ -2035,7 +2037,7 @@ private struct CaptureWorkView: View {
             }
             workTagLabels(effectiveTagLabels(kind: .goal, entityID: goal.id, tagIDs: visibleTagIDs))
             workTagDecisionStatus(kind: .goal, entityID: goal.id)
-            if goal.status == "ACTIVE" || goal.status == "PAUSED" {
+            if goal.canEdit == true, goal.status == "ACTIVE" || goal.status == "PAUSED" {
                 Button {
                     goalToEdit = goal
                 } label: {
@@ -2921,7 +2923,7 @@ struct TodayFollowThroughCard: View {
                                             .padding(.vertical, 4)
                                             .background(Color.blue.opacity(0.08), in: Capsule())
                                     }
-                                    if task.recurrence == nil, task.status == "OPEN" {
+                                    if task.canEdit == true, task.recurrence == nil, task.status == "OPEN" {
                                         Button {
                                             taskToEdit = task
                                         } label: {
@@ -3090,14 +3092,16 @@ struct TodayFollowThroughCard: View {
                                     }
                                 }
                                 Spacer(minLength: 8)
-                                Button("Done") {
-                                    Task { _ = await client.setTaskStatus(task, status: "DONE") }
+                                if task.canEdit == true {
+                                    Button("Done") {
+                                        Task { _ = await client.setTaskStatus(task, status: "DONE") }
+                                    }
+                                    .font(.caption.weight(.bold))
+                                    .buttonStyle(.bordered)
+                                    .disabled(decisionsDisabled)
+                                    .accessibilityIdentifier("CaptureTodayTaskDone_\(task.id)")
+                                    .accessibilityHint(task.recurrence == nil ? "Marks the committed task done in Quipsly with a private receipt." : "Marks this occurrence done and creates the next canonical occurrence when the active series requires one. No reminder or provider event is scheduled.")
                                 }
-                                .font(.caption.weight(.bold))
-                                .buttonStyle(.bordered)
-                                .disabled(decisionsDisabled)
-                                .accessibilityIdentifier("CaptureTodayTaskDone_\(task.id)")
-                                .accessibilityHint(task.recurrence == nil ? "Marks the committed task done in Quipsly with a private receipt." : "Marks this occurrence done and creates the next canonical occurrence when the active series requires one. No reminder or provider event is scheduled.")
                             }
                             if task.isOverdue == true, task.recurrence != nil, recurrenceManagerTaskIDs.contains(task.id) {
                                 Button(role: .destructive) {
@@ -3280,7 +3284,7 @@ struct TodayFollowThroughCard: View {
                                     .foregroundStyle(.secondary)
                                     .accessibilityIdentifier("CaptureTodayGoalTarget_\(goal.id)")
                             }
-                            if goal.status == "ACTIVE" || goal.status == "PAUSED" {
+                            if goal.canEdit == true, goal.status == "ACTIVE" || goal.status == "PAUSED" {
                                 Button {
                                     goalToEdit = goal
                                 } label: {
@@ -3341,11 +3345,13 @@ struct TodayFollowThroughCard: View {
                             } else if !(goal.tagLabels ?? []).isEmpty {
                                 TodayProjectTagLine(project: nil, tagLabels: goal.tagLabels ?? [], identifier: "CaptureTodayGoalTags_\(goal.id)")
                             }
-                            TodayGoalCheckInControls(
-                                client: client,
-                                goal: goal,
-                                decisionsDisabled: decisionsDisabled
-                            )
+                            if goal.canEdit == true {
+                                TodayGoalCheckInControls(
+                                    client: client,
+                                    goal: goal,
+                                    decisionsDisabled: decisionsDisabled
+                                )
+                            }
                             if let source = goal.sourceAnchor, source.roomId == goal.roomId {
                                 CaptureTranscriptSpeakerEvidenceBadge(
                                     authority: source.speakerAuthority,
@@ -3739,10 +3745,6 @@ struct TodayFollowThroughCard: View {
                     .foregroundStyle(client.isUsingProtectedCache ? Color.secondary : Color.orange)
             }
 
-            Text("Focus planning and completion, task and goal tag selections, weekly plans and reflections, source-filing choices, source-to-writing handoffs, and one-time reminder changes are protected on this iPhone before Nest sync. Focus-plan retries keep one stable identity and create only a private WorkPlanBlock—never a deadline, reminder, appointment, or external calendar event. Focus completion records explicit actual minutes and never completes the linked task or goal. A weekly plan changes no Task, Goal, Calendar event, message, or provider. Filing creates immutable Research evidence while leaving the private Inbox capture unchanged. A writing handoff creates a private draft with a durable citation and never changes the source. Tags stay inside their Nest; iOS controls reminder delivery and Quipsly never claims it in advance. Goal check-ins record progress without changing goal status. Recurring-task completion, an explicit missed-occurrence skip, and series controls change only canonical Quipsly work; they preserve history and do not schedule reminders or provider events. Weekly review is a deterministic summary and never invents missing work. Annotation review never changes preserved source text. Transcript proposals stay non-authoritative until exact-source playback review. Today does not change calendars, providers, or recording state.")
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-                .accessibilityIdentifier("CaptureTodayFollowThroughBoundary")
         }
         .captureCard()
         .sheet(item: $sourceToFile) { source in

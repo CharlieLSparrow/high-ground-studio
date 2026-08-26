@@ -540,13 +540,17 @@ describe("mobile Capture Today contract", () => {
       },
     });
     expect(transaction).toHaveBeenCalledWith(expect.any(Function), { isolationLevel: "Serializable" });
-    expect(tx.actionItem.updateMany).toHaveBeenCalledWith({
-      where: {
+    expect(tx.actionItem.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
         id: "task-1",
-        assignedUserId: "user-1",
+        OR: expect.arrayContaining([
+          { assignedUserId: "user-1" },
+          expect.objectContaining({ engagement: expect.any(Object) }),
+          expect.objectContaining({ booking: expect.any(Object) }),
+        ]),
         status: "OPEN",
         updatedAt: expected,
-      },
+      }),
       data: {
         title: "Prepare the episode clip",
         detail: "Confirm the shared playback cue.",
@@ -572,7 +576,7 @@ describe("mobile Capture Today contract", () => {
           })],
         }),
       },
-    });
+    }));
   });
 
   it("requires an explicit due-date decision before an iPhone task edit", async () => {
@@ -808,7 +812,15 @@ describe("mobile Capture Today contract", () => {
     });
     expect(transaction).toHaveBeenCalledWith(expect.any(Function), { isolationLevel: "Serializable" });
     expect(tx.goal.updateMany).toHaveBeenCalledWith(expect.objectContaining({
-      where: { id: "goal-1", ownerUserId: "user-1", updatedAt: expected },
+      where: expect.objectContaining({
+        id: "goal-1",
+        OR: expect.arrayContaining([
+          { ownerUserId: "user-1" },
+          expect.objectContaining({ engagement: expect.any(Object) }),
+          expect.objectContaining({ booking: expect.any(Object) }),
+        ]),
+        updatedAt: expected,
+      }),
       data: {
         status: "ARCHIVED",
         achievedAt: null,
@@ -1485,7 +1497,15 @@ describe("mobile Capture Today contract", () => {
       boundaries: { goalCheckInMutatesStatus: false, externalCalendarMutated: false, providerMutated: false },
     });
     expect(tx.goal.updateMany).toHaveBeenCalledWith(expect.objectContaining({
-      where: { id: "goal-1", ownerUserId: "user-1", updatedAt: expected },
+      where: expect.objectContaining({
+        id: "goal-1",
+        OR: expect.arrayContaining([
+          { ownerUserId: "user-1" },
+          expect.objectContaining({ engagement: expect.any(Object) }),
+          expect.objectContaining({ booking: expect.any(Object) }),
+        ]),
+        updatedAt: expected,
+      }),
       data: { sourceJson: expect.objectContaining({
         source: "manual",
         lastProgressReceipt: expect.objectContaining({

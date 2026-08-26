@@ -5,7 +5,9 @@ import { getPrismaClient } from "@/lib/prisma";
 import { isUnreviewedTranscriptActionItemSource } from "@high-ground/quipsly-domain/coaching-packet";
 import { listProjectsVisibleToEmail } from "@/lib/server/home-nest";
 import { loadLatestGoalReceiptProjection } from "@/lib/server/goal-receipt-projection";
+import { personalOrSharedCoachingGoalAccessWhere } from "@/lib/server/coaching-work-access";
 import { getQuipslySession } from "@/lib/server/quipsly-session";
+import { personalOrSharedSessionTaskAccessWhere } from "@/lib/server/task-access";
 
 import { StudioAccessShell } from "../studio-access-shell";
 import { WorkClient } from "./work-client";
@@ -49,14 +51,13 @@ async function loadWork(userId: string, visibleProjectIds: string[] = []) {
   // their participants so episode collaboration still works as expected.
   const sharedProductionRoomIds = sharedWorkRoomIds(roomRows);
 
-  const taskOr: any[] = [{ assignedUserId: userId }];
+  const taskOr: any[] = personalOrSharedSessionTaskAccessWhere(userId);
   const goalOr: any[] = [{ authorUserId: userId }];
   if (sharedProductionRoomIds.length) {
     taskOr.push({ roomId: { in: sharedProductionRoomIds } });
     goalOr.push({ roomId: { in: sharedProductionRoomIds } });
   }
   if (bookingIds.length) {
-    taskOr.push({ bookingId: { in: bookingIds } });
     goalOr.push({ bookingId: { in: bookingIds } });
   }
 
@@ -73,6 +74,14 @@ async function loadWork(userId: string, visibleProjectIds: string[] = []) {
         tagLinks: { orderBy: { createdAt: "asc" }, select: { tag: { select: { id: true, label: true, slug: true, category: true, projectId: true } } } },
         room: { select: { id: true, title: true, status: true, nestSlug: true, projectSlug: true } },
         booking: { select: { id: true, scheduledStart: true, clientUser: { select: { name: true, primaryEmail: true } }, coachUser: { select: { name: true, primaryEmail: true } }, callRoom: { select: { id: true, title: true } } } },
+        engagement: { select: {
+          id: true,
+          members: {
+            where: { userId, status: "ACTIVE", role: { in: ["CLIENT", "COACH", "SUPPORT"] } },
+            take: 1,
+            select: { id: true },
+          },
+        } },
         assignedUser: { select: { name: true, primaryEmail: true } },
         recurrenceOccurrence: { select: {
           occurrenceKey: true,
@@ -89,9 +98,8 @@ async function loadWork(userId: string, visibleProjectIds: string[] = []) {
     }),
     prisma.goal.findMany({
       where: { OR: [
-        { ownerUserId: userId },
+        ...personalOrSharedCoachingGoalAccessWhere(userId),
         ...(sharedProductionRoomIds.length ? [{ roomId: { in: sharedProductionRoomIds } }] : []),
-        ...(bookingIds.length ? [{ bookingId: { in: bookingIds } }] : []),
       ] },
       orderBy: [{ status: "asc" }, { updatedAt: "desc" }],
       take: 500,
@@ -99,6 +107,14 @@ async function loadWork(userId: string, visibleProjectIds: string[] = []) {
         id: true, ownerUserId: true, title: true, description: true, status: true, targetAt: true, achievedAt: true, sourceJson: true, createdAt: true, updatedAt: true,
         room: { select: { id: true, title: true } },
         booking: { select: { id: true, scheduledStart: true, callRoom: { select: { id: true, title: true } } } },
+        engagement: { select: {
+          id: true,
+          members: {
+            where: { userId, status: "ACTIVE", role: { in: ["CLIENT", "COACH", "SUPPORT"] } },
+            take: 1,
+            select: { id: true },
+          },
+        } },
         project: { select: { id: true, name: true, slug: true } },
         tagLinks: { orderBy: { createdAt: "asc" }, select: { tag: { select: { id: true, label: true, slug: true, category: true, projectId: true } } } },
         parent: { select: { id: true, title: true } },
@@ -145,12 +161,18 @@ async function loadWork(userId: string, visibleProjectIds: string[] = []) {
   return buildWorkSnapshot({
     tasks: taskRows.filter((task: any) => !isUnreviewedTranscriptActionItemSource(task.sourceJson)).map((task: any) => ({
       ...task,
+      canEditByActor: task.assignedUserId === userId
+        || Boolean(!task.engagement && task.booking?.id)
+        || Boolean(task.engagement?.members?.length),
       project: task.project && visibleProjects.has(task.project.id) ? task.project : null,
       tagLinks: (task.tagLinks || []).filter((link: any) => visibleProjects.has(link.tag.projectId)),
     })),
     goals: legacyGoalRows,
     canonicalGoals: canonicalGoalRows.map((goal: any) => ({
       ...goal,
+      canEditByActor: goal.ownerUserId === userId
+        || Boolean(!goal.engagement && goal.booking?.id)
+        || Boolean(goal.engagement?.members?.length),
       progressReceipts: [
         goalReceiptProjection.get(goal.id)?.transcriptEvidence,
         goalReceiptProjection.get(goal.id)?.progress,

@@ -1,5 +1,7 @@
 /** @jest-environment node */
 
+import type { Prisma } from "@prisma/client";
+
 import { editCanonicalTaskInTransaction } from "./canonical-task-edit";
 
 const expectedUpdatedAt = new Date("2026-07-24T18:00:00.000Z");
@@ -86,6 +88,45 @@ describe("canonical one-time task editing", () => {
         }),
       }),
     });
+  });
+
+  it("records a coaching collaborator as the editor without changing assignment", async () => {
+    const tx = transaction();
+    const accessOr: Prisma.ActionItemWhereInput[] = [
+      { assignedUserId: "coach-1" },
+      { engagement: { is: { status: "ACTIVE", members: { some: { userId: "coach-1", status: "ACTIVE", role: "COACH" } } } } },
+    ];
+
+    const result = await editCanonicalTaskInTransaction({
+      tx,
+      taskId: "task-1",
+      actorUserId: "coach-1",
+      accessOr,
+      expectedUpdatedAt,
+      title: "Practice the reflected question",
+      detail: "Try it once before the next Session.",
+      dueAt: null,
+      dueIntent: null,
+      surface: "ios-capture-today",
+      receiptId: "coach-edit-receipt",
+    });
+
+    expect(result.kind).toBe("saved");
+    expect(tx.actionItem.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: "task-1", OR: accessOr },
+    }));
+    expect(tx.actionItem.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ id: "task-1", OR: accessOr }),
+      data: expect.objectContaining({
+        sourceJson: expect.objectContaining({
+          editReceipts: [expect.objectContaining({
+            id: "coach-edit-receipt",
+            changedByUserId: "coach-1",
+          })],
+        }),
+      }),
+    }));
+    expect(tx.actionItem.updateMany.mock.calls[0][0].data).not.toHaveProperty("assignedUserId");
   });
 
   it.each([
