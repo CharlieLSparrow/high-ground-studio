@@ -4195,3 +4195,9 @@ rehearsal`) in an iPhone 17 Pro simulator. The signed-in UI acceptance opened
 - Static policy and compilation cannot prove physical audio. The deferred
   flight now requires the other participant to hear silence during Mute while
   exact-source playback retains the locally spoken muted intervals.
+- The same standard-control audit removed the hidden broad lock from the
+  persistent Speaker button. Speaker/receiver output switching now remains
+  available during the compatible master and explicitly recommends headphones
+  for a clean isolated source. Shared Watch still holds itself when an output
+  change removes its required private listening route, and an unavailable
+  microphone route still pauses recording for deliberate recovery.

@@ -1864,6 +1864,9 @@ requireIncludes(captureExperienceModelText, "retainedRecordingContinues: retaine
 requireIncludes(providerRoomText, '"Call muted. Protected local recording continues."', "native mute plainly distinguishes outbound silence from a continuing local master");
 requireIncludes(capturePhoneShellText, "model.providerMuteControlLockedForLocalCapture", "persistent native Mute remains usable during a compatible protected local master");
 requireIncludes(capturePhoneShellText, 'accessibilityIdentifier: "ProviderToggleSpeakerButton"', "shipping persistent provider speaker action is addressable");
+requireIncludes(captureExperienceModelText, "guard providerRoom.isConnected,", "native Speaker requires an active call instead of the broad local-recording lock");
+requireIncludes(captureExperienceModelText, '"Speaker on. Your protected local recording continues; headphones keep call audio out of your master."', "native Speaker stays conventional while plainly warning about call bleed into the local master");
+requireIncludes(captureExperienceModelText, '"Speaker off. Your protected local recording continues."', "native Speaker confirms the protected master remains active after returning to private output");
 requireIncludes(capturePhoneShellText, "joinMuted = model.providerRoom.isMuted", "manual Rejoin remembers the person's latest successful in-call microphone state");
 requireIncludes(capturePhoneShellText, "joinCameraOff = !model.providerRoom.isLocalVideoPublished", "manual Rejoin remembers the person's latest successful in-call camera state");
 requireIncludes(capturePhoneShellText, 'accessibilityIdentifier: "ProviderLeaveRoomButton"', "shipping persistent provider leave action is addressable");

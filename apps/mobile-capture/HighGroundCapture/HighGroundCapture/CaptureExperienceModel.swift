@@ -564,7 +564,7 @@ final class CaptureExperienceModel: ObservableObject {
     }
 
     var providerControlsLockMessage: String {
-        "Live room controls are locked while a local audio-bearing take or coordinated podcast group is recording, paused, or saving. Stop and save it before changing provider audio. Podcast camera mode remains video-only so it can coexist with the room."
+        "Joining, leaving, and source-owning room changes are locked while a local audio-bearing take or coordinated podcast group is recording, paused, or saving. Ordinary Mute and Speaker controls remain available when safe."
     }
 
     /// Muting the outbound call track is safe while a provider-owned local
@@ -2560,10 +2560,20 @@ final class CaptureExperienceModel: ObservableObject {
     }
 
     func toggleRoomSpeaker() {
-        guard providerControlsAreAvailable(), providerRoom.usesCallAudio else { return }
+        guard providerRoom.isConnected,
+              providerRoom.usesCallAudio,
+              !providerRoom.isReconnecting else { return }
         do {
             try CaptureAudioSessionCoordinator.shared.toggleBuiltInSpeaker()
             errorMessage = nil
+            let speakerIsActive = CaptureAudioSessionCoordinator.shared.isBuiltInSpeakerActive
+            if activeAudioCapture?.isUsingProviderAudioMaster == true {
+                message = speakerIsActive
+                    ? "Speaker on. Your protected local recording continues; headphones keep call audio out of your master."
+                    : "Speaker off. Your protected local recording continues."
+            } else {
+                message = speakerIsActive ? "Speaker on." : "Speaker off."
+            }
         } catch {
             errorMessage = "The iPhone audio route couldn't change. Use Audio to choose another device, then try again."
         }
