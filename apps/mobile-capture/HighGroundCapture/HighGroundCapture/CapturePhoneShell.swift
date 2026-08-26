@@ -6690,11 +6690,13 @@ private struct CaptureRecorderView: View {
 
                         CaptureRecordingEditCard(session: session)
 
-                        StudioHandoffCard(
-                            model: model,
-                            session: session,
-                            captureIsActive: captureIsActive
-                        )
+                        if !session.isCoachingSession {
+                            StudioHandoffCard(
+                                model: model,
+                                session: session,
+                                captureIsActive: captureIsActive
+                            )
+                        }
                     }
 
                     CaptureSessionGuardianCard(
@@ -14674,7 +14676,7 @@ private struct LocalRecordingDeletionSheet: View {
     private var cloudVerificationDetail: String {
         if cloudCopyIsVerified {
             if recording.serverProcessingDisposition?.uppercased() == "HELD" {
-                return "Quipsly verified and preserved the exact server bytes, but editor attachment and transcript processing remain held for review. This action still deletes only the bytes on this iPhone."
+                return "Quipsly verified and preserved the exact server bytes, but an unusual source or consent mismatch needs support before automatic transcription and editing can continue. This action still deletes only the bytes on this iPhone."
             }
             return "Quipsly recorded a verified server copy. This action still deletes only the bytes on this iPhone."
         }
@@ -15127,13 +15129,13 @@ private struct SourceTruthFootnote: View {
     private var detail: String {
         switch mode {
         case .audio:
-            "The local file is this iPhone's immutable microphone source. Room audio is coordination; only a verified, released upload becomes editor input."
+            "This iPhone keeps the original microphone recording. Quipsly verifies the cloud copy automatically before using it for transcription and editing."
         case .podcastAV:
-            "The local microphone and video-only movie are separate immutable masters in one capture group. Room audio stays independent; a human reviews clock and waveform sync."
+            "The local microphone and video-only movie stay as separate originals in one capture group. Quipsly aligns them from capture clocks and keeps sync adjustable in advanced editing."
         case .soloVideo:
-            "The local movie is this iPhone's immutable camera-and-microphone source. Only exact-byte verification and reviewed editor placement can promote it."
+            "This iPhone keeps the original camera-and-microphone movie. Quipsly verifies the cloud copy automatically before using it for editing."
         case .podcastCamera:
-            "The local movie is an immutable video-only camera source. Room audio stays independent; clock evidence proposes placement, and a human reviews sync."
+            "The local movie stays as the original video-only camera source. Room audio remains independent; Quipsly aligns capture clocks and keeps sync adjustable in advanced editing."
         }
     }
 }

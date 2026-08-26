@@ -1651,8 +1651,8 @@ for (const needle of [
 }
 for (const needle of [
   "CaptureLibraryJournalWarning",
-  "editor attachment and transcript processing remain held for review",
-  "only a verified, released upload becomes editor input",
+  "an unusual source or consent mismatch needs support",
+  "verifies the cloud copy automatically before using it for transcription and editing",
 ]) {
   requireIncludes(capturePhoneShellText, needle, "cloud-processing and local-journal truth UX");
 }
@@ -1991,6 +1991,7 @@ requireIncludes(mobileText, "Goals", "native session context exposes goals");
 requireIncludes(mobileText, "Tasks", "native session context exposes tasks");
 requireIncludes(capturePhoneShellText, "UploadSummaryCard(model: model)", "shipping recorder reaches visible upload state");
 requireIncludes(capturePhoneShellText, "StudioHandoffCard(", "shipping recorder reaches the Studio handoff");
+requireIncludes(capturePhoneShellText, "if !session.isCoachingSession", "coaching keeps basic editing in Capture without advertising a separate Studio workflow");
 assert(
   capturePhoneShellText.indexOf("StudioHandoffCard(")
     < capturePhoneShellText.indexOf("CaptureSessionTranscriptReviewCard("),
@@ -2000,7 +2001,7 @@ assert(
 requireIncludes(capturePhoneShellText, 'accessibilityIdentifier("CaptureStudioHandoffCard_', "shipping Studio handoff has a stable automation identity");
 requireIncludes(capturePhoneShellText, "without deleting or changing any original", "shipping Studio handoff preserves immutable originals");
 requireIncludes(capturePhoneShellText, "CaptureSourceTruthFootnote", "shipping recorder reaches source-truth guidance");
-requireIncludes(capturePhoneShellText, "only a verified, released upload becomes editor input", "shipping recorder states the editor-input verification gate");
+requireIncludes(capturePhoneShellText, "verifies the cloud copy automatically before using it for transcription and editing", "shipping recorder explains automatic editor-input verification in customer language");
 requireIncludes(bridgeText, "let progressedSinceRelease: Bool?", "native follow-through remains backward-compatible while decoding post-release goal progress");
 requireIncludes(capturePhoneShellText, "New check-in", "native coaching preparation distinguishes new progress from a changed goal definition");
 requireIncludes(capturePhoneShellText, "Evidence: \\(evidence)", "native coaching preparation preserves the client's evidence note with goal progress");
