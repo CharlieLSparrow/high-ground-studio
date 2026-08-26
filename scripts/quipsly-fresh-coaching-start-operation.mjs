@@ -8,6 +8,7 @@ import path from "node:path";
 import { getApps, initializeApp } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
 
+import { captureAppDeepLink } from "../apps/quipsly/src/lib/capture-universal-link.ts";
 import { writeRetainedQAPassword } from "./lib/retained-qa-keychain.mjs";
 import { createFreshCoachingCredentialIPCPacket } from "./lib/fresh-coaching-credential-ipc.mjs";
 import {
@@ -378,8 +379,8 @@ try {
   );
   assert.equal(
     await captureChoice.getAttribute("href"),
-    `https://nest.quipsly.com/sessions/${encodeURIComponent(evidence.roomId)}?open=capture&mode=live`,
-    "Fresh client Session did not expose the exact app-or-browser Universal Link.",
+    captureAppDeepLink(evidence.roomId),
+    "Fresh client Session did not expose the canonical installed-app handoff.",
   );
   const continueInBrowser = clientPage.getByRole("button", {
     name: /Join call|Join in browser|Open call lobby/i,
