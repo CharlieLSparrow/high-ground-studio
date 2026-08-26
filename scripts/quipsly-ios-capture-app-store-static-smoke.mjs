@@ -1752,6 +1752,8 @@ requireIncludes(capturePhoneShellText, "onSwitchCamera:", "shipping video record
 requireIncludes(capturePhoneShellText, "private func announceSavedSourceIfStopped()", "shipping recorder owns an explicit post-stop confirmation");
 requireIncludes(capturePhoneShellText, "You can keep talking or leave the call when you are ready", "stopping a recording does not force the coach out of an active call");
 requireIncludes(capturePhoneShellText, "will start the transcript automatically", "local-only capture explains the automatic post-call path without an approval step");
+requireIncludes(capturePhoneShellText, "&& !localRecordingWorkspaceIsOpen(for: session)", "completed Sessions retain an in-app edit doorway after the recorder workspace closes");
+requireIncludes(capturePhoneShellText, "session.isCoachingSession && !sessionHasPostCallWork(session)", "pre-call coaching preparation yields to completed-session work after capture or transcription begins");
 requireIncludes(runtimeUISmokeTestsText, "The completed take should appear as a new immutable local source.", "runtime iPhone flight proves Stop reaches a new immutable local source row");
 requireIncludes(capturePhoneShellText, "CaptureRehearsalReadinessCard(", "shipping recorder exposes a preflight check");
 requireIncludes(capturePhoneShellText, "CaptureSessionGuardianCard(", "shipping recorder reaches one ranked operational Guardian");

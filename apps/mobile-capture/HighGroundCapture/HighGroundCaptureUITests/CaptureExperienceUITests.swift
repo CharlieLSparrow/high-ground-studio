@@ -3868,6 +3868,37 @@ final class CaptureExperienceUITests: XCTestCase {
         )
     }
 
+    func testCompletedSessionKeepsEditAndShareAvailableWithoutReopeningRecorder() {
+        app.tabBars.buttons["Record"].tap()
+
+        let chooser = app.buttons["CaptureSessionChooser"]
+        reveal(chooser)
+        XCTAssertTrue(chooser.waitForExistence(timeout: 5))
+        chooser.tap()
+
+        let completedSession = app.buttons["CaptureSessionPicker_preview-studio-group-ready"]
+        for _ in 0..<8 where !completedSession.exists || !completedSession.isHittable {
+            app.swipeUp()
+        }
+        XCTAssertTrue(completedSession.exists)
+        completedSession.tap()
+
+        let edit = app.descendants(matching: .any)[
+            "CaptureRecordingEditLink_preview-studio-group-ready"
+        ]
+        reveal(edit)
+        XCTAssertTrue(
+            edit.waitForExistence(timeout: 5),
+            "A completed Session must retain its basic editor after the recorder workspace closes."
+        )
+        XCTAssertTrue(edit.isHittable)
+        XCTAssertEqual(edit.label, "Edit and share")
+        XCTAssertFalse(
+            app.descendants(matching: .any)["CaptureRecordingModePicker"].exists,
+            "Opening a completed Session should not require reopening recorder controls to reach editing."
+        )
+    }
+
     private func assertFocusedTranscriptSegment(
         _ segmentID: String,
         file: StaticString = #filePath,

@@ -6855,13 +6855,33 @@ private struct CaptureRecorderView: View {
                         }
                     }
 
-                    if session.isCoachingSession {
+                    // Once the live/local recorder workspace collapses, keep the
+                    // ordinary post-call action in the Session itself. The
+                    // editor used to disappear with the recorder, precisely
+                    // when a coach naturally wanted to continue into trimming
+                    // and sharing.
+                    if sessionHasRecording(session)
+                        && !model.providerRoom.isConnected
+                        && !localRecordingWorkspaceIsOpen(for: session) {
+                        CaptureRecordingEditCard(session: session)
+                    }
+
+                    if session.isCoachingSession && !sessionHasPostCallWork(session) {
                         MobileCoachingSessionPreparationCard(
                             client: sessionPreparation,
                             session: session,
                             previewOnly: model.usesPreviewData
                         )
                     }
+
+                    // Transcript correction and text editing are the first
+                    // post-call continuation: they expose the exact source and
+                    // make every downstream note, task, and goal understandable.
+                    CaptureSessionTranscriptReviewCard(
+                        session: session,
+                        sessionClient: model.sessionClient,
+                        previewOnly: model.usesPreviewData
+                    )
 
                     // Generated notes, tasks, and goals are the primary outcome
                     // of a completed coaching session. Put the ordinary editable
@@ -6963,12 +6983,6 @@ private struct CaptureRecorderView: View {
                             }
                         }
                     }
-
-                    CaptureSessionTranscriptReviewCard(
-                        session: session,
-                        sessionClient: model.sessionClient,
-                        previewOnly: model.usesPreviewData
-                    )
 
                     if !session.isCoachingSession,
                        session.projectSlug?.nonempty != nil,
@@ -7871,6 +7885,17 @@ private struct CaptureRecorderView: View {
     private var hasSelectedSessionRecording: Bool {
         guard let roomID = model.selectedSession?.callRoomId else { return false }
         return library.recordings.contains { $0.callRoomId == roomID }
+    }
+
+    private func sessionHasRecording(_ session: MobileCaptureSession) -> Bool {
+        session.recordingCount > 0
+            || library.recordings.contains { $0.callRoomId == session.callRoomId }
+    }
+
+    private func sessionHasPostCallWork(_ session: MobileCaptureSession) -> Bool {
+        sessionHasRecording(session)
+            || session.latestTranscriptJobId != nil
+            || session.coachingTranscriptResults != nil
     }
 
     private var audioCaptureIsActive: Bool {
