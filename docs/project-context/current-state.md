@@ -4577,3 +4577,27 @@ rehearsal`) in an iPhone 17 Pro simulator. The signed-in UI acceptance opened
   regression pass (7 tests); the expanded portfolio/relationship set passes 12
   tests; Quipsly TypeScript and the full production build pass. Authenticated
   phone/desktop visual and two-role comprehension evidence remains deferred.
+
+### 2026-08-25 Capture relationship pulse parity
+
+- Quipsly Capture's native client space now leads with the same action-first
+  relationship model as Nest. It chooses an open/recording Session first, then
+  a late planned Session, the next upcoming Session, or the latest ended
+  Session, and labels the primary action as **Join Session**, **Open Session**,
+  **Prepare Session**, **Review transcript**, or **Review Session**.
+- The phone projects open and overdue commitments, active goals, visible notes,
+  and the most useful carry-forward item from the existing canonical engagement
+  workspace. Actor-private notes get a small personal receipt; no private body
+  is copied into a new mobile store or exposed to another relationship member.
+- When no Session exists, the primary action becomes **Add shared work** once
+  the canonical workspace confirms write authority. The phone does not invent a
+  Session, guess a role, or enable a mutation while preview/offline authority is
+  incomplete.
+- The previous permission-heavy header was reduced to the familiar **Client
+  space** label plus one concise private-space receipt. Detailed access rules
+  remain enforced and testable underneath without making the coach read an
+  authorization explainer during ordinary work.
+- A generic iOS Simulator build passes. The focused native coaching workflow UI
+  test initially caught the missing no-Session primary action; after adding the
+  canonical-work fallback, it passes on iPhone 17 Pro / iOS 26.3. Physical
+  signed-in coach/client and recovery proof remains outstanding.

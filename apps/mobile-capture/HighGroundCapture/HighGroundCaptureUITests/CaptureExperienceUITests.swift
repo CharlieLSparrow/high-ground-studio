@@ -195,6 +195,16 @@ final class CaptureExperienceUITests: XCTestCase {
             relationship.exists,
             "The phone should expose the durable client space rather than reducing coaching to a call."
         )
+        relationship.tap()
+        XCTAssertTrue(
+            app.descendants(matching: .any)["CaptureCoachingRelationshipPulse"]
+                .waitForExistence(timeout: 5),
+            "A client space should lead with the next Session and relationship work instead of making a coach hunt through cards."
+        )
+        XCTAssertTrue(
+            app.buttons["CaptureCoachingRelationshipPrimaryAction"].exists,
+            "The relationship pulse should provide one status-aware primary Session action."
+        )
     }
 
     func testClientCanSeePublishedTimesAndOwnPendingRequest() {

@@ -2670,6 +2670,8 @@ private struct CaptureCoachingEngagementWorkspaceView: View {
             LazyVStack(alignment: .leading, spacing: 14) {
                 workspaceHeader
 
+                relationshipPulse
+
                 MobileEngagementChatCard(
                     client: conversation,
                     engagement: engagement,
@@ -2773,17 +2775,251 @@ private struct CaptureCoachingEngagementWorkspaceView: View {
 
     private var workspaceHeader: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Label("Private client space", systemImage: "lock.shield.fill")
+            Label("Client space", systemImage: "person.crop.circle.fill")
                 .font(.headline)
                 .foregroundStyle(.teal)
             Text(engagement.participantLine)
                 .font(.subheadline.weight(.semibold))
-            Text("Shared notes, tasks, and goals are visible to this relationship. A private note is visible only to its author—even to another coach or Quipsly staff.")
+            Label("Private to the people in this coaching relationship", systemImage: "lock.fill")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
         .captureCard()
         .accessibilityIdentifier("CaptureCoachingWorkspacePrivacy")
+    }
+
+    private var relationshipPulse: some View {
+        let allEntries = client.workspace?.entries ?? []
+        let openTasks = allEntries.filter { $0.kind == "TASK" && !$0.isComplete }
+        let overdueTasks = openTasks.filter { entry in
+            guard let dueAt = entry.dueAt.flatMap(coachingISO8601Date) else { return false }
+            return dueAt < Date()
+        }
+        let activeGoals = allEntries.filter { $0.kind == "GOAL" && !$0.isComplete }
+        let visibleNotes = allEntries.filter { $0.kind == "NOTE" }
+        let privateNotes = visibleNotes.filter { $0.visibility == "PRIVATE" }
+        let pulseSession = relationshipPulseSession
+
+        return VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 8) {
+                Text(relationshipPulseEyebrow(session: pulseSession))
+                    .font(.caption2.weight(.black))
+                    .textCase(.uppercase)
+                    .foregroundStyle(.teal)
+                Text(pulseSession?.displayTitle ?? "Keep the relationship moving")
+                    .font(.title3.weight(.black))
+                Text(relationshipPulseDetail(session: pulseSession))
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+
+                if let pulseSession {
+                    Button {
+                        Task { await onOpenSession(pulseSession.callRoomId) }
+                    } label: {
+                        Label(
+                            relationshipPulseAction(session: pulseSession),
+                            systemImage: relationshipPulseIcon(session: pulseSession)
+                        )
+                        .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(relationshipPulseIsLive(pulseSession) ? .red : .teal)
+                    .disabled(previewOnly)
+                    .accessibilityIdentifier("CaptureCoachingRelationshipPrimaryAction")
+                } else {
+                    Button {
+                        isPresentingNewWork = true
+                    } label: {
+                        Label("Add shared work", systemImage: "plus.circle.fill")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.teal)
+                    .disabled(previewOnly || client.workspace?.canWrite != true)
+                    .accessibilityHint("Adds a shared note, task, or goal to this coaching relationship.")
+                    .accessibilityIdentifier("CaptureCoachingRelationshipPrimaryAction")
+                }
+            }
+
+            HStack(spacing: 8) {
+                relationshipMetric(
+                    label: "Open",
+                    value: openTasks.count,
+                    systemImage: "checkmark.circle"
+                )
+                relationshipMetric(
+                    label: "Past due",
+                    value: overdueTasks.count,
+                    systemImage: "exclamationmark.circle"
+                )
+                relationshipMetric(
+                    label: "Goals",
+                    value: activeGoals.count,
+                    systemImage: "scope"
+                )
+            }
+
+            if let carryForward = relationshipCarryForward(
+                tasks: openTasks,
+                goals: activeGoals,
+                notes: visibleNotes
+            ) {
+                VStack(alignment: .leading, spacing: 5) {
+                    Label("Bring forward", systemImage: carryForward.systemImage)
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(.teal)
+                    Text(carryForward.title)
+                        .font(.subheadline.weight(.bold))
+                    if let detail = carryForward.detail?.nonemptyCoachingText {
+                        Text(detail)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(3)
+                    }
+                }
+                .padding(12)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(.teal.opacity(0.08), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            }
+
+            if !privateNotes.isEmpty {
+                Label(
+                    "\(privateNotes.count) private note\(privateNotes.count == 1 ? "" : "s") visible only to you",
+                    systemImage: "lock.fill"
+                )
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.orange)
+            }
+        }
+        .captureCard()
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("CaptureCoachingRelationshipPulse")
+    }
+
+    private var relationshipPulseSession: MobileCaptureSession? {
+        let now = Date()
+        let live = sessions.first(where: relationshipPulseIsLive)
+        let planned = sessions
+            .filter { $0.status?.uppercased() == "PLANNED" }
+        let upcoming = planned
+            .filter { session in
+                guard let start = session.scheduledStart.flatMap(coachingISO8601Date) else { return false }
+                return start >= now
+            }
+            .sorted { left, right in
+                let leftStart = left.scheduledStart.flatMap(coachingISO8601Date) ?? .distantFuture
+                let rightStart = right.scheduledStart.flatMap(coachingISO8601Date) ?? .distantFuture
+                return leftStart < rightStart
+            }
+            .first
+        let late = planned
+            .filter { session in
+                guard let start = session.scheduledStart.flatMap(coachingISO8601Date) else { return false }
+                return start < now
+            }
+            .sorted(by: sessionComesFirst)
+            .first
+        let latestEnded = sessions
+            .filter { $0.status?.uppercased() == "ENDED" }
+            .sorted(by: sessionComesFirst)
+            .first
+        return live ?? late ?? upcoming ?? latestEnded
+    }
+
+    private func relationshipPulseIsLive(_ session: MobileCaptureSession) -> Bool {
+        ["OPEN", "RECORDING"].contains(session.status?.uppercased() ?? "")
+    }
+
+    private func relationshipPulseEyebrow(session: MobileCaptureSession?) -> String {
+        guard let session else { return "Next step" }
+        if relationshipPulseIsLive(session) { return "Happening now" }
+        if session.status?.uppercased() == "ENDED" { return "Last Session" }
+        if let start = session.scheduledStart.flatMap(coachingISO8601Date), start < Date() {
+            return "Needs review"
+        }
+        return "Next Session"
+    }
+
+    private func relationshipPulseDetail(session: MobileCaptureSession?) -> String {
+        guard let session else {
+            return "Use the conversation and shared work below until the next Session is scheduled."
+        }
+        let schedule = session.scheduledStart
+            .flatMap(coachingISO8601Date)?
+            .formatted(date: .abbreviated, time: .shortened)
+            ?? "Time not set"
+        if relationshipPulseIsLive(session) { return "The room is open · \(schedule)" }
+        if session.status?.uppercased() == "ENDED" {
+            var parts = [schedule]
+            if session.recordingCount > 0 {
+                parts.append("\(session.recordingCount) recording\(session.recordingCount == 1 ? "" : "s")")
+            }
+            if session.latestTranscriptStatus?.uppercased() == "COMPLETED" {
+                parts.append("Transcript ready")
+            }
+            if session.currentFollowThrough != nil || session.clientFollowUp != nil {
+                parts.append("Follow-up available")
+            }
+            return parts.joined(separator: " · ")
+        }
+        if let start = session.scheduledStart.flatMap(coachingISO8601Date), start < Date() {
+            return "Scheduled for \(schedule) · open it or reschedule"
+        }
+        return schedule
+    }
+
+    private func relationshipPulseAction(session: MobileCaptureSession) -> String {
+        if relationshipPulseIsLive(session) { return "Join Session" }
+        if session.status?.uppercased() == "ENDED" {
+            return session.latestTranscriptStatus?.uppercased() == "COMPLETED"
+                ? "Review transcript"
+                : "Review Session"
+        }
+        if let start = session.scheduledStart.flatMap(coachingISO8601Date), start < Date() {
+            return "Open Session"
+        }
+        return "Prepare Session"
+    }
+
+    private func relationshipPulseIcon(session: MobileCaptureSession) -> String {
+        if relationshipPulseIsLive(session) { return "video.fill" }
+        if session.status?.uppercased() == "ENDED" { return "doc.text.magnifyingglass" }
+        return "calendar.badge.clock"
+    }
+
+    private func relationshipMetric(
+        label: String,
+        value: Int,
+        systemImage: String
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Label(label, systemImage: systemImage)
+                .font(.caption2.weight(.bold))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+            Text("\(value)")
+                .font(.title3.weight(.black))
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(10)
+        .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+
+    private func relationshipCarryForward(
+        tasks: [MobileCoachingEngagementWorkEntry],
+        goals: [MobileCoachingEngagementWorkEntry],
+        notes: [MobileCoachingEngagementWorkEntry]
+    ) -> (title: String, detail: String?, systemImage: String)? {
+        if let overdue = tasks.first(where: { entry in
+            guard let dueAt = entry.dueAt.flatMap(coachingISO8601Date) else { return false }
+            return dueAt < Date()
+        }) {
+            return (overdue.title, overdue.body, "exclamationmark.circle.fill")
+        }
+        if let task = tasks.first { return (task.title, task.body, "checkmark.circle") }
+        if let goal = goals.first { return (goal.title, goal.body, "scope") }
+        if let note = notes.first { return (note.title, note.body, "note.text") }
+        return nil
     }
 
     @ViewBuilder
