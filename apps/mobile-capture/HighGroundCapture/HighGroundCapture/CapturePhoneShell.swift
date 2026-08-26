@@ -6500,6 +6500,12 @@ private struct CaptureRecorderView: View {
                         .accessibilityIdentifier("CaptureSessionStatusMessage")
                 }
 
+                if let notice = model.sessionEntryNotice,
+                   notice.sessionID == model.selectedSession?.id {
+                    CaptureInlineMessage(text: notice.message)
+                        .accessibilityIdentifier("CaptureSessionEntryNotice")
+                }
+
                 if let session = model.selectedSession {
                     ProviderRoomControls(
                         model: model,

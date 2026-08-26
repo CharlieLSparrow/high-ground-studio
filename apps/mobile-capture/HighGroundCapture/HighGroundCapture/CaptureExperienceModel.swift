@@ -306,6 +306,11 @@ struct CaptureStudioHandoffFeedback: Equatable {
     let isError: Bool
 }
 
+struct CaptureSessionEntryNotice: Equatable {
+    let sessionID: String
+    let message: String
+}
+
 @MainActor
 final class CaptureExperienceModel: ObservableObject {
     @Published var selectedSessionID: String?
@@ -320,6 +325,7 @@ final class CaptureExperienceModel: ObservableObject {
     @Published var newSessionCoachingEngagementID = ""
     @Published var message: String?
     @Published var errorMessage: String?
+    @Published private(set) var sessionEntryNotice: CaptureSessionEntryNotice?
     @Published private(set) var workNavigationRequest: CaptureWorkNavigationRequest?
     @Published var preparedRoomJoin: MobileCaptureRoomJoinResponse?
     @Published private(set) var activeCaptureSession: MobileCaptureSession?
@@ -1097,6 +1103,9 @@ final class CaptureExperienceModel: ObservableObject {
             errorMessage = "Stop and save the active recording or leave the live room before changing sessions."
             return
         }
+        if selectedSessionID != session.id {
+            sessionEntryNotice = nil
+        }
         selectedSessionID = session.id
         preparedRoomJoin = nil
         message = nil
@@ -1148,11 +1157,19 @@ final class CaptureExperienceModel: ObservableObject {
         }
 
         select(session)
-        message = deepLink.mode == .live
-            ? "Session opened. Nothing joined or recorded yet."
-            : "Session opened. Nothing started automatically."
+        sessionEntryNotice = CaptureSessionEntryNotice(
+            sessionID: session.id,
+            message: deepLink.mode == .live
+                ? "Session opened. Nothing joined or recorded yet."
+                : "Session opened. Nothing started automatically."
+        )
         let destinationTab: CaptureRootTab = deepLink.mode == .review ? .library : .record
         return .opened(destinationTab)
+    }
+
+    func clearSessionEntryNotice(for sessionID: String) {
+        guard sessionEntryNotice?.sessionID == sessionID else { return }
+        sessionEntryNotice = nil
     }
 
     func requestWorkNavigation(
@@ -1709,6 +1726,7 @@ final class CaptureExperienceModel: ObservableObject {
         activeVideoCaptureMode = mode
         activeVideoCaptureOwnerSnapshot = ownerSnapshot
         isChangingCapture = false
+        clearSessionEntryNotice(for: refreshed.id)
         switch mode {
         case .podcastCamera:
             message = "Recording a video-only camera master. The live room remains the conversation path; Quipsly will align their clocks after upload."
@@ -2256,6 +2274,7 @@ final class CaptureExperienceModel: ObservableObject {
         activeCaptureSession = session
         selectedSessionID = session.id
         isChangingCapture = false
+        clearSessionEntryNotice(for: session.id)
 
         if usesPreviewData {
             message = "Recording this iPhone's microphone. Preview mode does not contact Nest."
@@ -2521,7 +2540,9 @@ final class CaptureExperienceModel: ObservableObject {
             return
         }
         errorMessage = providerRoom.lastError
-        if !providerRoom.isConnected {
+        if providerRoom.isConnected {
+            clearSessionEntryNotice(for: session.id)
+        } else {
             activeRoomSession = nil
             preparedRoomJoin = nil
         }
