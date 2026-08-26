@@ -13,12 +13,15 @@ describe("Session invitation email", () => {
   const originalApiKey = process.env.QUIPSLY_SESSION_INVITATION_RESEND_API_KEY;
   const originalFrom = process.env.QUIPSLY_SESSION_INVITATION_EMAIL_FROM;
   const originalSiteUrl = process.env.QUIPSLY_SITE_URL;
+  const originalDeliveryMode =
+    process.env.QUIPSLY_SESSION_INVITATION_DELIVERY_MODE;
 
   beforeEach(() => {
     process.env.QUIPSLY_SESSION_INVITATION_RESEND_API_KEY = "re_test";
     process.env.QUIPSLY_SESSION_INVITATION_EMAIL_FROM =
       "Quipsly <sessions@quipsly.example>";
     delete process.env.QUIPSLY_SITE_URL;
+    delete process.env.QUIPSLY_SESSION_INVITATION_DELIVERY_MODE;
   });
 
   afterEach(() => {
@@ -34,6 +37,11 @@ describe("Session invitation email", () => {
     else process.env.QUIPSLY_SESSION_INVITATION_EMAIL_FROM = originalFrom;
     if (originalSiteUrl === undefined) delete process.env.QUIPSLY_SITE_URL;
     else process.env.QUIPSLY_SITE_URL = originalSiteUrl;
+    if (originalDeliveryMode === undefined)
+      delete process.env.QUIPSLY_SESSION_INVITATION_DELIVERY_MODE;
+    else
+      process.env.QUIPSLY_SESSION_INVITATION_DELIVERY_MODE =
+        originalDeliveryMode;
   });
 
   it("builds a same-origin local invitation URL without trusting a different path", () => {
@@ -66,6 +74,23 @@ describe("Session invitation email", () => {
     expect(
       sessionInvitationEmailReadiness(
         "http://127.0.0.1:3012/api/sessions/room-1/invitations",
+      ),
+    ).toEqual({ available: false, status: "EMAIL_NOT_CONFIGURED" });
+  });
+
+  it("makes the isolated local receipt adapter actionable without provider credentials", () => {
+    delete process.env.QUIPSLY_SESSION_INVITATION_RESEND_API_KEY;
+    delete process.env.QUIPSLY_SESSION_INVITATION_EMAIL_FROM;
+    process.env.QUIPSLY_SESSION_INVITATION_DELIVERY_MODE = "local-receipt";
+
+    expect(
+      sessionInvitationEmailReadiness(
+        "http://127.0.0.1:3022/api/sessions/room-1/invitations",
+      ),
+    ).toEqual({ available: true, status: "AVAILABLE" });
+    expect(
+      sessionInvitationEmailReadiness(
+        "https://nest.quipsly.com/api/sessions/room-1/invitations",
       ),
     ).toEqual({ available: false, status: "EMAIL_NOT_CONFIGURED" });
   });
@@ -147,6 +172,46 @@ describe("Session invitation email", () => {
     ).resolves.toMatchObject({
       ok: false,
       code: "LOCAL_TEST_RECIPIENT",
+    });
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+  });
+
+  it("records any loopback lab invitation without contacting a provider", async () => {
+    process.env.QUIPSLY_SESSION_INVITATION_DELIVERY_MODE = "local-receipt";
+    globalThis.fetch = jest.fn() as typeof fetch;
+
+    await expect(
+      sendSessionInvitationEmail({
+        recipientEmail: "client@example.com",
+        roomTitle: "Local recovery rehearsal",
+        joinUrl:
+          "http://127.0.0.1:3022/sessions/join?token=qsinv_abcdefghijklmnopqrstuvwxyzABCDEFGH123456",
+        idempotencyKey: "session-invitation/local-lab-receipt",
+      }),
+    ).resolves.toMatchObject({
+      ok: false,
+      code: "LOCAL_TEST_RECIPIENT",
+    });
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+  });
+
+  it("cannot activate the local receipt adapter for a public origin", async () => {
+    process.env.QUIPSLY_SESSION_INVITATION_DELIVERY_MODE = "local-receipt";
+    delete process.env.QUIPSLY_SESSION_INVITATION_RESEND_API_KEY;
+    delete process.env.QUIPSLY_SESSION_INVITATION_EMAIL_FROM;
+    globalThis.fetch = jest.fn() as typeof fetch;
+
+    await expect(
+      sendSessionInvitationEmail({
+        recipientEmail: "client@example.com",
+        roomTitle: "Public invitation",
+        joinUrl:
+          "https://nest.quipsly.com/sessions/join?token=qsinv_abcdefghijklmnopqrstuvwxyzABCDEFGH123456",
+        idempotencyKey: "session-invitation/public-origin",
+      }),
+    ).resolves.toMatchObject({
+      ok: false,
+      code: "EMAIL_NOT_CONFIGURED",
     });
     expect(globalThis.fetch).not.toHaveBeenCalled();
   });

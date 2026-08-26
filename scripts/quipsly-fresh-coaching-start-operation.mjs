@@ -40,8 +40,13 @@ assert(
 );
 process.env.DATABASE_URL = databaseURL.toString();
 process.env.FIREBASE_AUTH_EMULATOR_HOST ||= "127.0.0.1:9099";
+const firebaseProjectId =
+  process.env.QUIPSLY_LOCAL_FIREBASE_PROJECT ||
+  process.env.FIREBASE_PROJECT_ID ||
+  process.env.GCLOUD_PROJECT ||
+  "quipsly-reef";
 
-if (!getApps().length) initializeApp({ projectId: "quipsly-reef" });
+if (!getApps().length) initializeApp({ projectId: firebaseProjectId });
 const auth = getAuth();
 const { getPrismaClient } = await import("../apps/quipsly/src/lib/prisma.ts");
 const prisma = getPrismaClient();

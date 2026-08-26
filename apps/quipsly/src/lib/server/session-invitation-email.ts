@@ -35,6 +35,29 @@ function validSender(value: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(bracketed.trim());
 }
 
+function isLoopbackUrl(value: string) {
+  try {
+    const parsed = new URL(value);
+    return ["localhost", "127.0.0.1", "::1"].includes(parsed.hostname);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The recovery lab needs to exercise the exact rendered invitation workflow,
+ * but it must never deliver synthetic or accidentally real mail. This adapter
+ * is deliberately impossible to enable in production or for a non-loopback
+ * origin.
+ */
+function localReceiptDeliveryEnabled(origin: string) {
+  return (
+    process.env.QUIPSLY_SESSION_INVITATION_DELIVERY_MODE === "local-receipt" &&
+    process.env.NODE_ENV !== "production" &&
+    isLoopbackUrl(origin)
+  );
+}
+
 function publicBaseUrl(requestUrl: string) {
   const configured =
     process.env.QUIPSLY_SITE_URL?.trim() ||
@@ -76,6 +99,9 @@ export type SessionInvitationEmailReadiness = {
 export function sessionInvitationEmailReadiness(
   requestUrl: string,
 ): SessionInvitationEmailReadiness {
+  if (localReceiptDeliveryEnabled(requestUrl)) {
+    return { available: true, status: "AVAILABLE" };
+  }
   const apiKey =
     process.env.QUIPSLY_SESSION_INVITATION_RESEND_API_KEY?.trim() ||
     process.env.RESEND_API_KEY?.trim() ||
@@ -154,6 +180,19 @@ export async function sendSessionInvitationEmail(input: {
       code: "LOCAL_TEST_RECIPIENT",
       message:
         "Quipsly kept this local test invitation on this device. Use the private client entry to continue; no external email was sent.",
+      retryAfterSeconds: null,
+    };
+  }
+  if (
+    input.joinUrl &&
+    localReceiptDeliveryEnabled(input.joinUrl)
+  ) {
+    return {
+      ok: false,
+      provider: "resend",
+      code: "LOCAL_TEST_RECIPIENT",
+      message:
+        "Quipsly recorded this invitation in the isolated local delivery lab. Use the private client entry to continue; no external email was sent.",
       retryAfterSeconds: null,
     };
   }

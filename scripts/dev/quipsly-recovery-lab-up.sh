@@ -53,6 +53,7 @@ if [[ "${1:-}" == "--run-nest" ]]; then
     NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=quipsly-recovery-lab.appspot.com \
     NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=123456789 \
     NEXT_PUBLIC_FIREBASE_APP_ID=1:123456789:web:recoverylab \
+    QUIPSLY_SESSION_INVITATION_DELIVERY_MODE=local-receipt \
     QUIPSLY_OWNER_OVERRIDE=false \
     "${pnpm_bin:?Missing launcher pnpm path}" dev
 fi
