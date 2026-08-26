@@ -2179,13 +2179,20 @@ export function BrowserSourceRecorder({
           if (timerRef.current) window.clearInterval(timerRef.current);
           timerRef.current = null;
           clearGuardianMonitoring();
-          await callTransportGapWriteRef.current;
-          await writeQueueRef.current;
-          await durableWriterRef.current?.close();
-          durableWriterRef.current = null;
+          const stoppedAt = new Date().toISOString();
+          const captureMeterPromise = stopRetainedSourceMeter(stoppedAt).catch(
+            () => null,
+          );
+          // MediaRecorder has stopped accepting input. Release browser hardware
+          // before any durable queue or writer close can wait or fail; the
+          // already-delivered blobs and OPFS ledger remain independently owned.
           streamRef.current?.getTracks().forEach((track) => track.stop());
           streamRef.current = null;
-          const stoppedAt = new Date().toISOString();
+          await callTransportGapWriteRef.current;
+          await writeQueueRef.current;
+          const durableWriter = durableWriterRef.current;
+          durableWriterRef.current = null;
+          await durableWriter?.close();
           const monotonicStoppedNanoseconds =
             monotonicStoppedNanosecondsRef.current ??
             browserMonotonicNanoseconds(performance.now());
@@ -2193,7 +2200,7 @@ export function BrowserSourceRecorder({
             stopClockBurstRef.current ??
             measureBrowserCaptureClockBurst({ callRoomId, captureGroupId })
           ).catch(() => []);
-          const captureMeter = await stopRetainedSourceMeter(stoppedAt);
+          const captureMeter = await captureMeterPromise;
           const file = await loadBrowserSourceFile(opfsFileName);
           const hash = await hashBrowserSourceFile(file);
           let current = ledgerRef.current!;

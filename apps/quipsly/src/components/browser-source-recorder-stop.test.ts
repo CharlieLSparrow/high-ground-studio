@@ -86,4 +86,26 @@ describe("browser source stop confidence", () => {
     expect(onStop).not.toContain("It was not uploaded");
     expect(source).toContain("Retry Session status");
   });
+
+  it("releases browser hardware before a durable writer close can fail", () => {
+    const source = fs.readFileSync(
+      path.resolve(process.cwd(), "src/components/browser-source-recorder.tsx"),
+      "utf8",
+    );
+    const onStopStart = source.indexOf("recorder.onstop =");
+    const onErrorStart = source.indexOf("recorder.onerror =", onStopStart);
+    const onStop = source.slice(onStopStart, onErrorStart);
+    const releaseTracks = onStop.indexOf(
+      "streamRef.current?.getTracks().forEach((track) => track.stop())",
+    );
+    const awaitWriterClose = onStop.indexOf("await durableWriter?.close()");
+
+    expect(onStop).toContain(
+      "const captureMeterPromise = stopRetainedSourceMeter(stoppedAt).catch(",
+    );
+    expect(releaseTracks).toBeGreaterThan(0);
+    expect(awaitWriterClose).toBeGreaterThan(releaseTracks);
+    expect(onStop).toContain("durableWriterRef.current = null");
+    expect(onStop).toContain("const captureMeter = await captureMeterPromise");
+  });
 });

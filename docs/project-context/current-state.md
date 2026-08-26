@@ -4417,3 +4417,17 @@ rehearsal`) in an iPhone 17 Pro simulator. The signed-in UI acceptance opened
   Capture contract passes. A real lost STOP response followed by upload,
   relaunch repair, room-state convergence, and exact playback remains explicit
   flight evidence.
+
+### 2026-08-25 browser hardware release precedes final writer close
+
+- `MediaRecorder.onstop` now begins capture-meter shutdown and releases every
+  microphone/camera track before waiting for pending ledger writes or the final
+  OPFS writer close. A slow or rejected close can no longer leave the browser's
+  device indicator active after Quipsly reports that recording stopped.
+- Writer-close failure still enters the existing Held interruption ledger. Its
+  already committed chunks remain available for exact-size/hash recovery on the
+  next automatic pass; releasing hardware does not delete or rewrite them.
+- Five focused recorder, vault, upload, endpoint, and capture suites pass (32
+  tests), including the cleanup-order contract, and full Quipsly TypeScript
+  passes. Real device-indicator shutdown plus recovery after an induced OPFS
+  close failure remains explicit flight evidence.
