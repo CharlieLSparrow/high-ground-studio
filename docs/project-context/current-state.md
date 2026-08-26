@@ -4276,3 +4276,20 @@ rehearsal`) in an iPhone 17 Pro simulator. The signed-in UI acceptance opened
   the shared Capture and LiveKit token contracts pass. Actual Safari/Chrome
   prompts, provider tracks, and two-person audibility remain explicit flight
   evidence in the deferred ledger.
+
+### 2026-08-25 truthful live browser audio handoff
+
+- Changing a connected browser to **Audio on another device** is now a real
+  transport action. Quipsly disables the LiveKit microphone before changing
+  the displayed mode, stops the local call meter, and mutes every attached
+  remote-audio element even when the browser uses its default output.
+- If LiveKit cannot disable the microphone, the interface keeps **Audio on this
+  device** selected and plainly reports that the handoff failed. It no longer
+  risks claiming a companion endpoint is silent while it is transmitting.
+- Returning audio to the browser restores listening but stays muted until the
+  participant taps Unmute. That action reuses the exact remembered microphone
+  and its conversation-processing constraints instead of silently selecting a
+  different system input.
+- The focused browser room suite passes 36/36 and full Quipsly TypeScript
+  passes. Real cross-device echo, provider audibility, and retained-source
+  continuity during the handoff remain explicit flight evidence.

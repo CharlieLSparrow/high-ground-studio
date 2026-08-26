@@ -508,6 +508,109 @@ describe("LiveSessionRoom", () => {
       .toMatchObject({ callAudioMode: "other-device" });
   });
 
+  it("turns off live provider audio before moving an active call to another device", async () => {
+    Object.defineProperty(navigator, "permissions", {
+      configurable: true,
+      value: { query: jest.fn().mockResolvedValue({ state: "granted" }) },
+    });
+    Object.defineProperty(navigator, "mediaDevices", {
+      configurable: true,
+      value: {
+        enumerateDevices: jest.fn().mockResolvedValue([
+          { kind: "audioinput", deviceId: "coach-mic", label: "Coach microphone" },
+        ]),
+        addEventListener: jest.fn(),
+        removeEventListener: jest.fn(),
+      },
+    });
+    global.fetch = jest.fn(async (input: RequestInfo | URL) => ({
+      ok: true,
+      status: 200,
+      json: async () => String(input).includes("/api/mobile/capture/rooms/join")
+        ? {
+            ok: true,
+            canJoin: true,
+            serverUrl: "wss://live.test",
+            participantToken: "room-scoped-test-token",
+            recordingConsentGranted: true,
+          }
+        : { ok: true },
+    })) as unknown as typeof fetch;
+
+    await act(async () => {
+      render(<LiveSessionRoom callRoomId="room-live-audio-handoff" captureGroupId="55555555-5555-4555-8555-555555555542" sessionTitle="Audio handoff" kind="coaching" />);
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Join call" }));
+    expect(await screen.findByRole("button", { name: "Leave" })).toBeInTheDocument();
+    const remoteAudio = document.createElement("audio");
+    screen.getByLabelText("Remote participant media").appendChild(remoteAudio);
+    fireEvent.click(screen.getByText("Audio and video settings"));
+
+    fireEvent.click(screen.getByRole("button", { name: /Audio on another device/i }));
+    await waitFor(() => expect(mockLiveKitRoom.localParticipant.setMicrophoneEnabled).toHaveBeenLastCalledWith(false));
+    expect(await screen.findByText(/Call microphone and speakers are off on this device/i)).toBeInTheDocument();
+    expect(remoteAudio.muted).toBe(true);
+    expect(remoteAudio.volume).toBe(0);
+
+    const providerActionCount = mockLiveKitRoom.localParticipant.setMicrophoneEnabled.mock.calls.length;
+    fireEvent.click(screen.getByRole("button", { name: /Audio on this device/i }));
+    expect(await screen.findByText(/You can listen now; tap Unmute/i)).toBeInTheDocument();
+    expect(remoteAudio.muted).toBe(false);
+    expect(remoteAudio.volume).toBe(1);
+    expect(screen.getByRole("button", { name: "Unmute" })).toBeEnabled();
+    expect(mockLiveKitRoom.localParticipant.setMicrophoneEnabled).toHaveBeenCalledTimes(providerActionCount);
+    fireEvent.click(screen.getByRole("button", { name: "Unmute" }));
+    await waitFor(() => expect(mockLiveKitRoom.localParticipant.setMicrophoneEnabled).toHaveBeenLastCalledWith(true, {
+      deviceId: "coach-mic",
+      echoCancellation: true,
+      noiseSuppression: true,
+      autoGainControl: true,
+    }));
+  });
+
+  it("keeps the live audio mode truthful when provider mute fails", async () => {
+    Object.defineProperty(navigator, "permissions", {
+      configurable: true,
+      value: { query: jest.fn().mockResolvedValue({ state: "granted" }) },
+    });
+    Object.defineProperty(navigator, "mediaDevices", {
+      configurable: true,
+      value: {
+        enumerateDevices: jest.fn().mockResolvedValue([
+          { kind: "audioinput", deviceId: "coach-mic", label: "Coach microphone" },
+        ]),
+        addEventListener: jest.fn(),
+        removeEventListener: jest.fn(),
+      },
+    });
+    global.fetch = jest.fn(async (input: RequestInfo | URL) => ({
+      ok: true,
+      status: 200,
+      json: async () => String(input).includes("/api/mobile/capture/rooms/join")
+        ? {
+            ok: true,
+            canJoin: true,
+            serverUrl: "wss://live.test",
+            participantToken: "room-scoped-test-token",
+            recordingConsentGranted: true,
+          }
+        : { ok: true },
+    })) as unknown as typeof fetch;
+
+    await act(async () => {
+      render(<LiveSessionRoom callRoomId="room-live-audio-handoff-failure" captureGroupId="55555555-5555-4555-8555-555555555543" sessionTitle="Audio handoff failure" kind="coaching" />);
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Join call" }));
+    expect(await screen.findByRole("button", { name: "Leave" })).toBeInTheDocument();
+    fireEvent.click(screen.getByText("Audio and video settings"));
+    mockLiveKitRoom.localParticipant.setMicrophoneEnabled.mockRejectedValueOnce(new Error("provider mute rejected"));
+
+    fireEvent.click(screen.getByRole("button", { name: /Audio on another device/i }));
+    expect(await screen.findByText(/Call audio stayed on this device/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Audio on this device/i })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: /Audio on another device/i })).toHaveAttribute("aria-pressed", "false");
+  });
+
   it("remembers safe join choices and falls back by device label when browser ids rotate", async () => {
     window.localStorage.setItem("quipsly-live-preferred-devices-v2", JSON.stringify({
       microphoneId: "old-mic-id",

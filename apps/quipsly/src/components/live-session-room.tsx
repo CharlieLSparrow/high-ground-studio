@@ -486,6 +486,7 @@ export function LiveSessionRoom({
   const [outputId, setOutputId] = useState("");
   const [cameraWanted, setCameraWanted] = useState(experience.defaultCamera);
   const [callAudioMode, setCallAudioMode] = useState<CallAudioMode>("this-device");
+  const [callAudioModeBusy, setCallAudioModeBusy] = useState(false);
   const [joinMuted, setJoinMuted] = useState(false);
   const [microphoneMuted, setMicrophoneMuted] = useState(false);
   const [microphoneRecoveryHeld, setMicrophoneRecoveryHeld] = useState(false);
@@ -517,6 +518,7 @@ export function LiveSessionRoom({
   const intentionalDisconnectRef = useRef(false);
   const cameraWantedRef = useRef(cameraWanted);
   const callAudioModeRef = useRef(callAudioMode);
+  const callAudioModeChangeInFlightRef = useRef(false);
   const microphoneIdRef = useRef(microphoneId);
   const cameraIdRef = useRef(cameraId);
   const outputIdRef = useRef(outputId);
@@ -1707,7 +1709,18 @@ export function LiveSessionRoom({
     }
     const nextMuted = !microphoneMuted;
     try {
-      const publication = await room.localParticipant.setMicrophoneEnabled(!nextMuted);
+      const selectedMicrophoneId = microphoneIdRef.current;
+      const publication = await room.localParticipant.setMicrophoneEnabled(
+        !nextMuted,
+        !nextMuted && selectedMicrophoneId
+          ? {
+              deviceId: selectedMicrophoneId,
+              echoCancellation: true,
+              noiseSuppression: true,
+              autoGainControl: true,
+            }
+          : undefined,
+      );
       if (nextMuted) {
         stopAudioMeter();
       } else {
@@ -1746,6 +1759,54 @@ export function LiveSessionRoom({
       setTechnicalMessage(error instanceof Error ? error.message : "The browser did not return a camera error.");
     }
   }, [attachLocalCameraTrack, cameraId, cameraMuted, cameraWanted]);
+
+  const chooseCallAudioMode = useCallback(async (nextMode: CallAudioMode) => {
+    if (nextMode === callAudioModeRef.current || callAudioModeChangeInFlightRef.current) return;
+    callAudioModeChangeInFlightRef.current = true;
+    setCallAudioModeBusy(true);
+    try {
+      const room = roomRef.current;
+      if (connected && room && nextMode === "other-device") {
+        // This choice is a live transport boundary, not just a label. Disable
+        // the provider microphone before claiming this endpoint is silent.
+        await room.localParticipant.setMicrophoneEnabled(false);
+        stopAudioMeter();
+        setMicrophoneMuted(true);
+        microphoneMutedRef.current = true;
+        setMicrophoneRecoveryHeld(false);
+      }
+
+      callAudioModeRef.current = nextMode;
+      setCallAudioMode(nextMode);
+      suppressPreferenceWriteRef.current = false;
+      setTechnicalMessage(null);
+      if (nextMode === "other-device") {
+        if (!connected) clearPreflightPreview();
+        setMicrophoneMuted(true);
+        microphoneMutedRef.current = true;
+        setMessage(connected
+          ? "Call microphone and speakers are off on this device. Use your other device to talk and listen."
+          : "Call audio will stay off on this device to prevent echo.");
+      } else if (connected) {
+        // Returning call audio is deliberately two-step: listening resumes,
+        // while speaking stays private until the person taps Unmute.
+        setMicrophoneMuted(true);
+        microphoneMutedRef.current = true;
+        setMicrophoneRecoveryHeld(false);
+        setMessage("Call audio is back on this device. You can listen now; tap Unmute when you’re ready to speak.");
+      } else {
+        setMicrophoneMuted(joinMuted);
+        microphoneMutedRef.current = joinMuted;
+        setMessage("This device will handle the conversation audio when you join.");
+      }
+    } catch (error) {
+      setMessage("Call audio stayed on this device because its microphone could not be turned off. Try again or leave this endpoint before using another device.");
+      setTechnicalMessage(error instanceof Error ? error.message : "The browser did not return an audio-route error.");
+    } finally {
+      callAudioModeChangeInFlightRef.current = false;
+      setCallAudioModeBusy(false);
+    }
+  }, [clearPreflightPreview, connected, joinMuted, stopAudioMeter]);
 
   const chooseMicrophone = useCallback(async (nextId: string) => {
     if (!nextId || nextId === microphoneId) return;
@@ -1892,9 +1953,9 @@ export function LiveSessionRoom({
   }, [callAudioMode, cameraId, cameraWanted, cameras, joinMuted, microphoneId, microphones, outputId, outputs]);
 
   useEffect(() => {
-    if (!connected || !outputId) return;
+    if (!connected) return;
     remoteMediaRef.current?.querySelectorAll("audio").forEach((element) => {
-      const useAudioHere = callAudioModeRef.current === "this-device";
+      const useAudioHere = callAudioMode === "this-device";
       element.muted = !useAudioHere;
       element.volume = useAudioHere ? 1 : 0;
       if (useAudioHere) void routeAudioOutput(element);
@@ -2080,10 +2141,8 @@ export function LiveSessionRoom({
           <div className="mt-4 grid gap-2 sm:grid-cols-2" role="group" aria-label="Where to use call audio">
             <button
               type="button"
-              onClick={() => {
-                setCallAudioMode("this-device");
-                setMicrophoneMuted(joinMuted);
-              }}
+              onClick={() => void chooseCallAudioMode("this-device")}
+              disabled={callAudioModeBusy}
               className={`min-h-12 rounded-xl border px-3 py-2 text-left text-xs font-black ${callAudioMode === "this-device" ? "border-violet-700 bg-violet-800 text-white" : "border-[#d8c7a7] bg-[#fffaf0] text-[#5b472f]"}`}
               aria-pressed={callAudioMode === "this-device"}
             >
@@ -2092,12 +2151,8 @@ export function LiveSessionRoom({
             </button>
             <button
               type="button"
-              onClick={() => {
-                setCallAudioMode("other-device");
-                setMicrophoneMuted(true);
-                stopAudioMeter();
-                clearPreflightPreview();
-              }}
+              onClick={() => void chooseCallAudioMode("other-device")}
+              disabled={callAudioModeBusy}
               className={`min-h-12 rounded-xl border px-3 py-2 text-left text-xs font-black ${callAudioMode === "other-device" ? "border-violet-700 bg-violet-800 text-white" : "border-[#d8c7a7] bg-[#fffaf0] text-[#5b472f]"}`}
               aria-pressed={callAudioMode === "other-device"}
             >
