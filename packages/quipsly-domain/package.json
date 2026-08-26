@@ -48,6 +48,10 @@
       "types": "./src/coaching-client-priority.ts",
       "import": "./src/coaching-client-priority.ts"
     },
+    "./session-entry-readiness": {
+      "types": "./src/session-entry-readiness.ts",
+      "import": "./src/session-entry-readiness.ts"
+    },
     "./mobile-capture-upload": {
       "types": "./src/mobile-capture-upload.ts",
       "import": "./src/mobile-capture-upload.ts"

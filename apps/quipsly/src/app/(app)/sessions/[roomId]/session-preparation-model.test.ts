@@ -64,8 +64,21 @@ describe("Session preparation projection", () => {
       providerCanJoin: true,
       providerReadiness: "livekit-ready",
       scheduledStart: "2026-07-26T15:00:00.000Z",
-      allAudioReady: true,
-      allTranscriptionReady: true,
+      allAudioReady: false,
+      allTranscriptionReady: false,
+      entryReadiness: {
+        stage: "join-call",
+        label: "Join and wait",
+        permissions: {
+          canJoinCall: true,
+          canStartAudioRecording: false,
+        },
+        participantProgress: {
+          attached: 1,
+          required: 2,
+          complete: false,
+        },
+      },
       participants: [{
         id: "participant-1",
         label: "Homer",

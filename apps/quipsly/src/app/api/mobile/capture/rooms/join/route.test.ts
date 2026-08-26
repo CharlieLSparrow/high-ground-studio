@@ -162,6 +162,21 @@ describe("mobile capture room join", () => {
       providerReadiness: "livekit-ready",
       participantToken: "signed-room-token",
       recordingConsentGranted: false,
+      allParticipantRecordingConsentGranted: false,
+      participantCount: 1,
+      requiredParticipantCount: 2,
+      entryReadiness: {
+        stage: "confirm-consent",
+        permissions: {
+          canJoinCall: true,
+          canStartAudioRecording: false,
+        },
+        participantProgress: {
+          attached: 1,
+          required: 2,
+          complete: false,
+        },
+      },
       effects: {
         providerJoined: false,
         recordingStarted: false,
@@ -177,7 +192,9 @@ describe("mobile capture room join", () => {
         joiningStartsRecording: false,
         localRecordingRequiresConsent: true,
         providerRecordingRequiresAllParticipantConsent: true,
+        allParticipantRecordingConsentGranted: false,
       },
+      localFallback: { safeToRecordLocally: false },
     });
     expect(createParticipant).not.toHaveBeenCalled();
     expect(mockedToken).toHaveBeenCalledWith(

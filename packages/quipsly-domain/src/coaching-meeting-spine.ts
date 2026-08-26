@@ -19,7 +19,15 @@ export interface BuildQuipslyMeetingJoinSpineInput {
   readonly participantId: string;
   readonly recordingConsentId?: string | null;
   readonly recordingConsentStatus: string;
+  /** Current actor's durable audio-recording consent. */
   readonly recordingConsentGranted: boolean;
+  /** Complete signed-in, non-observer participant-set audio consent. */
+  readonly allParticipantRecordingConsentGranted?: boolean | null;
+  readonly allParticipantVideoConsentGranted?: boolean | null;
+  readonly allParticipantTranscriptionConsentGranted?: boolean | null;
+  readonly participantCount?: number | null;
+  readonly requiredParticipantCount?: number | null;
+  readonly entryReadiness?: QuipslySessionEntryReadiness | null;
   readonly nextAction: string;
   readonly serverUrl?: string | null;
   readonly roomName?: string | null;
@@ -47,6 +55,8 @@ function normalizedProvider(provider: string | null | undefined) {
 
 export function buildQuipslyMeetingJoinSpine(input: BuildQuipslyMeetingJoinSpineInput) {
   const provider = normalizedProvider(input.provider);
+  const allParticipantRecordingConsentGranted =
+    input.allParticipantRecordingConsentGranted ?? input.recordingConsentGranted;
   const tokenExpiresInSeconds = input.tokenExpiresInSeconds ?? null;
   const tokenIssuedAt = input.tokenIssuedAt ?? null;
   const tokenExpiresAt =
@@ -109,9 +119,18 @@ export function buildQuipslyMeetingJoinSpine(input: BuildQuipslyMeetingJoinSpine
     recordingConsentId: input.recordingConsentId ?? null,
     recordingConsentStatus: input.recordingConsentStatus,
     recordingConsentGranted: input.recordingConsentGranted,
-    nextAction: input.recordingConsentGranted
+    allParticipantRecordingConsentGranted,
+    allParticipantVideoConsentGranted:
+      input.allParticipantVideoConsentGranted === true,
+    allParticipantTranscriptionConsentGranted:
+      input.allParticipantTranscriptionConsentGranted === true,
+    participantCount: input.participantCount ?? null,
+    requiredParticipantCount: input.requiredParticipantCount ?? null,
+    nextAction: allParticipantRecordingConsentGranted
       ? "Recording can start only after the visible recording state is started."
-      : "Confirm explicit recording consent before recording locally or through the provider.",
+      : input.recordingConsentGranted
+        ? "Your choice is saved. Wait for every required participant to save theirs before recording."
+        : "Confirm your recording choice. You may still join the call while recording remains off.",
   };
   const providerRecording = {
     startsWithJoin: false,
@@ -121,15 +140,15 @@ export function buildQuipslyMeetingJoinSpine(input: BuildQuipslyMeetingJoinSpine
     receiptRequiredBeforeTranscript: true,
     currentStatus: "not-started",
     evidenceSource: provider === "livekit" ? "livekit-egress" : "provider-egress-planned",
-    nextAction: input.recordingConsentGranted
+    nextAction: allParticipantRecordingConsentGranted
       ? "Start provider recording only from a visible Quipsly control and preserve the server-side receipt."
       : "Do not start provider recording until explicit participant consent is granted.",
   };
   const localFallback = {
     available: true,
-    safeToRecordLocally: input.recordingConsentGranted,
+    safeToRecordLocally: allParticipantRecordingConsentGranted,
     reason: input.canJoin ? "provider-ready" : input.providerReadiness,
-    nextAction: input.recordingConsentGranted
+    nextAction: allParticipantRecordingConsentGranted
       ? "Local recording fallback is available. Preserve local files until Nest verifies upload."
       : "Local recording is held until recording consent is granted.",
   };
@@ -148,6 +167,14 @@ export function buildQuipslyMeetingJoinSpine(input: BuildQuipslyMeetingJoinSpine
     recordingConsentId: input.recordingConsentId ?? null,
     recordingConsentStatus: input.recordingConsentStatus,
     recordingConsentGranted: input.recordingConsentGranted,
+    allParticipantRecordingConsentGranted,
+    allParticipantVideoConsentGranted:
+      input.allParticipantVideoConsentGranted === true,
+    allParticipantTranscriptionConsentGranted:
+      input.allParticipantTranscriptionConsentGranted === true,
+    participantCount: input.participantCount ?? null,
+    requiredParticipantCount: input.requiredParticipantCount ?? null,
+    entryReadiness: input.entryReadiness ?? null,
     tokenExpiresInSeconds: input.tokenExpiresInSeconds ?? undefined,
     tokenIssuedAt,
     tokenExpiresAt,
@@ -186,3 +213,4 @@ export function buildQuipslyProviderRecordingReceiptSlotManifest(
       "Start provider egress only from a visible Quipsly control, then attach the provider receipt before transcription relies on provider media.",
   };
 }
+import type { QuipslySessionEntryReadiness } from "./session-entry-readiness";

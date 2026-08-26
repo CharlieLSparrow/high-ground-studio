@@ -72,6 +72,27 @@ consent, lobby, device, or hang-up ceremony.
 - No claim that a recording, upload, transcript, or share succeeded without its
   corresponding receipt.
 
+## Shared implementation contract
+
+The browser, Session API, join API, and Capture app consume the versioned
+`quipsly-session-entry-readiness-v1` projection from
+`packages/quipsly-domain/src/session-entry-readiness.ts`. A surface may add
+presentation detail, but it must not recompute or collapse these four truths:
+
+1. **Call entry:** an attached participant may join the provider room before
+   agreeing to recording. Joining never starts recording.
+2. **Personal choice:** the current actor's Session-scoped audio, video, and
+   transcription choices are durable and separate from every other participant.
+3. **Room recording:** retained audio/video stays locked until the complete
+   required participant set exists and every relevant choice is current.
+4. **Device readiness:** operating-system permission, live signal, selected
+   route, camera, and storage are installation-local evidence requested when the
+   relevant action needs them. Server readiness cannot invent that proof.
+
+Ordinary UI leads with the projection's single `primaryAction`. Participant
+counts, consent counts, blockers, provider state, and device receipts remain
+available as support evidence rather than a mandatory user checklist.
+
 ## Where Quipsly should surprise people
 
 - live microphone confidence and route-change visibility;

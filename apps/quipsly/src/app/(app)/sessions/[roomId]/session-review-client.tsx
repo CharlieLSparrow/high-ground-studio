@@ -32,6 +32,7 @@ import type {
   TranscriptGoalReviewDecision,
   TranscriptNoteReviewDecision,
 } from "@high-ground/quipsly-domain/coaching-packet";
+import { buildQuipslySessionEntryReadiness } from "@high-ground/quipsly-domain/session-entry-readiness";
 
 import { TagSearchChips } from "@/components/tag-search-chips";
 import { AudibleEventQualificationLab } from "@/components/audio/AudibleEventQualificationLab";
@@ -1329,6 +1330,33 @@ function SessionPreparationCard({
     : "No Quipsly schedule time";
   const audioReady =
     preparation.participants.length > 0 && preparation.allAudioReady;
+  const currentActor = preparation.participants.find((participant) => participant.isCurrentActor) ?? null;
+  const requiredParticipantCount = preparation.purpose.toUpperCase() === "COACHING" ? 2 : 1;
+  const entry = preparation.entryReadiness ?? buildQuipslySessionEntryReadiness({
+    roomStatus: preparation.status,
+    purpose: preparation.purpose,
+    actorAttached: Boolean(currentActor),
+    actorAudioConsentGranted: currentActor?.consent?.recordingReady === true,
+    actorVideoConsentGranted: currentActor?.consent?.canRecordVideo === true,
+    actorTranscriptionConsentGranted: currentActor?.consent?.transcriptionReady === true,
+    participantCount: preparation.participants.length,
+    requiredParticipantCount,
+    audioConsentGrantedParticipantCount: preparation.participants.filter((participant) => participant.consent?.recordingReady).length,
+    videoConsentGrantedParticipantCount: preparation.participants.filter((participant) => participant.consent?.canRecordVideo).length,
+    transcriptionConsentGrantedParticipantCount: preparation.participants.filter((participant) => participant.consent?.transcriptionReady).length,
+    allParticipantAudioConsentGranted: preparation.participants.length >= requiredParticipantCount && preparation.allAudioReady,
+    allParticipantVideoConsentGranted: preparation.participants.length >= requiredParticipantCount && preparation.participants.every((participant) => participant.consent?.canRecordVideo === true),
+    allParticipantTranscriptionConsentGranted: preparation.participants.length >= requiredParticipantCount && preparation.allTranscriptionReady,
+    providerCanJoin: preparation.providerCanJoin,
+    providerReadiness: preparation.providerReadiness,
+    localCaptureAvailable: true,
+    paymentBlocked: false,
+  });
+  const entryHref = entry.primaryAction.id === "confirm-consent"
+    ? "#my-session-consent-heading"
+    : entry.primaryAction.id === "join-call"
+      ? `#live-room-${roomId}`
+      : null;
 
   return (
     <section
@@ -1372,6 +1400,35 @@ function SessionPreparationCard({
             All Sessions
           </Link>
         </div>
+      </div>
+
+      <div
+        className={`mt-5 flex flex-col gap-4 rounded-2xl border p-4 sm:flex-row sm:items-center sm:justify-between ${entry.permissions.canJoinCall || entry.permissions.canStartAudioRecording ? "border-emerald-300 bg-emerald-50" : "border-amber-300 bg-amber-50"}`}
+        data-testid="session-entry-next-action"
+      >
+        <div>
+          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#765f40]">
+            Your next step
+          </p>
+          <p className="mt-1 text-xl font-black text-[#3d3122]">
+            {entry.label}
+          </p>
+          <p className="mt-1 max-w-3xl text-sm font-semibold leading-6 text-[#6b5538]">
+            {entry.detail}
+          </p>
+        </div>
+        {entryHref ? (
+          <a
+            href={entryHref}
+            className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-full bg-[#2f6f62] px-5 py-3 text-xs font-black uppercase tracking-wide text-white"
+          >
+            {entry.primaryAction.label}
+          </a>
+        ) : (
+          <span className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-full border border-current px-4 py-2 text-xs font-black uppercase tracking-wide text-[#765f40]">
+            {entry.primaryAction.label}
+          </span>
+        )}
       </div>
 
       <dl className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">

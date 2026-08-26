@@ -11025,18 +11025,18 @@ private struct NextCaptureCard: View {
                 }
                 Spacer(minLength: 12)
                 CaptureStatusPill(
-                    label: session.canRecordNow ? "Ready" : "Setup needed",
-                    systemImage: session.canRecordNow ? "checkmark" : "ellipsis",
-                    tint: session.canRecordNow ? .green : .orange
+                    label: session.entryReadinessLabel,
+                    systemImage: session.entryIsImmediatelyReady ? "checkmark" : "ellipsis",
+                    tint: session.entryIsImmediatelyReady ? .green : .orange
                 )
             }
 
-            Text(session.captureReadinessNextAction)
+            Text(session.entryReadinessDetail)
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
 
             Button(action: onOpen) {
-                Label(session.canRecordNow ? "Open recorder" : "Prepare session", systemImage: "arrow.right.circle.fill")
+                Label(session.entryPrimaryActionLabel, systemImage: "arrow.right.circle.fill")
                     .font(.headline)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 4)
@@ -11093,9 +11093,9 @@ private struct SessionListRow: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 Spacer()
-                Image(systemName: session.canRecordNow ? "checkmark.circle.fill" : "ellipsis.circle.fill")
-                    .foregroundStyle(session.canRecordNow ? .green : .orange)
-                    .accessibilityLabel(session.canRecordNow ? "Ready" : "Setup needed")
+                Image(systemName: session.entryIsImmediatelyReady ? "checkmark.circle.fill" : "ellipsis.circle.fill")
+                    .foregroundStyle(session.entryIsImmediatelyReady ? .green : .orange)
+                    .accessibilityLabel(session.entryReadinessLabel)
                 Image(systemName: "chevron.right")
                     .font(.caption.weight(.bold))
                     .foregroundStyle(.tertiary)

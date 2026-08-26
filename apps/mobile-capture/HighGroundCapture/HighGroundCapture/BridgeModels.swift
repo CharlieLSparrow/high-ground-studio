@@ -887,6 +887,52 @@ struct MobileCapturePriorFollowThrough: Codable, Hashable {
     let externalSideEffects: Bool
 }
 
+struct MobileCaptureSessionEntryReadiness: Codable, Hashable {
+    struct PrimaryAction: Codable, Hashable {
+        let id: String
+        let label: String
+        let detail: String
+    }
+
+    struct Permissions: Codable, Hashable {
+        let canJoinCall: Bool
+        let canOpenLocalRecorder: Bool
+        let canStartAudioRecording: Bool
+        let canStartVideoRecording: Bool
+        let canTranscribe: Bool
+    }
+
+    struct ParticipantProgress: Codable, Hashable {
+        let attached: Int
+        let required: Int
+        let complete: Bool
+    }
+
+    struct ConsentProgress: Codable, Hashable {
+        let actorAudioReady: Bool
+        let actorVideoReady: Bool
+        let actorTranscriptionReady: Bool
+        let audioGranted: Int
+        let videoGranted: Int
+        let transcriptionGranted: Int
+        let required: Int
+        let allAudioReady: Bool
+        let allVideoReady: Bool
+        let allTranscriptionReady: Bool
+    }
+
+    let kind: String
+    let version: Int
+    let stage: String
+    let label: String
+    let detail: String
+    let primaryAction: PrimaryAction
+    let permissions: Permissions
+    let participantProgress: ParticipantProgress
+    let consentProgress: ConsentProgress
+    let blockers: [String]
+}
+
 struct MobileCaptureSession: Codable, Identifiable, Hashable {
     let id: String
     var captureGroupId: UUID? = nil
@@ -932,6 +978,7 @@ struct MobileCaptureSession: Codable, Identifiable, Hashable {
     var allRegisteredParticipantVideoConsentGranted: Bool? = nil
     var transcriptionConsentGrantedParticipantCount: Int? = nil
     var allRegisteredParticipantTranscriptionConsentGranted: Bool? = nil
+    var entryReadiness: MobileCaptureSessionEntryReadiness? = nil
     let captureReadiness: MobileCaptureReadinessVerdict?
     var videoCaptureReadiness: MobileCaptureReadinessVerdict? = nil
     let journeySummary: MobileCaptureJourneySummary?
@@ -1136,6 +1183,29 @@ struct MobileCaptureSession: Codable, Identifiable, Hashable {
         let label = captureReadiness?.label?.trimmingCharacters(in: .whitespacesAndNewlines)
         if let label, !label.isEmpty { return label }
         return recordingConsentGranted ? "Ready" : "Setup needed"
+    }
+
+    var entryReadinessLabel: String {
+        let value = entryReadiness?.label.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return value.isEmpty ? captureReadinessLabel : value
+    }
+
+    var entryReadinessDetail: String {
+        let value = entryReadiness?.detail.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return value.isEmpty ? captureReadinessNextAction : value
+    }
+
+    var entryPrimaryActionLabel: String {
+        let value = entryReadiness?.primaryAction.label.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return value.isEmpty
+            ? (canRecordNow ? "Open recorder" : "Prepare session")
+            : value
+    }
+
+    var entryIsImmediatelyReady: Bool {
+        entryReadiness?.permissions.canJoinCall == true
+            || entryReadiness?.permissions.canStartAudioRecording == true
+            || canRecordNow
     }
 
     var hasCurrentRecordingConsent: Bool {
@@ -3592,6 +3662,11 @@ struct MobileCaptureRoomJoinResponse: Codable {
         let recordingConsentId: String?
         let recordingConsentStatus: String?
         let recordingConsentGranted: Bool?
+        let allParticipantRecordingConsentGranted: Bool?
+        let allParticipantVideoConsentGranted: Bool?
+        let allParticipantTranscriptionConsentGranted: Bool?
+        let participantCount: Int?
+        let requiredParticipantCount: Int?
         let nextAction: String?
     }
 
@@ -3627,6 +3702,12 @@ struct MobileCaptureRoomJoinResponse: Codable {
     let recordingConsentId: String?
     let recordingConsentStatus: String?
     let recordingConsentGranted: Bool?
+    let allParticipantRecordingConsentGranted: Bool?
+    let allParticipantVideoConsentGranted: Bool?
+    let allParticipantTranscriptionConsentGranted: Bool?
+    let participantCount: Int?
+    let requiredParticipantCount: Int?
+    let entryReadiness: MobileCaptureSessionEntryReadiness?
     let tokenIssuedAt: String?
     let tokenExpiresInSeconds: Int?
     let tokenExpiresAt: String?
@@ -3646,7 +3727,10 @@ struct MobileCaptureRoomJoinResponse: Codable {
         if localFallback?.safeToRecordLocally == true {
             return localFallback?.nextAction ?? "Provider room is not ready. Local recording is available because consent is granted."
         }
-        if let boundaryAction = recordingBoundary?.nextAction, !(recordingBoundary?.recordingConsentGranted ?? recordingConsentGranted ?? false) {
+        if let boundaryAction = recordingBoundary?.nextAction,
+           !(recordingBoundary?.allParticipantRecordingConsentGranted
+             ?? allParticipantRecordingConsentGranted
+             ?? false) {
             return boundaryAction
         }
         return nextAction ?? localFallback?.nextAction ?? "Provider room is not ready yet. Local recording can still be used if consent is granted."

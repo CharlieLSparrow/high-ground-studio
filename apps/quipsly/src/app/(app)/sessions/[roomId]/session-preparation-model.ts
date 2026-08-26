@@ -3,6 +3,10 @@ import {
   mobileCaptureAllPartiesAllowTranscription,
   mobileCaptureAllPartiesReady,
 } from "@/lib/server/mobile-capture-room-readiness";
+import {
+  buildQuipslySessionEntryReadiness,
+  type QuipslySessionEntryReadiness,
+} from "@high-ground/quipsly-domain/session-entry-readiness";
 
 type PreparationParticipantInput = {
   id: string;
@@ -71,6 +75,7 @@ export type SessionPreparation = {
   }>;
   allAudioReady: boolean;
   allTranscriptionReady: boolean;
+  entryReadiness?: QuipslySessionEntryReadiness;
 };
 
 export type SessionConsentSnapshot = {
@@ -94,6 +99,11 @@ export function buildSessionPreparationState(room: {
   scheduledStart?: Date | string | null;
   scheduledEnd?: Date | string | null;
   project?: { id: string; name: string; slug: string } | null;
+  booking?: {
+    status?: string | null;
+    paymentPolicy?: string | null;
+    paymentRecord?: { status?: string | null } | null;
+  } | null;
   participants?: PreparationParticipantInput[] | null;
   recordingConsents?: PreparationConsentInput[] | null;
 }, actorUserId?: string | null, env: LiveKitEnvironment = process.env as LiveKitEnvironment): {
@@ -135,6 +145,56 @@ export function buildSessionPreparationState(room: {
             providerReadiness: "local-fallback" as const,
             providerNextAction: "Prepare LiveKit for a shared call, or keep this Session local-only.",
           };
+  const requiredParticipantCount = String(room.purpose || "").toUpperCase() === "COACHING" ? 2 : 1;
+  const actorParticipant = participants.find((participant) => participant.userId === actorUserId) ?? null;
+  const actorConsent = actorParticipant
+    ? consentByParticipantId.get(actorParticipant.id) ?? null
+    : null;
+  const audioGrantedCount = consentVersions.filter((consent) => (
+    mobileCaptureAllPartiesReady([consent], "audio")
+  )).length;
+  const videoGrantedCount = consentVersions.filter((consent) => (
+    mobileCaptureAllPartiesReady([consent], "video")
+  )).length;
+  const transcriptionGrantedCount = consentVersions.filter((consent) => (
+    mobileCaptureAllPartiesAllowTranscription([consent])
+  )).length;
+  const participantSetComplete = participants.length >= requiredParticipantCount;
+  const paymentBlocked = String(room.booking?.paymentPolicy || "").toUpperCase() === "PAID_ONE_TO_ONE"
+    && String(room.booking?.status || "").toUpperCase() === "HOLDING_PAYMENT"
+    && String(room.booking?.paymentRecord?.status || "").toUpperCase() !== "PAID";
+  const allAudioReady = participantSetComplete
+    && mobileCaptureAllPartiesReady(consentVersions, "audio");
+  const allVideoReady = participantSetComplete
+    && mobileCaptureAllPartiesReady(consentVersions, "video");
+  const allTranscriptionReady = participantSetComplete
+    && mobileCaptureAllPartiesAllowTranscription(consentVersions);
+  const entryReadiness = buildQuipslySessionEntryReadiness({
+    roomStatus: room.status,
+    purpose: room.purpose,
+    actorAttached: Boolean(actorParticipant),
+    actorAudioConsentGranted: actorConsent
+      ? mobileCaptureAllPartiesReady([actorConsent], "audio")
+      : false,
+    actorVideoConsentGranted: actorConsent
+      ? mobileCaptureAllPartiesReady([actorConsent], "video")
+      : false,
+    actorTranscriptionConsentGranted: actorConsent
+      ? mobileCaptureAllPartiesAllowTranscription([actorConsent])
+      : false,
+    participantCount: participants.length,
+    requiredParticipantCount,
+    audioConsentGrantedParticipantCount: audioGrantedCount,
+    videoConsentGrantedParticipantCount: videoGrantedCount,
+    transcriptionConsentGrantedParticipantCount: transcriptionGrantedCount,
+    allParticipantAudioConsentGranted: allAudioReady,
+    allParticipantVideoConsentGranted: allVideoReady,
+    allParticipantTranscriptionConsentGranted: allTranscriptionReady,
+    providerCanJoin: providerState.providerCanJoin,
+    providerReadiness: providerState.providerReadiness,
+    localCaptureAvailable: true,
+    paymentBlocked,
+  });
 
   return {
     consentSnapshot: {
@@ -189,8 +249,9 @@ export function buildSessionPreparationState(room: {
           } : null,
         };
       }),
-      allAudioReady: mobileCaptureAllPartiesReady(consentVersions, "audio"),
-      allTranscriptionReady: mobileCaptureAllPartiesAllowTranscription(consentVersions),
+      allAudioReady,
+      allTranscriptionReady,
+      entryReadiness,
     },
   };
 }

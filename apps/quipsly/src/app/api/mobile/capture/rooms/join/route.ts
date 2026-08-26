@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { buildQuipslyMeetingJoinSpine } from "@high-ground/quipsly-domain/coaching-meeting-spine";
+import { buildQuipslySessionEntryReadiness } from "@high-ground/quipsly-domain/session-entry-readiness";
 
 import { getPrismaClient } from "@/lib/prisma";
 import { createLiveKitJoinToken } from "@/lib/server/livekit-join-token";
@@ -11,6 +12,7 @@ import {
 import {
   buildMobileCaptureConsentVersions,
   latestMobileCaptureConsentForParticipant,
+  mobileCaptureAllPartiesAllowTranscription,
   mobileCaptureAllPartiesReady,
 } from "@/lib/server/mobile-capture-room-readiness";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
@@ -28,6 +30,87 @@ async function readJson(request: Request) {
   } catch {
     return {};
   }
+}
+
+function sessionEntryProjection(args: {
+  room: any;
+  actorUserId: string;
+  currentParticipant?: any | null;
+  providerCanJoin: boolean;
+  providerReadiness: string;
+  paymentBlocked: boolean;
+}) {
+  const participants = [...(Array.isArray(args.room.participants) ? args.room.participants : [])];
+  if (args.currentParticipant && !participants.some((item: any) => item.id === args.currentParticipant.id)) {
+    participants.push(args.currentParticipant);
+  }
+  const eligibleParticipants = participants.filter((item: any) => (
+    item?.role !== "OBSERVER" && Boolean(item?.userId)
+  ));
+  const consentVersions = buildMobileCaptureConsentVersions({
+    participants: eligibleParticipants,
+    consents: Array.isArray(args.room.recordingConsents) ? args.room.recordingConsents : [],
+  });
+  const actorParticipant = args.currentParticipant
+    ?? eligibleParticipants.find((item: any) => item.userId === args.actorUserId)
+    ?? null;
+  const actorConsentVersion = actorParticipant
+    ? consentVersions.find((version) => version.participantId === actorParticipant.id) ?? null
+    : null;
+  const requiredParticipantCount = String(args.room.purpose || "").toUpperCase() === "COACHING" ? 2 : 1;
+  const participantSetComplete = eligibleParticipants.length >= requiredParticipantCount;
+  const actorAudioConsentGranted = actorConsentVersion
+    ? mobileCaptureAllPartiesReady([actorConsentVersion], "audio")
+    : false;
+  const actorVideoConsentGranted = actorConsentVersion
+    ? mobileCaptureAllPartiesReady([actorConsentVersion], "video")
+    : false;
+  const actorTranscriptionConsentGranted = actorConsentVersion
+    ? mobileCaptureAllPartiesAllowTranscription([actorConsentVersion])
+    : false;
+  const allParticipantRecordingConsentGranted = participantSetComplete
+    && mobileCaptureAllPartiesReady(consentVersions, "audio");
+  const allParticipantVideoConsentGranted = participantSetComplete
+    && mobileCaptureAllPartiesReady(consentVersions, "video");
+  const allParticipantTranscriptionConsentGranted = participantSetComplete
+    && mobileCaptureAllPartiesAllowTranscription(consentVersions);
+  const entryReadiness = buildQuipslySessionEntryReadiness({
+    roomStatus: args.room.status,
+    purpose: args.room.purpose,
+    actorAttached: Boolean(actorParticipant),
+    actorAudioConsentGranted,
+    actorVideoConsentGranted,
+    actorTranscriptionConsentGranted,
+    participantCount: eligibleParticipants.length,
+    requiredParticipantCount,
+    audioConsentGrantedParticipantCount: consentVersions.filter((version) => (
+      mobileCaptureAllPartiesReady([version], "audio")
+    )).length,
+    videoConsentGrantedParticipantCount: consentVersions.filter((version) => (
+      mobileCaptureAllPartiesReady([version], "video")
+    )).length,
+    transcriptionConsentGrantedParticipantCount: consentVersions.filter((version) => (
+      mobileCaptureAllPartiesAllowTranscription([version])
+    )).length,
+    allParticipantAudioConsentGranted:
+      allParticipantRecordingConsentGranted,
+    allParticipantVideoConsentGranted,
+    allParticipantTranscriptionConsentGranted,
+    providerCanJoin: args.providerCanJoin,
+    providerReadiness: args.providerReadiness,
+    localCaptureAvailable: true,
+    paymentBlocked: args.paymentBlocked,
+  });
+
+  return {
+    actorAudioConsentGranted,
+    allParticipantRecordingConsentGranted,
+    allParticipantVideoConsentGranted,
+    allParticipantTranscriptionConsentGranted,
+    participantCount: eligibleParticipants.length,
+    requiredParticipantCount,
+    entryReadiness,
+  };
 }
 
 export async function POST(request: Request) {
@@ -85,6 +168,13 @@ export async function POST(request: Request) {
 
   const paymentHold = paymentHoldForRoom(room);
   if (paymentHold.blocked) {
+    const paymentEntry = sessionEntryProjection({
+      room,
+      actorUserId: userId,
+      providerCanJoin: false,
+      providerReadiness: "payment-hold",
+      paymentBlocked: true,
+    });
     return NextResponse.json(
       {
         ok: false,
@@ -94,6 +184,7 @@ export async function POST(request: Request) {
         provider: room.provider || "planned",
         providerReadiness: "payment-hold",
         callRoomId: room.id,
+        entryReadiness: paymentEntry.entryReadiness,
         paymentBoundary: {
           paymentPolicy: paymentHold.paymentPolicy,
           paymentStatus: paymentHold.paymentStatus,
@@ -164,15 +255,18 @@ export async function POST(request: Request) {
   const roomName = text(room.providerRoomId) || room.id;
   const recordingConsentId = consent?.id ?? null;
   const recordingConsentStatus = consent?.status ?? "not-created";
-  const recordingConsentGranted = mobileCaptureAllPartiesReady(
-    buildMobileCaptureConsentVersions({
-      participants: [participant],
-      consents: consent ? [consent] : [],
-    }),
-    "audio",
-  );
+  const readinessFor = (providerCanJoin: boolean, providerReadiness: string) =>
+    sessionEntryProjection({
+      room,
+      actorUserId: userId,
+      currentParticipant: participant,
+      providerCanJoin,
+      providerReadiness,
+      paymentBlocked: false,
+    });
 
   if (provider !== "livekit") {
+    const readiness = readinessFor(false, "provider-not-configured");
     return NextResponse.json(
       buildQuipslyMeetingJoinSpine({
         provider: room.provider,
@@ -182,7 +276,8 @@ export async function POST(request: Request) {
         participantId: participant.id,
         recordingConsentId,
         recordingConsentStatus,
-        recordingConsentGranted,
+        recordingConsentGranted: readiness.actorAudioConsentGranted,
+        ...readiness,
         participantCreated,
         nextAction: "This room is planned but does not have a live meeting provider yet. Use local recording only after consent.",
       }),
@@ -194,6 +289,7 @@ export async function POST(request: Request) {
   const livekitApiSecret = text(process.env.LIVEKIT_API_SECRET);
 
   if (!livekitUrl || !livekitApiKey || !livekitApiSecret) {
+    const readiness = readinessFor(false, "livekit-needs-config");
     return NextResponse.json(
       buildQuipslyMeetingJoinSpine({
         provider: "livekit",
@@ -203,7 +299,8 @@ export async function POST(request: Request) {
         participantId: participant.id,
         recordingConsentId,
         recordingConsentStatus,
-        recordingConsentGranted,
+        recordingConsentGranted: readiness.actorAudioConsentGranted,
+        ...readiness,
         participantCreated,
         nextAction: "LiveKit is selected for this room, but server credentials are not configured yet. Use local recording only after consent.",
       }),
@@ -256,6 +353,7 @@ export async function POST(request: Request) {
     },
   });
 
+  const readiness = readinessFor(true, "livekit-ready");
   return NextResponse.json(
     buildQuipslyMeetingJoinSpine({
       provider: "livekit",
@@ -268,15 +366,18 @@ export async function POST(request: Request) {
       participantId: participant.id,
       recordingConsentId,
       recordingConsentStatus,
-      recordingConsentGranted,
+      recordingConsentGranted: readiness.actorAudioConsentGranted,
+      ...readiness,
       tokenIssuedAt: participantToken.issuedAt,
       tokenExpiresAt: participantToken.expiresAt,
       tokenExpiresInSeconds: participantToken.expiresInSeconds,
       tokenSafeClaims: participantToken.safeClaims,
       participantCreated,
-      nextAction: recordingConsentGranted
-        ? "Join room. Recording is allowed after the visible recording state starts."
-        : "Join room, but confirm recording consent before recording.",
+      nextAction: readiness.allParticipantRecordingConsentGranted
+        ? "Join room. Recording is allowed only after the visible recording state starts."
+        : readiness.actorAudioConsentGranted
+          ? "Join room. Your choice is saved; recording waits for every required participant."
+          : "Join room, but confirm your recording choice before recording.",
     }),
   );
 }

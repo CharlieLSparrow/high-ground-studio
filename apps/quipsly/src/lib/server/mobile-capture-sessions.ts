@@ -1,4 +1,5 @@
 import { buildQuipslyCoachingLifecycle } from "@high-ground/quipsly-domain/coaching-lifecycle";
+import { buildQuipslySessionEntryReadiness } from "@high-ground/quipsly-domain/session-entry-readiness";
 import {
   isTranscriptPacketSource,
   isUnreviewedTranscriptActionItemSource,
@@ -1231,6 +1232,40 @@ export function mapMobileCaptureSessionsForUser(input: {
       ? mobileCaptureAllPartiesReady([actorConsentVersion], "video")
       : false;
     const participantConsent = registeredParticipantConsentSummary(room);
+    const requiredParticipantCount = room.purpose === "COACHING" ? 2 : 1;
+    const participantSetComplete =
+      participantConsent.requiredCount >= requiredParticipantCount;
+    const paymentBlocked =
+      label(room.booking?.paymentPolicy)?.toUpperCase() === "PAID_ONE_TO_ONE"
+      && label(room.booking?.status)?.toUpperCase() === "HOLDING_PAYMENT"
+      && label(room.booking?.paymentRecord?.status)?.toUpperCase() !== "PAID";
+    const entryReadiness = buildQuipslySessionEntryReadiness({
+      roomStatus: room.status,
+      purpose: room.purpose,
+      actorAttached: Boolean(participant?.id),
+      actorAudioConsentGranted: recordingConsentGranted,
+      actorVideoConsentGranted: recordingConsentVideoGranted,
+      actorTranscriptionConsentGranted:
+        actorConsentVersion?.canTranscribe === true,
+      participantCount: participantConsent.requiredCount,
+      requiredParticipantCount,
+      audioConsentGrantedParticipantCount:
+        participantConsent.audioGrantedCount,
+      videoConsentGrantedParticipantCount:
+        participantConsent.videoGrantedCount,
+      transcriptionConsentGrantedParticipantCount:
+        participantConsent.transcriptionGrantedCount,
+      allParticipantAudioConsentGranted:
+        participantSetComplete && participantConsent.allAudioGranted,
+      allParticipantVideoConsentGranted:
+        participantSetComplete && participantConsent.allVideoGranted,
+      allParticipantTranscriptionConsentGranted:
+        participantSetComplete && participantConsent.allTranscriptionGranted,
+      providerCanJoin: provider.providerCanJoin,
+      providerReadiness: provider.providerReadiness,
+      localCaptureAvailable: true,
+      paymentBlocked,
+    });
     const captureReadiness = captureReadinessForMobileSession({
       room,
       consentStatus: consent?.status,
@@ -1397,6 +1432,7 @@ export function mapMobileCaptureSessionsForUser(input: {
         participantConsent.transcriptionGrantedCount,
       allRegisteredParticipantTranscriptionConsentGranted:
         participantConsent.allTranscriptionGranted,
+      entryReadiness,
       captureReadiness,
       videoCaptureReadiness,
       contentReadiness,
