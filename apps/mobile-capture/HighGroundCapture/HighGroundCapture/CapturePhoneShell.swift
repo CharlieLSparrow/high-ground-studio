@@ -3191,7 +3191,7 @@ struct TodayFollowThroughCard: View {
 
             if !client.transcriptReviews.isEmpty {
                 VStack(alignment: .leading, spacing: 9) {
-                    Label("Transcript review", systemImage: "waveform.and.magnifyingglass")
+                    Label("Transcripts", systemImage: "waveform.and.magnifyingglass")
                         .font(.caption.weight(.bold))
                         .foregroundStyle(.purple)
                     Text("Transcript suggestions are saved with the Session. Open one to listen, correct, or edit.")
@@ -3234,7 +3234,7 @@ struct TodayFollowThroughCard: View {
                     }
                 }
                 .accessibilityElement(children: .contain)
-                .accessibilityLabel("Transcript reviews")
+                .accessibilityLabel("Transcripts")
                 .accessibilityIdentifier("CaptureTodayTranscriptReviews")
             }
 

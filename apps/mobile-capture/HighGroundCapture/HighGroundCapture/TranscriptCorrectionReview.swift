@@ -3091,7 +3091,7 @@ struct CaptureTranscriptReviewView: View {
                     .background(.bar)
                 }
             }
-            .navigationTitle("Transcript review")
+            .navigationTitle("Transcript")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
@@ -3389,7 +3389,7 @@ struct CaptureTranscriptReviewView: View {
             }
             Text(
                 transcriptPresentationMode == .conversation
-                    ? "Read the Session like a familiar conversation. Tap Review when a passage needs correction or follow-through."
+                    ? "Read the Session like a familiar conversation. Tap Edit to correct a passage or turn it into follow-through."
                     : "Listen at exact timestamps, correct words or speakers, and create source-backed notes, tasks, and goals."
             )
             .font(.caption)
@@ -3461,7 +3461,7 @@ struct CaptureTranscriptReviewView: View {
                             desk: desk
                         ) || client.isMutating || protectedSessionPlayback.isPreparing
                     )
-                    Button("Review") {
+                    Button("Edit") {
                         transcriptPresentationMode = .timeline
                         // The conversation row and precision editor intentionally
                         // share the source segment ID. Give SwiftUI one render turn
@@ -3543,7 +3543,7 @@ struct CaptureTranscriptReviewView: View {
         .joined(separator: " · ")
         return VStack(alignment: .leading, spacing: 11) {
             HStack(alignment: .firstTextBaseline) {
-                Label("Transcript evidence", systemImage: "waveform.badge.magnifyingglass")
+                Label("Transcript quality", systemImage: "waveform.badge.magnifyingglass")
                     .font(.headline)
                     .foregroundStyle(.indigo)
                 Spacer(minLength: 8)
@@ -3555,26 +3555,26 @@ struct CaptureTranscriptReviewView: View {
             }
             HStack(spacing: 8) {
                 transcriptEvidenceMetric(
-                    value: "\(evidence.reviewedSegmentCount)/\(evidence.segmentCount)",
-                    label: "segments reviewed"
+                    value: "\(evidence.segmentCount)",
+                    label: "timed segments"
                 )
                 transcriptEvidenceMetric(
                     value: evidence.lowConfidenceWordCount.map(String.init) ?? "—",
-                    label: "triage words"
+                    label: "uncertain words"
                 )
                 transcriptEvidenceMetric(
                     value: evidence.measuredWordErrorRate.map { "\(Int(($0 * 100).rounded()))%" } ?? "—",
-                    label: "measured WER"
+                    label: "verified WER"
                 )
             }
             if let threshold = evidence.lowConfidenceThreshold,
                let authority = captureTranscriptNonempty(evidence.lowConfidenceThresholdAuthority) {
-                Text("\(Int((threshold * 100).rounded()))% is a review-priority threshold from \(authority). Provider confidence helps order listening; it is not measured transcript accuracy.")
+                Text("Words below \(Int((threshold * 100).rounded()))% confidence are highlighted using \(authority), so they are easy to proof-listen. Verified accuracy appears when a reference transcript is available.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             } else {
-                Text("This provider did not supply a qualified confidence-triage threshold. Quipsly will not invent one.")
+                Text("Play any passage or edit it directly. Quipsly keeps every correction linked to its exact place in the recording.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -3587,7 +3587,7 @@ struct CaptureTranscriptReviewView: View {
                     accessibilityFocusedSegmentID = firstAttentionSegmentID
                 } label: {
                     Label(
-                        "Review first of \(evidence.attentionSegments.count)",
+                        "Listen to first highlight",
                         systemImage: "ear.badge.exclamationmark"
                     )
                     .frame(minHeight: 44)
@@ -3630,7 +3630,7 @@ struct CaptureTranscriptReviewView: View {
                 Label("Identify voices once", systemImage: "person.wave.2.fill")
                     .font(.title3.weight(.bold))
                     .foregroundStyle(.indigo)
-                Text("Listen to one to three representative samples, then connect the provider voice to a Session participant. This changes the displayed name across matching turns; it never marks their words playback-reviewed.")
+                Text("Connect each detected voice to a Session participant. Updating a speaker name applies it across matching turns, and you can change it again anytime.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -3658,7 +3658,7 @@ struct CaptureTranscriptReviewView: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Label("Review and correct", systemImage: "waveform.and.magnifyingglass")
+            Label("Read, listen, and edit", systemImage: "waveform.and.magnifyingglass")
                 .font(.title2.weight(.bold))
             Text(sessionTitle)
                 .font(.headline)

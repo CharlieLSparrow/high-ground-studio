@@ -1947,7 +1947,7 @@ final class CaptureExperienceUITests: XCTestCase {
         app.buttons["Cancel"].tap()
         XCTAssertFalse(app.navigationBars["Plan focus"].exists)
 
-        let transcriptReview = app.staticTexts["Transcript review"]
+        let transcriptReview = app.staticTexts["Transcripts"]
         reveal(transcriptReview)
         XCTAssertTrue(transcriptReview.exists)
         XCTAssertTrue(app.staticTexts["Transcript suggestions are saved with the Session. Open one to listen, correct, or edit."].exists)
