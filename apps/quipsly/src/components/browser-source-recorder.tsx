@@ -68,6 +68,8 @@ import type {
 import { browserRetainedStorageIssue } from "@/lib/session-guardian";
 import { browserRetainedStartFailure } from "@/lib/browser-retained-start-failure";
 import {
+  browserSourceTypeAfterConsentReadback,
+  browserTranscriptionChoiceAfterConsentReadback,
   preferredBrowserSourceType,
   readBrowserSourcePreferences,
   writeBrowserSourcePreferences,
@@ -652,14 +654,17 @@ export function BrowserSourceRecorder({
         setConsentId(consentPacket?.session?.recordingConsentId ?? null);
         setMyAudioConsent(savedAudioConsent);
         setMyVideoConsent(savedVideoConsent);
-        if (consentPacket?.session?.recordingConsentId) {
-          setSourceType(savedVideoConsent ? "video" : "audio");
-        }
-        setTranscriptionChoice(
-          consentPacket?.session?.recordingConsentId
-            ? consentPacket?.session?.recordingConsentCanTranscribe === true
-            : true,
-        );
+        setSourceType(browserSourceTypeAfterConsentReadback({
+          sessionKind,
+          preferences: readBrowserSourcePreferences(),
+          consentStatus: consentPacket?.session?.recordingConsentStatus,
+          canRecordVideo: savedVideoConsent,
+        }));
+        setTranscriptionChoice(browserTranscriptionChoiceAfterConsentReadback({
+          consentStatus: consentPacket?.session?.recordingConsentStatus,
+          canTranscribe:
+            consentPacket?.session?.recordingConsentCanTranscribe === true,
+        }));
         setParticipantId(consentPacket?.session?.participantId ?? null);
         setAllPartyAudioReady(
           consentPacket?.session?.allRegisteredParticipantConsentGranted ===
@@ -727,7 +732,7 @@ export function BrowserSourceRecorder({
         microphoneId,
         cameraId,
         sourceType,
-        recordingConsentId: consentId,
+        recordingConsentId: myConsentCoversSource ? consentId : null,
         allPartyConsentReady: consentReady,
       }),
     [
@@ -735,6 +740,7 @@ export function BrowserSourceRecorder({
       consentId,
       consentReady,
       microphoneId,
+      myConsentCoversSource,
       roomStatus,
       sourceType,
       vaultAvailable,

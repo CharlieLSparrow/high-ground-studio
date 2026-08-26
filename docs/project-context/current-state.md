@@ -4079,3 +4079,25 @@ rehearsal`) in an iPhone 17 Pro simulator. The signed-in UI acceptance opened
   they do not claim mailbox delivery or minimally instructed human success.
 - Twenty-one focused invitation, account-switch, and Firebase-session tests,
   strict TypeScript, and the 196-page production build pass locally.
+
+### 2026-08-25 conventional live-lobby recording readiness
+
+- The live Session lobby now exposes the participant-owned recording choice
+  before device entry while explicitly preserving the right to join without
+  agreeing. The ordinary path is one **Agree and continue** action; optional
+  recording and transcript controls remain collapsed, and a deliberate
+  **Don't record me** path remains visible.
+- Requested consent rows are no longer confused with granted recording
+  permission merely because a database row ID exists. Until the current
+  participant permits the selected source, Record explains **Allow recording**;
+  only after that choice can it truthfully wait for other participants.
+- An incomplete podcast consent request no longer silently downgrades the
+  browser recorder to audio-only or silently treats an unchosen transcript as
+  disabled. Podcast defaults remain video, coaching defaults remain audio,
+  transcript defaults remain on until deliberately changed, remembered source
+  preferences remain separate, and a completed granted consent choice becomes
+  authoritative on readback.
+- Sixty-three focused live-lobby, consent, source-default, and readiness tests
+  plus strict TypeScript pass locally. The in-app browser webview attachment
+  timed out, so phone/desktop rendered hierarchy remains deferred rather than
+  inferred.

@@ -71,3 +71,32 @@ export function preferredBrowserSourceType(
     ? preferences.episodeSourceType ?? "video"
     : preferences.coachingSourceType ?? "audio";
 }
+
+export function browserSourceTypeAfterConsentReadback({
+  sessionKind,
+  preferences,
+  consentStatus,
+  canRecordVideo,
+}: {
+  sessionKind: "coaching" | "episode";
+  preferences: BrowserSourcePreferences;
+  consentStatus?: string | null;
+  canRecordVideo: boolean;
+}): BrowserSourceKind {
+  if (String(consentStatus || "").trim().toUpperCase() !== "GRANTED") {
+    return preferredBrowserSourceType(sessionKind, preferences);
+  }
+  return canRecordVideo ? "video" : "audio";
+}
+
+export function browserTranscriptionChoiceAfterConsentReadback({
+  consentStatus,
+  canTranscribe,
+}: {
+  consentStatus?: string | null;
+  canTranscribe: boolean;
+}) {
+  return String(consentStatus || "").trim().toUpperCase() === "GRANTED"
+    ? canTranscribe
+    : true;
+}

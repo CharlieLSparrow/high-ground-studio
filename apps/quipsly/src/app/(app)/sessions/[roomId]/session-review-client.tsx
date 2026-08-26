@@ -1003,13 +1003,18 @@ function SessionConsentControl({
     ) ?? null;
   const consent = actor?.consent ?? null;
   const requestedConsent = consent?.status === "REQUESTED";
+  const defaultVideoConsent = sessionExperienceForPurpose(
+    preparation.purpose,
+  ).defaultCamera;
   const closed =
     preparation.status === "CANCELED" || preparation.status === "ENDED";
   const [canRecordAudio, setCanRecordAudio] = useState(
     requestedConsent ? true : (consent?.canRecordAudio ?? true),
   );
   const [canRecordVideo, setCanRecordVideo] = useState(
-    consent?.canRecordVideo ?? false,
+    requestedConsent || !consent
+      ? defaultVideoConsent
+      : consent.canRecordVideo,
   );
   const [canTranscribe, setCanTranscribe] = useState(
     requestedConsent ? true : (consent?.canTranscribe ?? true),
@@ -1023,7 +1028,11 @@ function SessionConsentControl({
 
   useEffect(() => {
     setCanRecordAudio(requestedConsent ? true : (consent?.canRecordAudio ?? true));
-    setCanRecordVideo(consent?.canRecordVideo ?? false);
+    setCanRecordVideo(
+      requestedConsent || !consent
+        ? defaultVideoConsent
+        : consent.canRecordVideo,
+    );
     setCanTranscribe(requestedConsent ? true : (consent?.canTranscribe ?? true));
     setIsEditingConsent(consent?.recordingReady !== true);
   }, [
@@ -1033,6 +1042,7 @@ function SessionConsentControl({
     consent?.canRecordVideo,
     consent?.canTranscribe,
     consent?.updatedAt,
+    defaultVideoConsent,
   ]);
 
   useEffect(() => {
@@ -1126,7 +1136,8 @@ function SessionConsentControl({
           </h3>
           <p className="mt-2 text-sm font-semibold leading-6 text-[#6b5538]">
             Everyone confirms for themselves before recording. Nothing starts
-            until someone taps Record.
+            until someone taps Record. You can join without agreeing; recording
+            stays off for you.
           </p>
         </div>
         <span
@@ -6154,13 +6165,19 @@ export function SessionReviewClient({
             </div>
           </header>
 
-          <CaptureAppHandoff
-            roomId={roomId}
-            joinedFromInvitation={joinedFromInvitation}
-            captureOpenFallback={captureOpenFallback}
-            canViewChoiceMetrics={canViewEntryChoiceMetrics}
-            onContinueInBrowser={() => liveDock.open(liveDockConfig)}
-          />
+          {preparation ? (
+            <SessionConsentControl roomId={roomId} preparation={preparation} />
+          ) : null}
+
+          <div className="mt-4">
+            <CaptureAppHandoff
+              roomId={roomId}
+              joinedFromInvitation={joinedFromInvitation}
+              captureOpenFallback={captureOpenFallback}
+              canViewChoiceMetrics={canViewEntryChoiceMetrics}
+              onContinueInBrowser={() => liveDock.open(liveDockConfig)}
+            />
+          </div>
 
           <div className="mt-4">
             <SessionReadinessTopologyCard

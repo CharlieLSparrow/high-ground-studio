@@ -25,8 +25,17 @@ describe("browser retained-source consent", () => {
       /disabled=\{\s*!policy \|\|\s*status === "checking" \|\|\s*status === "recording"\s*\}/,
     );
     expect(source).toContain("Allow recording");
-    expect(source).toMatch(
-      /if \(consentPacket\?\.session\?\.recordingConsentId\) \{\s*setSourceType\(savedVideoConsent \? "video" : "audio"\);\s*\}/,
+    expect(source).toContain(
+      "recordingConsentId: myConsentCoversSource ? consentId : null",
+    );
+    expect(source).toContain(
+      "browserSourceTypeAfterConsentReadback({",
+    );
+    expect(source).toContain(
+      "consentStatus: consentPacket?.session?.recordingConsentStatus",
+    );
+    expect(source).toContain(
+      "browserTranscriptionChoiceAfterConsentReadback({",
     );
     expect(source).toContain('aria-label="Recording consent needed"');
     expect(source).not.toContain('open={status === "recording"}');

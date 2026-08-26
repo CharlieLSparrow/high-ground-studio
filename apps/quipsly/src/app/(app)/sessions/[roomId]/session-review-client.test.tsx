@@ -1584,6 +1584,7 @@ describe("Session review goal candidates", () => {
     />);
 
     expect(screen.getByLabelText("Record audio from this device")).toBeChecked();
+    expect(screen.getByLabelText("Record camera video from this device")).toBeChecked();
     expect(screen.getByLabelText("Create a transcript and suggested notes/tasks")).toBeChecked();
     await user.click(screen.getByRole("button", { name: "Agree and continue" }));
 
@@ -1595,7 +1596,7 @@ describe("Session review goal candidates", () => {
       participantId: "participant-charlie",
       consentAction: "GRANT",
       canRecordAudio: true,
-      canRecordVideo: false,
+      canRecordVideo: true,
       canTranscribe: true,
       allAudibleParticipantsNotifiedAndAgreed: true,
       presentationEvidence: expect.objectContaining({
@@ -1609,6 +1610,61 @@ describe("Session review goal candidates", () => {
     expect(payload.consentTextHash).toMatch(/^[a-f0-9]{64}$/);
     expect(await screen.findByRole("status")).toHaveTextContent("Consent saved for this exact Session.");
     expect(mockRouterRefresh).toHaveBeenCalledTimes(1);
+  });
+
+  it("puts the conventional recording choice before device entry without requiring agreement to join", () => {
+    global.fetch = jest.fn() as typeof fetch;
+    render(<SessionReviewClient
+      roomId="room-live-coaching"
+      sessionTitle="Coaching Session"
+      mode="live"
+      consentSnapshot={{ total: 2, granted: 0, transcriptionPermitted: 0 }}
+      preparation={{
+        captureGroupId: "55555555-5555-4555-8555-555555555554",
+        purpose: "COACHING",
+        status: "PLANNED",
+        provider: "livekit",
+        providerRoomId: "provider-live-room",
+        providerCanJoin: true,
+        providerReadiness: "livekit-ready",
+        providerNextAction: "Join when ready.",
+        scheduledStart: "2026-08-25T18:00:00.000Z",
+        scheduledEnd: "2026-08-25T19:00:00.000Z",
+        project: { id: "project-1", name: "Coaching", slug: "coaching" },
+        participants: [{
+          id: "participant-client",
+          label: "Client",
+          role: "CLIENT",
+          isCurrentActor: true,
+          joinedAt: null,
+          consent: {
+            id: "consent-requested",
+            status: "REQUESTED",
+            policyVersion: "2026-07-04",
+            canRecordAudio: false,
+            canRecordVideo: false,
+            canTranscribe: false,
+            recordingReady: false,
+            transcriptionReady: false,
+            consentedAt: null,
+            revokedAt: null,
+            updatedAt: "2026-08-25T17:55:00.000Z",
+          },
+        }],
+        allAudioReady: false,
+        allTranscriptionReady: false,
+      }}
+    />);
+
+    const consent = screen.getByTestId("session-consent-control");
+    const deviceEntry = screen.getByRole("heading", { name: "Ready to join?" });
+    expect(within(consent).getByRole("button", { name: "Agree and continue" })).toBeInTheDocument();
+    expect(within(consent).getByRole("button", { name: "Don’t record me" })).toBeInTheDocument();
+    expect(within(consent).getByLabelText("Record camera video from this device")).not.toBeChecked();
+    expect(within(consent).getByText(/You can join without agreeing/)).toBeInTheDocument();
+    expect(
+      consent.compareDocumentPosition(deviceEntry) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
   });
 
   it("keeps saved consent compact until the participant chooses to change it", async () => {

@@ -1,4 +1,6 @@
 import {
+  browserSourceTypeAfterConsentReadback,
+  browserTranscriptionChoiceAfterConsentReadback,
   preferredBrowserSourceType,
   readBrowserSourcePreferences,
   writeBrowserSourcePreferences,
@@ -33,6 +35,48 @@ describe("browser source preferences", () => {
     expect(preferredBrowserSourceType("coaching", preferences)).toBe("video");
     expect(preferredBrowserSourceType("episode", preferences)).toBe("audio");
     expect(preferences.headphonesAttested).toBe(true);
+  });
+
+  it("does not mistake an incomplete consent request for an audio-only choice", () => {
+    expect(browserSourceTypeAfterConsentReadback({
+      sessionKind: "episode",
+      preferences: {},
+      consentStatus: "REQUESTED",
+      canRecordVideo: false,
+    })).toBe("video");
+    expect(browserSourceTypeAfterConsentReadback({
+      sessionKind: "episode",
+      preferences: { episodeSourceType: "audio" },
+      consentStatus: "REQUESTED",
+      canRecordVideo: false,
+    })).toBe("audio");
+    expect(browserSourceTypeAfterConsentReadback({
+      sessionKind: "episode",
+      preferences: {},
+      consentStatus: "GRANTED",
+      canRecordVideo: false,
+    })).toBe("audio");
+    expect(browserSourceTypeAfterConsentReadback({
+      sessionKind: "coaching",
+      preferences: {},
+      consentStatus: "GRANTED",
+      canRecordVideo: true,
+    })).toBe("video");
+  });
+
+  it("does not mistake an incomplete consent request for a transcript opt-out", () => {
+    expect(browserTranscriptionChoiceAfterConsentReadback({
+      consentStatus: "REQUESTED",
+      canTranscribe: false,
+    })).toBe(true);
+    expect(browserTranscriptionChoiceAfterConsentReadback({
+      consentStatus: "GRANTED",
+      canTranscribe: false,
+    })).toBe(false);
+    expect(browserTranscriptionChoiceAfterConsentReadback({
+      consentStatus: "GRANTED",
+      canTranscribe: true,
+    })).toBe(true);
   });
 
   it("ignores corrupt and unsupported stored values", () => {
