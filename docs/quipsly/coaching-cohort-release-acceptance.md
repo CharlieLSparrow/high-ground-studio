@@ -2399,3 +2399,54 @@ alignment, two-source participant-attributed transcription, mentor DOCX,
 shared/private relationship work, cross-account task completion, inline light
 editing, client release/revocation, and automatic audio readiness. Receipt:
 `artifacts/coaching-acceptance/7363ccae/fresh-coaching-flight-receipt.json`.
+
+## Operated pre-Session planning and full-regression checkpoint — 2026-08-26
+
+Quipsly now keeps a client’s shared Session check-in and the assigned coach’s
+private preparation in one booking-bound, revisioned product capability. The
+client can state the useful focus, desired outcome, success measure, change
+since the last Session, and an optional 0–10 progress score. The coach reads
+that exact shared check-in and can save a private note that is absent from the
+client response. The feature remains optional and does not sit between either
+person and **Join**.
+
+The canonical write boundary uses separate client and coach lanes, a
+serializable transaction, a per-booking advisory lock, immutable revision
+receipts, request UUID uniqueness, and an exact input hash. A repeated request
+returns the original saved revision; changed content under the same request ID
+returns `PREPARATION_REQUEST_COLLISION`. The database independently constrains
+revision numbers, SHA-256 evidence, JSON snapshots, progress scores, and one
+preparation record per booking.
+
+The first clean operated attempt exposed a discoverability defect: the new card
+existed in the secondary Prepare workspace but not the default Session
+overview. That attempt failed rather than weakening its assertion. After the
+card became part of both conventional pre-call surfaces, 54 surrounding Session
+and component tests, strict TypeScript, Prisma validation, and a dual-architecture
+iPhone Simulator build passed.
+
+On exact committed source `186fdf0bc4eab08fa31f2e6650e4bacfecea9230`, a
+fresh client saved the check-in through the rendered phone-width Session. The
+assigned coach read it and saved private prep through the rendered desktop
+Session. Client API readback contained `coachPrivate: null` and none of the
+private text. An independently created neighboring coach received opaque 404;
+an exact retry produced one immutable revision; changed evidence collided; and
+before/after counts proved no message, task, goal, or coaching-note side effect.
+
+Preparation receipt:
+`artifacts/coaching-acceptance/56297c34/session-preparation-receipt.json`.
+
+The unchanged complete coaching flight then passed on the same clean commit:
+fresh signup and automatic coach setup, appointment and invitation entry, a
+separate neighboring practice, tenant isolation, planning, two connected
+endpoints, remembered consent, two independent retained speech sources, source
+alignment, participant-attributed transcription, protected playback, mentor
+DOCX, shared/private relationship work, cross-account task completion, inline
+light editing, private preview, release/revoke, and automatic audio readiness.
+Its combined receipt records `preSessionPlanningOperated: true`:
+`artifacts/coaching-acceptance/56297c34/fresh-coaching-flight-receipt.json`.
+
+This remains clean local product automation with synthetic speech and browser
+media. It does not claim physical-iPhone behavior, natural human speech,
+external mailbox delivery, production scale, human listening, or minimally
+instructed novice comprehension.

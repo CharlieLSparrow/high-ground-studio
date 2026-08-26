@@ -4689,3 +4689,36 @@ rehearsal`) in an iPhone 17 Pro simulator. The signed-in UI acceptance opened
   ungranted consent requests. Both the full coaching handoff smoke and
   125-check mobile Capture source contract smoke pass. Physical two-participant
   readiness and recording remain acceptance evidence.
+
+### 2026-08-26 shared client check-in and private coach preparation
+
+- Every canonical coaching booking can now own one revisioned pre-Session plan.
+  The client gets four familiar optional prompts plus a 0–10 progress check;
+  the assigned coach sees those shared answers and a separate private prep note.
+  Nothing in the plan blocks joining the call.
+- The two write lanes share a booking identity but never share writable fields.
+  Serializable writes, a per-booking advisory lock, request UUIDs, input hashes,
+  immutable revisions, and database constraints make retries converge without
+  letting a client write the coach lane or letting a coach overwrite the client
+  lane.
+- The private coach note is omitted from the client projection rather than
+  hidden cosmetically. Another authenticated coach receives the same opaque 404
+  as an unknown Session. Saving preparation creates no conversation message,
+  notification, task, goal, or coaching note.
+- The ordinary Session overview and Prepare workspace expose the browser card;
+  Quipsly Capture exposes the same check-in and private-coach distinction inside
+  the selected coaching Session. The native client uses authenticated Nest
+  requests, keeps failed text in the editor, and reuses an idempotency identity
+  only for the exact failed payload.
+- The first clean flight caught that the browser card had landed only inside the
+  secondary Prepare workspace. The product was repaired so the default Session
+  overview contains the plan, and the unchanged assertion then passed. This is
+  retained as a release lesson: component tests do not prove ordinary-route
+  discoverability.
+- A clean database applied all 130 committed migrations on exact source
+  `186fdf0b`. The complete fresh flight then passed signup, neighboring-tenant
+  isolation, rendered client and coach preparation, two-endpoint calling, two
+  independent retained sources, source alignment, two-source transcription,
+  protected playback, mentor DOCX, shared/private work, cross-account task
+  completion, inline editing, release/revoke, and automatic audio readiness.
+  Receipt: `artifacts/coaching-acceptance/56297c34/fresh-coaching-flight-receipt.json`.
