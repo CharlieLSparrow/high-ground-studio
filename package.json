@@ -253,6 +253,7 @@
     "quipsly:recovery-lab:up": "bash scripts/dev/quipsly-recovery-lab-up.sh",
     "quipsly:recovery-lab:doctor": "bash scripts/dev/quipsly-recovery-lab-doctor.sh",
     "quipsly:recovery-lab:coaching-flight": "bash scripts/dev/quipsly-recovery-lab-coaching-flight.sh",
+    "quipsly:recovery-lab:coaching-capacity": "bash scripts/dev/quipsly-recovery-lab-coaching-capacity.sh",
     "quipsly:recovery-lab:down": "bash scripts/dev/quipsly-recovery-lab-down.sh",
     "quipsly:release:local": "node scripts/hgo-quipsly-release-readiness.mjs --local-only",
     "quipsly:release:local:json": "node scripts/hgo-quipsly-release-readiness.mjs --local-only --json",
