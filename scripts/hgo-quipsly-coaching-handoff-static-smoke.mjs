@@ -481,7 +481,7 @@ for (const [label, needle] of [
 }
 
 for (const [label, needle] of [
-  ["lifecycle kind", "quipsly-coaching-capture-lifecycle-v1"],
+  ["lifecycle kind", "quipsly-coaching-capture-lifecycle-v2"],
   ["lifecycle builder", "buildQuipslyCoachingLifecycle"],
   ["capture readiness flag", "readyForCapture"],
   ["packet readiness flag", "readyForPacket"],

@@ -76,7 +76,7 @@ type LifecycleCheckStatus =
   | "attention";
 
 type CoachingLifecycle = {
-  kind?: "quipsly-coaching-capture-lifecycle-v1";
+  kind?: "quipsly-coaching-capture-lifecycle-v2";
   stage?: string | null;
   readyForCapture?: boolean;
   readyForTranscript?: boolean;

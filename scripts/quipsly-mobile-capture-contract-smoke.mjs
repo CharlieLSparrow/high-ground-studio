@@ -831,15 +831,17 @@ function checkMeetingSpineContractSources() {
   );
   expect(
     lifecycleText.includes("QUIPSLY_COACHING_LIFECYCLE_KIND")
-      && lifecycleText.includes("quipsly-coaching-capture-lifecycle-v1")
+      && lifecycleText.includes("quipsly-coaching-capture-lifecycle-v2")
       && lifecycleText.includes("Publication receipt")
       && lifecycleText.includes("Server recording receipt")
       && lifecycleText.includes("safeActions")
       && lifecycleText.includes("confirm-recording-consent")
+      && lifecycleText.includes('"participants-needed"')
+      && lifecycleText.includes("participantsAttached && consentGranted")
       && lifecycleText.includes("readyForCapture")
       && lifecycleText.includes("readyForPacket"),
     "sharedCoachingLifecycleContract",
-    "Coaching capture exposes shared receipt checks and safe next actions for web, mobile, and native surfaces.",
+    "Coaching capture exposes shared receipt checks, participant/consent gates, and safe next actions for web, mobile, and native surfaces.",
   );
   expect(
     bridgeText.includes("struct MobileCaptureJourneySummary")
@@ -2921,7 +2923,7 @@ function validateSessionLifecycleShape(session, prefix = "sessions") {
 
   const lifecycle = session.lifecycle;
   expect(
-    lifecycle.kind === "quipsly-coaching-capture-lifecycle-v1",
+    lifecycle.kind === "quipsly-coaching-capture-lifecycle-v2",
     `${prefix}LifecycleKind`,
     "Mobile session lifecycle uses the shared coaching/capture lifecycle contract kind.",
     { sessionId: session.id, kind: lifecycle.kind },

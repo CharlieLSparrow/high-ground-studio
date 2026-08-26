@@ -1,9 +1,10 @@
-export const QUIPSLY_COACHING_LIFECYCLE_KIND = "quipsly-coaching-capture-lifecycle-v1" as const;
+export const QUIPSLY_COACHING_LIFECYCLE_KIND = "quipsly-coaching-capture-lifecycle-v2" as const;
 
 export type QuipslyCoachingLifecycleStage =
   | "booking-needed"
   | "payment-needed"
   | "room-needed"
+  | "participants-needed"
   | "consent-needed"
   | "capture-route-needed"
   | "ready-to-capture"
@@ -136,6 +137,7 @@ export function buildQuipslyCoachingLifecycle(
   if (!bookingExists) stage = "booking-needed";
   else if (!paymentResolved) stage = "payment-needed";
   else if (!roomExists) stage = "room-needed";
+  else if (!participantsAttached) stage = "participants-needed";
   else if (!consentGranted) stage = "consent-needed";
   else if (!captureRouteReady && !recordingExists) stage = "capture-route-needed";
   else if (!recordingExists) stage = "ready-to-capture";
@@ -143,11 +145,11 @@ export function buildQuipslyCoachingLifecycle(
   else if (!transcriptCompleted) stage = "transcription-needed";
   else if (!packetExists) stage = "packet-needed";
 
-  const readyForCapture = bookingExists && paymentResolved && roomExists && consentGranted && captureRouteReady;
-  const readyForTranscript = recordingExists && serverRecordingVerified && !transcriptCompleted;
-  const readyForPacket = transcriptCompleted && !packetExists;
-  const readyForReview = packetExists;
-  const participantsAttachedForAction = participantsAttached || !roomExists;
+  const participantAndConsentBoundary = participantsAttached && consentGranted;
+  const readyForCapture = bookingExists && paymentResolved && roomExists && participantAndConsentBoundary && captureRouteReady;
+  const readyForTranscript = participantAndConsentBoundary && recordingExists && serverRecordingVerified && !transcriptCompleted;
+  const readyForPacket = participantAndConsentBoundary && transcriptCompleted && !packetExists;
+  const readyForReview = participantAndConsentBoundary && packetExists;
 
   return {
     kind: QUIPSLY_COACHING_LIFECYCLE_KIND,
@@ -318,7 +320,7 @@ export function buildQuipslyCoachingLifecycle(
       safeAction(
         "prepare-capture-route",
         "Prepare provider or local capture route",
-        bookingExists && paymentResolved && roomExists && participantsAttachedForAction && consentGranted && !captureRouteReady && !recordingExists,
+        bookingExists && paymentResolved && roomExists && participantsAttached && consentGranted && !captureRouteReady && !recordingExists,
         "medium",
         captureRouteReady
           ? "A provider room or local fallback is ready."
@@ -382,8 +384,22 @@ export function buildQuipslyCoachingLifecycle(
         "Review can approve, refine, or route next work. External delivery still needs explicit approval and receipts.",
       ),
     ],
-    nextAction: input.nextAction?.trim() || defaultNextActionForStage(stage),
+    nextAction:
+      isHardLifecycleGate(stage)
+        ? defaultNextActionForStage(stage)
+        : input.nextAction?.trim() || defaultNextActionForStage(stage),
   };
+}
+
+function isHardLifecycleGate(stage: QuipslyCoachingLifecycleStage) {
+  return [
+    "booking-needed",
+    "payment-needed",
+    "room-needed",
+    "participants-needed",
+    "consent-needed",
+    "capture-route-needed",
+  ].includes(stage);
 }
 
 function defaultNextActionForStage(stage: QuipslyCoachingLifecycleStage) {
@@ -394,6 +410,8 @@ function defaultNextActionForStage(stage: QuipslyCoachingLifecycleStage) {
       return "Collect provider-backed payment evidence or change the payment policy intentionally.";
     case "room-needed":
       return "Prepare the Quipsly capture room.";
+    case "participants-needed":
+      return "Attach the Session participants before consent or capture.";
     case "consent-needed":
       return "Confirm explicit recording consent before capture.";
     case "capture-route-needed":
