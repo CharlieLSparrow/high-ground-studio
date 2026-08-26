@@ -23,7 +23,7 @@ struct PendingTranscriptReviewDecision: Codable, Equatable, Identifiable {
     let correctedText: String?
     let correctedSpeakerLabel: String?
     let reason: String?
-    let playbackPositionSeconds: TimeInterval
+    let playbackPositionSeconds: TimeInterval?
     let capturedAt: Date
     var disposition: Disposition
     var attemptCount: Int
@@ -149,7 +149,7 @@ final class TranscriptReviewDecisionOutbox: ObservableObject {
         correctedText: String,
         correctedSpeakerLabel: String,
         reason: String,
-        playbackPositionSeconds: TimeInterval,
+        playbackPositionSeconds: TimeInterval?,
         capturedAt: Date = Date()
     ) throws -> PendingTranscriptReviewDecision {
         let cleanText = correctedText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -244,7 +244,7 @@ final class TranscriptReviewDecisionOutbox: ObservableObject {
         correctedText: String?,
         correctedSpeakerLabel: String?,
         reason: String?,
-        playbackPositionSeconds: TimeInterval,
+        playbackPositionSeconds: TimeInterval?,
         capturedAt: Date
     ) throws -> PendingTranscriptReviewDecision {
         guard ledgerIsWritable else { throw TranscriptReviewDecisionStoreError.ledgerUnavailable }
@@ -257,9 +257,17 @@ final class TranscriptReviewDecisionOutbox: ObservableObject {
         guard !cleanRoomID.isEmpty,
               !cleanSegmentID.isEmpty,
               !expectedProviderText.isEmpty,
-              expectedProviderText.count <= 100_000,
-              playbackPositionSeconds.isFinite,
-              playbackPositionSeconds >= 0 else {
+              expectedProviderText.count <= 100_000 else {
+            throw TranscriptReviewDecisionStoreError.invalidDecision
+        }
+        if operation == .confirmSegmentAsIs {
+            guard let playbackPositionSeconds,
+                  playbackPositionSeconds.isFinite,
+                  playbackPositionSeconds >= 0 else {
+                throw TranscriptReviewDecisionStoreError.invalidDecision
+            }
+        } else if let playbackPositionSeconds,
+                  (!playbackPositionSeconds.isFinite || playbackPositionSeconds < 0) {
             throw TranscriptReviewDecisionStoreError.invalidDecision
         }
         guard decision(roomID: cleanRoomID, segmentID: cleanSegmentID) == nil else {

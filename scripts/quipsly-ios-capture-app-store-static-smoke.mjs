@@ -2088,6 +2088,21 @@ requireIncludes(
 );
 requireIncludes(
   transcriptReviewText,
+  'Button(decisionsLocked ? "Save when reconnected" : "Save correction")',
+  "ordinary native transcript correction saves without a forced listening ceremony",
+);
+requireIncludes(
+  transcriptReviewText,
+  "Save directly, or listen first when the audio will help.",
+  "native transcript editing makes playback useful rather than mandatory",
+);
+requireExcludes(
+  transcriptReviewText,
+  "Listen through this exact segment before accepting.",
+  "retired forced-listening transcript paperwork",
+);
+requireIncludes(
+  transcriptReviewText,
   "CaptureTranscriptSegmentVerification",
   "native transcript review decodes the append-only verification receipt",
 );

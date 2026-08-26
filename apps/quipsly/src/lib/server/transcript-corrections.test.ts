@@ -1057,7 +1057,7 @@ describe("transcript correction desk", () => {
     expect(result.segments[0].correctionHistory).toHaveLength(2);
   });
 
-  it("accepts a human correction only with protected playback at the segment time", async () => {
+  it("preserves optional playback evidence when a person listened before editing", async () => {
     const { prisma, tx, revisionCreate } = mutationHarness();
     const result = await createTranscriptCorrection({
       prisma,
@@ -1094,6 +1094,44 @@ describe("transcript correction desk", () => {
       provenanceJson: expect.objectContaining({ schema: TRANSCRIPT_CORRECTION_SCHEMA }),
     }) }));
     expect(revisionCreate).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ revision: 1, operation: "created-and-accepted-after-playback" }) }));
+  });
+
+  it("accepts an ordinary direct transcript edit without forcing playback", async () => {
+    const { prisma, tx, revisionCreate } = mutationHarness();
+    const result = await createTranscriptCorrection({
+      prisma,
+      actor,
+      roomId: "room-1",
+      segmentId: "segment-1",
+      clientRequestId: "direct-edit-1",
+      origin: "human",
+      expectedText: providerText,
+      expectedSpeakerLabel: providerSpeakerLabel,
+      correctedText: "We should ship the proof-watch tomorrow.",
+      correctedSpeakerLabel: "Charlie",
+      reason: "Corrected a name and hyphen.",
+    });
+
+    expect(result).toMatchObject({
+      ok: true,
+      correction: { status: "accepted" },
+      boundaries: {
+        acceptedHumanCorrectionRequiresPlaybackConfirmation: false,
+        directHumanCorrectionPreservesSourceAnchors: true,
+      },
+    });
+    expect(tx.transcriptCorrection.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({
+      status: "accepted",
+      startSecondsSnapshot: 12,
+      endSecondsSnapshot: 18,
+      provenanceJson: expect.objectContaining({
+        source: "session-direct-edit",
+        playback: null,
+      }),
+    }) }));
+    expect(revisionCreate).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({
+      operation: "created-and-accepted-direct-edit",
+    }) }));
   });
 
   it("records a reviewed-as-is receipt only after protected playback at the segment time", async () => {
@@ -1179,9 +1217,9 @@ describe("transcript correction desk", () => {
     expect(tx.transcriptSegmentVerification.create).not.toHaveBeenCalled();
   });
 
-  it("refuses paperwork-only acceptance when protected playback is unavailable", async () => {
+  it("still accepts a source-anchored direct edit when protected playback is unavailable", async () => {
     const { prisma, tx } = mutationHarness({ promoted: false });
-    await expect(createTranscriptCorrection({
+    const result = await createTranscriptCorrection({
       prisma,
       actor,
       roomId: "room-1",
@@ -1191,10 +1229,11 @@ describe("transcript correction desk", () => {
       expectedText: providerText,
       expectedSpeakerLabel: providerSpeakerLabel,
       correctedText: "Corrected words",
-      confirmedAgainstPlayback: true,
-      playbackPositionSeconds: 13,
-    })).rejects.toMatchObject<Partial<TranscriptCorrectionError>>({ status: 409, code: "PLAYBACK_UNAVAILABLE" });
-    expect(tx.transcriptCorrection.create).not.toHaveBeenCalled();
+    });
+    expect(result.correction).toMatchObject({ status: "accepted" });
+    expect(tx.transcriptCorrection.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({
+      provenanceJson: expect.objectContaining({ source: "session-direct-edit", playback: null }),
+    }) }));
   });
 
   it("quarantines AI output as a proposal even when its words look plausible", async () => {

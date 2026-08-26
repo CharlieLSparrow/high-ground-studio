@@ -383,15 +383,6 @@ export function SessionRecordingShareCard({
     });
   }
 
-  function playNextReviewCheckpoint() {
-    const media = previewMediaRef.current;
-    const nextSecond = requiredPreviewSecondBins.find((second) => !previewListenedSecondBins.has(second));
-    if (!media || nextSecond === undefined) return;
-    media.currentTime = Math.max(0, nextSecond - 0.1);
-    previewLastPlaybackTimeRef.current = media.currentTime;
-    void media.play().catch(() => setNotice("The next review point is ready. Press Play in the recording control."));
-  }
-
   useEffect(() => {
     if (!focusTranscriptKey || !snapshot?.role) return;
     if (snapshot.output && !editing) {
@@ -471,7 +462,7 @@ export function SessionRecordingShareCard({
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="flex items-start gap-3">
           <span className="rounded-2xl bg-white p-3 text-sky-800 shadow-sm"><FileAudio aria-hidden="true" size={22} /></span>
-          <div><p className="text-[10px] font-black uppercase tracking-[0.2em] text-sky-700">Reviewed recording</p><h2 id="recording-share-heading" className="font-serif text-2xl font-black text-sky-950">Trim, listen, then share</h2><p className="mt-1 max-w-2xl text-sm font-semibold leading-6 text-sky-900">Recipient: <strong>{snapshot.room.client.label}</strong>. A draft stays coach-only until the explicit release step.</p></div>
+          <div><p className="text-[10px] font-black uppercase tracking-[0.2em] text-sky-700">Session recording</p><h2 id="recording-share-heading" className="font-serif text-2xl font-black text-sky-950">Trim and share</h2><p className="mt-1 max-w-2xl text-sm font-semibold leading-6 text-sky-900">Recipient: <strong>{snapshot.room.client.label}</strong>. A draft stays coach-only until you share it.</p></div>
         </div>
         <button type="button" onClick={() => void load()} disabled={Boolean(busy)} className="rounded-xl border border-sky-200 bg-white px-3 py-2 text-xs font-black text-sky-900 disabled:opacity-50"><RefreshCw className={`mr-1.5 inline ${busy === "LOAD" ? "animate-spin" : ""}`} size={14} />Refresh</button>
       </div>
@@ -636,19 +627,12 @@ export function SessionRecordingShareCard({
           onSeeking={() => { previewLastPlaybackTimeRef.current = null; }}
           onTimeUpdate={(event) => observePreviewPlayback(event.currentTarget)}
           onEnded={(event) => observePreviewPlayback(event.currentTarget, true)}
-        >Your browser cannot play this private recording.</audio>}<div className="flex flex-wrap gap-2 text-xs font-bold text-sky-800"><span>{time(output.render.durationSeconds || 0)}</span><span>·</span><span>{megabytes(output.render.sizeBytes)}</span><span>·</span><span className="font-mono">SHA-256 {output.render.sha256?.slice(0, 12)}…</span></div><a href={`${output.mediaUrl}?download=1`} className="inline-flex items-center rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-xs font-black text-sky-900"><Download className="mr-1.5" size={14} />Download exact reviewed copy</a></> : output.render.status === "FAILED" ? <p className="rounded-xl bg-rose-50 p-3 text-sm font-bold text-rose-900">The private copy did not pass verification, so nothing was shared. Your original recording and edit choices are safe.</p> : <p className="text-sm font-bold text-sky-800"><RefreshCw className="mr-2 inline animate-spin" size={15} />{output.render.mediaKind === "video" ? "Aligning picture and sound, leveling, decoding, and verifying the private preview…" : "Aligning, leveling, decoding, and verifying the private preview…"}</p>}
+        >Your browser cannot play this private recording.</audio>}<div className="flex flex-wrap gap-2 text-xs font-bold text-sky-800"><span>{time(output.render.durationSeconds || 0)}</span><span>·</span><span>{megabytes(output.render.sizeBytes)}</span><span>·</span><span className="font-mono">SHA-256 {output.render.sha256?.slice(0, 12)}…</span></div><a href={`${output.mediaUrl}?download=1`} className="inline-flex items-center rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-xs font-black text-sky-900"><Download className="mr-1.5" size={14} />Download private copy</a></> : output.render.status === "FAILED" ? <p className="rounded-xl bg-rose-50 p-3 text-sm font-bold text-rose-900">The private copy did not pass verification, so nothing was shared. Your original recording and edit choices are safe.</p> : <p className="text-sm font-bold text-sky-800"><RefreshCw className="mr-2 inline animate-spin" size={15} />{output.render.mediaKind === "video" ? "Aligning picture and sound, leveling, decoding, and verifying the private preview…" : "Aligning, leveling, decoding, and verifying the private preview…"}</p>}
         {coach && output.status === "DRAFT" && output.render.status === "VERIFIED" ? <div className={`rounded-xl border p-4 ${output.playbackReview?.reviewed ? "border-emerald-200 bg-emerald-50" : "border-indigo-200 bg-indigo-50"}`}>
-          {output.playbackReview?.reviewed ? <p className="text-sm font-bold text-emerald-950"><ShieldCheck className="mr-2 inline" size={16} />Listening review saved for this exact revision. It is ready to share with <strong>{output.recipient.label}</strong>.</p> : <>
-            <p className="text-sm font-black text-indigo-950">Listen before sharing</p>
-            <p className="mt-1 text-xs font-semibold leading-5 text-indigo-900">Play the beginning, middle, ending, and each edit join. Quipsly saves the review automatically after every checkpoint has played.</p>
-            <div className="mt-3 h-2 overflow-hidden rounded-full bg-white" role="progressbar" aria-label="Private preview listening review" aria-valuemin={0} aria-valuemax={requiredPreviewSecondBins.length} aria-valuenow={observedPreviewSecondBins.length}><div className="h-full rounded-full bg-indigo-700 transition-[width]" style={{ width: `${requiredPreviewSecondBins.length ? (observedPreviewSecondBins.length / requiredPreviewSecondBins.length) * 100 : 0}%` }} /></div>
-            <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
-              <p className="text-xs font-bold text-indigo-900">{busy === "REVIEW" ? "Saving listening review…" : `${observedPreviewSecondBins.length} of ${requiredPreviewSecondBins.length} review checkpoints played`}</p>
-              {!previewReviewComplete ? <button type="button" onClick={playNextReviewCheckpoint} disabled={Boolean(busy)} className="inline-flex min-h-10 items-center gap-2 rounded-full border border-indigo-300 bg-white px-4 py-2 text-xs font-black text-indigo-950 disabled:opacity-50"><Play size={13} fill="currentColor" aria-hidden="true" />Play next review point</button> : null}
-            </div>
-            {reviewSaveFailed && previewReviewComplete ? <button type="button" onClick={() => void savePlaybackReview(output, [...previewListenedSecondBins].sort((left, right) => left - right))} disabled={Boolean(busy)} className="mt-3 rounded-full border border-indigo-300 bg-white px-4 py-2 text-xs font-black text-indigo-950 disabled:opacity-50">Retry saving review</button> : null}
-          </>}
-          <button type="button" disabled={Boolean(busy) || !output.playbackReview?.reviewed} onClick={() => void mutate("RELEASE")} className="mt-3 w-full rounded-xl bg-emerald-800 px-4 py-3 text-sm font-black text-white disabled:cursor-not-allowed disabled:opacity-50"><Send className="mr-2 inline" size={16} />{output.playbackReview?.reviewed ? `Share with ${output.recipient.label}` : "Listen before sharing"}</button>
+          {output.playbackReview?.reviewed
+            ? <p className="text-sm font-bold text-emerald-950"><ShieldCheck className="mr-2 inline" size={16} />You listened through this exact revision.</p>
+            : <p className="text-sm font-semibold leading-6 text-indigo-950">Preview the edit above when useful, or share it now. The original recordings remain unchanged.</p>}
+          <button type="button" disabled={Boolean(busy)} onClick={() => void mutate("RELEASE")} className="mt-3 w-full rounded-xl bg-emerald-800 px-4 py-3 text-sm font-black text-white disabled:cursor-not-allowed disabled:opacity-50"><Send className="mr-2 inline" size={16} />Share with {output.recipient.label}</button>
         </div> : null}
         {coach && output.status === "RELEASED" ? <button type="button" disabled={Boolean(busy)} onClick={() => void mutate("REVOKE")} className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-black text-rose-900"><Undo2 className="mr-1.5 inline" size={14} />Revoke client access</button> : null}
         {!coach && output.status === "RELEASED" ? <p className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm font-bold text-emerald-950"><ShieldCheck className="mr-2 inline" size={16} />Your coach released this reviewed copy to your private Session.</p> : null}

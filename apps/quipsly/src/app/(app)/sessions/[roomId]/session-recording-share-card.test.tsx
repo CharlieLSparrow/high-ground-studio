@@ -207,7 +207,7 @@ describe("SessionRecordingShareCard", () => {
     }));
   });
 
-  it("shares a verified private preview with one explicit standard action", async () => {
+  it("shares a verified private preview without forcing a listening ceremony", async () => {
     const output = {
       id: "session_output_0001",
       status: "DRAFT",
@@ -217,7 +217,7 @@ describe("SessionRecordingShareCard", () => {
       recipient: { id: "client_user_0001", label: "Client" },
       render: { status: "VERIFIED", durationSeconds: 30, sizeBytes: 4_000, sha256: "e".repeat(64) },
       mediaUrl: "/api/sessions/session_room_0001/recording-share/media/session_output_0001",
-      playbackReview: { schema: "quipsly-session-recording-share-playback-review-v1", requiredSecondBins: [0, 15, 29], joinSecondBins: [], reviewed: true, reviewedAt: "2026-08-24T12:00:00.000Z", clientTrackedPlaybackIsNotProofOfAudibility: true },
+      playbackReview: { schema: "quipsly-session-recording-share-playback-review-v1", requiredSecondBins: [0, 15, 29], joinSecondBins: [], reviewed: false, reviewedAt: null, clientTrackedPlaybackIsNotProofOfAudibility: true },
       body: { edit: { startSeconds: 0, endSeconds: 30, transcriptExclusions: [] } },
     };
     const draft = { ...snapshot, output };
@@ -230,6 +230,7 @@ describe("SessionRecordingShareCard", () => {
     render(<SessionRecordingShareCard roomId="session_room_0001" />);
     const share = await screen.findByRole("button", { name: "Share with Client" });
     expect(share).toBeEnabled();
+    expect(screen.getByText(/preview the edit above when useful, or share it now/i)).toBeInTheDocument();
     await userEvent.click(share);
     await waitFor(() => expect(requests).toHaveLength(1));
     expect(requests[0]).toEqual(expect.objectContaining({
@@ -239,7 +240,7 @@ describe("SessionRecordingShareCard", () => {
     }));
   });
 
-  it("observes required preview checkpoints and saves review without a checkbox", async () => {
+  it("records optional listening evidence without turning it into a share gate", async () => {
     const draftOutput = {
       id: "session_output_review_0001",
       status: "DRAFT",
@@ -266,15 +267,12 @@ describe("SessionRecordingShareCard", () => {
 
     render(<SessionRecordingShareCard roomId="session_room_0001" />);
     const audio = await screen.findByLabelText("Private recording preview") as HTMLAudioElement;
-    const play = jest.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue();
     Object.defineProperties(audio, {
       duration: { configurable: true, value: 30 },
       paused: { configurable: true, value: false },
       seeking: { configurable: true, value: false },
     });
-    await userEvent.click(screen.getByRole("button", { name: "Play next review point" }));
-    expect(audio.currentTime).toBe(0);
-    expect(play).toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "Share with Client" })).toBeEnabled();
     for (const second of [0, 15, 29]) {
       audio.currentTime = second + 0.1;
       fireEvent.play(audio);
@@ -288,7 +286,7 @@ describe("SessionRecordingShareCard", () => {
       expectedRevision: 2,
       playbackEvidence: { listenedSecondBins: [0, 15, 29], clientTrackedPlaybackIsNotProofOfAudibility: true },
     });
-    expect(await screen.findByText(/listening review saved for this exact revision/i)).toBeInTheDocument();
+    expect(await screen.findByText(/listening review saved for this exact private preview/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Share with Client" })).toBeEnabled();
   });
 

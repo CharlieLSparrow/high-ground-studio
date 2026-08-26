@@ -1490,14 +1490,15 @@ function checkTranscriptCorrectionContractSources() {
     serviceText.includes('TRANSCRIPT_CORRECTION_SCHEMA = "quipsly-transcript-correction-v1"')
       && serviceText.includes("providerSegmentsImmutable: true")
       && serviceText.includes("correctionOverlayVersioned: true")
-      && serviceText.includes("acceptedHumanCorrectionRequiresPlaybackConfirmation: true")
+      && serviceText.includes("acceptedHumanCorrectionRequiresPlaybackConfirmation: false")
+      && serviceText.includes("directHumanCorrectionPreservesSourceAnchors: true")
       && serviceText.includes("aiOutputRequiresHumanReview: true")
       && serviceText.includes("PLAYBACK_POSITION_MISMATCH")
       && serviceText.includes("STALE_CORRECTION_OVERLAY")
       && serviceText.includes("noExternalDelivery: true")
       && serviceText.includes("noPublication: true"),
     "transcriptCorrectionImmutableEvidenceBoundary",
-    "Canonical transcript corrections preserve provider segments and media time, quarantine AI output, require playback-position proof, and fail stale overlays closed.",
+    "Canonical transcript corrections preserve provider segments, source anchors, media time, and revisions while keeping playback optional for direct edits, requiring it for verification, quarantining AI output, and failing stale overlays closed.",
   );
   expect(
     routeText.includes('operation === "attribute-provider-speaker"')

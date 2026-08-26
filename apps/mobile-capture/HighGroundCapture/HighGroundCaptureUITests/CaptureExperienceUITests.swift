@@ -2664,7 +2664,7 @@ final class CaptureExperienceUITests: XCTestCase {
         correct.tap()
         XCTAssertTrue(app.textFields["CaptureTranscriptCorrectSpeakerField"].exists)
         XCTAssertTrue(app.textFields["CaptureTranscriptCorrectWordsField"].exists)
-        XCTAssertFalse(app.buttons["Accept reviewed correction"].isEnabled)
+        XCTAssertFalse(app.buttons["Save correction"].isEnabled)
 
         let makeNote = app.buttons["CaptureTranscriptMakeNoteButton"]
         reveal(makeNote)

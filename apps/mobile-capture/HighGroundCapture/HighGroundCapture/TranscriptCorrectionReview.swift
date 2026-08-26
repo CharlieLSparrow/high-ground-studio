@@ -405,7 +405,8 @@ struct CaptureTranscriptCorrectionDesk: Codable, Equatable {
             boundaries: [
                 "providerSegmentsImmutable": true,
                 "correctionOverlayVersioned": true,
-                "acceptedHumanCorrectionRequiresPlaybackConfirmation": true,
+                "acceptedHumanCorrectionRequiresPlaybackConfirmation": false,
+                "directHumanCorrectionPreservesSourceAnchors": true,
                 "aiOutputRequiresHumanReview": true,
                 "mediaTimeAnchorsPreserved": true,
                 "speakerIdentitySeparateFromWordReview": true,
@@ -426,6 +427,7 @@ private struct CaptureTranscriptMutationBoundaries: Codable {
     let providerSegmentsImmutable: Bool?
     let correctionOverlayVersioned: Bool?
     let acceptedHumanCorrectionRequiresPlaybackConfirmation: Bool?
+    let directHumanCorrectionPreservesSourceAnchors: Bool?
     let confirmedAsIsRequiresPlaybackConfirmation: Bool?
     let mediaTimeAnchorsPreserved: Bool?
     let speakerIdentitySeparateFromWordReview: Bool?
@@ -1145,7 +1147,7 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
         correctedText: String,
         correctedSpeaker: String,
         reason: String,
-        playbackPosition: TimeInterval,
+        playbackPosition: TimeInterval?,
         previewOnly: Bool
     ) async -> Bool {
         guard !previewOnly else {
@@ -1166,12 +1168,12 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
             )
             publishOutboxCounts()
             errorMessage = nil
-            message = "Playback-reviewed correction protected on this iPhone and waiting for exact Nest acknowledgement."
+            message = "Correction saved on this iPhone and syncing to Nest."
             if AuthManager.shared.networkActionsAllowed {
                 _ = await flushReviewDecisions()
                 if reviewDecisionOutbox.decision(roomID: roomID, segmentID: segment.id) == nil {
                     await load(roomID: roomID, previewOnly: false)
-                    if errorMessage == nil { message = "Playback-reviewed correction saved." }
+                    if errorMessage == nil { message = "Transcript correction saved." }
                 }
             }
             return true
@@ -1989,9 +1991,11 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
                 "expectedText": decision.expectedProviderText,
                 "expectedSpeakerLabel": captureTranscriptJSONNullable(decision.expectedProviderSpeakerLabel),
                 "expectedAcceptedCorrectionId": captureTranscriptJSONNullable(decision.expectedAcceptedCorrectionID),
-                "confirmedAgainstPlayback": true,
-                "playbackPositionSeconds": decision.playbackPositionSeconds,
+                "confirmedAgainstPlayback": decision.playbackPositionSeconds != nil,
             ]
+            if let playbackPositionSeconds = decision.playbackPositionSeconds {
+                body["playbackPositionSeconds"] = playbackPositionSeconds
+            }
             switch decision.operation {
             case .acceptHumanCorrection:
                 body["correctedText"] = captureTranscriptJSONNullable(decision.correctedText)
@@ -2034,7 +2038,8 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
             }
             switch decision.operation {
             case .acceptHumanCorrection:
-                guard payload.boundaries?.acceptedHumanCorrectionRequiresPlaybackConfirmation == true,
+                guard payload.boundaries?.acceptedHumanCorrectionRequiresPlaybackConfirmation == false,
+                      payload.boundaries?.directHumanCorrectionPreservesSourceAnchors == true,
                       let correction = payload.correction,
                       correction.segmentId == decision.segmentID,
                       correction.origin == "human",
@@ -6088,7 +6093,7 @@ private struct CaptureTranscriptSegmentCard: View {
 
             if let accepted = segment.acceptedCorrection {
                 VStack(alignment: .leading, spacing: 5) {
-                    Label("Reviewed correction · revision \(accepted.revisions.count)", systemImage: "checkmark.shield.fill")
+                    Label("Transcript correction · revision \(accepted.revisions.count)", systemImage: "checkmark.circle.fill")
                         .font(.caption.weight(.bold))
                         .foregroundStyle(.green)
                     Text("Provider: \(captureTranscriptNonempty(segment.providerSpeakerLabel) ?? "Unlabelled") — \(segment.providerText)")
@@ -6141,8 +6146,8 @@ private struct CaptureTranscriptSegmentCard: View {
                 VStack(alignment: .leading, spacing: 7) {
                     Label(
                         pendingDecision.disposition == .held
-                            ? "Decision held for review"
-                            : "Decision queued on this iPhone",
+                            ? "Transcript change needs attention"
+                            : "Transcript change saved on this iPhone",
                         systemImage: pendingDecision.disposition == .held
                             ? "exclamationmark.shield.fill"
                             : "arrow.triangle.2.circlepath"
@@ -6153,7 +6158,7 @@ private struct CaptureTranscriptSegmentCard: View {
                     )
                     Text(
                         pendingDecision.lastErrorMessage
-                            ?? "The exact playback position, provider evidence, and expected reviewed overlay are protected until Nest acknowledges this stable request."
+                            ?? "The edit and its exact transcript source are protected until Nest finishes syncing."
                     )
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -6208,11 +6213,11 @@ private struct CaptureTranscriptSegmentCard: View {
                     .accessibilityIdentifier("CaptureTranscriptConfirmAsIsButton_\(segment.id)")
                     .accessibilityHint("Plays no media and saves only after this exact timestamp was already played.")
                 }
-                Button(segment.acceptedCorrection == nil ? "Correct against playback" : "Revise reviewed correction") {
+                Button(segment.acceptedCorrection == nil ? "Edit transcript" : "Revise correction") {
                     beginEditing()
                 }
                 .buttonStyle(.bordered)
-                .disabled((!hasExactLocalSource && !previewOnly) || client.isMutating || pendingDecision != nil)
+                .disabled(client.isMutating || pendingDecision != nil)
                 .accessibilityIdentifier("CaptureTranscriptCorrectButton_\(segment.id)")
             }
 
@@ -6479,9 +6484,14 @@ private struct CaptureTranscriptSegmentCard: View {
             TextField("Why this changed (optional)", text: $reason, axis: .vertical)
                 .lineLimit(2...4)
                 .textFieldStyle(.roundedBorder)
-            Label(playbackPosition == nil ? "Listen through this exact segment before accepting." : "Exact local segment heard through its end and ready for confirmation.", systemImage: playbackPosition == nil ? "ear.badge.exclamationmark" : "checkmark.circle.fill")
+            Label(
+                playbackPosition == nil
+                    ? "Save directly, or listen first when the audio will help."
+                    : "This edit will retain the playback position you just heard.",
+                systemImage: playbackPosition == nil ? "square.and.pencil" : "ear.fill"
+            )
                 .font(.caption.weight(.semibold))
-                .foregroundStyle(playbackPosition == nil ? Color.orange : Color.green)
+                .foregroundStyle(playbackPosition == nil ? Color.secondary : Color.green)
             if let draftStatus {
                 Label(draftStatus, systemImage: "internaldrive.fill")
                     .font(.caption.weight(.semibold))
@@ -6489,8 +6499,7 @@ private struct CaptureTranscriptSegmentCard: View {
                     .accessibilityIdentifier("CaptureTranscriptLocalDraftStatus")
             }
             VStack(alignment: .leading, spacing: 8) {
-                Button(decisionsLocked ? "Queue reviewed correction" : "Accept reviewed correction") {
-                    guard let playbackPosition else { return }
+                Button(decisionsLocked ? "Save when reconnected" : "Save correction") {
                     Task {
                         if await client.acceptHumanCorrection(
                             roomID: roomID,
@@ -6509,7 +6518,7 @@ private struct CaptureTranscriptSegmentCard: View {
                 }
                 .buttonStyle(.borderedProminent)
                 .frame(maxWidth: .infinity, minHeight: 44)
-                .disabled(playbackPosition == nil || client.isMutating || previewOnly || pendingDecision != nil || correctionIsEmptyOrUnchanged)
+                .disabled(client.isMutating || previewOnly || pendingDecision != nil || correctionIsEmptyOrUnchanged)
                 .accessibilityIdentifier("CaptureTranscriptAcceptCorrectionButton_\(segment.id)")
                 Button("Keep draft") {
                     persistDraftIfNeeded()
@@ -6527,7 +6536,7 @@ private struct CaptureTranscriptSegmentCard: View {
             .font(.caption.weight(.semibold))
             .frame(minHeight: 44)
             .contentShape(Rectangle())
-            Text("The decision is protected on this iPhone first. Nest adds an audited overlay only after exact evidence and conflict checks; media time, tasks, notes, and publication remain unchanged.")
+            Text("Quipsly saves a versioned correction linked to this exact place in the recording. The original transcript and recording remain recoverable.")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
         }
@@ -6874,7 +6883,7 @@ private struct CaptureTranscriptSegmentCard: View {
         let text = correctedText.trimmingCharacters(in: .whitespacesAndNewlines)
         let speaker = correctedSpeaker.trimmingCharacters(in: .whitespacesAndNewlines)
         if text.isEmpty && speaker.isEmpty { return true }
-        return text == segment.providerText && speaker == (segment.providerSpeakerLabel ?? "")
+        return text == segment.text && speaker == (segment.speakerLabel ?? "")
     }
 
     private var defaultTaskTitle: String {

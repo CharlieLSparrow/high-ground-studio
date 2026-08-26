@@ -1244,8 +1244,8 @@ function CorrectionEditor({
       setEditing(false);
       setReason("");
       await onSaved(body.idempotentReplay
-        ? "This reviewed correction was already saved; no duplicate was created."
-        : "Reviewed correction saved. Provider words and media timing remain unchanged underneath it.");
+        ? "This transcript correction was already saved; no duplicate was created."
+        : "Transcript correction saved. The original words and media timing remain recoverable underneath it.");
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : "The correction was not saved.");
     }
@@ -1431,7 +1431,7 @@ function CorrectionEditor({
 
       {segment.acceptedCorrection && (
         <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4">
-          <p className="flex items-center gap-2 text-xs font-black uppercase tracking-wide text-emerald-800"><ShieldCheck size={15} aria-hidden="true" />Reviewed correction · revision {segment.acceptedCorrection.revisions.length}</p>
+          <p className="flex items-center gap-2 text-xs font-black uppercase tracking-wide text-emerald-800"><ShieldCheck size={15} aria-hidden="true" />Transcript correction · revision {segment.acceptedCorrection.revisions.length}</p>
           {segment.providerSpeakerLabel !== segment.speakerLabel && <p className="mt-2 text-sm font-bold text-emerald-950">Speaker: {segment.providerSpeakerLabel || "Unlabelled"} → {segment.speakerLabel || "Unlabelled"}</p>}
           {segment.providerText !== segment.text && <p className="mt-2 text-sm font-semibold leading-relaxed text-emerald-950">{segment.text}</p>}
           {segment.acceptedCorrection.reason && <p className="mt-2 text-xs font-bold text-emerald-800">Reason: {segment.acceptedCorrection.reason}</p>}
@@ -1539,24 +1539,24 @@ function CorrectionEditor({
           <label className="block text-xs font-black uppercase tracking-wide text-amber-950">Why this changed <span className="normal-case tracking-normal text-amber-800">(optional)</span>
             <input value={reason} onChange={(event) => setReason(event.target.value)} maxLength={1000} placeholder="Name, wording, crosstalk, diarization…" className="mt-1 block w-full rounded-lg border border-amber-200 bg-white px-3 py-2 text-sm font-semibold text-[#3d3122]" />
           </label>
-          <p className={`rounded-lg border p-3 text-sm font-bold leading-relaxed ${playbackReviewed ? "border-emerald-200 bg-emerald-50 text-emerald-950" : "border-amber-200 bg-white text-amber-950"}`}>
+          <p className={`rounded-lg border p-3 text-sm font-bold leading-relaxed ${playbackReviewed ? "border-emerald-200 bg-emerald-50 text-emerald-950" : "border-slate-200 bg-white text-slate-800"}`}>
             {playbackReviewed
               ? `Recording checked from ${timestampForSeconds(reviewedPlaybackPositionSeconds ?? segment.startSeconds)}. Your correction will stay linked to this moment.`
-              : "Quipsly is playing this passage. Listen once and Save will unlock automatically."}
+              : "Save directly, or play the passage first when the audio will help. Quipsly keeps the edit linked to this exact moment either way."}
           </p>
           {error && <p role="alert" className="flex items-start gap-2 text-sm font-bold text-rose-800"><CircleAlert size={16} className="mt-0.5 shrink-0" aria-hidden="true" />{error}</p>}
           <div className="flex flex-wrap gap-2">
-            <button type="button" onClick={() => void save()} disabled={busy || !playbackReviewed || !playbackReady || (!correctedText.trim() && !correctedSpeaker.trim())} className="inline-flex items-center gap-2 rounded-full bg-[#3e2f21] px-4 py-2 text-xs font-black uppercase tracking-wide text-white disabled:opacity-50"><Check size={14} aria-hidden="true" />Save transcript correction</button>
+            <button type="button" onClick={() => void save()} disabled={busy || (!correctedText.trim() && !correctedSpeaker.trim())} className="inline-flex items-center gap-2 rounded-full bg-[#3e2f21] px-4 py-2 text-xs font-black uppercase tracking-wide text-white disabled:opacity-50"><Check size={14} aria-hidden="true" />Save transcript correction</button>
             <button type="button" onClick={() => { setEditing(false); setError(null); }} disabled={busy} className="inline-flex items-center gap-2 rounded-full border border-amber-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-amber-950 disabled:opacity-50"><X size={14} aria-hidden="true" />Cancel</button>
           </div>
-          <p className="text-xs font-bold leading-relaxed text-amber-800">Saving adds a reviewed overlay and audit revision. It does not overwrite provider output, move timestamps, create tasks, send notes, or publish anything.</p>
+          <p className="text-xs font-bold leading-relaxed text-amber-800">Saving adds a versioned correction linked to this exact source moment. The original transcript and recording remain recoverable.</p>
         </div>
       ) : (
         <div className="mt-4 flex flex-wrap items-center gap-3">
           {!segment.acceptedCorrection && !segment.acceptedVerification && playbackReviewed && (
             <button type="button" onClick={() => void confirmAsIs()} disabled={!playbackReady || busy} className="inline-flex items-center gap-2 rounded-full bg-emerald-800 px-4 py-2 text-xs font-black uppercase tracking-wide text-white disabled:cursor-not-allowed disabled:opacity-50"><ShieldCheck size={15} aria-hidden="true" />Mark correct</button>
           )}
-          <button type="button" onClick={() => { setEditing(true); if (!playbackReviewed) void onPlay(); }} disabled={!playbackReady || busy} className="inline-flex items-center gap-2 rounded-full border border-[#d9c7a5] bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-[#5b472f] disabled:cursor-not-allowed disabled:opacity-50"><FilePenLine size={15} aria-hidden="true" />{segment.acceptedCorrection ? "Revise transcript" : "Correct transcript"}</button>
+          <button type="button" onClick={() => setEditing(true)} disabled={busy} className="inline-flex items-center gap-2 rounded-full border border-[#d9c7a5] bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-[#5b472f] disabled:cursor-not-allowed disabled:opacity-50"><FilePenLine size={15} aria-hidden="true" />{segment.acceptedCorrection ? "Revise transcript" : "Edit transcript"}</button>
           {onEditRecording ? <button type="button" onClick={() => onEditRecording(segment)} disabled={busy} className="inline-flex items-center gap-2 rounded-full border border-sky-300 bg-sky-50 px-4 py-2 text-xs font-black uppercase tracking-wide text-sky-950 disabled:opacity-50"><Scissors size={15} aria-hidden="true" />Edit recording here</button> : null}
           {segment.correctionHistory.length > 0 && <span className="inline-flex items-center gap-1.5 text-xs font-bold text-[#8a7354]"><History size={14} aria-hidden="true" />{segment.correctionHistory.length} correction record(s) preserved</span>}
         </div>
@@ -2083,11 +2083,11 @@ export function TranscriptCorrectionDesk({
         ? <video key={currentPlayback.sourceId} ref={(node) => { mediaRef.current = node; }} src={currentPlayback.url} controls preload="metadata" onLoadedMetadata={playbackLoaded} onCanPlay={playbackLoaded} onError={playbackFailed} onPlay={(event) => { lastPlaybackTimeRef.current = event.currentTarget.currentTime; setPlaybackSeconds(event.currentTarget.currentTime); }} onPause={(event) => { lastPlaybackTimeRef.current = null; setPlaybackSeconds(event.currentTarget.currentTime); }} onSeeking={(event) => { lastPlaybackTimeRef.current = null; setPlaybackSeconds(event.currentTarget.currentTime); }} onTimeUpdate={(event) => observePlayback(event.currentTarget)} onEnded={(event) => observePlayback(event.currentTarget, true)} className="max-h-[420px] w-full rounded-lg bg-black" aria-label="Protected session recording" />
         : <audio key={currentPlayback.sourceId} ref={(node) => { mediaRef.current = node; }} src={currentPlayback.url} controls preload="metadata" onLoadedMetadata={playbackLoaded} onCanPlay={playbackLoaded} onError={playbackFailed} onPlay={(event) => { lastPlaybackTimeRef.current = event.currentTarget.currentTime; setPlaybackSeconds(event.currentTarget.currentTime); }} onPause={(event) => { lastPlaybackTimeRef.current = null; setPlaybackSeconds(event.currentTarget.currentTime); }} onSeeking={(event) => { lastPlaybackTimeRef.current = null; setPlaybackSeconds(event.currentTarget.currentTime); }} onTimeUpdate={(event) => observePlayback(event.currentTarget)} onEnded={(event) => observePlayback(event.currentTarget, true)} className="w-full" aria-label="Protected session recording" />}
       {playbackState === "loading" ? <p role="status" className="mt-3 rounded-lg border border-sky-200 bg-white p-3 text-xs font-bold text-sky-900">Loading recording…</p> : null}
-      {playbackState === "error" ? <p role="alert" className="mt-3 rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs font-bold leading-5 text-rose-950">The original recording is unavailable. Historical review receipts remain visible, but new edits stay locked until it is restored.</p> : null}
+      {playbackState === "error" ? <p role="alert" className="mt-3 rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs font-bold leading-5 text-rose-950">The original recording is unavailable, so audio checks are paused. Direct transcript edits remain available and stay linked to the original source moment.</p> : null}
     </div>
   ) : (
     <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm font-bold leading-relaxed text-amber-950">
-      <p>{preparingPlayback ? "Quipsly is getting the recording ready…" : "The transcript is ready, but the recording still needs attention before it can be checked or corrected."}</p>
+      <p>{preparingPlayback ? "Quipsly is getting the recording ready…" : "The transcript is ready. Audio checking needs the original recording, while direct transcript edits remain available."}</p>
       {desk.recording?.eligibleForProtectedPlaybackPreparation ? (
         <div className="mt-4">
           <button type="button" onClick={() => void prepareProtectedPlayback(false)} disabled={preparingPlayback || busy} className="inline-flex min-h-11 items-center gap-2 rounded-full bg-amber-900 px-4 py-2 text-xs font-black text-white disabled:cursor-not-allowed disabled:opacity-50">

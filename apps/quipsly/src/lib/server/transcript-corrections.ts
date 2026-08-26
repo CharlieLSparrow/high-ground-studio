@@ -1337,7 +1337,8 @@ export function transcriptCorrectionBoundaries() {
   return {
     providerSegmentsImmutable: true,
     correctionOverlayVersioned: true,
-    acceptedHumanCorrectionRequiresPlaybackConfirmation: true,
+    acceptedHumanCorrectionRequiresPlaybackConfirmation: false,
+    directHumanCorrectionPreservesSourceAnchors: true,
     confirmedAsIsRequiresPlaybackConfirmation: true,
     aiOutputRequiresHumanReview: true,
     mediaTimeAnchorsPreserved: true,
@@ -2285,7 +2286,11 @@ export async function createTranscriptCorrection(input: {
   }
 
   const accepted = input.origin === "human";
-  const playbackPositionSeconds = accepted
+  // Direct transcript editing is ordinary authorship, not an accuracy
+  // certification ceremony. Preserve exact source/job/segment anchors and an
+  // immutable revision regardless; add playback evidence when the person did
+  // listen, but never require it merely to correct wording or a name.
+  const playbackPositionSeconds = accepted && input.confirmedAgainstPlayback === true
     ? assertPlaybackConfirmation({
         playback: evidence.playback,
         confirmedAgainstPlayback: input.confirmedAgainstPlayback,
@@ -2298,8 +2303,12 @@ export async function createTranscriptCorrection(input: {
   const status = accepted ? "accepted" : "proposed";
   const provenanceJson = {
     schema: TRANSCRIPT_CORRECTION_SCHEMA,
-    source: accepted ? "session-review-playback" : "ai-transcript-correction-proposal",
-    playback: accepted ? {
+    source: accepted
+      ? playbackPositionSeconds === null
+        ? "session-direct-edit"
+        : "session-direct-edit-with-playback"
+      : "ai-transcript-correction-proposal",
+    playback: accepted && playbackPositionSeconds !== null ? {
       confirmed: true,
       sourceId: evidence.playback?.sourceId,
       recordingAssetId: evidence.playback?.recordingAssetId,
@@ -2362,14 +2371,22 @@ export async function createTranscriptCorrection(input: {
         provenanceJson,
         reviewedByUserId: accepted ? input.actor.id : null,
         reviewedAt: accepted ? now : null,
-        reviewNote: accepted ? "Reviewer explicitly confirmed this correction against protected playback." : null,
+        reviewNote: accepted
+          ? playbackPositionSeconds === null
+            ? "Person directly edited the transcript; exact source anchors and prior revisions were preserved."
+            : "Person directly edited the transcript after listening to protected playback."
+          : null,
       },
     });
     await tx.transcriptCorrectionRevision.create({
       data: {
         correctionId: created.id,
         revision: 1,
-        operation: accepted ? "created-and-accepted-after-playback" : "ai-proposal-created",
+        operation: accepted
+          ? playbackPositionSeconds === null
+            ? "created-and-accepted-direct-edit"
+            : "created-and-accepted-after-playback"
+          : "ai-proposal-created",
         actorUserId: input.actor.id,
         snapshotJson: correctionSnapshot(created),
       },

@@ -173,20 +173,20 @@ describe("TranscriptCorrectionDesk", () => {
     expect(document.getElementById("transcript-audio-review")).toBeInTheDocument();
   });
 
-  it("sends the exact room, provider evidence, and played media position when a reviewer accepts", async () => {
+  it("saves a source-anchored transcript edit without forcing playback first", async () => {
+    const directEditDesk = desk(false);
+    directEditDesk.recording.eligibleForProtectedPlaybackPreparation = false;
     const fetchMock = jest.fn()
-      .mockResolvedValueOnce({ ok: true, json: async () => desk(true) })
+      .mockResolvedValueOnce({ ok: true, json: async () => directEditDesk })
       .mockResolvedValueOnce({ ok: true, json: async () => ({ ok: true, idempotentReplay: false }) })
-      .mockResolvedValueOnce({ ok: true, json: async () => ({ ...desk(true), segments: [{ ...segment, speakerLabel: "Charlie" }] }) });
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ ...directEditDesk, segments: [{ ...segment, speakerLabel: "Charlie" }] }) });
     global.fetch = fetchMock as unknown as typeof fetch;
 
     render(<TranscriptCorrectionDesk roomId="room-1" />);
     await screen.findByText("Welcome, everybody.");
-    await markProtectedPlaybackReady();
     expect(document.getElementById("transcript-segment-segment-1")).toBeInTheDocument();
-    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Correct transcript" })); });
-    await screen.findByText(/recording checked from 00:03/i);
-    expect(screen.queryByRole("checkbox", { name: /listened/i })).not.toBeInTheDocument();
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Edit transcript" })); });
+    expect(await screen.findByText(/save directly, or play the passage first when the audio will help/i)).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText(/correct speaker/i), { target: { value: "Charlie" } });
     fireEvent.click(screen.getByRole("button", { name: /save transcript correction/i }));
 
@@ -200,8 +200,8 @@ describe("TranscriptCorrectionDesk", () => {
       expectedText: "Welcome, everybody.",
       expectedSpeakerLabel: "Speaker",
       correctedSpeakerLabel: "Charlie",
-      confirmedAgainstPlayback: true,
-      playbackPositionSeconds: 3.66,
+      confirmedAgainstPlayback: false,
+      playbackPositionSeconds: null,
     });
   });
 
@@ -415,26 +415,26 @@ describe("TranscriptCorrectionDesk", () => {
     );
   });
 
-  it("keeps correction controls disabled when no protected playback exists", async () => {
+  it("keeps direct transcript editing available when protected playback is unavailable", async () => {
     const unavailable = desk(false);
     unavailable.recording.eligibleForProtectedPlaybackPreparation = false;
     global.fetch = jest.fn(async () => ({ ok: true, json: async () => unavailable })) as unknown as typeof fetch;
     render(<TranscriptCorrectionDesk roomId="room-1" />);
-    const button = await screen.findByRole("button", { name: "Correct transcript" });
-    expect(button).toBeDisabled();
-    expect(screen.getByText(/recording still needs attention/i)).toBeInTheDocument();
+    const button = await screen.findByRole("button", { name: "Edit transcript" });
+    expect(button).toBeEnabled();
+    expect(screen.getByText(/direct transcript edits remain available/i)).toBeInTheDocument();
   });
 
   it("revokes playback authority when protected source bytes fail to load", async () => {
     global.fetch = jest.fn(async () => ({ ok: true, json: async () => desk(true) })) as unknown as typeof fetch;
     render(<TranscriptCorrectionDesk roomId="room-1" />);
     const media = await markProtectedPlaybackReady();
-    expect(screen.getByRole("button", { name: "Correct transcript" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Edit transcript" })).toBeEnabled();
 
     fireEvent.error(media);
 
-    expect(screen.getByRole("button", { name: "Correct transcript" })).toBeDisabled();
-    expect(screen.getByRole("alert")).toHaveTextContent(/historical review receipts remain visible/i);
+    expect(screen.getByRole("button", { name: "Edit transcript" })).toBeEnabled();
+    expect(screen.getByRole("alert")).toHaveTextContent(/direct transcript edits remain available/i);
   });
 
   it("makes a verified recording playable automatically", async () => {
