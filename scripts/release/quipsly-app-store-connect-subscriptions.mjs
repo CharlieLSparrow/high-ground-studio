@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { sign } from "node:crypto";
+import { createHash, sign } from "node:crypto";
 import { chmod, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -58,6 +58,7 @@ export function parseArguments(argv) {
     appId: QUIPSLY_CAPTURE_RELEASE_TARGET.appId,
     confirmTarget: "",
     outputPath: "",
+    reviewScreenshotPath: "",
     territory: DEFAULT_TERRITORY,
   };
 
@@ -83,6 +84,10 @@ export function parseArguments(argv) {
         break;
       case "--output":
         options.outputPath = path.resolve(valueAfter(argv, index, argument));
+        index += 1;
+        break;
+      case "--review-screenshot":
+        options.reviewScreenshotPath = path.resolve(valueAfter(argv, index, argument));
         index += 1;
         break;
       case "--territory":
@@ -130,6 +135,7 @@ Optional:
   --app-id <id>               Defaults to ${QUIPSLY_CAPTURE_RELEASE_TARGET.appId}.
   --territory <code>          Defaults to ${DEFAULT_TERRITORY}.
   --output <path>             Write a mode-0600 JSON receipt.
+  --review-screenshot <path>  Upload this PNG to missing product review slots.
 `;
 }
 
@@ -454,6 +460,33 @@ async function ensureGroupMetadata({ token, group, apply, changes }) {
   }
 }
 
+async function describeGroupMetadata({ token, group }) {
+  if (!group) return null;
+  const versions = await requestJson({
+    token,
+    requestPath: `/v1/subscriptionGroups/${encodeURIComponent(group.id)}/versions`,
+    search: [["include", "localizations"], ["limit", "50"], ["limit[localizations]", "50"]],
+  });
+  const version = (versions.data || []).find(
+    (candidate) => candidate.attributes?.state === "PREPARE_FOR_SUBMISSION",
+  ) || versions.data?.[0] || null;
+  const localizationIds = new Set(
+    (version?.relationships?.localizations?.data || []).map(({ id }) => id),
+  );
+  const localization = (versions.included || []).find(
+    (candidate) =>
+      candidate.type === "subscriptionGroupLocalizations" &&
+      localizationIds.has(candidate.id) &&
+      candidate.attributes?.locale === "en-US",
+  ) || null;
+  return {
+    versionState: version?.attributes?.state || null,
+    localized: Boolean(localization),
+    localizationState: localization?.attributes?.state || null,
+    displayName: localization?.attributes?.name || null,
+  };
+}
+
 async function ensurePlanAvailability({ token, subscription, territory, apply, changes, product }) {
   if (!subscription) return;
   const current = await requestJson({
@@ -596,6 +629,126 @@ async function ensureIntroductoryOffer({ token, subscription, territory, apply, 
   changes.push(`created ${product.key} two-week ${territory} trial`);
 }
 
+export function validateReviewScreenshotBytes(bytes) {
+  if (!Buffer.isBuffer(bytes) || bytes.length < 24) {
+    fail("The subscription review screenshot must be a non-empty PNG.");
+  }
+  const pngSignature = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+  if (!bytes.subarray(0, 8).equals(pngSignature)) {
+    fail("The subscription review screenshot must be a PNG.");
+  }
+  const width = bytes.readUInt32BE(16);
+  const height = bytes.readUInt32BE(20);
+  if (width < 640 || height < 920 || width >= height) {
+    fail(`The subscription review screenshot is ${width}x${height}; expected a portrait iPhone screenshot.`);
+  }
+  return { width, height, md5: createHash("md5").update(bytes).digest("hex") };
+}
+
+function deliveryState(resource) {
+  return resource?.attributes?.assetDeliveryState?.state || null;
+}
+
+async function readReviewScreenshot({ token, subscription }) {
+  return requestJson({
+    token,
+    requestPath: `/v1/subscriptions/${encodeURIComponent(subscription.id)}/appStoreReviewScreenshot`,
+  });
+}
+
+async function uploadReservedAsset(resource, bytes) {
+  const operations = resource?.attributes?.uploadOperations || [];
+  if (operations.length === 0) fail("Apple returned a screenshot reservation without upload operations.");
+  for (const [index, operation] of operations.entries()) {
+    const offset = Number(operation.offset);
+    const length = Number(operation.length);
+    if (!Number.isSafeInteger(offset) || !Number.isSafeInteger(length) || offset < 0 || length < 1) {
+      fail("Apple returned an invalid screenshot upload byte range.");
+    }
+    const chunk = bytes.subarray(offset, offset + length);
+    if (chunk.length !== length) fail("Apple requested a screenshot byte range outside the source file.");
+    const headers = Object.fromEntries(
+      (operation.requestHeaders || []).map(({ name, value }) => [name, value]),
+    );
+    const response = await fetch(operation.url, {
+      method: operation.method,
+      headers,
+      body: chunk,
+    });
+    if (!response.ok) {
+      fail(`Apple screenshot upload operation ${index + 1} returned HTTP ${response.status}.`);
+    }
+  }
+}
+
+async function ensureReviewScreenshot({ token, subscription, product, screenshotPath, apply, changes }) {
+  if (!subscription || !screenshotPath) return;
+  const bytes = await readFile(screenshotPath);
+  const source = validateReviewScreenshotBytes(bytes);
+  let document = await readReviewScreenshot({ token, subscription });
+  let resource = document.data;
+  if (deliveryState(resource) === "COMPLETE") return;
+  if (!apply) return;
+  if (deliveryState(resource) === "FAILED") {
+    fail(`${product.key} has a failed review screenshot reservation; remove it explicitly before retrying.`);
+  }
+  if (!resource) {
+    document = await requestJson({
+      token,
+      method: "POST",
+      requestPath: "/v1/subscriptionAppStoreReviewScreenshots",
+      body: {
+        data: {
+          type: "subscriptionAppStoreReviewScreenshots",
+          attributes: {
+            fileName: `quipsly-coach-purchase-${product.key}.png`,
+            fileSize: bytes.length,
+          },
+          relationships: {
+            subscription: {
+              data: { type: "subscriptions", id: subscription.id },
+            },
+          },
+        },
+      },
+    });
+    resource = document.data;
+    changes.push(`reserved ${product.key} review screenshot ${source.width}x${source.height}`);
+  }
+  const state = deliveryState(resource);
+  if (state === "AWAITING_UPLOAD" || !state) {
+    if (Number(resource.attributes?.fileSize) !== bytes.length) {
+      fail(`${product.key} review screenshot reservation does not match the source byte count.`);
+    }
+    await uploadReservedAsset(resource, bytes);
+    await requestJson({
+      token,
+      method: "PATCH",
+      requestPath: `/v1/subscriptionAppStoreReviewScreenshots/${encodeURIComponent(resource.id)}`,
+      body: {
+        data: {
+          type: "subscriptionAppStoreReviewScreenshots",
+          id: resource.id,
+          attributes: {
+            uploaded: true,
+            sourceFileChecksum: source.md5,
+          },
+        },
+      },
+    });
+    changes.push(`uploaded ${product.key} review screenshot`);
+  }
+  for (let attempt = 0; attempt < 30; attempt += 1) {
+    document = await readReviewScreenshot({ token, subscription });
+    resource = document.data;
+    if (deliveryState(resource) === "COMPLETE") return;
+    if (deliveryState(resource) === "FAILED") {
+      fail(`${product.key} review screenshot failed Apple processing.`);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+}
+
 async function describeProduct({ token, subscription, product, territory }) {
   if (!subscription) {
     return {
@@ -633,7 +786,7 @@ async function describeProduct({ token, subscription, product, territory }) {
       offer.attributes?.duration === "TWO_WEEKS" &&
       offer.attributes?.numberOfPeriods === 1,
   );
-  const localized = (versions.included || []).some(
+  const localization = (versions.included || []).find(
     (resource) =>
       resource.type === "subscriptionLocalizations" &&
       resource.attributes?.locale === "en-US" &&
@@ -646,12 +799,16 @@ async function describeProduct({ token, subscription, product, territory }) {
     exists: true,
     state: subscription.attributes?.state || null,
     period: subscription.attributes?.subscriptionPeriod || null,
-    localized,
+    localized: Boolean(localization),
+    localizationState: localization?.attributes?.state || null,
+    versionState: versions.data?.[0]?.attributes?.state || null,
+    reviewNoteConfigured: Boolean(subscription.attributes?.reviewNote?.trim()),
     territory,
     price: product.customerPrice,
     priceConfigured,
     trialConfigured,
     reviewScreenshotConfigured: Boolean(reviewScreenshot.data?.id),
+    reviewScreenshotState: deliveryState(reviewScreenshot.data),
   };
 }
 
@@ -728,6 +885,14 @@ async function operate(options) {
       apply: options.apply,
       changes,
     });
+    await ensureReviewScreenshot({
+      token,
+      subscription,
+      product,
+      screenshotPath: options.reviewScreenshotPath,
+      apply: options.apply,
+      changes,
+    });
   }
 
   if (options.apply) {
@@ -755,12 +920,29 @@ async function operate(options) {
         product.trialConfigured,
     ),
   );
-  const reviewReady = Boolean(
+  const groupMetadata = await describeGroupMetadata({ token, group: catalog.group });
+  const reviewMetadataComplete = Boolean(
     catalogComplete &&
+    groupMetadata?.localized &&
+    groupMetadata?.versionState === "PREPARE_FOR_SUBMISSION" &&
     products.every(
       (product) =>
-        product.reviewScreenshotConfigured && product.state !== "MISSING_METADATA",
+        product.reviewNoteConfigured &&
+        product.reviewScreenshotState === "COMPLETE" &&
+        product.versionState === "PREPARE_FOR_SUBMISSION",
     ),
+  );
+  const attachedReviewStates = new Set([
+    "READY_FOR_REVIEW",
+    "WAITING_FOR_REVIEW",
+    "IN_REVIEW",
+    "ACCEPTED",
+    "APPROVED",
+  ]);
+  const reviewReady = Boolean(
+    catalogComplete &&
+    attachedReviewStates.has(groupMetadata?.versionState) &&
+    products.every((product) => attachedReviewStates.has(product.versionState)),
   );
   const receipt = {
     schema: "quipsly-app-store-subscription-catalog-v1",
@@ -771,14 +953,16 @@ async function operate(options) {
       ? {
           id: catalog.group.id,
           referenceName: catalog.group.attributes?.referenceName || null,
+          ...groupMetadata,
         }
       : null,
     territory: options.territory,
     products,
     changes,
     catalogComplete,
+    reviewMetadataComplete,
     reviewReady,
-    complete: reviewReady,
+    complete: reviewMetadataComplete,
     mutationConfirmation: mutationConfirmation(options.appId),
     boundaries: {
       submittedForReview: false,

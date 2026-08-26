@@ -164,6 +164,15 @@
         "headline": "Edit from the words you said",
         "story": "A speaker-attributed, timeline-linked transcript with correction and basic editing inside Capture.",
         "status": "pending"
+      },
+      {
+        "order": 6,
+        "filename": "06-subscription.png",
+        "width": 1320,
+        "height": 2868,
+        "headline": "Everything you need to coach",
+        "story": "The real in-app purchase surface with monthly and annual Quipsly Coach plans, a two-week free trial, and free client collaboration.",
+        "status": "pending"
       }
     ]
   },

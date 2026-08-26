@@ -4200,6 +4200,24 @@ final class CaptureAppStoreScreenshotUITests: XCTestCase {
         )
         Thread.sleep(forTimeInterval: 1.0)
         keepScreenshot("05-transcript.png")
+
+        launch(tab: "account", waitingFor: app.scrollViews["CaptureAccountView"])
+        let plan = app.buttons["CaptureAccountQuipslyPlan"]
+        XCTAssertTrue(plan.waitForExistence(timeout: 5))
+        plan.tap()
+        XCTAssertTrue(
+            app.scrollViews["QuipslySubscriptionView"].waitForExistence(timeout: 5),
+            "The App Store purchase review must use the real Quipsly plan surface."
+        )
+        XCTAssertTrue(app.staticTexts["Quipsly Coach Monthly"].exists)
+        XCTAssertTrue(app.staticTexts["Quipsly Coach Annual"].exists)
+        XCTAssertTrue(
+            app.staticTexts.matching(
+                NSPredicate(format: "label CONTAINS %@", "Clients join and collaborate free.")
+            ).firstMatch.exists
+        )
+        Thread.sleep(forTimeInterval: 0.8)
+        keepScreenshot("06-subscription.png")
     }
 
     private func launch(tab: String, waitingFor destination: XCUIElement) {

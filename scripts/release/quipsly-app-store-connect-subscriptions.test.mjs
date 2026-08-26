@@ -7,6 +7,7 @@ import {
   mutationConfirmation,
   parseArguments,
   subscriptionCatalogProducts,
+  validateReviewScreenshotBytes,
   validateMutationTarget,
 } from "./quipsly-app-store-connect-subscriptions.mjs";
 
@@ -44,6 +45,11 @@ test("subscription operator accepts the package-runner separator and rejects unk
   assert.throws(() => parseArguments(["--surprise"]), /Unknown argument/);
 });
 
+test("subscription operator accepts an explicit review screenshot", () => {
+  const options = parseArguments(["--review-screenshot", "/tmp/quipsly-review.png"]);
+  assert.equal(options.reviewScreenshotPath, "/tmp/quipsly-review.png");
+});
+
 test("subscription operator stays within App Store Connect collection limits", () => {
   const source = readFileSync(
     new URL("./quipsly-app-store-connect-subscriptions.mjs", import.meta.url),
@@ -79,8 +85,9 @@ test("subscription operator merges paginated resources without duplicate include
 
 test("subscription catalog and App Review readiness remain separate truths", () => {
   assert.match(sourceForOperator(), /catalogComplete/);
+  assert.match(sourceForOperator(), /reviewMetadataComplete/);
   assert.match(sourceForOperator(), /reviewScreenshotConfigured/);
-  assert.match(sourceForOperator(), /complete: reviewReady/);
+  assert.match(sourceForOperator(), /complete: reviewMetadataComplete/);
 });
 
 function sourceForOperator() {
@@ -89,3 +96,16 @@ function sourceForOperator() {
     "utf8",
   );
 }
+
+test("subscription review screenshot validation requires a portrait PNG", () => {
+  const screenshot = Buffer.alloc(24);
+  Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).copy(screenshot);
+  screenshot.writeUInt32BE(1320, 16);
+  screenshot.writeUInt32BE(2868, 20);
+  assert.deepEqual(
+    { ...validateReviewScreenshotBytes(screenshot), md5: "redacted" },
+    { width: 1320, height: 2868, md5: "redacted" },
+  );
+  screenshot.writeUInt32BE(2868, 16);
+  assert.throws(() => validateReviewScreenshotBytes(screenshot), /portrait iPhone screenshot/);
+});

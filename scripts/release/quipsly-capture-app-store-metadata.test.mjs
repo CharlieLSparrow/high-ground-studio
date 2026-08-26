@@ -27,11 +27,11 @@ test("canonical App Store metadata passes its source contract", () => {
 
   assert.equal(result.ok, true, result.errors.join("\n"));
   assert.equal(result.metrics.nameCharacters, 15);
-  assert.equal(result.metrics.subtitleCharacters, 27);
-  assert.equal(result.metrics.promotionalTextCharacters, 151);
-  assert.equal(result.metrics.keywordsBytes, 87);
+  assert.equal(result.metrics.subtitleCharacters, 30);
+  assert.equal(result.metrics.promotionalTextCharacters, 167);
+  assert.equal(result.metrics.keywordsBytes, 81);
   assert.equal(result.metrics.aggregateCollectedDataTypeCount, 11);
-  assert.equal(result.screenshotCount, 5);
+  assert.equal(result.screenshotCount, 6);
   assert.equal(result.submissionReadiness, "blocked");
   assert.equal(
     canonicalMetadata().compliance.compatibility.status,

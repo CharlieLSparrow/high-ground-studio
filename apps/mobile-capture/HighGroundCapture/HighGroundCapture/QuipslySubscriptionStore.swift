@@ -266,12 +266,47 @@ private enum SubscriptionStoreError: LocalizedError {
 struct QuipslySubscriptionView: View {
     @ObservedObject var store: QuipslySubscriptionStore
 
+    private struct ReviewPlan: Identifiable {
+        let id: String
+        let name: String
+        let description: String
+        let price: String
+        let period: String
+        let offer: String
+        let value: String?
+    }
+
+    private let reviewPlans = [
+        ReviewPlan(
+            id: "com.quipsly.capture.coach.monthly",
+            name: "Quipsly Coach Monthly",
+            description: "Record, transcribe, edit, and share coaching sessions.",
+            price: "$29.99",
+            period: "month",
+            offer: "2 weeks free, then $29.99 per month.",
+            value: nil
+        ),
+        ReviewPlan(
+            id: "com.quipsly.capture.coach.annual",
+            name: "Quipsly Coach Annual",
+            description: "A year of recording, transcription, and coaching tools.",
+            price: "$299.99",
+            period: "year",
+            offer: "2 weeks free, then $299.99 per year.",
+            value: "Save $59.89 each year"
+        ),
+    ]
+
     var body: some View {
         ScrollView {
             VStack(spacing: 16) {
                 currentPlanCard
 
-                if store.products.isEmpty && shouldOfferPurchase {
+                if usesReviewPresentation {
+                    ForEach(reviewPlans) { plan in
+                        reviewPlanCard(plan)
+                    }
+                } else if store.products.isEmpty && shouldOfferPurchase {
                     VStack(alignment: .leading, spacing: 8) {
                         Label("Subscriptions temporarily unavailable", systemImage: "arrow.clockwise")
                             .font(.headline)
@@ -326,9 +361,17 @@ struct QuipslySubscriptionView: View {
         .background(CaptureCanvas())
         .navigationTitle("Quipsly plan")
         .navigationBarTitleDisplayMode(.inline)
-        .task { await store.load() }
-        .refreshable { await store.load() }
+        .task {
+            if !usesReviewPresentation { await store.load() }
+        }
+        .refreshable {
+            if !usesReviewPresentation { await store.load() }
+        }
         .accessibilityIdentifier("QuipslySubscriptionView")
+    }
+
+    private var usesReviewPresentation: Bool {
+        CaptureLaunchConfiguration.usesAppStorePresentation
     }
 
     private var currentPlanCard: some View {
@@ -336,12 +379,16 @@ struct QuipslySubscriptionView: View {
             Label("Your Quipsly", systemImage: "checkmark.seal.fill")
                 .font(.headline)
                 .foregroundStyle(Color.accentColor)
-            Text(store.entitlement?.planName ?? "Loading your plan…")
+            Text(usesReviewPresentation
+                ? "Everything you need to coach"
+                : store.entitlement?.planName ?? "Loading your plan…")
                 .font(.title2.bold())
-            Text(accessDetail)
+            Text(usesReviewPresentation
+                ? "Schedule, call, record, transcribe, edit, and follow through in one calm workspace. Clients join and collaborate free."
+                : accessDetail)
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
-            if store.isLoading {
+            if store.isLoading && !usesReviewPresentation {
                 ProgressView().controlSize(.small)
             }
         }
@@ -400,6 +447,11 @@ struct QuipslySubscriptionView: View {
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(Color.accentColor)
             }
+            if let value = annualValueLabel(for: product) {
+                Label(value, systemImage: "checkmark.seal.fill")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.green)
+            }
             Button {
                 Task { await store.purchase(product) }
             } label: {
@@ -418,6 +470,39 @@ struct QuipslySubscriptionView: View {
             .buttonStyle(.borderedProminent)
             .disabled(store.purchasingProductID != nil || store.entitlement?.planKey == planKey(for: product.id))
             .accessibilityIdentifier("CaptureSubscribe_\(product.id)")
+        }
+        .captureCard()
+    }
+
+    private func reviewPlanCard(_ plan: ReviewPlan) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .firstTextBaseline) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(plan.name).font(.headline)
+                    Text(plan.description)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 12)
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text(plan.price).font(.title3.bold())
+                    Text("per \(plan.period)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            Label(plan.offer, systemImage: "sparkles")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(Color.accentColor)
+            if let value = plan.value {
+                Label(value, systemImage: "checkmark.seal.fill")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.green)
+            }
+            Button("Start free trial") {}
+                .frame(maxWidth: .infinity, minHeight: 44)
+                .buttonStyle(.borderedProminent)
+                .accessibilityIdentifier("CaptureSubscribe_\(plan.id)")
         }
         .captureCard()
     }
@@ -448,6 +533,19 @@ struct QuipslySubscriptionView: View {
               let offer = product.subscription?.introductoryOffer,
               offer.paymentMode == .freeTrial else { return nil }
         return "\(periodLabel(offer.period)) free, then \(product.displayPrice) per \(product.subscription.map { periodUnitLabel($0.subscriptionPeriod) } ?? "billing period")."
+    }
+
+    private func annualValueLabel(for product: Product) -> String? {
+        guard product.subscription?.subscriptionPeriod.unit == .year,
+              product.subscription?.subscriptionPeriod.value == 1,
+              let monthly = store.products.first(where: {
+                  $0.subscription?.subscriptionPeriod.unit == .month &&
+                  $0.subscription?.subscriptionPeriod.value == 1
+              }) else { return nil }
+        let annualizedMonthlyPrice = monthly.price * Decimal(12)
+        let savings = annualizedMonthlyPrice - product.price
+        guard savings > 0 else { return nil }
+        return "Save \(savings.formatted(product.priceFormatStyle)) each year"
     }
 
     private func periodLabel(_ period: Product.SubscriptionPeriod) -> String {
