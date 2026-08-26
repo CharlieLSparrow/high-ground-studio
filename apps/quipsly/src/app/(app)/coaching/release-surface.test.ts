@@ -131,7 +131,9 @@ describe("coaching release surfaces", () => {
     expect(compact).toContain(
       "This is not part of the coach or client acceptance journey.",
     );
-    expect(source).toContain("const isStaff = runway?.user?.isStaff === true");
+    expect(source).toMatch(
+      /const isStaff =\s*runway\?\.user\?\.isStaff === true/,
+    );
     expect(source).toContain("href={booking.liveSessionPath}");
     expect(source).toContain("href={booking.engagementPath}");
     expect(source).toContain("?mode=transcript");

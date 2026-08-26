@@ -32,6 +32,9 @@ final class CaptureExperienceUITests: XCTestCase {
         if name.contains("testSchedulingRespectsWorkingHoursBeforeSave") {
             app.launchArguments.append("--capture-availability-scheduling-preview")
         }
+        if name.contains("testSchedulingRoutesUnsubscribedCoachToNativePlan") {
+            app.launchArguments.append("--capture-subscription-required-preview")
+        }
         if name.contains("testClientCanSeePublishedTimesAndOwnPendingRequest")
             || name.contains("testOfflineCoachingSnapshotIsClearlyReadOnly") {
             app.launchArguments.append("--capture-client-booking-preview")
@@ -642,6 +645,34 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertFalse(
             create.isEnabled,
             "The iPhone must not offer Save for a time outside authoritative working hours."
+        )
+    }
+
+    func testSchedulingRoutesUnsubscribedCoachToNativePlan() {
+        let coaching = app.buttons["CaptureOpenCoachingHome"]
+        XCTAssertTrue(coaching.waitForExistence(timeout: 5))
+        coaching.tap()
+
+        let schedule = app.buttons["CaptureCoachingNewAppointmentButton"]
+        XCTAssertTrue(schedule.waitForExistence(timeout: 5))
+        XCTAssertTrue(
+            schedule.isEnabled,
+            "An unsubscribed coach should still use the ordinary Schedule coaching action."
+        )
+        schedule.tap()
+
+        XCTAssertTrue(
+            app.scrollViews["QuipslySubscriptionView"].waitForExistence(timeout: 5),
+            "Scheduling should open the native App Store plan instead of failing with a generic server error."
+        )
+        XCTAssertTrue(app.buttons["CaptureRestoreQuipslyPurchases"].exists)
+        XCTAssertTrue(
+            app.buttons["Not now"].exists,
+            "A coach should be able to leave purchase without losing existing Sessions or client work."
+        )
+        XCTAssertFalse(
+            app.textFields["CaptureCoachingClientEmail"].exists,
+            "The app must not collect a new-client appointment before scheduling access is active."
         )
     }
 

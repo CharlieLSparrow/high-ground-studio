@@ -26,6 +26,7 @@ export const CRITICAL_TESTS = Object.freeze([
   "CaptureExperienceUITests/testEpisodeWatchStagesLeadClipWithoutInventingRecordingOrSharedMutation",
   "CaptureExperienceUITests/testRehearsalReadinessMakesEveryPhysicalBoundaryVisibleBeforeRecord",
   "CaptureExperienceUITests/testConsentIsExplicitAndGatesStartRecording",
+  "CaptureExperienceUITests/testSchedulingRoutesUnsubscribedCoachToNativePlan",
   "CaptureExperienceUITests/testVideoModesExplainAndExposeTheExactLocalSourceBeforeCameraPermission",
   "CaptureExperienceUITests/testVideoQualityChoiceRemainsReachableAtLargestAccessibilityTextSize",
   "CaptureExperienceUITests/testVideoOnlyConsentDoesNotAccidentallyAuthorizeAudioCapture",

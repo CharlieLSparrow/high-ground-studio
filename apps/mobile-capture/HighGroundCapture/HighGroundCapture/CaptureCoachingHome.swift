@@ -148,11 +148,20 @@ struct MobileCoachingRunwayResponse: Codable {
     let ok: Bool
     let error: String?
     let user: MobileCoachingRunwayUser?
+    let subscription: MobileCoachingSubscriptionAccess?
     let readiness: MobileCoachingRunwayReadiness?
     let practiceCommand: MobileCoachingPracticeCommand?
     let upcomingBookings: [MobileCoachingBooking]?
     let availabilityWindows: [MobileCoachingAvailabilityWindow]?
     let bookingHolds: [MobileCoachingBookingHold]?
+}
+
+struct MobileCoachingSubscriptionAccess: Codable, Hashable {
+    let canScheduleNewWork: Bool
+    let accessMode: String
+    let planName: String?
+    let trialDays: Int
+    let managementURL: String
 }
 
 private struct MobileCoachingPracticeCommandResponse: Codable {
@@ -243,6 +252,8 @@ struct MobileCoachingAppointmentResult: Codable, Hashable {
 private struct MobileCoachingActionResponse: Codable {
     let ok: Bool
     let error: String?
+    let code: String?
+    let managementURL: String?
     let action: String?
     let result: MobileCoachingAppointmentResult?
 }
@@ -504,6 +515,7 @@ final class MobileCoachingRunwayClient: ObservableObject {
     @Published private(set) var invitationDeliveries: [String: MobileCoachingInvitationDelivery] = [:]
     @Published private(set) var isUsingProtectedCache = false
     @Published private(set) var cachedSnapshotSavedAt: Date?
+    @Published private(set) var subscriptionRequired = false
 
     private let baseURL = normalizedNestBaseURL(
         Bundle.main.object(forInfoDictionaryKey: "QUIPSLY_API_BASE_URL") as? String
@@ -544,6 +556,9 @@ final class MobileCoachingRunwayClient: ObservableObject {
     }
 
     var isCoach: Bool { response?.user?.isCoach == true }
+    var canScheduleNewWork: Bool {
+        response?.subscription?.canScheduleNewWork != false && !subscriptionRequired
+    }
     var invitationEmailAvailable: Bool {
         response?.readiness?.invitationEmailConfigured == true
     }
@@ -660,6 +675,9 @@ final class MobileCoachingRunwayClient: ObservableObject {
         let offlineSnapshotPreview = ProcessInfo.processInfo.arguments.contains(
             "--capture-coaching-offline-preview"
         )
+        let subscriptionRequiredPreview = ProcessInfo.processInfo.arguments.contains(
+            "--capture-subscription-required-preview"
+        )
         let confirmedRequestPreview = ProcessInfo.processInfo.arguments.contains(
             "--capture-confirmed-request-preview"
         )
@@ -690,6 +708,13 @@ final class MobileCoachingRunwayClient: ObservableObject {
                 isStaff: false,
                 isCoach: previewIsCoach,
                 isClient: clientRequestPreview
+            ),
+            subscription: MobileCoachingSubscriptionAccess(
+                canScheduleNewWork: !subscriptionRequiredPreview,
+                accessMode: subscriptionRequiredPreview ? "NONE" : "EARLY_ACCESS",
+                planName: subscriptionRequiredPreview ? nil : "Quipsly Coach",
+                trialDays: 14,
+                managementURL: "/settings#subscription"
             ),
             readiness: MobileCoachingRunwayReadiness(
                 invitationEmailConfigured: true,
@@ -770,6 +795,7 @@ final class MobileCoachingRunwayClient: ObservableObject {
             bookingHolds: (clientRequestPreview || coachRequestPreview) ? [previewHold] : []
         )
         practiceCommand = response?.practiceCommand
+        subscriptionRequired = subscriptionRequiredPreview
         publicOfferings = clientRequestPreview ? [
             MobilePublicCoachingOffering(
                 id: "preview-offering",
@@ -848,6 +874,7 @@ final class MobileCoachingRunwayClient: ObservableObject {
                 throw coachingClientError(payload?.error ?? "Quipsly coaching could not load.")
             }
             response = payload
+            subscriptionRequired = payload.subscription?.canScheduleNewWork == false
             practiceCommand = payload.practiceCommand ?? practiceCommand
             isUsingProtectedCache = false
             invitationDeliveries = Dictionary(
@@ -1385,6 +1412,9 @@ final class MobileCoachingRunwayClient: ObservableObject {
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
         let (data, httpResponse) = try await AuthManager.shared.authenticatedData(for: request)
         let payload = try JSONDecoder().decode(MobileCoachingActionResponse.self, from: data)
+        if httpResponse.statusCode == 402 || payload.code == "QUIPSLY_SUBSCRIPTION_REQUIRED" {
+            subscriptionRequired = true
+        }
         guard httpResponse.statusCode < 400 else {
             throw coachingClientError(payload.error ?? "Quipsly coaching returned HTTP \(httpResponse.statusCode).")
         }
@@ -1436,6 +1466,7 @@ final class MobileCoachingRunwayClient: ObservableObject {
         invitationDeliveries = [:]
         isUsingProtectedCache = false
         cachedSnapshotSavedAt = nil
+        subscriptionRequired = false
         Self.clearProtectedSnapshot()
     }
 
@@ -1652,6 +1683,7 @@ struct CaptureCoachingHomeView: View {
     private var allowsPreviewSchedulingInspection: Bool {
         ProcessInfo.processInfo.arguments.contains("--capture-conflict-scheduling-preview")
             || ProcessInfo.processInfo.arguments.contains("--capture-availability-scheduling-preview")
+            || ProcessInfo.processInfo.arguments.contains("--capture-subscription-required-preview")
     }
 
     var body: some View {
@@ -2240,6 +2272,11 @@ struct CaptureCoachingHomeView: View {
                     client.isMutating
                         || client.isUsingProtectedCache
                         || (model.usesPreviewData && !allowsPreviewSchedulingInspection)
+                )
+                .accessibilityHint(
+                    client.canScheduleNewWork
+                        ? "Choose a client and time."
+                        : "Opens Quipsly Coach plans, then continues scheduling after purchase or restore."
                 )
                 .accessibilityIdentifier("CaptureCoachingNewAppointmentButton")
 
@@ -3787,6 +3824,7 @@ private struct MobileCoachingRescheduleSheet: View {
 }
 
 private struct NewMobileCoachingAppointmentSheet: View {
+    @EnvironmentObject private var subscriptionStore: QuipslySubscriptionStore
     @ObservedObject var client: MobileCoachingRunwayClient
     @Binding var isPresented: Bool
     let onCreated: @MainActor (MobileCoachingAppointmentResult) async -> Void
@@ -3811,7 +3849,39 @@ private struct NewMobileCoachingAppointmentSheet: View {
 
     var body: some View {
         NavigationStack {
-            Form {
+            if requiresSubscription {
+                QuipslySubscriptionView(store: subscriptionStore)
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button("Not now") { isPresented = false }
+                        }
+                    }
+            } else {
+                appointmentForm
+            }
+        }
+        .task {
+            if subscriptionStore.entitlement == nil {
+                await subscriptionStore.load()
+            }
+            if subscriptionStore.entitlement?.entitled == true, requiresSubscription {
+                await client.load()
+            }
+        }
+        .onChange(of: subscriptionStore.entitlement?.entitled) { _, entitled in
+            guard entitled == true else { return }
+            Task { await client.load() }
+        }
+        .accessibilityIdentifier("CaptureCoachingAppointmentSheet")
+    }
+
+    private var requiresSubscription: Bool {
+        client.response?.subscription?.canScheduleNewWork == false
+            || client.subscriptionRequired
+    }
+
+    private var appointmentForm: some View {
+        Form {
                 Section("Invite") {
                     TextField("Email", text: $draft.clientEmail)
                         .textContentType(.emailAddress)
@@ -3913,8 +3983,6 @@ private struct NewMobileCoachingAppointmentSheet: View {
                 }
             }
             .onAppear { focusedField = .email }
-        }
-        .accessibilityIdentifier("CaptureCoachingAppointmentSheet")
     }
 }
 
