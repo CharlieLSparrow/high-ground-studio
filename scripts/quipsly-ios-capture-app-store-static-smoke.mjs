@@ -69,6 +69,7 @@ const files = {
   captureRecordingCoordinator: path.join(sourceRoot, "CaptureRecordingCoordinator.swift"),
   captureRecordingReceiptOutbox: path.join(sourceRoot, "CaptureRecordingReceiptOutbox.swift"),
   capturePhoneShell: path.join(sourceRoot, "CapturePhoneShell.swift"),
+  subscriptionStore: path.join(sourceRoot, "QuipslySubscriptionStore.swift"),
   captureCoachingHome: path.join(sourceRoot, "CaptureCoachingHome.swift"),
   captureCalendarEventEditor: path.join(sourceRoot, "CaptureCalendarEventEditor.swift"),
   captureSupportSnapshot: path.join(sourceRoot, "CaptureSupportSnapshot.swift"),
@@ -83,6 +84,16 @@ const files = {
   mobileComponents: path.join(sourceRoot, "QuipslyMobileComponents.swift"),
   bridgeModels: path.join(sourceRoot, "BridgeModels.swift"),
   mobileCaptureReadinessRoute: path.join(root, "apps/quipsly/src/app/api/mobile/capture/readiness/route.ts"),
+  mobileCaptureSessionsRoute: path.join(root, "apps/quipsly/src/app/api/mobile/capture/sessions/route.ts"),
+  mobileCaptureProjectsRoute: path.join(root, "apps/quipsly/src/app/api/mobile/capture/projects/route.ts"),
+  webAppLayout: path.join(root, "apps/quipsly/src/app/(app)/layout.tsx"),
+  webProjectCreateAction: path.join(root, "apps/quipsly/src/app/(app)/projects/actions.ts"),
+  webSidebar: path.join(root, "apps/quipsly/src/components/SidebarLayout.tsx"),
+  appStoreTransactionRoute: path.join(root, "apps/quipsly/src/app/api/mobile/capture/entitlements/app-store/transaction/route.ts"),
+  appStoreNotificationsRoute: path.join(root, "apps/quipsly/src/app/api/billing/app-store/notifications/route.ts"),
+  appStoreSubscriptionServer: path.join(root, "apps/quipsly/src/lib/server/app-store-subscriptions.ts"),
+  subscriptionEntitlementsServer: path.join(root, "apps/quipsly/src/lib/server/subscription-entitlements.ts"),
+  coachingRunwayRoute: path.join(root, "apps/quipsly/src/app/api/coaching/runway/route.ts"),
   mobileCaptureConsentRoute: path.join(root, "apps/quipsly/src/app/api/mobile/capture/consent/route.ts"),
   onDeviceTranscriptRoute: path.join(root, "apps/quipsly/src/app/api/mobile/capture/transcripts/on-device/route.ts"),
   mobileQuickEntryRoute: path.join(root, "apps/quipsly/src/app/api/mobile/capture/quick-entry/route.ts"),
@@ -225,6 +236,7 @@ const captureReceiptStoreText = read(files.captureReceiptStore);
 const captureRecordingCoordinatorText = read(files.captureRecordingCoordinator);
 const captureRecordingReceiptOutboxText = read(files.captureRecordingReceiptOutbox);
 const capturePhoneShellText = read(files.capturePhoneShell);
+const subscriptionStoreText = read(files.subscriptionStore);
 const audioSoundCheckText = read(files.audioSoundCheck);
 const audioSoundCheckModelText = read(files.audioSoundCheckModel);
 const captureRehearsalReadinessText = read(files.captureRehearsalReadiness);
@@ -243,6 +255,16 @@ const mobileText = read(files.mobileComponents);
 const shippingCaptureUIText = `${capturePhoneShellText}\n${captureRehearsalReadinessText}\n${captureSessionGuardianText}\n${mobileText}`;
 const bridgeText = read(files.bridgeModels);
 const mobileCaptureReadinessRouteText = read(files.mobileCaptureReadinessRoute);
+const mobileCaptureSessionsRouteText = read(files.mobileCaptureSessionsRoute);
+const mobileCaptureProjectsRouteText = read(files.mobileCaptureProjectsRoute);
+const webAppLayoutText = read(files.webAppLayout);
+const webProjectCreateActionText = read(files.webProjectCreateAction);
+const webSidebarText = read(files.webSidebar);
+const appStoreTransactionRouteText = read(files.appStoreTransactionRoute);
+const appStoreNotificationsRouteText = read(files.appStoreNotificationsRoute);
+const appStoreSubscriptionServerText = read(files.appStoreSubscriptionServer);
+const subscriptionEntitlementsServerText = read(files.subscriptionEntitlementsServer);
+const coachingRunwayRouteText = read(files.coachingRunwayRoute);
 const onDeviceTranscriptRouteText = read(files.onDeviceTranscriptRoute);
 const mobileQuickEntryRouteText = read(files.mobileQuickEntryRoute);
 const mobileTodayRouteText = read(files.mobileTodayRoute);
@@ -2108,6 +2130,36 @@ requireIncludes(bridgeText, "revokeRecordingConsent", "consent revoke client");
 
 requireIncludes(deletionRouteText, "getQuipslySessionFromRequest", "authenticated account deletion request");
 requireIncludes(deletionRouteText, "Deletion request recorded", "deletion request response");
+requireIncludes(subscriptionStoreText, "import StoreKit", "native plan UI uses StoreKit 2");
+requireIncludes(subscriptionStoreText, ".appAccountToken(accountToken)", "native purchase binds the signed-in Quipsly account");
+requireIncludes(subscriptionStoreText, "AppStore.sync()", "native plan UI restores App Store purchases");
+requireIncludes(subscriptionStoreText, "Transaction.updates", "native plan UI reconciles completed StoreKit transactions");
+requireIncludes(subscriptionStoreText, "await transaction.finish()", "native transaction finishes only after server synchronization");
+requireIncludes(subscriptionStoreText, "product.displayPrice", "native plan UI displays App Store localized pricing");
+requireIncludes(capturePhoneShellText, "subscriptionRequired", "new Session entry presents the plan at the paid value boundary");
+requireIncludes(capturePhoneShellText, "QuipslySubscriptionView(store: subscriptionStore)", "new Session entry opens native purchase and restore");
+requireIncludes(mobileCaptureSessionsRouteText, 'capability: "coaching.call"', "new Session creation uses the canonical paid capability");
+requireIncludes(mobileCaptureSessionsRouteText, 'code: "QUIPSLY_SUBSCRIPTION_REQUIRED"', "new Session creation returns a stable plan-required code");
+requireExcludes(mobileCaptureSessionsRouteText, "QUIPSLY_CAPTURE_BETA_ACCESS_REQUIRED", "retired Capture beta allowlist gate");
+requireIncludes(mobileCaptureProjectsRouteText, 'capability: "workspace.private_nests"', "paid coaches can create private Nests without a beta allowlist");
+requireIncludes(mobileCaptureProjectsRouteText, 'code: "QUIPSLY_SUBSCRIPTION_REQUIRED"', "mobile private Nest creation reaches the plan instead of a beta gate");
+requireExcludes(mobileCaptureProjectsRouteText, "PROJECT_BETA_ACCESS_REQUIRED", "retired mobile project beta gate");
+requireIncludes(webProjectCreateActionText, 'capability: "workspace.private_nests"', "web private Nest creation shares canonical paid access");
+requireExcludes(webAppLayoutText, "BetaAccessView", "signed-in product entry is not blocked by manual beta review");
+requireExcludes(webSidebarText, "currentUser?.hasBetaAccess", "customer navigation does not carry a beta badge");
+requireIncludes(appStoreTransactionRouteText, "verifyAppStoreTransaction", "server verifies signed App Store transactions");
+requireIncludes(appStoreTransactionRouteText, "expectedUserId: session.user.id", "server refuses cross-account purchase attachment");
+requireIncludes(appStoreNotificationsRouteText, "verifyAppStoreNotification", "server verifies App Store Server Notifications V2");
+requireIncludes(appStoreSubscriptionServerText, "applyVerifiedAppStoreNotification", "verified renewals update the canonical entitlement");
+requireIncludes(appStoreSubscriptionServerText, "BILLING_GRACE_PERIOD", "App Store billing grace period retains access");
+requireIncludes(subscriptionEntitlementsServerText, "quipslyCoachCapabilityAccess", "paid coach actions share one capability authority");
+requireIncludes(coachingRunwayRouteText, 'capability: "coaching.schedule"', "web and iPhone coaching scheduling share the paid capability");
+requireIncludes(coachingRunwayRouteText, 'code: "QUIPSLY_SUBSCRIPTION_REQUIRED"', "coaching scheduling returns a stable plan-required code");
+requireRegex(
+  coachingRunwayRouteText,
+  /const paidCoachActions = new Set\(\[\s*"create-booking-room",\s*"create-booking-series",\s*"convert-booking-hold",\s*"update-public-booking",\s*\]\);/,
+  "only new coach-owned scheduling and public-booking value is plan-gated",
+);
 requireIncludes(privacyPageText, "recorded only after an explicit user action and visible consent flow", "public privacy recording disclosure");
 requireIncludes(privacyPageText, "Connecting Google Calendar is optional and separate from signing in to Quipsly", "public privacy calendar consent boundary");
 requireIncludes(privacyPageText, "Short-lived Google access tokens are not stored", "public privacy calendar token disclosure");

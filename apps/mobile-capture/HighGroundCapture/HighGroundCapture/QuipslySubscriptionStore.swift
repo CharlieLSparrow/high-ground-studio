@@ -271,7 +271,7 @@ struct QuipslySubscriptionView: View {
             VStack(spacing: 16) {
                 currentPlanCard
 
-                if store.products.isEmpty {
+                if store.products.isEmpty && shouldOfferPurchase {
                     VStack(alignment: .leading, spacing: 8) {
                         Label("Subscriptions temporarily unavailable", systemImage: "arrow.clockwise")
                             .font(.headline)
@@ -348,6 +348,11 @@ struct QuipslySubscriptionView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .captureCard()
         .accessibilityIdentifier("CaptureCurrentQuipslyPlan")
+    }
+
+    private var shouldOfferPurchase: Bool {
+        guard let entitlement = store.entitlement else { return true }
+        return entitlement.enforcementEnabled || !entitlement.entitled
     }
 
     private var accessDetail: String {

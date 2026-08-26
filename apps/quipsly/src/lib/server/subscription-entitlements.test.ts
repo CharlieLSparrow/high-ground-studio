@@ -7,11 +7,70 @@ import {
   QUIPSLY_COACH_CAPABILITIES,
   DEFAULT_QUIPSLY_COACH_TRIAL_DAYS,
   ensureQuipslyBillingContext,
+  quipslyCoachCapabilityAccess,
   quipslyAppStoreProducts,
   readQuipslyEntitlement,
 } from "./subscription-entitlements";
 
 describe("Quipsly SaaS entitlement projection", () => {
+  it("keeps staff and early-access development unblocked without a subscription query", async () => {
+    const prisma = {
+      subscription: { findFirst: jest.fn() },
+    };
+
+    await expect(quipslyCoachCapabilityAccess({
+      prisma,
+      userId: "staff-1",
+      capability: "coaching.schedule",
+      isStaff: true,
+      environment: { QUIPSLY_SAAS_ENTITLEMENT_ENFORCEMENT: "true" },
+    })).resolves.toMatchObject({ allowed: true, accessMode: "STAFF" });
+    await expect(quipslyCoachCapabilityAccess({
+      prisma,
+      userId: "coach-early",
+      capability: "coaching.schedule",
+      environment: {},
+    })).resolves.toMatchObject({ allowed: true, accessMode: "EARLY_ACCESS" });
+    expect(prisma.subscription.findFirst).not.toHaveBeenCalled();
+  });
+
+  it("authorizes a paid capability and rejects a missing one when enforcement is live", async () => {
+    const activeSubscription = {
+      id: "sub-capability",
+      organizationId: "org-capability",
+      provider: "APP_STORE",
+      status: "ACTIVE",
+      currentPeriodEnd: new Date("2026-09-26T12:00:00.000Z"),
+      plan: {
+        stableKey: "quipsly-coach-monthly",
+        name: "Quipsly Coach monthly",
+        displayOrder: 100,
+        capabilitiesJson: ["coaching.schedule"],
+      },
+    };
+    const prisma = {
+      subscription: {
+        findFirst: jest.fn().mockResolvedValue(activeSubscription),
+      },
+    };
+    const environment = { QUIPSLY_SAAS_ENTITLEMENT_ENFORCEMENT: "true" };
+
+    await expect(quipslyCoachCapabilityAccess({
+      prisma,
+      userId: "coach-paid",
+      capability: "coaching.schedule",
+      environment,
+      now: new Date("2026-08-26T12:00:00.000Z"),
+    })).resolves.toMatchObject({ allowed: true, accessMode: "SUBSCRIBED" });
+    await expect(quipslyCoachCapabilityAccess({
+      prisma,
+      userId: "coach-paid",
+      capability: "coaching.transcription",
+      environment,
+      now: new Date("2026-08-26T12:00:00.000Z"),
+    })).resolves.toMatchObject({ allowed: false, accessMode: "SUBSCRIBED" });
+  });
+
   it("keeps early coaches unlocked while enforcement is deliberately off", async () => {
     const entitlement = await readQuipslyEntitlement({
       prisma: {

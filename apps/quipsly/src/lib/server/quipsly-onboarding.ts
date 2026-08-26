@@ -38,14 +38,14 @@ export async function ensureQuipslyStarterStateForUser(input: {
       create: {
         slug: QUIPSLY_FREE_PLAN_SLUG,
         name: "Quipsly Free",
-        description: "Free starter access for writing, notes, Home Nest intake, and beta exploration.",
+        description: "Free access to a personal Home Nest and work shared by a coach or collaborator.",
         priceCents: 0,
         billingIntervalMonths: null,
         isActive: true,
       },
       update: {
         name: "Quipsly Free",
-        description: "Free starter access for writing, notes, Home Nest intake, and beta exploration.",
+        description: "Free access to a personal Home Nest and work shared by a coach or collaborator.",
         priceCents: 0,
         isActive: true,
       },

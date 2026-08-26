@@ -37,6 +37,7 @@ import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 import { sessionInvitationEmailReadiness } from "@/lib/server/session-invitation-email";
 import { ensureInvitedStudioUserByEmail } from "@/lib/server/studio-user-identity";
 import { resolveStudioProjectAccess } from "@/lib/server/studio-project-access";
+import { quipslyCoachCapabilityAccess } from "@/lib/server/subscription-entitlements";
 import {
   assertCoachingScheduleAvailable,
   CoachingOutsideAvailabilityError,
@@ -1400,6 +1401,31 @@ export async function POST(request: Request) {
   }
 
   const prisma = getPrismaClient() as any;
+  const paidCoachActions = new Set([
+    "create-booking-room",
+    "create-booking-series",
+    "convert-booking-hold",
+    "update-public-booking",
+  ]);
+  if (paidCoachActions.has(action)) {
+    const access = await quipslyCoachCapabilityAccess({
+      prisma,
+      userId: session.user.id,
+      capability: "coaching.schedule",
+      isStaff: session.user.isStaff,
+    });
+    if (!access.allowed) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error:
+            "Start or restore a Quipsly Coach plan to schedule new coaching work. Existing Sessions, client access, and past work remain available.",
+          code: "QUIPSLY_SUBSCRIPTION_REQUIRED",
+        },
+        { status: 402 },
+      );
+    }
+  }
 
   if (action === "setup-coach-profile") {
     const coachEmail = text(body.coachEmail) || session.user.primaryEmail;

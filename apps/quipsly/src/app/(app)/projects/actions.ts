@@ -3,13 +3,13 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
-import { auth } from "@/auth";
 import { getPrismaClient } from "@/lib/prisma";
 import {
   createNestWithOwner,
   QuipslyNestCreateIdentityConflictError,
 } from "@/lib/server/quipsly-core";
-import { hasQuipslyBetaAccess } from "@/lib/server/patreon-authz";
+import { getQuipslySession } from "@/lib/server/quipsly-session";
+import { quipslyCoachCapabilityAccess } from "@/lib/server/subscription-entitlements";
 import { normalizeAccessEmail } from "@/lib/server/studio-project-access";
 import {
   normalizeNestKind,
@@ -60,14 +60,21 @@ export async function createNestAction(
     };
   }
 
-  const session = await auth();
+  const session = await getQuipslySession();
   const actorEmail = normalizeAccessEmail(
     session?.user?.primaryEmail || session?.user?.email,
   );
   if (!actorEmail) redirect("/login?callbackUrl=/projects");
 
-  if (!(await hasQuipslyBetaAccess(actorEmail))) {
-    redirect("/projects?betaAccessDenied=1");
+  const prisma = getPrismaClient();
+  const projectAccess = await quipslyCoachCapabilityAccess({
+    prisma,
+    userId: session!.user.id,
+    capability: "workspace.private_nests",
+    isStaff: session!.user.isStaff,
+  });
+  if (!projectAccess.allowed) {
+    redirect("/settings?reason=private-nest#subscription");
   }
 
   const nestKind = normalizeNestKind(template);
@@ -77,7 +84,7 @@ export async function createNestAction(
   let nestSlug: string;
   try {
     const { nest } = await createNestWithOwner({
-      prisma: getPrismaClient(),
+      prisma,
       name,
       description: description || null,
       nestKind,

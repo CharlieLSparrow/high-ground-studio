@@ -3,7 +3,6 @@ import "server-only";
 import { cookies } from "next/headers";
 
 import { adminAuth } from "@/lib/firebase/firebase-admin";
-import { hasQuipslyBetaAccess } from "@/lib/server/patreon-authz";
 import {
   ensureStudioUserFromFirebaseIdentity,
   type StudioUserIdentity,
@@ -22,7 +21,6 @@ export type QuipslySession = {
     emailVerified: Date | null;
     roles: StudioUserIdentity["roles"];
     isStaff: boolean;
-    hasBetaAccess: boolean;
   };
 };
 
@@ -65,7 +63,6 @@ async function sessionFromFirebaseIdentity(
       emailVerified: decoded.email_verified ? new Date() : null,
       roles: identity.roles,
       isStaff: identity.isStaff,
-      hasBetaAccess: await hasQuipslyBetaAccess(identity.primaryEmail),
     },
   };
 }

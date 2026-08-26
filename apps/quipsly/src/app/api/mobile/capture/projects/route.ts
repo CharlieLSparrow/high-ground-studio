@@ -4,8 +4,9 @@ import {
   createNestWithOwner,
   QuipslyNestCreateIdentityConflictError,
 } from "@/lib/server/quipsly-core";
-import { hasQuipslyBetaAccess } from "@/lib/server/patreon-authz";
+import { getPrismaClient } from "@/lib/prisma";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
+import { quipslyCoachCapabilityAccess } from "@/lib/server/subscription-entitlements";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -94,14 +95,21 @@ export async function POST(request: Request) {
       400,
     );
   }
-  if (!(await hasQuipslyBetaAccess(actorEmail))) {
+  const projectAccess = await quipslyCoachCapabilityAccess({
+    prisma: getPrismaClient(),
+    userId: session.user.id,
+    capability: "workspace.private_nests",
+    isStaff: session.user.isStaff,
+  });
+  if (!projectAccess.allowed) {
     return jsonResponse(
       {
         ok: false,
-        code: "PROJECT_BETA_ACCESS_REQUIRED",
-        error: "This account can open shared projects but is not currently allowed to create a new private project.",
+        code: "QUIPSLY_SUBSCRIPTION_REQUIRED",
+        error: "Start or restore your Quipsly Coach plan to create another private Nest. Your Home Nest and every Nest shared with you remain available.",
+        managementURL: "/settings#subscription",
       },
-      403,
+      402,
     );
   }
 

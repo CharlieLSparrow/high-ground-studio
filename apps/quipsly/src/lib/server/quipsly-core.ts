@@ -212,39 +212,6 @@ export async function ensureActorHomeNest(input: {
   return ensureHomeNestForEmail(input.email, db(input.prisma));
 }
 
-export async function ensureBetaStarterNestForEmail(input: {
-  email: string;
-  prisma?: PrismaClient;
-}) {
-  const prisma = db(input.prisma);
-  const email = input.email;
-  if (!email) return null;
-
-  const { hasQuipslyBetaAccess } = await import("@/lib/server/patreon-authz");
-  const hasBetaAccess = await hasQuipslyBetaAccess(email);
-  if (!hasBetaAccess) return null;
-
-  const visibleProjects = await listProjectsVisibleToEmail(email, prisma);
-  const nonHomeNests = visibleProjects.filter((p) => {
-    const isHome = p.sourceLabel?.includes("nest-kind:home");
-    const canManage = p.role === "OWNER" || p.role === "EDITOR";
-    return !isHome && canManage;
-  });
-
-  if (nonHomeNests.length > 0) return null;
-
-  const { nest } = await createNestWithOwner({
-    prisma,
-    name: "Welcome to Quipsly Beta",
-    nestKind: "mixed",
-    documentTitle: "Welcome to Quipsly Beta",
-    ownerEmail: email,
-    description: "Your starter Nest. Feel free to explore and break things.",
-  });
-
-  return nest;
-}
-
 export async function listVisibleNestsForEmail(input: {
   email?: string | null;
   prisma?: PrismaClient;

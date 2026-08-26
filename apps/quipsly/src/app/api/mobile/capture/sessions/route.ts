@@ -22,6 +22,7 @@ import {
 } from "@/lib/server/mobile-capture-session-schedule";
 import { mapMobileCaptureSessionsForUser } from "@/lib/server/mobile-capture-sessions";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
+import { quipslyCoachCapabilityAccess } from "@/lib/server/subscription-entitlements";
 import { loadPriorSessionContinuityByRoomId } from "@/lib/server/session-continuity";
 import {
   loadCurrentSessionFollowThroughByRoomId,
@@ -502,6 +503,12 @@ export async function GET(request: Request) {
       rooms: followThroughRooms,
     }),
   ]);
+  const createSessionAccess = await quipslyCoachCapabilityAccess({
+    prisma,
+    userId,
+    capability: "coaching.call",
+    isStaff: session.user.isStaff,
+  });
 
   return NextResponse.json({
     ok: true,
@@ -510,7 +517,7 @@ export async function GET(request: Request) {
       email: session.user.primaryEmail,
       name: session.user.name,
       isStaff: session.user.isStaff,
-      canCreateCaptureSessions: session.user.isStaff || session.user.hasBetaAccess,
+      canCreateCaptureSessions: createSessionAccess.allowed,
     },
     captureProjects: captureProjects.map((project) => ({
       id: project.id,
@@ -602,19 +609,25 @@ export async function POST(request: Request) {
       { status: 401 },
     );
   }
-  if (!session.user.isStaff && !session.user.hasBetaAccess) {
+  const prisma = getPrismaClient() as any;
+  const createSessionAccess = await quipslyCoachCapabilityAccess({
+    prisma,
+    userId: session.user.id,
+    capability: "coaching.call",
+    isStaff: session.user.isStaff,
+  });
+  if (!createSessionAccess.allowed) {
     return NextResponse.json(
       {
         ok: false,
-        error: "Creating Capture rooms is limited to approved Quipsly beta accounts.",
-        code: "QUIPSLY_CAPTURE_BETA_ACCESS_REQUIRED",
+        error: "Start or restore a Quipsly Coach plan to create a new Session. Existing Sessions and client invitations remain available.",
+        code: "QUIPSLY_SUBSCRIPTION_REQUIRED",
       },
-      { status: 403 },
+      { status: 402 },
     );
   }
 
   const body = await readJson(request);
-  const prisma = getPrismaClient() as any;
   const userId = session.user.id;
   const purpose = normalizePurpose(body.purpose);
   const title = text(body.title) || fallbackTitleForPurpose(purpose);
@@ -755,7 +768,8 @@ export async function POST(request: Request) {
         source: "mobile-capture-session-create",
         transcriptRequiresRecordingEvidence: true,
         transcriptRequiresConsent: true,
-        packetRequiresHumanReview: true,
+        packetRequiresHumanReview: false,
+        automaticEditableWork: true,
       },
       metadataJson: {
         source: "ios-capture",

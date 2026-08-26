@@ -212,7 +212,6 @@ export default async function ProjectsHub({
     documentUnavailable?: string;
     liveNests?: string;
     adminAccessDenied?: string;
-    betaAccessDenied?: string;
   }>;
 }) {
   const params = searchParams ? await searchParams : {};
@@ -224,7 +223,6 @@ export default async function ProjectsHub({
       : "";
   const liveNestsBootstrapped = typeof params?.liveNests === "string" ? params.liveNests : "";
   const adminAccessDenied = params?.adminAccessDenied === "1";
-  const betaAccessDenied = params?.betaAccessDenied === "1";
 
   const session = await auth();
   const actorEmail = session?.user?.primaryEmail || session?.user?.email;
@@ -403,15 +401,6 @@ export default async function ProjectsHub({
                 : missingProjectSlug
                 ? `Quipsly could not find a Nest named "${missingProjectSlug}". Choose an existing Nest below, or create a new private one.`
                 : "Quipsly no longer drops people into a shared default manuscript. Choose your Nest below, or create a new private one."}
-            </p>
-          </div>
-        )}
-
-        {betaAccessDenied && !projectRegistryUnavailable && (
-          <div className="mb-6 rounded-2xl border border-rose-200 bg-rose-50 p-4 shadow-sm">
-            <h3 className="font-serif text-lg font-black text-rose-900">Beta Access Required</h3>
-            <p className="mt-1 text-sm text-rose-800">
-              Creating new Nests requires an active Quipsly beta membership. Please link your Patreon account to your profile, or ask a collaborator to invite you to an existing Nest.
             </p>
           </div>
         )}

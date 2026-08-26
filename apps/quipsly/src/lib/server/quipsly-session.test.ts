@@ -3,7 +3,6 @@
 import { cookies } from "next/headers";
 
 import { adminAuth } from "@/lib/firebase/firebase-admin";
-import { hasQuipslyBetaAccess } from "@/lib/server/patreon-authz";
 import { ensureStudioUserFromFirebaseIdentity } from "@/lib/server/studio-user-identity";
 import {
   getQuipslySessionFromBearer,
@@ -17,22 +16,17 @@ jest.mock("@/lib/firebase/firebase-admin", () => ({
     verifySessionCookie: jest.fn(),
   },
 }));
-jest.mock("@/lib/server/patreon-authz", () => ({
-  hasQuipslyBetaAccess: jest.fn(),
-}));
 jest.mock("@/lib/server/studio-user-identity", () => ({
   ensureStudioUserFromFirebaseIdentity: jest.fn(),
 }));
 
 const verifyIdToken = adminAuth.verifyIdToken as jest.Mock;
 const ensureIdentity = ensureStudioUserFromFirebaseIdentity as jest.Mock;
-const betaAccess = hasQuipslyBetaAccess as jest.Mock;
 const cookieStore = cookies as jest.Mock;
 
 describe("Quipsly Firebase session boundary", () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    betaAccess.mockResolvedValue(false);
   });
 
   it("binds a request to an explicitly supplied bearer token and never falls back to cookies", async () => {
@@ -102,7 +96,6 @@ describe("Quipsly Firebase session boundary", () => {
       primaryEmail: "person@example.test",
       roles: ["CLIENT"],
       isStaff: false,
-      hasBetaAccess: false,
     });
   });
 });

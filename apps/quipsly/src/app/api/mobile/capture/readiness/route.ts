@@ -192,7 +192,7 @@ export async function GET(request: Request) {
           : "test-or-held"
         : "not-configured",
       stripeScope:
-        "Stripe is scoped to eligible one-to-one coaching payment evidence. It is not the source of SaaS, course, group coaching, content library, or entitlement truth.",
+        "One-to-one coaching checkout remains separate from Quipsly SaaS billing. Web SaaS checkout may activate the same account entitlement as an App Store subscription when the dedicated SaaS webhook verifies it.",
       checkoutBoundary:
         "Checkout is only for eligible paid one-to-one real-time coaching. SaaS, courses, group coaching, content libraries, and subscriptions stay outside this Stripe path.",
       customerPortalBoundary:
@@ -200,6 +200,11 @@ export async function GET(request: Request) {
     },
     appStoreReadiness: {
       serverVerification: appStoreServerVerificationReadiness(),
+      serverNotificationsVersion: 2,
+      serverNotificationsRoute: "/api/billing/app-store/notifications",
+      purchaseRoute: "/api/mobile/capture/entitlements/app-store/transaction",
+      restorePurchasesInApp: true,
+      appAccountTokenBound: true,
       accountDeletionInitiation: "available-via-app-and-policy-route",
       privacyPolicyRoute: "available",
       microphonePurposeStringRequired: true,

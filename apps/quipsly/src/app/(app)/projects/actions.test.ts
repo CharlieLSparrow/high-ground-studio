@@ -1,16 +1,15 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
-import { auth } from "@/auth";
 import { getPrismaClient } from "@/lib/prisma";
 import {
   createNestWithOwner,
   QuipslyNestCreateIdentityConflictError,
 } from "@/lib/server/quipsly-core";
-import { hasQuipslyBetaAccess } from "@/lib/server/patreon-authz";
+import { getQuipslySession } from "@/lib/server/quipsly-session";
+import { quipslyCoachCapabilityAccess } from "@/lib/server/subscription-entitlements";
 import { createNestAction } from "./actions";
 
-jest.mock("@/auth", () => ({ auth: jest.fn() }));
 jest.mock("@/lib/prisma", () => ({ getPrismaClient: jest.fn() }));
 jest.mock("@/lib/server/quipsly-core", () => {
   class IdentityConflict extends Error {}
@@ -19,9 +18,8 @@ jest.mock("@/lib/server/quipsly-core", () => {
     QuipslyNestCreateIdentityConflictError: IdentityConflict,
   };
 });
-jest.mock("@/lib/server/patreon-authz", () => ({
-  hasQuipslyBetaAccess: jest.fn(),
-}));
+jest.mock("@/lib/server/quipsly-session", () => ({ getQuipslySession: jest.fn() }));
+jest.mock("@/lib/server/subscription-entitlements", () => ({ quipslyCoachCapabilityAccess: jest.fn() }));
 jest.mock("@/lib/server/studio-project-access", () => ({
   normalizeAccessEmail: (value?: string | null) =>
     String(value || "").trim().toLowerCase() || null,
@@ -57,15 +55,21 @@ function form(overrides: Record<string, string> = {}) {
 describe("createNestAction", () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    jest.mocked(auth).mockResolvedValue({
+    jest.mocked(getQuipslySession).mockResolvedValue({
       user: {
         id: "user-1",
         primaryEmail: " OWNER@EXAMPLE.COM ",
         email: "fallback@example.com",
+        isStaff: false,
       },
     } as never);
     jest.mocked(getPrismaClient).mockReturnValue({ kind: "prisma" } as never);
-    jest.mocked(hasQuipslyBetaAccess).mockResolvedValue(true);
+    jest.mocked(quipslyCoachCapabilityAccess).mockResolvedValue({
+      allowed: true,
+      capability: "workspace.private_nests",
+      accessMode: "SUBSCRIBED",
+      entitlement: null,
+    } as never);
     jest.mocked(createNestWithOwner).mockResolvedValue({
       nest: { id: "project-1", slug: "high-ground-odyssey", name: "High Ground Odyssey" },
       document: { id: "document-1", stableId: "doc-high-ground-odyssey", title: "Production Nest: Episode Control Room" },
@@ -82,7 +86,7 @@ describe("createNestAction", () => {
       error: expect.stringContaining("protected retry identity"),
     });
 
-    expect(auth).not.toHaveBeenCalled();
+    expect(getQuipslySession).not.toHaveBeenCalled();
     expect(createNestWithOwner).not.toHaveBeenCalled();
   });
 
@@ -100,6 +104,12 @@ describe("createNestAction", () => {
   it("passes the exact actor, purpose, template title, and retry identity to the canonical kernel", async () => {
     await expect(createNestAction({ error: null }, form())).rejects.toThrow("NEXT_REDIRECT");
 
+    expect(quipslyCoachCapabilityAccess).toHaveBeenCalledWith({
+      prisma: expect.objectContaining({ kind: "prisma" }),
+      userId: "user-1",
+      capability: "workspace.private_nests",
+      isStaff: false,
+    });
     expect(createNestWithOwner).toHaveBeenCalledWith({
       prisma: expect.objectContaining({ kind: "prisma" }),
       name: "High Ground Odyssey",
@@ -111,6 +121,20 @@ describe("createNestAction", () => {
     });
     expect(revalidatePath).toHaveBeenCalledWith("/projects");
     expect(redirect).toHaveBeenCalledWith("/nests/high-ground-odyssey");
+  });
+
+  it("routes an unpaid coach directly to the plan instead of a beta gate", async () => {
+    jest.mocked(quipslyCoachCapabilityAccess).mockResolvedValue({
+      allowed: false,
+      capability: "workspace.private_nests",
+      accessMode: "NONE",
+      entitlement: null,
+    } as never);
+
+    await expect(createNestAction({ error: null }, form())).rejects.toThrow("NEXT_REDIRECT");
+
+    expect(redirect).toHaveBeenCalledWith("/settings?reason=private-nest#subscription");
+    expect(createNestWithOwner).not.toHaveBeenCalled();
   });
 
   it("keeps an identity conflict visible without navigating or inventing a write", async () => {

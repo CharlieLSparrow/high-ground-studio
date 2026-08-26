@@ -37,7 +37,6 @@ describe("Episode production shared authentication", () => {
         emailVerified: new Date("2026-07-29T00:00:00.000Z"),
         roles: [],
         isStaff: false,
-        hasBetaAccess: true,
       },
     });
     jest.mocked(resolveStudioProjectAccess).mockResolvedValue({
@@ -107,7 +106,6 @@ describe("Episode production shared authentication", () => {
         emailVerified: new Date("2026-07-29T00:00:00.000Z"),
         roles: [],
         isStaff: false,
-        hasBetaAccess: true,
       },
     });
     jest.mocked(resolveStudioProjectAccess).mockResolvedValue({ allowed: true } as never);

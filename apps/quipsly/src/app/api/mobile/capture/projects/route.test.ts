@@ -5,15 +5,17 @@ import {
   createNestWithOwner,
   QuipslyNestCreateIdentityConflictError,
 } from "@/lib/server/quipsly-core";
-import { hasQuipslyBetaAccess } from "@/lib/server/patreon-authz";
+import { getPrismaClient } from "@/lib/prisma";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
+import { quipslyCoachCapabilityAccess } from "@/lib/server/subscription-entitlements";
 
 jest.mock("@/lib/server/quipsly-core", () => ({
   createNestWithOwner: jest.fn(),
   QuipslyNestCreateIdentityConflictError: class QuipslyNestCreateIdentityConflictError extends Error {},
 }));
-jest.mock("@/lib/server/patreon-authz", () => ({ hasQuipslyBetaAccess: jest.fn() }));
+jest.mock("@/lib/prisma", () => ({ getPrismaClient: jest.fn() }));
 jest.mock("@/lib/server/quipsly-session", () => ({ getQuipslySessionFromRequest: jest.fn() }));
+jest.mock("@/lib/server/subscription-entitlements", () => ({ quipslyCoachCapabilityAccess: jest.fn() }));
 
 const requestId = "123e4567-e89b-42d3-a456-426614174000";
 
@@ -33,9 +35,16 @@ describe("mobile project creation", () => {
         id: "user-1",
         email: "owner@example.com",
         primaryEmail: "owner@example.com",
+        isStaff: false,
       },
     } as never);
-    jest.mocked(hasQuipslyBetaAccess).mockResolvedValue(true);
+    jest.mocked(getPrismaClient).mockReturnValue({ kind: "prisma" } as never);
+    jest.mocked(quipslyCoachCapabilityAccess).mockResolvedValue({
+      allowed: true,
+      capability: "workspace.private_nests",
+      accessMode: "SUBSCRIBED",
+      entitlement: null,
+    } as never);
     jest.mocked(createNestWithOwner).mockResolvedValue({
       nest: { id: "project-1", slug: "episode-nine", name: "Episode Nine", kind: "production" },
       document: {
@@ -64,8 +73,13 @@ describe("mobile project creation", () => {
     expect(response.headers.get("cache-control")).toContain("no-store");
   });
 
-  it("keeps project creation behind the existing beta-access boundary", async () => {
-    jest.mocked(hasQuipslyBetaAccess).mockResolvedValue(false);
+  it("asks an unpaid coach to start or restore a plan without hiding shared work", async () => {
+    jest.mocked(quipslyCoachCapabilityAccess).mockResolvedValue({
+      allowed: false,
+      capability: "workspace.private_nests",
+      accessMode: "NONE",
+      entitlement: null,
+    } as never);
 
     const response = await POST(request({
       name: "Episode Nine",
@@ -73,8 +87,12 @@ describe("mobile project creation", () => {
       clientRequestId: requestId,
     }));
 
-    expect(response.status).toBe(403);
-    expect(await response.json()).toMatchObject({ ok: false, code: "PROJECT_BETA_ACCESS_REQUIRED" });
+    expect(response.status).toBe(402);
+    expect(await response.json()).toMatchObject({
+      ok: false,
+      code: "QUIPSLY_SUBSCRIPTION_REQUIRED",
+      managementURL: "/settings#subscription",
+    });
     expect(createNestWithOwner).not.toHaveBeenCalled();
   });
 
@@ -87,6 +105,12 @@ describe("mobile project creation", () => {
     }));
 
     expect(response.status).toBe(200);
+    expect(quipslyCoachCapabilityAccess).toHaveBeenCalledWith({
+      prisma: expect.objectContaining({ kind: "prisma" }),
+      userId: "user-1",
+      capability: "workspace.private_nests",
+      isStaff: false,
+    });
     expect(createNestWithOwner).toHaveBeenCalledWith({
       name: "Episode Nine",
       description: "First production rehearsal",

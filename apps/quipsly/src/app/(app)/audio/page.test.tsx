@@ -34,7 +34,6 @@ describe("AudioMasteryWorkspacePage project authorization", () => {
         emailVerified: new Date(),
         roles: ["OWNER"],
         isStaff: true,
-        hasBetaAccess: true,
       },
     });
     jest.mocked(listProjectsVisibleToEmail).mockResolvedValue([{
@@ -99,7 +98,6 @@ describe("AudioMasteryWorkspacePage project authorization", () => {
         emailVerified: new Date(),
         roles: [],
         isStaff: false,
-        hasBetaAccess: true,
       },
     });
     jest.mocked(listProjectsVisibleToEmail).mockResolvedValue([{

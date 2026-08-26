@@ -29,15 +29,6 @@ export async function POST(request: NextRequest) {
         { status: 401 },
       );
     }
-    if (!session.user.isStaff && !session.user.hasBetaAccess) {
-      return NextResponse.json(
-        {
-          error: "Private media-vault uploads are limited to approved Quipsly beta accounts.",
-          code: "QUIPSLY_CAPTURE_BETA_ACCESS_REQUIRED",
-        },
-        { status: 403 },
-      );
-    }
     const {
       uploadRequestId: rawUploadRequestId,
       filename,

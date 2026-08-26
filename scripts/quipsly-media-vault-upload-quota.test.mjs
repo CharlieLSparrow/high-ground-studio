@@ -91,7 +91,7 @@ test("server reservation implementation is serialized, persistent, renewable, an
   assert.match(source, /quipsly-upload-nest:/);
   assert.match(source, /status: MEDIA_VAULT_UPLOAD_RESERVATION_STATUSES\.expired/);
   assert.match(source, /status: MEDIA_VAULT_UPLOAD_RESERVATION_STATUSES\.abandoned/);
-  assert.match(source, /existing\.lane !== MEDIA_VAULT_UPLOAD_RESERVATION_LANES\.mobileCaptureResumable/);
+  assert.match(source, /existing\.lane\s*!==[\s\S]*MEDIA_VAULT_UPLOAD_RESERVATION_LANES\.mobileCaptureResumable/);
   assert.match(source, /renewalCount: \{ increment: 1 \}/);
   assert.match(source, /completionGeneration/);
   assert.match(source, /UPLOAD_RESERVATION_COMPLETION_MISMATCH/);
@@ -100,12 +100,16 @@ test("server reservation implementation is serialized, persistent, renewable, an
 test("both upload issuance routes reserve before returning a capability", () => {
   const presigned = read("apps/quipsly/src/app/api/upload/presigned/route.ts");
   const resumable = read("apps/quipsly/src/app/api/ingest/mobile/resumable/route.ts");
-  assert.match(presigned, /QUIPSLY_CAPTURE_BETA_ACCESS_REQUIRED/);
+  assert.doesNotMatch(presigned, /QUIPSLY_CAPTURE_BETA_ACCESS_REQUIRED/);
+  assert.match(presigned, /getQuipslySessionFromRequest/);
+  assert.match(presigned, /resolveStudioProjectAccess/);
   assert.match(presigned, /uploadRequestId must be a stable UUID/);
   assert.ok(presigned.indexOf("reserveMediaVaultUploadCapacity({") < presigned.indexOf("file.getSignedUrl({"));
   assert.match(presigned, /"x-goog-if-generation-match": "0"/);
   assert.match(presigned, /reservationId: reservation\.id/);
-  assert.match(resumable, /QUIPSLY_CAPTURE_BETA_ACCESS_REQUIRED/);
+  assert.doesNotMatch(resumable, /QUIPSLY_CAPTURE_BETA_ACCESS_REQUIRED/);
+  assert.match(resumable, /assertMobileCaptureUploadReferences/);
+  assert.match(resumable, /evaluateMobileCaptureRoomReadiness/);
   assert.ok(resumable.indexOf("reserveMediaVaultUploadCapacity({", resumable.indexOf("const objectName")) < resumable.indexOf("createMobileCaptureResumableManifest({"));
   assert.match(resumable, /MOBILE_CAPTURE_RESUMABLE_RESERVATION_TTL_MS/);
 });

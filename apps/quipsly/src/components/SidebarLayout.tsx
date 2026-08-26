@@ -63,10 +63,10 @@ const secondaryNavItems: NavItem[] = [
   { name: "Art Foundry", href: "/art-foundry", icon: ImageIcon },
   { name: "Outputs", href: "/outputs", icon: Share2 },
   { name: "Analytics", href: "/analytics", icon: BarChart2 },
-  { name: "Beta", href: "/beta-readiness", icon: ShieldCheck },
 ];
 
 const adminNavItems: NavItem[] = [
+  { name: "Release health", href: "/beta-readiness", icon: ShieldCheck },
   { name: "Users", href: "/admin/users", icon: UserCog },
   {
     name: "Account deletion",
@@ -92,7 +92,6 @@ export function SidebarLayout({
     name: string | null;
     image: string | null;
     isStaff: boolean;
-    hasBetaAccess: boolean;
   } | null;
 }) {
   const pathname = usePathname();
@@ -243,7 +242,6 @@ function AccountSwitcher({
     name: string | null;
     image: string | null;
     isStaff: boolean;
-    hasBetaAccess: boolean;
   } | null;
   currentPath: string;
 }) {
@@ -292,11 +290,6 @@ function AccountSwitcher({
               {currentUser?.isStaff ? (
                 <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.1em] text-emerald-800">
                   Staff
-                </span>
-              ) : null}
-              {currentUser?.hasBetaAccess ? (
-                <span className="rounded-full border border-cyan-200 bg-cyan-50 px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.1em] text-cyan-800">
-                  Beta
                 </span>
               ) : null}
             </div>

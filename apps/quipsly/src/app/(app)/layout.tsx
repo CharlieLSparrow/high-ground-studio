@@ -4,12 +4,9 @@ import { getQuipslySession } from "@/lib/server/quipsly-session";
 import "../globals.css";
 import { SidebarLayout } from "@/components/SidebarLayout";
 import { LiveSessionDockProvider } from "@/components/live-session-dock";
-import { BetaAccessView } from "@/components/beta/BetaAccessView";
 import { isUserManagementAdminEmail } from "@/lib/server/user-management";
-import { canAccessQuipslyProduct } from "@/lib/studio-authz";
 import { MAC_WEB_SESSION_COOKIE_NAME, verifyMacWebSessionToken } from "@/lib/server/mac-session-token";
 import { cookies } from "next/headers";
-import { hasAnyActiveStudioProjectAccessGrantForEmail } from "@/lib/server/studio-project-access";
 import { Providers } from "@/app/providers";
 import { NestSignInGate } from "@/components/nest-sign-in-gate";
 
@@ -53,12 +50,6 @@ export default async function RootLayout({
   const isAdminBypass = isUserManagementAdminEmail(actorEmail);
   const showAdminTools =
     isAdminBypass || actorRoles.includes("OWNER");
-  const hasProjectAccessGrant = await hasAnyActiveStudioProjectAccessGrantForEmail(actorEmail);
-  const hasAccess =
-    isAdminBypass
-    || Boolean(session?.user && (session.user as any).hasBetaAccess)
-    || Boolean(session?.user && canAccessQuipslyProduct(actorRoles as any))
-    || hasProjectAccessGrant;
 
   // If they aren't logged in, redirect to the marketing/login page
   if (!session?.user) {
@@ -66,17 +57,6 @@ export default async function RootLayout({
       <html lang="en" className={`${inter.variable} ${merriweather.variable}`}>
         <body className="font-sans bg-[#fdfaf6] antialiased">
           <NestSignInGate />
-        </body>
-      </html>
-    );
-  }
-
-  // If they are logged in but don't have beta access, show the pending state
-  if (!hasAccess) {
-    return (
-      <html lang="en" className={`${inter.variable} ${merriweather.variable}`}>
-        <body className="font-sans bg-[#fdfaf6] antialiased">
-          <BetaAccessView email={session?.user?.email || "supporter@example.com"} />
         </body>
       </html>
     );
@@ -94,7 +74,6 @@ export default async function RootLayout({
                   name: session.user.name || null,
                   image: session.user.image || null,
                   isStaff: Boolean(session.user.isStaff),
-                  hasBetaAccess: Boolean((session.user as any).hasBetaAccess),
                 }
               : null
           }

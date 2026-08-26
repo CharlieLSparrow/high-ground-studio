@@ -22,7 +22,7 @@ test("raw playback and audio extraction share project authorization and Capture 
   assert.match(extraction, /authorizeStudioMediaSource/);
   assert.match(extraction, /QUIPSLY_AUDIO_EXTRACTION_LOCAL_ROOTS/);
   assert.match(extraction, /private-vault media/);
-  assert.match(playback, /resolveAllowedLocalStudioMediaPath/);
+  assert.match(playback, /classifyLocalStudioMediaPath/);
   assert.match(playback, /authorizeConfiguredMediaVaultLocation/);
   assert.doesNotMatch(playback, /fs\.stat\(localPath\)/);
   assert.doesNotMatch(playback, /fs\.readFile\(localPath\)/);
@@ -77,7 +77,9 @@ test("proxy registration proves the raw Capture source is released before derivi
   assert.match(registration, /toGcsUri\([\s\S]*storedGeneration/);
   assert.doesNotMatch(registration, /\.\.\.\(isObject\(input\.metadataJson\)/);
   assert.match(presign, /getQuipslySessionFromRequest/);
-  assert.match(presign, /QUIPSLY_CAPTURE_BETA_ACCESS_REQUIRED/);
+  assert.doesNotMatch(presign, /QUIPSLY_CAPTURE_BETA_ACCESS_REQUIRED/);
+  assert.match(presign, /resolveStudioProjectAccess/);
+  assert.match(presign, /reserveMediaVaultUploadCapacity/);
   assert.match(presign, /expectedSizeBytes/);
   assert.match(presign, /extensionHeaders: \{[\s\S]*"content-length"/);
   assert.match(presign, /"x-goog-if-generation-match": "0"/);

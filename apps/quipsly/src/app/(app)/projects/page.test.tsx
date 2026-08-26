@@ -13,6 +13,8 @@ import ProjectsHub from "./page";
 
 jest.mock("@/auth", () => ({ auth: jest.fn() }));
 jest.mock("@/lib/prisma", () => ({ getPrismaClient: jest.fn() }));
+jest.mock("@/lib/server/quipsly-session", () => ({ getQuipslySession: jest.fn() }));
+jest.mock("@/lib/server/subscription-entitlements", () => ({ quipslyCoachCapabilityAccess: jest.fn() }));
 jest.mock("@/lib/fiction/private-fiction-access", () => ({
   canAccessPrivateFictionNest: jest.fn(),
   PRIVATE_FICTION_ISSUE_SLUG: "issue-1",
@@ -27,7 +29,6 @@ jest.mock("@/lib/server/studio-project-access", () => ({
   listAccessibleStudioProjectSummariesForEmail: jest.fn(),
   normalizeAccessEmail: jest.fn((value: string | null | undefined) => value?.trim().toLowerCase() || null),
 }));
-jest.mock("@/lib/server/patreon-authz", () => ({ hasQuipslyBetaAccess: jest.fn() }));
 jest.mock("@/lib/server/user-management", () => ({
   isUserManagementAdminEmail: jest.fn(),
   requireQuipslyAdminActor: jest.fn(),

@@ -520,14 +520,6 @@ export async function POST(request: Request) {
   if (!session?.user) {
     return jsonNoStore({ ok: false, error: "Sign in before creating a Quipsly capture upload." }, 401);
   }
-  if (!session.user.isStaff && !session.user.hasBetaAccess) {
-    return jsonNoStore({
-      ok: false,
-      error: "Capture upload capabilities are limited to approved Quipsly beta accounts.",
-      code: "QUIPSLY_CAPTURE_BETA_ACCESS_REQUIRED",
-    }, 403);
-  }
-
   let body: unknown;
   try {
     body = await request.json();

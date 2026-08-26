@@ -249,7 +249,6 @@ runLocalDatabaseSmoke("iPhone Session note privacy projection", () => {
         primaryEmail: email,
         name: email,
         isStaff,
-        hasBetaAccess: true,
       },
     } as any);
   }

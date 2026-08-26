@@ -73,7 +73,6 @@ export async function GET() {
       name: session.user.name,
       roles: session.user.roles,
       isStaff: session.user.isStaff,
-      hasBetaAccess: session.user.hasBetaAccess,
     },
   });
 }

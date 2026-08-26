@@ -10,6 +10,7 @@ struct CapturePhoneShell: View {
     @EnvironmentObject private var videoCapture: VideoCaptureController
     @EnvironmentObject private var deepLinkRouter: CaptureDeepLinkRouter
     @ObservedObject var model: CaptureExperienceModel
+    @StateObject private var subscriptionStore = QuipslySubscriptionStore()
     @State private var showsNewSession = false
     @State private var isRoutingSessionLink = false
     @State private var localOnlyRecordingSessionID: String?
@@ -50,11 +51,16 @@ struct CapturePhoneShell: View {
             .tag(CaptureRootTab.library)
 
             NavigationStack {
-                CaptureAccountView(model: model, visibleTab: $visibleTab)
+                CaptureAccountView(
+                    model: model,
+                    visibleTab: $visibleTab,
+                    subscriptionStore: subscriptionStore
+                )
             }
             .tabItem { Label(CaptureRootTab.account.title, systemImage: CaptureRootTab.account.systemImage) }
             .tag(CaptureRootTab.account)
         }
+        .environmentObject(subscriptionStore)
         .tint(CapturePalette.accent)
         .modifier(CaptureBottomNavigationEdgeEffect())
         .safeAreaInset(edge: .top, spacing: 0) {
@@ -132,8 +138,10 @@ struct CapturePhoneShell: View {
             // not the parent authentication transition. The shared library
             // drains its pending candidates idempotently, so an offline-to-
             // online shell swap cannot publish the same restoration twice.
+            async let subscriptionLoad: Void = subscriptionStore.load()
             await LocalRecordingLibrary.shared.validatePendingRecoveredSources()
             await model.load()
+            _ = await subscriptionLoad
             showRejectedLinkNotice()
             await routePendingSessionLink()
         }
@@ -10912,12 +10920,12 @@ private struct CaptureLibraryPreviewSourceCard: View {
 private struct CaptureAccountView: View {
     @ObservedObject var model: CaptureExperienceModel
     @Binding var visibleTab: CaptureRootTab
+    @ObservedObject var subscriptionStore: QuipslySubscriptionStore
     @EnvironmentObject private var audioCapture: AudioCaptureController
     @EnvironmentObject private var videoCapture: VideoCaptureController
     @StateObject private var auth = AuthManager.shared
     @StateObject private var library = LocalRecordingLibrary.shared
     @StateObject private var deletionClient = AccountDeletionClient()
-    @StateObject private var subscriptionStore = QuipslySubscriptionStore()
     @AppStorage("com.quipsly.capture.upload.allowsCellular") private var allowsCellular = true
     @AppStorage("com.quipsly.capture.upload.allowsExpensive") private var allowsExpensive = true
     @AppStorage("com.quipsly.capture.upload.allowsConstrained") private var allowsConstrained = true
@@ -14996,11 +15004,20 @@ private struct NewCaptureSessionSheet: View {
     @ObservedObject var model: CaptureExperienceModel
     @Binding var isPresented: Bool
     let onCreated: () -> Void
+    @EnvironmentObject private var subscriptionStore: QuipslySubscriptionStore
     @FocusState private var titleFocused: Bool
 
     var body: some View {
         NavigationStack {
-            Form {
+            if subscriptionStore.entitlement == nil || subscriptionRequired {
+                QuipslySubscriptionView(store: subscriptionStore)
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button("Not now") { isPresented = false }
+                        }
+                    }
+            } else {
+                Form {
                 Section("Session") {
                     TextField("Session title", text: $model.newSessionTitle)
                         .textInputAutocapitalization(.sentences)
@@ -15055,27 +15072,38 @@ private struct NewCaptureSessionSheet: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
-            }
-            .navigationTitle("New session")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { isPresented = false }
                 }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button(model.isCreatingSession ? "Creating…" : "Create") {
-                        Task {
-                            if await model.createSession() {
-                                onCreated()
+                .navigationTitle("New session")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Cancel") { isPresented = false }
+                    }
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button(model.isCreatingSession ? "Creating…" : "Create") {
+                            Task {
+                                if await model.createSession() {
+                                    onCreated()
+                                }
                             }
                         }
+                        .disabled(model.isCreatingSession || model.newSessionTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        .accessibilityIdentifier("NewCaptureSessionCreateButton")
                     }
-                    .disabled(model.isCreatingSession || model.newSessionTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                    .accessibilityIdentifier("NewCaptureSessionCreateButton")
                 }
+                .onAppear { titleFocused = true }
             }
-            .onAppear { titleFocused = true }
         }
+        .task {
+            if subscriptionStore.entitlement == nil {
+                await subscriptionStore.load()
+            }
+        }
+    }
+
+    private var subscriptionRequired: Bool {
+        guard let entitlement = subscriptionStore.entitlement else { return false }
+        return entitlement.enforcementEnabled && !entitlement.entitled
     }
 }
 

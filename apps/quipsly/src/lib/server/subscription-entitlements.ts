@@ -5,6 +5,7 @@ import { randomUUID } from "node:crypto";
 import { acquirePrismaAdvisoryTransactionLock } from "@/lib/server/prisma-advisory-lock";
 
 export const QUIPSLY_COACH_CAPABILITIES = [
+  "workspace.private_nests",
   "coaching.schedule",
   "coaching.invite",
   "coaching.call",
@@ -80,6 +81,46 @@ function entitlementEnforcementEnabled(
   environment: Readonly<Record<string, string | undefined>>,
 ) {
   return environment.QUIPSLY_SAAS_ENTITLEMENT_ENFORCEMENT === "true";
+}
+
+export async function quipslyCoachCapabilityAccess(input: {
+  prisma: any;
+  userId: string;
+  capability: QuipslyCoachCapability;
+  isStaff?: boolean;
+  environment?: Readonly<Record<string, string | undefined>>;
+  now?: Date;
+}) {
+  const environment = input.environment ?? process.env;
+  if (input.isStaff) {
+    return {
+      allowed: true,
+      capability: input.capability,
+      accessMode: "STAFF",
+      entitlement: null,
+    } as const;
+  }
+  if (!entitlementEnforcementEnabled(environment)) {
+    return {
+      allowed: true,
+      capability: input.capability,
+      accessMode: "EARLY_ACCESS",
+      entitlement: null,
+    } as const;
+  }
+
+  const entitlement = await readQuipslyEntitlement({
+    prisma: input.prisma,
+    userId: input.userId,
+    environment,
+    now: input.now,
+  });
+  return {
+    allowed: entitlement.capabilities.includes(input.capability),
+    capability: input.capability,
+    accessMode: entitlement.accessMode,
+    entitlement,
+  } as const;
 }
 
 function planCapabilities(plan: any): QuipslyCoachCapability[] {
