@@ -994,10 +994,10 @@ for (const needle of [
   "Button(\"Cancel\")",
   "Revoke",
   "Try again",
-  "Request account deletion",
+  "Delete account",
   "privacy/account-deletion",
   "Review transcript",
-  "AI proposals stay outside transcript truth until you listen and decide.",
+  "Transcript suggestions are saved with the Session. Open one to listen, correct, or edit.",
   "CaptureProviderRoomControls",
   "CaptureCallInputRoute",
   "CaptureUseCallAudioToggle",
@@ -2114,7 +2114,7 @@ requireIncludes(privacyPageText, "Short-lived Google access tokens are not store
 requireIncludes(privacyPageText, "Google API Services User Data Policy", "public privacy Google API policy disclosure");
 requireIncludes(privacyPageText, "Limited Use requirements", "public privacy Google Limited Use disclosure");
 requireIncludes(privacyPageText, "disconnect Google Calendar from Quipsly at any time", "public privacy calendar revocation disclosure");
-requireIncludes(deletionPageText, "account deletion", "public account deletion page");
+requireIncludes(deletionPageText, "Account deletion", "public account deletion page");
 requireIncludes(coachingPageText, "Schedule your first coaching session", "first-time coach scheduling entry");
 requireIncludes(coachingPageText, "Schedule and send invite", "ordinary coaching Session creation action");
 requireIncludes(coachingPageText, "External calendar changes and charges always stay visible before they happen.", "coaching Session side-effect boundary");

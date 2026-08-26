@@ -3194,7 +3194,7 @@ struct TodayFollowThroughCard: View {
                     Label("Transcript review", systemImage: "waveform.and.magnifyingglass")
                         .font(.caption.weight(.bold))
                         .foregroundStyle(.purple)
-                    Text("AI proposals stay outside transcript truth until you listen and decide.")
+                    Text("Transcript suggestions are saved with the Session. Open one to listen, correct, or edit.")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                     ForEach(client.transcriptReviews.prefix(3)) { review in
@@ -3215,7 +3215,7 @@ struct TodayFollowThroughCard: View {
                                         .font(.caption.monospacedDigit().weight(.semibold))
                                         .foregroundStyle(.secondary)
                                 }
-                                Text(review.proposedSpeakerLabel.map { "Proposed speaker: \($0)" } ?? review.proposedText ?? "Review AI transcript proposal")
+                                Text(review.proposedSpeakerLabel.map { "Speaker suggestion: \($0)" } ?? review.proposedText ?? "Open transcript suggestion")
                                     .font(.caption)
                                     .foregroundStyle(.purple)
                                 Label(

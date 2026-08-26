@@ -1950,7 +1950,7 @@ final class CaptureExperienceUITests: XCTestCase {
         let transcriptReview = app.staticTexts["Transcript review"]
         reveal(transcriptReview)
         XCTAssertTrue(transcriptReview.exists)
-        XCTAssertTrue(app.staticTexts["AI proposals stay outside transcript truth until you listen and decide."].exists)
+        XCTAssertTrue(app.staticTexts["Transcript suggestions are saved with the Session. Open one to listen, correct, or edit."].exists)
 
         let researchCues = app.staticTexts["Research cues"]
         reveal(researchCues)
@@ -3625,7 +3625,7 @@ final class CaptureExperienceUITests: XCTestCase {
         }
 
         XCTAssertTrue(switchAccount.isHittable, "Account actions must scroll completely above the persistent capture tab bar.")
-        let deletion = app.buttons["Request account deletion"]
+        let deletion = app.buttons["Delete account"]
         reveal(deletion)
         XCTAssertTrue(deletion.isHittable)
     }
@@ -3743,20 +3743,16 @@ final class CaptureExperienceUITests: XCTestCase {
     func testAccountDeletionExplainsTimingAndPersistentStatusBeforeSubmission() {
         app.tabBars.buttons["Account"].tap()
 
-        let deletionButton = app.buttons["Request account deletion"]
+        let deletionButton = app.buttons["Delete account"]
         reveal(deletionButton)
         XCTAssertTrue(deletionButton.isHittable)
         deletionButton.tap()
 
         XCTAssertTrue(app.descendants(matching: .any)["AccountDeletionSheet"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts["Expected timing"].exists)
-        XCTAssertTrue(app.staticTexts.matching(
-            NSPredicate(format: "label CONTAINS %@", "targets completion within 30 days")
-        ).firstMatch.exists)
-        XCTAssertTrue(app.staticTexts.matching(
-            NSPredicate(format: "label CONTAINS %@", "Reopen Account to follow progress")
-        ).firstMatch.exists)
-        XCTAssertFalse(app.buttons["Submit"].isEnabled, "Preview mode must explain deletion without submitting a real request.")
+        XCTAssertTrue(app.staticTexts["What happens"].exists)
+        XCTAssertTrue(app.staticTexts["Your access is removed"].exists)
+        XCTAssertTrue(app.staticTexts["Eligible personal data is deleted"].exists)
+        XCTAssertFalse(app.buttons["Delete…"].isEnabled, "Preview mode must explain deletion without submitting a real request.")
     }
 
     func testStudioHandoffKeepsTheWholeCaptureGroupVisibleAcrossReadyRetryAndCompleteStates() {
