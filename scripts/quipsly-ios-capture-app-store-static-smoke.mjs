@@ -1854,6 +1854,15 @@ requireIncludes(captureRecordingCoordinatorText, 'packet.errorCode == "RECEIPT_I
 requireIncludes(captureRecordingCoordinatorText, "occurredAt: ISO8601DateFormatter().string(from: Date())", "iPhone persists original endpoint event time before delayed delivery");
 requireIncludes(captureExperienceModelText, ".flushPendingReceipts()", "app load resumes recording-status delivery without requiring another call");
 requireIncludes(capturePhoneShellText, 'accessibilityIdentifier: "ProviderToggleMuteButton"', "shipping persistent provider mute action is addressable");
+requireIncludes(audioText, "var isUsingProviderAudioMaster: Bool", "native recorder exposes whether LiveKit owns the exact local PCM path");
+requireIncludes(audioText, "providerAudioMaster != nil", "native provider-master truth is structural rather than inferred from a label");
+requireIncludes(captureExperienceModelText, "var providerMuteControlLockedForLocalCapture: Bool", "native mute has a narrower safety boundary than route and room controls");
+requireIncludes(captureExperienceModelText, "activeAudioCapture?.isUsingProviderAudioMaster != true", "native mute stays locked for any local audio source that does not share LiveKit input");
+requireIncludes(captureExperienceModelText, "case .recording, .paused:", "native mute stays available across active and deliberately paused provider masters");
+requireIncludes(captureExperienceModelText, "case .finalizing:", "native mute waits through the brief local-master finalization boundary");
+requireIncludes(captureExperienceModelText, "retainedRecordingContinues: retainedRecordingContinues", "native mute explicitly tells the call layer when its protected master continues");
+requireIncludes(providerRoomText, '"Call muted. Protected local recording continues."', "native mute plainly distinguishes outbound silence from a continuing local master");
+requireIncludes(capturePhoneShellText, "model.providerMuteControlLockedForLocalCapture", "persistent native Mute remains usable during a compatible protected local master");
 requireIncludes(capturePhoneShellText, 'accessibilityIdentifier: "ProviderToggleSpeakerButton"', "shipping persistent provider speaker action is addressable");
 requireIncludes(capturePhoneShellText, "joinMuted = model.providerRoom.isMuted", "manual Rejoin remembers the person's latest successful in-call microphone state");
 requireIncludes(capturePhoneShellText, "joinCameraOff = !model.providerRoom.isLocalVideoPublished", "manual Rejoin remembers the person's latest successful in-call camera state");

@@ -4176,3 +4176,22 @@ rehearsal`) in an iPhone 17 Pro simulator. The signed-in UI acceptance opened
   headset routes, participant-owned recording, and reconnect.
 - Primary references: [LiveKit Swift 2.16.0 changelog](https://github.com/livekit/client-sdk-swift/blob/main/CHANGELOG.md#2160---2026-08-04)
   and [LiveKit CallKit/audio-session guidance](https://github.com/livekit/client-sdk-swift#integration-with-callkit).
+
+### 2026-08-25 conventional Mute during a protected local master
+
+- The persistent in-call Mute control no longer inherits the broad room-control
+  lock merely because a compatible participant-owned master is recording. A
+  person can mute what the other participant hears while Quipsly plainly says
+  the protected local recording continues.
+- The exception is deliberately narrow. It applies only when the active local
+  audio source is observing LiveKit's existing input pipeline. Joining,
+  leaving, speaker/route changes, capture startup, and any non-provider audio
+  source keep their existing serialization boundaries.
+- LiveKit 2.16.0 mutes an existing audio publication by disabling the outbound
+  media track; its audio-track mute path does not stop capture. Quipsly's exact
+  local-input renderer therefore remains attached, while the existing PCM
+  watchdog pauses and protects the take if real runtime delivery ever stops.
+  [Reviewed source](https://github.com/livekit/client-sdk-swift/blob/2.16.0/Sources/LiveKit/Track/Track.swift#L339-L359).
+- Static policy and compilation cannot prove physical audio. The deferred
+  flight now requires the other participant to hear silence during Mute while
+  exact-source playback retains the locally spoken muted intervals.

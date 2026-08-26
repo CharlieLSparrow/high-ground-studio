@@ -94,6 +94,20 @@ final class AudioCaptureController: NSObject, ObservableObject {
         return "Recorded directly on this iPhone"
     }
 
+    /// True only while this take is observing LiveKit's already-open local
+    /// input instead of owning a second microphone client. LiveKit mutes an
+    /// existing audio publication by disabling its outbound media track; it
+    /// does not stop the audio capture engine. The provider recorder's PCM
+    /// watchdog remains the runtime authority and pauses the take if that
+    /// contract ever stops holding on a real device.
+    var isUsingProviderAudioMaster: Bool {
+        #if canImport(LiveKit)
+        providerAudioMaster != nil
+        #else
+        false
+        #endif
+    }
+
     private struct CaptureIntent {
         let captureID: UUID
         let captureGroupID: UUID

@@ -363,7 +363,10 @@ final class ProviderRoomController: NSObject, ObservableObject {
         #endif
     }
 
-    func setMuted(_ muted: Bool) async {
+    func setMuted(
+        _ muted: Bool,
+        retainedRecordingContinues: Bool = false
+    ) async {
         #if canImport(LiveKit)
         guard usesCallAudio else {
             fail("Call audio is on your other device.", technical: "A companion endpoint cannot publish a provider microphone.")
@@ -397,7 +400,15 @@ final class ProviderRoomController: NSObject, ObservableObject {
             }
             isMuted = muted
             refreshCallAudioMeterLifecycle()
-            statusText = muted ? "Provider microphone muted." : "Provider microphone live. Quipsly recording is still separate."
+            if retainedRecordingContinues {
+                statusText = muted
+                    ? "Call muted. Protected local recording continues."
+                    : "Call microphone live. Protected local recording continues."
+            } else {
+                statusText = muted
+                    ? "Call muted."
+                    : "Call microphone live. Recording still starts separately."
+            }
         } catch {
             fail("Your microphone couldn't change. Try again.", technical: error.localizedDescription)
         }

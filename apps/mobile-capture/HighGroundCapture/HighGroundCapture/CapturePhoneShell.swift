@@ -13565,7 +13565,7 @@ private struct ProviderRoomDock: View {
                     systemImage: model.providerRoom.isMuted ? "mic.slash.fill" : "mic.fill",
                     tint: model.providerRoom.isMuted ? .orange : .primary,
                     disabled:
-                        model.providerControlsLockedForLocalCapture
+                        model.providerMuteControlLockedForLocalCapture
                         || model.isChangingRoom
                         || model.providerRoom.isReconnecting,
                     accessibilityIdentifier: "ProviderToggleMuteButton"

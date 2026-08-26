@@ -567,6 +567,35 @@ final class CaptureExperienceModel: ObservableObject {
         "Live room controls are locked while a local audio-bearing take or coordinated podcast group is recording, paused, or saving. Stop and save it before changing provider audio. Podcast camera mode remains video-only so it can coexist with the room."
     }
 
+    /// Muting the outbound call track is safe while a provider-owned local
+    /// master observes the same still-running input. Other provider changes
+    /// remain serialized outside the take because they can reconfigure the
+    /// audio session or end the room entirely.
+    var providerMuteControlLockedForLocalCapture: Bool {
+        if isChangingCapture { return true }
+        if activeCoordinatedCaptureGroupID != nil {
+            return activeAudioCapture?.isUsingProviderAudioMaster != true
+        }
+        if activeVideoCaptureMode == .soloVideo,
+           let state = activeVideoCapture?.state,
+           state.isActive || state == .paused {
+            return true
+        }
+        guard let state = activeAudioCapture?.captureState else { return false }
+        switch state {
+        case .recording, .paused:
+            return activeAudioCapture?.isUsingProviderAudioMaster != true
+        case .finalizing:
+            return true
+        default:
+            return false
+        }
+    }
+
+    var providerMuteControlLockMessage: String {
+        "Mute is briefly unavailable while Quipsly starts or protects the local recording. Try again when the recording status settles."
+    }
+
     var isSessionContextLocked: Bool {
         activeCaptureSession != nil
             || activeVideoCaptureSession != nil
@@ -2508,8 +2537,26 @@ final class CaptureExperienceModel: ObservableObject {
     }
 
     func toggleRoomMute() async {
-        guard providerControlsAreAvailable() else { return }
-        await providerRoom.setMuted(!providerRoom.isMuted)
+        guard !providerMuteControlLockedForLocalCapture else {
+            errorMessage = providerMuteControlLockMessage
+            return
+        }
+        guard providerRoom.isConnected, providerRoom.usesCallAudio else { return }
+        let targetMuted = !providerRoom.isMuted
+        let retainedRecordingContinues =
+            localSourceIsActive
+            && activeAudioCapture?.isUsingProviderAudioMaster == true
+        await providerRoom.setMuted(
+            targetMuted,
+            retainedRecordingContinues: retainedRecordingContinues
+        )
+        guard providerRoom.isMuted == targetMuted else { return }
+        errorMessage = nil
+        if retainedRecordingContinues {
+            message = targetMuted
+                ? "Call muted. Your protected local recording continues."
+                : "Call microphone live. Your protected local recording continues."
+        }
     }
 
     func toggleRoomSpeaker() {

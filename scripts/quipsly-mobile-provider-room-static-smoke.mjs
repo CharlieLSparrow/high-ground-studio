@@ -57,7 +57,9 @@ assertIncludes("ProviderRoomController", controller, "providerRuntimeAvailable",
 assertIncludes("ProviderRoomController", controller, "didActivate audioSession", "CallKit audio activation should not be ignored");
 assertIncludes("ProviderRoomController", controller, "didDeactivate audioSession", "CallKit audio cleanup should be visible");
 assertIncludes("ProviderRoomController", controller, "ConnectOptions(autoSubscribe: useCallAudio)", "a second-device endpoint must not subscribe to remote call media");
-assertIncludes("ProviderRoomController", controller, "setMicrophone(enabled: useCallAudio)", "a second-device endpoint must not publish a provider microphone");
+assertIncludes("ProviderRoomController", controller, "enabled: useCallAudio && !joinMuted", "a muted or second-device endpoint must not publish a provider microphone");
+assertIncludes("ProviderRoomController", controller, "retainedRecordingContinues: Bool = false", "call mute explicitly distinguishes a continuing local master");
+assertIncludes("ProviderRoomController", controller, "Call muted. Protected local recording continues.", "call mute explains that outbound silence does not stop the protected master");
 
 for (const needle of [
   'accessibilityIdentifier("CaptureRecorderView")',
