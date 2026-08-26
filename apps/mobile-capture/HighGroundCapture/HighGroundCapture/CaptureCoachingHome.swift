@@ -1665,6 +1665,16 @@ struct CaptureCoachingHomeView: View {
                 VStack(alignment: .leading, spacing: 18) {
                     header
 
+                    // The next real-world appointment is the reason most people
+                    // open Coaching. Keep it ahead of dashboards, setup, forms,
+                    // and relationship history while retaining those tools below.
+                    if let handoff = client.latestHandoff {
+                        handoffCard(handoff)
+                    }
+
+                    upcomingSection
+                        .id("CaptureCoachingUpcoming")
+
                     if let practiceCommand = client.practiceCommand ?? client.response?.practiceCommand {
                         practiceCommandSection(practiceCommand) { commandItem in
                             if let roomID = commandItem.roomId {
@@ -1703,10 +1713,6 @@ struct CaptureCoachingHomeView: View {
                         publishedTimesSection
                     }
 
-                    if let handoff = client.latestHandoff {
-                        handoffCard(handoff)
-                    }
-
                     if let error = client.errorMessage {
                         Label(error, systemImage: "exclamationmark.triangle.fill")
                             .font(.caption.weight(.semibold))
@@ -1715,8 +1721,6 @@ struct CaptureCoachingHomeView: View {
                             .accessibilityIdentifier("CaptureCoachingError")
                     }
 
-                    upcomingSection
-                        .id("CaptureCoachingUpcoming")
                     relationshipsSection
                 }
                 .padding(.horizontal, 18)
@@ -2006,15 +2010,15 @@ struct CaptureCoachingHomeView: View {
     private var header: some View {
         VStack(alignment: .leading, spacing: 8) {
             Label(
-                client.isCoach ? "Coach from this iPhone" : "Your coaching on this iPhone",
+                "Coaching",
                 systemImage: "person.2.wave.2.fill"
             )
                 .font(.title2.weight(.black))
                 .foregroundStyle(.teal)
             Text(
                 client.isCoach
-                    ? "Schedule, invite, call, record locally, review the transcript, and turn the conversation into shared notes, goals, and tasks without requiring a desktop."
-                    : "Join your Session, grant recording consent, keep a protected local master, and continue with the notes, goals, tasks, and recordings your coach shared with you."
+                    ? "Sessions, clients, recordings, transcripts, notes, goals, and tasks—together on this iPhone."
+                    : "Join Sessions and keep the recordings, notes, goals, and tasks you share with your coach in one place."
             )
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
