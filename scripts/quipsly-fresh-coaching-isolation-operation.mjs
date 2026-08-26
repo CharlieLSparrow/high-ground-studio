@@ -27,6 +27,22 @@ assert(
   target,
   "QUIPSLY_COACHING_ACCEPTANCE_CONTEXT is required; isolation must continue the exact fresh-user invitation journey.",
 );
+const neighborContextPath =
+  process.env.QUIPSLY_COACHING_ACCEPTANCE_NEIGHBOR_CONTEXT;
+assert(
+  neighborContextPath,
+  "QUIPSLY_COACHING_ACCEPTANCE_NEIGHBOR_CONTEXT is required; isolation needs a separately created control tenant.",
+);
+const neighbor = await loadFreshCoachingAcceptanceContext({
+  baseURL,
+  env: {
+    ...process.env,
+    QUIPSLY_COACHING_ACCEPTANCE_CONTEXT: neighborContextPath,
+  },
+});
+assert(neighbor, "The adversarial neighboring coaching context is unavailable.");
+assert.notEqual(neighbor.roomId, target.roomId);
+assert.notEqual(neighbor.engagementId, target.engagementId);
 
 const databaseURL = new URL(
   process.env.DATABASE_URL ||
@@ -159,35 +175,41 @@ const accessibleEngagementUnion = new Set([
   ...boundaries.client.engagementIds,
 ]);
 
-// The retained local database intentionally contains other Quipsly work. Use
-// it as an adversarial neighboring tenant instead of proving isolation against
-// an empty database where accidental global queries could still pass.
+// Create the adversarial tenant through the same public product journey, then
+// use direct reads only to select its exact private resources for negative
+// authorization probes. This keeps the proof meaningful on a zero-state lab.
+const neighborProjects = await listAccessibleStudioProjectSummariesForEmail(
+  neighbor.identities.coach.email,
+  prisma,
+);
+const neighborProject = neighborProjects.find(
+  ({ id }) => !accessibleProjectUnion.has(id),
+);
+assert(
+  neighborProject,
+  "The independently created neighboring coach has no private Nest control case.",
+);
 const [foreignProject, foreignRoom, foreignEngagement] = await Promise.all([
-  prisma.studioProject.findFirst({
-    where: { id: { notIn: [...accessibleProjectUnion] } },
-    orderBy: [{ updatedAt: "desc" }, { id: "asc" }],
+  prisma.studioProject.findUnique({
+    where: { id: neighborProject.id },
     select: { id: true, slug: true, name: true },
   }),
-  prisma.callRoom.findFirst({
-    where: { id: { notIn: [...accessibleRoomUnion] } },
-    orderBy: [
-      { purpose: "asc" },
-      { updatedAt: "desc" },
-      { id: "asc" },
-    ],
+  prisma.callRoom.findUnique({
+    where: { id: neighbor.roomId },
     select: { id: true, title: true, purpose: true },
   }),
-  prisma.coachingEngagement.findFirst({
-    where: { id: { notIn: [...accessibleEngagementUnion] } },
-    orderBy: [{ updatedAt: "desc" }, { id: "asc" }],
+  prisma.coachingEngagement.findUnique({
+    where: { id: neighbor.engagementId },
     select: { id: true, title: true },
   }),
 ]);
 
 assert(
   foreignProject && foreignRoom && foreignEngagement,
-  "Isolation needs one real neighboring project, Session, and coaching relationship in the retained local database; an empty-database pass is not accepted.",
+  "Isolation needs one independently created neighboring Nest, Session, and coaching relationship; an empty control case is not accepted.",
 );
+assert.equal(accessibleRoomUnion.has(foreignRoom.id), false);
+assert.equal(accessibleEngagementUnion.has(foreignEngagement.id), false);
 
 const foreignStrings = [
   foreignProject.id,
@@ -442,7 +464,7 @@ try {
           productListsAndPagesOperated: true,
           databaseUsedForReadbackAndAdversarialTargetSelectionOnly: true,
           directDatabaseWrites: false,
-          localRetainedDatabaseHadNeighboringTenantData: true,
+          adversarialNeighborCreatedThroughRenderedProduct: true,
           foreignContentNamesOmittedFromReceipt: true,
           externalSideEffects: false,
           humanNoviceAcceptanceProven: false,

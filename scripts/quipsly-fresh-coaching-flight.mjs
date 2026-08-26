@@ -90,8 +90,19 @@ const start = await run(
   "scripts/quipsly-fresh-coaching-start-operation.mjs",
   "QUIPSLY_FRESH_COACHING_START_OPERATION",
 );
+const adversarialNeighbor = await run(
+  "Independent neighboring coach, client, Nest, Session, and relationship",
+  "scripts/quipsly-fresh-coaching-start-operation.mjs",
+  "QUIPSLY_FRESH_COACHING_START_OPERATION",
+);
+assert.equal(adversarialNeighbor.testLane, "fresh-ui-automation");
+assert.equal(adversarialNeighbor.fixtureIdentifiersUsed, false);
+assert.notEqual(adversarialNeighbor.roomId, start.roomId);
+assert.notEqual(adversarialNeighbor.engagementId, start.engagementId);
 const continuationEnv = {
   QUIPSLY_COACHING_ACCEPTANCE_CONTEXT: start.contextPath,
+  QUIPSLY_COACHING_ACCEPTANCE_NEIGHBOR_CONTEXT:
+    adversarialNeighbor.contextPath,
   // The production alignment planner intentionally needs enough shared signal
   // for two separated waveform checks. Keep the ordinary full-product flight
   // long enough to exercise that contract instead of weakening it for a
@@ -367,6 +378,7 @@ const result = {
   bookingId: start.bookingId,
   engagementId: start.engagementId,
   freshAccountsCreated: true,
+  adversarialNeighborCreatedThroughRenderedProduct: true,
   exactRenderedClientEntryUsed: true,
   automaticCoachDefaultsOperated:
     start.automaticCoachDefaultsRendered === true &&
