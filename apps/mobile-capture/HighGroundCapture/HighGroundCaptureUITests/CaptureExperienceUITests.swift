@@ -3371,9 +3371,19 @@ final class CaptureExperienceUITests: XCTestCase {
         )
         XCTAssertTrue(
             app.staticTexts.matching(
-                NSPredicate(format: "label BEGINSWITH %@", "Two immutable sources: a separate microphone master")
+                NSPredicate(format: "label BEGINSWITH %@", "Records separate microphone and camera files")
             ).firstMatch.exists,
-            "Podcast A/V must explain both immutable local masters and human-reviewed sync before asking for camera permission."
+            "Podcast A/V must explain its two local files in ordinary language before asking for camera permission."
+        )
+        let technicalDetails = app.descendants(matching: .any)["CaptureVideoTechnicalDetails"]
+        XCTAssertTrue(technicalDetails.exists)
+        technicalDetails.tap()
+        let technicalBoundary = app.staticTexts.matching(
+            NSPredicate(format: "label BEGINSWITH %@", "A separate microphone master and video-only movie")
+        ).firstMatch
+        XCTAssertTrue(
+            technicalBoundary.waitForExistence(timeout: 3),
+            "Professional source and sync details should remain available on demand."
         )
         XCTAssertTrue(
             app.descendants(matching: .any)["CaptureCoordinatedAudioStatus"].exists,
@@ -3383,17 +3393,17 @@ final class CaptureExperienceUITests: XCTestCase {
         modePicker.buttons["Camera"].tap()
         XCTAssertTrue(
             app.staticTexts.matching(
-                NSPredicate(format: "label BEGINSWITH %@", "Video only: LiveKit carries the audible conversation.")
+                NSPredicate(format: "label BEGINSWITH %@", "Records video only while the Quipsly call carries the conversation.")
             ).firstMatch.exists,
-            "Podcast camera must state that it records an independent video-only source before asking for camera permission."
+            "Podcast camera must state its ordinary video-only behavior before asking for camera permission."
         )
 
         modePicker.buttons["Solo"].tap()
         XCTAssertTrue(
             app.staticTexts.matching(
-                NSPredicate(format: "label BEGINSWITH %@", "Camera and microphone share this local movie.")
+                NSPredicate(format: "label BEGINSWITH %@", "Records camera and microphone together on this iPhone.")
             ).firstMatch.exists,
-            "Solo video must state that the camera movie also owns local microphone audio."
+            "Solo video must state its ordinary local camera and microphone behavior."
         )
 
         modePicker.buttons["Audio"].tap()

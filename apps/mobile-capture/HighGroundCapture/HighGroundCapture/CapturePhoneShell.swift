@@ -11990,6 +11990,7 @@ private struct CaptureVideoPreview: UIViewRepresentable {
 private struct VideoRecorderHero: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @ScaledMetric(relativeTo: .largeTitle) private var timerFontSize: CGFloat = 40
+    @State private var showsTechnicalDetails = false
 
     let session: MobileCaptureSession
     let mode: CaptureRecordingMode
@@ -12251,6 +12252,20 @@ private struct VideoRecorderHero: View {
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
                 .accessibilityIdentifier("CaptureVideoSourceBoundary")
+
+            DisclosureGroup(
+                "Technical recording details",
+                isExpanded: $showsTechnicalDetails
+            ) {
+                Text(technicalSourceBoundary)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, 6)
+                    .accessibilityIdentifier("CaptureVideoTechnicalSourceBoundary")
+            }
+            .font(.caption.weight(.semibold))
+            .accessibilityIdentifier("CaptureVideoTechnicalDetails")
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 18)
@@ -12423,13 +12438,26 @@ private struct VideoRecorderHero: View {
     private var sourceBoundary: String {
         switch mode {
         case .podcastAV:
-            "Two immutable sources: a separate microphone master and this video-only movie keep independent clock evidence under one capture-group identity. The live room remains independent, and a human reviews final sync."
+            "Records separate microphone and camera files, then syncs them without changing either original."
         case .podcastCamera:
-            "Video only: LiveKit carries the audible conversation. This movie stays an independent immutable source until reviewed clock and waveform alignment."
+            "Records video only while the Quipsly call carries the conversation."
         case .soloVideo:
-            "Camera and microphone share this local movie. Joining a live room is blocked so the call cannot silently reconfigure its audio."
+            "Records camera and microphone together on this iPhone."
         case .audio:
             ""
+        }
+    }
+
+    private var technicalSourceBoundary: String {
+        switch mode {
+        case .podcastAV:
+            "A separate microphone master and video-only movie retain independent clock evidence in one capture group. The live room remains separate, and sync stays reversible."
+        case .podcastCamera:
+            "LiveKit carries call audio. This video-only movie stays independent until clock and waveform alignment are available."
+        case .soloVideo:
+            "The local movie owns camera and microphone audio. Quipsly keeps the live room disconnected so it cannot change the recording input."
+        case .audio:
+            "Audio mode uses the dedicated local microphone recorder."
         }
     }
 
