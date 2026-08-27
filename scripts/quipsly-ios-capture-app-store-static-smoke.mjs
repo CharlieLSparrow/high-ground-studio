@@ -354,6 +354,7 @@ for (const dataType of [
   "NSPrivacyCollectedDataTypeEmailAddress",
   "NSPrivacyCollectedDataTypeUserID",
   "NSPrivacyCollectedDataTypeDeviceID",
+  "NSPrivacyCollectedDataTypePurchaseHistory",
   "NSPrivacyCollectedDataTypeAudioData",
   "NSPrivacyCollectedDataTypePhotosorVideos",
   "NSPrivacyCollectedDataTypeOtherUserContent",

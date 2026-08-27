@@ -3,16 +3,16 @@
 This is the real UX test. It is not a fixture smoke, a route checklist, or an
 operator demonstration. Run it only after automated release gates pass.
 
-## Immediate Build 33 physical flight
+## Immediate Build 35 physical flight
 
 The first physical flight is deliberately smaller than the complete cohort
 journey below. It proves the released phone and browser call spine before the
 same people spend time evaluating post-call editing. Passing this milestone
 does not pass the complete human-flight or 50-coach release gate.
 
-Current release target, read back on 2026-08-21:
+Current release target, read back on 2026-08-26:
 
-- **Quipsly Capture 1.0 (33)** through the open Apple public beta at
+- **Quipsly Capture 1.0 (35)** through the open Apple public beta at
   `https://testflight.apple.com/join/XwRRcYUm`;
 - **Nest revision `studio-00523-yun`**, source
   `e73fef64880362f3c6c5fc793c5b047408d22a40`, serving 100% of production

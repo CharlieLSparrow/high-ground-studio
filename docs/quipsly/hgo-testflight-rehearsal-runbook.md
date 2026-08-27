@@ -1,6 +1,6 @@
 # High Ground Odyssey TestFlight Rehearsal
 
-Last verified: 2026-08-20
+Last verified: 2026-08-26
 
 This is the operator runbook for the first Charlie-and-Homer Quipsly Capture
 rehearsal. It distinguishes what is ready now from what the rehearsal still
@@ -8,10 +8,10 @@ needs to prove.
 
 ## Current release state
 
-- App: **Quipsly Capture 1.0 (33)**
+- App: **Quipsly Capture 1.0 (35)**
 - Exact native source:
-  `b84e75f8608455247c7083b933c15be645d67e8d`
-- App Store Connect build ID: `9a7944d0-55d7-46da-9755-694384fbe9fd`
+  `096bd81163b5e0ef69936dbc6a7642208e1bfd14`
+- App Store Connect build ID: `0e3ce5b4-e3c2-4c45-9941-4810ac73a750`
 - External TestFlight group: **Quipsly Capture Rehearsal**
 - TestFlight Apple Account: `shomers@icloud.com`
 - Quipsly Google identity: `shomers@gmail.com`
@@ -22,8 +22,8 @@ needs to prove.
 - Automatic tester notification: enabled
 - Installation mode: public-link-only; neither a named-tester email nor a
   redemption code is required
-- Build 33 is the current approved public beta identified by the canonical
-  release ledger and Apple readback. It passed 67 serialized iPhone and Share
+- Build 35 is the current approved public beta identified by the canonical
+  release ledger and Apple readback. It passed 90 serialized iPhone and Share
   Extension journeys plus signed archive/export verification. It simplifies
   device choice, system permission, consent, join, and recording readiness and
   remains subject to a real physical-iPhone handoff, call, recording, retained
