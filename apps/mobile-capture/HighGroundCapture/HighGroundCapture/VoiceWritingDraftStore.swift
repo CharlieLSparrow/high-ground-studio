@@ -1,6 +1,15 @@
 import Combine
 import Foundation
 
+struct VoiceWritingSourceReference: Codable, Equatable, Identifiable {
+    let localRecordingID: UUID
+    let transcriptClientRequestID: UUID
+    let sourceSHA256: String
+    let callRoomID: String?
+
+    var id: UUID { localRecordingID }
+}
+
 struct VoiceWritingRemoteDraft: Codable, Equatable {
     let documentID: String
     let projectID: String
@@ -14,6 +23,7 @@ struct VoiceWritingRemoteDraft: Codable, Equatable {
     let sourceTranscriptClientRequestID: UUID
     let sourceSHA256: String
     let callRoomID: String?
+    let sources: [VoiceWritingSourceReference]
     let tagRevision: Int
     let tags: [MobileCaptureTag]
     let serverUpdatedAt: String
@@ -28,6 +38,7 @@ struct VoiceWritingDraft: Codable, Identifiable, Equatable {
     let sourceTranscriptClientRequestID: UUID
     let sourceSHA256: String
     let callRoomID: String?
+    var sources: [VoiceWritingSourceReference]?
     let createdAt: Date
     var title: String
     var body: String
@@ -45,6 +56,16 @@ struct VoiceWritingDraft: Codable, Identifiable, Equatable {
     var lastSyncedAt: Date?
     var lastSyncError: String?
     var pendingRemote: VoiceWritingRemoteDraft?
+
+    var allSources: [VoiceWritingSourceReference] {
+        if let sources, !sources.isEmpty { return sources }
+        return [VoiceWritingSourceReference(
+            localRecordingID: localRecordingID,
+            transcriptClientRequestID: sourceTranscriptClientRequestID,
+            sourceSHA256: sourceSHA256,
+            callRoomID: callRoomID
+        )]
+    }
 
     var isSynced: Bool {
         serverRevision == localRevision
@@ -82,15 +103,23 @@ final class VoiceWritingDraftStore: ObservableObject {
     @Published private(set) var drafts: [VoiceWritingDraft] = []
     @Published private(set) var persistenceError: String?
 
+    private struct PendingContinuation: Codable, Equatable {
+        let ownerAccountID: String
+        let callRoomID: String
+        let draftID: UUID
+    }
+
     private struct Ledger: Codable {
         let schemaVersion: Int
         let drafts: [VoiceWritingDraft]
+        let pendingContinuations: [PendingContinuation]?
     }
 
     private let fileManager: FileManager
     private let ledgerURL: URL
     private let lastKnownGoodURL: URL
     private var storedDrafts: [VoiceWritingDraft] = []
+    private var pendingContinuations: [PendingContinuation] = []
     private var activeOwnerAccountID: String?
     private var accountObserver: NSObjectProtocol?
 
@@ -113,11 +142,13 @@ final class VoiceWritingDraftStore: ObservableObject {
                 [.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication],
                 ofItemAtPath: directory.path
             )
-            storedDrafts = try Self.loadLedger(
+            let ledger = try Self.loadLedger(
                 fileManager: fileManager,
                 primary: ledgerURL,
                 fallback: lastKnownGoodURL
             )
+            storedDrafts = ledger.drafts
+            pendingContinuations = ledger.pendingContinuations ?? []
             publishActiveDrafts()
         } catch {
             persistenceError = VoiceWritingDraftStoreError.protectedStorageUnavailable.localizedDescription
@@ -144,7 +175,23 @@ final class VoiceWritingDraftStore: ObservableObject {
     }
 
     func draft(for recordingID: UUID) -> VoiceWritingDraft? {
-        drafts.first { $0.localRecordingID == recordingID }
+        drafts.first { $0.allSources.contains(where: { $0.localRecordingID == recordingID }) }
+    }
+
+    func stageContinuation(callRoomID: String, draftID: UUID) throws {
+        let owner = try requireActiveOwner()
+        let roomID = callRoomID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !roomID.isEmpty,
+              storedDrafts.contains(where: { $0.ownerAccountID == owner && $0.id == draftID }) else {
+            throw VoiceWritingDraftStoreError.draftUnavailable
+        }
+        pendingContinuations.removeAll { $0.ownerAccountID == owner && $0.callRoomID == roomID }
+        pendingContinuations.append(PendingContinuation(
+            ownerAccountID: owner,
+            callRoomID: roomID,
+            draftID: draftID
+        ))
+        try commit()
     }
 
     @discardableResult
@@ -160,7 +207,8 @@ final class VoiceWritingDraftStore: ObservableObject {
             return nil
         }
         if let existing = storedDrafts.first(where: {
-            $0.ownerAccountID == owner && $0.localRecordingID == recording.id
+            $0.ownerAccountID == owner
+                && $0.allSources.contains(where: { $0.localRecordingID == recording.id })
         }) {
             return existing
         }
@@ -176,6 +224,29 @@ final class VoiceWritingDraftStore: ObservableObject {
             .trimmingCharacters(in: .whitespacesAndNewlines)
         guard !body.isEmpty else { return nil }
 
+        if let roomID = recording.callRoomId?.trimmingCharacters(in: .whitespacesAndNewlines),
+           let continuation = pendingContinuations.first(where: {
+               $0.ownerAccountID == owner && $0.callRoomID == roomID
+           }),
+           let index = storedDrafts.firstIndex(where: {
+               $0.ownerAccountID == owner && $0.id == continuation.draftID
+           }) {
+            let source = Self.sourceReference(transcript: transcript, recording: recording)
+            if !storedDrafts[index].allSources.contains(where: { $0.id == source.id }) {
+                storedDrafts[index].sources = storedDrafts[index].allSources + [source]
+                let existingBody = storedDrafts[index].body.trimmingCharacters(in: .whitespacesAndNewlines)
+                storedDrafts[index].body = existingBody.isEmpty ? body : "\(existingBody)\n\n\(body)"
+                storedDrafts[index].updatedAt = now
+                storedDrafts[index].localRevision += 1
+                storedDrafts[index].lastSyncError = nil
+            }
+            pendingContinuations.removeAll {
+                $0.ownerAccountID == owner && $0.callRoomID == roomID
+            }
+            commitBestEffort()
+            return storedDrafts[index]
+        }
+
         let sessionTitle = recording.sessionTitle?
             .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let draft = VoiceWritingDraft(
@@ -185,6 +256,7 @@ final class VoiceWritingDraftStore: ObservableObject {
             sourceTranscriptClientRequestID: transcript.clientRequestId,
             sourceSHA256: transcript.sourceSha256,
             callRoomID: recording.callRoomId?.trimmingCharacters(in: .whitespacesAndNewlines),
+            sources: [Self.sourceReference(transcript: transcript, recording: recording)],
             createdAt: now,
             title: sessionTitle.isEmpty ? recording.displayTitle : sessionTitle,
             body: body,
@@ -217,7 +289,8 @@ final class VoiceWritingDraftStore: ObservableObject {
     ) throws -> VoiceWritingDraft {
         let owner = try requireActiveOwner()
         guard let index = storedDrafts.firstIndex(where: {
-            $0.ownerAccountID == owner && $0.localRecordingID == recordingID
+            $0.ownerAccountID == owner
+                && $0.allSources.contains(where: { $0.localRecordingID == recordingID })
         }) else {
             throw VoiceWritingDraftStoreError.draftUnavailable
         }
@@ -248,12 +321,14 @@ final class VoiceWritingDraftStore: ObservableObject {
         projectSlug: String,
         tagRevision: Int,
         tags: [MobileCaptureTag],
+        sources: [VoiceWritingSourceReference],
         serverUpdatedAt: String,
         at date: Date = Date()
     ) {
         guard let owner = try? requireActiveOwner(),
               let index = storedDrafts.firstIndex(where: {
-                  $0.ownerAccountID == owner && $0.localRecordingID == recordingID
+                  $0.ownerAccountID == owner
+                      && $0.allSources.contains(where: { $0.localRecordingID == recordingID })
               }) else { return }
         storedDrafts[index].canonicalDocumentID = canonicalDocumentID
         storedDrafts[index].serverRevision = min(serverRevision, syncedLocalRevision)
@@ -263,6 +338,7 @@ final class VoiceWritingDraftStore: ObservableObject {
         storedDrafts[index].canonicalProjectSlug = projectSlug
         storedDrafts[index].canonicalTagRevision = tagRevision
         storedDrafts[index].canonicalTags = tags
+        storedDrafts[index].sources = sources
         storedDrafts[index].canonicalUpdatedAt = serverUpdatedAt
         storedDrafts[index].lastSyncedAt = date
         storedDrafts[index].lastSyncError = nil
@@ -275,12 +351,17 @@ final class VoiceWritingDraftStore: ObservableObject {
         if let index = storedDrafts.firstIndex(where: {
             $0.ownerAccountID == owner && $0.id == remote.localRecordingID
         }) {
+            let mergedSources = Self.mergedSources(
+                storedDrafts[index].allSources,
+                remote.sources
+            )
             storedDrafts[index].canonicalProjectID = remote.projectID
             storedDrafts[index].canonicalProjectName = remote.projectName
             storedDrafts[index].canonicalProjectSlug = remote.projectSlug
             storedDrafts[index].canonicalTagRevision = remote.tagRevision
             storedDrafts[index].canonicalTags = remote.tags
             storedDrafts[index].canonicalUpdatedAt = remote.serverUpdatedAt
+            storedDrafts[index].sources = mergedSources
             let hasLocalChanges = storedDrafts[index].serverRevision != storedDrafts[index].localRevision
             if storedDrafts[index].serverContentRevision == remote.contentRevision {
                 storedDrafts[index].canonicalDocumentID = remote.documentID
@@ -314,6 +395,7 @@ final class VoiceWritingDraftStore: ObservableObject {
                 sourceTranscriptClientRequestID: remote.sourceTranscriptClientRequestID,
                 sourceSHA256: remote.sourceSHA256,
                 callRoomID: remote.callRoomID,
+                sources: remote.sources,
                 createdAt: remote.createdAt,
                 title: remote.title,
                 body: remote.body,
@@ -340,11 +422,13 @@ final class VoiceWritingDraftStore: ObservableObject {
     func useNestVersion(recordingID: UUID) -> VoiceWritingDraft? {
         guard let owner = try? requireActiveOwner(),
               let index = storedDrafts.firstIndex(where: {
-                  $0.ownerAccountID == owner && $0.localRecordingID == recordingID
+                  $0.ownerAccountID == owner
+                      && $0.allSources.contains(where: { $0.localRecordingID == recordingID })
               }),
               let remote = storedDrafts[index].pendingRemote else { return nil }
         storedDrafts[index].title = remote.title
         storedDrafts[index].body = remote.body
+        storedDrafts[index].sources = remote.sources
         storedDrafts[index].updatedAt = remote.updatedAt
         storedDrafts[index].localRevision = max(storedDrafts[index].localRevision, remote.localRevision)
         storedDrafts[index].serverRevision = storedDrafts[index].localRevision
@@ -361,7 +445,8 @@ final class VoiceWritingDraftStore: ObservableObject {
     func keepIPhoneVersion(recordingID: UUID) -> VoiceWritingDraft? {
         guard let owner = try? requireActiveOwner(),
               let index = storedDrafts.firstIndex(where: {
-                  $0.ownerAccountID == owner && $0.localRecordingID == recordingID
+                  $0.ownerAccountID == owner
+                      && $0.allSources.contains(where: { $0.localRecordingID == recordingID })
               }),
               let remote = storedDrafts[index].pendingRemote else { return nil }
         let nextRevision = max(storedDrafts[index].localRevision, remote.localRevision) + 1
@@ -378,7 +463,8 @@ final class VoiceWritingDraftStore: ObservableObject {
     func markSyncFailed(recordingID: UUID, message: String) {
         guard let owner = try? requireActiveOwner(),
               let index = storedDrafts.firstIndex(where: {
-                  $0.ownerAccountID == owner && $0.localRecordingID == recordingID
+                  $0.ownerAccountID == owner
+                      && $0.allSources.contains(where: { $0.localRecordingID == recordingID })
               }) else { return }
         storedDrafts[index].lastSyncError = message
         commitBestEffort()
@@ -415,7 +501,11 @@ final class VoiceWritingDraftStore: ObservableObject {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
         encoder.dateEncodingStrategy = .iso8601
-        let data = try encoder.encode(Ledger(schemaVersion: 1, drafts: storedDrafts))
+        let data = try encoder.encode(Ledger(
+            schemaVersion: 2,
+            drafts: storedDrafts,
+            pendingContinuations: pendingContinuations
+        ))
         try data.write(to: ledgerURL, options: [.atomic, .completeFileProtectionUnlessOpen])
         try data.write(to: lastKnownGoodURL, options: [.atomic, .completeFileProtectionUnlessOpen])
         try fileManager.setAttributes(
@@ -433,17 +523,37 @@ final class VoiceWritingDraftStore: ObservableObject {
         fileManager: FileManager,
         primary: URL,
         fallback: URL
-    ) throws -> [VoiceWritingDraft] {
+    ) throws -> Ledger {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         for url in [primary, fallback] where fileManager.fileExists(atPath: url.path) {
             if let data = try? Data(contentsOf: url, options: [.mappedIfSafe]),
                let ledger = try? decoder.decode(Ledger.self, from: data),
-               ledger.schemaVersion == 1 {
-                return ledger.drafts
+               [1, 2].contains(ledger.schemaVersion) {
+                return ledger
             }
         }
-        return []
+        return Ledger(schemaVersion: 2, drafts: [], pendingContinuations: [])
+    }
+
+    private static func sourceReference(
+        transcript: OnDeviceTranscriptSidecar,
+        recording: LocalRecording
+    ) -> VoiceWritingSourceReference {
+        VoiceWritingSourceReference(
+            localRecordingID: recording.id,
+            transcriptClientRequestID: transcript.clientRequestId,
+            sourceSHA256: transcript.sourceSha256,
+            callRoomID: recording.callRoomId?.trimmingCharacters(in: .whitespacesAndNewlines)
+        )
+    }
+
+    private static func mergedSources(
+        _ primary: [VoiceWritingSourceReference],
+        _ secondary: [VoiceWritingSourceReference]
+    ) -> [VoiceWritingSourceReference] {
+        var seen = Set<UUID>()
+        return (primary + secondary).filter { seen.insert($0.localRecordingID).inserted }
     }
 
     private static func normalizedOwnerID(_ value: String?) -> String? {
@@ -453,6 +563,20 @@ final class VoiceWritingDraftStore: ObservableObject {
 }
 
 private struct VoiceWritingSyncRequest: Encodable {
+    struct Source: Encodable {
+        let localRecordingId: String
+        let transcriptClientRequestId: String
+        let sourceSha256: String
+        let callRoomId: String?
+
+        init(_ source: VoiceWritingSourceReference) {
+            localRecordingId = source.localRecordingID.uuidString.lowercased()
+            transcriptClientRequestId = source.transcriptClientRequestID.uuidString.lowercased()
+            sourceSha256 = source.sourceSHA256
+            callRoomId = source.callRoomID
+        }
+    }
+
     let draftId: String
     let localRecordingId: String
     let transcriptClientRequestId: String
@@ -463,7 +587,9 @@ private struct VoiceWritingSyncRequest: Encodable {
     let localRevision: Int
     let expectedServerRevision: Int
     let expectedContentRevision: String?
+    let sources: [Source]
 
+    @MainActor
     init(_ draft: VoiceWritingDraft) {
         draftId = draft.id.uuidString.lowercased()
         localRecordingId = draft.localRecordingID.uuidString.lowercased()
@@ -475,6 +601,7 @@ private struct VoiceWritingSyncRequest: Encodable {
         localRevision = draft.localRevision
         expectedServerRevision = draft.serverRevision ?? 0
         expectedContentRevision = draft.serverContentRevision
+        sources = draft.allSources.map(Source.init)
     }
 }
 
@@ -485,6 +612,13 @@ struct VoiceWritingHomeProject: Codable, Equatable {
 }
 
 private struct VoiceWritingSyncResponse: Decodable {
+    struct SavedSource: Decodable {
+        let localRecordingId: String
+        let transcriptClientRequestId: String
+        let sourceSha256: String
+        let callRoomId: String?
+    }
+
     struct SavedDraft: Decodable {
         let draftId: String
         let documentId: String
@@ -500,6 +634,7 @@ private struct VoiceWritingSyncResponse: Decodable {
         let transcriptClientRequestId: String
         let sourceSha256: String
         let callRoomId: String?
+        let sources: [SavedSource]?
         let tagRevision: Int
         let tags: [MobileCaptureTag]
         let createdAt: String?
@@ -653,6 +788,10 @@ final class VoiceWritingDraftSyncClient: ObservableObject {
                 projectSlug: saved.projectSlug,
                 tagRevision: saved.tagRevision,
                 tags: saved.tags,
+                sources: Self.mergedSources(
+                    draft.allSources,
+                    Self.sourceReferences(from: saved)
+                ),
                 serverUpdatedAt: saved.updatedAt
             )
             homeProject = payload.homeProject
@@ -691,11 +830,47 @@ final class VoiceWritingDraftSyncClient: ObservableObject {
             sourceTranscriptClientRequestID: transcriptID,
             sourceSHA256: saved.sourceSha256,
             callRoomID: saved.callRoomId,
+            sources: sourceReferences(from: saved),
             tagRevision: saved.tagRevision,
             tags: saved.tags,
             serverUpdatedAt: saved.updatedAt,
             createdAt: createdAt,
             updatedAt: updatedAt
         )
+    }
+
+    private static func sourceReferences(
+        from saved: VoiceWritingSyncResponse.SavedDraft
+    ) -> [VoiceWritingSourceReference] {
+        let mapped = (saved.sources ?? []).compactMap { source -> VoiceWritingSourceReference? in
+            guard let recordingID = UUID(uuidString: source.localRecordingId),
+                  let transcriptID = UUID(uuidString: source.transcriptClientRequestId),
+                  source.sourceSha256.range(of: "^[0-9a-f]{64}$", options: .regularExpression) != nil else {
+                return nil
+            }
+            return VoiceWritingSourceReference(
+                localRecordingID: recordingID,
+                transcriptClientRequestID: transcriptID,
+                sourceSHA256: source.sourceSha256,
+                callRoomID: source.callRoomId
+            )
+        }
+        if !mapped.isEmpty { return mapped }
+        guard let recordingID = UUID(uuidString: saved.localRecordingId),
+              let transcriptID = UUID(uuidString: saved.transcriptClientRequestId) else { return [] }
+        return [VoiceWritingSourceReference(
+            localRecordingID: recordingID,
+            transcriptClientRequestID: transcriptID,
+            sourceSHA256: saved.sourceSha256,
+            callRoomID: saved.callRoomId
+        )]
+    }
+
+    private static func mergedSources(
+        _ primary: [VoiceWritingSourceReference],
+        _ secondary: [VoiceWritingSourceReference]
+    ) -> [VoiceWritingSourceReference] {
+        var seen = Set<UUID>()
+        return (primary + secondary).filter { seen.insert($0.localRecordingID).inserted }
     }
 }

@@ -13,6 +13,14 @@ export type MobileVoiceWritingInput = {
   localRevision: number;
   expectedServerRevision: number;
   expectedContentRevision: string | null;
+  sources: MobileVoiceWritingSourceInput[];
+};
+
+export type MobileVoiceWritingSourceInput = {
+  localRecordingId: string;
+  transcriptClientRequestId: string;
+  sourceSha256: string;
+  callRoomId: string | null;
 };
 
 export type MobileVoiceWritingValidation =
@@ -25,6 +33,19 @@ function text(value: unknown, max: number) {
 
 function integer(value: unknown) {
   return typeof value === "number" && Number.isSafeInteger(value) ? value : NaN;
+}
+
+function source(value: unknown): MobileVoiceWritingSourceInput | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const input = value as Record<string, unknown>;
+  const localRecordingId = text(input.localRecordingId, 80).toLowerCase();
+  const transcriptClientRequestId = text(input.transcriptClientRequestId, 80).toLowerCase();
+  const sourceSha256 = text(input.sourceSha256, 64).toLowerCase();
+  const callRoomId = text(input.callRoomId, 200) || null;
+  if (!UUID_PATTERN.test(localRecordingId)
+    || !UUID_PATTERN.test(transcriptClientRequestId)
+    || !/^[0-9a-f]{64}$/.test(sourceSha256)) return null;
+  return { localRecordingId, transcriptClientRequestId, sourceSha256, callRoomId };
 }
 
 export function validateMobileVoiceWriting(value: unknown): MobileVoiceWritingValidation {
@@ -46,9 +67,8 @@ export function validateMobileVoiceWriting(value: unknown): MobileVoiceWritingVa
   const localRevision = integer(input.localRevision);
   const expectedServerRevision = integer(input.expectedServerRevision);
   const expectedContentRevision = text(input.expectedContentRevision, 64).toLowerCase() || null;
-
   if (![draftId, localRecordingId, transcriptClientRequestId].every((id) => UUID_PATTERN.test(id))) {
-    return { ok: false, code: "VOICE_WRITING_ID_INVALID", error: "The protected writing identity is invalid." };
+    return { ok: false, code: "VOICE_WRITING_ID_INVALID", error: "The writing identity is invalid." };
   }
   if (!/^[0-9a-f]{64}$/.test(sourceSha256)) {
     return { ok: false, code: "VOICE_WRITING_SOURCE_INVALID", error: "The transcript source fingerprint is invalid." };
@@ -65,6 +85,23 @@ export function validateMobileVoiceWriting(value: unknown): MobileVoiceWritingVa
   if (expectedContentRevision && !/^[0-9a-f]{64}$/.test(expectedContentRevision)) {
     return { ok: false, code: "VOICE_WRITING_REVISION_INVALID", error: "The expected Nest content revision is invalid." };
   }
+  const fallbackSource = { localRecordingId, transcriptClientRequestId, sourceSha256, callRoomId };
+  const requestedSources = input.sources === undefined ? [fallbackSource] : input.sources;
+  if (!Array.isArray(requestedSources) || requestedSources.length < 1 || requestedSources.length > 100) {
+    return { ok: false, code: "VOICE_WRITING_SOURCES_INVALID", error: "Keep between 1 and 100 source recordings connected to one writing draft." };
+  }
+  const sources = requestedSources.map(source);
+  if (sources.some((item) => !item)) {
+    return { ok: false, code: "VOICE_WRITING_SOURCES_INVALID", error: "A connected source recording is invalid." };
+  }
+  const validSources = sources as MobileVoiceWritingSourceInput[];
+  if (new Set(validSources.map((item) => item.localRecordingId)).size !== validSources.length
+    || validSources[0]?.localRecordingId !== localRecordingId
+    || validSources[0]?.transcriptClientRequestId !== transcriptClientRequestId
+    || validSources[0]?.sourceSha256 !== sourceSha256
+    || validSources[0]?.callRoomId !== callRoomId) {
+    return { ok: false, code: "VOICE_WRITING_SOURCES_INVALID", error: "Connected recordings must be unique and begin with the draft's original source." };
+  }
   return {
     ok: true,
     value: {
@@ -78,6 +115,7 @@ export function validateMobileVoiceWriting(value: unknown): MobileVoiceWritingVa
       localRevision,
       expectedServerRevision,
       expectedContentRevision,
+      sources: validSources,
     },
   };
 }
@@ -113,6 +151,7 @@ export function mobileVoiceWritingSource(input: MobileVoiceWritingInput, actorUs
     transcriptClientRequestId: input.transcriptClientRequestId,
     sourceSha256: input.sourceSha256,
     callRoomId: input.callRoomId,
+    sources: input.sources,
     localRevision: input.localRevision,
     contentHash: mobileVoiceWritingContentHash(input),
   };

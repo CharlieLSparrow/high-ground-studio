@@ -96,6 +96,7 @@ function publicDraft(document: any, serverRevision: number, input: MobileVoiceWr
     transcriptClientRequestId: input.transcriptClientRequestId,
     sourceSha256: input.sourceSha256,
     callRoomId: input.callRoomId,
+    sources: input.sources,
     tagRevision: Number(document.tagRevision) || 0,
     tags: voiceWritingTags(document),
     updatedAt: document.updatedAt.toISOString(),
@@ -109,6 +110,15 @@ function publicStoredDraft(document: any) {
   const source = record(operation?.payloadJson);
   const current = currentVoiceRevision(document);
   const body = voiceWritingBody(document, draftId);
+  const legacySource = {
+    localRecordingId: String(source.localRecordingId || draftId),
+    transcriptClientRequestId: String(source.transcriptClientRequestId || draftId),
+    sourceSha256: String(source.sourceSha256 || "").toLowerCase(),
+    callRoomId: typeof source.callRoomId === "string" ? source.callRoomId : null,
+  };
+  const sources = Array.isArray(source.sources) && source.sources.length
+    ? source.sources
+    : [legacySource];
   return {
     draftId,
     documentId: document.id,
@@ -120,10 +130,8 @@ function publicStoredDraft(document: any) {
     localRevision: current.serverRevision ?? 1,
     serverRevision: current.serverRevision ?? 1,
     contentRevision: mobileVoiceWritingContentHash({ title: document.title, body }),
-    localRecordingId: String(source.localRecordingId || draftId),
-    transcriptClientRequestId: String(source.transcriptClientRequestId || draftId),
-    sourceSha256: String(source.sourceSha256 || "").toLowerCase(),
-    callRoomId: typeof source.callRoomId === "string" ? source.callRoomId : null,
+    ...legacySource,
+    sources,
     tagRevision: Number(document.tagRevision) || 0,
     tags: voiceWritingTags(document),
     createdAt: document.createdAt.toISOString(),

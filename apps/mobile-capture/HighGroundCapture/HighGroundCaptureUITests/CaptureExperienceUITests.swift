@@ -144,6 +144,10 @@ final class CaptureExperienceUITests: XCTestCase {
             app.buttons["CaptureStartVoiceNote"].exists,
             "Private speech-to-writing should be a primary Home action, not hidden in Session setup."
         )
+        XCTAssertTrue(
+            app.staticTexts["Speak to write"].exists,
+            "Home should name the outcome plainly for someone who needs to draft by speaking."
+        )
 
         let joinSession = app.buttons["CaptureOpenNextSessionButton"]
         XCTAssertEqual(

@@ -1292,7 +1292,7 @@ final class CaptureExperienceModel: ObservableObject {
         return true
     }
 
-    func createPersonalVoiceNote() async -> MobileCaptureSession? {
+    func createPersonalVoiceNote(continuing draftTitle: String? = nil) async -> MobileCaptureSession? {
         guard !isSessionContextLocked else {
             errorMessage = "Finish the active recording or call before starting another voice note."
             return nil
@@ -1302,7 +1302,15 @@ final class CaptureExperienceModel: ObservableObject {
         defer { isCreatingSession = false }
         errorMessage = nil
 
-        let title = "Voice note · \(Date.now.formatted(.dateTime.month(.abbreviated).day().hour().minute()))"
+        let cleanDraftTitle = draftTitle?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
+        let title: String
+        if let cleanDraftTitle, !cleanDraftTitle.isEmpty {
+            title = "Continue · \(String(cleanDraftTitle.prefix(80)))"
+        } else {
+            title = "Voice note · \(Date.now.formatted(.dateTime.month(.abbreviated).day().hour().minute()))"
+        }
         if usesPreviewData {
             let created = MobileCaptureSession.capturePreview(
                 id: "preview-voice-note-\(UUID().uuidString)",

@@ -12,6 +12,8 @@ jest.mock("@/lib/server/quipsly-session", () => ({ getQuipslySessionFromRequest:
 const draftId = "11111111-1111-4111-8111-111111111111";
 const recordingId = "22222222-2222-4222-8222-222222222222";
 const transcriptId = "33333333-3333-4333-8333-333333333333";
+const continuationRecordingId = "44444444-4444-4444-8444-444444444444";
+const continuationTranscriptId = "55555555-5555-4555-8555-555555555555";
 const updatedAt = new Date("2026-08-27T20:00:00.000Z");
 
 describe("mobile voice-writing continuation", () => {
@@ -69,6 +71,20 @@ describe("mobile voice-writing continuation", () => {
           transcriptClientRequestId: transcriptId,
           sourceSha256: "a".repeat(64),
           callRoomId: null,
+          sources: [
+            {
+              localRecordingId: recordingId,
+              transcriptClientRequestId: transcriptId,
+              sourceSha256: "a".repeat(64),
+              callRoomId: null,
+            },
+            {
+              localRecordingId: continuationRecordingId,
+              transcriptClientRequestId: continuationTranscriptId,
+              sourceSha256: "b".repeat(64),
+              callRoomId: "continued-room",
+            },
+          ],
         },
       }],
     }]);
@@ -102,6 +118,20 @@ describe("mobile voice-writing continuation", () => {
         localRecordingId: recordingId,
         transcriptClientRequestId: transcriptId,
         sourceSha256: "a".repeat(64),
+        sources: [
+          {
+            localRecordingId: recordingId,
+            transcriptClientRequestId: transcriptId,
+            sourceSha256: "a".repeat(64),
+            callRoomId: null,
+          },
+          {
+            localRecordingId: continuationRecordingId,
+            transcriptClientRequestId: continuationTranscriptId,
+            sourceSha256: "b".repeat(64),
+            callRoomId: "continued-room",
+          },
+        ],
         tagRevision: 2,
         tags: [{ id: "tag-phd", slug: "phd", label: "PhD", isActive: true }],
       }],

@@ -581,9 +581,9 @@ private struct CaptureTodayPrimaryActions: View {
                                 .font(.headline)
                         }
                     }
-                    Text("Voice note")
+                    Text("Speak to write")
                         .font(.headline)
-                    Text("Record, transcribe, and write")
+                    Text("Draft papers, notes, and ideas")
                         .font(.caption)
                         .opacity(0.9)
                 }
@@ -594,8 +594,8 @@ private struct CaptureTodayPrimaryActions: View {
             }
             .buttonStyle(.plain)
             .disabled(!canStart || isStartingVoiceNote)
-            .accessibilityLabel("Start a voice note")
-            .accessibilityHint("Creates a private voice note, then opens the recorder.")
+            .accessibilityLabel("Speak to write")
+            .accessibilityHint("Starts a private recording and turns your words into editable writing.")
             .accessibilityIdentifier("CaptureStartVoiceNote")
 
             Button(action: onNewSession) {
@@ -6591,7 +6591,7 @@ private struct CapturePersonalVoiceNoteHeader: View {
                     .frame(width: 44, height: 44)
                     .background(CapturePalette.accent.opacity(0.12), in: Circle())
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("Voice note")
+                    Text("Speak to write")
                         .font(.title3.weight(.bold))
                     Text(session.title)
                         .font(.subheadline)
@@ -6637,6 +6637,7 @@ private struct CapturePersonalVoiceNoteTranscriptCard: View {
     let fileURL: URL?
     let previewOnly: Bool
     @ObservedObject var tagClient: CaptureTodayClient
+    let onContinueByVoice: (VoiceWritingDraft) -> Void
     @State private var opensWriting = false
     @State private var openWritingWhenReady = false
 
@@ -6684,7 +6685,8 @@ private struct CapturePersonalVoiceNoteTranscriptCard: View {
                         recordingID: recording.id,
                         initialDraft: draft,
                         timedTranscript: transcriptManager.storedTranscript(for: recording.id)?.segments ?? [],
-                        tagClient: tagClient
+                        tagClient: tagClient,
+                        onContinueByVoice: onContinueByVoice
                     )
                 } label: {
                     Label("Open writing", systemImage: "square.and.pencil")
@@ -6865,9 +6867,11 @@ private struct CapturePersonalVoiceNoteTranscriptCard: View {
 private struct CaptureVoiceWritingEditor: View {
     @ObservedObject private var writingStore = VoiceWritingDraftStore.shared
     @ObservedObject private var writingSync = VoiceWritingDraftSyncClient.shared
+    @ObservedObject private var transcriptManager = OnDeviceTranscriptManager.shared
     @StateObject private var recordingLibrary = LocalRecordingLibrary.shared
     @StateObject private var playback = LocalRecordingPlaybackController()
     @ObservedObject var tagClient: CaptureTodayClient
+    let onContinueByVoice: (VoiceWritingDraft) -> Void
     @Environment(\.dismiss) private var dismiss
     @FocusState private var bodyIsFocused: Bool
 
@@ -6883,11 +6887,13 @@ private struct CaptureVoiceWritingEditor: View {
         recordingID: UUID,
         initialDraft: VoiceWritingDraft,
         timedTranscript: [OnDeviceTranscriptSegment],
-        tagClient: CaptureTodayClient
+        tagClient: CaptureTodayClient,
+        onContinueByVoice: @escaping (VoiceWritingDraft) -> Void
     ) {
         self.recordingID = recordingID
         self.timedTranscript = timedTranscript
         self.tagClient = tagClient
+        self.onContinueByVoice = onContinueByVoice
         _title = State(initialValue: initialDraft.title)
         _bodyText = State(initialValue: initialDraft.body)
     }
@@ -6904,8 +6910,14 @@ private struct CaptureVoiceWritingEditor: View {
                     .textInputAutocapitalization(.sentences)
                     .accessibilityIdentifier("CaptureVoiceWritingTitle")
 
-                if let recording {
+                if sourceRecordings.count == 1, let recording = sourceRecordings.first {
                     voiceSourcePlayer(recording)
+                } else if !sourceRecordings.isEmpty {
+                    DisclosureGroup("\(sourceRecordings.count) original recordings") {
+                        ForEach(sourceRecordings) { recording in
+                            voiceSourcePlayer(recording)
+                        }
+                    }
                 }
 
                 if #available(iOS 18.0, *) {
@@ -6961,6 +6973,23 @@ private struct CaptureVoiceWritingEditor: View {
                 }
             }
 
+            Section {
+                Button {
+                    saveImmediately()
+                    guard let draft = currentDraft else { return }
+                    onContinueByVoice(draft)
+                    dismiss()
+                } label: {
+                    Label("Continue by voice", systemImage: "mic.badge.plus")
+                        .font(.headline)
+                        .frame(maxWidth: .infinity, minHeight: 48)
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(currentDraft == nil)
+                .accessibilityHint("Starts another recording and adds its transcript to this writing.")
+                .accessibilityIdentifier("CaptureVoiceWritingContinueByVoice")
+            }
+
             if let remote = currentDraft?.pendingRemote {
                 Section("This note changed in two places") {
                     Text("Quipsly kept both copies. Choose the words you want to continue with.")
@@ -6996,7 +7025,7 @@ private struct CaptureVoiceWritingEditor: View {
                     HStack {
                         Label("Timed transcript", systemImage: "waveform")
                         Spacer()
-                        Text("\(timedTranscript.count) segments")
+                        Text("\(transcriptSegmentCount) segments")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                         Image(systemName: showsTranscript ? "chevron.up" : "chevron.down")
@@ -7007,32 +7036,39 @@ private struct CaptureVoiceWritingEditor: View {
                 .buttonStyle(.plain)
 
                 if showsTranscript {
-                    ForEach(Array(timedTranscript.enumerated()), id: \.offset) { _, segment in
-                        Button {
-                            play(segment)
-                        } label: {
-                            HStack(alignment: .top, spacing: 10) {
-                                Image(systemName: isPlaying(segment) ? "speaker.wave.2.fill" : "play.circle")
-                                    .foregroundStyle(CapturePalette.accent)
-                                    .frame(width: 24)
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(timestamp(segment.startSeconds))
-                                        .font(.caption.monospacedDigit().weight(.semibold))
-                                        .foregroundStyle(CapturePalette.accent)
-                                    Text(segment.text)
-                                        .font(.subheadline)
-                                        .foregroundStyle(.primary)
-                                        .multilineTextAlignment(.leading)
-                                }
-                                Spacer(minLength: 0)
-                            }
-                            .contentShape(Rectangle())
+                    ForEach(transcriptSources) { source in
+                        if transcriptSources.count > 1 {
+                            Text(source.title)
+                                .font(.caption.weight(.bold))
+                                .foregroundStyle(.secondary)
                         }
-                        .buttonStyle(.plain)
-                        .disabled(recording == nil)
-                        .accessibilityLabel("Play transcript at \(timestamp(segment.startSeconds)): \(segment.text)")
-                        .accessibilityIdentifier("CaptureVoiceWritingTranscriptSegment_\(Int(segment.startSeconds * 1000))")
-                        .padding(.vertical, 3)
+                        ForEach(Array(source.segments.enumerated()), id: \.offset) { _, segment in
+                            Button {
+                                play(segment, recordingID: source.id)
+                            } label: {
+                                HStack(alignment: .top, spacing: 10) {
+                                    Image(systemName: isPlaying(segment, recordingID: source.id) ? "speaker.wave.2.fill" : "play.circle")
+                                        .foregroundStyle(CapturePalette.accent)
+                                        .frame(width: 24)
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        Text(timestamp(segment.startSeconds))
+                                            .font(.caption.monospacedDigit().weight(.semibold))
+                                            .foregroundStyle(CapturePalette.accent)
+                                        Text(segment.text)
+                                            .font(.subheadline)
+                                            .foregroundStyle(.primary)
+                                            .multilineTextAlignment(.leading)
+                                    }
+                                    Spacer(minLength: 0)
+                                }
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(recordingLibrary.recording(id: source.id) == nil)
+                            .accessibilityLabel("Play transcript at \(timestamp(segment.startSeconds)): \(segment.text)")
+                            .accessibilityIdentifier("CaptureVoiceWritingTranscriptSegment_\(source.id)_\(Int(segment.startSeconds * 1000))")
+                            .padding(.vertical, 3)
+                        }
                     }
                 }
             } footer: {
@@ -7167,6 +7203,42 @@ private struct CaptureVoiceWritingEditor: View {
         recordingLibrary.recording(id: recordingID)
     }
 
+    private var sourceRecordings: [LocalRecording] {
+        let sourceIDs = currentDraft?.allSources.map(\.localRecordingID) ?? [recordingID]
+        return sourceIDs.compactMap { recordingLibrary.recording(id: $0) }
+    }
+
+    private struct TimedTranscriptSource: Identifiable {
+        let id: UUID
+        let title: String
+        let segments: [OnDeviceTranscriptSegment]
+    }
+
+    private var transcriptSources: [TimedTranscriptSource] {
+        let sources = currentDraft?.allSources ?? []
+        let mapped = sources.compactMap { source -> TimedTranscriptSource? in
+            guard let transcript = transcriptManager.storedTranscript(for: source.localRecordingID),
+                  !transcript.segments.isEmpty else { return nil }
+            let title = recordingLibrary.recording(id: source.localRecordingID)?.displayTitle
+                ?? "Recording \(sources.firstIndex(of: source).map { $0 + 1 } ?? 1)"
+            return TimedTranscriptSource(
+                id: source.localRecordingID,
+                title: title,
+                segments: transcript.segments
+            )
+        }
+        if !mapped.isEmpty { return mapped }
+        return timedTranscript.isEmpty ? [] : [TimedTranscriptSource(
+            id: recordingID,
+            title: recording?.displayTitle ?? "Original recording",
+            segments: timedTranscript
+        )]
+    }
+
+    private var transcriptSegmentCount: Int {
+        transcriptSources.reduce(0) { $0 + $1.segments.count }
+    }
+
     private func voiceSourcePlayer(_ recording: LocalRecording) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 12) {
@@ -7206,8 +7278,8 @@ private struct CaptureVoiceWritingEditor: View {
         .accessibilityIdentifier("CaptureVoiceWritingSourcePlayer")
     }
 
-    private func play(_ segment: OnDeviceTranscriptSegment) {
-        guard let recording else { return }
+    private func play(_ segment: OnDeviceTranscriptSegment, recordingID: UUID) {
+        guard let recording = recordingLibrary.recording(id: recordingID) else { return }
         playback.play(
             recording: recording,
             library: recordingLibrary,
@@ -7216,7 +7288,7 @@ private struct CaptureVoiceWritingEditor: View {
         )
     }
 
-    private func isPlaying(_ segment: OnDeviceTranscriptSegment) -> Bool {
+    private func isPlaying(_ segment: OnDeviceTranscriptSegment, recordingID: UUID) -> Bool {
         playback.playingRecordingID == recordingID
             && playback.currentTime >= segment.startSeconds
             && playback.currentTime < segment.endSeconds
@@ -7500,7 +7572,8 @@ private struct CaptureRecorderView: View {
                                 recording: recording,
                                 fileURL: library.fileURL(for: recording),
                                 previewOnly: model.usesPreviewData,
-                                tagClient: model.todayClient
+                                tagClient: model.todayClient,
+                                onContinueByVoice: continueVoiceWriting
                             )
                         }
                     } else {
@@ -8568,6 +8641,22 @@ private struct CaptureRecorderView: View {
 
     private var captureIsActive: Bool {
         audioCaptureIsActive || videoCaptureIsActive
+    }
+
+    private func continueVoiceWriting(_ draft: VoiceWritingDraft) {
+        Task {
+            guard let created = await model.createPersonalVoiceNote(continuing: draft.title) else { return }
+            do {
+                try VoiceWritingDraftStore.shared.stageContinuation(
+                    callRoomID: created.callRoomId,
+                    draftID: draft.id
+                )
+                localOnlyRecordingSessionID = created.id
+                visibleTab = .record
+            } catch {
+                model.errorMessage = "The new Voice Note is ready, but Quipsly could not connect it to that writing yet: \(error.localizedDescription)"
+            }
+        }
     }
 
     private func localRecordingWorkspaceIsOpen(
@@ -11671,7 +11760,7 @@ private struct CaptureLibraryView: View {
                 detail: normalizedSearch.isEmpty
                     ? "Record a thought. Quipsly will keep the audio, create a timed transcript, and give you text you can edit."
                     : "Try a different word or clear the search.",
-                actionTitle: normalizedSearch.isEmpty ? "Start a Voice Note" : "Clear search",
+                actionTitle: normalizedSearch.isEmpty ? "Speak to write" : "Clear search",
                 action: normalizedSearch.isEmpty ? onStartVoiceNote : { searchText = "" }
             )
         } else {
@@ -11681,7 +11770,8 @@ private struct CaptureLibraryView: View {
                     recording: library.recording(id: draft.localRecordingID),
                     timedTranscript: OnDeviceTranscriptManager.shared
                         .storedTranscript(for: draft.localRecordingID)?.segments ?? [],
-                    tagClient: model.todayClient
+                    tagClient: model.todayClient,
+                    onContinueByVoice: continueVoiceWriting
                 )
             }
         }
@@ -11795,6 +11885,21 @@ private struct CaptureLibraryView: View {
         default: false
         }
     }
+
+    private func continueVoiceWriting(_ draft: VoiceWritingDraft) {
+        Task {
+            guard let created = await model.createPersonalVoiceNote(continuing: draft.title) else { return }
+            do {
+                try VoiceWritingDraftStore.shared.stageContinuation(
+                    callRoomID: created.callRoomId,
+                    draftID: draft.id
+                )
+                visibleTab = .record
+            } catch {
+                model.errorMessage = "The new Voice Note is ready, but Quipsly could not connect it to that writing yet: \(error.localizedDescription)"
+            }
+        }
+    }
 }
 
 private struct CaptureVoiceWritingLibraryRow: View {
@@ -11802,6 +11907,7 @@ private struct CaptureVoiceWritingLibraryRow: View {
     let recording: LocalRecording?
     let timedTranscript: [OnDeviceTranscriptSegment]
     @ObservedObject var tagClient: CaptureTodayClient
+    let onContinueByVoice: (VoiceWritingDraft) -> Void
 
     var body: some View {
         NavigationLink {
@@ -11809,7 +11915,8 @@ private struct CaptureVoiceWritingLibraryRow: View {
                 recordingID: draft.localRecordingID,
                 initialDraft: draft,
                 timedTranscript: timedTranscript,
-                tagClient: tagClient
+                tagClient: tagClient,
+                onContinueByVoice: onContinueByVoice
             )
         } label: {
             VStack(alignment: .leading, spacing: 10) {

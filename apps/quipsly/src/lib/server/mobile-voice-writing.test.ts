@@ -8,13 +8,17 @@ import {
 } from "./mobile-voice-writing";
 
 const draftId = "11111111-1111-4111-8111-111111111111";
+const recordingId = "22222222-2222-4222-8222-222222222222";
+const transcriptId = "33333333-3333-4333-8333-333333333333";
+const continuationRecordingId = "44444444-4444-4444-8444-444444444444";
+const continuationTranscriptId = "55555555-5555-4555-8555-555555555555";
 
 describe("mobile voice writing", () => {
   it("normalizes an editable transcript-derived draft without changing its source identity", () => {
     const result = validateMobileVoiceWriting({
       draftId,
-      localRecordingId: "22222222-2222-4222-8222-222222222222",
-      transcriptClientRequestId: "33333333-3333-4333-8333-333333333333",
+      localRecordingId: recordingId,
+      transcriptClientRequestId: transcriptId,
       sourceSha256: "a".repeat(64),
       callRoomId: "room-1",
       title: "  Chapter   idea  ",
@@ -22,6 +26,20 @@ describe("mobile voice writing", () => {
       localRevision: 4,
       expectedServerRevision: 3,
       expectedContentRevision: "b".repeat(64),
+      sources: [
+        {
+          localRecordingId: recordingId.toUpperCase(),
+          transcriptClientRequestId: transcriptId.toUpperCase(),
+          sourceSha256: "A".repeat(64),
+          callRoomId: "room-1",
+        },
+        {
+          localRecordingId: continuationRecordingId,
+          transcriptClientRequestId: continuationTranscriptId,
+          sourceSha256: "c".repeat(64),
+          callRoomId: "room-2",
+        },
+      ],
     });
     expect(result).toMatchObject({
       ok: true,
@@ -30,6 +48,20 @@ describe("mobile voice writing", () => {
         body: "First line\nSecond line",
         localRevision: 4,
         expectedServerRevision: 3,
+        sources: [
+          {
+            localRecordingId: recordingId,
+            transcriptClientRequestId: transcriptId,
+            sourceSha256: "a".repeat(64),
+            callRoomId: "room-1",
+          },
+          {
+            localRecordingId: continuationRecordingId,
+            transcriptClientRequestId: continuationTranscriptId,
+            sourceSha256: "c".repeat(64),
+            callRoomId: "room-2",
+          },
+        ],
       },
     });
     if (!result.ok) throw new Error(result.error);
@@ -42,7 +74,42 @@ describe("mobile voice writing", () => {
       schema: "quipsly-mobile-voice-writing-v1",
       localRevision: 4,
       actorUserId: "user-1",
+      sources: expect.arrayContaining([
+        expect.objectContaining({ localRecordingId: continuationRecordingId }),
+      ]),
     });
+  });
+
+  it.each([
+    [
+      [{
+        localRecordingId: recordingId,
+        transcriptClientRequestId: transcriptId,
+        sourceSha256: "a".repeat(64),
+        callRoomId: "different-room",
+      }],
+      "a source list whose first item does not exactly describe the original",
+    ],
+    [
+      [
+        { localRecordingId: recordingId, transcriptClientRequestId: transcriptId, sourceSha256: "a".repeat(64), callRoomId: "room-1" },
+        { localRecordingId: recordingId, transcriptClientRequestId: continuationTranscriptId, sourceSha256: "c".repeat(64), callRoomId: "room-2" },
+      ],
+      "duplicate recording identities",
+    ],
+  ])("rejects %s", (sources) => {
+    expect(validateMobileVoiceWriting({
+      draftId,
+      localRecordingId: recordingId,
+      transcriptClientRequestId: transcriptId,
+      sourceSha256: "a".repeat(64),
+      callRoomId: "room-1",
+      title: "Draft",
+      body: "Text",
+      localRevision: 1,
+      expectedServerRevision: 0,
+      sources,
+    })).toMatchObject({ ok: false, code: "VOICE_WRITING_SOURCES_INVALID" });
   });
 
   it.each([
