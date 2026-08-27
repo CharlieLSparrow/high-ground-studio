@@ -1219,12 +1219,16 @@ try {
 
   for (const journey of journeys) {
     await journey.page.reload({ waitUntil: "domcontentloaded" });
-    await journey.page
-      .locator('[data-session-entry-ready="true"]')
-      .waitFor({ state: "visible", timeout: 20_000 });
+    const reentryChoice = journey.page.locator(
+      '[data-session-entry-ready="true"]',
+    );
     const reentryDock = journey.page.locator(
       'aside[aria-label$=" live call dock"]',
     );
+    await Promise.any([
+      reentryChoice.waitFor({ state: "visible", timeout: 20_000 }),
+      reentryDock.waitFor({ state: "visible", timeout: 20_000 }),
+    ]);
     const reentryJoin = reentryDock.getByRole("button", {
       name: "Join call",
       exact: true,
