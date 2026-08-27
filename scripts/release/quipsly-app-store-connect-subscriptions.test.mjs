@@ -86,6 +86,7 @@ test("subscription operator merges paginated resources without duplicate include
 test("subscription catalog and App Review readiness remain separate truths", () => {
   assert.match(sourceForOperator(), /catalogComplete/);
   assert.match(sourceForOperator(), /reviewMetadataComplete/);
+  assert.match(sourceForOperator(), /pricingScheduleComplete/);
   assert.match(sourceForOperator(), /reviewScreenshotConfigured/);
   assert.match(sourceForOperator(), /complete: reviewMetadataComplete/);
 });

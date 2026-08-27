@@ -121,9 +121,9 @@ Default mode is read-only. It reports the current Quipsly Capture subscription
 catalog without changing App Store Connect.
 
 Apply mode creates or reconciles the exact Quipsly Coach subscription group,
-monthly and annual products, versioned en-US metadata, USA availability and
-prices, and a two-week free trial. It never submits products for App Review and
-does not configure Server Notifications.
+monthly and annual products, versioned en-US metadata, USA availability,
+USA-anchored equalized price schedules, and a two-week free trial. It never
+submits products for App Review and does not configure Server Notifications.
 
 Required:
   --api-key-path <path>       Mode-0600 App Store Connect API-key JSON.
@@ -543,6 +543,26 @@ async function readPrices({ token, subscription, territory }) {
   });
 }
 
+async function readAllPrices({ token, subscription }) {
+  return requestPaginatedJson({
+    token,
+    requestPath: `/v1/subscriptions/${encodeURIComponent(subscription.id)}/prices`,
+    search: [
+      ["filter[planType]", "UPFRONT"],
+      ["include", "subscriptionPricePoint,territory"],
+      ["limit", "50"],
+    ],
+  });
+}
+
+async function readEqualizedPricePoints({ token, basePricePointId }) {
+  return requestPaginatedJson({
+    token,
+    requestPath: `/v1/subscriptionPricePoints/${encodeURIComponent(basePricePointId)}/equalizations`,
+    search: [["include", "territory"], ["limit", "50"]],
+  });
+}
+
 function includedPrice(prices, priceId) {
   return (prices.included || []).find(
     (resource) => resource.type === "subscriptionPricePoints" && resource.id === priceId,
@@ -587,6 +607,57 @@ async function ensurePrice({ token, subscription, territory, apply, changes, pro
     },
   });
   changes.push(`set ${product.key} ${territory} price to ${product.customerPrice}`);
+}
+
+async function ensureEqualizedPrices({ token, subscription, territory, apply, changes, product }) {
+  if (!subscription) return;
+  const anchorPrices = await readPrices({ token, subscription, territory });
+  const anchorPrice = (anchorPrices.data || []).find((price) => {
+    const point = includedPrice(anchorPrices, relationshipId(price, "subscriptionPricePoint"));
+    return point?.attributes?.customerPrice === product.customerPrice;
+  });
+  const anchorPointId = relationshipId(anchorPrice, "subscriptionPricePoint");
+  if (!anchorPointId) {
+    if (apply) fail(`${product.key} ${territory} anchor price must exist before equalization.`);
+    return;
+  }
+  const [configured, equalizations] = await Promise.all([
+    readAllPrices({ token, subscription }),
+    readEqualizedPricePoints({ token, basePricePointId: anchorPointId }),
+  ]);
+  const configuredTerritories = new Set(
+    (configured.data || []).map((price) => relationshipId(price, "territory")).filter(Boolean),
+  );
+  const missing = (equalizations.data || []).filter((point) => {
+    const territoryId = relationshipId(point, "territory");
+    return territoryId && !configuredTerritories.has(territoryId);
+  });
+  if (!apply || missing.length === 0) return;
+
+  let created = 0;
+  for (const point of missing) {
+    await requestJson({
+      token,
+      method: "POST",
+      requestPath: "/v1/subscriptionPrices",
+      body: {
+        data: {
+          type: "subscriptionPrices",
+          attributes: { startDate: null, planType: "UPFRONT" },
+          relationships: {
+            subscription: {
+              data: { type: "subscriptions", id: subscription.id },
+            },
+            subscriptionPricePoint: {
+              data: { type: "subscriptionPricePoints", id: point.id },
+            },
+          },
+        },
+      },
+    });
+    created += 1;
+  }
+  changes.push(`set ${created} equalized ${product.key} territory prices from ${territory}`);
 }
 
 async function ensureIntroductoryOffer({ token, subscription, territory, apply, changes, product }) {
@@ -780,6 +851,26 @@ async function describeProduct({ token, subscription, product, territory }) {
     const point = includedPrice(prices, relationshipId(price, "subscriptionPricePoint"));
     return point?.attributes?.customerPrice === product.customerPrice;
   });
+  const anchorPrice = (prices.data || []).find((price) => {
+    const point = includedPrice(prices, relationshipId(price, "subscriptionPricePoint"));
+    return point?.attributes?.customerPrice === product.customerPrice;
+  });
+  const anchorPointId = relationshipId(anchorPrice, "subscriptionPricePoint");
+  const [configuredPrices, equalizations] = anchorPointId
+    ? await Promise.all([
+        readAllPrices({ token, subscription }),
+        readEqualizedPricePoints({ token, basePricePointId: anchorPointId }),
+      ])
+    : [{ data: [] }, { data: [] }];
+  const configuredTerritories = new Set(
+    (configuredPrices.data || []).map((price) => relationshipId(price, "territory")).filter(Boolean),
+  );
+  const expectedTerritories = new Set([
+    territory,
+    ...(equalizations.data || []).map((point) => relationshipId(point, "territory")).filter(Boolean),
+  ]);
+  const pricingScheduleComplete = expectedTerritories.size > 1
+    && [...expectedTerritories].every((territoryId) => configuredTerritories.has(territoryId));
   const trialConfigured = (offers.data || []).some(
     (offer) =>
       offer.attributes?.offerMode === "FREE_TRIAL" &&
@@ -806,6 +897,9 @@ async function describeProduct({ token, subscription, product, territory }) {
     territory,
     price: product.customerPrice,
     priceConfigured,
+    pricingTerritoryCount: configuredTerritories.size,
+    expectedPricingTerritoryCount: expectedTerritories.size,
+    pricingScheduleComplete,
     trialConfigured,
     reviewScreenshotConfigured: Boolean(reviewScreenshot.data?.id),
     reviewScreenshotState: deliveryState(reviewScreenshot.data),
@@ -877,6 +971,14 @@ async function operate(options) {
       apply: options.apply,
       changes,
     });
+    await ensureEqualizedPrices({
+      token,
+      subscription,
+      product,
+      territory: options.territory,
+      apply: options.apply,
+      changes,
+    });
     await ensureIntroductoryOffer({
       token,
       subscription,
@@ -917,21 +1019,11 @@ async function operate(options) {
         product.exists &&
         product.localized &&
         product.priceConfigured &&
+        product.pricingScheduleComplete &&
         product.trialConfigured,
     ),
   );
   const groupMetadata = await describeGroupMetadata({ token, group: catalog.group });
-  const reviewMetadataComplete = Boolean(
-    catalogComplete &&
-    groupMetadata?.localized &&
-    groupMetadata?.versionState === "PREPARE_FOR_SUBMISSION" &&
-    products.every(
-      (product) =>
-        product.reviewNoteConfigured &&
-        product.reviewScreenshotState === "COMPLETE" &&
-        product.versionState === "PREPARE_FOR_SUBMISSION",
-    ),
-  );
   const attachedReviewStates = new Set([
     "READY_FOR_REVIEW",
     "WAITING_FOR_REVIEW",
@@ -939,6 +1031,18 @@ async function operate(options) {
     "ACCEPTED",
     "APPROVED",
   ]);
+  const reviewMetadataStates = new Set(["PREPARE_FOR_SUBMISSION", ...attachedReviewStates]);
+  const reviewMetadataComplete = Boolean(
+    catalogComplete &&
+    groupMetadata?.localized &&
+    reviewMetadataStates.has(groupMetadata?.versionState) &&
+    products.every(
+      (product) =>
+        product.reviewNoteConfigured &&
+        product.reviewScreenshotState === "COMPLETE" &&
+        reviewMetadataStates.has(product.versionState),
+    ),
+  );
   const reviewReady = Boolean(
     catalogComplete &&
     attachedReviewStates.has(groupMetadata?.versionState) &&
