@@ -15,6 +15,10 @@ import {
   type AccountDeletionExternalServices,
 } from "@/lib/server/account-deletion-external";
 import {
+  resolveAccountDeletionConfirmation,
+  type AccountDeletionConfirmationStatus,
+} from "@/lib/server/account-deletion-confirmation";
+import {
   buildAccountDeletionInventory,
   explainAccountDeletionBlockers,
   type AccountDeletionInventory,
@@ -39,6 +43,8 @@ type ExecutionProgress = {
   storageDeletedAt?: string;
   firebaseDeletedAt?: string;
   confirmationSentAt?: string;
+  confirmationResolvedAt?: string;
+  confirmationStatus?: AccountDeletionConfirmationStatus;
 };
 
 export type AccountDeletionCompletionReceipt = {
@@ -52,7 +58,7 @@ export type AccountDeletionCompletionReceipt = {
   deletedHomeNestCount: number;
   deletedStorageObjectCount: number;
   retainedCategories: string[];
-  confirmation: "sent";
+  confirmation: AccountDeletionConfirmationStatus;
 };
 
 function jsonObject(value: Prisma.JsonValue | null | undefined) {
@@ -465,15 +471,26 @@ export async function executeAccountDeletion(input: {
 
     const confirmationEmail =
       request.emailSnapshot || inventory.subject.primaryEmail;
-    if (!progress.confirmationSentAt) {
-      await external.sendCompletionConfirmation({
+    let confirmation =
+      progress.confirmationStatus ??
+      (progress.confirmationSentAt ? "sent" : undefined);
+    if (!progress.confirmationResolvedAt && !progress.confirmationSentAt) {
+      const resolution = await resolveAccountDeletionConfirmation({
+        external,
         email: confirmationEmail,
         requestId: request.id,
         idempotencyKey: `${idempotencyKey}:completion-email`,
       });
-      progress = { ...progress, confirmationSentAt: now() };
+      confirmation = resolution.status;
+      progress = {
+        ...progress,
+        confirmationSentAt: resolution.sentAt,
+        confirmationResolvedAt: resolution.resolvedAt,
+        confirmationStatus: resolution.status,
+      };
       await markProgress({ prisma, executionId: execution.id, progress });
     }
+    confirmation ??= "not-configured";
 
     const completedAt = new Date();
     const receipt: AccountDeletionCompletionReceipt = {
@@ -487,7 +504,7 @@ export async function executeAccountDeletion(input: {
       deletedHomeNestCount: inventory.homeNests.length,
       deletedStorageObjectCount: storageObjects.length,
       retainedCategories: [],
-      confirmation: "sent",
+      confirmation,
     };
 
     await prisma.$transaction([

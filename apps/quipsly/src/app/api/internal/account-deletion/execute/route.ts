@@ -57,16 +57,22 @@ export async function GET(request: Request) {
     databaseConfigured: Boolean(process.env.DATABASE_URL?.trim()),
     firebaseProjectConfigured: Boolean(process.env.FIREBASE_PROJECT_ID?.trim()),
     storageBucketAllowlistConfigured: bucketAllowlist.length > 0,
-    resendConfigured: email.apiKeyConfigured,
+  };
+  const completionEmail = {
+    configured:
+      email.apiKeyConfigured && email.fromConfigured && email.fromValid,
+    apiKeyConfigured: email.apiKeyConfigured,
     senderConfigured: email.fromConfigured,
     senderValid: email.fromValid,
+    senderDomain: email.fromDomain,
+    requiredForDeletion: false,
   };
   return NextResponse.json({
     ok: Object.values(checks).every(Boolean),
     schema: "quipsly-account-deletion-worker-readiness-v1",
     checks,
     bucketAllowlist,
-    senderDomain: email.fromDomain,
+    completionEmail,
     secretsPrinted: false,
   });
 }

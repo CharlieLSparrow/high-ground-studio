@@ -14,8 +14,9 @@ Options:
   --help                      Show this help.
 
 Without --apply this is the read-only worker readiness audit. Apply requires a
-clean exact HEAD, an existing qualified source image, enabled database/Resend/
-verified-sender secrets, and exact target confirmation. It may create the
+clean exact HEAD, an existing qualified source image, an enabled database
+secret, and exact target confirmation. Completion email is mounted when both
+provider and verified-sender secrets exist, but it never gates deletion. Apply may create the
 dedicated service account and a random shared secret, grants only the worker's
 provider roles plus Nest's private invoker/shared-secret access, deploys a
 concurrency-1 private Cloud Run service, and performs no account deletion.
@@ -124,14 +125,26 @@ image_digest="$(
   || fail "Qualified exact-source image is unavailable: ${image_uri}."
 immutable_image="${image_repository}@${image_digest}"
 
-for secret_name in "${database_secret}" "${resend_secret}" "${sender_secret}"; do
-  if ! gcloud secrets versions describe latest \
-    --secret="${secret_name}" \
-    --project="${project_id}" \
-    --format='value(state)' | grep -qx 'ENABLED'; then
-    fail "Required secret ${secret_name}:latest is missing or disabled."
-  fi
-done
+if ! gcloud secrets versions describe latest \
+  --secret="${database_secret}" \
+  --project="${project_id}" \
+  --format='value(state)' | grep -qx 'ENABLED'; then
+  fail "Required secret ${database_secret}:latest is missing or disabled."
+fi
+
+completion_email_secret_mounts=""
+completion_email_secrets=()
+resend_state="$(gcloud secrets versions describe latest --secret="${resend_secret}" --project="${project_id}" --format='value(state)' 2>/dev/null || true)"
+sender_state="$(gcloud secrets versions describe latest --secret="${sender_secret}" --project="${project_id}" --format='value(state)' 2>/dev/null || true)"
+if [[ "${resend_state}" == "ENABLED" && "${sender_state}" == "ENABLED" ]]; then
+  completion_email_secrets=("${resend_secret}" "${sender_secret}")
+  completion_email_secret_mounts=",QUIPSLY_ACCOUNT_DELETION_RESEND_API_KEY=${resend_secret}:latest,QUIPSLY_ACCOUNT_DELETION_EMAIL_FROM=${sender_secret}:latest"
+  echo "Account-deletion completion email will be enabled."
+elif [[ -n "${resend_state}" || -n "${sender_state}" ]]; then
+  fail "Completion email is partially configured. Enable both ${resend_secret} and ${sender_secret}, or leave both absent."
+else
+  echo "Account-deletion completion email is not configured; deletion remains enabled and receipts record that state."
+fi
 
 if ! gcloud secrets describe "${shared_secret}" \
   --project="${project_id}" --format='value(name)' >/dev/null 2>&1; then
@@ -175,7 +188,7 @@ gcloud storage buckets add-iam-policy-binding "gs://${bucket}" \
   --role=roles/storage.objectUser \
   --quiet >/dev/null
 
-for secret_name in "${database_secret}" "${resend_secret}" "${sender_secret}" "${shared_secret}"; do
+for secret_name in "${database_secret}" "${shared_secret}" "${completion_email_secrets[@]}"; do
   gcloud secrets add-iam-policy-binding "${secret_name}" \
     --project="${project_id}" \
     --member="serviceAccount:${worker_service_account}" \
@@ -196,7 +209,7 @@ gcloud run deploy "${service}" \
   --image="${immutable_image}" \
   --service-account="${worker_service_account}" \
   --set-cloudsql-instances="${sql_instance}" \
-  --set-secrets="DATABASE_URL=${database_secret}:latest,QUIPSLY_ACCOUNT_DELETION_RESEND_API_KEY=${resend_secret}:latest,QUIPSLY_ACCOUNT_DELETION_EMAIL_FROM=${sender_secret}:latest,QUIPSLY_ACCOUNT_DELETION_WORKER_SHARED_SECRET=${shared_secret}:latest" \
+  --set-secrets="DATABASE_URL=${database_secret}:latest,QUIPSLY_ACCOUNT_DELETION_WORKER_SHARED_SECRET=${shared_secret}:latest${completion_email_secret_mounts}" \
   --set-env-vars="QUIPSLY_ACCOUNT_DELETION_WORKER_MODE=true,QUIPSLY_ACCOUNT_DELETION_EXECUTOR_ENABLED=true,QUIPSLY_ACCOUNT_DELETION_GCS_BUCKETS=${bucket},FIREBASE_PROJECT_ID=${firebase_project_id},QUIPSLY_SOURCE_SHA=${source_sha},QUIPSLY_ACCOUNT_DELETION_WORKER_MIN_INSTANCES=0" \
   --concurrency=1 \
   --min=0 \

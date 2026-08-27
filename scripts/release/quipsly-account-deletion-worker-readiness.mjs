@@ -75,8 +75,8 @@ Read-only options:
   --worker-service-account <email>  Dedicated destructive worker identity.
   --nest-service-account <email>    Nest invoker identity.
   --database-secret <name>          Database URL secret.
-  --resend-secret <name>            Completion-email provider secret.
-  --sender-secret <name>            Verified sender secret.
+  --resend-secret <name>            Optional completion-email provider secret.
+  --sender-secret <name>            Optional verified sender secret.
   --shared-secret <name>            Defense-in-depth worker secret.
   --image-repository <uri>          Qualified Nest image repository.
   --output <path>                   Redacted mode-0600 receipt.
@@ -184,14 +184,28 @@ export function summarizeReadiness({
   const env = environmentMap(serviceDocument);
   const expectedSecrets = {
     DATABASE_URL: options.databaseSecret,
-    QUIPSLY_ACCOUNT_DELETION_RESEND_API_KEY: options.resendSecret,
-    QUIPSLY_ACCOUNT_DELETION_EMAIL_FROM: options.senderSecret,
     QUIPSLY_ACCOUNT_DELETION_WORKER_SHARED_SECRET: options.sharedSecret,
   };
   const secretBindingsCorrect = Object.entries(expectedSecrets).every(
     ([name, expected]) => secretName(env[name]) === expected && typeof env[name]?.value !== "string",
   );
   const expectedImage = `${options.imageRepository}:source-${sourceSha}`;
+  const requiredSecretNames = [options.databaseSecret, options.sharedSecret];
+  const completionEmailSecretNames = [options.resendSecret, options.senderSecret];
+  const completionEmailSecretsEnabled = completionEmailSecretNames.every(
+    (name) => secretStates[name] === "ENABLED",
+  );
+  const completionEmailBindingsCorrect =
+    secretName(env.QUIPSLY_ACCOUNT_DELETION_RESEND_API_KEY) === options.resendSecret
+    && secretName(env.QUIPSLY_ACCOUNT_DELETION_EMAIL_FROM) === options.senderSecret
+    && typeof env.QUIPSLY_ACCOUNT_DELETION_RESEND_API_KEY?.value !== "string"
+    && typeof env.QUIPSLY_ACCOUNT_DELETION_EMAIL_FROM?.value !== "string";
+  const completionEmailSecretAccessReady = completionEmailSecretNames.every(
+    (name) => secretAccess[name] === true,
+  );
+  const completionEmailConfigured = completionEmailSecretsEnabled
+    && completionEmailBindingsCorrect
+    && completionEmailSecretAccessReady;
   const imageDigest = imageDocument?.image_summary?.digest
     || imageDocument?.imageSummary?.digest
     || null;
@@ -210,9 +224,13 @@ export function summarizeReadiness({
     executorEnabled: env.QUIPSLY_ACCOUNT_DELETION_EXECUTOR_ENABLED?.value === "true",
     storageAllowlistExact: env.QUIPSLY_ACCOUNT_DELETION_GCS_BUCKETS?.value === options.bucket,
     firebaseProjectExact: env.FIREBASE_PROJECT_ID?.value === options.firebaseProject,
-    secretVersionsEnabled: Object.values(secretStates).every((state) => state === "ENABLED"),
+    secretVersionsEnabled: requiredSecretNames.every(
+      (name) => secretStates[name] === "ENABLED",
+    ),
     secretBindingsCorrect,
-    secretAccessReady: Object.values(secretAccess).every(Boolean),
+    secretAccessReady: requiredSecretNames.every(
+      (name) => secretAccess[name] === true,
+    ),
     cloudSqlAccessReady: hasAnyRole([projectRoles], ["roles/cloudsql.client", "roles/cloudsql.admin", "roles/editor", "roles/owner"]),
     firebaseDeleteAccessReady: hasAnyRole([firebaseRoles], ["roles/firebaseauth.admin", "roles/firebase.admin", "roles/editor", "roles/owner"]),
     storageDeleteAccessReady: hasAnyRole(
@@ -237,7 +255,7 @@ export function summarizeReadiness({
   if (serviceDocument && (!checks.workerModeEnabled || !checks.executorEnabled)) blocker(blockers, "worker-mode-disabled", "Dedicated worker mode and executor gate are not both enabled.");
   if (serviceDocument && !checks.storageAllowlistExact) blocker(blockers, "storage-allowlist-mismatch", "Worker storage allowlist is not the exact approved bucket.", "security");
   if (serviceDocument && !checks.firebaseProjectExact) blocker(blockers, "firebase-project-mismatch", "Worker Firebase project does not match Quipsly identity.", "security");
-  if (!checks.secretVersionsEnabled) blocker(blockers, "provider-secrets-missing", "Database, Resend, verified sender, or worker shared-secret version is absent or disabled.", "provider");
+  if (!checks.secretVersionsEnabled) blocker(blockers, "provider-secrets-missing", "Database or worker shared-secret version is absent or disabled.", "provider");
   if (serviceDocument && !checks.secretBindingsCorrect) blocker(blockers, "worker-secret-bindings-mismatch", "Worker secret bindings are incomplete or plaintext.", "security");
   if (!checks.secretAccessReady) blocker(blockers, "worker-secret-access-missing", "Dedicated worker cannot access every required secret.", "security");
   if (!checks.cloudSqlAccessReady) blocker(blockers, "worker-cloudsql-access-missing", "Dedicated worker lacks Cloud SQL client access.", "security");
@@ -281,6 +299,13 @@ export function summarizeReadiness({
       bucketRoles,
       serviceInvokerRoles,
       publicPages,
+      completionEmail: {
+        configured: completionEmailConfigured,
+        requiredForDeletion: false,
+        secretVersionsEnabled: completionEmailSecretsEnabled,
+        secretBindingsCorrect: completionEmailBindingsCorrect,
+        secretAccessReady: completionEmailSecretAccessReady,
+      },
     },
     checks,
     machineChecksPassed: Object.values(checks).every(Boolean),

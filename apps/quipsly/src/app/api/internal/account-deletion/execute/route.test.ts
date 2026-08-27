@@ -75,11 +75,15 @@ describe("internal account deletion worker", () => {
       databaseConfigured: true,
       firebaseProjectConfigured: true,
       storageBucketAllowlistConfigured: true,
-      resendConfigured: true,
+    });
+    expect(payload.completionEmail).toEqual({
+      configured: true,
+      apiKeyConfigured: true,
       senderConfigured: true,
       senderValid: true,
+      senderDomain: "notify.quipsly.com",
+      requiredForDeletion: false,
     });
-    expect(payload.senderDomain).toBe("notify.quipsly.com");
     expect(JSON.stringify(payload)).not.toContain("resend-secret");
     delete process.env.QUIPSLY_ACCOUNT_DELETION_EXECUTOR_ENABLED;
     delete process.env.QUIPSLY_ACCOUNT_DELETION_GCS_BUCKETS;
@@ -87,6 +91,27 @@ describe("internal account deletion worker", () => {
     delete process.env.FIREBASE_PROJECT_ID;
     delete process.env.QUIPSLY_ACCOUNT_DELETION_RESEND_API_KEY;
     delete process.env.QUIPSLY_ACCOUNT_DELETION_EMAIL_FROM;
+  });
+
+  it("keeps deletion ready when optional completion email is unavailable", async () => {
+    process.env.QUIPSLY_ACCOUNT_DELETION_EXECUTOR_ENABLED = "true";
+    process.env.QUIPSLY_ACCOUNT_DELETION_GCS_BUCKETS = "quipsly-media";
+    process.env.DATABASE_URL = "postgresql://secret";
+    process.env.FIREBASE_PROJECT_ID = "quipsly-reef";
+    delete process.env.QUIPSLY_ACCOUNT_DELETION_RESEND_API_KEY;
+    delete process.env.QUIPSLY_ACCOUNT_DELETION_EMAIL_FROM;
+    const response = await GET(request());
+    const payload = await response.json();
+    expect(response.status).toBe(200);
+    expect(payload.ok).toBe(true);
+    expect(payload.completionEmail).toMatchObject({
+      configured: false,
+      requiredForDeletion: false,
+    });
+    delete process.env.QUIPSLY_ACCOUNT_DELETION_EXECUTOR_ENABLED;
+    delete process.env.QUIPSLY_ACCOUNT_DELETION_GCS_BUCKETS;
+    delete process.env.DATABASE_URL;
+    delete process.env.FIREBASE_PROJECT_ID;
   });
 
   it("binds the exact approved plan to the exact request", async () => {

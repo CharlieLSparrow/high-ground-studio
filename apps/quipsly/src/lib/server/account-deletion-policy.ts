@@ -45,7 +45,7 @@ const STATUS_COPY: Record<
     detail:
       "Quipsly is deleting personal data and separating or anonymizing records that other participants or legal obligations still require.",
     nextAction:
-      "No action is required. Quipsly will show progress here and email you when deletion is complete.",
+      "No action is required. Quipsly will continue automatically and show the result here.",
     active: true,
   },
   EXPORT_PREPARING: {
@@ -60,7 +60,7 @@ const STATUS_COPY: Record<
     detail:
       "Your account passed the automatic data check and is queued for secure deletion.",
     nextAction:
-      "Quipsly will complete deletion and send confirmation to your account email.",
+      "Quipsly will complete deletion automatically. Email confirmation is sent when delivery is available.",
     active: true,
   },
   EXECUTING: {
@@ -68,14 +68,14 @@ const STATUS_COPY: Record<
     detail:
       "Quipsly is removing account access and applying the deletion and retention rules.",
     nextAction:
-      "No action is required. Quipsly will send completion confirmation to your account email.",
+      "No action is required. Quipsly will finish automatically and record the result.",
     active: true,
   },
   COMPLETED: {
     label: "Deletion completed",
     detail: "Quipsly completed account deletion.",
     nextAction:
-      "Check your account email for the completion confirmation and the disclosed categories of records that were retained or anonymized.",
+      "Deletion is complete. If email delivery was available, Quipsly also sent a confirmation.",
     active: false,
   },
   FAILED: {
@@ -160,6 +160,6 @@ export function accountDeletionPolicyResponse() {
     timing:
       "Quipsly targets completion within 30 days. If legal retention or unusually complex attached records require more time, Quipsly will explain the delay.",
     completionConfirmation:
-      "Quipsly provides completion confirmation through the request status and the account email.",
+      "Quipsly records completion in the request status and also emails confirmation when delivery is available.",
   };
 }

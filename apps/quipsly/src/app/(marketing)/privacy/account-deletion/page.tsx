@@ -57,8 +57,8 @@ export default function AccountDeletionPage() {
               </h2>
               <p className="leading-relaxed text-[#7a604c]">
                 Reopen Account to see progress. Quipsly uses your account email
-                only if identity confirmation is needed and to confirm
-                completion.
+                if identity confirmation is needed and sends a completion email
+                when delivery is available.
               </p>
             </section>
           </div>

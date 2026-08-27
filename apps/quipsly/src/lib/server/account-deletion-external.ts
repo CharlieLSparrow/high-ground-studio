@@ -7,6 +7,7 @@ import { accountDeletionEmailConfiguration } from "@/lib/server/account-deletion
 import type { AccountDeletionStorageObject } from "@/lib/server/account-deletion-inventory";
 
 export type AccountDeletionExternalServices = {
+  completionConfirmationConfigured?: boolean;
   disableFirebaseIdentity(firebaseUid: string | null): Promise<void>;
   deleteFirebaseIdentity(firebaseUid: string | null): Promise<void>;
   deleteStorageObject(object: AccountDeletionStorageObject): Promise<void>;
@@ -175,8 +176,11 @@ async function sendCompletionConfirmation(input: {
 
 export function createAccountDeletionExternalServices(): AccountDeletionExternalServices {
   const storage = new Storage();
+  const email = accountDeletionEmailConfiguration();
 
   return {
+    completionConfirmationConfigured:
+      email.apiKeyConfigured && email.fromConfigured && email.fromValid,
     async disableFirebaseIdentity(firebaseUid) {
       if (!firebaseUid) return;
       try {

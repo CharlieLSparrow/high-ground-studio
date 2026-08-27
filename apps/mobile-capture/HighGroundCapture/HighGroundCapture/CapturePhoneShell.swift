@@ -14987,7 +14987,7 @@ private struct AccountDeletionSheet: View {
                 } else {
                     Section("Timing") {
                         Text(client.policy?.timing ?? "Quipsly targets completion within 30 days. If required retention or unusually complex attached records require more time, Quipsly will explain the delay.")
-                        Text(client.policy?.completionConfirmation ?? "Reopen Account to follow progress. Quipsly also sends completion confirmation to your account email.")
+                        Text(client.policy?.completionConfirmation ?? "Reopen Account to follow progress. If email delivery is available, Quipsly also sends a confirmation.")
                             .foregroundStyle(.secondary)
                     }
                 }

@@ -86,6 +86,29 @@ test("complete machine state still preserves schema and real deletion proof", ()
   assert.equal(receipt.externalMutation, false);
 });
 
+test("completion email is useful but never gates deletion readiness", () => {
+  const current = fixture();
+  for (const name of [options.resendSecret, options.senderSecret]) {
+    current.secretDocuments[name] = null;
+    current.secretPolicies[name] = null;
+  }
+  current.serviceDocument.spec.template.spec.containers[0].env =
+    current.serviceDocument.spec.template.spec.containers[0].env.filter(
+      (entry) => ![
+        "QUIPSLY_ACCOUNT_DELETION_RESEND_API_KEY",
+        "QUIPSLY_ACCOUNT_DELETION_EMAIL_FROM",
+      ].includes(entry.name),
+    );
+  const receipt = summarizeReadiness(current);
+  assert.equal(receipt.machineChecksPassed, true);
+  assert.equal(receipt.provider.completionEmail.configured, false);
+  assert.equal(receipt.provider.completionEmail.requiredForDeletion, false);
+  assert.equal(
+    receipt.blockers.some(({ code }) => code === "provider-secrets-missing"),
+    false,
+  );
+});
+
 test("current-style absent worker fails on exact provider and IAM boundaries", () => {
   const current = fixture();
   current.imageDocument = null;

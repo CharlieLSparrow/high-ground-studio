@@ -1851,7 +1851,7 @@ model CoachingFormAutomationPolicy {
 
   owner                 User                                   @relation("CoachingFormAutomationPolicyOwner", fields: [ownerCoachUserId], references: [id], onDelete: Cascade)
   template              CoachingFormTemplate                   @relation(fields: [templateId], references: [id], onDelete: Cascade)
-  pinnedTemplateVersion CoachingFormTemplateVersion?           @relation("CoachingFormAutomationPinnedVersion", fields: [pinnedTemplateVersionId, templateId], references: [id, templateId], onDelete: Restrict)
+  pinnedTemplateVersion CoachingFormTemplateVersion?           @relation("CoachingFormAutomationPinnedVersion", fields: [pinnedTemplateVersionId, templateId], references: [id, templateId], onDelete: Restrict, map: "CoachingFormAutomationPolicy_pinnedTemplateVersionId_templateId")
   engagement            CoachingEngagement                     @relation(fields: [engagementId], references: [id], onDelete: Cascade)
   revisions             CoachingFormAutomationPolicyRevision[]
   receipts              CoachingFormAutomationReceipt[]
@@ -2518,9 +2518,9 @@ model SessionConversationMessage {
   replies   SessionConversationMessage[]         @relation("SessionConversationReply")
   revisions SessionConversationMessageRevision[]
 
-  @@unique([authorUserId, clientRequestId])
-  @@index([roomId, createdAt, id])
-  @@index([replyToId, createdAt])
+  @@unique([authorUserId, clientRequestId], map: "SessionConversationMessage_author_request_key")
+  @@index([roomId, createdAt, id], map: "SessionConversationMessage_room_time_idx")
+  @@index([replyToId, createdAt], map: "SessionConversationMessage_reply_time_idx")
 }
 
 model SessionConversationMessageRevision {
@@ -2533,11 +2533,11 @@ model SessionConversationMessageRevision {
   bodyAfter   String?                              @db.Text
   createdAt   DateTime                             @default(now())
 
-  message SessionConversationMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
-  actor   User                       @relation("SessionConversationRevisionActor", fields: [actorUserId], references: [id], onDelete: Restrict)
+  message SessionConversationMessage @relation(fields: [messageId], references: [id], onDelete: Cascade, map: "SessionConversationRevision_messageId_fkey")
+  actor   User                       @relation("SessionConversationRevisionActor", fields: [actorUserId], references: [id], onDelete: Restrict, map: "SessionConversationRevision_actorUserId_fkey")
 
-  @@unique([messageId, revision])
-  @@index([actorUserId, createdAt])
+  @@unique([messageId, revision], map: "SessionConversationRevision_message_revision_key")
+  @@index([actorUserId, createdAt], map: "SessionConversationRevision_actor_time_idx")
 }
 
 model SessionConversationReadCursor {
@@ -2551,7 +2551,7 @@ model SessionConversationReadCursor {
   user User     @relation("SessionConversationReadCursorUser", fields: [userId], references: [id], onDelete: Cascade)
 
   @@id([roomId, userId])
-  @@index([userId, updatedAt])
+  @@index([userId, updatedAt], map: "SessionConversationReadCursor_user_time_idx")
 }
 
 model CallRoomEpisodeBindingReceipt {
@@ -2661,8 +2661,8 @@ model CallRecordingEndpointReceipt {
   room      CallRoom               @relation(fields: [roomId], references: [id], onDelete: Cascade)
 
   @@index([directiveId, receivedAt])
-  @@index([roomId, participantId, receivedAt])
-  @@index([roomId, clientInstanceId, receivedAt])
+  @@index([roomId, participantId, receivedAt], map: "CallRecordingEndpointReceipt_roomId_participantId_receivedAt_id")
+  @@index([roomId, clientInstanceId, receivedAt], map: "CallRecordingEndpointReceipt_roomId_clientInstanceId_receivedAt")
   @@index([captureId, receivedAt])
 }
 
@@ -3081,7 +3081,7 @@ model SessionAudioAlignmentJob {
 
   @@index([roomId, status, createdAt])
   @@index([targetRecordingAssetId, createdAt])
-  @@index([spineRecordingAssetId, targetRecordingAssetId, createdAt])
+  @@index([spineRecordingAssetId, targetRecordingAssetId, createdAt], map: "SessionAudioAlignmentJob_spineRecordingAssetId_targetRecordingA")
   @@index([status, createdAt])
 }
 
@@ -3140,7 +3140,7 @@ model SessionAudioAlignmentDecisionReceipt {
   alignmentJob SessionAudioAlignmentJob @relation(fields: [alignmentJobId], references: [id], onDelete: Restrict)
   actor        User                     @relation("SessionAudioAlignmentDecisionActor", fields: [actorUserId], references: [id], onDelete: Restrict)
 
-  @@unique([alignmentJobId, revision])
+  @@unique([alignmentJobId, revision], map: "SessionAudioAlignmentDecisionReceipt_alignmentJobId_revision_ke")
   @@index([roomId, createdAt])
   @@index([actorUserId, createdAt])
 }
