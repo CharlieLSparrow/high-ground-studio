@@ -91,6 +91,16 @@ test("SaaS subscription activation is explicit and Secret Manager backed", () =>
   assert.match(source, /QUIPSLY_SAAS_ENTITLEMENT_ENFORCEMENT=true/);
 });
 
+test("preview deploy configures production App Store receipt verification", () => {
+  const source = readFileSync(deployScript, "utf8");
+
+  assert.match(source, /APP_STORE_BUNDLE_ID="\$\{APP_STORE_BUNDLE_ID:-com\.highgroundodyssey\.HighGroundCapture\}"/);
+  assert.match(source, /APP_STORE_APP_APPLE_ID="\$\{APP_STORE_APP_APPLE_ID:-6780995957\}"/);
+  assert.match(source, /APP_STORE_ENABLE_ONLINE_CHECKS="\$\{APP_STORE_ENABLE_ONLINE_CHECKS:-true\}"/);
+  assert.match(source, /APP_STORE_APP_APPLE_ID=\$\{APP_STORE_APP_APPLE_ID\}/);
+  assert.match(source, /APP_STORE_ENABLE_ONLINE_CHECKS=\$\{APP_STORE_ENABLE_ONLINE_CHECKS\}/);
+});
+
 test("session invitation email is explicit, Secret Manager backed, and safe to disable", () => {
   const source = readFileSync(deployScript, "utf8");
 
