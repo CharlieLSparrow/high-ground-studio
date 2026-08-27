@@ -355,6 +355,8 @@ private struct CaptureTodayView: View {
     @Binding var visibleTab: CaptureRootTab
     let onStartVoiceNote: () -> Void
     @StateObject private var library = LocalRecordingLibrary.shared
+    @StateObject private var writingStore = VoiceWritingDraftStore.shared
+    @StateObject private var writingSync = VoiceWritingDraftSyncClient.shared
     @StateObject private var auth = AuthManager.shared
     @State private var calendarEventDraft: CaptureCalendarEventDraft?
     @State private var calendarEditorStatus: String?
@@ -370,6 +372,27 @@ private struct CaptureTodayView: View {
                     onStartVoiceNote: onStartVoiceNote,
                     onNewSession: { showsNewSession = true }
                 )
+
+                if let draft = writingStore.drafts.first {
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack {
+                            Text("Continue writing")
+                                .font(.title3.weight(.bold))
+                            Spacer()
+                            Button("All writing") { visibleTab = .library }
+                                .buttonStyle(.bordered)
+                        }
+                        CaptureVoiceWritingLibraryRow(
+                            draft: draft,
+                            recording: library.recording(id: draft.localRecordingID),
+                            timedTranscript: OnDeviceTranscriptManager.shared
+                                .storedTranscript(for: draft.localRecordingID)?.segments ?? [],
+                            tagClient: model.todayClient,
+                            onContinueByVoice: continueVoiceWriting
+                        )
+                    }
+                    .accessibilityIdentifier("CaptureTodayContinueWriting")
+                }
 
                 if model.usesPreviewData
                     && !CaptureLaunchConfiguration.usesAppStorePresentation {
@@ -515,6 +538,10 @@ private struct CaptureTodayView: View {
         .navigationTitle("Quipsly Capture")
         .navigationBarTitleDisplayMode(.inline)
         .refreshable { await model.load() }
+        .task {
+            guard !model.usesPreviewData else { return }
+            await writingSync.refreshFromNest()
+        }
         .sheet(item: $calendarEventDraft) { draft in
             CaptureCalendarEventEditorSheet(draft: draft) { action in
                 calendarEventDraft = nil
@@ -546,6 +573,21 @@ private struct CaptureTodayView: View {
     private var laterSessions: [MobileCaptureSession] {
         guard let nextSessionID = model.nextSession?.id else { return model.sessions }
         return model.sessions.filter { $0.id != nextSessionID }
+    }
+
+    private func continueVoiceWriting(_ draft: VoiceWritingDraft) {
+        Task {
+            guard let created = await model.createPersonalVoiceNote(continuing: draft.title) else { return }
+            do {
+                try writingStore.stageContinuation(
+                    callRoomID: created.callRoomId,
+                    draftID: draft.id
+                )
+                visibleTab = .record
+            } catch {
+                model.errorMessage = "The new Voice Note is ready, but Quipsly could not connect it to that writing yet: \(error.localizedDescription)"
+            }
+        }
     }
 
     private var greeting: String {
@@ -6880,6 +6922,7 @@ private struct CaptureVoiceWritingEditor: View {
     @State private var title: String
     @State private var bodyText: String
     @State private var showsTranscript = false
+    @State private var transcriptQuery = ""
     @State private var showsTagEditor = false
     @State private var saveTask: Task<Void, Never>?
 
@@ -7036,8 +7079,47 @@ private struct CaptureVoiceWritingEditor: View {
                 .buttonStyle(.plain)
 
                 if showsTranscript {
-                    ForEach(transcriptSources) { source in
-                        if transcriptSources.count > 1 {
+                    HStack(spacing: 8) {
+                        Image(systemName: "magnifyingglass")
+                            .foregroundStyle(.secondary)
+                            .accessibilityHidden(true)
+                        TextField("Find in transcript", text: $transcriptQuery)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                            .submitLabel(.search)
+                            .accessibilityIdentifier("CaptureVoiceWritingTranscriptSearch")
+                        if !transcriptQuery.isEmpty {
+                            Button {
+                                transcriptQuery = ""
+                            } label: {
+                                Image(systemName: "xmark.circle.fill")
+                                    .foregroundStyle(.secondary)
+                                    .frame(width: 44, height: 44)
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Clear transcript search")
+                        }
+                    }
+                    .padding(.leading, 12)
+                    .padding(.trailing, 2)
+                    .background(.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
+
+                    if !normalizedTranscriptQuery.isEmpty {
+                        Text(transcriptMatchCount == 1 ? "1 matching passage" : "\(transcriptMatchCount) matching passages")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                    }
+
+                    if visibleTranscriptSources.isEmpty {
+                        Text("No transcript passages match that search.")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.vertical, 8)
+                    }
+
+                    ForEach(visibleTranscriptSources) { source in
+                        if visibleTranscriptSources.count > 1 {
                             Text(source.title)
                                 .font(.caption.weight(.bold))
                                 .foregroundStyle(.secondary)
@@ -7237,6 +7319,25 @@ private struct CaptureVoiceWritingEditor: View {
 
     private var transcriptSegmentCount: Int {
         transcriptSources.reduce(0) { $0 + $1.segments.count }
+    }
+
+    private var normalizedTranscriptQuery: String {
+        transcriptQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var visibleTranscriptSources: [TimedTranscriptSource] {
+        guard !normalizedTranscriptQuery.isEmpty else { return transcriptSources }
+        return transcriptSources.compactMap { source in
+            let matches = source.segments.filter {
+                $0.text.localizedCaseInsensitiveContains(normalizedTranscriptQuery)
+            }
+            guard !matches.isEmpty else { return nil }
+            return TimedTranscriptSource(id: source.id, title: source.title, segments: matches)
+        }
+    }
+
+    private var transcriptMatchCount: Int {
+        visibleTranscriptSources.reduce(0) { $0 + $1.segments.count }
     }
 
     private func voiceSourcePlayer(_ recording: LocalRecording) -> some View {
