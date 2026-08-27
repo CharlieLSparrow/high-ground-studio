@@ -6928,6 +6928,32 @@ private struct CaptureVoiceWritingEditor: View {
                 .font(.caption)
             }
 
+            if let remote = currentDraft?.pendingRemote {
+                Section("This note changed in two places") {
+                    Text("Quipsly kept both copies. Choose the words you want to continue with.")
+                        .font(.subheadline)
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text("Nest copy")
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(.secondary)
+                        Text(remote.body)
+                            .font(.subheadline)
+                            .lineLimit(5)
+                    }
+                    Button("Use Nest copy") {
+                        guard let resolved = writingStore.useNestVersion(recordingID: recordingID) else { return }
+                        title = resolved.title
+                        bodyText = resolved.body
+                    }
+                    .frame(minHeight: 44)
+                    Button("Keep this iPhone copy") {
+                        guard let resolved = writingStore.keepIPhoneVersion(recordingID: recordingID) else { return }
+                        writingSync.schedule(resolved, delay: .zero)
+                    }
+                    .frame(minHeight: 44)
+                }
+            }
+
             Section {
                 Button {
                     withAnimation(.easeInOut(duration: 0.2)) {
@@ -6993,6 +7019,14 @@ private struct CaptureVoiceWritingEditor: View {
         }
         .onChange(of: title) { _, _ in scheduleSave() }
         .onChange(of: bodyText) { _, _ in scheduleSave() }
+        .task {
+            await writingSync.refreshFromNest()
+            guard !bodyIsFocused,
+                  let refreshed = currentDraft,
+                  refreshed.pendingRemote == nil else { return }
+            title = refreshed.title
+            bodyText = refreshed.body
+        }
         .onDisappear {
             saveTask?.cancel()
             saveImmediately()
@@ -7004,6 +7038,9 @@ private struct CaptureVoiceWritingEditor: View {
     private var syncStatus: some View {
         if writingSync.syncingRecordingIDs.contains(recordingID) {
             Label("Saving…", systemImage: "icloud.and.arrow.up")
+        } else if currentDraft?.pendingRemote != nil {
+            Label("Two copies", systemImage: "arrow.triangle.branch")
+                .foregroundStyle(.orange)
         } else if currentDraft?.isSynced == true {
             Label("My Nest", systemImage: "checkmark.icloud.fill")
                 .foregroundStyle(.green)
@@ -11125,6 +11162,7 @@ private struct CaptureLibraryView: View {
     @EnvironmentObject private var audioCapture: AudioCaptureController
     @StateObject private var library = LocalRecordingLibrary.shared
     @StateObject private var writingStore = VoiceWritingDraftStore.shared
+    @StateObject private var writingSync = VoiceWritingDraftSyncClient.shared
     @StateObject private var playback = LocalRecordingPlaybackController()
     @State private var recordingPendingLocalDeletion: LocalRecording?
     @State private var selectedSection: CaptureLibrarySection = .writing
@@ -11157,6 +11195,11 @@ private struct CaptureLibraryView: View {
                 .accessibilityIdentifier("CaptureLibrarySectionPicker")
 
                 if selectedSection == .writing {
+                    if writingSync.isRefreshing {
+                        Label("Updating writing…", systemImage: "arrow.triangle.2.circlepath")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                    }
                     writingContent
                 } else {
                     recordingContent
@@ -11213,6 +11256,10 @@ private struct CaptureLibraryView: View {
             if model.usesPreviewData && !CaptureLaunchConfiguration.usesAppStorePresentation {
                 selectedSection = .recordings
             }
+        }
+        .task {
+            guard !model.usesPreviewData else { return }
+            await writingSync.refreshFromNest()
         }
         .onDisappear { playback.stop() }
     }
@@ -11455,8 +11502,8 @@ private struct CaptureVoiceWritingLibraryRow: View {
 
                 HStack(spacing: 12) {
                     Label(
-                        draft.isSynced ? "My Nest" : "On this iPhone",
-                        systemImage: draft.isSynced ? "checkmark.icloud.fill" : "iphone"
+                        draft.pendingRemote != nil ? "Changed on iPhone and web" : draft.isSynced ? "My Nest" : "On this iPhone",
+                        systemImage: draft.pendingRemote != nil ? "arrow.triangle.branch" : draft.isSynced ? "checkmark.icloud.fill" : "iphone"
                     )
                     if let recording {
                         Label(recording.durationSeconds.captureDurationLabel, systemImage: "waveform")
@@ -11465,7 +11512,7 @@ private struct CaptureVoiceWritingLibraryRow: View {
                     }
                 }
                 .font(.caption.weight(.semibold))
-                .foregroundStyle(draft.isSynced ? .green : .secondary)
+                .foregroundStyle(draft.pendingRemote != nil ? .orange : draft.isSynced ? .green : .secondary)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .captureCard()

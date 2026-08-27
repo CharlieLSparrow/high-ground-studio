@@ -6,6 +6,7 @@ import { ensureHomeNestForEmail } from "@/lib/server/home-nest";
 import {
   mobileVoiceWritingBodyBlockId,
   mobileVoiceWritingContentHash,
+  mobileVoiceWritingDraftIdFromDocumentId,
   mobileVoiceWritingDocumentId,
   mobileVoiceWritingOperationId,
   mobileVoiceWritingSource,
@@ -45,18 +46,107 @@ function currentVoiceRevision(document: any) {
   };
 }
 
+function voiceWritingBody(document: any, draftId: string) {
+  return document.blocks?.find((block: any) => block.id === mobileVoiceWritingBodyBlockId(draftId))?.body || "";
+}
+
+function voiceWritingContentRevision(document: any, draftId: string) {
+  return mobileVoiceWritingContentHash({
+    title: String(document?.title || "Voice note"),
+    body: voiceWritingBody(document, draftId),
+  });
+}
+
 function publicDraft(document: any, serverRevision: number, input: MobileVoiceWritingInput) {
-  const bodyBlock = document.blocks?.find((block: any) => block.id === mobileVoiceWritingBodyBlockId(input.draftId));
+  const body = voiceWritingBody(document, input.draftId) || input.body;
   return {
+    draftId: input.draftId,
     documentId: document.id,
     projectId: document.projectId,
     projectName: document.project?.name || "My Nest",
     title: document.title,
-    body: bodyBlock?.body || input.body,
+    body,
     localRevision: input.localRevision,
     serverRevision,
+    contentRevision: mobileVoiceWritingContentHash({ title: document.title, body }),
+    localRecordingId: input.localRecordingId,
+    transcriptClientRequestId: input.transcriptClientRequestId,
+    sourceSha256: input.sourceSha256,
+    callRoomId: input.callRoomId,
     updatedAt: document.updatedAt.toISOString(),
   };
+}
+
+function publicStoredDraft(document: any) {
+  const draftId = mobileVoiceWritingDraftIdFromDocumentId(String(document.id || ""));
+  if (!draftId) return null;
+  const operation = document.documentOperations?.[0];
+  const source = record(operation?.payloadJson);
+  const current = currentVoiceRevision(document);
+  const body = voiceWritingBody(document, draftId);
+  return {
+    draftId,
+    documentId: document.id,
+    projectId: document.projectId,
+    projectName: document.project?.name || "My Nest",
+    title: document.title,
+    body,
+    localRevision: current.serverRevision ?? 1,
+    serverRevision: current.serverRevision ?? 1,
+    contentRevision: mobileVoiceWritingContentHash({ title: document.title, body }),
+    localRecordingId: String(source.localRecordingId || draftId),
+    transcriptClientRequestId: String(source.transcriptClientRequestId || draftId),
+    sourceSha256: String(source.sourceSha256 || "").toLowerCase(),
+    callRoomId: typeof source.callRoomId === "string" ? source.callRoomId : null,
+    createdAt: document.createdAt.toISOString(),
+    updatedAt: document.updatedAt.toISOString(),
+  };
+}
+
+export async function GET(request: Request) {
+  const session = await getQuipslySessionFromRequest(request);
+  const actorUserId = String(session?.user?.id || "").trim();
+  if (!actorUserId) {
+    return NextResponse.json(
+      { ok: false, code: "AUTH_REQUIRED", error: "Sign in before loading private writing." },
+      { status: 401 },
+    );
+  }
+
+  const requestedDraftId = String(new URL(request.url).searchParams.get("draftId") || "").trim().toLowerCase();
+  if (requestedDraftId && !mobileVoiceWritingDraftIdFromDocumentId(mobileVoiceWritingDocumentId(requestedDraftId))) {
+    return NextResponse.json(
+      { ok: false, code: "VOICE_WRITING_ID_INVALID", error: "That private writing identity is invalid." },
+      { status: 400 },
+    );
+  }
+
+  const prisma = getPrismaClient() as any;
+  const documents = await prisma.studioDocument.findMany({
+    where: {
+      personalOwnerUserId: actorUserId,
+      sourceLabel: { contains: "origin:ios-voice-writing", mode: "insensitive" },
+      ...(requestedDraftId ? { id: mobileVoiceWritingDocumentId(requestedDraftId) } : {}),
+    },
+    orderBy: [{ updatedAt: "desc" }, { id: "asc" }],
+    take: requestedDraftId ? 1 : 250,
+    include: {
+      project: { select: { name: true } },
+      blocks: { where: { archivedAt: null }, orderBy: [{ order: "asc" }, { id: "asc" }] },
+      documentOperations: {
+        where: { operationType: "mobile-voice-writing-sync" },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        take: 1,
+      },
+    },
+  });
+  const drafts = documents.map(publicStoredDraft).filter(Boolean);
+  return NextResponse.json({
+    ok: true,
+    schema: "quipsly-mobile-voice-writing-list-v1",
+    drafts,
+    nextAction: null,
+  });
 }
 
 export async function POST(request: Request) {
@@ -174,6 +264,13 @@ export async function POST(request: Request) {
     if (exactOperation) {
       const exactAfter = record(exactOperation.afterJson);
       if (exactAfter.contentHash !== contentHash) return { kind: "identity-conflict" as const };
+      if (voiceWritingContentRevision(existing, input.draftId) !== contentHash) {
+        return {
+          kind: "conflict" as const,
+          document: existing,
+          serverRevision: currentVoiceRevision(existing).serverRevision,
+        };
+      }
       return {
         kind: "saved" as const,
         document: existing,
@@ -182,7 +279,11 @@ export async function POST(request: Request) {
       };
     }
 
-    if (current.serverRevision === null || current.serverRevision !== input.expectedServerRevision) {
+    const currentContentRevision = voiceWritingContentRevision(existing, input.draftId);
+    const contentRevisionMatches = input.expectedContentRevision
+      ? currentContentRevision === input.expectedContentRevision
+      : current.serverRevision !== null && current.serverRevision === input.expectedServerRevision;
+    if (!contentRevisionMatches) {
       return {
         kind: "conflict" as const,
         document: existing,
@@ -190,7 +291,7 @@ export async function POST(request: Request) {
       };
     }
 
-    const beforeBody = existing.blocks.find((block: any) => block.id === bodyBlockId)?.body || "";
+    const beforeBody = voiceWritingBody(existing, input.draftId);
     await tx.studioDocument.update({
       where: { id: documentId },
       data: {
@@ -266,8 +367,8 @@ export async function POST(request: Request) {
         code: "VOICE_WRITING_CONFLICT",
         error: "This note changed somewhere else. Your complete iPhone draft is still protected.",
         serverRevision: result.serverRevision,
-        current: result.document && result.serverRevision
-          ? publicDraft(result.document, result.serverRevision, input)
+        current: result.document
+          ? publicDraft(result.document, result.serverRevision ?? input.expectedServerRevision, input)
           : null,
       },
       { status: 409 },

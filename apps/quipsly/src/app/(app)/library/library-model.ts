@@ -181,6 +181,7 @@ export function buildLibraryEntries(input: {
     const episode = document.episodeProductions[0] ?? null;
     const blockCount = document._count?.blocks ?? 0;
     const writingNote = clean(document.sourceLabel).toLowerCase().includes("document-kind:note");
+    const voiceWriting = clean(document.sourceLabel).toLowerCase().includes("origin:ios-voice-writing");
     const previewBlock = (document.blocks ?? []).find((block) => {
       const body = clean(block.body);
       return body
@@ -208,8 +209,10 @@ export function buildLibraryEntries(input: {
         ? `/read?projectSlug=${encode(document.project.slug)}&episodeSlug=${encode(episode.slug)}`
         : `/create?project=${encode(document.project.slug)}&document=${encode(document.id)}`,
       updatedAt: iso(document.updatedAt),
-      stateLabel: writingNote ? "Writing note" : episode ? `Episode ${clean(episode.status).replaceAll("_", " ")}` : clean(document.projectionStatus).replaceAll("_", " "),
-      badges: [writingNote ? "Document-kernel note" : episode ? "Episode manuscript" : "Document", ...tagBadges, `${blockCount} blocks`, "Stable document identity"],
+      stateLabel: voiceWriting ? "Voice note" : writingNote ? "Note" : episode ? `Episode ${clean(episode.status).replaceAll("_", " ")}` : clean(document.projectionStatus).replaceAll("_", " "),
+      badges: writingNote
+        ? [voiceWriting ? "From Quipsly Capture" : "Writing", ...tagBadges, `${blockCount} section${blockCount === 1 ? "" : "s"}`]
+        : [episode ? "Episode manuscript" : "Writing", ...tagBadges, `${blockCount} section${blockCount === 1 ? "" : "s"}`],
       searchText: [document.title, document.projectionStatus, document.project.name, episode?.title, episode?.status, ...documentTags.flatMap((tag) => [tag.label, tag.slug]), ...(document.blocks ?? []).flatMap((block) => [block.title, block.body])].map(clean).join(" "),
     });
   }

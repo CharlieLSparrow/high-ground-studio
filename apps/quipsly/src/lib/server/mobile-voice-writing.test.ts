@@ -1,5 +1,6 @@
 import {
   mobileVoiceWritingBodyBlockId,
+  mobileVoiceWritingDraftIdFromDocumentId,
   mobileVoiceWritingDocumentId,
   mobileVoiceWritingOperationId,
   mobileVoiceWritingSource,
@@ -20,6 +21,7 @@ describe("mobile voice writing", () => {
       body: "First line\r\nSecond line",
       localRevision: 4,
       expectedServerRevision: 3,
+      expectedContentRevision: "b".repeat(64),
     });
     expect(result).toMatchObject({
       ok: true,
@@ -32,6 +34,8 @@ describe("mobile voice writing", () => {
     });
     if (!result.ok) throw new Error(result.error);
     expect(mobileVoiceWritingDocumentId(draftId)).toBe(`voice-writing-${draftId}`);
+    expect(mobileVoiceWritingDraftIdFromDocumentId(`voice-writing-${draftId}`)).toBe(draftId);
+    expect(mobileVoiceWritingDraftIdFromDocumentId(`other-${draftId}`)).toBeNull();
     expect(mobileVoiceWritingBodyBlockId(draftId)).toBe(`voice-writing-${draftId}-body`);
     expect(mobileVoiceWritingOperationId(draftId, 4)).toBe(`voice-writing-${draftId}-revision-4`);
     expect(mobileVoiceWritingSource(result.value, "user-1")).toMatchObject({
@@ -45,6 +49,7 @@ describe("mobile voice writing", () => {
     [{}, "VOICE_WRITING_ID_INVALID"],
     [{ draftId, localRecordingId: draftId, transcriptClientRequestId: draftId, sourceSha256: "nope", body: "Text", localRevision: 1, expectedServerRevision: 0 }, "VOICE_WRITING_SOURCE_INVALID"],
     [{ draftId, localRecordingId: draftId, transcriptClientRequestId: draftId, sourceSha256: "a".repeat(64), body: " ", localRevision: 1, expectedServerRevision: 0 }, "VOICE_WRITING_EMPTY"],
+    [{ draftId, localRecordingId: draftId, transcriptClientRequestId: draftId, sourceSha256: "a".repeat(64), body: "Text", localRevision: 1, expectedServerRevision: 0, expectedContentRevision: "not-a-revision" }, "VOICE_WRITING_REVISION_INVALID"],
   ])("rejects malformed durable drafts", (input, code) => {
     expect(validateMobileVoiceWriting(input)).toMatchObject({ ok: false, code });
   });

@@ -12,6 +12,7 @@ export type MobileVoiceWritingInput = {
   body: string;
   localRevision: number;
   expectedServerRevision: number;
+  expectedContentRevision: string | null;
 };
 
 export type MobileVoiceWritingValidation =
@@ -44,6 +45,7 @@ export function validateMobileVoiceWriting(value: unknown): MobileVoiceWritingVa
     : "";
   const localRevision = integer(input.localRevision);
   const expectedServerRevision = integer(input.expectedServerRevision);
+  const expectedContentRevision = text(input.expectedContentRevision, 64).toLowerCase() || null;
 
   if (![draftId, localRecordingId, transcriptClientRequestId].every((id) => UUID_PATTERN.test(id))) {
     return { ok: false, code: "VOICE_WRITING_ID_INVALID", error: "The protected writing identity is invalid." };
@@ -60,6 +62,9 @@ export function validateMobileVoiceWriting(value: unknown): MobileVoiceWritingVa
   if (!Number.isSafeInteger(expectedServerRevision) || expectedServerRevision < 0 || expectedServerRevision > 1_000_000_000) {
     return { ok: false, code: "VOICE_WRITING_REVISION_INVALID", error: "The expected Nest revision is invalid." };
   }
+  if (expectedContentRevision && !/^[0-9a-f]{64}$/.test(expectedContentRevision)) {
+    return { ok: false, code: "VOICE_WRITING_REVISION_INVALID", error: "The expected Nest content revision is invalid." };
+  }
   return {
     ok: true,
     value: {
@@ -72,12 +77,18 @@ export function validateMobileVoiceWriting(value: unknown): MobileVoiceWritingVa
       body,
       localRevision,
       expectedServerRevision,
+      expectedContentRevision,
     },
   };
 }
 
 export function mobileVoiceWritingDocumentId(draftId: string) {
   return `voice-writing-${draftId}`;
+}
+
+export function mobileVoiceWritingDraftIdFromDocumentId(documentId: string) {
+  const match = /^voice-writing-([0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/i.exec(documentId);
+  return match?.[1]?.toLowerCase() ?? null;
 }
 
 export function mobileVoiceWritingBodyBlockId(draftId: string) {

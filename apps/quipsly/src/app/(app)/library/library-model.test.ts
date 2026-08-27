@@ -76,8 +76,8 @@ describe("source-first Library model", () => {
       kind: "NOTE",
       detail: "Protect one honest editing block before Thursday.",
       href: "/create?project=home-person&document=doc-note&block=block-insight",
-      stateLabel: "Writing note",
-      badges: ["Document-kernel note", "2 blocks", "Stable document identity"],
+      stateLabel: "Note",
+      badges: ["Writing", "2 sections"],
     });
     expect(result.counts).toMatchObject({ notes: 1, documents: 0 });
     expect(filterLibraryEntries(result.entries, { query: "honest editing", kind: "note" })).toHaveLength(1);

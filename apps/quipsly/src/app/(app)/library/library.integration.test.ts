@@ -226,7 +226,7 @@ runLocalDatabaseSmoke("Library local database ownership and continuation smoke",
       kind: "NOTE",
       detail: "The document kernel keeps this everyday thought searchable.",
       href: `/create?project=library-${nonce}&document=${writingNoteDocumentId}&block=${writingNoteBlockId}`,
-      stateLabel: "Writing note",
+      stateLabel: "Note",
     });
     expect(library.entries.some((entry) => entry.id === `document:${otherPersonalDocumentId}`)).toBe(false);
     expect(library.entries.find((entry) => entry.id === `media:${standaloneMediaId}`)).toMatchObject({ title: "reusable-cold-open.mov" });

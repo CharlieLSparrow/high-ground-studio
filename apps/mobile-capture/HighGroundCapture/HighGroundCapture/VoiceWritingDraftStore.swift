@@ -1,6 +1,20 @@
 import Combine
 import Foundation
 
+struct VoiceWritingRemoteDraft: Codable, Equatable {
+    let documentID: String
+    let title: String
+    let body: String
+    let contentRevision: String
+    let localRevision: Int
+    let localRecordingID: UUID
+    let sourceTranscriptClientRequestID: UUID
+    let sourceSHA256: String
+    let callRoomID: String?
+    let createdAt: Date
+    let updatedAt: Date
+}
+
 struct VoiceWritingDraft: Codable, Identifiable, Equatable {
     let id: UUID
     let ownerAccountID: String
@@ -14,12 +28,17 @@ struct VoiceWritingDraft: Codable, Identifiable, Equatable {
     var updatedAt: Date
     var localRevision: Int
     var serverRevision: Int?
+    var serverContentRevision: String?
     var canonicalDocumentID: String?
     var lastSyncedAt: Date?
     var lastSyncError: String?
+    var pendingRemote: VoiceWritingRemoteDraft?
 
     var isSynced: Bool {
-        serverRevision == localRevision && canonicalDocumentID != nil
+        serverRevision == localRevision
+            && serverContentRevision != nil
+            && canonicalDocumentID != nil
+            && pendingRemote == nil
     }
 }
 
@@ -160,9 +179,11 @@ final class VoiceWritingDraftStore: ObservableObject {
             updatedAt: now,
             localRevision: 1,
             serverRevision: nil,
+            serverContentRevision: nil,
             canonicalDocumentID: nil,
             lastSyncedAt: nil,
-            lastSyncError: nil
+            lastSyncError: nil,
+            pendingRemote: nil
         )
         storedDrafts.append(draft)
         commitBestEffort()
@@ -202,6 +223,7 @@ final class VoiceWritingDraftStore: ObservableObject {
         recordingID: UUID,
         canonicalDocumentID: String,
         serverRevision: Int,
+        contentRevision: String,
         syncedLocalRevision: Int,
         at date: Date = Date()
     ) {
@@ -211,9 +233,104 @@ final class VoiceWritingDraftStore: ObservableObject {
               }) else { return }
         storedDrafts[index].canonicalDocumentID = canonicalDocumentID
         storedDrafts[index].serverRevision = min(serverRevision, syncedLocalRevision)
+        storedDrafts[index].serverContentRevision = contentRevision
         storedDrafts[index].lastSyncedAt = date
         storedDrafts[index].lastSyncError = nil
+        storedDrafts[index].pendingRemote = nil
         commitBestEffort()
+    }
+
+    func reconcile(_ remote: VoiceWritingRemoteDraft) {
+        guard let owner = try? requireActiveOwner() else { return }
+        if let index = storedDrafts.firstIndex(where: {
+            $0.ownerAccountID == owner && $0.id == remote.localRecordingID
+        }) {
+            let hasLocalChanges = storedDrafts[index].serverRevision != storedDrafts[index].localRevision
+            if storedDrafts[index].serverContentRevision == remote.contentRevision {
+                storedDrafts[index].canonicalDocumentID = remote.documentID
+                if !hasLocalChanges {
+                    storedDrafts[index].serverRevision = storedDrafts[index].localRevision
+                    storedDrafts[index].lastSyncedAt = Date()
+                }
+                storedDrafts[index].lastSyncError = nil
+                storedDrafts[index].pendingRemote = nil
+            } else if hasLocalChanges {
+                storedDrafts[index].pendingRemote = remote
+                storedDrafts[index].lastSyncError = nil
+            } else {
+                storedDrafts[index].title = remote.title
+                storedDrafts[index].body = remote.body
+                storedDrafts[index].updatedAt = remote.updatedAt
+                storedDrafts[index].localRevision = max(storedDrafts[index].localRevision, remote.localRevision)
+                storedDrafts[index].serverRevision = storedDrafts[index].localRevision
+                storedDrafts[index].serverContentRevision = remote.contentRevision
+                storedDrafts[index].canonicalDocumentID = remote.documentID
+                storedDrafts[index].lastSyncedAt = Date()
+                storedDrafts[index].lastSyncError = nil
+                storedDrafts[index].pendingRemote = nil
+            }
+        } else {
+            let revision = max(1, remote.localRevision)
+            storedDrafts.append(VoiceWritingDraft(
+                id: remote.localRecordingID,
+                ownerAccountID: owner,
+                localRecordingID: remote.localRecordingID,
+                sourceTranscriptClientRequestID: remote.sourceTranscriptClientRequestID,
+                sourceSHA256: remote.sourceSHA256,
+                callRoomID: remote.callRoomID,
+                createdAt: remote.createdAt,
+                title: remote.title,
+                body: remote.body,
+                updatedAt: remote.updatedAt,
+                localRevision: revision,
+                serverRevision: revision,
+                serverContentRevision: remote.contentRevision,
+                canonicalDocumentID: remote.documentID,
+                lastSyncedAt: Date(),
+                lastSyncError: nil,
+                pendingRemote: nil
+            ))
+        }
+        commitBestEffort()
+    }
+
+    @discardableResult
+    func useNestVersion(recordingID: UUID) -> VoiceWritingDraft? {
+        guard let owner = try? requireActiveOwner(),
+              let index = storedDrafts.firstIndex(where: {
+                  $0.ownerAccountID == owner && $0.localRecordingID == recordingID
+              }),
+              let remote = storedDrafts[index].pendingRemote else { return nil }
+        storedDrafts[index].title = remote.title
+        storedDrafts[index].body = remote.body
+        storedDrafts[index].updatedAt = remote.updatedAt
+        storedDrafts[index].localRevision = max(storedDrafts[index].localRevision, remote.localRevision)
+        storedDrafts[index].serverRevision = storedDrafts[index].localRevision
+        storedDrafts[index].serverContentRevision = remote.contentRevision
+        storedDrafts[index].canonicalDocumentID = remote.documentID
+        storedDrafts[index].lastSyncedAt = Date()
+        storedDrafts[index].lastSyncError = nil
+        storedDrafts[index].pendingRemote = nil
+        commitBestEffort()
+        return storedDrafts[index]
+    }
+
+    @discardableResult
+    func keepIPhoneVersion(recordingID: UUID) -> VoiceWritingDraft? {
+        guard let owner = try? requireActiveOwner(),
+              let index = storedDrafts.firstIndex(where: {
+                  $0.ownerAccountID == owner && $0.localRecordingID == recordingID
+              }),
+              let remote = storedDrafts[index].pendingRemote else { return nil }
+        let nextRevision = max(storedDrafts[index].localRevision, remote.localRevision) + 1
+        storedDrafts[index].localRevision = nextRevision
+        storedDrafts[index].serverRevision = remote.localRevision
+        storedDrafts[index].serverContentRevision = remote.contentRevision
+        storedDrafts[index].canonicalDocumentID = remote.documentID
+        storedDrafts[index].lastSyncError = nil
+        storedDrafts[index].pendingRemote = nil
+        commitBestEffort()
+        return storedDrafts[index]
     }
 
     func markSyncFailed(recordingID: UUID, message: String) {
@@ -303,6 +420,7 @@ private struct VoiceWritingSyncRequest: Encodable {
     let body: String
     let localRevision: Int
     let expectedServerRevision: Int
+    let expectedContentRevision: String?
 
     init(_ draft: VoiceWritingDraft) {
         draftId = draft.id.uuidString.lowercased()
@@ -314,20 +432,38 @@ private struct VoiceWritingSyncRequest: Encodable {
         body = draft.body
         localRevision = draft.localRevision
         expectedServerRevision = draft.serverRevision ?? 0
+        expectedContentRevision = draft.serverContentRevision
     }
 }
 
 private struct VoiceWritingSyncResponse: Decodable {
     struct SavedDraft: Decodable {
+        let draftId: String
         let documentId: String
+        let title: String
+        let body: String
         let localRevision: Int
         let serverRevision: Int
+        let contentRevision: String
+        let localRecordingId: String
+        let transcriptClientRequestId: String
+        let sourceSha256: String
+        let callRoomId: String?
+        let createdAt: String?
+        let updatedAt: String
     }
 
     let ok: Bool
     let code: String?
     let error: String?
     let draft: SavedDraft?
+    let current: SavedDraft?
+}
+
+private struct VoiceWritingListResponse: Decodable {
+    let ok: Bool
+    let error: String?
+    let drafts: [VoiceWritingSyncResponse.SavedDraft]?
 }
 
 /// Debounced local-first synchronization for private writing. Typing never
@@ -339,6 +475,8 @@ final class VoiceWritingDraftSyncClient: ObservableObject {
     static let shared = VoiceWritingDraftSyncClient()
 
     @Published private(set) var syncingRecordingIDs: Set<UUID> = []
+    @Published private(set) var isRefreshing = false
+    @Published private(set) var refreshError: String?
     private var pendingTasks: [UUID: Task<Void, Never>] = [:]
     private let apiBaseURL = normalizedNestAPIBaseURL(
         Bundle.main.object(forInfoDictionaryKey: "QUIPSLY_API_BASE_URL") as? String
@@ -360,6 +498,40 @@ final class VoiceWritingDraftSyncClient: ObservableObject {
         pendingTasks[recordingID]?.cancel()
         pendingTasks[recordingID] = nil
         Task { [weak self] in await self?.syncLatest(recordingID: recordingID) }
+    }
+
+    func refreshFromNest() async {
+        guard !isRefreshing,
+              AuthManager.shared.networkActionsAllowed,
+              let endpoint = URL(string: "\(apiBaseURL)/api/mobile/capture/voice-writing") else { return }
+        isRefreshing = true
+        refreshError = nil
+        defer { isRefreshing = false }
+        do {
+            var request = URLRequest(url: endpoint)
+            request.httpMethod = "GET"
+            request.setValue("application/json", forHTTPHeaderField: "Accept")
+            let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
+            let payload = try JSONDecoder().decode(VoiceWritingListResponse.self, from: data)
+            guard (200...299).contains(response.statusCode), payload.ok else {
+                throw NSError(
+                    domain: "QuipslyVoiceWriting",
+                    code: response.statusCode,
+                    userInfo: [NSLocalizedDescriptionKey: payload.error ?? "Writing could not refresh yet."]
+                )
+            }
+            for saved in payload.drafts ?? [] {
+                if let remote = Self.remoteDraft(from: saved) {
+                    VoiceWritingDraftStore.shared.reconcile(remote)
+                }
+            }
+            for draft in VoiceWritingDraftStore.shared.drafts
+                where !draft.isSynced && draft.pendingRemote == nil {
+                schedule(draft, delay: .zero)
+            }
+        } catch {
+            refreshError = error.localizedDescription
+        }
     }
 
     private func syncLatest(recordingID: UUID) async {
@@ -393,6 +565,13 @@ final class VoiceWritingDraftSyncClient: ObservableObject {
                 expectedOwnerAccountID: draft.ownerAccountID
             )
             let payload = try JSONDecoder().decode(VoiceWritingSyncResponse.self, from: data)
+            if response.statusCode == 409,
+               payload.code == "VOICE_WRITING_CONFLICT",
+               let current = payload.current,
+               let remote = Self.remoteDraft(from: current) {
+                VoiceWritingDraftStore.shared.reconcile(remote)
+                return
+            }
             guard (200...299).contains(response.statusCode),
                   payload.ok,
                   let saved = payload.draft else {
@@ -406,6 +585,7 @@ final class VoiceWritingDraftSyncClient: ObservableObject {
                 recordingID: recordingID,
                 canonicalDocumentID: saved.documentId,
                 serverRevision: saved.serverRevision,
+                contentRevision: saved.contentRevision,
                 syncedLocalRevision: saved.localRevision
             )
             if let latest = VoiceWritingDraftStore.shared.draft(for: recordingID),
@@ -418,5 +598,29 @@ final class VoiceWritingDraftSyncClient: ObservableObject {
                 message: error.localizedDescription
             )
         }
+    }
+
+    private static func remoteDraft(from saved: VoiceWritingSyncResponse.SavedDraft) -> VoiceWritingRemoteDraft? {
+        guard let recordingID = UUID(uuidString: saved.localRecordingId),
+              let transcriptID = UUID(uuidString: saved.transcriptClientRequestId),
+              saved.contentRevision.range(of: "^[0-9a-f]{64}$", options: .regularExpression) != nil else {
+            return nil
+        }
+        let formatter = ISO8601DateFormatter()
+        let updatedAt = formatter.date(from: saved.updatedAt) ?? Date()
+        let createdAt = saved.createdAt.flatMap(formatter.date(from:)) ?? updatedAt
+        return VoiceWritingRemoteDraft(
+            documentID: saved.documentId,
+            title: saved.title,
+            body: saved.body,
+            contentRevision: saved.contentRevision,
+            localRevision: max(1, saved.localRevision),
+            localRecordingID: recordingID,
+            sourceTranscriptClientRequestID: transcriptID,
+            sourceSHA256: saved.sourceSha256,
+            callRoomID: saved.callRoomId,
+            createdAt: createdAt,
+            updatedAt: updatedAt
+        )
     }
 }

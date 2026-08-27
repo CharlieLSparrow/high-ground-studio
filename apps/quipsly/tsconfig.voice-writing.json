@@ -1,0 +1,15 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "incremental": false
+  },
+  "include": [
+    "next-env.d.ts",
+    "src/app/(app)/library/library-model.ts",
+    "src/app/(app)/library/library-page.tsx",
+    "src/app/api/mobile/capture/voice-writing/route.ts",
+    "src/lib/server/mobile-voice-writing.ts"
+  ],
+  "exclude": ["node_modules"]
+}
