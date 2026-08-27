@@ -181,6 +181,12 @@ function cleanText(value: unknown) {
   return typeof value === "string" ? value.replace(/\s+/g, " ").trim() : "";
 }
 
+export function sessionRecapTitle(roomTitle: unknown) {
+  const title = cleanText(roomTitle).slice(0, 120);
+  if (!title) return "Session recap";
+  return /\brecap$/i.test(title) ? title : `${title} recap`;
+}
+
 function packetSha256(value: string) {
   return createHash("sha256").update(value, "utf8").digest("hex");
 }
@@ -1039,52 +1045,41 @@ function summarizeSegments(
   segments: any[],
   brief: ReturnType<typeof buildTranscriptPacketBrief>,
 ) {
-  const speakerCounts = new Map<string, number>();
-  for (const segment of segments) {
-    const speaker = cleanText(segment.speakerLabel) || "Unknown speaker";
-    speakerCounts.set(speaker, (speakerCounts.get(speaker) || 0) + 1);
-  }
-  const speakers = Array.from(speakerCounts.entries())
-    .sort((left, right) => right[1] - left[1])
-    .map(([speaker, count]) => `${speaker} (${count} turns)`);
   const first = segments[0];
   const last = segments[segments.length - 1];
   const duration = last
-    ? `${formatTime(first?.startSeconds ?? 0)}-${formatTime(last.endSeconds ?? 0)}`
-    : "unknown duration";
-  const opening = segments.slice(0, 3).map(segmentLine);
-  const closing = segments.slice(-3).map(segmentLine);
+    ? `${formatTime(first?.startSeconds ?? 0)}–${formatTime(last.endSeconds ?? 0)}`
+    : null;
+  const populatedSections = brief.sections.filter(
+    (section) => section.items.length > 0,
+  );
+  const introduction = purpose === "PODCAST"
+    ? "Here are the production notes and follow-through Quipsly found in this episode."
+    : purpose === "COACHING"
+      ? "Here are the key moments and follow-through Quipsly found in this coaching session."
+      : "Here are the key moments and follow-through Quipsly found in this session.";
 
   return [
-    purpose === "PODCAST"
-      ? "Podcast production packet generated from transcript timing and speaker labels."
-      : purpose === "COACHING"
-        ? "Shared coaching follow-through generated from transcript timing and speaker labels."
-        : "Session follow-through generated from transcript timing and speaker labels.",
+    introduction,
     "",
-    `Range: ${duration}`,
-    `Speaker turn map: ${speakers.length ? speakers.join(", ") : "No speaker labels available"}`,
-    "",
-    ...brief.sections.flatMap((section) => [
+    ...populatedSections.flatMap((section) => [
       `${section.label}:`,
-      ...(section.items.length
-        ? section.items.map(
-            (item) => `- ${item.timeLabel} ${item.speakerLabel}: ${item.text}`,
-          )
-        : ["- No source-linked candidates found."]),
+      ...section.items.map((item) => {
+        const speaker = cleanText(item.speakerLabel);
+        return `- ${item.timeLabel}${speaker ? ` · ${speaker}` : ""} — ${item.text}`;
+      }),
       "",
     ]),
-    "Opening context:",
-    ...(opening.length
-      ? opening
-      : ["- No opening transcript segments available."]),
+    ...(populatedSections.length
+      ? []
+      : [
+          "Nothing was turned into follow-through automatically. The full transcript is ready to read and edit.",
+          "",
+        ]),
+    ...(duration ? [`Recording span: ${duration}`, ""] : []),
+    "Everything here is editable. Change it, complete it, or remove it whenever you like.",
     "",
-    "Closing context:",
-    ...(closing.length
-      ? closing
-      : ["- No closing transcript segments available."]),
-    "",
-    "Quipsly created editable follow-through from the transcript. Source timestamps stay attached; publication and external delivery remain separate.",
+    "Timestamps stay linked to the recording so you can return to the source at any time.",
   ].join("\n");
 }
 
@@ -1171,14 +1166,14 @@ export async function buildCoachingPacketFromTranscriptJob(
   const { projected: _projected, ...transcriptSnapshotEvidence } =
     transcriptSnapshot;
 
-  const packetTitle = `Transcript packet: ${job.id}`;
+  const packetTitle = sessionRecapTitle(job.room?.title);
   const purpose = packetPurpose(job.room?.purpose);
   const existing = await args.prisma.coachingNote.findFirst({
     where: {
       roomId: job.roomId,
       authorUserId: args.authorUserId || null,
       kind: "SUMMARY",
-      title: packetTitle,
+      sourceJson: { path: ["transcriptJobId"], equals: job.id },
     },
     include: { actionItems: true },
     orderBy: { createdAt: "desc" },

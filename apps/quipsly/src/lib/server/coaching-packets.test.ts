@@ -15,6 +15,7 @@ import {
   projectTranscriptJobSegmentsForPacket,
   reviewLaneDefinitionsForPurpose,
   selectLatestCorrelatedPacketNotes,
+  sessionRecapTitle,
   transcriptPacketSnapshot,
   transcriptJobPacketSnapshot,
 } from "./coaching-packets";
@@ -39,6 +40,7 @@ function completedTranscriptJob() {
       participantId: "participant-charlie",
     },
     room: {
+      title: "First coaching consultation",
       bookingId: "booking-1",
       purpose: "COACHING",
       booking: { id: "booking-1" },
@@ -134,7 +136,10 @@ describe("transcript coaching follow-through", () => {
           roomId: "room-1",
           authorUserId: "coach-1",
           kind: "SUMMARY",
-          title: "Transcript packet: transcript-1",
+          sourceJson: {
+            path: ["transcriptJobId"],
+            equals: "transcript-1",
+          },
         }),
       }),
     );
@@ -156,6 +161,7 @@ describe("transcript coaching follow-through", () => {
     expect(summaryWrite).toMatchObject({
       visibility: "SESSION_SHARED",
       engagementId: "engagement-1",
+      title: "First coaching consultation recap",
     });
     expect(summaryWrite?.sourceJson).toMatchObject({
       packetPurpose: "COACHING",
@@ -180,6 +186,9 @@ describe("transcript coaching follow-through", () => {
       ]),
     });
     expect(summaryWrite?.body).toContain("Commitments:");
+    expect(summaryWrite?.body).toContain("Everything here is editable.");
+    expect(summaryWrite?.body).not.toContain("Transcript packet");
+    expect(summaryWrite?.body).not.toContain("candidate");
     expect(result).toEqual(
       expect.objectContaining({
         actionCandidateCount: 1,
@@ -199,6 +208,16 @@ describe("transcript coaching follow-through", () => {
         }),
       }),
     });
+  });
+
+  it("uses a calm, stable recap title", () => {
+    expect(sessionRecapTitle("  First coaching   consultation ")).toBe(
+      "First coaching consultation recap",
+    );
+    expect(sessionRecapTitle("Weekly reflection recap")).toBe(
+      "Weekly reflection recap",
+    );
+    expect(sessionRecapTitle(null)).toBe("Session recap");
   });
 
   it("keeps source-bound participant identity on generated follow-through candidates", async () => {

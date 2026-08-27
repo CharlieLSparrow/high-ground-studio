@@ -152,7 +152,10 @@ describe("automatic transcript follow-through", () => {
         roomId: "room-1",
         authorUserId: "recording-owner",
         kind: "SUMMARY",
-        title: "Transcript packet: job-1",
+        sourceJson: {
+          path: ["transcriptJobId"],
+          equals: "job-1",
+        },
       },
       orderBy: { createdAt: "desc" },
       select: { id: true, sourceJson: true },

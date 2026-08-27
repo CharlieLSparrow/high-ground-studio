@@ -111,7 +111,10 @@ async function prepareSessionFollowThrough(input: {
         roomId: authority.roomId,
         authorUserId,
         kind: "SUMMARY",
-        title: `Transcript packet: ${input.transcriptJobId}`,
+        sourceJson: {
+          path: ["transcriptJobId"],
+          equals: input.transcriptJobId,
+        },
       },
       orderBy: { createdAt: "desc" },
       select: { id: true, sourceJson: true },

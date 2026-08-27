@@ -66,12 +66,11 @@ try {
   });
   assert(transcript?.id, "Fresh automatic follow-through requires a completed transcript.");
 
-  const packetTitle = `Transcript packet: ${transcript.id}`;
   const packetWhere = {
     roomId: room.id,
     authorUserId: room.booking.coachUserId,
     kind: "SUMMARY",
-    title: packetTitle,
+    sourceJson: { path: ["transcriptJobId"], equals: transcript.id },
   };
   const highlightWhere = {
     roomId: room.id,
@@ -80,7 +79,7 @@ try {
     sourceJson: { path: ["transcriptJobId"], equals: transcript.id },
   };
   const before = await snapshot({ prisma, roomId: room.id, packetWhere, highlightWhere });
-  assert.equal(before.summaryCount, 1, "The exact fresh transcript should already have one private packet summary.");
+  assert.equal(before.summaryCount, 1, "The exact fresh transcript should already have one shared recap.");
 
   const results = await Promise.all([
     reconcileCaptureTranscriptFollowThrough({ prisma, transcriptJobId: transcript.id }),
@@ -90,8 +89,8 @@ try {
   assert.equal(results[0]?.packetBuildId, results[1]?.packetBuildId);
 
   const after = await snapshot({ prisma, roomId: room.id, packetWhere, highlightWhere });
-  assert.equal(after.summaryCount, before.summaryCount, "Concurrent reconciliation duplicated the packet summary.");
-  assert.equal(after.highlightCount, before.highlightCount, "Concurrent reconciliation duplicated packet highlights.");
+  assert.equal(after.summaryCount, before.summaryCount, "Concurrent reconciliation duplicated the shared recap.");
+  assert.equal(after.highlightCount, before.highlightCount, "Concurrent reconciliation duplicated shared highlights.");
   assert.equal(after.actionItemCount, before.actionItemCount, "Automatic follow-through created or changed canonical tasks.");
   assert.equal(after.deliveryCount, before.deliveryCount, "Automatic follow-through changed delivery state.");
   assert.equal(after.calendarLinkCount, before.calendarLinkCount, "Automatic follow-through changed calendar state.");
@@ -104,10 +103,10 @@ try {
   const followThrough = record(resultJson.followThrough);
   assert.equal(followThrough.packetStatus, "ready");
   assert.equal(followThrough.packetBuildId, results[0]?.packetBuildId);
-  assert.equal(followThrough.candidateOnly, true);
-  assert.equal(followThrough.authorPrivate, true);
-  assert.equal(followThrough.automaticAssignment, false);
-  assert.equal(followThrough.automaticSharing, false);
+  assert.equal(followThrough.candidateOnly, false);
+  assert.equal(followThrough.authorPrivate, false);
+  assert.equal(followThrough.automaticAssignment, true);
+  assert.equal(followThrough.automaticSharing, true);
   assert.equal(followThrough.externalSideEffects, false);
 
   const stillNeedsMaintenance = await prisma.transcriptJob.findFirst({
@@ -140,17 +139,17 @@ try {
     authorUserId: room.booking.coachUserId,
     packetBuildId: results[0]?.packetBuildId || null,
     concurrentReconciliationSerialized: true,
-    privatePacketSummaryCount: after.summaryCount,
-    privateHighlightCount: after.highlightCount,
+    sharedRecapCount: after.summaryCount,
+    sharedHighlightCount: after.highlightCount,
     canonicalTaskCountUnchanged: true,
     deliveryCountUnchanged: true,
     calendarLinkCountUnchanged: true,
     schedulerReadyMarkerProven: true,
     schedulerRebuildExcluded: true,
-    candidateOnly: true,
-    authorPrivate: true,
-    automaticAssignment: false,
-    automaticSharing: false,
+    candidateOnly: false,
+    authorPrivate: false,
+    automaticAssignment: true,
+    automaticSharing: true,
     externalSideEffects: false,
     humanAcceptanceSatisfied: false,
     secretsPrinted: false,
