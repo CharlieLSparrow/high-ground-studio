@@ -10,6 +10,73 @@ struct VoiceWritingSourceReference: Codable, Equatable, Identifiable {
     var id: UUID { localRecordingID }
 }
 
+enum VoiceWritingMarkKind: String, Codable, CaseIterable {
+    case bold
+    case italic
+    case underline
+    case strikethrough
+}
+
+struct VoiceWritingTextMark: Codable, Equatable {
+    let kind: VoiceWritingMarkKind
+    let startUtf16: Int
+    let endUtf16: Int
+}
+
+/// Cross-platform rich writing that stays independent of Apple's private
+/// attributed-string encoding. UTF-16 offsets agree with both NSString and
+/// JavaScript, while `text` remains the searchable Studio block projection.
+struct VoiceWritingRichText: Codable, Equatable {
+    let schema: String
+    let text: String
+    let marks: [VoiceWritingTextMark]
+
+    init(text: String, marks: [VoiceWritingTextMark] = []) {
+        schema = "quipsly-writing-runs-v1"
+        self.text = text
+        let limit = text.utf16.count
+        var seen = Set<String>()
+        let sorted = marks
+            .filter { $0.startUtf16 >= 0 && $0.endUtf16 > $0.startUtf16 && $0.endUtf16 <= limit }
+            .filter { seen.insert("\($0.kind.rawValue):\($0.startUtf16):\($0.endUtf16)").inserted }
+            .sorted {
+                $0.startUtf16 != $1.startUtf16 ? $0.startUtf16 < $1.startUtf16
+                    : ($0.endUtf16 != $1.endUtf16 ? $0.endUtf16 < $1.endUtf16 : $0.kind.rawValue < $1.kind.rawValue)
+            }
+        var merged: [VoiceWritingTextMark] = []
+        for kind in VoiceWritingMarkKind.allCases {
+            for mark in sorted where mark.kind == kind {
+                if let lastIndex = merged.indices.last,
+                   merged[lastIndex].kind == mark.kind,
+                   mark.startUtf16 <= merged[lastIndex].endUtf16 {
+                    let last = merged[lastIndex]
+                    merged[lastIndex] = VoiceWritingTextMark(
+                        kind: mark.kind,
+                        startUtf16: last.startUtf16,
+                        endUtf16: max(last.endUtf16, mark.endUtf16)
+                    )
+                } else {
+                    merged.append(mark)
+                }
+            }
+        }
+        self.marks = merged.sorted {
+            $0.startUtf16 != $1.startUtf16 ? $0.startUtf16 < $1.startUtf16
+                : ($0.endUtf16 != $1.endUtf16 ? $0.endUtf16 < $1.endUtf16 : $0.kind.rawValue < $1.kind.rawValue)
+        }
+    }
+
+    func appending(_ addition: String) -> VoiceWritingRichText {
+        let base = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let suffix = addition.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !suffix.isEmpty else { return self }
+        return VoiceWritingRichText(
+            text: base.isEmpty ? suffix : "\(base)\n\n\(suffix)",
+            marks: marks
+        )
+    }
+}
+
 /// Creates an editable reading draft from immutable timed speech. Pauses and
 /// explicit paragraph commands shape the writing without altering the source
 /// transcript, so a long spoken paper does not arrive as one exhausting wall
@@ -91,6 +158,7 @@ struct VoiceWritingRemoteDraft: Codable, Equatable {
     let projectSlug: String
     let title: String
     let body: String
+    let richText: VoiceWritingRichText?
     let contentRevision: String
     let localRevision: Int
     let localRecordingID: UUID
@@ -116,6 +184,7 @@ struct VoiceWritingDraft: Codable, Identifiable, Equatable {
     let createdAt: Date
     var title: String
     var body: String
+    var richText: VoiceWritingRichText?
     var updatedAt: Date
     var localRevision: Int
     var serverRevision: Int?
@@ -302,6 +371,9 @@ final class VoiceWritingDraftStore: ObservableObject {
                 storedDrafts[index].sources = storedDrafts[index].allSources + [source]
                 let existingBody = storedDrafts[index].body.trimmingCharacters(in: .whitespacesAndNewlines)
                 storedDrafts[index].body = existingBody.isEmpty ? body : "\(existingBody)\n\n\(body)"
+                storedDrafts[index].richText = (storedDrafts[index].richText
+                    ?? VoiceWritingRichText(text: existingBody))
+                    .appending(body)
                 storedDrafts[index].updatedAt = now
                 storedDrafts[index].localRevision += 1
                 storedDrafts[index].lastSyncError = nil
@@ -333,6 +405,7 @@ final class VoiceWritingDraftStore: ObservableObject {
             createdAt: now,
             title: title,
             body: body,
+            richText: VoiceWritingRichText(text: body),
             updatedAt: now,
             localRevision: 1,
             serverRevision: nil,
@@ -358,6 +431,7 @@ final class VoiceWritingDraftStore: ObservableObject {
         recordingID: UUID,
         title: String,
         body: String,
+        richText: VoiceWritingRichText? = nil,
         now: Date = Date()
     ) throws -> VoiceWritingDraft {
         let owner = try requireActiveOwner()
@@ -371,11 +445,18 @@ final class VoiceWritingDraftStore: ObservableObject {
             .trimmingCharacters(in: .whitespacesAndNewlines)
         let normalizedBody = body.replacingOccurrences(of: "\r\n", with: "\n")
             .replacingOccurrences(of: "\r", with: "\n")
-        guard storedDrafts[index].title != cleanTitle || storedDrafts[index].body != normalizedBody else {
+        let cappedBody = String(normalizedBody.prefix(200_000))
+        let normalizedRichText = richText?.text == cappedBody
+            ? richText
+            : VoiceWritingRichText(text: cappedBody)
+        guard storedDrafts[index].title != cleanTitle
+                || storedDrafts[index].body != cappedBody
+                || storedDrafts[index].richText != normalizedRichText else {
             return storedDrafts[index]
         }
         storedDrafts[index].title = cleanTitle.isEmpty ? "Voice note" : String(cleanTitle.prefix(320))
-        storedDrafts[index].body = String(normalizedBody.prefix(200_000))
+        storedDrafts[index].body = cappedBody
+        storedDrafts[index].richText = normalizedRichText
         storedDrafts[index].updatedAt = now
         storedDrafts[index].localRevision += 1
         storedDrafts[index].lastSyncError = nil
@@ -395,6 +476,7 @@ final class VoiceWritingDraftStore: ObservableObject {
         tagRevision: Int,
         tags: [MobileCaptureTag],
         sources: [VoiceWritingSourceReference],
+        richText: VoiceWritingRichText?,
         serverUpdatedAt: String,
         at date: Date = Date()
     ) {
@@ -412,6 +494,9 @@ final class VoiceWritingDraftStore: ObservableObject {
         storedDrafts[index].canonicalTagRevision = tagRevision
         storedDrafts[index].canonicalTags = tags
         storedDrafts[index].sources = sources
+        if storedDrafts[index].localRevision == syncedLocalRevision {
+            storedDrafts[index].richText = richText
+        }
         storedDrafts[index].canonicalUpdatedAt = serverUpdatedAt
         storedDrafts[index].lastSyncedAt = date
         storedDrafts[index].lastSyncError = nil
@@ -450,6 +535,7 @@ final class VoiceWritingDraftStore: ObservableObject {
             } else {
                 storedDrafts[index].title = remote.title
                 storedDrafts[index].body = remote.body
+                storedDrafts[index].richText = remote.richText
                 storedDrafts[index].updatedAt = remote.updatedAt
                 storedDrafts[index].localRevision = max(storedDrafts[index].localRevision, remote.localRevision)
                 storedDrafts[index].serverRevision = storedDrafts[index].localRevision
@@ -472,6 +558,7 @@ final class VoiceWritingDraftStore: ObservableObject {
                 createdAt: remote.createdAt,
                 title: remote.title,
                 body: remote.body,
+                richText: remote.richText,
                 updatedAt: remote.updatedAt,
                 localRevision: revision,
                 serverRevision: revision,
@@ -501,6 +588,7 @@ final class VoiceWritingDraftStore: ObservableObject {
               let remote = storedDrafts[index].pendingRemote else { return nil }
         storedDrafts[index].title = remote.title
         storedDrafts[index].body = remote.body
+        storedDrafts[index].richText = remote.richText
         storedDrafts[index].sources = remote.sources
         storedDrafts[index].updatedAt = remote.updatedAt
         storedDrafts[index].localRevision = max(storedDrafts[index].localRevision, remote.localRevision)
@@ -657,6 +745,7 @@ private struct VoiceWritingSyncRequest: Encodable {
     let callRoomId: String?
     let title: String
     let body: String
+    let richText: VoiceWritingRichText?
     let localRevision: Int
     let expectedServerRevision: Int
     let expectedContentRevision: String?
@@ -671,6 +760,7 @@ private struct VoiceWritingSyncRequest: Encodable {
         callRoomId = draft.callRoomID
         title = draft.title
         body = draft.body
+        richText = draft.richText
         localRevision = draft.localRevision
         expectedServerRevision = draft.serverRevision ?? 0
         expectedContentRevision = draft.serverContentRevision
@@ -700,6 +790,7 @@ private struct VoiceWritingSyncResponse: Decodable {
         let projectSlug: String
         let title: String
         let body: String
+        let richText: VoiceWritingRichText?
         let localRevision: Int
         let serverRevision: Int
         let contentRevision: String
@@ -865,6 +956,7 @@ final class VoiceWritingDraftSyncClient: ObservableObject {
                     draft.allSources,
                     Self.sourceReferences(from: saved)
                 ),
+                richText: saved.richText,
                 serverUpdatedAt: saved.updatedAt
             )
             homeProject = payload.homeProject
@@ -897,6 +989,7 @@ final class VoiceWritingDraftSyncClient: ObservableObject {
             projectSlug: saved.projectSlug,
             title: saved.title,
             body: saved.body,
+            richText: saved.richText,
             contentRevision: saved.contentRevision,
             localRevision: max(1, saved.localRevision),
             localRecordingID: recordingID,

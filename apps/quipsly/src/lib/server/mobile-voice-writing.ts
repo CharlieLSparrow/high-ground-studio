@@ -14,6 +14,34 @@ export type MobileVoiceWritingInput = {
   expectedServerRevision: number;
   expectedContentRevision: string | null;
   sources: MobileVoiceWritingSourceInput[];
+  richText: MobileVoiceWritingRichText | null;
+};
+
+export const MOBILE_VOICE_WRITING_MARK_KINDS = [
+  "bold",
+  "italic",
+  "underline",
+  "strikethrough",
+] as const;
+
+export type MobileVoiceWritingMarkKind = typeof MOBILE_VOICE_WRITING_MARK_KINDS[number];
+
+export type MobileVoiceWritingMark = {
+  kind: MobileVoiceWritingMarkKind;
+  startUtf16: number;
+  endUtf16: number;
+};
+
+/**
+ * Portable rich-writing projection shared by iOS and the web. Offsets use
+ * UTF-16 code units because Swift's NSString bridge and JavaScript strings
+ * agree on them, including text containing emoji or non-BMP characters.
+ * StudioDocumentBlock.body remains the searchable plain-text projection.
+ */
+export type MobileVoiceWritingRichText = {
+  schema: "quipsly-writing-runs-v1";
+  text: string;
+  marks: MobileVoiceWritingMark[];
 };
 
 export type MobileVoiceWritingSourceInput = {
@@ -46,6 +74,58 @@ function source(value: unknown): MobileVoiceWritingSourceInput | null {
     || !UUID_PATTERN.test(transcriptClientRequestId)
     || !/^[0-9a-f]{64}$/.test(sourceSha256)) return null;
   return { localRecordingId, transcriptClientRequestId, sourceSha256, callRoomId };
+}
+
+function richText(value: unknown, body: string): MobileVoiceWritingRichText | null | undefined {
+  if (value === undefined || value === null) return null;
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const input = value as Record<string, unknown>;
+  if (input.schema !== "quipsly-writing-runs-v1" || input.text !== body || !Array.isArray(input.marks)) {
+    return undefined;
+  }
+  if (input.marks.length > 5_000) return undefined;
+  const marks: MobileVoiceWritingMark[] = [];
+  const seen = new Set<string>();
+  for (const candidate of input.marks) {
+    if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) return undefined;
+    const mark = candidate as Record<string, unknown>;
+    if (!MOBILE_VOICE_WRITING_MARK_KINDS.includes(mark.kind as MobileVoiceWritingMarkKind)) return undefined;
+    const startUtf16 = integer(mark.startUtf16);
+    const endUtf16 = integer(mark.endUtf16);
+    if (!Number.isSafeInteger(startUtf16)
+      || !Number.isSafeInteger(endUtf16)
+      || startUtf16 < 0
+      || endUtf16 <= startUtf16
+      || endUtf16 > body.length) return undefined;
+    const normalized: MobileVoiceWritingMark = {
+      kind: mark.kind as MobileVoiceWritingMarkKind,
+      startUtf16,
+      endUtf16,
+    };
+    const identity = `${normalized.kind}:${startUtf16}:${endUtf16}`;
+    if (!seen.has(identity)) {
+      seen.add(identity);
+      marks.push(normalized);
+    }
+  }
+  marks.sort((left, right) => left.startUtf16 - right.startUtf16
+    || left.endUtf16 - right.endUtf16
+    || left.kind.localeCompare(right.kind));
+  const merged: MobileVoiceWritingMark[] = [];
+  for (const kind of MOBILE_VOICE_WRITING_MARK_KINDS) {
+    for (const mark of marks.filter((candidate) => candidate.kind === kind)) {
+      const previous = merged.at(-1);
+      if (previous && previous.kind === mark.kind && mark.startUtf16 <= previous.endUtf16) {
+        previous.endUtf16 = Math.max(previous.endUtf16, mark.endUtf16);
+      } else {
+        merged.push({ ...mark });
+      }
+    }
+  }
+  merged.sort((left, right) => left.startUtf16 - right.startUtf16
+    || left.endUtf16 - right.endUtf16
+    || left.kind.localeCompare(right.kind));
+  return { schema: "quipsly-writing-runs-v1", text: body, marks: merged };
 }
 
 export function validateMobileVoiceWriting(value: unknown): MobileVoiceWritingValidation {
@@ -102,6 +182,10 @@ export function validateMobileVoiceWriting(value: unknown): MobileVoiceWritingVa
     || validSources[0]?.callRoomId !== callRoomId) {
     return { ok: false, code: "VOICE_WRITING_SOURCES_INVALID", error: "Connected recordings must be unique and begin with the draft's original source." };
   }
+  const normalizedRichText = richText(input.richText, body);
+  if (normalizedRichText === undefined) {
+    return { ok: false, code: "VOICE_WRITING_RICH_TEXT_INVALID", error: "The writing format does not match its searchable text." };
+  }
   return {
     ok: true,
     value: {
@@ -116,6 +200,7 @@ export function validateMobileVoiceWriting(value: unknown): MobileVoiceWritingVa
       expectedServerRevision,
       expectedContentRevision,
       sources: validSources,
+      richText: normalizedRichText,
     },
   };
 }
@@ -137,8 +222,13 @@ export function mobileVoiceWritingOperationId(draftId: string, localRevision: nu
   return `${mobileVoiceWritingDocumentId(draftId)}-revision-${localRevision}`;
 }
 
-export function mobileVoiceWritingContentHash(input: Pick<MobileVoiceWritingInput, "title" | "body">) {
-  return createHash("sha256").update(JSON.stringify([input.title, input.body])).digest("hex");
+export function mobileVoiceWritingContentHash(
+  input: Pick<MobileVoiceWritingInput, "title" | "body"> & { richText?: MobileVoiceWritingRichText | null },
+) {
+  const revisionMaterial = input.richText
+    ? [input.title, input.body, input.richText]
+    : [input.title, input.body];
+  return createHash("sha256").update(JSON.stringify(revisionMaterial)).digest("hex");
 }
 
 export function mobileVoiceWritingSource(input: MobileVoiceWritingInput, actorUserId: string) {
@@ -152,6 +242,7 @@ export function mobileVoiceWritingSource(input: MobileVoiceWritingInput, actorUs
     sourceSha256: input.sourceSha256,
     callRoomId: input.callRoomId,
     sources: input.sources,
+    richText: input.richText,
     localRevision: input.localRevision,
     contentHash: mobileVoiceWritingContentHash(input),
   };

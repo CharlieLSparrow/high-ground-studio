@@ -6921,6 +6921,7 @@ private struct CaptureVoiceWritingEditor: View {
     let timedTranscript: [OnDeviceTranscriptSegment]
     @State private var title: String
     @State private var bodyText: String
+    @State private var richText: VoiceWritingRichText?
     @State private var showsTranscript = false
     @State private var transcriptQuery = ""
     @State private var showsTagEditor = false
@@ -6939,6 +6940,7 @@ private struct CaptureVoiceWritingEditor: View {
         self.onContinueByVoice = onContinueByVoice
         _title = State(initialValue: initialDraft.title)
         _bodyText = State(initialValue: initialDraft.body)
+        _richText = State(initialValue: initialDraft.richText ?? VoiceWritingRichText(text: initialDraft.body))
     }
 
     private var currentDraft: VoiceWritingDraft? {
@@ -6963,7 +6965,13 @@ private struct CaptureVoiceWritingEditor: View {
                     }
                 }
 
-                if #available(iOS 18.0, *) {
+                if #available(iOS 26.0, *) {
+                    CaptureRichWritingBody(
+                        plainText: $bodyText,
+                        richText: $richText,
+                        focus: $bodyIsFocused
+                    )
+                } else if #available(iOS 18.0, *) {
                     CaptureStructuredWritingBody(
                         text: $bodyText,
                         focus: $bodyIsFocused
@@ -7049,6 +7057,7 @@ private struct CaptureVoiceWritingEditor: View {
                         guard let resolved = writingStore.useNestVersion(recordingID: recordingID) else { return }
                         title = resolved.title
                         bodyText = resolved.body
+                        richText = resolved.richText ?? VoiceWritingRichText(text: resolved.body)
                     }
                     .frame(minHeight: 44)
                     Button("Keep this iPhone copy") {
@@ -7186,6 +7195,7 @@ private struct CaptureVoiceWritingEditor: View {
         }
         .onChange(of: title) { _, _ in scheduleSave() }
         .onChange(of: bodyText) { _, _ in scheduleSave() }
+        .onChange(of: richText) { _, _ in scheduleSave() }
         .task {
             await writingSync.refreshFromNest()
             guard !bodyIsFocused,
@@ -7193,6 +7203,7 @@ private struct CaptureVoiceWritingEditor: View {
                   refreshed.pendingRemote == nil else { return }
             title = refreshed.title
             bodyText = refreshed.body
+            richText = refreshed.richText ?? VoiceWritingRichText(text: refreshed.body)
         }
         .onDisappear {
             playback.stop()
@@ -7408,7 +7419,8 @@ private struct CaptureVoiceWritingEditor: View {
         guard let draft = try? writingStore.update(
             recordingID: recordingID,
             title: title,
-            body: bodyText
+            body: bodyText,
+            richText: richText
         ) else { return }
         writingSync.schedule(draft)
     }
@@ -7416,6 +7428,177 @@ private struct CaptureVoiceWritingEditor: View {
     private func timestamp(_ seconds: Double) -> String {
         let total = max(0, Int(seconds.rounded(.down)))
         return String(format: "%d:%02d", total / 60, total % 60)
+    }
+}
+
+@available(iOS 26.0, *)
+private struct CaptureRichWritingBody: View {
+    @Binding var plainText: String
+    @Binding var richText: VoiceWritingRichText?
+    let focus: FocusState<Bool>.Binding
+    @State private var text: AttributedString
+    @State private var selection = AttributedTextSelection()
+
+    init(
+        plainText: Binding<String>,
+        richText: Binding<VoiceWritingRichText?>,
+        focus: FocusState<Bool>.Binding
+    ) {
+        _plainText = plainText
+        _richText = richText
+        self.focus = focus
+        _text = State(initialValue: Self.attributed(
+            from: richText.wrappedValue ?? VoiceWritingRichText(text: plainText.wrappedValue)
+        ))
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    formatButton("Bold", systemImage: "bold", kind: .bold)
+                    formatButton("Italic", systemImage: "italic", kind: .italic)
+                    formatButton("Underline", systemImage: "underline", kind: .underline)
+                    formatButton("Strike", systemImage: "strikethrough", kind: .strikethrough)
+                }
+                .padding(.vertical, 2)
+            }
+            .accessibilityIdentifier("CaptureVoiceWritingFormatBar")
+
+            TextEditor(text: $text, selection: $selection)
+                .font(.body)
+                .frame(minHeight: 340)
+                .focused(focus)
+                .scrollContentBackground(.hidden)
+                .accessibilityLabel("Writing")
+                .accessibilityHint("Edit and format the text created from your voice. Your original transcript and audio are unchanged.")
+                .accessibilityIdentifier("CaptureVoiceWritingBody")
+                .onChange(of: text) { _, updated in
+                    let portable = Self.portable(from: updated)
+                    plainText = portable.text
+                    richText = portable
+                }
+                .onChange(of: richText) { _, updated in
+                    guard let updated, Self.portable(from: text) != updated else { return }
+                    text = Self.attributed(from: updated)
+                }
+        }
+    }
+
+    private func formatButton(
+        _ title: String,
+        systemImage: String,
+        kind: VoiceWritingMarkKind
+    ) -> some View {
+        Button {
+            apply(kind)
+        } label: {
+            Label(title, systemImage: systemImage)
+                .font(.caption.weight(.semibold))
+                .padding(.horizontal, 10)
+                .frame(minHeight: 44)
+                .background(.thinMaterial, in: Capsule())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(title)
+    }
+
+    private func apply(_ kind: VoiceWritingMarkKind) {
+        let removes = selectedAttributesContain(kind)
+        text.transformAttributes(in: &selection) { attributes in
+            switch kind {
+            case .bold:
+                var intent = attributes.inlinePresentationIntent ?? []
+                if removes { intent.remove(.stronglyEmphasized) } else { intent.insert(.stronglyEmphasized) }
+                attributes.inlinePresentationIntent = intent.isEmpty ? nil : intent
+            case .italic:
+                var intent = attributes.inlinePresentationIntent ?? []
+                if removes { intent.remove(.emphasized) } else { intent.insert(.emphasized) }
+                attributes.inlinePresentationIntent = intent.isEmpty ? nil : intent
+            case .underline:
+                attributes.underlineStyle = removes ? nil : .single
+            case .strikethrough:
+                attributes.strikethroughStyle = removes ? nil : .single
+            }
+        }
+        let portable = Self.portable(from: text)
+        plainText = portable.text
+        richText = portable
+    }
+
+    private func selectedAttributesContain(_ kind: VoiceWritingMarkKind) -> Bool {
+        let values = selection.attributes(in: text)
+        switch kind {
+        case .bold:
+            return values[\.inlinePresentationIntent].contains { $0?.contains(.stronglyEmphasized) == true }
+        case .italic:
+            return values[\.inlinePresentationIntent].contains { $0?.contains(.emphasized) == true }
+        case .underline:
+            return values[\.underlineStyle].contains { $0 != nil }
+        case .strikethrough:
+            return values[\.strikethroughStyle].contains { $0 != nil }
+        }
+    }
+
+    private static func attributed(from source: VoiceWritingRichText) -> AttributedString {
+        var result = AttributedString(source.text)
+        for mark in source.marks {
+            guard let range = attributedRange(
+                startUtf16: mark.startUtf16,
+                endUtf16: mark.endUtf16,
+                in: result
+            ) else { continue }
+            switch mark.kind {
+            case .bold:
+                var intent = result[range].inlinePresentationIntent ?? []
+                intent.insert(.stronglyEmphasized)
+                result[range].inlinePresentationIntent = intent
+            case .italic:
+                var intent = result[range].inlinePresentationIntent ?? []
+                intent.insert(.emphasized)
+                result[range].inlinePresentationIntent = intent
+            case .underline:
+                result[range].underlineStyle = .single
+            case .strikethrough:
+                result[range].strikethroughStyle = .single
+            }
+        }
+        return result
+    }
+
+    private static func portable(from source: AttributedString) -> VoiceWritingRichText {
+        let text = String(source.characters)
+        var marks: [VoiceWritingTextMark] = []
+        for run in source.runs {
+            let start = source.utf16.distance(from: source.startIndex, to: run.range.lowerBound)
+            let end = source.utf16.distance(from: source.startIndex, to: run.range.upperBound)
+            guard end > start else { continue }
+            let intent = run.inlinePresentationIntent
+            if intent?.contains(.stronglyEmphasized) == true {
+                marks.append(.init(kind: .bold, startUtf16: start, endUtf16: end))
+            }
+            if intent?.contains(.emphasized) == true {
+                marks.append(.init(kind: .italic, startUtf16: start, endUtf16: end))
+            }
+            if run.underlineStyle != nil {
+                marks.append(.init(kind: .underline, startUtf16: start, endUtf16: end))
+            }
+            if run.strikethroughStyle != nil {
+                marks.append(.init(kind: .strikethrough, startUtf16: start, endUtf16: end))
+            }
+        }
+        return VoiceWritingRichText(text: text, marks: marks)
+    }
+
+    private static func attributedRange(
+        startUtf16: Int,
+        endUtf16: Int,
+        in text: AttributedString
+    ) -> Range<AttributedString.Index>? {
+        guard startUtf16 >= 0, endUtf16 > startUtf16, endUtf16 <= text.utf16.count else { return nil }
+        let start = text.utf16.index(text.startIndex, offsetBy: startUtf16)
+        let end = text.utf16.index(text.startIndex, offsetBy: endUtf16)
+        return start..<end
     }
 }
 

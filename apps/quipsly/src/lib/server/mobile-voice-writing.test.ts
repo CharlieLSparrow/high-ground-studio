@@ -3,6 +3,7 @@ import {
   mobileVoiceWritingDraftIdFromDocumentId,
   mobileVoiceWritingDocumentId,
   mobileVoiceWritingOperationId,
+  mobileVoiceWritingContentHash,
   mobileVoiceWritingSource,
   validateMobileVoiceWriting,
 } from "./mobile-voice-writing";
@@ -40,6 +41,15 @@ describe("mobile voice writing", () => {
           callRoomId: "room-2",
         },
       ],
+      richText: {
+        schema: "quipsly-writing-runs-v1",
+        text: "First line\nSecond line",
+        marks: [
+          { kind: "italic", startUtf16: 6, endUtf16: 10 },
+          { kind: "bold", startUtf16: 0, endUtf16: 5 },
+          { kind: "bold", startUtf16: 4, endUtf16: 8 },
+        ],
+      },
     });
     expect(result).toMatchObject({
       ok: true,
@@ -62,6 +72,14 @@ describe("mobile voice writing", () => {
             callRoomId: "room-2",
           },
         ],
+        richText: {
+          schema: "quipsly-writing-runs-v1",
+          text: "First line\nSecond line",
+          marks: [
+            { kind: "bold", startUtf16: 0, endUtf16: 8 },
+            { kind: "italic", startUtf16: 6, endUtf16: 10 },
+          ],
+        },
       },
     });
     if (!result.ok) throw new Error(result.error);
@@ -70,6 +88,9 @@ describe("mobile voice writing", () => {
     expect(mobileVoiceWritingDraftIdFromDocumentId(`other-${draftId}`)).toBeNull();
     expect(mobileVoiceWritingBodyBlockId(draftId)).toBe(`voice-writing-${draftId}-body`);
     expect(mobileVoiceWritingOperationId(draftId, 4)).toBe(`voice-writing-${draftId}-revision-4`);
+    expect(mobileVoiceWritingContentHash(result.value)).not.toBe(
+      mobileVoiceWritingContentHash({ title: result.value.title, body: result.value.body }),
+    );
     expect(mobileVoiceWritingSource(result.value, "user-1")).toMatchObject({
       schema: "quipsly-mobile-voice-writing-v1",
       localRevision: 4,
@@ -78,6 +99,25 @@ describe("mobile voice writing", () => {
         expect.objectContaining({ localRecordingId: continuationRecordingId }),
       ]),
     });
+  });
+
+  it.each([
+    [{ schema: "quipsly-writing-runs-v1", text: "Different", marks: [] }, "mismatched text"],
+    [{ schema: "quipsly-writing-runs-v1", text: "Text", marks: [{ kind: "sparkles", startUtf16: 0, endUtf16: 1 }] }, "unknown mark"],
+    [{ schema: "quipsly-writing-runs-v1", text: "Text", marks: [{ kind: "bold", startUtf16: 0, endUtf16: 8 }] }, "out-of-bounds mark"],
+  ])("rejects %s rich writing", (richText) => {
+    expect(validateMobileVoiceWriting({
+      draftId,
+      localRecordingId: recordingId,
+      transcriptClientRequestId: transcriptId,
+      sourceSha256: "a".repeat(64),
+      callRoomId: null,
+      title: "Draft",
+      body: "Text",
+      localRevision: 1,
+      expectedServerRevision: 0,
+      richText,
+    })).toMatchObject({ ok: false, code: "VOICE_WRITING_RICH_TEXT_INVALID" });
   });
 
   it.each([

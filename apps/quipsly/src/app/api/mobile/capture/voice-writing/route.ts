@@ -50,10 +50,17 @@ function voiceWritingBody(document: any, draftId: string) {
   return document.blocks?.find((block: any) => block.id === mobileVoiceWritingBodyBlockId(draftId))?.body || "";
 }
 
+function voiceWritingRichText(document: any) {
+  const operation = document?.documentOperations?.[0];
+  if (!operation || operation.operationType !== "mobile-voice-writing-sync") return null;
+  return record(operation.afterJson).richText ?? record(operation.payloadJson).richText ?? null;
+}
+
 function voiceWritingContentRevision(document: any, draftId: string) {
   return mobileVoiceWritingContentHash({
     title: String(document?.title || "Voice note"),
     body: voiceWritingBody(document, draftId),
+    richText: voiceWritingRichText(document),
   });
 }
 
@@ -81,6 +88,7 @@ function availableVoiceWritingTags(document: any) {
 
 function publicDraft(document: any, serverRevision: number, input: MobileVoiceWritingInput) {
   const body = voiceWritingBody(document, input.draftId) || input.body;
+  const richText = voiceWritingRichText(document);
   return {
     draftId: input.draftId,
     documentId: document.id,
@@ -89,9 +97,10 @@ function publicDraft(document: any, serverRevision: number, input: MobileVoiceWr
     projectSlug: document.project?.slug || "",
     title: document.title,
     body,
+    richText,
     localRevision: input.localRevision,
     serverRevision,
-    contentRevision: mobileVoiceWritingContentHash({ title: document.title, body }),
+    contentRevision: mobileVoiceWritingContentHash({ title: document.title, body, richText }),
     localRecordingId: input.localRecordingId,
     transcriptClientRequestId: input.transcriptClientRequestId,
     sourceSha256: input.sourceSha256,
@@ -110,6 +119,7 @@ function publicStoredDraft(document: any) {
   const source = record(operation?.payloadJson);
   const current = currentVoiceRevision(document);
   const body = voiceWritingBody(document, draftId);
+  const richText = voiceWritingRichText(document);
   const legacySource = {
     localRecordingId: String(source.localRecordingId || draftId),
     transcriptClientRequestId: String(source.transcriptClientRequestId || draftId),
@@ -127,9 +137,10 @@ function publicStoredDraft(document: any) {
     projectSlug: document.project?.slug || "",
     title: document.title,
     body,
+    richText,
     localRevision: current.serverRevision ?? 1,
     serverRevision: current.serverRevision ?? 1,
-    contentRevision: mobileVoiceWritingContentHash({ title: document.title, body }),
+    contentRevision: mobileVoiceWritingContentHash({ title: document.title, body, richText }),
     ...legacySource,
     sources,
     tagRevision: Number(document.tagRevision) || 0,
@@ -309,6 +320,7 @@ export async function POST(request: Request) {
               afterJson: {
                 title: input.title,
                 body: input.body,
+                richText: input.richText,
                 contentHash,
                 serverRevision: input.localRevision,
               },
@@ -410,6 +422,7 @@ export async function POST(request: Request) {
             afterJson: {
               title: input.title,
               body: input.body,
+              richText: input.richText,
               contentHash,
               serverRevision: input.localRevision,
             },
