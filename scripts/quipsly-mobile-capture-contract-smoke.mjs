@@ -1207,15 +1207,15 @@ function checkReviewDigestContractSources() {
   );
   expect(
     capturePhoneShellText.includes("CaptureSessionTruthPanel")
-      && capturePhoneShellText.includes("Lifecycle receipts")
+      && capturePhoneShellText.includes("Session progress")
       && capturePhoneShellText.includes("session.lifecycleReceiptLine")
-      && capturePhoneShellText.includes("Safe next actions")
+      && capturePhoneShellText.includes("Available now")
       && capturePhoneShellText.includes("session.lifecycleSafeActions.prefix(3)")
-      && capturePhoneShellText.includes("Boundary: \\(action.boundary)")
+      && !capturePhoneShellText.includes("Boundary: \\(action.boundary)")
       && capturePhoneShellText.includes('accessibilityIdentifier("CaptureLifecycleSafeAction_\\(action.id)")')
       && capturePhoneShellText.includes('accessibilityIdentifier("CaptureSessionTruthDisclosure")'),
     "nativeSessionTruthPanelVisible",
-    "The shipping native Capture shell exposes journey, lifecycle receipt, safe-action, source-quality, and recording-boundary truth without restoring the disconnected reviewer control board.",
+    "The shipping native Capture shell exposes next-step, session-progress, source-quality, and recording truth in ordinary language without restoring the disconnected reviewer control board.",
   );
   expect(
     contentViewText.includes("CapturePhoneShell(model: captureModel, visibleTab: $visibleTab)")

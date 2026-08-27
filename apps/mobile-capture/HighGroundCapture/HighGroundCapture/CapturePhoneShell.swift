@@ -8485,7 +8485,7 @@ private struct CaptureSessionTruthPanel: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             truthSection(
-                title: "Journey",
+                title: "Next step",
                 systemImage: "point.topleft.down.to.point.bottomright.curvepath",
                 status: session.journeyStageLabel,
                 detail: session.journeyNextAction,
@@ -8503,7 +8503,7 @@ private struct CaptureSessionTruthPanel: View {
             }
 
             truthSection(
-                title: "Lifecycle receipts",
+                title: "Session progress",
                 systemImage: "checkmark.seal",
                 status: session.lifecycleReceiptLine,
                 detail: session.lifecycleNextAction,
@@ -8514,7 +8514,7 @@ private struct CaptureSessionTruthPanel: View {
 
             if !session.lifecycleSafeActions.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("Safe next actions")
+                    Text("Available now")
                         .font(.caption.weight(.bold))
                         .foregroundStyle(.secondary)
                     ForEach(session.lifecycleSafeActions.prefix(3)) { action in
@@ -8526,9 +8526,6 @@ private struct CaptureSessionTruthPanel: View {
                                     .font(.subheadline.weight(.semibold))
                                 Text(action.why)
                                     .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                Text("Boundary: \(action.boundary)")
-                                    .font(.caption2)
                                     .foregroundStyle(.secondary)
                             }
                         }
@@ -8656,7 +8653,7 @@ private struct CaptureSessionTruthPanel: View {
     private var retainedSourceTruth: some View {
         VStack(alignment: .leading, spacing: 8) {
             truthSection(
-                title: "Retained source set",
+                title: "Recordings",
                 systemImage: "externaldrive.badge.checkmark",
                 status: session.recordingPromotionBadgeLabel,
                 detail: session.recordingMediaVaultLine,

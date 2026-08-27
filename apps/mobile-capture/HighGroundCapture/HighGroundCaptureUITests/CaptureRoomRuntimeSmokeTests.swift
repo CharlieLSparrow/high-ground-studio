@@ -4955,14 +4955,14 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             "The call and recording check should expose the actual status panel, not satisfy assertions from a hidden tab subtree."
         )
         XCTAssertTrue(
-            app.staticTexts["Journey"].firstMatch.waitForExistence(timeout: 8)
+            app.staticTexts["Next step"].firstMatch.waitForExistence(timeout: 8)
         )
         XCTAssertTrue(
             app.descendants(matching: .any)["CaptureRetainedSourceTruth"].firstMatch.waitForExistence(timeout: 8),
             "The call and recording check should distinguish retained masters from prepared rooms and live tracks."
         )
         XCTAssertTrue(
-            app.staticTexts["Retained source set"].firstMatch.waitForExistence(timeout: 8)
+            app.staticTexts["Recordings"].firstMatch.waitForExistence(timeout: 8)
         )
         let recordingBoundaryCopy = app.staticTexts[
             "Joining the call never starts a recording. Recording starts only after everyone has allowed it and someone taps Record."
