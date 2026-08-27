@@ -68,6 +68,36 @@ describe("resolveStudioProjectAccess", () => {
     }));
   });
 
+  it("does not let a platform OWNER role silently open customer content", async () => {
+    const prisma = {
+      studioProject: {
+        findMany: jest.fn().mockResolvedValue([{
+          id: "project-1",
+          slug: "private-nest",
+          workspace: { ownerLabel: "customer@example.com" },
+          accessGrants: [],
+        }]),
+      },
+      user: {
+        findFirst: jest.fn().mockResolvedValue({
+          primaryEmail: "support@example.com",
+          aliases: [],
+          roles: [{ role: "OWNER" }],
+        }),
+      },
+    };
+
+    await expect(resolveStudioProjectAccess({
+      projectSlug: "private-nest",
+      email: "support@example.com",
+      prisma: prisma as never,
+    })).resolves.toEqual(expect.objectContaining({
+      allowed: false,
+      role: null,
+      source: "none",
+    }));
+  });
+
   it("honors a Nest grant attached to another verified email for the same person", async () => {
     const prisma = {
       studioProject: {

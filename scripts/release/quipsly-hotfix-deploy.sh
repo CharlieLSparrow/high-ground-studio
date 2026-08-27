@@ -39,9 +39,18 @@ LIVE_URL="${LIVE_URL:-https://nest.quipsly.com}"
 EXTRA_UPDATE_ENV_VARS="${EXTRA_UPDATE_ENV_VARS:-}"
 EXTRA_UPDATE_SECRETS="${EXTRA_UPDATE_SECRETS:-}"
 QUIPSLY_ADMIN_EMAILS="${QUIPSLY_ADMIN_EMAILS:-}"
+QUIPSLY_ADMIN_BREAK_GLASS_ENABLED="${QUIPSLY_ADMIN_BREAK_GLASS_ENABLED:-false}"
 
 if [[ -z "${PROJECT_ID}" ]]; then
   echo "PROJECT_ID is required or gcloud must have a default project." >&2
+  exit 2
+fi
+if [[ "${QUIPSLY_ADMIN_BREAK_GLASS_ENABLED}" != "true" && "${QUIPSLY_ADMIN_BREAK_GLASS_ENABLED}" != "false" ]]; then
+  echo "QUIPSLY_ADMIN_BREAK_GLASS_ENABLED must be true or false." >&2
+  exit 2
+fi
+if [[ "${QUIPSLY_ADMIN_BREAK_GLASS_ENABLED}" == "true" && -z "${QUIPSLY_ADMIN_EMAILS}" ]]; then
+  echo "Emergency admin recovery requires an exact QUIPSLY_ADMIN_EMAILS list." >&2
   exit 2
 fi
 
@@ -103,8 +112,10 @@ fi
 if [[ -n "${EXTRA_UPDATE_SECRETS}" ]]; then
   echo "Extra secrets: explicit operator bindings configured"
 fi
-if [[ -n "${QUIPSLY_ADMIN_EMAILS}" ]]; then
-  echo "Admin env:     explicit operator list configured"
+if [[ "${QUIPSLY_ADMIN_BREAK_GLASS_ENABLED}" == "true" ]]; then
+  echo "Admin recovery: ACTIVE for an explicit operator list"
+else
+  echo "Admin recovery: disabled; database roles are authoritative"
 fi
 echo ""
 echo "This lane intentionally skips the beta manifest scan."
@@ -501,7 +512,8 @@ fi
 
 echo "Deploying no-traffic hotfix revision"
 UPDATE_ENV_VARS="QUIPSLY_IMAGE_TAG=${IMAGE_TAG},QUIPSLY_SOURCE_SHA=${SOURCE_SHA},QUIPSLY_RELEASE_CHANNEL=hotfix,QUIPSLY_DEPLOYED_BY=${DEPLOYED_BY},QUIPSLY_APP_HOST=nest.quipsly.com,QUIPSLY_MARKETING_HOST=quipsly.com,QUIPSLY_LEGACY_STUDIO_HOST=studio-hm2odnvjga-uc.a.run.app"
-if [[ -n "${QUIPSLY_ADMIN_EMAILS}" ]]; then
+UPDATE_ENV_VARS="${UPDATE_ENV_VARS},QUIPSLY_ADMIN_BREAK_GLASS_ENABLED=${QUIPSLY_ADMIN_BREAK_GLASS_ENABLED}"
+if [[ "${QUIPSLY_ADMIN_BREAK_GLASS_ENABLED}" == "true" ]]; then
   UPDATE_ENV_VARS="${UPDATE_ENV_VARS},QUIPSLY_ADMIN_EMAILS=${QUIPSLY_ADMIN_EMAILS}"
 fi
 if [[ -n "${EXTRA_UPDATE_ENV_VARS}" ]]; then
@@ -561,8 +573,8 @@ if [[ "${PROMOTE}" == "1" ]]; then
 else
   echo "Hotfix preview is ready but not promoted."
   echo "Promote after review with:"
-  if [[ -n "${QUIPSLY_ADMIN_EMAILS}" ]]; then
-    echo "  PROMOTE=1 SKIP_CLOUD_BUILD=1 IMAGE_TAG=${IMAGE_TAG} PREVIEW_TAG=${PREVIEW_TAG} QUIPSLY_ADMIN_EMAILS='<same operator list>' EXTRA_UPDATE_ENV_VARS='${EXTRA_UPDATE_ENV_VARS}' bash scripts/release/quipsly-hotfix-deploy.sh"
+  if [[ "${QUIPSLY_ADMIN_BREAK_GLASS_ENABLED}" == "true" ]]; then
+    echo "  PROMOTE=1 SKIP_CLOUD_BUILD=1 IMAGE_TAG=${IMAGE_TAG} PREVIEW_TAG=${PREVIEW_TAG} QUIPSLY_ADMIN_BREAK_GLASS_ENABLED=true QUIPSLY_ADMIN_EMAILS='<same operator list>' EXTRA_UPDATE_ENV_VARS='${EXTRA_UPDATE_ENV_VARS}' bash scripts/release/quipsly-hotfix-deploy.sh"
   else
     echo "  PROMOTE=1 SKIP_CLOUD_BUILD=1 IMAGE_TAG=${IMAGE_TAG} PREVIEW_TAG=${PREVIEW_TAG} EXTRA_UPDATE_ENV_VARS='${EXTRA_UPDATE_ENV_VARS}' bash scripts/release/quipsly-hotfix-deploy.sh"
   fi

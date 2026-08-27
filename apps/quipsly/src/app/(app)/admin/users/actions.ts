@@ -6,6 +6,7 @@ import { redirect } from "next/navigation";
 import { adminAuth } from "@/lib/firebase/firebase-admin";
 import { getPrismaClient } from "@/lib/prisma";
 import { grantNestAccess } from "@/lib/server/quipsly-core";
+import { ensureManagedUserRecord } from "@/lib/server/managed-user-provisioning";
 import { ensureQuipslyStarterStateForUser } from "@/lib/server/quipsly-onboarding";
 import { normalizeAccessEmail } from "@/lib/server/studio-project-access";
 import {
@@ -69,64 +70,6 @@ async function upsertFirebasePasswordUser(input: {
   }
 }
 
-async function ensureManagedUserRecord(input: {
-  email: string;
-  name?: string;
-  role: ReturnType<typeof parseAppRole>;
-  firebaseUid?: string;
-  prisma: ReturnType<typeof getPrismaClient>;
-}) {
-  const existingUser = await input.prisma.user.findFirst({
-    where: {
-      OR: [
-        { primaryEmail: input.email },
-        { aliases: { some: { email: input.email } } },
-      ],
-    },
-    select: { id: true },
-  });
-
-  const savedUser = !existingUser
-    ? await input.prisma.user.create({
-        data: {
-          primaryEmail: input.email,
-          name: input.name || null,
-          emailVerified: new Date(),
-          firebaseUid: input.firebaseUid || undefined,
-          ...(input.role ? { roles: { create: [{ role: input.role }] } } : {}),
-        },
-        select: { id: true, primaryEmail: true },
-      })
-    : await input.prisma.$transaction(async (tx) => {
-        await tx.user.update({
-          where: { id: existingUser.id },
-          data: {
-            name: input.name || undefined,
-            emailVerified: new Date(),
-            firebaseUid: input.firebaseUid || undefined,
-          },
-        });
-        if (input.role) {
-          await tx.userRole.createMany({
-            data: [{ userId: existingUser.id, role: input.role }],
-            skipDuplicates: true,
-          });
-        }
-        return tx.user.findUniqueOrThrow({
-          where: { id: existingUser.id },
-          select: { id: true, primaryEmail: true },
-        });
-      });
-
-  await ensureQuipslyStarterStateForUser({
-    userId: savedUser.id,
-    email: savedUser.primaryEmail,
-    prisma: input.prisma,
-  });
-
-  return { ...savedUser, created: !existingUser };
-}
-
 export async function upsertManagedUserAction(formData: FormData) {
   const actor = await requireQuipslyAdminActor();
 
@@ -147,6 +90,7 @@ export async function upsertManagedUserAction(formData: FormData) {
       email: targetEmail,
       name,
       role,
+      actor: { userId: actor.userId, email: actor.email, source: "admin-users" },
       prisma,
     });
 
@@ -190,6 +134,7 @@ export async function upsertCaptureReviewerAction(formData: FormData) {
       name,
       role,
       firebaseUid: firebaseLogin.user.uid,
+      actor: { userId: actor.userId, email: actor.email, source: "admin-reviewer" },
       prisma,
     });
     params.set(savedUser.created ? "created" : "updated", targetEmail);
@@ -224,6 +169,7 @@ export async function provisionCoachCohortAction(formData: FormData) {
         email: row.email,
         name: row.name,
         role: "COACH",
+        actor: { userId: actor.userId, email: actor.email, source: "admin-coach-cohort" },
         prisma,
       });
       if (saved.created) created += 1;

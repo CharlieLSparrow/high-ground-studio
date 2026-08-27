@@ -6,6 +6,7 @@ import {
   listManagedProjects,
   listManagedUsers,
   listConfiguredUserManagementEmails,
+  isUserManagementBreakGlassEnabled,
   requireQuipslyAdminActor,
 } from "@/lib/server/user-management";
 import {
@@ -79,6 +80,7 @@ export default async function UserManagementPage({
     listActiveProjectInvites(),
     Promise.resolve(listConfiguredUserManagementEmails()),
   ]);
+  const breakGlassEnabled = isUserManagementBreakGlassEnabled();
 
   const created = valueFromQuery(query.created);
   const updated = valueFromQuery(query.updated);
@@ -130,8 +132,8 @@ export default async function UserManagementPage({
                   never used Quipsly before, we create the app-owned user record now so their first login lands cleanly.
                 </p>
               </div>
-              <div className="rounded-xl border border-[#eadfca] bg-[#fffaf3] px-4 py-3 text-xs font-black uppercase tracking-[0.12em] text-[#8c6b4a]">
-                Configured admins: {configuredAdmins.join(", ") || "not configured"}
+              <div className={`rounded-xl border px-4 py-3 text-xs font-black uppercase tracking-[0.12em] ${breakGlassEnabled ? "border-rose-300 bg-rose-50 text-rose-900" : "border-emerald-200 bg-emerald-50 text-emerald-900"}`}>
+                Emergency override: {breakGlassEnabled ? configuredAdmins.join(", ") || "enabled without an address" : "disabled · database roles active"}
               </div>
             </div>
           </header>

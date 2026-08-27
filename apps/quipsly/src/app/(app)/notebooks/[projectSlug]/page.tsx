@@ -19,7 +19,6 @@ import {
   normalizeAccessEmail,
   resolveStudioProjectAccess,
 } from "@/lib/server/studio-project-access";
-import { isUserManagementAdminEmail } from "@/lib/server/user-management";
 import { personalWritingDocumentVisibilityWhere } from "@/lib/server/personal-writing-documents";
 import {
   NEST_KIND_LABELS,
@@ -203,7 +202,6 @@ export default async function NotebookNestPage({
   }
 
   const prisma = getPrismaClient();
-  const isAdminActor = isUserManagementAdminEmail(actorEmail);
   const readAccess = await resolveStudioProjectAccess({
     projectSlug,
     email: actorEmail,
@@ -211,7 +209,7 @@ export default async function NotebookNestPage({
     prisma,
   });
 
-  if (!isAdminActor && !readAccess.allowed) {
+  if (!readAccess.allowed) {
     redirect(`/notebooks?notAllowed=1`);
   }
 
@@ -237,7 +235,7 @@ export default async function NotebookNestPage({
     action: "write",
     prisma,
   });
-  const canWrite = isAdminActor || writeAccess.allowed;
+  const canWrite = writeAccess.allowed;
   const nestKind = nestKindFromSourceLabel(project.sourceLabel);
   const workflow = workflowSystemForNestKind(nestKind);
   const documents = await prisma.studioDocument.findMany({

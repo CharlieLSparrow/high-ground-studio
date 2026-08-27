@@ -28,7 +28,7 @@ describe("Nest project follow-through", () => {
 
   it("shows only actor-scoped canonical goals and accepted tasks with exact return links", async () => {
     jest.mocked(auth).mockResolvedValue({ user: { id: "user-1", primaryEmail: "person@example.com" } } as any);
-    jest.mocked(resolveStudioProjectAccess).mockResolvedValue({ allowed: true, role: "OWNER", source: "operator-override" } as any);
+    jest.mocked(resolveStudioProjectAccess).mockResolvedValue({ allowed: true, role: "OWNER", source: "grant" } as any);
     jest.mocked(findStudioProjectForAccess).mockResolvedValue({ id: "project-1", slug: "high-ground", name: "High Ground", description: "Produce the show.", sourceLabel: "production" } as any);
     jest.mocked(listStudioProjectAccessGrants).mockResolvedValue([] as any);
 
@@ -54,7 +54,7 @@ describe("Nest project follow-through", () => {
     }));
 
     expect(screen.getByRole("heading", { name: "Project follow-through" })).toBeInTheDocument();
-    expect(screen.getByText("Operator OWNER")).toBeInTheDocument();
+    expect(screen.getByText("OWNER")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Ship a trustworthy episode active · 75% progress" })).toHaveAttribute("href", "/work?goal=goal-1");
     expect(screen.getByRole("link", { name: "Proof-listen the recap" })).toHaveAttribute("href", "/work?task=task-1");
     expect(screen.getByRole("link", { name: "Return to 0:03–0:04" })).toHaveAttribute("href", "/sessions/room-1#transcript-segment-segment-1");

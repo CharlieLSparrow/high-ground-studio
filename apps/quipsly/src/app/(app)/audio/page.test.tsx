@@ -47,7 +47,7 @@ describe("AudioMasteryWorkspacePage project authorization", () => {
       workspaceName: "Workspace",
       workspaceSlug: "workspace",
       role: "OWNER",
-      accessSource: "staff",
+      accessSource: "grant",
       updatedAt: new Date("2026-08-06T12:00:00.000Z"),
       collaborators: [],
     }]);

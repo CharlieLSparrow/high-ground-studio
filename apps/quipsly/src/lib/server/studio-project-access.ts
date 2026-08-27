@@ -11,7 +11,7 @@ export type StudioProjectAccessAction = "read" | "write" | "manage";
 export type StudioProjectAccessResolution = {
   allowed: boolean;
   role: StudioProjectAccessRole | null;
-  source: "none" | "workspace-owner-label" | "grant" | "staff" | "operator-override";
+  source: "none" | "workspace-owner-label" | "grant";
   projectId: string | null;
   projectSlug: string;
 };
@@ -27,7 +27,7 @@ export type AccessibleStudioProjectSummary = {
   workspaceName: string;
   workspaceSlug: string;
   role: StudioProjectAccessRole;
-  accessSource: "workspace-owner-label" | "grant" | "staff";
+  accessSource: "workspace-owner-label" | "grant";
   updatedAt: Date;
   collaborators?: { email: string; role: StudioProjectAccessRole }[];
 };
@@ -57,14 +57,8 @@ export function roleAllowsAction(role: StudioProjectAccessRole | string, action:
   return false;
 }
 
-function isStaffRole(role: string) {
-  const normalized = role.trim().toUpperCase();
-  return normalized === "OWNER" || normalized === "ADMIN" || normalized === "STAFF";
-}
-
 type StudioAccessIdentity = {
   emails: string[];
-  roles: string[];
 };
 
 export async function resolveStudioAccessIdentity(
@@ -72,7 +66,7 @@ export async function resolveStudioAccessIdentity(
   prisma: PrismaClient,
 ): Promise<StudioAccessIdentity> {
   const normalizedEmail = normalizeAccessEmail(email);
-  if (!normalizedEmail) return { emails: [], roles: [] };
+  if (!normalizedEmail) return { emails: [] };
 
   const user = await prisma.user.findFirst({
     where: {
@@ -84,11 +78,10 @@ export async function resolveStudioAccessIdentity(
     select: {
       primaryEmail: true,
       aliases: { select: { email: true } },
-      roles: { select: { role: true } },
     },
   });
 
-  if (!user) return { emails: [normalizedEmail], roles: [] };
+  if (!user) return { emails: [normalizedEmail] };
 
   return {
     emails: [...new Set(
@@ -96,7 +89,6 @@ export async function resolveStudioAccessIdentity(
         .map(normalizeAccessEmail)
         .filter(Boolean),
     )],
-    roles: user.roles.map((entry) => String(entry.role)),
   };
 }
 
@@ -209,10 +201,6 @@ export async function resolveStudioProjectAccess({
     return { allowed: true, role: permittedGrant.role, source: "grant", projectId: project.id, projectSlug };
   }
 
-  if (identity.roles.some(isStaffRole)) {
-    return { allowed: true, role: "OWNER", source: "staff", projectId: project.id, projectSlug };
-  }
-
   return {
     allowed: false,
     role: explicitGrant?.role ?? null,
@@ -266,7 +254,7 @@ type ProjectListRow = Prisma.StudioProjectGetPayload<{
 
 function accessibleProjectSummaryFromProject(
   project: ProjectListRow,
-  accessSource: "workspace-owner-label" | "staff",
+  accessSource: "workspace-owner-label",
 ): AccessibleStudioProjectSummary {
   return {
     id: project.id,
@@ -313,14 +301,6 @@ export async function listStudioProjectsForAccess({
       select: { email: true, role: true },
     },
   } satisfies Prisma.StudioProjectInclude;
-
-  if (identity.roles.some(isStaffRole)) {
-    const projects = await prisma.studioProject.findMany({
-      include: projectInclude,
-      orderBy: [{ updatedAt: "desc" }, { id: "asc" }],
-    });
-    return projects.map((project) => accessibleProjectSummaryFromProject(project, "staff"));
-  }
 
   const grants = await prisma.studioProjectAccessGrant.findMany({
     where: {

@@ -20,8 +20,6 @@ import {
 } from "@/lib/staff-capabilities";
 import { sourceLabelForNestKind } from "@/lib/studio/project-registry";
 
-const DEFAULT_USER_MANAGEMENT_EMAILS = ["charlie@highgroundodyssey.com"];
-
 type UserRolePayload = Prisma.UserRoleGetPayload<{
   select: { role: true };
 }>;
@@ -122,13 +120,20 @@ function parseAdminEmails(value?: string) {
 }
 
 export function listConfiguredUserManagementEmails(): string[] {
-  const envEmails = parseAdminEmails(process.env.QUIPSLY_ADMIN_EMAILS);
-  const fallbackEmails = parseAdminEmails(DEFAULT_USER_MANAGEMENT_EMAILS.join(","));
-  return [...new Set([...envEmails, ...fallbackEmails])];
+  return [...new Set(parseAdminEmails(process.env.QUIPSLY_ADMIN_EMAILS))];
+}
+
+export function isUserManagementBreakGlassEnabled(): boolean {
+  return process.env.QUIPSLY_ADMIN_BREAK_GLASS_ENABLED === "true";
 }
 
 export function isUserManagementAdminEmail(email?: string | null): boolean {
-  return listConfiguredUserManagementEmails().includes(normalizeAccessEmail(email));
+  return isUserManagementBreakGlassEnabled()
+    && listConfiguredUserManagementEmails().includes(normalizeAccessEmail(email));
+}
+
+export function hasPlatformOwnerRole(roles?: readonly string[] | null): boolean {
+  return Boolean(roles?.includes("OWNER"));
 }
 
 async function listUserManagementRoles({
@@ -175,6 +180,9 @@ export async function getQuipslyStaffActor(
     email: actorEmail,
     userId: session.user.id,
   });
+  // Database roles are the normal authority. The environment list is an
+  // explicit emergency recovery path only and does not bypass Nest/content
+  // access checks elsewhere in the product.
   const capabilities = isUserManagementAdminEmail(actorEmail)
     ? [...ALL_STAFF_CAPABILITIES]
     : staffCapabilitiesForRoles(roles);

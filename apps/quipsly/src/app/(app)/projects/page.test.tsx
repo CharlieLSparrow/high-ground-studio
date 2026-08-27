@@ -6,7 +6,7 @@ import { getPrismaClient } from "@/lib/prisma";
 import { canAccessPrivateFictionNest } from "@/lib/fiction/private-fiction-access";
 import { ensureHomeNestForEmail, listProjectsVisibleToEmail } from "@/lib/server/home-nest";
 import { listAccessibleStudioProjectSummariesForEmail } from "@/lib/server/studio-project-access";
-import { isUserManagementAdminEmail } from "@/lib/server/user-management";
+import { hasPlatformOwnerRole } from "@/lib/server/user-management";
 import { listStudioProjectOptions } from "@/lib/studio/project-registry";
 import { NestRegistryUnavailableState } from "./NestRegistryUnavailableState";
 import ProjectsHub from "./page";
@@ -30,7 +30,7 @@ jest.mock("@/lib/server/studio-project-access", () => ({
   normalizeAccessEmail: jest.fn((value: string | null | undefined) => value?.trim().toLowerCase() || null),
 }));
 jest.mock("@/lib/server/user-management", () => ({
-  isUserManagementAdminEmail: jest.fn(),
+  hasPlatformOwnerRole: jest.fn(),
   requireQuipslyAdminActor: jest.fn(),
 }));
 jest.mock("@/lib/studio/live-work-nests", () => ({ ensureLiveWorkNests: jest.fn() }));
@@ -82,7 +82,7 @@ describe("Nest registry degraded-state UX", () => {
     (listStudioProjectOptions as jest.Mock).mockResolvedValue([]);
     (listAccessibleStudioProjectSummariesForEmail as jest.Mock).mockResolvedValue([]);
     (canAccessPrivateFictionNest as jest.Mock).mockResolvedValue(false);
-    (isUserManagementAdminEmail as jest.Mock).mockReturnValue(false);
+    (hasPlatformOwnerRole as jest.Mock).mockReturnValue(false);
   });
 
   afterEach(() => {
@@ -109,8 +109,8 @@ describe("Nest registry degraded-state UX", () => {
 
   it("hides admin mutations, creation, and empty-state claims when the registry read fails", async () => {
     process.env.QUIPSLY_OWNER_OVERRIDE = "true";
-    (isUserManagementAdminEmail as jest.Mock).mockReturnValue(true);
-    (listStudioProjectOptions as jest.Mock).mockRejectedValue(
+    (hasPlatformOwnerRole as jest.Mock).mockReturnValue(true);
+    (listProjectsVisibleToEmail as jest.Mock).mockRejectedValue(
       new Error("Prisma client failed at /Users/wall-e/Dev/high-ground-studio/node_modules/.prisma/client"),
     );
 

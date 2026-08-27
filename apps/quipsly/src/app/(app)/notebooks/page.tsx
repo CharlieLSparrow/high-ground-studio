@@ -19,10 +19,8 @@ import {
   listAccessibleStudioProjectSummariesForEmail,
   normalizeAccessEmail,
 } from "@/lib/server/studio-project-access";
-import { isUserManagementAdminEmail } from "@/lib/server/user-management";
 import { personalWritingDocumentVisibilityWhere } from "@/lib/server/personal-writing-documents";
 import {
-  listStudioProjectOptions,
   NEST_KIND_LABELS,
   nestKindFromSourceLabel,
   workflowSystemForNestKind,
@@ -306,33 +304,18 @@ export default async function NotebooksPage({
   let loadError = "";
 
   try {
-    if (isUserManagementAdminEmail(actorEmail)) {
-      const projects = await listStudioProjectOptions(prisma);
-      ownedNests = projects
-        .filter((project) => isWritingKind(project.nestKind))
-        .map((project) => ({
-          id: project.id,
-          slug: project.slug,
-          name: project.name,
-          description: project.description ?? null,
-          nestKind: project.nestKind,
-          role: "Admin",
-          updatedAt: coerceDate(project.updatedAt),
-        }));
-    } else {
-      const projects = await listProjectsVisibleToEmail(actorEmail, prisma);
-      ownedNests = projects
-        .map((project) => ({
-          id: project.id,
-          slug: project.slug,
-          name: project.name,
-          description: null,
-          nestKind: nestKindFromSourceLabel(project.sourceLabel),
-          role: project.role,
-          updatedAt: coerceDate(project.updatedAt),
-        }))
-        .filter((project) => isWritingKind(project.nestKind));
-    }
+    const projects = await listProjectsVisibleToEmail(actorEmail, prisma);
+    ownedNests = projects
+      .map((project) => ({
+        id: project.id,
+        slug: project.slug,
+        name: project.name,
+        description: null,
+        nestKind: nestKindFromSourceLabel(project.sourceLabel),
+        role: project.role,
+        updatedAt: coerceDate(project.updatedAt),
+      }))
+      .filter((project) => isWritingKind(project.nestKind));
 
     const ownedIds = new Set(ownedNests.map((nest) => nest.id));
     const shared = await listAccessibleStudioProjectSummariesForEmail(actorEmail, prisma);

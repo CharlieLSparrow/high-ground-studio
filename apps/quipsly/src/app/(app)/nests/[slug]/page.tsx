@@ -396,7 +396,7 @@ export default async function NestDashboardPage({ params, searchParams }: NestDa
               <div className="flex flex-wrap items-center gap-2 text-[10px] font-black uppercase tracking-[0.17em] text-[#8a653d]">
                 <span>{NEST_KIND_LABELS[nestKind]} project</span>
                 <span aria-hidden="true">·</span>
-                <span>{access.source === "operator-override" ? `Operator ${access.role}` : access.role}</span>
+                <span>{access.role}</span>
               </div>
               <h1 className="mt-2 truncate font-serif text-4xl font-black tracking-tight md:text-5xl">{project.name}</h1>
               {project.description ? (

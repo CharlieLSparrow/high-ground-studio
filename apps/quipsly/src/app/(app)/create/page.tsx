@@ -1,14 +1,12 @@
 import Workspace from "./Workspace";
 import { loadWorkbenchStateWithScope, seedTonightPack } from "./actions";
-import { DEV_PROJECT_SLUG, listStudioProjectOptions } from "./projectConfig";
+import { DEV_PROJECT_SLUG } from "./projectConfig";
 import { auth } from "@/auth";
 import { getPrismaClient } from "@/lib/prisma";
 import {
-  ensureKnownLiveNestsForAdmin,
   listVisibleNestsForEmail,
   resolveNestAccess,
 } from "@/lib/server/quipsly-core";
-import { isUserManagementAdminEmail } from "@/lib/server/user-management";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { resolveInitialFocusBlockId } from "./block-focus";
@@ -65,24 +63,13 @@ export default async function CreatePage({
     typeof params?.document === "string" ? params.document : undefined;
   const session = await auth();
   const actorEmail = session?.user?.primaryEmail || session?.user?.email;
-  const isAdminActor = isUserManagementAdminEmail(actorEmail);
-
-  try {
-    await ensureKnownLiveNestsForAdmin({
-      actorEmail,
-      isAdminActor,
-      nestSlug: projectSlug,
-    });
-  } catch (error) {
-    console.warn(`Could not ensure live-work Nests before opening ${projectSlug}.`, error);
-  }
 
   const readAccess = await resolveNestAccess({
     nestSlug: projectSlug,
     email: actorEmail,
     action: "read",
   });
-  const canOpenProject = isAdminActor || readAccess.allowed;
+  const canOpenProject = readAccess.allowed;
 
   if (!canOpenProject) {
     redirect(`/projects?fallback=true&missing=${encodeURIComponent(projectSlug)}`);
@@ -93,7 +80,7 @@ export default async function CreatePage({
     email: actorEmail,
     action: "write",
   });
-  const canWriteProject = isAdminActor || writeAccess.allowed;
+  const canWriteProject = writeAccess.allowed;
 
   const scopeInput = params?.scope;
   const scopeProjectSlugs = typeof scopeInput === "string"
@@ -161,9 +148,7 @@ export default async function CreatePage({
   try {
     const prisma = getPrismaClient();
 
-    if (isAdminActor) {
-      availableProjects = await listStudioProjectOptions(prisma);
-    } else if (actorEmail) {
+    if (actorEmail) {
       availableProjects = (await listVisibleNestsForEmail({ email: actorEmail, prisma })).map((project) => ({
         slug: project.slug,
         name: project.name,

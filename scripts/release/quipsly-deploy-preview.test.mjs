@@ -116,6 +116,17 @@ test("preview deploy enables the exact public GA4 stream without treating its id
   assert.doesNotMatch(source, /QUIPSLY_GA_MEASUREMENT_ID=.*:latest/);
 });
 
+test("preview deploy keeps database staff roles authoritative", () => {
+  const source = readFileSync(deployScript, "utf8");
+  const hotfix = readFileSync(hotfixScript, "utf8");
+
+  assert.match(source, /QUIPSLY_ADMIN_BREAK_GLASS_ENABLED=false/);
+  assert.doesNotMatch(source, /QUIPSLY_ADMIN_EMAILS=.*\$\{QUIPSLY_ADMIN_EMAILS/);
+  assert.match(hotfix, /QUIPSLY_ADMIN_BREAK_GLASS_ENABLED="\$\{QUIPSLY_ADMIN_BREAK_GLASS_ENABLED:-false\}"/);
+  assert.match(hotfix, /Emergency admin recovery requires an exact QUIPSLY_ADMIN_EMAILS list/);
+  assert.match(hotfix, /QUIPSLY_ADMIN_BREAK_GLASS_ENABLED=\$\{QUIPSLY_ADMIN_BREAK_GLASS_ENABLED\}/);
+});
+
 test("preview deploy defaults to the valid dedicated account deletion identity", () => {
   const source = readFileSync(deployScript, "utf8");
 

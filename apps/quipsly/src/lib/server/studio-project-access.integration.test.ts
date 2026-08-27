@@ -132,17 +132,16 @@ runLocalDatabaseSmoke("canonical project list and direct access parity", () => {
     }
   });
 
-  it("lists every explicit staff decision and matches direct project access", async () => {
+  it("keeps platform staff authority separate from customer content access", async () => {
     const listed = await listStudioProjectsForAccess({ email: staffEmail, action: "manage", prisma });
     const targets = listed.filter((project) => [ownerProjectId, grantProjectId].includes(project.id));
-    expect(targets).toHaveLength(2);
-    expect(targets.every((project) => project.role === "OWNER" && project.accessSource === "staff")).toBe(true);
+    expect(targets).toHaveLength(0);
     await expect(resolveStudioProjectAccess({
       projectSlug: grantProjectSlug,
       email: staffEmail,
       action: "manage",
       prisma,
-    })).resolves.toMatchObject({ allowed: true, role: "OWNER", source: "staff", projectId: grantProjectId });
+    })).resolves.toMatchObject({ allowed: false, role: null, source: "none", projectId: grantProjectId });
   });
 
   it("uses verified aliases for both listing and direct workspace-owner access", async () => {

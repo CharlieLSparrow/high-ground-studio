@@ -34,7 +34,7 @@ import { ensureHomeNestForEmail, listProjectsVisibleToEmail } from "@/lib/server
 import {
   listAccessibleStudioProjectSummariesForEmail,
 } from "@/lib/server/studio-project-access";
-import { isUserManagementAdminEmail, requireQuipslyAdminActor } from "@/lib/server/user-management";
+import { hasPlatformOwnerRole, requireQuipslyAdminActor } from "@/lib/server/user-management";
 import { ensureLiveWorkNests } from "@/lib/studio/live-work-nests";
 import {
   HGO_PROJECT_SLUG,
@@ -233,7 +233,7 @@ export default async function ProjectsHub({
   let sharedProjects: Awaited<ReturnType<typeof listAccessibleStudioProjectSummariesForEmail>> = [];
   let actorHomeNestId = "";
   const projectRoles = new Map<string, string>();
-  const canManageLiveNests = isUserManagementAdminEmail(actorEmail);
+  const canManageLiveNests = hasPlatformOwnerRole(session?.user?.roles);
 
   try {
     prisma = getPrismaClient();
@@ -255,10 +255,7 @@ export default async function ProjectsHub({
 
   if (prisma && !projectRegistryUnavailable) {
     try {
-      if (canManageLiveNests) {
-        projects = await listStudioProjectOptions(prisma);
-        for (const project of projects) projectRoles.set(project.slug, "Admin");
-      } else if (actorEmail) {
+      if (actorEmail) {
         const visibleProjects = await listProjectsVisibleToEmail(actorEmail, prisma);
         projects = visibleProjects.map((project) => {
           projectRoles.set(project.slug, project.role);

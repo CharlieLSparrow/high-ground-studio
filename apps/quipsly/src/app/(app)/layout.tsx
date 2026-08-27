@@ -4,7 +4,7 @@ import { getQuipslySession } from "@/lib/server/quipsly-session";
 import "../globals.css";
 import { SidebarLayout } from "@/components/SidebarLayout";
 import { LiveSessionDockProvider } from "@/components/live-session-dock";
-import { isUserManagementAdminEmail } from "@/lib/server/user-management";
+import { hasPlatformOwnerRole } from "@/lib/server/user-management";
 import { MAC_WEB_SESSION_COOKIE_NAME, verifyMacWebSessionToken } from "@/lib/server/mac-session-token";
 import { cookies } from "next/headers";
 import { Providers } from "@/app/providers";
@@ -48,9 +48,7 @@ export default async function RootLayout({
     || session?.user?.email
     || null;
   const actorRoles = session?.user?.roles || [];
-  const isAdminBypass = isUserManagementAdminEmail(actorEmail);
-  const showPlatformAdminTools =
-    isAdminBypass || actorRoles.includes("OWNER");
+  const showPlatformAdminTools = hasPlatformOwnerRole(actorRoles);
   const showSupportTools = showPlatformAdminTools || actorRoles.includes("SUPPORT_AGENT");
   const showProductOperations = showPlatformAdminTools || actorRoles.includes("PRODUCT_ANALYST");
 

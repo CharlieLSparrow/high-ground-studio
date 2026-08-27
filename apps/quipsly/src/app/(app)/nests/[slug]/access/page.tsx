@@ -160,9 +160,7 @@ export default async function NestAccessPage({ params, searchParams }: NestAcces
                 {canManageSharing ? "You can manage" : "You have access"}
               </div>
               <p className="mt-2 text-sm leading-6 text-emerald-900">
-                {access.source === "operator-override"
-                  ? `Local operator override is active. Effective role: ${access.role}.`
-                  : `Your access source: ${access.source}. Role: ${access.role}.`}
+                Your access source: {access.source}. Role: {access.role}.
               </p>
             </div>
           </div>

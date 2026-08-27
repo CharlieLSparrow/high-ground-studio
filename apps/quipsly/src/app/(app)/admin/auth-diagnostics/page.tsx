@@ -7,6 +7,7 @@ import { normalizeAccessEmail } from "@/lib/server/studio-project-access";
 import { QUIPSLY_SESSION_COOKIE_NAME } from "@/lib/server/quipsly-session";
 import {
   listConfiguredUserManagementEmails,
+  isUserManagementBreakGlassEnabled,
   type QuipslyAdminActor,
   requireQuipslySupportActor,
 } from "@/lib/server/user-management";
@@ -143,7 +144,7 @@ async function firebaseAdminRuntimeRows(origin: string): Promise<DiagnosticRow[]
   }
 }
 
-function appTruthRows(adminCount: number): DiagnosticRow[] {
+function appTruthRows(input: { actor: QuipslyAdminActor; breakGlassEnabled: boolean; breakGlassEmailCount: number }): DiagnosticRow[] {
   return [
     present("DATABASE_URL"),
     present("AUTH_SECRET"),
@@ -157,9 +158,16 @@ function appTruthRows(adminCount: number): DiagnosticRow[] {
           : "missing",
     },
     {
-      label: "Configured admin emails",
-      ok: adminCount > 0,
-      detail: `${adminCount} configured`,
+      label: "Database staff authority",
+      ok: input.actor.roles.some((role) => ["OWNER", "SUPPORT_AGENT", "PRODUCT_ANALYST"].includes(role)),
+      detail: input.actor.roles.length ? input.actor.roles.join(", ") : "no database roles",
+    },
+    {
+      label: "Emergency email override",
+      ok: !input.breakGlassEnabled,
+      detail: input.breakGlassEnabled
+        ? `ACTIVE with ${input.breakGlassEmailCount} configured address(es); repair database authority and disable it`
+        : "disabled; email alone cannot grant staff or content access",
     },
     {
       label: "Quipsly session cookie name",
@@ -392,6 +400,7 @@ function GoogleOAuthRedirectCallout({ origin }: { origin: string }) {
 export default async function AuthDiagnosticsPage() {
   const actor = await requireQuipslySupportActor();
   const configuredAdmins = listConfiguredUserManagementEmails();
+  const breakGlassEnabled = isUserManagementBreakGlassEnabled();
   const requestHeaders = await headers();
   const host = requestHeaders.get("x-forwarded-host") || requestHeaders.get("host") || "nest.quipsly.com";
   const protocol = requestHeaders.get("x-forwarded-proto") || "https";
@@ -463,7 +472,7 @@ export default async function AuthDiagnosticsPage() {
           <DiagnosticSection
             title="Quipsly app truth"
             description="Postgres and Quipsly-owned records remain the source of users, roles, Nests, memberships, and access grants."
-            rows={appTruthRows(configuredAdmins.length)}
+            rows={appTruthRows({ actor, breakGlassEnabled, breakGlassEmailCount: configuredAdmins.length })}
           />
           <DiagnosticSection
             title="Current actor onboarding truth"
