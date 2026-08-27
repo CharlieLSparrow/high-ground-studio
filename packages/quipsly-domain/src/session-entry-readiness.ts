@@ -228,7 +228,7 @@ export function buildQuipslySessionEntryReadiness(
       : "You can join now. Recording stays off until every required participant has joined and saved their choice.";
     primaryAction = {
       id: "join-call",
-      label: participantSetComplete ? "Join Session" : "Join waiting room",
+      label: participantSetComplete ? "Join session" : "Join waiting room",
       detail: "Microphone and camera access are requested only when needed on this device.",
     };
   } else if (!participantSetComplete) {
@@ -257,7 +257,7 @@ export function buildQuipslySessionEntryReadiness(
       : "The live room is not ready and at least one participant still needs to save their choice.";
     primaryAction = {
       id: "prepare-provider",
-      label: "Prepare Session",
+      label: "Prepare session",
       detail: "Keep local capture available while the live room is prepared.",
     };
   }

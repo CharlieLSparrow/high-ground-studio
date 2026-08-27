@@ -141,7 +141,15 @@ final class CaptureExperienceUITests: XCTestCase {
         )
         XCTAssertTrue(app.buttons["New session"].exists)
 
-        app.buttons["CaptureOpenNextSessionButton"].tap()
+        let joinSession = app.buttons["CaptureOpenNextSessionButton"]
+        XCTAssertEqual(
+            joinSession.label,
+            "Join session",
+            "A ready appointment should lead with the familiar call action, not production terminology."
+        )
+        XCTAssertTrue(app.staticTexts["Ready to join"].exists)
+        XCTAssertFalse(app.staticTexts["Ready to record"].exists)
+        joinSession.tap()
         openLocalRecorderIfNeeded()
         XCTAssertTrue(app.otherElements["CaptureRecorderHero"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.descendants(matching: .any)["CaptureRecordingModePicker"].exists)
@@ -2178,7 +2186,7 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(boundary.label.contains("provider credentials"))
     }
 
-    func testTodayPreparesOneScheduledSessionInAppleCalendarEditorWithoutBroadAccess() {
+    func testTodayUsesTheStandardAppleCalendarEditorWithoutExtraDismissalWork() {
         let button = app.buttons["CaptureAddNextSessionToCalendar"]
         reveal(button)
         XCTAssertTrue(
@@ -2197,9 +2205,10 @@ final class CaptureExperienceUITests: XCTestCase {
         cancel.tap()
 
         let status = app.staticTexts["CaptureCalendarEditorStatus"]
-        XCTAssertTrue(status.waitForExistence(timeout: 5))
-        XCTAssertTrue(status.label.contains("will not read"))
-        XCTAssertTrue(status.label.contains("verify the result"))
+        XCTAssertFalse(
+            status.waitForExistence(timeout: 1),
+            "Canceling the familiar system editor should simply return to Today without an administrative receipt."
+        )
     }
 
     func testTodayShowsCanonicalRecurrenceWithoutEnablingPreviewMutation() {

@@ -52,6 +52,21 @@ describe("canonical Session entry readiness", () => {
     expect(readiness.blockers).toContain("participants-needed");
   });
 
+  it("leads a ready appointment with the conventional join action", () => {
+    const readiness = buildQuipslySessionEntryReadiness(baseInput());
+
+    expect(readiness).toMatchObject({
+      stage: "join-call",
+      label: "Ready to join",
+      primaryAction: { id: "join-call", label: "Join session" },
+      permissions: {
+        canJoinCall: true,
+        canStartAudioRecording: true,
+      },
+    });
+    expect(readiness.assurances.joiningStartsRecording).toBe(false);
+  });
+
   it("keeps joining available while the actor reviews their one-time Session choice", () => {
     const readiness = buildQuipslySessionEntryReadiness({
       ...baseInput(),

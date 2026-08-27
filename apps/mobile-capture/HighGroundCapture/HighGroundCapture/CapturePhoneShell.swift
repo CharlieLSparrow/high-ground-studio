@@ -364,7 +364,7 @@ private struct CaptureTodayView: View {
                         },
                         onAddToCalendar: CaptureCalendarEventDraft(session: next).map { draft in
                             {
-                                calendarEditorStatus = "Apple's editor is reviewing this one Session event. Quipsly will not read your calendars or verify the result."
+                                calendarEditorStatus = nil
                                 calendarEventDraft = draft
                             }
                         }
@@ -472,25 +472,16 @@ private struct CaptureTodayView: View {
         .navigationTitle("Quipsly Capture")
         .navigationBarTitleDisplayMode(.inline)
         .refreshable { await model.load() }
-        .sheet(
-            item: $calendarEventDraft,
-            onDismiss: {
-                if calendarEditorStatus == nil {
-                    calendarEditorStatus = "Calendar editor closed. Quipsly did not read or verify any calendar data."
-                }
-            }
-        ) { draft in
+        .sheet(item: $calendarEventDraft) { draft in
             CaptureCalendarEventEditorSheet(draft: draft) { action in
                 calendarEventDraft = nil
                 switch action {
                 case .saved:
-                    calendarEditorStatus = "Apple's editor closed after Add. iOS owns the event; Quipsly did not read or verify it."
-                case .canceled:
-                    calendarEditorStatus = "Calendar editor canceled. No event was added by Quipsly."
-                case .deleted:
-                    calendarEditorStatus = "Calendar editor closed. Quipsly did not read or change any calendar."
+                    calendarEditorStatus = "Added to Calendar"
+                case .canceled, .deleted:
+                    calendarEditorStatus = nil
                 @unknown default:
-                    calendarEditorStatus = "Calendar editor closed. Quipsly did not read any calendar data."
+                    calendarEditorStatus = nil
                 }
             }
         }
@@ -11186,7 +11177,7 @@ private struct NextCaptureCard: View {
                         .frame(maxWidth: .infinity, minHeight: 44)
                 }
                 .buttonStyle(.bordered)
-                .accessibilityHint("Opens Apple's event editor with this Session title and time. Quipsly does not read your calendars.")
+                .accessibilityHint("Opens Apple's event editor with this session title and time.")
                 .accessibilityIdentifier("CaptureAddNextSessionToCalendar")
             }
         }
