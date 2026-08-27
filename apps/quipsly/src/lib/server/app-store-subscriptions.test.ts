@@ -67,6 +67,7 @@ describe("App Store subscription verification boundary", () => {
     const tx = {
       subscriptionProviderEvent: {
         findUnique: jest.fn().mockResolvedValue(null),
+        findFirst: jest.fn().mockResolvedValue(null),
         create: jest.fn().mockResolvedValue({ id: "event-1" }),
       },
       subscription: {
@@ -116,6 +117,61 @@ describe("App Store subscription verification boundary", () => {
         externalEventId: "200000000000001",
         status: "PROCESSED",
         payloadSha256: expect.stringMatching(/^[a-f0-9]{64}$/),
+      }),
+    });
+  });
+
+  it("records an out-of-order notification without regressing newer entitlement state", async () => {
+    const subscription = {
+      id: "sub-1",
+      organizationId: "org-1",
+      billingOwnerUserId: "coach-1",
+      appAccountToken: "760af700-b296-4b3f-b0fe-3f5648c299b4",
+      originalTransactionId: "100000000000001",
+    };
+    const tx = {
+      subscriptionProviderEvent: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        findFirst: jest.fn().mockResolvedValue({
+          occurredAt: new Date("2026-09-01T12:00:00.000Z"),
+        }),
+        create: jest.fn().mockResolvedValue({ id: "event-stale" }),
+      },
+      subscription: {
+        findUnique: jest.fn().mockResolvedValue(subscription),
+        update: jest.fn(),
+      },
+    };
+    const prisma = {
+      $transaction: jest.fn().mockImplementation((callback) => callback(tx)),
+    };
+
+    const result = await applyVerifiedAppStoreTransaction({
+      prisma,
+      transaction: {
+        transactionId: "200000000000003",
+        originalTransactionId: "100000000000001",
+        productId: "com.quipsly.capture.coach.monthly",
+        appAccountToken: "760af700-b296-4b3f-b0fe-3f5648c299b4",
+        expiresDate: Date.parse("2026-08-30T12:00:00.000Z"),
+        signedDate: Date.parse("2026-08-30T12:00:00.000Z"),
+      },
+      signedPayload: "verified-stale-jws-payload",
+      verificationEnvironment: "Production",
+      eventId: "notification-stale-1",
+      eventType: "DID_RENEW",
+      providerOccurredAt: Date.parse("2026-08-30T12:00:00.000Z"),
+      now: new Date("2026-09-02T12:00:00.000Z"),
+    });
+
+    expect(result).toMatchObject({ duplicate: false, ignored: true });
+    expect(tx.subscription.update).not.toHaveBeenCalled();
+    expect(tx.subscriptionProviderEvent.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        status: "IGNORED",
+        errorCode: "STALE_PROVIDER_EVENT",
+        externalEventId: "notification-stale-1",
+        subscriptionId: "sub-1",
       }),
     });
   });

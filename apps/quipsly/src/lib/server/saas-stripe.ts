@@ -7,6 +7,7 @@ import {
   QUIPSLY_COACH_PLAN_KEYS,
   quipslyStripeProducts,
 } from "@/lib/server/subscription-entitlements";
+import { acquirePrismaAdvisoryTransactionLock } from "@/lib/server/prisma-advisory-lock";
 
 const STRIPE_API_BASE = "https://api.stripe.com/v1";
 const LIVE_STRIPE_GUARD = "QUIPSLY_ALLOW_LIVE_STRIPE_SAAS";
@@ -302,57 +303,75 @@ export async function recordQuipslySubscriptionWebhook(input: {
   const eventId = text(event.id);
   if (!eventId) throw new Error("Stripe webhook is missing an event ID.");
   if (Boolean(event.livemode) !== config.livemode) throw new Error("Stripe webhook mode does not match the configured account.");
-  const existing = await input.prisma.subscriptionProviderEvent.findUnique({
+  const eventType = text(event.type);
+  const eventRecord = await input.prisma.subscriptionProviderEvent.upsert({
     where: { provider_externalEventId: { provider: "STRIPE", externalEventId: eventId } },
-  });
-  if (existing?.status === "PROCESSED" || existing?.status === "IGNORED") {
-    return { eventId, eventType: text(event.type), duplicate: true, applied: existing.status === "PROCESSED" };
-  }
-  const eventRecord = existing || await input.prisma.subscriptionProviderEvent.create({
-    data: {
+    update: {},
+    create: {
       provider: "STRIPE",
       externalEventId: eventId,
-      eventType: text(event.type) || "unknown",
+      eventType: eventType || "unknown",
       status: "RECEIVED",
       payloadSha256: createHash("sha256").update(input.rawBody).digest("hex"),
       occurredAt: unixDate(event.created),
     },
   });
+  if (eventRecord.status === "PROCESSED" || eventRecord.status === "IGNORED") {
+    return { eventId, eventType, duplicate: true, applied: eventRecord.status === "PROCESSED" };
+  }
 
   try {
-    const eventType = text(event.type);
     const object = record(event.data?.object);
-    let stripeSubscription: Record<string, any> | null = null;
-    if (eventType.startsWith("customer.subscription.")) stripeSubscription = object;
-    else if (eventType === "checkout.session.completed" && object.mode === "subscription" && text(object.subscription)) {
-      stripeSubscription = record(await stripeRequest(config, `/subscriptions/${encodeURIComponent(text(object.subscription))}`, { method: "GET" }));
-    } else if (eventType.startsWith("invoice.") && text(object.subscription)) {
-      stripeSubscription = record(await stripeRequest(config, `/subscriptions/${encodeURIComponent(text(object.subscription))}`, { method: "GET" }));
-    }
-    if (!stripeSubscription) {
+    const providerSubscriptionId = eventType.startsWith("customer.subscription.")
+      ? text(object.id)
+      : eventType === "checkout.session.completed" && object.mode === "subscription"
+        ? text(object.subscription)
+        : eventType.startsWith("invoice.")
+          ? text(object.subscription)
+          : "";
+    if (!providerSubscriptionId) {
       await input.prisma.subscriptionProviderEvent.update({
         where: { id: eventRecord.id },
         data: { status: "IGNORED", processedAt: now },
       });
       return { eventId, eventType, duplicate: false, applied: false };
     }
-    const local = await applyStripeSubscription({
-      prisma: input.prisma,
-      stripeSubscription,
-      expectedLivemode: config.livemode,
-      now,
+    const stripeSubscription = record(await stripeRequest(
+      config,
+      `/subscriptions/${encodeURIComponent(providerSubscriptionId)}`,
+      { method: "GET" },
+    ));
+    const applied = await input.prisma.$transaction(async (tx: any) => {
+      await acquirePrismaAdvisoryTransactionLock(tx, `stripe-subscription:${providerSubscriptionId}`);
+      const lockedEvent = await tx.subscriptionProviderEvent.findUnique({
+        where: { provider_externalEventId: { provider: "STRIPE", externalEventId: eventId } },
+      });
+      if (lockedEvent?.status === "PROCESSED" || lockedEvent?.status === "IGNORED") {
+        return {
+          duplicate: true,
+          applied: lockedEvent.status === "PROCESSED",
+          subscriptionId: lockedEvent.subscriptionId || undefined,
+        };
+      }
+      const local = await applyStripeSubscription({
+        prisma: tx,
+        stripeSubscription,
+        expectedLivemode: config.livemode,
+        now,
+      });
+      await tx.subscriptionProviderEvent.update({
+        where: { id: eventRecord.id },
+        data: {
+          status: "PROCESSED",
+          organizationId: local.organizationId,
+          subscriptionId: local.id,
+          processedAt: now,
+          errorCode: null,
+        },
+      });
+      return { duplicate: false, applied: true, subscriptionId: local.id };
     });
-    await input.prisma.subscriptionProviderEvent.update({
-      where: { id: eventRecord.id },
-      data: {
-        status: "PROCESSED",
-        organizationId: local.organizationId,
-        subscriptionId: local.id,
-        processedAt: now,
-        errorCode: null,
-      },
-    });
-    return { eventId, eventType, duplicate: false, applied: true, subscriptionId: local.id };
+    return { eventId, eventType, ...applied };
   } catch (error) {
     await input.prisma.subscriptionProviderEvent.update({
       where: { id: eventRecord.id },

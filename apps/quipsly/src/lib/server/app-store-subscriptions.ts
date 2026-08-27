@@ -163,6 +163,7 @@ export async function applyVerifiedAppStoreTransaction(input: {
   verificationEnvironment: AppStoreEnvironment;
   eventId?: string | null;
   eventType?: string | null;
+  providerOccurredAt?: number | null;
   expectedUserId?: string | null;
   environment?: Readonly<Record<string, string | undefined>>;
   now?: Date;
@@ -185,6 +186,9 @@ export async function applyVerifiedAppStoreTransaction(input: {
   if (!plan) throw new Error("The verified App Store product is not a Quipsly subscription product.");
   const externalEventId = input.eventId?.trim() || transactionId;
   const payloadSha256 = createHash("sha256").update(input.signedPayload).digest("hex");
+  const occurredAt = dateFromMilliseconds(
+    input.providerOccurredAt ?? input.transaction.signedDate,
+  );
 
   const applied = await input.prisma.$transaction(async (tx: any) => {
     await acquirePrismaAdvisoryTransactionLock(tx, `app-store-subscription:${originalTransactionId}`);
@@ -211,6 +215,40 @@ export async function applyVerifiedAppStoreTransaction(input: {
     }
     if (subscription.originalTransactionId && subscription.originalTransactionId !== originalTransactionId) {
       throw new Error("This Quipsly subscription is already linked to a different App Store purchase.");
+    }
+
+    const latestAppliedEvent = occurredAt
+      ? await tx.subscriptionProviderEvent.findFirst({
+          where: {
+            provider: "APP_STORE",
+            subscriptionId: subscription.id,
+            status: "PROCESSED",
+            occurredAt: { not: null },
+          },
+          orderBy: { occurredAt: "desc" },
+          select: { occurredAt: true },
+        })
+      : null;
+    if (
+      occurredAt
+      && latestAppliedEvent?.occurredAt
+      && latestAppliedEvent.occurredAt.getTime() > occurredAt.getTime()
+    ) {
+      await tx.subscriptionProviderEvent.create({
+        data: {
+          provider: "APP_STORE",
+          externalEventId,
+          eventType: input.eventType?.trim() || "TRANSACTION",
+          status: "IGNORED",
+          payloadSha256,
+          organizationId: subscription.organizationId,
+          subscriptionId: subscription.id,
+          occurredAt,
+          processedAt: now,
+          errorCode: "STALE_PROVIDER_EVENT",
+        },
+      });
+      return { subscriptionId: subscription.id, duplicate: false, ignored: true };
     }
 
     const state = transactionStatus(input.transaction, input.renewalInfo ?? null, now);
@@ -241,7 +279,7 @@ export async function applyVerifiedAppStoreTransaction(input: {
         payloadSha256,
         organizationId: updated.organizationId,
         subscriptionId: updated.id,
-        occurredAt: dateFromMilliseconds(input.transaction.signedDate),
+        occurredAt,
         processedAt: now,
       },
     });
@@ -279,7 +317,10 @@ export async function applyVerifiedAppStoreNotification(input: {
     signedPayload: input.signedPayload,
     verificationEnvironment: verified.environment,
     eventId: input.notification.notificationUUID,
-    eventType: String(input.notification.notificationType || "NOTIFICATION"),
+    eventType: [input.notification.notificationType, input.notification.subtype]
+      .filter(Boolean)
+      .join(":") || "NOTIFICATION",
+    providerOccurredAt: input.notification.signedDate,
     environment: input.environment,
   });
 }

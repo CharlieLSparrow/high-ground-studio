@@ -6,6 +6,10 @@ import {
   verifyQuipslyStripeSignature,
 } from "./saas-stripe";
 
+jest.mock("@/lib/server/prisma-advisory-lock", () => ({
+  acquirePrismaAdvisoryTransactionLock: jest.fn().mockResolvedValue(undefined),
+}));
+
 const environment = {
   STRIPE_SECRET_KEY: "sk_test_quipsly",
   STRIPE_SAAS_WEBHOOK_SECRET: "whsec_quipsly",
@@ -41,7 +45,7 @@ describe("Quipsly web subscriptions", () => {
       livemode: false,
       }),
     });
-    const prisma = {
+    const prisma: any = {
       subscription: {
         findUnique: jest.fn().mockResolvedValue({
           id: "sub-1",
@@ -120,10 +124,10 @@ describe("Quipsly web subscriptions", () => {
       }),
     });
     const providerEvent = { id: "provider-event-1", status: "RECEIVED" };
-    const prisma = {
+    const prisma: any = {
       subscriptionProviderEvent: {
         findUnique: jest.fn().mockResolvedValue(null),
-        create: jest.fn().mockResolvedValue(providerEvent),
+        upsert: jest.fn().mockResolvedValue(providerEvent),
         update: jest.fn().mockResolvedValue({}),
       },
       subscription: {
@@ -139,6 +143,7 @@ describe("Quipsly web subscriptions", () => {
         findUnique: jest.fn().mockResolvedValue({ id: "plan-annual" }),
       },
     };
+    prisma.$transaction = jest.fn().mockImplementation((callback) => callback(prisma));
 
     const result = await recordQuipslySubscriptionWebhook({
       prisma,
@@ -164,5 +169,74 @@ describe("Quipsly web subscriptions", () => {
       where: { id: "provider-event-1" },
       data: expect.objectContaining({ status: "PROCESSED", subscriptionId: "sub-local-1" }),
     });
+  });
+
+  it("re-reads Stripe current state instead of applying a stale subscription event snapshot", async () => {
+    const now = new Date("2026-08-26T18:00:00.000Z");
+    const timestamp = Math.floor(now.getTime() / 1_000);
+    const rawBody = JSON.stringify({
+      id: "evt_subscription_delayed",
+      type: "customer.subscription.updated",
+      created: timestamp,
+      livemode: false,
+      data: {
+        object: {
+          id: "sub_stripe_1",
+          status: "canceled",
+          current_period_end: timestamp - 60,
+        },
+      },
+    });
+    fetchMock.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        id: "sub_stripe_1",
+        customer: "cus_1",
+        status: "active",
+        current_period_start: timestamp,
+        current_period_end: timestamp + 30 * 86_400,
+        cancel_at_period_end: false,
+        metadata: {
+          quipslySubscriptionId: "sub-local-1",
+          billingOwnerUserId: "coach-1",
+        },
+        items: { data: [{ price: { id: "price_monthly" } }] },
+      }),
+    });
+    const prisma: any = {
+      subscriptionProviderEvent: {
+        upsert: jest.fn().mockResolvedValue({ id: "provider-event-2", status: "RECEIVED" }),
+        findUnique: jest.fn().mockResolvedValue({ id: "provider-event-2", status: "RECEIVED" }),
+        update: jest.fn().mockResolvedValue({}),
+      },
+      subscription: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "sub-local-1",
+          organizationId: "org-1",
+          billingOwnerUserId: "coach-1",
+        }),
+        findFirst: jest.fn(),
+        update: jest.fn().mockResolvedValue({ id: "sub-local-1", organizationId: "org-1" }),
+      },
+      subscriptionPlan: {
+        findUnique: jest.fn().mockResolvedValue({ id: "plan-monthly" }),
+      },
+    };
+    prisma.$transaction = jest.fn().mockImplementation((callback: any) => callback(prisma));
+
+    const result = await recordQuipslySubscriptionWebhook({
+      prisma,
+      rawBody,
+      signature: signature(rawBody, timestamp),
+      environment,
+      now,
+    });
+
+    expect(result).toMatchObject({ applied: true, duplicate: false });
+    expect(fetchMock.mock.calls[0][0]).toBe("https://api.stripe.com/v1/subscriptions/sub_stripe_1");
+    expect(prisma.subscription.update).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ status: "ACTIVE" }),
+    }));
   });
 });
