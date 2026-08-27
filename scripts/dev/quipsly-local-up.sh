@@ -71,6 +71,7 @@ if [[ "${1:-}" == "--run-nest" ]]; then
   nest_environment=(
     PORT=3012
     "DATABASE_URL=${QUIPSLY_LOCAL_DATABASE_URL:-postgresql://postgres:postgres@127.0.0.1:5432/high_ground_studio}"
+    "PRISMA_PG_POOL_MAX=${QUIPSLY_LOCAL_PRISMA_PG_POOL_MAX:-4}"
     FIREBASE_AUTH_EMULATOR_HOST=127.0.0.1:9099
     NEXT_PUBLIC_QUIPSLY_FIREBASE_AUTH_EMULATOR_URL=http://127.0.0.1:9099
     QUIPSLY_OWNER_OVERRIDE=false
@@ -292,6 +293,13 @@ if [[ -n "${local_env_file}" ]]; then
 fi
 local_node_bin="$(command -v node)"
 local_pnpm_bin="$(command -v pnpm)"
+local_prisma_pg_pool_max="${QUIPSLY_LOCAL_PRISMA_PG_POOL_MAX:-4}"
+if [[ ! "${local_prisma_pg_pool_max}" =~ ^[0-9]+$ ]] \
+  || (( local_prisma_pg_pool_max < 1 )) \
+  || (( local_prisma_pg_pool_max > 16 )); then
+  echo "QUIPSLY_LOCAL_PRISMA_PG_POOL_MAX must be an integer from 1 through 16." >&2
+  exit 64
+fi
 local_nest_runtime_revision="$(
   quipsly_local_runtime_revision "${repo_root}" \
     "source=${local_nest_source_revision}" \
@@ -300,6 +308,7 @@ local_nest_runtime_revision="$(
     "env-path=${local_env_file}" \
     "env-revision=${local_env_revision}" \
     "database=${local_database_url}" \
+    "prisma-pool=${local_prisma_pg_pool_max}" \
     "media-root=${local_media_root}" \
     "worker-media-root=${local_worker_media_root}" \
     "legacy-media-roots=${local_media_legacy_roots_json}" \
@@ -815,6 +824,7 @@ else
       nohup env \
         PORT=3012 \
         DATABASE_URL="${local_database_url}" \
+        PRISMA_PG_POOL_MAX="${local_prisma_pg_pool_max}" \
         FIREBASE_AUTH_EMULATOR_HOST=127.0.0.1:9099 \
         NEXT_PUBLIC_QUIPSLY_FIREBASE_AUTH_EMULATOR_URL=http://127.0.0.1:9099 \
         QUIPSLY_OWNER_OVERRIDE=false \

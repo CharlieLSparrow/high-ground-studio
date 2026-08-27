@@ -157,6 +157,17 @@ test("machine-wide services use machine-wide ownership state", () => {
     up,
     /"QUIPSLY_APP_HOST=\$\{QUIPSLY_LOCAL_APP_HOST:-http:\/\/127\.0\.0\.1:3012\}"/,
   );
+  assert.match(
+    up,
+    /"PRISMA_PG_POOL_MAX=\$\{QUIPSLY_LOCAL_PRISMA_PG_POOL_MAX:-4\}"/,
+    "the durable macOS Nest should match the guarded production preview pool default",
+  );
+  assert.match(up, /PRISMA_PG_POOL_MAX="\$\{local_prisma_pg_pool_max\}"/);
+  assert.match(up, /"prisma-pool=\$\{local_prisma_pg_pool_max\}"/);
+  assert.match(
+    up,
+    /QUIPSLY_LOCAL_PRISMA_PG_POOL_MAX must be an integer from 1 through 16/,
+  );
   assert.match(up, /"QUIPSLY_LOCAL_APP_HOST=\$\{local_app_host\}"/);
   assert.match(up, /"app-host=\$\{local_app_host\}"/);
   assert.equal(
