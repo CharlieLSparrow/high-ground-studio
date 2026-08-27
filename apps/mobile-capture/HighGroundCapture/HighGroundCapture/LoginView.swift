@@ -43,6 +43,7 @@ struct LoginView: View {
     @State private var password = ""
     @State private var passwordConfirmation = ""
     @State private var passwordMode: PasswordMode = .signIn
+    @State private var showsEmailAccess = CaptureLaunchConfiguration.usesRuntimeSmoke
     @State private var didApplyRuntimeSmokeCredentials = false
     @FocusState private var focusedField: Field?
 
@@ -98,133 +99,7 @@ struct LoginView: View {
 
                     authFeedback
 
-                    HStack(spacing: 12) {
-                        Divider()
-                        Text("or")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.secondary)
-                            .fixedSize()
-                        Divider()
-                    }
-                    .accessibilityElement(children: .combine)
-
-                    passwordModeSelector
-
-                    Text(passwordModeDescription)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-
-                    TextField("Email", text: $email)
-                        .textContentType(.username)
-                        .keyboardType(.emailAddress)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                        .submitLabel(.next)
-                        .focused($focusedField, equals: .email)
-                        .onSubmit { focusedField = .password }
-                        .captureLoginField()
-                        .accessibilityIdentifier("QuipslyCaptureEmailField")
-
-                    SecureField(
-                        passwordMode == .createAccount ? "Create password" : "Password",
-                        text: $password
-                    )
-                    .textContentType(
-                        passwordMode == .createAccount && !CaptureLaunchConfiguration.usesLoginPreview
-                            ? .newPassword
-                            : .password
-                    )
-                    .submitLabel(passwordMode == .createAccount ? .next : .go)
-                    .focused($focusedField, equals: .password)
-                    .onSubmit {
-                        if passwordMode == .createAccount {
-                            focusedField = .passwordConfirmation
-                        } else {
-                            submitPasswordAuthIfReady()
-                        }
-                    }
-                    .captureLoginField()
-                    .accessibilityIdentifier("QuipslyCapturePasswordField")
-
-                    if passwordMode == .createAccount {
-                        SecureField("Confirm password", text: $passwordConfirmation)
-                            .textContentType(
-                                CaptureLaunchConfiguration.usesLoginPreview
-                                    ? .password
-                                    : .newPassword
-                            )
-                            .submitLabel(.go)
-                            .focused($focusedField, equals: .passwordConfirmation)
-                            .onSubmit { submitPasswordAuthIfReady() }
-                            .captureLoginField()
-                            .accessibilityIdentifier("QuipslyCapturePasswordConfirmationField")
-
-                        if !password.isEmpty, password.count < 8 {
-                            authValidationLabel(
-                                "Use at least 8 characters. A short phrase is easier to remember.",
-                                systemImage: "character.cursor.ibeam"
-                            )
-                            .accessibilityIdentifier("QuipslyCapturePasswordLengthHint")
-                        } else if !passwordConfirmation.isEmpty, password != passwordConfirmation {
-                            authValidationLabel(
-                                "Those passwords do not match yet.",
-                                systemImage: "equal.circle"
-                            )
-                            .accessibilityIdentifier("QuipslyCapturePasswordMismatchHint")
-                        }
-                    }
-
-                    Button(action: submitPasswordAuthIfReady) {
-                        HStack(spacing: 10) {
-                            if authManager.isAuthenticating {
-                                ProgressView()
-                                    .tint(.white)
-                            } else {
-                                Image(systemName: passwordMode == .createAccount ? "person.badge.plus" : "arrow.right")
-                            }
-                            Text(primaryActionTitle)
-                                .fontWeight(.semibold)
-                        }
-                        .frame(maxWidth: .infinity, minHeight: 52)
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .tint(.teal)
-                    .disabled(!canSubmitPasswordAuth)
-                    .accessibilityIdentifier(
-                        passwordMode == .createAccount
-                            ? "QuipslyCaptureCreateAccountButton"
-                            : "QuipslyCaptureSignInButton"
-                    )
-
-                    if passwordMode == .signIn {
-                        Button {
-                            focusedField = nil
-                            authManager.sendPasswordReset(email: email)
-                        } label: {
-                            Label("Send password reset", systemImage: "envelope.badge")
-                                .frame(maxWidth: .infinity, minHeight: 44)
-                        }
-                        .buttonStyle(.bordered)
-                        .disabled(authManager.isAuthenticating)
-                        .accessibilityIdentifier("QuipslyCapturePasswordResetButton")
-                    }
-
-                    DisclosureGroup {
-                        Label(
-                            "Recordings stay on this iPhone after upload; Quipsly never silently deletes a source.",
-                            systemImage: "lock.shield.fill"
-                        )
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.top, 10)
-                    } label: {
-                        Text("How recordings are protected")
-                            .font(.subheadline.weight(.semibold))
-                    }
-                    .padding(14)
-                    .background(.teal.opacity(0.08), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    emailAccessSection
 
                     DisclosureGroup {
                         VStack(alignment: .leading, spacing: 12) {
@@ -342,6 +217,150 @@ struct LoginView: View {
             focusedField = .password
         }
         .accessibilityIdentifier("QuipslyCaptureLoginView")
+    }
+
+    private var emailAccessSection: some View {
+        VStack(spacing: 14) {
+            HStack(spacing: 12) {
+                Divider()
+                Text("or")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .fixedSize()
+                Divider()
+            }
+            .accessibilityElement(children: .combine)
+
+            Button {
+                guard !authManager.isAuthenticating else { return }
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    showsEmailAccess.toggle()
+                }
+                focusedField = showsEmailAccess && email.isEmpty ? .email : nil
+            } label: {
+                HStack(spacing: 10) {
+                    Label(
+                        showsEmailAccess ? "Email" : "Continue with email",
+                        systemImage: "envelope.fill"
+                    )
+                    .font(.headline)
+                    Spacer()
+                    Image(systemName: showsEmailAccess ? "chevron.up" : "chevron.down")
+                        .font(.caption.weight(.bold))
+                }
+                .frame(maxWidth: .infinity, minHeight: 50)
+            }
+            .buttonStyle(.bordered)
+            .disabled(authManager.isAuthenticating)
+            .accessibilityHint(showsEmailAccess ? "Hides email sign in." : "Shows email sign in and account creation.")
+            .accessibilityIdentifier("QuipslyCaptureContinueWithEmail")
+
+            if showsEmailAccess {
+                passwordModeSelector
+
+                Text(passwordModeDescription)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                TextField("Email", text: $email)
+                    .textContentType(.username)
+                    .keyboardType(.emailAddress)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .submitLabel(.next)
+                    .focused($focusedField, equals: .email)
+                    .onSubmit { focusedField = .password }
+                    .captureLoginField()
+                    .accessibilityIdentifier("QuipslyCaptureEmailField")
+
+                SecureField(
+                    passwordMode == .createAccount ? "Create password" : "Password",
+                    text: $password
+                )
+                .textContentType(
+                    passwordMode == .createAccount && !CaptureLaunchConfiguration.usesLoginPreview
+                        ? .newPassword
+                        : .password
+                )
+                .submitLabel(passwordMode == .createAccount ? .next : .go)
+                .focused($focusedField, equals: .password)
+                .onSubmit {
+                    if passwordMode == .createAccount {
+                        focusedField = .passwordConfirmation
+                    } else {
+                        submitPasswordAuthIfReady()
+                    }
+                }
+                .captureLoginField()
+                .accessibilityIdentifier("QuipslyCapturePasswordField")
+
+                if passwordMode == .createAccount {
+                    SecureField("Confirm password", text: $passwordConfirmation)
+                        .textContentType(
+                            CaptureLaunchConfiguration.usesLoginPreview
+                                ? .password
+                                : .newPassword
+                        )
+                        .submitLabel(.go)
+                        .focused($focusedField, equals: .passwordConfirmation)
+                        .onSubmit { submitPasswordAuthIfReady() }
+                        .captureLoginField()
+                        .accessibilityIdentifier("QuipslyCapturePasswordConfirmationField")
+
+                    if !password.isEmpty, password.count < 8 {
+                        authValidationLabel(
+                            "Use at least 8 characters. A short phrase is easier to remember.",
+                            systemImage: "character.cursor.ibeam"
+                        )
+                        .accessibilityIdentifier("QuipslyCapturePasswordLengthHint")
+                    } else if !passwordConfirmation.isEmpty, password != passwordConfirmation {
+                        authValidationLabel(
+                            "Those passwords do not match yet.",
+                            systemImage: "equal.circle"
+                        )
+                        .accessibilityIdentifier("QuipslyCapturePasswordMismatchHint")
+                    }
+                }
+
+                Button(action: submitPasswordAuthIfReady) {
+                    HStack(spacing: 10) {
+                        if authManager.isAuthenticating {
+                            ProgressView()
+                                .tint(.white)
+                        } else {
+                            Image(systemName: passwordMode == .createAccount ? "person.badge.plus" : "arrow.right")
+                        }
+                        Text(primaryActionTitle)
+                            .fontWeight(.semibold)
+                    }
+                    .frame(maxWidth: .infinity, minHeight: 52)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.teal)
+                .disabled(!canSubmitPasswordAuth)
+                .accessibilityIdentifier(
+                    passwordMode == .createAccount
+                        ? "QuipslyCaptureCreateAccountButton"
+                        : "QuipslyCaptureSignInButton"
+                )
+
+                if passwordMode == .signIn {
+                    Button {
+                        focusedField = nil
+                        authManager.sendPasswordReset(email: email)
+                    } label: {
+                        Label("Forgot password?", systemImage: "envelope.badge")
+                            .frame(maxWidth: .infinity, minHeight: 44)
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(authManager.isAuthenticating)
+                    .accessibilityIdentifier("QuipslyCapturePasswordResetButton")
+                }
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("QuipslyCaptureEmailAccess")
     }
 
     private var federatedSignInSection: some View {

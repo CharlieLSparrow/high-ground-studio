@@ -4497,6 +4497,11 @@ final class CaptureLoginExperienceUITests: XCTestCase {
             app.descendants(matching: .any)["QuipslyCaptureGoogleIdentityContinuityHint"].exists,
             "The normal Google-first path should not be followed by an identity-policy lecture."
         )
+        XCTAssertFalse(
+            app.textFields["QuipslyCaptureEmailField"].exists,
+            "The first sign-in screen should not dump alternate credential fields under the standard identity choices."
+        )
+        openEmailAccess()
         XCTAssertTrue(app.textFields["QuipslyCaptureEmailField"].exists)
         XCTAssertTrue(app.secureTextFields["QuipslyCapturePasswordField"].exists)
         XCTAssertTrue(app.buttons["QuipslyCaptureSignInButton"].exists)
@@ -4506,6 +4511,7 @@ final class CaptureLoginExperienceUITests: XCTestCase {
     }
 
     func testLoginOffersPrivacyBoundedSupportBeforeAuthenticationAtAccessibilityTextSize() throws {
+        openEmailAccess()
         let email =
             app.textFields["QuipslyCaptureEmailField"]
         reveal(email, swipingDownFirst: true)
@@ -4565,6 +4571,7 @@ final class CaptureLoginExperienceUITests: XCTestCase {
     }
 
     func testCreateAccountRequiresMatchingEightCharacterPassword() {
+        openEmailAccess()
         let createMode = app.buttons["QuipslyCaptureCreateAccountModeButton"]
         reveal(createMode, swipingDownFirst: true)
         XCTAssertTrue(createMode.exists)
@@ -4577,13 +4584,33 @@ final class CaptureLoginExperienceUITests: XCTestCase {
 
         reveal(email, swipingDownFirst: true)
         email.tap()
-        email.typeText("capture.tester@example.com\n")
-        password.typeText("correct horse\n")
+        email.typeText("capture.tester@example.com")
+        password.tap()
+        let fillStrongPassword = app.buttons["Fill Strong Password"]
+        if fillStrongPassword.waitForExistence(timeout: 1) {
+            let close = app.buttons["Close"]
+            XCTAssertTrue(close.waitForExistence(timeout: 2))
+            close.tap()
+            password.tap()
+        }
+        password.typeText("correct horse")
+        confirmation.tap()
         confirmation.typeText("correct horse")
 
         let createAccount = app.buttons["QuipslyCaptureCreateAccountButton"]
         reveal(createAccount)
         XCTAssertTrue(createAccount.isEnabled, "Creation should become available only after the email and matching 8+ character passwords are present.")
+    }
+
+    private func openEmailAccess() {
+        let emailAccess = app.buttons["QuipslyCaptureContinueWithEmail"]
+        reveal(emailAccess, swipingDownFirst: true)
+        XCTAssertTrue(emailAccess.waitForExistence(timeout: 5))
+        emailAccess.tap()
+        XCTAssertTrue(
+            app.textFields["QuipslyCaptureEmailField"].waitForExistence(timeout: 5),
+            "Continue with email should reveal the familiar email sign-in path in place."
+        )
     }
 
     private func reveal(_ element: XCUIElement, swipingDownFirst: Bool = false) {
