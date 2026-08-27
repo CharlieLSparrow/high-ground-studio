@@ -12,6 +12,7 @@ jest.mock("@/lib/server/subscription-entitlements", () => ({
 
 import {
   appStoreServerVerificationReadiness,
+  applyVerifiedAppStoreNotification,
   applyVerifiedAppStoreTransaction,
 } from "./app-store-subscriptions";
 
@@ -39,6 +40,20 @@ describe("App Store subscription verification boundary", () => {
       configured: true,
       rootCertificateCount: 3,
     });
+  });
+
+  it("acknowledges Apple's verified TEST notification without inventing a transaction", async () => {
+    const result = await applyVerifiedAppStoreNotification({
+      prisma: {},
+      notification: {
+        notificationType: "TEST",
+        notificationUUID: "server-notification-test-1",
+      },
+      signedPayload: "verified-test-notification",
+      verificationEnvironment: "Sandbox",
+    });
+
+    expect(result).toEqual({ ignored: true, reason: "NO_TRANSACTION" });
   });
 
   it("applies a verified transaction idempotently to the linked Quipsly account", async () => {
