@@ -67,6 +67,7 @@ const secondaryNavItems: NavItem[] = [
 
 const adminNavItems: NavItem[] = [
   { name: "Release health", href: "/beta-readiness", icon: ShieldCheck },
+  { name: "Customer support", href: "/admin/support", icon: UserCog },
   { name: "Users", href: "/admin/users", icon: UserCog },
   {
     name: "Account deletion",
