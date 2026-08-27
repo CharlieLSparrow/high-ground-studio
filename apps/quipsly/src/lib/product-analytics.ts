@@ -57,6 +57,8 @@ export function buildAnalyticsConsentCookie({
 
 export type QuipslyProductEventName = typeof QUIPSLY_PRODUCT_EVENTS[number];
 
+export const QUIPSLY_PRODUCT_EVENT_BROWSER_TOPIC = "quipsly:product-event";
+
 export const QUIPSLY_PRODUCT_EVENT_PARAMETERS = {
   surface: [
     "marketing",
@@ -87,6 +89,16 @@ export type QuipslyProductEventParameters = Partial<{
 }> & {
   has_video?: boolean;
 };
+
+export function dispatchQuipslyProductEvent(
+  eventName: QuipslyProductEventName,
+  parameters: QuipslyProductEventParameters = {},
+) {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new CustomEvent(QUIPSLY_PRODUCT_EVENT_BROWSER_TOPIC, {
+    detail: { eventName, parameters },
+  }));
+}
 
 const productEventNames = new Set<string>(QUIPSLY_PRODUCT_EVENTS);
 

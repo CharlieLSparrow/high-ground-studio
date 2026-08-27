@@ -7,8 +7,11 @@ import { useEffect, useState } from "react";
 import {
   analyticsSurfaceForPath,
   buildAnalyticsConsentCookie,
+  isQuipslyProductEventName,
   parseAnalyticsConsentCookie,
   privacySafeAnalyticsPath,
+  QUIPSLY_PRODUCT_EVENT_BROWSER_TOPIC,
+  sanitizeProductEventParameters,
   type QuipslyAnalyticsConsent,
   type QuipslyProductEventName,
   type QuipslyProductEventParameters,
@@ -104,22 +107,6 @@ function AnalyticsNavigation({
 }) {
   const pathname = usePathname();
   useEffect(() => {
-    const googleAuthStarted = () => trackQuipslyProductEvent("login_started", {
-      surface: "sign_in",
-      method: "google",
-    });
-    const passwordAuthStarted = () => trackQuipslyProductEvent("login_started", {
-      surface: "sign_in",
-      method: "email",
-    });
-    window.addEventListener("quipsly:google-auth-start", googleAuthStarted);
-    window.addEventListener("quipsly:password-auth-start", passwordAuthStarted);
-    return () => {
-      window.removeEventListener("quipsly:google-auth-start", googleAuthStarted);
-      window.removeEventListener("quipsly:password-auth-start", passwordAuthStarted);
-    };
-  }, []);
-  useEffect(() => {
     const pagePath = privacySafeAnalyticsPath(pathname);
     window.gtag?.("event", "page_view", {
       page_location: `https://nest.quipsly.com${pagePath}`,
@@ -128,6 +115,38 @@ function AnalyticsNavigation({
       send_to: measurementId,
     });
   }, [measurementId, pathname]);
+  return null;
+}
+
+function ProductEventBridge() {
+  useEffect(() => {
+    const googleAuthStarted = () => trackQuipslyProductEvent("login_started", {
+      surface: "sign_in",
+      method: "google",
+    });
+    const passwordAuthStarted = () => trackQuipslyProductEvent("login_started", {
+      surface: "sign_in",
+      method: "email",
+    });
+    const productEvent = (rawEvent: Event) => {
+      const detail = (rawEvent as CustomEvent<unknown>).detail;
+      if (!detail || typeof detail !== "object") return;
+      const packet = detail as Record<string, unknown>;
+      if (!isQuipslyProductEventName(packet.eventName)) return;
+      trackQuipslyProductEvent(
+        packet.eventName,
+        sanitizeProductEventParameters(packet.parameters),
+      );
+    };
+    window.addEventListener("quipsly:google-auth-start", googleAuthStarted);
+    window.addEventListener("quipsly:password-auth-start", passwordAuthStarted);
+    window.addEventListener(QUIPSLY_PRODUCT_EVENT_BROWSER_TOPIC, productEvent);
+    return () => {
+      window.removeEventListener("quipsly:google-auth-start", googleAuthStarted);
+      window.removeEventListener("quipsly:password-auth-start", passwordAuthStarted);
+      window.removeEventListener(QUIPSLY_PRODUCT_EVENT_BROWSER_TOPIC, productEvent);
+    };
+  }, []);
   return null;
 }
 
@@ -218,6 +237,7 @@ export function QuipslyProductAnalytics({
   return (
     <>
       <AuthenticatedProductEventPersistence authenticated={authenticated} />
+      <ProductEventBridge />
       {measurementEnabled ? (
         <>
           <Script id="quipsly-analytics-consent" strategy="afterInteractive">{bootstrap}</Script>

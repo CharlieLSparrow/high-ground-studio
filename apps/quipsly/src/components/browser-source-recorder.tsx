@@ -45,6 +45,7 @@ import {
   mergeBrowserCaptureClockSamples,
   measureBrowserCaptureClockBurst,
 } from "@/lib/browser-capture-clock";
+import { dispatchQuipslyProductEvent } from "@/lib/product-analytics";
 import {
   browserCaptureAutoHandoffAttempt,
   browserCaptureStudioHandoff,
@@ -1463,6 +1464,16 @@ export function BrowserSourceRecorder({
       };
       await updateLedger(current);
       setStatus(current.state === "verified" ? "ready" : "uploading");
+      if (current.state === "verified") {
+        dispatchQuipslyProductEvent("recording_uploaded", {
+          surface: "session_workspace",
+          workflow: sessionKind === "episode" ? "podcast" : "coaching",
+          client_kind: "browser",
+          result: "success",
+          recording_mode: "local",
+          has_video: current.sourceType === "video",
+        });
+      }
       setMessage(
         current.state === "verified"
           ? !current.stopReceiptPersisted
@@ -2404,6 +2415,14 @@ export function BrowserSourceRecorder({
         250,
       );
       setStatus("recording");
+      dispatchQuipslyProductEvent("recording_started", {
+        surface: "session_workspace",
+        workflow: sessionKind === "episode" ? "podcast" : "coaching",
+        client_kind: "browser",
+        result: "success",
+        recording_mode: "local",
+        has_video: sourceType === "video",
+      });
       setMessage("Recording on this device. Your call continues normally.");
       return captureId;
     } catch (error) {

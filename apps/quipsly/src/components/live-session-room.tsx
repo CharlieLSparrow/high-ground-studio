@@ -51,6 +51,7 @@ import {
   sessionExperienceForPurpose,
   type SessionCaptureProfile,
 } from "@/lib/session-experience";
+import { dispatchQuipslyProductEvent } from "@/lib/product-analytics";
 import {
   CHAT_PERSISTED_LIVE_TOPIC,
   CHAT_PERSISTED_OUTGOING_EVENT,
@@ -522,6 +523,7 @@ export function LiveSessionRoom({
 
   const roomRef = useRef<Room | null>(null);
   const intentionalDisconnectRef = useRef(false);
+  const callJoinTrackedRef = useRef(false);
   const cameraWantedRef = useRef(cameraWanted);
   const callAudioModeRef = useRef(callAudioMode);
   const callAudioModeChangeInFlightRef = useRef(false);
@@ -815,6 +817,13 @@ export function LiveSessionRoom({
           message: packet.error || "Quipsly could not save the setup receipt. The private sample remains in this tab; retry the same decision.",
         };
       }
+      dispatchQuipslyProductEvent("preflight_completed", {
+        surface: "session_workspace",
+        workflow: kind === "coaching" ? "coaching" : "podcast",
+        client_kind: "browser",
+        result: packet.preflight?.status === "READY" ? "success" : "failed",
+        has_video: cameraWanted,
+      });
       router.refresh();
       return {
         ok: true,
@@ -827,7 +836,7 @@ export function LiveSessionRoom({
         message: `${error instanceof Error ? error.message : "The setup receipt response was lost."} The private sample remains in this tab; retry the same decision and Quipsly will use the same request ID.`,
       };
     }
-  }, [callRoomId, cameraEvidence, cameraId, cameraWanted, cameras, meterEvidence, microphoneId, microphones, outputId, outputs, router, supportsOutputSelection]);
+  }, [callRoomId, cameraEvidence, cameraId, cameraWanted, cameras, kind, meterEvidence, microphoneId, microphones, outputId, outputs, router, supportsOutputSelection]);
 
   const refreshProviderRecording = useCallback(async (announceFailure = false) => {
     try {
@@ -1315,6 +1324,7 @@ export function LiveSessionRoom({
     deviceRefreshGenerationRef.current += 1;
     joinAttemptGenerationRef.current += 1;
     clearPreflightPreview();
+    const wasConnected = Boolean(roomRef.current);
     intentionalDisconnectRef.current = true;
     roomRef.current?.disconnect(true);
     roomRef.current = null;
@@ -1330,8 +1340,16 @@ export function LiveSessionRoom({
         ? "Call ended. Your local recording is protected. Keep Quipsly open until the recording panel says Safe to close."
         : "You left the call.",
     );
+    if (wasConnected) {
+      dispatchQuipslyProductEvent("call_completed", {
+        surface: "session_workspace",
+        workflow: kind === "coaching" ? "coaching" : "podcast",
+        client_kind: "browser",
+        result: "success",
+      });
+    }
     onExitComplete?.();
-  }, [attachLocalCameraTrack, clearPreflightPreview, clearRemoteMedia, onExitComplete]);
+  }, [attachLocalCameraTrack, clearPreflightPreview, clearRemoteMedia, kind, onExitComplete]);
 
   const leave = useCallback(async () => {
     if (sourceLocked) {
@@ -1657,6 +1675,16 @@ export function LiveSessionRoom({
       setCallRecoveryAvailable(false);
       setLocalRecordingFallback(false);
       setStatus("connected");
+      if (!callJoinTrackedRef.current) {
+        callJoinTrackedRef.current = true;
+        dispatchQuipslyProductEvent("call_joined", {
+          surface: "session_workspace",
+          workflow: kind === "coaching" ? "coaching" : "podcast",
+          client_kind: "browser",
+          result: "success",
+          has_video: shouldJoinWithCamera,
+        });
+      }
       setTechnicalMessage(joinTechnicalMessages.length ? joinTechnicalMessages.join(" ") : null);
       setMessage(joinRecoveryMessages.length
         ? joinRecoveryMessages.join(" ")
@@ -1700,7 +1728,7 @@ export function LiveSessionRoom({
             ? "The live call couldn't connect. Retry Join call, or continue with the protected recorder on this device."
             : "The call couldn't connect. Check your internet connection and try again.");
     }
-  }, [attachLocalCameraTrack, attachRemoteTrack, callRecoveryAvailable, callRoomId, cameraWanted, clearPreflightPreview, clearRemoteMedia, detachRemoteTrack, episodeSlug, joinMuted, microphoneRecoveryHeld, onEpisodeWatchHint, projectSlug, refreshDevices, startAudioMeter, stopAudioMeter, updateRoster]);
+  }, [attachLocalCameraTrack, attachRemoteTrack, callRecoveryAvailable, callRoomId, cameraWanted, clearPreflightPreview, clearRemoteMedia, detachRemoteTrack, episodeSlug, joinMuted, kind, microphoneRecoveryHeld, onEpisodeWatchHint, projectSlug, refreshDevices, startAudioMeter, stopAudioMeter, updateRoster]);
 
   useEffect(() => {
     const threadKeys = new Set([
