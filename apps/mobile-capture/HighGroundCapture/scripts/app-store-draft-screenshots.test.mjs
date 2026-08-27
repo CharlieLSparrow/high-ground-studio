@@ -61,7 +61,7 @@ function fixture() {
   };
 }
 
-test("materializes all five named 6.9-inch drafts with a fail-closed receipt", () => {
+test("materializes every metadata-declared 6.9-inch draft with a fail-closed receipt", () => {
   const current = fixture();
   try {
     const result = materializeDraftScreenshots({
@@ -77,7 +77,10 @@ test("materializes all five named 6.9-inch drafts with a fail-closed receipt", (
       capturedAt: "2026-07-24T00:00:00.000Z",
     });
 
-    assert.equal(result.receipt.screenshots.length, 5);
+    assert.equal(
+      result.receipt.screenshots.length,
+      current.metadata.screenshots.planned.length,
+    );
     assert.equal(result.receipt.submissionEligible, false);
     assert.equal(result.receipt.status, "draft-layout-evidence");
     assert.equal(result.receipt.sourceDirty, true);
@@ -99,6 +102,7 @@ test("fails when an attachment is missing or has the wrong dimensions", () => {
     const manifest = JSON.parse(fs.readFileSync(missing.manifestPath, "utf8"));
     manifest[0].attachments.pop();
     fs.writeFileSync(missing.manifestPath, JSON.stringify(manifest));
+    const missingFilename = missing.metadata.screenshots.planned.at(-1).filename;
     assert.throws(
       () => materializeDraftScreenshots({
         manifestPath: missing.manifestPath,
@@ -109,7 +113,9 @@ test("fails when an attachment is missing or has the wrong dimensions", () => {
         deviceName: "iPhone 17 Pro Max",
         deviceId: "fixture-device",
       }),
-      /Expected exactly one xcresult attachment named 05-transcript\.png; found 0/,
+      new RegExp(
+        `Expected exactly one xcresult attachment named ${missingFilename.replace(".", "\\.")}; found 0`,
+      ),
     );
   } finally {
     fs.rmSync(missing.root, { recursive: true, force: true });
@@ -173,7 +179,12 @@ test("runs through a symlinked CLI path and materializes its receipt", () => {
       { encoding: "utf8" },
     );
     assert.equal(result.status, 0, result.stderr);
-    assert.match(result.stdout, /PASS Materialized 5 draft App Store screenshots/);
+    assert.match(
+      result.stdout,
+      new RegExp(
+        `PASS Materialized ${current.metadata.screenshots.planned.length} draft App Store screenshots`,
+      ),
+    );
     assert.equal(
       fs.existsSync(path.join(current.outputDirectory, "draft-receipt.json")),
       true,

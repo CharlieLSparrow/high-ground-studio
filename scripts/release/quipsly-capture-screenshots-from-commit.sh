@@ -110,13 +110,15 @@ echo "Screenshot evidence: ${output_directory}"
 )
 
 draft_receipt="${output_directory}/draft-receipt.json"
+metadata_path="${worktree_path}/release/app-store/quipsly-capture/en-US.json"
+[[ -f "$metadata_path" ]] ||
+  fail "Committed App Store metadata is unavailable at ${metadata_path}"
 materialization_mode="runner"
 if [[ ! -f "$draft_receipt" ]]; then
   manifest_path="${output_directory}/xcresult-attachments/manifest.json"
   result_bundle="${output_directory}/QuipslyCapture-AppStore-Drafts.xcresult"
   attachment_directory="${output_directory}/xcresult-attachments"
   materializer="${worktree_path}/apps/mobile-capture/HighGroundCapture/scripts/app-store-draft-screenshots.mjs"
-  metadata_path="${worktree_path}/release/app-store/quipsly-capture/en-US.json"
   [[ -f "$manifest_path" ]] ||
     fail "Committed screenshot runner returned without a receipt or attachment manifest."
   [[ -d "$result_bundle" ]] ||
@@ -166,17 +168,30 @@ fi
 [[ -f "$draft_receipt" ]] ||
   fail "Exact committed screenshot materialization returned without a draft receipt."
 
-node - "$draft_receipt" "$output_directory" "$source_revision" "$materialization_mode" <<'NODE'
+node - "$draft_receipt" "$metadata_path" "$output_directory" "$source_revision" "$materialization_mode" <<'NODE'
 const fs = require("node:fs");
 const path = require("node:path");
 
 const [
   draftReceiptPath,
+  metadataPath,
   outputDirectory,
   sourceRevision,
   materializationMode,
 ] = process.argv.slice(2);
 const draft = JSON.parse(fs.readFileSync(draftReceiptPath, "utf8"));
+const metadata = JSON.parse(fs.readFileSync(metadataPath, "utf8"));
+const plannedScreenshots = metadata?.screenshots?.planned;
+if (
+  !Array.isArray(plannedScreenshots)
+  || plannedScreenshots.length < 1
+  || plannedScreenshots.length > 10
+) {
+  throw new Error(
+    "committed App Store metadata must declare between one and ten planned screenshots",
+  );
+}
+const expectedScreenshotCount = plannedScreenshots.length;
 if (draft.sourceRevision !== sourceRevision) {
   throw new Error(
     `draft source revision ${draft.sourceRevision ?? "<missing>"} does not match ${sourceRevision}`,
@@ -188,8 +203,13 @@ if (draft.sourceDirty !== false) {
 if (draft.submissionEligible !== false) {
   throw new Error("DEBUG layout drafts must remain ineligible for submission");
 }
-if (!Array.isArray(draft.screenshots) || draft.screenshots.length !== 5) {
-  throw new Error("expected exactly five canonical draft screenshots");
+if (
+  !Array.isArray(draft.screenshots)
+  || draft.screenshots.length !== expectedScreenshotCount
+) {
+  throw new Error(
+    `expected ${expectedScreenshotCount} canonical draft screenshots from committed metadata`,
+  );
 }
 if (
   draft.sourceIsolation !== undefined
@@ -210,6 +230,7 @@ const receipt = {
   sourceIsolation: "detached-worktree",
   materializationMode,
   draftReceiptPath,
+  expectedScreenshotCount,
   screenshotCount: draft.screenshots.length,
 };
 const receiptPath = path.join(

@@ -69,7 +69,7 @@ fs.writeFileSync(receiptPath, `${JSON.stringify({
     .trim(),
   sourceDirty: false,
   sourceIsolation: process.env.QUIPSLY_CAPTURE_SCREENSHOT_SOURCE_ISOLATION,
-  screenshots: Array.from({ length: 5 }, (_, index) => ({
+  screenshots: Array.from({ length: 6 }, (_, index) => ({
     order: index + 1,
   })),
 }, null, 2)}\n`);
@@ -94,7 +94,7 @@ export function runDraftScreenshotCli(argv) {
         ?? execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim(),
       sourceDirty: false,
       sourceIsolation: options["--source-isolation"],
-      screenshots: Array.from({ length: 5 }, (_, index) => ({
+      screenshots: Array.from({ length: 6 }, (_, index) => ({
         order: index + 1,
       })),
     }, null, 2)}\n`,
@@ -102,7 +102,20 @@ export function runDraftScreenshotCli(argv) {
   return 0;
 }
 MOCK
-printf '{}\n' >"${fixture_repo}/release/app-store/quipsly-capture/en-US.json"
+cat >"${fixture_repo}/release/app-store/quipsly-capture/en-US.json" <<'JSON'
+{
+  "screenshots": {
+    "planned": [
+      { "order": 1, "filename": "01-today.png" },
+      { "order": 2, "filename": "02-record.png" },
+      { "order": 3, "filename": "03-work.png" },
+      { "order": 4, "filename": "04-library.png" },
+      { "order": 5, "filename": "05-transcript.png" },
+      { "order": 6, "filename": "06-subscription.png" }
+    ]
+  }
+}
+JSON
 chmod +x \
   "${fixture_repo}/scripts/release/quipsly-capture-screenshots-from-commit.sh" \
   "${fixture_repo}/apps/mobile-capture/HighGroundCapture/scripts/capture-app-store-draft-screenshots.sh" \
@@ -153,7 +166,8 @@ if (
   || receipt.sourceDirty !== false
   || receipt.sourceIsolation !== "detached-worktree"
   || receipt.submissionEligible !== false
-  || receipt.screenshotCount !== 5
+  || receipt.expectedScreenshotCount !== 6
+  || receipt.screenshotCount !== 6
 ) {
   throw new Error("committed-source screenshot receipt is incomplete");
 }
