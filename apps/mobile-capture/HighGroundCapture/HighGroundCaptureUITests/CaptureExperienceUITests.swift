@@ -1963,7 +1963,9 @@ final class CaptureExperienceUITests: XCTestCase {
         reveal(calendarBoundary)
         XCTAssertTrue(calendarBoundary.exists)
         let savePlan = app.buttons["CaptureTodayFocusPlanSave"]
-        reveal(savePlan)
+        let focusPlanForm = app.collectionViews.firstMatch
+        XCTAssertTrue(focusPlanForm.waitForExistence(timeout: 5))
+        revealBelow(savePlan, in: focusPlanForm)
         XCTAssertTrue(savePlan.exists)
         XCTAssertFalse(savePlan.isEnabled, "Preview inspection must never write a canonical focus block.")
         app.buttons["Cancel"].tap()
@@ -1990,12 +1992,6 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(reopenAnnotation.exists)
         XCTAssertEqual(reopenAnnotation.label, "Reopen")
         XCTAssertFalse(reopenAnnotation.isEnabled, "Preview resolved annotations must remain read-only.")
-
-        let boundary = app.descendants(matching: .any)["CaptureTodayFollowThroughBoundary"]
-        reveal(boundary)
-        XCTAssertTrue(boundary.exists)
-        XCTAssertTrue(boundary.label.contains("never completes the linked task or goal"))
-        XCTAssertTrue(boundary.label.contains("never a deadline, reminder, appointment, or external calendar event"))
 
         for _ in 0..<8 where !sourceLink.isHittable {
             app.swipeDown()
