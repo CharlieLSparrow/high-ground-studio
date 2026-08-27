@@ -142,24 +142,28 @@ async function createVerifyAndSignIn(page, identity, callbackPath) {
 
 async function gotoRenderedRoute(page, destination) {
   const expected = new URL(destination, baseURL);
-  try {
-    await page.goto(expected.toString(), { waitUntil: "domcontentloaded" });
-  } catch (error) {
-    // Next's client router can finish the same navigation while Playwright's
-    // explicit navigation is still pending. Chromium reports that harmless
-    // race as ERR_ABORTED even though the requested route rendered. Recover
-    // only when the browser proves it landed on the exact destination; every
-    // other abort remains a real acceptance failure.
-    const message = error instanceof Error ? error.message : String(error);
-    if (!message.includes("net::ERR_ABORTED")) throw error;
-    await page.waitForURL(
-      (candidate) =>
-        candidate.origin === expected.origin &&
-        candidate.pathname === expected.pathname &&
-        candidate.search === expected.search,
-      { timeout: 10_000 },
-    );
+  let lastAbort = null;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      await page.goto(expected.toString(), { waitUntil: "domcontentloaded" });
+    } catch (error) {
+      // Closing the persistent call dock can finish one final Next navigation
+      // while Playwright starts the next explicit route. Chromium reports that
+      // bounded race as ERR_ABORTED. Retry the exact requested URL, but never
+      // accept a different rendered destination as equivalent evidence.
+      const message = error instanceof Error ? error.message : String(error);
+      if (!message.includes("net::ERR_ABORTED")) throw error;
+      lastAbort = error;
+    }
+    const current = new URL(page.url());
+    if (
+      current.origin === expected.origin &&
+      current.pathname === expected.pathname &&
+      current.search === expected.search
+    ) return;
+    await page.waitForTimeout(250);
   }
+  throw lastAbort || new Error(`Could not render exact route ${expected.pathname}${expected.search}.`);
 }
 
 const { chromium } = await loadPlaywright();
