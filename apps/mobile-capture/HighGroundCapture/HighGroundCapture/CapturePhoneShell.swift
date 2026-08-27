@@ -6594,6 +6594,94 @@ private struct CaptureRecorderView: View {
 
                     CaptureQuickEntrySyncStatus(model: model)
 
+                    // Session conversation is part of the room, not a footer.
+                    // Keep it beside the join and quick-work controls so a
+                    // coach can coordinate before, during, or after the call
+                    // without forcing SwiftUI to materialize the entire
+                    // transcript/results/editor workspace first.
+                    MobileSessionConversationCard(
+                        client: sessionConversation,
+                        session: session,
+                        previewOnly: model.usesPreviewData
+                    )
+                    .task(
+                        id:
+                            "session-conversation|\(session.id)|\(session.callRoomId)|active=\(visibleTab == .record)"
+                    ) {
+                        guard visibleTab == .record else {
+                            sessionConversation.stopPolling()
+                            return
+                        }
+                        if model.usesPreviewData {
+                            sessionConversation.loadPreview(session: session)
+                        } else {
+                            await sessionConversation.load(session: session)
+                            sessionConversation.startPolling(session: session)
+                        }
+                    }
+                    .onDisappear { sessionConversation.stopPolling() }
+                    .onChange(of: sessionConversation.outboundLiveHint) { _, hint in
+                        guard let hint else { return }
+                        Task {
+                            await model.providerRoom.publishChatPersistedHint(hint)
+                        }
+                    }
+                    .onChange(of: model.providerRoom.latestChatPersistedHint) { _, hint in
+                        guard let hint else { return }
+                        Task {
+                            await sessionConversation.receiveLiveHint(
+                                hint,
+                                session: session
+                            )
+                        }
+                    }
+
+                    if !session.isCoachingSession,
+                       session.projectSlug?.nonempty != nil,
+                       session.episodeSlug?.nonempty != nil {
+                        // Episode collaboration follows the same room-first
+                        // pattern as Session conversation. Manuscript, Watch,
+                        // transcript, and edit tools can stay in the deeper
+                        // production workspace; the people making the episode
+                        // should never have to hunt for each other.
+                        MobileEpisodeChatCard(
+                            client: episodeChat,
+                            session: session,
+                            previewOnly: model.usesPreviewData
+                        )
+                        .task(
+                            id:
+                                "chat|\(session.id)|\(session.projectSlug ?? "")|\(session.episodeSlug ?? "")|active=\(visibleTab == .record)"
+                        ) {
+                            guard visibleTab == .record else {
+                                episodeChat.stopPolling()
+                                return
+                            }
+                            if model.usesPreviewData {
+                                episodeChat.loadPreview(session: session)
+                            } else {
+                                await episodeChat.load(session: session)
+                                episodeChat.startPolling(session: session)
+                            }
+                        }
+                        .onDisappear { episodeChat.stopPolling() }
+                        .onChange(of: episodeChat.outboundLiveHint) { _, hint in
+                            guard let hint else { return }
+                            Task {
+                                await model.providerRoom.publishChatPersistedHint(hint)
+                            }
+                        }
+                        .onChange(of: model.providerRoom.latestChatPersistedHint) { _, hint in
+                            guard let hint else { return }
+                            Task {
+                                await episodeChat.receiveLiveHint(
+                                    hint,
+                                    session: session
+                                )
+                            }
+                        }
+                    }
+
                     if model.providerRoom.isConnected
                         || localOnlyRecordingSessionID == session.id
                         || audioCapture.activeSessionID == session.id
@@ -7188,84 +7276,6 @@ private struct CaptureRecorderView: View {
                     )
                     .accessibilityIdentifier("CaptureSessionPlanOpen")
                     .accessibilityHint("Opens the local-first session note, goals, tasks, and Nest revision controls in a focused workspace.")
-
-                    MobileSessionConversationCard(
-                        client: sessionConversation,
-                        session: session,
-                        previewOnly: model.usesPreviewData
-                    )
-                    .task(
-                        id:
-                            "session-conversation|\(session.id)|\(session.callRoomId)|active=\(visibleTab == .record)"
-                    ) {
-                        guard visibleTab == .record else {
-                            sessionConversation.stopPolling()
-                            return
-                        }
-                        if model.usesPreviewData {
-                            sessionConversation.loadPreview(session: session)
-                        } else {
-                            await sessionConversation.load(session: session)
-                            sessionConversation.startPolling(session: session)
-                        }
-                    }
-                    .onDisappear { sessionConversation.stopPolling() }
-                    .onChange(of: sessionConversation.outboundLiveHint) { _, hint in
-                        guard let hint else { return }
-                        Task {
-                            await model.providerRoom.publishChatPersistedHint(hint)
-                        }
-                    }
-                    .onChange(of: model.providerRoom.latestChatPersistedHint) { _, hint in
-                        guard let hint else { return }
-                        Task {
-                            await sessionConversation.receiveLiveHint(
-                                hint,
-                                session: session
-                            )
-                        }
-                    }
-
-                    if !session.isCoachingSession,
-                       session.projectSlug?.nonempty != nil,
-                       session.episodeSlug?.nonempty != nil {
-                        MobileEpisodeChatCard(
-                            client: episodeChat,
-                            session: session,
-                            previewOnly: model.usesPreviewData
-                        )
-                        .task(
-                            id:
-                                "chat|\(session.id)|\(session.projectSlug ?? "")|\(session.episodeSlug ?? "")|active=\(visibleTab == .record)"
-                        ) {
-                            guard visibleTab == .record else {
-                                episodeChat.stopPolling()
-                                return
-                            }
-                            if model.usesPreviewData {
-                                episodeChat.loadPreview(session: session)
-                            } else {
-                                await episodeChat.load(session: session)
-                                episodeChat.startPolling(session: session)
-                            }
-                        }
-                        .onDisappear { episodeChat.stopPolling() }
-                        .onChange(of: episodeChat.outboundLiveHint) { _, hint in
-                            guard let hint else { return }
-                            Task {
-                                await model.providerRoom.publishChatPersistedHint(hint)
-                            }
-                        }
-                        .onChange(of: model.providerRoom.latestChatPersistedHint) { _, hint in
-                            guard let hint else { return }
-                            Task {
-                                await episodeChat.receiveLiveHint(
-                                    hint,
-                                    session: session
-                                )
-                            }
-                        }
-                    }
 
                     SourceTruthFootnote(mode: recordingMode)
                 } else if model.isRefreshing {
