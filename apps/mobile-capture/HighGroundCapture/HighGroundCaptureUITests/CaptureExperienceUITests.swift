@@ -200,6 +200,47 @@ final class CaptureExperienceUITests: XCTestCase {
         )
     }
 
+    func testVoiceWritingOffersStructureAndSourceWithoutLeavingCapture() {
+        app.tabBars.buttons["Library"].tap()
+        let writingSection = app.buttons["Writing"]
+        XCTAssertTrue(writingSection.waitForExistence(timeout: 5))
+        writingSection.tap()
+        let previewDraft = app.descendants(matching: .any)["CaptureLibraryPreviewWritingCard"]
+        XCTAssertTrue(
+            previewDraft.waitForExistence(timeout: 5),
+            "Library should make a voice-created writing draft directly openable."
+        )
+        previewDraft.tap()
+
+        XCTAssertTrue(
+            app.descendants(matching: .any)["CaptureVoiceWritingEditor"]
+                .waitForExistence(timeout: 5),
+            "Writing should open inside Capture rather than handing off to another app."
+        )
+        XCTAssertTrue(app.buttons["Write"].exists)
+        XCTAssertTrue(app.buttons["Transcript"].exists)
+        for control in ["Paragraph", "Bullets", "Numbered", "Checklist", "Quote"] {
+            XCTAssertTrue(
+                app.buttons["CaptureVoiceWritingStructure_\(control)"].exists,
+                "The current iPhone editor should expose \(control) alongside rich text formatting."
+            )
+        }
+
+        let writing = app.descendants(matching: .any)["CaptureVoiceWritingBody"]
+        XCTAssertTrue(writing.waitForExistence(timeout: 5))
+        let bullets = app.buttons["CaptureVoiceWritingStructure_Bullets"]
+        XCTAssertTrue(bullets.isHittable)
+        bullets.tap()
+        XCTAssertTrue(
+            ((writing.value as? String) ?? "").contains("• "),
+            "A visible structure control must change the actual editable writing."
+        )
+        let screenshot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        screenshot.name = "voice-writing-structure-editor.png"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
+    }
+
     func testCoachingHomeMakesThePhoneOnlyWorkflowConcrete() {
         relaunchCoachingPreview(role: "coach")
         let coaching = app.buttons["CaptureOpenCoachingHome"]

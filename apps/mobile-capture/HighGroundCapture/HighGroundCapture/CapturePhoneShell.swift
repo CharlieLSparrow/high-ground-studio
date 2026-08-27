@@ -7556,6 +7556,15 @@ private struct CaptureRichWritingBody: View {
         VStack(alignment: .leading, spacing: 10) {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
+                    structureButton("Paragraph", systemImage: "text.alignleft", kind: .paragraph)
+                    structureButton("Bullets", systemImage: "list.bullet", kind: .bulletedList)
+                    structureButton("Numbered", systemImage: "list.number", kind: .numberedList)
+                    structureButton("Checklist", systemImage: "checklist", kind: .checklist)
+                    structureButton("Quote", systemImage: "quote.opening", kind: .quote)
+
+                    Divider()
+                        .frame(height: 24)
+
                     formatButton("Bold", systemImage: "bold", kind: .bold)
                     formatButton("Italic", systemImage: "italic", kind: .italic)
                     formatButton("Underline", systemImage: "underline", kind: .underline)
@@ -7563,7 +7572,7 @@ private struct CaptureRichWritingBody: View {
                 }
                 .padding(.vertical, 2)
             }
-            .accessibilityIdentifier("CaptureVoiceWritingFormatBar")
+            .accessibilityIdentifier("CaptureVoiceWritingEditorBar")
 
             TextEditor(text: $text, selection: $selection)
                 .font(.body)
@@ -7571,7 +7580,7 @@ private struct CaptureRichWritingBody: View {
                 .focused(focus)
                 .scrollContentBackground(.hidden)
                 .accessibilityLabel("Writing")
-                .accessibilityHint("Edit and format the text created from your voice. Your original transcript and audio are unchanged.")
+                .accessibilityHint("Edit and organize the text created from your voice. Your original transcript and audio are unchanged.")
                 .accessibilityIdentifier("CaptureVoiceWritingBody")
                 .onChange(of: text) { _, updated in
                     let portable = Self.portable(from: updated)
@@ -7603,6 +7612,25 @@ private struct CaptureRichWritingBody: View {
         .accessibilityLabel(title)
     }
 
+    private func structureButton(
+        _ title: String,
+        systemImage: String,
+        kind: VoiceWritingStructureKind
+    ) -> some View {
+        Button {
+            applyStructure(kind)
+        } label: {
+            Label(title, systemImage: systemImage)
+                .font(.caption.weight(.semibold))
+                .padding(.horizontal, 10)
+                .frame(minHeight: 44)
+                .background(.thinMaterial, in: Capsule())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(title)
+        .accessibilityIdentifier("CaptureVoiceWritingStructure_\(title)")
+    }
+
     private func apply(_ kind: VoiceWritingMarkKind) {
         let removes = selectedAttributesContain(kind)
         text.transformAttributes(in: &selection) { attributes in
@@ -7624,6 +7652,40 @@ private struct CaptureRichWritingBody: View {
         let portable = Self.portable(from: text)
         plainText = portable.text
         richText = portable
+    }
+
+    private func applyStructure(_ kind: VoiceWritingStructureKind) {
+        let result = VoiceWritingStructureEditor.apply(
+            kind,
+            to: Self.portable(from: text),
+            selection: selectedNSRange
+        )
+        text = Self.attributed(from: result.richText)
+        selection = Self.attributedSelection(
+            from: result.selectionUtf16,
+            in: text
+        )
+        plainText = result.richText.text
+        richText = result.richText
+        focus.wrappedValue = true
+    }
+
+    private var selectedNSRange: NSRange {
+        switch selection.indices(in: text) {
+        case .insertionPoint(let index):
+            return NSRange(
+                location: text.utf16.distance(from: text.startIndex, to: index),
+                length: 0
+            )
+        case .ranges(let ranges):
+            guard let first = ranges.ranges.first,
+                  let last = ranges.ranges.last else {
+                return NSRange(location: text.utf16.count, length: 0)
+            }
+            let start = text.utf16.distance(from: text.startIndex, to: first.lowerBound)
+            let end = text.utf16.distance(from: text.startIndex, to: last.upperBound)
+            return NSRange(location: start, length: max(0, end - start))
+        }
     }
 
     private func selectedAttributesContain(_ kind: VoiceWritingMarkKind) -> Bool {
@@ -7699,6 +7761,20 @@ private struct CaptureRichWritingBody: View {
         let start = text.utf16.index(text.startIndex, offsetBy: startUtf16)
         let end = text.utf16.index(text.startIndex, offsetBy: endUtf16)
         return start..<end
+    }
+
+    private static func attributedSelection(
+        from range: NSRange,
+        in text: AttributedString
+    ) -> AttributedTextSelection {
+        let location = min(max(0, range.location), text.utf16.count)
+        let length = min(max(0, range.length), text.utf16.count - location)
+        let start = text.utf16.index(text.startIndex, offsetBy: location)
+        guard length > 0 else {
+            return AttributedTextSelection(insertionPoint: start)
+        }
+        let end = text.utf16.index(start, offsetBy: length)
+        return AttributedTextSelection(range: start..<end)
     }
 }
 
@@ -12134,7 +12210,7 @@ private struct CaptureLibraryView: View {
     @ViewBuilder
     private var writingContent: some View {
         if model.usesPreviewData && writingStore.drafts.isEmpty {
-            CaptureLibraryPreviewWritingCard()
+            CaptureLibraryPreviewWritingCard(tagClient: model.todayClient)
         }
 
         if filteredDrafts.isEmpty && !model.usesPreviewData {
@@ -12355,38 +12431,84 @@ private struct CaptureVoiceWritingLibraryRow: View {
 }
 
 private struct CaptureLibraryPreviewWritingCard: View {
+    @ObservedObject var tagClient: CaptureTodayClient
+
+    private static let recordingID = UUID(uuidString: "A17F4C12-0000-4000-8000-000000000032")!
+    private static let draft = VoiceWritingDraft(
+        id: UUID(uuidString: "A17F4C12-0000-4000-8000-000000000033")!,
+        ownerAccountID: "preview-owner",
+        localRecordingID: recordingID,
+        sourceTranscriptClientRequestID: UUID(uuidString: "A17F4C12-0000-4000-8000-000000000034")!,
+        sourceSHA256: String(repeating: "a", count: 64),
+        callRoomID: nil,
+        sources: nil,
+        createdAt: Date(timeIntervalSince1970: 1_787_820_000),
+        title: "What I want to explore next",
+        body: "The first idea connects the experience I described to the research question. I want to open with the concrete story, then explain why it matters.",
+        richText: VoiceWritingRichText(
+            text: "The first idea connects the experience I described to the research question. I want to open with the concrete story, then explain why it matters.",
+            marks: [.init(kind: .bold, startUtf16: 0, endUtf16: 14)]
+        ),
+        updatedAt: Date(timeIntervalSince1970: 1_787_820_300),
+        localRevision: 2,
+        serverRevision: 2,
+        serverContentRevision: "preview-revision",
+        canonicalDocumentID: "preview-document",
+        canonicalProjectID: "preview-home-project",
+        canonicalProjectName: "My Nest",
+        canonicalProjectSlug: "home-preview",
+        canonicalTagRevision: 0,
+        canonicalTags: [],
+        canonicalUpdatedAt: "2026-08-27T17:00:00Z",
+        lastSyncedAt: Date(timeIntervalSince1970: 1_787_820_300),
+        lastSyncError: nil,
+        pendingRemote: nil
+    )
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .top, spacing: 12) {
-                Image(systemName: "doc.text.fill")
-                    .font(.title3)
-                    .foregroundStyle(CapturePalette.accent)
-                    .frame(width: 42, height: 42)
-                    .background(CapturePalette.accent.opacity(0.1), in: Circle())
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("What I want to explore next")
-                        .font(.headline)
-                    Text("Edited a few minutes ago")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+        NavigationLink {
+            CaptureVoiceWritingEditor(
+                recordingID: Self.recordingID,
+                initialDraft: Self.draft,
+                timedTranscript: [],
+                tagClient: tagClient,
+                onContinueByVoice: { _ in }
+            )
+        } label: {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(alignment: .top, spacing: 12) {
+                    Image(systemName: "doc.text.fill")
+                        .font(.title3)
+                        .foregroundStyle(CapturePalette.accent)
+                        .frame(width: 42, height: 42)
+                        .background(CapturePalette.accent.opacity(0.1), in: Circle())
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("What I want to explore next")
+                            .font(.headline)
+                        Text("Edited a few minutes ago")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(.tertiary)
                 }
-                Spacer()
-                Image(systemName: "checkmark.icloud.fill")
-                    .foregroundStyle(.green)
+                Text("The first idea connects the experience I described to the research question. I want to open with the concrete story, then explain why it matters…")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(4)
+                HStack(spacing: 12) {
+                    Label("My Nest", systemImage: "checkmark.icloud.fill")
+                    Label("Timed transcript", systemImage: "waveform")
+                }
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(CapturePalette.accent)
             }
-            Text("The first idea connects the experience I described to the research question. I want to open with the concrete story, then explain why it matters…")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .lineLimit(4)
-            HStack(spacing: 12) {
-                Label("My Nest", systemImage: "checkmark.icloud.fill")
-                Label("Timed transcript", systemImage: "waveform")
-            }
-            .font(.caption.weight(.semibold))
-            .foregroundStyle(CapturePalette.accent)
+            .captureCard()
         }
-        .captureCard()
-        .accessibilityElement(children: .combine)
+        .buttonStyle(.plain)
+        .accessibilityHint("Opens editable writing with the original timed transcript kept separately.")
         .accessibilityIdentifier("CaptureLibraryPreviewWritingCard")
     }
 }
