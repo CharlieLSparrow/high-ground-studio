@@ -193,7 +193,7 @@ export function CaptureAppHandoff({
                 <p className="font-black">Capture didn’t open</p>
                 <p className="mt-1 text-xs font-semibold leading-5">
                   You can join here now. If you want the iPhone app, install or
-                  update the beta, then try opening Capture again.
+                  update Quipsly Capture, then try opening it again.
                 </p>
               </div>
             </div>
@@ -334,7 +334,7 @@ export function CaptureAppHandoff({
               onClick={() => recordChoice("TESTFLIGHT")}
               className="mt-3 inline-flex min-h-11 items-center gap-2 rounded-full px-2 text-xs font-black text-violet-900"
             >
-              <Download size={15} aria-hidden="true" /> Need the iPhone app? Get the beta
+              <Download size={15} aria-hidden="true" /> Get Quipsly Capture for iPhone
             </a>
           </div>
         ) : null}

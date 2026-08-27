@@ -42,7 +42,7 @@ describe("CaptureAppHandoff", () => {
       "quipsly://session/room-safe_42?mode=live",
     );
     expect(
-      screen.getByRole("link", { name: /Get the beta/i }),
+      screen.getByRole("link", { name: /Get Quipsly Capture for iPhone/i }),
     ).toHaveAttribute("href", "https://testflight.apple.com/join/XwRRcYUm");
     expect(
       screen.getByText(/same private Session/i),
