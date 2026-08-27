@@ -365,6 +365,7 @@ enum CallRoomPurpose {
   PODCAST
   RESEARCH_INTERVIEW
   INTERNAL_MEETING
+  PERSONAL_NOTE
 }
 
 enum CallRoomStatus {

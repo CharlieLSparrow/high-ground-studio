@@ -46,6 +46,7 @@ describe("purpose-aware Session workspace language", () => {
     ["PODCAST", "Recording room", "Take conversation", "Episode work", "Editor & publish"],
     ["RESEARCH_INTERVIEW", "Interview room", "Conversation", "Findings & tasks", "Writing uses"],
     ["INTERNAL_MEETING", "Team room", "Conversation", "Decisions & tasks", "Handoffs"],
+    ["PERSONAL_NOTE", "Record", "Comments", "Ideas & tasks", "Share & export"],
   ])("projects %s without changing the canonical mode identities", (purpose, live, conversation, work, outputs) => {
     const definitions = sessionWorkspaceModesForPurpose(purpose);
     expect(definitions).toHaveLength(9);

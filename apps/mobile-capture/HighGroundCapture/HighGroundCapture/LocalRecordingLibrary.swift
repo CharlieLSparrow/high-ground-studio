@@ -326,6 +326,17 @@ struct LocalRecording: Codable, Identifiable, Equatable {
         }
     }
 
+    var isPersonalVoiceNote: Bool {
+        let normalized = capturePurpose?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .uppercased()
+            .replacingOccurrences(of: "-", with: "_")
+            .replacingOccurrences(of: " ", with: "_") ?? ""
+        return normalized == "PERSONAL_NOTE"
+            || normalized == "VOICE_NOTE"
+            || normalized == "FIELD_NOTE"
+    }
+
     var encodedSourceProfileJSON: String? {
         guard let sourceProfile else {
             return nil

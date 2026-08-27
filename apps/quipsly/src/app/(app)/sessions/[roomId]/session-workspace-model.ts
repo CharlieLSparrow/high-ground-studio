@@ -110,6 +110,17 @@ const PURPOSE_WORKSPACE_LANGUAGE: Record<SessionExperience["purpose"], Workspace
     work: { label: "Decisions & tasks", eyebrow: "Team follow-through", description: "Review canonical decisions, tasks, goals, assignments, and scheduled work." },
     outputs: { label: "Handoffs", eyebrow: "Durable continuation", description: "Inspect deliberate project handoffs and delivery receipts without treating a draft as completed work." },
   },
+  PERSONAL_NOTE: {
+    overview: { label: "Overview", eyebrow: "Your private capture", description: "See the recording, transcript, writing, and the most useful next action." },
+    prepare: { label: "Details", eyebrow: "Name and organize", description: "Choose a title, Nest, and tags without delaying the recording." },
+    live: { label: "Record", eyebrow: "Capture your thought", description: "Record yourself with a clear timer, level meter, pause control, and visible save state." },
+    conversation: { label: "Comments", eyebrow: "Optional collaboration", description: "Discuss this note only if you deliberately share it with collaborators." },
+    recordings: { label: "Audio", eyebrow: "Original recording", description: "Play the retained recording and confirm that it is safely synced." },
+    transcript: { label: "Transcript", eyebrow: "Listen and correct", description: "Tap words to hear the matching audio, correct the transcript, and keep source timing intact." },
+    notes: { label: "Writing", eyebrow: "Shape your ideas", description: "Turn the transcript into editable writing without changing the original audio or transcript." },
+    work: { label: "Ideas & tasks", eyebrow: "Optional follow-through", description: "Keep useful ideas, tasks, goals, and reminders without forcing an extra review step." },
+    outputs: { label: "Share & export", eyebrow: "Use your work", description: "Export audio, transcript, or writing, or share it when you choose." },
+  },
 };
 
 export function parseSessionWorkspaceMode(value: unknown): SessionWorkspaceMode {

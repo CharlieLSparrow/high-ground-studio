@@ -12,9 +12,9 @@ enum CaptureRootTab: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .today: "Today"
-        case .record: "Record"
-        case .work: "Work"
+        case .today: "Home"
+        case .record: "Capture"
+        case .work: "Nests"
         case .library: "Library"
         case .account: "Account"
         }
@@ -22,9 +22,9 @@ enum CaptureRootTab: String, CaseIterable, Identifiable {
 
     var systemImage: String {
         switch self {
-        case .today: "sun.max"
-        case .record: "record.circle"
-        case .work: "square.grid.2x2"
+        case .today: "house.fill"
+        case .record: "waveform.circle.fill"
+        case .work: "square.stack.3d.up.fill"
         case .library: "waveform"
         case .account: "person.crop.circle"
         }
@@ -1290,6 +1290,44 @@ final class CaptureExperienceModel: ObservableObject {
             message = "Session created. Confirm consent when everyone is ready."
         }
         return true
+    }
+
+    func createPersonalVoiceNote() async -> MobileCaptureSession? {
+        guard !isSessionContextLocked else {
+            errorMessage = "Finish the active recording or call before starting another voice note."
+            return nil
+        }
+        guard !isCreatingSession else { return nil }
+        isCreatingSession = true
+        defer { isCreatingSession = false }
+        errorMessage = nil
+
+        let title = "Voice note · \(Date.now.formatted(.dateTime.month(.abbreviated).day().hour().minute()))"
+        if usesPreviewData {
+            let created = MobileCaptureSession.capturePreview(
+                id: "preview-voice-note-\(UUID().uuidString)",
+                title: title,
+                purpose: "PERSONAL_NOTE",
+                consentGranted: true,
+                scheduledStart: ISO8601DateFormatter().string(from: Date())
+            )
+            sessionClient.sessions.insert(created, at: 0)
+            selectedSessionID = created.id
+            message = "Voice note ready. Tap Record when you are ready."
+            return created
+        }
+
+        guard let created = await sessionClient.createQuickSession(
+            title: title,
+            purpose: "PERSONAL_NOTE",
+            provider: "planned"
+        ) else {
+            errorMessage = sessionClient.errorMessage ?? "Quipsly could not create the voice note."
+            return nil
+        }
+        selectedSessionID = created.id
+        message = "Voice note ready. Tap Record when you are ready."
+        return created
     }
 
     @discardableResult

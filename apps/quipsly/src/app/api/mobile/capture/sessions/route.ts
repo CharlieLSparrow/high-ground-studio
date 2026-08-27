@@ -8,6 +8,10 @@ import {
   MOBILE_CAPTURE_CONSENT_TEXT_SHA256,
 } from "@/lib/mobile-capture-consent-policy.js";
 import { getPrismaClient } from "@/lib/prisma";
+import {
+  fallbackTitleForMobileCapturePurpose,
+  parseMobileCaptureSessionPurpose,
+} from "@/lib/mobile-capture-session-purpose";
 import { coachingEngagementAccessWhere, coachingEngagementActorAccessWhere } from "@/lib/server/coaching-engagement";
 import { reconcileCaptureProxyResults } from "@/lib/server/capture-proxy-reconciliation";
 import { reconcileInterruptionRepairResults } from "@/lib/server/capture-interruption-repair-reconciliation";
@@ -205,13 +209,6 @@ function text(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
 }
 
-function normalizePurpose(value: unknown) {
-  const purpose = text(value).toUpperCase().replace(/[-\s]+/g, "_");
-  return ["COACHING", "PODCAST", "RESEARCH_INTERVIEW", "INTERNAL_MEETING"].includes(purpose)
-    ? purpose
-    : "COACHING";
-}
-
 async function readJson(request: Request) {
   try {
     const value = await request.json();
@@ -219,13 +216,6 @@ async function readJson(request: Request) {
   } catch {
     return {};
   }
-}
-
-function fallbackTitleForPurpose(purpose: string) {
-  if (purpose === "PODCAST") return "Podcast capture session";
-  if (purpose === "RESEARCH_INTERVIEW") return "Research interview capture session";
-  if (purpose === "INTERNAL_MEETING") return "Quipsly meeting capture";
-  return "Coaching capture session";
 }
 
 function parseDate(value: unknown) {
@@ -609,30 +599,38 @@ export async function POST(request: Request) {
       { status: 401 },
     );
   }
+  const body = await readJson(request);
+  const purpose = parseMobileCaptureSessionPurpose(body.purpose);
+  if (!purpose) {
+    return NextResponse.json(
+      { ok: false, error: "Choose a supported capture type.", code: "QUIPSLY_CAPTURE_PURPOSE_INVALID" },
+      { status: 400 },
+    );
+  }
   const prisma = getPrismaClient() as any;
   const createSessionAccess = await quipslyCoachCapabilityAccess({
     prisma,
     userId: session.user.id,
-    capability: "coaching.call",
+    capability: purpose === "PERSONAL_NOTE" ? "coaching.local_recording" : "coaching.call",
     isStaff: session.user.isStaff,
   });
   if (!createSessionAccess.allowed) {
     return NextResponse.json(
       {
         ok: false,
-        error: "Start or restore a Quipsly Coach plan to create a new Session. Existing Sessions and client invitations remain available.",
+        error: purpose === "PERSONAL_NOTE"
+          ? "Start or restore Quipsly access to create a new voice note. Your existing recordings and writing remain available."
+          : "Start or restore a Quipsly Coach plan to create a new Session. Existing Sessions and client invitations remain available.",
         code: "QUIPSLY_SUBSCRIPTION_REQUIRED",
       },
       { status: 402 },
     );
   }
 
-  const body = await readJson(request);
   const userId = session.user.id;
-  const purpose = normalizePurpose(body.purpose);
-  const title = text(body.title) || fallbackTitleForPurpose(purpose);
+  const title = text(body.title) || fallbackTitleForMobileCapturePurpose(purpose);
   const requestedProvider = text(body.provider).toLowerCase();
-  const provider = requestedProvider === "planned" ? "planned" : "livekit";
+  const provider = purpose === "PERSONAL_NOTE" || requestedProvider === "planned" ? "planned" : "livekit";
   const providerRoomId = provider === "livekit" ? `quipsly-${randomUUID()}` : null;
   const scheduledStart = parseDate(body.scheduledStart);
   const scheduledEnd = parseDate(body.scheduledEnd);
@@ -757,12 +755,13 @@ export async function POST(request: Request) {
       projectSlug: captureProjectSlug,
       recordingPolicyJson: {
         source: "mobile-capture-session-create",
-        explicitConsentRequired: true,
+        explicitConsentRequired: purpose !== "PERSONAL_NOTE",
         hiddenRecordingAllowed: false,
         joiningStartsRecording: false,
         localRecordingRequiresConsent: true,
-        providerRecordingRequiresAllParticipantConsent: true,
+        providerRecordingRequiresAllParticipantConsent: purpose !== "PERSONAL_NOTE",
         visibleRecordingIndicatorRequired: true,
+        selfCaptureOnly: purpose === "PERSONAL_NOTE",
       },
       transcriptPolicyJson: {
         source: "mobile-capture-session-create",
@@ -782,6 +781,8 @@ export async function POST(request: Request) {
         coachingEngagementId: coachingEngagement?.id || null,
         coachingEngagementTitle: coachingEngagement?.title || null,
         quickSession: true,
+        personalSelfCapture: purpose === "PERSONAL_NOTE",
+        otherAudibleParticipantsAllowed: purpose !== "PERSONAL_NOTE",
         externalSideEffects: {
           calendarMutated: false,
           stripeMutated: false,
@@ -805,18 +806,22 @@ export async function POST(request: Request) {
       roomId: room.id,
       participantId: participant.id,
       userId: participant.userId,
-      status: "REQUESTED",
+      status: purpose === "PERSONAL_NOTE" ? "GRANTED" : "REQUESTED",
       consentText: MOBILE_CAPTURE_CONSENT_TEXT,
       policyVersion: MOBILE_CAPTURE_CONSENT_POLICY_VERSION,
-      canRecordAudio: false,
+      canRecordAudio: purpose === "PERSONAL_NOTE",
       canRecordVideo: false,
-      canTranscribe: false,
+      canTranscribe: purpose === "PERSONAL_NOTE",
+      consentedAt: purpose === "PERSONAL_NOTE" ? now : null,
       metadataJson: {
-        source: "ios-capture-session-create",
+        source: purpose === "PERSONAL_NOTE" ? "ios-personal-self-capture" : "ios-capture-session-create",
         appSurface: "HighGroundCapture",
         requestedByUserId: userId,
-        attestationKind: "recorder-all-heard-participants-notified-and-agreed",
-        independentParticipantReceiptsRequiredForProviderEgress: true,
+        attestationKind: purpose === "PERSONAL_NOTE"
+          ? "actor-recording-self"
+          : "recorder-all-heard-participants-notified-and-agreed",
+        independentParticipantReceiptsRequiredForProviderEgress: purpose !== "PERSONAL_NOTE",
+        selfCaptureOnly: purpose === "PERSONAL_NOTE",
         consentTextHash: MOBILE_CAPTURE_CONSENT_TEXT_SHA256,
         consentEvidenceVersion: 2,
         requestedAt: now.toISOString(),
@@ -878,14 +883,17 @@ export async function POST(request: Request) {
         relationshipParticipantsAttached: Boolean(
           coachingEngagement && room.participants.length >= 2,
         ),
-        consentRequested: true,
+        consentRequested: purpose !== "PERSONAL_NOTE",
+        selfCaptureConsentGranted: purpose === "PERSONAL_NOTE",
         recordingStarted: false,
         providerJoined: false,
         providerTokenMinted: false,
         calendarMutated: false,
         stripeMutated: false,
         externalInviteSent: false,
-        nextAction: "Open this Quipsly capture session, collect explicit consent, then join or record from visible controls.",
+        nextAction: purpose === "PERSONAL_NOTE"
+          ? "Record when ready. If another person can be heard, start a Session so they can consent."
+          : "Open this Quipsly capture session, collect explicit consent, then join or record from visible controls.",
       },
     },
     { status: 201 },

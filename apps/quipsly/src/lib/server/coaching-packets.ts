@@ -25,7 +25,8 @@ type SessionPacketPurpose =
   | "COACHING"
   | "PODCAST"
   | "RESEARCH_INTERVIEW"
-  | "INTERNAL_MEETING";
+  | "INTERNAL_MEETING"
+  | "PERSONAL_NOTE";
 
 export { SESSION_PACKET_TEMPLATE_VERSION } from "@high-ground/quipsly-domain/coaching-packet";
 export const TRANSCRIPT_PACKET_SNAPSHOT_SCHEMA =
@@ -101,7 +102,7 @@ const REVIEW_LANE_DEFINITIONS = [
     meaning: "Commitments Quipsly turns into editable tasks or coaching goals.",
     pattern:
       /\b(goal|task|todo|to-do|commit|commitment|before next|for next|need to|should|will|finish|prepare)\b/i,
-    purposes: ["COACHING", "PODCAST", "RESEARCH_INTERVIEW", "INTERNAL_MEETING"],
+    purposes: ["COACHING", "PODCAST", "RESEARCH_INTERVIEW", "INTERNAL_MEETING", "PERSONAL_NOTE"],
   },
   {
     id: "next-session-prep",
@@ -110,7 +111,7 @@ const REVIEW_LANE_DEFINITIONS = [
       "Material that helps prepare the next coaching, podcast, or research session.",
     pattern:
       /\b(next session|next time|before we meet|bring back|follow up|prep|prepare|homework|review)\b/i,
-    purposes: ["COACHING", "PODCAST", "RESEARCH_INTERVIEW", "INTERNAL_MEETING"],
+    purposes: ["COACHING", "PODCAST", "RESEARCH_INTERVIEW", "INTERNAL_MEETING", "PERSONAL_NOTE"],
   },
   {
     id: "podcast-production",
@@ -128,7 +129,7 @@ const REVIEW_LANE_DEFINITIONS = [
       "Claims, sources, clips, sponsors, and rights questions to verify before publication.",
     pattern:
       /\b(fact|check|source|citation|claim|rights|license|permission|copyright|sponsor|verify)\b/i,
-    purposes: ["PODCAST", "RESEARCH_INTERVIEW"],
+    purposes: ["PODCAST", "RESEARCH_INTERVIEW", "PERSONAL_NOTE"],
   },
   {
     id: "quote-candidates",
@@ -137,7 +138,7 @@ const REVIEW_LANE_DEFINITIONS = [
       "Memorable lines that may become quote cards, social copy, article pull quotes, or QuipLore seeds.",
     pattern:
       /\b(remember|truth|lesson|means|because|story|wisdom|quote|important|realized|learned)\b/i,
-    purposes: ["PODCAST", "RESEARCH_INTERVIEW"],
+    purposes: ["PODCAST", "RESEARCH_INTERVIEW", "PERSONAL_NOTE"],
   },
   {
     id: "article-seeds",
@@ -146,7 +147,7 @@ const REVIEW_LANE_DEFINITIONS = [
       "Ideas that may become articles, posts, book notes, or research packets.",
     pattern:
       /\b(article|post|write|draft|book|research|source|example|lesson|story|framework|principle)\b/i,
-    purposes: ["PODCAST", "RESEARCH_INTERVIEW"],
+    purposes: ["PODCAST", "RESEARCH_INTERVIEW", "PERSONAL_NOTE"],
   },
   {
     id: "clip-candidates",
@@ -165,6 +166,7 @@ function packetPurpose(value: unknown): SessionPacketPurpose {
     "PODCAST",
     "RESEARCH_INTERVIEW",
     "INTERNAL_MEETING",
+    "PERSONAL_NOTE",
   ].includes(cleanText(value))
     ? (cleanText(value) as SessionPacketPurpose)
     : "COACHING";

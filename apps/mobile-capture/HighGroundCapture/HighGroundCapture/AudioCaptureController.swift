@@ -1720,6 +1720,18 @@ final class AudioCaptureController: NSObject, ObservableObject {
             transition(to: .saved)
 
             queueUploadIfPossible(recording: finalized, stoppedAt: stoppedAt, segmentsJson: segmentsJson)
+            if finalized.isPersonalVoiceNote {
+                // A voice note's ordinary outcome is searchable writing, not a
+                // recording stranded in Library. SpeechAnalyzer reads only the
+                // finalized immutable local source. If Apple's language model
+                // is not installed, the manager pauses at a visible download
+                // action instead of downloading assets without the person.
+                OnDeviceTranscriptManager.shared.begin(
+                    recording: finalized,
+                    fileURL: fileURL,
+                    allowModelDownload: false
+                )
+            }
             localRecordingRecoveryNote = recoverySummary()
             activeLocalRecordingID = nil
             activeCaptureIntent = nil

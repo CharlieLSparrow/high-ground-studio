@@ -4,12 +4,13 @@ export type SessionExperienceKind =
   | "coaching"
   | "episode"
   | "research"
-  | "meeting";
+  | "meeting"
+  | "personal";
 
 export type SessionExperience = {
   kind: SessionExperienceKind;
   captureProfile: SessionCaptureProfile;
-  purpose: "COACHING" | "PODCAST" | "RESEARCH_INTERVIEW" | "INTERNAL_MEETING";
+  purpose: "COACHING" | "PODCAST" | "RESEARCH_INTERVIEW" | "INTERNAL_MEETING" | "PERSONAL_NOTE";
   label: string;
   liveHeading: string;
   liveDescription: string;
@@ -68,13 +69,28 @@ const EXPERIENCES: Record<SessionExperience["purpose"], SessionExperience> = {
     continuityDescription: "Reviewed decisions and commitments flow into shared notes, tasks, goals, calendar, and project context without treating chat as canonical work.",
     defaultCamera: false,
   },
+  PERSONAL_NOTE: {
+    kind: "personal",
+    captureProfile: "coaching",
+    purpose: "PERSONAL_NOTE",
+    label: "Voice Note",
+    liveHeading: "Record a thought",
+    liveDescription: "Record yourself, keep the original audio, and turn the time-linked transcript into writing you can edit on iPhone or the web.",
+    sessionScopeLabel: "This voice note",
+    continuityLabel: "Your private writing",
+    continuityDescription: "Audio, transcript, edits, tags, and writing stay in your private Nest unless you deliberately share them.",
+    defaultCamera: false,
+  },
 };
 
 export function normalizeSessionPurpose(value: unknown): SessionExperience["purpose"] {
-  const purpose = typeof value === "string" ? value.trim().toUpperCase() : "";
+  const purpose = typeof value === "string"
+    ? value.trim().toUpperCase().replace(/[-\s]+/g, "_")
+    : "";
   if (purpose === "PODCAST" || purpose === "PODCAST_PRODUCTION" || purpose === "EPISODE") return "PODCAST";
   if (purpose === "RESEARCH_INTERVIEW" || purpose === "RESEARCH") return "RESEARCH_INTERVIEW";
   if (purpose === "INTERNAL_MEETING" || purpose === "MEETING") return "INTERNAL_MEETING";
+  if (purpose === "PERSONAL_NOTE" || purpose === "VOICE_NOTE" || purpose === "FIELD_NOTE") return "PERSONAL_NOTE";
   return "COACHING";
 }
 

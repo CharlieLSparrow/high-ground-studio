@@ -465,6 +465,10 @@ final class OnDeviceTranscriptManager: ObservableObject {
         phases[recordingId] ?? .idle
     }
 
+    func storedTranscript(for recordingId: UUID) -> OnDeviceTranscriptSidecar? {
+        try? OnDeviceTranscriptStore.load(for: recordingId)?.sidecar
+    }
+
     func restoreState(for recording: LocalRecording) {
         guard phases[recording.id] == nil else { return }
         guard let stored = try? OnDeviceTranscriptStore.load(for: recording.id) else { return }
@@ -559,6 +563,12 @@ final class OnDeviceTranscriptManager: ObservableObject {
                 segments: segments
             )
             _ = try OnDeviceTranscriptStore.save(sidecar)
+            if let draft = VoiceWritingDraftStore.shared.seed(
+                from: sidecar,
+                recording: recording
+            ) {
+                VoiceWritingDraftSyncClient.shared.schedule(draft, delay: .zero)
+            }
             phases[recording.id] = .savedLocally(segmentCount: segments.count)
             await submit(recording: recording)
         } catch OnDeviceTranscriptFailure.modelDownloadRequired(let localeIdentifier) {

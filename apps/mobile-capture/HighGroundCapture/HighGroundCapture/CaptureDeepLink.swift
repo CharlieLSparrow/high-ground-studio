@@ -77,6 +77,7 @@ final class CaptureDeepLinkRouter: ObservableObject {
     @Published private(set) var pendingSession: CaptureSessionDeepLink?
     @Published private(set) var openedSession: CaptureSessionDeepLink?
     @Published private(set) var rejectedLinkNotice: String?
+    @Published private(set) var pendingVoiceNoteRequestID: UUID?
     private var inspectedConfiguredLaunchLink = false
 
     @discardableResult
@@ -117,6 +118,15 @@ final class CaptureDeepLinkRouter: ObservableObject {
     func consumeRejectedLinkNotice() -> String? {
         defer { rejectedLinkNotice = nil }
         return rejectedLinkNotice
+    }
+
+    func requestVoiceNote() {
+        pendingVoiceNoteRequestID = UUID()
+    }
+
+    func consumeVoiceNoteRequest(_ requestID: UUID) {
+        guard pendingVoiceNoteRequestID == requestID else { return }
+        pendingVoiceNoteRequestID = nil
     }
 
     func receiveConfiguredLaunchLinkIfNeeded() {

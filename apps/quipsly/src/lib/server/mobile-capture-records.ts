@@ -76,6 +76,7 @@ function purposeFor(value?: string | null) {
   if (normalized.includes("podcast")) return "PODCAST";
   if (normalized.includes("research")) return "RESEARCH_INTERVIEW";
   if (normalized.includes("internal")) return "INTERNAL_MEETING";
+  if (normalized.includes("personal") || normalized.includes("voice") || normalized.includes("field_note")) return "PERSONAL_NOTE";
   return "COACHING";
 }
 

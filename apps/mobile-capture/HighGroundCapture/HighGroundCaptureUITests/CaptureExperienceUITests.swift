@@ -128,7 +128,7 @@ final class CaptureExperienceUITests: XCTestCase {
         let tabBar = app.tabBars.firstMatch
         XCTAssertTrue(tabBar.waitForExistence(timeout: 5))
 
-        for tab in ["Today", "Record", "Work", "Library", "Account"] {
+        for tab in ["Home", "Capture", "Nests", "Library", "Account"] {
             XCTAssertTrue(tabBar.buttons[tab].exists, "Expected the \(tab) capture destination.")
         }
 
@@ -140,6 +140,10 @@ final class CaptureExperienceUITests: XCTestCase {
             "Today should not repeat the same next session in the Later session list."
         )
         XCTAssertTrue(app.buttons["New session"].exists)
+        XCTAssertTrue(
+            app.buttons["CaptureStartVoiceNote"].exists,
+            "Private speech-to-writing should be a primary Home action, not hidden in Session setup."
+        )
 
         let joinSession = app.buttons["CaptureOpenNextSessionButton"]
         XCTAssertEqual(
@@ -164,6 +168,32 @@ final class CaptureExperienceUITests: XCTestCase {
 
         tabBar.buttons["Account"].tap()
         XCTAssertTrue(app.navigationBars["Account"].waitForExistence(timeout: 5))
+    }
+
+    func testPrivateVoiceNoteOpensCaptureWithoutMeetingPaperwork() {
+        let voiceNote = app.buttons["CaptureStartVoiceNote"]
+        XCTAssertTrue(voiceNote.waitForExistence(timeout: 5))
+        voiceNote.tap()
+
+        XCTAssertTrue(
+            app.otherElements["CapturePersonalVoiceNoteHeader"]
+                .waitForExistence(timeout: 8),
+            "Voice Note should open a private writing recorder directly."
+        )
+        XCTAssertTrue(app.otherElements["CaptureRecorderHero"].exists)
+        XCTAssertTrue(app.tabBars.buttons["Capture"].isSelected)
+        XCTAssertFalse(
+            app.otherElements["CaptureProviderRoomControls"].exists,
+            "A private Voice Note must not look like a meeting room."
+        )
+        XCTAssertFalse(
+            app.otherElements["CaptureConsentStrip"].exists,
+            "Recording your own private thought should not add participant-consent paperwork."
+        )
+        XCTAssertFalse(
+            app.otherElements["CaptureRecordingModePicker"].exists,
+            "Voice Note should default to audio instead of asking for production setup."
+        )
     }
 
     func testCoachingHomeMakesThePhoneOnlyWorkflowConcrete() {
@@ -615,7 +645,7 @@ final class CaptureExperienceUITests: XCTestCase {
 
         app.buttons["Open Session"].tap()
         XCTAssertTrue(
-            app.tabBars.buttons["Record"].isSelected,
+            app.tabBars.buttons["Capture"].isSelected,
             "The confirmed appointment should move directly into the recorder."
         )
         XCTAssertTrue(
@@ -749,7 +779,7 @@ final class CaptureExperienceUITests: XCTestCase {
     }
 
     func testRecorderUsesAFamiliarMicrophoneLevelInsteadOfAnOpaquePercentage() {
-        app.tabBars.buttons["Record"].tap()
+        app.tabBars.buttons["Capture"].tap()
         openLocalRecorderIfNeeded()
 
         let evidence = app.descendants(matching: .any)[
@@ -769,7 +799,7 @@ final class CaptureExperienceUITests: XCTestCase {
     }
 
     func testRecorderLeadsWithAStandardCallGreenRoom() {
-        app.tabBars.buttons["Record"].tap()
+        app.tabBars.buttons["Capture"].tap()
 
         let call = app.descendants(matching: .any)["CaptureProviderRoomControls"]
         let join = app.buttons["ProviderJoinRoomButton"]
@@ -840,7 +870,7 @@ final class CaptureExperienceUITests: XCTestCase {
     }
 
     func testCallLobbyRemembersSafeDeviceChoicesAcrossRelaunch() {
-        app.tabBars.buttons["Record"].tap()
+        app.tabBars.buttons["Capture"].tap()
 
         let useCallAudio = app.switches["CaptureUseCallAudioToggle"]
         let microphone = app.switches["CaptureJoinMicrophoneToggle"]
@@ -872,7 +902,7 @@ final class CaptureExperienceUITests: XCTestCase {
     }
 
     func testEpisodeWatchStagesLeadClipWithoutInventingRecordingOrSharedMutation() {
-        app.tabBars.buttons["Record"].tap()
+        app.tabBars.buttons["Capture"].tap()
 
         let chooser = app.buttons["CaptureSessionChooser"]
         XCTAssertTrue(chooser.waitForExistence(timeout: 5))
@@ -982,7 +1012,7 @@ final class CaptureExperienceUITests: XCTestCase {
     }
 
     func testEpisodeManuscriptIsReadableBesideTheRecorderWithoutCreatingAnEditableCopy() {
-        app.tabBars.buttons["Record"].tap()
+        app.tabBars.buttons["Capture"].tap()
 
         let card = app.descendants(matching: .any)["CaptureEpisodeManuscriptCard"]
         reveal(card, searchAboveFirst: false)
@@ -1024,7 +1054,7 @@ final class CaptureExperienceUITests: XCTestCase {
     }
 
     func testEpisodeThreadKeepsCollaborationBesideTheRecorderWithoutStartingCapture() {
-        app.tabBars.buttons["Record"].tap()
+        app.tabBars.buttons["Capture"].tap()
 
         let card = app.descendants(matching: .any)["CaptureEpisodeChatCard"]
         reveal(card)
@@ -1066,7 +1096,7 @@ final class CaptureExperienceUITests: XCTestCase {
     }
 
     func testSessionThreadKeepsTakeCoordinationSeparateFromEpisodeWork() {
-        app.tabBars.buttons["Record"].tap()
+        app.tabBars.buttons["Capture"].tap()
 
         let card = app.descendants(matching: .any)["CaptureSessionChatCard"]
         reveal(card)
@@ -1110,7 +1140,7 @@ final class CaptureExperienceUITests: XCTestCase {
     }
 
     func testRehearsalReadinessMakesEveryPhysicalBoundaryVisibleBeforeRecord() {
-        app.tabBars.buttons["Record"].tap()
+        app.tabBars.buttons["Capture"].tap()
         openLocalRecorderIfNeeded()
 
         let card = app.descendants(matching: .any)[
@@ -1209,7 +1239,7 @@ final class CaptureExperienceUITests: XCTestCase {
     }
 
     func testWorkKeepsProjectsTasksGoalsNotesAndTagsTogether() {
-        app.tabBars.buttons["Work"].tap()
+        app.tabBars.buttons["Nests"].tap()
         let workScroll = app.scrollViews["CaptureWorkView"]
         XCTAssertTrue(workScroll.waitForExistence(timeout: 5))
         let newProject = app.buttons["CaptureWorkNewProjectInline"]
@@ -1336,7 +1366,7 @@ final class CaptureExperienceUITests: XCTestCase {
         app.buttons["CaptureQuickEntrySave"].tap()
         XCTAssertTrue(app.staticTexts["Preview only — no note, task, goal, or source was saved."].waitForExistence(timeout: 5))
 
-        app.tabBars.buttons["Work"].tap()
+        app.tabBars.buttons["Nests"].tap()
         let picker = app.descendants(matching: .any)["CaptureWorkProjectPicker"]
         reveal(picker)
         picker.tap()
@@ -1347,7 +1377,7 @@ final class CaptureExperienceUITests: XCTestCase {
     }
 
     func testRecordQuickCaptureMakesNoteTaskAndGoalImmediateWithoutFakingPreviewWrites() {
-        app.tabBars.buttons["Record"].tap()
+        app.tabBars.buttons["Capture"].tap()
         let noteButton = app.buttons["CaptureQuickEntry_NOTE_preview-coaching-ready"]
         reveal(noteButton)
         XCTAssertTrue(noteButton.isHittable)
@@ -1383,7 +1413,7 @@ final class CaptureExperienceUITests: XCTestCase {
     }
 
     func testQuickNoteCanExplicitlyTargetPrivateHomeNestEvenWhenASessionIsSelected() {
-        app.tabBars.buttons["Record"].tap()
+        app.tabBars.buttons["Capture"].tap()
         let noteButton = app.buttons["CaptureQuickEntry_NOTE_preview-coaching-ready"]
         reveal(noteButton)
         XCTAssertTrue(noteButton.isHittable)
@@ -1405,7 +1435,7 @@ final class CaptureExperienceUITests: XCTestCase {
     }
 
     func testSessionQuickNoteMakesDecisionAndClientSafeAudienceObviousWithoutClaimingDelivery() {
-        app.tabBars.buttons["Record"].tap()
+        app.tabBars.buttons["Capture"].tap()
         let noteButton = app.buttons["CaptureQuickEntry_NOTE_preview-coaching-ready"]
         reveal(noteButton)
         noteButton.tap()
@@ -1438,7 +1468,7 @@ final class CaptureExperienceUITests: XCTestCase {
     }
 
     func testTranscriptFollowThroughAppearsAsOrdinaryEditableSessionWork() {
-        app.tabBars.buttons["Record"].tap()
+        app.tabBars.buttons["Capture"].tap()
         let results = app.descendants(matching: .any)["CaptureSessionResults"].firstMatch
         reveal(results)
         XCTAssertTrue(results.waitForExistence(timeout: 5))
@@ -1460,7 +1490,7 @@ final class CaptureExperienceUITests: XCTestCase {
     }
 
     func testCanonicalSessionNoteEditMakesRevisionAudienceAndNestTagsObviousWithoutFakingPreviewWrites() {
-        app.tabBars.buttons["Record"].tap()
+        app.tabBars.buttons["Capture"].tap()
         let notesCard = app.descendants(matching: .any)["CaptureSessionNotesToggle"].firstMatch
         reveal(notesCard)
         XCTAssertTrue(notesCard.isHittable)
@@ -1540,7 +1570,7 @@ final class CaptureExperienceUITests: XCTestCase {
     }
 
     func testQuickTaskCanExplicitlyTargetPrivateHomeNestEvenWhenASessionIsSelected() {
-        app.tabBars.buttons["Record"].tap()
+        app.tabBars.buttons["Capture"].tap()
         let taskButton = app.buttons["CaptureQuickEntry_TASK_preview-coaching-ready"]
         reveal(taskButton, searchAboveFirst: false)
         XCTAssertTrue(taskButton.isHittable)
@@ -1574,7 +1604,7 @@ final class CaptureExperienceUITests: XCTestCase {
     }
 
     func testQuickTaskCanTargetAWritableProjectAndReuseItsCanonicalTagsWithoutASession() {
-        app.tabBars.buttons["Record"].tap()
+        app.tabBars.buttons["Capture"].tap()
         let taskButton = app.buttons["CaptureQuickEntry_TASK_preview-coaching-ready"]
         reveal(taskButton)
         XCTAssertTrue(taskButton.isHittable)
@@ -1601,7 +1631,7 @@ final class CaptureExperienceUITests: XCTestCase {
     }
 
     func testRecordSourceCaptureTargetsPrivateInboxBeforeAnyResearchNest() {
-        app.tabBars.buttons["Record"].tap()
+        app.tabBars.buttons["Capture"].tap()
         let sourceButton = app.buttons["CaptureQuickEntry_SOURCE_preview-coaching-ready"]
         reveal(sourceButton)
         XCTAssertTrue(sourceButton.isHittable)
@@ -1628,7 +1658,7 @@ final class CaptureExperienceUITests: XCTestCase {
     }
 
     func testQuickCaptureChoosesExistingCanonicalNestTags() {
-        app.tabBars.buttons["Record"].tap()
+        app.tabBars.buttons["Capture"].tap()
         let taskButton = app.buttons["CaptureQuickEntry_TASK_preview-coaching-ready"]
         reveal(taskButton)
         XCTAssertTrue(taskButton.isHittable)
@@ -1660,7 +1690,7 @@ final class CaptureExperienceUITests: XCTestCase {
     }
 
     func testTaskQuickCaptureAuthorsAnExplicitRecurrenceWithoutImplyingAReminder() {
-        app.tabBars.buttons["Record"].tap()
+        app.tabBars.buttons["Capture"].tap()
         let taskButton = app.buttons["CaptureQuickEntry_TASK_preview-coaching-ready"]
         reveal(taskButton, searchAboveFirst: false)
         XCTAssertTrue(taskButton.isHittable)
@@ -1724,7 +1754,7 @@ final class CaptureExperienceUITests: XCTestCase {
     }
 
     func testTaskQuickCaptureAddsACanonicalDueDateWithoutInventingAReminder() {
-        app.tabBars.buttons["Record"].tap()
+        app.tabBars.buttons["Capture"].tap()
         let taskButton = app.buttons["CaptureQuickEntry_TASK_preview-coaching-ready"]
         reveal(taskButton)
         XCTAssertTrue(taskButton.isHittable)
@@ -1754,7 +1784,7 @@ final class CaptureExperienceUITests: XCTestCase {
     }
 
     func testTaskQuickCaptureUsesOrdinaryReminderLanguage() {
-        app.tabBars.buttons["Record"].tap()
+        app.tabBars.buttons["Capture"].tap()
         let taskButton = app.buttons["CaptureQuickEntry_TASK_preview-coaching-ready"]
         reveal(taskButton)
         XCTAssertTrue(taskButton.isHittable)
@@ -2893,7 +2923,7 @@ final class CaptureExperienceUITests: XCTestCase {
     func testRecordingReceiptOutboxSurvivesRelaunchAndStaysAccountPartitioned() {
         let ownerArguments = app.launchArguments
 
-        app.tabBars.buttons["Record"].tap()
+        app.tabBars.buttons["Capture"].tap()
         openLocalRecorderIfNeeded()
         let firstIdentity = app.staticTexts[
             "CaptureRecordingReceiptOutboxReceiptID"
@@ -2913,7 +2943,7 @@ final class CaptureExperienceUITests: XCTestCase {
             app.descendants(matching: .any)["CapturePreviewModeBadge"]
                 .waitForExistence(timeout: 12)
         )
-        app.tabBars.buttons["Record"].tap()
+        app.tabBars.buttons["Capture"].tap()
         openLocalRecorderIfNeeded()
         XCTAssertEqual(
             app.staticTexts["CaptureRecordingReceiptOutboxReceiptID"].label,
@@ -2932,7 +2962,7 @@ final class CaptureExperienceUITests: XCTestCase {
             app.descendants(matching: .any)["CapturePreviewModeBadge"]
                 .waitForExistence(timeout: 12)
         )
-        app.tabBars.buttons["Record"].tap()
+        app.tabBars.buttons["Capture"].tap()
         openLocalRecorderIfNeeded()
         XCTAssertNotEqual(
             app.staticTexts["CaptureRecordingReceiptOutboxReceiptID"].label,
@@ -2947,7 +2977,7 @@ final class CaptureExperienceUITests: XCTestCase {
             app.descendants(matching: .any)["CapturePreviewModeBadge"]
                 .waitForExistence(timeout: 12)
         )
-        app.tabBars.buttons["Record"].tap()
+        app.tabBars.buttons["Capture"].tap()
         openLocalRecorderIfNeeded()
         XCTAssertEqual(
             app.staticTexts["CaptureRecordingReceiptOutboxReceiptID"].label,
@@ -3082,7 +3112,7 @@ final class CaptureExperienceUITests: XCTestCase {
     }
 
     func testConsentIsExplicitAndGatesStartRecording() {
-        app.tabBars.buttons["Record"].tap()
+        app.tabBars.buttons["Capture"].tap()
         let chooser = app.buttons["CaptureSessionChooser"]
         XCTAssertTrue(chooser.waitForExistence(timeout: 5))
         chooser.tap()
@@ -3147,7 +3177,7 @@ final class CaptureExperienceUITests: XCTestCase {
     }
 
     func testParticipantCanDeclineRecordingWithoutBlockingTheCall() {
-        app.tabBars.buttons["Record"].tap()
+        app.tabBars.buttons["Capture"].tap()
         let chooser = app.buttons["CaptureSessionChooser"]
         XCTAssertTrue(chooser.waitForExistence(timeout: 5))
         chooser.tap()
@@ -3186,7 +3216,7 @@ final class CaptureExperienceUITests: XCTestCase {
     }
 
     func testReadyParticipantSeesWaitingStatusInsteadOfDisabledRecord() {
-        app.tabBars.buttons["Record"].tap()
+        app.tabBars.buttons["Capture"].tap()
         openLocalRecorderIfNeeded()
 
         let ready = app.descendants(matching: .any)[
@@ -3204,7 +3234,7 @@ final class CaptureExperienceUITests: XCTestCase {
     }
 
     func testCallCheckUsesStandardLanguageAndHidesProviderDetails() {
-        app.tabBars.buttons["Record"].tap()
+        app.tabBars.buttons["Capture"].tap()
         openLocalRecorderIfNeeded()
 
         let check = app.buttons["CaptureSessionTruthDisclosure"]
@@ -3226,7 +3256,7 @@ final class CaptureExperienceUITests: XCTestCase {
     }
 
     func testVerifiedRemoteSessionSourceOffersProtectedPlaybackWithoutPreviewDownload() {
-        app.tabBars.buttons["Record"].tap()
+        app.tabBars.buttons["Capture"].tap()
         let chooser = app.buttons["CaptureSessionChooser"]
         XCTAssertTrue(chooser.waitForExistence(timeout: 5))
         chooser.tap()
@@ -3262,7 +3292,7 @@ final class CaptureExperienceUITests: XCTestCase {
     }
 
     func testVerifiedSourceShowsTranscriptLifecycleBeforeReviewIsReady() {
-        app.tabBars.buttons["Record"].tap()
+        app.tabBars.buttons["Capture"].tap()
         let chooser = app.buttons["CaptureSessionChooser"]
         XCTAssertTrue(chooser.waitForExistence(timeout: 5))
         chooser.tap()
@@ -3339,7 +3369,7 @@ final class CaptureExperienceUITests: XCTestCase {
     }
 
     func testVideoModesExplainAndExposeTheExactLocalSourceBeforeCameraPermission() {
-        app.tabBars.buttons["Record"].tap()
+        app.tabBars.buttons["Capture"].tap()
         openLocalRecorderIfNeeded()
 
         let modePicker = app.segmentedControls["CaptureRecordingModePicker"]
@@ -3444,7 +3474,7 @@ final class CaptureExperienceUITests: XCTestCase {
     }
 
     func testVideoOnlyConsentDoesNotAccidentallyAuthorizeAudioCapture() {
-        app.tabBars.buttons["Record"].tap()
+        app.tabBars.buttons["Capture"].tap()
         app.buttons["CaptureSessionChooser"].tap()
         let consentNeededSession = app.staticTexts["High Ground pre-show"]
         XCTAssertTrue(consentNeededSession.waitForExistence(timeout: 5))
@@ -3529,7 +3559,7 @@ final class CaptureExperienceUITests: XCTestCase {
     }
 
     func testPrimaryRecordSurfacePassesAccessibilityAudit() throws {
-        app.tabBars.buttons["Record"].tap()
+        app.tabBars.buttons["Capture"].tap()
 
         openLocalRecorderIfNeeded()
         XCTAssertTrue(app.otherElements["CaptureRecorderHero"].waitForExistence(timeout: 5))
@@ -3553,8 +3583,8 @@ final class CaptureExperienceUITests: XCTestCase {
         let tabBar = app.tabBars.firstMatch
         XCTAssertTrue(tabBar.waitForExistence(timeout: 12))
         let destinations: [(tab: String, root: XCUIElement)] = [
-            ("Today", app.scrollViews["CaptureTodayView"]),
-            ("Work", app.scrollViews["CaptureWorkView"]),
+            ("Home", app.scrollViews["CaptureTodayView"]),
+            ("Nests", app.scrollViews["CaptureWorkView"]),
             ("Library", app.scrollViews["CaptureLibraryView"]),
             ("Account", app.navigationBars["Account"]),
         ]
@@ -3678,7 +3708,7 @@ final class CaptureExperienceUITests: XCTestCase {
     }
 
     func testSessionPlanIsAvailableOnThePrimaryIPhoneRecorder() {
-        app.tabBars.buttons["Record"].tap()
+        app.tabBars.buttons["Capture"].tap()
         openLocalRecorderIfNeeded()
         XCTAssertTrue(app.otherElements["CaptureRecorderHero"].waitForExistence(timeout: 5))
 
@@ -3843,7 +3873,7 @@ final class CaptureExperienceUITests: XCTestCase {
     }
 
     func testStudioHandoffKeepsTheWholeCaptureGroupVisibleAcrossReadyRetryAndCompleteStates() {
-        app.tabBars.buttons["Record"].tap()
+        app.tabBars.buttons["Capture"].tap()
 
         func chooseSession(_ id: String) {
             let chooser = app.buttons["CaptureSessionChooser"]
@@ -3937,7 +3967,7 @@ final class CaptureExperienceUITests: XCTestCase {
     }
 
     func testCompletedSessionKeepsEditAndShareAvailableWithoutReopeningRecorder() {
-        app.tabBars.buttons["Record"].tap()
+        app.tabBars.buttons["Capture"].tap()
 
         let chooser = app.buttons["CaptureSessionChooser"]
         reveal(chooser)
@@ -4273,7 +4303,7 @@ final class CaptureAppStoreScreenshotUITests: XCTestCase {
         Thread.sleep(forTimeInterval: 0.8)
         keepScreenshot("02-record.png")
 
-        launch(tab: "work", waitingFor: app.navigationBars["Work"])
+        launch(tab: "work", waitingFor: app.navigationBars["Nests"])
         XCTAssertTrue(
             app.scrollViews["CaptureWorkView"].waitForExistence(timeout: 5)
         )

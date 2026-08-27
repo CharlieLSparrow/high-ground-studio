@@ -103,6 +103,7 @@ struct CapturePhoneShell: View {
             _ = await subscriptionLoad
             showRejectedLinkNotice()
             await routePendingSessionLink()
+            await routePendingVoiceNote()
         }
         .onChange(of: model.hasCompletedInitialSessionAuthorityLoad) { _, ready in
             guard ready else { return }
@@ -116,6 +117,10 @@ struct CapturePhoneShell: View {
             // ready and route exactly one request at a time.
             guard model.hasCompletedInitialSessionAuthorityLoad else { return }
             Task { await routePendingSessionLink() }
+        }
+        .onChange(of: deepLinkRouter.pendingVoiceNoteRequestID) { _, requestID in
+            guard requestID != nil else { return }
+            Task { await routePendingVoiceNote() }
         }
         .onChange(of: deepLinkRouter.rejectedLinkNotice) { _, _ in
             showRejectedLinkNotice()
@@ -188,7 +193,14 @@ struct CapturePhoneShell: View {
                 CaptureTodayView(
                     model: model,
                     showsNewSession: $showsNewSession,
-                    visibleTab: $visibleTab
+                    visibleTab: $visibleTab,
+                    onStartVoiceNote: {
+                        Task {
+                            guard let created = await model.createPersonalVoiceNote() else { return }
+                            localOnlyRecordingSessionID = created.id
+                            visibleTab = .record
+                        }
+                    }
                 )
             }
             .tabItem { Label(CaptureRootTab.today.title, systemImage: CaptureRootTab.today.systemImage) }
@@ -249,6 +261,23 @@ struct CapturePhoneShell: View {
                 return
             }
         }
+    }
+
+    @MainActor
+    private func routePendingVoiceNote() async {
+        guard let requestID = deepLinkRouter.pendingVoiceNoteRequestID else { return }
+        guard !model.isSessionContextLocked else {
+            model.errorMessage = "Finish the active recording or call, then ask Quipsly to start a voice note again."
+            deepLinkRouter.consumeVoiceNoteRequest(requestID)
+            return
+        }
+        guard let created = await model.createPersonalVoiceNote() else {
+            deepLinkRouter.consumeVoiceNoteRequest(requestID)
+            return
+        }
+        localOnlyRecordingSessionID = created.id
+        visibleTab = .record
+        deepLinkRouter.consumeVoiceNoteRequest(requestID)
     }
 
     @MainActor
@@ -318,6 +347,7 @@ private struct CaptureTodayView: View {
     @ObservedObject var model: CaptureExperienceModel
     @Binding var showsNewSession: Bool
     @Binding var visibleTab: CaptureRootTab
+    let onStartVoiceNote: () -> Void
     @StateObject private var library = LocalRecordingLibrary.shared
     @StateObject private var auth = AuthManager.shared
     @State private var calendarEventDraft: CaptureCalendarEventDraft?
@@ -327,6 +357,13 @@ private struct CaptureTodayView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 todayHeader
+
+                CaptureTodayPrimaryActions(
+                    isStartingVoiceNote: model.isCreatingSession,
+                    canStart: !model.isSessionContextLocked,
+                    onStartVoiceNote: onStartVoiceNote,
+                    onNewSession: { showsNewSession = true }
+                )
 
                 if model.usesPreviewData
                     && !CaptureLaunchConfiguration.usesAppStorePresentation {
@@ -535,6 +572,75 @@ private struct CaptureTodayView: View {
             .first
             .map(String.init)
         return firstName.map { "\(salutation), \($0)" } ?? salutation
+    }
+}
+
+private struct CaptureTodayPrimaryActions: View {
+    let isStartingVoiceNote: Bool
+    let canStart: Bool
+    let onStartVoiceNote: () -> Void
+    let onNewSession: () -> Void
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Button(action: onStartVoiceNote) {
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack {
+                        Image(systemName: "waveform.circle.fill")
+                            .font(.title2)
+                        Spacer()
+                        if isStartingVoiceNote {
+                            ProgressView()
+                                .tint(.white)
+                        } else {
+                            Image(systemName: "arrow.right")
+                                .font(.headline)
+                        }
+                    }
+                    Text("Voice note")
+                        .font(.headline)
+                    Text("Record, transcribe, and write")
+                        .font(.caption)
+                        .opacity(0.9)
+                }
+                .frame(maxWidth: .infinity, minHeight: 100, alignment: .leading)
+                .padding(16)
+                .foregroundStyle(.white)
+                .background(CapturePalette.accent.gradient, in: RoundedRectangle(cornerRadius: 20))
+            }
+            .buttonStyle(.plain)
+            .disabled(!canStart || isStartingVoiceNote)
+            .accessibilityLabel("Start a voice note")
+            .accessibilityHint("Creates a private voice note, then opens the recorder.")
+            .accessibilityIdentifier("CaptureStartVoiceNote")
+
+            Button(action: onNewSession) {
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack {
+                        Image(systemName: "person.2.wave.2.fill")
+                            .font(.title2)
+                        Spacer()
+                        Image(systemName: "arrow.right")
+                            .font(.headline)
+                    }
+                    Text("New session")
+                        .font(.headline)
+                    Text("Coach, meet, or record together")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity, minHeight: 100, alignment: .leading)
+                .padding(16)
+                .background(.background, in: RoundedRectangle(cornerRadius: 20))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 20)
+                        .stroke(.primary.opacity(0.1))
+                }
+            }
+            .buttonStyle(.plain)
+            .disabled(!canStart)
+            .accessibilityIdentifier("CaptureStartSession")
+        }
     }
 }
 
@@ -1262,11 +1368,11 @@ private struct CaptureWorkView: View {
                     tagLens
                     workSections
                 } else if client.isLoading {
-                    CaptureLoadingCard(label: "Loading your projects…")
+                    CaptureLoadingCard(label: "Loading your Nests…")
                 } else {
                     CaptureEmptyCard(
-                        systemImage: "square.grid.2x2",
-                        title: "No projects yet",
+                        systemImage: "square.stack.3d.up",
+                        title: "No Nests yet",
                         detail: "Nest will create your private Home Nest when your account is ready.",
                         actionTitle: "Try again",
                         action: { Task { await client.load() } }
@@ -1278,7 +1384,7 @@ private struct CaptureWorkView: View {
             }
         .scrollDismissesKeyboard(.interactively)
         .background(CaptureCanvas())
-        .navigationTitle("Work")
+        .navigationTitle("Nests")
         .navigationBarTitleDisplayMode(.inline)
         .refreshable {
             await model.todayClient.load()
@@ -1437,8 +1543,8 @@ private struct CaptureWorkView: View {
                         Image(systemName: "folder.badge.plus")
                     }
                     .disabled(projectCreationDisabled)
-                    .accessibilityLabel("New private project")
-                    .accessibilityHint("Creates a canonical private Nest owned by this Quipsly account.")
+                    .accessibilityLabel("New Nest")
+                    .accessibilityHint("Creates a private Nest. You can invite people later.")
                     .accessibilityIdentifier("CaptureWorkNewProject")
                 }
             }
@@ -1464,17 +1570,19 @@ private struct CaptureWorkView: View {
                     .foregroundStyle(client.heldDocumentNoteEditCount > 0 ? .orange : CapturePalette.accent)
                 VStack(alignment: .leading, spacing: 3) {
                     Text(client.heldDocumentNoteEditCount > 0
-                         ? "Project-note draft needs review"
-                         : "Project-note edit protected")
+                         ? "This note also changed somewhere else"
+                         : "Note edit saved on this iPhone")
                         .font(.caption.weight(.bold))
                     if let message = client.documentNoteEditMessage {
                         Text(message)
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                     }
-                    Text("\(client.pendingDocumentNoteEditCount) waiting · \(client.heldDocumentNoteEditCount) held")
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(.secondary)
+                    if client.pendingDocumentNoteEditCount > 0 {
+                        Text("Quipsly will sync it when the connection is ready.")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                    }
                 }
                 Spacer(minLength: 0)
             }
@@ -1505,7 +1613,7 @@ private struct CaptureWorkView: View {
                     .foregroundStyle(.secondary)
                     .accessibilityHidden(true)
                 TextField(
-                    "Find work or a tag",
+                    "Find notes, work, or tags",
                     text: $searchText,
                     axis: .vertical
                 )
@@ -1517,7 +1625,7 @@ private struct CaptureWorkView: View {
                     .textInputAutocapitalization(.never)
                     .focused($searchIsFocused)
                     .onSubmit { searchIsFocused = false }
-                    .accessibilityLabel("Find work or a tag")
+                    .accessibilityLabel("Find notes, work, or tags")
                     .accessibilityIdentifier("CaptureWorkSearchField")
                 if !searchText.isEmpty {
                     Button {
@@ -1543,52 +1651,24 @@ private struct CaptureWorkView: View {
                     .stroke(.primary.opacity(0.1))
             }
 
-            HStack(alignment: .firstTextBaseline) {
-                Text("Your projects")
-                    .font(.largeTitle.weight(.bold))
-                Spacer()
-                if !CaptureLaunchConfiguration.usesAppStorePresentation {
-                    Button {
-                        showsNewProject = true
-                    } label: {
-                        Label("New", systemImage: "plus")
-                    }
-                    .buttonStyle(.bordered)
-                    .disabled(projectCreationDisabled)
-                    .accessibilityIdentifier("CaptureWorkNewProjectInline")
-                }
-            }
-            Text("Every task, goal, note, and tag stays in sync across iPhone and the web.")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-
             if !client.projects.isEmpty {
                 Menu {
-                    ForEach(client.projects) { project in
-                        Button {
-                            selectedTagID = nil
-                            searchText = ""
-                            client.tagVocabularyMessage = nil
-                            if model.usesPreviewData {
-                                selectedProjectID = project.id
-                                client.loadPreview(projectID: project.id)
-                            } else {
-                                Task {
-                                    await client.load(projectID: project.id)
-                                    selectedProjectID = client.selectedProjectID
-                                }
+                    Section("My Nests") {
+                        ForEach(ownedProjects) { project in
+                            projectPickerButton(project)
+                        }
+                    }
+                    if !sharedProjects.isEmpty {
+                        Section("Shared with me") {
+                            ForEach(sharedProjects) { project in
+                                projectPickerButton(project)
                             }
-                        } label: {
-                            Label(
-                                project.name,
-                                systemImage: project.id == selectedProject?.id ? "checkmark.circle.fill" : "square.grid.2x2"
-                            )
                         }
                     }
                 } label: {
                     HStack(spacing: 10) {
-                        Image(systemName: selectedProject?.isHomeNest == true ? "house.fill" : "square.grid.2x2.fill")
-                        Text(selectedProject?.name ?? "Choose project")
+                        Image(systemName: selectedProject?.isHomeNest == true ? "house.fill" : "square.stack.3d.up.fill")
+                        Text(selectedProject?.name ?? "Choose a Nest")
                             .fontWeight(.bold)
                             .fixedSize(horizontal: false, vertical: true)
                         Spacer()
@@ -1608,6 +1688,40 @@ private struct CaptureWorkView: View {
             }
         }
         .padding(.top, 10)
+    }
+
+    private var ownedProjects: [MobileCaptureWorkProject] {
+        client.projects.filter { $0.isHomeNest || $0.role == "OWNER" }
+    }
+
+    private var sharedProjects: [MobileCaptureWorkProject] {
+        client.projects.filter { !$0.isHomeNest && $0.role != "OWNER" }
+    }
+
+    private func projectPickerButton(_ project: MobileCaptureWorkProject) -> some View {
+        Button {
+            selectedTagID = nil
+            searchText = ""
+            client.tagVocabularyMessage = nil
+            if model.usesPreviewData {
+                selectedProjectID = project.id
+                client.loadPreview(projectID: project.id)
+            } else {
+                Task {
+                    await client.load(projectID: project.id)
+                    selectedProjectID = client.selectedProjectID
+                }
+            }
+        } label: {
+            Label(
+                project.name,
+                systemImage: project.id == selectedProject?.id
+                    ? "checkmark.circle.fill"
+                    : project.isHomeNest
+                        ? "house"
+                        : "square.stack.3d.up"
+            )
+        }
     }
 
     private func projectSummary(_ workspace: MobileCaptureWorkWorkspace) -> some View {
@@ -1660,7 +1774,11 @@ private struct CaptureWorkView: View {
 
     private func projectSummaryTitle(_ workspace: MobileCaptureWorkWorkspace) -> some View {
         VStack(alignment: .leading, spacing: 3) {
-            Text(workspace.project.isHomeNest ? "Private Home Nest" : "Project workspace")
+            Text(workspace.project.isHomeNest
+                ? "My private Nest"
+                : workspace.project.role == "OWNER"
+                    ? "My Nest"
+                    : "Shared Nest")
                 .font(.caption.weight(.bold))
                 .foregroundStyle(.secondary)
             Text(workspace.project.name)
@@ -1703,7 +1821,7 @@ private struct CaptureWorkView: View {
     private var quickCapture: some View {
         if selectedProject?.canWrite == true, captureDestination != nil {
             VStack(alignment: .leading, spacing: 10) {
-                Text("Add to this project")
+                Text("Add to this Nest")
                     .font(.headline)
                 HStack(spacing: 9) {
                     ForEach([MobileQuickEntryKind.task, .note, .goal]) { kind in
@@ -1724,7 +1842,7 @@ private struct CaptureWorkView: View {
             .padding(16)
             .background(CapturePalette.accent.opacity(0.08), in: RoundedRectangle(cornerRadius: 22))
         } else if selectedProject?.canWrite == false {
-            Label("Read-only project · ask an owner for editor access to add or change work.", systemImage: "eye")
+            Label("This Nest is view-only. Ask an owner if you need to add or change something.", systemImage: "eye")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
                 .padding(14)
@@ -6256,7 +6374,7 @@ private struct NewCaptureProjectSheet: View {
     private let kinds = [
         KindOption(
             id: "mixed",
-            title: "Flexible project",
+            title: "Flexible Nest",
             detail: "Notes, tasks, goals, sessions, and mixed source material.",
             systemImage: "square.grid.2x2"
         ),
@@ -6300,7 +6418,7 @@ private struct NewCaptureProjectSheet: View {
         NavigationStack {
             Form {
                 Section {
-                    TextField("Project name", text: $name)
+                    TextField("Nest name", text: $name)
                         .textInputAutocapitalization(.words)
                         .submitLabel(.next)
                         .accessibilityIdentifier("CaptureWorkProjectName")
@@ -6312,14 +6430,14 @@ private struct NewCaptureProjectSheet: View {
                     .lineLimit(2...5)
                     .accessibilityIdentifier("CaptureWorkProjectDescription")
                     if normalizedName.count > 120 {
-                        Label("Keep the project name to 120 characters.", systemImage: "exclamationmark.triangle.fill")
+                        Label("Keep the Nest name to 120 characters.", systemImage: "exclamationmark.triangle.fill")
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(.orange)
                     }
                 } header: {
-                    Text("Private project")
+                    Text("Private Nest")
                 } footer: {
-                    Text("A project is a canonical Nest—not a folder copied only onto this phone.")
+                    Text("Only you can see it until you invite someone.")
                 }
 
                 Section("Start with") {
@@ -6354,10 +6472,9 @@ private struct NewCaptureProjectSheet: View {
 
                 Section {
                     Label("Private by default", systemImage: "lock.fill")
-                    Label("You become the owner", systemImage: "person.badge.key.fill")
-                    Label("No messages, calendar events, or publishing", systemImage: "hand.raised.fill")
+                    Label("Invite people whenever you are ready", systemImage: "person.badge.plus")
                 } footer: {
-                    Text("Creating requires Nest. If the response is interrupted, Retry uses the same protected request identity and cannot take ownership of an existing same-name project.")
+                    Text("If your connection drops, Quipsly can retry without creating a duplicate.")
                 }
 
                 if let errorMessage = client.errorMessage {
@@ -6367,13 +6484,13 @@ private struct NewCaptureProjectSheet: View {
                             .foregroundStyle(.orange)
                             .accessibilityIdentifier("CaptureWorkProjectCreateError")
                     } header: {
-                        Text("Couldn’t create project")
+                        Text("Couldn’t create Nest")
                     } footer: {
-                        Text("Check your connection, then tap Create again. Capture safely reuses this request without duplicating a completed project.")
+                        Text("Check your connection, then tap Create again.")
                     }
                 }
             }
-            .navigationTitle("New project")
+            .navigationTitle("New Nest")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -6479,6 +6596,445 @@ private enum CaptureCallPreferences {
     }
 }
 
+private struct CapturePersonalVoiceNoteHeader: View {
+    let session: MobileCaptureSession
+    let hasRecording: Bool
+    let onOpenLibrary: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: "waveform.circle.fill")
+                    .font(.title2)
+                    .foregroundStyle(CapturePalette.accent)
+                    .frame(width: 44, height: 44)
+                    .background(CapturePalette.accent.opacity(0.12), in: Circle())
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Voice note")
+                        .font(.title3.weight(.bold))
+                    Text(session.title)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 0)
+                Label("Private", systemImage: "lock.fill")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(.secondary)
+            }
+
+            Text(
+                hasRecording
+                    ? "Your original audio is saved. Quipsly keeps the transcript time-linked so you can listen, correct it, and shape it into writing."
+                    : "Tap Record below and speak naturally. Pause when you need a moment and mark ideas you want to find quickly."
+            )
+            .font(.subheadline)
+            .foregroundStyle(.secondary)
+
+            HStack(spacing: 8) {
+                Label(session.projectName?.nonempty ?? "My Nest", systemImage: "house.fill")
+                    .font(.caption.weight(.semibold))
+                Spacer()
+                if hasRecording {
+                    Button("Audio & transcripts", action: onOpenLibrary)
+                        .buttonStyle(.bordered)
+                        .accessibilityIdentifier("CaptureVoiceNoteOpenLibrary")
+                }
+            }
+        }
+        .captureCard()
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("CapturePersonalVoiceNoteHeader")
+    }
+}
+
+private struct CapturePersonalVoiceNoteTranscriptCard: View {
+    @ObservedObject private var transcriptManager = OnDeviceTranscriptManager.shared
+    @ObservedObject private var writingStore = VoiceWritingDraftStore.shared
+    @ObservedObject private var writingSync = VoiceWritingDraftSyncClient.shared
+
+    let recording: LocalRecording
+    let fileURL: URL?
+    let previewOnly: Bool
+
+    private var phase: OnDeviceTranscriptPhase {
+        transcriptManager.phase(for: recording.id)
+    }
+
+    private var draft: VoiceWritingDraft? {
+        writingStore.draft(for: recording.id)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: statusIcon)
+                    .font(.title3)
+                    .foregroundStyle(statusTint)
+                    .frame(width: 42, height: 42)
+                    .background(statusTint.opacity(0.1), in: Circle())
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(statusTitle)
+                        .font(.headline)
+                    Text(statusDetail)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 0)
+                if phase.isBusy {
+                    ProgressView()
+                        .controlSize(.small)
+                        .accessibilityLabel(statusTitle)
+                }
+            }
+
+            if let draft {
+                Text(draft.body)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(4)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                NavigationLink {
+                    CaptureVoiceWritingEditor(
+                        recording: recording,
+                        initialDraft: draft,
+                        timedTranscript: transcriptManager.storedTranscript(for: recording.id)?.segments ?? []
+                    )
+                } label: {
+                    Label("Open writing", systemImage: "square.and.pencil")
+                        .font(.headline)
+                        .frame(maxWidth: .infinity, minHeight: 48)
+                }
+                .buttonStyle(.borderedProminent)
+                .accessibilityIdentifier("CaptureVoiceWritingOpen_\(recording.id)")
+
+                HStack(spacing: 6) {
+                    Image(systemName: draft.isSynced ? "checkmark.icloud.fill" : "icloud.and.arrow.up")
+                    Text(draft.isSynced
+                        ? "Saved privately to My Nest"
+                        : writingSync.syncingRecordingIDs.contains(recording.id)
+                            ? "Saving to My Nest…"
+                            : "Protected here; Nest sync will retry")
+                }
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(draft.isSynced ? .green : .secondary)
+                .accessibilityIdentifier("CaptureVoiceWritingSync_\(recording.id)")
+            }
+
+            if let actionLabel {
+                Button(actionLabel) { performTranscriptAction() }
+                    .buttonStyle(.bordered)
+                    .frame(minHeight: 44)
+                    .disabled(previewOnly || fileURL == nil || phase.isBusy)
+                    .accessibilityIdentifier("CaptureVoiceNoteTranscriptAction_\(recording.id)")
+            }
+
+            if draft != nil,
+               let roomID = recording.callRoomId?.nonempty {
+                NavigationLink {
+                    CaptureTranscriptReviewView(
+                        roomID: roomID,
+                        sessionTitle: recording.sessionTitle?.nonempty ?? recording.displayTitle,
+                        recording: recording,
+                        previewOnly: previewOnly
+                    )
+                } label: {
+                    Label("Open timed transcript", systemImage: "text.word.spacing")
+                        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                }
+                .buttonStyle(.bordered)
+                .accessibilityIdentifier("CaptureVoiceNoteTimedTranscript_\(recording.id)")
+            }
+
+            if let error = writingStore.persistenceError?.nonempty {
+                Label(error, systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+            }
+        }
+        .captureCard()
+        .task(id: "voice-writing|\(recording.id)|\(recording.status.rawValue)") {
+            transcriptManager.restoreState(for: recording)
+            seedWritingIfAvailable()
+            if case .idle = transcriptManager.phase(for: recording.id),
+               let fileURL,
+               recording.status.isPlaybackEligible,
+               !previewOnly {
+                transcriptManager.begin(
+                    recording: recording,
+                    fileURL: fileURL,
+                    allowModelDownload: false
+                )
+            }
+        }
+        .onChange(of: transcriptManager.phases[recording.id]) { _, _ in
+            seedWritingIfAvailable()
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("CapturePersonalVoiceTranscriptCard_\(recording.id)")
+    }
+
+    private var actionLabel: String? {
+        switch phase {
+        case .modelDownloadRequired:
+            "Download English speech model"
+        case .failed:
+            "Try transcription again"
+        case .savedLocally, .waitingForVerifiedUpload:
+            recording.status.isVerified ? "Retry Nest transcript sync" : nil
+        case .idle:
+            "Transcribe now"
+        case .checkingSupport, .installingModel, .transcribing, .submitting, .attached:
+            nil
+        }
+    }
+
+    private func performTranscriptAction() {
+        switch phase {
+        case .modelDownloadRequired:
+            guard let fileURL else { return }
+            transcriptManager.begin(recording: recording, fileURL: fileURL, allowModelDownload: true)
+        case .savedLocally, .waitingForVerifiedUpload:
+            transcriptManager.submitSavedTranscript(recording: recording)
+        default:
+            guard let fileURL else { return }
+            transcriptManager.begin(recording: recording, fileURL: fileURL, allowModelDownload: false)
+        }
+    }
+
+    private func seedWritingIfAvailable() {
+        guard let transcript = transcriptManager.storedTranscript(for: recording.id),
+              let draft = writingStore.seed(from: transcript, recording: recording) else { return }
+        writingSync.schedule(draft, delay: .zero)
+    }
+
+    private var statusTitle: String {
+        if draft != nil { return "Writing ready" }
+        switch phase {
+        case .idle, .checkingSupport: return "Preparing transcript…"
+        case .modelDownloadRequired: return "One-time speech download"
+        case .installingModel: return "Installing speech model…"
+        case .transcribing: return "Turning your voice into text…"
+        case .savedLocally, .waitingForVerifiedUpload: return "Writing ready"
+        case .submitting: return "Saving transcript…"
+        case .attached: return "Writing ready"
+        case .failed: return "Transcript needs attention"
+        }
+    }
+
+    private var statusDetail: String {
+        if let draft {
+            return draft.isSynced
+                ? "Edit this like a note on your iPhone or continue from your private My Nest workspace. The timed transcript and original audio stay connected."
+                : "Your editable draft is safe on this iPhone. Quipsly will keep trying to save it privately to My Nest."
+        }
+        switch phase {
+        case .idle, .checkingSupport:
+            return "Quipsly uses Apple's on-device speech recognition after recording. Your original audio stays unchanged."
+        case .modelDownloadRequired(let locale):
+            return "Download Apple's \(locale) speech model once, then future Voice Notes can transcribe automatically on this iPhone."
+        case .installingModel:
+            return "Keep Quipsly open while iOS finishes the one-time model download."
+        case .transcribing:
+            return "You can leave this screen. Quipsly is preserving timing while it creates editable text."
+        case .savedLocally, .waitingForVerifiedUpload:
+            return "The editable text is protected on this iPhone while the original finishes syncing."
+        case .submitting:
+            return "Your writing is available now; Quipsly is connecting the timed transcript to My Nest."
+        case .attached:
+            return "The editable writing, timed transcript, and original audio are connected."
+        case .failed(let message, _):
+            return message
+        }
+    }
+
+    private var statusIcon: String {
+        if draft != nil { return "doc.text.fill" }
+        switch phase {
+        case .failed: return "exclamationmark.triangle.fill"
+        case .modelDownloadRequired: return "arrow.down.circle.fill"
+        case .savedLocally, .waitingForVerifiedUpload, .attached: return "doc.text.fill"
+        default: return "waveform"
+        }
+    }
+
+    private var statusTint: Color {
+        if draft != nil { return CapturePalette.accent }
+        switch phase {
+        case .failed, .modelDownloadRequired: return .orange
+        case .attached: return .green
+        default: return CapturePalette.accent
+        }
+    }
+}
+
+private struct CaptureVoiceWritingEditor: View {
+    @ObservedObject private var writingStore = VoiceWritingDraftStore.shared
+    @ObservedObject private var writingSync = VoiceWritingDraftSyncClient.shared
+    @Environment(\.dismiss) private var dismiss
+    @FocusState private var bodyIsFocused: Bool
+
+    let recording: LocalRecording
+    let timedTranscript: [OnDeviceTranscriptSegment]
+    @State private var title: String
+    @State private var bodyText: String
+    @State private var showsTranscript = false
+    @State private var saveTask: Task<Void, Never>?
+
+    init(
+        recording: LocalRecording,
+        initialDraft: VoiceWritingDraft,
+        timedTranscript: [OnDeviceTranscriptSegment]
+    ) {
+        self.recording = recording
+        self.timedTranscript = timedTranscript
+        _title = State(initialValue: initialDraft.title)
+        _bodyText = State(initialValue: initialDraft.body)
+    }
+
+    private var currentDraft: VoiceWritingDraft? {
+        writingStore.draft(for: recording.id)
+    }
+
+    var body: some View {
+        Form {
+            Section {
+                TextField("Title", text: $title)
+                    .font(.title2.weight(.bold))
+                    .textInputAutocapitalization(.sentences)
+                    .accessibilityIdentifier("CaptureVoiceWritingTitle")
+
+                TextEditor(text: $bodyText)
+                    .font(.body)
+                    .frame(minHeight: 340)
+                    .focused($bodyIsFocused)
+                    .scrollContentBackground(.hidden)
+                    .accessibilityLabel("Writing")
+                    .accessibilityHint("Edit the text created from your voice. Your original transcript and audio are unchanged.")
+                    .accessibilityIdentifier("CaptureVoiceWritingBody")
+            } footer: {
+                HStack {
+                    Text("\(bodyText.count.formatted()) characters")
+                    Spacer()
+                    syncStatus
+                }
+                .font(.caption)
+            }
+
+            Section {
+                Button {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        showsTranscript.toggle()
+                    }
+                } label: {
+                    HStack {
+                        Label("Timed transcript", systemImage: "waveform")
+                        Spacer()
+                        Text("\(timedTranscript.count) segments")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Image(systemName: showsTranscript ? "chevron.up" : "chevron.down")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .buttonStyle(.plain)
+
+                if showsTranscript {
+                    ForEach(Array(timedTranscript.enumerated()), id: \.offset) { _, segment in
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(timestamp(segment.startSeconds))
+                                .font(.caption.monospacedDigit().weight(.semibold))
+                                .foregroundStyle(CapturePalette.accent)
+                            Text(segment.text)
+                                .font(.subheadline)
+                                .textSelection(.enabled)
+                        }
+                        .padding(.vertical, 3)
+                    }
+                }
+            } footer: {
+                Text("This source stays time-linked to the original audio. Editing the writing above never rewrites the transcript.")
+            }
+
+            if let message = currentDraft?.lastSyncError?.nonempty {
+                Section {
+                    Label(message, systemImage: "icloud.slash")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                    Button("Try My Nest again") {
+                        saveImmediately()
+                        writingSync.syncNow(recordingID: recording.id)
+                    }
+                    .frame(minHeight: 44)
+                }
+            }
+        }
+        .navigationTitle("Writing")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                ShareLink(item: shareText) {
+                    Image(systemName: "square.and.arrow.up")
+                }
+                .accessibilityLabel("Share writing")
+            }
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button("Done") { bodyIsFocused = false }
+            }
+        }
+        .onChange(of: title) { _, _ in scheduleSave() }
+        .onChange(of: bodyText) { _, _ in scheduleSave() }
+        .onDisappear {
+            saveTask?.cancel()
+            saveImmediately()
+        }
+        .accessibilityIdentifier("CaptureVoiceWritingEditor")
+    }
+
+    @ViewBuilder
+    private var syncStatus: some View {
+        if writingSync.syncingRecordingIDs.contains(recording.id) {
+            Label("Saving…", systemImage: "icloud.and.arrow.up")
+        } else if currentDraft?.isSynced == true {
+            Label("My Nest", systemImage: "checkmark.icloud.fill")
+                .foregroundStyle(.green)
+        } else {
+            Label("On iPhone", systemImage: "iphone")
+        }
+    }
+
+    private var shareText: String {
+        let cleanTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        return cleanTitle.isEmpty ? bodyText : "\(cleanTitle)\n\n\(bodyText)"
+    }
+
+    private func scheduleSave() {
+        saveTask?.cancel()
+        saveTask = Task {
+            try? await Task.sleep(for: .milliseconds(450))
+            guard !Task.isCancelled else { return }
+            saveImmediately()
+        }
+    }
+
+    private func saveImmediately() {
+        guard let draft = try? writingStore.update(
+            recordingID: recording.id,
+            title: title,
+            body: bodyText
+        ) else { return }
+        writingSync.schedule(draft)
+    }
+
+    private func timestamp(_ seconds: Double) -> String {
+        let total = max(0, Int(seconds.rounded(.down)))
+        return String(format: "%d:%02d", total / 60, total % 60)
+    }
+}
+
 private struct CaptureRecorderView: View {
     @ObservedObject var model: CaptureExperienceModel
     @Binding var visibleTab: CaptureRootTab
@@ -6554,6 +7110,20 @@ private struct CaptureRecorderView: View {
                 }
 
                 if let session = model.selectedSession {
+                    if session.isPersonalVoiceNote {
+                        CapturePersonalVoiceNoteHeader(
+                            session: session,
+                            hasRecording: sessionHasRecording(session),
+                            onOpenLibrary: { visibleTab = .library }
+                        )
+                        if let recording = latestPersonalVoiceRecording(for: session) {
+                            CapturePersonalVoiceNoteTranscriptCard(
+                                recording: recording,
+                                fileURL: library.fileURL(for: recording),
+                                previewOnly: model.usesPreviewData
+                            )
+                        }
+                    } else {
                     ProviderRoomControls(
                         model: model,
                         session: session,
@@ -6678,6 +7248,7 @@ private struct CaptureRecorderView: View {
                             }
                         }
                     }
+                    }
 
                     if model.providerRoom.isConnected
                         || localOnlyRecordingSessionID == session.id
@@ -6691,6 +7262,7 @@ private struct CaptureRecorderView: View {
                         // the explicit local-only fallback. The larger workflow
                         // workspace below remains lazy.
                         VStack(spacing: 16) {
+                            if !session.isPersonalVoiceNote {
                             ConsentStrip(
                                 session: session,
                                 isBusy: model.isChangingConsent,
@@ -6770,6 +7342,7 @@ private struct CaptureRecorderView: View {
                         }
                     }
                     .captureCard()
+                            }
 
                     if let sourceExit = model.selectedSessionSourceExitReadiness {
                         CaptureSourceRecoveryCard(
@@ -6793,7 +7366,7 @@ private struct CaptureRecorderView: View {
 
                         CaptureRecordingEditCard(session: session)
 
-                        if !session.isCoachingSession {
+                        if session.episodeSlug?.nonempty != nil {
                             StudioHandoffCard(
                                 model: model,
                                 session: session,
@@ -6802,15 +7375,17 @@ private struct CaptureRecorderView: View {
                         }
                     }
 
-                    CaptureSessionGuardianCard(
-                        audioCapture: audioCapture,
-                        videoCapture: videoCapture,
-                        session: session,
-                        mode: recordingMode,
-                        providerConnected: model.providerRoom.isConnected,
-                        providerConnecting: model.providerRoom.isConnecting,
-                        providerError: model.providerRoom.lastError
-                    )
+                    if !session.isPersonalVoiceNote {
+                        CaptureSessionGuardianCard(
+                            audioCapture: audioCapture,
+                            videoCapture: videoCapture,
+                            session: session,
+                            mode: recordingMode,
+                            providerConnected: model.providerRoom.isConnected,
+                            providerConnecting: model.providerRoom.isConnecting,
+                            providerError: model.providerRoom.lastError
+                        )
+                    }
 
                     if recordingMode == .audio {
                         RecorderHero(
@@ -6928,6 +7503,7 @@ private struct CaptureRecorderView: View {
                         }
                     }
 
+                    if !session.isPersonalVoiceNote {
                     CaptureRehearsalReadinessCard(
                         audioCapture: audioCapture,
                         soundCheck: soundCheck,
@@ -6954,6 +7530,7 @@ private struct CaptureRecorderView: View {
                         guard model.usesPreviewData else { return }
                         episodeManuscript.loadPreview(session: session)
                         episodeWatch.loadPreview(session: session)
+                    }
                     }
                         }
                     }
@@ -7274,7 +7851,9 @@ private struct CaptureRecorderView: View {
                     .accessibilityIdentifier("CaptureSessionPlanOpen")
                     .accessibilityHint("Opens the local-first session note, goals, tasks, and Nest revision controls in a focused workspace.")
 
-                    SourceTruthFootnote(mode: recordingMode)
+                    if !session.isPersonalVoiceNote {
+                        SourceTruthFootnote(mode: recordingMode)
+                    }
                 } else if model.isRefreshing {
                     CaptureLoadingCard(label: "Loading capture sessions…")
                 } else {
@@ -7394,7 +7973,7 @@ private struct CaptureRecorderView: View {
             }
         }
         .background(CaptureCanvas())
-        .navigationTitle("Record")
+        .navigationTitle(model.selectedSession?.isPersonalVoiceNote == true ? "Voice note" : "Record")
         .navigationBarTitleDisplayMode(.inline)
         .sheet(isPresented: $showsSessionPicker) {
             SessionPickerSheet(model: model, isPresented: $showsSessionPicker)
@@ -7909,6 +8488,19 @@ private struct CaptureRecorderView: View {
     private func sessionHasRecording(_ session: MobileCaptureSession) -> Bool {
         session.recordingCount > 0
             || library.recordings.contains { $0.callRoomId == session.callRoomId }
+    }
+
+    private func latestPersonalVoiceRecording(
+        for session: MobileCaptureSession
+    ) -> LocalRecording? {
+        library.recordings
+            .filter {
+                $0.callRoomId == session.callRoomId
+                    && $0.isPersonalVoiceNote
+                    && $0.status.isPlaybackEligible
+            }
+            .sorted { $0.startedAt > $1.startedAt }
+            .first
     }
 
     private func sessionHasPostCallWork(_ session: MobileCaptureSession) -> Bool {
@@ -14882,7 +15474,7 @@ private struct NewCaptureSessionSheet: View {
                         Label("Coaching", systemImage: "person.2").tag("COACHING")
                         Label("Podcast", systemImage: "mic.and.signal.meter").tag("PODCAST")
                         Label("Interview", systemImage: "quote.bubble").tag("RESEARCH_INTERVIEW")
-                        Label("Field note", systemImage: "location").tag("FIELD_NOTE")
+                        Label("Voice note", systemImage: "waveform").tag("PERSONAL_NOTE")
                     }
                     .onChange(of: model.newSessionPurpose) { _, purpose in
                         if purpose != "COACHING" {
@@ -15429,7 +16021,7 @@ private extension MobileCaptureSession {
         case "COACHING": "person.2.fill"
         case "PODCAST": "mic.and.signal.meter.fill"
         case "RESEARCH_INTERVIEW": "quote.bubble.fill"
-        case "FIELD_NOTE": "location.fill"
+        case "PERSONAL_NOTE", "FIELD_NOTE": "waveform.circle.fill"
         default: "record.circle"
         }
     }

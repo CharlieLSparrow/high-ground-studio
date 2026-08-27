@@ -44,6 +44,7 @@ runLocalDatabaseSmoke("iPhone Session note privacy projection", () => {
   let roomId = "";
   let roomCaptureGroupId = "";
   let podcastRoomId = "";
+  let personalNoteRoomId = "";
   let engagementId = "";
   let engagementRoomId = "";
   let episodeProductionId = "";
@@ -230,6 +231,7 @@ runLocalDatabaseSmoke("iPhone Session note privacy projection", () => {
   afterAll(async () => {
     try {
       if (engagementRoomId) await prisma.callRoom.deleteMany({ where: { id: engagementRoomId } });
+      if (personalNoteRoomId) await prisma.callRoom.deleteMany({ where: { id: personalNoteRoomId } });
       if (podcastRoomId) await prisma.callRoom.deleteMany({ where: { id: podcastRoomId } });
       if (roomId) await prisma.callRoom.deleteMany({ where: { id: roomId } });
       if (engagementId) await prisma.coachingEngagement.deleteMany({ where: { id: engagementId } });
@@ -298,6 +300,87 @@ runLocalDatabaseSmoke("iPhone Session note privacy projection", () => {
       projectId,
       slug: episodeSlug,
     });
+  });
+
+  it("creates a private self-recording voice note without a coaching or consent detour", async () => {
+    signedInAs(ownerUserId, ownerEmail);
+    const response = await POST(new Request("http://localhost/api/mobile/capture/sessions", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        purpose: "FIELD_NOTE",
+        title: "Dissertation thought",
+        projectSlug,
+        provider: "livekit",
+      }),
+    }));
+    expect(response.status).toBe(201);
+    const payload = await response.json();
+    expect(payload.session).toMatchObject({
+      purpose: "PERSONAL_NOTE",
+      title: "Dissertation thought",
+      consentGranted: true,
+      projectId,
+    });
+    expect(payload.boundaries).toMatchObject({
+      participantCount: 1,
+      consentRequested: false,
+      selfCaptureConsentGranted: true,
+      providerJoined: false,
+      providerTokenMinted: false,
+      recordingStarted: false,
+    });
+    personalNoteRoomId = payload.session.id;
+
+    const readback = await prisma.callRoom.findUnique({
+      where: { id: personalNoteRoomId },
+      select: {
+        purpose: true,
+        provider: true,
+        coachingEngagementId: true,
+        participants: { select: { userId: true, role: true } },
+        recordingConsents: {
+          select: {
+            userId: true,
+            status: true,
+            canRecordAudio: true,
+            canRecordVideo: true,
+            canTranscribe: true,
+            consentedAt: true,
+          },
+        },
+      },
+    });
+    expect(readback).toMatchObject({
+      purpose: "PERSONAL_NOTE",
+      provider: "planned",
+      coachingEngagementId: null,
+      participants: [{ userId: ownerUserId, role: "HOST" }],
+      recordingConsents: [{
+        userId: ownerUserId,
+        status: "GRANTED",
+        canRecordAudio: true,
+        canRecordVideo: false,
+        canTranscribe: true,
+        consentedAt: expect.any(Date),
+      }],
+    });
+  });
+
+  it("rejects unknown capture purposes instead of silently creating coaching work", async () => {
+    signedInAs(ownerUserId, ownerEmail);
+    const before = await prisma.callRoom.count({ where: { projectId } });
+    const response = await POST(new Request("http://localhost/api/mobile/capture/sessions", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ purpose: "UNREVIEWED_FUTURE_KIND", projectSlug }),
+    }));
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: false,
+      code: "QUIPSLY_CAPTURE_PURPOSE_INVALID",
+    });
+    expect(await prisma.callRoom.count({ where: { projectId } })).toBe(before);
   });
 
   it("lists writable engagements and binds an iPhone coaching Session to the exact relationship", async () => {

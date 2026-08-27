@@ -1049,6 +1049,17 @@ struct MobileCaptureSession: Codable, Identifiable, Hashable {
             || normalizedPurpose.contains("coaching session")
     }
 
+    var isPersonalVoiceNote: Bool {
+        let normalizedPurpose = purpose?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .uppercased()
+            .replacingOccurrences(of: "-", with: "_")
+            .replacingOccurrences(of: " ", with: "_") ?? ""
+        return normalizedPurpose == "PERSONAL_NOTE"
+            || normalizedPurpose == "VOICE_NOTE"
+            || normalizedPurpose == "FIELD_NOTE"
+    }
+
     var detailLine: String {
         var parts: [String] = []
         if let purpose, !purpose.isEmpty { parts.append(purpose.lowercased()) }
