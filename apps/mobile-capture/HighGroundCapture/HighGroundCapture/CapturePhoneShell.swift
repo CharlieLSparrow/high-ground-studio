@@ -6949,6 +6949,13 @@ private struct CapturePersonalVoiceNoteTranscriptCard: View {
     }
 }
 
+private enum CaptureVoiceWritingSurface: String, CaseIterable, Identifiable {
+    case writing = "Write"
+    case transcript = "Transcript"
+
+    var id: Self { self }
+}
+
 private struct CaptureVoiceWritingEditor: View {
     @ObservedObject private var writingStore = VoiceWritingDraftStore.shared
     @ObservedObject private var writingSync = VoiceWritingDraftSyncClient.shared
@@ -6965,8 +6972,9 @@ private struct CaptureVoiceWritingEditor: View {
     @State private var title: String
     @State private var bodyText: String
     @State private var richText: VoiceWritingRichText?
-    @State private var showsTranscript = false
+    @State private var selectedSurface: CaptureVoiceWritingSurface = .writing
     @State private var transcriptQuery = ""
+    @State private var transcriptWasCopied = false
     @State private var showsTagEditor = false
     @State private var saveTask: Task<Void, Never>?
 
@@ -6993,220 +7001,36 @@ private struct CaptureVoiceWritingEditor: View {
     var body: some View {
         Form {
             Section {
-                TextField("Title", text: $title)
-                    .font(.title2.weight(.bold))
-                    .textInputAutocapitalization(.sentences)
-                    .accessibilityIdentifier("CaptureVoiceWritingTitle")
+                Picker("Document view", selection: $selectedSurface) {
+                    ForEach(CaptureVoiceWritingSurface.allCases) { surface in
+                        Text(surface.rawValue).tag(surface)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .accessibilityHint("Switch between editable writing and the time-linked source transcript.")
+                .accessibilityIdentifier("CaptureVoiceWritingSurfacePicker")
+            } footer: {
+                Text(selectedSurface == .writing
+                    ? "Shape your words here. Quipsly saves as you type."
+                    : "Tap a passage to hear the exact moment in the original audio.")
+            }
 
-                if sourceRecordings.count == 1, let recording = sourceRecordings.first {
-                    voiceSourcePlayer(recording)
-                } else if !sourceRecordings.isEmpty {
-                    DisclosureGroup("\(sourceRecordings.count) original recordings") {
+            if !sourceRecordings.isEmpty {
+                Section(sourceRecordings.count == 1 ? "Original audio" : "Original recordings") {
+                    if sourceRecordings.count == 1, let recording = sourceRecordings.first {
+                        voiceSourcePlayer(recording)
+                    } else {
                         ForEach(sourceRecordings) { recording in
                             voiceSourcePlayer(recording)
                         }
                     }
                 }
-
-                if #available(iOS 26.0, *) {
-                    CaptureRichWritingBody(
-                        plainText: $bodyText,
-                        richText: $richText,
-                        focus: $bodyIsFocused
-                    )
-                } else if #available(iOS 18.0, *) {
-                    CaptureStructuredWritingBody(
-                        text: $bodyText,
-                        focus: $bodyIsFocused
-                    )
-                } else {
-                    TextEditor(text: $bodyText)
-                        .font(.body)
-                        .frame(minHeight: 340)
-                        .focused($bodyIsFocused)
-                        .scrollContentBackground(.hidden)
-                        .accessibilityLabel("Writing")
-                        .accessibilityHint("Edit the text created from your voice. Your original transcript and audio are unchanged.")
-                        .accessibilityIdentifier("CaptureVoiceWritingBody")
-                }
-            } footer: {
-                HStack {
-                    Text("\(bodyText.count.formatted()) characters")
-                    Spacer()
-                    syncStatus
-                }
-                .font(.caption)
             }
 
-            Section("Organize") {
-                if !canonicalTags.isEmpty {
-                    TodayProjectTagLine(
-                        project: nil,
-                        tagLabels: canonicalTags.map(\.label),
-                        identifier: "CaptureVoiceWritingTags"
-                    )
-                }
-
-                Button {
-                    showsTagEditor = true
-                } label: {
-                    Label(
-                        canonicalTags.isEmpty ? "Add tags" : "Edit tags",
-                        systemImage: "tag"
-                    )
-                    .frame(minHeight: 44)
-                }
-                .disabled(tagEditingContext == nil)
-                .accessibilityHint("Tags make related writing easy to find across Quipsly.")
-                .accessibilityIdentifier("CaptureVoiceWritingEditTags")
-
-                if tagEditingContext == nil {
-                    Text("Tags will be ready as soon as this note finishes saving to My Nest.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
-
-            Section {
-                Button {
-                    saveImmediately()
-                    guard let draft = currentDraft else { return }
-                    onContinueByVoice(draft)
-                    dismiss()
-                } label: {
-                    Label("Continue by voice", systemImage: "mic.badge.plus")
-                        .font(.headline)
-                        .frame(maxWidth: .infinity, minHeight: 48)
-                }
-                .buttonStyle(.borderedProminent)
-                .disabled(currentDraft == nil)
-                .accessibilityHint("Starts another recording and adds its transcript to this writing.")
-                .accessibilityIdentifier("CaptureVoiceWritingContinueByVoice")
-            }
-
-            if let remote = currentDraft?.pendingRemote {
-                Section("This note changed in two places") {
-                    Text("Quipsly kept both copies. Choose the words you want to continue with.")
-                        .font(.subheadline)
-                    VStack(alignment: .leading, spacing: 5) {
-                        Text("Nest copy")
-                            .font(.caption.weight(.bold))
-                            .foregroundStyle(.secondary)
-                        Text(remote.body)
-                            .font(.subheadline)
-                            .lineLimit(5)
-                    }
-                    Button("Use Nest copy") {
-                        guard let resolved = writingStore.useNestVersion(recordingID: recordingID) else { return }
-                        title = resolved.title
-                        bodyText = resolved.body
-                        richText = resolved.richText ?? VoiceWritingRichText(text: resolved.body)
-                    }
-                    .frame(minHeight: 44)
-                    Button("Keep this iPhone copy") {
-                        guard let resolved = writingStore.keepIPhoneVersion(recordingID: recordingID) else { return }
-                        writingSync.schedule(resolved, delay: .zero)
-                    }
-                    .frame(minHeight: 44)
-                }
-            }
-
-            Section {
-                Button {
-                    withAnimation(.easeInOut(duration: 0.2)) {
-                        showsTranscript.toggle()
-                    }
-                } label: {
-                    HStack {
-                        Label("Timed transcript", systemImage: "waveform")
-                        Spacer()
-                        Text("\(transcriptSegmentCount) segments")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        Image(systemName: showsTranscript ? "chevron.up" : "chevron.down")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                .buttonStyle(.plain)
-
-                if showsTranscript {
-                    HStack(spacing: 8) {
-                        Image(systemName: "magnifyingglass")
-                            .foregroundStyle(.secondary)
-                            .accessibilityHidden(true)
-                        TextField("Find in transcript", text: $transcriptQuery)
-                            .textInputAutocapitalization(.never)
-                            .autocorrectionDisabled()
-                            .submitLabel(.search)
-                            .accessibilityIdentifier("CaptureVoiceWritingTranscriptSearch")
-                        if !transcriptQuery.isEmpty {
-                            Button {
-                                transcriptQuery = ""
-                            } label: {
-                                Image(systemName: "xmark.circle.fill")
-                                    .foregroundStyle(.secondary)
-                                    .frame(width: 44, height: 44)
-                            }
-                            .buttonStyle(.plain)
-                            .accessibilityLabel("Clear transcript search")
-                        }
-                    }
-                    .padding(.leading, 12)
-                    .padding(.trailing, 2)
-                    .background(.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
-
-                    if !normalizedTranscriptQuery.isEmpty {
-                        Text(transcriptMatchCount == 1 ? "1 matching passage" : "\(transcriptMatchCount) matching passages")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.secondary)
-                    }
-
-                    if visibleTranscriptSources.isEmpty {
-                        Text("No transcript passages match that search.")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.vertical, 8)
-                    }
-
-                    ForEach(visibleTranscriptSources) { source in
-                        if visibleTranscriptSources.count > 1 {
-                            Text(source.title)
-                                .font(.caption.weight(.bold))
-                                .foregroundStyle(.secondary)
-                        }
-                        ForEach(Array(source.segments.enumerated()), id: \.offset) { _, segment in
-                            Button {
-                                play(segment, recordingID: source.id)
-                            } label: {
-                                HStack(alignment: .top, spacing: 10) {
-                                    Image(systemName: isPlaying(segment, recordingID: source.id) ? "speaker.wave.2.fill" : "play.circle")
-                                        .foregroundStyle(CapturePalette.accent)
-                                        .frame(width: 24)
-                                    VStack(alignment: .leading, spacing: 4) {
-                                        Text(timestamp(segment.startSeconds))
-                                            .font(.caption.monospacedDigit().weight(.semibold))
-                                            .foregroundStyle(CapturePalette.accent)
-                                        Text(segment.text)
-                                            .font(.subheadline)
-                                            .foregroundStyle(.primary)
-                                            .multilineTextAlignment(.leading)
-                                    }
-                                    Spacer(minLength: 0)
-                                }
-                                .contentShape(Rectangle())
-                            }
-                            .buttonStyle(.plain)
-                            .disabled(recordingLibrary.recording(id: source.id) == nil)
-                            .accessibilityLabel("Play transcript at \(timestamp(segment.startSeconds)): \(segment.text)")
-                            .accessibilityIdentifier("CaptureVoiceWritingTranscriptSegment_\(source.id)_\(Int(segment.startSeconds * 1000))")
-                            .padding(.vertical, 3)
-                        }
-                    }
-                }
-            } footer: {
-                Text("This source stays time-linked to the original audio. Editing the writing above never rewrites the transcript.")
+            if selectedSurface == .writing {
+                writingSections
+            } else {
+                transcriptSections
             }
 
             if let message = currentDraft?.lastSyncError?.nonempty {
@@ -7229,12 +7053,16 @@ private struct CaptureVoiceWritingEditor: View {
                 ShareLink(item: shareText) {
                     Image(systemName: "square.and.arrow.up")
                 }
-                .accessibilityLabel("Share writing")
+                .accessibilityLabel(selectedSurface == .writing ? "Share writing" : "Share transcript")
             }
             ToolbarItemGroup(placement: .keyboard) {
                 Spacer()
                 Button("Done") { bodyIsFocused = false }
             }
+        }
+        .onChange(of: selectedSurface) { _, _ in
+            bodyIsFocused = false
+            transcriptWasCopied = false
         }
         .onChange(of: title) { _, _ in scheduleSave() }
         .onChange(of: bodyText) { _, _ in scheduleSave() }
@@ -7272,6 +7100,213 @@ private struct CaptureVoiceWritingEditor: View {
             }
         }
         .accessibilityIdentifier("CaptureVoiceWritingEditor")
+    }
+
+    @ViewBuilder
+    private var writingSections: some View {
+        Section {
+            TextField("Title", text: $title)
+                .font(.title2.weight(.bold))
+                .textInputAutocapitalization(.sentences)
+                .accessibilityIdentifier("CaptureVoiceWritingTitle")
+
+            if #available(iOS 26.0, *) {
+                CaptureRichWritingBody(
+                    plainText: $bodyText,
+                    richText: $richText,
+                    focus: $bodyIsFocused
+                )
+            } else if #available(iOS 18.0, *) {
+                CaptureStructuredWritingBody(
+                    text: $bodyText,
+                    focus: $bodyIsFocused
+                )
+            } else {
+                TextEditor(text: $bodyText)
+                    .font(.body)
+                    .frame(minHeight: 340)
+                    .focused($bodyIsFocused)
+                    .scrollContentBackground(.hidden)
+                    .accessibilityLabel("Writing")
+                    .accessibilityHint("Edit the text created from your voice. Your original transcript and audio are unchanged.")
+                    .accessibilityIdentifier("CaptureVoiceWritingBody")
+            }
+        } footer: {
+            HStack {
+                Text("\(bodyText.count.formatted()) characters")
+                Spacer()
+                syncStatus
+            }
+            .font(.caption)
+        }
+
+        Section("Organize") {
+            if !canonicalTags.isEmpty {
+                TodayProjectTagLine(
+                    project: nil,
+                    tagLabels: canonicalTags.map(\.label),
+                    identifier: "CaptureVoiceWritingTags"
+                )
+            }
+
+            Button {
+                showsTagEditor = true
+            } label: {
+                Label(
+                    canonicalTags.isEmpty ? "Add tags" : "Edit tags",
+                    systemImage: "tag"
+                )
+                .frame(minHeight: 44)
+            }
+            .disabled(tagEditingContext == nil)
+            .accessibilityHint("Tags make related writing easy to find across Quipsly.")
+            .accessibilityIdentifier("CaptureVoiceWritingEditTags")
+
+            if tagEditingContext == nil {
+                Text("Tags will be ready as soon as this note finishes saving to My Nest.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+
+        Section {
+            Button {
+                saveImmediately()
+                guard let draft = currentDraft else { return }
+                onContinueByVoice(draft)
+                dismiss()
+            } label: {
+                Label("Continue by voice", systemImage: "mic.badge.plus")
+                    .font(.headline)
+                    .frame(maxWidth: .infinity, minHeight: 48)
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(currentDraft == nil)
+            .accessibilityHint("Starts another recording and adds its transcript to this writing.")
+            .accessibilityIdentifier("CaptureVoiceWritingContinueByVoice")
+        }
+
+        if let remote = currentDraft?.pendingRemote {
+            Section("This note changed in two places") {
+                Text("Quipsly kept both copies. Choose the words you want to continue with.")
+                    .font(.subheadline)
+                VStack(alignment: .leading, spacing: 5) {
+                    Text("Nest copy")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(.secondary)
+                    Text(remote.body)
+                        .font(.subheadline)
+                        .lineLimit(5)
+                }
+                Button("Use Nest copy") {
+                    guard let resolved = writingStore.useNestVersion(recordingID: recordingID) else { return }
+                    title = resolved.title
+                    bodyText = resolved.body
+                    richText = resolved.richText ?? VoiceWritingRichText(text: resolved.body)
+                }
+                .frame(minHeight: 44)
+                Button("Keep this iPhone copy") {
+                    guard let resolved = writingStore.keepIPhoneVersion(recordingID: recordingID) else { return }
+                    writingSync.schedule(resolved, delay: .zero)
+                }
+                .frame(minHeight: 44)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var transcriptSections: some View {
+        Section {
+            HStack(spacing: 8) {
+                Image(systemName: "magnifyingglass")
+                    .foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
+                TextField("Find in transcript", text: $transcriptQuery)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .submitLabel(.search)
+                    .accessibilityIdentifier("CaptureVoiceWritingTranscriptSearch")
+                if !transcriptQuery.isEmpty {
+                    Button {
+                        transcriptQuery = ""
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundStyle(.secondary)
+                            .frame(width: 44, height: 44)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Clear transcript search")
+                }
+            }
+            .padding(.leading, 12)
+            .padding(.trailing, 2)
+            .background(.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
+
+            HStack {
+                Text(transcriptSummary)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Button {
+                    UIPasteboard.general.string = transcriptText
+                    transcriptWasCopied = true
+                } label: {
+                    Label(transcriptWasCopied ? "Copied" : "Copy", systemImage: transcriptWasCopied ? "checkmark" : "doc.on.doc")
+                }
+                .disabled(transcriptText.isEmpty)
+                .accessibilityLabel(transcriptWasCopied ? "Transcript copied" : "Copy transcript")
+                .accessibilityIdentifier("CaptureVoiceWritingCopyTranscript")
+            }
+
+            if visibleTranscriptSources.isEmpty {
+                Text(normalizedTranscriptQuery.isEmpty
+                    ? "The editable writing is ready. Exact word timing will appear here when the source transcript finishes syncing."
+                    : "No transcript passages match that search.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.vertical, 8)
+            }
+
+            ForEach(visibleTranscriptSources) { source in
+                if transcriptSources.count > 1 {
+                    Text(source.title)
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(.secondary)
+                }
+                ForEach(Array(source.segments.enumerated()), id: \.offset) { _, segment in
+                    Button {
+                        play(segment, recordingID: source.id)
+                    } label: {
+                        HStack(alignment: .top, spacing: 10) {
+                            Image(systemName: isPlaying(segment, recordingID: source.id) ? "speaker.wave.2.fill" : "play.circle")
+                                .foregroundStyle(CapturePalette.accent)
+                                .frame(width: 24)
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(timestamp(segment.startSeconds))
+                                    .font(.caption.monospacedDigit().weight(.semibold))
+                                    .foregroundStyle(CapturePalette.accent)
+                                Text(segment.text)
+                                    .font(.subheadline)
+                                    .foregroundStyle(.primary)
+                                    .multilineTextAlignment(.leading)
+                            }
+                            Spacer(minLength: 0)
+                        }
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(recordingLibrary.recording(id: source.id) == nil)
+                    .accessibilityLabel("Play transcript at \(timestamp(segment.startSeconds)): \(segment.text)")
+                    .accessibilityIdentifier("CaptureVoiceWritingTranscriptSegment_\(source.id)_\(Int(segment.startSeconds * 1000))")
+                    .padding(.vertical, 3)
+                }
+            }
+        } header: {
+            Label("Time-linked transcript", systemImage: "waveform.and.magnifyingglass")
+        } footer: {
+            Text("This is the unchanged source transcript. Corrections and media edits remain traceable to the original audio.")
+        }
     }
 
     private struct TagEditingContext {
@@ -7331,6 +7366,9 @@ private struct CaptureVoiceWritingEditor: View {
     }
 
     private var shareText: String {
+        if selectedSurface == .transcript, !transcriptText.isEmpty {
+            return transcriptText
+        }
         let cleanTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
         return cleanTitle.isEmpty ? bodyText : "\(cleanTitle)\n\n\(bodyText)"
     }
@@ -7392,6 +7430,25 @@ private struct CaptureVoiceWritingEditor: View {
 
     private var transcriptMatchCount: Int {
         visibleTranscriptSources.reduce(0) { $0 + $1.segments.count }
+    }
+
+    private var transcriptSummary: String {
+        if normalizedTranscriptQuery.isEmpty {
+            return transcriptSegmentCount == 1
+                ? "1 timed passage"
+                : "\(transcriptSegmentCount) timed passages"
+        }
+        return transcriptMatchCount == 1
+            ? "1 matching passage"
+            : "\(transcriptMatchCount) matching passages"
+    }
+
+    private var transcriptText: String {
+        transcriptSources.map { source in
+            let words = source.segments.map(\.text).joined(separator: " ")
+            return transcriptSources.count > 1 ? "\(source.title)\n\(words)" : words
+        }
+        .joined(separator: "\n\n")
     }
 
     private func voiceSourcePlayer(_ recording: LocalRecording) -> some View {
@@ -12459,10 +12516,10 @@ private struct CaptureAccountView: View {
                             .foregroundStyle(CapturePalette.accent)
                             .frame(width: 28)
                         VStack(alignment: .leading, spacing: 3) {
-                            Text("Backup & transfer")
+                            Text("Nest backup & transfer")
                                 .font(.headline)
                                 .foregroundStyle(.primary)
-                            Text("Export or preview a no-overwrite restore for a Nest you own.")
+                            Text("Export or restore a Nest you own.")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                                 .fixedSize(horizontal: false, vertical: true)
@@ -12479,32 +12536,37 @@ private struct CaptureAccountView: View {
                 .accessibilityHint("Opens owner-controlled Nest backup and preview-first restore.")
                 .accessibilityIdentifier("CaptureAccountNestPortability")
 
-                VStack(alignment: .leading, spacing: 14) {
-                    Label("Upload policy", systemImage: "antenna.radiowaves.left.and.right")
-                        .font(.headline)
-                    Toggle("Upload using cellular", isOn: $allowsCellular)
-                    Toggle("Upload on metered networks", isOn: $allowsExpensive)
-                        .disabled(!allowsCellular)
-                    Toggle("Upload in Low Data Mode", isOn: $allowsConstrained)
-                    Text("These choices apply to new background upload tasks. Local recording never waits for the network.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                .captureCard()
-
-                VStack(alignment: .leading, spacing: 12) {
-                    Label("On this iPhone", systemImage: "internaldrive")
-                        .font(.headline)
-                    LabeledContent("Local originals", value: "\(localOriginalCount)")
-                    if localDeletionReceiptCount > 0 {
-                        LabeledContent("Deletion receipts", value: "\(localDeletionReceiptCount)")
+                NavigationLink {
+                    CaptureStorageAndUploadSettingsView(
+                        allowsCellular: $allowsCellular,
+                        allowsExpensive: $allowsExpensive,
+                        allowsConstrained: $allowsConstrained
+                    )
+                } label: {
+                    HStack(spacing: 12) {
+                        Image(systemName: "internaldrive.fill")
+                            .font(.title3)
+                            .foregroundStyle(CapturePalette.accent)
+                            .frame(width: 28)
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text("Storage & uploads")
+                                .font(.headline)
+                                .foregroundStyle(.primary)
+                            Text("Cellular uploads and originals on this iPhone")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        Spacer(minLength: 8)
+                        Image(systemName: "chevron.right")
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(.tertiary)
                     }
-                    LabeledContent("Source media", value: ByteCountFormatter.string(fromByteCount: totalLocalBytes, countStyle: .file))
-                    Text("Quipsly never silently deletes originals. Only you can delete an eligible local source after reviewing its cloud status and confirming the irreversible action.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    .contentShape(Rectangle())
                 }
+                .buttonStyle(.plain)
                 .captureCard()
+                .accessibilityIdentifier("CaptureAccountStorageAndUploads")
 
                 DisclosureGroup {
                     VStack(alignment: .leading, spacing: 12) {
@@ -12705,31 +12767,12 @@ private struct CaptureAccountView: View {
         return model.usesPreviewData ? "preview@quipsly.local" : "Signed in"
     }
 
-    private var totalLocalBytes: Int64 {
-        if CaptureLaunchConfiguration.usesAppStorePresentation,
-           library.recordings.isEmpty {
-            return 18_400_000
-        }
-        return library.recordings.reduce(0) { $0 + $1.byteCount }
-    }
-
     private var localOriginalCount: Int {
         if CaptureLaunchConfiguration.usesAppStorePresentation,
            library.recordings.isEmpty {
             return 1
         }
         return library.recordings.filter { $0.status != .deletedLocally && $0.status != .missingFile }.count
-    }
-
-    private var localDeletionReceiptCount: Int {
-        library.recordings.filter { $0.status == .deletedLocally }.count
-    }
-
-    private var captureIsActive: Bool {
-        switch audioCapture.captureState {
-        case .recording, .paused, .finalizing: true
-        default: false
-        }
     }
 
     private var versionLine: String {
@@ -12773,6 +12816,58 @@ private struct CaptureAccountView: View {
                 model.uploadManager.recoverableUploadCount,
             previewMode: model.usesPreviewData
         )
+    }
+}
+
+private struct CaptureStorageAndUploadSettingsView: View {
+    @StateObject private var library = LocalRecordingLibrary.shared
+    @Binding var allowsCellular: Bool
+    @Binding var allowsExpensive: Bool
+    @Binding var allowsConstrained: Bool
+
+    var body: some View {
+        Form {
+            Section {
+                Toggle("Use cellular data", isOn: $allowsCellular)
+                Toggle("Use metered networks", isOn: $allowsExpensive)
+                    .disabled(!allowsCellular)
+                Toggle("Upload in Low Data Mode", isOn: $allowsConstrained)
+            } header: {
+                Text("Uploads")
+            } footer: {
+                Text("Recording never waits for the network. These choices only control when finished files upload in the background.")
+            }
+
+            Section {
+                LabeledContent("Original recordings", value: "\(localOriginalCount)")
+                LabeledContent(
+                    "Storage used",
+                    value: ByteCountFormatter.string(fromByteCount: totalLocalBytes, countStyle: .file)
+                )
+                if localDeletionReceiptCount > 0 {
+                    LabeledContent("Deletion records", value: "\(localDeletionReceiptCount)")
+                }
+            } header: {
+                Text("On this iPhone")
+            } footer: {
+                Text("Original recordings stay on this iPhone until you choose to remove an eligible copy from Library.")
+            }
+        }
+        .navigationTitle("Storage & uploads")
+        .navigationBarTitleDisplayMode(.inline)
+        .accessibilityIdentifier("CaptureStorageAndUploadSettings")
+    }
+
+    private var totalLocalBytes: Int64 {
+        library.recordings.reduce(0) { $0 + $1.byteCount }
+    }
+
+    private var localOriginalCount: Int {
+        library.recordings.filter { $0.status != .deletedLocally && $0.status != .missingFile }.count
+    }
+
+    private var localDeletionReceiptCount: Int {
+        library.recordings.filter { $0.status == .deletedLocally }.count
     }
 }
 

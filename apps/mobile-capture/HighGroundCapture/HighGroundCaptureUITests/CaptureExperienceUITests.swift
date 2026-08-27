@@ -3751,6 +3751,31 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(deletion.isHittable)
     }
 
+    func testAccountKeepsAdvancedStorageChoicesBehindOneClearDestination() {
+        app.tabBars.buttons["Account"].tap()
+
+        XCTAssertFalse(
+            app.staticTexts["Upload policy"].exists,
+            "Ordinary Account should not confront every person with transport policy terminology."
+        )
+
+        let storage = app.descendants(matching: .any)[
+            "CaptureAccountStorageAndUploads"
+        ]
+        reveal(storage)
+        XCTAssertTrue(storage.waitForExistence(timeout: 5))
+        XCTAssertTrue(storage.isHittable)
+        storage.tap()
+
+        XCTAssertTrue(
+            app.descendants(matching: .any)["CaptureStorageAndUploadSettings"]
+                .waitForExistence(timeout: 5)
+        )
+        XCTAssertTrue(app.navigationBars["Storage & uploads"].exists)
+        XCTAssertTrue(app.switches["Use cellular data"].exists)
+        XCTAssertTrue(app.staticTexts["Original recordings"].exists)
+    }
+
     func testAccountOffersPrivacyBoundedSupportSnapshot() throws {
         app.tabBars.buttons["Account"].tap()
 
