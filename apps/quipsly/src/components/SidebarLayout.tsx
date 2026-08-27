@@ -6,6 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { auth } from "@/lib/firebase/firebase";
 import { signOut as firebaseSignOut } from "firebase/auth";
 import {
+  Activity,
   CalendarCheck2,
   Inbox,
   LayoutDashboard,
@@ -68,6 +69,7 @@ const secondaryNavItems: NavItem[] = [
 const adminNavItems: NavItem[] = [
   { name: "Release health", href: "/beta-readiness", icon: ShieldCheck },
   { name: "Customer support", href: "/admin/support", icon: UserCog },
+  { name: "Product operations", href: "/admin/product-ops", icon: Activity },
   { name: "Users", href: "/admin/users", icon: UserCog },
   {
     name: "Account deletion",

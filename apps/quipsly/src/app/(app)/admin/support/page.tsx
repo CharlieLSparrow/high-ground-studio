@@ -263,6 +263,7 @@ export default async function SupportOperationsPage({
             </p>
           </div>
           <nav className="flex flex-wrap gap-2 text-sm font-black">
+            <Link href="/admin/product-ops" className="rounded-full border border-[#d5c3aa] px-4 py-2">Product operations</Link>
             <Link href="/admin/users" className="rounded-full border border-[#d5c3aa] px-4 py-2">Provisioning</Link>
             <Link href="/admin/auth-diagnostics" className="rounded-full border border-[#d5c3aa] px-4 py-2">Auth health</Link>
             <Link href="/admin/account-deletion" className="rounded-full border border-[#d5c3aa] px-4 py-2">Deletion</Link>
