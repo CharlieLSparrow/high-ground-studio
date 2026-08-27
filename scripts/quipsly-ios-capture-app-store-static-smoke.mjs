@@ -1121,10 +1121,10 @@ for (const needle of [
   requireIncludes(capturePhoneShellText, needle, "capture-first iPhone UX");
 }
 for (const needle of [
-  "1 · Trim the beginning and end",
-  "2 · Remove any passages",
-  "3 · Create private \\(outputMediaKind) preview",
-  "Name and recording sources",
+  'Text("Trim")',
+  'Text("Transcript edit")',
+  "Create edited \\(outputMediaKind) copy",
+  "Title and sources (",
   "sourceManifest",
   "restoreEditorFromCurrentOutput",
   'accessibilityIdentifier("CaptureRecordingShareMissingSources")',
@@ -1133,7 +1133,7 @@ for (const needle of [
   'accessibilityIdentifier("CaptureRecordingShareAudition_',
   'accessibilityIdentifier("CaptureRecordingShareFocusedAudition_',
   "clientTrackedPlaybackIsNotProofOfAudibility",
-  "You can preview this edit above, or share it now.",
+  "Play this edit above, or share it now.",
   "Share with \\(output.recipient.label)",
   'accessibilityIdentifier("CaptureRecordingSharePrepare")',
   'accessibilityIdentifier("CaptureRecordingShareRelease")',
@@ -1967,7 +1967,8 @@ requireIncludes(capturePhoneShellText, "Recording still starts separately.", "sh
 requireIncludes(capturePhoneShellText, "CaptureSessionContextPanel(", "shipping recorder reaches session context");
 requireIncludes(capturePhoneShellText, "CaptureCalendarContinuityCard(", "shipping Today surface reaches calendar continuity without a sixth tab");
 requireIncludes(capturePhoneShellText, "CaptureAddNextSessionToCalendar", "shipping next Session exposes Apple's one-event editor");
-requireIncludes(capturePhoneShellText, "iOS owns the event; Quipsly did not read or verify it.", "shipping event-editor receipt avoids false provider readback");
+requireIncludes(capturePhoneShellText, "Added to Calendar", "shipping event editor reports the ordinary saved result");
+requireIncludes(captureCalendarEventEditorText, "It never reads the person's calendars or the saved", "shipping event-editor boundary avoids false provider readback");
 requireIncludes(captureCalendarEventEditorText, "import EventKitUI", "native one-event export uses Apple's system editor framework");
 requireIncludes(captureCalendarEventEditorText, "EKEventEditViewController", "native one-event export presents Apple's event editor");
 requireIncludes(captureCalendarEventEditorText, "Private Session content is not copied into Calendar.", "native one-event export excludes private working content");
