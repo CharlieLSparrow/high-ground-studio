@@ -17,53 +17,11 @@ struct CapturePhoneShell: View {
     @Binding var visibleTab: CaptureRootTab
 
     var body: some View {
-        TabView(selection: $visibleTab) {
-            NavigationStack {
-                CaptureTodayView(
-                    model: model,
-                    showsNewSession: $showsNewSession,
-                    visibleTab: $visibleTab
-                )
-            }
-            .tabItem { Label(CaptureRootTab.today.title, systemImage: CaptureRootTab.today.systemImage) }
-            .tag(CaptureRootTab.today)
-
-            NavigationStack {
-                CaptureRecorderView(
-                    model: model,
-                    visibleTab: $visibleTab,
-                    localOnlyRecordingSessionID: $localOnlyRecordingSessionID
-                )
-            }
-            .tabItem { Label(CaptureRootTab.record.title, systemImage: CaptureRootTab.record.systemImage) }
-            .tag(CaptureRootTab.record)
-
-            NavigationStack {
-                CaptureWorkView(model: model)
-            }
-            .tabItem { Label(CaptureRootTab.work.title, systemImage: CaptureRootTab.work.systemImage) }
-            .tag(CaptureRootTab.work)
-
-            NavigationStack {
-                CaptureLibraryView(model: model, visibleTab: $visibleTab)
-            }
-            .tabItem { Label(CaptureRootTab.library.title, systemImage: CaptureRootTab.library.systemImage) }
-            .tag(CaptureRootTab.library)
-
-            NavigationStack {
-                CaptureAccountView(
-                    model: model,
-                    visibleTab: $visibleTab,
-                    subscriptionStore: subscriptionStore
-                )
-            }
-            .tabItem { Label(CaptureRootTab.account.title, systemImage: CaptureRootTab.account.systemImage) }
-            .tag(CaptureRootTab.account)
-        }
-        .environmentObject(subscriptionStore)
-        .tint(CapturePalette.accent)
-        .modifier(CaptureBottomNavigationEdgeEffect())
-        .safeAreaInset(edge: .top, spacing: 0) {
+        captureTabs
+            .environmentObject(subscriptionStore)
+            .tint(CapturePalette.accent)
+            .modifier(CaptureBottomNavigationEdgeEffect())
+            .safeAreaInset(edge: .top, spacing: 0) {
             if model.activeCoordinatedCaptureGroupID != nil,
                audioCaptureIsActive || videoCaptureIsActive {
                 GlobalCaptureBanner(
@@ -107,6 +65,7 @@ struct CapturePhoneShell: View {
         .sheet(isPresented: $showsNewSession) {
             NewCaptureSessionSheet(
                 model: model,
+                subscriptionStore: subscriptionStore,
                 isPresented: $showsNewSession,
                 onCreated: {
                     showsNewSession = false
@@ -220,6 +179,52 @@ struct CapturePhoneShell: View {
                 await Task.yield()
                 model.reconcileVideoCaptureState(state, using: videoCapture)
             }
+        }
+    }
+
+    private var captureTabs: some View {
+        TabView(selection: $visibleTab) {
+            NavigationStack {
+                CaptureTodayView(
+                    model: model,
+                    showsNewSession: $showsNewSession,
+                    visibleTab: $visibleTab
+                )
+            }
+            .tabItem { Label(CaptureRootTab.today.title, systemImage: CaptureRootTab.today.systemImage) }
+            .tag(CaptureRootTab.today)
+
+            NavigationStack {
+                CaptureRecorderView(
+                    model: model,
+                    visibleTab: $visibleTab,
+                    localOnlyRecordingSessionID: $localOnlyRecordingSessionID
+                )
+            }
+            .tabItem { Label(CaptureRootTab.record.title, systemImage: CaptureRootTab.record.systemImage) }
+            .tag(CaptureRootTab.record)
+
+            NavigationStack {
+                CaptureWorkView(model: model)
+            }
+            .tabItem { Label(CaptureRootTab.work.title, systemImage: CaptureRootTab.work.systemImage) }
+            .tag(CaptureRootTab.work)
+
+            NavigationStack {
+                CaptureLibraryView(model: model, visibleTab: $visibleTab)
+            }
+            .tabItem { Label(CaptureRootTab.library.title, systemImage: CaptureRootTab.library.systemImage) }
+            .tag(CaptureRootTab.library)
+
+            NavigationStack {
+                CaptureAccountView(
+                    model: model,
+                    visibleTab: $visibleTab,
+                    subscriptionStore: subscriptionStore
+                )
+            }
+            .tabItem { Label(CaptureRootTab.account.title, systemImage: CaptureRootTab.account.systemImage) }
+            .tag(CaptureRootTab.account)
         }
     }
 
@@ -14747,6 +14752,7 @@ private struct LocalRecordingDeletionSheet: View {
 
 private struct SessionPickerSheet: View {
     @ObservedObject var model: CaptureExperienceModel
+    @EnvironmentObject private var subscriptionStore: QuipslySubscriptionStore
     @Binding var isPresented: Bool
     @State private var showsNewSession = false
 
@@ -14819,6 +14825,7 @@ private struct SessionPickerSheet: View {
             .sheet(isPresented: $showsNewSession) {
                 NewCaptureSessionSheet(
                     model: model,
+                    subscriptionStore: subscriptionStore,
                     isPresented: $showsNewSession,
                     onCreated: {
                         showsNewSession = false
@@ -14833,14 +14840,14 @@ private struct SessionPickerSheet: View {
 
 private struct NewCaptureSessionSheet: View {
     @ObservedObject var model: CaptureExperienceModel
+    @ObservedObject var subscriptionStore: QuipslySubscriptionStore
     @Binding var isPresented: Bool
     let onCreated: () -> Void
-    @EnvironmentObject private var subscriptionStore: QuipslySubscriptionStore
     @FocusState private var titleFocused: Bool
 
     var body: some View {
         NavigationStack {
-            if subscriptionStore.entitlement == nil || subscriptionRequired {
+            if subscriptionRequired {
                 QuipslySubscriptionView(store: subscriptionStore)
                     .toolbar {
                         ToolbarItem(placement: .cancellationAction) {
