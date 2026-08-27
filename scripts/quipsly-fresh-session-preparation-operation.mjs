@@ -116,6 +116,26 @@ async function signIn(page, context, identity, callbackPath = sessionPath) {
   });
 }
 
+async function openSessionPlan(page) {
+  const prepare = page.getByRole("link", { name: "Prepare", exact: true });
+  await prepare.waitFor({ timeout: 30_000 });
+  await prepare.click();
+  await page.waitForURL(
+    (url) =>
+      url.pathname === sessionPath && url.searchParams.get("mode") === "prepare",
+    { timeout: 30_000 },
+  );
+  const optionalPlan = page.getByText("Plan this session", { exact: true });
+  await optionalPlan.waitFor({ timeout: 30_000 });
+  await optionalPlan.click();
+  await page
+    .getByRole("heading", {
+      name: "What would make this session useful?",
+      exact: true,
+    })
+    .waitFor({ timeout: 30_000 });
+}
+
 async function snapshotSideEffects() {
   const [messages, tasks, goals, notes] = await Promise.all([
     prisma.sessionConversationMessage.count({ where: { roomId: target.roomId } }),
@@ -130,9 +150,7 @@ const before = await snapshotSideEffects();
 
 try {
   await signIn(pages.client, target, target.identities.client);
-  await pages.client
-    .getByRole("heading", { name: "Plan this Session", exact: true })
-    .waitFor({ timeout: 30_000 });
+  await openSessionPlan(pages.client);
   await assertNoHorizontalOverflow(
     pages.client.locator("main").last(),
     "client Session plan at phone width",
@@ -165,9 +183,7 @@ try {
   );
 
   await signIn(pages.coach, target, target.identities.coach);
-  await pages.coach
-    .getByRole("heading", { name: "Plan this Session", exact: true })
-    .waitFor({ timeout: 30_000 });
+  await openSessionPlan(pages.coach);
   await pages.coach.getByText(focus, { exact: true }).waitFor({ timeout: 20_000 });
   await pages.coach.getByText(desiredOutcome, { exact: true }).waitFor();
   await pages.coach.getByLabel("Private coach prep").fill(privateNote);
