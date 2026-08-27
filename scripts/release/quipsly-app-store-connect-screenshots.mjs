@@ -29,6 +29,7 @@ function requiredValue(argv, index, flag) {
 export function parseArguments(argv) {
   const options = {
     apply: false,
+    replaceExisting: false,
     apiKeyPath: process.env.APP_STORE_CONNECT_API_KEY_PATH || "",
     metadataPath: defaultMetadataPath,
     appId: QUIPSLY_CAPTURE_RELEASE_TARGET.appId,
@@ -36,6 +37,7 @@ export function parseArguments(argv) {
     locale: "en-US",
     displayType: "APP_IPHONE_67",
     confirmTarget: "",
+    confirmReplaceSet: "",
     outputPath: "",
   };
   for (let index = 0; index < argv.length; index += 1) {
@@ -43,6 +45,7 @@ export function parseArguments(argv) {
     switch (argument) {
       case "--": break;
       case "--apply": options.apply = true; break;
+      case "--replace-existing": options.replaceExisting = true; break;
       case "--api-key-path": options.apiKeyPath = path.resolve(requiredValue(argv, index, argument)); index += 1; break;
       case "--metadata": options.metadataPath = path.resolve(requiredValue(argv, index, argument)); index += 1; break;
       case "--submission-receipt": options.submissionReceiptPath = path.resolve(requiredValue(argv, index, argument)); index += 1; break;
@@ -51,6 +54,7 @@ export function parseArguments(argv) {
       case "--locale": options.locale = requiredValue(argv, index, argument); index += 1; break;
       case "--display-type": options.displayType = requiredValue(argv, index, argument); index += 1; break;
       case "--confirm-target": options.confirmTarget = requiredValue(argv, index, argument); index += 1; break;
+      case "--confirm-replace-set": options.confirmReplaceSet = requiredValue(argv, index, argument); index += 1; break;
       case "--output": options.outputPath = path.resolve(requiredValue(argv, index, argument)); index += 1; break;
       case "--help":
       case "-h": options.help = true; break;
@@ -70,9 +74,13 @@ Default mode is a read-only plan. Upload requires all of:
   --apply
   --confirm-target <APP_ID/VERSION/LOCALE/DISPLAY_TYPE>
 
-The uploader creates only a missing screenshot set and empty-set screenshots.
-It never deletes or replaces existing App Store assets. Existing exact assets
-are accepted idempotently; any mismatch fails closed for deliberate handling.
+Replacing a nonmatching editable screenshot set additionally requires:
+  --replace-existing
+  --confirm-replace-set <APP_SCREENSHOT_SET_ID>
+
+Existing exact assets are accepted idempotently. A mismatch fails closed unless
+the caller deliberately names the exact set to replace. Replacement deletes only
+that set's screenshots, then uploads and orders the qualified candidate assets.
 `;
 }
 
@@ -295,12 +303,20 @@ export async function execute({ options, key, metadata, receipt, fetchImpl = fet
     externalMutation: false,
   };
 
-  if (existing.length > 0) {
-    if (!providerMatchesReceipt(existing, screenshots)) {
-      fail(`The ${options.displayType} set already contains ${existing.length} nonmatching screenshot(s); no asset was deleted or replaced.`);
-    }
+  if (existing.length > 0 && providerMatchesReceipt(existing, screenshots)) {
     plan.providerComplete = true;
     return plan;
+  }
+  if (existing.length > 0) {
+    if (!options.replaceExisting) {
+      fail(`The ${options.displayType} set already contains ${existing.length} nonmatching screenshot(s); no asset was deleted or replaced.`);
+    }
+    plan.changes.push(
+      `delete ${existing.length} nonmatching screenshot(s) from exact set ${target.setDocument.data.id}`,
+      `upload ${screenshots.length} exact candidate-bound screenshot(s)`,
+      "persist canonical screenshot order",
+    );
+    if (!options.apply) return plan;
   }
   if (!options.apply) {
     plan.changes = [
@@ -314,6 +330,9 @@ export async function execute({ options, key, metadata, receipt, fetchImpl = fet
   const expectedConfirmation = `${options.appId}/${options.version}/${options.locale}/${options.displayType}`;
   if (options.confirmTarget !== expectedConfirmation) {
     fail(`--apply requires --confirm-target ${expectedConfirmation}`);
+  }
+  if (existing.length > 0 && options.confirmReplaceSet !== target.setDocument.data.id) {
+    fail(`Replacing existing screenshots requires --confirm-replace-set ${target.setDocument.data.id}`);
   }
   let setId = target.setDocument?.data?.id;
   if (!setId) {
@@ -333,6 +352,12 @@ export async function execute({ options, key, metadata, receipt, fetchImpl = fet
     });
     setId = created.data.id;
     plan.changes.push(`created ${options.displayType} screenshot set`);
+  }
+  if (existing.length > 0) {
+    for (const resource of existing) {
+      await requestJson({ request: apiRequest(`/v1/appScreenshots/${resource.id}`, "DELETE"), key, fetchImpl });
+      plan.changes.push(`deleted prior screenshot ${resource.id}`);
+    }
   }
   const uploaded = [];
   for (const screenshot of screenshots) {

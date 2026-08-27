@@ -59,8 +59,72 @@ function fixture() {
 test("defaults to read-only planning", () => {
   const options = parseArguments(["--submission-receipt", "/tmp/receipt.json"]);
   assert.equal(options.apply, false);
+  assert.equal(options.replaceExisting, false);
   assert.equal(options.locale, "en-US");
   assert.equal(options.displayType, "APP_IPHONE_67");
+});
+
+test("requires explicit replacement intent for a nonmatching provider set", async () => {
+  const values = fixture();
+  try {
+    await assert.rejects(() => execute({
+      options: {
+        apply: false, replaceExisting: false, appId: "6780995957", version: "1.0", locale: "en-US",
+        displayType: "APP_IPHONE_67", confirmTarget: "", confirmReplaceSet: "",
+      },
+      key: apiKey(), metadata: values.metadata, receipt: values.receipt,
+      fetchImpl: async (url) => {
+        if (url.includes("/appStoreVersions?")) return response({
+          data: [{ type: "appStoreVersions", id: "version-1" }],
+          included: [{ type: "appStoreVersionLocalizations", id: "locale-1", attributes: { locale: "en-US" } }],
+        });
+        if (url.includes("/relationships/appScreenshotSets")) return response({ data: [{ type: "appScreenshotSets", id: "set-old" }] });
+        if (url.includes("/appScreenshotSets/set-old?")) return response({
+          data: { type: "appScreenshotSets", id: "set-old", attributes: { screenshotDisplayType: "APP_IPHONE_67" } },
+          included: [{ type: "appScreenshots", id: "shot-old", attributes: { fileName: "old.png", sourceFileChecksum: "old", assetDeliveryState: { state: "COMPLETE" } } }],
+        });
+        throw new Error(`Unexpected request: ${url}`);
+      },
+    }), /nonmatching screenshot/);
+  } finally {
+    fs.rmSync(values.directory, { recursive: true, force: true });
+  }
+});
+
+test("plans an exact-set replacement without mutating App Store Connect", async () => {
+  const values = fixture();
+  const calls = [];
+  try {
+    const result = await execute({
+      options: {
+        apply: false, replaceExisting: true, appId: "6780995957", version: "1.0", locale: "en-US",
+        displayType: "APP_IPHONE_67", confirmTarget: "", confirmReplaceSet: "",
+      },
+      key: apiKey(), metadata: values.metadata, receipt: values.receipt,
+      fetchImpl: async (url, init) => {
+        calls.push({ url, init });
+        if (url.includes("/appStoreVersions?")) return response({
+          data: [{ type: "appStoreVersions", id: "version-1" }],
+          included: [{ type: "appStoreVersionLocalizations", id: "locale-1", attributes: { locale: "en-US" } }],
+        });
+        if (url.includes("/relationships/appScreenshotSets")) return response({ data: [{ type: "appScreenshotSets", id: "set-old" }] });
+        if (url.includes("/appScreenshotSets/set-old?")) return response({
+          data: { type: "appScreenshotSets", id: "set-old", attributes: { screenshotDisplayType: "APP_IPHONE_67" } },
+          included: [{ type: "appScreenshots", id: "shot-old", attributes: { fileName: "old.png", sourceFileChecksum: "old", assetDeliveryState: { state: "COMPLETE" } } }],
+        });
+        throw new Error(`Unexpected request: ${init.method} ${url}`);
+      },
+    });
+    assert.equal(result.externalMutation, false);
+    assert.equal(calls.every(({ init }) => init.method === "GET"), true);
+    assert.deepEqual(result.changes, [
+      "delete 1 nonmatching screenshot(s) from exact set set-old",
+      "upload 1 exact candidate-bound screenshot(s)",
+      "persist canonical screenshot order",
+    ]);
+  } finally {
+    fs.rmSync(values.directory, { recursive: true, force: true });
+  }
 });
 
 test("accepts exact candidate-bound screenshot bytes", () => {
