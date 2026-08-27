@@ -1287,10 +1287,10 @@ final class CaptureExperienceUITests: XCTestCase {
         app.tabBars.buttons["Nests"].tap()
         let workScroll = app.scrollViews["CaptureWorkView"]
         XCTAssertTrue(workScroll.waitForExistence(timeout: 5))
-        let newProject = app.buttons["CaptureWorkNewProjectInline"]
+        let newProject = app.buttons["CaptureWorkNewProject"]
         XCTAssertTrue(
             newProject.exists,
-            "Work must keep canonical project creation directly reachable beside the project list."
+            "Nests must keep canonical Nest creation directly reachable from the standard navigation bar."
         )
         XCTAssertFalse(
             newProject.isEnabled,
@@ -1298,6 +1298,11 @@ final class CaptureExperienceUITests: XCTestCase {
         )
         XCTAssertTrue(app.descendants(matching: .any)["CaptureWorkProjectPicker"].exists)
         XCTAssertTrue(app.descendants(matching: .any)["CaptureWorkProjectSummary"].exists)
+        XCTAssertEqual(
+            app.staticTexts["Access"].value as? String,
+            "Can edit",
+            "Nest access should be described as a human capability instead of a database role."
+        )
         XCTAssertTrue(app.staticTexts["High Ground Odyssey"].exists)
 
         let searchField = app.descendants(matching: .any)["CaptureWorkSearchField"]
@@ -1312,7 +1317,7 @@ final class CaptureExperienceUITests: XCTestCase {
         let clearSearch = app.buttons["Clear work search"]
         XCTAssertTrue(clearSearch.isHittable)
         clearSearch.tap()
-        XCTAssertEqual(searchField.value as? String, "Find work or a tag")
+        XCTAssertEqual(searchField.value as? String, "Find notes, work, or tags")
         XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 3))
 
         let manageVocabulary = app.buttons["CaptureWorkManageTags"]
@@ -1417,8 +1422,15 @@ final class CaptureExperienceUITests: XCTestCase {
         picker.tap()
         XCTAssertTrue(app.buttons["Charlie Home Nest"].waitForExistence(timeout: 3))
         app.buttons["Charlie Home Nest"].tap()
-        XCTAssertTrue(app.staticTexts["Private Home Nest"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts["Charlie Home Nest"].exists)
+        XCTAssertTrue(
+            (picker.value as? String)?.contains("Charlie Home Nest, Private to you") == true,
+            "The Nest picker should make the selected private destination clear without repeating its name below."
+        )
+        XCTAssertEqual(
+            app.staticTexts["Access"].value as? String,
+            "Private",
+            "A person's Home Nest should make its privacy obvious without repeating the Nest name."
+        )
     }
 
     func testRecordQuickCaptureMakesNoteTaskAndGoalImmediateWithoutFakingPreviewWrites() {

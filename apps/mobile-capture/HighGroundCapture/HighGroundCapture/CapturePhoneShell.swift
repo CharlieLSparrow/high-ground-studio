@@ -1799,13 +1799,15 @@ private struct CaptureWorkView: View {
         return VStack(alignment: .leading, spacing: 14) {
             ViewThatFits(in: .horizontal) {
                 HStack(alignment: .firstTextBaseline, spacing: 12) {
-                    projectSummaryTitle(workspace)
+                    Text("At a glance")
+                        .font(.title3.weight(.bold))
                     Spacer(minLength: 0)
-                    projectRoleBadge(workspace.project.role)
+                    projectRoleBadge(workspace.project)
                 }
                 VStack(alignment: .leading, spacing: 8) {
-                    projectSummaryTitle(workspace)
-                    projectRoleBadge(workspace.project.role)
+                    Text("At a glance")
+                        .font(.title3.weight(.bold))
+                    projectRoleBadge(workspace.project)
                 }
             }
             ViewThatFits(in: .horizontal) {
@@ -1841,28 +1843,26 @@ private struct CaptureWorkView: View {
         .accessibilityIdentifier("CaptureWorkProjectSummary")
     }
 
-    private func projectSummaryTitle(_ workspace: MobileCaptureWorkWorkspace) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Text(workspace.project.isHomeNest
-                ? "My private Nest"
-                : workspace.project.role == "OWNER"
-                    ? "My Nest"
-                    : "Shared Nest")
-                .font(.caption.weight(.bold))
-                .foregroundStyle(.secondary)
-            Text(workspace.project.name)
-                .font(.title2.weight(.bold))
-                .fixedSize(horizontal: false, vertical: true)
+    private func projectAccessLabel(_ project: MobileCaptureWorkProject) -> String {
+        if project.isHomeNest { return "Private" }
+        switch project.role {
+        case "OWNER": return "Owner"
+        case "EDITOR": return "Can edit"
+        case "VIEWER": return "View only"
+        default: return project.role.capitalized
         }
     }
 
-    private func projectRoleBadge(_ role: String) -> some View {
-        Text(role.capitalized)
+    private func projectRoleBadge(_ project: MobileCaptureWorkProject) -> some View {
+        Text(projectAccessLabel(project))
             .font(.caption2.weight(.bold))
             .padding(.horizontal, 9)
             .padding(.vertical, 6)
             .background(CapturePalette.accent.opacity(0.12), in: Capsule())
             .fixedSize(horizontal: true, vertical: true)
+            .accessibilityLabel("Access")
+            .accessibilityValue(projectAccessLabel(project))
+            .accessibilityIdentifier("CaptureWorkProjectAccess")
     }
 
     private func workMetric(
