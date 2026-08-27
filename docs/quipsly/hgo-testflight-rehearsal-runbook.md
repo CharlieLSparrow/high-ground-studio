@@ -8,10 +8,10 @@ needs to prove.
 
 ## Current release state
 
-- App: **Quipsly Capture 1.0 (38)**
+- App: **Quipsly Capture 1.0 (39)**
 - Exact native source:
-  `8575bcebaec299a41b30485cdc65ba6528984f8e`
-- App Store Connect build ID: `4c53252a-c581-4a6c-909b-5de30f5d6c1d`
+  `17bdaf2a1e8eb7b6fcc248fdefc3d9a8ef248093`
+- App Store Connect build ID: `4e6f95e4-d388-4146-8570-d97caaaab7b3`
 - External TestFlight group: **Quipsly Capture Rehearsal**
 - TestFlight Apple Account: `shomers@icloud.com`
 - Quipsly Google identity: `shomers@gmail.com`
@@ -22,7 +22,7 @@ needs to prove.
 - Automatic tester notification: enabled
 - Installation mode: public-link-only; neither a named-tester email nor a
   redemption code is required
-- Build 38 is the current approved public beta identified by the canonical
+- Build 39 is the current approved public beta identified by the canonical
   release ledger and Apple readback. It passed 90 serialized iPhone and Share
   Extension journeys plus signed archive/export verification. It simplifies
   device choice, system permission, consent, join, and recording readiness and
