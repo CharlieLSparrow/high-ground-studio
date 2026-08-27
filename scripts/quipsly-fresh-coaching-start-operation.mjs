@@ -411,7 +411,7 @@ try {
     "Fresh client Session did not expose the canonical installed-app handoff.",
   );
   const continueInBrowser = clientPage.getByRole("button", {
-    name: /Join call|Join in browser|Open call lobby/i,
+    name: /Continue in this browser|Join call|Join in browser|Open call lobby/i,
   });
   await continueInBrowser.waitFor({ timeout: 30_000 });
   const browserChoiceRequest = clientPage.waitForRequest(
