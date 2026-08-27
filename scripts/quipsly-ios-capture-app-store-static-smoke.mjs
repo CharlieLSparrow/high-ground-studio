@@ -905,7 +905,8 @@ requireIncludes(appleSignInCoordinatorText, "request.nonce = Self.sha256(nonce)"
 requireIncludes(authText, 'URLQueryItem(name: "providerId", value: "apple.com")', "Firebase exchanges the native Apple credential with the canonical provider");
 requireIncludes(authText, 'URLQueryItem(name: "nonce", value: rawNonce)', "Firebase receives the one-time unhashed nonce for replay validation");
 requireIncludes(authText, "verifyQuipslyNativeSession(accessToken: idToken)", "federated identity still passes the canonical Quipsly owner boundary");
-requireIncludes(loginText, "We will ask you to verify your email once.", "account creation states the one-time email verification step plainly");
+requireIncludes(loginText, "Create an account with email and password.", "account creation keeps the optional email path plain");
+requireExcludes(loginText, "We will ask you to verify your email once.", "account creation does not front-load verification instructions before the email path is chosen");
 for (const forbidden of [
   "/api/mac/session-handoff",
   "/api/mac/session-exchange",

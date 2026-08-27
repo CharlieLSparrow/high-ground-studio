@@ -210,13 +210,19 @@ struct LoginView: View {
                         .accessibilityIdentifier("QuipslyCapturePasswordResetButton")
                     }
 
-                    Label(
-                        "Recordings stay on this iPhone after upload; Quipsly never silently deletes a source.",
-                        systemImage: "lock.shield.fill"
-                    )
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    DisclosureGroup {
+                        Label(
+                            "Recordings stay on this iPhone after upload; Quipsly never silently deletes a source.",
+                            systemImage: "lock.shield.fill"
+                        )
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.top, 10)
+                    } label: {
+                        Text("How recordings are protected")
+                            .font(.subheadline.weight(.semibold))
+                    }
                     .padding(14)
                     .background(.teal.opacity(0.08), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
 
@@ -461,7 +467,7 @@ struct LoginView: View {
         case .signIn:
             return "Use the email and password for your Quipsly account."
         case .createAccount:
-            return "Create a free account. We will ask you to verify your email once."
+            return "Create an account with email and password."
         }
     }
 

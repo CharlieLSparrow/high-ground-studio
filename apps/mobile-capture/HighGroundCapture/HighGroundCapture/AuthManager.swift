@@ -1708,7 +1708,7 @@ final class AuthManager: ObservableObject {
             return
         }
 
-        let offlineMessage = "Nest could not verify this saved identity right now. Protected local recordings and a private work-capture outbox remain available; all network actions are disabled."
+        let offlineMessage = "You're offline. Your saved work is still available on this iPhone."
         let nextSnapshot = AuthAccessSnapshot(
             isAuthenticated: false,
             mode: .offlineCachedIdentity,

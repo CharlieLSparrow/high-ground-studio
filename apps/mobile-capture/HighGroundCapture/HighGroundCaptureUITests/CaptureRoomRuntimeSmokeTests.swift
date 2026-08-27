@@ -2136,7 +2136,7 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         ).firstMatch
         XCTAssertTrue(
             waitForRuntimeElement(noteButton, in: app, timeout: 20, swipeAttempts: 8),
-            "Protected offline access must keep personal Quick Note available."
+            "Offline access must keep personal Quick Note available."
         )
         noteButton.tap()
         let sheet = app.descendants(matching: .any)["CaptureQuickEntrySheet_NOTE"].firstMatch
@@ -3503,7 +3503,7 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
                 "CaptureOfflineTranscriptReviewLink_\(localRecordingID)"
             ].firstMatch
             guard review.waitForExistence(timeout: 15) else {
-                XCTFail("Protected offline access must expose cached transcript review before the capture and follow-through feeds.")
+                XCTFail("Offline access must expose cached transcript review before the capture and follow-through feeds.")
                 return false
             }
             let hittable = XCTNSPredicateExpectation(
@@ -5594,7 +5594,7 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
 
         if protectedLibrary.exists {
             XCTAssertTrue(
-                app.staticTexts["Protected offline access"].exists,
+                app.staticTexts["Offline"].exists,
                 "A network transition must explain that the saved source is protected locally."
             )
             XCTAssertTrue(

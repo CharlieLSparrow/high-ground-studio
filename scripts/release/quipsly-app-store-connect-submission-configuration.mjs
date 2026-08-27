@@ -97,9 +97,10 @@ function usage() {
 
 Default mode is a read-only plan. The only mutation mode is --apply with the
 exact --confirm-target APP_ID/VERSION/BUILD. It can set source-backed content
-rights, age-rating, IDFA, Free pricing, and USA-first availability. It cannot
-upload screenshots, publish App Privacy, change DSA identity, create a review
-submission, submit a version, or release an app.
+rights, age-rating, IDFA, Free pricing, USA-first availability, and App Store
+Server Notifications V2 URLs. It cannot upload screenshots, publish App
+Privacy, change DSA identity, create a review submission, submit a version, or
+release an app.
 `;
 }
 
@@ -142,6 +143,24 @@ export function validateConfiguration(configuration, expected) {
     configuration.availability?.availableInNewTerritories !== false
     || JSON.stringify(configuration.availability?.territories) !== JSON.stringify(["USA"])
   ) errors.push("availability must be USA-only without automatic new-territory expansion");
+  const notifications = configuration.serverNotifications;
+  for (const field of ["productionUrl", "sandboxUrl"]) {
+    try {
+      const url = new URL(notifications?.[field]);
+      if (
+        url.protocol !== "https:"
+        || url.origin !== "https://nest.quipsly.com"
+        || url.pathname !== "/api/billing/app-store/notifications"
+        || url.search
+        || url.hash
+      ) errors.push(`serverNotifications.${field} must use the canonical HTTPS notification route`);
+    } catch {
+      errors.push(`serverNotifications.${field} must be a valid URL`);
+    }
+  }
+  if (notifications?.version !== "V2") {
+    errors.push("serverNotifications.version must be V2");
+  }
   if (configuration.screenshots?.uploadApproved !== false) {
     errors.push("draft screenshot upload must remain disabled");
   }
@@ -305,7 +324,7 @@ async function discover({ options, key }) {
   const [appDocument, appInfosDocument, versionsDocument, availabilityDocument,
     priceScheduleDocument, pricePointsDocument, territoriesDocument] = await Promise.all([
     requestJson({
-      request: apiRequest(`/v1/apps/${options.appId}`, "GET", [["fields[apps]", "name,bundleId,primaryLocale,isOrEverWasMadeForKids,contentRightsDeclaration"]]),
+      request: apiRequest(`/v1/apps/${options.appId}`, "GET", [["fields[apps]", "name,bundleId,primaryLocale,isOrEverWasMadeForKids,contentRightsDeclaration,subscriptionStatusUrl,subscriptionStatusUrlVersion,subscriptionStatusUrlForSandbox,subscriptionStatusUrlVersionForSandbox"]]),
       key,
     }),
     requestJson({
@@ -426,6 +445,15 @@ export function summarizeConfiguration({
       && availability.inventoryComplete
       && JSON.stringify(availableTerritories) === JSON.stringify(["USA"]),
     availabilityClear: blockingStatuses.length === 0,
+    serverNotifications:
+      documents.appDocument.data.attributes?.subscriptionStatusUrl
+        === configuration.serverNotifications.productionUrl
+      && documents.appDocument.data.attributes?.subscriptionStatusUrlForSandbox
+        === configuration.serverNotifications.sandboxUrl
+      && documents.appDocument.data.attributes?.subscriptionStatusUrlVersion
+        === configuration.serverNotifications.version
+      && documents.appDocument.data.attributes?.subscriptionStatusUrlVersionForSandbox
+        === configuration.serverNotifications.version,
     territoryCatalogLoaded: territoryCatalogIds.length > 1
       && territoryCatalogIds.includes("USA"),
     screenshotsHeld: configuration.screenshots.uploadApproved === false,
@@ -437,6 +465,7 @@ export function summarizeConfiguration({
   if (!checks.idfa) actions.push("patch-idfa-false");
   if (!checks.freePrice) actions.push("create-free-usa-price");
   if (!checks.usaOnlyAvailability) actions.push("create-usa-only-availability");
+  if (!checks.serverNotifications) actions.push("patch-server-notifications-v2");
   const blockers = [];
   if (!checks.exactApp || !checks.exactBuild || !checks.editable) blockers.push("target-not-exact-or-editable");
   if (active.length > 0 && !freePrice) blockers.push("nonfree-active-price-requires-separate-review");
@@ -458,6 +487,7 @@ export function summarizeConfiguration({
     "idfa",
     "freePrice",
     "usaOnlyAvailability",
+    "serverNotifications",
     "territoryCatalogLoaded",
     "screenshotsHeld",
     "reviewSubmissionProhibited",
@@ -479,6 +509,7 @@ export function summarizeConfiguration({
       ageRating: configuration.ageRating,
       pricing: configuration.pricing,
       availability: configuration.availability,
+      serverNotifications: configuration.serverNotifications,
       screenshotsUploadApproved: false,
       reviewSubmissionAllowed: false,
     },
@@ -493,6 +524,12 @@ export function summarizeConfiguration({
       readTerritoryCount: availability.readTerritoryCount,
       territoryCatalogCount: territoryCatalogIds.length,
       freePricePointResolved: Boolean(freePoint),
+      serverNotifications: {
+        productionUrl: documents.appDocument.data.attributes?.subscriptionStatusUrl ?? null,
+        sandboxUrl: documents.appDocument.data.attributes?.subscriptionStatusUrlForSandbox ?? null,
+        productionVersion: documents.appDocument.data.attributes?.subscriptionStatusUrlVersion ?? null,
+        sandboxVersion: documents.appDocument.data.attributes?.subscriptionStatusUrlVersionForSandbox ?? null,
+      },
     },
     checks,
     actions,
@@ -539,6 +576,16 @@ async function applyConfiguration({ options, configuration, documents, key }) {
       request: apiRequest(`/v1/appStoreVersions/${documents.version.id}`, "PATCH"),
       key,
       body: { data: { type: "appStoreVersions", id: documents.version.id, attributes: { usesIdfa: false } } },
+    }));
+    await applyAction("patch-server-notifications-v2", () => requestJson({
+      request: apiRequest(`/v1/apps/${options.appId}`, "PATCH"),
+      key,
+      body: { data: { type: "apps", id: options.appId, attributes: {
+        subscriptionStatusUrl: configuration.serverNotifications.productionUrl,
+        subscriptionStatusUrlVersion: configuration.serverNotifications.version,
+        subscriptionStatusUrlForSandbox: configuration.serverNotifications.sandboxUrl,
+        subscriptionStatusUrlVersionForSandbox: configuration.serverNotifications.version,
+      } } },
     }));
     await applyAction("create-free-usa-price", () => {
       const freePoint = documents.pricePointsDocument.data.find(

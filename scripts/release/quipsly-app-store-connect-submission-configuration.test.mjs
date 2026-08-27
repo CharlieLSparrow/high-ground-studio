@@ -26,6 +26,10 @@ function fixture() {
       attributes: {
         bundleId: "com.highgroundodyssey.HighGroundCapture",
         contentRightsDeclaration: configuration.contentRightsDeclaration,
+        subscriptionStatusUrl: configuration.serverNotifications.productionUrl,
+        subscriptionStatusUrlVersion: configuration.serverNotifications.version,
+        subscriptionStatusUrlForSandbox: configuration.serverNotifications.sandboxUrl,
+        subscriptionStatusUrlVersionForSandbox: configuration.serverNotifications.version,
       },
     } },
     appInfo: {
@@ -81,6 +85,7 @@ test("canonical submission configuration is exact, conservative, and non-submitt
   assert.equal(configuration.ageRating.messagingAndChat, true);
   assert.equal(configuration.ageRating.userGeneratedContent, true);
   assert.equal(configuration.ageRating.ageRatingOverrideV2, "THIRTEEN_PLUS");
+  assert.equal(configuration.serverNotifications.version, "V2");
   assert.equal(configuration.screenshots.uploadApproved, false);
   assert.equal(configuration.reviewSubmission.allowed, false);
 });
@@ -100,6 +105,10 @@ test("missing provider state produces bounded configuration actions", () => {
   documents.ageRating.attributes = {};
   documents.appInfo.attributes.appStoreAgeRating = null;
   documents.version.attributes.usesIdfa = null;
+  documents.appDocument.data.attributes.subscriptionStatusUrl = null;
+  documents.appDocument.data.attributes.subscriptionStatusUrlVersion = null;
+  documents.appDocument.data.attributes.subscriptionStatusUrlForSandbox = null;
+  documents.appDocument.data.attributes.subscriptionStatusUrlVersionForSandbox = null;
   documents.availabilityDocument = null;
   documents.manualPricesDocument = { data: [], included: [] };
   const receipt = summarizeConfiguration({ options, configuration, documents });
@@ -109,6 +118,7 @@ test("missing provider state produces bounded configuration actions", () => {
     "patch-idfa-false",
     "create-free-usa-price",
     "create-usa-only-availability",
+    "patch-server-notifications-v2",
   ]);
   assert.deepEqual(receipt.blockers, []);
 });

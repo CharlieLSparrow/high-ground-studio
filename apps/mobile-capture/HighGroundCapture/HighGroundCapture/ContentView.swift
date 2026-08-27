@@ -130,9 +130,9 @@ private struct CaptureIdentityCheckingView: View {
         VStack(spacing: 16) {
             ProgressView()
                 .controlSize(.large)
-            Text("Verifying your Quipsly session…")
+            Text("Connecting to Quipsly…")
                 .font(.headline)
-            Text("Recording and network actions stay unavailable until Nest confirms the saved identity.")
+            Text("Getting your Sessions and recordings ready.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
@@ -157,7 +157,7 @@ private struct ProtectedOfflineLibraryShell: View {
                 Section {
                     Label {
                         VStack(alignment: .leading, spacing: 4) {
-                            Text(authManager.accessMode == .checkingCachedIdentity ? "Verifying saved identity" : "Protected offline access")
+                            Text(authManager.accessMode == .checkingCachedIdentity ? "Connecting to Quipsly" : "Offline")
                                 .font(.headline)
                             Text(authManager.offlineAccessMessage ?? "Protected local recordings and private work capture remain available.")
                                 .font(.caption)
@@ -170,7 +170,7 @@ private struct ProtectedOfflineLibraryShell: View {
                     .accessibilityElement(children: .combine)
                     .accessibilityIdentifier("CaptureOfflineAccessBanner")
 
-                    Text("Cached session consent is stale while Nest is unavailable. New recording, consent changes, uploads, rooms, transcript processing, and every other network action are disabled. Exact local-source transcript review plus Notes, Tasks, Goals, and Sources can journal privately on this iPhone for retry after Nest verifies the same account again.")
+                    Text("Your saved recordings, transcripts, notes, tasks, goals, and sources remain available on this iPhone. Reconnect to join calls, record, or sync changes.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }

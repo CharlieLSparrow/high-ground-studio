@@ -47,6 +47,11 @@
     "availableInNewTerritories": false,
     "territories": ["USA"]
   },
+  "serverNotifications": {
+    "productionUrl": "https://nest.quipsly.com/api/billing/app-store/notifications",
+    "sandboxUrl": "https://nest.quipsly.com/api/billing/app-store/notifications",
+    "version": "V2"
+  },
   "screenshots": {
     "uploadApproved": false,
     "reason": "This general metadata operator never uploads images. The candidate-bound screenshot operator requires exact hashes, clean detached source, visual inspection, and the signed fully tested candidate."
