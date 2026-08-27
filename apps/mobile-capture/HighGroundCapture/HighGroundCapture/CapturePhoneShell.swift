@@ -194,13 +194,7 @@ struct CapturePhoneShell: View {
                     model: model,
                     showsNewSession: $showsNewSession,
                     visibleTab: $visibleTab,
-                    onStartVoiceNote: {
-                        Task {
-                            guard let created = await model.createPersonalVoiceNote() else { return }
-                            localOnlyRecordingSessionID = created.id
-                            visibleTab = .record
-                        }
-                    }
+                    onStartVoiceNote: startVoiceNote
                 )
             }
             .tabItem { Label(CaptureRootTab.today.title, systemImage: CaptureRootTab.today.systemImage) }
@@ -223,7 +217,11 @@ struct CapturePhoneShell: View {
             .tag(CaptureRootTab.work)
 
             NavigationStack {
-                CaptureLibraryView(model: model, visibleTab: $visibleTab)
+                CaptureLibraryView(
+                    model: model,
+                    visibleTab: $visibleTab,
+                    onStartVoiceNote: startVoiceNote
+                )
             }
             .tabItem { Label(CaptureRootTab.library.title, systemImage: CaptureRootTab.library.systemImage) }
             .tag(CaptureRootTab.library)
@@ -278,6 +276,14 @@ struct CapturePhoneShell: View {
         localOnlyRecordingSessionID = created.id
         visibleTab = .record
         deepLinkRouter.consumeVoiceNoteRequest(requestID)
+    }
+
+    private func startVoiceNote() {
+        Task {
+            guard let created = await model.createPersonalVoiceNote() else { return }
+            localOnlyRecordingSessionID = created.id
+            visibleTab = .record
+        }
     }
 
     @MainActor
@@ -6697,7 +6703,7 @@ private struct CapturePersonalVoiceNoteTranscriptCard: View {
 
                 NavigationLink {
                     CaptureVoiceWritingEditor(
-                        recording: recording,
+                        recordingID: recording.id,
                         initialDraft: draft,
                         timedTranscript: transcriptManager.storedTranscript(for: recording.id)?.segments ?? []
                     )
@@ -6875,7 +6881,7 @@ private struct CaptureVoiceWritingEditor: View {
     @Environment(\.dismiss) private var dismiss
     @FocusState private var bodyIsFocused: Bool
 
-    let recording: LocalRecording
+    let recordingID: UUID
     let timedTranscript: [OnDeviceTranscriptSegment]
     @State private var title: String
     @State private var bodyText: String
@@ -6883,18 +6889,18 @@ private struct CaptureVoiceWritingEditor: View {
     @State private var saveTask: Task<Void, Never>?
 
     init(
-        recording: LocalRecording,
+        recordingID: UUID,
         initialDraft: VoiceWritingDraft,
         timedTranscript: [OnDeviceTranscriptSegment]
     ) {
-        self.recording = recording
+        self.recordingID = recordingID
         self.timedTranscript = timedTranscript
         _title = State(initialValue: initialDraft.title)
         _bodyText = State(initialValue: initialDraft.body)
     }
 
     private var currentDraft: VoiceWritingDraft? {
-        writingStore.draft(for: recording.id)
+        writingStore.draft(for: recordingID)
     }
 
     var body: some View {
@@ -6965,7 +6971,7 @@ private struct CaptureVoiceWritingEditor: View {
                         .foregroundStyle(.orange)
                     Button("Try My Nest again") {
                         saveImmediately()
-                        writingSync.syncNow(recordingID: recording.id)
+                        writingSync.syncNow(recordingID: recordingID)
                     }
                     .frame(minHeight: 44)
                 }
@@ -6996,7 +7002,7 @@ private struct CaptureVoiceWritingEditor: View {
 
     @ViewBuilder
     private var syncStatus: some View {
-        if writingSync.syncingRecordingIDs.contains(recording.id) {
+        if writingSync.syncingRecordingIDs.contains(recordingID) {
             Label("Saving…", systemImage: "icloud.and.arrow.up")
         } else if currentDraft?.isSynced == true {
             Label("My Nest", systemImage: "checkmark.icloud.fill")
@@ -7022,7 +7028,7 @@ private struct CaptureVoiceWritingEditor: View {
 
     private func saveImmediately() {
         guard let draft = try? writingStore.update(
-            recordingID: recording.id,
+            recordingID: recordingID,
             title: title,
             body: bodyText
         ) else { return }
@@ -11105,110 +11111,55 @@ private struct CaptureTimeZonePickerSheet: View {
     }
 }
 
+private enum CaptureLibrarySection: String, CaseIterable, Identifiable {
+    case writing = "Writing"
+    case recordings = "Recordings"
+
+    var id: Self { self }
+}
+
 private struct CaptureLibraryView: View {
     @ObservedObject var model: CaptureExperienceModel
     @Binding var visibleTab: CaptureRootTab
+    let onStartVoiceNote: () -> Void
     @EnvironmentObject private var audioCapture: AudioCaptureController
     @StateObject private var library = LocalRecordingLibrary.shared
+    @StateObject private var writingStore = VoiceWritingDraftStore.shared
     @StateObject private var playback = LocalRecordingPlaybackController()
     @State private var recordingPendingLocalDeletion: LocalRecording?
+    @State private var selectedSection: CaptureLibrarySection = .writing
+    @State private var searchText = ""
 
     var body: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 14) {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text(CaptureLaunchConfiguration.usesAppStorePresentation ? "Your recording is safe" : "Every source stays visible")
+                    Text(selectedSection == .writing ? "Your writing" : "Original recordings")
                         .font(.title2.weight(.bold))
                     Text(
-                        CaptureLaunchConfiguration.usesAppStorePresentation
-                            ? "The original stays on this iPhone while a backed-up copy becomes ready in Quipsly."
-                            : "Capture success means saved locally. Upload and server verification are separate steps."
+                        selectedSection == .writing
+                            ? "Voice Notes become editable writing while their timed transcripts and original audio stay connected."
+                            : "Play, share, verify, or inspect the source behind your Sessions and Voice Notes."
                     )
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
 
-                if model.uploadManager.isUploading || model.uploadManager.recoverableUploadCount > 0 {
-                    UploadActivityCard(model: model)
-                }
+                librarySearch
 
-                if let playbackError = playback.errorMessage {
-                    CaptureInlineWarning(text: playbackError)
+                Picker("Library section", selection: $selectedSection) {
+                    ForEach(CaptureLibrarySection.allCases) { section in
+                        Text(section.rawValue).tag(section)
+                    }
                 }
+                .pickerStyle(.segmented)
+                .accessibilityIdentifier("CaptureLibrarySectionPicker")
 
-                if let libraryError = library.persistenceError {
-                    CaptureInlineWarning(text: libraryError)
-                        .accessibilityIdentifier("CaptureLibraryJournalWarning")
-                }
-
-                if model.usesPreviewData {
-                    CaptureLibraryPreviewSourceCard()
-                    NavigationLink {
-                        CaptureSourceEvidencePreviewView()
-                    } label: {
-                        Label("Check recording quality", systemImage: "waveform.badge.magnifyingglass")
-                            .font(.headline)
-                            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                    }
-                    .buttonStyle(.bordered)
-                    .accessibilityIdentifier("CaptureSourceEvidencePreviewLink")
-                    NavigationLink {
-                        CapturePacketNoteReviewPreviewView()
-                    } label: {
-                        Label(CaptureLaunchConfiguration.usesAppStorePresentation ? "Open session note" : "Review source-linked note", systemImage: "note.text.badge.plus")
-                            .font(.headline)
-                            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                    }
-                    .buttonStyle(.bordered)
-                    .accessibilityIdentifier("CapturePacketNoteReviewPreviewLink")
-                    NavigationLink {
-                        CaptureTranscriptReviewView(
-                            roomID: "room-preview-coaching-ready",
-                            sessionTitle: "Coaching session",
-                            recording: nil,
-                            previewOnly: true
-                        )
-                    } label: {
-                        Label(CaptureLaunchConfiguration.usesAppStorePresentation ? "Open transcript" : "Review transcript", systemImage: "waveform.and.magnifyingglass")
-                            .font(.headline)
-                            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                    }
-                    .buttonStyle(.bordered)
-                    .accessibilityIdentifier("CaptureTranscriptReviewPreviewLink")
-                }
-
-                if library.recordings.isEmpty {
-                    if !model.usesPreviewData {
-                        CaptureEmptyCard(
-                            systemImage: "waveform",
-                            title: "No local recordings yet",
-                            detail: "Your first completed take will appear here before any upload is considered complete.",
-                            actionTitle: "Open recorder",
-                            action: { visibleTab = .record }
-                        )
-                    }
+                if selectedSection == .writing {
+                    writingContent
                 } else {
-                    ForEach(library.recordings) { recording in
-                        LocalRecordingRow(
-                            recording: recording,
-                            captureGroupSourceCount: library.recordings.filter {
-                                recording.captureGroupId != nil
-                                    && $0.captureGroupId == recording.captureGroupId
-                            }.count,
-                            fileURL: library.fileURL(for: recording),
-                            isPlaying: playback.playingRecordingID == recording.id,
-                            canAudition: !model.isSessionContextLocked,
-                            canRequestDeletion: !model.isSessionContextLocked,
-                            onPlay: { playback.toggle(recording: recording, library: library) },
-                            onRetry: { model.retryUpload(for: recording) },
-                            onDelete: {
-                                playback.stop()
-                                recordingPendingLocalDeletion = recording
-                            },
-                            previewOnly: model.usesPreviewData
-                        )
-                    }
+                    recordingContent
                 }
             }
             .padding(.horizontal, 18)
@@ -11219,6 +11170,17 @@ private struct CaptureLibraryView: View {
         .navigationTitle("Library")
         .navigationBarTitleDisplayMode(.inline)
         .accessibilityIdentifier("CaptureLibraryView")
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button(action: onStartVoiceNote) {
+                    Image(systemName: "mic.badge.plus")
+                }
+                .disabled(model.isSessionContextLocked || model.isCreatingSession)
+                .accessibilityLabel("New Voice Note")
+                .accessibilityHint("Creates a private recording that becomes editable writing.")
+                .accessibilityIdentifier("CaptureLibraryStartVoiceNote")
+            }
+        }
         .sheet(item: $recordingPendingLocalDeletion) { requestedRecording in
             let recording = library.recording(id: requestedRecording.id) ?? requestedRecording
             LocalRecordingDeletionSheet(
@@ -11247,7 +11209,184 @@ private struct CaptureLibraryView: View {
                 onDone: { playback.stop() }
             )
         }
+        .onAppear {
+            if model.usesPreviewData && !CaptureLaunchConfiguration.usesAppStorePresentation {
+                selectedSection = .recordings
+            }
+        }
         .onDisappear { playback.stop() }
+    }
+
+    private var normalizedSearch: String {
+        searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var filteredDrafts: [VoiceWritingDraft] {
+        guard !normalizedSearch.isEmpty else { return writingStore.drafts }
+        return writingStore.drafts.filter {
+            $0.title.localizedCaseInsensitiveContains(normalizedSearch)
+                || $0.body.localizedCaseInsensitiveContains(normalizedSearch)
+        }
+    }
+
+    private var filteredRecordings: [LocalRecording] {
+        guard !normalizedSearch.isEmpty else { return library.recordings }
+        return library.recordings.filter {
+            $0.displayTitle.localizedCaseInsensitiveContains(normalizedSearch)
+                || $0.fileName.localizedCaseInsensitiveContains(normalizedSearch)
+                || ($0.sessionTitle?.localizedCaseInsensitiveContains(normalizedSearch) == true)
+                || ($0.capturePurpose?.localizedCaseInsensitiveContains(normalizedSearch) == true)
+        }
+    }
+
+    private var librarySearch: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "magnifyingglass")
+                .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
+            TextField(
+                selectedSection == .writing ? "Search your writing" : "Search recordings",
+                text: $searchText
+            )
+            .textInputAutocapitalization(.never)
+            .autocorrectionDisabled()
+            .submitLabel(.search)
+            .accessibilityIdentifier("CaptureLibrarySearch")
+            if !searchText.isEmpty {
+                Button {
+                    searchText = ""
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(.secondary)
+                        .frame(width: 44, height: 44)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Clear Library search")
+            }
+        }
+        .padding(.leading, 14)
+        .padding(.trailing, 4)
+        .frame(minHeight: 52)
+        .background(.background, in: RoundedRectangle(cornerRadius: 16))
+        .overlay {
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(.primary.opacity(0.1))
+        }
+    }
+
+    @ViewBuilder
+    private var writingContent: some View {
+        if model.usesPreviewData && writingStore.drafts.isEmpty {
+            CaptureLibraryPreviewWritingCard()
+        }
+
+        if filteredDrafts.isEmpty && !model.usesPreviewData {
+            CaptureEmptyCard(
+                systemImage: "waveform.badge.mic",
+                title: normalizedSearch.isEmpty ? "Your writing starts here" : "No writing found",
+                detail: normalizedSearch.isEmpty
+                    ? "Record a thought. Quipsly will keep the audio, create a timed transcript, and give you text you can edit."
+                    : "Try a different word or clear the search.",
+                actionTitle: normalizedSearch.isEmpty ? "Start a Voice Note" : "Clear search",
+                action: normalizedSearch.isEmpty ? onStartVoiceNote : { searchText = "" }
+            )
+        } else {
+            ForEach(filteredDrafts) { draft in
+                CaptureVoiceWritingLibraryRow(
+                    draft: draft,
+                    recording: library.recording(id: draft.localRecordingID),
+                    timedTranscript: OnDeviceTranscriptManager.shared
+                        .storedTranscript(for: draft.localRecordingID)?.segments ?? []
+                )
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var recordingContent: some View {
+        if model.uploadManager.isUploading || model.uploadManager.recoverableUploadCount > 0 {
+            UploadActivityCard(model: model)
+        }
+
+        if let playbackError = playback.errorMessage {
+            CaptureInlineWarning(text: playbackError)
+        }
+
+        if let libraryError = library.persistenceError {
+            CaptureInlineWarning(text: libraryError)
+                .accessibilityIdentifier("CaptureLibraryJournalWarning")
+        }
+
+        if model.usesPreviewData {
+            CaptureLibraryPreviewSourceCard()
+            NavigationLink {
+                CaptureSourceEvidencePreviewView()
+            } label: {
+                Label("Check recording quality", systemImage: "waveform.badge.magnifyingglass")
+                    .font(.headline)
+                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            }
+            .buttonStyle(.bordered)
+            .accessibilityIdentifier("CaptureSourceEvidencePreviewLink")
+            NavigationLink {
+                CapturePacketNoteReviewPreviewView()
+            } label: {
+                Label(CaptureLaunchConfiguration.usesAppStorePresentation ? "Open session note" : "Review source-linked note", systemImage: "note.text.badge.plus")
+                    .font(.headline)
+                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            }
+            .buttonStyle(.bordered)
+            .accessibilityIdentifier("CapturePacketNoteReviewPreviewLink")
+            NavigationLink {
+                CaptureTranscriptReviewView(
+                    roomID: "room-preview-coaching-ready",
+                    sessionTitle: "Coaching session",
+                    recording: nil,
+                    previewOnly: true
+                )
+            } label: {
+                Label(CaptureLaunchConfiguration.usesAppStorePresentation ? "Open transcript" : "Review transcript", systemImage: "waveform.and.magnifyingglass")
+                    .font(.headline)
+                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            }
+            .buttonStyle(.bordered)
+            .accessibilityIdentifier("CaptureTranscriptReviewPreviewLink")
+        }
+
+        if filteredRecordings.isEmpty {
+            if !model.usesPreviewData {
+                CaptureEmptyCard(
+                    systemImage: "waveform",
+                    title: normalizedSearch.isEmpty ? "No recordings yet" : "No recordings found",
+                    detail: normalizedSearch.isEmpty
+                        ? "Completed Voice Notes and Session recordings will appear here."
+                        : "Try a different word or clear the search.",
+                    actionTitle: normalizedSearch.isEmpty ? "Open Capture" : "Clear search",
+                    action: normalizedSearch.isEmpty ? { visibleTab = .record } : { searchText = "" }
+                )
+            }
+        } else {
+            ForEach(filteredRecordings) { recording in
+                LocalRecordingRow(
+                    recording: recording,
+                    captureGroupSourceCount: library.recordings.filter {
+                        recording.captureGroupId != nil
+                            && $0.captureGroupId == recording.captureGroupId
+                    }.count,
+                    fileURL: library.fileURL(for: recording),
+                    isPlaying: playback.playingRecordingID == recording.id,
+                    canAudition: !model.isSessionContextLocked,
+                    canRequestDeletion: !model.isSessionContextLocked,
+                    onPlay: { playback.toggle(recording: recording, library: library) },
+                    onRetry: { model.retryUpload(for: recording) },
+                    onDelete: {
+                        playback.stop()
+                        recordingPendingLocalDeletion = recording
+                    },
+                    previewOnly: model.usesPreviewData
+                )
+            }
+        }
     }
 
     private var playingVideoTitle: String {
@@ -11270,6 +11409,107 @@ private struct CaptureLibraryView: View {
         case .recording, .paused, .finalizing: true
         default: false
         }
+    }
+}
+
+private struct CaptureVoiceWritingLibraryRow: View {
+    let draft: VoiceWritingDraft
+    let recording: LocalRecording?
+    let timedTranscript: [OnDeviceTranscriptSegment]
+
+    var body: some View {
+        NavigationLink {
+            CaptureVoiceWritingEditor(
+                recordingID: draft.localRecordingID,
+                initialDraft: draft,
+                timedTranscript: timedTranscript
+            )
+        } label: {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(alignment: .top, spacing: 12) {
+                    Image(systemName: "doc.text.fill")
+                        .font(.title3)
+                        .foregroundStyle(CapturePalette.accent)
+                        .frame(width: 42, height: 42)
+                        .background(CapturePalette.accent.opacity(0.1), in: Circle())
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(draft.title)
+                            .font(.headline)
+                            .foregroundStyle(.primary)
+                            .multilineTextAlignment(.leading)
+                        Text(draft.updatedAt.formatted(date: .abbreviated, time: .shortened))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer(minLength: 0)
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(.tertiary)
+                }
+
+                Text(draft.body)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(4)
+                    .multilineTextAlignment(.leading)
+
+                HStack(spacing: 12) {
+                    Label(
+                        draft.isSynced ? "My Nest" : "On this iPhone",
+                        systemImage: draft.isSynced ? "checkmark.icloud.fill" : "iphone"
+                    )
+                    if let recording {
+                        Label(recording.durationSeconds.captureDurationLabel, systemImage: "waveform")
+                    } else if !timedTranscript.isEmpty {
+                        Label("Transcript saved", systemImage: "text.word.spacing")
+                    }
+                }
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(draft.isSynced ? .green : .secondary)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .captureCard()
+        }
+        .buttonStyle(.plain)
+        .accessibilityHint("Opens editable writing. The timed transcript and original source remain separate.")
+        .accessibilityIdentifier("CaptureLibraryWriting_\(draft.id)")
+    }
+}
+
+private struct CaptureLibraryPreviewWritingCard: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: "doc.text.fill")
+                    .font(.title3)
+                    .foregroundStyle(CapturePalette.accent)
+                    .frame(width: 42, height: 42)
+                    .background(CapturePalette.accent.opacity(0.1), in: Circle())
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("What I want to explore next")
+                        .font(.headline)
+                    Text("Edited a few minutes ago")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Image(systemName: "checkmark.icloud.fill")
+                    .foregroundStyle(.green)
+            }
+            Text("The first idea connects the experience I described to the research question. I want to open with the concrete story, then explain why it matters…")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .lineLimit(4)
+            HStack(spacing: 12) {
+                Label("My Nest", systemImage: "checkmark.icloud.fill")
+                Label("Timed transcript", systemImage: "waveform")
+            }
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(CapturePalette.accent)
+        }
+        .captureCard()
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("CaptureLibraryPreviewWritingCard")
     }
 }
 

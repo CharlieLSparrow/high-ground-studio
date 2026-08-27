@@ -4314,15 +4314,18 @@ final class CaptureAppStoreScreenshotUITests: XCTestCase {
 
         launch(tab: "library", waitingFor: app.navigationBars["Library"])
         XCTAssertTrue(
-            app.descendants(matching: .any)["CaptureLibraryPreviewSourceCard"]
+            app.descendants(matching: .any)["CaptureLibraryPreviewWritingCard"]
                 .waitForExistence(timeout: 5)
         )
-        XCTAssertTrue(app.staticTexts["Local audio source · 18.4 MB"].exists)
-        XCTAssertTrue(app.staticTexts["Backed up in Quipsly"].exists)
-        XCTAssertFalse(app.staticTexts["Synthetic local source · 18.4 MB"].exists)
+        XCTAssertTrue(app.staticTexts["What I want to explore next"].exists)
+        XCTAssertTrue(app.staticTexts["Timed transcript"].exists)
+        XCTAssertTrue(app.buttons["CaptureLibraryStartVoiceNote"].exists)
         keepScreenshot("04-library.png")
 
         launch(tab: "library", waitingFor: app.navigationBars["Library"])
+        let recordingsSection = app.buttons["Recordings"]
+        XCTAssertTrue(recordingsSection.waitForExistence(timeout: 5))
+        recordingsSection.tap()
         XCTAssertTrue(
             app.descendants(matching: .any)["CaptureLibraryPreviewSourceCard"]
                 .waitForExistence(timeout: 5)
