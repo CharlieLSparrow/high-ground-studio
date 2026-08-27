@@ -4779,13 +4779,6 @@ export function SessionReviewClient({
         </div>
       ) : null}
 
-      {mode === "transcript" && sourceClockAttention ? (
-        <SessionSourceClockAttentionCard
-          attention={sourceClockAttention}
-          initialItemId={focusedAttentionId}
-        />
-      ) : null}
-
       {mode === "transcript" ? (
         loading ? (
           <section className="rounded-2xl border border-[#e5d5b7] bg-white p-8 text-sm font-bold text-[#765f40]">
@@ -5313,47 +5306,66 @@ export function SessionReviewClient({
               </section>
             )}
 
-            {audibleEventSources.length ? (
-              <section
-                aria-labelledby="session-detector-qualification-heading"
-                className="space-y-4"
-              >
-                <div className="flex items-center gap-3">
-                  <span className="rounded-xl bg-cyan-50 p-2 text-cyan-700">
-                    <FileAudio aria-hidden="true" />
-                  </span>
-                  <div>
-                    <p className="text-xs font-black uppercase tracking-[0.18em] text-[#987443]">
-                      Audio detector evidence
-                    </p>
-                    <h2
-                      id="session-detector-qualification-heading"
-                      className="font-serif text-3xl font-black text-[#3d3122]"
-                    >
-                      Qualify what the detector surfaced
-                    </h2>
-                  </div>
-                </div>
-                <p className="max-w-4xl text-sm font-semibold leading-relaxed text-[#765f40]">
-                  These exact Session sources already have immutable detector
-                  output. Listen and label here even when a newer transcript
-                  attempt is held; the source ledger—not transcript recency or
-                  Episode JSON—owns the analysis.
+            {sourceClockAttention || audibleEventSources.length ? (
+              <details className="rounded-3xl border border-cyan-200 bg-cyan-50/35 p-4 shadow-sm sm:p-5">
+                <summary className="cursor-pointer text-sm font-black text-cyan-950">
+                  Audio details
+                </summary>
+                <p className="mt-2 max-w-4xl text-xs font-semibold leading-5 text-[#765f40]">
+                  Optional signal maps and detector details for closer listening.
+                  Your transcript, automatic audio result, and ordinary editing
+                  tools work without opening this section.
                 </p>
-                {audibleEventSources.map((source) => (
-                  <div key={`${source.assetId}:${source.sourceId}`}>
-                    <p className="mb-2 text-xs font-black uppercase tracking-wide text-[#765f40]">
-                      {source.label}
-                    </p>
-                    <AudibleEventQualificationLab
-                      {...source}
-                      defaultWorkload={
-                        purpose === "PODCAST" ? "podcast" : "coaching"
-                      }
+                <div className="mt-5 space-y-5">
+                  {sourceClockAttention ? (
+                    <SessionSourceClockAttentionCard
+                      attention={sourceClockAttention}
+                      initialItemId={focusedAttentionId}
                     />
-                  </div>
-                ))}
-              </section>
+                  ) : null}
+                  {audibleEventSources.length ? (
+                    <section
+                      aria-labelledby="session-detector-qualification-heading"
+                      className="space-y-4"
+                    >
+                      <div className="flex items-center gap-3">
+                        <span className="rounded-xl bg-cyan-50 p-2 text-cyan-700">
+                          <FileAudio aria-hidden="true" />
+                        </span>
+                        <div>
+                          <p className="text-xs font-black uppercase tracking-[0.18em] text-[#987443]">
+                            Audio detector details
+                          </p>
+                          <h2
+                            id="session-detector-qualification-heading"
+                            className="font-serif text-3xl font-black text-[#3d3122]"
+                          >
+                            Inspect detected sounds
+                          </h2>
+                        </div>
+                      </div>
+                      <p className="max-w-4xl text-sm font-semibold leading-relaxed text-[#765f40]">
+                        Listen to exact source ranges or correct a detector label
+                        when useful. Quipsly keeps these details linked to the
+                        source without blocking transcription, editing, or sharing.
+                      </p>
+                      {audibleEventSources.map((source) => (
+                        <div key={`${source.assetId}:${source.sourceId}`}>
+                          <p className="mb-2 text-xs font-black uppercase tracking-wide text-[#765f40]">
+                            {source.label}
+                          </p>
+                          <AudibleEventQualificationLab
+                            {...source}
+                            defaultWorkload={
+                              purpose === "PODCAST" ? "podcast" : "coaching"
+                            }
+                          />
+                        </div>
+                      ))}
+                    </section>
+                  ) : null}
+                </div>
+              </details>
             ) : null}
           </>
         )

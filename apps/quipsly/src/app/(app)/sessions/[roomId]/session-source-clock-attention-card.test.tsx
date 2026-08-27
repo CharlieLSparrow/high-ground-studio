@@ -61,7 +61,7 @@ describe("SessionSourceClockAttentionCard", () => {
 
     expect(screen.getAllByText("2 signals share one listening moment")).toHaveLength(2);
     expect(screen.getByText("1 listening moment")).toBeInTheDocument();
-    expect(screen.getByText(/Shared context avoids about/i)).toBeInTheDocument();
+    expect(screen.getByText(/Grouped listening avoids about/i)).toBeInTheDocument();
     expect(screen.getByText("Transcript attempt · 0:08–0:10")).toBeInTheDocument();
     expect(screen.getByText("Audible-event detector · 0:09.5–0:09.7")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /Open transcript segment/i })).toHaveAttribute("href", "/sessions/room-1?mode=transcript#transcript-segment-segment-1");

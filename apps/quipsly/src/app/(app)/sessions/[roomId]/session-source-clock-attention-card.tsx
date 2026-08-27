@@ -114,19 +114,19 @@ export function SessionSourceClockAttentionCard({
   return <section id="source-clock-attention" className="rounded-3xl border border-cyan-200 bg-gradient-to-br from-white via-cyan-50/60 to-violet-50/60 p-5 shadow-sm sm:p-6" aria-labelledby="source-clock-attention-heading">
     <div className="flex flex-wrap items-start justify-between gap-4">
       <div className="max-w-3xl">
-        <p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-cyan-800"><AudioLines size={16} aria-hidden="true" />Shared source-clock review</p>
+        <p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-cyan-800"><AudioLines size={16} aria-hidden="true" />Source-linked audio details</p>
         <h2 id="source-clock-attention-heading" className="mt-1 font-serif text-3xl font-black text-[#3d3122]">Listen where the evidence points</h2>
-        <p className="mt-2 text-sm font-semibold leading-6 text-[#765f40]">Transcript uncertainty, detector suggestions, repair candidates, decoded mastering observations, and edit proposals share a clock—not an authority or confidence scale. Nearby signals become one bounded listening moment while every reason and deep link remains separate.</p>
+        <p className="mt-2 text-sm font-semibold leading-6 text-[#765f40]">Transcript uncertainty, detected sounds, repair options, mastering observations, and edit suggestions share the same timeline. Quipsly groups nearby signals into useful listening moments while keeping every reason and source link available.</p>
       </div>
       <div className="flex flex-wrap gap-2 text-[10px] font-black uppercase tracking-wide">
         <span className="rounded-full border border-rose-200 bg-rose-50 px-3 py-1.5 text-rose-900">{attention.counts.high} high signal{attention.counts.high === 1 ? "" : "s"}</span>
-        <span className="rounded-full border border-violet-200 bg-violet-50 px-3 py-1.5 text-violet-900">{attention.counts.review} review signal{attention.counts.review === 1 ? "" : "s"}</span>
+        <span className="rounded-full border border-violet-200 bg-violet-50 px-3 py-1.5 text-violet-900">{attention.counts.review} attention signal{attention.counts.review === 1 ? "" : "s"}</span>
         <span className="rounded-full border border-cyan-200 bg-white px-3 py-1.5 text-cyan-900">{attention.counts.moments} listening moment{attention.counts.moments === 1 ? "" : "s"}</span>
-        <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-emerald-900">{reviewBudget(attention.counts.estimatedReviewSeconds)} source review</span>
+        <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-emerald-900">{reviewBudget(attention.counts.estimatedReviewSeconds)} listen time</span>
       </div>
     </div>
 
-    {attention.counts.sharedContextSavingsSeconds > 0 ? <p className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs font-bold leading-5 text-emerald-950">Shared context avoids about {attention.counts.sharedContextSavingsSeconds} seconds of duplicate source playback across {attention.counts.total} preserved evidence signals. This deterministic budget includes one source-context pass and decision time; matched A/B, full-mix, and proof-listen requirements remain additional.</p> : null}
+    {attention.counts.sharedContextSavingsSeconds > 0 ? <p className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs font-bold leading-5 text-emerald-950">Grouped listening avoids about {attention.counts.sharedContextSavingsSeconds} seconds of replaying the same source context across {attention.counts.total} signals.</p> : null}
 
     {selected ? <div className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(280px,0.65fr)]">
       <section className="rounded-2xl border border-slate-800 bg-slate-950 p-4 text-white" aria-label="Selected protected source range">
@@ -138,8 +138,8 @@ export function SessionSourceClockAttentionCard({
         {selected.contextTruncated ? <p className="mt-3 rounded-lg border border-amber-700/60 bg-amber-950/50 p-3 text-xs font-bold leading-5 text-amber-100">One exact evidence range extends beyond this bounded preview. Its full range remains visible below; use the authority-specific deep link to complete that review.</p> : null}
         <p className="mt-3 text-[9px] font-bold uppercase tracking-wide text-slate-500">Client-tracked playback is navigation, not proof that a person heard or understood the range.</p>
       </section>
-      <aside className="rounded-2xl border border-cyan-200 bg-white p-4" aria-label="Preserved evidence boundaries">
-        <p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-wide text-cyan-900"><ShieldCheck size={15} aria-hidden="true" />Evidence remains separate</p>
+      <aside className="rounded-2xl border border-cyan-200 bg-white p-4" aria-label="Source-linked signal details">
+        <p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-wide text-cyan-900"><ShieldCheck size={15} aria-hidden="true" />Why Quipsly highlighted this</p>
         <div className="mt-3 space-y-3">{selected.items.map((item) => <article key={item.id} className="rounded-xl border border-cyan-100 bg-cyan-50/40 p-3">
           <p className="text-[9px] font-black uppercase tracking-wide text-cyan-800">{item.authorityLabel} · {range(item)}</p>
           <h4 className="mt-1 text-sm font-black text-[#3d3122]">{item.title}</h4>
@@ -159,7 +159,7 @@ export function SessionSourceClockAttentionCard({
 
     {attention.moments.length ? <ol className="mt-5 grid gap-3 xl:grid-cols-2" aria-label="Shared source-clock listening moments">{attention.moments.map((moment, index) => <li id={`source-clock-review-moment-${encodeURIComponent(moment.id)}`} key={moment.id} className={`rounded-2xl border p-4 ${style[moment.severity]} ${selected?.id === moment.id ? "ring-2 ring-cyan-500 ring-offset-2" : ""}`}>
       <div className="flex items-start justify-between gap-3"><div><p className="text-[9px] font-black uppercase tracking-wide">#{index + 1} · {moment.severity} · {moment.items.length} signal{moment.items.length === 1 ? "" : "s"}</p><h3 className="mt-1 text-base font-black">{moment.title}</h3><p className="mt-1 flex items-center gap-1 font-mono text-[10px] font-black"><Clock3 size={12} aria-hidden="true" />{range(moment)} · {moment.source.label}</p><p className="mt-1 text-[9px] font-bold opacity-80">{moment.authorityLabels.join(" · ")}</p></div><span className="max-w-32 rounded-full border border-current px-2 py-1 text-center text-[8px] font-black uppercase tracking-wide opacity-80">{reviewBudget(moment.estimatedReviewSeconds)} review</span></div>
-      <button type="button" onClick={() => open(moment)} aria-current={selected?.id === moment.id ? "true" : undefined} className="mt-3 inline-flex min-h-11 items-center gap-2 rounded-full border border-current bg-white/75 px-4 text-xs font-black"><Play size={14} aria-hidden="true" />Review from {clock(moment.startSeconds)}</button>
+      <button type="button" onClick={() => open(moment)} aria-current={selected?.id === moment.id ? "true" : undefined} className="mt-3 inline-flex min-h-11 items-center gap-2 rounded-full border border-current bg-white/75 px-4 text-xs font-black"><Play size={14} aria-hidden="true" />Listen from {clock(moment.startSeconds)}</button>
     </li>)}</ol> : <div className="mt-5 rounded-2xl border border-emerald-200 bg-emerald-50 p-5 text-emerald-950"><p className="flex items-center gap-2 text-sm font-black"><CheckCircle2 size={18} aria-hidden="true" />No unresolved exact-clock item is projected.</p><p className="mt-2 text-xs font-semibold leading-5">This means the current canonical evidence produced no queue item. It does not certify that the complete source was proof-listened or that every detector class has measured recall.</p></div>}
   </section>;
 }

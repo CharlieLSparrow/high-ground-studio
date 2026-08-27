@@ -5,6 +5,7 @@ import userEvent from "@testing-library/user-event";
 import { SessionReviewClient } from "./session-review-client";
 import type { SessionReviewCandidate, SessionReviewGoalCandidate, SessionReviewNoteCandidate, SessionReviewPacket } from "./session-review-model";
 import type { SessionSourceEvidence } from "./session-source-evidence-model";
+import { buildSessionSourceClockAttention } from "./session-source-clock-attention";
 
 jest.mock("./transcript-correction-desk", () => ({ TranscriptCorrectionDesk: () => <div>Exact transcript desk</div> }));
 jest.mock("./session-source-alignment-card", () => ({
@@ -372,6 +373,55 @@ describe("Session review goal candidates", () => {
     expect(screen.getByText("No standalone consent rows are projected here; Transcript verifies the complete release receipt before review")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "No overview blocker" })).toBeInTheDocument();
     expect(screen.getByText(/Transcript and Outputs still enforce their own evidence gates/)).toBeInTheDocument();
+  });
+
+  it("keeps the transcript and ordinary editor ahead of optional audio diagnostics", async () => {
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => packet(),
+    }) as typeof fetch;
+    const sourceClockAttention = buildSessionSourceClockAttention({
+      transcript: [{
+        id: "segment-audio-detail",
+        segmentId: "segment-audio-detail",
+        source: {
+          roomId: "room-1",
+          recordingAssetId: "asset-1",
+          projectSlug: "coaching-practice",
+          episodeSlug: null,
+          mediaAssetId: "media-1",
+          sourceId: "source-1",
+          sourceUrl: "/api/ingest/media/source-1",
+          sourceKind: "audio",
+          durationSeconds: 60,
+          label: "Coach source",
+        },
+        startSeconds: 8,
+        endSeconds: 10,
+        text: "A passage worth a closer listen.",
+        speakerLabel: "Coach",
+        providerConfidence: 0.62,
+        reviewState: "unreviewed",
+      }],
+      audibleEvents: [],
+      dialogueRepairs: [],
+      mastery: [],
+      edits: [],
+    });
+
+    render(<SessionReviewClient
+      roomId="room-1"
+      sessionTitle="Coaching review"
+      mode="transcript"
+      consentSnapshot={{ total: 2, granted: 2, transcriptionPermitted: 2 }}
+      sourceClockAttention={sourceClockAttention}
+    />);
+
+    await screen.findByText("Exact transcript desk");
+    const details = screen.getByText("Audio details").closest("details");
+    expect(details).not.toBeNull();
+    expect(details).not.toHaveAttribute("open");
+    expect(screen.getByText(/ordinary editing tools work without opening this section/i)).toBeInTheDocument();
   });
 
   it("turns a validated podcast relationship into exact Episode Room, thread, and editor paths", () => {
