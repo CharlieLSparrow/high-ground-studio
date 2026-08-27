@@ -1478,6 +1478,13 @@ final class MobileCoachingRunwayClient: ObservableObject {
         clearAfterAuthorityFailure()
         status = normalizedOwnerAccountID == nil ? "Coaching not loaded" : "Coaching account changed"
         errorMessage = nil
+        // The deterministic shell intentionally settles several app-owned
+        // stores without a live Quipsly account. A late identity notification
+        // must rebuild that fixture instead of erasing the coach/client role
+        // after the scheduling screen is already visible.
+        if CaptureLaunchConfiguration.usesPreviewData {
+            loadPreview()
+        }
     }
 
     @discardableResult

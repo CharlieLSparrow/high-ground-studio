@@ -4668,7 +4668,64 @@ final class CaptureTodayClient: ObservableObject {
                 ),
                 reminder: nil
             )],
-            goals: [MobileCaptureTodayGoal(id: "preview-goal", title: "Leave the client with one clear next move", description: nil, status: "ACTIVE", targetAt: nil, progressPercent: 50, progressNote: "Session notes are captured.", updatedAt: ISO8601DateFormatter().string(from: now), roomId: "room-preview-coaching-ready", sessionTitle: "Coaching session", project: MobileCaptureTodayProject(id: "preview-high-ground", name: "High Ground Odyssey", slug: "preview-high-ground"), canEditTags: false, tagIds: ["preview-coaching", "preview-follow-through"], tagLabels: ["Coaching", "Follow-through"], sourceAnchor: MobileCaptureTodayTranscriptSourceAnchor(schema: "quipsly-transcript-derived-goal-v1", roomId: "room-preview-coaching-ready", transcriptJobId: "preview-job", segmentId: "preview-segment", startSeconds: 3.66, endSeconds: 4.84, providerTextSha256: String(repeating: "a", count: 64), providerSpeakerLabel: "Speaker", effectiveTextSnapshot: "Leave the client with one clear next move.", effectiveSpeakerLabelSnapshot: "Guest", acceptedCorrectionId: nil, recordingAssetId: "preview-recording-asset", playbackSourceId: "preview-playback-source"), lastMergedTranscriptEvidence: MobileCaptureTodayGoalTranscriptEvidence(receiptId: "preview-merge-receipt", goalCandidateId: "preview-goal-candidate", mergedAt: ISO8601DateFormatter().string(from: now), sourceAnchor: MobileCaptureTodayTranscriptSourceAnchor(schema: "quipsly-transcript-derived-goal-v1", roomId: "room-preview-coaching-ready", transcriptJobId: "preview-job", segmentId: "preview-evidence-segment", startSeconds: 8.4, endSeconds: 12.2, providerTextSha256: String(repeating: "b", count: 64), providerSpeakerLabel: "Speaker", effectiveTextSnapshot: "The client chose the next move in their own words.", effectiveSpeakerLabelSnapshot: "Coach", acceptedCorrectionId: nil, recordingAssetId: "preview-recording-asset", playbackSourceId: "preview-playback-source")))],
+            goals: [
+                MobileCaptureTodayGoal(
+                    id: "preview-goal",
+                    title: "Leave the client with one clear next move",
+                    description: nil,
+                    status: "ACTIVE",
+                    targetAt: nil,
+                    progressPercent: 50,
+                    progressNote: "Session notes are captured.",
+                    updatedAt: ISO8601DateFormatter().string(from: now),
+                    roomId: "room-preview-coaching-ready",
+                    sessionTitle: "Coaching session",
+                    project: MobileCaptureTodayProject(
+                        id: "preview-high-ground",
+                        name: "High Ground Odyssey",
+                        slug: "preview-high-ground"
+                    ),
+                    canEdit: true,
+                    canEditTags: false,
+                    tagIds: ["preview-coaching", "preview-follow-through"],
+                    tagLabels: ["Coaching", "Follow-through"],
+                    sourceAnchor: MobileCaptureTodayTranscriptSourceAnchor(
+                        schema: "quipsly-transcript-derived-goal-v1",
+                        roomId: "room-preview-coaching-ready",
+                        transcriptJobId: "preview-job",
+                        segmentId: "preview-segment",
+                        startSeconds: 3.66,
+                        endSeconds: 4.84,
+                        providerTextSha256: String(repeating: "a", count: 64),
+                        providerSpeakerLabel: "Speaker",
+                        effectiveTextSnapshot: "Leave the client with one clear next move.",
+                        effectiveSpeakerLabelSnapshot: "Guest",
+                        acceptedCorrectionId: nil,
+                        recordingAssetId: "preview-recording-asset",
+                        playbackSourceId: "preview-playback-source"
+                    ),
+                    lastMergedTranscriptEvidence: MobileCaptureTodayGoalTranscriptEvidence(
+                        receiptId: "preview-merge-receipt",
+                        goalCandidateId: "preview-goal-candidate",
+                        mergedAt: ISO8601DateFormatter().string(from: now),
+                        sourceAnchor: MobileCaptureTodayTranscriptSourceAnchor(
+                            schema: "quipsly-transcript-derived-goal-v1",
+                            roomId: "room-preview-coaching-ready",
+                            transcriptJobId: "preview-job",
+                            segmentId: "preview-evidence-segment",
+                            startSeconds: 8.4,
+                            endSeconds: 12.2,
+                            providerTextSha256: String(repeating: "b", count: 64),
+                            providerSpeakerLabel: "Speaker",
+                            effectiveTextSnapshot: "The client chose the next move in their own words.",
+                            effectiveSpeakerLabelSnapshot: "Coach",
+                            acceptedCorrectionId: nil,
+                            recordingAssetId: "preview-recording-asset",
+                            playbackSourceId: "preview-playback-source"
+                        )
+                    )
+                ),
+            ],
             focusBlocks: [MobileCaptureTodayFocusBlock(id: "preview-block", targetType: "task", targetId: "preview-task", title: "Proof-listen the coaching recap", targetStatus: "OPEN", startsAt: start, endsAt: end, timezone: TimeZone.current.identifier, status: "PLANNED", completedAt: nil, actualMinutes: nil, updatedAt: ISO8601DateFormatter().string(from: now))],
             weeklyReview: MobileCaptureWeeklyReview(
                 schema: "quipsly-weekly-review-v1",

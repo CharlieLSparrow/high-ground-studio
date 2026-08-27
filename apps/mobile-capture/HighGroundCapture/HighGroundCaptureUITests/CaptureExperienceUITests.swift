@@ -455,8 +455,13 @@ final class CaptureExperienceUITests: XCTestCase {
         coaching.tap()
 
         XCTAssertTrue(
-            app.staticTexts["Your coaching on this iPhone"].waitForExistence(timeout: 5),
-            "A client should see the ordinary coaching experience, not coach administration."
+            app.descendants(matching: .any)["CaptureCoachingClientWelcome"]
+                .waitForExistence(timeout: 5),
+            "A client should see their private coaching space, not coach administration."
+        )
+        XCTAssertFalse(
+            app.buttons["CaptureCoachingSetupButton"].exists,
+            "An established client must not be asked to set up a coaching practice."
         )
         let request = app.descendants(matching: .any)[
             "CaptureCoachingClientRequest_preview-booking-request"
@@ -1393,7 +1398,8 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue((noteDetails.value as? String)?.contains("Client-safe") == true)
         let boundary = app.descendants(matching: .any)["CaptureQuickEntryNotePolicyBoundary"].firstMatch
         XCTAssertTrue(boundary.exists)
-        XCTAssertTrue(boundary.label.contains("not sent"))
+        XCTAssertTrue(boundary.label.contains("Everyone in this Session"))
+        XCTAssertTrue(boundary.label.contains("available in client follow-up"))
     }
 
     func testTranscriptFollowThroughAppearsAsOrdinaryEditableSessionWork() {
@@ -3003,7 +3009,7 @@ final class CaptureExperienceUITests: XCTestCase {
 
     func testTodayGoalCheckInRecordsEvidenceWithoutImplyingCompletion() {
         let checkIn = app.buttons["CaptureTodayGoalCheckIn_preview-goal"]
-        reveal(checkIn)
+        reveal(checkIn, searchAboveFirst: false)
         XCTAssertTrue(checkIn.isHittable)
         checkIn.tap()
 
