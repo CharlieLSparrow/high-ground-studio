@@ -528,28 +528,6 @@ private struct CaptureTodayView: View {
                 }
             }
         }
-        .toolbar {
-            ToolbarItemGroup(placement: .topBarTrailing) {
-                Button {
-                    showsNewSession = true
-                } label: {
-                    Image(systemName: "plus")
-                }
-                .disabled(model.isSessionContextLocked)
-                .accessibilityLabel("New session")
-
-                Button {
-                    Task { await model.load() }
-                } label: {
-                    if model.isRefreshing {
-                        ProgressView()
-                    } else {
-                        Image(systemName: "arrow.clockwise")
-                    }
-                }
-                .accessibilityLabel("Refresh sessions")
-            }
-        }
         .accessibilityIdentifier("CaptureTodayView")
     }
 
@@ -1338,7 +1316,7 @@ private struct CaptureWorkView: View {
                 header
 
                 if client.isUsingProtectedCache {
-                    Label("Protected offline snapshot · reconnect before changing canonical work", systemImage: "lock.iphone")
+                    Label("Offline · you can still capture new work; reconnect to edit existing items", systemImage: "wifi.slash")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(.orange)
                         .padding(.horizontal, 12)
@@ -1596,7 +1574,7 @@ private struct CaptureWorkView: View {
                 Button {
                     Task { await client.retryDocumentNoteEdits() }
                 } label: {
-                    Label("Retry protected edits", systemImage: "arrow.clockwise")
+                    Label("Try syncing again", systemImage: "arrow.clockwise")
                         .frame(minHeight: 44)
                 }
                 .buttonStyle(.bordered)
@@ -6888,6 +6866,8 @@ private struct CapturePersonalVoiceNoteTranscriptCard: View {
 private struct CaptureVoiceWritingEditor: View {
     @ObservedObject private var writingStore = VoiceWritingDraftStore.shared
     @ObservedObject private var writingSync = VoiceWritingDraftSyncClient.shared
+    @StateObject private var recordingLibrary = LocalRecordingLibrary.shared
+    @StateObject private var playback = LocalRecordingPlaybackController()
     @Environment(\.dismiss) private var dismiss
     @FocusState private var bodyIsFocused: Bool
 
@@ -6920,6 +6900,10 @@ private struct CaptureVoiceWritingEditor: View {
                     .font(.title2.weight(.bold))
                     .textInputAutocapitalization(.sentences)
                     .accessibilityIdentifier("CaptureVoiceWritingTitle")
+
+                if let recording {
+                    voiceSourcePlayer(recording)
+                }
 
                 if #available(iOS 18.0, *) {
                     CaptureStructuredWritingBody(
@@ -6992,14 +6976,30 @@ private struct CaptureVoiceWritingEditor: View {
 
                 if showsTranscript {
                     ForEach(Array(timedTranscript.enumerated()), id: \.offset) { _, segment in
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(timestamp(segment.startSeconds))
-                                .font(.caption.monospacedDigit().weight(.semibold))
-                                .foregroundStyle(CapturePalette.accent)
-                            Text(segment.text)
-                                .font(.subheadline)
-                                .textSelection(.enabled)
+                        Button {
+                            play(segment)
+                        } label: {
+                            HStack(alignment: .top, spacing: 10) {
+                                Image(systemName: isPlaying(segment) ? "speaker.wave.2.fill" : "play.circle")
+                                    .foregroundStyle(CapturePalette.accent)
+                                    .frame(width: 24)
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(timestamp(segment.startSeconds))
+                                        .font(.caption.monospacedDigit().weight(.semibold))
+                                        .foregroundStyle(CapturePalette.accent)
+                                    Text(segment.text)
+                                        .font(.subheadline)
+                                        .foregroundStyle(.primary)
+                                        .multilineTextAlignment(.leading)
+                                }
+                                Spacer(minLength: 0)
+                            }
+                            .contentShape(Rectangle())
                         }
+                        .buttonStyle(.plain)
+                        .disabled(recording == nil)
+                        .accessibilityLabel("Play transcript at \(timestamp(segment.startSeconds)): \(segment.text)")
+                        .accessibilityIdentifier("CaptureVoiceWritingTranscriptSegment_\(Int(segment.startSeconds * 1000))")
                         .padding(.vertical, 3)
                     }
                 }
@@ -7045,6 +7045,7 @@ private struct CaptureVoiceWritingEditor: View {
             bodyText = refreshed.body
         }
         .onDisappear {
+            playback.stop()
             saveTask?.cancel()
             saveImmediately()
         }
@@ -7069,6 +7070,65 @@ private struct CaptureVoiceWritingEditor: View {
     private var shareText: String {
         let cleanTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
         return cleanTitle.isEmpty ? bodyText : "\(cleanTitle)\n\n\(bodyText)"
+    }
+
+    private var recording: LocalRecording? {
+        recordingLibrary.recording(id: recordingID)
+    }
+
+    private func voiceSourcePlayer(_ recording: LocalRecording) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 12) {
+                Button {
+                    playback.toggle(recording: recording, library: recordingLibrary)
+                } label: {
+                    Image(systemName: playback.playingRecordingID == recording.id ? "pause.fill" : "play.fill")
+                        .font(.headline)
+                        .frame(width: 44, height: 44)
+                        .background(CapturePalette.accent.opacity(0.12), in: Circle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(playback.playingRecordingID == recording.id ? "Pause original audio" : "Play original audio")
+                .accessibilityIdentifier("CaptureVoiceWritingSourcePlay")
+
+                VStack(alignment: .leading, spacing: 5) {
+                    Text("Original audio")
+                        .font(.subheadline.weight(.semibold))
+                    ProgressView(
+                        value: min(max(playback.currentTime, 0), max(recording.durationSeconds, 0.01)),
+                        total: max(recording.durationSeconds, 0.01)
+                    )
+                    Text("\(timestamp(playback.currentTime)) of \(recording.durationSeconds.captureDurationLabel)")
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            if let message = playback.errorMessage?.nonempty {
+                Label(message, systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+            }
+        }
+        .padding(.vertical, 4)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("CaptureVoiceWritingSourcePlayer")
+    }
+
+    private func play(_ segment: OnDeviceTranscriptSegment) {
+        guard let recording else { return }
+        playback.play(
+            recording: recording,
+            library: recordingLibrary,
+            from: segment.startSeconds,
+            until: segment.endSeconds
+        )
+    }
+
+    private func isPlaying(_ segment: OnDeviceTranscriptSegment) -> Bool {
+        playback.playingRecordingID == recordingID
+            && playback.currentTime >= segment.startSeconds
+            && playback.currentTime < segment.endSeconds
     }
 
     private func scheduleSave() {
