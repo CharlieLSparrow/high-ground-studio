@@ -37,6 +37,7 @@ import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 import { sessionInvitationEmailReadiness } from "@/lib/server/session-invitation-email";
 import { ensureInvitedStudioUserByEmail } from "@/lib/server/studio-user-identity";
 import { resolveStudioProjectAccess } from "@/lib/server/studio-project-access";
+import { recordQuipslyProductOutcome } from "@/lib/server/product-event";
 import { quipslyCoachCapabilityAccess } from "@/lib/server/subscription-entitlements";
 import {
   assertCoachingScheduleAvailable,
@@ -1468,7 +1469,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const result = await prisma.$transaction(async (tx: any) => {
+    const transactionResult = await prisma.$transaction(async (tx: any) => {
       const coachUser = await ensureInvitedStudioUserByEmail({
         email: coachEmail,
         name: coachName,
@@ -1491,6 +1492,10 @@ export async function POST(request: Request) {
 
       const baseSlug = slugify(coachName) || slugify(coachEmail.split("@")[0]) || "coach";
       const profileSlug = `${baseSlug}-${coachUser.id.slice(-6)}`;
+      const existingProfile = await tx.coachProfile.findUnique({
+        where: { userId: coachUser.id },
+        select: { id: true },
+      });
       const profile = await tx.coachProfile.upsert({
         where: { userId: coachUser.id },
         update: {
@@ -1592,12 +1597,28 @@ export async function POST(request: Request) {
         coachProfileId: profile.id,
         offeringId: offering.id,
         availabilityWindowId: availability.id,
+        profileCreated: !existingProfile,
         role: "COACH",
         nextAction: priceCents
           ? "Coach setup is ready. Create a Session; payment remains separate until you send a Stripe Checkout link."
           : "Coach setup is ready. Create a Session and invite a client. You can add paid booking later if you need it.",
       };
     });
+
+    if (transactionResult.profileCreated) {
+      await recordQuipslyProductOutcome({
+        prisma,
+        userId: transactionResult.coachUserId,
+        eventName: "coach_profile_created",
+        parameters: {
+          surface: "coaching_home",
+          workflow: "coaching",
+          participant_role: "coach",
+          result: "success",
+        },
+      });
+    }
+    const { profileCreated: _profileCreated, ...result } = transactionResult;
 
     return NextResponse.json({ ok: true, action, result });
   }
@@ -1694,6 +1715,17 @@ export async function POST(request: Request) {
       });
 
       return { id: profile.id, slug: profile.slug };
+    });
+    await recordQuipslyProductOutcome({
+      prisma,
+      userId: session.user.id,
+      eventName: "coach_profile_created",
+      parameters: {
+        surface: "coaching_home",
+        workflow: "coaching",
+        participant_role: "coach",
+        result: "success",
+      },
     });
   }
 

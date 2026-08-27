@@ -15,6 +15,7 @@ import {
   sessionInvitationJoinUrl,
 } from "@/lib/server/session-invitation-email";
 import { normalizeEmail } from "@/lib/server/studio-user-identity";
+import { recordQuipslyProductOutcome } from "@/lib/server/product-event";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -439,6 +440,23 @@ export async function POST(
               errorMessage: deliveryResult.message,
             },
       });
+  }
+  if (deliveryReceipt?.status === "SENT") {
+    await recordQuipslyProductOutcome({
+      prisma: access.prisma,
+      userId: access.actor.id,
+      eventName: "invitation_sent",
+      parameters: {
+        surface: "session_workspace",
+        workflow: String(access.room.purpose).toUpperCase() === "COACHING"
+          ? "coaching"
+          : String(access.room.purpose).toUpperCase() === "PODCAST"
+            ? "podcast"
+            : "unknown",
+        method: "email",
+        result: "success",
+      },
+    });
   }
   return privateJson(
     {

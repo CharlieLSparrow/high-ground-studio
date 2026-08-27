@@ -5,6 +5,7 @@ import { createHmac, randomBytes } from "node:crypto";
 import { Prisma } from "@prisma/client";
 
 import { getPrismaClient } from "@/lib/prisma";
+import { recordQuipslyProductOutcome } from "@/lib/server/product-event";
 import { normalizeEmail } from "@/lib/server/studio-user-identity";
 
 const TOKEN_PATTERN = /^qsinv_[A-Za-z0-9_-]{32,120}$/;
@@ -211,7 +212,7 @@ export async function acceptSessionInvitation(input: {
     throw new SessionInvitationError("SESSION_NOT_JOINABLE", "This Session is no longer open for new participants.", 409);
   }
 
-  return prisma.$transaction(async (tx) => {
+  const accepted = await prisma.$transaction(async (tx) => {
     const claimed = await tx.callRoomInvitation.updateMany({
       where: {
         id: invite.id,
@@ -291,4 +292,22 @@ export async function acceptSessionInvitation(input: {
       participantCreated: !existing,
     };
   }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+  await recordQuipslyProductOutcome({
+    prisma,
+    userId: input.actor.id,
+    eventName: "invitation_accepted",
+    parameters: {
+      workflow: String(invite.room.purpose).toUpperCase() === "COACHING"
+        ? "coaching"
+        : String(invite.room.purpose).toUpperCase() === "PODCAST"
+          ? "podcast"
+          : "unknown",
+      participant_role: String(accepted.participantRole).toUpperCase() === "CLIENT"
+        ? "client"
+        : "guest",
+      method: "link",
+      result: "success",
+    },
+  });
+  return accepted;
 }

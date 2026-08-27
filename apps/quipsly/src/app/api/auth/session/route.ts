@@ -10,6 +10,10 @@ import {
   isDatabaseSchemaUnavailableError,
   isDatabaseUnavailableError,
 } from '@/lib/server/service-availability';
+import {
+  recordQuipslyProductOutcomeForUser,
+  recordQuipslyProductOutcomeOnce,
+} from '@/lib/server/product-event';
 
 const LEGACY_AUTH_COOKIE_NAMES = [
   "authjs.session-token",
@@ -152,6 +156,25 @@ export async function POST(req: Request) {
       sessionCookie,
       quipslySessionCookieOptions(req, expiresIn / 1000),
     );
+
+    const provider = decodedToken.firebase?.sign_in_provider || "";
+    const method = provider === "google.com"
+      ? "google"
+      : provider === "password"
+        ? "email"
+        : provider === "apple.com"
+          ? "apple"
+          : "unknown";
+    await recordQuipslyProductOutcomeOnce({
+      userId: identity.id,
+      eventName: "sign_up",
+      parameters: { surface: "sign_in", method, result: "success" },
+    });
+    await recordQuipslyProductOutcomeForUser({
+      userId: identity.id,
+      eventName: "login_completed",
+      parameters: { surface: "sign_in", method, result: "success" },
+    });
 
     return NextResponse.json({
       success: true,

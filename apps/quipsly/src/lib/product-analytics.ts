@@ -1,9 +1,12 @@
 export const QUIPSLY_PRODUCT_EVENTS = [
   "login_started",
+  "login_completed",
   "sign_up",
   "coach_profile_created",
   "booking_link_shared",
   "booking_link_opened",
+  "booking_requested",
+  "invitation_sent",
   "invitation_accepted",
   "preflight_completed",
   "call_joined",

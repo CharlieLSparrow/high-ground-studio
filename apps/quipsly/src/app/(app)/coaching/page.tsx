@@ -24,6 +24,7 @@ import {
   coachingSlotIssue,
   deriveCoachingBookableSlots,
 } from "@/lib/coaching-bookable-slots";
+import { dispatchQuipslyProductEvent } from "@/lib/product-analytics";
 
 type Person = {
   id: string;
@@ -1313,6 +1314,13 @@ export default function CoachingPage() {
     }));
     try {
       await navigator.clipboard.writeText(url);
+      dispatchQuipslyProductEvent("booking_link_shared", {
+        surface: "coaching_home",
+        workflow: "coaching",
+        participant_role: "coach",
+        method: "link",
+        result: "success",
+      });
       setLinkCopyStatusByBooking((current) => ({
         ...current,
         [bookingId]:
@@ -1383,6 +1391,13 @@ export default function CoachingPage() {
         title: input.title,
         text: `Join your private Quipsly coaching Session in a browser on your phone, tablet, or desktop, or choose Quipsly Capture on iPhone after sign-in. Use ${input.clientEmail || "the invited email"}.`,
         url,
+      });
+      dispatchQuipslyProductEvent("booking_link_shared", {
+        surface: "coaching_home",
+        workflow: "coaching",
+        participant_role: "coach",
+        method: "link",
+        result: "success",
       });
       setLinkCopyStatusByBooking((current) => ({
         ...current,

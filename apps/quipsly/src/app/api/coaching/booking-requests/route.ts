@@ -10,6 +10,7 @@ import {
 import { parseCoachingScheduleDate } from "@/lib/server/coaching-schedule-time";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 import { acquirePrismaAdvisoryTransactionLock } from "@/lib/server/prisma-advisory-lock";
+import { recordQuipslyProductOutcome } from "@/lib/server/product-event";
 
 export const runtime = "nodejs";
 
@@ -234,6 +235,20 @@ export async function POST(request: Request) {
       });
       return { hold, repeated: false };
     });
+
+    if (!result.repeated) {
+      await recordQuipslyProductOutcome({
+        prisma,
+        userId: session.user.id,
+        eventName: "booking_requested",
+        parameters: {
+          surface: "booking_page",
+          workflow: "coaching",
+          participant_role: "client",
+          result: "success",
+        },
+      });
+    }
 
     return NextResponse.json(
       {

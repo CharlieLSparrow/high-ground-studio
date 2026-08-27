@@ -79,6 +79,7 @@ function prismaFor(input?: { existing?: any; activeCount?: number; offering?: an
       create: jest.fn().mockResolvedValue(hold),
       update: jest.fn().mockResolvedValue({}),
     },
+    userEvent: { create: jest.fn().mockResolvedValue({ id: "event-1" }) },
   };
   const prisma = {
     ...tx,
@@ -138,6 +139,18 @@ describe("client coaching booking requests", () => {
         }),
       }),
     });
+    expect(tx.userEvent.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          userId: actor.id,
+          eventName: "Product: booking_requested",
+          payloadJson: expect.objectContaining({
+            source: "server-outcome",
+            parameters: expect.objectContaining({ workflow: "coaching" }),
+          }),
+        }),
+      }),
+    );
     expect(assertCoachingScheduleAvailable).toHaveBeenCalledWith(
       expect.objectContaining({
         coachUserId: offering.coachProfile.userId,

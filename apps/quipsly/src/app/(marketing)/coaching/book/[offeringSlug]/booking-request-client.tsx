@@ -1,9 +1,10 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { CalendarClock, CheckCircle2, Loader2 } from "lucide-react";
 import type { QuipslyPublicCoachingOffering } from "@high-ground/quipsly-domain/coaching-public";
+import { dispatchQuipslyProductEvent } from "@/lib/product-analytics";
 
 export function BookingRequestClient({
   offering,
@@ -33,6 +34,16 @@ export function BookingRequestClient({
       null,
     [offering.bookableSlots, selectedInstant],
   );
+
+  useEffect(() => {
+    dispatchQuipslyProductEvent("booking_link_opened", {
+      surface: "booking_page",
+      workflow: "coaching",
+      participant_role: "client",
+      method: "link",
+      result: "success",
+    });
+  }, [offering.slug]);
 
   async function requestTime() {
     if (!selectedInstant || isSubmitting) return;

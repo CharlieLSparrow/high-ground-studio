@@ -15,6 +15,7 @@ import {
   ensureInvitedStudioUserByEmail,
   normalizeEmail,
 } from "@/lib/server/studio-user-identity";
+import { recordQuipslyProductOutcome } from "@/lib/server/product-event";
 
 const INVITABLE_ROLES = ["CLIENT", "COACH", "SUPPORT", "OBSERVER"] as const;
 const INVITATION_LIFETIME_MS = 7 * 24 * 60 * 60 * 1_000;
@@ -765,6 +766,17 @@ export async function acceptCoachingEngagementInvitation(input: {
     });
     return { member, receipt };
   }, { isolationLevel: "Serializable" });
+  await recordQuipslyProductOutcome({
+    prisma,
+    userId: input.actor.id,
+    eventName: "invitation_accepted",
+    parameters: {
+      workflow: "coaching",
+      participant_role: invitation.role === "CLIENT" ? "client" : "guest",
+      method: "link",
+      result: "success",
+    },
+  });
   const current = await prisma.coachingEngagementMember.findUnique({
     where: { id: result.member.id },
     include: { user: { select: { name: true, primaryEmail: true } } },
