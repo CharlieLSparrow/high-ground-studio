@@ -72,7 +72,14 @@ describe("assistant human-review truth", () => {
 
     expect(screen.getByRole("button", { name: "Apply persisted edit" })).toBeInTheDocument();
     expect(screen.queryByText("Save to QuipLore")).not.toBeInTheDocument();
-    expect(screen.getByText(/authorized server receipt commits/i)).toBeInTheDocument();
+    expect(screen.getByText(/one clear action and can be undone/i)).toBeInTheDocument();
+  });
+
+  it("does not add a separate review click before a Story Bible save", () => {
+    renderSidebar([action("PROPOSE_ENTITY", "proposed")]);
+
+    expect(screen.getByRole("button", { name: "Add to Story Bible" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Review proposal" })).not.toBeInTheDocument();
   });
 
   it("keeps a reviewed entity separate from its explicit canonical commit", () => {
@@ -103,10 +110,28 @@ describe("assistant human-review truth", () => {
     };
     renderSidebar([governed]);
 
-    expect(screen.getByText("Governed receipt · review required")).toBeInTheDocument();
+    expect(screen.getByText("Details · applies only when chosen")).toBeInTheDocument();
     expect(screen.getByText("quipsly.writing.rewrite.propose")).toBeInTheDocument();
     expect(screen.getByText(/run 87654321 · action 12345678 · proposed/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Apply persisted edit" })).toBeInTheDocument();
+  });
+
+  it("shows read-only work as automatic instead of an approval proposal", () => {
+    const readOnly = action("find-examples", "running");
+    readOnly.governance = {
+      actionId: "governed-action-read",
+      runId: "governed-run-read",
+      capabilityId: "quipsly.writing.examples.find",
+      decisionPolicy: "READ_ONLY",
+      decisionStatus: "NOT_REQUIRED",
+      status: "EXECUTING",
+    };
+    renderSidebar([readOnly]);
+
+    expect(screen.getByText(/Read-Only Search/i)).toBeInTheDocument();
+    expect(screen.getByText("Details · no approval needed")).toBeInTheDocument();
+    expect(screen.getByText("Finding the useful result…")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /approve|execute search/i })).not.toBeInTheDocument();
   });
 
   it("keeps research results attached to an exact continuation route", () => {

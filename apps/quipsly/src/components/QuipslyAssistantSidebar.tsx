@@ -14,14 +14,14 @@ function uniqueTags(blocks: AssistantBlockContext[]) {
 }
 
 function summarizeRisk(riskLevel: AssistantAction["riskLevel"]) {
-  if (riskLevel === "high") return "Needs careful review";
-  if (riskLevel === "medium") return "Review before applying";
-  return "Safe proposal";
+  if (riskLevel === "high") return "Changes saved work";
+  if (riskLevel === "medium") return "Creates saved work";
+  return "No saved-work change";
 }
 
 function actionStatusClass(status: AssistantActionStatus) {
-  if (["approved", "applied", "committed"].includes(status)) return "border-emerald-200 bg-emerald-50 text-emerald-800";
-  if (["applying", "committing"].includes(status)) return "border-sky-200 bg-sky-50 text-sky-800";
+  if (["completed", "approved", "applied", "committed"].includes(status)) return "border-emerald-200 bg-emerald-50 text-emerald-800";
+  if (["ready", "running", "applying", "committing"].includes(status)) return "border-sky-200 bg-sky-50 text-sky-800";
   if (status === "rejected") return "border-slate-200 bg-slate-50 text-slate-600";
   if (status === "undone") return "border-amber-200 bg-amber-50 text-amber-800";
   return "border-sky-200 bg-sky-50 text-sky-800";
@@ -151,6 +151,13 @@ export function QuipslyAssistantSidebar({
     "Suggest structure cleanup for this section.",
     "Prepare a research packet preview.",
   ], []);
+  const visibleActions = useMemo(
+    () => actions.filter((action) => !(
+      action.status === "completed"
+      && action.governance?.decisionPolicy === "READ_ONLY"
+    )),
+    [actions],
+  );
 
 
 
@@ -204,8 +211,6 @@ export function QuipslyAssistantSidebar({
       window.setTimeout(() => setExportStatus(null), 4000);
     }
   };
-
-  const lastApproved = actions.find((action) => action.status === "approved");
 
   return (
     <>
@@ -264,7 +269,7 @@ export function QuipslyAssistantSidebar({
                     </div>
                     <h2 className="mt-1 font-serif text-2xl font-black text-[#342618]">Talk to your Quipsly</h2>
                     <p className="mt-1 text-xs leading-5 text-[#6b5b45]">
-                      It gathers, drafts, organizes, compares, and proposes. Every action is inspectable and reversible.
+                      It gathers, drafts, organizes, and compares. Results appear automatically; saved changes are obvious and undoable.
                     </p>
                   </div>
                   <button
@@ -362,36 +367,21 @@ export function QuipslyAssistantSidebar({
                   </section>
                 ) : null}
 
+                {visibleActions.length > 0 ? (
                 <section className="rounded-2xl border border-[#e8dcc4] bg-white p-4 shadow-sm">
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-2 text-sm font-black text-[#342618]">
-                      <ShieldCheck className="h-4 w-4 text-emerald-700" />
-                      Proposed actions
-                    </div>
-                    {lastApproved ? (
-                      <button
-                        type="button"
-                        onClick={() => undoAction(lastApproved)}
-                        className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-bold text-amber-900 hover:bg-amber-100"
-                      >
-                        Undo last approval
-                      </button>
-                    ) : null}
+                  <div className="flex items-center gap-2 text-sm font-black text-[#342618]">
+                    <ShieldCheck className="h-4 w-4 text-emerald-700" />
+                    Assistant work
                   </div>
                   <p className="mt-1 text-xs leading-5 text-[#8a7356]">
-                    Drafts and rewrites change the manuscript only after an authorized server receipt commits. Entity proposals remain proposals until you explicitly commit them to the canonical Story Bible.
+                    Searches and analysis run immediately. Anything that changes saved work has one clear action and can be undone.
                   </p>
                   <div className="mt-3 space-y-3">
-                    {actions.length === 0 ? (
-                      <div className="rounded-xl border border-dashed border-[#d8c39f] bg-[#fffaf1] p-4 text-xs leading-5 text-[#8a7356]">
-                        No proposed actions yet. Ask Quipsly what to notice or organize.
-                      </div>
-                    ) : (
-                      actions.map((action) => (
+                    {visibleActions.map((action) => (
                         <div
                           key={action.id}
                           className={`rounded-xl border p-3 transition-all ${
-                            action.status === "approved"
+                            action.status === "completed" || action.status === "approved"
                               ? action.kind === "find-examples" || action.kind === "search-quotes"
                                 ? "border-sky-200 bg-sky-50/30"
                                 : "border-emerald-200 bg-emerald-50/30"
@@ -414,9 +404,17 @@ export function QuipslyAssistantSidebar({
                                   <PackageCheck className="h-3.5 w-3.5" />
                                   Output plan preview (No publishing)
                                 </div>
+                              ) : action.governance?.decisionPolicy === "READ_ONLY" ? (
+                                <div className="mt-1 text-[11px] font-bold uppercase tracking-[0.12em] text-sky-700">
+                                  Analysis · runs automatically
+                                </div>
+                              ) : action.governance?.decisionPolicy === "USER_INITIATED" ? (
+                                <div className="mt-1 text-[11px] font-bold uppercase tracking-[0.12em] text-sky-700">
+                                  Navigation · opens when chosen
+                                </div>
                               ) : (
                                 <div className="mt-1 text-[11px] font-bold uppercase tracking-[0.12em] text-amber-700">
-                                  Proposed Action: {action.kind} ({summarizeRisk(action.riskLevel)})
+                                  Suggested change · {summarizeRisk(action.riskLevel)}
                                 </div>
                               )}
                             </div>
@@ -432,7 +430,7 @@ export function QuipslyAssistantSidebar({
                             <details className="mt-2 rounded-lg border border-sky-200 bg-sky-50/60 px-2 py-1.5 text-[10px] leading-4 text-sky-950">
                               <summary className="flex cursor-pointer list-none items-center gap-1 font-bold uppercase tracking-wide">
                                 <ShieldCheck className="h-3.5 w-3.5" aria-hidden="true" />
-                                Governed receipt · {action.governance.decisionPolicy === "EXPLICIT_APPROVAL" ? "review required" : "bounded action"}
+                                Details · {action.governance.decisionPolicy === "EXPLICIT_APPROVAL" ? "applies only when chosen" : "no approval needed"}
                               </summary>
                               <p className="mt-1 break-all font-mono">{action.governance.capabilityId}</p>
                               <p className="mt-1">Run {action.governance.runId?.slice(-8) || "pending"} · action {action.governance.actionId.slice(-8)} · {action.governance.status.toLowerCase().replaceAll("_", " ")}</p>
@@ -514,7 +512,9 @@ export function QuipslyAssistantSidebar({
                             <div className="mt-3 flex gap-2">
                               <button
                                 type="button"
-                                onClick={() => approveAction(action)}
+                                onClick={() => action.kind === "PROPOSE_ENTITY" || action.kind === "PROPOSE_ENTITY_UPDATE"
+                                  ? saveAction(action)
+                                  : approveAction(action)}
                                 className={`flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-bold text-white ${
                                   action.kind === "find-examples" || action.kind === "search-quotes"
                                     ? "bg-sky-700 hover:bg-sky-800"
@@ -524,15 +524,13 @@ export function QuipslyAssistantSidebar({
                                 }`}
                               >
                                 <Check className="h-3.5 w-3.5" />
-                                {action.kind === "find-examples" || action.kind === "search-quotes" 
-                                  ? "Execute Search" 
-                                  : action.kind === "PROPOSE_DRAFT" || action.kind === "PROPOSE_REWRITE" || action.kind === "PROPOSE_CONTINUITY_FIX"
+                                {action.kind === "PROPOSE_DRAFT" || action.kind === "PROPOSE_REWRITE" || action.kind === "PROPOSE_CONTINUITY_FIX"
                                     ? "Apply persisted edit"
-                                    : action.kind === "CHECK_CONTINUITY"
-                                      ? "Acknowledge"
-                                      : action.kind === "PROPOSE_ENTITY" || action.kind === "PROPOSE_ENTITY_UPDATE"
-                                        ? "Review proposal"
-                                      : "Approve"}
+                                    : action.kind === "PROPOSE_ENTITY"
+                                      ? "Add to Story Bible"
+                                      : action.kind === "PROPOSE_ENTITY_UPDATE"
+                                        ? "Apply Story Bible update"
+                                        : "Show result"}
                               </button>
                               <button
                                 type="button"
@@ -540,9 +538,25 @@ export function QuipslyAssistantSidebar({
                                 className="flex items-center gap-1 rounded-lg border border-[#d9c7a5] bg-white px-3 py-1.5 text-xs font-bold text-[#6b5b45] hover:bg-[#f8f1e3]"
                               >
                                 <X className="h-3.5 w-3.5" />
-                                {action.kind === "find-examples" || action.kind === "search-quotes" ? "Dismiss" : "Reject"}
+                                Dismiss
                               </button>
                             </div>
+                          ) : action.status === "ready" && action.governance?.decisionPolicy === "USER_INITIATED" ? (
+                            <button
+                              type="button"
+                              onClick={() => approveAction(action)}
+                              className="mt-3 flex items-center gap-1 rounded-lg bg-sky-700 px-3 py-1.5 text-xs font-bold text-white hover:bg-sky-800"
+                            >
+                              <ChevronRight className="h-3.5 w-3.5" />
+                              Open
+                            </button>
+                          ) : action.status === "ready" || action.status === "running" ? (
+                            <div className="mt-3 flex items-center gap-2 text-xs font-bold text-sky-800" role="status">
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              Finding the useful result…
+                            </div>
+                          ) : action.status === "completed" ? (
+                            <p className="mt-3 text-xs font-bold text-emerald-800">Result ready · no saved work changed.</p>
                           ) : action.status === "approved" ? (
                             <div className="mt-3 flex gap-2">
                               {action.kind === "PROPOSE_ENTITY" || action.kind === "PROPOSE_ENTITY_UPDATE" ? (
@@ -598,19 +612,19 @@ export function QuipslyAssistantSidebar({
                             <p className="mt-3 text-xs font-bold text-amber-800">Legacy assistant reference · not a canonical Story Bible entity.</p>
                           ) : null}
                         </div>
-                      ))
-                    )}
+                      ))}
                   </div>
                 </section>
+                ) : null}
 
                 {previews.length > 0 ? (
                   <section className="rounded-2xl border border-[#e8dcc4] bg-white p-4 shadow-sm">
                     <div className="flex items-center gap-2 text-sm font-black text-[#342618]">
                       <Sparkles className="h-4 w-4 text-[#a36f2e]" />
-                      Local previews
+                      Results
                     </div>
                     <p className="mt-1 text-xs leading-5 text-[#8a7356]">
-                      These are generated from loaded browser state. They are safe to inspect and are not persisted.
+                      Read-only results are shown as soon as they are ready. Saved writing changes only through a visible action above.
                     </p>
                     <div className="mt-3 space-y-3">
                       {previews.map((preview) => {
@@ -622,7 +636,7 @@ export function QuipslyAssistantSidebar({
                               <div>
                                 <div className="text-sm font-bold text-[#342618]">{preview.title}</div>
                                 <div className={`mt-1 text-[11px] font-bold uppercase tracking-[0.12em] ${isResearch ? 'text-sky-700' : 'text-[#a36f2e]'}`}>
-                                  {isResearch ? "Research Result" : isEntityProposal ? "Reviewed Entity Proposal" : "Reviewed Local Preview"} / {preview.kind}
+                                  {isResearch ? "Research result" : isEntityProposal ? "Story Bible suggestion" : "Read-only result"} / {preview.kind}
                                 </div>
                               </div>
                             </div>
@@ -633,11 +647,11 @@ export function QuipslyAssistantSidebar({
                                 </span>
                               ) : isEntityProposal ? (
                                 <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-800 border border-amber-200">
-                                  Reviewed proposal · not committed to Story Bible
+                                  Suggestion only · Story Bible unchanged
                                 </span>
                               ) : (
                                 <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-800 border border-amber-200 animate-pulse">
-                                  Reviewed browser preview · no manuscript write
+                                  Result only · manuscript unchanged
                                 </span>
                               )}
                             </div>
@@ -674,21 +688,23 @@ export function QuipslyAssistantSidebar({
                   </section>
                 ) : null}
 
-                <section className="rounded-2xl border border-[#e8dcc4] bg-white p-4 shadow-sm">
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <div className="flex items-center gap-2 text-sm font-black text-[#342618]">
-                        <Activity className="h-4 w-4 text-[#a36f2e]" />
-                        Action Ledger (Audit Trail)
-                      </div>
-                      <p className="mt-1 text-xs leading-5 text-[#8a7356]">
-                        Chronological record of approvals, rejections, and undos.
-                      </p>
-                      <p className="mt-1 max-w-64 text-[11px] leading-4 text-sky-800">
-                        AI research indexing sends eligible writing blocks and quotes from this Nest to the configured embedding provider only when you press Refresh. A failed refresh keeps the previous index.
-                      </p>
-                    </div>
-                    <div className="flex gap-2">
+                <details className="rounded-2xl border border-[#e8dcc4] bg-white p-4 shadow-sm">
+                  <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-sm font-black text-[#342618]">
+                    <span className="flex items-center gap-2">
+                      <Activity className="h-4 w-4 text-[#a36f2e]" />
+                      Activity details
+                    </span>
+                    <span className="rounded-full bg-[#fff3dd] px-2 py-0.5 text-[10px] text-[#8a5b1f]">
+                      {recentChanges.length}
+                    </span>
+                  </summary>
+                  <p className="mt-3 text-xs leading-5 text-[#8a7356]">
+                    Optional transparency receipts for results, saved changes, dismissals, and undos.
+                  </p>
+                  <p className="mt-1 text-[11px] leading-4 text-sky-800">
+                    Refreshing the research index sends eligible writing blocks and quotes from this Nest to the configured embedding provider. A failed refresh keeps the previous index.
+                  </p>
+                  <div className="mt-3 flex flex-wrap gap-2">
                       <button
                         type="button"
                         onClick={handleSyncEmbeddings}
@@ -706,7 +722,6 @@ export function QuipslyAssistantSidebar({
                         <Download className="h-3 w-3" />
                         Export Diagnostic Ledger
                       </button>
-                    </div>
                   </div>
                   {exportStatus ? (
                     <div className={`mt-2 rounded-lg border px-3 py-2 text-xs font-bold ${exportStatusIsError ? "border-rose-200 bg-rose-50 text-rose-800" : "border-emerald-200 bg-emerald-50 text-emerald-800"}`} role="status">
@@ -716,7 +731,7 @@ export function QuipslyAssistantSidebar({
                   <div className="mt-3 space-y-2">
                     {recentChanges.length === 0 ? (
                       <div className="rounded-xl border border-dashed border-[#d8c39f] bg-[#fffaf1] p-3 text-xs leading-5 text-[#8a7356]">
-                        No assistant approvals or previews yet.
+                        No assistant activity yet.
                       </div>
                     ) : recentChanges.map((change) => (
                       <div key={change.id} className={`rounded-xl border px-3 py-2 text-xs ${actionStatusClass(change.status)}`}>
@@ -732,7 +747,7 @@ export function QuipslyAssistantSidebar({
                       </div>
                     ))}
                   </div>
-                </section>
+                </details>
 
                 <section className="rounded-2xl border border-[#e8dcc4] bg-[#3d3122] p-4 text-white shadow-sm">
                   <div className="text-sm font-black">Help keep the flock fed</div>

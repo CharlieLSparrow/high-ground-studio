@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { DocumentBoundary, ViewDefinition } from "@/app/(app)/create/types";
 import {
   applyAssistantDocumentEditAction,
   commitAssistantEntityAction,
+  recordAssistantNonMutatingResultAction,
   recordAssistantProposalDecisionAction,
   searchExamplesAction,
   searchQuotesAction,
@@ -83,13 +84,14 @@ export function useQuipslyAssistant({
 }) {
   const [sessionId, setSessionId] = useState<string | undefined>(undefined);
   const [message, setMessage] = useState("What should I notice in this section?");
-  const [assistantMessage, setAssistantMessage] = useState("Ask your Quipsly to find related material, suggest structure cleanup, summarize a block, or prepare a research packet. It will propose changes, not secretly make them.");
+  const [assistantMessage, setAssistantMessage] = useState("Ask Quipsly to find related material, summarize a block, check continuity, or help shape the work. Read-only results appear immediately; edits always have a clear Apply action and undo.");
   const [suggestions, setSuggestions] = useState<AssistantSuggestion[]>([]);
   const [actions, setActions] = useState<AssistantAction[]>([]);
   const [previews, setPreviews] = useState<AssistantPreviewCard[]>([]);
   const [recentChanges, setRecentChanges] = useState<AssistantChange[]>([]);
   const [status, setStatus] = useState<"idle" | "loading" | "error">("idle");
   const [warning, setWarning] = useState<string | null>(null);
+  const automaticActionIds = useRef(new Set<string>());
 
   const recentTags = useMemo(() => uniqueTags(visibleBlocks), [visibleBlocks]);
 
@@ -131,7 +133,7 @@ export function useQuipslyAssistant({
       const proposedActions = data.actions?.length ? data.actions : (data.toolIntents ?? []).map((intent: any, index: number) => ({
         ...intent,
         id: intent.id || `${Date.now().toString(36)}-${index}`,
-        status: "proposed" as const,
+        status: intent.status || "proposed" as const,
         createdAt,
       }));
       setActions((current) => [...proposedActions, ...current].slice(0, 20));
@@ -161,8 +163,14 @@ export function useQuipslyAssistant({
         governance: action.governance && !["deciding", "applying", "committing"].includes(nextStatus)
           ? {
               ...action.governance,
-              status: nextStatus === "approved"
+              status: nextStatus === "ready"
                 ? "READY"
+                : nextStatus === "running"
+                  ? "EXECUTING"
+                  : nextStatus === "completed"
+                    ? "SUCCEEDED"
+                    : nextStatus === "approved"
+                      ? "READY"
                 : nextStatus === "rejected"
                   ? "REJECTED"
                   : nextStatus === "applied" || nextStatus === "committed"
@@ -170,7 +178,9 @@ export function useQuipslyAssistant({
                     : nextStatus === "undone"
                       ? "UNDONE"
                       : "PROPOSED",
-              decisionStatus: nextStatus === "approved" || nextStatus === "applied" || nextStatus === "committed"
+              decisionStatus: action.governance.decisionPolicy !== "EXPLICIT_APPROVAL"
+                ? "NOT_REQUIRED"
+                : nextStatus === "approved" || nextStatus === "applied" || nextStatus === "committed"
                 ? "APPROVED"
                 : nextStatus === "rejected"
                   ? "REJECTED"
@@ -461,6 +471,82 @@ export function useQuipslyAssistant({
     };
   };
 
+  const runNonMutatingAction = async (
+    action: AssistantAction,
+    options: { navigate?: boolean } = {},
+  ) => {
+    updateActionStatus(action.id, "running");
+    setWarning(null);
+    let preview = buildPreviewForAction(action);
+    let outcome: "succeeded" | "unavailable" = "succeeded";
+
+    if (action.kind === "find-examples" || action.kind === "search-quotes") {
+      try {
+        const query = String(action.payload?.query || "");
+        const result = action.kind === "find-examples"
+          ? await searchExamplesAction(query, projectSlug)
+          : await searchQuotesAction(query, projectSlug);
+        if (result?.ok && result.packet?.results.length) {
+          preview = {
+            ...preview,
+            detail: `Found ${result.packet.results.length} source-grounded match${result.packet.results.length === 1 ? "" : "es"} for “${query}”.`,
+            items: result.packet.results.map((item: any) => researchPreviewItem(item, projectSlug)),
+          };
+        } else {
+          preview = {
+            ...preview,
+            detail: `No direct source-grounded matches found for “${query}”.`,
+            items: [{ label: "No matches found in this Nest." }],
+          };
+        }
+      } catch (error) {
+        console.error("Read-only assistant retrieval failed.", error);
+        outcome = "unavailable";
+        preview = {
+          ...preview,
+          detail: "Research retrieval is temporarily unavailable. Nothing was changed.",
+          items: [{ label: "Try again", detail: "Your writing and prior results remain unchanged." }],
+        };
+      }
+    }
+
+    setPreviews((current) => [preview, ...current.filter((item) => item.actionId !== action.id)].slice(0, 12));
+    const completion = await recordAssistantNonMutatingResultAction(action.id, {
+      outcome,
+      resultCount: preview.items.length,
+      detail: preview.detail,
+    });
+    updateActionStatus(action.id, "completed");
+    logChange(
+      action,
+      "completed",
+      outcome === "succeeded"
+        ? "Result shown immediately. No source work changed."
+        : "Result could not be refreshed. No source work changed.",
+    );
+    if (!completion.ok) setWarning(completion.error);
+
+    if (options.navigate && action.kind === "open-document") {
+      const targetDocumentId = String(action.payload?.documentId || "");
+      if (targetDocumentId) {
+        window.location.href = `/create?project=${encodeURIComponent(projectSlug)}&document=${encodeURIComponent(targetDocumentId)}`;
+      }
+    }
+  };
+
+  useEffect(() => {
+    actions
+      .filter((action) => action.status === "ready" && action.governance?.decisionPolicy === "READ_ONLY")
+      .forEach((action) => {
+        if (automaticActionIds.current.has(action.id)) return;
+        automaticActionIds.current.add(action.id);
+        void runNonMutatingAction(action);
+      });
+    // runNonMutatingAction deliberately consumes the current editor context for
+    // a newly ready action; action identity is the idempotency boundary.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [actions]);
+
   useEffect(() => {
     let active = true;
     const restoreSession = async () => {
@@ -485,11 +571,11 @@ export function useQuipslyAssistant({
         if (data.actions && data.actions.length > 0) {
           setActions(data.actions);
 
-          const approved = data.actions.filter((a: any) => a.status === "approved");
-          const restoredPreviews = approved.map((action: any) => buildPreviewForAction(action));
+          const resultActions = data.actions.filter((a: any) => a.status === "approved" || a.status === "completed");
+          const restoredPreviews = resultActions.map((action: any) => buildPreviewForAction(action));
           setPreviews(restoredPreviews);
 
-          approved.forEach(async (action: any) => {
+          resultActions.forEach(async (action: any) => {
             if (action.kind === "find-examples" || action.kind === "search-quotes") {
               try {
                 const query = String(action.payload?.query || "");
@@ -540,10 +626,12 @@ export function useQuipslyAssistant({
             }
           });
 
-          const nonProposed = data.actions.filter((a: any) => a.status !== "proposed");
+          const nonProposed = data.actions.filter((a: any) => !["proposed", "ready", "running"].includes(a.status));
           const restoredChanges = nonProposed.map((action: any) => {
             let note = "";
-            if (action.status === "approved") {
+            if (action.status === "completed") {
+              note = "Result shown without changing source work.";
+            } else if (action.status === "approved") {
               note = action.kind === "find-examples" || action.kind === "search-quotes"
                 ? "Recorded research approval. The retrieval result remains read-only."
                 : "Recorded review approval and generated a non-destructive preview. No manuscript write occurred.";
@@ -585,6 +673,11 @@ export function useQuipslyAssistant({
     const isResearch = action.kind === "find-examples" || action.kind === "search-quotes";
     const isDocumentEdit = action.kind === "PROPOSE_DRAFT" || action.kind === "PROPOSE_REWRITE" || action.kind === "PROPOSE_CONTINUITY_FIX";
     const isEntityProposal = action.kind === "PROPOSE_ENTITY" || action.kind === "PROPOSE_ENTITY_UPDATE";
+
+    if (action.governance?.decisionPolicy === "READ_ONLY" || action.governance?.decisionPolicy === "USER_INITIATED") {
+      await runNonMutatingAction(action, { navigate: action.kind === "open-document" });
+      return;
+    }
 
     if (isDocumentEdit) {
       updateActionStatus(action.id, "applying");

@@ -19,6 +19,7 @@ import {
   createGovernedAssistantProposalRun,
   governedActionSha256,
 } from "@/lib/server/governed-action-runtime";
+import { governedCapabilityForAssistantToolKind } from "@high-ground/quipsly-domain/governed-actions";
 
 type AssistantBlockContext = {
   id?: string;
@@ -75,7 +76,7 @@ const assistantResponseSchema: Schema = {
     },
     toolIntents: {
       type: Type.ARRAY,
-      description: "Safe proposed tool actions. These are proposals only and must be approved by the human before any write occurs.",
+      description: "Bounded tool results or proposed edits. Read-only work runs immediately; a write happens only when its explicit Apply, Add, Publish, Share, or Delete action is chosen.",
       items: {
         type: Type.OBJECT,
         properties: {
@@ -235,8 +236,8 @@ function localAssistantFallback(context: Required<Pick<AssistantRequestBody, "me
         confidence: 0.78,
       },
       {
-        title: "Keep authorship human",
-        detail: "Quipsly should collect source material, compare examples, and propose organization changes, then wait for approval before touching the document.",
+        title: "Keep the work easy to steer",
+        detail: "Quipsly can collect sources, compare examples, and show organization ideas immediately. A document edit happens only through its visible Apply action and remains undoable.",
         confidence: 0.92,
       },
       primaryOutput
@@ -358,6 +359,9 @@ async function persistAssistantToolIntents(
   const savedActions = await prisma.$transaction(async (tx) => {
     const saved: Array<{ id: string; sourceIndex: number; intent: NormalizedToolIntent }> = [];
     for (const [sourceIndex, intent] of toolIntents.entries()) {
+      const capability = governedCapabilityForAssistantToolKind(intent.kind);
+      if (!capability) throw new Error(`UNREGISTERED_ASSISTANT_CAPABILITY:${intent.kind}`);
+      const assistantStatus = capability.decisionPolicy === "EXPLICIT_APPROVAL" ? "proposed" : "ready";
       const action = await tx.studioAssistantAction.create({
         data: {
           sessionId,
@@ -366,7 +370,7 @@ async function persistAssistantToolIntents(
           explanation: intent.explanation,
           riskLevel: intent.riskLevel.toUpperCase(),
           payloadJson: intent.payload as any,
-          status: "proposed",
+          status: assistantStatus,
         },
         select: { id: true },
       });
@@ -374,10 +378,11 @@ async function persistAssistantToolIntents(
         data: {
           actionId: action.id,
           previousStatus: null,
-          newStatus: "proposed",
+          newStatus: assistantStatus,
           notes: JSON.stringify({
-            kind: "quipsly-assistant-proposal-created-v1",
-            proposalKind: intent.kind,
+            kind: "quipsly-assistant-action-created-v2",
+            actionKind: intent.kind,
+            decisionPolicy: capability.decisionPolicy,
           }),
         },
       });
@@ -401,15 +406,16 @@ async function persistAssistantToolIntents(
   return toolIntents.map((intent, sourceIndex) => ({
     ...intent,
     id: persistedIds.get(sourceIndex),
+    status: governedIds.get(persistedIds.get(sourceIndex) ?? "")?.assistantStatus,
     governance: (() => {
       const governed = governedIds.get(persistedIds.get(sourceIndex) ?? "");
       return governed ? {
         actionId: governed.governedActionId,
         runId: savedActions.governed.runId,
         capabilityId: governed.capabilityId,
-        decisionPolicy: "EXPLICIT_APPROVAL",
-        decisionStatus: "PENDING",
-        status: "PROPOSED",
+        decisionPolicy: governed.decisionPolicy,
+        decisionStatus: governed.decisionStatus,
+        status: governed.status,
         recovery: null,
       } : undefined;
     })(),
@@ -499,6 +505,7 @@ export async function GET(request: Request) {
       where: {
         projectId: project.id,
         documentId: documentId || null,
+        ownerUserId: actorUserId,
         status: "ACTIVE"
       },
       orderBy: { createdAt: "desc" }
@@ -658,6 +665,7 @@ export async function POST(request: Request) {
           id: sessionId,
           projectId: project.id,
           documentId: context.documentId || null,
+          ownerUserId: actorUserId,
           status: "ACTIVE",
         },
         select: { id: true },
@@ -667,7 +675,12 @@ export async function POST(request: Request) {
       }
     } else {
       const activeSession = await prisma.studioAssistantSession.findFirst({
-        where: { projectId: project.id, documentId: context.documentId || null, status: "ACTIVE" },
+        where: {
+          projectId: project.id,
+          documentId: context.documentId || null,
+          ownerUserId: actorUserId,
+          status: "ACTIVE",
+        },
         orderBy: { createdAt: "desc" },
         select: { id: true },
       });
@@ -675,7 +688,12 @@ export async function POST(request: Request) {
         sessionId = activeSession.id;
       } else {
         const newSession = await prisma.studioAssistantSession.create({
-          data: { projectId: project.id, documentId: context.documentId || null, status: "ACTIVE" },
+          data: {
+            projectId: project.id,
+            documentId: context.documentId || null,
+            ownerUserId: actorUserId,
+            status: "ACTIVE",
+          },
           select: { id: true },
         });
         sessionId = newSession.id;
@@ -726,14 +744,14 @@ export async function POST(request: Request) {
           source: "local-fallback",
           toolIntents,
           warning: providerDisabled
-            ? "AI provider access is disabled for this environment, so Quipsly used local fallback guidance. Its review actions still have durable ledger receipts."
-            : "GEMINI_API_KEY is not configured, so Quipsly used local fallback guidance. Its review actions still have durable ledger receipts.",
+            ? "AI provider access is disabled for this environment, so Quipsly used local guidance. Results and actions still retain transparent receipts."
+            : "GEMINI_API_KEY is not configured, so Quipsly used local guidance. Results and actions still retain transparent receipts.",
         });
       } catch (dbError) {
         console.error("[quipsly-assistant] Failed to persist local fallback actions:", dbError);
         return NextResponse.json({
           ok: false,
-          error: "Quipsly prepared local guidance but could not record its action and ledger receipts atomically. No actionable proposal was returned.",
+          error: "Quipsly prepared local guidance but could not safely retain its action receipts, so it returned no actions.",
         }, { status: 503 });
       }
     }
@@ -781,8 +799,8 @@ export async function POST(request: Request) {
       "You are a Quipsly: a creative research and organization assistant for writers, authors, academics, podcasters, and creators.",
       "You prioritize empowering human writers by gathering sources, checking continuity, and organizing lore.",
       "However, you ARE allowed to act as a co-writer or ghostwriter when requested. You can draft rough scenes or propose full rewrites.",
-      "CRITICAL: You must NEVER silently mutate the manuscript. All drafts and rewrites must be submitted safely as PROPOSE_DRAFT or PROPOSE_REWRITE tool intents for the user to review.",
-      "Never claim you changed the manuscript yourself. You can only propose tool intents.",
+      "CRITICAL: Never silently mutate the manuscript. Return read-only findings immediately. Represent drafts and rewrites as PROPOSE_DRAFT or PROPOSE_REWRITE tool intents; the product gives each mutation one visible Apply action and undo.",
+      "Never claim a manuscript change happened until the product returns its persisted result.",
       "",
       "Safe tool kinds:",
       "- suggest-tags (Only suggest Chapter/Episode tags to organize structure)",
@@ -826,7 +844,7 @@ export async function POST(request: Request) {
       config: {
         responseMimeType: "application/json",
         responseSchema: assistantResponseSchema,
-        systemInstruction: "Be an empowering research and drafting assistant. Return structured JSON only. You may draft or rewrite content, but always propose changes via safe tool intents rather than directly mutating the manuscript.",
+        systemInstruction: "Be an empowering research and drafting assistant. Return structured JSON only. Return useful read-only results immediately. You may draft or rewrite content, but represent document mutations as clear tool intents that are applied only through the product's visible action.",
         temperature: 0.25,
       },
     });
@@ -850,13 +868,13 @@ export async function POST(request: Request) {
           ...normalizedFallback,
           source: "local-fallback",
           toolIntents,
-          warning: "Gemini returned an empty response, so Quipsly used local fallback guidance with durable review receipts.",
+          warning: "Gemini returned an empty response, so Quipsly used local guidance with transparent action receipts.",
         });
       } catch (dbError) {
         console.error("[quipsly-assistant] Failed to persist empty-provider fallback actions:", dbError);
         return NextResponse.json({
           ok: false,
-          error: "Quipsly prepared fallback guidance but could not record its action and ledger receipts atomically. No actionable proposal was returned.",
+          error: "Quipsly prepared fallback guidance but could not safely retain its action receipts, so it returned no actions.",
         }, { status: 503 });
       }
     }
@@ -886,7 +904,7 @@ export async function POST(request: Request) {
         console.error("[quipsly-assistant] Failed to persist proposed actions:", dbError);
         return NextResponse.json({
           ok: false,
-          error: "Quipsly generated a proposal but could not record its action and ledger receipt atomically. No actionable proposal was returned.",
+          error: "Quipsly generated useful work but could not safely retain its action receipts, so it returned no actions.",
         }, { status: 503 });
       }
     }

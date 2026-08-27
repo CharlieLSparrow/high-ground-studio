@@ -93,11 +93,18 @@ describe("Quipsly assistant authorization and proposal persistence", () => {
     tx.studioAssistantLedger.create.mockResolvedValue({ id: "ledger" });
     jest.mocked(createGovernedAssistantProposalRun).mockImplementation(async (_tx, input) => ({
       runId: "governed-run-1",
-      actions: input.proposals.map((proposal, index) => ({
-        assistantActionId: proposal.assistantActionId,
-        governedActionId: `governed-action-${index + 1}`,
-        capabilityId: "quipsly.story-bible.entity.propose-create",
-      })),
+      actions: input.proposals.map((proposal, index) => {
+        const readOnly = ["find-examples", "find-related-blocks", "search-quotes", "suggest-tags", "summarize-selected-block", "propose-output-plan", "CHECK_CONTINUITY"].includes(proposal.kind);
+        return {
+          assistantActionId: proposal.assistantActionId,
+          governedActionId: `governed-action-${index + 1}`,
+          capabilityId: readOnly ? "quipsly.writing.examples.find" : "quipsly.story-bible.entity.propose-create",
+          decisionPolicy: readOnly ? "READ_ONLY" as const : "EXPLICIT_APPROVAL" as const,
+          decisionStatus: readOnly ? "NOT_REQUIRED" as const : "PENDING" as const,
+          status: readOnly ? "READY" as const : "PROPOSED" as const,
+          assistantStatus: readOnly ? "ready" as const : "proposed" as const,
+        };
+      }),
     }));
     mockEmbedContent.mockResolvedValue({ embeddings: [] });
     mockGenerateContent.mockResolvedValue({
@@ -182,6 +189,9 @@ describe("Quipsly assistant authorization and proposal persistence", () => {
       sourceExcerpt: "Canonical manuscript evidence.",
     });
     expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+    expect(prisma.studioAssistantSession.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ ownerUserId: "user-1" }),
+    }));
     expect(tx.studioAssistantAction.create).toHaveBeenCalledTimes(2);
     expect(tx.studioAssistantLedger.create).toHaveBeenCalledTimes(2);
     expect(createGovernedAssistantProposalRun).toHaveBeenCalledWith(tx, expect.objectContaining({
@@ -226,6 +236,46 @@ describe("Quipsly assistant authorization and proposal persistence", () => {
     expect(response.status).toBe(503);
     expect(body).toMatchObject({ ok: false });
     expect(JSON.stringify(body)).not.toContain("PROPOSE_DRAFT");
+  });
+
+  it("returns read-only research ready to run without a fabricated approval", async () => {
+    mockGenerateContent.mockResolvedValueOnce({
+      text: JSON.stringify({
+        assistantMessage: "I’ll find the relevant source material.",
+        suggestions: [],
+        toolIntents: [{
+          kind: "find-examples",
+          label: "Find courage examples",
+          explanation: "Ground the answer in the Nest.",
+          riskLevel: "low",
+          payload: { query: "courage" },
+        }],
+      }),
+    });
+
+    const response = await POST(request());
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.toolIntents[0]).toMatchObject({
+      id: "action-1",
+      status: "ready",
+      governance: {
+        decisionPolicy: "READ_ONLY",
+        decisionStatus: "NOT_REQUIRED",
+        status: "READY",
+      },
+    });
+    expect(tx.studioAssistantAction.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ status: "ready" }),
+      select: { id: true },
+    });
+    expect(tx.studioAssistantLedger.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        newStatus: "ready",
+        notes: expect.stringContaining('"decisionPolicy":"READ_ONLY"'),
+      }),
+    });
   });
 
   it("discloses when generation succeeds without semantic Nest retrieval", async () => {

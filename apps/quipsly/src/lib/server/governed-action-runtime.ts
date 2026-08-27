@@ -14,6 +14,7 @@ import {
   TRANSCRIPT_TASK_EVIDENCE_MERGE_CAPABILITY_ID,
   TRANSCRIPT_TASK_MATERIALIZE_CAPABILITY_ID,
   type GovernedActionCapabilityManifest,
+  type GovernedActionDecisionPolicy,
   type GovernedActionRiskLevel,
 } from "@high-ground/quipsly-domain/governed-actions";
 
@@ -128,6 +129,23 @@ function highestRisk(manifests: readonly GovernedActionCapabilityManifest[]): Go
   );
 }
 
+function strictestDecisionPolicy(
+  manifests: readonly GovernedActionCapabilityManifest[],
+): GovernedActionDecisionPolicy {
+  const rank: Record<GovernedActionDecisionPolicy, number> = {
+    READ_ONLY: 0,
+    USER_INITIATED: 1,
+    DELEGATED: 2,
+    EXPLICIT_APPROVAL: 3,
+  };
+  return manifests.reduce<GovernedActionDecisionPolicy>(
+    (current, manifest) => rank[manifest.decisionPolicy] > rank[current]
+      ? manifest.decisionPolicy
+      : current,
+    "READ_ONLY",
+  );
+}
+
 function actionEnvelope(input: {
   capability: GovernedActionCapabilityManifest;
   principalKind: string;
@@ -158,7 +176,18 @@ export async function createGovernedAssistantProposalRun(
   tx: Tx,
   input: CreateAssistantProposalRunInput,
 ) {
-  if (!input.proposals.length) return { runId: null, actions: [] as Array<{ assistantActionId: string; governedActionId: string; capabilityId: string }> };
+  if (!input.proposals.length) return {
+    runId: null,
+    actions: [] as Array<{
+      assistantActionId: string;
+      governedActionId: string;
+      capabilityId: string;
+      decisionPolicy: GovernedActionDecisionPolicy;
+      decisionStatus: "PENDING" | "NOT_REQUIRED";
+      status: "PROPOSED" | "READY";
+      assistantStatus: "proposed" | "ready";
+    }>,
+  };
   const prepared = input.proposals.map((proposal) => {
     const capability = governedCapabilityForAssistantToolKind(proposal.kind);
     if (!capability) throw new Error(`UNREGISTERED_ASSISTANT_CAPABILITY:${proposal.kind}`);
@@ -166,6 +195,8 @@ export async function createGovernedAssistantProposalRun(
     return { proposal, capability };
   });
   const manifests = prepared.map(({ capability }) => capability);
+  const runDecisionPolicy = strictestDecisionPolicy(manifests);
+  const requiresDecision = runDecisionPolicy === "EXPLICIT_APPROVAL";
   const run = await tx.governedActionRun.create({
     data: {
       projectId: input.projectId,
@@ -175,12 +206,14 @@ export async function createGovernedAssistantProposalRun(
       principalId: input.actorUserId,
       sourceSurface: input.sourceSurface,
       intent: input.intent,
-      decisionPolicy: "EXPLICIT_APPROVAL",
+      decisionPolicy: runDecisionPolicy,
       riskLevel: highestRisk(manifests),
-      status: "AWAITING_DECISION",
+      status: requiresDecision ? "AWAITING_DECISION" : "READY",
       authorityJson: json({
         contractKind: "quipsly-governed-authority-snapshot-v1",
-        basis: "authorized-project-read-and-explicit-review-before-mutation",
+        basis: requiresDecision
+          ? "authorized-project-read-and-deliberate-apply-before-mutation"
+          : "authorized-project-read-or-user-initiated-navigation",
         projectId: input.projectId,
         documentId: input.documentId,
         actorUserId: input.actorUserId,
@@ -194,17 +227,33 @@ export async function createGovernedAssistantProposalRun(
       }),
       readSetJson: json(input.readSet),
       consequenceJson: json({
-        immediate: "proposal-ledger-only",
+        immediate: requiresDecision ? "proposal-ledger-only" : "bounded-action-ready",
         sourceTruthChanged: false,
-        requiresExplicitApprovalBeforeMutation: true,
+        requiresExplicitApprovalBeforeMutation: requiresDecision,
       }),
-      progressJson: json({ proposed: input.proposals.length, decided: 0, completed: 0 }),
+      progressJson: json({
+        proposed: prepared.filter(({ capability }) => capability.decisionPolicy === "EXPLICIT_APPROVAL").length,
+        ready: prepared.filter(({ capability }) => capability.decisionPolicy !== "EXPLICIT_APPROVAL").length,
+        completed: 0,
+      }),
     },
     select: { id: true },
   });
 
-  const actions: Array<{ assistantActionId: string; governedActionId: string; capabilityId: string }> = [];
+  const actions: Array<{
+    assistantActionId: string;
+    governedActionId: string;
+    capabilityId: string;
+    decisionPolicy: GovernedActionDecisionPolicy;
+    decisionStatus: "PENDING" | "NOT_REQUIRED";
+    status: "PROPOSED" | "READY";
+    assistantStatus: "proposed" | "ready";
+  }> = [];
   for (const { proposal, capability } of prepared) {
+    const actionRequiresDecision = capability.decisionPolicy === "EXPLICIT_APPROVAL";
+    const governedStatus = actionRequiresDecision ? "PROPOSED" as const : "READY" as const;
+    const assistantStatus = actionRequiresDecision ? "proposed" as const : "ready" as const;
+    const decisionStatus = actionRequiresDecision ? "PENDING" as const : "NOT_REQUIRED" as const;
     const requestId = randomUUID();
     const envelope = actionEnvelope({
       capability,
@@ -229,38 +278,48 @@ export async function createGovernedAssistantProposalRun(
         requestSha256: envelope.requestSha256,
         idempotencyKey: proposal.assistantActionId,
         decisionPolicy: capability.decisionPolicy,
-        decisionStatus: "PENDING",
+        decisionStatus,
         riskLevel: capability.riskLevel,
-        status: "PROPOSED",
+        status: governedStatus,
         consequenceJson: json({ consequences: capability.consequences }),
         recoveryJson: json({ supported: capability.recovery }),
       },
       select: { id: true },
     });
-    await tx.governedActionReceipt.create({
-      data: {
-        actionId: action.id,
-        kind: "PROPOSAL_RECORDED",
-        previousStatus: null,
-        newStatus: "PROPOSED",
-        actorUserId: input.actorUserId,
-        actorEmail: input.actorEmail,
-        evidenceJson: json({
-          contractKind: "quipsly-governed-action-proposal-receipt-v1",
-          assistantSessionId: input.assistantSessionId,
-          assistantActionId: proposal.assistantActionId,
-          capabilityId: capability.id,
-          capabilityVersion: capability.version,
-          requestSha256: envelope.requestSha256,
-          payloadSha256: envelope.payloadSha256,
-        }),
-      },
-    });
+    if (actionRequiresDecision) {
+      await tx.governedActionReceipt.create({
+        data: {
+          actionId: action.id,
+          kind: "PROPOSAL_RECORDED",
+          previousStatus: null,
+          newStatus: "PROPOSED",
+          actorUserId: input.actorUserId,
+          actorEmail: input.actorEmail,
+          evidenceJson: json({
+            contractKind: "quipsly-governed-action-proposal-receipt-v1",
+            assistantSessionId: input.assistantSessionId,
+            assistantActionId: proposal.assistantActionId,
+            capabilityId: capability.id,
+            capabilityVersion: capability.version,
+            requestSha256: envelope.requestSha256,
+            payloadSha256: envelope.payloadSha256,
+          }),
+        },
+      });
+    }
     await tx.studioAssistantAction.update({
       where: { id: proposal.assistantActionId },
-      data: { governedActionId: action.id },
+      data: { governedActionId: action.id, status: assistantStatus },
     });
-    actions.push({ assistantActionId: proposal.assistantActionId, governedActionId: action.id, capabilityId: capability.id });
+    actions.push({
+      assistantActionId: proposal.assistantActionId,
+      governedActionId: action.id,
+      capabilityId: capability.id,
+      decisionPolicy: capability.decisionPolicy,
+      decisionStatus,
+      status: governedStatus,
+      assistantStatus,
+    });
   }
   return { runId: run.id, actions };
 }
@@ -619,9 +678,10 @@ export async function recordSucceededTranscriptWorkAction(
 }
 
 function governedStatusForAssistantStatus(status: string): GovernedActionStatus {
-  if (status === "approved") return "READY";
+  if (status === "ready" || status === "approved") return "READY";
+  if (status === "running") return "EXECUTING";
   if (status === "rejected") return "REJECTED";
-  if (status === "applied" || status === "committed") return "SUCCEEDED";
+  if (status === "completed" || status === "applied" || status === "committed") return "SUCCEEDED";
   if (status === "undone") return "UNDONE";
   return "PROPOSED";
 }
@@ -671,13 +731,14 @@ export async function recordGovernedAssistantTransition(
   if (!input.governedActionId) return null;
   const action = await tx.governedAction.findUnique({
     where: { id: input.governedActionId },
-    select: { id: true, runId: true, status: true },
+    select: { id: true, runId: true, status: true, decisionPolicy: true },
   });
   if (!action) throw new Error("GOVERNED_ACTION_NOT_FOUND");
   const nextStatus = governedStatusForAssistantStatus(input.newStatus);
   const isExecution = nextStatus === "SUCCEEDED";
   const isRecovery = nextStatus === "UNDONE";
   const isDecision = ["READY", "REJECTED", "PROPOSED"].includes(nextStatus);
+  const needsDecision = action.decisionPolicy === "EXPLICIT_APPROVAL";
   const now = new Date();
   let attemptId: string | null = null;
   if (isExecution || isRecovery) {
@@ -700,16 +761,18 @@ export async function recordGovernedAssistantTransition(
     where: { id: action.id },
     data: {
       status: nextStatus,
-      decisionStatus: nextStatus === "READY" || isExecution
-        ? "APPROVED"
+      decisionStatus: !needsDecision
+        ? "NOT_REQUIRED"
+        : nextStatus === "READY" || isExecution
+          ? "APPROVED"
         : nextStatus === "REJECTED"
           ? "REJECTED"
           : nextStatus === "PROPOSED"
             ? "PENDING"
             : undefined,
-      approvedByUserId: nextStatus === "READY" || isExecution ? input.actorUserId ?? null : undefined,
-      approvedByEmail: nextStatus === "READY" || isExecution ? input.actorEmail : undefined,
-      approvedAt: nextStatus === "READY" || isExecution ? now : undefined,
+      approvedByUserId: needsDecision && (nextStatus === "READY" || isExecution) ? input.actorUserId ?? null : undefined,
+      approvedByEmail: needsDecision && (nextStatus === "READY" || isExecution) ? input.actorEmail : undefined,
+      approvedAt: needsDecision && (nextStatus === "READY" || isExecution) ? now : undefined,
       completedAt: isExecution || isRecovery || nextStatus === "REJECTED" ? now : null,
       resultJson: isExecution || isRecovery ? json(input.evidence) : undefined,
     },

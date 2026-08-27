@@ -480,6 +480,19 @@ Current behavior:
 - team users can switch modes via cookie-backed content mode logic
 - `/library` and `/episodes` rely on this model for visibility decisions
 
+## Assistant Work And Transparency
+
+`StudioAssistantSession` is owned by one signed-in user even when its document
+belongs to a shared Nest. Collaborators can share source work without inheriting
+one another's assistant conversation, results, or action history. Older
+unowned sessions remain retained but are not resumed by product routes.
+
+Assistant capabilities choose behavior by consequence: read-only retrieval and
+analysis run immediately, navigation follows one user-initiated Open action,
+and durable mutations expose one clear Apply/Add action plus recovery. Governed
+action rows and ledgers remain the inspectable receipt layer; they are not a
+second approval workflow.
+
 ## Important Domain Boundaries
 
 - Auth identity and staff bootstrap are env-assisted.

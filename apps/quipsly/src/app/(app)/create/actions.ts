@@ -69,6 +69,7 @@ import {
   personalWritingDocumentVisibilityWhere,
 } from "@/lib/server/personal-writing-documents";
 import { recordGovernedAssistantTransition } from "@/lib/server/governed-action-runtime";
+import { governedCapabilityForAssistantToolKind } from "@high-ground/quipsly-domain/governed-actions";
 
 const UNAVAILABLE_PROJECT_ID = "unavailable-quipsly";
 const UNAVAILABLE_DOCUMENT_ID = "unavailable-document";
@@ -359,6 +360,7 @@ async function requireProjectAccessByAssistantActionId(
         select: {
           projectId: true,
           documentId: true,
+          ownerUserId: true,
         },
       },
     },
@@ -369,6 +371,9 @@ async function requireProjectAccessByAssistantActionId(
   }
 
   const actorUserId = await getActorUserId();
+  if (!actorUserId || assistantAction.session.ownerUserId !== actorUserId) {
+    throw new Error("Assistant action not found.");
+  }
   if (assistantAction.session.documentId) {
     const document = await prisma.studioDocument.findUnique({
       where: { id: assistantAction.session.documentId },
@@ -3285,6 +3290,14 @@ export type AssistantDecisionReceipt = {
   status: "proposed" | "approved" | "rejected";
 };
 
+export type AssistantNonMutatingResultReceipt = {
+  actionId: string;
+  kind: string;
+  outcome: "succeeded" | "unavailable";
+  resultCount: number;
+  detail: string;
+};
+
 type AssistantMutationResult<T> =
   | { ok: true; state: "persisted"; replay: boolean; receipt: T }
   | { ok: false; state: "rejected" | "unavailable"; code: AssistantMutationCode; error: string };
@@ -3749,6 +3762,139 @@ export async function recordAssistantProposalDecisionAction(
       state: "unavailable",
       code: "PERSISTENCE_UNAVAILABLE",
       error: "The review decision could not be recorded. The proposal remains unchanged.",
+    };
+  }
+}
+
+export async function recordAssistantNonMutatingResultAction(
+  actionId: string,
+  result: {
+    outcome: "succeeded" | "unavailable";
+    resultCount?: number;
+    detail?: string;
+  },
+): Promise<AssistantMutationResult<AssistantNonMutatingResultReceipt>> {
+  const actorEmail = await getActorEmail();
+  if (!actorEmail) {
+    return {
+      ok: false,
+      state: "rejected",
+      code: "AUTH_REQUIRED",
+      error: "Sign in before running this assistant action.",
+    };
+  }
+
+  let prisma: ReturnType<typeof getPrismaClient>;
+  let actorUserId: string | null;
+  try {
+    prisma = getPrismaClient();
+    await requireProjectAccessByAssistantActionId(prisma, actionId, "read");
+    actorUserId = await getActorUserId();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "";
+    if (message !== "Assistant action not found." && !message.includes("do not have read access")) {
+      console.error("Assistant action could not verify read access.", error);
+    }
+    return {
+      ok: false,
+      state: "rejected",
+      code: "ACCESS_NOT_VERIFIED",
+      error: "Quipsly could not verify access for this result.",
+    };
+  }
+
+  try {
+    const persisted = await prisma.$transaction(async (tx) => {
+      await lockAssistantAction(tx, actionId);
+      const action = await tx.studioAssistantAction.findUnique({
+        where: { id: actionId },
+        include: {
+          governedAction: true,
+          ledgers: {
+            where: { newStatus: "completed" },
+            orderBy: { createdAt: "desc" },
+            take: 1,
+          },
+        },
+      });
+      if (!action) throw new AssistantMutationError("ACTION_NOT_FOUND", "That assistant action no longer exists.");
+
+      const priorReceipt = parseAssistantReceipt<AssistantNonMutatingResultReceipt>(action.ledgers[0]?.notes);
+      if (action.status === "completed" && priorReceipt) {
+        return { replay: true, receipt: priorReceipt };
+      }
+
+      const capability = governedCapabilityForAssistantToolKind(action.kind);
+      if (
+        !capability
+        || capability.decisionPolicy === "EXPLICIT_APPROVAL"
+        || capability.decisionPolicy === "DELEGATED"
+        || !action.governedAction
+        || action.governedAction.capabilityId !== capability.id
+      ) {
+        throw new AssistantMutationError(
+          "UNSUPPORTED_ACTION",
+          "This action changes durable work and must use its visible Apply action.",
+        );
+      }
+      if (action.status !== "ready") {
+        throw new AssistantMutationError(
+          "STALE_SOURCE",
+          `This assistant action is already ${action.status}; reload before running it again.`,
+        );
+      }
+
+      const receipt: AssistantNonMutatingResultReceipt = {
+        actionId: action.id,
+        kind: action.kind,
+        outcome: result.outcome,
+        resultCount: Math.max(0, Math.min(10_000, Math.trunc(result.resultCount ?? 0))),
+        detail: assistantText(result.detail, 500),
+      };
+      await tx.studioAssistantAction.update({
+        where: { id: action.id },
+        data: { status: "completed" },
+      });
+      await tx.studioAssistantLedger.create({
+        data: {
+          actionId: action.id,
+          previousStatus: action.status,
+          newStatus: "completed",
+          notes: JSON.stringify({
+            kind: "quipsly-assistant-non-mutating-result-v1",
+            actorEmail,
+            receipt,
+          }),
+        },
+      });
+      await recordGovernedAssistantTransition(tx, {
+        governedActionId: action.governedActionId,
+        assistantActionId: action.id,
+        previousStatus: action.status,
+        newStatus: "completed",
+        actorUserId,
+        actorEmail,
+        evidence: {
+          outcome: receipt.outcome,
+          resultCount: receipt.resultCount,
+          detail: receipt.detail,
+          sourceTruthChanged: false,
+          externalWrite: false,
+        },
+      });
+      return { replay: false, receipt };
+    });
+    return { ok: true, state: "persisted", ...persisted };
+  } catch (error) {
+    if (error instanceof AssistantMutationError) {
+      return { ok: false, state: "rejected", code: error.code, error: error.message };
+    }
+    console.error("Assistant result receipt failed.", error);
+    return {
+      ok: false,
+      state: "unavailable",
+      code: "PERSISTENCE_UNAVAILABLE",
+      error: "The result is available, but Quipsly could not save its transparency receipt.",
     };
   }
 }

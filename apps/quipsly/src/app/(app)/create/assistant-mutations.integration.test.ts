@@ -8,6 +8,7 @@ import { createGovernedAssistantProposalRun } from "@/lib/server/governed-action
 import {
   applyAssistantDocumentEditAction,
   commitAssistantEntityAction,
+  recordAssistantNonMutatingResultAction,
   recordAssistantProposalDecisionAction,
   undoAppliedAssistantDocumentEditAction,
   undoCommittedAssistantEntityAction,
@@ -45,6 +46,7 @@ runLocalDatabaseSmoke("assistant mutation disposable database", () => {
     stale: `assistant-stale-${nonce}`,
     draft: `assistant-draft-${nonce}`,
     decision: `assistant-decision-${nonce}`,
+    readOnly: `assistant-read-only-${nonce}`,
     entityCreate: `assistant-entity-create-${nonce}`,
     entityStale: `assistant-entity-stale-${nonce}`,
     entityUpdate: `assistant-entity-update-${nonce}`,
@@ -61,6 +63,9 @@ runLocalDatabaseSmoke("assistant mutation disposable database", () => {
 
   beforeAll(async () => {
     signedInAs(writerEmail);
+    await prisma.user.create({
+      data: { id: writerEmail, primaryEmail: writerEmail },
+    });
     await prisma.studioWorkspace.create({
       data: {
         id: workspaceId,
@@ -97,7 +102,7 @@ runLocalDatabaseSmoke("assistant mutation disposable database", () => {
       },
     });
     await prisma.studioAssistantSession.create({
-      data: { id: sessionId, projectId, documentId, status: "ACTIVE" },
+      data: { id: sessionId, projectId, documentId, ownerUserId: writerEmail, status: "ACTIVE" },
     });
     await prisma.studioAssistantAction.createMany({
       data: [
@@ -146,6 +151,14 @@ runLocalDatabaseSmoke("assistant mutation disposable database", () => {
           payloadJson: { issue: "Check the opening handoff." },
         },
         {
+          id: actionIds.readOnly,
+          sessionId,
+          kind: "find-related-blocks",
+          label: "Find related blocks",
+          riskLevel: "LOW",
+          payloadJson: { query: "courage" },
+        },
+        {
           id: actionIds.entityStale,
           sessionId,
           kind: "PROPOSE_ENTITY",
@@ -192,6 +205,24 @@ runLocalDatabaseSmoke("assistant mutation disposable database", () => {
     }));
     governedRewriteActionId = governedRewrite.actions[0]?.governedActionId ?? "";
     governedRewriteRunId = governedRewrite.runId ?? "";
+    await prisma.$transaction((tx) => createGovernedAssistantProposalRun(tx, {
+      projectId,
+      documentId,
+      assistantSessionId: sessionId,
+      actorUserId: writerEmail,
+      actorEmail: writerEmail,
+      intent: "Find related source material now.",
+      sourceSurface: "assistant-mutation-integration",
+      provider: "retained-fixture",
+      readSet: [{ objectType: "StudioDocumentBlock", objectId: firstBlockId }],
+      proposals: [{
+        assistantActionId: actionIds.readOnly,
+        kind: "find-related-blocks",
+        label: "Find related blocks",
+        explanation: "Exercise immediate read-only work without an approval decision.",
+        payload: { query: "courage" },
+      }],
+    }));
     const existing = await prisma.storyEntity.create({
       data: {
         projectId,
@@ -224,6 +255,7 @@ runLocalDatabaseSmoke("assistant mutation disposable database", () => {
     try {
       await prisma.studioAssistantSession.deleteMany({ where: { id: sessionId } });
       await prisma.studioWorkspace.deleteMany({ where: { id: workspaceId } });
+      await prisma.user.deleteMany({ where: { id: writerEmail } });
     } finally {
       await prisma.$disconnect();
     }
@@ -335,6 +367,56 @@ runLocalDatabaseSmoke("assistant mutation disposable database", () => {
     await expect(recordAssistantProposalDecisionAction(actionIds.decision, "approved"))
       .resolves.toMatchObject({ ok: false, code: "STALE_SOURCE" });
     await expect(prisma.studioAssistantLedger.count({ where: { actionId: actionIds.decision } })).resolves.toBe(3);
+  });
+
+  it("completes read-only work with transparent evidence and no approval state", async () => {
+    signedInAs(outsiderEmail);
+    await expect(recordAssistantNonMutatingResultAction(actionIds.readOnly, {
+      outcome: "succeeded",
+      resultCount: 2,
+      detail: "Two related source blocks.",
+    })).resolves.toMatchObject({ ok: false, code: "ACCESS_NOT_VERIFIED" });
+
+    signedInAs(writerEmail);
+    const completed = await recordAssistantNonMutatingResultAction(actionIds.readOnly, {
+      outcome: "succeeded",
+      resultCount: 2,
+      detail: "Two related source blocks.",
+    });
+    const replay = await recordAssistantNonMutatingResultAction(actionIds.readOnly, {
+      outcome: "succeeded",
+      resultCount: 2,
+      detail: "Two related source blocks.",
+    });
+
+    expect(completed).toMatchObject({
+      ok: true,
+      replay: false,
+      receipt: { outcome: "succeeded", resultCount: 2 },
+    });
+    expect(replay).toEqual({ ...completed, replay: true });
+    await expect(prisma.studioAssistantAction.findUnique({
+      where: { id: actionIds.readOnly },
+      select: {
+        status: true,
+        governedAction: {
+          select: {
+            status: true,
+            decisionPolicy: true,
+            decisionStatus: true,
+            approvedByUserId: true,
+          },
+        },
+      },
+    })).resolves.toEqual({
+      status: "completed",
+      governedAction: {
+        status: "SUCCEEDED",
+        decisionPolicy: "READ_ONLY",
+        decisionStatus: "NOT_REQUIRED",
+        approvedByUserId: null,
+      },
+    });
   });
 
   it("commits one exact-source canonical Story Bible entity and deletes only that entity on undo", async () => {

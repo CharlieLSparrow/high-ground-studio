@@ -1029,6 +1029,7 @@ model User {
   sourceCollectionOperations            StudioSourceCollectionOperation[]           @relation("StudioSourceCollectionOperationActor")
   externalMediaLibrariesCreated         StudioExternalMediaLibrary[]                @relation("StudioExternalMediaLibraryCreatedBy")
   externalMediaLibraryOperations        StudioExternalMediaLibraryOperation[]       @relation("StudioExternalMediaLibraryOperationActor")
+  assistantSessionsOwned                StudioAssistantSession[]                    @relation("StudioAssistantSessionOwner")
 
   membershipsGranted           Membership[]           @relation("MembershipGrantedBy")
   coachingFeatureGrantsGranted CoachingFeatureGrant[] @relation("CoachingFeatureGrantGrantedBy")
@@ -8647,15 +8648,17 @@ model StudioAssistantSession {
   id         String   @id @default(cuid())
   projectId  String
   documentId String?
+  ownerUserId String?
   title      String?
   status     String   @default("ACTIVE")
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
+  owner    User?                    @relation("StudioAssistantSessionOwner", fields: [ownerUserId], references: [id], onDelete: Cascade)
   messages StudioAssistantMessage[]
   actions  StudioAssistantAction[]
 
-  @@index([projectId, status])
+  @@index([projectId, ownerUserId, status])
 }
 
 model StudioAssistantMessage {

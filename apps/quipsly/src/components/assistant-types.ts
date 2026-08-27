@@ -12,6 +12,9 @@ export type AssistantSuggestion = {
 
 export type AssistantActionStatus =
   | "proposed"
+  | "ready"
+  | "running"
+  | "completed"
   | "deciding"
   | "applying"
   | "applied"
@@ -67,7 +70,7 @@ export type AssistantResponse = {
   source?: string;
   assistantMessage?: string;
   suggestions?: AssistantSuggestion[];
-  toolIntents?: Array<Omit<AssistantAction, "id" | "status" | "createdAt">>;
+  toolIntents?: Array<Omit<AssistantAction, "createdAt"> & { createdAt?: string }>;
   actions?: AssistantAction[];
   warning?: string;
   error?: string;

@@ -31,7 +31,12 @@ function transaction() {
     governedAction: {
       create: jest.fn().mockResolvedValue({ id: "governed-action-1" }),
       update: jest.fn().mockResolvedValue({ id: "governed-action-1" }),
-      findUnique: jest.fn().mockResolvedValue({ id: "governed-action-1", runId: "run-1", status: "PROPOSED" }),
+      findUnique: jest.fn().mockResolvedValue({
+        id: "governed-action-1",
+        runId: "run-1",
+        status: "PROPOSED",
+        decisionPolicy: "EXPLICIT_APPROVAL",
+      }),
       findMany: jest.fn().mockResolvedValue([{ status: "SUCCEEDED" }]),
     },
     governedActionAttempt: {
@@ -110,7 +115,15 @@ describe("governed action capability and ledger runtime", () => {
 
     expect(result).toEqual({
       runId: "run-1",
-      actions: [{ assistantActionId: "assistant-action-1", governedActionId: "governed-action-1", capabilityId: "quipsly.writing.rewrite.propose" }],
+      actions: [{
+        assistantActionId: "assistant-action-1",
+        governedActionId: "governed-action-1",
+        capabilityId: "quipsly.writing.rewrite.propose",
+        decisionPolicy: "EXPLICIT_APPROVAL",
+        decisionStatus: "PENDING",
+        status: "PROPOSED",
+        assistantStatus: "proposed",
+      }],
     });
     expect(tx.governedActionRun.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
@@ -138,7 +151,56 @@ describe("governed action capability and ledger runtime", () => {
     });
     expect(tx.studioAssistantAction.update).toHaveBeenCalledWith({
       where: { id: "assistant-action-1" },
-      data: { governedActionId: "governed-action-1" },
+      data: { governedActionId: "governed-action-1", status: "proposed" },
+    });
+  });
+
+  it("makes read-only assistant work immediately ready without manufacturing an approval", async () => {
+    const tx = transaction();
+    const result = await createGovernedAssistantProposalRun(tx as never, {
+      projectId: "project-1",
+      documentId: "document-1",
+      assistantSessionId: "assistant-session-1",
+      actorUserId: "user-1",
+      actorEmail: "writer@example.test",
+      intent: "Find related evidence.",
+      sourceSurface: "nest-writing-assistant",
+      provider: "local-fallback",
+      readSet: [],
+      proposals: [{
+        assistantActionId: "assistant-action-1",
+        kind: "find-related-blocks",
+        label: "Related blocks",
+        explanation: "Find useful context.",
+        payload: { query: "courage" },
+      }],
+    });
+
+    expect(result.actions[0]).toMatchObject({
+      decisionPolicy: "READ_ONLY",
+      decisionStatus: "NOT_REQUIRED",
+      status: "READY",
+      assistantStatus: "ready",
+    });
+    expect(tx.governedActionRun.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        decisionPolicy: "READ_ONLY",
+        status: "READY",
+      }),
+      select: { id: true },
+    });
+    expect(tx.governedAction.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        decisionPolicy: "READ_ONLY",
+        decisionStatus: "NOT_REQUIRED",
+        status: "READY",
+      }),
+      select: { id: true },
+    });
+    expect(tx.governedActionReceipt.create).not.toHaveBeenCalled();
+    expect(tx.studioAssistantAction.update).toHaveBeenCalledWith({
+      where: { id: "assistant-action-1" },
+      data: { governedActionId: "governed-action-1", status: "ready" },
     });
   });
 
@@ -493,6 +555,52 @@ describe("governed action capability and ledger runtime", () => {
     expect(tx.governedActionRun.update).toHaveBeenCalledWith({
       where: { id: "run-1" },
       data: expect.objectContaining({ status: "READY" }),
+    });
+  });
+
+  it("records a completed read-only result without pretending the user approved it", async () => {
+    const tx = transaction();
+    tx.governedAction.findUnique.mockResolvedValue({
+      id: "governed-action-1",
+      runId: "run-1",
+      status: "READY",
+      decisionPolicy: "READ_ONLY",
+    });
+    tx.governedAction.findMany.mockResolvedValue([{ status: "SUCCEEDED" }]);
+
+    await recordGovernedAssistantTransition(tx as never, {
+      governedActionId: "governed-action-1",
+      assistantActionId: "assistant-action-1",
+      previousStatus: "ready",
+      newStatus: "completed",
+      actorUserId: "user-1",
+      actorEmail: "writer@example.test",
+      evidence: { outcome: "succeeded", resultCount: 3, sourceTruthChanged: false },
+    });
+
+    expect(tx.governedAction.update).toHaveBeenCalledWith({
+      where: { id: "governed-action-1" },
+      data: expect.objectContaining({
+        status: "SUCCEEDED",
+        decisionStatus: "NOT_REQUIRED",
+        approvedByUserId: undefined,
+        approvedByEmail: undefined,
+      }),
+    });
+    expect(tx.governedActionAttempt.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ status: "SUCCEEDED" }),
+      select: { id: true },
+    });
+    expect(tx.governedActionReceipt.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        kind: "EXECUTION_SUCCEEDED",
+        previousStatus: "READY",
+        newStatus: "SUCCEEDED",
+      }),
+    });
+    expect(tx.governedActionRun.update).toHaveBeenCalledWith({
+      where: { id: "run-1" },
+      data: expect.objectContaining({ status: "SUCCEEDED" }),
     });
   });
 });
