@@ -433,7 +433,19 @@ enum CallRoomInvitationStatus {
 enum CallRoomInvitationDeliveryStatus {
   PENDING
   SENT
+  DELIVERY_DELAYED
+  DELIVERED
+  BOUNCED
+  COMPLAINED
+  SUPPRESSED
   FAILED
+}
+
+enum EmailRecipientDeliveryStatus {
+  DELIVERABLE
+  BOUNCED
+  COMPLAINED
+  SUPPRESSED
 }
 
 enum RecordingConsentStatus {
@@ -2969,6 +2981,7 @@ model CallRoomInvitationDeliveryReceipt {
   recipientEmail    String
   provider          String                           @default("resend")
   providerMessageId String?
+  providerStatusAt  DateTime?
   errorCode         String?
   errorMessage      String?
   requestedByUserId String?
@@ -2977,12 +2990,57 @@ model CallRoomInvitationDeliveryReceipt {
   createdAt         DateTime                         @default(now())
   updatedAt         DateTime                         @updatedAt
 
-  invitation  CallRoomInvitation @relation(fields: [invitationId], references: [id], onDelete: Cascade)
-  requestedBy User?              @relation("CallRoomInvitationDeliveryRequestedBy", fields: [requestedByUserId], references: [id], onDelete: SetNull)
+  invitation     CallRoomInvitation   @relation(fields: [invitationId], references: [id], onDelete: Cascade)
+  requestedBy    User?                @relation("CallRoomInvitationDeliveryRequestedBy", fields: [requestedByUserId], references: [id], onDelete: SetNull)
+  providerEvents EmailProviderEvent[]
 
   @@index([invitationId, createdAt])
   @@index([recipientEmail, status, createdAt])
   @@index([status, requestedAt])
+}
+
+/// Privacy-minimized, append-only evidence from the transactional email
+/// provider. Quipsly stores delivery facts and a body hash, never the message
+/// body or invitation credential carried by the email.
+model EmailProviderEvent {
+  id                String   @id @default(cuid())
+  provider          String   @default("resend")
+  providerEventId   String
+  providerMessageId String
+  eventType         String
+  recipientEmail    String?
+  occurredAt        DateTime
+  receivedAt        DateTime @default(now())
+  payloadSha256     String
+  diagnosticJson    Json     @default("{}")
+  deliveryReceiptId String?
+
+  deliveryReceipt CallRoomInvitationDeliveryReceipt? @relation(fields: [deliveryReceiptId], references: [id], onDelete: SetNull)
+
+  @@unique([provider, providerEventId])
+  @@index([provider, providerMessageId, occurredAt])
+  @@index([eventType, occurredAt])
+  @@index([recipientEmail, occurredAt])
+  @@index([deliveryReceiptId, occurredAt])
+}
+
+/// Current recipient-level deliverability projection. This prevents repeated
+/// sends to mailboxes that bounced, complained, or were suppressed while the
+/// append-only provider event ledger remains the audit authority.
+model EmailRecipientDeliveryState {
+  recipientEmail        String                       @id
+  status                EmailRecipientDeliveryStatus @default(DELIVERABLE)
+  provider              String                       @default("resend")
+  lastProviderEventId   String
+  lastProviderMessageId String
+  reasonCode            String?
+  reasonMessage         String?
+  lastEventAt           DateTime
+  createdAt             DateTime                     @default(now())
+  updatedAt             DateTime                     @updatedAt
+
+  @@index([status, updatedAt])
+  @@index([lastProviderMessageId])
 }
 
 model RecordingConsent {
@@ -8647,14 +8705,14 @@ model StudioNestChatMessage {
 // -----------------------------------------------------------------------------
 
 model StudioAssistantSession {
-  id         String   @id @default(cuid())
-  projectId  String
-  documentId String?
+  id          String   @id @default(cuid())
+  projectId   String
+  documentId  String?
   ownerUserId String?
-  title      String?
-  status     String   @default("ACTIVE")
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  title       String?
+  status      String   @default("ACTIVE")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   owner    User?                    @relation("StudioAssistantSessionOwner", fields: [ownerUserId], references: [id], onDelete: Cascade)
   messages StudioAssistantMessage[]

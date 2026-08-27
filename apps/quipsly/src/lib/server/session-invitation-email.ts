@@ -17,6 +17,7 @@ export type SessionInvitationEmailResult =
         | "INVALID_RECIPIENT"
         | "INVALID_INVITE_URL"
         | "LOCAL_TEST_RECIPIENT"
+        | "RECIPIENT_SUPPRESSED"
         | "RATE_LIMITED"
         | "PROVIDER_REJECTED"
         | "PROVIDER_UNAVAILABLE";

@@ -92,6 +92,7 @@ Derived from source usage:
 - `HGO_SITE_URL`
 - `QUIPSLY_SESSION_INVITATION_RESEND_API_KEY`
 - `QUIPSLY_SESSION_INVITATION_EMAIL_FROM`
+- `QUIPSLY_RESEND_WEBHOOK_SECRET`
 - `QUIPSLY_SITE_URL`
 - `QUIPSLY_COACHING_FORM_AUTOMATION_SECRET`
 - `ENABLE_EPISODES_FUMADOCS`
@@ -119,6 +120,10 @@ Notes:
   Resend settings. `QUIPSLY_SITE_URL` is the trusted public origin placed in
   invitation mail. Local acceptance may continue with the rendered copy/share
   fallback; it must not report that as real mailbox delivery.
+- Resend delivery events post to `/api/webhooks/resend`. Quipsly verifies the
+  raw Svix signature with `QUIPSLY_RESEND_WEBHOOK_SECRET`, persists only
+  delivery metadata and a body hash, and deliberately ignores open/click
+  tracking events.
 - `/api/cron/coaching-form-automation` reconciles explicit pre/post-Session
   form policies. It fails closed unless
   `QUIPSLY_COACHING_FORM_AUTOMATION_SECRET` is configured and the caller sends

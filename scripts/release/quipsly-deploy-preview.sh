@@ -107,6 +107,7 @@ GOOGLE_DRIVE_OAUTH_TOKEN_ENCRYPTION_KEY_SECRET_NAME="${GOOGLE_DRIVE_OAUTH_TOKEN_
 GOOGLE_DRIVE_PICKER_API_KEY_SECRET_NAME="${GOOGLE_DRIVE_PICKER_API_KEY_SECRET_NAME:-quipsly-google-drive-picker-api-key}"
 GOOGLE_DRIVE_PICKER_APP_ID_SECRET_NAME="${GOOGLE_DRIVE_PICKER_APP_ID_SECRET_NAME:-quipsly-google-drive-picker-app-id}"
 SESSION_INVITATION_RESEND_API_KEY_SECRET_NAME="${SESSION_INVITATION_RESEND_API_KEY_SECRET_NAME:-quipsly-session-invitation-resend-api-key}"
+RESEND_WEBHOOK_SECRET_NAME="${RESEND_WEBHOOK_SECRET_NAME:-quipsly-resend-webhook-secret}"
 SESSION_INVITATION_EMAIL_FROM="${SESSION_INVITATION_EMAIL_FROM:-invites@notify.quipsly.com}"
 STRIPE_SECRET_KEY_SECRET_NAME="${STRIPE_SECRET_KEY_SECRET_NAME:-quipsly-stripe-secret-key}"
 STRIPE_SAAS_WEBHOOK_SECRET_NAME="${STRIPE_SAAS_WEBHOOK_SECRET_NAME:-quipsly-stripe-saas-webhook-secret}"
@@ -340,6 +341,8 @@ validate_private_secret() {
           valid &&= value.length >= 8 && value.length <= 512;
         } else if (kind === "api-secret" || kind === "oauth-client-secret") {
           valid &&= value.length >= 16 && value.length <= 4096;
+        } else if (kind === "webhook-secret") {
+          valid &&= /^whsec_[A-Za-z0-9+/=_-]{16,}$/.test(value) && value.length <= 4096;
         } else if (kind === "oauth-client-id") {
           valid &&= /^[0-9]+-[a-z0-9_-]+\.apps\.googleusercontent\.com$/.test(value);
         } else if (kind === "state-secret") {
@@ -400,10 +403,12 @@ if [[ "${ENABLE_SESSION_INVITATION_EMAIL}" == "1" ]]; then
     exit 2
   fi
   require_enabled_secret "${SESSION_INVITATION_RESEND_API_KEY_SECRET_NAME}"
+  require_enabled_secret "${RESEND_WEBHOOK_SECRET_NAME}"
   validate_private_secret "${SESSION_INVITATION_RESEND_API_KEY_SECRET_NAME}" "api-key"
-  session_invitation_email_secret=",QUIPSLY_SESSION_INVITATION_RESEND_API_KEY=${SESSION_INVITATION_RESEND_API_KEY_SECRET_NAME}:latest"
+  validate_private_secret "${RESEND_WEBHOOK_SECRET_NAME}" "webhook-secret"
+  session_invitation_email_secret=",QUIPSLY_SESSION_INVITATION_RESEND_API_KEY=${SESSION_INVITATION_RESEND_API_KEY_SECRET_NAME}:latest,QUIPSLY_RESEND_WEBHOOK_SECRET=${RESEND_WEBHOOK_SECRET_NAME}:latest"
   session_invitation_email_env_vars=",QUIPSLY_SESSION_INVITATION_EMAIL_FROM=${SESSION_INVITATION_EMAIL_FROM}"
-  echo "Session invitation email secret passed enabled-version and private shape validation."
+  echo "Session invitation email and signed delivery-webhook secrets passed enabled-version and private shape validation."
 fi
 if [[ "${ENABLE_GOOGLE_CALENDAR_OAUTH}" == "1" ]]; then
   if [[ ! "${GOOGLE_CALENDAR_PUSH_WORKER_SERVICE_ACCOUNT}" =~ ^[a-z0-9][a-z0-9-]{4,28}@[a-z][a-z0-9-]{4,62}\.iam\.gserviceaccount\.com$ ]]; then

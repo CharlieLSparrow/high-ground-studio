@@ -62,6 +62,7 @@ export default async function ProductOperationsPage({
     openDeletionRequests,
     productEventGroups,
     uniqueProductActors,
+    unmatchedEmailEvents,
   ] = await Promise.all([
     prisma.user.count({ where: { createdAt: { gte: since } } }),
     prisma.user.count({ where: { isActive: true } }),
@@ -85,11 +86,15 @@ export default async function ProductOperationsPage({
       _count: { id: true },
     }),
     prisma.callRoomInvitationDeliveryReceipt.findMany({
-      where: { status: "FAILED", requestedAt: { gte: since } },
+      where: {
+        status: { in: ["FAILED", "BOUNCED", "COMPLAINED", "SUPPRESSED"] },
+        requestedAt: { gte: since },
+      },
       orderBy: { requestedAt: "desc" },
       take: 12,
       select: {
         id: true,
+        status: true,
         recipientEmail: true,
         errorCode: true,
         errorMessage: true,
@@ -108,6 +113,9 @@ export default async function ProductOperationsPage({
       where: { createdAt: { gte: since }, eventName: { startsWith: "Product: " } },
       distinct: ["userId"],
       select: { userId: true },
+    }),
+    prisma.emailProviderEvent.count({
+      where: { receivedAt: { gte: since }, deliveryReceiptId: null },
     }),
   ]);
 
@@ -128,6 +136,11 @@ export default async function ProductOperationsPage({
   const sent = deliveryCount.get("SENT") ?? 0;
   const failed = deliveryCount.get("FAILED") ?? 0;
   const pending = deliveryCount.get("PENDING") ?? 0;
+  const delivered = deliveryCount.get("DELIVERED") ?? 0;
+  const deliveryProblems = failed
+    + (deliveryCount.get("BOUNCED") ?? 0)
+    + (deliveryCount.get("COMPLAINED") ?? 0)
+    + (deliveryCount.get("SUPPRESSED") ?? 0);
 
   return (
     <main className="min-h-full bg-[#f5efe5] px-4 py-6 text-[#2e251d] md:px-8">
@@ -154,7 +167,7 @@ export default async function ProductOperationsPage({
         <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           <Summary label="Active accounts" value={activeAccounts} detail={`${newAccounts} new in ${days} days`} tone="good" />
           <Summary label="Suspended accounts" value={suspendedAccounts} detail="Immediate access stops" tone={suspendedAccounts ? "warn" : "neutral"} />
-          <Summary label="Email delivery" value={sent} detail={`${failed} failed · ${pending} pending`} tone={failed ? "bad" : "good"} />
+          <Summary label="Email delivery" value={delivered} detail={`${sent} accepted · ${deliveryProblems} problems · ${pending} pending`} tone={deliveryProblems ? "bad" : "good"} />
           <Summary label="Deletion attention" value={openDeletionRequests} detail="Open or failed requests" tone={openDeletionRequests ? "warn" : "neutral"} />
         </section>
 
@@ -179,8 +192,9 @@ export default async function ProductOperationsPage({
           </Panel>
 
           <Panel title="Email failures requiring attention" icon={CircleAlert}>
+            {unmatchedEmailEvents ? <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950"><strong>{unmatchedEmailEvents} provider event(s)</strong> could not yet be matched to a Quipsly send receipt. They remain in the ledger for reconciliation.</div> : null}
             <div className="grid gap-2">
-              {recentDeliveryFailures.map((failure) => <Link key={failure.id} href={`/sessions/${failure.invitation.room.id}`} className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-950"><div className="font-black">{failure.invitation.room.title || "Session invitation"}</div><div className="mt-1 break-all">{failure.recipientEmail}</div><div className="mt-1 text-xs">{failure.errorCode || "delivery-failed"}{failure.errorMessage ? ` · ${failure.errorMessage}` : ""}</div></Link>)}
+              {recentDeliveryFailures.map((failure) => <Link key={failure.id} href={`/sessions/${failure.invitation.room.id}`} className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-950"><div className="flex justify-between gap-2"><span className="font-black">{failure.invitation.room.title || "Session invitation"}</span><span className="text-xs font-black">{failure.status}</span></div><div className="mt-1 break-all">{failure.recipientEmail}</div><div className="mt-1 text-xs">{failure.errorCode || "delivery-failed"}{failure.errorMessage ? ` · ${failure.errorMessage}` : ""}</div></Link>)}
               {!recentDeliveryFailures.length ? <Empty>No invitation email failures in this window.</Empty> : null}
             </div>
           </Panel>

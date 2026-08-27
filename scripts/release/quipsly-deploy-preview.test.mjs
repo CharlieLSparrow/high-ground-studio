@@ -135,6 +135,7 @@ test("session invitation email is explicit, Secret Manager backed, and safe to d
   );
   assert.match(source, /ENABLE_SESSION_INVITATION_EMAIL must be 0 or 1/);
   assert.match(source, /SESSION_INVITATION_RESEND_API_KEY_SECRET_NAME/);
+  assert.match(source, /RESEND_WEBHOOK_SECRET_NAME/);
   assert.match(
     source,
     /SESSION_INVITATION_EMAIL_FROM="\$\{SESSION_INVITATION_EMAIL_FROM:-invites@notify\.quipsly\.com\}"/,
@@ -146,6 +147,14 @@ test("session invitation email is explicit, Secret Manager backed, and safe to d
   assert.match(
     source,
     /QUIPSLY_SESSION_INVITATION_RESEND_API_KEY=\$\{SESSION_INVITATION_RESEND_API_KEY_SECRET_NAME\}:latest/,
+  );
+  assert.match(
+    source,
+    /validate_private_secret "\$\{RESEND_WEBHOOK_SECRET_NAME\}" "webhook-secret"/,
+  );
+  assert.match(
+    source,
+    /QUIPSLY_RESEND_WEBHOOK_SECRET=\$\{RESEND_WEBHOOK_SECRET_NAME\}:latest/,
   );
   assert.match(
     source,

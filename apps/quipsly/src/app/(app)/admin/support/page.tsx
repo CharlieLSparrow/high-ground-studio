@@ -228,7 +228,7 @@ export default async function SupportOperationsPage({
   const emails = selected
     ? [...new Set([selected.primaryEmail, ...selected.aliases.map((entry) => entry.email)].map((email) => email.toLowerCase()))]
     : [];
-  const [firebase, projectGrants, roomInvitations, deliveryCounts] = selected
+  const [firebase, projectGrants, roomInvitations, deliveryCounts, recipientDeliveryStates] = selected
     ? await Promise.all([
         firebaseSummary(selected.firebaseUid),
         prisma.studioProjectAccessGrant.findMany({
@@ -254,8 +254,13 @@ export default async function SupportOperationsPage({
           where: { recipientEmail: { in: emails } },
           _count: { id: true },
         }),
+        prisma.emailRecipientDeliveryState.findMany({
+          where: { recipientEmail: { in: emails } },
+          orderBy: { updatedAt: "desc" },
+          select: { recipientEmail: true, status: true, reasonCode: true, reasonMessage: true, lastEventAt: true },
+        }),
       ])
-    : [{ state: "not-linked" as const }, [], [], []];
+    : [{ state: "not-linked" as const }, [], [], [], []];
 
   const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const nextPage = new URLSearchParams({ ...(query ? { q: query } : {}), page: String(Math.min(pages, page + 1)) });
@@ -408,6 +413,7 @@ export default async function SupportOperationsPage({
                 </Panel>
                 <Panel icon={Mail} title="Invites and email">
                   <Fact label="Delivery totals" value={deliveryCounts.map((entry) => `${entry.status}: ${entry._count.id}`).join(" · ") || "No email attempts"} />
+                  {recipientDeliveryStates.map((state) => <div key={state.recipientEmail} className={`rounded-xl border p-3 text-xs ${state.status === "DELIVERABLE" ? "border-emerald-200 bg-emerald-50 text-emerald-950" : "border-rose-200 bg-rose-50 text-rose-950"}`}><div className="flex justify-between gap-2"><span className="font-black">{state.recipientEmail}</span><span className="font-black">{state.status}</span></div><div className="mt-1">Last provider evidence {readableDate(state.lastEventAt)}{state.reasonCode ? ` · ${state.reasonCode}` : ""}</div>{state.reasonMessage ? <div className="mt-1">{state.reasonMessage}</div> : null}</div>)}
                   {roomInvitations.map((invitation) => <div key={`${invitation.room.id}:${invitation.email}`} className="rounded-xl border border-[#eadfce] p-3 text-xs"><div className="flex justify-between gap-2"><span className="font-black">{invitation.room.title || "Session invite"}</span><span className="font-black">{invitation.status}</span></div><div className="mt-1 text-[#6f6254]">{invitation.email}</div><div className="mt-1 text-[#887967]">Email: {invitation.deliveries[0]?.status || "not attempted"}{invitation.deliveries[0]?.errorCode ? ` · ${invitation.deliveries[0].errorCode}` : ""}</div></div>)}
                   {!roomInvitations.length ? <Empty>No session invitations found.</Empty> : null}
                 </Panel>

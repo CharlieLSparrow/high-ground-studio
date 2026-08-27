@@ -40,6 +40,7 @@ const prisma = {
     create: jest.fn(),
     update: jest.fn(),
   },
+  emailRecipientDeliveryState: { findUnique: jest.fn() },
   callParticipantAccessReceipt: { findMany: jest.fn() },
   callParticipantProviderGrantReceipt: { findMany: jest.fn() },
 };
@@ -80,6 +81,7 @@ describe("Session invitation API", () => {
     prisma.callParticipantProviderGrantReceipt.findMany.mockResolvedValue([]);
     prisma.callRoomInvitation.updateMany.mockResolvedValue({ count: 1 });
     prisma.callRoomInvitationDeliveryReceipt.findFirst.mockResolvedValue(null);
+    prisma.emailRecipientDeliveryState.findUnique.mockResolvedValue(null);
     prisma.callRoomInvitationDeliveryReceipt.create.mockResolvedValue({
       id: "delivery-1",
       invitationId: "invite-1",
@@ -330,6 +332,26 @@ describe("Session invitation API", () => {
         idempotencyKey: "session-invitation/delivery-1",
       }),
     );
+  });
+
+  it("keeps the private link usable without repeatedly mailing a suppressed recipient", async () => {
+    prisma.emailRecipientDeliveryState.findUnique.mockResolvedValue({ status: "COMPLAINED" });
+    const response = await POST(
+      request("POST", {
+        email: "client@example.test",
+        role: "CLIENT",
+        delivery: "EMAIL",
+        requestId: "123e4567-e89b-42d3-a456-426614174000",
+      }),
+      context,
+    );
+    expect(response.status).toBe(201);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: true,
+      delivery: { status: "FAILED", errorCode: "RECIPIENT_SUPPRESSED" },
+      boundaries: { emailSent: false },
+    });
+    expect(sendSessionInvitationEmail).not.toHaveBeenCalled();
   });
 
   it("revokes only the unused link without claiming participant removal", async () => {
