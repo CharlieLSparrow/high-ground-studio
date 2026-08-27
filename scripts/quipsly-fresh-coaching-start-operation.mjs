@@ -9,6 +9,7 @@ import { getApps, initializeApp } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
 
 import { captureAppDeepLink } from "../apps/quipsly/src/lib/capture-universal-link.ts";
+import { SESSION_ENTRY_CHOICE_EVENT_NAMES } from "../apps/quipsly/src/lib/session-entry-choice.ts";
 import { writeRetainedQAPassword } from "./lib/retained-qa-keychain.mjs";
 import { createFreshCoachingCredentialIPCPacket } from "./lib/fresh-coaching-credential-ipc.mjs";
 import {
@@ -413,19 +414,15 @@ try {
     name: /Join call|Join in browser|Open call lobby/i,
   });
   await continueInBrowser.waitFor({ timeout: 30_000 });
-  const browserChoiceResponse = clientPage.waitForResponse(
-    (response) =>
-      response.request().method() === "POST" &&
-      new URL(response.url()).pathname ===
+  const browserChoiceRequest = clientPage.waitForRequest(
+    (request) =>
+      request.method() === "POST" &&
+      new URL(request.url()).pathname ===
         `/api/sessions/${encodeURIComponent(evidence.roomId)}/entry-choice`,
     { timeout: 20_000 },
   );
   await continueInBrowser.click();
-  const recordedBrowserChoice = await browserChoiceResponse;
-  assert(
-    recordedBrowserChoice.status() === 200,
-    "Fresh client browser choice was not recorded against the exact private Session.",
-  );
+  await browserChoiceRequest;
   const liveCallDock = clientPage.locator(
     `aside[aria-label="${sessionTitle} live call dock"]`,
   );
@@ -526,6 +523,14 @@ try {
   const clientUser = users.find(
     (user) => user.id === room.booking.clientUserId,
   );
+  const browserChoiceEvent = await prisma.userEvent.findFirst({
+    where: {
+      userId: room.booking.clientUserId,
+      eventName: SESSION_ENTRY_CHOICE_EVENT_NAMES.BROWSER,
+      payloadJson: { path: ["roomId"], equals: room.id },
+    },
+    select: { id: true },
+  });
   assert.equal(coachUser?.primaryEmail, identities.coach.email);
   assert.equal(clientUser?.primaryEmail, identities.client.email);
   assert.equal(
@@ -537,6 +542,10 @@ try {
       ["OWNER", "ADMIN", "COACH", "TEAM_SCHEDULER"].includes(role),
     ),
     false,
+  );
+  assert(
+    browserChoiceEvent,
+    "Fresh client browser choice was not retained against the exact private Session.",
   );
   assert.equal(room.booking.timezone, "America/Denver");
   if (seriesMode) {
