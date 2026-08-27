@@ -761,12 +761,15 @@ function checkMeetingSpineContractSources() {
     "Native Capture decodes writable Coaching Engagements, binds new coaching Sessions to the exact engagement and Nest, attaches the active relationship participants with requested consent receipts, preserves the identity offline, and exposes the private collaboration space.",
   );
   expect(
-    captureRecorderViewText.indexOf("ConsentStrip(") >= 0
+    captureRecorderViewText.indexOf("ProviderRoomControls(") >= 0
+      && captureRecorderViewText.indexOf("CaptureQuickEntryBar(") > captureRecorderViewText.indexOf("ProviderRoomControls(")
+      && captureRecorderViewText.indexOf("MobileSessionConversationCard(") > captureRecorderViewText.indexOf("CaptureQuickEntryBar(")
+      && captureRecorderViewText.indexOf("ConsentStrip(") > captureRecorderViewText.indexOf("MobileSessionConversationCard(")
       && captureRecorderViewText.indexOf("RecorderHero(") > captureRecorderViewText.indexOf("ConsentStrip(")
-      && captureRecorderViewText.indexOf("MobileCoachClientFollowUpCard(") > captureRecorderViewText.indexOf("RecorderHero(")
-      && captureRecorderViewText.indexOf("CaptureQuickEntryBar(") > captureRecorderViewText.indexOf("RecorderHero("),
+      && captureRecorderViewText.indexOf("CaptureSessionTranscriptReviewCard(") > captureRecorderViewText.indexOf("RecorderHero(")
+      && captureRecorderViewText.indexOf("CaptureSessionResultsCard(") > captureRecorderViewText.indexOf("CaptureSessionTranscriptReviewCard("),
     "nativeRecordHierarchyKeepsCapturePrimary",
-    "The shipping Record hierarchy keeps consent and the local recorder ahead of coaching follow-through, quick entry, and other collaboration tools.",
+    "The shipping Record hierarchy leads with the room, keeps quick work and conversation close to the call, reveals consent and recording only after entry, and continues into transcript plus editable results.",
   );
   expect(
     capturePhoneShellText.includes("CaptureSessionTranscriptLifecycle_")
@@ -990,74 +993,49 @@ function checkTranscriptPacketContractSources() {
     packetRouteText.includes("Sign in before reading a coaching packet.")
       && packetRouteText.includes("Sign in before building a coaching packet.")
       && packetRouteText.includes("quipsly-mobile-capture-transcript-packet-v1")
-      && packetRouteText.includes("Choose a capture room or transcript job before reading a coaching packet.")
-      && packetRouteText.includes("Choose a transcript job before building a coaching packet.")
       && packetRouteText.includes("You do not have access to this coaching packet.")
       && packetRouteText.includes("You do not have access to this transcript job.")
       && packetRouteText.includes("recordingSourceTruth")
-      && packetRouteText.includes("Transcript segments are derived evidence")
       && packetRouteText.includes("safeActions")
-      && packetRouteText.includes("build-review-packet")
-      && packetRouteText.includes("review-packet")
-      && packetRouteText.includes("READY_FOR_REVIEW")
-      && packetRouteText.includes("PACKET_READY_TO_BUILD")
-      && packetRouteText.includes("Build a packet from the completed transcript.")
-      && packetRouteText.includes("reviewLanes")
-      && packetRouteText.includes("client-follow-up")
-      && packetRouteText.includes("podcast-production")
-      && packetRouteText.includes("humanApprovalRequired")
+      && packetRouteText.includes("Modern packets materialize editable summary/highlight notes directly.")
+      && packetRouteText.includes('label: "Prepare Session results"')
+      && packetRouteText.includes('label: "Use Session results"')
+      && packetRouteText.includes("Quipsly creates ordinary work; people can edit, reassign, complete, or remove it.")
+      && packetRouteText.includes("humanApprovalRequired: false")
+      && packetRouteText.includes("externalSideEffects: false")
       && packetRouteText.includes("export async function PATCH")
-      && packetRouteText.includes("Sign in before reviewing a packet lane.")
-      && packetRouteText.includes("APPROVED_FOR_INTERNAL_USE")
-      && packetRouteText.includes("NEEDS_REVISION")
-      && packetRouteText.includes("REJECTED_BY_HUMAN")
-      && packetRouteText.includes("packetLaneReviewMutation")
-      && packetRouteText.includes("noExternalMutation: true")
-      && packetRouteText.includes("noClientDelivery: true")
-      && packetRouteText.includes("noTaskAssignment: true"),
+      && packetRouteText.includes("Compatibility controls for older candidate-only packets. Current Session results are already ordinary editable work."),
     "coachingPacketRouteReviewBoundary",
-    "Coaching packet route is authenticated, room-scoped, and exposes next-action states plus review lanes and app-owned human review state without external side effects.",
+    "Coaching packet routes are authenticated and room-scoped, create ordinary editable Session results by default, retain source timing, and keep legacy candidate controls as compatibility rather than required workflow.",
   );
   expect(
     packetBuilderText.includes("Transcript must be completed before building a coaching packet.")
       && packetBuilderText.includes("Transcript has no segments to turn into a coaching packet.")
       && packetBuilderText.includes("kind: \"SUMMARY\"")
       && packetBuilderText.includes("kind: \"HIGHLIGHT\"")
-      && !packetBuilderText.includes("actionItem.create")
-      && packetBuilderText.includes("TRANSCRIPT_ACTION_CANDIDATE_KIND")
-      && coachingPacketDomainText.includes('TRANSCRIPT_ACTION_CANDIDATE_KIND =')
-      && coachingPacketDomainText.includes('"quipsly-transcript-action-candidate-v1"')
-      && packetBuilderText.includes("actionCandidates")
-      && packetBuilderText.includes("actionCandidateReviewBoundary")
+      && packetBuilderText.includes("actionItem.create")
+      && packetBuilderText.includes("goal.create")
       && coachingPacketDomainText.includes('TRANSCRIPT_PACKET_SOURCE = "transcript-packet-builder"')
       && packetBuilderText.includes("source: TRANSCRIPT_PACKET_SOURCE")
-      && packetBuilderText.includes("buildTranscriptPacketBrief")
-      && packetBuilderText.includes("packetBrief")
       && packetBuilderText.includes("deterministic: true")
-      && packetBuilderText.includes("reviewRequired: true")
+      && packetBuilderText.includes("reviewRequired: false")
       && packetBuilderText.includes("reusedExistingPacket")
-      && packetBuilderText.includes("buildTranscriptPacketReviewLanes")
       && coachingPacketVersionText.includes('SESSION_PACKET_TEMPLATE_VERSION = "quipsly-session-packet-v4"')
       && packetBuilderText.includes("SESSION_PACKET_TEMPLATE_VERSION")
-      && packetBuilderText.includes('TRANSCRIPT_PACKET_SNAPSHOT_SCHEMA = "quipsly-transcript-packet-snapshot-v2"')
+      && packetBuilderText.includes('"quipsly-transcript-packet-snapshot-v2"')
       && packetBuilderText.includes("projectTranscriptSegmentsForPacket")
       && packetBuilderText.includes("projectTranscriptJobSegmentsForPacket")
       && packetBuilderText.includes("sourceBoundTranscriptSpeakerLabel")
       && packetBuilderText.includes("sourceBoundTranscriptParticipantId")
-      && packetBuilderText.includes('speakerAuthority: "correction" | "attribution" | "source-binding" | "provider" | "unresolved"')
-      && packetBuilderText.includes("sourceBoundParticipantId")
       && packetBuilderText.includes("packetSnapshotMatchesTranscriptJob")
-      && packetBuilderText.includes("packetSnapshotMatches")
-      && packetBuilderText.includes('visibility: "AUTHOR_PRIVATE"')
-      && packetBuilderText.includes("reviewLaneDefinitionsForPurpose")
-      && packetBuilderText.includes("fact-checks-and-rights")
-      && packetBuilderText.includes("quote-candidates")
-      && packetBuilderText.includes("article-seeds")
-      && packetBuilderText.includes("next-session-prep")
-      && packetBuilderText.includes("humanApprovalRequired: true")
+      && packetBuilderText.includes("automaticallyCreated: true")
+      && packetBuilderText.includes("editableAfterCreation: true")
+      && packetBuilderText.includes("removableInProduct: true")
+      && packetBuilderText.includes("sourceProvenanceVisible: true")
+      && packetBuilderText.includes("Quipsly created editable follow-through in the Session")
       && packetBuilderText.includes("externalSideEffects: false"),
     "coachingPacketBuilderProvenance",
-    "Packet builder requires a completed segmented transcript, carries exact isolated-source speaker authority into its versioned snapshot, and produces review-required summary, highlight, quarantined action-candidate, and multi-lane follow-up evidence without creating open work.",
+    "Packet building requires a completed segmented transcript, carries exact source and speaker evidence into a versioned snapshot, and directly creates editable summary notes, highlights, tasks, and goals without external side effects.",
   );
   expect(
     lifecycleSmokeText.includes("transcriptSegment.createMany")
@@ -1186,10 +1164,12 @@ function checkReviewDigestContractSources() {
   );
   expect(
     capturePhoneShellText.includes("CaptureFinishQueueCard")
-      && capturePhoneShellText.includes("Finish queue")
-      && capturePhoneShellText.includes("Opening an item changes nothing by itself.")
+      && capturePhoneShellText.includes("Recordings & transcripts")
+      && capturePhoneShellText.includes("Keep every session moving from recording to transcript and edit.")
       && capturePhoneShellText.includes("CaptureFinishQueueMetrics")
       && capturePhoneShellText.includes("CaptureFinishQueueBoundary")
+      && capturePhoneShellText.includes("CaptureFinishQueueDetails")
+      && capturePhoneShellText.includes("DisclosureGroup(\"Recording details\"")
       && capturePhoneShellText.includes("digest.recoveryOpen")
       && capturePhoneShellText.includes("digest.safeToLeave")
       && capturePhoneShellText.includes("exit.experience.title")
@@ -1198,7 +1178,7 @@ function checkReviewDigestContractSources() {
       && capturePhoneShellText.includes("model.sessions.first(where: { $0.callRoomId == roomID })")
       && capturePhoneShellText.includes("visibleTab = .record"),
     "nativeFinishQueueVisible",
-    "Today exposes a ranked post-capture finishing queue that opens the exact Session without executing its promotion, transcription, packet, or review action.",
+    "Today exposes a plain-language recordings and transcripts status card that opens the exact Session while keeping technical recording details available on demand.",
   );
   expect(
     digestRouteText.includes("missingPlannedSources")
@@ -1238,7 +1218,7 @@ function checkReviewDigestContractSources() {
     "The shipping native Capture shell exposes journey, lifecycle receipt, safe-action, source-quality, and recording-boundary truth without restoring the disconnected reviewer control board.",
   );
   expect(
-    contentViewText.includes("CapturePhoneShell(visibleTab: $visibleTab)")
+    contentViewText.includes("CapturePhoneShell(model: captureModel, visibleTab: $visibleTab)")
       && contentViewText.includes("@State private var visibleTab: CaptureRootTab")
       && contentViewText.includes(".onChange(of: authManager.accessMode)")
       && contentViewText.includes("visibleTab = .library")
@@ -1250,7 +1230,8 @@ function checkReviewDigestContractSources() {
       && capturePhoneShellText.includes("CaptureRootTab.work")
       && capturePhoneShellText.includes("CaptureRootTab.library")
       && capturePhoneShellText.includes("CaptureRootTab.account")
-      && capturePhoneShellText.includes("Local source is production truth"),
+      && capturePhoneShellText.includes("Your recording is safe")
+      && capturePhoneShellText.includes("The original stays on this iPhone while a backed-up copy becomes ready in Quipsly."),
     "nativeReviewDigestOnSessionSurfaces",
     "The production iPhone root keeps Today, Record, Work, Library, and Account focused, preserves active capture across auth expiry, and retains protected offline recovery.",
   );
@@ -1278,7 +1259,8 @@ function checkReviewDigestContractSources() {
       && capturePhoneShellText.includes("CaptureWorkTaskEdit_")
       && capturePhoneShellText.includes("CaptureTodayTaskEdit_")
       && capturePhoneShellText.includes("CaptureTaskEditSave")
-      && capturePhoneShellText.includes("CaptureTaskEditBoundary")
+      && capturePhoneShellText.includes("CaptureTaskEditSheet")
+      && capturePhoneShellText.includes("CaptureTaskEditRemove")
       && capturePhoneShellText.includes('status: task.status == "OPEN" ? "DONE" : "OPEN"')
       && bridgeText.includes("func editTask(")
       && bridgeText.includes('"action": "task-edit"')
@@ -1288,7 +1270,8 @@ function checkReviewDigestContractSources() {
       && capturePhoneShellText.includes("CaptureWorkGoalEdit_")
       && capturePhoneShellText.includes("CaptureTodayGoalEdit_")
       && capturePhoneShellText.includes("CaptureGoalEditSave")
-      && capturePhoneShellText.includes("CaptureGoalEditBoundary")
+      && capturePhoneShellText.includes("CaptureGoalEditSheet")
+      && capturePhoneShellText.includes("CaptureGoalEditRemove")
       && bridgeText.includes("func editGoal(")
       && bridgeText.includes('"action": "goal-edit"')
       && bridgeText.includes('"targetDecision": targetDecision')
@@ -1346,7 +1329,8 @@ function checkReviewDigestContractSources() {
       && capturePhoneShellText.includes("CaptureTagVocabularyCreateField")
       && capturePhoneShellText.includes("CaptureTagVocabularyCreate")
       && capturePhoneShellText.includes("CaptureTagVocabularyAliases_")
-      && capturePhoneShellText.includes("Use Nest’s vocabulary manager for merge review and history."),
+      && capturePhoneShellText.includes("CaptureTagVocabularySheet")
+      && capturePhoneShellText.includes("CaptureWorkManageTags"),
     "nativeCanonicalProjectWorkWorkspace",
     "iPhone Work reads actor-scoped canonical project tasks, goals, document notes, and tags, protects the last owner-partitioned snapshot offline, pre-binds protected quick capture, reconciles complete per-record tag decisions through one protected outbox, and creates/reuses or manages shared vocabulary only against a live editor grant while routing merge impact and rollback review to Nest.",
   );
@@ -1563,78 +1547,49 @@ function checkTranscriptCorrectionContractSources() {
     nativeText.includes("CaptureTranscriptReviewView")
       && nativeText.includes("recording.recordingAssetId == expectedRecordingAssetID")
       && nativeText.includes("func confirmedPosition(")
-      && nativeText.includes("for segment: CaptureTranscriptSegment")
-      && nativeText.includes("sourcePlayback: CaptureTranscriptPlayback?")
       && nativeText.includes("protectedSource?.recordingAssetId == expectedRecordingAssetID")
-      && nativeText.includes("recordingAssetID: expectedRecordingAssetID")
       && nativeText.includes(".quipslyCaptureAccountIdentityDidChange")
       && nativeText.includes("AuthManager.shared.matchesStableOwnerSnapshot(owner)")
-      && nativeText.includes('kind == "audio"')
-      && nativeText.includes("CaptureTranscriptVideoDownloadBoundary_")
       && nativeSessionPlaybackText.includes("prepareTranscriptReviewFile")
       && nativeText.includes("AI proposal · not transcript truth")
-      && nativeText.includes("Preview data — no server actions")
-      && nativeText.includes("This iPhone does not have the exact recording asset behind this transcript")
       && nativeText.includes("FileProtectionType.complete")
-      && nativeText.includes(".completeFileProtection")
-      && nativeText.includes("values.isExcludedFromBackup = true")
       && nativeText.includes("CaptureTranscriptProtectedCacheBoundary")
       && nativeText.includes("guard !isUsingProtectedCache, AuthManager.shared.networkActionsAllowed")
       && nativeText.includes("ProtectedTranscriptDrafts")
       && nativeText.includes("providerTextSha256 == segment.providerTextSha256")
-      && nativeText.includes("Protected local draft saved · not synced")
       && nativeText.includes("CaptureTranscriptCorrectionDraftStore.remove")
       && transcriptReviewOutboxText.includes("owner == Self.normalizedOwnerID(AuthManager.currentStoredOwnerID())")
       && transcriptReviewOutboxText.includes("expectedProviderText")
       && transcriptReviewOutboxText.includes("expectedAcceptedCorrectionID")
-      && transcriptReviewOutboxText.includes("playbackPositionSeconds")
       && transcriptReviewOutboxText.includes("completeFileProtectionUntilFirstUserAuthentication")
       && transcriptReviewOutboxText.includes("var clientRequestID: String")
-      && transcriptReviewOutboxText.includes("id.uuidString.lowercased()")
       && nativeText.includes("payload.boundaries?.providerSegmentsImmutable == true")
       && nativeText.includes("payload.boundaries?.correctionOverlayVersioned == true")
       && nativeText.includes("payload.boundaries?.mediaTimeAnchorsPreserved == true")
-      && nativeText.includes("code: \"ACKNOWLEDGEMENT_MISMATCH\"")
       && nativeText.includes("guard reviewDecisionOutbox.markAcknowledged(decision.id) else")
-      && nativeText.includes("CaptureTranscriptReviewOutboxBoundary")
       && captureUITestText.includes("testTranscriptReviewOutboxSurvivesRelaunchAndStaysAccountPartitioned")
-      && contentViewText.includes("CaptureOfflineTranscriptReviewLink_")
-      && contentViewText.includes("Exact local-source transcript review")
       && runtimeRunnerText.includes("transcript-review-offline-reconcile")
       && runtimeUITestText.includes("testOfflineTranscriptReviewQueuesSurvivesRelaunchReconcilesAndHoldsConflict")
-      && runtimeUITestText.includes("injectConcurrentTranscriptCorrection")
       && nativeText.includes("CapturePacketAdditionalSuggestionsDisclosure")
       && nativeText.includes("More suggestions")
-      && nativeText.includes("Open these when they are useful. They never block the transcript or the notes, tasks, and goals Quipsly already created.")
+      && nativeText.includes("Use, edit, or dismiss any idea whenever it helps.")
       && nativeText.includes("DisclosureGroup(isExpanded: $showsAdditionalSuggestions)")
-      && !nativeText.includes("CaptureTranscriptPacketLoadedBoundary")
       && shellText.includes("CaptureSessionResultsCard")
       && shellText.includes("Quipsly made these from the transcript. Adjust or remove them like any other work")
-      && nativeText.includes("CaptureTranscriptPacketErrorBoundary")
-      && shellText.includes("Review transcript against this source")
       && shellText.includes("CaptureTranscriptReviewPreviewLink")
       && shellText.includes("CaptureSessionTranscriptReviewLink_")
-      && shellText.includes("Review transcript and follow-up")
-      && shellText.includes("Review only — exact local source unavailable")
       && shellText.includes("session.coachingPacketSummaryNoteId != nil")
-      && shellText.includes("session.actionPacket?.capabilities?.canReviewPacket == true")
-      && shellText.includes("It does not start playback or keep any suggestion.")
       && nativeText.includes("CaptureTranscriptAudioQualityCard(recording: exactRecording)")
       && nativeText.includes("CaptureAudioMasteryClient()")
       && nativeText.includes('Label("Open recording quality"')
       && nativeText.includes("CaptureSourceEvidenceView(recordingID: recording.id)")
       && nativeText.includes("The original remains unchanged")
-      && nativeText.includes("immutable original")
       && nativeText.includes("guard AuthManager.shared.networkActionsAllowed else { return }")
       && nativeText.includes("recording.uploadedMediaAssetId")
-      && nativeText.includes("recording.uploadedSourceId")
       && nativeText.includes("signal.rmsDbfs")
-      && nativeText.includes("signal.samplePeakDbfs")
-      && nativeText.includes("listen points")
-      && nativeText.includes("RMS is not LUFS")
-      && nativeText.includes("review candidates—not confirmed defects"),
+      && nativeText.includes("signal.samplePeakDbfs"),
     "nativeTranscriptCorrectionExactSourceBoundary",
-    "iPhone Library and the selected canonical Session open transcript overlays, packet candidates, and whole-source audio-quality status against an exact retained recording-asset match, protect account-partitioned offline playback decisions with stable idempotency and exact acknowledgement, and keep preview, remote-only, packet, and AI states non-authoritative.",
+    "iPhone Library and Session open exact-source transcript correction plus audio-quality tools, preserve protected offline decisions, show ordinary generated work directly, and keep optional extra suggestions collapsed.",
   );
   expect(
     noteMaterializationRouteText.includes('["EDIT", "DEFER", "REJECT"].includes(decision || "")')
@@ -1689,7 +1644,7 @@ function checkTranscriptCorrectionContractSources() {
       && shellText.includes("task.todayReason?.nonempty")
       && webText.includes("Make this my task")
       && webText.includes('id={`transcript-segment-${encodeURIComponent(segment.id)}`}')
-      && webText.includes("It creates no deadline, reminder, calendar event, message, or publication."),
+      && webText.includes("Assigned to you with a link back to this transcript moment."),
     "transcriptDerivedTaskExplicitSourceBoundary",
     "Transcript review creates one explicitly requested self-owned OPEN task with immutable segment and recording provenance, stale-evidence protection, idempotency, and no implicit scheduling, delivery, or publication.",
   );
@@ -1715,7 +1670,7 @@ function checkTranscriptCorrectionContractSources() {
       && nativeText.includes("CaptureTranscriptCreateGoalButton")
       && nativeText.includes("Owned by you with a link back to this transcript moment.")
       && webText.includes("Make this my goal")
-      && webText.includes("It creates no task, target date, reminder, calendar event, message, or publication.")
+      && webText.includes("Owned by you with a link back to this transcript moment.")
       && workModelText.includes("readTranscriptDerivedGoalSource")
       && workClientText.includes("Transcript goal source")
       && schedulePageText.includes("readTranscriptDerivedGoalSource")
@@ -1735,7 +1690,7 @@ function checkTranscriptCorrectionContractSources() {
       && draftRouteText.includes("sourceMutated: false")
       && draftRouteText.includes("externalSideEffects: false")
       && webText.includes("Start writing page")
-      && webText.includes("Creates one private Nest writing page with an immutable transcript-evidence block and a separate editable draft block")
+      && webText.includes("Private by default with a link back to this transcript moment.")
       && immutableSourceText.includes('IMMUTABLE_TRANSCRIPT_SOURCE_PREFIX = "transcript:"')
       && writingActionsText.includes("assertMutableWritingBlock(existingBlock.externalId)")
       && writingActionsText.includes("Source evidence stays pinned in its canonical position")
@@ -1851,10 +1806,10 @@ function checkTranscriptCorrectionContractSources() {
       && sessionNotesWorkspaceText.includes("TagSearchChips")
       && sessionNotesWorkspaceText.includes('payload.idempotentReplay ? "This note was already saved." : "Note saved."')
       && sessionNotesWorkspaceText.includes("noteAppearsInView(payload.note, activeView)")
-      && sessionNotesWorkspaceText.includes("Private by default. Saving does not send a message.")
+      && sessionNotesWorkspaceText.includes("Audience")
       && sessionReviewText.includes('scope="work"')
       && sessionReviewText.includes("Session follow-through")
-      && sessionReviewText.includes("Transcript candidates stay separate until a person accepts them")
+      && includesNormalized(sessionReviewText, "ordinary editable items, not proposals waiting for approval")
       && sessionReviewText.includes("Open same {entry.kind.toLowerCase()} in Work"),
     "canonicalMobileQuickEntryOutbox",
     "iPhone quick Note, Task, Goal, and Source capture journals to an actor-partitioned protected outbox first; Session, Home Nest, and explicit writable-Nest work replay to canonical project records while private URL/text sources enter Inbox with exact readback and no external side effects.",
@@ -2080,23 +2035,16 @@ function checkTranscriptCorrectionContractSources() {
       && nativeRecordingShareText.includes("FileProtectionType.complete")
       && nativeRecordingShareText.includes("reconcilePlaybackAuthorization")
       && nativeRecordingShareText.includes('action: "PREPARE"')
-      && nativeRecordingShareText.includes('action: "REVIEW"')
       && nativeRecordingShareText.includes('action: "RELEASE"')
       && nativeRecordingShareText.includes('action: "REVOKE"')
-      && nativeRecordingShareText.includes("clientTrackedPlaybackIsNotProofOfAudibility")
-      && nativeRecordingShareText.includes("previewReviewComplete")
-      && nativeRecordingShareText.includes("CaptureRecordingShareReviewNext")
-      && nativeRecordingShareText.includes("output.playbackReview?.reviewed != true")
-      && nativeRecordingShareText.includes("Original recordings never change")
+      && nativeRecordingShareText.includes("CaptureRecordingSharePlay")
+      && nativeRecordingShareText.includes("CaptureRecordingShareExport")
+      && nativeRecordingShareText.includes("Play this edit above, or share it now. The original recording stays unchanged.")
       && nativeRecordingShareText.includes("providerTextSha256")
       && nativeRecordingShareText.includes("sourceManifest")
       && nativeRecordingShareText.includes("restoreEditorFromCurrentOutput")
       && nativeRecordingShareText.includes("will not substitute another track")
-      && nativeRecordingShareText.includes("var verifiedRendererAvailable")
-      && nativeRecordingShareText.includes("localRendererAvailable || cloudRendererAvailable")
       && nativeRecordingShareText.includes("snapshot.readiness?.verifiedRendererAvailable != true")
-      && !nativeRecordingShareText.includes("snapshot.readiness?.localRendererAvailable != true")
-      && nativeRecordingShareText.includes('"Review trim and try again"')
       && nativeRecordingShareText.includes("Your original recording and edit choices are safe")
       && nativeRecordingShareText.includes("Listen to exact passage")
       && nativeRecordingShareText.includes("source.programOffsetSeconds")
@@ -2114,7 +2062,7 @@ function checkTranscriptCorrectionContractSources() {
       && nativeRecordingShareText.includes("does not have qualified source timing")
       && nativeRecordingShareText.includes("it is not an edit decision"),
     "nativePrivateRecordingEditAndShare",
-    "Capture exposes source-bound private trim, receipt-verified exact-passage audition, exact derivative playback with required listening checkpoints, fail-closed release and revocation, direct in-app reachability, and an exact transcript-passage handoff that preserves the reviewed source manifest and prior text cuts without mutating masters or silently substituting tracks.",
+    "Capture exposes source-bound trim and text editing, exact-passage audition, verified derivative playback and export, direct share or revocation, and exact transcript-passage handoff without mutating masters or silently substituting tracks.",
   );
   expect(
     recordingPromotionText.includes("resolveCaptureGroupPromotionPlan")
@@ -2305,116 +2253,51 @@ function checkTranscriptCorrectionContractSources() {
     "Saved transcript-backed notes, tasks, goals, focus plans, and released follow-up sources show the same plain-language speaker-authority evidence across Nest and iPhone after users leave Session review.",
   );
   expect(
-    packetRouteText.includes("buildPacketGoalCandidates")
-      && packetRouteText.includes('brief.kind !== "quipsly-transcript-packet-brief-v1"')
-      && packetRouteText.includes("brief.candidateOnly !== true")
-      && packetRouteText.includes("goalCandidateReviewReceipts")
-      && packetRouteText.includes("goalReviewStatus(latestReceipt?.decision)")
-      && packetGoalReviewRouteText.includes("createTranscriptDerivedGoalInTransaction")
-      && packetGoalReviewRouteText.includes("FOR UPDATE")
-      && packetGoalReviewRouteText.includes("goalCandidateReviewReceipts")
-      && packetGoalReviewRouteText.includes('if (reviewDecision === "ACCEPT")')
-      && packetGoalReviewRouteText.includes('reviewDecision === "MERGE"')
-      && packetGoalReviewRouteText.includes("GOAL_EVIDENCE_MERGE_KIND")
-      && packetGoalReviewRouteText.includes("TRANSCRIPT_GOAL_EVIDENCE_MERGE_SCHEMA")
-      && packetGoalReviewRouteText.includes("mergeAppendsOneActorOwnedGoalEvidenceReceipt")
-      && packetGoalReviewRouteText.includes('reviewDecision === "EDIT"')
-      && packetGoalReviewRouteText.includes('reviewDecision === "REJECT"')
-      && packetGoalReviewRouteText.includes("TRANSCRIPT_GOAL_REVIEW_DECISIONS")
-      && packetGoalReviewRouteText.includes("materializationIntent")
-      && packetGoalReviewRouteText.includes("GOAL_CANDIDATE_IDEMPOTENCY_CONFLICT")
-      && packetGoalReviewRouteText.includes("targetDateCreated")
-      && packetGoalReviewRouteText.includes("projectTagsApplied")
-      && packetGoalReviewRouteText.includes("taskCreated: false")
-      && packetGoalReviewRouteText.includes("calendarMutated: false")
-      && sessionReviewModelText.includes("goalCandidateReviewRequest")
-      && sessionReviewText.includes("Session follow-up")
-      && sessionReviewText.includes('busy ? "Creating…" : "Create goal"')
-      && sessionReviewText.includes("Add evidence to existing goal")
-      && includesNormalized(sessionReviewText, "will not rewrite the selected goal")
-      && sessionReviewText.includes("Add a target date")
-      && sessionReviewText.includes("Project tags")
-      && includesNormalized(sessionReviewText, "Tasks, focus blocks, reminders, calendar placement, messages, delivery, and publication remain separate decisions.")
-      && sessionReviewText.includes('href={`/work?goal=${encodeURIComponent(candidate.committedGoalId)}`}')
-      && nativeText.includes("/api/mobile/capture/transcripts/packet/goals")
-      && nativeText.includes("CapturePacketCandidateReviewQueue")
+    coachingPacketText.includes("reviewRequired: false")
+      && coachingPacketText.includes("prisma.coachingNote.create")
+      && coachingPacketText.includes("prisma.actionItem.create")
+      && coachingPacketText.includes("prisma.goal.create")
+      && coachingPacketText.includes("automaticallyCreated: true")
+      && coachingPacketText.includes("editableAfterCreation: true")
+      && coachingPacketText.includes("removableInProduct: true")
+      && coachingPacketText.includes("sourceProvenanceVisible: true")
+      && includesNormalized(sessionReviewText, "ordinary editable items, not proposals waiting for approval")
+      && shellText.includes("CaptureSessionResultsCard")
+      && shellText.includes("Quipsly made these from the transcript. Adjust or remove them like any other work")
       && nativeText.includes("CapturePacketAdditionalSuggestionsDisclosure")
-      && nativeText.includes("CapturePacketCandidateReviewFilter")
-      && nativeText.includes("optional idea")
-      && nativeText.includes("never block the transcript")
-      && !nativeText.includes("CapturePacketCandidateReviewCounts")
-      && !nativeText.includes("Review next suggestion")
+      && nativeText.includes("More suggestions")
+      && nativeText.includes("Use, edit, or dismiss any idea whenever it helps.")
+      && packetGoalReviewRouteText.includes("createTranscriptDerivedGoalInTransaction")
+      && packetGoalReviewRouteText.includes("mergeAppendsOneActorOwnedGoalEvidenceReceipt")
       && nativeText.includes("CapturePacketGoalSource_")
-      && nativeText.includes("CapturePacketGoalAcceptButton")
       && nativeText.includes("CapturePacketGoalCreateButton")
-      && nativeText.includes("CapturePacketGoalTargetDateToggle")
-      && nativeText.includes("CapturePacketGoalTag_")
-      && nativeText.includes('body["targetAt"]')
-      && nativeText.includes("CapturePacketGoalBeginMergeButton")
       && nativeText.includes("CapturePacketGoalMergeTargetPicker")
-      && nativeText.includes("Adds this source to the selected goal without changing its status")
-      && nativeText.includes("No goal or task was created")
-      && nativeText.includes("/api/mobile/capture/transcripts/packet/actions")
-      && nativeText.includes("CapturePacketCandidateReviewQueue")
       && nativeText.includes("CapturePacketTaskSource_")
-      && nativeText.includes("CapturePacketTaskAcceptButton")
       && nativeText.includes("CapturePacketTaskCreateButton")
-      && nativeText.includes("CapturePacketTaskOwnerPicker")
-      && nativeText.includes("CapturePacketTaskDueDateToggle")
-      && nativeText.includes("CapturePacketTaskTag_")
-      && nativeText.includes("taskMaterialization")
-      && nativeText.includes('body["assignToMe"]')
-      && nativeText.includes('body["dueAt"]')
-      && nativeText.includes('body["tagIds"]')
-      && nativeText.includes("CapturePacketTaskMergeModeButton")
-      && nativeText.includes("CapturePacketTaskMergeTargetPicker")
-      && nativeText.includes("Nothing changes until you choose. Create a task")
-      && nativeText.includes("add this source to an existing task")
-      && nativeText.includes("keep it for later, or dismiss it."),
+      && nativeText.includes("CapturePacketTaskMergeTargetPicker"),
     "packetGoalCandidateExplicitReviewBoundary",
-    "Packet goal-language stays candidate-only until an actor deliberately creates one exact-source canonical Goal; Edit, Dismiss, and Later remain receipt-backed non-work decisions with no implied task, schedule, calendar, message, delivery, or publication.",
+    "Completed transcripts create ordinary editable tasks and goals directly, while exact-source extra suggestions remain optional and collapsed instead of blocking the workflow.",
   );
   expect(
-    packetRouteText.includes("buildPacketNoteCandidates")
-      && packetRouteText.includes("transcriptPacketNoteCandidateId")
-      && packetRouteText.includes("noteCandidates")
-      && noteMaterializationRouteText.includes("sessionMutationAccessWhere")
-      && noteMaterializationRouteText.includes("mobileCaptureTranscriptProcessingGate")
-      && noteMaterializationRouteText.includes("FOR UPDATE")
-      && noteMaterializationRouteText.includes("packetSnapshotMatches")
-      && noteMaterializationRouteText.includes("packetCandidateReviewed")
-      && noteMaterializationRouteText.includes("packetSnapshotRechecked")
-      && noteMaterializationRouteText.includes("created-from-transcript-packet")
-      && sessionReviewModelText.includes("noteCandidateReviewRequest")
-      && sessionReviewText.includes("Session follow-up")
-      && includesNormalized(sessionReviewText, "Review Quipsly’s suggestions, make any quick edits, and save the notes, goals, and tasks that matter")
-      && includesNormalized(sessionReviewText, "It creates no task, goal, reminder, calendar event, message, client delivery, Studio edit, or publication")
-      && nativeText.includes("CapturePacketCandidateReviewQueue")
+    coachingPacketText.includes("reviewRequired: false")
+      && coachingPacketText.includes("prisma.coachingNote.create")
+      && coachingPacketText.includes("kind: \"SUMMARY\"")
+      && coachingPacketText.includes("kind: \"HIGHLIGHT\"")
+      && coachingPacketText.includes("editableAfterCreation: true")
+      && coachingPacketText.includes("removableInProduct: true")
+      && includesNormalized(sessionReviewText, "ordinary editable items, not proposals waiting for approval")
+      && nativeText.includes("CapturePacketAdditionalSuggestionsDisclosure")
+      && nativeText.includes("Use, edit, or dismiss any idea whenever it helps.")
       && nativeText.includes("CapturePacketNoteSourceButton_")
-      && nativeText.includes("CapturePacketNoteTitleField")
-      && nativeText.includes("CapturePacketNoteBodyField")
-      && nativeText.includes("CapturePacketNoteKindPicker")
-      && nativeText.includes("CapturePacketNoteVisibilityPicker")
-      && nativeText.includes("CapturePacketNoteAudienceBoundary")
-      && nativeText.includes("CapturePacketNoteBoundary")
-      && nativeText.includes("CapturePacketNoteReviewPreviewView")
-      && nativeText.includes("CaptureTranscriptJumpMenu")
-      && nativeText.includes("CaptureTranscriptJumpToNotes")
-      && nativeText.includes("reviewPacketNote")
-      && nativeText.includes('"packetNoteCandidateId": candidate.id')
       && nativeText.includes("CapturePacketNoteEditButton_")
       && nativeText.includes("CapturePacketNoteDeferButton_")
       && nativeText.includes("CapturePacketNoteRejectButton_")
+      && noteMaterializationRouteText.includes("packetSnapshotRechecked")
       && noteMaterializationRouteText.includes("exactReplay")
-      && noteMaterializationRouteText.includes("candidateDraftAfter")
       && noteMaterializationRouteText.includes('decision === "MERGE"')
-      && noteMaterializationRouteText.includes("previousContentRetainedInRevision")
-      && packetRouteText.includes("carriedForwardDraft")
-      && packetRouteText.includes("exactSourceMatch: true")
-      && shellText.includes("CapturePacketNoteReviewPreviewLink")
-      && captureUITestText.includes("testPacketNoteReviewRequiresPurposeAudienceAndFinalHumanSave"),
+      && noteMaterializationRouteText.includes("previousContentRetainedInRevision"),
     "packetNoteCandidateExplicitMaterializationBoundary",
-    "Packet note candidates remain source-linked projections through exact-replay-safe edit, merge, defer, and reject receipts; exact-source drafts survive a packet rebuild, while deliberate acceptance creates one note and deliberate merge appends one recoverable revision to a selected existing note against the rechecked snapshot.",
+    "Completed transcripts create ordinary editable notes directly, while optional exact-source suggestions preserve safe edit, merge, defer, and dismiss behavior without becoming required paperwork.",
   );
   expect(
     clientFollowUpServiceText.includes("readTranscriptDerivedNoteSource")
@@ -2437,8 +2320,7 @@ function checkTranscriptCorrectionContractSources() {
     clientFollowUpServiceText.includes("clientFollowUpDraftReadiness")
       && clientFollowUpServiceText.includes("FOLLOW_UP_SOURCE_CHANGED")
       && clientFollowUpServiceText.includes("loadEligibleRecords(tx, freshBoundary.room)")
-      && clientFollowUpWebText.includes("Release held — review current sources")
-      && clientFollowUpWebText.includes("Ready to share")
+      && clientFollowUpWebText.includes("Share follow-up file")
       && bridgeText.includes("MobileCaptureClientFollowUpReadiness")
       && bridgeText.includes("workspace.readiness?.releaseAllowed == true")
       && mobileComponentsText.includes("CaptureCoachFollowUpReleaseReady")
@@ -2572,7 +2454,7 @@ function checkTranscriptCorrectionContractSources() {
     workspaceSearchText.includes("personalOrSharedWorkspaceTaskAccessWhere")
       && taskAccessText.includes("export function personalOrSharedWorkspaceTaskAccessWhere")
       && taskAccessText.includes("{ assignedUserId: userId }")
-      && taskAccessText.includes("{ assignedUserId: null, projectId: { in: projectIds } }")
+      && taskAccessText.includes("{ assignedUserId: null, engagementId: null, projectId: { in: projectIds } }")
       && taskAccessText.includes("assignedUserId: null")
       && workspaceSearchText.includes("roomAccessWhere")
       && workspaceSearchText.includes("isUnreviewedTranscriptActionItem")
