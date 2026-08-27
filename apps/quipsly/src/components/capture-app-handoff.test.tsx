@@ -25,17 +25,18 @@ describe("CaptureAppHandoff", () => {
     render(
       <CaptureAppHandoff
         roomId="room-safe_42"
+        sessionTitle="Client coaching check-in"
         joinedFromInvitation
         onContinueInBrowser={onContinueInBrowser}
       />,
     );
     expect(
-      screen.getByRole("heading", { name: "Join your Session" }),
+      screen.getByRole("heading", { name: "Client coaching check-in" }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("region", { name: "Join your Session" }),
+      screen.getByRole("region", { name: "Client coaching check-in" }),
     ).toHaveAttribute("data-session-entry-ready", "true");
-    expect(screen.getByRole("button", { name: "Join call" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Continue in this browser" })).toBeInTheDocument();
     expect(screen.getByText(/recommended on this device/i)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /Use Quipsly Capture on iPhone/i })).toHaveAttribute(
       "href",
@@ -48,7 +49,7 @@ describe("CaptureAppHandoff", () => {
       screen.getByText(/same private Session/i),
     ).toBeInTheDocument();
     expect(screen.queryByText(/laptop/i)).not.toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Join call" }));
+    await user.click(screen.getByRole("button", { name: "Continue in this browser" }));
     expect(onContinueInBrowser).toHaveBeenCalledTimes(1);
   });
 
@@ -91,7 +92,7 @@ describe("CaptureAppHandoff", () => {
     const first = render(
       <CaptureAppHandoff roomId="room-first" onContinueInBrowser={firstContinue} />,
     );
-    await user.click(screen.getByRole("button", { name: "Join call" }));
+    await user.click(screen.getByRole("button", { name: "Continue in this browser" }));
     expect(window.localStorage.getItem("quipsly.session-entry-preference.v1")).toBe("BROWSER");
     first.unmount();
 

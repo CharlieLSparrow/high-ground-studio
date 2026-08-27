@@ -4437,63 +4437,58 @@ export function SessionReviewClient({
       sessionTitle,
     ],
   );
-  const browserCallFocused =
-    liveDock.isOpen && liveDock.activeCallRoomId === roomId;
+  const browserCallActive = liveDock.activeCallRoomId === roomId;
+  const browserCallFocused = liveDock.isOpen && browserCallActive;
 
   if (mode === "live") {
     return (
       <main className="mx-auto flex min-h-[calc(100dvh-8rem)] w-full max-w-4xl items-start px-0 py-3 sm:items-center sm:py-8">
-        <div className="w-full rounded-[2rem] border border-[#ded1bb] bg-[#fffaf0]/95 p-4 shadow-xl shadow-[#3d3122]/10 sm:p-7">
-          <header className="mb-3 flex flex-col gap-3 px-1 sm:mb-4 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
-            <div className="min-w-0">
-              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-violet-800">
-                Session lobby
+        <div className="w-full">
+          {browserCallActive ? (
+            <section className="rounded-[2rem] border border-emerald-200 bg-emerald-50/90 p-5 shadow-xl shadow-[#3d3122]/10 sm:p-7" aria-labelledby="active-session-heading">
+              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-800">
+                Session in progress
               </p>
-              <h1 className="mt-1 break-words font-serif text-2xl font-black leading-tight text-[#3d3122] sm:text-3xl">
+              <h1 id="active-session-heading" className="mt-1 break-words font-serif text-3xl font-black leading-tight text-[#3d3122]">
                 {sessionTitle}
               </h1>
-              <p className="mt-1 text-xs font-semibold text-[#765f40]">
-                Check your setup, then join when you&apos;re ready.
+              <p className="mt-2 max-w-2xl text-sm font-semibold leading-6 text-[#5f513e]">
+                Your call stays available while you work with the transcript,
+                notes, goals, and tasks from this Session.
               </p>
-            </div>
-            <div className="flex shrink-0 gap-2">
-              <Link
-                href={sessionWorkspaceHref(roomId, "conversation")}
-                className="inline-flex min-h-11 items-center justify-center rounded-full border border-violet-300 bg-violet-50 px-4 text-xs font-black text-violet-900"
-              >
-                Conversation
-              </Link>
-              <Link
-                href={sessionWorkspaceHref(roomId, "overview")}
-                className="inline-flex min-h-11 items-center justify-center rounded-full border border-[#d9c7a5] bg-white px-4 text-xs font-black text-[#5b472f]"
-              >
-                Leave lobby
-              </Link>
-            </div>
-          </header>
-
-          {preparation && !browserCallFocused ? (
-            <SessionConsentControl roomId={roomId} preparation={preparation} />
-          ) : null}
-
-          <div className="mt-4">
+              <div className="mt-5 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => liveDock.open(liveDockConfig)}
+                  className="inline-flex min-h-12 items-center justify-center rounded-full bg-emerald-800 px-5 text-xs font-black uppercase tracking-wide text-white"
+                >
+                  {browserCallFocused ? "Focus call" : "Return to call"}
+                </button>
+                <Link href={sessionWorkspaceHref(roomId, "conversation")} className="inline-flex min-h-12 items-center justify-center rounded-full border border-emerald-300 bg-white px-4 text-xs font-black text-emerald-950">
+                  Conversation
+                </Link>
+                <Link href={sessionWorkspaceHref(roomId, "transcript")} className="inline-flex min-h-12 items-center justify-center rounded-full border border-emerald-300 bg-white px-4 text-xs font-black text-emerald-950">
+                  Transcript
+                </Link>
+                <Link href={sessionWorkspaceHref(roomId, "notes")} className="inline-flex min-h-12 items-center justify-center rounded-full border border-emerald-300 bg-white px-4 text-xs font-black text-emerald-950">
+                  Notes
+                </Link>
+                <Link href={sessionWorkspaceHref(roomId, "work")} className="inline-flex min-h-12 items-center justify-center rounded-full border border-emerald-300 bg-white px-4 text-xs font-black text-emerald-950">
+                  Goals &amp; tasks
+                </Link>
+              </div>
+            </section>
+          ) : (
             <CaptureAppHandoff
               roomId={roomId}
+              sessionTitle={sessionTitle}
               joinedFromInvitation={joinedFromInvitation}
               captureOpenFallback={captureOpenFallback}
               canViewChoiceMetrics={canViewEntryChoiceMetrics}
               onContinueInBrowser={() => liveDock.open(liveDockConfig)}
             />
-          </div>
+          )}
 
-          <div className="mt-4">
-            <SessionReadinessTopologyCard
-              roomId={roomId}
-              topology={readinessTopology}
-              canManageSourcePlan={canManageSourcePlan}
-              hideWhenInactive
-            />
-          </div>
         </div>
       </main>
     );

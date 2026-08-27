@@ -29,12 +29,14 @@ function prefersCaptureOnThisDevice() {
 
 export function CaptureAppHandoff({
   roomId,
+  sessionTitle,
   joinedFromInvitation = false,
   captureOpenFallback = false,
   canViewChoiceMetrics = false,
   onContinueInBrowser,
 }: {
   roomId: string;
+  sessionTitle?: string;
   joinedFromInvitation?: boolean;
   captureOpenFallback?: boolean;
   canViewChoiceMetrics?: boolean;
@@ -168,18 +170,18 @@ export function CaptureAppHandoff({
           >
             {joinedFromInvitation
               ? "Invitation accepted"
-              : "One Session · your choice of device"}
+              : "Join Session"}
           </p>
           <h2
             id="capture-handoff-heading"
             className="mt-1 font-serif text-xl font-black text-[#3d3122] sm:text-2xl"
           >
-            {joinedFromInvitation ? "Join your Session" : "Ready to join?"}
+            {sessionTitle || "Choose where to join"}
           </h2>
           <p className="mt-1 text-sm font-semibold leading-5 text-[#765f40] sm:mt-2 sm:leading-6">
             {captureRecommended
-              ? "Open the Session in Quipsly Capture, or continue in this browser."
-              : "Continue in this browser. Quipsly Capture is also available on iPhone."}
+              ? "Open Quipsly Capture or continue in this browser."
+              : "Continue here or use Quipsly Capture on iPhone."}
           </p>
         </div>
       </div>
@@ -312,7 +314,7 @@ export function CaptureAppHandoff({
                     onClick={continueInBrowser}
                     className="flex min-h-14 w-full items-center justify-center gap-3 rounded-2xl bg-violet-800 px-5 text-sm font-black text-white disabled:cursor-wait disabled:opacity-60 sm:min-h-16"
                   >
-                    <MonitorSmartphone size={18} aria-hidden="true" /> Join call
+                    <MonitorSmartphone size={18} aria-hidden="true" /> Continue in this browser
                   </button>
                   <a
                     href={captureURL}
@@ -346,8 +348,8 @@ export function CaptureAppHandoff({
           className="mt-0.5 shrink-0 text-emerald-700"
           aria-hidden="true"
         />
-        Whichever you choose, you’ll enter the same private Session. Joining
-        never starts a recording.
+        Both choices open the same private Session. You choose whether to
+        record after you join.
       </p>
 
       {metrics ? (

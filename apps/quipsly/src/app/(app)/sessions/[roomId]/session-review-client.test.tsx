@@ -1165,7 +1165,7 @@ describe("Session review goal candidates", () => {
     expect(mockRouterRefresh).toHaveBeenCalledTimes(1);
   });
 
-  it("puts the conventional recording choice before device entry without requiring agreement to join", () => {
+  it("keeps the call entrance free of recording paperwork", () => {
     global.fetch = jest.fn() as typeof fetch;
     render(<SessionReviewClient
       roomId="room-live-coaching"
@@ -1209,15 +1209,11 @@ describe("Session review goal candidates", () => {
       }}
     />);
 
-    const consent = screen.getByTestId("session-consent-control");
-    const deviceEntry = screen.getByRole("heading", { name: "Ready to join?" });
-    expect(within(consent).getByRole("button", { name: "Agree and continue" })).toBeInTheDocument();
-    expect(within(consent).getByRole("button", { name: "Don’t record me" })).toBeInTheDocument();
-    expect(within(consent).getByLabelText("Record camera video from this device")).not.toBeChecked();
-    expect(within(consent).getByText(/join the call without being recorded/)).toBeInTheDocument();
-    expect(
-      consent.compareDocumentPosition(deviceEntry) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Coaching Session" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Continue in this browser" })).toBeInTheDocument();
+    expect(screen.queryByTestId("session-consent-control")).not.toBeInTheDocument();
+    expect(screen.getByText(/choose whether to record after you join/i)).toBeInTheDocument();
+    expect(screen.queryByText("Recording status")).not.toBeInTheDocument();
   });
 
   it("keeps saved consent compact until the participant chooses to change it", async () => {
