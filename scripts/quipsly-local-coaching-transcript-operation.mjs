@@ -295,10 +295,19 @@ try {
     );
 
     await page.reload({ waitUntil: "domcontentloaded" });
+    const refreshedSessionResults = page.getByText(
+      "Session results and status",
+      { exact: true },
+    );
+    await refreshedSessionResults.waitFor({
+      state: "visible",
+      timeout: 20_000,
+    });
+    await refreshedSessionResults.click();
     const refreshedEvidence = page.locator(
       'section[aria-label="Session evidence status"]',
     );
-    await refreshedEvidence.waitFor({ timeout: 20_000 });
+    await refreshedEvidence.waitFor({ state: "visible", timeout: 20_000 });
     await refreshedEvidence
       .getByText("Completed", { exact: true })
       .waitFor({ timeout: 20_000 });
