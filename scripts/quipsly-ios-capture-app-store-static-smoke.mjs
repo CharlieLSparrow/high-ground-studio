@@ -760,6 +760,8 @@ const authCombined = `${authText}\n${loginText}`;
 requireIncludes(authText, "SecItemUpdate(lookup as CFDictionary, replacement as CFDictionary)", "Keychain rotation updates by stable item identity instead of matching the replacement secret value");
 requireIncludes(authText, "guard updateStatus == errSecItemNotFound else { return false }", "Keychain persistence reports update failures instead of silently claiming the session is durable");
 requireIncludes(authText, "This iPhone could not protect the refreshed Quipsly session in Keychain", "native sign-in exposes a truthful storage failure instead of opening an unrecoverable session");
+requireIncludes(authText, "Account created. Check your inbox, verify your email, then sign in.", "password sign-up uses a familiar verification handoff");
+requireExcludes(authText, "beta recording or upload access", "retired beta access language is absent from paid account creation");
 for (const needle of [
   "accounts:signInWithPassword",
   "accounts:signInWithIdp",

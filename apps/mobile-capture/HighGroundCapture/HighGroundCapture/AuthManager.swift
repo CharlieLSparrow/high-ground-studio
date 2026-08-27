@@ -640,7 +640,7 @@ final class AuthManager: ObservableObject {
                 // The sign-up response contains valid tokens. They deliberately stay
                 // memory-only: an unverified account never becomes cached/offline access.
                 recentlyCreatedEmail = account.email ?? email
-                statusMessage = "Account created safely. Check your inbox, verify the address, then sign in. Verification proves identity; it does not grant Capture beta recording or upload access. Nest will show this account's access status."
+                statusMessage = "Account created. Check your inbox, verify your email, then sign in. If you already use this address with Google, choose Continue with Google instead."
                 finishInteractiveAuthAttempt(attemptID)
             } catch {
                 failInteractiveAuthAttempt(attemptID, error: error)
