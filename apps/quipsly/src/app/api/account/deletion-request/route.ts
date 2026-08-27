@@ -6,6 +6,7 @@ import {
   accountDeletionPolicyResponse,
   projectAccountDeletionRequest,
 } from "@/lib/server/account-deletion-policy";
+import { advanceSelfServiceAccountDeletion } from "@/lib/server/account-deletion-self-service";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 
 function isObject(value: unknown): value is Record<string, unknown> {
@@ -118,17 +119,38 @@ export async function POST(request: Request) {
         appSurface: text(body.appSurface) || null,
         userAgent: request.headers.get("user-agent"),
         createdAt: new Date().toISOString(),
-        retentionReviewRequired: true,
+        userConfirmedDeletion: true,
+        confirmationSurface: "in-app-destructive-confirmation",
+        automaticProcessingRequested: true,
         policyVersion: accountDeletionPolicyResponse().version,
         targetDays: accountDeletionPolicyResponse().targetDays,
       },
     },
   });
 
-  const projected = projectAccountDeletionRequest(deletionRequest);
+  let advancedRequest = deletionRequest;
+  try {
+    advancedRequest = (
+      await advanceSelfServiceAccountDeletion({
+        requestId: deletionRequest.id,
+        userId: user.id,
+        dependencies: { prisma },
+      })
+    ).request;
+  } catch (automaticError) {
+    console.error("Account deletion automatic processing did not start.", {
+      requestId: deletionRequest.id,
+      error:
+        automaticError instanceof Error
+          ? automaticError.message.slice(0, 500)
+          : "Unknown automatic processing error.",
+    });
+  }
+
+  const projected = projectAccountDeletionRequest(advancedRequest);
   return NextResponse.json({
     ok: true,
-    message: "Deletion request recorded.",
+    message: "Account deletion started.",
     request: { ...projected, reusedExistingRequest: false },
     policy: accountDeletionPolicyResponse(),
     nextAction: projected.nextAction,

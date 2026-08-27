@@ -1,5 +1,5 @@
 export const ACCOUNT_DELETION_POLICY = {
-  version: "2026-07-24.v2",
+  version: "2026-08-27.v3",
   targetDays: 30,
   supportEmail: "charlie@highgroundodyssey.com",
 } as const;
@@ -35,30 +35,30 @@ const STATUS_COPY: Record<
 > = {
   REQUESTED: {
     label: "Deletion scheduled",
-    detail: "Your account deletion is scheduled and no further action is required.",
+    detail: "Quipsly received your request and queued account deletion.",
     nextAction:
-      "Quipsly is processing your account, personal data, shared work, and any records that must be retained.",
+      "No action is required. Quipsly will begin processing automatically.",
     active: true,
   },
   REVIEWING: {
     label: "Deletion in progress",
-    detail: "Quipsly is processing the data attached to your account.",
+    detail:
+      "Quipsly is deleting personal data and separating or anonymizing records that other participants or legal obligations still require.",
     nextAction:
-      "No action is required unless Quipsly needs to verify your identity.",
+      "No action is required. Quipsly will show progress here and email you when deletion is complete.",
     active: true,
   },
   EXPORT_PREPARING: {
     label: "Preparing eligible data",
     detail:
       "Quipsly is preparing any requested or required account export before deletion.",
-    nextAction:
-      "No action is required. Quipsly will continue automatically.",
+    nextAction: "No action is required. Quipsly will continue automatically.",
     active: true,
   },
   READY_FOR_DELETION: {
-    label: "Ready to delete",
+    label: "Deletion queued",
     detail:
-      "Your account is ready for the final deletion step.",
+      "Your account passed the automatic data check and is queued for secure deletion.",
     nextAction:
       "Quipsly will complete deletion and send confirmation to your account email.",
     active: true,
@@ -73,18 +73,16 @@ const STATUS_COPY: Record<
   },
   COMPLETED: {
     label: "Deletion completed",
-    detail:
-      "Quipsly completed account deletion.",
+    detail: "Quipsly completed account deletion.",
     nextAction:
       "Check your account email for the completion confirmation and the disclosed categories of records that were retained or anonymized.",
     active: false,
   },
   FAILED: {
     label: "Deletion needs attention",
-    detail:
-      "Quipsly could not finish every deletion step. Account access remains disabled while the operation is retried.",
+    detail: "Quipsly hit a processing problem after protecting account access.",
     nextAction:
-      "Quipsly will retry automatically. Contact support if you need an update.",
+      "No action is required. Quipsly will retry safely from the last completed step and contact you if identity verification is needed.",
     active: true,
   },
   CANCELED: {

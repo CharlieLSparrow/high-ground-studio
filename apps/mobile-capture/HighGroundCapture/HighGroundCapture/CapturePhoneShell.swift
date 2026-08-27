@@ -15031,7 +15031,7 @@ private struct AccountDeletionSheet: View {
                 }
                 Button("Cancel", role: .cancel) {}
             } message: {
-                Text("This starts account deletion and removes your access. This cannot be undone after deletion completes.")
+                Text("This starts deletion now. Quipsly will remove your access and eligible personal data as processing begins. This cannot be undone after deletion completes.")
             }
             .task {
                 guard !usesPreviewData else { return }

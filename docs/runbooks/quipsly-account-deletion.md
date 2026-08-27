@@ -1,7 +1,8 @@
 # Quipsly account deletion
 
-Status: executable for blocker-free accounts; reviewed retention plans remain a
-manual privacy operation.
+Status: self-service execution for blocker-free accounts; attached records are
+classified automatically and exceptional retention plans remain a privacy
+operation.
 
 This runbook owns the complete boundary between an in-app deletion request and
 a truthful completion receipt. It applies to Nest, HighGroundCapture, Firebase
@@ -11,8 +12,11 @@ Authentication, PostgreSQL, and Media Vault objects.
 
 - A signed-in person can request deletion from the iPhone app and reopen the
   request status.
-- A request is not completion. Staff review export choices, shared work,
-  recordings, consent, payments, legal retention, and project ownership first.
+- The destructive in-app confirmation immediately classifies attached data.
+  Blocker-free accounts proceed to the private worker without staff review.
+- A request is not completion. Shared work, recordings, consent, payments,
+  legal retention, and project ownership are separated, deleted, anonymized,
+  or retained by category before completion is claimed.
 - `COMPLETED` can only be persisted with a detached user, a completion time, and
   an executor receipt whose outcome is `completed`.
 - Disabling an account must not be reversed by a later valid Firebase token.
@@ -25,9 +29,9 @@ The state machine is:
 
 ```text
 REQUESTED
-  -> REVIEWING
-  -> EXPORT_PREPARING (when needed)
-  -> READY_FOR_DELETION
+  +-> READY_FOR_DELETION (automatic, blocker-free)
+  +-> REVIEWING -> EXPORT_PREPARING (only when needed)
+                -> READY_FOR_DELETION
   -> EXECUTING
   -> COMPLETED
          |
@@ -67,7 +71,8 @@ For an eligible account, the executor:
 6. sends idempotent completion confirmation;
 7. writes the execution receipt and detached request as `COMPLETED`.
 
-Accounts with blockers require a reviewed retention/deletion plan. Do not
+Accounts with blockers remain in automatic attached-record processing and may
+require an exceptional reviewed retention/deletion plan. Do not
 change their status to `COMPLETED`, bypass the database check, or improvise
 production SQL. Record and implement the missing category-specific plan first.
 
@@ -79,10 +84,10 @@ Open:
 /admin/account-deletion
 ```
 
-An OWNER or configured Quipsly admin can:
+An OWNER or configured Quipsly admin can recover exceptional requests by:
 
 - inspect the current inventory and blockers;
-- start review;
+- inspecting automatic classification and starting exceptional review;
 - record that an export is being prepared;
 - mark a blocker-free inventory ready;
 - execute or resume deletion with the exact phrase `DELETE <request-id>` and

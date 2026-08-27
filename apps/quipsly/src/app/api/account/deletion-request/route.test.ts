@@ -4,14 +4,19 @@ jest.mock("@/lib/prisma", () => ({ getPrismaClient: jest.fn() }));
 jest.mock("@/lib/server/quipsly-session", () => ({
   getQuipslySessionFromRequest: jest.fn(),
 }));
+jest.mock("@/lib/server/account-deletion-self-service", () => ({
+  advanceSelfServiceAccountDeletion: jest.fn(),
+}));
 
 import { getPrismaClient } from "@/lib/prisma";
+import { advanceSelfServiceAccountDeletion } from "@/lib/server/account-deletion-self-service";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 
 import { GET, POST } from "./route";
 
 const mockedPrisma = jest.mocked(getPrismaClient);
 const mockedSession = jest.mocked(getQuipslySessionFromRequest);
+const mockedAdvance = jest.mocked(advanceSelfServiceAccountDeletion);
 
 function request(method: "GET" | "POST", body?: unknown) {
   return new Request("http://localhost/api/account/deletion-request", {
@@ -33,6 +38,29 @@ describe("account deletion request route", () => {
     } as never);
     mockedSession.mockResolvedValue({
       user: { id: "user-1", primaryEmail: "person@example.test" },
+    } as never);
+    mockedAdvance.mockResolvedValue({
+      disposition: "queued-for-execution",
+      blockerCategories: [],
+      request: {
+        id: "deletion-2",
+        userId: "user-1",
+        emailSnapshot: "person@example.test",
+        status: "READY_FOR_DELETION",
+        reason: "Please remove it.",
+        source: "ios-capture",
+        requestedAt: new Date("2026-07-24T12:00:00.000Z"),
+        reviewedAt: new Date("2026-07-24T12:00:00.000Z"),
+        executionStartedAt: null,
+        completedAt: null,
+        failedAt: null,
+        canceledAt: null,
+        executionReceiptJson: null,
+        lastFailureJson: null,
+        metadataJson: {},
+        createdAt: new Date("2026-07-24T12:00:00.000Z"),
+        updatedAt: new Date("2026-07-24T12:00:00.000Z"),
+      },
     } as never);
   });
 
@@ -123,11 +151,7 @@ describe("account deletion request route", () => {
       where: {
         userId: "user-1",
         status: {
-          in: expect.arrayContaining([
-            "REQUESTED",
-            "EXECUTING",
-            "FAILED",
-          ]),
+          in: expect.arrayContaining(["REQUESTED", "EXECUTING", "FAILED"]),
         },
       },
       orderBy: { requestedAt: "desc" },
@@ -161,10 +185,10 @@ describe("account deletion request route", () => {
       ok: true,
       request: {
         id: "deletion-2",
-        status: "REQUESTED",
+        status: "READY_FOR_DELETION",
         reusedExistingRequest: false,
       },
-      policy: { version: "2026-07-24.v2", targetDays: 30 },
+      policy: { version: "2026-08-27.v3", targetDays: 30 },
     });
     expect(create).toHaveBeenCalledWith({
       data: expect.objectContaining({
@@ -172,10 +196,17 @@ describe("account deletion request route", () => {
         emailSnapshot: "person@example.test",
         reason: "Please remove it.",
         metadataJson: expect.objectContaining({
-          policyVersion: "2026-07-24.v2",
+          policyVersion: "2026-08-27.v3",
           targetDays: 30,
+          userConfirmedDeletion: true,
+          automaticProcessingRequested: true,
         }),
       }),
+    });
+    expect(mockedAdvance).toHaveBeenCalledWith({
+      requestId: "deletion-2",
+      userId: "user-1",
+      dependencies: { prisma: expect.any(Object) },
     });
   });
 });
