@@ -224,10 +224,15 @@ try {
     const path = `/sessions/${ROOM_ID}?mode=transcript&source=${encodeURIComponent(source.id)}`;
     if (index > 0)
       await page.goto(`${baseURL}${path}`, { waitUntil: "domcontentloaded" });
+    const sessionResults = page.getByText("Session results and status", {
+      exact: true,
+    });
+    await sessionResults.waitFor({ state: "visible", timeout: 20_000 });
+    await sessionResults.click();
     const evidence = page.locator(
       'section[aria-label="Session evidence status"]',
     );
-    await evidence.waitFor({ timeout: 20_000 });
+    await evidence.waitFor({ state: "visible", timeout: 20_000 });
     await evidence
       .getByText("Recording details", { exact: true })
       .click();
