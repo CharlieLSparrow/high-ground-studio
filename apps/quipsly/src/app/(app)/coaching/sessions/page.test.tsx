@@ -82,7 +82,7 @@ describe("CoachingSessionsPage", () => {
       episodeSlug: "episode-8",
       deviceLabel: "Quipsly Nest web",
     }));
-    expect(await screen.findByRole("status")).toHaveTextContent("Collect explicit consent before recording.");
+    expect(await screen.findByRole("status")).toHaveTextContent("Session created. Open it to invite people and choose recording options.");
     expect(screen.getByRole("link", { name: "Open created session" })).toHaveAttribute("href", "/sessions/room-1");
   });
 
@@ -103,8 +103,8 @@ describe("CoachingSessionsPage", () => {
 
     render(<CoachingSessionsPage />);
     expect(await screen.findByRole("heading", { name: "Episode 8 recording" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Open workspace" })).toHaveAttribute("href", "/sessions/room-1");
-    expect(screen.getByRole("link", { name: "Review consent" })).toHaveAttribute("href", "/sessions/room-1?mode=prepare");
+    expect(screen.getByRole("link", { name: "Open session" })).toHaveAttribute("href", "/sessions/room-1");
+    expect(screen.getByRole("link", { name: "Recording options" })).toHaveAttribute("href", "/sessions/room-1?mode=prepare");
     expect(screen.queryByLabelText("Allow audio recording of my participation.")).not.toBeInTheDocument();
     expect(jest.mocked(globalThis.fetch).mock.calls.some(([input, init]) => String(input) === "/api/mobile/capture/consent" && init?.method === "POST")).toBe(false);
   });
@@ -147,13 +147,13 @@ describe("CoachingSessionsPage", () => {
     }));
 
     render(<CoachingSessionsPage />);
-    expect(await screen.findByRole("heading", { name: "Session index" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Sessions" })).toBeInTheDocument();
     expect(screen.getAllByTestId("session-index-card")).toHaveLength(12);
     expect(screen.queryByRole("heading", { name: "Episode 9: The Swear Jar" })).not.toBeInTheDocument();
 
     await user.type(screen.getByLabelText("Search Sessions"), "Episode 9");
     expect(await screen.findByRole("heading", { name: "Episode 9: The Swear Jar" })).toBeInTheDocument();
     expect(screen.getAllByTestId("session-index-card")).toHaveLength(1);
-    expect(screen.getByRole("link", { name: "Open workspace" })).toHaveAttribute("href", "/sessions/room-14");
+    expect(screen.getByRole("link", { name: "Open session" })).toHaveAttribute("href", "/sessions/room-14");
   });
 });

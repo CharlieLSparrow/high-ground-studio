@@ -1,16 +1,12 @@
 "use client";
 
-import type { FormEvent, ReactNode } from "react";
+import type { FormEvent } from "react";
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
-  CalendarDays,
-  CheckCircle2,
   Clock,
   ExternalLink,
   RefreshCw,
-  Receipt,
-  Sparkles,
   Video,
 } from "lucide-react";
 
@@ -194,59 +190,6 @@ function Pill({ label, tone = "warm" }: { label: string; tone?: SessionTone }) {
   return <span className={`rounded-full border px-3 py-1 text-[11px] font-black uppercase tracking-wide ${classes}`}>{label}</span>;
 }
 
-function HumanStep({
-  icon,
-  title,
-  detail,
-  tone,
-}: {
-  icon: ReactNode;
-  title: string;
-  detail: string;
-  tone: SessionTone;
-}) {
-  const iconClasses = {
-    good: "bg-emerald-50 text-emerald-700",
-    warn: "bg-amber-50 text-amber-700",
-    bad: "bg-rose-50 text-rose-700",
-    warm: "bg-[#fff7e8] text-[#8a6a3e]",
-    blue: "bg-sky-50 text-sky-700",
-  }[tone];
-
-  return (
-    <div className="rounded-2xl border border-[#ead8b4] bg-white/86 p-4 shadow-sm">
-      <div className="mb-2 flex items-center gap-2">
-        <span className={`inline-flex h-9 w-9 items-center justify-center rounded-xl ${iconClasses}`}>{icon}</span>
-        <h3 className="font-black text-[#3d3122]">{title}</h3>
-      </div>
-      <p className="text-sm font-bold leading-relaxed text-[#745a38]">{detail}</p>
-    </div>
-  );
-}
-
-function paymentLine(session: MobileCaptureSession) {
-  if (!paymentRequiredFor(session)) return "No Stripe payment is required for this session in Quipsly.";
-  if (paymentResolvedFor(session)) return "Payment is recorded. Your session can move forward.";
-  if (session.latestCheckoutUrl) return "A secure Stripe payment page is ready for this session.";
-  return "Payment is not recorded yet. Your coach may send a secure Stripe link before the session.";
-}
-
-function consentLine(session: MobileCaptureSession) {
-  if (session.recordingConsentGranted) return "Consent is granted. Recording can happen only through the visible capture controls.";
-  if (session.recordingConsentStatus === "DECLINED") return "Consent was declined. Recording stays off.";
-  if (session.recordingConsentStatus === "REVOKED") return "Consent was revoked. Recording stays off until consent is granted again.";
-  return "Recording is off. Consent is needed before any local or provider recording starts.";
-}
-
-function packetLine(session: MobileCaptureSession) {
-  if (["RESULTS_READY", "READY_FOR_REVIEW"].includes(session.coachingPacketStatus || "")) {
-    return `${session.coachingPacketTitle || "Session results"} is ready with ${session.coachingPacketHighlightCount ?? 0} highlight(s) and ${session.coachingPacketActionItemCount ?? 0} action item(s). Everything is ready to use and easy to edit.`;
-  }
-  if (session.latestTranscriptStatus === "COMPLETED") return "Transcript is ready. Quipsly is creating the Session notes and follow-through.";
-  if (session.latestTranscriptStatus) return `Transcript is ${normalize(session.latestTranscriptStatus)}. Notes and follow-through appear automatically when it finishes.`;
-  return "Follow-up notes appear here after recording and transcription.";
-}
-
 function blockersFor(session: MobileCaptureSession) {
   return [
     ...(session.captureReadiness?.blockers ?? []),
@@ -306,10 +249,10 @@ function SessionCard({ session }: { session: MobileCaptureSession }) {
           <div className="mt-4 grid gap-2">
             {session.providerCanJoin ? <Link href={`${workspaceHref}?mode=live`} className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-full bg-violet-800 px-4 py-2 text-xs font-black uppercase tracking-wide text-white hover:bg-violet-700"><Video size={15} aria-hidden="true" /> Join call</Link> : null}
             <Link href={workspaceHref} className="inline-flex min-h-11 w-full items-center justify-center rounded-full bg-[#3d3122] px-4 py-2 text-xs font-black uppercase tracking-wide text-white hover:bg-[#5a472f]">
-              Open workspace
+              Open session
             </Link>
-            {session.recordingConsentGranted !== true && !sessionIsCompleted(session) ? <Link href={`${workspaceHref}?mode=prepare`} className="inline-flex min-h-11 w-full items-center justify-center rounded-full border border-amber-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-amber-900 hover:bg-amber-50">Review consent</Link> : null}
-            {session.coachingEngagementId ? <Link href={`/coaching/engagements/${encodeURIComponent(session.coachingEngagementId)}`} className="inline-flex min-h-11 w-full items-center justify-center rounded-full border border-violet-200 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-violet-900 hover:bg-violet-50">Coaching continuity</Link> : null}
+            {session.recordingConsentGranted !== true && !sessionIsCompleted(session) ? <Link href={`${workspaceHref}?mode=prepare`} className="inline-flex min-h-11 w-full items-center justify-center rounded-full border border-amber-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-amber-900 hover:bg-amber-50">Recording options</Link> : null}
+            {session.coachingEngagementId ? <Link href={`/coaching/engagements/${encodeURIComponent(session.coachingEngagementId)}`} className="inline-flex min-h-11 w-full items-center justify-center rounded-full border border-violet-200 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-violet-900 hover:bg-violet-50">Shared coaching space</Link> : null}
             {session.latestCheckoutUrl && !paymentResolvedFor(session) ? <a href={session.latestCheckoutUrl} target="_blank" rel="noreferrer" className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-full border border-emerald-200 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-emerald-900 hover:bg-emerald-50"><ExternalLink size={14} aria-hidden="true" /> Open Stripe</a> : null}
           </div>
         </div>
@@ -320,7 +263,6 @@ function SessionCard({ session }: { session: MobileCaptureSession }) {
 
 export default function CoachingSessionsPage() {
   const [payload, setPayload] = useState<SessionsResponse | null>(null);
-  const [status, setStatus] = useState("Loading your coaching sessions...");
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [sessionQuery, setSessionQuery] = useState("");
@@ -350,10 +292,8 @@ export default function CoachingSessionsPage() {
       const nextPayload = (await response.json()) as SessionsResponse;
       if (!response.ok || !nextPayload.ok) throw new Error(nextPayload.error || `Sessions returned HTTP ${response.status}.`);
       setPayload(nextPayload);
-      setStatus("Session truth loaded");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Your sessions could not load.");
-      setStatus("Sign in with the invited account or ask your coach to check the Session");
     } finally {
       setIsLoading(false);
     }
@@ -386,7 +326,7 @@ export default function CoachingSessionsPage() {
       });
       const body = (await response.json()) as SessionCreateResponse;
       if (!response.ok || !body.ok) throw new Error(body.error || `Session creation returned HTTP ${response.status}.`);
-      setCreateMessage(body.boundaries?.nextAction || "Planned session created. Consent and capture remain separate next steps.");
+      setCreateMessage("Session created. Open it to invite people and choose recording options.");
       setCreatedRoomId(body.session?.callRoomId || body.session?.id || null);
       setCreateDraft((current) => ({ ...current, title: "", episodeSlug: "", scheduledStart: "", scheduledEnd: "" }));
       await loadSessions();
@@ -401,7 +341,6 @@ export default function CoachingSessionsPage() {
   const isEmptyCreator = Boolean(
     payload?.user?.canCreateCaptureSessions && sessions.length === 0,
   );
-  const nextSession = sessions.find((session) => !sessionIsCompleted(session)) ?? sessions[0];
   const filteredSessions = useMemo(() => {
     const query = sessionQuery.trim().toLowerCase();
     return sessions.filter((session) => {
@@ -446,26 +385,15 @@ export default function CoachingSessionsPage() {
               <h1 className="max-w-3xl text-4xl font-black leading-tight text-[#3d3122]">
                 {isEmptyCreator
                   ? "Your Sessions start here."
-                  : "Prepare, capture, transcribe, and follow through in one calm place."}
+                  : "Everything for your next session, in one place."}
               </h1>
               <p className="mt-3 max-w-3xl text-[#7b5c3b]">
                 {isEmptyCreator
                   ? "For coaching, add the client and time in one step. Use the flexible planner only for podcasts, interviews, or internal work."
-                  : "Podcast, coaching, interview, and internal sessions share one explicit chain of Nest, people, consent, source recording, transcript, review, goals, tasks, and notes."}
+                  : "Open a session to join the call, record, edit the transcript, and keep shared notes, goals, and tasks together."}
               </p>
             </div>
             {!isEmptyCreator ? <div className="flex flex-wrap items-center gap-3">
-              <Pill
-                label={
-                  payload?.user?.isStaff
-                    ? "staff tools"
-                    : payload?.user?.canCreateCaptureSessions
-                      ? "creator tools"
-                      : "participant view"
-                }
-                tone="blue"
-              />
-              <Pill label={status} tone={error ? "bad" : "good"} />
               <button
                 type="button"
                 onClick={() => void loadSessions()}
@@ -481,23 +409,6 @@ export default function CoachingSessionsPage() {
               {error} If you expected a Session here, sign in with the invited email or ask your coach to resend the invitation.
             </div>
           )}
-          {!isEmptyCreator ? <div className="mt-6 grid gap-3 md:grid-cols-4">
-            <HumanStep icon={<CalendarDays size={18} />} title="When" detail={nextSession ? `${formatDateTime(nextSession.scheduledStart)} to ${formatDateTime(nextSession.scheduledEnd)}` : "Your time appears here after a Session is scheduled."} tone={nextSession ? "good" : "warm"} />
-            <HumanStep
-              icon={<Receipt size={18} />}
-              title="Payment"
-              detail={nextSession ? paymentLine(nextSession) : "Payment instructions appear here when needed."}
-              tone={
-                nextSession &&
-                paymentRequiredFor(nextSession) &&
-                !paymentResolvedFor(nextSession)
-                  ? "warn"
-                  : "warm"
-              }
-            />
-            <HumanStep icon={<Video size={18} />} title="Recording" detail={nextSession ? consentLine(nextSession) : "Recording stays off until consent is clear."} tone={nextSession?.recordingConsentGranted ? "good" : "warm"} />
-            <HumanStep icon={<Sparkles size={18} />} title="Afterward" detail={nextSession ? packetLine(nextSession) : "Follow-up notes appear automatically after recording and transcription."} tone={["RESULTS_READY", "READY_FOR_REVIEW"].includes(nextSession?.coachingPacketStatus || "") ? "good" : "blue"} />
-          </div> : null}
         </div>
       </header>
 
@@ -568,9 +479,9 @@ export default function CoachingSessionsPage() {
           <section className="rounded-[1.8rem] border border-[#e8dcc4] bg-white/80 p-5 shadow-sm" aria-labelledby="session-index-heading">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
               <div>
-                <p className="text-xs font-black uppercase tracking-[0.2em] text-[#b98036]">Find the room, then work inside it</p>
-                <h2 id="session-index-heading" className="mt-1 text-2xl font-black text-[#3d3122]">Session index</h2>
-                <p className="mt-1 text-sm font-semibold text-[#765f40]">The index stays bounded. Consent, recording, transcript, notes, and follow-through belong to one exact Session workspace.</p>
+                <p className="text-xs font-black uppercase tracking-[0.2em] text-[#b98036]">All in one place</p>
+                <h2 id="session-index-heading" className="mt-1 text-2xl font-black text-[#3d3122]">Sessions</h2>
+                <p className="mt-1 text-sm font-semibold text-[#765f40]">Each session keeps its call, recording, transcript, notes, and follow-through together.</p>
               </div>
               <p role="status" className="text-sm font-black text-[#5b472f]">Showing {Math.min(visibleSessions.length, filteredSessions.length)} of {filteredSessions.length} matching · {sessions.length} accessible</p>
             </div>
@@ -627,7 +538,7 @@ export default function CoachingSessionsPage() {
         ) : sessions.length > 0 && filteredSessions.length === 0 ? (
           <div className="rounded-[1.8rem] border border-dashed border-[#d6c5a5] bg-white/75 p-8 text-[#7b5c3b] shadow-sm" role="status">
             <h2 className="text-xl font-black text-[#3d3122]">No Sessions match these filters.</h2>
-            <p className="mt-2 max-w-2xl text-sm font-bold leading-relaxed">Change the search, purpose, or view. Quipsly has not changed or hidden your canonical Session records.</p>
+            <p className="mt-2 max-w-2xl text-sm font-bold leading-relaxed">Change the search, purpose, or view to find what you need.</p>
           </div>
         ) : (
           <>
@@ -637,18 +548,6 @@ export default function CoachingSessionsPage() {
             ) : null}
           </>
         )}
-
-        {sessions.length > 0 ? <div className="rounded-[1.8rem] border border-[#e8dcc4] bg-[#3d3122] p-6 text-[#f6e7cc] shadow-sm">
-          <div className="mb-3 flex items-center gap-2 text-white">
-            <CheckCircle2 className="text-emerald-300" size={20} />
-            <h2 className="text-xl font-black">What Quipsly is promising here</h2>
-          </div>
-          <div className="grid gap-3 text-sm font-bold leading-relaxed md:grid-cols-3">
-            <p>Stripe handles payment pages. Quipsly keeps the appointment and receipt trail together.</p>
-            <p>Recording stays off until consent is visible. Local capture is preserved before anything is pruned.</p>
-            <p>Transcripts and packets are review material. Permitted participants can correct them before anything is shared or published.</p>
-          </div>
-        </div> : null}
       </main>
     </div>
   );
