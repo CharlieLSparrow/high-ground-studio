@@ -23,7 +23,7 @@ function gateCopy(pathname: string) {
     return {
       eyebrow: "Private Quipsly Session",
       title: "Open the Session you were invited to.",
-      body: "Sign in with the invited email. Quipsly will return you to this exact Session so you can review consent, join the call, record your local source, and continue shared follow-through.",
+      body: "Sign in with the invited email. Quipsly will return you to this Session so you can join, record if you choose, and keep shared notes and tasks together.",
       action: "Sign in to this Session",
     };
   }

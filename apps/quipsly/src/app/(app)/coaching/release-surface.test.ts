@@ -153,8 +153,10 @@ describe("coaching release surfaces", () => {
     expect(compact).toContain("Schedule your first coaching session");
     expect(compact).toContain("Schedule and invite");
     expect(compact).toContain("Open my session");
+    expect(compact).toContain("join from any supported device");
     expect(compact).toContain("Use the follow-up");
     expect(compact).toContain("Session workspaces");
+    expect(compact).not.toContain("review consent");
     expect(compact).not.toContain(
       "create a booking/hold path that writes to Quipsly-owned records",
     );

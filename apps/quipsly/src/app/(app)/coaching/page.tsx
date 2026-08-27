@@ -2453,7 +2453,7 @@ export default function CoachingPage() {
       return {
         eyebrow: "Next session",
         title: nextBooking.title,
-        detail: `${formatDateTime(nextBooking.scheduledStart)} · ${nextBooking.timezone}. Check your devices, review consent, and join from the private room.`,
+        detail: `${formatDateTime(nextBooking.scheduledStart)} · ${nextBooking.timezone}. Open your Session and join from any supported device.`,
         label: "Open my session",
         href: nextBooking.liveSessionPath,
       };
@@ -3773,8 +3773,8 @@ export default function CoachingPage() {
               {rooms.length === 0 ? (
                 <div className="rounded-2xl border border-dashed border-[#d6c5a5] bg-[#fffaf1] p-5 text-[#7b5c3b] lg:col-span-2">
                   Your first private workspace appears here after you schedule a
-                  session. Open it to check devices, review consent, meet,
-                  record, and keep the follow-up together.
+                  session. Open it to meet, record if you choose, and keep the
+                  shared follow-up together.
                 </div>
               ) : (
                 rooms.map((room) => (
