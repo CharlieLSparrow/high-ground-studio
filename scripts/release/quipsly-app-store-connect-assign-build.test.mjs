@@ -5,6 +5,7 @@ import {
   buildAssignmentBody,
   parseAssignmentArguments,
   resolveAssignmentTargets,
+  verifyAssignmentWithRetry,
 } from "./quipsly-app-store-connect-assign-build.mjs";
 
 const options = {
@@ -103,4 +104,39 @@ test("is idempotent when the group already includes the build", () => {
   });
 
   assert.equal(targets.alreadyAssigned, true);
+});
+
+test("retries assignment readback while App Store Connect is eventually consistent", async () => {
+  let reads = 0;
+  const waits = [];
+  const verification = await verifyAssignmentWithRetry({
+    fetchGroupDocument: async () => {
+      reads += 1;
+      return { assigned: reads >= 3 };
+    },
+    resolveTargets: (document) => ({ alreadyAssigned: document.assigned }),
+    sleep: async (milliseconds) => { waits.push(milliseconds); },
+  });
+
+  assert.equal(verification.targets.alreadyAssigned, true);
+  assert.equal(verification.attempts, 3);
+  assert.deepEqual(waits, [250, 500]);
+});
+
+test("returns a failed verification only after the bounded readback window", async () => {
+  let reads = 0;
+  const verification = await verifyAssignmentWithRetry({
+    fetchGroupDocument: async () => {
+      reads += 1;
+      return { assigned: false };
+    },
+    resolveTargets: (document) => ({ alreadyAssigned: document.assigned }),
+    maxAttempts: 4,
+    initialDelayMilliseconds: 10,
+    sleep: async () => {},
+  });
+
+  assert.equal(verification.targets.alreadyAssigned, false);
+  assert.equal(verification.attempts, 4);
+  assert.equal(reads, 4);
 });

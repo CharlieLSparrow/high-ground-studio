@@ -170,6 +170,24 @@ export function buildAssignmentBody(groupId) {
   };
 }
 
+export async function verifyAssignmentWithRetry({
+  fetchGroupDocument,
+  resolveTargets,
+  maxAttempts = 5,
+  initialDelayMilliseconds = 250,
+  sleep = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)),
+}) {
+  let targets;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    targets = resolveTargets(await fetchGroupDocument());
+    if (targets.alreadyAssigned || attempt === maxAttempts) {
+      return { targets, attempts: attempt };
+    }
+    await sleep(initialDelayMilliseconds * (2 ** (attempt - 1)));
+  }
+  return { targets, attempts: maxAttempts };
+}
+
 async function main() {
   const options = parseAssignmentArguments(process.argv.slice(2));
   if (options.help) {
@@ -225,12 +243,15 @@ async function main() {
     ...key,
     scopes: [groupRequest.scope],
   });
-  const verifiedGroups = await requestJson(groupRequest, verificationToken);
-  const verifiedTargets = resolveAssignmentTargets({
-    options,
-    buildDocument,
-    groupDocument: verifiedGroups,
+  const verification = await verifyAssignmentWithRetry({
+    fetchGroupDocument: () => requestJson(groupRequest, verificationToken),
+    resolveTargets: (groupDocument) => resolveAssignmentTargets({
+      options,
+      buildDocument,
+      groupDocument,
+    }),
   });
+  const verifiedTargets = verification.targets;
   const receipt = {
     schema: "quipsly-app-store-connect-build-assignment-v1",
     auditedAt: new Date().toISOString(),
@@ -239,6 +260,7 @@ async function main() {
     buildNumber: options.buildNumber,
     groupName: options.groupName,
     relationshipCreated,
+    verificationAttempts: verification.attempts,
     includesBuild: verifiedTargets.alreadyAssigned,
     passed: verifiedTargets.alreadyAssigned,
   };
