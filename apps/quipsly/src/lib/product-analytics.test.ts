@@ -1,6 +1,8 @@
 import {
   analyticsSurfaceForPath,
+  buildAnalyticsConsentCookie,
   isQuipslyProductEventName,
+  parseAnalyticsConsentCookie,
   privacySafeAnalyticsPath,
   sanitizeProductEventParameters,
 } from "./product-analytics";
@@ -39,5 +41,31 @@ describe("product analytics privacy boundary", () => {
   it("derives a bounded surface from a redacted path", () => {
     expect(analyticsSurfaceForPath("/sessions/private-room")).toBe("session_workspace");
     expect(analyticsSurfaceForPath("/coaching/book/private-coach")).toBe("booking_page");
+  });
+
+  it("shares one explicit analytics choice across Quipsly web hosts", () => {
+    expect(buildAnalyticsConsentCookie({
+      consent: "granted",
+      hostname: "nest.quipsly.com",
+      secure: true,
+    })).toBe(
+      "quipsly_analytics_consent=granted; Path=/; Max-Age=31536000; SameSite=Lax; Domain=.quipsly.com; Secure",
+    );
+    expect(buildAnalyticsConsentCookie({
+      consent: "denied",
+      hostname: "127.0.0.1",
+      secure: false,
+    })).toBe(
+      "quipsly_analytics_consent=denied; Path=/; Max-Age=31536000; SameSite=Lax",
+    );
+  });
+
+  it("reads only an exact granted or denied consent cookie", () => {
+    expect(parseAnalyticsConsentCookie(
+      "theme=calm; quipsly_analytics_consent=denied; other=value",
+    )).toBe("denied");
+    expect(parseAnalyticsConsentCookie(
+      "quipsly_analytics_consent=surprise",
+    )).toBeNull();
   });
 });

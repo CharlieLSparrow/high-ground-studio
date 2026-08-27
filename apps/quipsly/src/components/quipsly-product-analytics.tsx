@@ -6,7 +6,10 @@ import { useEffect, useState } from "react";
 
 import {
   analyticsSurfaceForPath,
+  buildAnalyticsConsentCookie,
+  parseAnalyticsConsentCookie,
   privacySafeAnalyticsPath,
+  type QuipslyAnalyticsConsent,
   type QuipslyProductEventName,
   type QuipslyProductEventParameters,
 } from "@/lib/product-analytics";
@@ -39,8 +42,14 @@ export function trackQuipslyProductEvent(
 }
 
 function persistAnalyticsConsent(granted: boolean) {
+  const consent: QuipslyAnalyticsConsent = granted ? "granted" : "denied";
   try {
-    window.localStorage.setItem(CONSENT_STORAGE_KEY, granted ? "granted" : "denied");
+    document.cookie = buildAnalyticsConsentCookie({
+      consent,
+      hostname: window.location.hostname,
+      secure: window.location.protocol === "https:",
+    });
+    window.localStorage.setItem(CONSENT_STORAGE_KEY, consent);
   } catch {
     // The current-page choice still applies when storage is blocked.
   }
@@ -143,9 +152,20 @@ export function QuipslyProductAnalytics({
 
   useEffect(() => {
     try {
+      const sharedConsent = parseAnalyticsConsentCookie(document.cookie);
+      if (sharedConsent) {
+        setConsent(sharedConsent);
+        window.localStorage.setItem(CONSENT_STORAGE_KEY, sharedConsent);
+        return;
+      }
       const stored = window.localStorage.getItem(CONSENT_STORAGE_KEY);
       if (stored === "granted" || stored === "denied") {
         setConsent(stored);
+        document.cookie = buildAnalyticsConsentCookie({
+          consent: stored,
+          hostname: window.location.hostname,
+          secure: window.location.protocol === "https:",
+        });
         return;
       }
     } catch {

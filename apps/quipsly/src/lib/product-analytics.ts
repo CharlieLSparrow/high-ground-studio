@@ -23,6 +23,38 @@ export const QUIPSLY_PRODUCT_EVENTS = [
   "purchase",
 ] as const;
 
+export const QUIPSLY_ANALYTICS_CONSENT_COOKIE = "quipsly_analytics_consent";
+export type QuipslyAnalyticsConsent = "granted" | "denied";
+
+export function parseAnalyticsConsentCookie(
+  cookieHeader: string,
+): QuipslyAnalyticsConsent | null {
+  const prefix = `${QUIPSLY_ANALYTICS_CONSENT_COOKIE}=`;
+  const value = cookieHeader
+    .split(";")
+    .map((part) => part.trim())
+    .find((part) => part.startsWith(prefix))
+    ?.slice(prefix.length);
+  return value === "granted" || value === "denied" ? value : null;
+}
+
+export function buildAnalyticsConsentCookie({
+  consent,
+  hostname,
+  secure,
+}: {
+  consent: QuipslyAnalyticsConsent;
+  hostname: string;
+  secure: boolean;
+}) {
+  const normalizedHostname = hostname.trim().toLowerCase();
+  const sharedDomain = normalizedHostname === "quipsly.com"
+    || normalizedHostname.endsWith(".quipsly.com")
+    ? "; Domain=.quipsly.com"
+    : "";
+  return `${QUIPSLY_ANALYTICS_CONSENT_COOKIE}=${consent}; Path=/; Max-Age=31536000; SameSite=Lax${sharedDomain}${secure ? "; Secure" : ""}`;
+}
+
 export type QuipslyProductEventName = typeof QUIPSLY_PRODUCT_EVENTS[number];
 
 export const QUIPSLY_PRODUCT_EVENT_PARAMETERS = {
