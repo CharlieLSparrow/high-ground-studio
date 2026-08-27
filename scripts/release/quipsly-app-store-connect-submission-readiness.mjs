@@ -10,6 +10,7 @@ import {
 } from "./quipsly-capture-app-store-metadata.mjs";
 import { createScopedToken } from "./quipsly-app-store-connect-readback.mjs";
 import { summarizeTerritoryAvailability } from "./quipsly-app-store-connect-availability.mjs";
+import { validateConfiguration } from "./quipsly-app-store-connect-submission-configuration.mjs";
 import { QUIPSLY_CAPTURE_RELEASE_TARGET } from "./quipsly-capture-release-target.mjs";
 
 const EUROPEAN_UNION_TERRITORY_IDS = new Set([
@@ -21,6 +22,10 @@ const EUROPEAN_UNION_TERRITORY_IDS = new Set([
 const API_ORIGIN = "https://api.appstoreconnect.apple.com";
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const defaultMetadataPath = path.join(repositoryRoot, "release/app-store/quipsly-capture/en-US.json");
+const defaultConfigurationPath = path.join(
+  repositoryRoot,
+  "release/app-store/quipsly-capture/submission-configuration.json",
+);
 
 export const AGE_RATING_QUESTION_FIELDS = Object.freeze([
   "advertising",
@@ -68,6 +73,7 @@ export function parseArguments(argv) {
   const options = {
     apiKeyPath: process.env.APP_STORE_CONNECT_API_KEY_PATH || "",
     metadataPath: defaultMetadataPath,
+    configurationPath: defaultConfigurationPath,
     appId: QUIPSLY_CAPTURE_RELEASE_TARGET.appId,
     appName: QUIPSLY_CAPTURE_RELEASE_TARGET.appName,
     bundleId: QUIPSLY_CAPTURE_RELEASE_TARGET.bundleId,
@@ -83,6 +89,7 @@ export function parseArguments(argv) {
       case "--": break;
       case "--api-key-path": options.apiKeyPath = path.resolve(requiredValue(argv, index, argument)); index += 1; break;
       case "--metadata": options.metadataPath = path.resolve(requiredValue(argv, index, argument)); index += 1; break;
+      case "--configuration": options.configurationPath = path.resolve(requiredValue(argv, index, argument)); index += 1; break;
       case "--app-id": options.appId = requiredValue(argv, index, argument); index += 1; break;
       case "--app-name": options.appName = requiredValue(argv, index, argument); index += 1; break;
       case "--bundle-id": options.bundleId = requiredValue(argv, index, argument); index += 1; break;
@@ -106,6 +113,7 @@ function usage() {
 Read-only options:
   --api-key-path <path>  Mode-0600 App Store Connect API-key JSON.
   --metadata <path>      Canonical Quipsly Capture metadata JSON.
+  --configuration <path> Canonical provider configuration JSON.
   --app-id <id>          Expected App Store Connect app ID.
   --app-name <name>      Expected App Store name.
   --bundle-id <id>       Expected bundle ID.
@@ -232,6 +240,7 @@ function addBlocker(blockers, code, message, kind = "provider") {
 export function summarizeSubmissionReadiness({
   options,
   metadata,
+  configuration,
   appDocument,
   buildDocument,
   appInfosDocument,
@@ -337,6 +346,14 @@ export function summarizeSubmissionReadiness({
     territoryInventoryComplete: availability.inventoryComplete,
     expectedTerritoriesAvailable,
     territoryStatusesClear: blockingStatuses.length === 0,
+    serverNotificationsV2: app.attributes?.subscriptionStatusUrl
+      === configuration.serverNotifications.productionUrl
+      && app.attributes?.subscriptionStatusUrlForSandbox
+        === configuration.serverNotifications.sandboxUrl
+      && app.attributes?.subscriptionStatusUrlVersion
+        === configuration.serverNotifications.version
+      && app.attributes?.subscriptionStatusUrlVersionForSandbox
+        === configuration.serverNotifications.version,
   };
 
   const blockers = [];
@@ -355,6 +372,13 @@ export function summarizeSubmissionReadiness({
     if (!checks.territoryInventoryComplete) addBlocker(blockers, "territory-readback-incomplete", "Apple returned a partial territory inventory; readiness fails closed.");
     if (!checks.expectedTerritoriesAvailable) addBlocker(blockers, "expected-territory-unavailable", `The intended first-release territories are not all available: ${expectedTerritoryIds.join(", ")}.`, "legal");
     if (!checks.territoryStatusesClear) addBlocker(blockers, "territory-status-blocked", `Apple reports blocking territory status: ${blockingStatuses.join(", ")}.`, "legal");
+  }
+  if (!checks.serverNotificationsV2) {
+    addBlocker(
+      blockers,
+      "server-notifications-v2-missing",
+      "Configure App Store Server Notifications V2 for production and sandbox after the live Quipsly notification route passes its deployment smoke.",
+    );
   }
   addBlocker(
     blockers,
@@ -496,6 +520,16 @@ export function summarizeSubmissionReadiness({
       submissions: reviewSubmissions,
       submitted: reviewSubmissions.some((submission) => submission.submittedDate),
     },
+    serverNotifications: {
+      expected: configuration.serverNotifications,
+      observed: {
+        productionUrl: app.attributes?.subscriptionStatusUrl ?? null,
+        sandboxUrl: app.attributes?.subscriptionStatusUrlForSandbox ?? null,
+        productionVersion: app.attributes?.subscriptionStatusUrlVersion ?? null,
+        sandboxVersion: app.attributes?.subscriptionStatusUrlVersionForSandbox ?? null,
+      },
+      complete: checks.serverNotificationsV2,
+    },
     appPrivacy: {
       apiVerifiable: false,
       canonicalPublicationStatus: metadata.privacy.publicationStatus,
@@ -515,7 +549,7 @@ export function summarizeSubmissionReadiness({
 
 async function discover({ options, key, locale }) {
   const requests = {
-    app: makeRequest(`/v1/apps/${options.appId}`, [["fields[apps]", "name,bundleId,primaryLocale,isOrEverWasMadeForKids,contentRightsDeclaration"]]),
+    app: makeRequest(`/v1/apps/${options.appId}`, [["fields[apps]", "name,bundleId,primaryLocale,isOrEverWasMadeForKids,contentRightsDeclaration,subscriptionStatusUrl,subscriptionStatusUrlVersion,subscriptionStatusUrlForSandbox,subscriptionStatusUrlVersionForSandbox"]]),
     build: makeRequest(`/v1/builds/${options.buildId}`, [["include", "buildBundles"]]),
     appInfos: makeRequest(`/v1/apps/${options.appId}/appInfos`, [["include", "ageRatingDeclaration,appInfoLocalizations"], ["limit", "20"], ["limit[appInfoLocalizations]", "50"]]),
     versions: makeRequest(`/v1/apps/${options.appId}/appStoreVersions`, [["filter[platform]", "IOS"], ["filter[versionString]", options.version], ["include", "appStoreVersionLocalizations,appStoreReviewDetail,build"], ["limit", "20"], ["limit[appStoreVersionLocalizations]", "50"]]),
@@ -597,9 +631,18 @@ export async function run(options) {
   const metadata = readAppStoreMetadata(options.metadataPath);
   const validation = validateAppStoreMetadata(metadata, { root: repositoryRoot });
   if (!validation.ok) fail(`Canonical App Store metadata failed validation: ${validation.errors.join(" ")}`);
+  const configuration = JSON.parse(await readFile(options.configurationPath, "utf8"));
+  const configurationErrors = validateConfiguration(configuration, {
+    appId: options.appId,
+    version: options.version,
+    build: options.build,
+  });
+  if (configurationErrors.length > 0) {
+    fail(`Canonical provider configuration failed validation: ${configurationErrors.join(" ")}`);
+  }
   const key = await readApiKey(options.apiKeyPath);
   const documents = await discover({ options, key, locale: metadata.locale });
-  const receipt = summarizeSubmissionReadiness({ options, metadata, ...documents });
+  const receipt = summarizeSubmissionReadiness({ options, metadata, configuration, ...documents });
   await writeReceipt(options.outputPath, receipt);
   return receipt;
 }

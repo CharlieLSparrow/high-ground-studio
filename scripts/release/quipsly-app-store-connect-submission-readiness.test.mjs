@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import {
@@ -10,6 +11,10 @@ import { readAppStoreMetadata } from "./quipsly-capture-app-store-metadata.mjs";
 import { QUIPSLY_CAPTURE_RELEASE_TARGET } from "./quipsly-capture-release-target.mjs";
 
 const metadata = readAppStoreMetadata("release/app-store/quipsly-capture/en-US.json");
+const configuration = JSON.parse(readFileSync(
+  "release/app-store/quipsly-capture/submission-configuration.json",
+  "utf8",
+));
 const options = parseArguments([]);
 
 function completeFixture() {
@@ -19,6 +24,7 @@ function completeFixture() {
   return {
     options,
     metadata,
+    configuration,
     appDocument: {
       data: {
         type: "apps",
@@ -29,6 +35,10 @@ function completeFixture() {
           primaryLocale: "en-US",
           isOrEverWasMadeForKids: false,
           contentRightsDeclaration: "USES_THIRD_PARTY_CONTENT",
+          subscriptionStatusUrl: configuration.serverNotifications.productionUrl,
+          subscriptionStatusUrlVersion: configuration.serverNotifications.version,
+          subscriptionStatusUrlForSandbox: configuration.serverNotifications.sandboxUrl,
+          subscriptionStatusUrlVersionForSandbox: configuration.serverNotifications.version,
         },
       },
     },
@@ -197,6 +207,24 @@ test("requires trader verification only when European Union distribution is enab
   assert.equal(receipt.availability.currentDistributionIncludesEuropeanUnion, true);
   assert.equal(receipt.blockers.some(({ code }) => code === "dsa-trader-manual-verification"), true);
   assert.equal(receipt.blockers.some(({ code }) => code === "dsa-status-declaration"), false);
+});
+
+test("requires App Store Server Notifications V2 for paid subscription state", () => {
+  const fixture = completeFixture();
+  fixture.appDocument.data.attributes.subscriptionStatusUrl = null;
+  fixture.appDocument.data.attributes.subscriptionStatusUrlVersion = null;
+  fixture.appDocument.data.attributes.subscriptionStatusUrlForSandbox = null;
+  fixture.appDocument.data.attributes.subscriptionStatusUrlVersionForSandbox = null;
+
+  const receipt = summarizeSubmissionReadiness(fixture);
+
+  assert.equal(receipt.serverNotifications.complete, false);
+  assert.equal(receipt.checks.serverNotificationsV2, false);
+  assert.equal(receipt.providerChecksPassed, false);
+  assert.equal(
+    receipt.blockers.some(({ code }) => code === "server-notifications-v2-missing"),
+    true,
+  );
 });
 
 test("preserves the compatibility blocker until manual provider evidence is complete", () => {
