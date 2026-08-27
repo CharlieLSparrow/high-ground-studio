@@ -150,76 +150,72 @@ export function CoachingSessionPlanCard({ roomId }: { roomId: string }) {
   if (unavailable) return null;
 
   return (
-    <section
-      className="mt-5 rounded-2xl border border-violet-200 bg-white p-4 shadow-sm sm:p-5"
-      aria-labelledby="coaching-session-plan-heading"
-    >
-      <div className="flex items-start gap-3">
-        <span className="rounded-xl bg-violet-50 p-2 text-violet-700">
-          <Target className="h-5 w-5" aria-hidden="true" />
+    <details className="rounded-2xl border border-violet-200 bg-white p-3 shadow-sm sm:p-4">
+      <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 rounded-xl px-1 text-[#3d3122]">
+        <span className="flex items-center gap-3 text-sm font-black">
+          <span className="rounded-xl bg-violet-50 p-2 text-violet-700">
+            <Target className="h-5 w-5" aria-hidden="true" />
+          </span>
+          Plan this session
         </span>
-        <div>
-          <p className="text-[10px] font-black uppercase tracking-[0.16em] text-violet-800">
-            Optional · before the call
+        <span className="rounded-full border border-violet-200 bg-violet-50 px-3 py-1 text-[10px] font-black uppercase tracking-wide text-violet-900">
+          Optional
+        </span>
+      </summary>
+      <div className="mt-3 border-t border-violet-100 pt-4">
+        <h3 id="coaching-session-plan-heading" className="font-serif text-xl font-black text-[#3d3122]">
+          What would make this session useful?
+        </h3>
+        <p className="mt-1 max-w-2xl text-sm font-semibold leading-6 text-[#765f40]">
+          Add a focus before the call if it helps. Nothing here is required to join.
+        </p>
+
+        {loading ? (
+          <p className="mt-4 text-sm font-semibold text-stone-600" role="status">
+            Loading your Session plan…
           </p>
-          <h3
-            id="coaching-session-plan-heading"
-            className="mt-1 font-serif text-xl font-black text-[#3d3122]"
+        ) : preparation?.role === "client" ? (
+          <ClientPlanForm
+            draft={clientDraft}
+            disabled={saving !== null}
+            onChange={setClientDraft}
+            onSave={() => void saveClient()}
+          />
+        ) : preparation?.role === "coach" ? (
+          <CoachPlanForm
+            client={preparation.client}
+            note={coachDraft}
+            disabled={saving !== null}
+            onNoteChange={setCoachDraft}
+            onSave={() => void saveCoach()}
+          />
+        ) : null}
+
+        {message ? (
+          <p
+            className="mt-4 flex items-center gap-2 rounded-xl bg-emerald-50 px-3 py-2 text-sm font-bold text-emerald-900"
+            role="status"
           >
-            Plan this Session
-          </h3>
-          <p className="mt-1 max-w-2xl text-sm font-semibold leading-6 text-[#765f40]">
-            A little focus helps you spend the call on what matters. Nothing
-            here is required to join.
+            <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
+            {message}
           </p>
-        </div>
+        ) : null}
+        {error ? (
+          <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-3 py-3 text-sm font-bold text-rose-900" role="alert">
+            <p>{error}</p>
+            {!preparation ? (
+              <button
+                type="button"
+                className="mt-2 min-h-11 underline underline-offset-4"
+                onClick={() => void load()}
+              >
+                Try again
+              </button>
+            ) : null}
+          </div>
+        ) : null}
       </div>
-
-      {loading ? (
-        <p className="mt-4 text-sm font-semibold text-stone-600" role="status">
-          Loading your Session plan…
-        </p>
-      ) : preparation?.role === "client" ? (
-        <ClientPlanForm
-          draft={clientDraft}
-          disabled={saving !== null}
-          onChange={setClientDraft}
-          onSave={() => void saveClient()}
-        />
-      ) : preparation?.role === "coach" ? (
-        <CoachPlanForm
-          client={preparation.client}
-          note={coachDraft}
-          disabled={saving !== null}
-          onNoteChange={setCoachDraft}
-          onSave={() => void saveCoach()}
-        />
-      ) : null}
-
-      {message ? (
-        <p
-          className="mt-4 flex items-center gap-2 rounded-xl bg-emerald-50 px-3 py-2 text-sm font-bold text-emerald-900"
-          role="status"
-        >
-          <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
-          {message}
-        </p>
-      ) : null}
-      {error ? (
-        <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-3 py-3 text-sm font-bold text-rose-900" role="alert">
-          <p>{error}</p>
-          {!preparation ? (
-            <button
-              type="button"
-              className="mt-2 min-h-11 underline underline-offset-4"
-              onClick={() => void load()}
-            >
-              Try again
-            </button>
-          ) : null}
-        </div>
-      ) : null}
-    </section>
+    </details>
   );
 }
 

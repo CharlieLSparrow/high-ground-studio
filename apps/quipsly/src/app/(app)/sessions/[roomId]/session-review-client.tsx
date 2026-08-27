@@ -829,16 +829,12 @@ function SessionScheduleControl({
       const body = (await response.json()) as {
         ok?: boolean;
         error?: string;
-        boundaries?: { nextAction?: string };
       };
       if (!response.ok || !body.ok)
         throw new Error(
           body.error || `Scheduling returned HTTP ${response.status}.`,
         );
-      setMessage(
-        body.boundaries?.nextAction ||
-          "Quipsly time saved. Invitations, external calendars, consent, and recording remain separate.",
-      );
+      setMessage("Session time saved.");
       router.refresh();
     } catch (cause) {
       setError(
@@ -853,7 +849,7 @@ function SessionScheduleControl({
 
   return (
     <section
-      className="mt-5 rounded-2xl border border-sky-200 bg-white/80 p-4"
+      className="mt-4 rounded-2xl border border-sky-200 bg-white/80 p-3 sm:p-4"
       aria-labelledby="session-time-editor-heading"
     >
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
@@ -862,12 +858,8 @@ function SessionScheduleControl({
             id="session-time-editor-heading"
             className="font-black text-[#3d3122]"
           >
-            Quipsly Session time
+            Session time
           </h3>
-          <p className="mt-1 text-xs font-bold leading-5 text-sky-950">
-            Change this canonical Session only. Invitations and external
-            calendars require their own explicit action.
-          </p>
         </div>
         <button
           type="button"
@@ -875,8 +867,8 @@ function SessionScheduleControl({
           className="inline-flex min-h-11 items-center justify-center rounded-full border border-sky-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-sky-950 hover:bg-sky-50"
         >
           {preparation.scheduledStart
-            ? "Change Quipsly time"
-            : "Set Quipsly time"}
+            ? "Change time"
+            : "Choose time"}
         </button>
       </div>
       {isOpen ? (
@@ -922,7 +914,7 @@ function SessionScheduleControl({
               disabled={busy}
               className="inline-flex min-h-11 items-center justify-center rounded-full bg-sky-800 px-5 py-3 text-xs font-black uppercase tracking-wide text-white disabled:opacity-50"
             >
-              {busy ? "Saving…" : "Save Quipsly time"}
+              {busy ? "Saving…" : "Save time"}
             </button>
             <button
               type="button"
@@ -1349,187 +1341,86 @@ function SessionPreparationCard({
 
   return (
     <section
-      className="rounded-2xl border border-sky-200 bg-sky-50/45 p-5"
+      className="rounded-2xl border border-sky-200 bg-sky-50/45 p-4 sm:p-5"
       aria-labelledby="session-preparation-heading"
     >
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div className="flex items-start gap-3">
-          <span className="rounded-xl bg-white p-2 text-sky-700">
-            <ClipboardList aria-hidden="true" />
-          </span>
-          <div>
-            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-sky-800">
-              Before capture
-            </p>
-            <h2
-              id="session-preparation-heading"
-              className="mt-1 font-serif text-2xl font-black text-[#3d3122]"
-            >
-              Preparation runway
-            </h2>
-            <p className="mt-1 max-w-3xl text-xs font-semibold leading-5 text-[#765f40]">
-              Schedule, participants, and their latest versioned consent stay
-              separate from recording, transcript, and output evidence.
-            </p>
-          </div>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Link
-            href="/schedule"
-            className="inline-flex min-h-11 items-center gap-2 rounded-full border border-sky-300 bg-white px-3 py-2 text-xs font-black text-sky-950"
+      <div className="flex items-start gap-3">
+        <span className="rounded-xl bg-white p-2 text-sky-700">
+          <ClipboardList aria-hidden="true" />
+        </span>
+        <div className="min-w-0">
+          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-sky-800">
+            Session setup
+          </p>
+          <h2
+            id="session-preparation-heading"
+            className="mt-1 font-serif text-2xl font-black text-[#3d3122]"
           >
-            <CalendarDays className="h-4 w-4" aria-hidden="true" />
-            Open Calendar
-          </Link>
-          <Link
-            href="/coaching/sessions"
-            className="inline-flex min-h-11 items-center gap-2 rounded-full border border-sky-300 bg-white px-3 py-2 text-xs font-black text-sky-950"
-          >
-            <Users className="h-4 w-4" aria-hidden="true" />
-            All Sessions
-          </Link>
+            {scheduledStart ? "Your session is scheduled" : "Choose a time and invite your client"}
+          </h2>
+          <p className="mt-1 text-sm font-semibold leading-6 text-[#765f40]">
+            {scheduledLabel}
+          </p>
         </div>
       </div>
 
       <SessionEntryReadinessLive roomId={roomId} initial={entry} />
 
-      <dl className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <div className="rounded-xl border border-white/90 bg-white/85 p-3">
-          <dt className="text-[10px] font-black uppercase tracking-wide text-[#8a7354]">
-            Session type
-          </dt>
-          <dd className="mt-1 text-lg font-black text-[#3d3122]">
-            {humanize(preparation.purpose)}
-          </dd>
-          <dd className="mt-1 text-xs font-semibold text-[#765f40]">
-            {humanize(preparation.status)}
-          </dd>
-        </div>
-        <div className="rounded-xl border border-white/90 bg-white/85 p-3">
-          <dt className="text-[10px] font-black uppercase tracking-wide text-[#8a7354]">
-            Time
-          </dt>
-          <dd className="mt-1 text-sm font-black leading-5 text-[#3d3122]">
-            {scheduledLabel}
-          </dd>
-        </div>
-        <div className="rounded-xl border border-white/90 bg-white/85 p-3">
-          <dt className="text-[10px] font-black uppercase tracking-wide text-[#8a7354]">
-            Nest
-          </dt>
-          <dd className="mt-1 text-lg font-black text-[#3d3122]">
-            {preparation.project?.name || "No canonical Nest"}
-          </dd>
-          <dd className="mt-1 text-xs font-semibold text-[#765f40]">
-            Provider: {humanize(preparation.provider)}
-          </dd>
-        </div>
-        <div className="rounded-xl border border-white/90 bg-white/85 p-3">
-          <dt className="text-[10px] font-black uppercase tracking-wide text-[#8a7354]">
-            Recording consent
-          </dt>
-          <dd
-            className={`mt-1 text-lg font-black ${audioReady ? "text-emerald-800" : "text-amber-900"}`}
-          >
-            {audioReady ? "All participants ready" : "Not ready"}
-          </dd>
-          <dd className="mt-1 text-xs font-semibold text-[#765f40]">
-            {preparation.participants.length} signed-in participant
-            {preparation.participants.length === 1 ? "" : "s"}
-          </dd>
-        </div>
-      </dl>
+      <SessionScheduleControl roomId={roomId} preparation={preparation} />
 
-      <div className="mt-5">
-        <div className="flex items-center gap-2">
-          <Users className="h-4 w-4 text-sky-700" aria-hidden="true" />
-          <h3 className="font-black text-[#3d3122]">
-            Participants and latest consent
-          </h3>
-        </div>
+      <SessionConsentControl roomId={roomId} preparation={preparation} />
+
+      <details className="mt-4 rounded-xl border border-sky-200 bg-white/80 p-3">
+        <summary className="flex min-h-10 cursor-pointer list-none items-center justify-between gap-3 text-sm font-black text-sky-950">
+          <span className="flex items-center gap-2">
+            <Users className="h-4 w-4" aria-hidden="true" />
+            People and recording choices
+          </span>
+          <span className={`rounded-full border px-2.5 py-1 text-[10px] uppercase tracking-wide ${statusTone(audioReady ? "READY" : "HELD")}`}>
+            {audioReady ? "Ready" : "Waiting"}
+          </span>
+        </summary>
         {preparation.participants.length ? (
-          <ul className="mt-3 grid gap-3 lg:grid-cols-2">
+          <ul className="mt-3 grid gap-2 border-t border-sky-100 pt-3 lg:grid-cols-2">
             {preparation.participants.map((participant) => {
               const consent = participant.consent;
               const recordingReady = consent?.recordingReady === true;
               return (
-                <li
-                  key={participant.id}
-                  className="rounded-xl border border-sky-100 bg-white p-4"
-                >
-                  <div className="flex flex-wrap items-start justify-between gap-2">
-                    <div>
-                      <p className="text-sm font-black text-[#3d3122]">
-                        {participant.label}
-                      </p>
-                      <p className="mt-1 text-[10px] font-black uppercase tracking-wide text-[#8a7354]">
-                        {humanize(participant.role)}
-                      </p>
+                <li key={participant.id} className="rounded-xl border border-sky-100 bg-white p-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-black text-[#3d3122]">{participant.label}</p>
+                      <p className="mt-0.5 text-[10px] font-black uppercase tracking-wide text-[#8a7354]">{humanize(participant.role)}</p>
                     </div>
-                    <span
-                      className={`rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-wide ${statusTone(recordingReady ? "READY" : "HELD")}`}
-                    >
-                      {recordingReady
-                        ? "Capture ready"
-                        : consent
-                          ? "Needs current consent"
-                          : "Consent missing"}
+                    <span className={`shrink-0 rounded-full border px-2 py-1 text-[10px] font-black ${statusTone(recordingReady ? "READY" : "HELD")}`}>
+                      {recordingReady ? "Ready" : "Waiting"}
                     </span>
                   </div>
-                  <div className="mt-3 flex flex-wrap gap-2 text-[10px] font-black uppercase tracking-wide">
-                    <span
-                      className={`rounded-full border px-2 py-1 ${consent?.canRecordAudio ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-amber-200 bg-amber-50 text-amber-900"}`}
-                    >
-                      Audio choice {consent?.canRecordAudio ? "yes" : "no"}
-                    </span>
-                    <span
-                      className={`rounded-full border px-2 py-1 ${consent?.canRecordVideo ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-slate-200 bg-slate-50 text-slate-700"}`}
-                    >
-                      Video {consent?.canRecordVideo ? "yes" : "no"}
-                    </span>
-                    <span
-                      className={`rounded-full border px-2 py-1 ${consent?.transcriptionReady ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-amber-200 bg-amber-50 text-amber-900"}`}
-                    >
-                      Transcript{" "}
-                      {consent?.transcriptionReady ? "ready" : "not ready"}
-                    </span>
-                  </div>
-                  <p className="mt-3 text-xs font-semibold text-[#765f40]">
-                    {consent?.policyVersion
-                      ? `${humanize(consent.status)} · policy ${consent.policyVersion}`
-                      : "No versioned consent receipt"}
-                    {participant.joinedAt
-                      ? ` · joined ${sessionTime(participant.joinedAt)}`
-                      : ""}
-                  </p>
-                  {consent && !recordingReady ? (
-                    <p className="mt-2 text-xs font-black leading-5 text-amber-950">
-                      The saved row is not current capture-ready evidence.
-                      Recollect consent in Capture before recording.
+                  {recordingReady ? (
+                    <p className="mt-2 text-xs font-semibold text-[#765f40]">
+                      {[consent?.canRecordAudio ? "Audio" : null, consent?.canRecordVideo ? "Video" : null, consent?.canTranscribe ? "Transcript" : null].filter(Boolean).join(" · ")}
                     </p>
-                  ) : null}
+                  ) : (
+                    <p className="mt-2 text-xs font-semibold text-[#765f40]">They can choose their recording options when they open the session.</p>
+                  )}
                 </li>
               );
             })}
           </ul>
         ) : (
-          <div className="mt-3 rounded-xl border border-dashed border-amber-200 bg-amber-50 p-4 text-xs font-black leading-5 text-amber-950">
-            No signed-in, non-observer participant is attached. Do not treat an
-            empty consent projection as permission to record.
-          </div>
+          <p className="mt-3 border-t border-sky-100 pt-3 text-xs font-semibold text-[#765f40]">
+            Invite your client below. They can choose their recording options when they open the session.
+          </p>
         )}
-      </div>
-
-      <SessionScheduleControl roomId={roomId} preparation={preparation} />
-
-      <SessionConsentControl roomId={roomId} preparation={preparation} />
-
-      <p className="mt-5 rounded-xl border border-sky-200 bg-white px-4 py-3 text-xs font-black leading-5 text-sky-950">
-        This is current preparation evidence only. Recordings verifies immutable
-        source state; Transcript separately enforces the complete release
-        receipt. No invitation, message, provider event, or consent decision is
-        created here.
-      </p>
+        <div className="mt-3 flex flex-wrap gap-2 border-t border-sky-100 pt-3">
+          <Link href="/schedule" className="inline-flex min-h-10 items-center gap-2 rounded-full border border-sky-300 bg-white px-3 py-2 text-xs font-black text-sky-950">
+            <CalendarDays className="h-4 w-4" aria-hidden="true" /> Calendar
+          </Link>
+          <Link href="/coaching/sessions" className="inline-flex min-h-10 items-center gap-2 rounded-full border border-sky-300 bg-white px-3 py-2 text-xs font-black text-sky-950">
+            <Users className="h-4 w-4" aria-hidden="true" /> All sessions
+          </Link>
+        </div>
+      </details>
     </section>
   );
 }
@@ -4537,7 +4428,7 @@ export function SessionReviewClient({
             <h1 className="mt-1 font-serif text-2xl font-black tracking-tight text-[#3d3122] sm:mt-2 sm:text-4xl">
               {sessionTitle}
             </h1>
-            <p className="mt-1 max-w-3xl text-xs font-semibold leading-5 text-[#765f40] sm:mt-2 sm:text-sm sm:leading-relaxed">
+            <p className="mt-1 hidden max-w-3xl text-xs font-semibold leading-5 text-[#765f40] sm:mt-2 sm:block sm:text-sm sm:leading-relaxed">
               {activeMode.description}
             </p>
           </div>
@@ -4586,10 +4477,6 @@ export function SessionReviewClient({
         />
       ) : null}
 
-      {mode === "prepare" && purpose === "COACHING" ? (
-        <CoachingSessionPlanCard roomId={roomId} />
-      ) : null}
-
       {mode === "overview" ? (
         <SessionCollaborationScopes
           roomId={roomId}
@@ -4615,10 +4502,6 @@ export function SessionReviewClient({
 
       {mode === "prepare" ? (
         <>
-          <SessionInvitations
-            roomId={roomId}
-            purpose={preparation?.purpose || "COACHING"}
-          />
           {preparation ? (
             <SessionPreparationCard roomId={roomId} preparation={preparation} />
           ) : (
@@ -4627,14 +4510,39 @@ export function SessionReviewClient({
               detail="Quipsly could not derive this Session’s schedule, participant, or versioned-consent projection. No ready-to-record state is inferred."
             />
           )}
-          <PriorSessionFollowThroughCard
-            followThrough={sessionContinuity?.priorFollowThrough ?? null}
+          <SessionInvitations
+            roomId={roomId}
+            purpose={preparation?.purpose || "COACHING"}
           />
-          <PriorSessionContinuityCard
-            prior={sessionContinuity?.prior ?? null}
-          />
+          {purpose === "COACHING" ? <CoachingSessionPlanCard roomId={roomId} /> : null}
+          {sessionContinuity?.priorFollowThrough || sessionContinuity?.prior ? (
+            <details className="rounded-2xl border border-violet-200 bg-white p-3 shadow-sm sm:p-4">
+              <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 text-sm font-black text-[#3d3122]">
+                Previous session context
+                <span className="text-xs font-bold text-violet-800">Open</span>
+              </summary>
+              <div className="mt-4 space-y-4 border-t border-violet-100 pt-4">
+                <PriorSessionFollowThroughCard
+                  followThrough={sessionContinuity?.priorFollowThrough ?? null}
+                />
+                <PriorSessionContinuityCard
+                  prior={sessionContinuity?.prior ?? null}
+                />
+              </div>
+            </details>
+          ) : null}
           {sessionTaxonomy ? (
-            <SessionTaxonomyCard roomId={roomId} initial={sessionTaxonomy} />
+            <details className="rounded-2xl border border-sky-200 bg-white p-3 shadow-sm sm:p-4">
+              <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 text-sm font-black text-[#3d3122]">
+                Workspace and tags
+                <span className="max-w-[55%] truncate text-xs font-bold text-sky-800">
+                  {sessionTaxonomy.project.name}
+                </span>
+              </summary>
+              <div className="mt-4 border-t border-sky-100 pt-4">
+                <SessionTaxonomyCard roomId={roomId} initial={sessionTaxonomy} />
+              </div>
+            </details>
           ) : (
             <WorkspaceEmptyState
               title="No project context"

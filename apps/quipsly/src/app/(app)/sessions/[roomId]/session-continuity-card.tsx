@@ -129,17 +129,7 @@ export function PriorSessionContinuityCard({
 }: {
   prior: PriorSessionContinuity | null;
 }) {
-  if (!prior) {
-    return (
-      <section className="rounded-2xl border border-dashed border-violet-200 bg-violet-50/35 p-5" aria-labelledby="prior-continuity-heading">
-        <p className="text-[10px] font-black uppercase tracking-[0.18em] text-violet-800">Longitudinal preparation</p>
-        <h2 id="prior-continuity-heading" className="mt-1 font-serif text-2xl font-black text-[#3d3122]">No saved prior brief</h2>
-        <p className="mt-2 max-w-3xl text-xs font-semibold leading-5 text-[#765f40]">
-          Quipsly carries forward only a private brief you deliberately saved from an earlier Session in this same Nest and Session purpose. It will not guess from titles, copy another person’s notes, or create new work.
-        </p>
-      </section>
-    );
-  }
+  if (!prior) return null;
 
   return (
     <section className="rounded-2xl border border-violet-300 bg-violet-50/60 p-5" aria-labelledby="prior-continuity-heading">

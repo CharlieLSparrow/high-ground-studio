@@ -70,6 +70,12 @@ const targets = [
     route: sessionRoute("overview"),
   },
   {
+    name: "coach-phone-prepare",
+    identity: context.identities.coach,
+    viewport: { width: 390, height: 844 },
+    route: sessionRoute("prepare"),
+  },
+  {
     name: "coach-phone-transcript",
     identity: context.identities.coach,
     viewport: { width: 390, height: 844 },

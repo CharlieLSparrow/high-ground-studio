@@ -1076,14 +1076,13 @@ describe("Session review goal candidates", () => {
       }}
     />);
 
-    expect(screen.getByRole("heading", { name: "Preparation runway" })).toBeInTheDocument();
-    expect(screen.getByText("Private coaching")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Your session is scheduled" })).toBeInTheDocument();
     expect(screen.getByText("Homer")).toBeInTheDocument();
-    expect(screen.getByText("All participants ready")).toBeInTheDocument();
-    expect(screen.getByText("Transcript not ready")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "All Sessions" })).toHaveAttribute("href", "/coaching/sessions");
+    expect(screen.getByText("People and recording choices")).toBeInTheDocument();
+    expect(screen.getAllByText("Ready").length).toBeGreaterThan(0);
+    expect(screen.getByText("All sessions").closest("a")).toHaveAttribute("href", "/coaching/sessions");
     expect(screen.getByText(/signed-in account is not attached as a participant/i)).toBeInTheDocument();
-    expect(screen.getByText(/Transcript separately enforces the complete release receipt/)).toBeInTheDocument();
+    expect(screen.queryByText(/complete release receipt/)).not.toBeInTheDocument();
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
@@ -1309,14 +1308,14 @@ describe("Session review goal candidates", () => {
       }}
     />);
 
-    await user.click(screen.getByRole("button", { name: "Set Quipsly time" }));
+    await user.click(screen.getByRole("button", { name: "Choose time" }));
     const start = screen.getByLabelText("Session starts");
     const end = screen.getByLabelText("Session ends");
     await user.clear(start);
     await user.type(start, "2026-08-06T10:00");
     await user.clear(end);
     await user.type(end, "2026-08-06T11:00");
-    await user.click(screen.getByRole("button", { name: "Save Quipsly time" }));
+    await user.click(screen.getByRole("button", { name: "Save time" }));
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
     const payload = JSON.parse(String(fetchMock.mock.calls[0][1]?.body));
@@ -1330,7 +1329,7 @@ describe("Session review goal candidates", () => {
     }));
     expect(payload.clientRequestId).toBeTruthy();
     expect(payload.timezone).toBeTruthy();
-    expect(await screen.findByRole("status")).toHaveTextContent("without external side effects");
+    expect(await screen.findByRole("status")).toHaveTextContent("Session time saved");
     expect(mockRouterRefresh).toHaveBeenCalledTimes(1);
   });
 
