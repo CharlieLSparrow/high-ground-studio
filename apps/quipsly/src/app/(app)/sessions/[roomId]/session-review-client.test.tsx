@@ -329,7 +329,8 @@ describe("Session review goal candidates", () => {
     />);
 
     expect(screen.getByRole("heading", { name: "Coaching review" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Current runway" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Your Session, start to finish" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Everything stays connected" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Overview" })).toHaveAttribute("aria-current", "page");
     expect(screen.getByRole("link", { name: "Prepare" })).toHaveAttribute("href", "/sessions/room-1?mode=prepare");
     expect(screen.getByRole("link", { name: "Recordings" })).toHaveAttribute("href", "/sessions/room-1?mode=recordings");
@@ -337,9 +338,8 @@ describe("Session review goal candidates", () => {
     expect(screen.getByRole("link", { name: "Coaching notes" })).toHaveAttribute("href", "/sessions/room-1?mode=notes");
     expect(screen.getAllByRole("link", { name: "Goals & commitments" })[0]).toHaveAttribute("href", "/sessions/room-1?mode=work");
     expect(screen.getByRole("link", { name: "Follow-up" })).toHaveAttribute("href", "/sessions/room-1?mode=outputs");
-    expect(screen.getByRole("heading", { name: "Needs an honest decision" })).toBeInTheDocument();
-    expect(screen.getByText("Transcription permission is incomplete")).toBeInTheDocument();
-    expect(screen.getByText("0 of 1 standalone consent records permit transcription.")).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Current runway" })).not.toBeInTheDocument();
+    expect(screen.queryByText("Transcription permission is incomplete")).not.toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Decide candidate by candidate" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Refresh transcript truth" })).not.toBeInTheDocument();
     expect(fetchMock).not.toHaveBeenCalled();
@@ -351,6 +351,7 @@ describe("Session review goal candidates", () => {
       roomId="room-1"
       sessionTitle="Episode review"
       mode="overview"
+      preparation={{ purpose: "PODCAST", participants: [] } as any}
       consentSnapshot={{ total: 0, granted: 0, transcriptionPermitted: 0 }}
       contentReadiness={{
         status: "substantial",

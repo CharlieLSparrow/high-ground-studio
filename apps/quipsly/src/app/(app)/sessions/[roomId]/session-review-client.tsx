@@ -3322,6 +3322,55 @@ function SessionCollaborationScopes({
       : experience.kind === "coaching" && !context.engagement
         ? "This call is not bound to a reviewed Coaching Engagement. Quipsly will preserve it as an individual Session instead of guessing which long-term client relationship it belongs to."
         : experience.continuityDescription;
+  if (experience.kind === "coaching") {
+    return (
+      <section
+        className="rounded-2xl border border-sky-200 bg-sky-50/65 p-4 sm:p-5"
+        aria-labelledby="session-collaboration-scopes-heading"
+      >
+        <p className="text-[10px] font-black uppercase tracking-[0.18em] text-sky-800">
+          Shared coaching space
+        </p>
+        <div className="mt-1 flex flex-wrap items-start justify-between gap-3">
+          <div className="max-w-3xl">
+            <h2
+              id="session-collaboration-scopes-heading"
+              className="font-serif text-2xl font-black text-[#3d3122]"
+            >
+              Everything stays connected
+            </h2>
+            <p className="mt-1 text-xs font-semibold leading-5 text-sky-950">
+              The call, recording, transcript, shared notes, goals, and next
+              steps stay with this Session. Ongoing client work stays in the
+              coaching space.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {engagementHref ? (
+              <Link
+                href={engagementHref}
+                className="rounded-full bg-emerald-800 px-3 py-2 text-[10px] font-black uppercase text-white"
+              >
+                Open coaching space
+              </Link>
+            ) : null}
+            <Link
+              href={sessionWorkspaceHref(roomId, "notes")}
+              className="rounded-full border border-sky-300 bg-white px-3 py-2 text-[10px] font-black uppercase text-sky-950"
+            >
+              Shared notes
+            </Link>
+            <Link
+              href={sessionWorkspaceHref(roomId, "work")}
+              className="rounded-full border border-sky-300 bg-white px-3 py-2 text-[10px] font-black uppercase text-sky-950"
+            >
+              Goals &amp; tasks
+            </Link>
+          </div>
+        </div>
+      </section>
+    );
+  }
   return (
     <section
       className="rounded-2xl border border-sky-200 bg-sky-50/65 p-5"
@@ -3459,14 +3508,6 @@ function SessionCollaborationScopes({
                 Open {context.project!.name}
               </Link>
             ) : null}
-            {!projectHref && experience.kind === "coaching" ? (
-              <Link
-                href="/coaching/sessions"
-                className="rounded-full border border-emerald-300 bg-emerald-50 px-3 py-2 text-[10px] font-black uppercase text-emerald-950"
-              >
-                Coaching Sessions
-              </Link>
-            ) : null}
           </div>
         </article>
         <article className="rounded-xl border border-sky-200 bg-white p-4">
@@ -3476,11 +3517,9 @@ function SessionCollaborationScopes({
           <h3 className="mt-1 font-black text-[#3d3122]">
             {episode
               ? "Editor, production work, and publishing"
-              : experience.kind === "coaching"
-                ? "Goals, commitments, and client-safe follow-up"
-                : experience.kind === "research"
-                  ? "Evidence, findings, and writing uses"
-                  : "Decisions, tasks, and handoffs"}
+              : experience.kind === "research"
+                ? "Evidence, findings, and writing uses"
+                : "Decisions, tasks, and handoffs"}
           </h3>
           <p className="mt-2 text-xs font-semibold leading-5 text-[#765f40]">
             Turn useful moments into notes, goals, and tasks. Nothing is sent to
@@ -3493,11 +3532,9 @@ function SessionCollaborationScopes({
             >
               {episode
                 ? "Episode work"
-                : experience.kind === "coaching"
-                  ? "Goals & commitments"
-                  : experience.kind === "research"
-                    ? "Findings & tasks"
-                    : "Decisions & tasks"}
+                : experience.kind === "research"
+                  ? "Findings & tasks"
+                  : "Decisions & tasks"}
             </Link>
             {episodeHref ? (
               <Link
@@ -4549,7 +4586,7 @@ export function SessionReviewClient({
         />
       ) : null}
 
-      {(mode === "overview" || mode === "prepare") && purpose === "COACHING" ? (
+      {mode === "prepare" && purpose === "COACHING" ? (
         <CoachingSessionPlanCard roomId={roomId} />
       ) : null}
 
@@ -4561,7 +4598,7 @@ export function SessionReviewClient({
         />
       ) : null}
 
-      {mode === "overview" ? (
+      {mode === "overview" && purpose !== "COACHING" ? (
         <SessionWorkspaceOverview
           roomId={roomId}
           preparation={preparation}
