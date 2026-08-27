@@ -252,11 +252,11 @@ expect_canonical_public_route \
 expect_canonical_public_route \
   "/privacy" \
   "https://quipsly.com/privacy" \
-  "Your work stays inspectable, consented, and yours."
+  "Quipsly Privacy"
 expect_canonical_public_route \
   "/privacy/account-deletion" \
   "https://quipsly.com/privacy/account-deletion" \
-  "Request deletion without losing the paper trail."
+  "Delete your account without a scavenger hunt."
 check_mobile_contract
 
 recent_billing_errors="$(

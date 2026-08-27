@@ -13,7 +13,11 @@ test("production readback proves support and policy routes at canonical HTTPS UR
   assert.match(script, /https:\/\/quipsly\.com\/support/);
   assert.match(script, /charlie@highgroundodyssey\.com/);
   assert.match(script, /https:\/\/quipsly\.com\/privacy/);
+  assert.match(script, /Quipsly Privacy/);
   assert.match(script, /https:\/\/quipsly\.com\/privacy\/account-deletion/);
+  assert.match(script, /Delete your account without a scavenger hunt\./);
+  assert.doesNotMatch(script, /Your work stays inspectable, consented, and yours\./);
+  assert.doesNotMatch(script, /Request deletion without losing the paper trail\./);
   assert.match(script, /--proto '=https'/);
   assert.match(script, /--proto-redir '=https'/);
   assert.match(script, /url_effective/);
