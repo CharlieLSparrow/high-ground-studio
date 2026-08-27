@@ -407,7 +407,7 @@ struct QuipslySubscriptionView: View {
             return "Checking access shared by Capture and Nest."
         }
         if entitlement.accessMode == "EARLY_ACCESS" {
-            return "Full early access is active. Quipsly will not remove access or hide your work while paid plans are being introduced."
+            return "Your complete Quipsly coaching workspace is active. Invitees join and collaborate free."
         }
         if entitlement.accessMode == "TRIAL", let end = formattedDate(entitlement.trialEnd) {
             return "Your complete Quipsly Coach trial is active through \(end). Invitees join and collaborate free."

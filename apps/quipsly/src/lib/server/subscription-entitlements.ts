@@ -172,7 +172,7 @@ export async function readQuipslyEntitlement(input: {
         ? "FREE"
         : "EARLY_ACCESS",
     planKey: subscription?.plan?.stableKey ?? QUIPSLY_COACH_PLAN_KEYS.earlyAccess,
-    planName: subscription?.plan?.name ?? "Quipsly early access",
+    planName: subscription?.plan?.name ?? "Quipsly complimentary access",
     provider,
     status: subscription?.status ?? (enforcementEnabled ? "INACTIVE" : "ACTIVE"),
     currentPeriodEnd: subscription?.currentPeriodEnd?.toISOString?.() ?? null,
@@ -200,10 +200,14 @@ async function upsertQuipslyPlans(prisma: any, environment: Readonly<Record<stri
   const capabilitiesJson = [...QUIPSLY_COACH_CAPABILITIES];
   const earlyAccess = await prisma.subscriptionPlan.upsert({
     where: { stableKey: QUIPSLY_COACH_PLAN_KEYS.earlyAccess },
-    update: { capabilitiesJson, displayOrder: 10 },
+    update: {
+      name: "Quipsly complimentary access",
+      capabilitiesJson,
+      displayOrder: 10,
+    },
     create: {
       stableKey: QUIPSLY_COACH_PLAN_KEYS.earlyAccess,
-      name: "Quipsly early access",
+      name: "Quipsly complimentary access",
       price: 0,
       currency: "usd",
       interval: "month",

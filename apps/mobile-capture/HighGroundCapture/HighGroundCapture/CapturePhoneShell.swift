@@ -10779,7 +10779,7 @@ private struct CaptureAccountView: View {
                                 .font(.headline)
                                 .foregroundStyle(.primary)
                             Text(subscriptionStore.entitlement?.accessMode == "EARLY_ACCESS"
-                                ? "Full early access is active"
+                                ? "Complete Quipsly access is active"
                                 : "Subscription, restore, and App Store access")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
