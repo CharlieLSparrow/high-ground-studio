@@ -13,6 +13,11 @@ import { auth } from "@/auth";
 import { getPrismaClient } from "@/lib/prisma";
 import { QUIPSLY_FREE_PLAN_SLUG } from "@/lib/server/quipsly-onboarding";
 import { normalizeAccessEmail } from "@/lib/server/studio-project-access";
+import {
+  ALL_STAFF_CAPABILITIES,
+  staffCapabilitiesForRoles,
+  type QuipslyStaffCapability,
+} from "@/lib/staff-capabilities";
 import { sourceLabelForNestKind } from "@/lib/studio/project-registry";
 
 const DEFAULT_USER_MANAGEMENT_EMAILS = ["charlie@highgroundodyssey.com"];
@@ -68,6 +73,8 @@ type NestInviteWithProject = Prisma.StudioNestInviteGetPayload<{
 export type QuipslyAdminActor = {
   email: string;
   userId: string | null;
+  roles: AppRole[];
+  capabilities: QuipslyStaffCapability[];
 };
 
 export type ManagedUserRecord = {
@@ -124,7 +131,7 @@ export function isUserManagementAdminEmail(email?: string | null): boolean {
   return listConfiguredUserManagementEmails().includes(normalizeAccessEmail(email));
 }
 
-async function hasUserManagementAdminRole({
+async function listUserManagementRoles({
   email,
   userId,
   prisma = getPrismaClient(),
@@ -132,9 +139,9 @@ async function hasUserManagementAdminRole({
   email?: string | null;
   userId?: string | null;
   prisma?: PrismaClient;
-}) {
+}): Promise<AppRole[]> {
   const actorEmail = normalizeAccessEmail(email);
-  if (!userId && !actorEmail) return false;
+  if (!userId && !actorEmail) return [];
 
   const user = await prisma.user.findFirst({
     where: {
@@ -148,37 +155,41 @@ async function hasUserManagementAdminRole({
         : []),
       ],
     },
-    select: {
-      roles: {
-        where: { role: "OWNER" },
-        select: { id: true },
-        take: 1,
-      },
-    },
+    select: { roles: { select: { role: true } } },
   });
 
-  return Boolean(user?.roles.length);
+  return user?.roles.map((entry) => entry.role) ?? [];
 }
 
-export async function getQuipslyAdminActor(): Promise<QuipslyAdminActor | null> {
+export async function getQuipslyStaffActor(
+  requiredCapability: QuipslyStaffCapability,
+): Promise<QuipslyAdminActor | null> {
   const session = await auth();
   const actorEmail = normalizeAccessEmail(
     session?.user?.primaryEmail || session?.user?.email,
   );
 
-  if (!session?.user?.id || !isUserManagementAdminEmail(actorEmail)) {
-    if (!session?.user?.id || !(await hasUserManagementAdminRole({
-      email: actorEmail,
-      userId: session.user.id,
-    }))) {
-      return null;
-    }
-  }
+  if (!session?.user?.id) return null;
+
+  const roles = await listUserManagementRoles({
+    email: actorEmail,
+    userId: session.user.id,
+  });
+  const capabilities = isUserManagementAdminEmail(actorEmail)
+    ? [...ALL_STAFF_CAPABILITIES]
+    : staffCapabilitiesForRoles(roles);
+  if (!capabilities.includes(requiredCapability)) return null;
 
   return {
     email: actorEmail,
     userId: session.user.id,
+    roles,
+    capabilities,
   };
+}
+
+export async function getQuipslyAdminActor(): Promise<QuipslyAdminActor | null> {
+  return getQuipslyStaffActor("USER_ADMIN");
 }
 
 export async function requireQuipslyAdminActor(): Promise<QuipslyAdminActor> {
@@ -189,9 +200,23 @@ export async function requireQuipslyAdminActor(): Promise<QuipslyAdminActor> {
   return actor;
 }
 
+export async function requireQuipslySupportActor(): Promise<QuipslyAdminActor> {
+  const actor = await getQuipslyStaffActor("SUPPORT_OPERATIONS");
+  if (!actor) redirect("/projects?adminAccessDenied=1");
+  return actor;
+}
+
+export async function requireQuipslyProductAnalyst(): Promise<QuipslyAdminActor> {
+  const actor = await getQuipslyStaffActor("PRODUCT_ANALYTICS");
+  if (!actor) redirect("/projects?adminAccessDenied=1");
+  return actor;
+}
+
 export function parseAppRole(roleInput: string): AppRole | null {
   const normalized = normalizeAccessEmail(roleInput || "").toUpperCase();
   if (normalized === "OWNER") return "OWNER";
+  if (normalized === "SUPPORT_AGENT") return "SUPPORT_AGENT";
+  if (normalized === "PRODUCT_ANALYST") return "PRODUCT_ANALYST";
   if (normalized === "TEAM_SCHEDULER") return "TEAM_SCHEDULER";
   if (normalized === "COACH") return "COACH";
   if (normalized === "CLIENT") return "CLIENT";

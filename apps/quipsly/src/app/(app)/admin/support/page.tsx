@@ -15,9 +15,13 @@ import {
 
 import { adminAuth } from "@/lib/firebase/firebase-admin";
 import { getPrismaClient } from "@/lib/prisma";
-import { requireQuipslyAdminActor } from "@/lib/server/user-management";
+import { requireQuipslySupportActor } from "@/lib/server/user-management";
 
-import { revokeSupportUserSessionsAction, setSupportUserActiveAction } from "./actions";
+import {
+  revokeSupportUserSessionsAction,
+  setSupportUserActiveAction,
+  setSupportUserRoleAction,
+} from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -54,6 +58,11 @@ function resultMessage(result?: string) {
   if (result === "already-suspended") return "This account was already suspended.";
   if (result === "no-firebase-identity") return "No Firebase credential is linked to this Quipsly person yet.";
   if (result === "not-found") return "That Quipsly user no longer exists.";
+  if (result === "role-added") return "Role added. The change is active now and recorded in the support timeline.";
+  if (result === "role-removed") return "Role removed. The change is active now and recorded in the support timeline.";
+  if (result === "self-owner-removal-blocked") return "Quipsly prevented you from removing your own platform-owner access.";
+  if (result === "last-owner-removal-blocked") return "Quipsly kept the final database-backed platform owner in place.";
+  if (result === "invalid-role") return "Choose a recognized Quipsly role.";
   return null;
 }
 
@@ -88,7 +97,8 @@ export default async function SupportOperationsPage({
 }: {
   searchParams?: Promise<SupportSearchParams>;
 }) {
-  await requireQuipslyAdminActor();
+  const supportActor = await requireQuipslySupportActor();
+  const canManageRoles = supportActor.capabilities.includes("USER_ADMIN");
   const params = searchParams ? await searchParams : {};
   const query = (one(params.q) || "").trim().slice(0, 160);
   const requestedPage = Number.parseInt(one(params.page) || "1", 10);
@@ -263,10 +273,10 @@ export default async function SupportOperationsPage({
             </p>
           </div>
           <nav className="flex flex-wrap gap-2 text-sm font-black">
-            <Link href="/admin/product-ops" className="rounded-full border border-[#d5c3aa] px-4 py-2">Product operations</Link>
-            <Link href="/admin/users" className="rounded-full border border-[#d5c3aa] px-4 py-2">Provisioning</Link>
+            {supportActor.capabilities.includes("PRODUCT_ANALYTICS") ? <Link href="/admin/product-ops" className="rounded-full border border-[#d5c3aa] px-4 py-2">Product operations</Link> : null}
+            {canManageRoles ? <Link href="/admin/users" className="rounded-full border border-[#d5c3aa] px-4 py-2">Provisioning</Link> : null}
             <Link href="/admin/auth-diagnostics" className="rounded-full border border-[#d5c3aa] px-4 py-2">Auth health</Link>
-            <Link href="/admin/account-deletion" className="rounded-full border border-[#d5c3aa] px-4 py-2">Deletion</Link>
+            {canManageRoles ? <Link href="/admin/account-deletion" className="rounded-full border border-[#d5c3aa] px-4 py-2">Deletion</Link> : null}
           </nav>
         </header>
 
@@ -351,6 +361,38 @@ export default async function SupportOperationsPage({
 
                 <Panel icon={BadgeCheck} title="Roles and entitlements">
                   <Fact label="App roles" value={selected.roles.map((role) => role.role).join(", ") || "None"} />
+                  {canManageRoles ? (
+                    <div className="rounded-xl border border-[#eadfce] p-3">
+                      <div className="text-xs font-black text-[#746554]">Platform and product roles</div>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {([
+                          ["OWNER", "Platform owner"],
+                          ["SUPPORT_AGENT", "Support agent"],
+                          ["PRODUCT_ANALYST", "Product analyst"],
+                          ["TEAM_SCHEDULER", "Team scheduler"],
+                          ["COACH", "Coach"],
+                          ["CLIENT", "Client"],
+                          ["NETWORK_PASS", "Network pass"],
+                        ] as const).map(([role, label]) => {
+                          const enabled = selected.roles.some((entry) => entry.role === role);
+                          return (
+                            <form action={setSupportUserRoleAction} key={role}>
+                              <input type="hidden" name="userId" value={selected.id} />
+                              <input type="hidden" name="role" value={role} />
+                              <input type="hidden" name="enabled" value={enabled ? "false" : "true"} />
+                              <button
+                                className={`min-h-10 rounded-full border px-3 text-[11px] font-black ${enabled ? "border-emerald-300 bg-emerald-50 text-emerald-950" : "border-[#d8c8b2] bg-[#faf7f1] text-[#655746]"}`}
+                                title={enabled ? `Remove ${label}` : `Add ${label}`}
+                              >
+                                {enabled ? `Remove ${label}` : `Add ${label}`}
+                              </button>
+                            </form>
+                          );
+                        })}
+                      </div>
+                      <p className="mt-3 text-xs leading-5 text-[#766757]">Support and analytics roles open only their back-office tools. Coach and client roles control product entry. Nest access remains separate.</p>
+                    </div>
+                  ) : null}
                   <Fact label="Organization access" value={selected.organizationMemberships.map((membership) => `${membership.organization.name} · ${membership.role}`).join("; ") || "None"} />
                   <Fact label="Memberships" value={selected.memberships.map((membership) => `${membership.plan.name} · ${membership.status}`).join("; ") || "None"} />
                   <Fact label="Nest/project grants" value={projectGrants.map((grant) => `${grant.project.name} · ${grant.role}`).join("; ") || "None"} />

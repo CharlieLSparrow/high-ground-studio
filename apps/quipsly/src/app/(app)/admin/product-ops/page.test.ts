@@ -4,8 +4,8 @@ import { fileURLToPath } from "node:url";
 const source = readFileSync(fileURLToPath(new URL("./page.tsx", import.meta.url)), "utf8");
 
 describe("product operations surface", () => {
-  it("is admin-only and derives coaching health from canonical records", () => {
-    expect(source).toContain("requireQuipslyAdminActor");
+  it("is capability-protected and derives coaching health from canonical records", () => {
+    expect(source).toContain("requireQuipslyProductAnalyst");
     expect(source).toContain("prisma.coachingBooking.count");
     expect(source).toContain("prisma.callParticipantPreflightReceipt.count");
     expect(source).toContain("prisma.recordingAsset.count");

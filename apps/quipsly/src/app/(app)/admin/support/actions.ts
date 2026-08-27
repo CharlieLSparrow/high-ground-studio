@@ -5,7 +5,11 @@ import { redirect } from "next/navigation";
 
 import { adminAuth } from "@/lib/firebase/firebase-admin";
 import { getPrismaClient } from "@/lib/prisma";
-import { requireQuipslyAdminActor } from "@/lib/server/user-management";
+import {
+  parseAppRole,
+  requireQuipslyAdminActor,
+  requireQuipslySupportActor,
+} from "@/lib/server/user-management";
 
 function supportRedirect(userId: string, result: string): never {
   const params = new URLSearchParams({ user: userId, result });
@@ -51,7 +55,7 @@ async function appendSupportEvent({
 }
 
 export async function setSupportUserActiveAction(formData: FormData) {
-  const actor = await requireQuipslyAdminActor();
+  const actor = await requireQuipslySupportActor();
   const userId = exactUserId(formData);
   const makeActive = String(formData.get("active")) === "true";
   if (actor.userId === userId && !makeActive) {
@@ -105,7 +109,7 @@ export async function setSupportUserActiveAction(formData: FormData) {
 }
 
 export async function revokeSupportUserSessionsAction(formData: FormData) {
-  const actor = await requireQuipslyAdminActor();
+  const actor = await requireQuipslySupportActor();
   const userId = exactUserId(formData);
   const prisma = getPrismaClient();
   const target = await prisma.user.findUnique({
@@ -125,4 +129,54 @@ export async function revokeSupportUserSessionsAction(formData: FormData) {
 
   revalidatePath("/admin/support");
   supportRedirect(userId, "sessions-revoked");
+}
+
+export async function setSupportUserRoleAction(formData: FormData) {
+  const actor = await requireQuipslyAdminActor();
+  const userId = exactUserId(formData);
+  const role = parseAppRole(String(formData.get("role") || ""));
+  const enabled = String(formData.get("enabled")) === "true";
+  if (!role) supportRedirect(userId, "invalid-role");
+  if (!enabled && role === "OWNER" && actor.userId === userId) {
+    supportRedirect(userId, "self-owner-removal-blocked");
+  }
+
+  const prisma = getPrismaClient();
+  await prisma.$transaction(async (tx) => {
+    const target = await tx.user.findUnique({
+      where: { id: userId },
+      select: { id: true, organizationMemberships: { orderBy: { createdAt: "asc" }, take: 1, select: { organizationId: true } } },
+    });
+    if (!target) supportRedirect(userId, "not-found");
+
+    if (!enabled && role === "OWNER") {
+      const ownerCount = await tx.userRole.count({ where: { role: "OWNER" } });
+      if (ownerCount <= 1) supportRedirect(userId, "last-owner-removal-blocked");
+    }
+
+    if (enabled) {
+      await tx.userRole.createMany({ data: [{ userId, role }], skipDuplicates: true });
+    } else {
+      await tx.userRole.deleteMany({ where: { userId, role } });
+    }
+
+    await tx.userEvent.create({
+      data: {
+        userId,
+        organizationId: target.organizationMemberships[0]?.organizationId ?? null,
+        eventName: enabled ? "Support: role added" : "Support: role removed",
+        payloadJson: {
+          schema: "quipsly-support-role-action-v1",
+          actorUserId: actor.userId,
+          actorEmail: actor.email,
+          source: "admin-support",
+          role,
+        },
+      },
+    });
+  });
+
+  revalidatePath("/admin/support");
+  revalidatePath("/admin/users");
+  supportRedirect(userId, enabled ? "role-added" : "role-removed");
 }

@@ -14,7 +14,7 @@ import {
 } from "lucide-react";
 
 import { getPrismaClient } from "@/lib/prisma";
-import { requireQuipslyAdminActor } from "@/lib/server/user-management";
+import { requireQuipslyProductAnalyst } from "@/lib/server/user-management";
 
 export const dynamic = "force-dynamic";
 
@@ -34,7 +34,7 @@ export default async function ProductOperationsPage({
 }: {
   searchParams?: Promise<{ days?: string | string[] }>;
 }) {
-  await requireQuipslyAdminActor();
+  const productActor = await requireQuipslyProductAnalyst();
   const params = searchParams ? await searchParams : {};
   const days = selectedWindow(params.days);
   const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
@@ -142,7 +142,7 @@ export default async function ProductOperationsPage({
               </p>
             </div>
             <nav className="flex flex-wrap gap-2 text-sm font-black">
-              <Link href="/admin/support" className="rounded-full border border-[#d5c3aa] px-4 py-2">Customer support</Link>
+              {productActor.capabilities.includes("SUPPORT_OPERATIONS") ? <Link href="/admin/support" className="rounded-full border border-[#d5c3aa] px-4 py-2">Customer support</Link> : null}
               <a href="https://analytics.google.com/analytics/web/#/p503353241/reports/intelligenthome" target="_blank" rel="noreferrer" className="rounded-full bg-[#3d2f24] px-4 py-2 text-white">Open GA4</a>
             </nav>
           </div>

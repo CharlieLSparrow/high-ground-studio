@@ -8,7 +8,7 @@ import { QUIPSLY_SESSION_COOKIE_NAME } from "@/lib/server/quipsly-session";
 import {
   listConfiguredUserManagementEmails,
   type QuipslyAdminActor,
-  requireQuipslyAdminActor,
+  requireQuipslySupportActor,
 } from "@/lib/server/user-management";
 import { sourceLabelForNestKind } from "@/lib/studio/project-registry";
 
@@ -390,7 +390,7 @@ function GoogleOAuthRedirectCallout({ origin }: { origin: string }) {
 }
 
 export default async function AuthDiagnosticsPage() {
-  const actor = await requireQuipslyAdminActor();
+  const actor = await requireQuipslySupportActor();
   const configuredAdmins = listConfiguredUserManagementEmails();
   const requestHeaders = await headers();
   const host = requestHeaders.get("x-forwarded-host") || requestHeaders.get("host") || "nest.quipsly.com";

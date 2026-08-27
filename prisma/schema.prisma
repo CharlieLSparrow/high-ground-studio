@@ -74,6 +74,8 @@ datasource db {
 // Keep authentication method and authorization grant separate.
 enum AppRole {
   OWNER
+  SUPPORT_AGENT
+  PRODUCT_ANALYST
   TEAM_SCHEDULER
   COACH
   CLIENT
