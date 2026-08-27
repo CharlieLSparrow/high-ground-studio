@@ -5653,10 +5653,7 @@ private struct TodayWorkTagSheet: View {
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(.orange)
                     }
-                    Text("This saves the complete tag selection in a protected phone outbox first, so it can survive a lost connection or relaunch. It changes only this Quipsly record—never a calendar, provider, message, delivery, or publication.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Text("This iPhone can create or reuse one private label while saving the complete selection atomically. Rename, merge, archive, and restore the shared vocabulary in Nest, where impact and rollback receipts remain visible.")
+                    Text("Tags help you find related notes, recordings, tasks, and goals across this Nest.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -6639,6 +6636,7 @@ private struct CapturePersonalVoiceNoteTranscriptCard: View {
     let recording: LocalRecording
     let fileURL: URL?
     let previewOnly: Bool
+    @ObservedObject var tagClient: CaptureTodayClient
     @State private var opensWriting = false
     @State private var openWritingWhenReady = false
 
@@ -6685,7 +6683,8 @@ private struct CapturePersonalVoiceNoteTranscriptCard: View {
                     CaptureVoiceWritingEditor(
                         recordingID: recording.id,
                         initialDraft: draft,
-                        timedTranscript: transcriptManager.storedTranscript(for: recording.id)?.segments ?? []
+                        timedTranscript: transcriptManager.storedTranscript(for: recording.id)?.segments ?? [],
+                        tagClient: tagClient
                     )
                 } label: {
                     Label("Open writing", systemImage: "square.and.pencil")
@@ -6868,6 +6867,7 @@ private struct CaptureVoiceWritingEditor: View {
     @ObservedObject private var writingSync = VoiceWritingDraftSyncClient.shared
     @StateObject private var recordingLibrary = LocalRecordingLibrary.shared
     @StateObject private var playback = LocalRecordingPlaybackController()
+    @ObservedObject var tagClient: CaptureTodayClient
     @Environment(\.dismiss) private var dismiss
     @FocusState private var bodyIsFocused: Bool
 
@@ -6876,15 +6876,18 @@ private struct CaptureVoiceWritingEditor: View {
     @State private var title: String
     @State private var bodyText: String
     @State private var showsTranscript = false
+    @State private var showsTagEditor = false
     @State private var saveTask: Task<Void, Never>?
 
     init(
         recordingID: UUID,
         initialDraft: VoiceWritingDraft,
-        timedTranscript: [OnDeviceTranscriptSegment]
+        timedTranscript: [OnDeviceTranscriptSegment],
+        tagClient: CaptureTodayClient
     ) {
         self.recordingID = recordingID
         self.timedTranscript = timedTranscript
+        self.tagClient = tagClient
         _title = State(initialValue: initialDraft.title)
         _bodyText = State(initialValue: initialDraft.body)
     }
@@ -6927,6 +6930,35 @@ private struct CaptureVoiceWritingEditor: View {
                     syncStatus
                 }
                 .font(.caption)
+            }
+
+            Section("Organize") {
+                if !canonicalTags.isEmpty {
+                    TodayProjectTagLine(
+                        project: nil,
+                        tagLabels: canonicalTags.map(\.label),
+                        identifier: "CaptureVoiceWritingTags"
+                    )
+                }
+
+                Button {
+                    showsTagEditor = true
+                } label: {
+                    Label(
+                        canonicalTags.isEmpty ? "Add tags" : "Edit tags",
+                        systemImage: "tag"
+                    )
+                    .frame(minHeight: 44)
+                }
+                .disabled(tagEditingContext == nil)
+                .accessibilityHint("Tags make related writing easy to find across Quipsly.")
+                .accessibilityIdentifier("CaptureVoiceWritingEditTags")
+
+                if tagEditingContext == nil {
+                    Text("Tags will be ready as soon as this note finishes saving to My Nest.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
 
             if let remote = currentDraft?.pendingRemote {
@@ -7049,7 +7081,66 @@ private struct CaptureVoiceWritingEditor: View {
             saveTask?.cancel()
             saveImmediately()
         }
+        .sheet(isPresented: $showsTagEditor) {
+            if let context = tagEditingContext {
+                TodayWorkTagSheet(
+                    client: tagClient,
+                    kind: .document,
+                    entityID: context.documentID,
+                    entityTitle: title.nonempty ?? "Voice note",
+                    project: context.project,
+                    canonicalTagIDs: canonicalTags.map(\.id),
+                    expectedUpdatedAt: context.updatedAt,
+                    expectedTagRevision: context.tagRevision,
+                    availableTags: availableVoiceTags,
+                    onSaved: {
+                        Task { await writingSync.refreshFromNest() }
+                    }
+                )
+            }
+        }
         .accessibilityIdentifier("CaptureVoiceWritingEditor")
+    }
+
+    private struct TagEditingContext {
+        let documentID: String
+        let project: MobileCaptureTodayProject
+        let tagRevision: Int
+        let updatedAt: String
+    }
+
+    private var canonicalTags: [MobileCaptureTag] {
+        (currentDraft?.canonicalTags ?? []).filter { $0.isActive != false }
+    }
+
+    private var availableVoiceTags: [MobileCaptureTodayTag] {
+        guard let projectID = currentDraft?.canonicalProjectID?.nonempty
+                ?? writingSync.homeProject?.id.nonempty else { return [] }
+        return writingSync.availableTags.map {
+            MobileCaptureTodayTag(
+                id: $0.id,
+                projectId: projectID,
+                slug: $0.slug,
+                label: $0.label,
+                isActive: $0.isActive != false
+            )
+        }
+    }
+
+    private var tagEditingContext: TagEditingContext? {
+        guard let draft = currentDraft,
+              let documentID = draft.canonicalDocumentID?.nonempty,
+              let projectID = draft.canonicalProjectID?.nonempty,
+              let projectName = draft.canonicalProjectName?.nonempty,
+              let projectSlug = draft.canonicalProjectSlug?.nonempty,
+              let tagRevision = draft.canonicalTagRevision,
+              let updatedAt = draft.canonicalUpdatedAt?.nonempty else { return nil }
+        return TagEditingContext(
+            documentID: documentID,
+            project: MobileCaptureTodayProject(id: projectID, name: projectName, slug: projectSlug),
+            tagRevision: tagRevision,
+            updatedAt: updatedAt
+        )
     }
 
     @ViewBuilder
@@ -7408,7 +7499,8 @@ private struct CaptureRecorderView: View {
                             CapturePersonalVoiceNoteTranscriptCard(
                                 recording: recording,
                                 fileURL: library.fileURL(for: recording),
-                                previewOnly: model.usesPreviewData
+                                previewOnly: model.usesPreviewData,
+                                tagClient: model.todayClient
                             )
                         }
                     } else {
@@ -11588,7 +11680,8 @@ private struct CaptureLibraryView: View {
                     draft: draft,
                     recording: library.recording(id: draft.localRecordingID),
                     timedTranscript: OnDeviceTranscriptManager.shared
-                        .storedTranscript(for: draft.localRecordingID)?.segments ?? []
+                        .storedTranscript(for: draft.localRecordingID)?.segments ?? [],
+                    tagClient: model.todayClient
                 )
             }
         }
@@ -11708,13 +11801,15 @@ private struct CaptureVoiceWritingLibraryRow: View {
     let draft: VoiceWritingDraft
     let recording: LocalRecording?
     let timedTranscript: [OnDeviceTranscriptSegment]
+    @ObservedObject var tagClient: CaptureTodayClient
 
     var body: some View {
         NavigationLink {
             CaptureVoiceWritingEditor(
                 recordingID: draft.localRecordingID,
                 initialDraft: draft,
-                timedTranscript: timedTranscript
+                timedTranscript: timedTranscript,
+                tagClient: tagClient
             )
         } label: {
             VStack(alignment: .leading, spacing: 10) {

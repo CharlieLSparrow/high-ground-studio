@@ -3,6 +3,9 @@ import Foundation
 
 struct VoiceWritingRemoteDraft: Codable, Equatable {
     let documentID: String
+    let projectID: String
+    let projectName: String
+    let projectSlug: String
     let title: String
     let body: String
     let contentRevision: String
@@ -11,6 +14,9 @@ struct VoiceWritingRemoteDraft: Codable, Equatable {
     let sourceTranscriptClientRequestID: UUID
     let sourceSHA256: String
     let callRoomID: String?
+    let tagRevision: Int
+    let tags: [MobileCaptureTag]
+    let serverUpdatedAt: String
     let createdAt: Date
     let updatedAt: Date
 }
@@ -30,6 +36,12 @@ struct VoiceWritingDraft: Codable, Identifiable, Equatable {
     var serverRevision: Int?
     var serverContentRevision: String?
     var canonicalDocumentID: String?
+    var canonicalProjectID: String?
+    var canonicalProjectName: String?
+    var canonicalProjectSlug: String?
+    var canonicalTagRevision: Int?
+    var canonicalTags: [MobileCaptureTag]?
+    var canonicalUpdatedAt: String?
     var lastSyncedAt: Date?
     var lastSyncError: String?
     var pendingRemote: VoiceWritingRemoteDraft?
@@ -181,6 +193,12 @@ final class VoiceWritingDraftStore: ObservableObject {
             serverRevision: nil,
             serverContentRevision: nil,
             canonicalDocumentID: nil,
+            canonicalProjectID: nil,
+            canonicalProjectName: nil,
+            canonicalProjectSlug: nil,
+            canonicalTagRevision: nil,
+            canonicalTags: nil,
+            canonicalUpdatedAt: nil,
             lastSyncedAt: nil,
             lastSyncError: nil,
             pendingRemote: nil
@@ -225,6 +243,12 @@ final class VoiceWritingDraftStore: ObservableObject {
         serverRevision: Int,
         contentRevision: String,
         syncedLocalRevision: Int,
+        projectID: String,
+        projectName: String,
+        projectSlug: String,
+        tagRevision: Int,
+        tags: [MobileCaptureTag],
+        serverUpdatedAt: String,
         at date: Date = Date()
     ) {
         guard let owner = try? requireActiveOwner(),
@@ -234,6 +258,12 @@ final class VoiceWritingDraftStore: ObservableObject {
         storedDrafts[index].canonicalDocumentID = canonicalDocumentID
         storedDrafts[index].serverRevision = min(serverRevision, syncedLocalRevision)
         storedDrafts[index].serverContentRevision = contentRevision
+        storedDrafts[index].canonicalProjectID = projectID
+        storedDrafts[index].canonicalProjectName = projectName
+        storedDrafts[index].canonicalProjectSlug = projectSlug
+        storedDrafts[index].canonicalTagRevision = tagRevision
+        storedDrafts[index].canonicalTags = tags
+        storedDrafts[index].canonicalUpdatedAt = serverUpdatedAt
         storedDrafts[index].lastSyncedAt = date
         storedDrafts[index].lastSyncError = nil
         storedDrafts[index].pendingRemote = nil
@@ -245,6 +275,12 @@ final class VoiceWritingDraftStore: ObservableObject {
         if let index = storedDrafts.firstIndex(where: {
             $0.ownerAccountID == owner && $0.id == remote.localRecordingID
         }) {
+            storedDrafts[index].canonicalProjectID = remote.projectID
+            storedDrafts[index].canonicalProjectName = remote.projectName
+            storedDrafts[index].canonicalProjectSlug = remote.projectSlug
+            storedDrafts[index].canonicalTagRevision = remote.tagRevision
+            storedDrafts[index].canonicalTags = remote.tags
+            storedDrafts[index].canonicalUpdatedAt = remote.serverUpdatedAt
             let hasLocalChanges = storedDrafts[index].serverRevision != storedDrafts[index].localRevision
             if storedDrafts[index].serverContentRevision == remote.contentRevision {
                 storedDrafts[index].canonicalDocumentID = remote.documentID
@@ -286,6 +322,12 @@ final class VoiceWritingDraftStore: ObservableObject {
                 serverRevision: revision,
                 serverContentRevision: remote.contentRevision,
                 canonicalDocumentID: remote.documentID,
+                canonicalProjectID: remote.projectID,
+                canonicalProjectName: remote.projectName,
+                canonicalProjectSlug: remote.projectSlug,
+                canonicalTagRevision: remote.tagRevision,
+                canonicalTags: remote.tags,
+                canonicalUpdatedAt: remote.serverUpdatedAt,
                 lastSyncedAt: Date(),
                 lastSyncError: nil,
                 pendingRemote: nil
@@ -436,10 +478,19 @@ private struct VoiceWritingSyncRequest: Encodable {
     }
 }
 
+struct VoiceWritingHomeProject: Codable, Equatable {
+    let id: String
+    let name: String
+    let slug: String
+}
+
 private struct VoiceWritingSyncResponse: Decodable {
     struct SavedDraft: Decodable {
         let draftId: String
         let documentId: String
+        let projectId: String
+        let projectName: String
+        let projectSlug: String
         let title: String
         let body: String
         let localRevision: Int
@@ -449,6 +500,8 @@ private struct VoiceWritingSyncResponse: Decodable {
         let transcriptClientRequestId: String
         let sourceSha256: String
         let callRoomId: String?
+        let tagRevision: Int
+        let tags: [MobileCaptureTag]
         let createdAt: String?
         let updatedAt: String
     }
@@ -458,12 +511,16 @@ private struct VoiceWritingSyncResponse: Decodable {
     let error: String?
     let draft: SavedDraft?
     let current: SavedDraft?
+    let homeProject: VoiceWritingHomeProject?
+    let availableTags: [MobileCaptureTag]?
 }
 
 private struct VoiceWritingListResponse: Decodable {
     let ok: Bool
     let error: String?
     let drafts: [VoiceWritingSyncResponse.SavedDraft]?
+    let homeProject: VoiceWritingHomeProject?
+    let availableTags: [MobileCaptureTag]?
 }
 
 /// Debounced local-first synchronization for private writing. Typing never
@@ -477,6 +534,8 @@ final class VoiceWritingDraftSyncClient: ObservableObject {
     @Published private(set) var syncingRecordingIDs: Set<UUID> = []
     @Published private(set) var isRefreshing = false
     @Published private(set) var refreshError: String?
+    @Published private(set) var homeProject: VoiceWritingHomeProject?
+    @Published private(set) var availableTags: [MobileCaptureTag] = []
     private var pendingTasks: [UUID: Task<Void, Never>] = [:]
     private let apiBaseURL = normalizedNestAPIBaseURL(
         Bundle.main.object(forInfoDictionaryKey: "QUIPSLY_API_BASE_URL") as? String
@@ -520,6 +579,8 @@ final class VoiceWritingDraftSyncClient: ObservableObject {
                     userInfo: [NSLocalizedDescriptionKey: payload.error ?? "Writing could not refresh yet."]
                 )
             }
+            homeProject = payload.homeProject
+            availableTags = (payload.availableTags ?? []).filter { $0.isActive != false }
             for saved in payload.drafts ?? [] {
                 if let remote = Self.remoteDraft(from: saved) {
                     VoiceWritingDraftStore.shared.reconcile(remote)
@@ -586,8 +647,16 @@ final class VoiceWritingDraftSyncClient: ObservableObject {
                 canonicalDocumentID: saved.documentId,
                 serverRevision: saved.serverRevision,
                 contentRevision: saved.contentRevision,
-                syncedLocalRevision: saved.localRevision
+                syncedLocalRevision: saved.localRevision,
+                projectID: saved.projectId,
+                projectName: saved.projectName,
+                projectSlug: saved.projectSlug,
+                tagRevision: saved.tagRevision,
+                tags: saved.tags,
+                serverUpdatedAt: saved.updatedAt
             )
+            homeProject = payload.homeProject
+            availableTags = (payload.availableTags ?? []).filter { $0.isActive != false }
             if let latest = VoiceWritingDraftStore.shared.draft(for: recordingID),
                !latest.isSynced {
                 schedule(latest, delay: .milliseconds(250))
@@ -611,6 +680,9 @@ final class VoiceWritingDraftSyncClient: ObservableObject {
         let createdAt = saved.createdAt.flatMap(formatter.date(from:)) ?? updatedAt
         return VoiceWritingRemoteDraft(
             documentID: saved.documentId,
+            projectID: saved.projectId,
+            projectName: saved.projectName,
+            projectSlug: saved.projectSlug,
             title: saved.title,
             body: saved.body,
             contentRevision: saved.contentRevision,
@@ -619,6 +691,9 @@ final class VoiceWritingDraftSyncClient: ObservableObject {
             sourceTranscriptClientRequestID: transcriptID,
             sourceSHA256: saved.sourceSha256,
             callRoomID: saved.callRoomId,
+            tagRevision: saved.tagRevision,
+            tags: saved.tags,
+            serverUpdatedAt: saved.updatedAt,
             createdAt: createdAt,
             updatedAt: updatedAt
         )

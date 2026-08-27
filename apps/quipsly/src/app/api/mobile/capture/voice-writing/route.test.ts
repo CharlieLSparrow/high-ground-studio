@@ -34,9 +34,29 @@ describe("mobile voice-writing continuation", () => {
       id: `voice-writing-${draftId}`,
       projectId: "project-home",
       title: "Dissertation opening",
+      tagRevision: 2,
       createdAt: updatedAt,
       updatedAt,
-      project: { name: "Person Home Nest" },
+      project: {
+        name: "Person Home Nest",
+        slug: "person-home",
+        tags: [{
+          id: "tag-phd",
+          projectId: "project-home",
+          slug: "phd",
+          label: "PhD",
+          isActive: true,
+        }],
+      },
+      tagLinks: [{
+        tag: {
+          id: "tag-phd",
+          projectId: "project-home",
+          slug: "phd",
+          label: "PhD",
+          isActive: true,
+        },
+      }],
       blocks: [
         { id: `voice-writing-${draftId}-title`, order: 0, body: "Dissertation opening" },
         { id: `voice-writing-${draftId}-body`, order: 1, body: "Start with the concrete story." },
@@ -71,6 +91,9 @@ describe("mobile voice-writing continuation", () => {
       drafts: [{
         draftId,
         documentId: `voice-writing-${draftId}`,
+        projectId: "project-home",
+        projectName: "Person Home Nest",
+        projectSlug: "person-home",
         title: "Dissertation opening",
         body: "Start with the concrete story.",
         localRevision: 4,
@@ -79,7 +102,11 @@ describe("mobile voice-writing continuation", () => {
         localRecordingId: recordingId,
         transcriptClientRequestId: transcriptId,
         sourceSha256: "a".repeat(64),
+        tagRevision: 2,
+        tags: [{ id: "tag-phd", slug: "phd", label: "PhD", isActive: true }],
       }],
+      homeProject: { id: "project-home", name: "Person Home Nest", slug: "person-home" },
+      availableTags: [{ id: "tag-phd", slug: "phd", label: "PhD", isActive: true }],
     });
   });
 });

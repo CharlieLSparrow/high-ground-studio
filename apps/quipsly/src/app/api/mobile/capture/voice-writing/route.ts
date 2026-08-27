@@ -57,6 +57,28 @@ function voiceWritingContentRevision(document: any, draftId: string) {
   });
 }
 
+function publicTag(tag: any) {
+  return {
+    id: String(tag?.id || ""),
+    projectId: String(tag?.projectId || ""),
+    slug: String(tag?.slug || ""),
+    label: String(tag?.label || ""),
+    isActive: tag?.isActive !== false,
+  };
+}
+
+function voiceWritingTags(document: any) {
+  return (document?.tagLinks || [])
+    .map((link: any) => publicTag(link?.tag))
+    .filter((tag: any) => tag.id && tag.projectId && tag.slug && tag.label);
+}
+
+function availableVoiceWritingTags(document: any) {
+  return (document?.project?.tags || [])
+    .map(publicTag)
+    .filter((tag: any) => tag.id && tag.projectId && tag.slug && tag.label && tag.isActive);
+}
+
 function publicDraft(document: any, serverRevision: number, input: MobileVoiceWritingInput) {
   const body = voiceWritingBody(document, input.draftId) || input.body;
   return {
@@ -64,6 +86,7 @@ function publicDraft(document: any, serverRevision: number, input: MobileVoiceWr
     documentId: document.id,
     projectId: document.projectId,
     projectName: document.project?.name || "My Nest",
+    projectSlug: document.project?.slug || "",
     title: document.title,
     body,
     localRevision: input.localRevision,
@@ -73,6 +96,8 @@ function publicDraft(document: any, serverRevision: number, input: MobileVoiceWr
     transcriptClientRequestId: input.transcriptClientRequestId,
     sourceSha256: input.sourceSha256,
     callRoomId: input.callRoomId,
+    tagRevision: Number(document.tagRevision) || 0,
+    tags: voiceWritingTags(document),
     updatedAt: document.updatedAt.toISOString(),
   };
 }
@@ -89,6 +114,7 @@ function publicStoredDraft(document: any) {
     documentId: document.id,
     projectId: document.projectId,
     projectName: document.project?.name || "My Nest",
+    projectSlug: document.project?.slug || "",
     title: document.title,
     body,
     localRevision: current.serverRevision ?? 1,
@@ -98,6 +124,8 @@ function publicStoredDraft(document: any) {
     transcriptClientRequestId: String(source.transcriptClientRequestId || draftId),
     sourceSha256: String(source.sourceSha256 || "").toLowerCase(),
     callRoomId: typeof source.callRoomId === "string" ? source.callRoomId : null,
+    tagRevision: Number(document.tagRevision) || 0,
+    tags: voiceWritingTags(document),
     createdAt: document.createdAt.toISOString(),
     updatedAt: document.updatedAt.toISOString(),
   };
@@ -131,8 +159,24 @@ export async function GET(request: Request) {
     orderBy: [{ updatedAt: "desc" }, { id: "asc" }],
     take: requestedDraftId ? 1 : 250,
     include: {
-      project: { select: { name: true } },
+      project: {
+        select: {
+          name: true,
+          slug: true,
+          tags: {
+            where: { isActive: true, mergedIntoTagId: null },
+            orderBy: [{ label: "asc" }, { id: "asc" }],
+            select: { id: true, projectId: true, slug: true, label: true, isActive: true },
+          },
+        },
+      },
       blocks: { where: { archivedAt: null }, orderBy: [{ order: "asc" }, { id: "asc" }] },
+      tagLinks: {
+        orderBy: [{ createdAt: "asc" }, { tagId: "asc" }],
+        select: {
+          tag: { select: { id: true, projectId: true, slug: true, label: true, isActive: true } },
+        },
+      },
       documentOperations: {
         where: { operationType: "mobile-voice-writing-sync" },
         orderBy: [{ createdAt: "desc" }, { id: "desc" }],
@@ -141,10 +185,17 @@ export async function GET(request: Request) {
     },
   });
   const drafts = documents.map(publicStoredDraft).filter(Boolean);
+  const homeDocument = documents[0];
   return NextResponse.json({
     ok: true,
     schema: "quipsly-mobile-voice-writing-list-v1",
     drafts,
+    homeProject: homeDocument ? {
+      id: homeDocument.projectId,
+      name: homeDocument.project?.name || "My Nest",
+      slug: homeDocument.project?.slug || "",
+    } : null,
+    availableTags: homeDocument ? availableVoiceWritingTags(homeDocument) : [],
     nextAction: null,
   });
 }
@@ -180,8 +231,24 @@ export async function POST(request: Request) {
     const existing = await tx.studioDocument.findUnique({
       where: { id: documentId },
       include: {
-        project: { select: { name: true } },
+        project: {
+          select: {
+            name: true,
+            slug: true,
+            tags: {
+              where: { isActive: true, mergedIntoTagId: null },
+              orderBy: [{ label: "asc" }, { id: "asc" }],
+              select: { id: true, projectId: true, slug: true, label: true, isActive: true },
+            },
+          },
+        },
         blocks: { where: { archivedAt: null }, orderBy: [{ order: "asc" }, { id: "asc" }] },
+        tagLinks: {
+          orderBy: [{ createdAt: "asc" }, { tagId: "asc" }],
+          select: {
+            tag: { select: { id: true, projectId: true, slug: true, label: true, isActive: true } },
+          },
+        },
         documentOperations: { orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: 1 },
       },
     });
@@ -243,8 +310,24 @@ export async function POST(request: Request) {
           },
         },
         include: {
-          project: { select: { name: true } },
+          project: {
+            select: {
+              name: true,
+              slug: true,
+              tags: {
+                where: { isActive: true, mergedIntoTagId: null },
+                orderBy: [{ label: "asc" }, { id: "asc" }],
+                select: { id: true, projectId: true, slug: true, label: true, isActive: true },
+              },
+            },
+          },
           blocks: { where: { archivedAt: null }, orderBy: [{ order: "asc" }, { id: "asc" }] },
+          tagLinks: {
+            orderBy: [{ createdAt: "asc" }, { tagId: "asc" }],
+            select: {
+              tag: { select: { id: true, projectId: true, slug: true, label: true, isActive: true } },
+            },
+          },
           documentOperations: { orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: 1 },
         },
       });
@@ -331,8 +414,24 @@ export async function POST(request: Request) {
     const document = await tx.studioDocument.findUniqueOrThrow({
       where: { id: documentId },
       include: {
-        project: { select: { name: true } },
+        project: {
+          select: {
+            name: true,
+            slug: true,
+            tags: {
+              where: { isActive: true, mergedIntoTagId: null },
+              orderBy: [{ label: "asc" }, { id: "asc" }],
+              select: { id: true, projectId: true, slug: true, label: true, isActive: true },
+            },
+          },
+        },
         blocks: { where: { archivedAt: null }, orderBy: [{ order: "asc" }, { id: "asc" }] },
+        tagLinks: {
+          orderBy: [{ createdAt: "asc" }, { tagId: "asc" }],
+          select: {
+            tag: { select: { id: true, projectId: true, slug: true, label: true, isActive: true } },
+          },
+        },
         documentOperations: { orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: 1 },
       },
     });
@@ -381,6 +480,12 @@ export async function POST(request: Request) {
     ok: true,
     schema: "quipsly-mobile-voice-writing-v1",
     draft: publicDraft(result.document, result.serverRevision, input),
+    homeProject: {
+      id: result.document.projectId,
+      name: result.document.project?.name || "My Nest",
+      slug: result.document.project?.slug || "",
+    },
+    availableTags: availableVoiceWritingTags(result.document),
     idempotentReplay: result.idempotentReplay,
     nextAction: "Writing saved privately to My Nest.",
   });
