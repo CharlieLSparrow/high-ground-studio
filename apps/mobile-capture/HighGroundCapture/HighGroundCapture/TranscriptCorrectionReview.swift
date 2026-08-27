@@ -4169,11 +4169,12 @@ struct CaptureTranscriptReviewView: View {
                 Text("\(packetOpenCandidates.count) optional idea\(packetOpenCandidates.count == 1 ? "" : "s") from the transcript")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                Text("Open these when they are useful. They never block the transcript or the notes, tasks, and goals Quipsly already created.")
+                Text("Use, edit, or dismiss any idea whenever it helps.")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
+            .accessibilityElement(children: .combine)
             .accessibilityIdentifier("CapturePacketAdditionalSuggestionsDisclosure")
         }
         .reviewCard()

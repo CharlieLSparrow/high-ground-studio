@@ -2536,7 +2536,8 @@ final class CaptureExperienceUITests: XCTestCase {
             "Optional transcript suggestions should remain easy to find without becoming a required follow-up queue."
         )
         XCTAssertTrue(moreSuggestions.label.contains("More suggestions"))
-        XCTAssertTrue(moreSuggestions.label.contains("never block"))
+        XCTAssertTrue(moreSuggestions.label.contains("optional"))
+        XCTAssertTrue(moreSuggestions.label.contains("Use, edit, or dismiss"))
         XCTAssertFalse(moreSuggestions.label.contains("Review packet"))
     }
 
