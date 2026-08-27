@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Inter, Merriweather } from "next/font/google";
 import { Suspense } from "react";
 import { GoogleOneTap } from "./components/GoogleOneTap";
+import { QuipslyProductAnalytics } from "@/components/quipsly-product-analytics";
 import "../globals.css";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
@@ -33,6 +34,7 @@ export default function MarketingLayout({
   return (
     <html lang="en" className={`${inter.variable} ${merriweather.variable}`}>
       <body className="font-sans bg-[#032321] text-studio-ink antialiased">
+        <QuipslyProductAnalytics measurementId={process.env.QUIPSLY_GA_MEASUREMENT_ID} />
         <Suspense fallback={null}>
           <GoogleOneTap />
         </Suspense>

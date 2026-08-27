@@ -133,7 +133,6 @@ export async function upsertManagedUserAction(formData: FormData) {
   const targetEmail = normalizeAccessEmail(String(formData.get("primaryEmail") || ""));
   const name = String(formData.get("name") || "").trim();
   const role = parseAppRole(String(formData.get("role") || ""));
-  const firebasePassword = String(formData.get("firebasePassword") || "");
   const params = new URLSearchParams();
 
   if (!targetEmail) {
@@ -144,19 +143,10 @@ export async function upsertManagedUserAction(formData: FormData) {
   const prisma = getPrismaClient();
 
   try {
-    const firebaseLogin = firebasePassword.trim()
-      ? await upsertFirebasePasswordUser({
-          email: targetEmail,
-          password: firebasePassword,
-          name,
-        })
-      : null;
-
     const savedUser = await ensureManagedUserRecord({
       email: targetEmail,
       name,
       role,
-      firebaseUid: firebaseLogin?.user.uid,
       prisma,
     });
 
@@ -166,12 +156,48 @@ export async function upsertManagedUserAction(formData: FormData) {
       params.set("updated", targetEmail);
     }
     params.set("starter", "ready");
-    if (firebaseLogin) {
-      params.set("firebaseLogin", firebaseLogin.created ? "created" : "updated");
-    }
     params.set("actor", actor.email);
   } catch (error) {
     setError(params, error instanceof Error ? error.message : "Unable to save managed user.");
+  }
+
+  revalidatePath("/admin/users");
+  redirectBack(params);
+}
+
+export async function upsertCaptureReviewerAction(formData: FormData) {
+  const actor = await requireQuipslyAdminActor();
+  const targetEmail = normalizeAccessEmail(String(formData.get("primaryEmail") || ""));
+  const name = String(formData.get("name") || "").trim();
+  const role = parseAppRole(String(formData.get("role") || ""));
+  const firebasePassword = String(formData.get("firebasePassword") || "");
+  const params = new URLSearchParams();
+
+  if (!targetEmail.endsWith("@dev.test")) {
+    setError(params, "Reviewer password accounts are restricted to Quipsly's @dev.test acceptance namespace.");
+    redirectBack(params);
+  }
+
+  const prisma = getPrismaClient();
+  try {
+    const firebaseLogin = await upsertFirebasePasswordUser({
+      email: targetEmail,
+      password: firebasePassword,
+      name,
+    });
+    const savedUser = await ensureManagedUserRecord({
+      email: targetEmail,
+      name,
+      role,
+      firebaseUid: firebaseLogin.user.uid,
+      prisma,
+    });
+    params.set(savedUser.created ? "created" : "updated", targetEmail);
+    params.set("starter", "ready");
+    params.set("firebaseLogin", firebaseLogin.created ? "created" : "updated");
+    params.set("actor", actor.email);
+  } catch (error) {
+    setError(params, error instanceof Error ? error.message : "Unable to save capture reviewer.");
   }
 
   revalidatePath("/admin/users");

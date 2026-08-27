@@ -101,6 +101,18 @@ test("preview deploy configures production App Store receipt verification", () =
   assert.match(source, /APP_STORE_ENABLE_ONLINE_CHECKS=\$\{APP_STORE_ENABLE_ONLINE_CHECKS\}/);
 });
 
+test("preview deploy enables the exact public GA4 stream without treating its id as a secret", () => {
+  const source = readFileSync(deployScript, "utf8");
+
+  assert.match(
+    source,
+    /QUIPSLY_GA_MEASUREMENT_ID="\$\{QUIPSLY_GA_MEASUREMENT_ID:-G-47PCQGW8ZB\}"/,
+  );
+  assert.match(source, /QUIPSLY_GA_MEASUREMENT_ID must be a GA4 measurement ID/);
+  assert.match(source, /QUIPSLY_GA_MEASUREMENT_ID=\$\{QUIPSLY_GA_MEASUREMENT_ID\}/);
+  assert.doesNotMatch(source, /QUIPSLY_GA_MEASUREMENT_ID=.*:latest/);
+});
+
 test("session invitation email is explicit, Secret Manager backed, and safe to disable", () => {
   const source = readFileSync(deployScript, "utf8");
 

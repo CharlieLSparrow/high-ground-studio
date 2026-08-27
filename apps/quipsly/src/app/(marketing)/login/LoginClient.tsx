@@ -206,6 +206,8 @@ export function LoginClient({
       return;
     }
 
+    window.dispatchEvent(new Event("quipsly:password-auth-start"));
+
     setIsPasswordSigningIn(true);
     setMessage(
       passwordMode === "create"

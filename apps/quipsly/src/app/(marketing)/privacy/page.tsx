@@ -1,5 +1,7 @@
 import Link from "next/link";
-import { ArrowLeft, CalendarDays, Cloud, KeyRound, Mic, Shield, Trash2 } from "lucide-react";
+import { ArrowLeft, BarChart3, CalendarDays, Cloud, KeyRound, Mic, Shield, Trash2 } from "lucide-react";
+
+import { AnalyticsPrivacyButton } from "@/components/quipsly-product-analytics";
 
 export default function PrivacyPage() {
   return (
@@ -87,6 +89,19 @@ export default function PrivacyPage() {
             </a>
           </section>
           <section className="rounded-3xl border border-[#ead8c2] bg-[#fffaf3] p-6 font-sans md:col-span-2">
+            <BarChart3 className="mb-3 h-6 w-6 text-[#a96735]" />
+            <h2 className="mb-2 font-serif text-2xl font-bold text-[#3d2618]">Product analytics</h2>
+            <div className="space-y-3 leading-relaxed text-[#7a604c]">
+              <p>
+                Quipsly uses Google Analytics 4 and an app-owned event ledger to understand whether people can complete important workflows and where the product needs improvement. Analytics events use a fixed vocabulary and redacted route categories. Quipsly does not send session titles, resource identifiers, names, email addresses, notes, transcripts, recordings, or other creative and coaching content to Google Analytics.
+              </p>
+              <p>
+                Advertising storage, advertising personalization, and Google Signals are disabled. Analytics storage begins denied; you can allow or decline analytics cookies in the product and change that choice here. Quipsly&apos;s own authenticated event receipts remain limited to operational product events needed to run, support, secure, and improve the service.
+              </p>
+            </div>
+            <AnalyticsPrivacyButton className="mt-5 inline-flex rounded-full border border-[#c99768] px-5 py-3 text-sm font-black uppercase tracking-[0.16em] text-[#6c4329] transition hover:bg-[#f7e7d5]" />
+          </section>
+          <section className="rounded-3xl border border-[#ead8c2] bg-[#fffaf3] p-6 font-sans md:col-span-2">
             <Trash2 className="mb-3 h-6 w-6 text-[#a96735]" />
             <h2 className="mb-2 font-serif text-2xl font-bold text-[#3d2618]">Deletion requests</h2>
             <p className="leading-relaxed text-[#7a604c]">
@@ -102,7 +117,7 @@ export default function PrivacyPage() {
           <p>
             Privacy questions: <a className="font-bold underline underline-offset-4" href="mailto:charlie@highgroundodyssey.com">charlie@highgroundodyssey.com</a>
           </p>
-          <p className="italic">Last updated: August 26, 2026.</p>
+          <p className="italic">Last updated: August 27, 2026.</p>
         </div>
       </div>
       </main>

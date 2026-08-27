@@ -13,6 +13,7 @@ import {
   provisionCoachCohortAction,
   repairManagedUserStarterStateAction,
   revokeProjectAccessFromAdminAction,
+  upsertCaptureReviewerAction,
   upsertManagedUserAction,
 } from "./actions";
 import { CopyInviteLinkButton } from "./CopyInviteLinkButton";
@@ -400,7 +401,7 @@ export default async function UserManagementPage({
                 </div>
               </div>
 
-              <form action={upsertManagedUserAction} className="grid gap-3 rounded-3xl border border-[#c3d9ef] bg-white p-4 shadow-sm">
+              <form action={upsertCaptureReviewerAction} className="grid gap-3 rounded-3xl border border-[#c3d9ef] bg-white p-4 shadow-sm">
                 <input
                   type="email"
                   name="primaryEmail"
@@ -432,8 +433,8 @@ export default async function UserManagementPage({
                   required
                 />
                 <p className="rounded-2xl border border-[#c3d9ef] bg-[#f7fbff] px-4 py-3 text-xs leading-5 text-[#526981]">
-                  This creates or updates the Firebase email/password user, links the Firebase UID to the Quipsly user,
-                  and repairs free starter/Home Nest state. It does not create a coaching session by itself.
+                  This test-only control accepts only <code>@dev.test</code> addresses. Customer passwords are never
+                  visible to or set by support. It does not create a coaching session by itself.
                 </p>
                 <button className="rounded-2xl bg-[#1d3650] px-5 py-3 text-sm font-black uppercase tracking-[0.14em] text-white shadow-lg transition hover:-translate-y-0.5">
                   Create capture reviewer login
@@ -482,14 +483,8 @@ export default async function UserManagementPage({
                   <option value="CLIENT">CLIENT</option>
                   <option value="NETWORK_PASS">NETWORK_PASS</option>
                 </select>
-                <input
-                  type="password"
-                  name="firebasePassword"
-                  placeholder="Firebase login password (optional)"
-                  className="rounded-2xl border border-[#eadfca] bg-[#fffdf9] px-4 py-3 text-sm text-[#3d3122] shadow-sm outline-none focus:border-[#c28a37] md:col-span-3"
-                />
-                <p className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs leading-5 text-amber-950 md:col-span-3">
-                  Leave password blank for a Google/invite-only user. Enter a password only when you intentionally want an admin-created Firebase email/password login, such as a test/operator account.
+                <p className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs leading-5 text-emerald-950 md:col-span-3">
+                  Customers choose Google or their own Quipsly password in the normal sign-in flow. Support prepares app access here but never knows or replaces a customer&apos;s password.
                 </p>
                 <button className="rounded-2xl bg-[#3d3122] px-5 py-3 text-sm font-black uppercase tracking-[0.14em] text-[#fffaf3] shadow-lg transition hover:-translate-y-0.5 md:col-span-3">
                   Save user

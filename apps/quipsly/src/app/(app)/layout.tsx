@@ -9,6 +9,7 @@ import { MAC_WEB_SESSION_COOKIE_NAME, verifyMacWebSessionToken } from "@/lib/ser
 import { cookies } from "next/headers";
 import { Providers } from "@/app/providers";
 import { NestSignInGate } from "@/components/nest-sign-in-gate";
+import { QuipslyProductAnalytics } from "@/components/quipsly-product-analytics";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 const merriweather = Merriweather({ weight: ["300", "400", "700", "900"], subsets: ["latin"], variable: "--font-merriweather" });
@@ -56,6 +57,7 @@ export default async function RootLayout({
     return (
       <html lang="en" className={`${inter.variable} ${merriweather.variable}`}>
         <body className="font-sans bg-[#fdfaf6] antialiased">
+          <QuipslyProductAnalytics measurementId={process.env.QUIPSLY_GA_MEASUREMENT_ID} />
           <NestSignInGate />
         </body>
       </html>
@@ -65,6 +67,7 @@ export default async function RootLayout({
   return (
     <html lang="en" className={`${inter.variable} ${merriweather.variable}`}>
         <body className="font-sans bg-[#050505] text-studio-ink antialiased">
+        <QuipslyProductAnalytics measurementId={process.env.QUIPSLY_GA_MEASUREMENT_ID} authenticated />
         <SidebarLayout
           showAdminTools={showAdminTools}
           currentUser={
