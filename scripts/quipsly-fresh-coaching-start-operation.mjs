@@ -391,13 +391,18 @@ try {
   });
   await captureChoice.waitFor({ timeout: 30_000 });
   const captureInstallLink = clientPage.getByRole("link", {
-    name: /Get the beta/i,
+    name: /Get Quipsly Capture for iPhone/i,
   });
   await captureInstallLink.waitFor({ timeout: 30_000 });
+  assert.doesNotMatch(
+    (await captureInstallLink.textContent()) ?? "",
+    /beta/i,
+    "Fresh client install choice regressed to beta-era product language.",
+  );
   assert.equal(
     await captureInstallLink.getAttribute("href"),
     "https://testflight.apple.com/join/XwRRcYUm",
-    "Fresh client Session did not expose the verified Capture beta install path.",
+    "Fresh client Session did not expose the verified current Capture install path.",
   );
   assert.equal(
     await captureChoice.getAttribute("href"),
