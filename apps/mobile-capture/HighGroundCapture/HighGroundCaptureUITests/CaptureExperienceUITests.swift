@@ -239,6 +239,14 @@ final class CaptureExperienceUITests: XCTestCase {
                 .waitForExistence(timeout: 5),
             "A client space should lead with the next Session and relationship work instead of making a coach hunt through cards."
         )
+        let workspaceFirstScreen = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        workspaceFirstScreen.name = "coaching-workspace-first-screen.png"
+        workspaceFirstScreen.lifetime = .keepAlways
+        add(workspaceFirstScreen)
+        XCTAssertTrue(
+            app.segmentedControls["CaptureCoachingWorkFilter"].isHittable,
+            "Shared notes, tasks, and goals should be reachable before chat and repeated Session history."
+        )
         let primaryAction = app.buttons["CaptureCoachingRelationshipPrimaryAction"]
         XCTAssertTrue(
             primaryAction.exists,

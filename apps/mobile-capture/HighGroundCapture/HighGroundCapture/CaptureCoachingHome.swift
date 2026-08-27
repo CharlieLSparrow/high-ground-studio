@@ -2999,17 +2999,7 @@ private struct CaptureCoachingEngagementWorkspaceView: View {
     var body: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 14) {
-                workspaceHeader
-
                 relationshipPulse
-
-                MobileEngagementChatCard(
-                    client: conversation,
-                    engagement: engagement,
-                    previewOnly: previewOnly
-                )
-
-                sessionContinuity
 
                 Picker("Show coaching work", selection: $filter) {
                     ForEach(MobileCoachingWorkFilter.allCases) { value in
@@ -3039,6 +3029,14 @@ private struct CaptureCoachingEngagementWorkspaceView: View {
                         coachingWorkCard(entry)
                     }
                 }
+
+                MobileEngagementChatCard(
+                    client: conversation,
+                    engagement: engagement,
+                    previewOnly: previewOnly
+                )
+
+                sessionContinuity
 
                 if let error = client.errorMessage {
                     MobileCoachingInlineWarning(text: error)
@@ -3104,21 +3102,6 @@ private struct CaptureCoachingEngagementWorkspaceView: View {
         .accessibilityIdentifier("CaptureCoachingEngagementWorkspace")
     }
 
-    private var workspaceHeader: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Label("Client space", systemImage: "person.crop.circle.fill")
-                .font(.headline)
-                .foregroundStyle(.teal)
-            Text(engagement.participantLine)
-                .font(.subheadline.weight(.semibold))
-            Label("Private to the people in this coaching relationship", systemImage: "lock.fill")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        }
-        .captureCard()
-        .accessibilityIdentifier("CaptureCoachingWorkspacePrivacy")
-    }
-
     private var relationshipPulse: some View {
         let allEntries = client.workspace?.entries ?? []
         let openTasks = allEntries.filter { $0.kind == "TASK" && !$0.isComplete }
@@ -3132,6 +3115,11 @@ private struct CaptureCoachingEngagementWorkspaceView: View {
         let pulseSession = relationshipPulseSession
 
         return VStack(alignment: .leading, spacing: 14) {
+            Label("Private coaching space", systemImage: "lock.fill")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .accessibilityIdentifier("CaptureCoachingWorkspacePrivacy")
+
             VStack(alignment: .leading, spacing: 8) {
                 Text(relationshipPulseEyebrow(session: pulseSession))
                     .font(.caption2.weight(.black))
@@ -3191,22 +3179,20 @@ private struct CaptureCoachingEngagementWorkspaceView: View {
                 }
             }
 
-            HStack(spacing: 8) {
-                relationshipMetric(
-                    label: "Open",
-                    value: openTasks.count,
-                    systemImage: "checkmark.circle"
-                )
-                relationshipMetric(
-                    label: "Past due",
-                    value: overdueTasks.count,
-                    systemImage: "exclamationmark.circle"
-                )
-                relationshipMetric(
-                    label: "Goals",
-                    value: activeGoals.count,
-                    systemImage: "scope"
-                )
+            if !openTasks.isEmpty || !overdueTasks.isEmpty || !activeGoals.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        if !openTasks.isEmpty {
+                            relationshipBadge(label: "Open", value: openTasks.count, systemImage: "checkmark.circle")
+                        }
+                        if !overdueTasks.isEmpty {
+                            relationshipBadge(label: "Past due", value: overdueTasks.count, systemImage: "exclamationmark.circle")
+                        }
+                        if !activeGoals.isEmpty {
+                            relationshipBadge(label: "Goals", value: activeGoals.count, systemImage: "scope")
+                        }
+                    }
+                }
             }
 
             if let carryForward = relationshipCarryForward(
@@ -3389,22 +3375,23 @@ private struct CaptureCoachingEngagementWorkspaceView: View {
         return "calendar.badge.clock"
     }
 
-    private func relationshipMetric(
+    private func relationshipBadge(
         label: String,
         value: Int,
         systemImage: String
     ) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Label(label, systemImage: systemImage)
-                .font(.caption2.weight(.bold))
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
+        HStack(spacing: 6) {
+            Image(systemName: systemImage)
+                .foregroundStyle(.teal)
             Text("\(value)")
-                .font(.title3.weight(.black))
+                .font(.caption.weight(.black))
+            Text(label)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(10)
-        .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .padding(.horizontal, 10)
+        .padding(.vertical, 7)
+        .background(Color.primary.opacity(0.05), in: Capsule())
     }
 
     private func relationshipCarryForward(
