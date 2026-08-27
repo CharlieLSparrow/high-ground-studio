@@ -91,7 +91,9 @@ test("iPhone-only compatibility completion fails closed without saved provider e
 });
 
 test("submission mode requires approved assets and zero blockers", () => {
-  const result = validateAppStoreMetadata(canonicalMetadata(), {
+  const metadata = canonicalMetadata();
+  metadata.screenshots.planned[0].status = "pending";
+  const result = validateAppStoreMetadata(metadata, {
     root: repositoryRoot,
     requireSubmissionReady: true,
   });

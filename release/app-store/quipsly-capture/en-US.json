@@ -128,7 +128,7 @@
         "height": 2868,
         "headline": "Every session, ready to move",
         "story": "Today with an upcoming coaching Session, an editable task, an active goal, and one clear next action.",
-        "status": "pending"
+        "status": "approved"
       },
       {
         "order": 2,
@@ -137,7 +137,7 @@
         "height": 2868,
         "headline": "Join without the setup maze",
         "story": "A familiar green room with clear device controls, Join call, and Record without joining.",
-        "status": "pending"
+        "status": "approved"
       },
       {
         "order": 3,
@@ -146,7 +146,7 @@
         "height": 2868,
         "headline": "Notes, tasks, and goals together",
         "story": "One coaching workspace connecting editable notes, tasks, goals, and flexible tags.",
-        "status": "pending"
+        "status": "approved"
       },
       {
         "order": 4,
@@ -155,7 +155,7 @@
         "height": 2868,
         "headline": "Local-first. Recovery built in.",
         "story": "Library showing the protected original and recoverable sync state.",
-        "status": "pending"
+        "status": "approved"
       },
       {
         "order": 5,
@@ -164,7 +164,7 @@
         "height": 2868,
         "headline": "Edit from the words you said",
         "story": "A speaker-attributed, timeline-linked transcript with correction and basic editing inside Capture.",
-        "status": "pending"
+        "status": "approved"
       },
       {
         "order": 6,
@@ -173,7 +173,7 @@
         "height": 2868,
         "headline": "Everything you need to coach",
         "story": "The real in-app purchase surface with monthly and annual Quipsly Coach plans, a two-week free trial, and free client collaboration.",
-        "status": "pending"
+        "status": "approved"
       }
     ]
   },
