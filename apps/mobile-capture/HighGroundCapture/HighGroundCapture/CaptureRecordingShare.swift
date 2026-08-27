@@ -1268,7 +1268,7 @@ struct CaptureRecordingShareEditor: View {
         if let error = sourcePlayback.errorMessage {
             auditionNotice = error
         } else {
-            auditionNotice = "Exact \(source.participantLabel) master · \(captureRecordingShareTime(sourceStart))–\(captureRecordingShareTime(sourceEnd)) source time. The proposed cut is still unapplied."
+            auditionNotice = "Exact \(source.participantLabel) master · \(captureRecordingShareTime(sourceStart))–\(captureRecordingShareTime(sourceEnd)) source time. Listening does not change your edit."
         }
     }
 

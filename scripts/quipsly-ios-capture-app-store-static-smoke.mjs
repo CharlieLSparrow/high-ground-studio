@@ -1129,7 +1129,7 @@ for (const needle of [
   "restoreEditorFromCurrentOutput",
   'accessibilityIdentifier("CaptureRecordingShareMissingSources")',
   "Listen to exact passage",
-  "The proposed cut is still unapplied.",
+  "Listening does not change your edit.",
   'accessibilityIdentifier("CaptureRecordingShareAudition_',
   'accessibilityIdentifier("CaptureRecordingShareFocusedAudition_',
   "clientTrackedPlaybackIsNotProofOfAudibility",
