@@ -6661,6 +6661,8 @@ private struct CapturePersonalVoiceNoteTranscriptCard: View {
     let recording: LocalRecording
     let fileURL: URL?
     let previewOnly: Bool
+    @State private var opensWriting = false
+    @State private var openWritingWhenReady = false
 
     private var phase: OnDeviceTranscriptPhase {
         transcriptManager.phase(for: recording.id)
@@ -6701,7 +6703,7 @@ private struct CapturePersonalVoiceNoteTranscriptCard: View {
                     .lineLimit(4)
                     .frame(maxWidth: .infinity, alignment: .leading)
 
-                NavigationLink {
+                NavigationLink(isActive: $opensWriting) {
                     CaptureVoiceWritingEditor(
                         recordingID: recording.id,
                         initialDraft: draft,
@@ -6721,7 +6723,7 @@ private struct CapturePersonalVoiceNoteTranscriptCard: View {
                         ? "Saved privately to My Nest"
                         : writingSync.syncingRecordingIDs.contains(recording.id)
                             ? "Saving to My Nest…"
-                            : "Protected here; Nest sync will retry")
+                            : "Saved on this iPhone; syncing automatically")
                 }
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(draft.isSynced ? .green : .secondary)
@@ -6767,15 +6769,17 @@ private struct CapturePersonalVoiceNoteTranscriptCard: View {
                let fileURL,
                recording.status.isPlaybackEligible,
                !previewOnly {
+                openWritingWhenReady = true
                 transcriptManager.begin(
                     recording: recording,
                     fileURL: fileURL,
-                    allowModelDownload: false
+                    allowModelDownload: true
                 )
             }
         }
         .onChange(of: transcriptManager.phases[recording.id]) { _, _ in
             seedWritingIfAvailable()
+            openFreshWritingIfReady()
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("CapturePersonalVoiceTranscriptCard_\(recording.id)")
@@ -6815,6 +6819,12 @@ private struct CapturePersonalVoiceNoteTranscriptCard: View {
         writingSync.schedule(draft, delay: .zero)
     }
 
+    private func openFreshWritingIfReady() {
+        guard openWritingWhenReady, draft != nil else { return }
+        openWritingWhenReady = false
+        opensWriting = true
+    }
+
     private var statusTitle: String {
         if draft != nil { return "Writing ready" }
         switch phase {
@@ -6833,11 +6843,11 @@ private struct CapturePersonalVoiceNoteTranscriptCard: View {
         if let draft {
             return draft.isSynced
                 ? "Edit this like a note on your iPhone or continue from your private My Nest workspace. The timed transcript and original audio stay connected."
-                : "Your editable draft is safe on this iPhone. Quipsly will keep trying to save it privately to My Nest."
+                : "Your editable draft is saved on this iPhone. Quipsly will keep syncing it privately to My Nest."
         }
         switch phase {
         case .idle, .checkingSupport:
-            return "Quipsly uses Apple's on-device speech recognition after recording. Your original audio stays unchanged."
+            return "Quipsly turns the finished recording into timed, editable text. Your original audio stays unchanged."
         case .modelDownloadRequired(let locale):
             return "Download Apple's \(locale) speech model once, then future Voice Notes can transcribe automatically on this iPhone."
         case .installingModel:
@@ -6845,7 +6855,7 @@ private struct CapturePersonalVoiceNoteTranscriptCard: View {
         case .transcribing:
             return "You can leave this screen. Quipsly is preserving timing while it creates editable text."
         case .savedLocally, .waitingForVerifiedUpload:
-            return "The editable text is protected on this iPhone while the original finishes syncing."
+            return "The editable text is saved on this iPhone while the original finishes syncing."
         case .submitting:
             return "Your writing is available now; Quipsly is connecting the timed transcript to My Nest."
         case .attached:
@@ -6911,14 +6921,21 @@ private struct CaptureVoiceWritingEditor: View {
                     .textInputAutocapitalization(.sentences)
                     .accessibilityIdentifier("CaptureVoiceWritingTitle")
 
-                TextEditor(text: $bodyText)
-                    .font(.body)
-                    .frame(minHeight: 340)
-                    .focused($bodyIsFocused)
-                    .scrollContentBackground(.hidden)
-                    .accessibilityLabel("Writing")
-                    .accessibilityHint("Edit the text created from your voice. Your original transcript and audio are unchanged.")
-                    .accessibilityIdentifier("CaptureVoiceWritingBody")
+                if #available(iOS 18.0, *) {
+                    CaptureStructuredWritingBody(
+                        text: $bodyText,
+                        focus: $bodyIsFocused
+                    )
+                } else {
+                    TextEditor(text: $bodyText)
+                        .font(.body)
+                        .frame(minHeight: 340)
+                        .focused($bodyIsFocused)
+                        .scrollContentBackground(.hidden)
+                        .accessibilityLabel("Writing")
+                        .accessibilityHint("Edit the text created from your voice. Your original transcript and audio are unchanged.")
+                        .accessibilityIdentifier("CaptureVoiceWritingBody")
+                }
             } footer: {
                 HStack {
                     Text("\(bodyText.count.formatted()) characters")
@@ -7075,6 +7092,174 @@ private struct CaptureVoiceWritingEditor: View {
     private func timestamp(_ seconds: Double) -> String {
         let total = max(0, Int(seconds.rounded(.down)))
         return String(format: "%d:%02d", total / 60, total % 60)
+    }
+}
+
+@available(iOS 18.0, *)
+private struct CaptureStructuredWritingBody: View {
+    @Binding var text: String
+    let focus: FocusState<Bool>.Binding
+    @State private var selection: TextSelection?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    structureButton("Paragraph", systemImage: "text.alignleft") {
+                        insertParagraph()
+                    }
+                    structureButton("Bullets", systemImage: "list.bullet") {
+                        prefixSelectedLines("• ")
+                    }
+                    structureButton("Numbered", systemImage: "list.number") {
+                        numberSelectedLines()
+                    }
+                    structureButton("Checklist", systemImage: "checklist") {
+                        prefixSelectedLines("☐ ")
+                    }
+                    structureButton("Quote", systemImage: "quote.opening") {
+                        quoteSelection()
+                    }
+                }
+                .padding(.vertical, 2)
+            }
+            .accessibilityIdentifier("CaptureVoiceWritingStructureBar")
+
+            TextEditor(text: $text, selection: $selection)
+                .font(.body)
+                .frame(minHeight: 340)
+                .focused(focus)
+                .scrollContentBackground(.hidden)
+                .accessibilityLabel("Writing")
+                .accessibilityHint("Edit the text created from your voice. Use the writing controls for paragraphs, lists, checklists, and quotes. Your original transcript and audio are unchanged.")
+                .accessibilityIdentifier("CaptureVoiceWritingBody")
+        }
+    }
+
+    private func structureButton(
+        _ title: String,
+        systemImage: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Label(title, systemImage: systemImage)
+                .font(.caption.weight(.semibold))
+                .padding(.horizontal, 10)
+                .frame(minHeight: 44)
+                .background(.thinMaterial, in: Capsule())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(title)
+    }
+
+    private var selectedNSRange: NSRange {
+        guard let selection else {
+            return NSRange(location: (text as NSString).length, length: 0)
+        }
+        switch selection.indices {
+        case .selection(let range):
+            return NSRange(range, in: text)
+        case .multiSelection(let ranges):
+            guard let first = ranges.ranges.first, let last = ranges.ranges.last else {
+                return NSRange(location: (text as NSString).length, length: 0)
+            }
+            return NSRange(first.lowerBound..<last.upperBound, in: text)
+        @unknown default:
+            return NSRange(location: (text as NSString).length, length: 0)
+        }
+    }
+
+    private func insertParagraph() {
+        replaceSelection(with: selectedNSRange.length == 0 ? "\n\n" : selectedText + "\n\n")
+    }
+
+    private func prefixSelectedLines(_ prefix: String) {
+        let source = text as NSString
+        let target = selectedNSRange.length == 0
+            ? selectedNSRange
+            : source.lineRange(for: selectedNSRange)
+        if target.length == 0 {
+            replace(range: target, with: prefix, caretOffset: (prefix as NSString).length)
+            return
+        }
+        let transformed = source.substring(with: target)
+            .split(separator: "\n", omittingEmptySubsequences: false)
+            .map { line in line.isEmpty ? "" : "\(prefix)\(line)" }
+            .joined(separator: "\n")
+        replace(range: target, with: transformed, selectingReplacement: true)
+    }
+
+    private func numberSelectedLines() {
+        let source = text as NSString
+        let target = selectedNSRange.length == 0
+            ? selectedNSRange
+            : source.lineRange(for: selectedNSRange)
+        if target.length == 0 {
+            replace(range: target, with: "1. ", caretOffset: 3)
+            return
+        }
+        var number = 1
+        let transformed = source.substring(with: target)
+            .split(separator: "\n", omittingEmptySubsequences: false)
+            .map { line -> String in
+                guard !line.isEmpty else { return "" }
+                defer { number += 1 }
+                return "\(number). \(line)"
+            }
+            .joined(separator: "\n")
+        replace(range: target, with: transformed, selectingReplacement: true)
+    }
+
+    private func quoteSelection() {
+        let range = selectedNSRange
+        if range.length == 0 {
+            replace(range: range, with: "“”", caretOffset: 1)
+        } else {
+            replace(range: range, with: "“\(selectedText)”", selectingReplacement: true)
+        }
+    }
+
+    private var selectedText: String {
+        let range = selectedNSRange
+        guard range.location != NSNotFound,
+              NSMaxRange(range) <= (text as NSString).length else { return "" }
+        return (text as NSString).substring(with: range)
+    }
+
+    private func replaceSelection(with replacement: String) {
+        replace(
+            range: selectedNSRange,
+            with: replacement,
+            caretOffset: (replacement as NSString).length
+        )
+    }
+
+    private func replace(
+        range: NSRange,
+        with replacement: String,
+        caretOffset: Int? = nil,
+        selectingReplacement: Bool = false
+    ) {
+        let mutable = NSMutableString(string: text)
+        let safeLocation = min(max(0, range.location), mutable.length)
+        let safeLength = min(max(0, range.length), mutable.length - safeLocation)
+        mutable.replaceCharacters(
+            in: NSRange(location: safeLocation, length: safeLength),
+            with: replacement
+        )
+        text = mutable as String
+
+        let replacementLength = (replacement as NSString).length
+        let nextRange = selectingReplacement
+            ? NSRange(location: safeLocation, length: replacementLength)
+            : NSRange(
+                location: safeLocation + min(caretOffset ?? replacementLength, replacementLength),
+                length: 0
+            )
+        if let swiftRange = Range(nextRange, in: text) {
+            selection = TextSelection(range: swiftRange)
+        }
+        focus.wrappedValue = true
     }
 }
 

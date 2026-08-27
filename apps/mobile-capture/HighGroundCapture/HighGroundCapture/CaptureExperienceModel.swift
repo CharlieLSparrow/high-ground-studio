@@ -13,7 +13,7 @@ enum CaptureRootTab: String, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .today: "Home"
-        case .record: "Capture"
+        case .record: "Record"
         case .work: "Nests"
         case .library: "Library"
         case .account: "Account"

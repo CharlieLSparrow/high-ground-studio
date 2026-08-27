@@ -253,6 +253,7 @@ enum OnDeviceTranscriptPhase: Equatable {
 enum OnDeviceTranscriptFailure: LocalizedError {
     case unavailable
     case unsupportedLocale
+    case speechPermissionDenied
     case modelDownloadRequired(String)
     case modelInstallFailed(String)
     case sourceUnavailable
@@ -268,9 +269,11 @@ enum OnDeviceTranscriptFailure: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .unavailable:
-            return "On-device transcription requires iOS 26 or later and a supported iPhone. The original recording is unchanged."
+            return "Apple Speech recognition is not available on this iPhone right now. The original recording is unchanged."
         case .unsupportedLocale:
-            return "Apple's on-device speech model does not support the selected language on this iPhone."
+            return "Apple Speech recognition does not support the selected language on this iPhone."
+        case .speechPermissionDenied:
+            return "Allow Speech Recognition in Settings so Quipsly can turn recordings into editable writing. Your original audio is unchanged."
         case .modelDownloadRequired(let locale):
             return "The \(locale) on-device speech model must be downloaded before transcription."
         case .modelInstallFailed(let message):
@@ -448,6 +451,144 @@ private enum AppleOnDeviceTranscriptEngine {
     }
 }
 
+/// iOS 17–25 compatibility path. Newer devices use SpeechAnalyzer above for
+/// long-form, low-latency transcription. This fallback keeps the same timed,
+/// immutable source contract instead of making Voice Notes an iOS 26-only
+/// feature. Apple performs recognition on device when the recognizer reports
+/// that capability; older hardware can use Apple's speech service.
+private enum AppleCompatibleTranscriptEngine {
+    struct Result: Sendable {
+        let segments: [OnDeviceTranscriptSegment]
+        let recognitionExecution: String
+        let language: String
+        let transcriber: String
+        let preset: String
+    }
+
+    static func transcribe(fileURL: URL, locale: Locale) async throws -> Result {
+        let authorization = await speechAuthorization()
+        guard authorization == .authorized else {
+            throw OnDeviceTranscriptFailure.speechPermissionDenied
+        }
+        guard let recognizer = SFSpeechRecognizer(locale: locale), recognizer.isAvailable else {
+            throw OnDeviceTranscriptFailure.unsupportedLocale
+        }
+
+        let request = SFSpeechURLRecognitionRequest(url: fileURL)
+        request.shouldReportPartialResults = false
+        if #available(iOS 16.0, *) {
+            request.addsPunctuation = true
+        }
+        let usesOnDeviceRecognition = recognizer.supportsOnDeviceRecognition
+        if usesOnDeviceRecognition {
+            request.requiresOnDeviceRecognition = true
+        }
+
+        let segments = try await withCheckedThrowingContinuation {
+            (continuation: CheckedContinuation<[OnDeviceTranscriptSegment], Error>) in
+            let gate = LegacySpeechContinuationGate(continuation)
+            recognizer.recognitionTask(with: request) { result, error in
+                if let result, result.isFinal {
+                    let segments = phraseSegments(from: result.bestTranscription.segments)
+                    guard !segments.isEmpty else {
+                        gate.resume(throwing: OnDeviceTranscriptFailure.noFinalizedSpeech)
+                        return
+                    }
+                    gate.resume(returning: segments)
+                } else if let error {
+                    gate.resume(throwing: error)
+                }
+            }
+        }
+
+        return Result(
+            segments: segments,
+            recognitionExecution: usesOnDeviceRecognition ? "on-device" : "apple-speech-service",
+            language: recognizer.locale.identifier,
+            transcriber: "SFSpeechRecognizer",
+            preset: usesOnDeviceRecognition
+                ? "url-final-time-indexed-on-device-v1"
+                : "url-final-time-indexed-apple-service-v1"
+        )
+    }
+
+    private static func speechAuthorization() async -> SFSpeechRecognizerAuthorizationStatus {
+        let current = SFSpeechRecognizer.authorizationStatus()
+        guard current == .notDetermined else { return current }
+        return await withCheckedContinuation { continuation in
+            SFSpeechRecognizer.requestAuthorization { status in
+                continuation.resume(returning: status)
+            }
+        }
+    }
+
+    private static func phraseSegments(
+        from words: [SFTranscriptionSegment]
+    ) -> [OnDeviceTranscriptSegment] {
+        var output: [OnDeviceTranscriptSegment] = []
+        var phraseWords: [String] = []
+        var phraseStart: Double?
+        var phraseEnd: Double = 0
+
+        func flush() {
+            guard let start = phraseStart, !phraseWords.isEmpty, phraseEnd > start else { return }
+            output.append(
+                OnDeviceTranscriptSegment(
+                    startSeconds: start,
+                    endSeconds: phraseEnd,
+                    text: phraseWords.joined(separator: " ")
+                )
+            )
+            phraseWords.removeAll(keepingCapacity: true)
+            phraseStart = nil
+            phraseEnd = 0
+        }
+
+        for word in words {
+            let text = word.substring.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !text.isEmpty,
+                  word.timestamp.isFinite,
+                  word.duration.isFinite,
+                  word.timestamp >= 0 else { continue }
+            phraseStart = phraseStart ?? word.timestamp
+            phraseEnd = max(phraseEnd, word.timestamp + max(word.duration, 0.01))
+            phraseWords.append(text)
+            let endsSentence = text.last.map { ".!?".contains($0) } == true
+            let phraseDuration = phraseEnd - (phraseStart ?? phraseEnd)
+            if endsSentence || phraseWords.count >= 14 || phraseDuration >= 9 {
+                flush()
+            }
+        }
+        flush()
+        return output
+    }
+}
+
+private final class LegacySpeechContinuationGate: @unchecked Sendable {
+    private let lock = NSLock()
+    private var continuation: CheckedContinuation<[OnDeviceTranscriptSegment], Error>?
+
+    init(_ continuation: CheckedContinuation<[OnDeviceTranscriptSegment], Error>) {
+        self.continuation = continuation
+    }
+
+    func resume(returning value: [OnDeviceTranscriptSegment]) {
+        take()?.resume(returning: value)
+    }
+
+    func resume(throwing error: Error) {
+        take()?.resume(throwing: error)
+    }
+
+    private func take() -> CheckedContinuation<[OnDeviceTranscriptSegment], Error>? {
+        lock.lock()
+        defer { lock.unlock() }
+        let value = continuation
+        continuation = nil
+        return value
+    }
+}
+
 @MainActor
 final class OnDeviceTranscriptManager: ObservableObject {
     static let shared = OnDeviceTranscriptManager()
@@ -508,9 +649,14 @@ final class OnDeviceTranscriptManager: ObservableObject {
         allowModelDownload: Bool,
         locale: Locale
     ) async {
-        phases[recording.id] = allowModelDownload ? .installingModel(progress: nil) : .checkingSupport
+        if #available(iOS 26.0, *) {
+            phases[recording.id] = allowModelDownload
+                ? .installingModel(progress: nil)
+                : .checkingSupport
+        } else {
+            phases[recording.id] = .checkingSupport
+        }
         do {
-            guard #available(iOS 26.0, *) else { throw OnDeviceTranscriptFailure.unavailable }
             guard let ownerAccountId = recording.ownerAccountID?.trimmingCharacters(in: .whitespacesAndNewlines),
                   !ownerAccountId.isEmpty else {
                 throw OnDeviceTranscriptFailure.accountUnavailable
@@ -518,10 +664,6 @@ final class OnDeviceTranscriptManager: ObservableObject {
             let before = try await Task.detached(priority: .utility) {
                 try OnDeviceTranscriptSource.fingerprint(fileURL)
             }.value
-            let prepared = try await AppleOnDeviceTranscriptEngine.prepare(
-                locale: locale,
-                allowModelDownload: allowModelDownload
-            )
             phases[recording.id] = .transcribing
             let preparedAudio = try await OnDeviceTranscriptSource.audioFileURL(
                 for: fileURL,
@@ -530,16 +672,74 @@ final class OnDeviceTranscriptManager: ObservableObject {
             defer {
                 if preparedAudio.isTemporary { try? FileManager.default.removeItem(at: preparedAudio.url) }
             }
-            let segments = try await AppleOnDeviceTranscriptEngine.transcribe(
-                fileURL: preparedAudio.url,
-                prepared: prepared
-            )
+            let segments: [OnDeviceTranscriptSegment]
+            let language: String
+            let recognitionExecution: String
+            let transcriber: String
+            let preset: String
+            let modelAssetStatus: String
+            if #available(iOS 26.0, *) {
+                do {
+                    let prepared = try await AppleOnDeviceTranscriptEngine.prepare(
+                        locale: locale,
+                        allowModelDownload: allowModelDownload
+                    )
+                    segments = try await AppleOnDeviceTranscriptEngine.transcribe(
+                        fileURL: preparedAudio.url,
+                        prepared: prepared
+                    )
+                    language = prepared.locale.identifier
+                    recognitionExecution = "on-device"
+                    transcriber = "SpeechTranscriber"
+                    preset = "custom-final-time-indexed-v1"
+                    modelAssetStatus = "installed"
+                } catch OnDeviceTranscriptFailure.unavailable {
+                    let result = try await AppleCompatibleTranscriptEngine.transcribe(
+                        fileURL: preparedAudio.url,
+                        locale: locale
+                    )
+                    segments = result.segments
+                    language = result.language
+                    recognitionExecution = result.recognitionExecution
+                    transcriber = result.transcriber
+                    preset = result.preset
+                    modelAssetStatus = result.recognitionExecution == "on-device"
+                        ? "built-in"
+                        : "apple-service"
+                } catch OnDeviceTranscriptFailure.unsupportedLocale {
+                    let result = try await AppleCompatibleTranscriptEngine.transcribe(
+                        fileURL: preparedAudio.url,
+                        locale: locale
+                    )
+                    segments = result.segments
+                    language = result.language
+                    recognitionExecution = result.recognitionExecution
+                    transcriber = result.transcriber
+                    preset = result.preset
+                    modelAssetStatus = result.recognitionExecution == "on-device"
+                        ? "built-in"
+                        : "apple-service"
+                }
+            } else {
+                let result = try await AppleCompatibleTranscriptEngine.transcribe(
+                    fileURL: preparedAudio.url,
+                    locale: locale
+                )
+                segments = result.segments
+                language = result.language
+                recognitionExecution = result.recognitionExecution
+                transcriber = result.transcriber
+                preset = result.preset
+                modelAssetStatus = result.recognitionExecution == "on-device"
+                    ? "built-in"
+                    : "apple-service"
+            }
             let after = try await Task.detached(priority: .utility) {
                 try OnDeviceTranscriptSource.fingerprint(fileURL)
             }.value
             guard before == after else { throw OnDeviceTranscriptFailure.sourceChanged }
 
-            let configuration = "Speech|SpeechTranscriber|custom-final-time-indexed-v1|final-only|audio-time-range|\(prepared.locale.identifier)"
+            let configuration = "Speech|\(transcriber)|\(preset)|final-only|audio-time-range|\(language)"
             let sidecar = OnDeviceTranscriptSidecar(
                 schemaVersion: 1,
                 clientRequestId: UUID(),
@@ -547,17 +747,17 @@ final class OnDeviceTranscriptManager: ObservableObject {
                 ownerAccountId: ownerAccountId,
                 sourceSha256: before.sha256,
                 sourceByteCount: before.byteCount,
-                language: prepared.locale.identifier,
+                language: language,
                 createdAt: Date(),
-                recognitionExecution: "on-device",
+                recognitionExecution: recognitionExecution,
                 speakerDiarization: "unavailable",
                 humanPlaybackReviewRequired: true,
                 engine: .init(
                     framework: "Speech",
-                    transcriber: "SpeechTranscriber",
-                    preset: "custom-final-time-indexed-v1",
+                    transcriber: transcriber,
+                    preset: preset,
                     configurationHash: SHA256.hash(data: Data(configuration.utf8)).hexString,
-                    modelAssetStatus: "installed"
+                    modelAssetStatus: modelAssetStatus
                 ),
                 device: .current,
                 segments: segments
