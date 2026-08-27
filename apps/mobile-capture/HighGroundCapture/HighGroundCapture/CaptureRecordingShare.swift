@@ -168,8 +168,6 @@ final class CaptureRecordingShareClient: NSObject, ObservableObject, AVAudioPlay
     @Published private(set) var notice: String?
     @Published private(set) var isPlaying = false
     @Published private(set) var previewVideoPlayer: AVPlayer?
-    @Published private(set) var previewListenedSecondBins = Set<Int>()
-    @Published private(set) var previewReviewSaveFailed = false
 
     private let baseURL = normalizedNestBaseURL(
         Bundle.main.object(forInfoDictionaryKey: "QUIPSLY_API_BASE_URL") as? String
@@ -181,14 +179,8 @@ final class CaptureRecordingShareClient: NSObject, ObservableObject, AVAudioPlay
     private var protectedPreviewURL: URL?
     private var protectedPreviewOutputID: String?
     private var protectedPreviewSHA256: String?
-    private var playbackProgressTask: Task<Void, Never>?
-    private var previewLastPlaybackTime: TimeInterval?
-    private var playbackRoomID: String?
-    private var trackedReviewOutputIdentity: String?
-    private var reviewSubmissionIdentity: String?
 
     deinit {
-        playbackProgressTask?.cancel()
         if let videoPlaybackEndObserver {
             NotificationCenter.default.removeObserver(videoPlaybackEndObserver)
         }
@@ -199,7 +191,7 @@ final class CaptureRecordingShareClient: NSObject, ObservableObject, AVAudioPlay
 
     func load(roomID: String, quiet: Bool = false) async {
         guard AuthManager.shared.networkActionsAllowed else {
-            notice = "Reconnect to Nest before opening the private recording edit."
+            notice = "Reconnect to Nest before opening the recording editor."
             return
         }
         guard let url = endpoint(roomID: roomID) else {
@@ -214,14 +206,13 @@ final class CaptureRecordingShareClient: NSObject, ObservableObject, AVAudioPlay
             request.setValue("no-cache", forHTTPHeaderField: "Cache-Control")
             let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
             guard response.statusCode < 400 else {
-                throw responseError(data, fallback: "The private recording workspace could not load.")
+                throw responseError(data, fallback: "The recording editor could not load.")
             }
             let decoded = try JSONDecoder().decode(CaptureRecordingShareSnapshot.self, from: data)
             guard decoded.ok else {
-                throw CaptureRecordingShareClientError.message(decoded.error ?? "The private recording workspace could not load.")
+                throw CaptureRecordingShareClientError.message(decoded.error ?? "The recording editor could not load.")
             }
             reconcilePlaybackAuthorization(with: decoded)
-            reconcileReviewTracking(with: decoded)
             snapshot = decoded
             if !quiet { notice = nil }
         } catch {
@@ -276,60 +267,14 @@ final class CaptureRecordingShareClient: NSObject, ObservableObject, AVAudioPlay
         )
     }
 
-    var requiredPreviewSecondBins: [Int] {
-        snapshot?.output?.playbackReview?.requiredSecondBins ?? []
-    }
-
-    var observedRequiredPreviewSecondCount: Int {
-        requiredPreviewSecondBins.filter { previewListenedSecondBins.contains($0) }.count
-    }
-
-    var previewReviewComplete: Bool {
-        !requiredPreviewSecondBins.isEmpty
-            && observedRequiredPreviewSecondCount == requiredPreviewSecondBins.count
-    }
-
-    func playNextReviewPoint(roomID: String) async {
-        if player == nil && previewVideoPlayer == nil {
-            await togglePreview(roomID: roomID)
-        }
-        guard let nextSecond = requiredPreviewSecondBins.first(where: { !previewListenedSecondBins.contains($0) }) else {
-            return
-        }
-        let target = max(0, TimeInterval(nextSecond) - 0.1)
-        if let videoPlayer = previewVideoPlayer {
-            await videoPlayer.seek(to: CMTime(seconds: target, preferredTimescale: 600))
-            previewLastPlaybackTime = target
-            videoPlayer.play()
-            isPlaying = true
-            startVideoPreviewProgressTracking(roomID: roomID, player: videoPlayer)
-        } else if let player {
-            player.currentTime = target
-            previewLastPlaybackTime = player.currentTime
-            player.play()
-            isPlaying = true
-            startPreviewProgressTracking(roomID: roomID, player: player)
-        }
-    }
-
-    func retryPlaybackReview(roomID: String) async {
-        guard previewReviewComplete else { return }
-        previewReviewSaveFailed = false
-        reviewSubmissionIdentity = nil
-        await savePlaybackReviewIfReady(roomID: roomID)
-    }
-
     func stopPreviewPlayback() {
         clearPlayback()
     }
 
     func preparePreviewExport(roomID: String) async -> URL? {
-        playbackProgressTask?.cancel()
-        playbackProgressTask = nil
         player?.pause()
         previewVideoPlayer?.pause()
         isPlaying = false
-        previewLastPlaybackTime = nil
         return await verifiedPreviewFile(roomID: roomID, busyAction: "EXPORT")
     }
 
@@ -338,26 +283,20 @@ final class CaptureRecordingShareClient: NSObject, ObservableObject, AVAudioPlay
             if videoPlayer.timeControlStatus == .playing {
                 videoPlayer.pause()
                 isPlaying = false
-                previewLastPlaybackTime = nil
             } else {
                 videoPlayer.play()
                 isPlaying = true
-                previewLastPlaybackTime = videoPlayer.currentTime().seconds
-                startVideoPreviewProgressTracking(roomID: roomID, player: videoPlayer)
             }
             return
         }
         if let player, player.isPlaying {
             player.pause()
             isPlaying = false
-            previewLastPlaybackTime = nil
             return
         }
         if let player {
             player.play()
             isPlaying = true
-            previewLastPlaybackTime = player.currentTime
-            startPreviewProgressTracking(roomID: roomID, player: player)
             return
         }
         guard let destination = await verifiedPreviewFile(roomID: roomID, busyAction: "PLAY"),
@@ -377,8 +316,6 @@ final class CaptureRecordingShareClient: NSObject, ObservableObject, AVAudioPlay
             }
             videoPlayer.play()
             isPlaying = true
-            previewLastPlaybackTime = 0
-            startVideoPreviewProgressTracking(roomID: roomID, player: videoPlayer)
         } else {
             do {
                 let player = try AVAudioPlayer(contentsOf: destination)
@@ -387,8 +324,6 @@ final class CaptureRecordingShareClient: NSObject, ObservableObject, AVAudioPlay
                 self.player = player
                 player.play()
                 isPlaying = true
-                previewLastPlaybackTime = player.currentTime
-                startPreviewProgressTracking(roomID: roomID, player: player)
             } catch {
                 clearPlayback()
                 notice = "The verified audio copy could not be opened on this iPhone: \(error.localizedDescription)"
@@ -397,12 +332,7 @@ final class CaptureRecordingShareClient: NSObject, ObservableObject, AVAudioPlay
     }
 
     func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
-        observePreviewPlayback(currentTime: player.currentTime, duration: player.duration, ended: true)
-        playbackProgressTask?.cancel()
-        playbackProgressTask = nil
         isPlaying = false
-        guard let playbackRoomID else { return }
-        Task { await savePlaybackReviewIfReady(roomID: playbackRoomID) }
     }
 
     private func reconcilePlaybackAuthorization(with snapshot: CaptureRecordingShareSnapshot) {
@@ -417,29 +347,6 @@ final class CaptureRecordingShareClient: NSObject, ObservableObject, AVAudioPlay
         }
     }
 
-    private func reconcileReviewTracking(with snapshot: CaptureRecordingShareSnapshot) {
-        guard let output = snapshot.output else {
-            trackedReviewOutputIdentity = nil
-            reviewSubmissionIdentity = nil
-            previewListenedSecondBins.removeAll()
-            previewReviewSaveFailed = false
-            previewLastPlaybackTime = nil
-            return
-        }
-        let identity = "\(output.id):\(output.contentSha256)"
-        if identity != trackedReviewOutputIdentity {
-            trackedReviewOutputIdentity = identity
-            reviewSubmissionIdentity = nil
-            requestIDs["REVIEW"] = nil
-            previewListenedSecondBins.removeAll()
-            previewReviewSaveFailed = false
-            previewLastPlaybackTime = nil
-        }
-        if output.playbackReview?.reviewed == true {
-            previewReviewSaveFailed = false
-        }
-    }
-
     private func verifiedPreviewFile(roomID: String, busyAction action: String) async -> URL? {
         guard let output = snapshot?.output,
               output.render.status == "VERIFIED",
@@ -448,7 +355,7 @@ final class CaptureRecordingShareClient: NSObject, ObservableObject, AVAudioPlay
               let expectedSHA256 = Self.normalizedSHA256(output.render.sha256),
               let expectedSizeBytes = output.render.sizeBytes,
               expectedSizeBytes > 0 else {
-            notice = "The private preview has not finished verification or is not available to this account."
+            notice = "The edited copy has not finished processing or is not available to this account."
             return nil
         }
         if let protectedPreviewURL,
@@ -474,7 +381,7 @@ final class CaptureRecordingShareClient: NSObject, ObservableObject, AVAudioPlay
             )
             guard response.statusCode < 400 else {
                 try? FileManager.default.removeItem(at: temporaryURL)
-                throw CaptureRecordingShareClientError.message("The private preview is not available to this account.")
+                throw CaptureRecordingShareClientError.message("The edited copy is not available to this account.")
             }
             let digest = try await Task.detached(priority: .userInitiated) {
                 try Self.computeFileDigest(at: temporaryURL)
@@ -505,94 +412,11 @@ final class CaptureRecordingShareClient: NSObject, ObservableObject, AVAudioPlay
         }
     }
 
-    private func startPreviewProgressTracking(roomID: String, player: AVAudioPlayer) {
-        playbackProgressTask?.cancel()
-        playbackRoomID = roomID
-        playbackProgressTask = Task { [weak self, weak player] in
-            while !Task.isCancelled {
-                guard let self, let player, self.player === player else { return }
-                if player.isPlaying {
-                    self.observePreviewPlayback(currentTime: player.currentTime, duration: player.duration)
-                    await self.savePlaybackReviewIfReady(roomID: roomID)
-                }
-                try? await Task.sleep(for: .milliseconds(250))
-            }
-        }
-    }
-
-    private func startVideoPreviewProgressTracking(roomID: String, player: AVPlayer) {
-        playbackProgressTask?.cancel()
-        playbackRoomID = roomID
-        playbackProgressTask = Task { [weak self, weak player] in
-            while !Task.isCancelled {
-                guard let self, let player, self.previewVideoPlayer === player else { return }
-                let duration = player.currentItem?.duration.seconds ?? 0
-                if player.timeControlStatus == .playing, duration.isFinite, duration > 0 {
-                    self.observePreviewPlayback(currentTime: player.currentTime().seconds, duration: duration)
-                    await self.savePlaybackReviewIfReady(roomID: roomID)
-                }
-                try? await Task.sleep(for: .milliseconds(250))
-            }
-        }
-    }
-
     private func videoPlayerDidFinish() {
-        guard let player = previewVideoPlayer else { return }
-        let duration = player.currentItem?.duration.seconds ?? 0
-        observePreviewPlayback(currentTime: player.currentTime().seconds, duration: duration, ended: true)
-        playbackProgressTask?.cancel()
-        playbackProgressTask = nil
         isPlaying = false
-        guard let playbackRoomID else { return }
-        Task { await savePlaybackReviewIfReady(roomID: playbackRoomID) }
-    }
-
-    private func observePreviewPlayback(currentTime rawCurrentTime: TimeInterval, duration: TimeInterval, ended: Bool = false) {
-        guard duration > 0 else { return }
-        let currentTime = ended ? max(0, duration - 0.001) : rawCurrentTime
-        let finalSecond = max(0, Int(ceil(duration)) - 1)
-        let second = max(0, min(finalSecond, Int(floor(currentTime))))
-        let contiguous = previewLastPlaybackTime.map {
-            currentTime >= $0 && currentTime - $0 <= 1.5
-        } ?? false
-        let firstSecond = contiguous ? Int(floor(previewLastPlaybackTime ?? currentTime)) : second
-        previewLastPlaybackTime = currentTime
-        for bin in min(firstSecond, second)...max(firstSecond, second) {
-            previewListenedSecondBins.insert(bin)
-        }
-    }
-
-    private func savePlaybackReviewIfReady(roomID: String) async {
-        guard let output = snapshot?.output,
-              output.status == "DRAFT",
-              output.render.status == "VERIFIED",
-              output.playbackReview?.reviewed != true,
-              previewReviewComplete,
-              !previewReviewSaveFailed,
-              busyAction == nil else { return }
-        let identity = "\(output.id):\(output.revision):\(output.contentSha256)"
-        guard reviewSubmissionIdentity != identity else { return }
-        reviewSubmissionIdentity = identity
-        let success = await mutate(
-            roomID: roomID,
-            action: "REVIEW",
-            payload: [
-                "outputId": output.id,
-                "expectedRevision": output.revision,
-                "playbackEvidence": [
-                    "listenedSecondBins": previewListenedSecondBins.sorted(),
-                    "clientTrackedPlaybackIsNotProofOfAudibility": true,
-                ],
-            ]
-        )
-        if !success {
-            previewReviewSaveFailed = true
-        }
     }
 
     private func clearPlayback() {
-        playbackProgressTask?.cancel()
-        playbackProgressTask = nil
         player?.stop()
         player = nil
         previewVideoPlayer?.pause()
@@ -602,8 +426,6 @@ final class CaptureRecordingShareClient: NSObject, ObservableObject, AVAudioPlay
             self.videoPlaybackEndObserver = nil
         }
         isPlaying = false
-        previewLastPlaybackTime = nil
-        playbackRoomID = nil
         if let protectedPreviewURL {
             try? FileManager.default.removeItem(at: protectedPreviewURL)
         }
@@ -618,7 +440,7 @@ final class CaptureRecordingShareClient: NSObject, ObservableObject, AVAudioPlay
         payload: [String: Any]
     ) async -> Bool {
         guard AuthManager.shared.networkActionsAllowed else {
-            notice = "Reconnect to Nest before changing the private recording."
+            notice = "Reconnect to Nest before changing the recording edit."
             return false
         }
         guard let url = endpoint(roomID: roomID) else {
@@ -640,16 +462,14 @@ final class CaptureRecordingShareClient: NSObject, ObservableObject, AVAudioPlay
             request.httpBody = try JSONSerialization.data(withJSONObject: body)
             let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
             guard response.statusCode < 400 else {
-                throw responseError(data, fallback: "The private recording decision was not confirmed.")
+                throw responseError(data, fallback: "The recording change was not confirmed.")
             }
             requestIDs[action] = nil
             switch action {
             case "PREPARE":
-                notice = "Private preview queued. Your client cannot see it until you share it."
-            case "REVIEW":
-                notice = "You listened through this exact private preview."
+                notice = "Edited copy is being prepared. Your client cannot see it until you share it."
             case "RELEASE":
-                notice = "Released only inside this client's private Session."
+                notice = "Shared with your client in this session."
             default:
                 notice = "Client access revoked; originals and decision history remain."
             }
@@ -796,9 +616,9 @@ struct CaptureRecordingShareEditor: View {
                     .frame(width: 38, height: 38)
                     .background(Color.indigo.opacity(0.1), in: RoundedRectangle(cornerRadius: 12))
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("Private recording edit")
+                    Text("Edit recording")
                         .font(.headline)
-                    Text("Remove passages, listen, then share inside this Session.")
+                    Text("Trim or remove passages, listen, and share an edited copy.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -809,7 +629,7 @@ struct CaptureRecordingShareEditor: View {
                     Image(systemName: "arrow.clockwise")
                 }
                 .disabled(client.busyAction != nil)
-                .accessibilityLabel("Refresh private recording")
+                .accessibilityLabel("Refresh recording edit")
             }
 
             if let notice = client.notice {
@@ -838,7 +658,7 @@ struct CaptureRecordingShareEditor: View {
                     .foregroundStyle(.secondary)
             }
 
-            Text("Original recordings never change. A prepared copy stays coach-only until an explicit release.")
+            Text("Your original recordings stay unchanged.")
                 .font(.caption2.weight(.semibold))
                 .foregroundStyle(.secondary)
         }
@@ -926,7 +746,7 @@ struct CaptureRecordingShareEditor: View {
                 }
 
                 VStack(alignment: .leading, spacing: 12) {
-                    Text("1 · Trim the beginning and end")
+                    Text("Trim")
                         .font(.subheadline.weight(.bold))
                     recordingRangeSlider(
                         "Start",
@@ -961,7 +781,7 @@ struct CaptureRecordingShareEditor: View {
 
                 if !videoSources.isEmpty {
                     VStack(alignment: .leading, spacing: 10) {
-                        Text("Preview format")
+                        Text("Format")
                             .font(.subheadline.weight(.bold))
                         Picker("Preview format", selection: $outputMediaKind) {
                             Label("Audio", systemImage: "waveform").tag("audio")
@@ -996,7 +816,7 @@ struct CaptureRecordingShareEditor: View {
                     .background(Color.indigo.opacity(0.05), in: RoundedRectangle(cornerRadius: 14))
                 }
 
-                DisclosureGroup("Name and recording sources (\(selectedSourceIDs.count) selected)") {
+                DisclosureGroup("Title and sources (\(selectedSourceIDs.count) selected)") {
                     VStack(alignment: .leading, spacing: 10) {
                         TextField("Recording title", text: $title)
                             .textFieldStyle(.roundedBorder)
@@ -1022,23 +842,23 @@ struct CaptureRecordingShareEditor: View {
 
                 if transcript.isEmpty {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("2 · Remove any passages")
+                        Text("Transcript edit")
                             .font(.subheadline.weight(.bold))
-                        Text("The transcript will appear here when it is ready. You can create a simple trimmed preview now.")
+                        Text("The transcript will appear here when it is ready. You can create a trimmed copy now.")
                             .font(.caption).foregroundStyle(.secondary)
                     }
                 } else {
                     HStack {
-                        Text("2 · Remove any passages").font(.subheadline.weight(.bold))
+                        Text("Transcript edit").font(.subheadline.weight(.bold))
                         Spacer()
                         if !excludedSegmentIDs.isEmpty {
                             Button("Include all") { excludedSegmentIDs.removeAll() }
                                 .font(.caption.weight(.bold))
                         }
                     }
-                    Text("Turn off a passage to remove its word-timed audio. Quipsly keeps passages that overlap another speaker.")
+                    Text("Turn off a passage to remove it from the edited copy. Overlapping speech stays included.")
                         .font(.caption).foregroundStyle(.secondary)
-                    Text("Listen opens the exact retained participant master. It does not preview or apply the cut.")
+                    Text("Listen plays the original source without changing your edit.")
                         .font(.caption2.weight(.semibold))
                         .foregroundStyle(.secondary)
                     ForEach(transcript) { segment in
@@ -1101,7 +921,7 @@ struct CaptureRecordingShareEditor: View {
                     }
                 }
 
-                Text("Prepared \(captureRecordingShareTime(startSeconds))–\(captureRecordingShareTime(endSeconds)) · \(selectedSourceIDs.count) participant source\(selectedSourceIDs.count == 1 ? "" : "s")")
+                Text("Edited range \(captureRecordingShareTime(startSeconds))–\(captureRecordingShareTime(endSeconds)) · \(selectedSourceIDs.count) participant source\(selectedSourceIDs.count == 1 ? "" : "s")")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
 
@@ -1123,7 +943,7 @@ struct CaptureRecordingShareEditor: View {
                     if client.busyAction == "PREPARE" {
                         ProgressView().frame(maxWidth: .infinity)
                     } else {
-                        Text("3 · Create private \(outputMediaKind) preview").frame(maxWidth: .infinity)
+                        Text("Create edited \(outputMediaKind) copy").frame(maxWidth: .infinity)
                     }
                 }
                 .buttonStyle(.borderedProminent)
@@ -1146,7 +966,7 @@ struct CaptureRecordingShareEditor: View {
                 }
             }
         } else if snapshot.output != nil {
-            Button(snapshot.output?.render.status == "FAILED" ? "Review trim and try again" : "Make another private edit") {
+            Button(snapshot.output?.render.status == "FAILED" ? "Adjust edit and try again" : "Make another edit") {
                 restoreEditorFromCurrentOutput(snapshot)
             }
             .buttonStyle(.bordered)
@@ -1289,7 +1109,7 @@ struct CaptureRecordingShareEditor: View {
                     VideoPlayer(player: videoPlayer)
                         .aspectRatio(16 / 9, contentMode: .fit)
                         .clipShape(RoundedRectangle(cornerRadius: 12))
-                        .accessibilityLabel("Private video preview")
+                        .accessibilityLabel("Edited video preview")
                         .accessibilityIdentifier("CaptureRecordingShareVideoPreview")
                 }
                 Button {
@@ -1298,7 +1118,7 @@ struct CaptureRecordingShareEditor: View {
                     auditionNotice = nil
                     Task { await client.togglePreview(roomID: roomID) }
                 } label: {
-                    Label(client.isPlaying ? "Pause private preview" : "Play private preview", systemImage: client.isPlaying ? "pause.fill" : "play.fill")
+                    Label(client.isPlaying ? "Pause edited copy" : "Play edited copy", systemImage: client.isPlaying ? "pause.fill" : "play.fill")
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.bordered)
@@ -1387,18 +1207,9 @@ struct CaptureRecordingShareEditor: View {
             }
 
             if coach && output.status == "DRAFT" && output.render.status == "VERIFIED" {
-                if output.playbackReview?.reviewed == true {
-                    Label(
-                        "Listened through this version",
-                        systemImage: "ear.fill"
-                    )
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.green)
-                } else {
-                    Text("You can preview this edit above, or share it now. The original recording stays unchanged.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
+                Text("Play this edit above, or share it now. The original recording stays unchanged.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
 
                 Button("Share with \(output.recipient.label)") {
                     Task { _ = await client.changeVisibility(roomID: roomID, action: "RELEASE") }
