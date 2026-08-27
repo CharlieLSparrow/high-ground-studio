@@ -259,8 +259,18 @@ export function SessionContinuityCard({
   }
 
   return (
-    <section className="rounded-2xl border border-violet-200 bg-violet-50/45 p-5" aria-labelledby="session-continuity-heading">
-      <div className="flex flex-wrap items-start justify-between gap-4">
+    <details className="rounded-2xl border border-violet-200 bg-white p-3 shadow-sm sm:p-4">
+      <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 text-sm font-black text-[#3d3122]">
+        <span className="flex items-center gap-2">
+          <ClipboardCheck className="h-5 w-5 text-violet-700" aria-hidden="true" />
+          Carry work into the next session
+        </span>
+        <span className="shrink-0 text-xs font-bold text-violet-800">
+          {summary.openTaskCount} task{summary.openTaskCount === 1 ? "" : "s"} · {summary.activeGoalCount} goal{summary.activeGoalCount === 1 ? "" : "s"}
+        </span>
+      </summary>
+      <div className="mt-4 border-t border-violet-100 pt-4">
+       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="flex items-start gap-3">
           <span className="rounded-xl bg-white p-2 text-violet-700"><ClipboardCheck aria-hidden="true" /></span>
           <div>
@@ -413,6 +423,7 @@ export function SessionContinuityCard({
           <div className="mt-3 space-y-3">{continuity.saved.map((brief) => <SavedBrief key={brief.id} brief={brief} />)}</div>
         </details>
       ) : null}
-    </section>
+      </div>
+    </details>
   );
 }

@@ -564,7 +564,7 @@ describe("Session review goal candidates", () => {
     expect(request.clientRequestId).toMatch(/^[0-9a-f-]{36}$/);
     expect(await screen.findByText("Send the reflection worksheet")).toBeInTheDocument();
     expect(screen.getByText(/Everyone in this Session · Mine/)).toBeInTheDocument();
-    expect(screen.getByRole("status")).toHaveTextContent("No message, reminder, calendar event, or delivery occurred");
+    expect(screen.getByRole("status")).toHaveTextContent("Task saved");
     expect(mockRouterRefresh).toHaveBeenCalledTimes(1);
   });
 

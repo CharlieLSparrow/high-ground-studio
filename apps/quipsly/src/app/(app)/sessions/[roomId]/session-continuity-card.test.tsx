@@ -122,9 +122,12 @@ describe("SessionContinuityCard", () => {
     jest.restoreAllMocks();
   });
 
-  it("makes canonical work, overdue truth, and side-effect boundaries obvious", () => {
+  it("keeps canonical work and continuity details available without making them the default surface", async () => {
+    const user = userEvent.setup();
     render(<SessionContinuityCard roomId="room-1" initial={continuity()} />);
 
+    expect(screen.getByText("Carry work into the next session")).toBeInTheDocument();
+    await user.click(screen.getByText("Carry work into the next session"));
     expect(screen.getByRole("heading", { name: "Next-session continuity" })).toBeInTheDocument();
     expect(screen.getByText(/passed without a completion, skip, or cancellation decision/i)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /rehearse follow-through/i })).toHaveAttribute("href", "/work?task=task-1");
@@ -157,6 +160,7 @@ describe("SessionContinuityCard", () => {
     const user = userEvent.setup();
     render(<SessionContinuityCard roomId="room-1" initial={continuity()} />);
 
+    await user.click(screen.getByText("Carry work into the next session"));
     await user.click(screen.getByRole("button", { name: "Save private brief" }));
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
@@ -170,7 +174,7 @@ describe("SessionContinuityCard", () => {
     expect(screen.getByText("1 saved private brief")).toBeInTheDocument();
   });
 
-  it("shows an exact prior private brief without implying it changed the current Session", () => {
+  it("shows an exact prior private brief without implying it changed the current Session", async () => {
     const state = continuity();
     state.prior = {
       sourceRoom: {
@@ -198,8 +202,10 @@ describe("SessionContinuityCard", () => {
       externalSideEffects: false,
     };
 
+    const user = userEvent.setup();
     render(<SessionContinuityCard roomId="room-1" initial={state} />);
 
+    await user.click(screen.getByText("Carry work into the next session"));
     expect(screen.getByRole("heading", { name: "Previous coaching rehearsal" })).toBeInTheDocument();
     expect(screen.getByText("Carry the exact protected rehearsal forward.")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Return to what was actually said" })).toBeInTheDocument();
@@ -211,7 +217,7 @@ describe("SessionContinuityCard", () => {
     expect(screen.getByText(/current Session unchanged · no AI or external side effects/i)).toBeInTheDocument();
   });
 
-  it("shows released coaching work as live canonical follow-through without copying it", () => {
+  it("shows released coaching work as live canonical follow-through without copying it", async () => {
     const state = continuity();
     state.priorFollowThrough = {
       schema: "quipsly-session-follow-through-v1",
@@ -281,8 +287,10 @@ describe("SessionContinuityCard", () => {
       externalSideEffects: false,
     };
 
+    const user = userEvent.setup();
     render(<SessionContinuityCard roomId="room-1" initial={state} />);
 
+    await user.click(screen.getByText("Carry work into the next session"));
     expect(screen.getByRole("heading", { name: "Your follow-through" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /run one protected rehearsal/i })).toHaveAttribute("href", "/work?task=task-1");
     expect(screen.getByRole("link", { name: /use a sustainable boundary/i })).toHaveAttribute("href", "/work?goal=goal-1");

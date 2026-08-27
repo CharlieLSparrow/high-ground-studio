@@ -2325,10 +2325,7 @@ function SessionQuickEntryCard({
       ]);
       createWorkFormRef.current?.reset();
       setCreateKind("TASK");
-      setNotice(
-        payload.nextAction ||
-          `The ${createKind.toLowerCase()} is saved in this Session.`,
-      );
+      setNotice(`${createKind === "TASK" ? "Task" : "Goal"} saved.`);
       router.refresh();
     } catch (error) {
       setNotice(
@@ -2598,7 +2595,7 @@ function SessionQuickEntryCard({
             </button>
           </form>
           <p className="mt-3 text-[11px] font-semibold leading-5 text-emerald-900">
-            Saved in this Session and in Work. No message or reminder is sent.
+            Saved here and in Work, ready to update anytime.
           </p>
         </details>
       )}
@@ -2786,7 +2783,7 @@ function SessionQuickEntryCard({
         <div className="mt-4 rounded-xl border border-dashed border-emerald-200 bg-white/70 p-4 text-xs font-bold text-emerald-900">
           {noteScope
             ? "No deliberate Session note has been added yet. Quipsly does not substitute transcript text or an Inbox count."
-            : "No task or goal has been added to this Session yet. When the transcript is ready, Quipsly can create editable follow-through here automatically."}
+            : "No tasks or goals yet. Add one now, or let Quipsly create editable next steps from the transcript."}
         </div>
       )}
     </section>
