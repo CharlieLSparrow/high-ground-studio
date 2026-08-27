@@ -407,7 +407,12 @@ async function operateRenderedSession({ baseURL, context, password }) {
     await transcriptDesk
       .getByRole("heading", { name: "Edit the transcript", exact: true })
       .waitFor({ timeout: 30_000 });
-    await packetReview.waitFor({ timeout: 30_000 });
+    const sessionResults = page.getByText("Session results and status", {
+      exact: true,
+    });
+    await sessionResults.waitFor({ state: "visible", timeout: 30_000 });
+    await sessionResults.click();
+    await packetReview.waitFor({ state: "visible", timeout: 30_000 });
     const transcriptBox = await transcriptDesk.boundingBox();
     const packetBox = await packetReview.boundingBox();
     assert(
