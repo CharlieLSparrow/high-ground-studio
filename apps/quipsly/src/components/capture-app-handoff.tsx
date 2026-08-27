@@ -153,13 +153,13 @@ export function CaptureAppHandoff({
 
   return (
     <section
-      className={`rounded-[1.75rem] border p-5 shadow-sm ${joinedFromInvitation ? "border-emerald-200 bg-emerald-50" : "border-sky-200 bg-sky-50/70"}`}
+      className={`rounded-[1.5rem] border p-4 shadow-sm sm:rounded-[1.75rem] sm:p-5 ${joinedFromInvitation ? "border-emerald-200 bg-emerald-50" : "border-sky-200 bg-sky-50/70"}`}
       aria-labelledby="capture-handoff-heading"
       aria-busy={!interactive}
       data-session-entry-ready={interactive ? "true" : "false"}
     >
       <div className="flex max-w-3xl items-start gap-3">
-        <span className="rounded-2xl bg-white p-3 text-violet-800 shadow-sm">
+        <span className="hidden rounded-2xl bg-white p-3 text-violet-800 shadow-sm sm:inline-flex">
           <Smartphone aria-hidden="true" />
         </span>
         <div>
@@ -172,11 +172,11 @@ export function CaptureAppHandoff({
           </p>
           <h2
             id="capture-handoff-heading"
-            className="mt-1 font-serif text-2xl font-black text-[#3d3122]"
+            className="mt-1 font-serif text-xl font-black text-[#3d3122] sm:text-2xl"
           >
             {joinedFromInvitation ? "Join your Session" : "Ready to join?"}
           </h2>
-          <p className="mt-2 text-sm font-semibold leading-6 text-[#765f40]">
+          <p className="mt-1 text-sm font-semibold leading-5 text-[#765f40] sm:mt-2 sm:leading-6">
             {captureRecommended
               ? "Open the Session in Quipsly Capture, or continue in this browser."
               : "Continue in this browser. Quipsly Capture is also available on iPhone."}
@@ -184,7 +184,7 @@ export function CaptureAppHandoff({
         </div>
       </div>
 
-      <div className="mt-5 min-h-44 rounded-2xl border border-white/90 bg-white p-3 shadow-sm sm:p-4">
+      <div className="mt-3 rounded-2xl border border-white/90 bg-white p-3 shadow-sm sm:mt-5 sm:min-h-44 sm:p-4">
         {captureFallbackActive ? (
           <div aria-live="polite" aria-label="Capture app recovery">
             <div className="flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-950">
@@ -282,7 +282,7 @@ export function CaptureAppHandoff({
             <p className="px-1 text-[10px] font-black uppercase tracking-[0.18em] text-[#765f40]">
               {captureRecommended ? "Recommended on this iPhone" : "Recommended on this device"}
             </p>
-            <div className="mt-3 space-y-2">
+            <div className="mt-2 space-y-2 sm:mt-3">
               {captureRecommended ? (
                 <>
                   <a
@@ -310,7 +310,7 @@ export function CaptureAppHandoff({
                     type="button"
                     disabled={!interactive}
                     onClick={continueInBrowser}
-                    className="flex min-h-16 w-full items-center justify-center gap-3 rounded-2xl bg-violet-800 px-5 text-sm font-black text-white disabled:cursor-wait disabled:opacity-60"
+                    className="flex min-h-14 w-full items-center justify-center gap-3 rounded-2xl bg-violet-800 px-5 text-sm font-black text-white disabled:cursor-wait disabled:opacity-60 sm:min-h-16"
                   >
                     <MonitorSmartphone size={18} aria-hidden="true" /> Join call
                   </button>

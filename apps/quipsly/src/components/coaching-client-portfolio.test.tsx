@@ -104,6 +104,7 @@ describe("coaching client portfolio", () => {
     expect(
       screen.queryByRole("link", { name: /New session/i }),
     ).not.toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Clients" })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Clients" })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "My sessions" })).toBeInTheDocument();
   });
 });

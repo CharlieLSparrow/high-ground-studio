@@ -101,6 +101,7 @@
     "quipsly:fresh:coaching-form-builder": "QUIPSLY_FRESH_COACHING_FORM_BUILDER_OPERATION=1 node --experimental-transform-types --import ./scripts/register-ts-extension-loader.mjs scripts/quipsly-fresh-coaching-form-builder-operation.mjs",
     "quipsly:fresh:coaching-form-automation": "QUIPSLY_FRESH_COACHING_FORM_AUTOMATION_OPERATION=1 node --experimental-transform-types --import ./scripts/register-ts-extension-loader.mjs scripts/quipsly-fresh-coaching-form-automation-operation.mjs",
     "quipsly:fresh:coaching-flight": "QUIPSLY_FRESH_COACHING_FLIGHT=1 node scripts/quipsly-fresh-coaching-flight.mjs",
+    "quipsly:coaching:visual-audit": "node scripts/quipsly-coaching-visual-audit.mjs",
     "quipsly:fresh:session-audio-polish": "QUIPSLY_FRESH_SESSION_AUDIO_POLISH=1 node --env-file-if-exists=apps/quipsly/.env.local scripts/quipsly-fresh-session-audio-polish-operation.mjs",
     "quipsly:fresh:session-audio-polish:test": "node --test scripts/quipsly-fresh-session-audio-polish-operation.test.mjs",
     "quipsly:fresh:coaching-speech-flight": "QUIPSLY_FRESH_COACHING_SPEECH_FLIGHT=1 node scripts/quipsly-fresh-coaching-flight.mjs",

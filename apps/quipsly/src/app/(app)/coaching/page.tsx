@@ -409,19 +409,19 @@ function PracticeCommandCenter({
 
   return (
     <section
-      className="mx-auto max-w-7xl px-8 pb-6"
+      className="mx-auto max-w-7xl px-4 pb-4 sm:px-8 sm:pb-6"
       aria-labelledby="practice-command-heading"
       data-testid="coaching-practice-command"
     >
-      <div className="overflow-hidden rounded-[2rem] border border-[#d9c8ab] bg-[#3d3122] shadow-lg">
-        <div className="grid gap-5 px-6 py-6 text-white lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center lg:px-8">
+      <div className="overflow-hidden rounded-[1.5rem] border border-[#d9c8ab] bg-[#3d3122] shadow-lg sm:rounded-[2rem]">
+        <div className="grid gap-4 px-5 py-5 text-white sm:px-6 sm:py-6 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center lg:px-8">
           <div>
             <p className="text-xs font-black uppercase tracking-[0.24em] text-amber-200">
               Your practice today
             </p>
             <h2
               id="practice-command-heading"
-              className="mt-2 font-serif text-3xl font-black"
+              className="mt-2 font-serif text-2xl font-black sm:text-3xl"
             >
               {command.headline}
             </h2>
@@ -429,7 +429,7 @@ function PracticeCommandCenter({
               {command.detail}
             </p>
           </div>
-          <div className="grid grid-cols-3 gap-2 text-center sm:grid-cols-6 lg:grid-cols-3">
+          <div className="hidden grid-cols-6 gap-2 text-center sm:grid lg:grid-cols-3">
             {[
               ["Today", command.counts.today],
               ["Live", command.counts.live],
@@ -2527,19 +2527,24 @@ export default function CoachingPage() {
 
   return (
     <div className="min-h-full w-full overflow-y-auto bg-[radial-gradient(circle_at_top_left,#fff7df,transparent_35%),linear-gradient(135deg,#fffaf1,#f7efe2_45%,#eef8f0)]">
-      <header className="mx-auto max-w-7xl px-8 pb-4 pt-8">
-        <div className="rounded-[2rem] border border-[#e8dcc4] bg-white/75 p-7 shadow-sm backdrop-blur">
-          <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+      <header className="mx-auto max-w-7xl px-4 pb-3 pt-4 sm:px-8 sm:pb-4 sm:pt-8">
+        <div className="rounded-[1.5rem] border border-[#e8dcc4] bg-white/75 p-4 shadow-sm backdrop-blur sm:rounded-[2rem] sm:p-7">
+          <div className="flex flex-col gap-3 sm:gap-5 lg:flex-row lg:items-end lg:justify-between">
             <div>
               <p className="mb-2 text-xs font-black uppercase tracking-[0.28em] text-[#b98036]">
                 Quipsly coaching
               </p>
-              <h1 className="max-w-3xl text-4xl font-black leading-tight text-[#3d3122]">
-                {isClientOnly
-                  ? "Your coaching, without the admin maze."
-                  : "Schedule the next session. Quipsly keeps the rest together."}
+              <h1 className="max-w-3xl text-2xl font-black leading-tight text-[#3d3122] sm:text-4xl">
+                <span className="sm:hidden">
+                  {isClientOnly ? "Your next coaching session" : "Coaching"}
+                </span>
+                <span className="hidden sm:inline">
+                  {isClientOnly
+                    ? "Your coaching, without the admin maze."
+                    : "Schedule the next session. Quipsly keeps the rest together."}
+                </span>
               </h1>
-              <p className="mt-3 max-w-3xl text-[#7b5c3b]">
+              <p className="mt-3 hidden max-w-3xl text-[#7b5c3b] sm:block">
                 {isClientOnly
                   ? "See your requested time, open the private Session when it is confirmed, and keep shared notes, goals, and tasks in one place."
                   : "Create sessions, invite clients, record after consent, and get editable follow-up automatically. Clients get the simple version: time, consent, join, shared notes, goals, and tasks. Charging a client for a Session is always optional."}
@@ -2554,7 +2559,7 @@ export default function CoachingPage() {
               ) : null}
               <a
                 href="/coaching/sessions"
-                className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-black text-emerald-800 shadow-sm transition hover:bg-emerald-100"
+                className="hidden items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-black text-emerald-800 shadow-sm transition hover:bg-emerald-100 sm:inline-flex"
               >
                 <Users size={15} /> All Sessions
               </a>
@@ -2609,7 +2614,7 @@ export default function CoachingPage() {
             </p>
           ) : null}
           {!isLoading && runway?.user && (!practiceCommand || isClientOnly) ? (
-            <div className="mt-5 flex flex-col gap-4 rounded-2xl border border-violet-200 bg-violet-50/80 p-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="mt-4 flex flex-col gap-3 rounded-2xl border border-violet-200 bg-violet-50/80 p-4 sm:mt-5 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
               <div>
                 <p className="text-[10px] font-black uppercase tracking-[0.2em] text-violet-700">
                   {journeyAction.eyebrow}
@@ -2629,7 +2634,7 @@ export default function CoachingPage() {
               </a>
             </div>
           ) : null}
-          <div className="mt-4 grid gap-3 md:grid-cols-4">
+          <div className="mt-4 hidden gap-3 md:grid md:grid-cols-4">
             {isClientOnly ? (
               <>
                 <FriendlyStepCard
@@ -2695,7 +2700,7 @@ export default function CoachingPage() {
         <PracticeCommandCenter command={practiceCommand} />
       ) : null}
 
-      <div className="mx-auto grid max-w-7xl grid-cols-1 gap-6 px-8 pb-10 xl:grid-cols-[1.5fr_0.95fr]">
+      <div className="mx-auto grid max-w-7xl grid-cols-1 gap-6 px-4 pb-10 sm:px-8 xl:grid-cols-[1.5fr_0.95fr]">
         <section className="space-y-6">
           {isClientOnly && bookingHolds.length > 0 ? (
             <div
@@ -3141,8 +3146,9 @@ export default function CoachingPage() {
                   <CalendarIcon className="text-[#b98036]" /> Upcoming sessions
                 </h2>
                 <p className="mt-1 text-sm text-[#7b5c3b]">
-                  Open the Session, invite the client, or make a schedule
-                  change.
+                  {isClientOnly
+                    ? "Open the private Session when it is time, or return to shared work between calls."
+                    : "Open the Session, invite the client, or make a schedule change."}
                 </p>
               </div>
               <StatusPill label={`${bookings.length} visible`} tone="warm" />
@@ -4101,7 +4107,9 @@ export default function CoachingPage() {
           </div>
         </section>
 
-        <aside className="order-first space-y-6 xl:order-last">
+        <aside
+          className={`${isClientOnly ? "space-y-6" : "order-first space-y-6"} xl:order-last`}
+        >
           {!isClientOnly ? (
             <>
               <details
@@ -4968,16 +4976,17 @@ export default function CoachingPage() {
             </div>
           ) : null}
 
-          <div className="rounded-[1.7rem] border border-[#e8dcc4] bg-white/80 p-6 shadow-sm">
-            <h2 className="mb-4 flex items-center gap-2 text-xl font-black text-[#3d3122]">
-              <Clock className="text-[#b98036]" /> Requests
-            </h2>
-            <div className="space-y-3">
-              {requests.length === 0 ? (
-                <p className="text-sm text-[#7b5c3b]">
-                  No open coaching requests visible.
-                </p>
-              ) : (
+          {requests.length > 0 || isStaff ? (
+            <div className="rounded-[1.7rem] border border-[#e8dcc4] bg-white/80 p-6 shadow-sm">
+              <h2 className="mb-4 flex items-center gap-2 text-xl font-black text-[#3d3122]">
+                <Clock className="text-[#b98036]" /> Requests
+              </h2>
+              <div className="space-y-3">
+                {requests.length === 0 ? (
+                  <p className="text-sm text-[#7b5c3b]">
+                    No open coaching requests visible.
+                  </p>
+                ) : (
                 requests.slice(0, 6).map((request) => (
                   <div
                     key={request.id}
@@ -4999,10 +5008,11 @@ export default function CoachingPage() {
                       {request.nextAction}
                     </p>
                   </div>
-                ))
-              )}
+                  ))
+                )}
+              </div>
             </div>
-          </div>
+          ) : null}
         </aside>
       </div>
     </div>

@@ -1087,11 +1087,11 @@ function SessionConsentControl({
 
   return (
     <section
-      className={`mt-5 rounded-2xl border p-5 ${consent?.recordingReady ? "border-emerald-200 bg-emerald-50/55" : "border-amber-200 bg-amber-50/55"}`}
+      className={`mt-4 rounded-2xl border ${consent?.recordingReady && !isEditingConsent ? "p-3 sm:p-4" : "p-4 sm:p-5"} ${consent?.recordingReady ? "border-emerald-200 bg-emerald-50/55" : "border-amber-200 bg-amber-50/55"}`}
       aria-labelledby="my-session-consent-heading"
       data-testid="session-consent-control"
     >
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+      <div className="flex items-start justify-between gap-3">
         <div className="max-w-3xl">
           <p className="text-[10px] font-black uppercase tracking-[0.18em] text-amber-800">
             Recording
@@ -1101,17 +1101,18 @@ function SessionConsentControl({
             className="mt-1 text-xl font-black text-[#3d3122]"
           >
             {consent?.recordingReady
-              ? "You’re ready"
-              : "Choose what Quipsly may record"}
+              ? "Recording ready"
+              : "Allow recording for this session?"}
           </h3>
-          <p className="mt-2 text-sm font-semibold leading-6 text-[#6b5538]">
-            Everyone confirms for themselves before recording. Nothing starts
-            until someone taps Record. You can join without agreeing; recording
-            stays off for you.
-          </p>
+          {!consent?.recordingReady || isEditingConsent ? (
+            <p className="mt-2 text-sm font-semibold leading-6 text-[#6b5538]">
+              Agree to this device&apos;s selected audio, video, and transcript
+              options. You can still join the call without being recorded.
+            </p>
+          ) : null}
         </div>
         <span
-          className={`rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-wide ${statusTone(consent?.recordingReady ? "READY" : "HELD")}`}
+          className={`shrink-0 rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-wide ${statusTone(consent?.recordingReady ? "READY" : "HELD")}`}
         >
           {consent?.recordingReady ? "Saved" : "Action needed"}
         </span>
@@ -1124,8 +1125,8 @@ function SessionConsentControl({
           account before granting consent.
         </div>
       ) : consent?.recordingReady && !isEditingConsent ? (
-        <div className="mt-4">
-          <div className="flex flex-wrap gap-2 text-xs font-black text-emerald-900">
+        <div className="mt-2 flex flex-wrap items-center gap-2 text-xs font-black text-emerald-900">
+          <div className="flex flex-wrap gap-2">
             {consent.canRecordAudio ? (
               <span className="rounded-full border border-emerald-200 bg-white px-3 py-1.5">
                 Audio
@@ -1142,22 +1143,14 @@ function SessionConsentControl({
               </span>
             ) : null}
           </div>
-          <div className="mt-4 flex flex-wrap items-center gap-3">
+          <div className="ml-auto">
             <button
               type="button"
               onClick={() => setIsEditingConsent(true)}
               disabled={busy || closed}
-              className="inline-flex min-h-11 items-center justify-center rounded-full border border-emerald-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-emerald-900 disabled:opacity-45"
+              className="inline-flex min-h-10 items-center justify-center rounded-full border border-emerald-300 bg-white px-4 py-2 text-xs font-black text-emerald-900 disabled:opacity-45"
             >
-              Change
-            </button>
-            <button
-              type="button"
-              onClick={() => void saveConsent("REVOKE")}
-              disabled={busy || closed}
-              className="inline-flex min-h-11 items-center justify-center rounded-full px-4 py-2 text-xs font-black uppercase tracking-wide text-rose-800 disabled:opacity-45"
-            >
-              Revoke
+              Options
             </button>
           </div>
         </div>
@@ -1265,9 +1258,11 @@ function SessionConsentControl({
         </>
       )}
 
-      <p className="mt-4 text-xs font-bold leading-5 text-[#765f40]">
-        Your choice stays with this Session and can be changed here later.
-      </p>
+      {!consent?.recordingReady || isEditingConsent ? (
+        <p className="mt-4 text-xs font-bold leading-5 text-[#765f40]">
+          Your choice is saved for this Session and can be changed here later.
+        </p>
+      ) : null}
       {closed ? (
         <p className="mt-3 text-xs font-black uppercase tracking-wide text-rose-800">
           This Session is closed, so consent changes are paused.
@@ -4447,21 +4442,21 @@ export function SessionReviewClient({
 
   if (mode === "live") {
     return (
-      <main className="mx-auto flex min-h-[calc(100dvh-8rem)] w-full max-w-4xl items-center px-0 py-4 sm:py-8">
+      <main className="mx-auto flex min-h-[calc(100dvh-8rem)] w-full max-w-4xl items-start px-0 py-3 sm:items-center sm:py-8">
         <div className="w-full rounded-[2rem] border border-[#ded1bb] bg-[#fffaf0]/95 p-4 shadow-xl shadow-[#3d3122]/10 sm:p-7">
-          <header className="mb-4 flex items-start justify-between gap-4 px-1">
+          <header className="mb-3 flex flex-col gap-3 px-1 sm:mb-4 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
             <div className="min-w-0">
               <p className="text-[10px] font-black uppercase tracking-[0.2em] text-violet-800">
                 Session lobby
               </p>
-              <h1 className="mt-1 truncate font-serif text-2xl font-black text-[#3d3122] sm:text-3xl">
+              <h1 className="mt-1 break-words font-serif text-2xl font-black leading-tight text-[#3d3122] sm:text-3xl">
                 {sessionTitle}
               </h1>
               <p className="mt-1 text-xs font-semibold text-[#765f40]">
-                Nothing joins or records until you confirm it.
+                Check your setup, then join when you&apos;re ready.
               </p>
             </div>
-            <div className="flex shrink-0 flex-col gap-2 sm:flex-row">
+            <div className="flex shrink-0 gap-2">
               <Link
                 href={sessionWorkspaceHref(roomId, "conversation")}
                 className="inline-flex min-h-11 items-center justify-center rounded-full border border-violet-300 bg-violet-50 px-4 text-xs font-black text-violet-900"

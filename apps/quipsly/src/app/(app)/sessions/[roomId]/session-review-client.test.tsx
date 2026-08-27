@@ -1164,7 +1164,7 @@ describe("Session review goal candidates", () => {
     expect(within(consent).getByRole("button", { name: "Agree and continue" })).toBeInTheDocument();
     expect(within(consent).getByRole("button", { name: "Don’t record me" })).toBeInTheDocument();
     expect(within(consent).getByLabelText("Record camera video from this device")).not.toBeChecked();
-    expect(within(consent).getByText(/You can join without agreeing/)).toBeInTheDocument();
+    expect(within(consent).getByText(/join the call without being recorded/)).toBeInTheDocument();
     expect(
       consent.compareDocumentPosition(deviceEntry) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
@@ -1216,12 +1216,13 @@ describe("Session review goal candidates", () => {
     />);
 
     const control = screen.getByTestId("session-consent-control");
-    expect(within(control).getByRole("heading", { name: "You’re ready" })).toBeInTheDocument();
+    expect(within(control).getByRole("heading", { name: "Recording ready" })).toBeInTheDocument();
     expect(within(control).queryByRole("checkbox")).not.toBeInTheDocument();
     expect(within(control).getByText("Audio")).toBeInTheDocument();
     expect(within(control).getByText("Transcript")).toBeInTheDocument();
 
-    await user.click(within(control).getByRole("button", { name: "Change" }));
+    expect(within(control).queryByRole("button", { name: "Revoke" })).not.toBeInTheDocument();
+    await user.click(within(control).getByRole("button", { name: "Options" }));
     expect(within(control).getByLabelText("Record audio from this device")).toBeChecked();
     expect(within(control).getByLabelText("Create a transcript and suggested notes/tasks")).toBeChecked();
     expect(within(control).queryByLabelText(/anyone else who may be heard/i)).not.toBeInTheDocument();

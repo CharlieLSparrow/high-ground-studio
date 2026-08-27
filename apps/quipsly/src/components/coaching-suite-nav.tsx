@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import { usePathname } from "next/navigation";
 
-const items: ReadonlyArray<{
+const coachItems: ReadonlyArray<{
   href: string;
   label: string;
   icon: LucideIcon;
@@ -27,8 +27,15 @@ const items: ReadonlyArray<{
   { href: "/coaching/forms", label: "Forms", icon: ClipboardList },
 ];
 
+const clientItems = coachItems
+  .filter((item) => item.label !== "Clients")
+  .map((item) =>
+    item.label === "Sessions" ? { ...item, label: "My sessions" } : item,
+  );
+
 export function CoachingSuiteNav({ canSchedule }: { canSchedule: boolean }) {
   const pathname = usePathname();
+  const items = canSchedule ? coachItems : clientItems;
 
   return (
     <nav
@@ -47,7 +54,7 @@ export function CoachingSuiteNav({ canSchedule }: { canSchedule: boolean }) {
                 key={item.href}
                 href={item.href}
                 aria-current={active ? "page" : undefined}
-                className={`inline-flex min-h-11 shrink-0 items-center gap-2 rounded-full px-4 text-sm font-black transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-700 ${
+                className={`${canSchedule && ["Sessions", "Forms"].includes(item.label) ? "hidden sm:inline-flex" : "inline-flex"} min-h-11 shrink-0 items-center gap-2 rounded-full px-3 text-sm font-black transition sm:px-4 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-700 ${
                   active
                     ? "bg-violet-100 text-violet-950"
                     : "text-[#6f5a3f] hover:bg-[#f4ecdd] hover:text-[#3d3122]"
