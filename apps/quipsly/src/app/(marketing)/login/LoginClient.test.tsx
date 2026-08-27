@@ -82,8 +82,8 @@ describe("Quipsly direct login", () => {
     );
   });
 
-  it("makes Google the primary path while clearly limiting verification to new email accounts", () => {
-    render(<LoginClient callbackUrl="/projects" />);
+  it("makes Google the primary path without front-loading account administration", () => {
+    render(<LoginClient callbackUrl="/coaching" />);
 
     expect(
       screen.getByRole("button", { name: "Continue with Google" }),
@@ -92,9 +92,8 @@ describe("Quipsly direct login", () => {
     expect(screen.queryByText(/Firebase/i)).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Create account" }));
 
-    expect(
-      screen.getByText(/verify your email only once/),
-    ).toBeInTheDocument();
+    expect(screen.queryByText(/verify your email/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/Start scheduling Sessions/)).toBeInTheDocument();
     expect(screen.getAllByRole("button", { name: "Create account" })).toHaveLength(2);
   });
 

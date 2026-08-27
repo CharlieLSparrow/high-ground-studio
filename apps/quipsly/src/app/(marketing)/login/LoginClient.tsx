@@ -281,6 +281,11 @@ export function LoginClient({
   }
 
   const busy = isGoogleSigningIn || isPasswordSigningIn || isRecoveringPassword;
+  const createAccountDescription = safeCallbackUrl.startsWith("/sessions/")
+    ? "Create your account to open this Session and keep its shared work together."
+    : safeCallbackUrl.startsWith("/coaching")
+      ? "Start scheduling Sessions, inviting clients, and keeping your coaching work together."
+      : "Create one account for your projects, notes, and Sessions.";
 
   return (
     <main className="relative grid min-h-screen place-items-center overflow-hidden bg-[#092a25] px-4 py-10 text-[#38291f]">
@@ -301,7 +306,9 @@ export function LoginClient({
           {passwordMode === "create" ? "Create your account" : loginContext.signInTitle}
         </h1>
         <p className="mt-2 text-sm leading-6 text-[#715840]">
-          {loginContext.description}
+          {passwordMode === "create"
+            ? createAccountDescription
+            : loginContext.description}
         </p>
 
         {safeInviteToken ? (
@@ -404,11 +411,7 @@ export function LoginClient({
           >
             {isRecoveringPassword ? "Sending reset email..." : "Forgot password?"}
           </button>
-        ) : (
-          <p className="mt-3 text-center text-xs leading-5 text-[#806b54]">
-            Google is ready immediately. With email and password, you verify your email only once.
-          </p>
-        )}
+        ) : null}
 
         {message ? (
           <p
