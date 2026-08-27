@@ -20,7 +20,7 @@ function canonicalQuestionnaire() {
 test("canonical questionnaire covers source manifests and pinned SDKs", () => {
   const result = validatePrivacyQuestionnaire(canonicalQuestionnaire(), { root: repositoryRoot });
   assert.equal(result.ok, true, result.errors.join("\n"));
-  assert.equal(canonicalQuestionnaire().collectedDataTypes.length, 11);
+  assert.equal(canonicalQuestionnaire().collectedDataTypes.length, 12);
 });
 
 test("fails closed when the third-party aggregate answer is omitted", () => {

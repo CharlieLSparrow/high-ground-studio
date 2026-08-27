@@ -38,20 +38,21 @@
       "NSPrivacyCollectedDataTypeEmailAddress",
       "NSPrivacyCollectedDataTypeUserID",
       "NSPrivacyCollectedDataTypeDeviceID",
+      "NSPrivacyCollectedDataTypePurchaseHistory",
       "NSPrivacyCollectedDataTypeAudioData",
       "NSPrivacyCollectedDataTypePhotosorVideos",
       "NSPrivacyCollectedDataTypeOtherUserContent"
     ],
-    "archiveAggregateValidatedBuild": "35",
-    "aggregateCollectedDataTypeCount": 11,
+    "archiveAggregateValidatedBuild": "36",
+    "aggregateCollectedDataTypeCount": 12,
     "publicationStatus": "requires-account-holder-approval"
   },
   "compliance": {
     "providerTarget": {
       "appId": "6780995957",
       "version": "1.0",
-      "build": "35",
-      "auditedAt": "2026-08-27T04:41:08Z"
+      "build": "36",
+      "auditedAt": "2026-08-27T06:04:57Z"
     },
     "contentRights": {
       "status": "configured-and-read-back",
@@ -180,8 +181,7 @@
     "readiness": "blocked",
     "blockers": [
       "Complete the account-level DSA trader determination in App Store Connect.",
-      "Capture and inspect all six 6.9-inch screenshots from the exact release source in deterministic private-data-safe presentation state.",
-      "Install Build 35 from TestFlight on a physical iPhone, then prove the Session handoff plus audio/video capture, camera switching, interruption, offline recovery, upload, assembled playback, and cross-device readback.",
+      "Install Build 36 from TestFlight on a physical iPhone, then prove the Session handoff plus audio/video capture, camera switching, interruption, offline recovery, upload, assembled playback, and cross-device readback.",
       "Publish accurate App Privacy answers and prove the account-deletion workflow against a disposable production account."
     ]
   }

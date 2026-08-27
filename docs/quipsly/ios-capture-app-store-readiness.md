@@ -480,19 +480,19 @@ remain red until approved screenshots and every delivery-layer proof exist.
 ## Current blockers before App Store submission
 
 The canonical public TestFlight distribution target is **Quipsly Capture 1.0
-(33)**, provider build `9a7944d0-55d7-46da-9755-694384fbe9fd`, through the
-public link `https://testflight.apple.com/join/XwRRcYUm`. Quipsly Capture 1.0
-(35) is a separately sealed and signed candidate from exact source
-`8d019469d251b564ce25c31dccef27ab406dcb1c`; it passed all 72 selected UI
-journeys and archive/signature/privacy inspection but was deliberately not
-uploaded. Current development after Build 35 is likewise unreleased. Do not
-describe a source revision as installed, in TestFlight, or App Store-ready
-unless a new deliberate release receipt and Apple readback bind that exact
-revision to a new provider build.
+(36)**, provider build `3fde279a-7794-4468-a952-592d89fc68d1`, from exact source
+`532bfd6670ceaedd1590cdea3d1cd375987a841b`, through the public link
+`https://testflight.apple.com/join/XwRRcYUm`. Apple read back the build as
+`IN_BETA_TESTING` with beta review `APPROVED` on 2026-08-27. The exact source
+passed all 90 serialized iPhone and Share Extension journeys, signed archive
+and export inspection, and strict aggregation of all 14 packaged privacy
+manifests. Do not describe a later source revision as installed, in TestFlight,
+or App Store-ready unless a deliberate release receipt and Apple readback bind
+that revision to a provider build.
 
 The current operational handoff and open human/device gates are maintained in
 [`coaching-cohort-release-handoff.md`](./coaching-cohort-release-handoff.md).
-The detailed Build 35 qualification is retained in
+The detailed Build 35 qualification remains historical context in
 [`coaching-cohort-release-acceptance.md`](./coaching-cohort-release-acceptance.md#build-35-exact-commit-candidate--2026-08-23).
 The App Store submission remains blocked by the account-level EU DSA trader
 determination, published App Privacy answers, approved exact-candidate

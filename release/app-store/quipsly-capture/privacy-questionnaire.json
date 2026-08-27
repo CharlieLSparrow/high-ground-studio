@@ -4,13 +4,13 @@
     "appId": "6780995957",
     "bundleId": "com.highgroundodyssey.HighGroundCapture",
     "version": "1.0",
-    "build": "35",
-    "sourceRevision": "096bd81163b5e0ef69936dbc6a7642208e1bfd14"
+    "build": "36",
+    "sourceRevision": "532bfd6670ceaedd1590cdea3d1cd375987a841b"
   },
   "publication": {
     "status": "requires-account-holder-approval",
     "providerPublished": false,
-    "boundary": "Engineering recommendation validated against the exact signed Build 35 archive; the Account Holder must publish the matching App Store Connect answers."
+    "boundary": "Engineering recommendation validated against the exact signed Build 36 archive; the Account Holder must publish the matching App Store Connect answers."
   },
   "tracking": {
     "used": false,
@@ -86,6 +86,18 @@
       "sources": ["PrivacyInfo.xcprivacy", "GoogleSignIn_GoogleSignIn.bundle/PrivacyInfo.xcprivacy"]
     },
     {
+      "identifier": "NSPrivacyCollectedDataTypePurchaseHistory",
+      "appStoreCategory": "Purchases",
+      "appStoreType": "Purchase History",
+      "linkedToUser": true,
+      "tracking": false,
+      "purposes": ["NSPrivacyCollectedDataTypePurposeAppFunctionality"],
+      "sources": [
+        "QuipslySubscriptionStore.swift",
+        "apps/quipsly/src/app/api/mobile/capture/entitlements/app-store/transaction/route.ts"
+      ]
+    },
+    {
       "identifier": "NSPrivacyCollectedDataTypeAudioData",
       "appStoreCategory": "User Content",
       "appStoreType": "Audio Data",
@@ -144,14 +156,14 @@
   ],
   "archiveEvidence": {
     "manifestCount": 14,
-    "aggregateSha256": "ee7e45d0a664095c7b02ce8b1e9d5ecd038c9191d673140733335aca3707af0b",
-    "archiveKind": "exact signed and uploaded Build 35 release archive",
-    "inspectedAt": "2026-08-27T04:41:08.000Z"
+    "aggregateSha256": "3f3b57b8ec5d8bfb081897c6efde2201d3f29f3a66140c73e33d53774f65c537",
+    "archiveKind": "exact signed and uploaded Build 36 release archive",
+    "inspectedAt": "2026-08-27T06:00:32.000Z"
   },
   "reviewNotes": [
     "Apple says free-form text and voice may be represented as Other User Content and Audio Data rather than every sensitive topic a user might enter.",
     "The redacted support snapshot opens the iOS share sheet and is not automatically transmitted to Quipsly, so it does not create app-owned diagnostics collection by itself.",
-    "No advertising, data broker, advertising identifier, tracking domain, Stripe SDK, StoreKit purchase flow, or CoreLocation API is linked in the current iPhone target.",
+    "No advertising, data broker, advertising identifier, tracking domain, Stripe SDK, or CoreLocation API is linked in the current iPhone target. StoreKit purchase history is used only to activate and maintain the signed-in user's Quipsly entitlement.",
     "Google Sign-In's bundled privacy manifest—not Quipsly GPS access—is the source of the Coarse Location disclosure.",
     "LiveKit transports room media in real time; recordings retained by Quipsly remain covered by Audio Data and Photos or Videos regardless of transport provider.",
     "App Store privacy answers are app-level across platforms. No macOS or visionOS binary is being released; aggregate those binaries before enabling either platform."
