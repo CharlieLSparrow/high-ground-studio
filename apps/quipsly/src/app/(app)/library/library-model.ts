@@ -8,6 +8,7 @@ export type LibraryEntry = {
   projectName: string | null;
   projectSlug: string | null;
   href: string;
+  actionLabel?: string;
   updatedAt: string;
   stateLabel: string;
   badges: string[];
@@ -182,6 +183,9 @@ export function buildLibraryEntries(input: {
     const blockCount = document._count?.blocks ?? 0;
     const writingNote = clean(document.sourceLabel).toLowerCase().includes("document-kind:note");
     const voiceWriting = clean(document.sourceLabel).toLowerCase().includes("origin:ios-voice-writing");
+    const voiceWritingDraftId = voiceWriting
+      ? /^voice-writing-([0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/i.exec(document.id)?.[1]?.toLowerCase() ?? null
+      : null;
     const previewBlock = (document.blocks ?? []).find((block) => {
       const body = clean(block.body);
       return body
@@ -203,12 +207,15 @@ export function buildLibraryEntries(input: {
         : `${blockCount} active manuscript block${blockCount === 1 ? "" : "s"}.`,
       projectName: document.project.name,
       projectSlug: document.project.slug,
-      href: writingNote
+      href: voiceWritingDraftId
+        ? `/writing/${encode(voiceWritingDraftId)}`
+        : writingNote
         ? `/create?project=${encode(document.project.slug)}&document=${encode(document.id)}${previewBlock ? `&block=${encode(previewBlock.id)}` : ""}`
         : episode
         ? `/read?projectSlug=${encode(document.project.slug)}&episodeSlug=${encode(episode.slug)}`
         : `/create?project=${encode(document.project.slug)}&document=${encode(document.id)}`,
       updatedAt: iso(document.updatedAt),
+      actionLabel: voiceWritingDraftId ? "Continue writing" : undefined,
       stateLabel: voiceWriting ? "Voice note" : writingNote ? "Note" : episode ? `Episode ${clean(episode.status).replaceAll("_", " ")}` : clean(document.projectionStatus).replaceAll("_", " "),
       badges: writingNote
         ? [voiceWriting ? "From Quipsly Capture" : "Writing", ...tagBadges, `${blockCount} section${blockCount === 1 ? "" : "s"}`]

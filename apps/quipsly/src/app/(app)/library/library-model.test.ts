@@ -83,6 +83,37 @@ describe("source-first Library model", () => {
     expect(filterLibraryEntries(result.entries, { query: "honest editing", kind: "note" })).toHaveLength(1);
   });
 
+  it("opens iPhone voice writing in the focused cross-device editor", () => {
+    const result = buildLibraryEntries({
+      sessions: [],
+      notes: [],
+      sources: [],
+      documents: [{
+        id: "voice-writing-7a9b10f0-97bd-4bbb-a7dd-0b93fbc5918b",
+        title: "Dissertation reflection",
+        sourceLabel: "document-kind:note;origin:ios-voice-writing",
+        projectionStatus: "private",
+        updatedAt: "2026-08-27T18:00:00Z",
+        project: { name: "Homer's Nest", slug: "home-homer" },
+        blocks: [
+          { id: "voice-title", title: "Note Title", body: "Dissertation reflection" },
+          { id: "voice-body", body: "Start with the story I told aloud." },
+        ],
+        episodeProductions: [],
+        _count: { blocks: 2 },
+      }],
+      media: [],
+    });
+
+    expect(result.entries[0]).toMatchObject({
+      kind: "NOTE",
+      href: "/writing/7a9b10f0-97bd-4bbb-a7dd-0b93fbc5918b",
+      actionLabel: "Continue writing",
+      stateLabel: "Voice note",
+      badges: ["From Quipsly Capture", "2 sections"],
+    });
+  });
+
   it("fails closed when a promotion manifest is malformed", () => {
     expect(promotedMediaAssetId(null)).toBeNull();
     expect(promotedMediaAssetId({ promotion: { mediaAssetId: "" } })).toBeNull();

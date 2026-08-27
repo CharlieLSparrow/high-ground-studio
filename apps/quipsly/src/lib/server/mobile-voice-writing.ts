@@ -1,5 +1,19 @@
 import { createHash } from "node:crypto";
 
+import {
+  VOICE_WRITING_MARK_KINDS,
+  type VoiceWritingMark,
+  type VoiceWritingMarkKind,
+  type VoiceWritingRichText,
+} from "@/lib/voice-writing-contract";
+
+export {
+  VOICE_WRITING_MARK_KINDS as MOBILE_VOICE_WRITING_MARK_KINDS,
+  type VoiceWritingMark as MobileVoiceWritingMark,
+  type VoiceWritingMarkKind as MobileVoiceWritingMarkKind,
+  type VoiceWritingRichText as MobileVoiceWritingRichText,
+} from "@/lib/voice-writing-contract";
+
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export type MobileVoiceWritingInput = {
@@ -14,34 +28,7 @@ export type MobileVoiceWritingInput = {
   expectedServerRevision: number;
   expectedContentRevision: string | null;
   sources: MobileVoiceWritingSourceInput[];
-  richText: MobileVoiceWritingRichText | null;
-};
-
-export const MOBILE_VOICE_WRITING_MARK_KINDS = [
-  "bold",
-  "italic",
-  "underline",
-  "strikethrough",
-] as const;
-
-export type MobileVoiceWritingMarkKind = typeof MOBILE_VOICE_WRITING_MARK_KINDS[number];
-
-export type MobileVoiceWritingMark = {
-  kind: MobileVoiceWritingMarkKind;
-  startUtf16: number;
-  endUtf16: number;
-};
-
-/**
- * Portable rich-writing projection shared by iOS and the web. Offsets use
- * UTF-16 code units because Swift's NSString bridge and JavaScript strings
- * agree on them, including text containing emoji or non-BMP characters.
- * StudioDocumentBlock.body remains the searchable plain-text projection.
- */
-export type MobileVoiceWritingRichText = {
-  schema: "quipsly-writing-runs-v1";
-  text: string;
-  marks: MobileVoiceWritingMark[];
+  richText: VoiceWritingRichText | null;
 };
 
 export type MobileVoiceWritingSourceInput = {
@@ -76,7 +63,7 @@ function source(value: unknown): MobileVoiceWritingSourceInput | null {
   return { localRecordingId, transcriptClientRequestId, sourceSha256, callRoomId };
 }
 
-function richText(value: unknown, body: string): MobileVoiceWritingRichText | null | undefined {
+function richText(value: unknown, body: string): VoiceWritingRichText | null | undefined {
   if (value === undefined || value === null) return null;
   if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
   const input = value as Record<string, unknown>;
@@ -84,12 +71,12 @@ function richText(value: unknown, body: string): MobileVoiceWritingRichText | nu
     return undefined;
   }
   if (input.marks.length > 5_000) return undefined;
-  const marks: MobileVoiceWritingMark[] = [];
+  const marks: VoiceWritingMark[] = [];
   const seen = new Set<string>();
   for (const candidate of input.marks) {
     if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) return undefined;
     const mark = candidate as Record<string, unknown>;
-    if (!MOBILE_VOICE_WRITING_MARK_KINDS.includes(mark.kind as MobileVoiceWritingMarkKind)) return undefined;
+    if (!VOICE_WRITING_MARK_KINDS.includes(mark.kind as VoiceWritingMarkKind)) return undefined;
     const startUtf16 = integer(mark.startUtf16);
     const endUtf16 = integer(mark.endUtf16);
     if (!Number.isSafeInteger(startUtf16)
@@ -97,8 +84,8 @@ function richText(value: unknown, body: string): MobileVoiceWritingRichText | nu
       || startUtf16 < 0
       || endUtf16 <= startUtf16
       || endUtf16 > body.length) return undefined;
-    const normalized: MobileVoiceWritingMark = {
-      kind: mark.kind as MobileVoiceWritingMarkKind,
+    const normalized: VoiceWritingMark = {
+      kind: mark.kind as VoiceWritingMarkKind,
       startUtf16,
       endUtf16,
     };
@@ -111,8 +98,8 @@ function richText(value: unknown, body: string): MobileVoiceWritingRichText | nu
   marks.sort((left, right) => left.startUtf16 - right.startUtf16
     || left.endUtf16 - right.endUtf16
     || left.kind.localeCompare(right.kind));
-  const merged: MobileVoiceWritingMark[] = [];
-  for (const kind of MOBILE_VOICE_WRITING_MARK_KINDS) {
+  const merged: VoiceWritingMark[] = [];
+  for (const kind of VOICE_WRITING_MARK_KINDS) {
     for (const mark of marks.filter((candidate) => candidate.kind === kind)) {
       const previous = merged.at(-1);
       if (previous && previous.kind === mark.kind && mark.startUtf16 <= previous.endUtf16) {
@@ -223,7 +210,7 @@ export function mobileVoiceWritingOperationId(draftId: string, localRevision: nu
 }
 
 export function mobileVoiceWritingContentHash(
-  input: Pick<MobileVoiceWritingInput, "title" | "body"> & { richText?: MobileVoiceWritingRichText | null },
+  input: Pick<MobileVoiceWritingInput, "title" | "body"> & { richText?: VoiceWritingRichText | null },
 ) {
   const revisionMaterial = input.richText
     ? [input.title, input.body, input.richText]

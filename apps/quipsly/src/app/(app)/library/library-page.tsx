@@ -244,7 +244,7 @@ function LibraryCard({ entry }: { entry: LibraryEntry }) {
     <h2 className="mt-1 font-serif text-xl font-black leading-snug text-[#3d3122]">{entry.title}</h2>
     <p className="mt-2 text-sm font-semibold leading-6 text-[#765f40]">{entry.detail}</p>
     <div className="mt-4 flex flex-wrap gap-2">{entry.badges.map((badge) => <span key={badge} className="rounded-full border border-[#ead8b4] bg-[#fffaf3] px-2.5 py-1 text-[10px] font-bold text-[#806a4d]">{badge}</span>)}</div>
-    <div className="mt-auto pt-5"><p className="text-[10px] font-bold uppercase tracking-wide text-[#927b5b]">Updated {formatDate(entry.updatedAt)}</p><Link href={entry.href} className="mt-3 inline-flex min-h-11 items-center rounded-full bg-[#3e2f21] px-5 py-2.5 text-xs font-black uppercase tracking-wide text-white">Open</Link></div>
+    <div className="mt-auto pt-5"><p className="text-[10px] font-bold uppercase tracking-wide text-[#927b5b]">Updated {formatDate(entry.updatedAt)}</p><Link href={entry.href} className="mt-3 inline-flex min-h-11 items-center rounded-full bg-[#3e2f21] px-5 py-2.5 text-xs font-black uppercase tracking-wide text-white">{entry.actionLabel ?? "Open"}</Link></div>
   </article>;
 }
 
