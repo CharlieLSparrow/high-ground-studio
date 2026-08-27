@@ -2646,9 +2646,12 @@ final class CaptureExperienceUITests: XCTestCase {
         let presentationControls = app.descendants(matching: .any)["CaptureTranscriptPresentationControls"].firstMatch
         reveal(presentationControls)
         XCTAssertTrue(presentationControls.exists)
-        let presentationMode = app.segmentedControls["CaptureTranscriptPresentationMode"].firstMatch
+        let presentationMode = app.descendants(matching: .any)["CaptureTranscriptPresentationMode"].firstMatch
         XCTAssertTrue(presentationMode.waitForExistence(timeout: 5))
-        let timelineMode = presentationMode.buttons["Timeline"].firstMatch
+        // SwiftUI can expose this segmented picker as either a segmented
+        // control or a pop-up-style accessibility node across simulator
+        // runtimes. The user-facing Timeline button is the stable contract.
+        let timelineMode = presentationControls.buttons["Timeline"].firstMatch
         XCTAssertTrue(timelineMode.waitForExistence(timeout: 5))
         timelineMode.tap()
         XCTAssertTrue(timelineMode.isSelected)
@@ -2685,7 +2688,8 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertFalse(app.buttons["CaptureTranscriptCreateNoteButton"].isEnabled)
         let noteBoundary = app.staticTexts["CaptureTranscriptNoteBoundary"]
         reveal(noteBoundary)
-        XCTAssertTrue(noteBoundary.label.contains("does not correct the transcript, create work, send, deliver, schedule, or publish anything"))
+        XCTAssertTrue(noteBoundary.label.contains("Saved privately by default"))
+        XCTAssertTrue(noteBoundary.label.contains("link back to this transcript moment"))
         app.buttons["CaptureTranscriptCancelNoteButton"].tap()
 
         let makeTask = app.buttons["CaptureTranscriptMakeTaskButton"]
@@ -2703,8 +2707,9 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertFalse(app.buttons["CaptureTranscriptCreateGoalButton"].isEnabled)
         let goalBoundary = app.staticTexts["CaptureTranscriptGoalBoundary"]
         reveal(goalBoundary)
-        XCTAssertTrue(goalBoundary.isHittable, "The complete no-side-effects boundary should be readable before goal creation.")
-        XCTAssertTrue(goalBoundary.label.contains("creates no task, target date, reminder, calendar event, message, or publication"))
+        XCTAssertTrue(goalBoundary.isHittable, "The concise goal ownership and source-link detail should remain readable.")
+        XCTAssertTrue(goalBoundary.label.contains("Owned by you"))
+        XCTAssertTrue(goalBoundary.label.contains("link back to this transcript moment"))
     }
 
     func testTranscriptReviewOutboxSurvivesRelaunchAndStaysAccountPartitioned() {
