@@ -14,9 +14,9 @@ function gateCopy(pathname: string) {
   if (pathname.startsWith("/coaching")) {
     return {
       eyebrow: "Quipsly Coaching",
-      title: "Your coaching work continues here.",
-      body: "Sign in to schedule sessions, invite clients, meet and record, then work with the transcript, notes, goals, tasks, and client-safe follow-up in one private place.",
-      action: "Sign in to coaching",
+      title: "Your coaching practice, all in one place.",
+      body: "Schedule sessions, invite clients, meet and record, then turn every conversation into an editable transcript, notes, goals, tasks, and follow-through.",
+      action: "Continue",
     };
   }
   if (pathname.startsWith("/sessions")) {
@@ -68,9 +68,6 @@ export function NestSignInGate() {
             Get help
           </a>
         </div>
-        <p className="mt-8 max-w-2xl text-sm leading-6 text-[#8b765f]">
-          Signing in does not join a call or start a recording. Quipsly asks for consent and recording choices inside the Session.
-        </p>
       </section>
     </main>
   );
