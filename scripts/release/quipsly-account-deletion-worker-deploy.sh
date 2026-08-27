@@ -36,7 +36,7 @@ project_id="${PROJECT_ID:-high-ground-odyssey}"
 firebase_project_id="${FIREBASE_PROJECT_ID:-quipsly-reef}"
 region="${REGION:-us-central1}"
 service="${ACCOUNT_DELETION_WORKER_SERVICE:-quipsly-account-deletion-worker}"
-worker_service_account="${ACCOUNT_DELETION_WORKER_SERVICE_ACCOUNT:-quipsly-account-deletion-worker@${project_id}.iam.gserviceaccount.com}"
+worker_service_account="${ACCOUNT_DELETION_WORKER_SERVICE_ACCOUNT:-quipsly-deletion-worker@${project_id}.iam.gserviceaccount.com}"
 nest_service_account="${NEST_SERVICE_ACCOUNT:-studio-cloud-run@${project_id}.iam.gserviceaccount.com}"
 bucket="${QUIPSLY_ACCOUNT_DELETION_GCS_BUCKETS:-high-ground-odyssey-media}"
 database_secret="${ACCOUNT_DELETION_DATABASE_SECRET:-studio-database-url}"
@@ -188,7 +188,11 @@ gcloud storage buckets add-iam-policy-binding "gs://${bucket}" \
   --role=roles/storage.objectUser \
   --quiet >/dev/null
 
-for secret_name in "${database_secret}" "${shared_secret}" "${completion_email_secrets[@]}"; do
+worker_secret_names=("${database_secret}" "${shared_secret}")
+if [[ "${#completion_email_secrets[@]}" -gt 0 ]]; then
+  worker_secret_names+=("${completion_email_secrets[@]}")
+fi
+for secret_name in "${worker_secret_names[@]}"; do
   gcloud secrets add-iam-policy-binding "${secret_name}" \
     --project="${project_id}" \
     --member="serviceAccount:${worker_service_account}" \
@@ -212,8 +216,8 @@ gcloud run deploy "${service}" \
   --set-secrets="DATABASE_URL=${database_secret}:latest,QUIPSLY_ACCOUNT_DELETION_WORKER_SHARED_SECRET=${shared_secret}:latest${completion_email_secret_mounts}" \
   --set-env-vars="QUIPSLY_ACCOUNT_DELETION_WORKER_MODE=true,QUIPSLY_ACCOUNT_DELETION_EXECUTOR_ENABLED=true,QUIPSLY_ACCOUNT_DELETION_GCS_BUCKETS=${bucket},FIREBASE_PROJECT_ID=${firebase_project_id},QUIPSLY_SOURCE_SHA=${source_sha},QUIPSLY_ACCOUNT_DELETION_WORKER_MIN_INSTANCES=0" \
   --concurrency=1 \
-  --min=0 \
-  --max=1 \
+  --min-instances=0 \
+  --max-instances=1 \
   --timeout=900 \
   --ingress=all \
   --no-allow-unauthenticated \

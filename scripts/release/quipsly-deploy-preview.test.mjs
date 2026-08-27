@@ -113,6 +113,19 @@ test("preview deploy enables the exact public GA4 stream without treating its id
   assert.doesNotMatch(source, /QUIPSLY_GA_MEASUREMENT_ID=.*:latest/);
 });
 
+test("preview deploy defaults to the valid dedicated account deletion identity", () => {
+  const source = readFileSync(deployScript, "utf8");
+
+  assert.match(
+    source,
+    /ACCOUNT_DELETION_WORKER_SERVICE_ACCOUNT="\$\{ACCOUNT_DELETION_WORKER_SERVICE_ACCOUNT:-quipsly-deletion-worker@\$\{PROJECT_ID\}\.iam\.gserviceaccount\.com\}"/,
+  );
+  assert.doesNotMatch(
+    source,
+    /quipsly-account-deletion-worker@\$\{PROJECT_ID\}\.iam\.gserviceaccount\.com/,
+  );
+});
+
 test("session invitation email is explicit, Secret Manager backed, and safe to disable", () => {
   const source = readFileSync(deployScript, "utf8");
 

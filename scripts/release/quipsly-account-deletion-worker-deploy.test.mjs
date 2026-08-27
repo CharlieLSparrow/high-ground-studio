@@ -19,6 +19,10 @@ test("worker deployment is read-only by default and requires an exact apply targ
 
 test("worker deployment isolates destructive provider authority", () => {
   const source = readFileSync(script, "utf8");
+  assert.match(
+    source,
+    /quipsly-deletion-worker@\$\{project_id\}\.iam\.gserviceaccount\.com/,
+  );
   assert.match(source, /roles\/cloudsql\.client/);
   assert.match(source, /roles\/firebaseauth\.admin/);
   assert.match(source, /roles\/storage\.objectUser/);
@@ -26,8 +30,10 @@ test("worker deployment isolates destructive provider authority", () => {
   assert.match(source, /roles\/run\.invoker/);
   assert.match(source, /--service-account="\$\{worker_service_account\}"/);
   assert.match(source, /--concurrency=1/);
-  assert.match(source, /--min=0/);
-  assert.match(source, /--max=1/);
+  assert.match(source, /--min-instances=0/);
+  assert.match(source, /--max-instances=1/);
+  assert.match(source, /worker_secret_names=\("\$\{database_secret\}" "\$\{shared_secret\}"\)/);
+  assert.match(source, /"\$\{#completion_email_secrets\[@\]\}" -gt 0/);
   assert.match(source, /--no-allow-unauthenticated/);
   assert.match(source, /QUIPSLY_ACCOUNT_DELETION_GCS_BUCKETS=\$\{bucket\}/);
   assert.match(source, /completion_email_secret_mounts/);
