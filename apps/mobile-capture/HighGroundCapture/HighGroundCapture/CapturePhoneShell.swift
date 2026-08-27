@@ -2733,7 +2733,7 @@ struct TodayFollowThroughCard: View {
                     HStack(spacing: 6) {
                         Text("Revision \(followUp.revision)")
                         Text("·")
-                        Text("\(followUp.selectedCount) reviewed record\(followUp.selectedCount == 1 ? "" : "s")")
+                        Text("\(followUp.selectedCount) shared item\(followUp.selectedCount == 1 ? "" : "s")")
                     }
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(.secondary)
@@ -2751,8 +2751,8 @@ struct TodayFollowThroughCard: View {
                     .buttonStyle(.borderedProminent)
                     .tint(.green)
                     .accessibilityIdentifier("CaptureTodayClientFollowUpOpen_\(followUp.outputId)")
-                    .accessibilityHint("Opens the exact Session follow-up. Reading and acknowledgment remain separate, and no task or goal is completed.")
-                    Text("Today only points to the released snapshot. Confirm it inside the Session after reading; opening this card never completes a commitment.")
+                    .accessibilityHint("Opens the follow-up in its Session. No task or goal is completed automatically.")
+                    Text("Open the shared notes, tasks, goals, and next steps in this Session.")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -8828,7 +8828,7 @@ private struct CaptureSessionTranscriptReviewCard: View {
             }
             .buttonStyle(.plain)
             .captureCard()
-            .accessibilityHint("Opens transcript correction, exact-source playback, and text-based recording editing. Playback does not start automatically.")
+            .accessibilityHint("Opens the transcript, exact-source playback, corrections, and text-based recording editing. Playback does not start automatically.")
             .accessibilityIdentifier("CaptureSessionTranscriptReviewLink_\(session.callRoomId)")
         } else if transcriptLifecycleVisible {
             VStack(alignment: .leading, spacing: 10) {

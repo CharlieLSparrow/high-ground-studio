@@ -2447,7 +2447,7 @@ final class CaptureExperienceUITests: XCTestCase {
         let heldTitle = app.staticTexts["CaptureCoachFollowUpReleaseHeldTitle"]
         revealBelow(heldTitle, in: followUpScroll)
         XCTAssertTrue(heldTitle.waitForExistence(timeout: 5))
-        XCTAssertTrue(heldTitle.label.contains("Review updates before sharing"))
+        XCTAssertTrue(heldTitle.label.contains("Selected items changed"))
         let sourceChanges = app.staticTexts
             .matching(identifier: "CaptureCoachFollowUpReleaseHeldChange")
             .matching(

@@ -1243,7 +1243,7 @@ struct MobileCoachClientFollowUpCard: View {
             }
             .buttonStyle(.plain)
             .accessibilityIdentifier("CaptureCoachClientFollowUp")
-            .accessibilityHint("Opens the private follow-up review workspace without releasing or sending anything.")
+            .accessibilityHint("Opens the private follow-up editor. Nothing is shared until you tap Share.")
             .padding(10)
             .background(Color.teal.opacity(0.08), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
             .sheet(isPresented: $isReviewing) {
@@ -1408,7 +1408,7 @@ struct MobileCoachClientFollowUpCard: View {
                                 .accessibilityIdentifier("CaptureCoachFollowUpUnsavedChanges")
                             } else {
                                 VStack(alignment: .leading, spacing: 5) {
-                                    Label("Review updates before sharing", systemImage: "exclamationmark.shield.fill")
+                                    Label("Selected items changed", systemImage: "exclamationmark.shield.fill")
                                         .font(.caption.bold())
                                         .foregroundStyle(.red)
                                         .accessibilityIdentifier("CaptureCoachFollowUpReleaseHeldTitle")
@@ -1423,7 +1423,7 @@ struct MobileCoachClientFollowUpCard: View {
                                         Text("Quipsly could not verify this draft against the current notes, tasks, and goals.")
                                             .font(.caption2.bold())
                                     }
-                                    Text("Review the current selections and save the draft before sharing.")
+                                    Text("Update the selections and save the draft before sharing.")
                                         .font(.caption2)
                                         .fixedSize(horizontal: false, vertical: true)
                                 }

@@ -2956,7 +2956,7 @@ struct CaptureTranscriptReviewView: View {
                     }
 
                     if let message = client.message {
-                        reviewNotice(title: "Review status", detail: message, tint: .blue, icon: "info.circle.fill")
+                        reviewNotice(title: "Transcript status", detail: message, tint: .blue, icon: "info.circle.fill")
                     }
                     if client.isUsingProtectedCache {
                         reviewNotice(
@@ -3235,7 +3235,7 @@ struct CaptureTranscriptReviewView: View {
                         Image(systemName: "arrow.clockwise")
                     }
                     .disabled(client.isLoading || client.isMutating)
-                    .accessibilityLabel("Refresh transcript review")
+                    .accessibilityLabel("Refresh transcript")
                 }
             }
             .sheet(isPresented: $showsRecordingSource) {
@@ -3311,7 +3311,7 @@ struct CaptureTranscriptReviewView: View {
     ) -> some View {
         if !desk.gate.allowed {
             reviewNotice(
-                title: "Transcript review held",
+                title: "Transcript unavailable",
                 detail: desk.gate.error ?? "The recording release gate has not cleared.",
                 tint: .orange,
                 icon: "lock.fill"
@@ -3320,7 +3320,7 @@ struct CaptureTranscriptReviewView: View {
             ContentUnavailableView(
                 "No transcript segments",
                 systemImage: "text.badge.xmark",
-                description: Text("Run the recording-backed transcript before reviewing corrections.")
+                description: Text("Create the recording-backed transcript to read, play, and edit it here.")
             )
         } else {
             transcriptPresentationPicker

@@ -302,7 +302,7 @@ private struct ProtectedOfflineLibraryShell: View {
                                 return
                             }
                             captureModel.select(session)
-                            captureModel.message = "Exact Session selected. Open Capture to review and explicitly confirm the follow-up."
+                            captureModel.message = "Session selected. Open Capture to see the shared follow-up."
                         }
                     )
                 }
