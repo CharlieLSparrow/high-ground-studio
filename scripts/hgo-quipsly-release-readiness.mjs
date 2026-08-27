@@ -308,6 +308,18 @@ const operatorCheckRunners = [
 
 const liveCheckRunners = [
   () => runCheck(
+    "live-nest-source-identity",
+    "node",
+    ["scripts/release/quipsly-cloud-run-source-readiness.mjs", "--source", "HEAD"],
+    {
+      summary:
+        "Live Nest Cloud Run traffic resolves to the exact committed source under review.",
+      requiredForDeploy: false,
+      maxOutput: 4000,
+      parseJson: true,
+    },
+  ),
+  () => runCheck(
     "live-nest-public-coaching-packet",
     "node",
     [
@@ -369,13 +381,17 @@ const runtimeWarnings = checks.filter(
 const liveRouteMatrix = checks.find((check) => check.id === "live-public-route-matrix");
 const liveIntegrationSmoke = checks.find((check) => check.id === "live-public-integration-smoke");
 const livePublicPacket = checks.find((check) => check.id === "live-nest-public-coaching-packet");
+const liveSourceIdentity = checks.find((check) => check.id === "live-nest-source-identity");
 const liveRouteMatrixPayload = liveRouteMatrix ? checkPayload(liveRouteMatrix) : null;
 const liveIntegrationSmokePayload = liveIntegrationSmoke ? checkPayload(liveIntegrationSmoke) : null;
 const livePublicPacketPayload = livePublicPacket ? checkPayload(livePublicPacket) : null;
+const liveSourceIdentityPayload = liveSourceIdentity ? checkPayload(liveSourceIdentity) : null;
 const livePublicIntegrationProven =
+  liveSourceIdentity?.status === "pass" &&
   livePublicPacket?.status === "pass" &&
   liveRouteMatrix?.status === "pass" &&
   liveIntegrationSmoke?.status === "pass" &&
+  liveSourceIdentityPayload?.ok === true &&
   livePublicPacketPayload?.ok === true &&
   liveRouteMatrixPayload?.ok === true &&
   liveIntegrationSmokePayload?.ok === true;
@@ -385,6 +401,10 @@ const semanticRuntimeWarnings = checks.filter((check) => {
   return payload && payload.ok === false;
 });
 const livePublicDrift = {
+  sourceIdentityOk: liveSourceIdentityPayload?.ok === true,
+  expectedSourceSha: liveSourceIdentityPayload?.expectedSourceSha ?? null,
+  deployedSourceSha: liveSourceIdentityPayload?.deployedSourceSha ?? null,
+  liveRevision: liveSourceIdentityPayload?.liveRevision ?? null,
   publicPacketOk: livePublicPacketPayload?.ok === true,
   routeMatrixOk: liveRouteMatrixPayload?.ok === true,
   integrationSmokeOk: liveIntegrationSmokePayload?.ok === true,
@@ -436,6 +456,7 @@ const allRuntimeWarnings = [...runtimeWarnings, ...semanticRuntimeWarnings].filt
 const localSourceReady = localSourceBlockers.length === 0;
 const previewDeployReady = !localOnly && deployBlockers.length === 0;
 const liveChecksSkipped = localOnly || (
+  !liveSourceIdentity &&
   !livePublicPacket &&
   !liveRouteMatrix &&
   !liveIntegrationSmoke
