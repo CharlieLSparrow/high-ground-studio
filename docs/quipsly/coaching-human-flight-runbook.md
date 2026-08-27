@@ -3,7 +3,7 @@
 This is the real UX test. It is not a fixture smoke, a route checklist, or an
 operator demonstration. Run it only after automated release gates pass.
 
-## Immediate Build 36 physical flight
+## Immediate Build 37 physical flight
 
 The first physical flight is deliberately smaller than the complete cohort
 journey below. It proves the released phone and browser call spine before the
@@ -12,7 +12,7 @@ does not pass the complete human-flight or 50-coach release gate.
 
 Current release target, read back on 2026-08-27:
 
-- **Quipsly Capture 1.0 (36)** through the open Apple public beta at
+- **Quipsly Capture 1.0 (37)** through the open Apple public beta at
   `https://testflight.apple.com/join/XwRRcYUm`;
 - **Nest revision `studio-00523-yun`**, source
   `e73fef64880362f3c6c5fc793c5b047408d22a40`, serving 100% of production
@@ -38,7 +38,7 @@ requiring a laptop, a redemption code, an internal route, or a room ID.
 
 For this first flight, observe these facts without steering either person:
 
-1. Homer installs or updates Build 36, signs into the intended Quipsly account,
+1. Homer installs or updates Build 37, signs into the intended Quipsly account,
    creates the Session, and produces the invitation through ordinary UI.
 2. A signed-out client opens that exact invitation, uses a fresh identity,
    reaches only the invited coaching space, and can choose the supported app or
@@ -87,7 +87,7 @@ Give the coach only this sentence:
 Give the client only the invitation Quipsly produced. Do not supply a route,
 menu name, room ID, workaround, or spoken tour.
 
-This complete mission follows the immediate Build 36 flight. Do not interpret
+This complete mission follows the immediate Build 37 flight. Do not interpret
 a successful short call as proof that transcript correction, light editing,
 sharing, revocation, and later cohort operation have passed.
 

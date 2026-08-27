@@ -480,8 +480,8 @@ remain red until approved screenshots and every delivery-layer proof exist.
 ## Current blockers before App Store submission
 
 The canonical public TestFlight distribution target is **Quipsly Capture 1.0
-(36)**, provider build `3fde279a-7794-4468-a952-592d89fc68d1`, from exact source
-`532bfd6670ceaedd1590cdea3d1cd375987a841b`, through the public link
+(37)**, provider build `5bbe8b88-9db6-4dcb-a3f1-c084e44f16f2`, from exact source
+`11cfc2ba767dac67baec5e4977ada8fd43d89312`, through the public link
 `https://testflight.apple.com/join/XwRRcYUm`. Apple read back the build as
 `IN_BETA_TESTING` with beta review `APPROVED` on 2026-08-27. The exact source
 passed all 90 serialized iPhone and Share Extension journeys, signed archive
@@ -494,8 +494,8 @@ The current operational handoff and open human/device gates are maintained in
 [`coaching-cohort-release-handoff.md`](./coaching-cohort-release-handoff.md).
 The detailed Build 35 qualification remains historical context in
 [`coaching-cohort-release-acceptance.md`](./coaching-cohort-release-acceptance.md#build-35-exact-commit-candidate--2026-08-23).
-The App Store submission remains blocked by the account-level EU DSA trader
-determination, published App Privacy answers, approved exact-candidate
+The App Store submission remains blocked by the one-time DSA status declaration
+for the current United States-only distribution, published App Privacy answers, approved exact-candidate
 screenshots, physical-iPhone capture/call/recovery evidence, one controlled
 production account-deletion completion, and final archive/listing/legal
 reconciliation. These external gates do not stop independent product work.
