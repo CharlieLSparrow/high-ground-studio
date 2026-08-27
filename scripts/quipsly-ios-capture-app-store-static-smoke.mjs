@@ -89,6 +89,8 @@ const files = {
   webAppLayout: path.join(root, "apps/quipsly/src/app/(app)/layout.tsx"),
   webProjectCreateAction: path.join(root, "apps/quipsly/src/app/(app)/projects/actions.ts"),
   webSidebar: path.join(root, "apps/quipsly/src/components/SidebarLayout.tsx"),
+  webCaptureAppHandoff: path.join(root, "apps/quipsly/src/components/capture-app-handoff.tsx"),
+  webRecorderBottomBar: path.join(root, "apps/quipsly/src/app/(app)/read/RecorderBottomBar.tsx"),
   appStoreTransactionRoute: path.join(root, "apps/quipsly/src/app/api/mobile/capture/entitlements/app-store/transaction/route.ts"),
   appStoreNotificationsRoute: path.join(root, "apps/quipsly/src/app/api/billing/app-store/notifications/route.ts"),
   appStoreSubscriptionServer: path.join(root, "apps/quipsly/src/lib/server/app-store-subscriptions.ts"),
@@ -260,6 +262,8 @@ const mobileCaptureProjectsRouteText = read(files.mobileCaptureProjectsRoute);
 const webAppLayoutText = read(files.webAppLayout);
 const webProjectCreateActionText = read(files.webProjectCreateAction);
 const webSidebarText = read(files.webSidebar);
+const webCaptureAppHandoffText = read(files.webCaptureAppHandoff);
+const webRecorderBottomBarText = read(files.webRecorderBottomBar);
 const appStoreTransactionRouteText = read(files.appStoreTransactionRoute);
 const appStoreNotificationsRouteText = read(files.appStoreNotificationsRoute);
 const appStoreSubscriptionServerText = read(files.appStoreSubscriptionServer);
@@ -2178,6 +2182,10 @@ requireExcludes(mobileCaptureProjectsRouteText, "PROJECT_BETA_ACCESS_REQUIRED", 
 requireIncludes(webProjectCreateActionText, 'capability: "workspace.private_nests"', "web private Nest creation shares canonical paid access");
 requireExcludes(webAppLayoutText, "BetaAccessView", "signed-in product entry is not blocked by manual beta review");
 requireExcludes(webSidebarText, "currentUser?.hasBetaAccess", "customer navigation does not carry a beta badge");
+requireExcludes(webSidebarText, "Support beta", "customer support is presented as a paid product capability");
+requireExcludes(webCaptureAppHandoffText, "Get the beta", "Session handoff presents the iPhone app as the product");
+requireExcludes(webCaptureAppHandoffText, "update the beta", "Session recovery presents the iPhone app as the product");
+requireExcludes(webRecorderBottomBarText, "Beta:", "browser recording guidance is release-ready");
 requireIncludes(appStoreTransactionRouteText, "verifyAppStoreTransaction", "server verifies signed App Store transactions");
 requireIncludes(appStoreTransactionRouteText, "expectedUserId: session.user.id", "server refuses cross-account purchase attachment");
 requireIncludes(appStoreNotificationsRouteText, "verifyAppStoreNotification", "server verifies App Store Server Notifications V2");

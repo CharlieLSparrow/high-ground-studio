@@ -58,7 +58,7 @@ export function RecorderBottomBar({ projectSlug, episodeSlug }: { projectSlug: s
       aria-label="Recording Controls"
     >
       <div className="bg-yellow-900/40 text-yellow-500/90 text-[10px] uppercase tracking-wider text-center py-1.5 px-4 font-semibold border-b border-yellow-900/30">
-        ⚠️ Beta: Keep screen awake. Do not lock phone. Use Wi-Fi for long takes.
+        Keep this tab open and your device awake. Wi-Fi is recommended for long recordings.
       </div>
       
       <div className="p-4 flex flex-col gap-4">
