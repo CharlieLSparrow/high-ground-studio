@@ -1326,7 +1326,7 @@ final class CaptureExperienceUITests: XCTestCase {
         let audience = app.descendants(matching: .any)["CaptureQuickEntryNoteVisibility"].firstMatch
         reveal(noteDetails)
         XCTAssertTrue(noteDetails.exists)
-        XCTAssertTrue((noteDetails.value as? String)?.contains("Only me") == true, "A Session note should default to private without interrupting capture.")
+        XCTAssertTrue((noteDetails.value as? String)?.contains("Session") == true, "An ordinary Session note should default to the shared Session workspace without interrupting capture.")
         XCTAssertFalse(purpose.exists, "Advanced note details should stay collapsed during ordinary capture.")
         XCTAssertFalse(audience.exists, "Advanced sharing should stay collapsed during ordinary capture.")
         let save = app.buttons["CaptureQuickEntrySave"]
