@@ -26,6 +26,8 @@ describe("Quipsly workspace navigation", () => {
     expect(screen.getAllByRole("link", { name: "Audio Studio" })[0]).toHaveAttribute("href", "/audio");
     expect(screen.getAllByRole("link", { name: "Podcast desk" })[0]).toHaveAttribute("href", "/podcast");
     expect(screen.getAllByRole("link", { name: "Publishing" }).some((link) => link.getAttribute("href") === "/publishing")).toBe(true);
+    expect(screen.getByRole("link", { name: "Get support" })).toHaveAttribute("href", "https://quipsly.com/support");
+    expect(screen.queryByText(/support beta/i)).not.toBeInTheDocument();
   });
 
   it("advertises Search All and a canonical attention queue without inventing unread notifications", () => {

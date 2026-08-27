@@ -165,7 +165,7 @@ export function SidebarLayout({
             href="https://quipsly.com/support"
             className="hidden rounded-full border border-[#e8dcc4] bg-white px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-[#8c6b4a] shadow-sm transition hover:border-amber-400/50 hover:bg-[#fff8ec] lg:inline-flex"
           >
-            Support beta
+            Get support
           </a>
           <Link href="/settings" className="relative p-2 rounded-full hover:bg-[#ebdcc8] text-[#8c6b4a] hover:text-[#3d3122] transition-colors hidden md:block" aria-label="Settings">
             <Settings className="w-5 h-5" />
