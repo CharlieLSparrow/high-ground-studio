@@ -110,6 +110,9 @@ test("preview deploy enables the exact public GA4 stream without treating its id
   );
   assert.match(source, /QUIPSLY_GA_MEASUREMENT_ID must be a GA4 measurement ID/);
   assert.match(source, /QUIPSLY_GA_MEASUREMENT_ID=\$\{QUIPSLY_GA_MEASUREMENT_ID\}/);
+  assert.match(source, /QUIPSLY_GA_PROPERTY_ID="\$\{QUIPSLY_GA_PROPERTY_ID:-503353241\}"/);
+  assert.match(source, /QUIPSLY_GA_PROPERTY_ID must be a numeric GA4 property ID/);
+  assert.match(source, /QUIPSLY_GA_PROPERTY_ID=\$\{QUIPSLY_GA_PROPERTY_ID\}/);
   assert.doesNotMatch(source, /QUIPSLY_GA_MEASUREMENT_ID=.*:latest/);
 });
 

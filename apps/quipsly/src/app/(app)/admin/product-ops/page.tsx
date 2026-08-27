@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 
 import { getPrismaClient } from "@/lib/prisma";
+import { readQuipslyGoogleAnalyticsSummary } from "@/lib/server/google-analytics-reporting";
 import { requireQuipslyProductAnalyst } from "@/lib/server/user-management";
 
 export const dynamic = "force-dynamic";
@@ -39,6 +40,7 @@ export default async function ProductOperationsPage({
   const days = selectedWindow(params.days);
   const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
   const prisma = getPrismaClient();
+  const googleAnalyticsPromise = readQuipslyGoogleAnalyticsSummary({ days });
 
   const [
     newAccounts,
@@ -147,6 +149,7 @@ export default async function ProductOperationsPage({
       },
     }),
   ]);
+  const googleAnalytics = await googleAnalyticsPromise;
 
   const funnel = [
     { label: "New accounts", count: newAccounts, Icon: Users },
@@ -211,6 +214,33 @@ export default async function ProductOperationsPage({
           <Summary label="Deletion attention" value={openDeletionRequests} detail="Open or failed requests" tone={openDeletionRequests ? "warn" : "neutral"} />
         </section>
 
+        {googleAnalytics.status === "available" ? (
+          <section className="rounded-3xl border border-[#ddcfba] bg-white p-6 shadow-sm">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+              <div>
+                <h2 className="font-serif text-2xl font-black">Audience and acquisition</h2>
+                <p className="mt-1 text-sm text-[#766757]">Consent-based GA4 aggregates for the selected window. Quipsly&apos;s database remains the authority for completed workflows.</p>
+              </div>
+              <span className="text-xs font-black text-[#8f5e2c]">GA4 property {googleAnalytics.propertyId}</span>
+            </div>
+            <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              <Summary label="Measured active users" value={googleAnalytics.activeUsers} detail="Analytics-consenting browsers" />
+              <Summary label="Measured new users" value={googleAnalytics.newUsers} detail="Not total account creation" />
+              <Summary label="Measured sessions" value={googleAnalytics.sessions} detail={`${googleAnalytics.engagedSessions} engaged`} />
+              <Summary label="Engagement rate" value={`${googleAnalytics.sessions ? Math.round(googleAnalytics.engagedSessions / googleAnalytics.sessions * 100) : 0}%`} detail="Percent of measured sessions" />
+            </div>
+            <div className="mt-5 grid gap-5 xl:grid-cols-3">
+              <AggregateList title="Devices" rows={googleAnalytics.devices.map((row) => ({ label: row.label, value: row.activeUsers ?? 0, detail: `${row.sessions ?? 0} sessions` }))} />
+              <AggregateList title="Acquisition channels" rows={googleAnalytics.channels.map((row) => ({ label: row.label, value: row.activeUsers ?? 0, detail: `${row.newUsers ?? 0} new · ${row.sessions ?? 0} sessions` }))} />
+              <AggregateList title="Measured product events" rows={googleAnalytics.productEvents.map((row) => ({ label: productEventLabel(row.label), value: row.eventCount ?? 0, detail: `${row.activeUsers ?? 0} users` }))} />
+            </div>
+          </section>
+        ) : (
+          <section className="rounded-3xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-950">
+            <div className="flex items-start gap-3"><CircleAlert className="mt-0.5 shrink-0" size={20} /><div><strong>GA4 aggregate readback is {googleAnalytics.status.replaceAll("-", " ")}.</strong><p className="mt-1">{googleAnalytics.reason}</p>{googleAnalytics.status === "permission-denied" ? <p className="mt-1">Grant GA4 Viewer access on property {googleAnalytics.propertyId} to <span className="font-mono">studio-cloud-run@high-ground-odyssey.iam.gserviceaccount.com</span>. Collection and Quipsly&apos;s app-owned workflow ledger continue normally.</p> : null}</div></div>
+          </section>
+        )}
+
         <section className="rounded-3xl border border-[#ddcfba] bg-white p-6 shadow-sm">
           <div className="flex items-center justify-between gap-4">
             <div><h2 className="font-serif text-2xl font-black">Coaching operating loop</h2><p className="mt-1 text-sm text-[#766757]">Activity created during the selected window.</p></div>
@@ -245,7 +275,7 @@ export default async function ProductOperationsPage({
   );
 }
 
-function Summary({ label, value, detail, tone = "neutral" }: { label: string; value: number; detail: string; tone?: "neutral" | "good" | "warn" | "bad" }) {
+function Summary({ label, value, detail, tone = "neutral" }: { label: string; value: number | string; detail: string; tone?: "neutral" | "good" | "warn" | "bad" }) {
   const tones = { neutral: "border-[#ddcfba] bg-white", good: "border-emerald-200 bg-emerald-50", warn: "border-amber-200 bg-amber-50", bad: "border-rose-200 bg-rose-50" };
   return <article className={`rounded-2xl border p-5 shadow-sm ${tones[tone]}`}><div className="text-xs font-black uppercase tracking-wide text-[#746554]">{label}</div><div className="mt-2 text-4xl font-black">{value}</div><div className="mt-1 text-xs text-[#766757]">{detail}</div></article>;
 }
@@ -256,4 +286,8 @@ function Panel({ title, icon: Icon, children }: { title: string; icon: typeof Ac
 
 function Empty({ children }: { children: React.ReactNode }) {
   return <div className="rounded-xl border border-dashed border-[#d5c3aa] p-5 text-center text-sm text-[#766757]">{children}</div>;
+}
+
+function AggregateList({ title, rows }: { title: string; rows: Array<{ label: string; value: number; detail: string }> }) {
+  return <section className="rounded-2xl border border-[#eadfce] bg-[#faf7f1] p-4"><h3 className="font-black">{title}</h3><div className="mt-3 grid gap-2">{rows.map((row) => <div key={row.label} className="flex items-center justify-between gap-3 rounded-xl bg-white px-3 py-2 text-sm"><div className="min-w-0"><div className="truncate capitalize font-bold">{row.label}</div><div className="text-xs text-[#887967]">{row.detail}</div></div><strong className="text-lg">{row.value}</strong></div>)}{!rows.length ? <Empty>No measured activity yet.</Empty> : null}</div></section>;
 }
