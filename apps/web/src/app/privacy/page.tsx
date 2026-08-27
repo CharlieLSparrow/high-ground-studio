@@ -6,7 +6,7 @@ import PageContainer from "@/components/ui/PageContainer";
 import PageEyebrow from "@/components/ui/PageEyebrow";
 
 export const metadata: Metadata = {
-  title: "Privacy and Recording | High Ground Odyssey",
+  title: "Privacy and Recording | Quipsly",
   description:
     "How High Ground Odyssey and Quipsly handle coaching capture, recordings, transcripts, payments, and account deletion requests.",
 };
@@ -30,7 +30,7 @@ const DATA_ROWS = [
   },
   {
     label: "Transcripts and notes",
-    body: "Transcript jobs, speaker/timing segments, transcript corrections, coaching notes, highlights, action-item candidates, and follow-up packets.",
+    body: "Timed transcript passages, speaker attribution, corrections, coaching notes, highlights, shared tasks, goals, and follow-up summaries.",
   },
   {
     label: "Diagnostics",
@@ -49,7 +49,7 @@ export default function PrivacyPage() {
               Recording should feel explicit, useful, and never sneaky.
             </h1>
             <p className="mb-0 mt-5 max-w-3xl text-base leading-8 text-[rgba(245,239,230,0.86)]">
-              High Ground Odyssey uses Quipsly to schedule coaching and podcast sessions, capture recordings with consent, upload them safely, transcribe them, and turn them into reviewable notes and follow-up work. This page explains the current product posture in plain language while the system moves toward beta.
+              Quipsly helps people schedule coaching and podcast sessions, record with consent, protect their source files, transcribe conversations, and turn them into editable notes, tasks, goals, and follow-up. This page explains what the service handles in plain language.
             </p>
           </GlassPanel>
 
@@ -58,7 +58,7 @@ export default function PrivacyPage() {
               <PageEyebrow>Consent first</PageEyebrow>
               <h2 className="m-0 mt-3 text-3xl font-semibold tracking-[-0.04em]">No hidden recording.</h2>
               <p className="mb-0 mt-4 text-sm leading-7 text-[rgba(245,239,230,0.78)]">
-                Recording should begin only after participants know the session is being recorded and consent is granted. Consent can be granted, declined, or revoked. If consent is revoked during a mobile capture session, the app should stop local capture and preserve the source file for review and retention handling.
+                Recording begins only after participants know the session is being recorded and consent is granted. Consent can be granted, declined, or revoked. If consent is revoked during a mobile capture session, Quipsly stops local capture and safely closes the recording.
               </p>
             </GlassPanel>
 
@@ -66,7 +66,7 @@ export default function PrivacyPage() {
               <PageEyebrow>Source truth</PageEyebrow>
               <h2 className="m-0 mt-3 text-3xl font-semibold tracking-[-0.04em]">Providers are evidence.</h2>
               <p className="mb-0 mt-4 text-sm leading-7 text-[rgba(245,239,230,0.78)]">
-                Stripe, calendars, call providers, storage buckets, and transcription providers are evidence feeds. Quipsly owns the booking, consent, recording, transcript, notes, and action-item chain so users and operators can understand what happened.
+                Quipsly keeps the appointment, consent, recording, transcript, notes, and follow-up connected even when calendars, call services, storage, payments, or transcription rely on other providers. You can see the status of your work without learning the underlying systems.
               </p>
             </GlassPanel>
           </section>
@@ -85,9 +85,9 @@ export default function PrivacyPage() {
 
           <GlassPanel className="p-6 md:p-8">
             <PageEyebrow>Retention and deletion</PageEyebrow>
-            <h2 className="m-0 mt-3 text-3xl font-semibold tracking-[-0.04em]">Deletion is reviewed because recordings have obligations.</h2>
+            <h2 className="m-0 mt-3 text-3xl font-semibold tracking-[-0.04em]">You can delete your account from the app.</h2>
             <p className="mb-0 mt-4 text-sm leading-7 text-[rgba(245,239,230,0.78)]">
-              Users can request account deletion from inside the iOS capture app. Quipsly reviews deletion requests before destructive deletion because an account may contain coaching bookings, consent records, payment evidence, recordings, transcripts, notes, and legal or operational retention obligations.
+              Start account deletion in Quipsly Capture without first removing every Session or file. Access is removed and eligible personal data is deleted. A limited record may be retained or anonymized only when required for legal, security, payment, or shared-collaboration obligations. The app shows the request status and sends completion confirmation.
             </p>
             <div className="mt-5">
               <Link

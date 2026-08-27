@@ -750,6 +750,13 @@ function safeActionTone(
   return "warm";
 }
 
+function safeActionLabel(risk?: string | null) {
+  if (risk === "human-approval-required") return "needs your choice";
+  if (risk === "low") return "ready";
+  if (risk === "medium") return "check first";
+  return "details";
+}
+
 function LifecycleSafeActionCard({
   action,
 }: {
@@ -765,15 +772,11 @@ function LifecycleSafeActionCard({
     >
       <div className="flex flex-wrap items-center gap-2">
         <StatusPill
-          label={action.enabled ? "safe next" : "waiting"}
+          label={action.enabled ? "available" : "waiting"}
           tone={action.enabled ? "good" : "warm"}
         />
         <StatusPill
-          label={
-            action.risk === "human-approval-required"
-              ? "human approval"
-              : action.risk
-          }
+          label={safeActionLabel(action.risk)}
           tone={safeActionTone(action.risk)}
         />
       </div>
@@ -785,7 +788,7 @@ function LifecycleSafeActionCard({
       </p>
       <p className="mt-2 rounded-lg bg-[#f7f1e6] p-2 text-[11px] font-bold leading-relaxed text-[#6e5635]">
         <span className="uppercase tracking-wide text-[#9a6a2f]">
-          Action boundary:
+          What changes:
         </span>{" "}
         {action.boundary}
       </p>
@@ -810,11 +813,19 @@ function LifecyclePanel({
   ).slice(0, 3);
 
   return (
-    <div className="mt-3 rounded-2xl border border-emerald-100 bg-emerald-50/60 p-3">
+    <details className="group mt-3 rounded-2xl border border-emerald-100 bg-emerald-50/60 p-3">
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-xs font-black text-[#315641] [&::-webkit-details-marker]:hidden">
+        <span>Session status details</span>
+        <span className="rounded-full border border-emerald-200 bg-white/80 px-2 py-1 text-[10px] uppercase tracking-wide group-open:hidden">
+          {titleCase(lifecycle.stage) || "Available"}
+        </span>
+        <span className="hidden text-lg leading-none group-open:inline" aria-hidden="true">−</span>
+      </summary>
+      <div className="mt-3 border-t border-emerald-100 pt-3">
       <div className="mb-2 flex flex-wrap items-center gap-2">
-        <StatusPill label="receipt slots" tone="good" />
+        <StatusPill label="Session status" tone="good" />
         <StatusPill
-          label={titleCase(lifecycle.stage) || "Needs Review"}
+          label={titleCase(lifecycle.stage) || "Needs attention"}
           tone={lifecycle.readyForReview ? "good" : "warm"}
         />
         {lifecycle.readyForCapture && (
@@ -829,7 +840,7 @@ function LifecyclePanel({
       </div>
       <p className="text-xs font-bold leading-relaxed text-[#315641]">
         {lifecycle.nextAction ||
-          "Review the visible receipt slots before changing session state."}
+          "Quipsly is keeping the call, recording, transcript, and follow-up connected."}
       </p>
       {visibleChecks.length > 0 && (
         <div className="mt-2 flex flex-wrap gap-1.5">
@@ -842,10 +853,10 @@ function LifecyclePanel({
         <div className="mt-3 border-t border-emerald-100 pt-3">
           <div className="mb-2 flex items-center justify-between gap-2">
             <p className="text-[11px] font-black uppercase tracking-wide text-[#315641]">
-              Safe next actions
+              Available next steps
             </p>
             <StatusPill
-              label={`${enabledSafeActions.length} enabled`}
+              label={`${enabledSafeActions.length} available`}
               tone={enabledSafeActions.length ? "good" : "warm"}
             />
           </div>
@@ -856,7 +867,8 @@ function LifecyclePanel({
           </div>
         </div>
       )}
-    </div>
+      </div>
+    </details>
   );
 }
 
@@ -1886,7 +1898,7 @@ export default function CoachingPage() {
     setPacketStatusByRoom((current) => ({
       ...current,
       [room.id]:
-        "Building a reviewable coaching packet from the completed transcript...",
+        "Creating editable notes, tasks, goals, and follow-up from the completed transcript...",
     }));
 
     try {
@@ -1912,7 +1924,7 @@ export default function CoachingPage() {
         [room.id]:
           payload.nextAction ||
           payload.message ||
-          "Packet evidence created. Refreshing Quipsly truth...",
+          "Follow-up is ready. Refreshing this Session...",
       }));
       await loadRunway();
     } catch (cause) {
@@ -3922,9 +3934,10 @@ export default function CoachingPage() {
                           />
                         </div>
                         <p className="text-xs font-bold leading-relaxed text-[#5d4930]">
-                          Transcripts are reusable evidence, not source truth.
-                          Build packets only from completed transcript jobs so
-                          notes, highlights, and action items stay reviewable.
+                          Completed transcripts become editable notes,
+                          highlights, tasks, and goals. Every result keeps a
+                          link to its source moment, while the recording remains
+                          unchanged.
                         </p>
                         {transcriptStatusByRoom[room.id] && (
                           <p className="mt-2 rounded-xl bg-[#f8f3e6] p-2 text-xs font-bold text-[#7b5c3b]">

@@ -542,6 +542,7 @@ private struct CaptureFinishQueueCard: View {
     @ObservedObject var client: CaptureReviewDigestClient
     let previewOnly: Bool
     let onOpenSession: (String) -> Void
+    @State private var showsDetails = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -552,9 +553,9 @@ private struct CaptureFinishQueueCard: View {
                     .frame(width: 36, height: 36)
                     .background(Color.purple.opacity(0.12), in: RoundedRectangle(cornerRadius: 11))
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("Finish queue")
+                    Text("Recordings & transcripts")
                         .font(.headline)
-                    Text("Nest ranks the next explicit step after capture. Opening an item changes nothing by itself.")
+                    Text("Keep every session moving from recording to transcript and edit.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -576,22 +577,22 @@ private struct CaptureFinishQueueCard: View {
                 HStack(spacing: 8) {
                     finishMetric(
                         value: digest.recoveryOpen ?? 0,
-                        label: "Recovery",
+                        label: "Needs care",
                         tint: .orange
                     )
                     finishMetric(
                         value: digest.safeToLeave ?? 0,
-                        label: "Safe",
+                        label: "Backed up",
                         tint: .green
                     )
                     finishMetric(
                         value: digest.recordingPromotedToMedia ?? 0,
-                        label: "In Studio",
+                        label: "Ready to edit",
                         tint: .blue
                     )
                     finishMetric(
                         value: digest.reviewReady ?? 0,
-                        label: "Review ready",
+                        label: "Transcript ready",
                         tint: .green
                     )
                 }
@@ -642,12 +643,12 @@ private struct CaptureFinishQueueCard: View {
                             }
                             .buttonStyle(.plain)
                             .accessibilityIdentifier("CaptureFinishAction_\(action.callRoomId)_\(action.kind)")
-                            .accessibilityHint("Opens the exact Session. It does not perform the finishing action.")
+                            .accessibilityHint("Opens this session.")
                         }
                     }
                 } else {
                     Label(
-                        "No retained Session currently has a server-ranked finishing action. This is not a proof-listen claim.",
+                        "Your recent sessions are moving along. If anything needs attention, it will appear here.",
                         systemImage: "checkmark.circle"
                     )
                     .font(.caption.weight(.semibold))
@@ -655,10 +656,15 @@ private struct CaptureFinishQueueCard: View {
                 }
 
                 if let boundary = client.response?.boundaries {
-                    Label(boundary.safetyLine, systemImage: "shield.lefthalf.filled")
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                        .accessibilityIdentifier("CaptureFinishQueueBoundary")
+                    DisclosureGroup("Recording details", isExpanded: $showsDetails) {
+                        Label(boundary.safetyLine, systemImage: "shield.lefthalf.filled")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                            .padding(.top, 6)
+                            .accessibilityIdentifier("CaptureFinishQueueBoundary")
+                    }
+                    .font(.caption.weight(.semibold))
+                    .accessibilityIdentifier("CaptureFinishQueueDetails")
                 }
             } else if let error = client.errorMessage {
                 Label(error, systemImage: "exclamationmark.triangle.fill")
@@ -14861,9 +14867,9 @@ private struct NewCaptureSessionSheet: View {
                 }
 
                 if model.newSessionPurpose == "COACHING" {
-                    Section("Coaching continuity") {
-                        Picker("Engagement", selection: $model.newSessionCoachingEngagementID) {
-                            Text("Choose later").tag("")
+                    Section("Client space") {
+                        Picker("Client", selection: $model.newSessionCoachingEngagementID) {
+                            Text("Invite later").tag("")
                             ForEach(model.coachingEngagements) { engagement in
                                 Text(engagement.title).tag(engagement.id)
                             }
@@ -14872,30 +14878,25 @@ private struct NewCaptureSessionSheet: View {
                         .accessibilityIdentifier("NewCaptureSessionEngagementPicker")
 
                         if let engagement = model.selectedNewSessionCoachingEngagement {
-                            LabeledContent("Nest", value: engagement.projectName)
+                            LabeledContent("Project", value: engagement.projectName)
                             if !engagement.participantLine.isEmpty {
                                 LabeledContent("People", value: engagement.participantLine)
                             }
-                            Text("This Session will share the engagement's private history, goals, tasks, and collaboration thread without granting access to the whole Nest.")
+                            Text("Keeps this client's shared notes, tasks, goals, messages, and session history together.")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         } else if model.coachingEngagements.isEmpty {
-                            Text("No writable Coaching Engagements are available yet. You can still create a Session in your private Home Nest and connect it later in Nest.")
+                            Text("Create the session now, then invite the client when you're ready.")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         } else {
-                            Text("Choose an existing engagement to preserve exact client-and-coach continuity, or choose later for a standalone private Session.")
+                            Text("Choose a client to keep their work together, or invite someone after creating the session.")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
                     }
                 }
 
-                Section {
-                    Label("Creating a session never starts a call or recording. Consent remains a separate action.", systemImage: "checkmark.shield")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
                 }
                 .navigationTitle("New session")
                 .navigationBarTitleDisplayMode(.inline)

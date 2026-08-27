@@ -140,6 +140,19 @@ describe("coaching release surfaces", () => {
     expect(source).toContain("?mode=outputs");
   });
 
+  it("keeps lifecycle diagnostics available without turning them into required paperwork", () => {
+    const source = readFileSync(join(coachingRoot, "page.tsx"), "utf8");
+    const compact = source.replace(/\s+/g, " ");
+
+    expect(compact).toContain(
+      '<details className="group mt-3 rounded-2xl border border-emerald-100',
+    );
+    expect(compact).toContain("Session status details");
+    expect(compact).toContain("Available next steps");
+    expect(compact).toContain('return "needs your choice"');
+    expect(compact).not.toContain("Action boundary:");
+  });
+
   it("guides coaches and clients through the real job instead of a fixture or data-model walkthrough", () => {
     const source = readFileSync(join(coachingRoot, "page.tsx"), "utf8");
     const compact = source.replace(/\s+/g, " ");

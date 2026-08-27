@@ -2640,9 +2640,9 @@ struct MobileCapturePacketReviewLane: Codable, Hashable, Identifiable {
         let source = sourceTruth?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         if !source.isEmpty { return source }
         if humanApprovalRequired == true && externalSideEffects == false {
-            return "Derived transcript lane; human approval required before delivery, publication, or task assignment."
+            return "This older transcript lane contains optional suggestions. Use, edit, or dismiss them whenever they help."
         }
-        return "Review this lane before acting on it."
+        return "Generated Session work stays editable and linked to its source."
     }
 }
 
@@ -2667,11 +2667,11 @@ struct MobileCapturePacketBuildResponse: Codable {
     let reusedExistingPacket: Bool?
 
     var packetTruthLine: String {
-        boundaries?.safetyLine ?? "Packet build returned without explicit source-truth boundaries. Review before relying on it."
+        boundaries?.safetyLine ?? "Follow-up was created from this Session transcript and remains editable."
     }
 
     var packetReviewLine: String {
-        boundaries?.reviewLine ?? "Packet output waits for human review before delivery or publication."
+        boundaries?.reviewLine ?? "Notes, tasks, and goals are ready to adjust; sharing remains a separate choice."
     }
 
     var packetNextActionLine: String {
@@ -2679,7 +2679,7 @@ struct MobileCapturePacketBuildResponse: Codable {
         if !action.isEmpty {
             return action
         }
-        return reusedExistingPacket == true ? "Open the existing packet for review." : "Open the new packet for review."
+        return reusedExistingPacket == true ? "Open the existing Session follow-up." : "Open the new Session follow-up."
     }
 
     var reviewLaneSummaryLine: String {
@@ -2690,9 +2690,9 @@ struct MobileCapturePacketBuildResponse: Codable {
             return "\(label) marked \(laneStatus.replacingOccurrences(of: "_", with: " ").lowercased()) inside Quipsly."
         }
         if total > 0 {
-            return "\(ready) of \(total) review lanes have candidate material for human approval."
+            return "\(ready) of \(total) optional suggestion groups are ready."
         }
-        return "No review lanes were returned. Open packet details before relying on this output."
+        return "Session follow-up is ready."
     }
 }
 

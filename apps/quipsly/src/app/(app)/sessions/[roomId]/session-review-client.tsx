@@ -440,7 +440,7 @@ function ReviewPacketSummary({ summary }: { summary: PacketSummary }) {
         </span>
         {brief.humanApprovalRequired && (
           <span className="rounded-full border border-violet-200 bg-violet-50 px-3 py-1.5 text-violet-800">
-            Human review required
+            Extra suggestions available
           </span>
         )}
       </div>

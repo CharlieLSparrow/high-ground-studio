@@ -1895,6 +1895,9 @@ final class CaptureExperienceUITests: XCTestCase {
             "Today should expose the account-scoped Nest finishing queue without adding another primary tab."
         )
         XCTAssertTrue(app.descendants(matching: .any)["CaptureFinishQueueMetrics"].exists)
+        let finishDetails = app.descendants(matching: .any)["CaptureFinishQueueDetails"].firstMatch
+        XCTAssertTrue(finishDetails.exists)
+        finishDetails.tap()
         XCTAssertTrue(app.descendants(matching: .any)["CaptureFinishQueueBoundary"].exists)
 
         let action = app.buttons[
