@@ -608,31 +608,34 @@ private struct CaptureTodayPrimaryActions: View {
     let onNewSession: () -> Void
 
     var body: some View {
-        HStack(spacing: 12) {
+        VStack(spacing: 12) {
             Button(action: onStartVoiceNote) {
-                VStack(alignment: .leading, spacing: 10) {
-                    HStack {
-                        Image(systemName: "waveform.circle.fill")
-                            .font(.title2)
-                        Spacer()
-                        if isStartingVoiceNote {
-                            ProgressView()
-                                .tint(.white)
-                        } else {
-                            Image(systemName: "arrow.right")
-                                .font(.headline)
-                        }
+                HStack(spacing: 15) {
+                    Image(systemName: "waveform.circle.fill")
+                        .font(.title.weight(.semibold))
+                        .frame(width: 50, height: 50)
+                        .background(.white.opacity(0.16), in: Circle())
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Speak to write")
+                            .font(.title3.weight(.bold))
+                        Text("Record a thought and turn it into editable writing")
+                            .font(.subheadline)
+                            .opacity(0.92)
                     }
-                    Text("Speak to write")
-                        .font(.headline)
-                    Text("Draft papers, notes, and ideas")
-                        .font(.caption)
-                        .opacity(0.9)
+                    Spacer(minLength: 8)
+                    if isStartingVoiceNote {
+                        ProgressView()
+                            .tint(.white)
+                    } else {
+                        Image(systemName: "arrow.right.circle.fill")
+                            .font(.title2)
+                    }
                 }
-                .frame(maxWidth: .infinity, minHeight: 100, alignment: .leading)
-                .padding(16)
+                .frame(maxWidth: .infinity, minHeight: 88, alignment: .leading)
+                .padding(.horizontal, 18)
+                .padding(.vertical, 12)
                 .foregroundStyle(.white)
-                .background(CapturePalette.accent.gradient, in: RoundedRectangle(cornerRadius: 20))
+                .background(CapturePalette.accent.gradient, in: RoundedRectangle(cornerRadius: 22))
             }
             .buttonStyle(.plain)
             .disabled(!canStart || isStartingVoiceNote)
@@ -641,25 +644,31 @@ private struct CaptureTodayPrimaryActions: View {
             .accessibilityIdentifier("CaptureStartVoiceNote")
 
             Button(action: onNewSession) {
-                VStack(alignment: .leading, spacing: 10) {
-                    HStack {
-                        Image(systemName: "person.2.wave.2.fill")
-                            .font(.title2)
-                        Spacer()
-                        Image(systemName: "arrow.right")
+                HStack(spacing: 15) {
+                    Image(systemName: "person.2.wave.2.fill")
+                        .font(.title2.weight(.semibold))
+                        .foregroundStyle(CapturePalette.accent)
+                        .frame(width: 48, height: 48)
+                        .background(CapturePalette.accent.opacity(0.11), in: Circle())
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("New session")
                             .font(.headline)
+                            .foregroundStyle(.primary)
+                        Text("Schedule coaching, meet now, or record together")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
                     }
-                    Text("New session")
-                        .font(.headline)
-                    Text("Coach, meet, or record together")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    Spacer(minLength: 8)
+                    Image(systemName: "chevron.right")
+                        .font(.headline.weight(.semibold))
+                        .foregroundStyle(.tertiary)
                 }
-                .frame(maxWidth: .infinity, minHeight: 100, alignment: .leading)
-                .padding(16)
-                .background(.background, in: RoundedRectangle(cornerRadius: 20))
+                .frame(maxWidth: .infinity, minHeight: 72, alignment: .leading)
+                .padding(.horizontal, 18)
+                .padding(.vertical, 10)
+                .background(.background, in: RoundedRectangle(cornerRadius: 22))
                 .overlay {
-                    RoundedRectangle(cornerRadius: 20)
+                    RoundedRectangle(cornerRadius: 22)
                         .stroke(.primary.opacity(0.1))
                 }
             }
@@ -1634,6 +1643,65 @@ private struct CaptureWorkView: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 10) {
+            if !client.projects.isEmpty {
+                Menu {
+                    if !privateProjects.isEmpty {
+                        Section("Private") {
+                            ForEach(privateProjects) { project in
+                                projectPickerButton(project)
+                            }
+                        }
+                    }
+                    if !ownedProjects.isEmpty {
+                        Section("Owned by me") {
+                            ForEach(ownedProjects) { project in
+                                projectPickerButton(project)
+                            }
+                        }
+                    }
+                    if !sharedProjects.isEmpty {
+                        Section("Shared with me") {
+                            ForEach(sharedProjects) { project in
+                                projectPickerButton(project)
+                            }
+                        }
+                    }
+                } label: {
+                    HStack(spacing: 11) {
+                        Image(systemName: selectedProject?.isHomeNest == true ? "house.fill" : "q.circle.fill")
+                            .font(.title3.weight(.semibold))
+                            .foregroundStyle(CapturePalette.accent)
+                            .frame(width: 40, height: 40)
+                            .background(CapturePalette.accent.opacity(0.1), in: Circle())
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(selectedProject?.name ?? "Choose a Nest")
+                                .font(.headline)
+                                .foregroundStyle(.primary)
+                                .fixedSize(horizontal: false, vertical: true)
+                            Text(selectedProjectContextLabel)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Image(systemName: "chevron.up.chevron.down")
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(.secondary)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.horizontal, 12)
+                    .frame(minHeight: 60)
+                    .background(.background, in: RoundedRectangle(cornerRadius: 18))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 18)
+                            .stroke(CapturePalette.accent.opacity(0.22))
+                    }
+                }
+                .accessibilityLabel("Current Nest")
+                .accessibilityValue("\(selectedProject?.name ?? "None selected"), \(selectedProjectContextLabel)")
+                .accessibilityHint("Choose a private, owned, or shared Nest.")
+                .accessibilityIdentifier("CaptureWorkProjectPicker")
+            }
+
             HStack(spacing: 10) {
                 Image(systemName: "magnifyingglass")
                     .foregroundStyle(.secondary)
@@ -1676,52 +1744,27 @@ private struct CaptureWorkView: View {
                 RoundedRectangle(cornerRadius: 16)
                     .stroke(.primary.opacity(0.1))
             }
-
-            if !client.projects.isEmpty {
-                Menu {
-                    Section("My Nests") {
-                        ForEach(ownedProjects) { project in
-                            projectPickerButton(project)
-                        }
-                    }
-                    if !sharedProjects.isEmpty {
-                        Section("Shared with me") {
-                            ForEach(sharedProjects) { project in
-                                projectPickerButton(project)
-                            }
-                        }
-                    }
-                } label: {
-                    HStack(spacing: 10) {
-                        Image(systemName: selectedProject?.isHomeNest == true ? "house.fill" : "square.stack.3d.up.fill")
-                        Text(selectedProject?.name ?? "Choose a Nest")
-                            .fontWeight(.bold)
-                            .fixedSize(horizontal: false, vertical: true)
-                        Spacer()
-                        Image(systemName: "chevron.up.chevron.down")
-                            .font(.caption.weight(.bold))
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(.horizontal, 14)
-                    .frame(minHeight: 48)
-                    .background(.background, in: RoundedRectangle(cornerRadius: 15))
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 15)
-                            .stroke(.primary.opacity(0.12))
-                    }
-                }
-                .accessibilityIdentifier("CaptureWorkProjectPicker")
-            }
         }
         .padding(.top, 10)
     }
 
+    private var privateProjects: [MobileCaptureWorkProject] {
+        client.projects.filter(\.isHomeNest)
+    }
+
     private var ownedProjects: [MobileCaptureWorkProject] {
-        client.projects.filter { $0.isHomeNest || $0.role == "OWNER" }
+        client.projects.filter { !$0.isHomeNest && $0.role == "OWNER" }
     }
 
     private var sharedProjects: [MobileCaptureWorkProject] {
         client.projects.filter { !$0.isHomeNest && $0.role != "OWNER" }
+    }
+
+    private var selectedProjectContextLabel: String {
+        guard let selectedProject else { return "Private and shared spaces" }
+        if selectedProject.isHomeNest { return "Private to you" }
+        if selectedProject.role == "OWNER" { return "Owned by you" }
+        return "Shared with you"
     }
 
     private func projectPickerButton(_ project: MobileCaptureWorkProject) -> some View {

@@ -24,8 +24,8 @@ enum CaptureRootTab: String, CaseIterable, Identifiable {
         switch self {
         case .today: "house.fill"
         case .record: "waveform.circle.fill"
-        case .work: "square.stack.3d.up.fill"
-        case .library: "waveform"
+        case .work: "q.circle.fill"
+        case .library: "books.vertical.fill"
         case .account: "person.crop.circle"
         }
     }
