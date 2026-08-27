@@ -230,7 +230,7 @@ function SessionCard({ session }: { session: MobileCaptureSession }) {
             Coach: <strong>{session.coachLabel || "Not assigned yet"}</strong> · Client: <strong>{session.clientLabel || "You"}</strong>
           </p>
           <p className="mt-3 max-w-3xl text-sm font-semibold leading-relaxed text-[#5b472f]">
-            {session.nextAction || session.actionPacket?.nextAction || session.captureReadiness?.nextAction || "Review the session details before recording."}
+            {session.nextAction || session.actionPacket?.nextAction || session.captureReadiness?.nextAction || "Open the session to join or choose recording options."}
           </p>
           {blockers.length > 0 ? (
             <div className="mt-3 flex flex-wrap gap-2" aria-label="Current blockers">

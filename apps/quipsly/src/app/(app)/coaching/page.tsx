@@ -2479,20 +2479,20 @@ export default function CoachingPage() {
     if (nextRoom?.packetSummaryNoteId) {
       return {
         eyebrow: "Follow-up ready",
-        title: "Review what the client will receive",
+        title: "Your session follow-up is ready",
         detail:
-          "Check the recording, transcript, notes, tasks, and goals together before you share anything.",
-        label: "Review and share",
+          "The recording, transcript, notes, tasks, and goals are ready. Edit anything you want, then share when it is useful.",
+        label: "Open follow-up",
         href: `/sessions/${encodeURIComponent(nextRoom.id)}?mode=outputs`,
       };
     }
     if (nextRoom?.recordingCount) {
       return {
         eyebrow: "Recording saved",
-        title: "Turn this session into useful follow-up",
+        title: "Your transcript and follow-up are on the way",
         detail:
-          "Review the recording and transcript, correct anything important, then prepare the notes, tasks, and goals.",
-        label: "Review session",
+          "Open the session to follow transcription, play the recording, or begin editing while Quipsly prepares the rest.",
+        label: "Open session",
         href: `/sessions/${encodeURIComponent(nextRoom.id)}?mode=transcript`,
       };
     }
@@ -2532,7 +2532,7 @@ export default function CoachingPage() {
           <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
             <div>
               <p className="mb-2 text-xs font-black uppercase tracking-[0.28em] text-[#b98036]">
-                {isClientOnly ? "Quipsly coaching" : "Quipsly coaching runway"}
+                Quipsly coaching
               </p>
               <h1 className="max-w-3xl text-4xl font-black leading-tight text-[#3d3122]">
                 {isClientOnly
@@ -2542,7 +2542,7 @@ export default function CoachingPage() {
               <p className="mt-3 max-w-3xl text-[#7b5c3b]">
                 {isClientOnly
                   ? "See your requested time, open the private Session when it is confirmed, and keep shared notes, goals, and tasks in one place."
-                  : "Coaches get one calm place to create sessions, invite clients, record only after consent, and review follow-up. Clients get the simple version: time, consent, join, shared notes, goals, and tasks. Charging a client for a Session is always optional."}
+                  : "Create sessions, invite clients, record after consent, and get editable follow-up automatically. Clients get the simple version: time, consent, join, shared notes, goals, and tasks. Charging a client for a Session is always optional."}
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-3">
@@ -2675,14 +2675,14 @@ export default function CoachingPage() {
                 />
                 <FriendlyStepCard
                   step="3"
-                  title="Review the session"
-                  detail="Correct the transcript and trim the recording without leaving the Session."
+                  title="Edit the session"
+                  detail="Correct the transcript or trim the recording without leaving the Session."
                   ready={(counts?.roomsWithRecordings ?? 0) > 0}
                 />
                 <FriendlyStepCard
                   step="4"
-                  title="Review and share"
-                  detail="Check the transcript, notes, goals, tasks, and recording before sharing follow-up."
+                  title="Use the follow-up"
+                  detail="Adjust the notes, goals, and tasks Quipsly prepared, then share what is useful."
                   ready={(counts?.roomsWithPackets ?? 0) > 0}
                 />
               </>
@@ -2771,9 +2771,8 @@ export default function CoachingPage() {
                 requests
               </h2>
               <p className="mt-2 text-sm leading-6 text-emerald-900/75">
-                Confirming creates the private Session for both people.
-                Declining reopens the time. Neither action sends email, charges
-                a card, or changes an outside calendar by itself.
+                Confirm to create the private Session, then send its invitation.
+                Decline to make the time available again.
               </p>
               <div className="mt-4 space-y-3">
                 {incomingClientHolds.slice(0, 8).map((hold) => (
