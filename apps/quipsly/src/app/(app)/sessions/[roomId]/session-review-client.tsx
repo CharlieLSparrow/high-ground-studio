@@ -3246,11 +3246,10 @@ function SessionWorkspaceNavigation({
   purpose: string;
 }) {
   const modes = sessionWorkspaceModesForPurpose(purpose);
-  const active = sessionWorkspaceDefinitionForPurpose(mode, purpose);
   return (
-    <section className="rounded-2xl border border-[#e5d5b7] bg-[#fffdf8]/90 p-3 shadow-sm">
+    <section className="rounded-2xl border border-[#e5d5b7] bg-[#fffdf8]/90 p-2 shadow-sm sm:p-3">
       <nav aria-label="Session workspace modes">
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-9">
+        <div className="flex max-w-full gap-2 overflow-x-auto pb-1 sm:grid sm:grid-cols-3 sm:overflow-visible sm:pb-0 xl:grid-cols-9">
           {modes.map((definition) => {
             const selected = definition.id === mode;
             return (
@@ -3258,7 +3257,7 @@ function SessionWorkspaceNavigation({
                 key={definition.id}
                 href={sessionWorkspaceHref(roomId, definition.id)}
                 aria-current={selected ? "page" : undefined}
-                className={`flex min-h-12 items-center gap-2 rounded-xl border px-3 py-2 text-xs font-black transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-700 ${
+                className={`flex min-h-11 shrink-0 items-center gap-2 rounded-xl border px-3 py-2 text-xs font-black transition sm:min-h-12 sm:shrink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-700 ${selected ? "order-first sm:order-none" : ""} ${
                   selected
                     ? "border-violet-300 bg-violet-800 text-white shadow-sm"
                     : "border-transparent bg-white text-[#5f4d37] hover:border-violet-200 hover:bg-violet-50"
@@ -3271,10 +3270,6 @@ function SessionWorkspaceNavigation({
           })}
         </div>
       </nav>
-      <p className="px-2 pb-1 pt-3 text-xs font-semibold leading-5 text-[#765f40]">
-        <span className="font-black text-[#3d3122]">{active.eyebrow}.</span>{" "}
-        {active.description}
-      </p>
     </section>
   );
 }
@@ -4495,17 +4490,17 @@ export function SessionReviewClient({
   }
 
   return (
-    <div className="space-y-8">
-      <section className="rounded-3xl border border-[#e5d5b7] bg-white/85 p-5 shadow-sm sm:p-6">
+    <div className="min-w-0 space-y-4 overflow-x-hidden sm:space-y-8">
+      <section className="rounded-3xl border border-[#e5d5b7] bg-white/85 p-4 shadow-sm sm:p-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <p className="text-xs font-black uppercase tracking-[0.22em] text-[#987443]">
+            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#987443] sm:text-xs sm:tracking-[0.22em]">
               Session workspace · {activeMode.eyebrow}
             </p>
-            <h1 className="mt-2 font-serif text-3xl font-black tracking-tight text-[#3d3122] sm:text-4xl">
+            <h1 className="mt-1 font-serif text-2xl font-black tracking-tight text-[#3d3122] sm:mt-2 sm:text-4xl">
               {sessionTitle}
             </h1>
-            <p className="mt-2 max-w-3xl text-sm font-semibold leading-relaxed text-[#765f40]">
+            <p className="mt-1 max-w-3xl text-xs font-semibold leading-5 text-[#765f40] sm:mt-2 sm:text-sm sm:leading-relaxed">
               {activeMode.description}
             </p>
           </div>
@@ -4525,7 +4520,7 @@ export function SessionReviewClient({
                 className={loading ? "animate-spin" : ""}
                 aria-hidden="true"
               />
-              Refresh transcript truth
+              Refresh transcript
             </button>
           ) : null}
         </div>
@@ -4800,22 +4795,6 @@ export function SessionReviewClient({
           </section>
         ) : (
           <>
-            <SessionPostCallPath
-              roomId={roomId}
-              hasRecording={Boolean(
-                packet.selectedRecordingAsset || packet.transcriptJob?.asset,
-              )}
-              transcriptStatus={packet.transcriptJob?.status || "NOT_STARTED"}
-              transcriptSegmentCount={packet.transcriptJob?.segmentCount ?? 0}
-              canReviewPrivatePacket={canReviewPrivatePacket}
-              reviewMaterialReady={Boolean(packet.packet?.summary)}
-              packetStale={packetStale}
-              preparingReviewMaterial={
-                buildingPacket && canPrepareReviewMaterial
-              }
-              held={held}
-              followUpReady={clientFollowUpReady}
-            />
             <TranscriptCorrectionDesk
               roomId={roomId}
               sessionTitle={sessionTitle}
@@ -4844,6 +4823,32 @@ export function SessionReviewClient({
                 ) : null
               }
             />
+            <details className="rounded-2xl border border-[#e5d5b7] bg-white p-4 shadow-sm">
+              <summary className="cursor-pointer text-sm font-black text-[#3d3122]">
+                Session results and status
+              </summary>
+              <p className="mt-2 text-xs font-semibold leading-5 text-[#765f40]">
+                Open this for the recap, generated notes, tasks, goals, and
+                processing status. The dedicated Notes, Goals &amp; commitments,
+                and Follow-up views keep the ordinary work easier to use.
+              </p>
+              <div className="mt-5 space-y-5">
+                <SessionPostCallPath
+                  roomId={roomId}
+                  hasRecording={Boolean(
+                    packet.selectedRecordingAsset || packet.transcriptJob?.asset,
+                  )}
+                  transcriptStatus={packet.transcriptJob?.status || "NOT_STARTED"}
+                  transcriptSegmentCount={packet.transcriptJob?.segmentCount ?? 0}
+                  canReviewPrivatePacket={canReviewPrivatePacket}
+                  reviewMaterialReady={Boolean(packet.packet?.summary)}
+                  packetStale={packetStale}
+                  preparingReviewMaterial={
+                    buildingPacket && canPrepareReviewMaterial
+                  }
+                  held={held}
+                  followUpReady={clientFollowUpReady}
+                />
             <section
               className={`grid gap-4 ${transcriptPermissionReady ? "lg:grid-cols-2" : "lg:grid-cols-3"}`}
               aria-label="Session evidence status"
@@ -5300,6 +5305,9 @@ export function SessionReviewClient({
                 </p>
               </section>
             )}
+
+              </div>
+            </details>
 
             {sourceClockAttention || audibleEventSources.length ? (
               <details className="rounded-3xl border border-cyan-200 bg-cyan-50/35 p-4 shadow-sm sm:p-5">

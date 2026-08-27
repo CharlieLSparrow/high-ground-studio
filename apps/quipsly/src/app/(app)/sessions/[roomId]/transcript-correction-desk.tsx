@@ -1378,44 +1378,16 @@ function CorrectionEditor({
   }
 
   return (
-    <li id={`transcript-segment-${encodeURIComponent(segment.id)}`} tabIndex={-1} className="scroll-mt-24 rounded-2xl border border-[#e5d5b7] bg-white p-5 shadow-sm outline-none target:border-sky-500 target:ring-4 target:ring-sky-200">
-      <div className="flex flex-wrap items-start justify-between gap-3">
+    <li id={`transcript-segment-${encodeURIComponent(segment.id)}`} tabIndex={-1} className="scroll-mt-24 border-b border-[#eadfc9] bg-white px-4 py-5 outline-none first:rounded-t-2xl last:rounded-b-2xl last:border-b-0 target:bg-sky-50 target:ring-2 target:ring-inset target:ring-sky-300 sm:px-5">
+      <div>
         <div>
           <p className="text-xs font-black uppercase tracking-wide text-sky-800">
             {timestampForSeconds(programStartSeconds)}–{timestampForSeconds(programEndSeconds)} · {segment.speakerLabel || "Unlabelled speaker"}
           </p>
           {segment.programStartSeconds !== undefined && segment.sourceStartSeconds !== undefined ? <p className="mt-1 text-[10px] font-bold uppercase tracking-wide text-sky-700">Session time · protected source {timestampForSeconds(segment.sourceStartSeconds)}</p> : null}
           <TranscriptSpeakerEvidenceBadge authority={segment.speakerAuthority} />
-          <p className="mt-2 text-sm font-semibold leading-relaxed text-[#5f4d37]">{segment.text}</p>
-          {segment.words.length > 0 && (
-            <details className="mt-3 rounded-xl border border-sky-100 bg-sky-50/60 p-3">
-              <summary className="cursor-pointer text-xs font-black uppercase tracking-wide text-sky-900">
-                Precise word timing · {segment.words.length} anchors
-              </summary>
-              <p className="mt-2 text-xs font-semibold leading-relaxed text-sky-800">
-                Choose a provider word to play its exact immutable timestamp. Reviewed corrections above never move these anchors.
-              </p>
-              <div className="mt-3 flex flex-wrap gap-1.5" role="group" aria-label={`Timed words from protected source ${timestampForSeconds(segment.sourceStartSeconds ?? segment.startSeconds)}`}>
-                {segment.words.map((word) => (
-                  <button
-                    key={word.id}
-                    type="button"
-                    onClick={() => void onPlayAt(word.startSeconds)}
-                    disabled={!playbackReady || busy}
-                    className="rounded-lg border border-sky-200 bg-white px-2 py-1 text-sm font-semibold text-sky-950 transition hover:border-sky-400 hover:bg-sky-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-600 disabled:opacity-50"
-                    aria-label={`Play ${word.punctuatedWord} at ${timestampForSeconds(word.startSeconds)}`}
-                    title={`${timestampForSeconds(word.startSeconds)}–${timestampForSeconds(word.endSeconds)}`}
-                  >
-                    {word.punctuatedWord}
-                  </button>
-                ))}
-              </div>
-            </details>
-          )}
+          <p className="mt-2 text-[0.95rem] font-semibold leading-7 text-[#4f402f]">{segment.text}</p>
         </div>
-        <button type="button" onClick={() => void onPlay()} disabled={!playbackReady || busy} className="inline-flex items-center gap-2 rounded-full border border-sky-200 bg-sky-50 px-3 py-2 text-xs font-black uppercase tracking-wide text-sky-900 disabled:cursor-not-allowed disabled:opacity-50" aria-label={`Play transcript segment from Session time ${timestampForSeconds(programStartSeconds)}`}>
-          <Play size={14} fill="currentColor" aria-hidden="true" /> Play from here
-        </button>
       </div>
 
       {segment.acceptedCorrection && (
@@ -1441,11 +1413,34 @@ function CorrectionEditor({
         </div>
       )}
 
-      {(segment.downstreamImpacts?.length ?? 0) > 0 && (
-        <details id={`transcript-impact-${segment.id}`} className="mt-4 scroll-mt-28 rounded-xl border border-fuchsia-200 bg-fuchsia-50/60 p-4">
-          <summary className="cursor-pointer text-xs font-black uppercase tracking-wide text-fuchsia-900">
-            Linked work · {segment.downstreamImpacts?.length} item{segment.downstreamImpacts?.length === 1 ? "" : "s"}
+      {(segment.words.length > 0 || (segment.downstreamImpacts?.length ?? 0) > 0) && (
+        <details className="mt-3 rounded-xl border border-[#e5d5b7] bg-[#fffaf1] px-3 py-2">
+          <summary className="cursor-pointer text-xs font-black uppercase tracking-wide text-[#6b573d]">
+            More
+            <span className="ml-2 normal-case tracking-normal text-[#927b5d]">
+              {segment.words.length > 0 ? `${segment.words.length} timed words` : ""}
+              {segment.words.length > 0 && (segment.downstreamImpacts?.length ?? 0) > 0 ? " · " : ""}
+              {(segment.downstreamImpacts?.length ?? 0) > 0 ? `${segment.downstreamImpacts?.length} linked item${segment.downstreamImpacts?.length === 1 ? "" : "s"}` : ""}
+            </span>
           </summary>
+          {segment.words.length > 0 && (
+            <section className="mt-3 border-t border-sky-100 pt-3">
+              <h4 className="text-xs font-black uppercase tracking-wide text-sky-900">Precise word timing · {segment.words.length} anchors</h4>
+              <p className="mt-2 text-xs font-semibold leading-relaxed text-sky-800">Choose a word to play its exact source timestamp. Transcript corrections never move these anchors.</p>
+              <div className="mt-3 flex flex-wrap gap-1.5" role="group" aria-label={`Timed words from protected source ${timestampForSeconds(segment.sourceStartSeconds ?? segment.startSeconds)}`}>
+                {segment.words.map((word) => (
+                  <button key={word.id} type="button" onClick={() => void onPlayAt(word.startSeconds)} disabled={!playbackReady || busy} className="rounded-lg border border-sky-200 bg-white px-2 py-1 text-sm font-semibold text-sky-950 transition hover:border-sky-400 hover:bg-sky-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-600 disabled:opacity-50" aria-label={`Play ${word.punctuatedWord} at ${timestampForSeconds(word.startSeconds)}`} title={`${timestampForSeconds(word.startSeconds)}–${timestampForSeconds(word.endSeconds)}`}>
+                    {word.punctuatedWord}
+                  </button>
+                ))}
+              </div>
+            </section>
+          )}
+          {(segment.downstreamImpacts?.length ?? 0) > 0 && (
+        <section id={`transcript-impact-${segment.id}`} className="mt-3 scroll-mt-28 border-t border-fuchsia-100 pt-3">
+          <h4 className="text-xs font-black uppercase tracking-wide text-fuchsia-900">
+            Linked work · {segment.downstreamImpacts?.length} item{segment.downstreamImpacts?.length === 1 ? "" : "s"}
+          </h4>
           <p className="mt-2 text-xs font-semibold leading-relaxed text-fuchsia-950">
             These notes, tasks, goals, or follow-ups link back to this transcript moment. Your correction did not overwrite them.
           </p>
@@ -1498,6 +1493,8 @@ function CorrectionEditor({
               The transcript changed after this work was created. Open an item to update it, or keep it as written.
             </p>
           )}
+        </section>
+          )}
         </details>
       )}
 
@@ -1541,18 +1538,19 @@ function CorrectionEditor({
           <p className="text-xs font-bold leading-relaxed text-amber-800">Saving adds a versioned correction linked to this exact source moment. The original transcript and recording remain recoverable.</p>
         </div>
       ) : (
-        <div className="mt-4 flex flex-wrap items-center gap-3">
+        <div className={onEditRecording ? "mt-3 grid grid-cols-3 gap-2" : "mt-3 grid grid-cols-2 gap-2"}>
+          <button type="button" onClick={() => void onPlay()} disabled={!playbackReady || busy} className="inline-flex min-h-10 items-center justify-center gap-1 rounded-full border border-sky-200 bg-sky-50 px-2 py-2 text-xs font-black text-sky-900 disabled:cursor-not-allowed disabled:opacity-50" aria-label={`Play transcript segment from Session time ${timestampForSeconds(programStartSeconds)}`}><Play size={14} fill="currentColor" aria-hidden="true" />Play</button>
+          <button type="button" onClick={() => setEditing(true)} disabled={busy} aria-label={segment.acceptedCorrection ? "Revise transcript" : "Edit transcript"} className="inline-flex min-h-10 items-center justify-center gap-1 rounded-full border border-[#d9c7a5] bg-white px-2 py-2 text-xs font-black text-[#5b472f] disabled:cursor-not-allowed disabled:opacity-50"><FilePenLine size={15} aria-hidden="true" />{segment.acceptedCorrection ? "Revise" : "Correct"}</button>
+          {onEditRecording ? <button type="button" onClick={() => onEditRecording(segment)} disabled={busy} aria-label="Edit recording here" className="inline-flex min-h-10 items-center justify-center gap-1 rounded-full border border-sky-300 bg-sky-50 px-2 py-2 text-xs font-black text-sky-950 disabled:opacity-50"><Scissors size={15} aria-hidden="true" />Trim</button> : null}
           {!segment.acceptedCorrection && !segment.acceptedVerification && playbackReviewed && (
-            <button type="button" onClick={() => void confirmAsIs()} disabled={!playbackReady || busy} className="inline-flex items-center gap-2 rounded-full bg-emerald-800 px-4 py-2 text-xs font-black uppercase tracking-wide text-white disabled:cursor-not-allowed disabled:opacity-50"><ShieldCheck size={15} aria-hidden="true" />Mark correct</button>
+            <button type="button" onClick={() => void confirmAsIs()} disabled={!playbackReady || busy} className="col-span-full inline-flex min-h-10 items-center justify-center gap-2 rounded-full bg-emerald-800 px-3 py-2 text-xs font-black text-white disabled:cursor-not-allowed disabled:opacity-50"><ShieldCheck size={15} aria-hidden="true" />Mark correct</button>
           )}
-          <button type="button" onClick={() => setEditing(true)} disabled={busy} className="inline-flex items-center gap-2 rounded-full border border-[#d9c7a5] bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-[#5b472f] disabled:cursor-not-allowed disabled:opacity-50"><FilePenLine size={15} aria-hidden="true" />{segment.acceptedCorrection ? "Revise transcript" : "Edit transcript"}</button>
-          {onEditRecording ? <button type="button" onClick={() => onEditRecording(segment)} disabled={busy} className="inline-flex items-center gap-2 rounded-full border border-sky-300 bg-sky-50 px-4 py-2 text-xs font-black uppercase tracking-wide text-sky-950 disabled:opacity-50"><Scissors size={15} aria-hidden="true" />Edit recording here</button> : null}
-          {segment.correctionHistory.length > 0 && <span className="inline-flex items-center gap-1.5 text-xs font-bold text-[#8a7354]"><History size={14} aria-hidden="true" />{segment.correctionHistory.length} correction record(s) preserved</span>}
+          {segment.correctionHistory.length > 0 && <span className="col-span-full inline-flex items-center gap-1.5 text-xs font-bold text-[#8a7354]"><History size={14} aria-hidden="true" />{segment.correctionHistory.length} edit{segment.correctionHistory.length === 1 ? "" : "s"}</span>}
         </div>
       )}
 
       {error && !editing && <p role="alert" className="mt-4 flex items-start gap-2 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm font-bold text-rose-800"><CircleAlert size={16} className="mt-0.5 shrink-0" aria-hidden="true" />{error}</p>}
-      <details className="mt-4 rounded-xl border border-[#e5d5b7] bg-[#fffaf1] p-4">
+      <details className="mt-3 rounded-xl border border-[#e5d5b7] bg-[#fffaf1] px-3 py-2">
         <summary className="cursor-pointer text-xs font-black uppercase tracking-wide text-[#5f4d37]">Create from this moment</summary>
         <p className="mt-2 text-xs font-semibold leading-5 text-[#765f40]">Turn this exact recording moment into a note, task, goal, or private writing page. Nothing is sent or published automatically.</p>
       <div className="mt-4 rounded-xl border border-orange-200 bg-orange-50/60 p-4">
@@ -2159,8 +2157,6 @@ export function TranscriptCorrectionDesk({
 
       {showRecordingEditor && recordingEditor ? <div id="inline-recording-editor" className="scroll-mt-24">{typeof recordingEditor === "function" ? recordingEditor(recordingEditorFocus) : recordingEditor}</div> : null}
 
-      {audioMastery ? <section aria-label="Session audio improvement" className="scroll-mt-24">{audioMastery}</section> : null}
-
       {desk.gate.allowed && (desk.speakerGroups ?? []).length > 0 ? (
         <section className={`rounded-2xl border p-4 shadow-sm ${unidentifiedSpeakerCount > 0 ? "border-indigo-300 bg-indigo-50" : "border-emerald-200 bg-emerald-50/45"}`} aria-labelledby="voice-labels-heading">
           <button
@@ -2198,12 +2194,8 @@ export function TranscriptCorrectionDesk({
 
       {desk.gate.allowed && desk.segments.length ? (
         <section aria-labelledby="linear-transcript-heading" className="rounded-2xl border border-[#e5d5b7] bg-white p-4 shadow-sm sm:p-5">
-          <div className="mb-5 flex flex-wrap items-end justify-between gap-4">
-            <div>
-              <p className="text-xs font-black uppercase tracking-[0.18em] text-[#987443]">Transcript</p>
-              <h3 id="linear-transcript-heading" className="mt-1 font-serif text-2xl font-black text-[#3d3122]">Transcript</h3>
-              <p className="mt-1 max-w-3xl text-sm font-semibold leading-6 text-[#765f40]">Edit the words or speaker directly, and play any moment you want to check. Notes, tasks, and goals stay attached to the exact source moment.</p>
-            </div>
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <h3 id="linear-transcript-heading" className="text-sm font-black text-[#3d3122]">Transcript</h3>
             <div role="group" aria-label="Transcript view" className="inline-flex rounded-full border border-[#d9c7a5] bg-[#fffaf1] p-1">
               <button type="button" aria-pressed={transcriptView === "transcript"} onClick={() => setTranscriptView("transcript")} className={`min-h-10 rounded-full px-4 text-xs font-black ${transcriptView === "transcript" ? "bg-[#3d3122] text-white shadow-sm" : "text-[#5b472f]"}`}>Transcript</button>
               <button type="button" aria-pressed={transcriptView === "recording-transcript"} onClick={() => setTranscriptView("recording-transcript")} className={`min-h-10 rounded-full px-4 text-xs font-black ${transcriptView === "recording-transcript" ? "bg-[#3d3122] text-white shadow-sm" : "text-[#5b472f]"}`}>Recording + transcript</button>
@@ -2268,6 +2260,7 @@ export function TranscriptCorrectionDesk({
         </div>
 
         {showQualityDetails ? <div id="transcript-quality-details" className="mt-5 space-y-5">
+          {audioMastery ? <section aria-label="Session audio improvement" className="scroll-mt-24">{audioMastery}</section> : null}
           {desk.evidence ? <AudioTranscriptEvidencePanel
               evidence={desk.evidence}
               segments={desk.segments}

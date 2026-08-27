@@ -763,14 +763,16 @@ describe("TranscriptCorrectionDesk", () => {
     expect(screen.getByText("Welcome, everybody.")).toBeInTheDocument();
   });
 
-  it("keeps automatic audio improvement beside transcript review", async () => {
+  it("keeps automatic audio improvement available without putting it ahead of transcript review", async () => {
     global.fetch = jest.fn(async () => ({ ok: true, json: async () => desk(true) })) as unknown as typeof fetch;
 
     render(<TranscriptCorrectionDesk roomId="room-1" audioMastery={<div>Automatic spoken-word audio check</div>} />);
 
     await screen.findByText("Welcome, everybody.");
+    expect(screen.queryByRole("region", { name: "Session audio improvement" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByText("Show details"));
     expect(screen.getByRole("region", { name: "Session audio improvement" })).toHaveTextContent("Automatic spoken-word audio check");
-    expect(screen.getByRole("heading", { name: "Transcript" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Edit the transcript" })).toBeInTheDocument();
   });
 
   it("saves a client-safe Session note with exact transcript identity and no playback ceremony", async () => {
