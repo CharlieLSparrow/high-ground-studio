@@ -1703,8 +1703,6 @@ struct CaptureCoachingHomeView: View {
         ScrollViewReader { proxy in
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
-                    header
-
                     // The next real-world appointment is the reason most people
                     // open Coaching. Keep it ahead of dashboards, setup, forms,
                     // and relationship history while retaining those tools below.
@@ -1712,8 +1710,15 @@ struct CaptureCoachingHomeView: View {
                         handoffCard(handoff)
                     }
 
-                    upcomingSection
-                        .id("CaptureCoachingUpcoming")
+                    if client.isCoach || !displayedUpcomingBookings.isEmpty {
+                        upcomingSection
+                            .id("CaptureCoachingUpcoming")
+                    }
+
+                    if !client.isCoach {
+                        clientRequestsSection
+                        publishedTimesSection
+                    }
 
                     if let practiceCommand = client.practiceCommand ?? client.response?.practiceCommand {
                         practiceCommandSection(practiceCommand) { commandItem in
@@ -1748,9 +1753,6 @@ struct CaptureCoachingHomeView: View {
                     if client.isCoach {
                         incomingRequestsSection
                             .id("CaptureCoachingIncomingRequests")
-                    } else {
-                        clientRequestsSection
-                        publishedTimesSection
                     }
 
                     if let error = client.errorMessage {
@@ -1796,16 +1798,27 @@ struct CaptureCoachingHomeView: View {
                     .foregroundStyle(.secondary)
             }
 
-            LazyVGrid(
-                columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 3),
-                spacing: 8
-            ) {
-                practiceCommandMetric("Today", value: command.counts.today)
-                practiceCommandMetric("Live", value: command.counts.live)
-                practiceCommandMetric("Requests", value: command.counts.requests)
-                practiceCommandMetric("Attention", value: command.counts.attention)
-                practiceCommandMetric("Prepare", value: command.counts.prepare)
-                practiceCommandMetric("Follow-up", value: command.counts.followUp)
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    if command.counts.today > 0 {
+                        practiceCommandBadge("Today", value: command.counts.today)
+                    }
+                    if command.counts.live > 0 {
+                        practiceCommandBadge("Live", value: command.counts.live)
+                    }
+                    if command.counts.requests > 0 {
+                        practiceCommandBadge("Requests", value: command.counts.requests)
+                    }
+                    if command.counts.attention > 0 {
+                        practiceCommandBadge("Attention", value: command.counts.attention)
+                    }
+                    if command.counts.prepare > 0 {
+                        practiceCommandBadge("Prepare", value: command.counts.prepare)
+                    }
+                    if command.counts.followUp > 0 {
+                        practiceCommandBadge("Follow-up", value: command.counts.followUp)
+                    }
+                }
             }
 
             if command.items.isEmpty {
@@ -1870,19 +1883,17 @@ struct CaptureCoachingHomeView: View {
         .accessibilityIdentifier("CaptureCoachingPracticeCommand")
     }
 
-    private func practiceCommandMetric(_ label: String, value: Int) -> some View {
-        VStack(spacing: 2) {
+    private func practiceCommandBadge(_ label: String, value: Int) -> some View {
+        HStack(spacing: 5) {
             Text("\(value)")
-                .font(.headline.weight(.black))
+                .font(.caption.weight(.black))
             Text(label)
-                .font(.caption2.weight(.bold))
+                .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
-                .lineLimit(1)
-                .minimumScaleFactor(0.7)
         }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 8)
-        .background(.background.opacity(0.75), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .padding(.horizontal, 10)
+        .padding(.vertical, 7)
+        .background(.background.opacity(0.8), in: Capsule())
     }
 
     private func practiceCommandColor(_ tone: String) -> Color {
@@ -2047,25 +2058,6 @@ struct CaptureCoachingHomeView: View {
         }
     }
 
-    private var header: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Label(
-                "Coaching",
-                systemImage: "person.2.wave.2.fill"
-            )
-                .font(.title2.weight(.black))
-                .foregroundStyle(.teal)
-            Text(
-                client.isCoach
-                    ? "Sessions, clients, recordings, transcripts, notes, goals, and tasks—together on this iPhone."
-                    : "Join Sessions and keep the recordings, notes, goals, and tasks you share with your coach in one place."
-            )
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-        }
-        .captureCard()
-    }
-
     private var offlineSnapshotCard: some View {
         VStack(alignment: .leading, spacing: 8) {
             Label("Saved coaching snapshot", systemImage: "wifi.slash")
@@ -2084,10 +2076,10 @@ struct CaptureCoachingHomeView: View {
 
     private var clientWelcomeCard: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Label("Your private client space", systemImage: "lock.shield.fill")
+            Label("Your coaching space", systemImage: "lock.shield.fill")
                 .font(.headline)
                 .foregroundStyle(.teal)
-            Text("Open the upcoming Session below to join or record. Client spaces keep only the notes, goals, tasks, and recordings released to you; private coach material stays private.")
+            Text("Notes, goals, tasks, recordings, and forms shared with your coach stay together here between Sessions. Private coach material stays private.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
         }
@@ -2497,27 +2489,36 @@ struct CaptureCoachingHomeView: View {
            let recipientEmail = booking.client?.email?.nonemptyCoachingText {
             VStack(alignment: .leading, spacing: 8) {
                 if client.invitationEmailAvailable {
-                    Button {
-                        Task {
-                            _ = await client.sendInvitationEmail(
-                                roomID: roomID,
-                                recipientEmail: recipientEmail,
-                                recipientName: booking.client?.name
+                    HStack {
+                        Button {
+                            Task {
+                                _ = await client.sendInvitationEmail(
+                                    roomID: roomID,
+                                    recipientEmail: recipientEmail,
+                                    recipientName: booking.client?.name
+                                )
+                            }
+                        } label: {
+                            Label(
+                                client.invitationDeliveries[roomID]?.wasSent == true
+                                    ? "Resend invite"
+                                    : "Send invite",
+                                systemImage: "envelope.badge"
                             )
+                            .frame(maxWidth: .infinity)
                         }
-                    } label: {
-                        Label(
-                            client.invitationDeliveries[roomID]?.wasSent == true
-                                ? "Resend invite"
-                                : "Send invite",
-                            systemImage: "envelope.badge"
+                        .buttonStyle(.borderedProminent)
+                        .disabled(client.isMutating || client.isUsingProtectedCache || model.usesPreviewData)
+                        .accessibilityHint("Sends this Session invitation to the client's email.")
+                        .accessibilityIdentifier("CaptureCoachingSendInvite_\(booking.id)")
+
+                        coachingShareLink(
+                            title: booking.title,
+                            roomID: booking.callRoomId,
+                            entryPath: booking.clientEntryPath,
+                            recipientEmail: recipientEmail
                         )
-                        .frame(maxWidth: .infinity)
                     }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(client.isMutating || client.isUsingProtectedCache || model.usesPreviewData)
-                    .accessibilityHint("Sends this Session invitation to the client's email.")
-                    .accessibilityIdentifier("CaptureCoachingSendInvite_\(booking.id)")
 
                     if let delivery = client.invitationDeliveries[roomID] {
                         Label(
@@ -2535,14 +2536,14 @@ struct CaptureCoachingHomeView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .accessibilityIdentifier("CaptureCoachingInvitationShareOnly_\(booking.id)")
-                }
 
-                coachingShareLink(
-                    title: booking.title,
-                    roomID: booking.callRoomId,
-                    entryPath: booking.clientEntryPath,
-                    recipientEmail: recipientEmail
-                )
+                    coachingShareLink(
+                        title: booking.title,
+                        roomID: booking.callRoomId,
+                        entryPath: booking.clientEntryPath,
+                        recipientEmail: recipientEmail
+                    )
+                }
             }
         } else {
             coachingShareLink(
@@ -2638,6 +2639,7 @@ struct CaptureCoachingHomeView: View {
                 )
             ) {
                 Label("Share invite", systemImage: "square.and.arrow.up")
+                    .frame(maxWidth: .infinity)
             }
             .buttonStyle(.bordered)
             .accessibilityLabel("Share coaching invitation")

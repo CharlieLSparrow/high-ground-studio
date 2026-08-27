@@ -171,9 +171,19 @@ final class CaptureExperienceUITests: XCTestCase {
             app.scrollViews["CaptureCoachingHome"].waitForExistence(timeout: 5),
             "Coaching should open as a native iPhone surface, not a web handoff."
         )
+        let firstScreen = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        firstScreen.name = "coaching-home-first-screen.png"
+        firstScreen.lifetime = .keepAlways
+        add(firstScreen)
         XCTAssertTrue(app.staticTexts["Coaching"].exists)
+        XCTAssertFalse(
+            app.staticTexts["Sessions, clients, recordings, transcripts, notes, goals, and tasks—together on this iPhone."].exists,
+            "The phone should begin with the next real Session instead of repeating a product tour under the Coaching title."
+        )
+        let openNextSession = app.buttons["CaptureCoachingOpen_preview-booking"]
         XCTAssertTrue(
-            app.staticTexts["Sessions, clients, recordings, transcripts, notes, goals, and tasks—together on this iPhone."].exists
+            openNextSession.exists && openNextSession.isHittable,
+            "The coach's next Session must be immediately actionable without scrolling."
         )
         let newAppointment = app.buttons["CaptureCoachingNewAppointmentButton"]
         XCTAssertTrue(newAppointment.exists)
@@ -454,6 +464,18 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(coaching.waitForExistence(timeout: 5))
         coaching.tap()
 
+        let request = app.descendants(matching: .any)[
+            "CaptureCoachingClientRequest_preview-booking-request"
+        ]
+        XCTAssertTrue(request.waitForExistence(timeout: 5))
+        let firstScreen = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        firstScreen.name = "coaching-client-first-screen.png"
+        firstScreen.lifetime = .keepAlways
+        add(firstScreen)
+        XCTAssertTrue(
+            request.exists && request.isHittable,
+            "A client's pending scheduling action should be visible before welcome copy and secondary tools."
+        )
         XCTAssertTrue(
             app.descendants(matching: .any)["CaptureCoachingClientWelcome"]
                 .waitForExistence(timeout: 5),
@@ -463,9 +485,6 @@ final class CaptureExperienceUITests: XCTestCase {
             app.buttons["CaptureCoachingSetupButton"].exists,
             "An established client must not be asked to set up a coaching practice."
         )
-        let request = app.descendants(matching: .any)[
-            "CaptureCoachingClientRequest_preview-booking-request"
-        ]
         reveal(request)
         XCTAssertTrue(
             request.exists,
@@ -2621,10 +2640,14 @@ final class CaptureExperienceUITests: XCTestCase {
         taskReviewScreenshot.lifetime = .keepAlways
         add(taskReviewScreenshot)
         let editPacketTask = app.buttons["CapturePacketTaskEditButton"]
-        XCTAssertTrue(editPacketTask.isEnabled, "Preview may inspect a packet task draft while every review mutation stays disabled.")
+        reveal(editPacketTask)
+        XCTAssertTrue(
+            editPacketTask.isEnabled && editPacketTask.isHittable,
+            "Preview may inspect a packet task draft while every review mutation stays disabled."
+        )
         editPacketTask.tap()
-        XCTAssertTrue(app.textFields["CapturePacketTaskTitleField"].exists)
-        XCTAssertTrue(app.textFields["CapturePacketTaskDetailField"].exists)
+        XCTAssertTrue(app.textFields["CapturePacketTaskTitleField"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.textFields["CapturePacketTaskDetailField"].waitForExistence(timeout: 5))
         XCTAssertFalse(app.buttons["CapturePacketTaskSaveDraftButton"].isEnabled)
         app.buttons["CapturePacketTaskCancelEditButton"].tap()
 
@@ -2636,10 +2659,14 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertFalse(app.buttons["CapturePacketGoalDeferButton"].isEnabled)
         XCTAssertFalse(app.buttons["CapturePacketGoalRejectButton"].isEnabled)
         let editPacketGoal = app.buttons["CapturePacketGoalEditButton"]
-        XCTAssertTrue(editPacketGoal.isEnabled, "Preview may inspect a packet goal draft while every review mutation stays disabled.")
+        reveal(editPacketGoal)
+        XCTAssertTrue(
+            editPacketGoal.isEnabled && editPacketGoal.isHittable,
+            "Preview may inspect a packet goal draft while every review mutation stays disabled."
+        )
         editPacketGoal.tap()
-        XCTAssertTrue(app.textFields["CapturePacketGoalTitleField"].exists)
-        XCTAssertTrue(app.textFields["CapturePacketGoalDescriptionField"].exists)
+        XCTAssertTrue(app.textFields["CapturePacketGoalTitleField"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.textFields["CapturePacketGoalDescriptionField"].waitForExistence(timeout: 5))
         XCTAssertFalse(app.buttons["CapturePacketGoalSaveDraftButton"].isEnabled)
         app.buttons["CapturePacketGoalCancelEditButton"].tap()
 
@@ -4254,6 +4281,13 @@ final class CaptureAppStoreScreenshotUITests: XCTestCase {
         XCTAssertTrue(
             app.descendants(matching: .any)["CaptureTranscriptReviewView"]
                 .waitForExistence(timeout: 5)
+        )
+        let firstTranscriptTurn = app.descendants(matching: .any)[
+            "CaptureTranscriptConversationTurn_preview-segment"
+        ].firstMatch
+        XCTAssertTrue(
+            firstTranscriptTurn.waitForExistence(timeout: 5) && firstTranscriptTurn.isHittable,
+            "Opening a transcript should reveal the editable words before explanatory and quality cards."
         )
         XCTAssertFalse(
             app.descendants(matching: .any)["CapturePacketCandidateReviewQueue"].exists,

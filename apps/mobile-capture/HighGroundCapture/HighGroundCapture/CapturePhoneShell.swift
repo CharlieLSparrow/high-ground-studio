@@ -1812,6 +1812,9 @@ private struct CaptureWorkView: View {
                     showsCompletedTasks.toggle()
                 }
                 .font(.caption.weight(.bold))
+                .frame(minHeight: 44)
+                .contentShape(Rectangle())
+                .accessibilityIdentifier("CaptureWorkToggleCompletedTasks")
             }
             if visibleTasks.isEmpty {
                 compactEmpty("No matching tasks", systemImage: "checklist")

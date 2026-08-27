@@ -3015,15 +3015,15 @@ struct CaptureTranscriptReviewView: View {
                         ProgressView("Loading protected transcript…")
                             .frame(maxWidth: .infinity, minHeight: 120)
                     } else if let desk = client.desk {
+                        audioAttentionSection(desk, scrollProxy: scrollProxy)
+                            .id("audio-listen-points")
+                        transcriptSegments(desk, scrollProxy: scrollProxy)
                         sourceTruth(desk)
                             .id("source-truth")
                         if !client.canReviewPrivatePacket {
                             participantFollowUpBoundary
                                 .id("shared-follow-up")
                         }
-                        audioAttentionSection(desk, scrollProxy: scrollProxy)
-                            .id("audio-listen-points")
-                        transcriptSegments(desk, scrollProxy: scrollProxy)
                         if let evidence = desk.evidence?.transcript {
                             transcriptEvidenceSummary(evidence)
                                 .id("transcript-evidence")
@@ -3656,15 +3656,12 @@ struct CaptureTranscriptReviewView: View {
     }
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Label("Read, listen, and edit", systemImage: "waveform.and.magnifyingglass")
-                .font(.title2.weight(.bold))
+        VStack(alignment: .leading, spacing: 7) {
             Text(sessionTitle)
-                .font(.headline)
-            Text("Read the conversation, play any passage, and correct words or speaker names. The original recording stays unchanged.")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
+                .font(.title3.weight(.bold))
+            Label("Recording and transcript linked", systemImage: "waveform.and.magnifyingglass")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.green)
             if client.desk?.roomPurpose == "COACHING", !previewOnly {
                 if let reportURL = client.mentorReportURL {
                     ShareLink(
@@ -3701,7 +3698,9 @@ struct CaptureTranscriptReviewView: View {
                 }
             }
         }
-        .reviewCard()
+        .padding(.horizontal, 4)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("CaptureTranscriptSessionIdentity")
     }
 
     private func transcriptImpactSummary(_ desk: CaptureTranscriptCorrectionDesk) -> some View {
