@@ -101,12 +101,10 @@ def verify_ui_test_evidence_path(path, expected_source_revision: nil, require_fu
   suite = manifest.fetch("suite")
   UI.user_error!("UI evidence suite must be critical or full.") unless ["critical", "full"].include?(suite)
   UI.user_error!("Complete UI evidence must record the full suite.") if require_full && suite != "full"
-  if suite == "full"
-    UI.user_error!("Complete UI evidence did not cover every discovered deterministic test.") unless
-      manifest["selectedTestCount"] == manifest["discoveredTestCount"]
-  end
   shards = manifest.fetch("shards", [])
   UI.user_error!("UI evidence shard count is inconsistent.") unless shards.length == manifest["shardCount"]
+  shard_numbers = shards.map { |shard| Integer(shard.fetch("shard")) }
+  UI.user_error!("UI evidence contains duplicate shard identities.") unless shard_numbers.uniq.length == shard_numbers.length
   selected_tests = shards.flat_map { |shard| shard.fetch("selectors", []) }
   UI.user_error!("UI evidence contains duplicate or omitted selectors.") unless
     selected_tests.length == manifest["selectedTestCount"] && selected_tests.uniq.length == selected_tests.length
@@ -121,11 +119,28 @@ def verify_ui_test_evidence_path(path, expected_source_revision: nil, require_fu
     UI.user_error!("Critical UI evidence must contain exactly one shard.") unless configured_shard_count == 1 && shards.length == 1
     [capture_ui_test_plan(suite: "critical", shard: 1, shards: 1)]
   end
-  expected_tests = expected_plans.flat_map { |plan| plan.fetch("selectors") }
+  expected_shard_numbers = expected_plans.map { |plan| Integer(plan.fetch("shard")) }
+  UI.user_error!("UI evidence contains an invalid shard identity.") unless
+    (shard_numbers - expected_shard_numbers).empty?
+  if require_full
+    UI.user_error!("Complete UI evidence omitted one or more configured shards.") unless
+      shard_numbers.sort == expected_shard_numbers.sort
+    UI.user_error!("Complete UI evidence did not cover every discovered deterministic test.") unless
+      manifest["selectedTestCount"] == manifest["discoveredTestCount"]
+  end
+  recorded_plans = expected_plans.select do |plan|
+    shard_numbers.include?(Integer(plan.fetch("shard")))
+  end
+  expected_tests = recorded_plans.flat_map { |plan| plan.fetch("selectors") }
   UI.user_error!("UI evidence does not match the current source-derived plan.") unless
     manifest["discoveredTestCount"] == expected_plans.fetch(0).fetch("discoveredTestCount") &&
       selected_tests.sort == expected_tests.sort
   shards.each do |shard|
+    expected_plan = recorded_plans.find do |plan|
+      Integer(plan.fetch("shard")) == Integer(shard.fetch("shard"))
+    end
+    UI.user_error!("UI shard selectors do not match their source-derived partition.") unless
+      shard.fetch("selectors").sort == expected_plan.fetch("selectors").sort
     UI.user_error!("Capture UI shard retry policy is inconsistent.") unless shard.fetch("testRetryLimit") == retry_limit
     result_bundle_path = File.expand_path(shard.fetch("resultBundlePath"), File.dirname(expanded_path))
     UI.user_error!("UI shard #{shard.fetch("shard")} result bundle is unavailable.") unless
@@ -513,7 +528,7 @@ platform :ios do
     verify_ui_test_evidence_path(
       manifest_path,
       expected_source_revision: source_revision,
-      require_full: suite == "full",
+      require_full: suite == "full" && requested_shard.to_s.empty?,
     )
     UI.success("Deterministic Capture UI evidence manifest: #{manifest_path}")
     manifest_path
