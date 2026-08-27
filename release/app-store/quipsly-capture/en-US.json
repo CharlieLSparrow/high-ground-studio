@@ -78,7 +78,7 @@
     },
     "digitalServicesAct": {
       "status": "requires-account-holder-approval",
-      "recommendedAssessment": "Likely trader if Quipsly is distributed commercially in the European Union; Apple may require verified public business contact details."
+      "recommendedAssessment": "Declare that the current United States-only App Store distribution is outside the EU trader-verification path. If EU territories are enabled later, reassess trader status and complete Apple's contact verification when required."
     },
     "price": {
       "status": "configured-and-read-back",
@@ -180,7 +180,7 @@
   "submission": {
     "readiness": "blocked",
     "blockers": [
-      "Complete the account-level DSA trader determination in App Store Connect.",
+      "Confirm the one-time DSA trader-status declaration in App Store Connect; the current United States-only release does not require EU trader-contact verification.",
       "Install Build 36 from TestFlight on a physical iPhone, then prove the Session handoff plus audio/video capture, camera switching, interruption, offline recovery, upload, assembled playback, and cross-device readback.",
       "Publish accurate App Privacy answers and prove the account-deletion workflow against a disposable production account."
     ]

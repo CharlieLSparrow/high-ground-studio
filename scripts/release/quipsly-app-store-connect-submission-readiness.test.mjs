@@ -175,11 +175,28 @@ test("complete provider state still preserves manual legal and physical gates", 
     receipt.blockers.map(({ code }) => code),
     [
       "app-privacy-manual-publication",
-      "dsa-trader-manual-verification",
+      "dsa-status-declaration",
       `physical-build${QUIPSLY_CAPTURE_RELEASE_TARGET.buildNumber}-acceptance`,
       "production-account-deletion-proof",
     ],
   );
+});
+
+test("requires trader verification only when European Union distribution is enabled", () => {
+  const fixture = completeFixture();
+  fixture.availabilityDocument.data.relationships.territoryAvailabilities.meta.paging.total = 2;
+  fixture.territoryAvailabilitiesDocument.data.push({
+    type: "territoryAvailabilities",
+    id: "availability-deu",
+    attributes: { available: true, contentStatuses: ["AVAILABLE"] },
+    relationships: { territory: { data: { type: "territories", id: "DEU" } } },
+  });
+
+  const receipt = summarizeSubmissionReadiness(fixture);
+
+  assert.equal(receipt.availability.currentDistributionIncludesEuropeanUnion, true);
+  assert.equal(receipt.blockers.some(({ code }) => code === "dsa-trader-manual-verification"), true);
+  assert.equal(receipt.blockers.some(({ code }) => code === "dsa-status-declaration"), false);
 });
 
 test("preserves the compatibility blocker until manual provider evidence is complete", () => {

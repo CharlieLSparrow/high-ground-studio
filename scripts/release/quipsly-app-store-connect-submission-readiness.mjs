@@ -12,6 +12,12 @@ import { createScopedToken } from "./quipsly-app-store-connect-readback.mjs";
 import { summarizeTerritoryAvailability } from "./quipsly-app-store-connect-availability.mjs";
 import { QUIPSLY_CAPTURE_RELEASE_TARGET } from "./quipsly-capture-release-target.mjs";
 
+const EUROPEAN_UNION_TERRITORY_IDS = new Set([
+  "AUT", "BEL", "BGR", "HRV", "CYP", "CZE", "DNK", "EST", "FIN",
+  "FRA", "DEU", "GRC", "HUN", "IRL", "ITA", "LVA", "LTU", "LUX",
+  "MLT", "NLD", "POL", "PRT", "ROU", "SVK", "SVN", "ESP", "SWE",
+]);
+
 const API_ORIGIN = "https://api.appstoreconnect.apple.com";
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const defaultMetadataPath = path.join(repositoryRoot, "release/app-store/quipsly-capture/en-US.json");
@@ -298,6 +304,9 @@ export function summarizeSubmissionReadiness({
   const territoryTotal = availability.reportedTerritoryCount;
   const blockingStatuses = availability.blockingContentStatuses;
   const traderStatusBlockers = availability.traderStatusBlockers;
+  const currentDistributionIncludesEuropeanUnion = availability.availableTerritoryIds.some(
+    (territoryId) => EUROPEAN_UNION_TERRITORY_IDS.has(territoryId),
+  );
   const expectedTerritoryIds = metadata.compliance.territories.recommendedFirstRelease.map(
     (name) => name === "United States" ? "USA" : name,
   );
@@ -353,9 +362,28 @@ export function summarizeSubmissionReadiness({
     `Publish the validated ${metadata.privacy.aggregateCollectedDataTypeCount}-type Build ${metadata.privacy.archiveAggregateValidatedBuild} signed-archive questionnaire in App Store Connect and independently read it back.`,
     "manual",
   );
-  addBlocker(blockers, "dsa-trader-manual-verification", traderStatusBlockers.length > 0
-    ? `Apple reports: ${traderStatusBlockers.join(", ")}.`
-    : "EU DSA trader identity remains an account-level legal verification.", "manual");
+  if (traderStatusBlockers.length > 0) {
+    addBlocker(
+      blockers,
+      "dsa-trader-provider-status",
+      `Apple reports: ${traderStatusBlockers.join(", ")}.`,
+      "legal",
+    );
+  } else if (currentDistributionIncludesEuropeanUnion) {
+    addBlocker(
+      blockers,
+      "dsa-trader-manual-verification",
+      "EU distribution is enabled. Declare whether Quipsly is acting as a trader and, if it is, complete Apple's trader contact verification.",
+      "manual",
+    );
+  } else {
+    addBlocker(
+      blockers,
+      "dsa-status-declaration",
+      "Confirm the one-time DSA trader-status declaration in App Store Connect. Current distribution is outside the EU, so trader contact verification is not a release requirement unless EU territories are enabled.",
+      "manual",
+    );
+  }
   addBlocker(blockers, `physical-build${options.build}-acceptance`, `Install Build ${options.build} from TestFlight on a physical iPhone and prove capture, recovery, upload, playback, alignment, and cross-device readback.`, "manual");
   addBlocker(blockers, "production-account-deletion-proof", "Prove account deletion against a disposable production account with independent readback.", "manual");
   if (metadata.compliance.compatibility.status !== "complete") {
@@ -456,6 +484,7 @@ export function summarizeSubmissionReadiness({
       availableTerritoryIds: availability.availableTerritoryIds,
       blockingContentStatuses: blockingStatuses,
       traderStatusBlockers,
+      currentDistributionIncludesEuropeanUnion,
       complete: checks.availabilityConfigured
         && checks.territoryInventoryComplete
         && checks.expectedTerritoriesAvailable
