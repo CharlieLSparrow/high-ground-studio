@@ -11,8 +11,9 @@ Captures Quipsly Capture's private-data-safe App Store layout drafts from a
 disposable detached worktree at one resolved commit. Any uncommitted files in
 the caller's worktree are excluded.
 
-These DEBUG preview images remain draft composition evidence. This command
-does not make them eligible for App Store submission.
+These DEBUG preview images remain draft composition evidence. Candidate-bound
+qualification performs exact hash, visual, and signed-release checks before
+they become eligible for App Store submission.
 USAGE
 }
 
@@ -248,4 +249,4 @@ if [[ -d "$derived_data_directory" && "${QUIPSLY_CAPTURE_KEEP_DERIVED_DATA:-0}" 
 fi
 
 echo "PASS Quipsly Capture App Store drafts returned from committed source ${source_revision}"
-echo "BLOCKED Drafts remain ineligible until recaptured from the exact signed candidate or TestFlight install and human-approved."
+echo "PENDING Qualify exact hashes and visual inspection against the signed candidate before App Store upload."

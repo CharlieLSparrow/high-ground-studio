@@ -94,6 +94,9 @@ jobs:
           node --test scripts/release/quipsly-app-store-connect-assign-build.test.mjs
           node --test scripts/release/quipsly-app-store-connect-external-beta.test.mjs
           node --test scripts/release/quipsly-capture-app-store-metadata.test.mjs
+          node --test apps/mobile-capture/HighGroundCapture/scripts/app-store-draft-screenshots.test.mjs
+          node --test scripts/release/quipsly-capture-qualify-app-store-screenshots.test.mjs
+          node --test scripts/release/quipsly-app-store-connect-screenshots.test.mjs
           node --test scripts/release/quipsly-capture-privacy-questionnaire.test.mjs
           node --test scripts/release/quipsly-capture-physical-install-readback.test.mjs
           node --test scripts/release/quipsly-capture-release-target.test.mjs

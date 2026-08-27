@@ -215,6 +215,8 @@
     "quipsly:capture:app-store-listing": "node scripts/release/quipsly-app-store-connect-listing.mjs",
     "quipsly:capture:app-store-submission-readiness": "node scripts/release/quipsly-app-store-connect-submission-readiness.mjs",
     "quipsly:capture:app-store-submission-configuration": "node scripts/release/quipsly-app-store-connect-submission-configuration.mjs",
+    "quipsly:capture:app-store-screenshots": "node scripts/release/quipsly-app-store-connect-screenshots.mjs",
+    "quipsly:capture:app-store-screenshots:test": "node --test scripts/release/quipsly-capture-qualify-app-store-screenshots.test.mjs scripts/release/quipsly-app-store-connect-screenshots.test.mjs apps/mobile-capture/HighGroundCapture/scripts/app-store-draft-screenshots.test.mjs",
     "quipsly:capture:privacy": "node scripts/release/quipsly-capture-privacy-questionnaire.mjs",
     "quipsly:capture:privacy:test": "node --test scripts/release/quipsly-capture-privacy-questionnaire.test.mjs",
     "quipsly:capture:app-store-listing:test": "node --test scripts/release/quipsly-app-store-connect-listing.test.mjs",

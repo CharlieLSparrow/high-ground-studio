@@ -49,7 +49,7 @@
   },
   "screenshots": {
     "uploadApproved": false,
-    "reason": "DEBUG preview screenshots are layout evidence only. Upload requires approved images from the signed candidate or its TestFlight installation."
+    "reason": "This general metadata operator never uploads images. The candidate-bound screenshot operator requires exact hashes, clean detached source, visual inspection, and the signed fully tested candidate."
   },
   "reviewSubmission": {
     "allowed": false

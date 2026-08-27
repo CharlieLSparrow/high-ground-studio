@@ -260,8 +260,8 @@ export function materializeDraftScreenshots({
     submissionEligible: false,
     submissionBoundary:
       "DEBUG preview fixtures are private-data-safe layout evidence only. "
-      + "Approve only screenshots recaptured from the exact signed candidate "
-      + "or its TestFlight install with the synthetic reviewer account.",
+      + "Qualify them only when exact hashes, clean detached source, visual "
+      + "inspection, and the signed fully tested candidate all match.",
     sourceRevision,
     sourceDirty: Boolean(sourceDirty),
     sourceIsolation,
@@ -308,7 +308,7 @@ export function runDraftScreenshotCli(argv = process.argv.slice(2)) {
     );
     console.log(`PASS Draft receipt: ${result.receiptPath}`);
     console.log(`PASS Draft images: ${result.screenshotDirectory}`);
-    console.log("BLOCKED Submission eligibility remains false until signed-candidate recapture and human approval.");
+    console.log("PENDING Run candidate-bound screenshot qualification before App Store upload.");
     return 0;
   } catch (error) {
     console.error(
