@@ -27,11 +27,6 @@ import {
   Target,
   Users,
 } from "lucide-react";
-import type {
-  TranscriptActionReviewDecision,
-  TranscriptGoalReviewDecision,
-  TranscriptNoteReviewDecision,
-} from "@high-ground/quipsly-domain/coaching-packet";
 import { buildQuipslySessionEntryReadiness } from "@high-ground/quipsly-domain/session-entry-readiness";
 
 import { TagSearchChips } from "@/components/tag-search-chips";
@@ -51,21 +46,8 @@ import {
 import { sessionExperienceForPurpose } from "@/lib/session-experience";
 
 import {
-  candidateReviewRequest,
   committedTasks,
-  goalCandidateReviewRequest,
-  noteCandidateReviewRequest,
-  sessionCandidateReviewProgress,
-  sessionCandidateReviewQueue,
   timestampForSeconds,
-  type SessionCandidateReviewQueueItem,
-  type SessionReviewCandidate,
-  type SessionReviewGoalCandidate,
-  type SessionReviewGoalMergeTarget,
-  type SessionReviewGovernedActionReference,
-  type SessionReviewTaskMergeTarget,
-  type SessionReviewNoteCandidate,
-  type SessionReviewNoteMergeTarget,
   type SessionReviewPacket,
 } from "./session-review-model";
 import {
@@ -3757,7 +3739,6 @@ export function SessionReviewClient({
   const [loading, setLoading] = useState(mode === "transcript");
   const [runningTranscript, setRunningTranscript] = useState(false);
   const [buildingPacket, setBuildingPacket] = useState(false);
-  const [busyCandidateId, setBusyCandidateId] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const automaticPacketAttempts = useRef(new Set<string>());
   const liveDock = useLiveSessionDock();
@@ -3898,8 +3879,8 @@ export function SessionReviewClient({
         body.alreadyCompleted
           ? "This exact transcript job was already complete; Quipsly created no duplicate transcript."
           : body.status === "COMPLETED"
-            ? "Transcription completed. Review every segment against playback before relying on derived notes or work."
-            : "Transcription started from the released immutable source. This page updates automatically while the durable worker runs.",
+            ? "Transcription completed. Timed text and editable Session work are ready; play or correct any passage whenever useful."
+            : "Transcription started. This page updates automatically while Quipsly works.",
       );
     } catch (error) {
       setMessage(
@@ -3909,331 +3890,6 @@ export function SessionReviewClient({
       );
     } finally {
       setRunningTranscript(false);
-    }
-  }
-
-  async function review(
-    candidate: SessionReviewCandidate,
-    decision: TranscriptActionReviewDecision,
-    draft?: {
-      title?: string;
-      detail?: string;
-      assignToMe?: boolean;
-      dueAt?: string | null;
-      tagIds?: string[];
-      mergeTargetTaskId?: string;
-      mergeExpectedUpdatedAt?: string;
-    },
-  ) {
-    if (!packet) return;
-    const request = candidateReviewRequest({
-      packet,
-      candidate,
-      decision,
-      ...draft,
-    });
-    if (!request) {
-      setMessage(
-        "This review packet is missing its correlated source evidence. Refresh it before deciding.",
-      );
-      return;
-    }
-    setBusyCandidateId(candidate.id);
-    setMessage(null);
-    try {
-      const response = await fetch(
-        "/api/mobile/capture/transcripts/packet/actions",
-        {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify(request),
-        },
-      );
-      const body = (await response.json()) as {
-        ok?: boolean;
-        error?: string;
-        decision?: string;
-        actionItem?: {
-          id: string;
-          assignedUserId?: string | null;
-          dueAt?: string | null;
-          tagIds?: string[];
-        } | null;
-        receipt?: {
-          decision?: string;
-          actionCandidateId?: string;
-          actionItemId?: string | null;
-          taskEvidenceReceiptId?: string | null;
-        };
-        governance?: {
-          actionId: string;
-          receiptId: string;
-          capabilityId: string;
-        } | null;
-        boundaries?: {
-          mergeAppendsOneActorOwnedTaskEvidenceReceipt?: boolean;
-          mergeChangesNoTaskIdentityStatusOwnerDatesReminderRecurrenceTagsGoalsOrProject?: boolean;
-          dueDateCreated?: boolean;
-          projectTagsApplied?: boolean;
-        };
-        idempotentReplay?: boolean;
-      };
-      if (
-        !response.ok ||
-        !body.ok ||
-        ((decision === "ACCEPT" || decision === "MERGE") &&
-          !body.actionItem?.id)
-      )
-        throw new Error(body.error || "The review decision was not saved.");
-      if (
-        decision === "MERGE" &&
-        (body.decision !== "MERGE" ||
-          body.actionItem?.id !== draft?.mergeTargetTaskId ||
-          body.receipt?.decision !== "MERGE" ||
-          body.receipt?.actionCandidateId !== candidate.id ||
-          body.receipt?.actionItemId !== draft?.mergeTargetTaskId ||
-          !body.receipt?.taskEvidenceReceiptId ||
-          body.boundaries?.mergeAppendsOneActorOwnedTaskEvidenceReceipt !==
-            true ||
-          body.boundaries
-            ?.mergeChangesNoTaskIdentityStatusOwnerDatesReminderRecurrenceTagsGoalsOrProject !==
-            true ||
-          body.boundaries?.dueDateCreated === true ||
-          body.boundaries?.projectTagsApplied === true)
-      )
-        throw new Error(
-          "Nest returned incomplete or unsafe task evidence-merge proof.",
-        );
-      const successMessage =
-        decision === "ACCEPT"
-          ? body.idempotentReplay
-            ? "That task was already saved. Nothing was duplicated."
-            : `Task saved${body.actionItem?.dueAt ? " with its due date" : ""}${body.actionItem?.tagIds?.length ? ` and ${body.actionItem.tagIds.length} tag${body.actionItem.tagIds.length === 1 ? "" : "s"}` : ""}.`
-          : decision === "MERGE"
-            ? body.idempotentReplay
-              ? "This exact transcript evidence was already attached to that task; no receipt was duplicated."
-              : "Reviewed transcript evidence was added to the selected task. Its identity, status, owner, dates, reminder, recurrence, tags, goals, and project did not change."
-            : decision === "DEFER"
-              ? "Suggestion saved for later."
-              : decision === "REJECT"
-                ? "Suggestion dismissed."
-                : "Suggestion updated.";
-      await load();
-      setMessage(successMessage);
-    } catch (error) {
-      setMessage(
-        error instanceof Error
-          ? error.message
-          : "The review decision was not saved.",
-      );
-    } finally {
-      setBusyCandidateId(null);
-    }
-  }
-
-  async function reviewPacketNote(
-    candidate: SessionReviewNoteCandidate,
-    decision: TranscriptNoteReviewDecision,
-    draft?: {
-      title: string;
-      body: string;
-      kind: EditableSessionNoteKind;
-      visibility: SessionNoteVisibility;
-      mergeTargetNoteId?: string;
-      mergeExpectedUpdatedAt?: string;
-      mergedTitle?: string;
-      mergedBody?: string;
-      mergedKind?: EditableSessionNoteKind;
-      mergedVisibility?: SessionNoteVisibility;
-    },
-  ) {
-    if (!packet) return;
-    const request = noteCandidateReviewRequest({
-      packet,
-      candidate,
-      decision,
-      ...draft,
-    });
-    if (!request) {
-      setMessage(
-        "This packet note is already accepted, stale, or missing the review evidence required for that decision. Refresh before trying again.",
-      );
-      return;
-    }
-    setBusyCandidateId(candidate.id);
-    setMessage(null);
-    try {
-      const response = await fetch("/api/mobile/capture/transcripts/notes", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(request),
-      });
-      const payload = (await response.json()) as {
-        ok?: boolean;
-        error?: string;
-        idempotentReplay?: boolean;
-        governance?: SessionReviewGovernedActionReference | null;
-        note?: { id: string; visibility: string } | null;
-      };
-      if (
-        !response.ok ||
-        !payload.ok ||
-        ((decision === "ACCEPT" || decision === "MERGE") && !payload.note?.id)
-      )
-        throw new Error(
-          payload.error || "The packet note review was not saved.",
-        );
-      await load();
-      setMessage(
-        decision === "ACCEPT"
-          ? payload.idempotentReplay
-            ? "This exact packet note choice was already saved; nothing was duplicated."
-            : `Note saved for ${sessionNoteVisibilityLabel(payload.note!.visibility as SessionNoteVisibility).toLowerCase()}.`
-          : decision === "MERGE"
-            ? payload.idempotentReplay
-              ? "This exact merge was already applied; no revision was duplicated."
-              : "Added to the existing note. The earlier version and transcript source are still available."
-            : decision === "DEFER"
-              ? "Suggestion saved for later."
-              : decision === "REJECT"
-                ? "Suggestion dismissed."
-                : "Suggestion updated.",
-      );
-    } catch (error) {
-      setMessage(
-        error instanceof Error
-          ? error.message
-          : "The packet note review was not saved.",
-      );
-    } finally {
-      setBusyCandidateId(null);
-    }
-  }
-
-  async function reviewGoal(
-    candidate: SessionReviewGoalCandidate,
-    decision: TranscriptGoalReviewDecision,
-    draft?: {
-      title?: string;
-      description?: string;
-      targetAt?: string | null;
-      tagIds?: string[];
-      mergeTargetGoalId?: string;
-      mergeExpectedUpdatedAt?: string;
-    },
-  ) {
-    if (!packet) return;
-    const request = goalCandidateReviewRequest({
-      packet,
-      candidate,
-      decision,
-      ...draft,
-    });
-    if (!request) {
-      setMessage(
-        "This goal candidate is already committed or missing a reviewed title. Refresh the packet before deciding again.",
-      );
-      return;
-    }
-    setBusyCandidateId(candidate.id);
-    setMessage(null);
-    try {
-      const response = await fetch(
-        "/api/mobile/capture/transcripts/packet/goals",
-        {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify(request),
-        },
-      );
-      const body = (await response.json()) as {
-        ok?: boolean;
-        error?: string;
-        decision?: string;
-        idempotentReplay?: boolean;
-        goal?: {
-          id: string;
-          targetAt?: string | null;
-          tags?: Array<{ id: string }>;
-        };
-        receipt?: {
-          decision?: string;
-          goalCandidateId?: string;
-          goalId?: string | null;
-          goalProgressReceiptId?: string | null;
-        };
-        governance?: {
-          actionId: string;
-          receiptId: string;
-          capabilityId: string;
-        } | null;
-        boundaries?: {
-          mergeAppendsOneActorOwnedGoalEvidenceReceipt?: boolean;
-          mergeChangesNoGoalDefinitionStatusTargetOrTags?: boolean;
-          taskCreated?: boolean;
-          targetDateCreated?: boolean;
-          projectTagsApplied?: boolean;
-          reminderCreated?: boolean;
-          calendarMutated?: boolean;
-          externalDelivery?: boolean;
-          publication?: boolean;
-        };
-      };
-      if (
-        !response.ok ||
-        !body.ok ||
-        ((decision === "ACCEPT" || decision === "MERGE") && !body.goal?.id)
-      )
-        throw new Error(
-          body.error || "The goal review decision was not saved.",
-        );
-      if (
-        decision === "MERGE" &&
-        (body.decision !== "MERGE" ||
-          body.goal?.id !== draft?.mergeTargetGoalId ||
-          body.receipt?.decision !== "MERGE" ||
-          body.receipt?.goalCandidateId !== candidate.id ||
-          body.receipt?.goalId !== draft?.mergeTargetGoalId ||
-          !body.receipt?.goalProgressReceiptId ||
-          body.boundaries?.mergeAppendsOneActorOwnedGoalEvidenceReceipt !==
-            true ||
-          body.boundaries?.mergeChangesNoGoalDefinitionStatusTargetOrTags !==
-            true ||
-          body.boundaries?.taskCreated === true ||
-          body.boundaries?.targetDateCreated === true ||
-          body.boundaries?.projectTagsApplied === true ||
-          body.boundaries?.reminderCreated === true ||
-          body.boundaries?.calendarMutated === true ||
-          body.boundaries?.externalDelivery === true ||
-          body.boundaries?.publication === true)
-      )
-        throw new Error(
-          "Nest returned incomplete or unsafe evidence-merge proof.",
-        );
-      const successMessage =
-        decision === "ACCEPT"
-          ? body.idempotentReplay
-            ? "That goal was already saved. Nothing was duplicated."
-            : `Goal saved${body.goal?.targetAt ? " with its target date" : ""}${body.goal?.tags?.length ? " and tags" : ""}.`
-          : decision === "MERGE"
-            ? body.idempotentReplay
-              ? "This exact transcript evidence was already attached to that goal; no evidence receipt was duplicated."
-              : "Reviewed transcript evidence was added to the selected existing goal. Its definition, status, target, tags, tasks, and project did not change."
-            : decision === "DEFER"
-              ? "Suggestion saved for later."
-              : decision === "REJECT"
-                ? "Suggestion dismissed."
-                : "Suggestion updated.";
-      await load();
-      setMessage(successMessage);
-    } catch (error) {
-      setMessage(
-        error instanceof Error
-          ? error.message
-          : "The goal review decision was not saved.",
-      );
-    } finally {
-      setBusyCandidateId(null);
     }
   }
 
@@ -4435,8 +4091,7 @@ export function SessionReviewClient({
               onClick={() => void load()}
               disabled={
                 loading ||
-                buildingPacket ||
-                busyCandidateId !== null
+                buildingPacket
               }
               className="inline-flex min-h-11 items-center gap-2 rounded-full border border-[#d9c7a5] bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-[#5b472f] disabled:opacity-50"
             >

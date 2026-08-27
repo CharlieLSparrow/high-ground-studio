@@ -804,7 +804,7 @@ describe("Session review goal candidates", () => {
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
     expect(JSON.parse(String(fetchMock.mock.calls[1][1]?.body))).toEqual({ recordingAssetId: "asset-1" });
-    expect(await screen.findByRole("status")).toHaveTextContent(/Transcription started from the released immutable source/i);
+    expect(await screen.findByRole("status")).toHaveTextContent(/Transcription started\. This page updates automatically while Quipsly works/i);
   });
 
   it("retries a released transcript that was held before current consent became ready", async () => {
