@@ -66,10 +66,8 @@ const secondaryNavItems: NavItem[] = [
   { name: "Analytics", href: "/analytics", icon: BarChart2 },
 ];
 
-const adminNavItems: NavItem[] = [
+const platformAdminNavItems: NavItem[] = [
   { name: "Release health", href: "/beta-readiness", icon: ShieldCheck },
-  { name: "Customer support", href: "/admin/support", icon: UserCog },
-  { name: "Product operations", href: "/admin/product-ops", icon: Activity },
   { name: "Users", href: "/admin/users", icon: UserCog },
   {
     name: "Account deletion",
@@ -85,11 +83,15 @@ function isNavItemActive(item: NavItem, pathname: string) {
 
 export function SidebarLayout({
   children,
-  showAdminTools = false,
+  showPlatformAdminTools = false,
+  showSupportTools = false,
+  showProductOperations = false,
   currentUser = null,
 }: {
   children: React.ReactNode;
-  showAdminTools?: boolean;
+  showPlatformAdminTools?: boolean;
+  showSupportTools?: boolean;
+  showProductOperations?: boolean;
   currentUser?: {
     email: string;
     name: string | null;
@@ -99,9 +101,12 @@ export function SidebarLayout({
 }) {
   const pathname = usePathname();
   const currentPath = pathname || "/today";
-  const moreNavItems = showAdminTools
-    ? [...secondaryNavItems, ...adminNavItems]
-    : secondaryNavItems;
+  const operationalNavItems: NavItem[] = [
+    ...(showSupportTools ? [{ name: "Customer support", href: "/admin/support", icon: UserCog }] : []),
+    ...(showProductOperations ? [{ name: "Product operations", href: "/admin/product-ops", icon: Activity }] : []),
+    ...(showPlatformAdminTools ? platformAdminNavItems : []),
+  ];
+  const moreNavItems = [...secondaryNavItems, ...operationalNavItems];
   const isMoreActive = moreNavItems.some((item) => isNavItemActive(item, currentPath));
 
   return (

@@ -50,4 +50,16 @@ describe("Quipsly workspace navigation", () => {
     expect(screen.getByRole("navigation", { name: "More mobile tools" })).toBeInTheDocument();
     expect(screen.getAllByText("More")).toHaveLength(2);
   });
+
+  it("shows only the back-office destinations granted to a staff role", () => {
+    const { rerender } = render(<SidebarLayout showSupportTools><div>Support work</div></SidebarLayout>);
+    expect(screen.getAllByRole("link", { name: "Customer support" })[0]).toHaveAttribute("href", "/admin/support");
+    expect(screen.queryByRole("link", { name: "Product operations" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Users" })).not.toBeInTheDocument();
+
+    rerender(<SidebarLayout showProductOperations><div>Product work</div></SidebarLayout>);
+    expect(screen.getAllByRole("link", { name: "Product operations" })[0]).toHaveAttribute("href", "/admin/product-ops");
+    expect(screen.queryByRole("link", { name: "Customer support" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Users" })).not.toBeInTheDocument();
+  });
 });

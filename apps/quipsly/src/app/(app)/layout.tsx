@@ -49,8 +49,10 @@ export default async function RootLayout({
     || null;
   const actorRoles = session?.user?.roles || [];
   const isAdminBypass = isUserManagementAdminEmail(actorEmail);
-  const showAdminTools =
+  const showPlatformAdminTools =
     isAdminBypass || actorRoles.includes("OWNER");
+  const showSupportTools = showPlatformAdminTools || actorRoles.includes("SUPPORT_AGENT");
+  const showProductOperations = showPlatformAdminTools || actorRoles.includes("PRODUCT_ANALYST");
 
   // If they aren't logged in, redirect to the marketing/login page
   if (!session?.user) {
@@ -69,14 +71,16 @@ export default async function RootLayout({
         <body className="font-sans bg-[#050505] text-studio-ink antialiased">
         <QuipslyProductAnalytics measurementId={process.env.QUIPSLY_GA_MEASUREMENT_ID} authenticated />
         <SidebarLayout
-          showAdminTools={showAdminTools}
+          showPlatformAdminTools={showPlatformAdminTools}
+          showSupportTools={showSupportTools}
+          showProductOperations={showProductOperations}
           currentUser={
             session?.user
               ? {
                   email: session.user.primaryEmail || session.user.email || "",
                   name: session.user.name || null,
                   image: session.user.image || null,
-                  isStaff: Boolean(session.user.isStaff),
+                  isStaff: Boolean(session.user.isStaff) || showSupportTools || showProductOperations,
                 }
               : null
           }
