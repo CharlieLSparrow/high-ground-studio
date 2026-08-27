@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 
 import { getPrismaClient } from "@/lib/prisma";
 import {
+  ensureInvitedStudioUserByEmail,
   ensureStudioUserFromAuthIdentity,
   ensureStudioUserFromFirebaseIdentity,
 } from "./studio-user-identity";
@@ -344,5 +345,39 @@ runLocalDatabaseSmoke("Firebase identity reconciliation local database smoke", (
       isActive: false,
       firebaseUid: `firebase-inactive-${nonce}`,
     });
+  });
+
+  it("does not let an invitation verify or reactivate an account", async () => {
+    const email = `invite-inactive-${nonce}@example.test`;
+    const inactive = await prisma.user.create({
+      data: { primaryEmail: email, isActive: false, emailVerified: null },
+    });
+    userIds.push(inactive.id);
+
+    await ensureInvitedStudioUserByEmail({ email, name: "Invited person", prisma });
+
+    await expect(prisma.user.findUnique({
+      where: { id: inactive.id },
+      select: { isActive: true, emailVerified: true, name: true },
+    })).resolves.toEqual({
+      isActive: false,
+      emailVerified: null,
+      name: "Invited person",
+    });
+  });
+
+  it("does not resurrect an inactive account from the compatibility browser identity path", async () => {
+    const email = `browser-inactive-${nonce}@example.test`;
+    const inactive = await prisma.user.create({
+      data: { primaryEmail: email, isActive: false, emailVerified: new Date() },
+    });
+    userIds.push(inactive.id);
+
+    await expect(ensureStudioUserFromAuthIdentity({ email }))
+      .rejects.toThrow("Quipsly account is inactive.");
+    await expect(prisma.user.findUnique({
+      where: { id: inactive.id },
+      select: { isActive: true },
+    })).resolves.toEqual({ isActive: false });
   });
 });

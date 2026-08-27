@@ -135,10 +135,11 @@ export async function ensureInvitedStudioUserByEmail(input: {
   });
 
   if (existing) {
-    const data: Prisma.UserUpdateInput = {
-      isActive: true,
-      emailVerified: existing.emailVerified ?? new Date(),
-    };
+    // An invitation is an access offer, not proof that the mailbox is owned
+    // and not authority to lift a support suspension. Authentication records
+    // verification after the provider proves the address; support resumes an
+    // inactive account through its separately audited operation.
+    const data: Prisma.UserUpdateInput = {};
     const name = input.name?.trim();
     if (name) data.name = name;
     if (input.image) data.image = input.image;
@@ -158,7 +159,6 @@ export async function ensureInvitedStudioUserByEmail(input: {
       name: input.name?.trim() || null,
       image: input.image || null,
       isActive: true,
-      emailVerified: new Date(),
     },
     include: userIdentityInclude,
   });
@@ -429,6 +429,10 @@ export async function ensureStudioUserFromAuthIdentity(input: {
     }
 
     if (existing) {
+      if (!existing.isActive) {
+        throw new Error("Quipsly account is inactive.");
+      }
+
       const missingRoles = bootstrapRoles.filter(
         (role) => !existing.roles.some((entry) => entry.role === role),
       );

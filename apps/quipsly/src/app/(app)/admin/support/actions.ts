@@ -3,8 +3,11 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
-import { adminAuth } from "@/lib/firebase/firebase-admin";
 import { getPrismaClient } from "@/lib/prisma";
+import {
+  revokeSupportUserSessions,
+  setSupportUserActiveState,
+} from "@/lib/server/support-user-lifecycle";
 import {
   parseAppRole,
   requireQuipslyAdminActor,
@@ -22,38 +25,6 @@ function exactUserId(formData: FormData) {
   return value;
 }
 
-async function appendSupportEvent({
-  userId,
-  actorEmail,
-  actorUserId,
-  eventName,
-}: {
-  userId: string;
-  actorEmail: string;
-  actorUserId: string | null;
-  eventName: string;
-}) {
-  const prisma = getPrismaClient();
-  const membership = await prisma.organizationMember.findFirst({
-    where: { userId },
-    orderBy: { createdAt: "asc" },
-    select: { organizationId: true },
-  });
-  await prisma.userEvent.create({
-    data: {
-      userId,
-      organizationId: membership?.organizationId ?? null,
-      eventName,
-      payloadJson: {
-        schema: "quipsly-support-action-v1",
-        actorUserId,
-        actorEmail,
-        source: "admin-support",
-      },
-    },
-  });
-}
-
 export async function setSupportUserActiveAction(formData: FormData) {
   const actor = await requireQuipslySupportActor();
   const userId = exactUserId(formData);
@@ -62,47 +33,13 @@ export async function setSupportUserActiveAction(formData: FormData) {
     supportRedirect(userId, "self-suspend-blocked");
   }
 
-  const prisma = getPrismaClient();
-  const target = await prisma.user.findUnique({
-    where: { id: userId },
-    select: { firebaseUid: true, isActive: true },
+  const result = await setSupportUserActiveState({
+    userId,
+    active: makeActive,
+    actor: { userId: actor.userId, email: actor.email },
   });
-  if (!target) supportRedirect(userId, "not-found");
-  if (target.isActive === makeActive) supportRedirect(userId, makeActive ? "already-active" : "already-suspended");
-
-  if (target.firebaseUid) {
-    await adminAuth.updateUser(target.firebaseUid, { disabled: !makeActive });
-    if (!makeActive) await adminAuth.revokeRefreshTokens(target.firebaseUid);
-  }
-
-  try {
-    await prisma.$transaction(async (tx) => {
-      await tx.user.update({ where: { id: userId }, data: { isActive: makeActive } });
-      const membership = await tx.organizationMember.findFirst({
-        where: { userId },
-        orderBy: { createdAt: "asc" },
-        select: { organizationId: true },
-      });
-      await tx.userEvent.create({
-        data: {
-          userId,
-          organizationId: membership?.organizationId ?? null,
-          eventName: makeActive ? "Support: account resumed" : "Support: account suspended",
-          payloadJson: {
-            schema: "quipsly-support-action-v1",
-            actorUserId: actor.userId,
-            actorEmail: actor.email,
-            source: "admin-support",
-          },
-        },
-      });
-    });
-  } catch (error) {
-    if (target.firebaseUid) {
-      await adminAuth.updateUser(target.firebaseUid, { disabled: !target.isActive }).catch(() => undefined);
-    }
-    throw error;
-  }
+  if (result.status === "not-found") supportRedirect(userId, "not-found");
+  if (result.status === "unchanged") supportRedirect(userId, makeActive ? "already-active" : "already-suspended");
 
   revalidatePath("/admin/support");
   supportRedirect(userId, makeActive ? "resumed" : "suspended");
@@ -111,21 +48,12 @@ export async function setSupportUserActiveAction(formData: FormData) {
 export async function revokeSupportUserSessionsAction(formData: FormData) {
   const actor = await requireQuipslySupportActor();
   const userId = exactUserId(formData);
-  const prisma = getPrismaClient();
-  const target = await prisma.user.findUnique({
-    where: { id: userId },
-    select: { firebaseUid: true },
-  });
-  if (!target) supportRedirect(userId, "not-found");
-  if (!target.firebaseUid) supportRedirect(userId, "no-firebase-identity");
-
-  await adminAuth.revokeRefreshTokens(target.firebaseUid);
-  await appendSupportEvent({
+  const result = await revokeSupportUserSessions({
     userId,
-    actorEmail: actor.email,
-    actorUserId: actor.userId,
-    eventName: "Support: login sessions revoked",
+    actor: { userId: actor.userId, email: actor.email },
   });
+  if (result.status === "not-found") supportRedirect(userId, "not-found");
+  if (result.status === "not-linked") supportRedirect(userId, "no-firebase-identity");
 
   revalidatePath("/admin/support");
   supportRedirect(userId, "sessions-revoked");

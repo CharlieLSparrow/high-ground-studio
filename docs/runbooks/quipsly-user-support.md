@@ -46,10 +46,13 @@ scoped grants, recent Sessions, invitation/reminder delivery, and deletion
 status. Customer content—notes, transcripts, recordings, and creative work—is
 not rendered there.
 
-Suspending an account disables Firebase, revokes refresh tokens, marks the
-Quipsly person inactive, and records the action. Resuming reverses the explicit
-access hold; it does not fabricate a new identity. “Revoke login sessions”
-forces reauthentication without suspending the customer.
+Suspending an account disables every Firebase subject in the person's explicit
+identity ledger, revokes each subject's refresh tokens, marks the Quipsly
+person inactive, and records aggregate sync evidence. Resuming reverses the
+explicit access hold; it does not fabricate a new identity. “Revoke login
+sessions” forces reauthentication across all linked credentials without
+suspending the customer. A stale provider subject is recorded but does not
+prevent the app-owned safety hold from taking effect.
 
 Pre-provisioning creates the app record and starter workspace but does not mark
 the email verified. Verification is recorded only after Firebase proves the
