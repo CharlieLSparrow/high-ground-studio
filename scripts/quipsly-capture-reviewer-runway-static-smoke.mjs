@@ -88,17 +88,15 @@ const appStoreReadiness = read(paths.appStoreReadiness);
 
 [
   "Your sessions",
-  "Prepare, capture, transcribe, and follow through in one calm place.",
-  "Podcast, coaching, interview, and internal sessions share one explicit chain",
+  "Everything for your next session, in one place.",
+  "Open a session to join the call, record, edit the transcript, and keep shared notes, goals, and tasks together.",
   "/api/mobile/capture/sessions",
   "workspaceHref",
-  "Open workspace",
-  "Review consent",
+  "Open session",
+  "Recording options",
   "?mode=prepare",
-  "secure Stripe payment page",
   "Open Stripe",
-  "Recording stays off until consent is clear.",
-  "Follow-up notes appear automatically after recording and transcription.",
+  "Each session keeps its call, recording, transcript, notes, and follow-through together.",
 ].forEach((marker) => assertIncludes(coacheeSessionsPage, marker, paths.coacheeSessionsPage));
 
 [

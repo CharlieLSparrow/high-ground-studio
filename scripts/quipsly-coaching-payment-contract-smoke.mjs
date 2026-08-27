@@ -287,15 +287,15 @@ function checkStaticStripeBoundaries() {
       && texts.runway.includes("serviceOffering.upsert")
       && texts.runway.includes("availabilityWindow")
       && texts.runway.includes('setupMode: "automatic-on-first-session"')
-      && texts.runway.includes("isCoach: coachProfiles.length > 0"),
+      && texts.runway.includes("isCoach: actorIsCoach"),
     "runwayCoachSetupBoundary",
     "Coaching runway creates durable coach defaults automatically on the first Session while retaining optional editable preferences.",
   );
   expect(
-    texts.runwayPage.includes("Coaching preferences")
+    includesNormalized(texts.runwayPage, "Coaching preferences")
       && texts.runwayPage.includes("Optional · Quipsly starts with sensible defaults")
       && texts.runwayPage.includes("setupCoachProfile")
-      && texts.runwayPage.includes("canScheduleCoaching")
+      && texts.runwayPage.includes("canManageCoaching")
       && includesNormalized(texts.runwayPage, "Schedule and send invite"),
     "runwayCoachSetupUi",
     "Coaching runway keeps editable preferences available without putting a setup gate before scheduling.",
@@ -313,7 +313,7 @@ function checkStaticStripeBoundaries() {
       && combined.includes("QUIPSLY_COACHING_OPERATOR_JOURNEY")
       && combined.includes("What the coachee sees")
       && combined.includes("What Homer manages")
-      && combined.includes("For Homer and the coachee"),
+      && combined.includes("Easy for the coachee. Clear for Homer."),
     "coachingHumanJourneyBoundary",
     "Public coaching surfaces expose a plain-English coachee path and Homer operator path instead of provider-first workflow language.",
   );

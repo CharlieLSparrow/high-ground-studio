@@ -432,7 +432,7 @@ for (const [label, needle] of [
   ["mobile readiness exposes phone boundary", "phoneCallBoundary: QUIPSLY_NATIVE_CAPTURE_CONTRACT.phoneCallBoundary"],
   ["mobile readiness keeps explicit consent", "requiresExplicitConsent: true"],
   ["mobile readiness keeps visible recording indicator", "visibleRecordingIndicatorRequired: true"],
-  ["mobile readiness keeps stripe boundary", "Stripe is scoped to eligible one-to-one coaching payment evidence"],
+  ["mobile readiness keeps one-to-one checkout separate from SaaS billing", "One-to-one coaching checkout remains separate from Quipsly SaaS billing"],
 ]) {
   requireIncludes(texts.mobileCaptureReadiness, needle, label, files.mobileCaptureReadiness);
 }
@@ -517,7 +517,7 @@ for (const [label, needle] of [
   ["calendar packet type", "type CalendarReadyPacket"],
   ["lifecycle type", "type CoachingLifecycle"],
   ["lifecycle panel", "function LifecyclePanel"],
-  ["lifecycle receipt slots", "receipt slots"],
+  ["provider recording receipt binding", "providerRecordingReceiptSlotId"],
   ["calendar packet panel", "function CalendarPacketPanel"],
   ["calendar receipt label", "receipt-backed"],
   ["booking renders lifecycle", "LifecyclePanel lifecycle={booking.lifecycle}"],
