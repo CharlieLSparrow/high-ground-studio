@@ -3015,9 +3015,9 @@ struct CaptureTranscriptReviewView: View {
                         ProgressView("Loading protected transcript…")
                             .frame(maxWidth: .infinity, minHeight: 120)
                     } else if let desk = client.desk {
+                        transcriptSegments(desk, scrollProxy: scrollProxy)
                         audioAttentionSection(desk, scrollProxy: scrollProxy)
                             .id("audio-listen-points")
-                        transcriptSegments(desk, scrollProxy: scrollProxy)
                         sourceTruth(desk)
                             .id("source-truth")
                         if !client.canReviewPrivatePacket {
@@ -3535,11 +3535,11 @@ struct CaptureTranscriptReviewView: View {
     ) -> some View {
         let firstAttentionSegmentID = evidence.attentionSegments.first?.segmentId
         let providerLabel = [
-            captureTranscriptNonempty(evidence.provider),
-            captureTranscriptNonempty(evidence.providerModel),
+            transcriptProviderDisplayName(evidence.provider),
+            transcriptModelDisplayName(evidence.providerModel),
         ]
         .compactMap { $0 }
-        .joined(separator: " · ")
+        .joined(separator: " ")
         return VStack(alignment: .leading, spacing: 11) {
             HStack(alignment: .firstTextBaseline) {
                 Label("Transcript quality", systemImage: "waveform.badge.magnifyingglass")
@@ -3555,20 +3555,20 @@ struct CaptureTranscriptReviewView: View {
             HStack(spacing: 8) {
                 transcriptEvidenceMetric(
                     value: "\(evidence.segmentCount)",
-                    label: "timed segments"
+                    label: "timed passages"
                 )
                 transcriptEvidenceMetric(
                     value: evidence.lowConfidenceWordCount.map(String.init) ?? "—",
-                    label: "uncertain words"
+                    label: "words to check"
                 )
                 transcriptEvidenceMetric(
                     value: evidence.measuredWordErrorRate.map { "\(Int(($0 * 100).rounded()))%" } ?? "—",
-                    label: "verified WER"
+                    label: "verified error rate"
                 )
             }
             if let threshold = evidence.lowConfidenceThreshold,
-               let authority = captureTranscriptNonempty(evidence.lowConfidenceThresholdAuthority) {
-                Text("Words below \(Int((threshold * 100).rounded()))% confidence are highlighted using \(authority), so they are easy to proof-listen. Verified accuracy appears when a reference transcript is available.")
+               captureTranscriptNonempty(evidence.lowConfidenceThresholdAuthority) != nil {
+                Text("Quipsly highlights words below \(Int((threshold * 100).rounded()))% confidence so you can listen where it matters. Verified accuracy appears when a reference transcript is available.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -3595,7 +3595,7 @@ struct CaptureTranscriptReviewView: View {
                 .tint(.indigo)
                 .accessibilityIdentifier("CaptureTranscriptEvidenceReviewFirst")
             }
-            Text("Measured WER appears only after people have reviewed source-backed words. Unreviewed provider confidence never becomes an accuracy claim.")
+            Text("Verified accuracy appears only after a source-backed review; provider confidence is never presented as proven accuracy.")
                 .font(.caption2.weight(.semibold))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -3603,6 +3603,24 @@ struct CaptureTranscriptReviewView: View {
         .reviewCard()
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("CaptureTranscriptEvidenceSummary")
+    }
+
+    private func transcriptProviderDisplayName(_ rawValue: String?) -> String? {
+        guard let value = captureTranscriptNonempty(rawValue) else { return nil }
+        switch value.lowercased() {
+        case "deepgram": return "Deepgram"
+        case "google": return "Google"
+        case "openai": return "OpenAI"
+        default: return value
+        }
+    }
+
+    private func transcriptModelDisplayName(_ rawValue: String?) -> String? {
+        guard let value = captureTranscriptNonempty(rawValue) else { return nil }
+        if value.lowercased().hasPrefix("nova-") {
+            return "Nova-\(value.dropFirst("nova-".count))"
+        }
+        return value
     }
 
     private func transcriptEvidenceMetric(value: String, label: String) -> some View {

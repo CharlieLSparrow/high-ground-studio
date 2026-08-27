@@ -1552,7 +1552,7 @@ private struct CaptureWorkView: View {
                     .accessibilityIdentifier("CaptureWorkNewProjectInline")
                 }
             }
-            Text("Every task, goal, note, and tag stays with this project across iPhone and Nest.")
+            Text("Every task, goal, note, and tag stays in sync across iPhone and the web.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
 
@@ -1711,7 +1711,7 @@ private struct CaptureWorkView: View {
                         .accessibilityIdentifier("CaptureWorkQuickEntry_\(kind.rawValue)")
                     }
                 }
-                Text("Capture it here; the same project and tags stay in sync with Nest.")
+                Text("Capture it here; everything stays in sync across iPhone and the web.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -1781,14 +1781,6 @@ private struct CaptureWorkView: View {
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(CapturePalette.accent)
                     .accessibilityIdentifier("CaptureWorkTagFocus")
-                }
-                if !retiredTags.isEmpty {
-                    Text(
-                        "\(retiredTags.count) retired tag\(retiredTags.count == 1 ? "" : "s") "
-                            + "\(retiredTags.count == 1 ? "remains" : "remain") preserved for history."
-                    )
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
                 }
             }
             .padding(16)
@@ -2278,10 +2270,10 @@ private struct CaptureCalendarContinuityCard: View {
                 .foregroundStyle(.blue)
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 3) {
-                Text("Calendar continuity")
+                Text("Calendar sync")
                     .font(.title3.weight(.bold))
                     .fixedSize(horizontal: false, vertical: true)
-                Text("Subscribe once; keep Quipsly as the source of truth")
+                Text("See Quipsly sessions alongside the rest of your calendar")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -2710,7 +2702,7 @@ struct TodayFollowThroughCard: View {
                 VStack(alignment: .leading, spacing: 3) {
                     Text("Follow-through")
                         .font(.title3.weight(.bold))
-                    Text("The same goals and committed work as Nest")
+                    Text("Notes, tasks, and goals from your sessions")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -10534,7 +10526,7 @@ private struct CaptureLibraryView: View {
                         .font(.title2.weight(.bold))
                     Text(
                         CaptureLaunchConfiguration.usesAppStorePresentation
-                            ? "The original stays on this iPhone while a verified copy becomes ready in Quipsly."
+                            ? "The original stays on this iPhone while a backed-up copy becomes ready in Quipsly."
                             : "Capture success means saved locally. Upload and server verification are separate steps."
                     )
                         .font(.subheadline)
@@ -10719,14 +10711,14 @@ private struct CaptureLibraryPreviewSourceCard: View {
                     tint: .green
                 )
                 CaptureStatusPill(
-                    label: presentsAppStoreStory ? "Verified in Nest" : "Waiting for Nest",
+                    label: presentsAppStoreStory ? "Backed up in Quipsly" : "Waiting for Quipsly",
                     systemImage: presentsAppStoreStory ? "checkmark.icloud.fill" : "arrow.clockwise.icloud",
                     tint: presentsAppStoreStory ? .green : .orange
                 )
             }
 
             Text(presentsAppStoreStory
-                 ? "The original remains safe on this iPhone. Its matching cloud copy is verified, and the transcript is ready for review."
+                 ? "The original remains safe on this iPhone. Its matching cloud copy is verified, and the transcript is ready to read and edit."
                  : "The original is safe on this iPhone. Upload can be retried after reconnecting; Quipsly will not call it verified until the cloud copy matches.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
@@ -10734,7 +10726,7 @@ private struct CaptureLibraryPreviewSourceCard: View {
 
             Label(
                 presentsAppStoreStory
-                    ? "Source verified · transcript ready"
+                    ? "Recording backed up · transcript ready"
                     : "Recoverable · retry available when online",
                 systemImage: "checkmark.shield.fill"
             )

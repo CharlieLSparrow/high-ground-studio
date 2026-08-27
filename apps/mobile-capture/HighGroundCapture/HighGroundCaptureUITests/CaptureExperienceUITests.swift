@@ -4266,7 +4266,7 @@ final class CaptureAppStoreScreenshotUITests: XCTestCase {
         )
         XCTAssertFalse(app.buttons["CaptureWorkNewProject"].exists)
         XCTAssertFalse(app.buttons["CaptureWorkNewProjectInline"].exists)
-        XCTAssertTrue(app.staticTexts["1 retired tag remains preserved for history."].exists)
+        XCTAssertFalse(app.staticTexts["1 retired tag remains preserved for history."].exists)
         keepScreenshot("03-work.png")
 
         launch(tab: "library", waitingFor: app.navigationBars["Library"])
@@ -4275,7 +4275,7 @@ final class CaptureAppStoreScreenshotUITests: XCTestCase {
                 .waitForExistence(timeout: 5)
         )
         XCTAssertTrue(app.staticTexts["Local audio source · 18.4 MB"].exists)
-        XCTAssertTrue(app.staticTexts["Verified in Nest"].exists)
+        XCTAssertTrue(app.staticTexts["Backed up in Quipsly"].exists)
         XCTAssertFalse(app.staticTexts["Synthetic local source · 18.4 MB"].exists)
         keepScreenshot("04-library.png")
 
@@ -4299,6 +4299,14 @@ final class CaptureAppStoreScreenshotUITests: XCTestCase {
             app.descendants(matching: .any)["CaptureTranscriptReviewView"]
                 .waitForExistence(timeout: 5)
         )
+        let conversationView = app.buttons["Conversation"]
+        XCTAssertTrue(
+            conversationView.waitForExistence(timeout: 5),
+            "The transcript must offer its familiar conversation view."
+        )
+        if !conversationView.isSelected {
+            conversationView.tap()
+        }
         let firstTranscriptTurn = app.descendants(matching: .any)[
             "CaptureTranscriptConversationTurn_preview-segment"
         ].firstMatch
