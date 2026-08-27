@@ -203,6 +203,8 @@ MIN_INSTANCES=0 \
 MAX_INSTANCES=2 \
 ENABLE_SESSION_INVITATION_EMAIL=1 \
 ENABLE_TRANSCRIPT_WORKER=1 \
+ENABLE_ACCOUNT_DELETION_WORKER=1 \
+ENABLE_STRIPE_SAAS=1 \
 scripts/release/quipsly-deploy-preview.sh
 ```
 
@@ -217,10 +219,11 @@ unless the invitation provider secret and the isolated transcript worker's
 secret, immutable image, service account, media bucket, and exact executor IAM
 boundary all read back successfully.
 
-Do not change Cloud Run memory, concurrency, maximum instances, provider
-recording, outbound invitation email, calendar attendee notification, or other
-cost/external-communication settings without recording the proposal and
-approval. A scale-to-zero minimum does not make unbounded maximum scale safe.
+Preview and read back Cloud Run memory, concurrency, maximum instances,
+provider recording, outbound invitation email, calendar attendee notification,
+and other cost or communication settings before promotion. Keep limits bounded,
+changes observable, and rollback direct; a scale-to-zero minimum does not make
+unbounded maximum scale safe.
 
 ## TestFlight handoff
 
