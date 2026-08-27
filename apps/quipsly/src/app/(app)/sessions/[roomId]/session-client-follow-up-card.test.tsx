@@ -173,11 +173,11 @@ describe("SessionClientFollowUpCard", () => {
     expect(markdown).toContain("Source: 01:03-01:08");
     expect(markdown).toContain("Speaker evidence: Participant recording");
     expect(markdown).toContain(`Content SHA-256: ${"a".repeat(64)}`);
-    expect(markdown).toContain("Private notes and unreviewed transcript candidates are excluded.");
+    expect(markdown).toContain("Private notes are excluded.");
     expect(markdown).not.toContain("coach-private");
   });
 
-  it("defaults only eligible canonical records into a private coach draft", async () => {
+  it("defaults only eligible canonical records and lets the coach save for later", async () => {
     const coachState = {
       ok: true,
       role: "COACH",
@@ -222,7 +222,7 @@ describe("SessionClientFollowUpCard", () => {
     expect(screen.getAllByText(/Includes exact source 01:03–01:08/i)).toHaveLength(3);
 
     await user.click(
-      screen.getByRole("button", { name: /create private draft/i }),
+      screen.getByRole("button", { name: /save for later/i }),
     );
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
@@ -237,6 +237,52 @@ describe("SessionClientFollowUpCard", () => {
     });
     expect(
       await screen.findByText(/The client cannot see it yet/i),
+    ).toBeInTheDocument();
+  });
+
+  it("shares a new follow-up in one coach action while preserving the internal revision boundary", async () => {
+    const coachState = {
+      ok: true,
+      role: "COACH",
+      room,
+      eligible,
+      output: null,
+    };
+    const draftOutput = {
+      ...releasedOutput,
+      status: "DRAFT",
+      revision: 1,
+      releasedAt: null,
+    };
+    const releasedState = { ...coachState, output: releasedOutput };
+    const fetchMock = jest
+      .fn()
+      .mockResolvedValueOnce(response(coachState))
+      .mockResolvedValueOnce(response({ ok: true, output: draftOutput }))
+      .mockResolvedValueOnce(response({ ok: true, output: releasedOutput }))
+      .mockResolvedValueOnce(response(releasedState));
+    global.fetch = fetchMock as typeof fetch;
+    const user = userEvent.setup();
+
+    render(<SessionClientFollowUpCard roomId="room-1" />);
+
+    await user.click(
+      await screen.findByRole("button", { name: "Share with Client Test" }),
+    );
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(4));
+    expect(JSON.parse(String(fetchMock.mock.calls[1][1]?.body))).toMatchObject({
+      action: "CREATE_DRAFT",
+      noteIds: ["note-safe"],
+      taskIds: ["task-client"],
+      goalIds: ["goal-client"],
+    });
+    expect(JSON.parse(String(fetchMock.mock.calls[2][1]?.body))).toMatchObject({
+      action: "RELEASE",
+      outputId: "follow-up-1",
+      expectedRevision: 1,
+    });
+    expect(
+      await screen.findByText(/Shared with Client Test in this Session/i),
     ).toBeInTheDocument();
   });
 
@@ -362,9 +408,7 @@ describe("SessionClientFollowUpCard", () => {
 
     render(<SessionClientFollowUpCard roomId="room-1" />);
 
-    expect(
-      await screen.findByText(/Editing private revision 1/i),
-    ).toBeInTheDocument();
+    expect((await screen.findAllByText(/Saved for later/i)).length).toBeGreaterThan(0);
     const intro = screen.getByLabelText("Opening note");
     expect(intro).toHaveValue(
       "Here is the exact work we agreed to carry forward.",
@@ -375,7 +419,7 @@ describe("SessionClientFollowUpCard", () => {
       "A clearer review after checking the exact commitments.",
     );
     await user.click(
-      screen.getByRole("button", { name: /save private draft changes/i }),
+      screen.getByRole("button", { name: /save for later/i }),
     );
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
@@ -393,10 +437,10 @@ describe("SessionClientFollowUpCard", () => {
         /Private draft revised with an immutable history/i,
       ),
     ).toBeInTheDocument();
-    expect(screen.getByText(/Editing private revision 2/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/Saved for later/i).length).toBeGreaterThan(0);
   });
 
-  it("holds release when a selected canonical record changed and directs the coach to save a current revision", async () => {
+  it("lets the coach share current selections even when an older saved version is stale", async () => {
     const draftOutput = {
       ...releasedOutput,
       status: "DRAFT",
@@ -430,14 +474,12 @@ describe("SessionClientFollowUpCard", () => {
 
     render(<SessionClientFollowUpCard roomId="room-1" />);
 
-    expect(await screen.findByText("Release held — review current sources")).toBeInTheDocument();
-    expect(screen.getByText(/Task · Run one protected rehearsal/).closest("li")).toHaveTextContent(/changed after this draft was saved/i);
-    expect(screen.getByText(/Review the current selections.*save private draft changes/i)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Share with Client Test" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Save private draft changes" })).toBeEnabled();
+    expect(await screen.findByRole("button", { name: "Share with Client Test" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Save for later" })).toBeEnabled();
+    expect(screen.queryByText(/Release held/i)).not.toBeInTheDocument();
   });
 
-  it("holds sharing while the editor differs from the saved private draft", async () => {
+  it("shares the editor values directly without forcing a separate save", async () => {
     const user = userEvent.setup();
     const draftOutput = {
       ...releasedOutput,
@@ -455,17 +497,15 @@ describe("SessionClientFollowUpCard", () => {
 
     render(<SessionClientFollowUpCard roomId="room-1" />);
 
-    expect(await screen.findByText("Ready to share")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Share with Client Test" })).toBeEnabled();
+    expect(await screen.findByRole("button", { name: "Share with Client Test" })).toBeEnabled();
 
     const title = screen.getByRole("textbox", { name: "Title" });
     await user.clear(title);
     await user.type(title, "Follow-up with one unsaved clarification");
 
-    expect(await screen.findByText("Save edits before release")).toBeInTheDocument();
-    expect(screen.getByText(/release controls still point to private revision 2/i)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Share with Client Test" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Save private draft changes" })).toBeEnabled();
+    expect(screen.queryByText(/Save edits before release/i)).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Share with Client Test" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Save for later" })).toBeEnabled();
   });
 
   it("shares a current private draft with one named-recipient action", async () => {
@@ -482,10 +522,12 @@ describe("SessionClientFollowUpCard", () => {
       output: draftOutput,
       readiness: { ...readyReadiness, checkedRevision: draftOutput.revision },
     };
+    const updatedDraft = { ...draftOutput, revision: draftOutput.revision + 1 };
     const releasedState = { ...initialState, output: releasedOutput };
     const fetchMock = jest
       .fn()
       .mockResolvedValueOnce(response(initialState))
+      .mockResolvedValueOnce(response({ ok: true, output: updatedDraft }))
       .mockResolvedValueOnce(response({ ok: true, output: releasedOutput }))
       .mockResolvedValueOnce(response(releasedState));
     global.fetch = fetchMock as typeof fetch;
@@ -494,12 +536,17 @@ describe("SessionClientFollowUpCard", () => {
     render(<SessionClientFollowUpCard roomId="room-1" />);
 
     await user.click(await screen.findByRole("button", { name: "Share with Client Test" }));
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(4));
     expect(JSON.parse(String(fetchMock.mock.calls[1][1]?.body))).toMatchObject({
-      action: "RELEASE",
+      action: "UPDATE_DRAFT",
       outputId: "follow-up-1",
       expectedRevision: draftOutput.revision,
     });
-    expect(await screen.findByText(/released inside this client’s private Quipsly Session/i)).toBeInTheDocument();
+    expect(JSON.parse(String(fetchMock.mock.calls[2][1]?.body))).toMatchObject({
+      action: "RELEASE",
+      outputId: "follow-up-1",
+      expectedRevision: updatedDraft.revision,
+    });
+    expect(await screen.findByText(/Shared with Client Test in this Session/i)).toBeInTheDocument();
   });
 });

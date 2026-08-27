@@ -196,18 +196,6 @@ function formatMediaTime(value: number) {
     : `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
 }
 
-function readinessChangeLabel(reason: NonNullable<FollowUpResponse["readiness"]>["changes"][number]["reason"]) {
-  if (reason === "CONTENT_CHANGED") return "changed after this draft was saved";
-  if (reason === "NO_LONGER_ELIGIBLE") return "is no longer eligible for this client follow-up";
-  if (reason === "SELECTION_MISMATCH") return "does not match the frozen source selection";
-  if (reason === "SNAPSHOT_INVALID") return "failed its immutable snapshot check";
-  return "failed its source-manifest check";
-}
-
-function normalizedDraftText(value: string | null | undefined) {
-  return (value ?? "").replace(/\r\n/g, "\n").trim();
-}
-
 function markdownText(value: string | null | undefined) {
   return (value ?? "").replace(/\r\n/g, "\n").trim();
 }
@@ -262,21 +250,13 @@ export function clientFollowUpMarkdown(output: FollowUpOutput) {
   if (markdownText(output.nextSessionFocus)) {
     lines.push("", "## Bring into the next session", "", markdownText(output.nextSessionFocus));
   }
-  lines.push("", "---", "Prepared from a reviewed Quipsly client-safe snapshot. Private notes and unreviewed transcript candidates are excluded.", "");
+  lines.push("", "---", "Prepared from client-safe Quipsly notes and client-owned work. Private notes are excluded.", "");
   return lines.join("\n");
 }
 
 function speakerEvidenceMarkdown(anchor: FollowUpSourceAnchor) {
   const evidence = transcriptSpeakerEvidenceCopy(anchor.speakerAuthority);
   return evidence ? ` · Speaker evidence: ${evidence.label}` : "";
-}
-
-function selectionMatches(
-  selected: Set<string>,
-  frozen: Array<{ id: string }>,
-) {
-  return selected.size === frozen.length
-    && frozen.every((item) => selected.has(item.id));
 }
 
 function FollowUpSourceLink({ anchor, recordLabel }: { anchor: FollowUpSourceAnchor | null | undefined; recordLabel: string }) {
@@ -308,8 +288,8 @@ function FollowUpArtifact({ output }: { output: FollowUpOutput }) {
         <div>
           <p className="text-[10px] font-black uppercase tracking-[0.16em] text-emerald-800">
             {output.status === "RELEASED"
-              ? "Released in Quipsly"
-              : "Private coach draft"}
+              ? "Shared with client"
+              : "Saved for later"}
           </p>
           <h3 className="mt-1 font-serif text-3xl font-black text-[#283c31]">
             {output.title}
@@ -322,7 +302,7 @@ function FollowUpArtifact({ output }: { output: FollowUpOutput }) {
           </p>
         </div>
         <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-[10px] font-black uppercase tracking-wide text-emerald-900">
-          <ShieldCheck size={14} aria-hidden="true" /> Client-safe snapshot
+          <ShieldCheck size={14} aria-hidden="true" /> Client follow-up
         </span>
       </div>
       {output.intro ? (
@@ -446,9 +426,10 @@ function FollowUpArtifact({ output }: { output: FollowUpOutput }) {
           </p>
         </section>
       ) : null}
-      <p className="mt-5 break-all font-mono text-[9px] text-[#789080]">
-        Content SHA-256 {output.contentSha256}
-      </p>
+      <details className="mt-5 text-[10px] font-bold text-[#789080]">
+        <summary className="cursor-pointer">Version details</summary>
+        <p className="mt-2 break-all font-mono">Content SHA-256 {output.contentSha256}</p>
+      </details>
     </article>
   );
 }
@@ -546,21 +527,6 @@ export function SessionClientFollowUpCard({ roomId }: { roomId: string }) {
   }, [load]);
 
   const selectedCount = noteIds.size + taskIds.size + goalIds.size;
-  const hasUnsavedDraftChanges = useMemo(() => {
-    const output = snapshot?.output;
-    if (!output || output.status !== "DRAFT") return false;
-    return normalizedDraftText(title) !== normalizedDraftText(output.title)
-      || normalizedDraftText(intro) !== normalizedDraftText(output.intro)
-      || normalizedDraftText(nextSessionFocus) !== normalizedDraftText(output.nextSessionFocus)
-      || !selectionMatches(noteIds, output.body.notes ?? [])
-      || !selectionMatches(goalIds, output.body.goals ?? [])
-      || !selectionMatches(taskIds, output.body.tasks ?? []);
-  }, [goalIds, intro, nextSessionFocus, noteIds, snapshot?.output, taskIds, title]);
-  const sourcesReady = snapshot?.output?.status === "DRAFT"
-    && snapshot.readiness?.releaseAllowed === true
-    && snapshot.readiness.checkedRevision === snapshot.output.revision;
-  const releaseReady = sourcesReady && !hasUnsavedDraftChanges;
-
   const opened = useMemo(
     () =>
       snapshot?.output?.deliveryEvents.some(
@@ -645,6 +611,78 @@ export function SessionClientFollowUpCard({ roomId }: { roomId: string }) {
         error instanceof Error
           ? error.message
           : "The client follow-up operation was not confirmed.",
+      );
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function shareFollowUp() {
+    if (!snapshot?.room) return;
+    setBusy("SHARE");
+    setNotice(null);
+    try {
+      const current = snapshot.output;
+      const draftAction = current?.status === "DRAFT" ? "UPDATE_DRAFT" : "CREATE_DRAFT";
+      const draftBody: Record<string, unknown> = {
+        action: draftAction,
+        clientRequestId: crypto.randomUUID(),
+        title,
+        intro,
+        nextSessionFocus,
+        noteIds: [...noteIds],
+        taskIds: [...taskIds],
+        goalIds: [...goalIds],
+      };
+      if (draftAction === "UPDATE_DRAFT") {
+        Object.assign(draftBody, {
+          outputId: current!.id,
+          expectedRevision: current!.revision,
+        });
+      }
+      const draftResponse = await fetch(
+        `/api/sessions/${encodeURIComponent(roomId)}/client-follow-up`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(draftBody),
+        },
+      );
+      const draftPayload = (await draftResponse.json()) as FollowUpResponse;
+      if (!draftResponse.ok || !draftPayload.ok || !draftPayload.output) {
+        throw new Error(draftPayload.error || "The follow-up could not be saved.");
+      }
+
+      const releaseResponse = await fetch(
+        `/api/sessions/${encodeURIComponent(roomId)}/client-follow-up`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            action: "RELEASE",
+            clientRequestId: crypto.randomUUID(),
+            outputId: draftPayload.output.id,
+            expectedRevision: draftPayload.output.revision,
+          }),
+        },
+      );
+      const releasePayload = (await releaseResponse.json()) as FollowUpResponse;
+      if (!releaseResponse.ok || !releasePayload.ok || !releasePayload.output) {
+        await load();
+        throw new Error(
+          releasePayload.error ||
+            "The follow-up was saved privately, but it could not be shared yet.",
+        );
+      }
+      setNotice(
+        `Shared with ${snapshot.room.client.label} in this Session. You can keep editing or stop sharing at any time.`,
+      );
+      await load();
+    } catch (error) {
+      setNotice(
+        error instanceof Error
+          ? error.message
+          : "The follow-up could not be shared.",
       );
     } finally {
       setBusy(null);
@@ -785,7 +823,7 @@ export function SessionClientFollowUpCard({ roomId }: { roomId: string }) {
             </h2>
             <p className="mt-1 max-w-3xl text-xs font-semibold leading-5 text-[#5c7163]">
               {snapshot.role === "COACH"
-                ? `Choose the notes, goals, and tasks to share with ${snapshot.room.client.label}. You can review a private draft before sharing.`
+                ? `Choose what will help ${snapshot.room.client.label}, edit anything you want, and share it when ready.`
                 : `Follow-ups shared with ${snapshot.room.client.label} appear here. Private coach notes stay private.`}
             </p>
           </div>
@@ -828,19 +866,18 @@ export function SessionClientFollowUpCard({ roomId }: { roomId: string }) {
           <div className="mt-5 rounded-2xl border border-dashed border-emerald-300 bg-white/65 p-6">
             <LockKeyhole className="text-emerald-700" aria-hidden="true" />
             <h3 className="mt-3 font-serif text-2xl font-black text-[#283c31]">
-              Nothing released yet
+              Nothing shared yet
             </h3>
             <p className="mt-2 text-sm font-semibold text-[#5c7163]">
-              Private coach drafts are intentionally invisible. This space will
-              show only a reviewed follow-up released to this exact account.
+              A follow-up shared with your account will appear here.
             </p>
           </div>
         )
       ) : (
-        <div className="mt-5 grid gap-5 xl:grid-cols-[1fr_1fr]">
+        <div className={`mt-5 grid gap-5 ${snapshot.output ? "xl:grid-cols-[1fr_1fr]" : ""}`}>
           <div className="rounded-2xl border border-emerald-200 bg-white p-5">
             <h3 className="font-serif text-2xl font-black text-[#283c31]">
-              Assemble from approved records
+              Choose what to share
             </h3>
             <div className="mt-4 grid gap-3">
               <label className="text-[10px] font-black uppercase tracking-wide text-emerald-900">
@@ -1018,42 +1055,55 @@ export function SessionClientFollowUpCard({ roomId }: { roomId: string }) {
               {selectedCount} item{selectedCount === 1 ? "" : "s"} selected.
               Only notes marked client-safe and work owned by this client can be shared.
             </p>
+            <div className="mt-4 grid gap-2 sm:grid-cols-[1fr_auto]">
+              <button
+                type="button"
+                disabled={
+                  busy !== null ||
+                  !title.trim() ||
+                  (selectedCount === 0 &&
+                    !intro.trim() &&
+                    !nextSessionFocus.trim())
+                }
+                onClick={() => void shareFollowUp()}
+                className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-emerald-900 px-4 py-2 text-xs font-black uppercase tracking-wide text-white disabled:opacity-45"
+              >
+                <Send size={15} aria-hidden="true" />
+                {busy === "SHARE"
+                  ? "Sharing…"
+                  : snapshot.output?.status === "RELEASED"
+                    ? "Update shared follow-up"
+                    : `Share with ${snapshot.room.client.label}`}
+              </button>
+              <button
+                type="button"
+                disabled={
+                  busy !== null ||
+                  !title.trim() ||
+                  (selectedCount === 0 &&
+                    !intro.trim() &&
+                    !nextSessionFocus.trim())
+                }
+                onClick={() =>
+                  void mutate(
+                    snapshot.output?.status === "DRAFT"
+                      ? "UPDATE_DRAFT"
+                      : "CREATE_DRAFT",
+                  )
+                }
+                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-emerald-300 bg-white px-4 py-2 text-xs font-black text-emerald-950 disabled:opacity-45"
+              >
+                <ClipboardCheck size={15} aria-hidden="true" />
+                {busy === "CREATE_DRAFT" || busy === "UPDATE_DRAFT"
+                  ? "Saving…"
+                  : "Save for later"}
+              </button>
+            </div>
             {snapshot.output?.status === "DRAFT" ? (
-              <p className="mt-4 rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-xs font-bold leading-5 text-sky-950">
-                Editing private revision {snapshot.output.revision}. Saving
-                appends history; it does not release or overwrite an earlier
-                revision.
+              <p className="mt-2 text-xs font-semibold text-emerald-800">
+                Saved for later. Sharing will include your latest edits.
               </p>
             ) : null}
-            <button
-              type="button"
-              disabled={
-                busy !== null ||
-                !title.trim() ||
-                (selectedCount === 0 &&
-                  !intro.trim() &&
-                  !nextSessionFocus.trim())
-              }
-              onClick={() =>
-                void mutate(
-                  snapshot.output?.status === "DRAFT"
-                    ? "UPDATE_DRAFT"
-                    : "CREATE_DRAFT",
-                )
-              }
-              className="mt-4 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-[#283c31] px-4 py-2 text-xs font-black uppercase tracking-wide text-white disabled:opacity-45"
-            >
-              <ClipboardCheck size={15} aria-hidden="true" />
-              {busy === "CREATE_DRAFT"
-                ? "Creating private draft…"
-                : busy === "UPDATE_DRAFT"
-                  ? "Saving private revision…"
-                  : snapshot.output?.status === "DRAFT"
-                    ? "Save private draft changes"
-                    : snapshot.output?.status === "RELEASED"
-                      ? "Prepare a new draft"
-                      : "Create private draft"}
-            </button>
           </div>
 
           <div className="space-y-4">
@@ -1070,60 +1120,13 @@ export function SessionClientFollowUpCard({ roomId }: { roomId: string }) {
                   {busy === "EXPORT" ? "Preparing file…" : "Download or share follow-up"}
                 </button>
               </>
-            ) : (
-              <div className="rounded-2xl border border-dashed border-emerald-300 bg-white/65 p-6">
-                <LockKeyhole className="text-emerald-700" aria-hidden="true" />
-                <h3 className="mt-3 font-serif text-2xl font-black text-[#283c31]">
-                  No draft yet
-                </h3>
-                <p className="mt-2 text-sm font-semibold text-[#5c7163]">
-                  Create a draft to freeze and inspect the exact client-visible
-                  snapshot before release.
-                </p>
-              </div>
-            )}
-            {snapshot.output?.status === "DRAFT" ? (
-              <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
-                {sourcesReady && !hasUnsavedDraftChanges ? (
-                  <div className="rounded-xl border border-emerald-300 bg-emerald-50 p-3 text-emerald-950" data-testid="client-follow-up-release-ready">
-                    <p className="text-xs font-black">Ready to share</p>
-                    <p className="mt-1 text-xs font-semibold leading-5">All {snapshot.readiness?.selectedCount ?? 0} selected items still match this private draft.</p>
-                  </div>
-                ) : sourcesReady ? (
-                  <div className="rounded-xl border border-amber-300 bg-amber-100 p-3 text-amber-950" role="alert" data-testid="client-follow-up-unsaved-changes">
-                    <p className="text-xs font-black">Save edits before release</p>
-                    <p className="mt-1 text-xs font-semibold leading-5">The release controls still point to private revision {snapshot.output.revision}, not the unsaved editor values. Save a new private revision or restore the editor to this exact snapshot before confirming.</p>
-                  </div>
-                ) : (
-                  <div className="rounded-xl border border-rose-300 bg-rose-50 p-3 text-rose-950" role="alert" data-testid="client-follow-up-release-held">
-                    <p className="text-xs font-black">Release held — review current sources</p>
-                    {snapshot.readiness?.changes.length ? (
-                      <ul className="mt-2 space-y-1 text-xs font-semibold leading-5">
-                        {snapshot.readiness.changes.map((change, index) => <li key={`${change.kind}:${change.id}:${change.reason}:${index}`}><span className="font-black">{change.kind === "FOLLOW_UP" ? "Follow-up" : change.kind.charAt(0) + change.kind.slice(1).toLowerCase()} · {change.label}</span> {readinessChangeLabel(change.reason)}.</li>)}
-                      </ul>
-                    ) : <p className="mt-1 text-xs font-semibold leading-5">Quipsly could not verify this draft against current canonical records. Save a current private revision before release.</p>}
-                    <p className="mt-2 text-xs font-bold leading-5">Review the current selections on the left, then save private draft changes. Nothing has been released.</p>
-                  </div>
-                )}
-                <button
-                  type="button"
-                  disabled={!releaseReady || busy !== null}
-                  onClick={() => void mutate("RELEASE")}
-                  className="mt-3 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-emerald-900 px-4 py-2 text-xs font-black uppercase tracking-wide text-white disabled:opacity-45"
-                >
-                  <Send size={15} aria-hidden="true" />
-                  {busy === "RELEASE"
-                    ? "Releasing in Quipsly…"
-                    : `Share with ${snapshot.room.client.label}`}
-                </button>
-              </div>
             ) : null}
             {snapshot.output?.status === "RELEASED" ? (
               <div className="rounded-2xl border border-emerald-200 bg-white p-4">
                 <p className="text-xs font-bold leading-5 text-emerald-950">
                   {opened
-                    ? "Recipient-confirmed open receipt exists for this content hash."
-                    : "Released in app; no recipient-confirmed open receipt yet."}
+                    ? `${snapshot.room.client.label} opened this follow-up.`
+                    : `Shared with ${snapshot.room.client.label}.`}
                 </p>
                 <button
                   type="button"
@@ -1140,12 +1143,17 @@ export function SessionClientFollowUpCard({ roomId }: { roomId: string }) {
         </div>
       )}
 
-      <p className="mt-5 rounded-xl border border-emerald-200 bg-white px-4 py-3 text-xs font-bold leading-5 text-emerald-950">
-        <LockKeyhole className="mr-2 inline" size={14} aria-hidden="true" />
-        This surface changes Quipsly visibility only. It never emails, texts,
-        publishes, schedules, bills, changes consent, or rewrites the source
-        note, goal, or task.
-      </p>
+      <details className="mt-5 rounded-xl border border-emerald-200 bg-white px-4 py-3 text-xs font-bold leading-5 text-emerald-950">
+        <summary className="cursor-pointer">
+          <LockKeyhole className="mr-2 inline" size={14} aria-hidden="true" />
+          Privacy and sharing
+        </summary>
+        <p className="mt-2 font-semibold">
+          Sharing makes this follow-up visible to the named client inside this
+          Session. It does not email, text, publish, schedule, bill, change
+          consent, or rewrite the source notes, goals, or tasks.
+        </p>
+      </details>
     </section>
   );
 }
