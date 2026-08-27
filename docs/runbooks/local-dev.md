@@ -93,6 +93,8 @@ Derived from source usage:
 - `QUIPSLY_SESSION_INVITATION_RESEND_API_KEY`
 - `QUIPSLY_SESSION_INVITATION_EMAIL_FROM`
 - `QUIPSLY_RESEND_WEBHOOK_SECRET`
+- `QUIPSLY_TRANSACTIONAL_EMAIL_SERVICE_ACCOUNT`
+- `QUIPSLY_TRANSACTIONAL_EMAIL_AUDIENCE`
 - `QUIPSLY_SITE_URL`
 - `QUIPSLY_COACHING_FORM_AUTOMATION_SECRET`
 - `ENABLE_EPISODES_FUMADOCS`
@@ -124,6 +126,11 @@ Notes:
   raw Svix signature with `QUIPSLY_RESEND_WEBHOOK_SECRET`, persists only
   delivery metadata and a body hash, and deliberately ignores open/click
   tracking events.
+- Confirmations and Session reminders use the same verified sender but are
+  persisted as privacy-minimized `TransactionalEmail` work. In production,
+  `/api/cron/transactional-email` accepts only the dedicated Scheduler service
+  account and exact Cloud Run audience through short-lived Google OIDC. See
+  `docs/runbooks/quipsly-transactional-email.md` for activation and recovery.
 - `/api/cron/coaching-form-automation` reconciles explicit pre/post-Session
   form policies. It fails closed unless
   `QUIPSLY_COACHING_FORM_AUTOMATION_SECRET` is configured and the caller sends

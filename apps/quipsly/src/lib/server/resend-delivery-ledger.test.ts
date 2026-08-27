@@ -19,6 +19,11 @@ function harness(input?: { status?: string; providerStatusAt?: Date | null }) {
   const models = {
     emailProviderEvent: {
       findUnique: jest.fn(async ({ where }: any) => events.get(where.provider_providerEventId.providerEventId) || null),
+      update: jest.fn(async ({ where, data }: any) => {
+        const row = [...events.values()].find((entry) => entry.id === where.id);
+        Object.assign(row, data);
+        return { id: row.id };
+      }),
       create: jest.fn(async ({ data }: any) => {
         const row = { id: `saved-${events.size + 1}`, ...data };
         events.set(data.providerEventId, row);
@@ -28,6 +33,10 @@ function harness(input?: { status?: string; providerStatusAt?: Date | null }) {
     callRoomInvitationDeliveryReceipt: {
       findFirst: jest.fn(async () => ({ ...delivery })),
       update: jest.fn(async ({ data }: any) => Object.assign(delivery, data)),
+    },
+    transactionalEmail: {
+      findFirst: jest.fn(async () => null),
+      update: jest.fn(),
     },
     emailRecipientDeliveryState: {
       findUnique: jest.fn(async ({ where }: any) => recipientStates.get(where.recipientEmail) || null),
@@ -98,5 +107,58 @@ describe("Resend delivery ledger", () => {
     expect(state.models.emailProviderEvent.create).toHaveBeenCalledTimes(1);
     expect(state.models.callRoomInvitationDeliveryReceipt.update).not.toHaveBeenCalled();
     expect(state.delivery.status).toBe("DELIVERED");
+  });
+
+  it("reconciles a previously unmatched replay after the send receipt appears", async () => {
+    const state = harness();
+    state.models.callRoomInvitationDeliveryReceipt.findFirst
+      .mockResolvedValueOnce(null)
+      .mockResolvedValue({ ...state.delivery });
+
+    await expect(recordResendDeliveryEvent({
+      prisma: state.prisma as never,
+      event: event(),
+    })).resolves.toMatchObject({ duplicate: false, matched: false });
+    await expect(recordResendDeliveryEvent({
+      prisma: state.prisma as never,
+      event: event(),
+    })).resolves.toMatchObject({ duplicate: true, matched: true });
+
+    expect(state.models.emailProviderEvent.create).toHaveBeenCalledTimes(1);
+    expect(state.models.emailProviderEvent.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ deliveryReceiptId: "delivery-1" }),
+      }),
+    );
+  });
+
+  it("attaches provider evidence to a scheduled transactional message", async () => {
+    const state = harness();
+    state.models.callRoomInvitationDeliveryReceipt.findFirst.mockResolvedValue(null);
+    state.models.transactionalEmail.findFirst.mockResolvedValue({
+      id: "transactional-email-1",
+      status: "SENT",
+      providerStatusAt: new Date("2026-08-27T18:00:00.000Z"),
+      recipientEmail: "client@example.com",
+    });
+
+    await expect(recordResendDeliveryEvent({
+      prisma: state.prisma as never,
+      event: event({ eventType: "email.delivered", diagnostic: {} }),
+    })).resolves.toMatchObject({ duplicate: false, matched: true });
+
+    expect(state.models.emailProviderEvent.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          transactionalEmailId: "transactional-email-1",
+          deliveryReceiptId: null,
+        }),
+      }),
+    );
+    expect(state.models.transactionalEmail.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ status: "DELIVERED" }),
+      }),
+    );
   });
 });

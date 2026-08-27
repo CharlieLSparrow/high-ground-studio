@@ -10,6 +10,7 @@ import {
 } from "@prisma/client";
 
 import { getPrismaClient } from "@/lib/prisma";
+import { deleteAccountEmailOperationalData } from "@/lib/server/account-deletion-email-operational-data";
 import {
   createAccountDeletionExternalServices,
   type AccountDeletionExternalServices,
@@ -401,6 +402,11 @@ export async function executeAccountDeletion(input: {
         });
         await tx.studioNestInvite.deleteMany({
           where: { email: { in: emails } },
+        });
+        await deleteAccountEmailOperationalData({
+          tx,
+          userId: inventory.subject.userId,
+          emails,
         });
         if (homeProjectIds.length > 0) {
           // Immutable source relations use RESTRICT so no code path can orphan

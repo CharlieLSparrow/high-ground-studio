@@ -59,6 +59,8 @@ export default async function ProductOperationsPage({
     goals,
     deliveryGroups,
     recentDeliveryFailures,
+    transactionalDeliveryGroups,
+    recentTransactionalFailures,
     openDeletionRequests,
     productEventGroups,
     uniqueProductActors,
@@ -102,6 +104,29 @@ export default async function ProductOperationsPage({
         invitation: { select: { room: { select: { id: true, title: true } } } },
       },
     }),
+    prisma.transactionalEmail.groupBy({
+      by: ["status"],
+      where: { createdAt: { gte: since } },
+      _count: { id: true },
+    }),
+    prisma.transactionalEmail.findMany({
+      where: {
+        status: { in: ["FAILED", "BOUNCED", "COMPLAINED", "SUPPRESSED"] },
+        createdAt: { gte: since },
+      },
+      orderBy: { updatedAt: "desc" },
+      take: 12,
+      select: {
+        id: true,
+        kind: true,
+        status: true,
+        recipientEmail: true,
+        errorCode: true,
+        errorMessage: true,
+        updatedAt: true,
+        room: { select: { id: true, title: true } },
+      },
+    }),
     prisma.userAccountDeletionRequest.count({ where: { status: { in: ["REQUESTED", "REVIEWING", "EXPORT_PREPARING", "READY_FOR_DELETION", "EXECUTING", "FAILED"] } } }),
     prisma.userEvent.groupBy({
       by: ["eventName"],
@@ -115,7 +140,11 @@ export default async function ProductOperationsPage({
       select: { userId: true },
     }),
     prisma.emailProviderEvent.count({
-      where: { receivedAt: { gte: since }, deliveryReceiptId: null },
+      where: {
+        receivedAt: { gte: since },
+        deliveryReceiptId: null,
+        transactionalEmailId: null,
+      },
     }),
   ]);
 
@@ -133,14 +162,25 @@ export default async function ProductOperationsPage({
   ];
   const followThrough = coachingNotes + actionItems + goals;
   const deliveryCount = new Map(deliveryGroups.map((entry) => [entry.status, entry._count.id]));
-  const sent = deliveryCount.get("SENT") ?? 0;
-  const failed = deliveryCount.get("FAILED") ?? 0;
-  const pending = deliveryCount.get("PENDING") ?? 0;
-  const delivered = deliveryCount.get("DELIVERED") ?? 0;
+  const transactionalDeliveryCount = new Map(
+    transactionalDeliveryGroups.map((entry) => [entry.status, entry._count.id]),
+  );
+  const sent = (deliveryCount.get("SENT") ?? 0)
+    + (transactionalDeliveryCount.get("SENT") ?? 0);
+  const failed = (deliveryCount.get("FAILED") ?? 0)
+    + (transactionalDeliveryCount.get("FAILED") ?? 0);
+  const pending = (deliveryCount.get("PENDING") ?? 0)
+    + (transactionalDeliveryCount.get("PLANNED") ?? 0)
+    + (transactionalDeliveryCount.get("SENDING") ?? 0);
+  const delivered = (deliveryCount.get("DELIVERED") ?? 0)
+    + (transactionalDeliveryCount.get("DELIVERED") ?? 0);
   const deliveryProblems = failed
     + (deliveryCount.get("BOUNCED") ?? 0)
     + (deliveryCount.get("COMPLAINED") ?? 0)
-    + (deliveryCount.get("SUPPRESSED") ?? 0);
+    + (deliveryCount.get("SUPPRESSED") ?? 0)
+    + (transactionalDeliveryCount.get("BOUNCED") ?? 0)
+    + (transactionalDeliveryCount.get("COMPLAINED") ?? 0)
+    + (transactionalDeliveryCount.get("SUPPRESSED") ?? 0);
 
   return (
     <main className="min-h-full bg-[#f5efe5] px-4 py-6 text-[#2e251d] md:px-8">
@@ -195,7 +235,8 @@ export default async function ProductOperationsPage({
             {unmatchedEmailEvents ? <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950"><strong>{unmatchedEmailEvents} provider event(s)</strong> could not yet be matched to a Quipsly send receipt. They remain in the ledger for reconciliation.</div> : null}
             <div className="grid gap-2">
               {recentDeliveryFailures.map((failure) => <Link key={failure.id} href={`/sessions/${failure.invitation.room.id}`} className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-950"><div className="flex justify-between gap-2"><span className="font-black">{failure.invitation.room.title || "Session invitation"}</span><span className="text-xs font-black">{failure.status}</span></div><div className="mt-1 break-all">{failure.recipientEmail}</div><div className="mt-1 text-xs">{failure.errorCode || "delivery-failed"}{failure.errorMessage ? ` · ${failure.errorMessage}` : ""}</div></Link>)}
-              {!recentDeliveryFailures.length ? <Empty>No invitation email failures in this window.</Empty> : null}
+              {recentTransactionalFailures.map((failure) => <Link key={failure.id} href={`/sessions/${failure.room.id}`} className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-950"><div className="flex justify-between gap-2"><span className="font-black">{failure.room.title || "Session message"}</span><span className="text-xs font-black">{failure.kind.replaceAll("_", " ")} · {failure.status}</span></div><div className="mt-1 break-all">{failure.recipientEmail}</div><div className="mt-1 text-xs">{failure.errorCode || "delivery-failed"}{failure.errorMessage ? ` · ${failure.errorMessage}` : ""}</div></Link>)}
+              {!recentDeliveryFailures.length && !recentTransactionalFailures.length ? <Empty>No transactional email failures in this window.</Empty> : null}
             </div>
           </Panel>
         </section>

@@ -4,6 +4,7 @@ import type {
   CallRoomInvitationDeliveryStatus,
   Prisma,
   PrismaClient,
+  TransactionalEmailStatus,
 } from "@prisma/client";
 
 import { acquirePrismaAdvisoryTransactionLock } from "@/lib/server/prisma-advisory-lock";
@@ -24,6 +25,19 @@ const STATUS_RANK: Record<CallRoomInvitationDeliveryStatus, number> = {
   SUPPRESSED: 7,
 };
 
+const TRANSACTIONAL_STATUS_RANK: Record<TransactionalEmailStatus, number> = {
+  PLANNED: 0,
+  SENDING: 1,
+  SENT: 2,
+  DELIVERY_DELAYED: 3,
+  DELIVERED: 4,
+  FAILED: 5,
+  CANCELED: 6,
+  BOUNCED: 7,
+  COMPLAINED: 8,
+  SUPPRESSED: 9,
+};
+
 function shouldApplyStatus(input: {
   currentStatus: CallRoomInvitationDeliveryStatus;
   currentAt: Date | null;
@@ -34,6 +48,18 @@ function shouldApplyStatus(input: {
   if (input.nextAt.getTime() > input.currentAt.getTime()) return true;
   if (input.nextAt.getTime() < input.currentAt.getTime()) return false;
   return STATUS_RANK[input.nextStatus] >= STATUS_RANK[input.currentStatus];
+}
+
+function shouldApplyTransactionalStatus(input: {
+  currentStatus: TransactionalEmailStatus;
+  currentAt: Date | null;
+  nextStatus: TransactionalEmailStatus;
+  nextAt: Date;
+}) {
+  if (!input.currentAt) return true;
+  if (input.nextAt.getTime() > input.currentAt.getTime()) return true;
+  if (input.nextAt.getTime() < input.currentAt.getTime()) return false;
+  return TRANSACTIONAL_STATUS_RANK[input.nextStatus] >= TRANSACTIONAL_STATUS_RANK[input.currentStatus];
 }
 
 function failureFields(event: VerifiedResendDeliveryEvent) {
@@ -62,28 +88,44 @@ export async function recordResendDeliveryEvent(input: {
 
     const replay = await tx.emailProviderEvent.findUnique({
       where: { provider_providerEventId: { provider: "resend", providerEventId: event.providerEventId } },
-      select: { id: true, deliveryReceiptId: true },
+      select: { id: true, deliveryReceiptId: true, transactionalEmailId: true },
     });
-    if (replay) return { duplicate: true, eventId: replay.id, matched: Boolean(replay.deliveryReceiptId) };
 
     const delivery = await tx.callRoomInvitationDeliveryReceipt.findFirst({
       where: { provider: "resend", providerMessageId: event.providerMessageId },
       select: { id: true, status: true, providerStatusAt: true, recipientEmail: true },
     });
-    const savedEvent = await tx.emailProviderEvent.create({
-      data: {
-        provider: "resend",
-        providerEventId: event.providerEventId,
-        providerMessageId: event.providerMessageId,
-        eventType: event.eventType,
-        recipientEmail: event.recipientEmail,
-        occurredAt: event.occurredAt,
-        payloadSha256: event.payloadSha256,
-        diagnosticJson: event.diagnostic as Prisma.InputJsonValue,
-        deliveryReceiptId: delivery?.id ?? null,
-      },
-      select: { id: true },
-    });
+    const transactionalEmail = delivery
+      ? null
+      : await tx.transactionalEmail.findFirst({
+          where: { provider: "resend", providerMessageId: event.providerMessageId },
+          select: { id: true, status: true, providerStatusAt: true, recipientEmail: true },
+        });
+    const savedEvent = replay
+      ? await tx.emailProviderEvent.update({
+          where: { id: replay.id },
+          data: {
+            deliveryReceiptId: replay.deliveryReceiptId || delivery?.id || null,
+            transactionalEmailId:
+              replay.transactionalEmailId || transactionalEmail?.id || null,
+          },
+          select: { id: true },
+        })
+      : await tx.emailProviderEvent.create({
+          data: {
+            provider: "resend",
+            providerEventId: event.providerEventId,
+            providerMessageId: event.providerMessageId,
+            eventType: event.eventType,
+            recipientEmail: event.recipientEmail,
+            occurredAt: event.occurredAt,
+            payloadSha256: event.payloadSha256,
+            diagnosticJson: event.diagnostic as Prisma.InputJsonValue,
+            deliveryReceiptId: delivery?.id ?? null,
+            transactionalEmailId: transactionalEmail?.id ?? null,
+          },
+          select: { id: true },
+        });
 
     if (delivery) {
       const nextStatus = deliveryStatusForResendEvent(event.eventType);
@@ -104,8 +146,34 @@ export async function recordResendDeliveryEvent(input: {
       }
     }
 
+    if (transactionalEmail) {
+      const nextStatus = deliveryStatusForResendEvent(
+        event.eventType,
+      ) as TransactionalEmailStatus;
+      if (shouldApplyTransactionalStatus({
+        currentStatus: transactionalEmail.status,
+        currentAt: transactionalEmail.providerStatusAt,
+        nextStatus,
+        nextAt: event.occurredAt,
+      })) {
+        await tx.transactionalEmail.update({
+          where: { id: transactionalEmail.id },
+          data: {
+            status: nextStatus,
+            providerStatusAt: event.occurredAt,
+            completedAt: event.occurredAt,
+            ...failureFields(event),
+          },
+        });
+      }
+    }
+
     const recipientStatus = recipientStatusForResendEvent(event.eventType);
-    const recipientEmail = event.recipientEmail || delivery?.recipientEmail || null;
+    const recipientEmail =
+      event.recipientEmail ||
+      delivery?.recipientEmail ||
+      transactionalEmail?.recipientEmail ||
+      null;
     if (recipientStatus && recipientEmail) {
       const current = await tx.emailRecipientDeliveryState.findUnique({
         where: { recipientEmail },
@@ -137,6 +205,10 @@ export async function recordResendDeliveryEvent(input: {
       }
     }
 
-    return { duplicate: false, eventId: savedEvent.id, matched: Boolean(delivery) };
+    return {
+      duplicate: Boolean(replay),
+      eventId: savedEvent.id,
+      matched: Boolean(delivery || transactionalEmail),
+    };
   });
 }

@@ -448,6 +448,25 @@ enum EmailRecipientDeliveryStatus {
   SUPPRESSED
 }
 
+enum TransactionalEmailKind {
+  BOOKING_CONFIRMED
+  SESSION_REMINDER_24H
+  SESSION_REMINDER_1H
+}
+
+enum TransactionalEmailStatus {
+  PLANNED
+  SENDING
+  SENT
+  DELIVERY_DELAYED
+  DELIVERED
+  BOUNCED
+  COMPLAINED
+  SUPPRESSED
+  FAILED
+  CANCELED
+}
+
 enum RecordingConsentStatus {
   REQUESTED
   GRANTED
@@ -952,6 +971,7 @@ model User {
   callRoomInvitationsCreated            CallRoomInvitation[]                        @relation("CallRoomInvitationCreatedBy")
   callRoomInvitationsAccepted           CallRoomInvitation[]                        @relation("CallRoomInvitationAcceptedBy")
   callRoomInvitationDeliveries          CallRoomInvitationDeliveryReceipt[]         @relation("CallRoomInvitationDeliveryRequestedBy")
+  transactionalEmailsReceived           TransactionalEmail[]                        @relation("TransactionalEmailRecipient")
   callExpectedSourcesCreated            CallExpectedSource[]                        @relation("CallExpectedSourceCreatedBy")
   callExpectedSourceRevisions           CallExpectedSourceRevision[]                @relation("CallExpectedSourceRevisionActor")
   recordingConsents                     RecordingConsent[]                          @relation("RecordingConsentUser")
@@ -1639,6 +1659,7 @@ model CoachingBooking {
   coachingFormAssignments         CoachingFormAssignment[]
   coachingFormAutomationReceipts  CoachingFormAutomationReceipt[]
   coachingFormAutomationOverrides CoachingFormAutomationOverride[]
+  transactionalEmails             TransactionalEmail[]
 
   @@unique([seriesId, seriesSequence])
   @@index([clientUserId, scheduledStart])
@@ -2500,6 +2521,7 @@ model CallRoom {
   conversationReadCursors        SessionConversationReadCursor[]
   coachingFormAssignments        CoachingFormAssignment[]
   coachingFormAutomationReceipts CoachingFormAutomationReceipt[]
+  transactionalEmails            TransactionalEmail[]
 
   @@index([purpose, status, scheduledStart])
   @@index([createdByUserId, createdAt])
@@ -3003,25 +3025,28 @@ model CallRoomInvitationDeliveryReceipt {
 /// provider. Quipsly stores delivery facts and a body hash, never the message
 /// body or invitation credential carried by the email.
 model EmailProviderEvent {
-  id                String   @id @default(cuid())
-  provider          String   @default("resend")
-  providerEventId   String
-  providerMessageId String
-  eventType         String
-  recipientEmail    String?
-  occurredAt        DateTime
-  receivedAt        DateTime @default(now())
-  payloadSha256     String
-  diagnosticJson    Json     @default("{}")
-  deliveryReceiptId String?
+  id                   String   @id @default(cuid())
+  provider             String   @default("resend")
+  providerEventId      String
+  providerMessageId    String
+  eventType            String
+  recipientEmail       String?
+  occurredAt           DateTime
+  receivedAt           DateTime @default(now())
+  payloadSha256        String
+  diagnosticJson       Json     @default("{}")
+  deliveryReceiptId    String?
+  transactionalEmailId String?
 
-  deliveryReceipt CallRoomInvitationDeliveryReceipt? @relation(fields: [deliveryReceiptId], references: [id], onDelete: SetNull)
+  deliveryReceipt    CallRoomInvitationDeliveryReceipt? @relation(fields: [deliveryReceiptId], references: [id], onDelete: SetNull)
+  transactionalEmail TransactionalEmail?                @relation(fields: [transactionalEmailId], references: [id], onDelete: SetNull)
 
   @@unique([provider, providerEventId])
   @@index([provider, providerMessageId, occurredAt])
   @@index([eventType, occurredAt])
   @@index([recipientEmail, occurredAt])
   @@index([deliveryReceiptId, occurredAt])
+  @@index([transactionalEmailId, occurredAt])
 }
 
 /// Current recipient-level deliverability projection. This prevents repeated
@@ -3041,6 +3066,52 @@ model EmailRecipientDeliveryState {
 
   @@index([status, updatedAt])
   @@index([lastProviderMessageId])
+}
+
+/// Durable, privacy-minimized transactional email work. Message bodies and
+/// invitation credentials are rendered only at dispatch time and are never
+/// stored in the queue. The schedule fingerprint makes rescheduling additive
+/// and lets the worker cancel stale reminders without mutating sent evidence.
+model TransactionalEmail {
+  id                  String                   @id @default(cuid())
+  idempotencyKey      String                   @unique
+  bookingId           String
+  roomId              String
+  recipientUserId     String
+  recipientEmail      String
+  recipientRole       String
+  kind                TransactionalEmailKind
+  status              TransactionalEmailStatus @default(PLANNED)
+  templateVersion     String                   @default("2026-08-27.v1")
+  scheduleFingerprint String
+  scheduledFor        DateTime
+  nextAttemptAt       DateTime
+  attemptCount        Int                      @default(0)
+  maxAttempts         Int                      @default(5)
+  leaseToken          String?
+  leaseExpiresAt      DateTime?
+  provider            String                   @default("resend")
+  providerMessageId   String?
+  providerStatusAt    DateTime?
+  errorCode           String?
+  errorMessage        String?
+  sentAt              DateTime?
+  completedAt         DateTime?
+  canceledAt          DateTime?
+  metadataJson        Json                     @default("{}")
+  createdAt           DateTime                 @default(now())
+  updatedAt           DateTime                 @updatedAt
+
+  booking        CoachingBooking      @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  room           CallRoom             @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  recipient      User                 @relation("TransactionalEmailRecipient", fields: [recipientUserId], references: [id], onDelete: Cascade)
+  providerEvents EmailProviderEvent[]
+
+  @@index([status, nextAttemptAt, scheduledFor])
+  @@index([bookingId, status, scheduledFor])
+  @@index([roomId, status, scheduledFor])
+  @@index([recipientEmail, status, scheduledFor])
+  @@index([provider, providerMessageId])
 }
 
 model RecordingConsent {
