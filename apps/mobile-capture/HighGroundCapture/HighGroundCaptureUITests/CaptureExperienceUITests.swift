@@ -4881,12 +4881,13 @@ final class CaptureAppStoreScreenshotUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Backed up"].exists)
         XCTAssertTrue(app.staticTexts["Transcript ready"].exists)
         XCTAssertTrue(app.staticTexts["Your recordings"].exists)
-        XCTAssertTrue(app.staticTexts["Play, share, and open the transcript for any Session or Voice Note."].exists)
+        XCTAssertTrue(app.staticTexts["Play, share, and open the transcript for any Session or voice recording."].exists)
         XCTAssertTrue(app.buttons["Open transcript"].exists)
+        let storageJargon = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS[c] %@", "verified")
+        ).firstMatch
         XCTAssertFalse(
-            app.staticTexts.matching(
-                NSPredicate(format: "label CONTAINS[c] %@", "verified")
-            ).firstMatch.exists,
+            storageJargon.exists,
             "Everyday recording review should not lead with storage-verification jargon."
         )
         XCTAssertFalse(

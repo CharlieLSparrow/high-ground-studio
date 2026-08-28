@@ -34,7 +34,7 @@ struct CaptureSourceExitExperience: Equatable, Sendable {
         case "SERVER_COPY_COMPLETE_DEVICE_CONFIRMATION_REQUIRED":
             return CaptureSourceExitExperience(
                 title: "Keep Quipsly open",
-                detail: "The cloud copies are verified, but a recording device is still finishing its local queue. Keep Quipsly open on any device that still shows upload or recovery progress.",
+                detail: "Your backups are safe. One recording device is still finishing up. Keep Quipsly open there until its progress is complete.",
                 systemImage: "icloud.and.arrow.up",
                 isSafe: false,
                 needsAttention: false

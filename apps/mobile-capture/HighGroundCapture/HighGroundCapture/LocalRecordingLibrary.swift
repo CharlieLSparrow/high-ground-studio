@@ -450,13 +450,13 @@ struct LocalRecording: Codable, Identifiable, Equatable {
             }
             return "Uploading"
         case .awaitingVerification:
-            return "Awaiting verification"
+            return "Finishing backup"
         case .uploaded:
             return serverProcessingDisposition?.uppercased() == "HELD"
-                ? "Cloud copy verified · review held"
-                : "Upload verified"
+                ? "Backed up · needs attention"
+                : "Backed up"
         case .uploadHeld:
-            return "Upload held"
+            return "Backup needs attention"
         case .recovered:
             return "Recovered locally"
         case .validatingRecovery:
@@ -474,7 +474,17 @@ struct LocalRecording: Codable, Identifiable, Equatable {
 
     var statusDetail: String {
         if let statusMessage, !statusMessage.isEmpty {
-            return statusMessage
+            // Successful uploads used to surface transport receipts such as
+            // "Upload verified" directly in the everyday Library. Preserve
+            // those receipts in the recording model, but translate the normal
+            // success states below. Raw detail remains useful when a recording
+            // actually needs attention or is still being recovered.
+            switch status {
+            case .uploaded, .awaitingVerification:
+                break
+            default:
+                return statusMessage
+            }
         }
 
         switch status {
@@ -493,14 +503,14 @@ struct LocalRecording: Codable, Identifiable, Equatable {
         case .uploading:
             return "The source file remains on this iPhone throughout upload."
         case .awaitingVerification:
-            return "Upload finished, but Quipsly is still waiting for durable server verification."
+            return "The upload finished. Quipsly is checking the backup before using it for transcription or editing."
         case .uploaded:
             if serverProcessingDisposition?.uppercased() == "HELD" {
                 return serverProcessingHoldReason.map {
-                    "Quipsly verified and preserved the exact cloud bytes, but editor attachment and transcript processing are held for review: \($0) The local original is still preserved."
-                } ?? "Quipsly verified and preserved the exact cloud bytes, but editor attachment and transcript processing are held for review. The local original is still preserved."
+                    "The backup is safe, but Quipsly needs help before it can finish the transcript or prepare it for editing: \($0) The original remains on this iPhone."
+                } ?? "The backup is safe, but Quipsly needs help before it can finish the transcript or prepare it for editing. The original remains on this iPhone."
             }
-            return "Quipsly verified the server copy. The local original is still preserved."
+            return "A safe backup is ready. The original remains on this iPhone."
         case .uploadHeld:
             return "Upload needs attention. The local original is still preserved."
         case .recovered:

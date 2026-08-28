@@ -34,7 +34,8 @@ struct CaptureSourceExitExperienceHarness {
         )
         require(draining.title == "Keep Quipsly open", "an undrained recording device needs one immediate action")
         require(!draining.needsAttention, "normal device drain must not be framed as an error")
-        require(draining.detail.contains("still shows upload or recovery progress"), "draining guidance must identify the affected devices")
+        require(draining.detail.contains("One recording device is still finishing up"), "draining guidance must identify the affected device")
+        require(draining.detail.contains("Keep Quipsly open there"), "draining guidance must explain the one action to take")
 
         let uploading = CaptureSourceExitExperience.resolve(
             state: "SERVER_COPY_INCOMPLETE",

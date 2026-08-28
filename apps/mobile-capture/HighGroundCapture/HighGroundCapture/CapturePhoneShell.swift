@@ -271,7 +271,7 @@ struct CapturePhoneShell: View {
     private func routePendingVoiceNote() async {
         guard let requestID = deepLinkRouter.pendingVoiceNoteRequestID else { return }
         guard !model.isSessionContextLocked else {
-            model.errorMessage = "Finish the active recording or call, then ask Quipsly to start a voice note again."
+            model.errorMessage = "Finish the active recording or call, then ask Quipsly to start writing again."
             deepLinkRouter.consumeVoiceNoteRequest(requestID)
             return
         }
@@ -512,7 +512,7 @@ private struct CaptureTodayView: View {
                 )
                 visibleTab = .record
             } catch {
-                model.errorMessage = "The new Voice Note is ready, but Quipsly could not connect it to that writing yet: \(error.localizedDescription)"
+                model.errorMessage = "The new writing is ready, but Quipsly could not connect it to your draft yet: \(error.localizedDescription)"
             }
         }
     }
@@ -7447,7 +7447,7 @@ private struct CapturePersonalVoiceNoteTranscriptCard: View {
         case .idle, .checkingSupport:
             return "Quipsly turns the finished recording into timed, editable text. Your original audio stays unchanged."
         case .modelDownloadRequired(let locale):
-            return "Download Apple's \(locale) speech model once, then future Voice Notes can transcribe automatically on this iPhone."
+            return "Download Apple's \(locale) speech model once, then future writing can transcribe automatically on this iPhone."
         case .installingModel:
             return "Keep Quipsly open while iOS finishes the one-time model download."
         case .transcribing:
@@ -7725,7 +7725,7 @@ private struct CaptureVoiceWritingEditor: View {
                     client: tagClient,
                     kind: .document,
                     entityID: context.documentID,
-                    entityTitle: title.nonempty ?? "Voice note",
+                    entityTitle: title.nonempty ?? "Untitled writing",
                     project: context.project,
                     canonicalTagIDs: canonicalTags.map(\.id),
                     expectedUpdatedAt: context.updatedAt,
@@ -8588,7 +8588,7 @@ private struct CaptureVoiceWritingEditor: View {
             .split(whereSeparator: \Character.isWhitespace)
             .joined(separator: " ")
             .prefix(96)
-        let base = cleanTitle.isEmpty ? "Voice note" : String(cleanTitle)
+        let base = cleanTitle.isEmpty ? "Quipsly writing" : String(cleanTitle)
         return "\(base).docx"
     }
 
@@ -10470,7 +10470,7 @@ private struct CaptureRecorderView: View {
                 localOnlyRecordingSessionID = created.id
                 visibleTab = .record
             } catch {
-                model.errorMessage = "The new Voice Note is ready, but Quipsly could not connect it to that writing yet: \(error.localizedDescription)"
+                model.errorMessage = "The new writing is ready, but Quipsly could not connect it to your draft yet: \(error.localizedDescription)"
             }
         }
     }
@@ -13423,8 +13423,8 @@ private struct CaptureLibraryView: View {
                         .font(.title2.weight(.bold))
                     Text(
                         selectedSection == .writing
-                            ? "Papers, drafts, and Voice Notes stay editable while their timed transcripts and original audio remain connected."
-                            : "Play, share, and open the transcript for any Session or Voice Note."
+                            ? "Papers, drafts, and voice writing stay editable while their timed transcripts and original audio remain connected."
+                            : "Play, share, and open the transcript for any Session or voice recording."
                     )
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
@@ -13466,7 +13466,7 @@ private struct CaptureLibraryView: View {
                     Image(systemName: "mic.badge.plus")
                 }
                 .disabled(model.isSessionContextLocked || model.isCreatingSession)
-                .accessibilityLabel("New Voice Note")
+                .accessibilityLabel("New writing")
                 .accessibilityHint("Creates a private recording that becomes editable writing.")
                 .accessibilityIdentifier("CaptureLibraryStartVoiceNote")
             }
@@ -13689,7 +13689,7 @@ private struct CaptureLibraryView: View {
                     systemImage: "waveform",
                     title: normalizedSearch.isEmpty ? "No recordings yet" : "No recordings found",
                     detail: normalizedSearch.isEmpty
-                        ? "Completed Voice Notes and Session recordings will appear here."
+                        ? "Completed speech-to-writing and Session recordings will appear here."
                         : "Try a different word or clear the search.",
                     actionTitle: normalizedSearch.isEmpty ? "Open Capture" : "Clear search",
                     action: normalizedSearch.isEmpty ? { visibleTab = .record } : { searchText = "" }
@@ -13758,7 +13758,7 @@ private struct CaptureLibraryView: View {
                 )
                 visibleTab = .record
             } catch {
-                model.errorMessage = "The new Voice Note is ready, but Quipsly could not connect it to that writing yet: \(error.localizedDescription)"
+                model.errorMessage = "The new writing is ready, but Quipsly could not connect it to your draft yet: \(error.localizedDescription)"
             }
         }
     }

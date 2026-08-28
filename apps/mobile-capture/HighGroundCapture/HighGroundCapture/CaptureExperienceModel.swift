@@ -1327,7 +1327,7 @@ final class CaptureExperienceModel: ObservableObject {
 
     func createPersonalVoiceNote(continuing draftTitle: String? = nil) async -> MobileCaptureSession? {
         guard !isSessionContextLocked else {
-            errorMessage = "Finish the active recording or call before starting another voice note."
+            errorMessage = "Finish the active recording or call before starting new writing."
             return nil
         }
         guard !isCreatingSession else { return nil }
@@ -1342,7 +1342,7 @@ final class CaptureExperienceModel: ObservableObject {
         if let cleanDraftTitle, !cleanDraftTitle.isEmpty {
             title = "Continue · \(String(cleanDraftTitle.prefix(80)))"
         } else {
-            title = "Voice note · \(Date.now.formatted(.dateTime.month(.abbreviated).day().hour().minute()))"
+            title = "New writing · \(Date.now.formatted(.dateTime.month(.abbreviated).day().hour().minute()))"
         }
         if usesPreviewData && !CaptureLaunchConfiguration.forcesLocalVoiceNoteUITest {
             let created = MobileCaptureSession.capturePreview(
@@ -1354,7 +1354,7 @@ final class CaptureExperienceModel: ObservableObject {
             )
             sessionClient.sessions.insert(created, at: 0)
             selectedSessionID = created.id
-            message = "Voice note ready. Tap Record when you are ready."
+            message = "Ready to write. Tap Record when you are ready."
             return created
         }
 
@@ -1368,7 +1368,7 @@ final class CaptureExperienceModel: ObservableObject {
             provider: "planned"
         ) {
             selectedSessionID = created.id
-            message = "Voice note ready. Tap Record when you are ready."
+            message = "Ready to write. Tap Record when you are ready."
             return created
         }
 
@@ -1389,7 +1389,7 @@ final class CaptureExperienceModel: ObservableObject {
         )
         sessionClient.sessions.insert(created, at: 0)
         selectedSessionID = created.id
-        message = "Voice note ready. Recording and writing work even while Nest is offline."
+        message = "Ready to write. Recording and writing work even while Nest is offline."
         return created
     }
 
