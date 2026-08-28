@@ -172,7 +172,10 @@ export async function GET(request: Request) {
   const documents = await prisma.studioDocument.findMany({
     where: {
       personalOwnerUserId: actorUserId,
-      sourceLabel: { contains: "origin:ios-voice-writing", mode: "insensitive" },
+      AND: [
+        { sourceLabel: { contains: "origin:ios-voice-writing", mode: "insensitive" } },
+        { NOT: { sourceLabel: { contains: "state:deleted", mode: "insensitive" } } },
+      ],
       ...(requestedDraftId ? { id: mobileVoiceWritingDocumentId(requestedDraftId) } : {}),
     },
     orderBy: [{ updatedAt: "desc" }, { id: "asc" }],
@@ -216,6 +219,90 @@ export async function GET(request: Request) {
     } : null,
     availableTags: homeDocument ? availableVoiceWritingTags(homeDocument) : [],
     nextAction: null,
+  });
+}
+
+export async function DELETE(request: Request) {
+  const session = await getQuipslySessionFromRequest(request);
+  const actorUserId = String(session?.user?.id || "").trim();
+  const actorEmail = String(session?.user?.primaryEmail || session?.user?.email || "")
+    .trim()
+    .toLowerCase();
+  if (!actorUserId || !actorEmail) {
+    return NextResponse.json(
+      { ok: false, code: "AUTH_REQUIRED", error: "Sign in before deleting private writing." },
+      { status: 401 },
+    );
+  }
+  const input = record(await requestBody(request));
+  const draftId = String(input.draftId || "").trim().toLowerCase();
+  const clientRequestId = String(input.clientRequestId || "").trim().toLowerCase();
+  if (!mobileVoiceWritingDraftIdFromDocumentId(mobileVoiceWritingDocumentId(draftId))
+    || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(clientRequestId)) {
+    return NextResponse.json(
+      { ok: false, code: "VOICE_WRITING_DELETE_INVALID", error: "The writing identity is invalid." },
+      { status: 400 },
+    );
+  }
+
+  const prisma = getPrismaClient() as any;
+  const documentId = mobileVoiceWritingDocumentId(draftId);
+  const result = await prisma.$transaction(async (tx: any) => {
+    const document = await tx.studioDocument.findFirst({
+      where: {
+        id: documentId,
+        personalOwnerUserId: actorUserId,
+        sourceLabel: { contains: "origin:ios-voice-writing", mode: "insensitive" },
+      },
+      select: {
+        id: true,
+        projectId: true,
+        title: true,
+        sourceLabel: true,
+      },
+    });
+    if (!document) return { kind: "missing" as const };
+    if (String(document.sourceLabel || "").toLowerCase().includes("state:deleted")) {
+      return { kind: "deleted" as const, idempotentReplay: true };
+    }
+    const sourceLabel = `${String(document.sourceLabel || "document-kind:note;origin:ios-voice-writing")};state:deleted`;
+    await tx.studioDocument.update({
+      where: { id: document.id },
+      data: {
+        sourceLabel,
+        documentOperations: {
+          create: {
+            id: `${documentId}-delete-${clientRequestId}`,
+            projectId: document.projectId,
+            groupId: draftId,
+            actorEmail,
+            origin: "quipsly-writing",
+            operationType: "mobile-voice-writing-delete",
+            status: "applied",
+            beforeJson: { sourceLabel: document.sourceLabel, title: document.title },
+            afterJson: { sourceLabel, state: "deleted" },
+            payloadJson: { clientRequestId, actorUserId },
+            reversible: true,
+          },
+        },
+      },
+    });
+    return { kind: "deleted" as const, idempotentReplay: false };
+  });
+  if (result.kind === "missing") {
+    return NextResponse.json(
+      { ok: false, code: "VOICE_WRITING_NOT_FOUND", error: "This writing is not available." },
+      { status: 404 },
+    );
+  }
+  revalidatePath("/library");
+  revalidatePath(`/writing/${draftId}`);
+  return NextResponse.json({
+    ok: true,
+    schema: "quipsly-mobile-voice-writing-delete-v1",
+    draftId,
+    sourceAudioDeleted: false,
+    idempotentReplay: result.idempotentReplay,
   });
 }
 
@@ -361,6 +448,9 @@ export async function POST(request: Request) {
     ) {
       return { kind: "forbidden" as const };
     }
+    if (String(existing.sourceLabel || "").toLowerCase().includes("state:deleted")) {
+      return { kind: "deleted" as const };
+    }
 
     const current = currentVoiceRevision(existing);
     const exactOperation = await tx.studioDocumentOperation.findUnique({ where: { id: operationId } });
@@ -471,6 +561,12 @@ export async function POST(request: Request) {
   if (result.kind === "forbidden") {
     return NextResponse.json(
       { ok: false, code: "VOICE_WRITING_FORBIDDEN", error: "That private writing identity belongs to a different account." },
+      { status: 404 },
+    );
+  }
+  if (result.kind === "deleted") {
+    return NextResponse.json(
+      { ok: false, code: "VOICE_WRITING_NOT_FOUND", error: "This writing is no longer available." },
       { status: 404 },
     );
   }

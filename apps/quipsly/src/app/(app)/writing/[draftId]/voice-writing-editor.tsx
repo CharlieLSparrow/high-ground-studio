@@ -23,10 +23,12 @@ import {
   Redo2,
   RefreshCw,
   Strikethrough,
+  Trash2,
   Underline as UnderlineIcon,
   Undo2,
 } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { VoiceWritingRichText } from "@/lib/voice-writing-contract";
@@ -148,6 +150,7 @@ function SaveStatus({ state, updatedAt }: { state: SaveState; updatedAt?: string
 }
 
 export function VoiceWritingEditor({ draftId }: { draftId: string }) {
+  const router = useRouter();
   const [draft, setDraft] = useState<WritingDraft | null>(null);
   const [title, setTitle] = useState("");
   const [loadError, setLoadError] = useState("");
@@ -155,6 +158,8 @@ export function VoiceWritingEditor({ draftId }: { draftId: string }) {
   const [saveState, setSaveState] = useState<SaveState>("saved");
   const [exportingWord, setExportingWord] = useState(false);
   const [exportError, setExportError] = useState("");
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
   const [changeVersion, setChangeVersion] = useState(0);
   const [conflictingDraft, setConflictingDraft] = useState<WritingDraft | null>(null);
   const draftRef = useRef<WritingDraft | null>(null);
@@ -369,6 +374,35 @@ export function VoiceWritingEditor({ draftId }: { draftId: string }) {
     }
   }
 
+  async function deleteWriting() {
+    if (deleting || !draftRef.current) return;
+    const confirmed = window.confirm(
+      "Delete this writing?\n\nThe editable writing will leave your Library. Its original recording and timed transcript stay safe.",
+    );
+    if (!confirmed) return;
+    setDeleting(true);
+    setDeleteError("");
+    try {
+      const response = await fetch("/api/mobile/capture/voice-writing", {
+        method: "DELETE",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          draftId: draftRef.current.draftId,
+          clientRequestId: crypto.randomUUID(),
+        }),
+      });
+      const payload = await response.json().catch(() => null) as { ok?: boolean; error?: string } | null;
+      if (!response.ok || !payload?.ok) {
+        throw new Error(payload?.error || "This writing could not be deleted yet.");
+      }
+      router.replace("/library?kind=NOTE");
+      router.refresh();
+    } catch (error) {
+      setDeleteError(error instanceof Error ? error.message : "This writing could not be deleted yet.");
+      setDeleting(false);
+    }
+  }
+
   if (loadError) {
     return <main className="mx-auto grid min-h-[70vh] max-w-2xl place-items-center px-4 py-10 text-[#3d3122]">
       <section className="w-full rounded-3xl border border-red-200 bg-red-50 p-7">
@@ -402,6 +436,17 @@ export function VoiceWritingEditor({ draftId }: { draftId: string }) {
               : <Download className="h-4 w-4" aria-hidden="true" />}
             {exportingWord ? "Creating…" : "Word document"}
           </button>
+          <button
+            type="button"
+            onClick={() => void deleteWriting()}
+            disabled={deleting}
+            className="inline-flex min-h-11 items-center gap-2 rounded-full border border-red-200 bg-white/90 px-4 text-sm font-black text-red-800 shadow-sm transition hover:border-red-400 hover:bg-red-50 disabled:cursor-wait disabled:opacity-60"
+          >
+            {deleting
+              ? <LoaderCircle className="h-4 w-4 animate-spin" aria-hidden="true" />
+              : <Trash2 className="h-4 w-4" aria-hidden="true" />}
+            {deleting ? "Deleting…" : "Delete"}
+          </button>
         </div>
       </div>
       <div className="mt-5 flex items-start gap-3">
@@ -422,6 +467,11 @@ export function VoiceWritingEditor({ draftId }: { draftId: string }) {
     {exportError ? <section role="alert" className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4">
       <p className="text-sm font-bold text-amber-950">{exportError}</p>
       <button type="button" onClick={() => setExportError("")} className="min-h-10 rounded-full border border-amber-300 bg-white px-4 text-xs font-black text-amber-950">Dismiss</button>
+    </section> : null}
+
+    {deleteError ? <section role="alert" className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-red-200 bg-red-50 p-4">
+      <p className="text-sm font-bold text-red-950">{deleteError}</p>
+      <button type="button" onClick={() => setDeleteError("")} className="min-h-10 rounded-full border border-red-300 bg-white px-4 text-xs font-black text-red-950">Dismiss</button>
     </section> : null}
 
     <section className="mt-4 overflow-hidden rounded-[2rem] border border-[#dfcba6] bg-[#fffefb] shadow-sm" aria-label="Writing editor">

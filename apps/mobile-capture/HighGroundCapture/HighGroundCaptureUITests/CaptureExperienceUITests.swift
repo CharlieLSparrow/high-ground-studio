@@ -440,6 +440,41 @@ final class CaptureExperienceUITests: XCTestCase {
         ])
     }
 
+    func testVoiceWritingDeletesTheDraftWithoutDeletingItsSource() {
+        app.tabBars.buttons["Library"].tap()
+        app.buttons["Writing"].tap()
+        let previewDraft = app.descendants(matching: .any)["CaptureLibraryPreviewWritingCard"]
+        XCTAssertTrue(previewDraft.waitForExistence(timeout: 5))
+        previewDraft.tap()
+
+        let editor = app.descendants(matching: .any)["CaptureVoiceWritingEditor"]
+        XCTAssertTrue(editor.waitForExistence(timeout: 5))
+        let delete = app.buttons["Delete writing"].firstMatch
+        for _ in 0..<6 where !delete.exists || !delete.isHittable {
+            editor.swipeUp()
+        }
+        XCTAssertTrue(
+            delete.waitForExistence(timeout: 5),
+            "Writing should have an ordinary, discoverable delete action."
+        )
+        XCTAssertTrue(delete.isEnabled)
+        XCTAssertTrue(delete.isHittable)
+        sleep(1)
+        delete.tap()
+        let alert = app.alerts["Delete this writing?"]
+        XCTAssertTrue(alert.waitForExistence(timeout: 3))
+        XCTAssertTrue(alert.buttons["Delete writing"].exists)
+        XCTAssertTrue(
+            alert.staticTexts.matching(NSPredicate(
+                format: "label CONTAINS[c] %@",
+                "original recording and timed transcript stay safe"
+            )).firstMatch.exists,
+            "Deletion must plainly distinguish the editable draft from its recoverable source."
+        )
+        alert.buttons["Cancel"].tap()
+        XCTAssertTrue(editor.exists)
+    }
+
     func testVoiceWritingKeepsTimedSourceBesideEditableText() {
         app.tabBars.buttons["Library"].tap()
         app.buttons["Writing"].tap()

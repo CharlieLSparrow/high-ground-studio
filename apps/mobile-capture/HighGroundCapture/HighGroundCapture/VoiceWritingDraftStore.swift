@@ -500,6 +500,33 @@ final class VoiceWritingDraftStore: ObservableObject {
         commitBestEffort()
     }
 
+    /// Removes only the editable writing projection. LocalRecordingLibrary and
+    /// its immutable timed transcript remain the recoverable source of truth.
+    func remove(recordingID: UUID) throws {
+        let owner = try requireActiveOwner()
+        guard let index = storedDrafts.firstIndex(where: {
+            $0.ownerAccountID == owner
+                && $0.allSources.contains(where: { $0.localRecordingID == recordingID })
+        }) else {
+            throw VoiceWritingDraftStoreError.draftUnavailable
+        }
+        let draftID = storedDrafts[index].id
+        let previousDrafts = storedDrafts
+        let previousContinuations = pendingContinuations
+        storedDrafts.remove(at: index)
+        pendingContinuations.removeAll {
+            $0.ownerAccountID == owner && $0.draftID == draftID
+        }
+        do {
+            try commit()
+        } catch {
+            storedDrafts = previousDrafts
+            pendingContinuations = previousContinuations
+            publishActiveDrafts()
+            throw error
+        }
+    }
+
     private func requireActiveOwner() throws -> String {
         guard let owner = Self.normalizedOwnerID(activeOwnerAccountID),
               owner == Self.normalizedOwnerID(AuthManager.currentStoredOwnerID()) else {
@@ -691,6 +718,16 @@ private struct VoiceWritingListResponse: Decodable {
     let availableTags: [MobileCaptureTag]?
 }
 
+private struct VoiceWritingDeleteRequest: Encodable {
+    let draftId: String
+    let clientRequestId: String
+}
+
+private struct VoiceWritingDeleteResponse: Decodable {
+    let ok: Bool
+    let error: String?
+}
+
 /// Debounced local-first synchronization for private writing. Typing never
 /// waits on the network: the protected draft is saved first, then the latest
 /// revision is sent with an optimistic Nest revision. A collision preserves
@@ -761,6 +798,63 @@ final class VoiceWritingDraftSyncClient: ObservableObject {
         } catch {
             refreshError = error.localizedDescription
         }
+    }
+
+    func delete(recordingID: UUID) async throws {
+        pendingTasks[recordingID]?.cancel()
+        pendingTasks[recordingID] = nil
+        for _ in 0..<100 where syncingRecordingIDs.contains(recordingID) {
+            try await Task.sleep(for: .milliseconds(50))
+        }
+        guard !syncingRecordingIDs.contains(recordingID) else {
+            throw NSError(
+                domain: "QuipslyVoiceWriting",
+                code: -3,
+                userInfo: [NSLocalizedDescriptionKey: "Quipsly is finishing the last save. Try Delete again in a moment."]
+            )
+        }
+        guard let draft = VoiceWritingDraftStore.shared.draft(for: recordingID) else {
+            throw VoiceWritingDraftStoreError.draftUnavailable
+        }
+        guard AuthManager.shared.networkActionsAllowed else {
+            throw NSError(
+                domain: "QuipslyVoiceWriting",
+                code: -1,
+                userInfo: [NSLocalizedDescriptionKey: "Connect to Quipsly before deleting this writing."]
+            )
+        }
+        guard let endpoint = URL(string: "\(apiBaseURL)/api/mobile/capture/voice-writing") else {
+            throw NSError(
+                domain: "QuipslyVoiceWriting",
+                code: -2,
+                userInfo: [NSLocalizedDescriptionKey: "Quipsly's private writing address is invalid."]
+            )
+        }
+        var request = URLRequest(url: endpoint)
+        request.httpMethod = "DELETE"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.httpBody = try JSONEncoder().encode(VoiceWritingDeleteRequest(
+            draftId: draft.id.uuidString.lowercased(),
+            clientRequestId: UUID().uuidString.lowercased()
+        ))
+        let (data, response) = try await AuthManager.shared.authenticatedData(
+            for: request,
+            expectedOwnerAccountID: draft.ownerAccountID
+        )
+        let payload = try JSONDecoder().decode(VoiceWritingDeleteResponse.self, from: data)
+        if response.statusCode == 404 {
+            try VoiceWritingDraftStore.shared.remove(recordingID: recordingID)
+            return
+        }
+        guard (200...299).contains(response.statusCode), payload.ok else {
+            throw NSError(
+                domain: "QuipslyVoiceWriting",
+                code: response.statusCode,
+                userInfo: [NSLocalizedDescriptionKey: payload.error ?? "This writing could not be deleted yet."]
+            )
+        }
+        try VoiceWritingDraftStore.shared.remove(recordingID: recordingID)
     }
 
     private func syncLatest(recordingID: UUID) async {

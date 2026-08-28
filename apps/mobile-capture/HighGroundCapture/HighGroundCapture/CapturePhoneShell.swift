@@ -7553,6 +7553,10 @@ private struct CaptureVoiceWritingEditor: View {
     @State private var showsWordDocumentShare = false
     @State private var wordDocumentError: String?
     @State private var showsWordDocumentError = false
+    @State private var showsDeleteConfirmation = false
+    @State private var isDeletingWriting = false
+    @State private var deleteWritingError: String?
+    @State private var showsDeleteWritingError = false
 
     init(
         recordingID: UUID,
@@ -7667,6 +7671,11 @@ private struct CaptureVoiceWritingEditor: View {
                 .accessibilityLabel(isExportingWordDocument ? "Creating Word document" : "Share")
                 .accessibilityHint("Share the current writing as a Word document or plain text.")
                 .accessibilityIdentifier("CaptureVoiceWritingShareMenu")
+                .alert("Couldn’t create Word document", isPresented: $showsWordDocumentError) {
+                    Button("OK", role: .cancel) {}
+                } message: {
+                    Text(wordDocumentError ?? "Try again when you’re connected.")
+                }
             }
             ToolbarItemGroup(placement: .keyboard) {
                 Button(action: continueByVoice) {
@@ -7748,10 +7757,10 @@ private struct CaptureVoiceWritingEditor: View {
                 CaptureVoiceWritingShareSheet(fileURL: wordDocumentURL, title: title)
             }
         }
-        .alert("Couldn’t create Word document", isPresented: $showsWordDocumentError) {
+        .alert("Couldn’t delete writing", isPresented: $showsDeleteWritingError) {
             Button("OK", role: .cancel) {}
         } message: {
-            Text(wordDocumentError ?? "Try again when you’re connected.")
+            Text(deleteWritingError ?? "Try again when you’re connected.")
         }
         .accessibilityIdentifier("CaptureVoiceWritingEditor")
     }
@@ -7837,6 +7846,41 @@ private struct CaptureVoiceWritingEditor: View {
             .accessibilityIdentifier("CaptureVoiceWritingContinueByVoice")
         }
 
+        Section {
+            Button(role: .destructive) {
+                bodyIsFocused = false
+                showsDeleteConfirmation = true
+            } label: {
+                if isDeletingWriting {
+                    HStack {
+                        ProgressView()
+                        Text("Deleting…")
+                    }
+                    .frame(minHeight: 44)
+                } else {
+                    Label("Delete writing", systemImage: "trash")
+                        .frame(minHeight: 44)
+                        .foregroundStyle(.red)
+                }
+            }
+            .disabled(
+                isDeletingWriting
+                    || (currentDraft == nil && !CaptureLaunchConfiguration.usesPreviewData)
+            )
+            .accessibilityHint("Removes the editable writing while keeping its original recording and timed transcript.")
+            .accessibilityIdentifier("CaptureVoiceWritingDelete")
+            .alert("Delete this writing?", isPresented: $showsDeleteConfirmation) {
+                Button("Delete writing", role: .destructive) {
+                    Task { await deleteWriting() }
+                }
+                .accessibilityIdentifier("CaptureVoiceWritingConfirmDelete")
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("The editable writing will leave your Library. Its original recording and timed transcript stay safe.")
+                    .accessibilityIdentifier("CaptureVoiceWritingDeleteMessage")
+            }
+        }
+
         if let remote = currentDraft?.pendingRemote {
             Section("This note changed in two places") {
                 Text("Quipsly kept both copies. Choose the words you want to continue with.")
@@ -7862,6 +7906,22 @@ private struct CaptureVoiceWritingEditor: View {
                 }
                 .frame(minHeight: 44)
             }
+        }
+    }
+
+    @MainActor
+    private func deleteWriting() async {
+        guard !isDeletingWriting else { return }
+        guard !CaptureLaunchConfiguration.usesPreviewData else { return }
+        saveTask?.cancel()
+        isDeletingWriting = true
+        defer { isDeletingWriting = false }
+        do {
+            try await writingSync.delete(recordingID: recordingID)
+            dismiss()
+        } catch {
+            deleteWritingError = error.localizedDescription
+            showsDeleteWritingError = true
         }
     }
 

@@ -1,11 +1,13 @@
 /** @jest-environment node */
 
 import { getPrismaClient } from "@/lib/prisma";
+import { ensureHomeNestForEmail } from "@/lib/server/home-nest";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 
-import { GET } from "./route";
+import { DELETE, GET, POST } from "./route";
 
 jest.mock("@/lib/prisma", () => ({ getPrismaClient: jest.fn() }));
+jest.mock("next/cache", () => ({ revalidatePath: jest.fn() }));
 jest.mock("@/lib/server/home-nest", () => ({ ensureHomeNestForEmail: jest.fn() }));
 jest.mock("@/lib/server/quipsly-session", () => ({ getQuipslySessionFromRequest: jest.fn() }));
 
@@ -98,6 +100,9 @@ describe("mobile voice-writing continuation", () => {
       where: expect.objectContaining({
         id: `voice-writing-${draftId}`,
         personalOwnerUserId: "actor-1",
+        AND: expect.arrayContaining([
+          { NOT: { sourceLabel: { contains: "state:deleted", mode: "insensitive" } } },
+        ]),
       }),
       take: 1,
     }));
@@ -137,6 +142,124 @@ describe("mobile voice-writing continuation", () => {
       }],
       homeProject: { id: "project-home", name: "Person Home Nest", slug: "person-home" },
       availableTags: [{ id: "tag-phd", slug: "phd", label: "PhD", isActive: true }],
+    });
+  });
+
+  it("soft-deletes only actor-owned writing while preserving source audio", async () => {
+    jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({
+      user: { id: "actor-1", primaryEmail: "person@example.com" },
+    } as never);
+    const findFirst = jest.fn().mockResolvedValue({
+      id: `voice-writing-${draftId}`,
+      projectId: "project-home",
+      title: "Dissertation opening",
+      sourceLabel: "document-kind:note;origin:ios-voice-writing",
+    });
+    const update = jest.fn().mockResolvedValue({});
+    const transaction = jest.fn(async (callback: (tx: unknown) => unknown) => callback({
+      studioDocument: { findFirst, update },
+    }));
+    jest.mocked(getPrismaClient).mockReturnValue({ $transaction: transaction } as never);
+
+    const clientRequestId = "66666666-6666-4666-8666-666666666666";
+    const response = await DELETE(new Request("http://localhost/api/mobile/capture/voice-writing", {
+      method: "DELETE",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ draftId, clientRequestId }),
+    }));
+
+    expect(response.status).toBe(200);
+    expect(findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        id: `voice-writing-${draftId}`,
+        personalOwnerUserId: "actor-1",
+      }),
+    }));
+    expect(update).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: `voice-writing-${draftId}` },
+      data: expect.objectContaining({
+        sourceLabel: expect.stringContaining("state:deleted"),
+        documentOperations: { create: expect.objectContaining({
+          operationType: "mobile-voice-writing-delete",
+          reversible: true,
+        }) },
+      }),
+    }));
+    await expect(response.json()).resolves.toMatchObject({
+      ok: true,
+      sourceAudioDeleted: false,
+      idempotentReplay: false,
+    });
+  });
+
+  it("does not reveal another account's writing while deleting", async () => {
+    jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({
+      user: { id: "actor-1", primaryEmail: "person@example.com" },
+    } as never);
+    const findFirst = jest.fn().mockResolvedValue(null);
+    const update = jest.fn();
+    const transaction = jest.fn(async (callback: (tx: unknown) => unknown) => callback({
+      studioDocument: { findFirst, update },
+    }));
+    jest.mocked(getPrismaClient).mockReturnValue({ $transaction: transaction } as never);
+
+    const response = await DELETE(new Request("http://localhost/api/mobile/capture/voice-writing", {
+      method: "DELETE",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        draftId,
+        clientRequestId: "77777777-7777-4777-8777-777777777777",
+      }),
+    }));
+
+    expect(response.status).toBe(404);
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it("does not let a delayed save revive deleted writing", async () => {
+    jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({
+      user: { id: "actor-1", primaryEmail: "person@example.com" },
+    } as never);
+    jest.mocked(ensureHomeNestForEmail).mockResolvedValue({ id: "project-home" } as never);
+    const findUnique = jest.fn().mockResolvedValue({
+      id: `voice-writing-${draftId}`,
+      projectId: "project-home",
+      personalOwnerUserId: "actor-1",
+      sourceLabel: "document-kind:note;origin:ios-voice-writing;state:deleted",
+    });
+    const transaction = jest.fn(async (callback: (tx: unknown) => unknown) => callback({
+      studioDocument: { findUnique },
+    }));
+    jest.mocked(getPrismaClient).mockReturnValue({ $transaction: transaction } as never);
+
+    const response = await POST(new Request("http://localhost/api/mobile/capture/voice-writing", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        draftId,
+        localRecordingId: recordingId,
+        transcriptClientRequestId: transcriptId,
+        sourceSha256: "a".repeat(64),
+        callRoomId: null,
+        title: "Delayed title",
+        body: "This save arrived after Delete.",
+        richText: null,
+        localRevision: 5,
+        expectedServerRevision: 4,
+        expectedContentRevision: "b".repeat(64),
+        sources: [{
+          localRecordingId: recordingId,
+          transcriptClientRequestId: transcriptId,
+          sourceSha256: "a".repeat(64),
+          callRoomId: null,
+        }],
+      }),
+    }));
+
+    expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: false,
+      code: "VOICE_WRITING_NOT_FOUND",
     });
   });
 });
