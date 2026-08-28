@@ -10707,12 +10707,12 @@ struct CaptureQuickEntryBar: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 11) {
             VStack(alignment: .leading, spacing: 2) {
-                Label("Capture the work", systemImage: "bolt.fill")
+                Label("Quick capture", systemImage: "bolt.fill")
                     .font(.caption.weight(.bold))
                     .lineLimit(nil)
                     .fixedSize(horizontal: false, vertical: true)
                     .foregroundStyle(CapturePalette.accent)
-                Text("Save the thought before it disappears")
+                Text("Notes, tasks, goals, and sources")
                     .font(.subheadline.weight(.semibold))
                     .lineLimit(nil)
                     .fixedSize(horizontal: false, vertical: true)
@@ -15153,7 +15153,7 @@ private struct ProviderRoomControls: View {
                         }
                     )) {
                         Label(
-                            joinCameraOff ? "Camera off" : cameraLobbyLabel,
+                            "Camera",
                             systemImage: joinCameraOff ? "video.slash.fill" : "video.fill"
                         )
                             .font(.subheadline)
@@ -15165,6 +15165,7 @@ private struct ProviderRoomControls: View {
                         || model.isChangingCapture
                         || localRecordingWorkspaceOpen
                     )
+                    .accessibilityHint(joinCameraOff ? "Turns the camera on before joining." : "Turns the camera off before joining.")
                     .accessibilityIdentifier("CaptureJoinCameraToggle")
 
                     if !callAudioOnAnotherDevice {
@@ -15173,13 +15174,14 @@ private struct ProviderRoomControls: View {
                             set: { joinMuted = !$0 }
                         )) {
                             Label(
-                                joinMuted ? "Microphone off" : "Microphone on",
+                                "Microphone",
                                 systemImage: joinMuted ? "mic.slash.fill" : "mic.fill"
                             )
                                 .font(.subheadline)
                         }
                         .toggleStyle(.switch)
                         .disabled(providerControlsLocked || model.isChangingRoom)
+                        .accessibilityHint(joinMuted ? "Turns the microphone on before joining." : "Turns the microphone off before joining.")
                         .accessibilityIdentifier("CaptureJoinMicrophoneToggle")
                     }
 
@@ -15317,27 +15319,6 @@ private struct ProviderRoomControls: View {
 
     private var canRejoinSession: Bool {
         model.providerRoom.canRejoin(callRoomID: session.callRoomId)
-    }
-
-    private var cameraLobbyLabel: String {
-        let permission = AVCaptureDevice.authorizationStatus(for: .video)
-        if permission == .denied || permission == .restricted {
-            return "Camera needs attention"
-        }
-        switch videoCapture.state {
-        case .ready:
-            return "Camera on"
-        case .preparing:
-            return "Starting camera"
-        case .failed:
-            return "Camera needs attention"
-        case .idle:
-            return permission == .notDetermined
-                ? "Camera needs confirmation"
-                : "Starting camera"
-        case .arming, .recording, .finalizing, .paused, .saved:
-            return "Camera on"
-        }
     }
 
     private var usesCallAudioForPresentation: Bool {

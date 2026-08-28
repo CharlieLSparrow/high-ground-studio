@@ -1002,19 +1002,15 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(useCallAudio.exists, "The familiar pre-join surface should make second-device audio routing obvious.")
         XCTAssertTrue(camera.exists, "The familiar pre-join surface should expose one ordinary camera choice.")
         turnOff(camera)
-        XCTAssertTrue(
-            camera.label.localizedCaseInsensitiveContains("Camera off"),
-            "A privacy-safe camera-off choice should remain obvious before Join."
-        )
+        XCTAssertEqual(camera.label, "Camera")
+        XCTAssertEqual(camera.value as? String, "0", "A privacy-safe camera-off choice should remain obvious before Join.")
         turnOn(useCallAudio)
         XCTAssertTrue(outputRoute.exists, "The listening route should be visible separately from the microphone before joining.")
         XCTAssertTrue(routePicker.exists, "The lobby should expose Apple's familiar system audio-route control.")
         XCTAssertTrue(microphone.exists, "Using this iPhone for call audio should expose the standard pre-join microphone choice.")
         turnOff(microphone)
-        XCTAssertTrue(
-            microphone.label.localizedCaseInsensitiveContains("Microphone off"),
-            "Turning the pre-join microphone off should remain an ordinary mute choice, not companion mode."
-        )
+        XCTAssertEqual(microphone.label, "Microphone")
+        XCTAssertEqual(microphone.value as? String, "0", "Turning the pre-join microphone off should remain an ordinary mute choice, not companion mode.")
         turnOn(microphone)
         turnOff(useCallAudio)
         XCTAssertFalse(
