@@ -360,6 +360,22 @@ final class MobileCoachingEngagementWorkspaceClient: ObservableObject {
         self.engagementID = engagementID
     }
 
+    func loadPreview() {
+        errorMessage = nil
+        workspace = MobileCoachingEngagementWorkspace(
+            id: engagementID,
+            title: "Coaching with Homer",
+            status: "ACTIVE",
+            canWrite: true,
+            currentUserId: "preview-coach",
+            members: [
+                MobileCoachingEngagementMember(id: "preview-coach", label: "Charlie Sparrow", role: "COACH"),
+                MobileCoachingEngagementMember(id: "preview-client", label: "Homer", role: "CLIENT"),
+            ],
+            entries: []
+        )
+    }
+
     func load() async {
         guard !isLoading else { return }
         isLoading = true
@@ -1720,8 +1736,11 @@ struct CaptureCoachingHomeView: View {
                         publishedTimesSection
                     }
 
-                    if let practiceCommand = client.practiceCommand ?? client.response?.practiceCommand {
-                        practiceCommandSection(practiceCommand) { commandItem in
+                    if let practiceCommand = client.practiceCommand ?? client.response?.practiceCommand,
+                       !visiblePracticeItems(practiceCommand).isEmpty {
+                        practiceCommandSection(
+                            visiblePracticeItems(practiceCommand)
+                        ) { commandItem in
                             if let roomID = commandItem.roomId {
                                 Task { await refreshAndOpen(roomID: roomID, navigate: true) }
                             } else if commandItem.requestId != nil {
@@ -1782,55 +1801,23 @@ struct CaptureCoachingHomeView: View {
     }
 
     private func practiceCommandSection(
-        _ command: MobileCoachingPracticeCommand,
+        _ items: [MobileCoachingPracticeCommandItem],
         onOpen: @escaping (MobileCoachingPracticeCommandItem) -> Void
     ) -> some View {
         VStack(alignment: .leading, spacing: 14) {
             VStack(alignment: .leading, spacing: 6) {
-                Text("YOUR PRACTICE TODAY")
+                Text("NEXT STEPS")
                     .font(.caption2.weight(.black))
                     .tracking(1.5)
-                    .foregroundStyle(.orange)
-                Text(command.headline)
+                    .foregroundStyle(.teal)
+                Text(items.count == 1 ? "One thing needs a decision" : "A few things need a decision")
                     .font(.title2.weight(.black))
-                Text(command.detail)
+                Text("Quipsly keeps ordinary preparation optional. Only requests, repairs, and follow-up that need you appear here.")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
 
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    if command.counts.today > 0 {
-                        practiceCommandBadge("Today", value: command.counts.today)
-                    }
-                    if command.counts.live > 0 {
-                        practiceCommandBadge("Live", value: command.counts.live)
-                    }
-                    if command.counts.requests > 0 {
-                        practiceCommandBadge("Requests", value: command.counts.requests)
-                    }
-                    if command.counts.attention > 0 {
-                        practiceCommandBadge("Attention", value: command.counts.attention)
-                    }
-                    if command.counts.prepare > 0 {
-                        practiceCommandBadge("Prepare", value: command.counts.prepare)
-                    }
-                    if command.counts.followUp > 0 {
-                        practiceCommandBadge("Follow-up", value: command.counts.followUp)
-                    }
-                }
-            }
-
-            if command.items.isEmpty {
-                Label(
-                    "Nothing needs repair, preparation, or follow-through right now.",
-                    systemImage: "checkmark.circle.fill"
-                )
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(.green)
-                .padding(.vertical, 4)
-            } else {
-                ForEach(Array(command.items.enumerated()), id: \.element.id) { index, item in
+            ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
                     VStack(alignment: .leading, spacing: 10) {
                         HStack(alignment: .top, spacing: 10) {
                             Text("\(index + 1)")
@@ -1870,7 +1857,6 @@ struct CaptureCoachingHomeView: View {
                         RoundedRectangle(cornerRadius: 18, style: .continuous)
                             .stroke(practiceCommandColor(item.tone).opacity(0.2), lineWidth: 1)
                     }
-                }
             }
         }
         .padding(18)
@@ -1881,6 +1867,12 @@ struct CaptureCoachingHomeView: View {
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("CaptureCoachingPracticeCommand")
+    }
+
+    private func visiblePracticeItems(
+        _ command: MobileCoachingPracticeCommand
+    ) -> [MobileCoachingPracticeCommandItem] {
+        command.items.filter { !$0.kind.uppercased().hasPrefix("PREPARE") }
     }
 
     private func practiceCommandBadge(_ label: String, value: Int) -> some View {
@@ -2249,9 +2241,9 @@ struct CaptureCoachingHomeView: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("New client or session")
+                    Text("Schedule coaching")
                         .font(.headline)
-                    Text("Choose who and when. Quipsly prepares the private Session and invitation.")
+                    Text("Enter a client email and time. Quipsly creates the client space and invitation.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -2264,7 +2256,7 @@ struct CaptureCoachingHomeView: View {
                 Button {
                     showsNewAppointment = true
                 } label: {
-                    Label("Schedule coaching", systemImage: "calendar.badge.plus")
+                    Label("Schedule a session", systemImage: "calendar.badge.plus")
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.borderedProminent)
@@ -2329,7 +2321,9 @@ struct CaptureCoachingHomeView: View {
                         }
                         .buttonStyle(.borderedProminent)
                         .accessibilityIdentifier("CaptureCoachingOpen_Handoff_\(roomID)")
-                        appointmentManagementMenu(for: booking)
+                        if !model.usesPreviewData {
+                            appointmentManagementMenu(for: booking)
+                        }
                     }
                 }
                 invitationActions(for: booking)
@@ -2404,7 +2398,9 @@ struct CaptureCoachingHomeView: View {
                                     .buttonStyle(.borderedProminent)
                                     .accessibilityIdentifier("CaptureCoachingOpen_\(booking.id)")
                                 }
-                                appointmentManagementMenu(for: booking)
+                                if !model.usesPreviewData {
+                                    appointmentManagementMenu(for: booking)
+                                }
                             }
                             if let engagement = engagement(for: booking) {
                                 MobileCoachingScheduleRequestReviewCard(
@@ -2458,6 +2454,26 @@ struct CaptureCoachingHomeView: View {
 
     private func appointmentManagementMenu(for booking: MobileCoachingBooking) -> some View {
         Menu {
+            if client.invitationEmailAvailable,
+               let roomID = booking.callRoomId?.nonemptyCoachingText,
+               let recipientEmail = booking.client?.email?.nonemptyCoachingText {
+                Button {
+                    Task {
+                        _ = await client.sendInvitationEmail(
+                            roomID: roomID,
+                            recipientEmail: recipientEmail,
+                            recipientName: booking.client?.name
+                        )
+                    }
+                } label: {
+                    Label(
+                        client.invitationDeliveries[roomID]?.wasSent == true
+                            ? "Email invite again"
+                            : "Email invite",
+                        systemImage: "envelope"
+                    )
+                }
+            }
             Button {
                 bookingToReschedule = booking
             } label: {
@@ -2469,10 +2485,12 @@ struct CaptureCoachingHomeView: View {
                 Label("Cancel Session", systemImage: "calendar.badge.minus")
             }
         } label: {
-            Label("Manage", systemImage: "ellipsis.circle")
+            Image(systemName: "ellipsis.circle")
+                .frame(width: 44, height: 44)
         }
         .buttonStyle(.bordered)
-        .disabled(client.isMutating || client.isUsingProtectedCache || model.usesPreviewData)
+        .disabled(client.isMutating || client.isUsingProtectedCache)
+        .accessibilityLabel("More session options")
         .accessibilityIdentifier("CaptureCoachingManage_\(booking.id)")
     }
 
@@ -2488,61 +2506,23 @@ struct CaptureCoachingHomeView: View {
         if let roomID = booking.callRoomId,
            let recipientEmail = booking.client?.email?.nonemptyCoachingText {
             VStack(alignment: .leading, spacing: 8) {
-                if client.invitationEmailAvailable {
-                    HStack {
-                        Button {
-                            Task {
-                                _ = await client.sendInvitationEmail(
-                                    roomID: roomID,
-                                    recipientEmail: recipientEmail,
-                                    recipientName: booking.client?.name
-                                )
-                            }
-                        } label: {
-                            Label(
-                                client.invitationDeliveries[roomID]?.wasSent == true
-                                    ? "Resend invite"
-                                    : "Send invite",
-                                systemImage: "envelope.badge"
-                            )
-                            .frame(maxWidth: .infinity)
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .disabled(client.isMutating || client.isUsingProtectedCache || model.usesPreviewData)
-                        .accessibilityHint("Sends this Session invitation to the client's email.")
-                        .accessibilityIdentifier("CaptureCoachingSendInvite_\(booking.id)")
+                coachingShareLink(
+                    title: booking.title,
+                    roomID: booking.callRoomId,
+                    entryPath: booking.clientEntryPath,
+                    recipientEmail: recipientEmail
+                )
 
-                        coachingShareLink(
-                            title: booking.title,
-                            roomID: booking.callRoomId,
-                            entryPath: booking.clientEntryPath,
-                            recipientEmail: recipientEmail
-                        )
-                    }
-
-                    if let delivery = client.invitationDeliveries[roomID] {
-                        Label(
-                            delivery.wasSent
-                                ? "Sent to \(recipientEmail)."
-                                : delivery.errorMessage ?? "Email was not sent. Retry or share the link.",
-                            systemImage: delivery.wasSent ? "checkmark.circle.fill" : "exclamationmark.triangle.fill"
-                        )
-                        .font(.caption)
-                        .foregroundStyle(delivery.wasSent ? .green : .orange)
-                        .accessibilityIdentifier("CaptureCoachingInviteDelivery_\(booking.id)")
-                    }
-                } else {
-                    Text("Share the private invitation below. Your client can open it on a phone, tablet, or desktop.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .accessibilityIdentifier("CaptureCoachingInvitationShareOnly_\(booking.id)")
-
-                    coachingShareLink(
-                        title: booking.title,
-                        roomID: booking.callRoomId,
-                        entryPath: booking.clientEntryPath,
-                        recipientEmail: recipientEmail
+                if let delivery = client.invitationDeliveries[roomID] {
+                    Label(
+                        delivery.wasSent
+                            ? "Invite emailed to \(recipientEmail)."
+                            : delivery.errorMessage ?? "Email was not sent. Share the link or try Email invite from More.",
+                        systemImage: delivery.wasSent ? "checkmark.circle.fill" : "exclamationmark.triangle.fill"
                     )
+                    .font(.caption)
+                    .foregroundStyle(delivery.wasSent ? .green : .orange)
+                    .accessibilityIdentifier("CaptureCoachingInviteDelivery_\(booking.id)")
                 }
             }
         } else {
@@ -2970,6 +2950,7 @@ private struct CaptureCoachingEngagementWorkspaceView: View {
     @StateObject private var conversation: MobileEpisodeChatClient
     @State private var filter: MobileCoachingWorkFilter = .all
     @State private var isPresentingNewWork = false
+    @State private var newWorkKind = "NOTE"
     @State private var editingEntry: MobileCoachingEngagementWorkEntry?
 
     init(
@@ -3001,6 +2982,10 @@ private struct CaptureCoachingEngagementWorkspaceView: View {
             LazyVStack(alignment: .leading, spacing: 14) {
                 relationshipPulse
 
+                if client.workspace?.canWrite == true {
+                    quickAddWork
+                }
+
                 Picker("Show coaching work", selection: $filter) {
                     ForEach(MobileCoachingWorkFilter.allCases) { value in
                         Text(value.rawValue).tag(value)
@@ -3015,11 +3000,11 @@ private struct CaptureCoachingEngagementWorkspaceView: View {
                         .padding(.vertical, 40)
                 } else if entries.isEmpty {
                     ContentUnavailableView {
-                        Label("Nothing here yet", systemImage: "checklist")
+                        Label("Ready when you are", systemImage: "square.and.pencil")
                     } description: {
                         Text(
                             client.workspace?.canWrite == true
-                                ? "Add the first \(filter.rawValue.lowercased()) item for this coaching relationship."
+                                ? "Use Note, Task, or Goal above whenever something is worth keeping."
                                 : "Shared work will appear here when it is available to you."
                         )
                     }
@@ -3052,6 +3037,7 @@ private struct CaptureCoachingEngagementWorkspaceView: View {
             if client.workspace?.canWrite == true {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
+                        newWorkKind = "NOTE"
                         isPresentingNewWork = true
                     } label: {
                         Label("Add coaching work", systemImage: "plus")
@@ -3070,7 +3056,7 @@ private struct CaptureCoachingEngagementWorkspaceView: View {
         }
         .task(id: "\(engagement.id)|\(previewOnly)") {
             if previewOnly {
-                await client.load()
+                client.loadPreview()
             } else {
                 async let workLoad: Void = client.load()
                 async let conversationLoad: Void = conversation.load(
@@ -3086,7 +3072,9 @@ private struct CaptureCoachingEngagementWorkspaceView: View {
                 MobileCoachingWorkEditorSheet(
                     client: client,
                     workspace: workspace,
-                    entry: nil
+                    entry: nil,
+                    preferredKind: newWorkKind,
+                    previewOnly: previewOnly
                 )
             }
         }
@@ -3095,11 +3083,42 @@ private struct CaptureCoachingEngagementWorkspaceView: View {
                 MobileCoachingWorkEditorSheet(
                     client: client,
                     workspace: workspace,
-                    entry: entry
+                    entry: entry,
+                    previewOnly: previewOnly
                 )
             }
         }
         .accessibilityIdentifier("CaptureCoachingEngagementWorkspace")
+    }
+
+    private var quickAddWork: some View {
+        VStack(alignment: .leading, spacing: 9) {
+            Text("Add")
+                .font(.headline)
+            HStack(spacing: 8) {
+                quickAddButton(title: "Note", kind: "NOTE", systemImage: "note.text")
+                quickAddButton(title: "Task", kind: "TASK", systemImage: "checkmark.circle")
+                quickAddButton(title: "Goal", kind: "GOAL", systemImage: "target")
+            }
+        }
+        .captureCard()
+    }
+
+    private func quickAddButton(
+        title: String,
+        kind: String,
+        systemImage: String
+    ) -> some View {
+        Button {
+            newWorkKind = kind
+            isPresentingNewWork = true
+        } label: {
+            Label(title, systemImage: systemImage)
+                .frame(maxWidth: .infinity, minHeight: 44)
+        }
+        .buttonStyle(.bordered)
+        .accessibilityLabel("Add \(title.lowercased())")
+        .accessibilityIdentifier("CaptureCoachingQuickAdd_\(kind)")
     }
 
     private var relationshipPulse: some View {
@@ -3115,7 +3134,7 @@ private struct CaptureCoachingEngagementWorkspaceView: View {
         let pulseSession = relationshipPulseSession
 
         return VStack(alignment: .leading, spacing: 14) {
-            Label("Private coaching space", systemImage: "lock.fill")
+            Label("Client space", systemImage: "person.2.fill")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
                 .accessibilityIdentifier("CaptureCoachingWorkspacePrivacy")
@@ -3143,7 +3162,6 @@ private struct CaptureCoachingEngagementWorkspaceView: View {
                     }
                     .buttonStyle(.borderedProminent)
                     .tint(relationshipPulseIsLive(pulseSession) ? .red : .teal)
-                    .disabled(previewOnly)
                     .accessibilityIdentifier("CaptureCoachingRelationshipPrimaryAction")
                 } else {
                     Button {
@@ -3345,7 +3363,7 @@ private struct CaptureCoachingEngagementWorkspaceView: View {
         switch canonicalPriority?.kind {
         case "JOIN_LIVE_SESSION": return "Join Session"
         case "REVIEW_LATE_SESSION": return "Open Session"
-        case "PREPARE_UPCOMING_SESSION", "PREPARE_UNSCHEDULED_SESSION": return "Prepare Session"
+        case "PREPARE_UPCOMING_SESSION", "PREPARE_UNSCHEDULED_SESSION": return "Open Session"
         case "REVIEW_COACH_FOLLOW_UP": return "Review follow-up"
         case "VIEW_RELEASED_FOLLOW_UP": return "View follow-up"
         default: break
@@ -3359,7 +3377,7 @@ private struct CaptureCoachingEngagementWorkspaceView: View {
         if let start = session.scheduledStart.flatMap(coachingISO8601Date), start < Date() {
             return "Open Session"
         }
-        return "Prepare Session"
+        return "Open Session"
     }
 
     private func relationshipPulseIcon(session: MobileCaptureSession) -> String {
@@ -3372,7 +3390,7 @@ private struct CaptureCoachingEngagementWorkspaceView: View {
         }
         if relationshipPulseIsLive(session) { return "video.fill" }
         if session.status?.uppercased() == "ENDED" { return "doc.text.magnifyingglass" }
-        return "calendar.badge.clock"
+        return "arrow.right.circle.fill"
     }
 
     private func relationshipBadge(
@@ -3563,6 +3581,7 @@ private struct MobileCoachingWorkEditorSheet: View {
     @ObservedObject var client: MobileCoachingEngagementWorkspaceClient
     let workspace: MobileCoachingEngagementWorkspace
     let entry: MobileCoachingEngagementWorkEntry?
+    let previewOnly: Bool
 
     @State private var kind: String
     @State private var title: String
@@ -3574,12 +3593,15 @@ private struct MobileCoachingWorkEditorSheet: View {
     init(
         client: MobileCoachingEngagementWorkspaceClient,
         workspace: MobileCoachingEngagementWorkspace,
-        entry: MobileCoachingEngagementWorkEntry?
+        entry: MobileCoachingEngagementWorkEntry?,
+        preferredKind: String = "NOTE",
+        previewOnly: Bool = false
     ) {
         self.client = client
         self.workspace = workspace
         self.entry = entry
-        _kind = State(initialValue: entry?.kind ?? "NOTE")
+        self.previewOnly = previewOnly
+        _kind = State(initialValue: entry?.kind ?? preferredKind)
         _title = State(initialValue: entry?.title ?? "")
         _detail = State(initialValue: entry?.body ?? "")
         _visibility = State(initialValue: entry?.visibility ?? "SHARED")
@@ -3691,7 +3713,7 @@ private struct MobileCoachingWorkEditorSheet: View {
                             if saved { dismiss() }
                         }
                     }
-                    .disabled(client.isSaving || !canSave)
+                    .disabled(previewOnly || client.isSaving || !canSave)
                     .accessibilityIdentifier("CaptureCoachingSaveWork")
                 }
             }

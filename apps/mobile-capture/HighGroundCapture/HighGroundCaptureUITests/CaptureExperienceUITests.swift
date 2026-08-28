@@ -297,29 +297,13 @@ final class CaptureExperienceUITests: XCTestCase {
             app.descendants(matching: .any)["CaptureCoachingBooking_preview-booking"].exists,
             "The native home should expose upcoming appointments with exact client continuity."
         )
-        let manageAppointment = app.buttons["CaptureCoachingManage_preview-booking"].firstMatch
-        reveal(manageAppointment)
-        XCTAssertTrue(
-            manageAppointment.exists,
-            "A coach should be able to manage the canonical appointment without leaving the iPhone app."
+        XCTAssertFalse(
+            app.descendants(matching: .any)["CaptureCoachingPracticeCommand"].exists,
+            "Routine preparation must not become a mandatory-looking queue when the Session is already obvious above."
         )
         XCTAssertFalse(
-            manageAppointment.isEnabled,
-            "Deterministic preview must expose reschedule and cancellation without mutating scheduling truth."
-        )
-        // Newer SwiftUI runtimes omit a custom identifier from the accessibility
-        // snapshot for this disabled control, but retain the visible Button role
-        // and label. Operate the same affordance a coach can actually perceive.
-        let sendInvitation = app.buttons["Send invite"]
-        reveal(sendInvitation)
-        XCTAssertTrue(
-            sendInvitation.exists,
-            "The native coach should have one ordinary Send invite action for durable email delivery."
-        )
-        XCTAssertEqual(sendInvitation.label, "Send invite")
-        XCTAssertFalse(
-            sendInvitation.isEnabled,
-            "Deterministic preview must expose the action without claiming to send external email."
+            app.buttons["CaptureCoachingManage_preview-booking"].exists,
+            "A deterministic first screen should not show disabled administration beside the primary Session action."
         )
         // ShareLink's generated type varies between iOS releases. Its
         // explicit accessibility label is the operated fallback contract.
@@ -349,6 +333,13 @@ final class CaptureExperienceUITests: XCTestCase {
             app.segmentedControls["CaptureCoachingWorkFilter"].isHittable,
             "Shared notes, tasks, and goals should be reachable before chat and repeated Session history."
         )
+        for kind in ["NOTE", "TASK", "GOAL"] {
+            let quickAdd = app.descendants(matching: .any)["CaptureCoachingQuickAdd_\(kind)"]
+            XCTAssertTrue(
+                quickAdd.waitForExistence(timeout: 5),
+                "Client spaces should expose a direct \(kind.lowercased()) action without routing through a process dashboard."
+            )
+        }
         let primaryAction = app.buttons["CaptureCoachingRelationshipPrimaryAction"]
         XCTAssertTrue(
             primaryAction.exists,
@@ -356,8 +347,8 @@ final class CaptureExperienceUITests: XCTestCase {
         )
         XCTAssertEqual(
             primaryAction.label,
-            "Prepare Session",
-            "The same upcoming canonical Session should drive the relationship's next action."
+            "Open Session",
+            "Preparation should remain available inside the Session without becoming required paperwork."
         )
     }
 
