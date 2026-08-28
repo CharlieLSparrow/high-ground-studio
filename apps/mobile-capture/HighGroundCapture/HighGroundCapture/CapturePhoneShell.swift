@@ -14031,6 +14031,7 @@ private struct CaptureAccountView: View {
     @StateObject private var auth = AuthManager.shared
     @StateObject private var library = LocalRecordingLibrary.shared
     @StateObject private var deletionClient = AccountDeletionClient()
+    @StateObject private var recognitionPreferences = VoiceWritingRecognitionPreferences.shared
     @AppStorage("com.quipsly.capture.upload.allowsCellular") private var allowsCellular = true
     @AppStorage("com.quipsly.capture.upload.allowsExpensive") private var allowsExpensive = true
     @AppStorage("com.quipsly.capture.upload.allowsConstrained") private var allowsConstrained = true
@@ -14074,6 +14075,10 @@ private struct CaptureAccountView: View {
                 .buttonStyle(.plain)
                 .captureCard()
                 .accessibilityIdentifier("CaptureAccountQuipslyPlan")
+
+                if #available(iOS 26.0, *) {
+                    speechAndWritingCard
+                }
 
                 NavigationLink {
                     CaptureNestPortabilityView(
@@ -14247,11 +14252,55 @@ private struct CaptureAccountView: View {
             Text("Stop and save this recording before you switch accounts so the original stays attached to the right person.")
         }
         .task {
+            recognitionPreferences.refresh(ownerAccountID: auth.accountOwnerID)
             guard !model.usesPreviewData else { return }
             async let deletion: Void = deletionClient.loadStatus()
             async let subscription: Void = subscriptionStore.load()
             _ = await (deletion, subscription)
         }
+        .onReceive(NotificationCenter.default.publisher(for: .quipslyCaptureAccountIdentityDidChange)) { _ in
+            recognitionPreferences.refresh(ownerAccountID: auth.accountOwnerID)
+        }
+    }
+
+    private var speechAndWritingCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label("Speech & writing", systemImage: "waveform.and.mic")
+                .font(.headline)
+
+            Toggle(isOn: recognitionAdaptationBinding) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Adapt recognition to my speech")
+                        .font(.subheadline.weight(.semibold))
+                    Text("Helps when ordinary speech recognition often misunderstands you. Quipsly remembers this choice and uses it for finished writing.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .accessibilityHint("Uses Apple's on-device speech adaptation after you stop recording. The original audio stays unchanged.")
+            .accessibilityIdentifier("CaptureSpeechAdaptationToggle")
+
+            Label("Live words are a preview. The finished writing stays linked to the original audio.", systemImage: "checkmark.shield")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .captureCard()
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("CaptureSpeechAndWritingCard")
+    }
+
+    private var recognitionAdaptationBinding: Binding<Bool> {
+        Binding(
+            get: { recognitionPreferences.adaptsRecognitionToSpeech },
+            set: {
+                recognitionPreferences.setAdaptsRecognitionToSpeech(
+                    $0,
+                    ownerAccountID: auth.accountOwnerID
+                )
+            }
+        )
     }
 
     private var accountHeader: some View {
@@ -15913,6 +15962,7 @@ private struct CoordinatedPodcastAudioStatus: View {
 private struct RecorderHero: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @ScaledMetric(relativeTo: .largeTitle) private var timerFontSize: CGFloat = 40
+    @ObservedObject private var recognitionPreferences = VoiceWritingRecognitionPreferences.shared
 
     let session: MobileCaptureSession
     let captureState: AudioCaptureState
@@ -16030,6 +16080,13 @@ private struct RecorderHero: View {
                 liveWritingPreview
             }
 
+            if #available(iOS 26.0, *) {
+                if session.isPersonalVoiceNote,
+                   captureState == .idle || captureState == .saved || captureState == .failed {
+                    speechAdaptationControl
+                }
+            }
+
             if let lastMark = userMarkOffsets.last {
                 Label("Last mark at \(lastMark.captureDurationLabel)", systemImage: "bookmark.circle.fill")
                     .font(.caption.weight(.semibold))
@@ -16072,6 +16129,37 @@ private struct RecorderHero: View {
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("CaptureRecorderHero")
+        .onAppear {
+            recognitionPreferences.refresh()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .quipslyCaptureAccountIdentityDidChange)) { _ in
+            recognitionPreferences.refresh()
+        }
+    }
+
+    private var speechAdaptationControl: some View {
+        Toggle(
+            isOn: Binding(
+                get: { recognitionPreferences.adaptsRecognitionToSpeech },
+                set: { recognitionPreferences.setAdaptsRecognitionToSpeech($0) }
+            )
+        ) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Adapt recognition to my speech")
+                    .font(.subheadline.weight(.semibold))
+                Text("Turn this on if speech-to-text often misunderstands you. It is remembered for next time.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(12)
+        .background(
+            CapturePalette.accent.opacity(0.08),
+            in: RoundedRectangle(cornerRadius: 16, style: .continuous)
+        )
+        .accessibilityHint("Uses Apple's on-device speech adaptation for finished writing without changing the original audio.")
+        .accessibilityIdentifier("CaptureVoiceWritingSpeechAdaptationToggle")
     }
 
     private var isActuallyRecording: Bool { captureState == .recording }

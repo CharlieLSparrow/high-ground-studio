@@ -21,8 +21,14 @@ final class CaptureExperienceUITests: XCTestCase {
             )
         }
         if name.contains("testPrivateVoiceNoteOpensCaptureWithoutMeetingPaperwork")
-            || name.contains("testVoiceWritingRecordsAndStopsThroughTheSourceFirstPath") {
+            || name.contains("testVoiceWritingRecordsAndStopsThroughTheSourceFirstPath")
+            || name.contains("testSpeechAdaptationIsOptionalRememberedAndEasyToReach") {
             app.launchArguments.append("--capture-force-local-voice-note-ui-test")
+        }
+        if name.contains("testSpeechAdaptationIsOptionalRememberedAndEasyToReach") {
+            app.launchArguments.append(
+                "--capture-share-owner-ui-preview=voice-writing-preferences-owner"
+            )
         }
         if name.contains("testVoiceWritingRecordsAndStopsThroughTheSourceFirstPath") {
             // The recording path requires an explicit, account-partitioned
@@ -274,6 +280,38 @@ final class CaptureExperienceUITests: XCTestCase {
             app.staticTexts["CaptureSessionStatusMessage"].label.contains("offline"),
             "The local-first path should explain that recording and writing remain available without Nest."
         )
+    }
+
+    func testSpeechAdaptationIsOptionalRememberedAndEasyToReach() {
+        app.buttons["CaptureStartVoiceNote"].tap()
+        XCTAssertTrue(
+            app.otherElements["CaptureRecorderHero"].waitForExistence(timeout: 8)
+        )
+
+        let recorderToggle = app.switches[
+            "CaptureVoiceWritingSpeechAdaptationToggle"
+        ]
+        reveal(recorderToggle)
+        XCTAssertTrue(
+            recorderToggle.waitForExistence(timeout: 5),
+            "Someone who is often misunderstood should be able to adapt recognition from the writing recorder without finding setup first."
+        )
+        turnOff(recorderToggle)
+        turnOn(recorderToggle)
+
+        app.tabBars.buttons["Account"].tap()
+        let accountToggle = app.switches["CaptureSpeechAdaptationToggle"]
+        reveal(accountToggle)
+        XCTAssertTrue(accountToggle.waitForExistence(timeout: 5))
+        XCTAssertEqual(
+            accountToggle.value as? String,
+            "1",
+            "The account-partitioned speech choice should follow the person from the recorder to Account."
+        )
+
+        // Restore the deterministic preview persona to its default so the
+        // persisted accessibility preference cannot make later tests order-dependent.
+        turnOff(accountToggle)
     }
 
     func testVoiceWritingRecordsAndStopsThroughTheSourceFirstPath() {

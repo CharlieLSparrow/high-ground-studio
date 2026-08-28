@@ -451,6 +451,89 @@ private enum AppleOnDeviceTranscriptEngine {
     }
 }
 
+/// Apple's DictationTranscriber has a dedicated atypical-speech content hint.
+/// Quipsly uses it only when the signed-in person has opted into speech
+/// adaptation, and only for the finished, source-bound transcript. Live words
+/// remain a provisional convenience and the immutable recording remains truth.
+@available(iOS 26.0, *)
+private enum AppleSpeechAdaptedTranscriptEngine {
+    struct Prepared: Sendable {
+        let transcriber: DictationTranscriber
+        let locale: Locale
+        let assetStatus: AssetInventory.Status
+    }
+
+    static func prepare(locale requestedLocale: Locale, allowModelDownload: Bool) async throws -> Prepared {
+        guard let locale = await DictationTranscriber.supportedLocale(equivalentTo: requestedLocale) else {
+            throw OnDeviceTranscriptFailure.unsupportedLocale
+        }
+        let transcriber = DictationTranscriber(
+            locale: locale,
+            contentHints: [.atypicalSpeech],
+            transcriptionOptions: [.punctuation],
+            reportingOptions: [],
+            attributeOptions: [.audioTimeRange]
+        )
+        let modules: [any SpeechModule] = [transcriber]
+        var status = await AssetInventory.status(forModules: modules)
+        if status != .installed {
+            guard allowModelDownload else {
+                throw OnDeviceTranscriptFailure.modelDownloadRequired(locale.identifier)
+            }
+            do {
+                if let request = try await AssetInventory.assetInstallationRequest(supporting: modules) {
+                    try await request.downloadAndInstall()
+                }
+                status = await AssetInventory.status(forModules: modules)
+            } catch {
+                throw OnDeviceTranscriptFailure.modelInstallFailed(error.localizedDescription)
+            }
+        }
+        guard status == .installed else {
+            throw OnDeviceTranscriptFailure.modelInstallFailed("Apple did not report the adapted speech model as installed.")
+        }
+        return Prepared(transcriber: transcriber, locale: locale, assetStatus: status)
+    }
+
+    static func transcribe(fileURL: URL, prepared: Prepared) async throws -> [OnDeviceTranscriptSegment] {
+        let audioFile: AVAudioFile
+        do {
+            audioFile = try AVAudioFile(forReading: fileURL)
+        } catch {
+            throw OnDeviceTranscriptFailure.sourceHasNoAudio
+        }
+        let analyzer = SpeechAnalyzer(modules: [prepared.transcriber])
+        async let resultCollection = collectResults(from: prepared.transcriber)
+        if let lastSample = try await analyzer.analyzeSequence(from: audioFile) {
+            try await analyzer.finalizeAndFinish(through: lastSample)
+        } else {
+            await analyzer.cancelAndFinishNow()
+        }
+        let segments = try await resultCollection
+        guard !segments.isEmpty else { throw OnDeviceTranscriptFailure.noFinalizedSpeech }
+        return segments.sorted {
+            if $0.startSeconds == $1.startSeconds { return $0.endSeconds < $1.endSeconds }
+            return $0.startSeconds < $1.startSeconds
+        }
+    }
+
+    private static func collectResults(
+        from transcriber: DictationTranscriber
+    ) async throws -> [OnDeviceTranscriptSegment] {
+        var segments: [OnDeviceTranscriptSegment] = []
+        // No volatile-results reporting option is requested, so this sequence
+        // contains only stable dictation results suitable for the draft seed.
+        for try await result in transcriber.results {
+            let value = String(result.text.characters).trimmingCharacters(in: .whitespacesAndNewlines)
+            let start = result.range.start.seconds
+            let end = result.range.end.seconds
+            guard !value.isEmpty, start.isFinite, end.isFinite, start >= 0, end > start else { continue }
+            segments.append(OnDeviceTranscriptSegment(startSeconds: start, endSeconds: end, text: value))
+        }
+        return segments
+    }
+}
+
 /// iOS 17–25 compatibility path. Newer devices use SpeechAnalyzer above for
 /// long-form, low-latency transcription. This fallback keeps the same timed,
 /// immutable source contract instead of making Voice Notes an iOS 26-only
@@ -678,6 +761,9 @@ final class OnDeviceTranscriptManager: ObservableObject {
                   !ownerAccountId.isEmpty else {
                 throw OnDeviceTranscriptFailure.accountUnavailable
             }
+            let recognitionProfile = VoiceWritingRecognitionPreferences.shared.profile(
+                for: ownerAccountId
+            )
             let before = try await Task.detached(priority: .utility) {
                 try OnDeviceTranscriptSource.fingerprint(fileURL)
             }.value
@@ -696,46 +782,49 @@ final class OnDeviceTranscriptManager: ObservableObject {
             let preset: String
             let modelAssetStatus: String
             if #available(iOS 26.0, *) {
-                do {
-                    let prepared = try await AppleOnDeviceTranscriptEngine.prepare(
+                if recognitionProfile == .speechAdaptation {
+                    do {
+                        let prepared = try await AppleSpeechAdaptedTranscriptEngine.prepare(
+                            locale: locale,
+                            allowModelDownload: allowModelDownload
+                        )
+                        segments = try await AppleSpeechAdaptedTranscriptEngine.transcribe(
+                            fileURL: preparedAudio.url,
+                            prepared: prepared
+                        )
+                        language = prepared.locale.identifier
+                        recognitionExecution = "on-device"
+                        transcriber = "DictationTranscriber"
+                        preset = "atypical-speech-final-time-indexed-v1"
+                        modelAssetStatus = "installed"
+                    } catch {
+                        // Adaptation is an accuracy preference, never a gate to
+                        // receiving writing. Fall back to the ordinary long-form
+                        // engine if Apple cannot use the adapted model here.
+                        let result = try await standardTranscriptResult(
+                            fileURL: preparedAudio.url,
+                            locale: locale,
+                            allowModelDownload: allowModelDownload
+                        )
+                        segments = result.segments
+                        language = result.language
+                        recognitionExecution = result.recognitionExecution
+                        transcriber = result.transcriber
+                        preset = result.preset
+                        modelAssetStatus = result.modelAssetStatus
+                    }
+                } else {
+                    let result = try await standardTranscriptResult(
+                        fileURL: preparedAudio.url,
                         locale: locale,
                         allowModelDownload: allowModelDownload
                     )
-                    segments = try await AppleOnDeviceTranscriptEngine.transcribe(
-                        fileURL: preparedAudio.url,
-                        prepared: prepared
-                    )
-                    language = prepared.locale.identifier
-                    recognitionExecution = "on-device"
-                    transcriber = "SpeechTranscriber"
-                    preset = "custom-final-time-indexed-v1"
-                    modelAssetStatus = "installed"
-                } catch OnDeviceTranscriptFailure.unavailable {
-                    let result = try await AppleCompatibleTranscriptEngine.transcribe(
-                        fileURL: preparedAudio.url,
-                        locale: locale
-                    )
                     segments = result.segments
                     language = result.language
                     recognitionExecution = result.recognitionExecution
                     transcriber = result.transcriber
                     preset = result.preset
-                    modelAssetStatus = result.recognitionExecution == "on-device"
-                        ? "built-in"
-                        : "apple-service"
-                } catch OnDeviceTranscriptFailure.unsupportedLocale {
-                    let result = try await AppleCompatibleTranscriptEngine.transcribe(
-                        fileURL: preparedAudio.url,
-                        locale: locale
-                    )
-                    segments = result.segments
-                    language = result.language
-                    recognitionExecution = result.recognitionExecution
-                    transcriber = result.transcriber
-                    preset = result.preset
-                    modelAssetStatus = result.recognitionExecution == "on-device"
-                        ? "built-in"
-                        : "apple-service"
+                    modelAssetStatus = result.modelAssetStatus
                 }
             } else {
                 let result = try await AppleCompatibleTranscriptEngine.transcribe(
@@ -792,6 +881,64 @@ final class OnDeviceTranscriptManager: ObservableObject {
             phases[recording.id] = .modelDownloadRequired(locale: localeIdentifier)
         } catch {
             phases[recording.id] = .failed(message: error.localizedDescription, retryable: true)
+        }
+    }
+
+    @available(iOS 26.0, *)
+    private func standardTranscriptResult(
+        fileURL: URL,
+        locale: Locale,
+        allowModelDownload: Bool
+    ) async throws -> (
+        segments: [OnDeviceTranscriptSegment],
+        language: String,
+        recognitionExecution: String,
+        transcriber: String,
+        preset: String,
+        modelAssetStatus: String
+    ) {
+        do {
+            let prepared = try await AppleOnDeviceTranscriptEngine.prepare(
+                locale: locale,
+                allowModelDownload: allowModelDownload
+            )
+            return (
+                try await AppleOnDeviceTranscriptEngine.transcribe(
+                    fileURL: fileURL,
+                    prepared: prepared
+                ),
+                prepared.locale.identifier,
+                "on-device",
+                "SpeechTranscriber",
+                "custom-final-time-indexed-v1",
+                "installed"
+            )
+        } catch OnDeviceTranscriptFailure.unavailable {
+            let result = try await AppleCompatibleTranscriptEngine.transcribe(
+                fileURL: fileURL,
+                locale: locale
+            )
+            return (
+                result.segments,
+                result.language,
+                result.recognitionExecution,
+                result.transcriber,
+                result.preset,
+                result.recognitionExecution == "on-device" ? "built-in" : "apple-service"
+            )
+        } catch OnDeviceTranscriptFailure.unsupportedLocale {
+            let result = try await AppleCompatibleTranscriptEngine.transcribe(
+                fileURL: fileURL,
+                locale: locale
+            )
+            return (
+                result.segments,
+                result.language,
+                result.recognitionExecution,
+                result.transcriber,
+                result.preset,
+                result.recognitionExecution == "on-device" ? "built-in" : "apple-service"
+            )
         }
     }
 
