@@ -153,13 +153,22 @@
         "filename": "04-library.png",
         "width": 1320,
         "height": 2868,
-        "headline": "Local-first. Recovery built in.",
-        "story": "Library showing the protected original and recoverable sync state.",
+        "headline": "Your words stay organized",
+        "story": "A calm Library for papers, drafts, voice writing, original recordings, and their timed transcripts.",
         "status": "approved"
       },
       {
         "order": 5,
-        "filename": "05-transcript.png",
+        "filename": "05-writing.png",
+        "width": 1320,
+        "height": 2868,
+        "headline": "Speak your paper into shape",
+        "story": "Editable writing created from speech, with familiar structure tools, word count, tags, Word export, and one-tap voice continuation.",
+        "status": "approved"
+      },
+      {
+        "order": 6,
+        "filename": "06-transcript.png",
         "width": 1320,
         "height": 2868,
         "headline": "Edit from the words you said",
@@ -167,8 +176,8 @@
         "status": "approved"
       },
       {
-        "order": 6,
-        "filename": "06-subscription.png",
+        "order": 7,
+        "filename": "07-subscription.png",
         "width": 1320,
         "height": 2868,
         "headline": "Everything you need to coach",

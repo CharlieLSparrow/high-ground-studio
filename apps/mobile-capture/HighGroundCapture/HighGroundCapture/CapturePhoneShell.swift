@@ -7538,6 +7538,7 @@ private struct CaptureVoiceWritingEditor: View {
 
     let recordingID: UUID
     let timedTranscript: [OnDeviceTranscriptSegment]
+    private let initialDraft: VoiceWritingDraft
     @State private var title: String
     @State private var bodyText: String
     @State private var richText: VoiceWritingRichText?
@@ -7567,6 +7568,7 @@ private struct CaptureVoiceWritingEditor: View {
     ) {
         self.recordingID = recordingID
         self.timedTranscript = timedTranscript
+        self.initialDraft = initialDraft
         self.tagClient = tagClient
         self.onContinueByVoice = onContinueByVoice
         _title = State(initialValue: initialDraft.title)
@@ -7576,6 +7578,7 @@ private struct CaptureVoiceWritingEditor: View {
 
     private var currentDraft: VoiceWritingDraft? {
         writingStore.draft(for: recordingID)
+            ?? (CaptureLaunchConfiguration.usesPreviewData ? initialDraft : nil)
     }
 
     var body: some View {

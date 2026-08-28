@@ -4874,6 +4874,25 @@ final class CaptureAppStoreScreenshotUITests: XCTestCase {
         XCTAssertTrue(app.buttons["CaptureLibraryStartVoiceNote"].exists)
         keepScreenshot("04-library.png")
 
+        let writingDraft = app.descendants(matching: .any)["CaptureLibraryPreviewWritingCard"]
+        XCTAssertTrue(writingDraft.isHittable)
+        writingDraft.tap()
+        XCTAssertTrue(
+            app.descendants(matching: .any)["CaptureVoiceWritingEditor"]
+                .waitForExistence(timeout: 5),
+            "The App Store writing story must open the real editable surface inside Capture."
+        )
+        XCTAssertFalse(app.tabBars.firstMatch.exists)
+        let writingTitle = app.textFields["CaptureVoiceWritingTitle"]
+        XCTAssertTrue(writingTitle.exists)
+        XCTAssertEqual(writingTitle.value as? String, "What I want to explore next")
+        XCTAssertTrue(
+            app.buttons["CaptureVoiceWritingContinueToolbar"].isEnabled,
+            "The release story must make continuing by voice immediately available."
+        )
+        Thread.sleep(forTimeInterval: 0.8)
+        keepScreenshot("05-writing.png")
+
         launch(tab: "library", waitingFor: app.navigationBars["Library"])
         let recordingsSection = app.buttons["Recordings"]
         XCTAssertTrue(recordingsSection.waitForExistence(timeout: 5))
@@ -4939,7 +4958,7 @@ final class CaptureAppStoreScreenshotUITests: XCTestCase {
             "The paid-release transcript story must not advertise a legacy suggestion-approval queue."
         )
         Thread.sleep(forTimeInterval: 1.0)
-        keepScreenshot("05-transcript.png")
+        keepScreenshot("06-transcript.png")
 
         launch(tab: "account", waitingFor: app.scrollViews["CaptureAccountView"])
         let plan = app.buttons["CaptureAccountQuipslyPlan"]
@@ -4957,7 +4976,7 @@ final class CaptureAppStoreScreenshotUITests: XCTestCase {
             ).firstMatch.exists
         )
         Thread.sleep(forTimeInterval: 0.8)
-        keepScreenshot("06-subscription.png")
+        keepScreenshot("07-subscription.png")
     }
 
     private func launch(tab: String, waitingFor destination: XCUIElement) {

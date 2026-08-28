@@ -80,7 +80,7 @@ per platform and says one platform's version status does not influence another.
 Deleting those unused platform records is optional cleanup, not an iPhone
 release gate.
 
-Apple permits 1–10 screenshots. The canonical plan uses five portrait
+Apple permits 1–10 screenshots. The canonical plan uses seven portrait
 screenshots in one accepted 6.9-inch size, `1320 x 2868`, so App Store Connect
 can scale them for smaller current iPhones. App previews are optional and are
 out of first-release scope.
@@ -89,14 +89,19 @@ out of first-release scope.
 
 1. **Every session, ready to move** — Today with an upcoming coaching Session,
    an editable task, an active goal, and one clear next action.
-2. **Consent before capture** — independent audio and transcription choices
-   before recording can start.
+2. **Join without the setup maze** — a familiar green room with clear device
+   controls, Join call, and Record without joining.
 3. **Notes, tasks, and goals together** — one coaching workspace connecting
    editable follow-through and flexible tags.
-4. **Local-first. Recovery built in.** — Library showing the protected original
-   and recoverable sync state.
-5. **Edit from the words you said** — a speaker-attributed, timeline-linked
+4. **Your words stay organized** — a calm Library for papers, drafts, voice
+   writing, original recordings, and their timed transcripts.
+5. **Speak your paper into shape** — editable writing created from speech, with
+   familiar structure tools, word count, tags, Word export, and one-tap voice
+   continuation.
+6. **Edit from the words you said** — a speaker-attributed, timeline-linked
    transcript with correction and basic editing inside Capture.
+7. **Everything you need to coach** — monthly and annual Quipsly Coach plans,
+   a two-week free trial, and free client collaboration.
 
 Capture from the exact release source using the deterministic presentation
 state, then inspect every image at full resolution. Do not show private coaching
