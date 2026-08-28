@@ -10,80 +10,6 @@ struct VoiceWritingSourceReference: Codable, Equatable, Identifiable {
     var id: UUID { localRecordingID }
 }
 
-/// Creates an editable reading draft from immutable timed speech. Pauses and
-/// explicit paragraph commands shape the writing without altering the source
-/// transcript, so a long spoken paper does not arrive as one exhausting wall
-/// of text.
-enum VoiceWritingTextComposer {
-    nonisolated static func body(from segments: [OnDeviceTranscriptSegment]) -> String {
-        var paragraphs: [String] = []
-        var current = ""
-        var previousEnd: Double?
-
-        func flush() {
-            let paragraph = current.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !paragraph.isEmpty { paragraphs.append(paragraph) }
-            current = ""
-        }
-
-        for segment in segments.sorted(by: segmentOrder) {
-            let text = normalized(segment.text)
-            guard !text.isEmpty else { continue }
-            if isParagraphCommand(text) {
-                flush()
-                previousEnd = segment.endSeconds
-                continue
-            }
-
-            let pause = previousEnd.map { max(0, segment.startSeconds - $0) } ?? 0
-            let endsSentence = current.last.map { ".!?".contains($0) } == true
-            let startsNewParagraph = !current.isEmpty && (
-                pause >= 2.2
-                    || (pause >= 1.25 && current.count >= 180)
-                    || (current.count >= 700 && endsSentence)
-            )
-            if startsNewParagraph { flush() }
-            current += current.isEmpty ? text : " \(text)"
-            previousEnd = segment.endSeconds
-        }
-        flush()
-        return paragraphs.joined(separator: "\n\n")
-    }
-
-    nonisolated static func suggestedTitle(from body: String) -> String? {
-        let firstParagraph = body
-            .components(separatedBy: "\n")
-            .first?
-            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        guard !firstParagraph.isEmpty else { return nil }
-        let words = firstParagraph.split(whereSeparator: { $0.isWhitespace })
-        guard words.count >= 3 else { return nil }
-        let candidate = words.prefix(10).joined(separator: " ")
-            .trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters))
-        guard candidate.count >= 8 else { return nil }
-        return String(candidate.prefix(80))
-    }
-
-    nonisolated private static func normalized(_ value: String) -> String {
-        value.replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
-    nonisolated private static func isParagraphCommand(_ value: String) -> Bool {
-        let command = value.lowercased()
-            .trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters))
-        return command == "new paragraph" || command == "next paragraph"
-    }
-
-    nonisolated private static func segmentOrder(
-        _ left: OnDeviceTranscriptSegment,
-        _ right: OnDeviceTranscriptSegment
-    ) -> Bool {
-        if left.startSeconds == right.startSeconds { return left.endSeconds < right.endSeconds }
-        return left.startSeconds < right.startSeconds
-    }
-}
-
 struct VoiceWritingRemoteDraft: Codable, Equatable {
     let documentID: String
     let projectID: String
@@ -289,7 +215,13 @@ final class VoiceWritingDraftStore: ObservableObject {
             return existing
         }
 
-        let body = VoiceWritingTextComposer.body(from: transcript.segments)
+        let body = VoiceWritingTextComposer.body(from: transcript.segments.map {
+            VoiceWritingTimedPhrase(
+                text: $0.text,
+                startSeconds: $0.startSeconds,
+                endSeconds: $0.endSeconds
+            )
+        })
         guard !body.isEmpty else { return nil }
 
         if let roomID = recording.callRoomId?.trimmingCharacters(in: .whitespacesAndNewlines),
