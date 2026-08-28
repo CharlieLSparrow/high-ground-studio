@@ -303,7 +303,11 @@ final class CaptureExperienceUITests: XCTestCase {
         let start = app.buttons["CaptureStartButton"]
         XCTAssertTrue(start.waitForExistence(timeout: 5))
         start.tap()
-        app.tap()
+        // XCTest invokes interruption monitors on the next interaction after
+        // a system prompt appears. Use the inert status-bar corner so the
+        // replayed tap cannot activate content that moves when the new global
+        // recording banner enters the safe area.
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.01, dy: 0.01)).tap()
 
         let stop = app.buttons["CaptureStopButton"]
         XCTAssertTrue(
@@ -2407,7 +2411,8 @@ final class CaptureExperienceUITests: XCTestCase {
             "Library should keep recording and transcript readiness reachable without cluttering Home."
         )
         let finishDetails = app.descendants(matching: .any)["CaptureFinishQueueDetails"].firstMatch
-        XCTAssertTrue(finishDetails.exists)
+        reveal(finishDetails)
+        XCTAssertTrue(finishDetails.waitForExistence(timeout: 5))
         finishDetails.tap()
         let recordingCounts = app.staticTexts.matching(
             NSPredicate(format: "label CONTAINS %@", "still saving · 1 backed up")
@@ -2430,7 +2435,10 @@ final class CaptureExperienceUITests: XCTestCase {
         reveal(action)
         XCTAssertTrue(action.exists)
         XCTAssertTrue(action.label.contains("Keep Quipsly open"))
-        XCTAssertTrue(action.label.contains("still shows upload or recovery progress"))
+        XCTAssertTrue(
+            action.label.contains("latest durable queue still has local recovery work"),
+            "The recovery action should expose its exact source-device reason to VoiceOver without forcing operational copy into the ordinary card."
+        )
 
         action.tap()
 

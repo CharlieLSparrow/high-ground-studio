@@ -15,6 +15,7 @@ struct CapturePhoneShell: View {
     @State private var isRoutingSessionLink = false
     @State private var localOnlyRecordingSessionID: String?
     @State private var requestedWritingDraftID: UUID?
+    @State private var recordNavigationResetID = UUID()
     @Binding var visibleTab: CaptureRootTab
 
     var body: some View {
@@ -35,7 +36,7 @@ struct CapturePhoneShell: View {
                     isPulsing:
                         audioCapture.captureState == .recording
                         && videoCapture.state == .recording,
-                    action: { visibleTab = .record }
+                    action: openActiveRecorder
                 )
             } else if audioCaptureIsActive {
                 GlobalCaptureBanner(
@@ -47,7 +48,7 @@ struct CapturePhoneShell: View {
                     duration: audioCapture.currentDuration,
                     tint: audioCapture.captureState == .paused ? .orange : .red,
                     isPulsing: audioCapture.captureState == .recording,
-                    action: { visibleTab = .record }
+                    action: openActiveRecorder
                 )
             } else if videoCaptureIsActive {
                 GlobalCaptureBanner(
@@ -59,7 +60,7 @@ struct CapturePhoneShell: View {
                     duration: videoCapture.durationSeconds,
                     tint: videoCapture.state == .paused ? .orange : .red,
                     isPulsing: videoCapture.state == .recording,
-                    action: { visibleTab = .record }
+                    action: openActiveRecorder
                 )
             }
         }
@@ -208,6 +209,7 @@ struct CapturePhoneShell: View {
                     localOnlyRecordingSessionID: $localOnlyRecordingSessionID
                 )
             }
+            .id(recordNavigationResetID)
             .tabItem { Label(CaptureRootTab.record.title, systemImage: CaptureRootTab.record.systemImage) }
             .tag(CaptureRootTab.record)
 
@@ -290,6 +292,15 @@ struct CapturePhoneShell: View {
             localOnlyRecordingSessionID = created.id
             visibleTab = .record
         }
+    }
+
+    /// The persistent capture banner is an escape hatch, not merely a tab
+    /// selector. Rebuild Record's navigation stack so a person who opened
+    /// notes, transcript review, or an editor while capture was active always
+    /// lands back on the controls that can pause or stop the source.
+    private func openActiveRecorder() {
+        recordNavigationResetID = UUID()
+        visibleTab = .record
     }
 
     @MainActor
@@ -835,6 +846,7 @@ private struct CaptureFinishQueueCard: View {
                             }
                             .buttonStyle(.plain)
                             .accessibilityIdentifier("CaptureFinishAction_\(action.callRoomId)_\(action.kind)")
+                            .accessibilityLabel(finishActionAccessibilityLabel(action))
                             .accessibilityHint("Opens this session.")
                         }
                     }
@@ -918,6 +930,23 @@ private struct CaptureFinishQueueCard: View {
         case "review-packet": "checkmark.bubble"
         default: "exclamationmark.magnifyingglass"
         }
+    }
+
+    private func finishActionAccessibilityLabel(
+        _ action: MobileCaptureReviewDigestFinishAction
+    ) -> String {
+        let visibleGuidance: String
+        if let exit = action.sourceExitReadiness {
+            visibleGuidance = "\(exit.experience.title). \(exit.experience.detail)"
+        } else {
+            visibleGuidance = "\(action.label). \(action.detail)"
+        }
+
+        // Preserve both the calm product projection and the exact server
+        // reason. VoiceOver users should receive the same recovery evidence
+        // that remains available in Recording details, without making the
+        // ordinary card read like an operations dashboard.
+        return "\(action.titleLabel). \(visibleGuidance) \(action.label). \(action.detail)"
     }
 }
 
