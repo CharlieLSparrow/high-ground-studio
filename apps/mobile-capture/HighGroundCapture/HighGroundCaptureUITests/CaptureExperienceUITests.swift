@@ -1567,6 +1567,28 @@ final class CaptureExperienceUITests: XCTestCase {
             "Private",
             "A person's Home Nest should make its privacy obvious without repeating the Nest name."
         )
+
+        picker.tap()
+        XCTAssertTrue(app.buttons["Doctoral research"].waitForExistence(timeout: 3))
+        app.buttons["Doctoral research"].tap()
+        XCTAssertTrue(
+            (picker.value as? String)?.contains("Doctoral research, Owned by you") == true,
+            "A separately owned Nest should not be conflated with a private Home Nest or a space someone else shared."
+        )
+        XCTAssertEqual(
+            app.staticTexts["Access"].value as? String,
+            "Owner",
+            "The selected owned Nest should make the person's control clear in ordinary language."
+        )
+
+        picker.tap()
+        XCTAssertTrue(app.buttons["High Ground Odyssey"].waitForExistence(timeout: 3))
+        app.buttons["High Ground Odyssey"].tap()
+        XCTAssertTrue(
+            (picker.value as? String)?.contains("High Ground Odyssey, Shared with you") == true,
+            "Returning to shared work should preserve the same one-control navigation model."
+        )
+        XCTAssertEqual(app.staticTexts["Access"].value as? String, "Can edit")
     }
 
     func testRecordQuickCaptureMakesNoteTaskAndGoalImmediateWithoutFakingPreviewWrites() {

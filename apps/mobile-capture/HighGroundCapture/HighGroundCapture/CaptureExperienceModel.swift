@@ -688,6 +688,17 @@ final class CaptureExperienceModel: ObservableObject {
                     ]
                 ),
                 MobileCaptureProjectDestination(
+                    id: "preview-doctoral-research",
+                    slug: "preview-doctoral-research",
+                    name: "Doctoral research",
+                    role: "OWNER",
+                    isHomeNest: false,
+                    availableTags: [
+                        MobileCaptureTag(id: "preview-research-writing", slug: "writing", label: "Writing"),
+                        MobileCaptureTag(id: "preview-research-sources", slug: "sources", label: "Sources"),
+                    ]
+                ),
+                MobileCaptureProjectDestination(
                     id: "preview-high-ground",
                     slug: "preview-high-ground",
                     name: appStorePresentation ? "My coaching practice" : "High Ground Odyssey",

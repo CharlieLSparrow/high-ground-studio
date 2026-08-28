@@ -6809,6 +6809,15 @@ final class CaptureWorkClient: ObservableObject {
                 updatedAt: now
             ),
             MobileCaptureWorkProject(
+                id: "preview-doctoral-research",
+                slug: "preview-doctoral-research",
+                name: "Doctoral research",
+                role: "OWNER",
+                canWrite: true,
+                isHomeNest: false,
+                updatedAt: now
+            ),
+            MobileCaptureWorkProject(
                 id: "preview-high-ground",
                 slug: "preview-high-ground",
                 name: appStorePresentation ? "My coaching practice" : "High Ground Odyssey",
@@ -6818,7 +6827,9 @@ final class CaptureWorkClient: ObservableObject {
                 updatedAt: now
             ),
         ]
-        let selected = projects.first { $0.id == projectID } ?? projects[1]
+        let selected = projects.first { $0.id == projectID }
+            ?? projects.first { $0.id == "preview-high-ground" }
+            ?? projects[0]
         let project = MobileCaptureTodayProject(id: selected.id, name: selected.name, slug: selected.slug)
         brief = MobileCaptureWorkResponse(
             ok: true,
