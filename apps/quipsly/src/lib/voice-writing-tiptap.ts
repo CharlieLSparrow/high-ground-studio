@@ -145,6 +145,15 @@ function appendBlock(target: Serializer, node: JSONContent, orderedIndex = 1) {
     }
     return;
   }
+  if (node.type === "blockquote") {
+    // iPhone writing uses visible smart quotes rather than a platform-specific
+    // block node. Preserve the author's intent in the portable text instead
+    // of letting a web-only visual style disappear after the next sync.
+    target.text += "“";
+    appendInline(target, node);
+    target.text += "”";
+    return;
+  }
   appendInline(target, node);
 }
 

@@ -46,6 +46,28 @@ describe("portable voice writing and Tiptap", () => {
     }).text).toBe("• First\n• Second");
   });
 
+  it("keeps a web block quote visibly quoted on iPhone and after reopening", () => {
+    const portable = tiptapToVoiceWritingRichText({
+      type: "doc",
+      content: [{
+        type: "blockquote",
+        content: [{
+          type: "paragraph",
+          content: [{ type: "text", text: "Systems should make the work easier.", marks: [{ type: "bold" }] }],
+        }],
+      }],
+    });
+
+    expect(portable).toMatchObject({
+      text: "“Systems should make the work easier.”",
+      marks: [{ kind: "bold", startUtf16: 1, endUtf16: 37 }],
+    });
+    expect(voiceWritingRichTextToTiptap(portable, portable.text).content?.[0]).toMatchObject({
+      type: "paragraph",
+      content: expect.arrayContaining([expect.objectContaining({ text: "“" })]),
+    });
+  });
+
   it("round trips paper headings without adding markup to the searchable text", () => {
     const source = {
       schema: "quipsly-writing-runs-v1" as const,
