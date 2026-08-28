@@ -6699,7 +6699,7 @@ private struct CapturePersonalVoiceNoteHeader: View {
             Text(
                 hasRecording
                     ? "Your original audio is saved. Quipsly keeps the transcript time-linked so you can listen, correct it, and shape it into writing."
-                    : "Tap Record below and speak naturally. Pause when you need a moment and mark ideas you want to find quickly."
+                    : "Tap Record and speak naturally. Say “new paragraph” or “new line” as you organize your thoughts."
             )
             .font(.subheadline)
             .foregroundStyle(.secondary)
@@ -7609,7 +7609,7 @@ private struct CaptureRichWritingBody: View {
         VStack(alignment: .leading, spacing: 10) {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
-                    structureButton("Paragraph", systemImage: "text.alignleft", kind: .paragraph)
+                    styleMenu
                     structureButton("Bullets", systemImage: "list.bullet", kind: .bulletedList)
                     structureButton("Numbered", systemImage: "list.number", kind: .numberedList)
                     structureButton("Checklist", systemImage: "checklist", kind: .checklist)
@@ -7645,6 +7645,40 @@ private struct CaptureRichWritingBody: View {
                     text = Self.attributed(from: updated)
                 }
         }
+    }
+
+    private var styleMenu: some View {
+        Menu {
+            Button {
+                applyStructure(.heading)
+            } label: {
+                Label("Heading", systemImage: "textformat.size.larger")
+            }
+            .accessibilityIdentifier("CaptureVoiceWritingStyle_Heading")
+
+            Button {
+                applyStructure(.subheading)
+            } label: {
+                Label("Subheading", systemImage: "textformat.size")
+            }
+            .accessibilityIdentifier("CaptureVoiceWritingStyle_Subheading")
+
+            Button {
+                applyStructure(.body)
+            } label: {
+                Label("Body", systemImage: "text.alignleft")
+            }
+            .accessibilityIdentifier("CaptureVoiceWritingStyle_Body")
+        } label: {
+            Label("Style", systemImage: "textformat")
+                .font(.caption.weight(.semibold))
+                .padding(.horizontal, 10)
+                .frame(minHeight: 44)
+                .background(.thinMaterial, in: Capsule())
+        }
+        .accessibilityLabel("Text style")
+        .accessibilityHint("Choose a heading, subheading, or body style.")
+        .accessibilityIdentifier("CaptureVoiceWritingStyleMenu")
     }
 
     private func formatButton(
@@ -7757,6 +7791,18 @@ private struct CaptureRichWritingBody: View {
 
     private static func attributed(from source: VoiceWritingRichText) -> AttributedString {
         var result = AttributedString(source.text)
+        for structure in source.structures {
+            guard let range = attributedRange(
+                startUtf16: structure.startUtf16,
+                endUtf16: structure.endUtf16,
+                in: result
+            ) else { continue }
+            let level = structure.kind == .heading ? 1 : 2
+            result[range].presentationIntent = PresentationIntent(
+                .header(level: level),
+                identity: structure.startUtf16 + level
+            )
+        }
         for mark in source.marks {
             guard let range = attributedRange(
                 startUtf16: mark.startUtf16,
@@ -7784,6 +7830,7 @@ private struct CaptureRichWritingBody: View {
     private static func portable(from source: AttributedString) -> VoiceWritingRichText {
         let text = String(source.characters)
         var marks: [VoiceWritingTextMark] = []
+        var structures: [VoiceWritingBlockStyle] = []
         for run in source.runs {
             let start = source.utf16.distance(from: source.startIndex, to: run.range.lowerBound)
             let end = source.utf16.distance(from: source.startIndex, to: run.range.upperBound)
@@ -7801,8 +7848,18 @@ private struct CaptureRichWritingBody: View {
             if run.strikethroughStyle != nil {
                 marks.append(.init(kind: .strikethrough, startUtf16: start, endUtf16: end))
             }
+            if let headerLevel = run.presentationIntent?.components.compactMap({ component -> Int? in
+                if case .header(let level) = component.kind { return level }
+                return nil
+            }).last {
+                structures.append(.init(
+                    kind: headerLevel <= 1 ? .heading : .subheading,
+                    startUtf16: start,
+                    endUtf16: end
+                ))
+            }
         }
-        return VoiceWritingRichText(text: text, marks: marks)
+        return VoiceWritingRichText(text: text, marks: marks, structures: structures)
     }
 
     private static func attributedRange(

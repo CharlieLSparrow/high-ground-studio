@@ -14,6 +14,7 @@ describe("portable voice writing and Tiptap", () => {
         { kind: "underline" as const, startUtf16: 16, endUtf16: 30 },
         { kind: "strikethrough" as const, startUtf16: 25, endUtf16: 30 },
       ],
+      structures: [],
     };
 
     expect(tiptapToVoiceWritingRichText(voiceWritingRichTextToTiptap(source, source.text))).toEqual(source);
@@ -24,6 +25,7 @@ describe("portable voice writing and Tiptap", () => {
       schema: "quipsly-writing-runs-v1" as const,
       text: "Opening\n\nNew thought",
       marks: [],
+      structures: [],
     };
     const document = voiceWritingRichTextToTiptap(source, source.text);
 
@@ -42,6 +44,23 @@ describe("portable voice writing and Tiptap", () => {
         ],
       }],
     }).text).toBe("• First\n• Second");
+  });
+
+  it("round trips paper headings without adding markup to the searchable text", () => {
+    const source = {
+      schema: "quipsly-writing-runs-v1" as const,
+      text: "Research question\nWhy this matters\nOpening paragraph.",
+      marks: [],
+      structures: [
+        { kind: "heading" as const, startUtf16: 0, endUtf16: 17 },
+        { kind: "subheading" as const, startUtf16: 18, endUtf16: 34 },
+      ],
+    };
+    const document = voiceWritingRichTextToTiptap(source, source.text);
+
+    expect(document.content?.[0]).toMatchObject({ type: "heading", attrs: { level: 1 } });
+    expect(document.content?.[1]).toMatchObject({ type: "heading", attrs: { level: 2 } });
+    expect(tiptapToVoiceWritingRichText(document)).toEqual(source);
   });
 
   it("falls back to the searchable body when rich text is absent or stale", () => {

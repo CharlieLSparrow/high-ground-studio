@@ -13,6 +13,17 @@ struct VoiceWritingTextMark: Codable, Equatable {
     let endUtf16: Int
 }
 
+enum VoiceWritingBlockKind: String, Codable, CaseIterable {
+    case heading
+    case subheading
+}
+
+struct VoiceWritingBlockStyle: Codable, Equatable {
+    let kind: VoiceWritingBlockKind
+    let startUtf16: Int
+    let endUtf16: Int
+}
+
 /// Cross-platform rich writing that stays independent of Apple's private
 /// attributed-string encoding. UTF-16 offsets agree with both NSString and
 /// JavaScript, while `text` remains the searchable Studio block projection.
@@ -20,8 +31,13 @@ struct VoiceWritingRichText: Codable, Equatable {
     let schema: String
     let text: String
     let marks: [VoiceWritingTextMark]
+    let structures: [VoiceWritingBlockStyle]
 
-    init(text: String, marks: [VoiceWritingTextMark] = []) {
+    init(
+        text: String,
+        marks: [VoiceWritingTextMark] = [],
+        structures: [VoiceWritingBlockStyle] = []
+    ) {
         schema = "quipsly-writing-runs-v1"
         self.text = text
         let limit = text.utf16.count
@@ -54,6 +70,54 @@ struct VoiceWritingRichText: Codable, Equatable {
             $0.startUtf16 != $1.startUtf16 ? $0.startUtf16 < $1.startUtf16
                 : ($0.endUtf16 != $1.endUtf16 ? $0.endUtf16 < $1.endUtf16 : $0.kind.rawValue < $1.kind.rawValue)
         }
+        var structureIdentities = Set<String>()
+        self.structures = structures
+            .filter {
+                $0.startUtf16 >= 0
+                    && $0.endUtf16 > $0.startUtf16
+                    && $0.endUtf16 <= limit
+                    && Self.isWholeLine($0, in: text)
+            }
+            .filter {
+                structureIdentities.insert("\($0.startUtf16):\($0.endUtf16)").inserted
+            }
+            .sorted {
+                $0.startUtf16 != $1.startUtf16 ? $0.startUtf16 < $1.startUtf16
+                    : ($0.endUtf16 != $1.endUtf16 ? $0.endUtf16 < $1.endUtf16 : $0.kind.rawValue < $1.kind.rawValue)
+            }
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case schema
+        case text
+        case marks
+        case structures
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let schema = try container.decode(String.self, forKey: .schema)
+        guard schema == "quipsly-writing-runs-v1" else {
+            throw DecodingError.dataCorruptedError(
+                forKey: .schema,
+                in: container,
+                debugDescription: "Unsupported Quipsly writing format."
+            )
+        }
+        let text = try container.decode(String.self, forKey: .text)
+        self.init(
+            text: text,
+            marks: try container.decodeIfPresent([VoiceWritingTextMark].self, forKey: .marks) ?? [],
+            structures: try container.decodeIfPresent([VoiceWritingBlockStyle].self, forKey: .structures) ?? []
+        )
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(schema, forKey: .schema)
+        try container.encode(text, forKey: .text)
+        try container.encode(marks, forKey: .marks)
+        try container.encode(structures, forKey: .structures)
     }
 
     func appending(_ addition: String) -> VoiceWritingRichText {
@@ -62,12 +126,25 @@ struct VoiceWritingRichText: Codable, Equatable {
         guard !suffix.isEmpty else { return self }
         return VoiceWritingRichText(
             text: base.isEmpty ? suffix : "\(base)\n\n\(suffix)",
-            marks: marks
+            marks: marks,
+            structures: structures
         )
+    }
+
+    private static func isWholeLine(_ structure: VoiceWritingBlockStyle, in text: String) -> Bool {
+        let source = text as NSString
+        let beginsLine = structure.startUtf16 == 0
+            || source.substring(with: NSRange(location: structure.startUtf16 - 1, length: 1)) == "\n"
+        let endsLine = structure.endUtf16 == source.length
+            || source.substring(with: NSRange(location: structure.endUtf16, length: 1)) == "\n"
+        return beginsLine && endsLine
     }
 }
 
 enum VoiceWritingStructureKind: Equatable {
+    case heading
+    case subheading
+    case body
     case paragraph
     case bulletedList
     case numberedList
@@ -93,6 +170,10 @@ enum VoiceWritingStructureEditor {
         let selection = safe(proposedSelection, in: text)
 
         switch kind {
+        case .heading, .subheading:
+            return applyHeading(kind, to: source, selection: selection)
+        case .body:
+            return applyBody(to: source, selection: selection)
         case .paragraph:
             let insertionPoint = NSMaxRange(selection)
             return applying(
@@ -119,6 +200,69 @@ enum VoiceWritingStructureEditor {
         case .bulletedList, .numberedList, .checklist:
             return applyList(kind, to: source, selection: selection)
         }
+    }
+
+    private static func applyHeading(
+        _ kind: VoiceWritingStructureKind,
+        to source: VoiceWritingRichText,
+        selection: NSRange
+    ) -> VoiceWritingStructureEditResult {
+        let text = source.text as NSString
+        let target = text.lineRange(for: selection)
+        let targetLines = lines(in: target, source: text).filter { !$0.isEmpty }
+        guard !targetLines.isEmpty else {
+            return .init(richText: source, selectionUtf16: selection)
+        }
+        let desired: VoiceWritingBlockKind = kind == .heading ? .heading : .subheading
+        let targetRanges = targetLines.map {
+            NSRange(location: $0.start, length: $0.contentEnd - $0.start)
+        }
+        var structures = source.structures.filter { structure in
+            !targetRanges.contains { range in
+                structure.startUtf16 < NSMaxRange(range)
+                    && structure.endUtf16 > range.location
+            }
+        }
+        structures += targetRanges.map {
+            VoiceWritingBlockStyle(
+                kind: desired,
+                startUtf16: $0.location,
+                endUtf16: NSMaxRange($0)
+            )
+        }
+        return .init(
+            richText: VoiceWritingRichText(
+                text: source.text,
+                marks: source.marks,
+                structures: structures
+            ),
+            selectionUtf16: selection
+        )
+    }
+
+    private static func applyBody(
+        to source: VoiceWritingRichText,
+        selection: NSRange
+    ) -> VoiceWritingStructureEditResult {
+        let text = source.text as NSString
+        let target = text.lineRange(for: selection)
+        let targetRanges = lines(in: target, source: text)
+            .filter { !$0.isEmpty }
+            .map { NSRange(location: $0.start, length: $0.contentEnd - $0.start) }
+        let structures = source.structures.filter { structure in
+            !targetRanges.contains { range in
+                structure.startUtf16 < NSMaxRange(range)
+                    && structure.endUtf16 > range.location
+            }
+        }
+        return .init(
+            richText: VoiceWritingRichText(
+                text: source.text,
+                marks: source.marks,
+                structures: structures
+            ),
+            selectionUtf16: selection
+        )
     }
 
     private struct TextEdit {
@@ -280,7 +424,17 @@ enum VoiceWritingStructureEditor {
             guard end > start else { return nil }
             return .init(kind: mark.kind, startUtf16: start, endUtf16: end)
         }
-        let richText = VoiceWritingRichText(text: mutable as String, marks: shiftedMarks)
+        let shiftedStructures = source.structures.compactMap { structure -> VoiceWritingBlockStyle? in
+            let start = mapAfter(structure.startUtf16, through: edits)
+            let end = mapBefore(structure.endUtf16, through: edits)
+            guard end > start else { return nil }
+            return .init(kind: structure.kind, startUtf16: start, endUtf16: end)
+        }
+        let richText = VoiceWritingRichText(
+            text: mutable as String,
+            marks: shiftedMarks,
+            structures: shiftedStructures
+        )
         return .init(
             richText: richText,
             selectionUtf16: safe(selection, in: richText.text as NSString)

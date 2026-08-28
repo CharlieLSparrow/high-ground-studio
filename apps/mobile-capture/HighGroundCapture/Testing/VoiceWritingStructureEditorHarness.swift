@@ -18,6 +18,9 @@ private struct VoiceWritingStructureEditorHarness {
         try numberingPreservesEmojiUtf16Marks()
         try paragraphAndQuoteKeepFormattingOnOriginalWords()
         try anEmptyLineCanStartAList()
+        try headingsStayStructuralAndToggleCleanly()
+        try listConversionRemovesIncompatibleHeadingStyle()
+        try existingWritingDecodesWithoutMigrationWork()
         print("PASS Voice writing structure and rich-text portability")
     }
 
@@ -126,6 +129,82 @@ private struct VoiceWritingStructureEditorHarness {
         try require(
             result.selectionUtf16 == NSRange(location: 2, length: 0),
             "The caret should land after the inserted checklist marker."
+        )
+    }
+
+    private static func headingsStayStructuralAndToggleCleanly() throws {
+        let source = VoiceWritingRichText(text: "Opening\nContext")
+        let heading = VoiceWritingStructureEditor.apply(
+            .heading,
+            to: source,
+            selection: NSRange(location: 0, length: 7)
+        )
+        try require(
+            heading.richText.text == source.text,
+            "A heading should style the writing instead of adding markup characters to Homer's paper."
+        )
+        try require(
+            heading.richText.structures == [
+                .init(kind: .heading, startUtf16: 0, endUtf16: 7),
+            ],
+            "A heading should persist as a portable whole-line structure."
+        )
+
+        let subheading = VoiceWritingStructureEditor.apply(
+            .subheading,
+            to: heading.richText,
+            selection: NSRange(location: 0, length: 7)
+        )
+        try require(
+            subheading.richText.structures == [
+                .init(kind: .subheading, startUtf16: 0, endUtf16: 7),
+            ],
+            "Choosing a different heading level should replace the current level instead of stacking styles."
+        )
+
+        let unchanged = VoiceWritingStructureEditor.apply(
+            .subheading,
+            to: subheading.richText,
+            selection: NSRange(location: 0, length: 7)
+        )
+        try require(
+            unchanged.richText.structures == subheading.richText.structures,
+            "Choosing the active heading level again should be idempotent."
+        )
+
+        let plain = VoiceWritingStructureEditor.apply(
+            .body,
+            to: unchanged.richText,
+            selection: NSRange(location: 0, length: 7)
+        )
+        try require(plain.richText.structures.isEmpty, "Choosing Body should return a heading to ordinary writing.")
+    }
+
+    private static func listConversionRemovesIncompatibleHeadingStyle() throws {
+        let source = VoiceWritingRichText(
+            text: "Heading\nBody",
+            structures: [.init(kind: .heading, startUtf16: 0, endUtf16: 7)]
+        )
+        let result = VoiceWritingStructureEditor.apply(
+            .bulletedList,
+            to: source,
+            selection: NSRange(location: 0, length: 7)
+        )
+        try require(
+            result.richText.structures.isEmpty,
+            "Turning a heading into a list should remove the incompatible heading style instead of retaining a malformed partial-line range."
+        )
+    }
+
+    private static func existingWritingDecodesWithoutMigrationWork() throws {
+        let legacy = #"{"schema":"quipsly-writing-runs-v1","text":"Existing note","marks":[]}"#
+        let decoded = try JSONDecoder().decode(
+            VoiceWritingRichText.self,
+            from: Data(legacy.utf8)
+        )
+        try require(
+            decoded == VoiceWritingRichText(text: "Existing note"),
+            "Existing iPhone and Nest drafts should gain an empty structure list without a migration or user action."
         )
     }
 

@@ -235,11 +235,18 @@ final class CaptureExperienceUITests: XCTestCase {
             app.buttons["CaptureVoiceWritingContinueToolbar"].exists,
             "Someone writing by voice should always be one obvious tap from continuing to speak."
         )
-        for control in ["Paragraph", "Bullets", "Numbered", "Checklist", "Quote"] {
+        let styleMenu = app.buttons["CaptureVoiceWritingStyleMenu"]
+        XCTAssertTrue(styleMenu.exists, "Paper structure should use the familiar compact text-style menu.")
+        styleMenu.tap()
+        for style in ["Heading", "Subheading", "Body"] {
             XCTAssertTrue(
-                app.buttons["CaptureVoiceWritingStructure_\(control)"].exists,
-                "The current iPhone editor should expose \(control) alongside rich text formatting."
+                app.buttons["CaptureVoiceWritingStyle_\(style)"].exists,
+                "The text-style menu should expose \(style) without crowding the editor."
             )
+        }
+        app.buttons["CaptureVoiceWritingStyle_Body"].tap()
+        for control in ["Bullets", "Numbered", "Checklist", "Quote"] {
+            XCTAssertTrue(app.buttons["CaptureVoiceWritingStructure_\(control)"].exists)
         }
 
         let writing = app.descendants(matching: .any)["CaptureVoiceWritingBody"]

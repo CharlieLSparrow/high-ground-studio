@@ -10,12 +10,15 @@ import {
   ChevronLeft,
   Cloud,
   CloudAlert,
+  Heading1,
+  Heading2,
   Italic,
   List,
   ListOrdered,
   LoaderCircle,
   MessageSquareQuote,
   Mic2,
+  Pilcrow,
   Redo2,
   RefreshCw,
   Strikethrough,
@@ -171,7 +174,7 @@ export function VoiceWritingEditor({ draftId }: { draftId: string }) {
     immediatelyRender: false,
     editorProps: {
       attributes: {
-        class: "voice-writing-editor min-h-[52vh] max-w-none px-5 py-6 font-serif text-[1.08rem] leading-8 text-[#34291e] outline-none sm:px-8 sm:py-8 md:text-[1.16rem]",
+        class: "voice-writing-editor min-h-[52vh] max-w-none px-5 py-6 font-serif text-[1.08rem] leading-8 text-[#34291e] outline-none sm:px-8 sm:py-8 md:text-[1.16rem] [&_h1]:mb-3 [&_h1]:mt-7 [&_h1]:text-3xl [&_h1]:font-black [&_h1]:leading-tight [&_h2]:mb-2 [&_h2]:mt-6 [&_h2]:text-2xl [&_h2]:font-black [&_h2]:leading-tight",
         "aria-label": "Paper or note",
       },
     },
@@ -354,6 +357,10 @@ export function VoiceWritingEditor({ draftId }: { draftId: string }) {
 
     <section className="mt-4 overflow-hidden rounded-[2rem] border border-[#dfcba6] bg-[#fffefb] shadow-sm" aria-label="Writing editor">
       <div className="sticky top-0 z-10 flex flex-wrap items-center gap-2 border-b border-[#eadcc2] bg-[#fffaf2]/95 px-3 py-3 backdrop-blur sm:px-5" role="toolbar" aria-label="Text formatting">
+        <ToolbarButton label="Body" active={editor.isActive("paragraph")} onClick={() => editor.chain().focus().setParagraph().run()}><Pilcrow className="h-4 w-4" /></ToolbarButton>
+        <ToolbarButton label="Heading" active={editor.isActive("heading", { level: 1 })} onClick={() => editor.chain().focus().setHeading({ level: 1 }).run()}><Heading1 className="h-4 w-4" /></ToolbarButton>
+        <ToolbarButton label="Subheading" active={editor.isActive("heading", { level: 2 })} onClick={() => editor.chain().focus().setHeading({ level: 2 }).run()}><Heading2 className="h-4 w-4" /></ToolbarButton>
+        <span className="mx-1 h-7 w-px bg-[#e0cfb1]" aria-hidden="true" />
         <ToolbarButton label="Bold" active={editor.isActive("bold")} onClick={() => editor.chain().focus().toggleBold().run()}><Bold className="h-4 w-4" /></ToolbarButton>
         <ToolbarButton label="Italic" active={editor.isActive("italic")} onClick={() => editor.chain().focus().toggleItalic().run()}><Italic className="h-4 w-4" /></ToolbarButton>
         <ToolbarButton label="Underline" active={editor.isActive("underline")} onClick={() => editor.chain().focus().toggleMark("underline").run()}><UnderlineIcon className="h-4 w-4" /></ToolbarButton>

@@ -49,6 +49,9 @@ describe("mobile voice writing", () => {
           { kind: "bold", startUtf16: 0, endUtf16: 5 },
           { kind: "bold", startUtf16: 4, endUtf16: 8 },
         ],
+        structures: [
+          { kind: "heading", startUtf16: 0, endUtf16: 10 },
+        ],
       },
     });
     expect(result).toMatchObject({
@@ -79,6 +82,9 @@ describe("mobile voice writing", () => {
             { kind: "bold", startUtf16: 0, endUtf16: 8 },
             { kind: "italic", startUtf16: 6, endUtf16: 10 },
           ],
+          structures: [
+            { kind: "heading", startUtf16: 0, endUtf16: 10 },
+          ],
         },
       },
     });
@@ -105,6 +111,12 @@ describe("mobile voice writing", () => {
     [{ schema: "quipsly-writing-runs-v1", text: "Different", marks: [] }, "mismatched text"],
     [{ schema: "quipsly-writing-runs-v1", text: "Text", marks: [{ kind: "sparkles", startUtf16: 0, endUtf16: 1 }] }, "unknown mark"],
     [{ schema: "quipsly-writing-runs-v1", text: "Text", marks: [{ kind: "bold", startUtf16: 0, endUtf16: 8 }] }, "out-of-bounds mark"],
+    [{ schema: "quipsly-writing-runs-v1", text: "Text", marks: [], structures: [{ kind: "banner", startUtf16: 0, endUtf16: 4 }] }, "unknown structure"],
+    [{ schema: "quipsly-writing-runs-v1", text: "Text", marks: [], structures: [{ kind: "heading", startUtf16: 1, endUtf16: 4 }] }, "partial-line structure"],
+    [{ schema: "quipsly-writing-runs-v1", text: "Text", marks: [], structures: [
+      { kind: "heading", startUtf16: 0, endUtf16: 4 },
+      { kind: "subheading", startUtf16: 0, endUtf16: 4 },
+    ] }, "overlapping structures"],
   ])("rejects %s rich writing", (richText) => {
     expect(validateMobileVoiceWriting({
       draftId,

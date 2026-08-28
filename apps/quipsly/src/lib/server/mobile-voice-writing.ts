@@ -1,13 +1,17 @@
 import { createHash } from "node:crypto";
 
 import {
+  VOICE_WRITING_BLOCK_KINDS,
   VOICE_WRITING_MARK_KINDS,
+  type VoiceWritingBlockKind,
+  type VoiceWritingBlockStyle,
   type VoiceWritingMark,
   type VoiceWritingMarkKind,
   type VoiceWritingRichText,
 } from "@/lib/voice-writing-contract";
 
 export {
+  VOICE_WRITING_BLOCK_KINDS as MOBILE_VOICE_WRITING_BLOCK_KINDS,
   VOICE_WRITING_MARK_KINDS as MOBILE_VOICE_WRITING_MARK_KINDS,
   type VoiceWritingMark as MobileVoiceWritingMark,
   type VoiceWritingMarkKind as MobileVoiceWritingMarkKind,
@@ -112,7 +116,47 @@ function richText(value: unknown, body: string): VoiceWritingRichText | null | u
   merged.sort((left, right) => left.startUtf16 - right.startUtf16
     || left.endUtf16 - right.endUtf16
     || left.kind.localeCompare(right.kind));
-  return { schema: "quipsly-writing-runs-v1", text: body, marks: merged };
+  const requestedStructures = input.structures ?? [];
+  if (!Array.isArray(requestedStructures) || requestedStructures.length > 2_000) return undefined;
+  const structures: VoiceWritingBlockStyle[] = [];
+  const structureIdentities = new Set<string>();
+  for (const candidate of requestedStructures) {
+    if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) return undefined;
+    const structure = candidate as Record<string, unknown>;
+    if (!VOICE_WRITING_BLOCK_KINDS.includes(structure.kind as VoiceWritingBlockKind)) return undefined;
+    const startUtf16 = integer(structure.startUtf16);
+    const endUtf16 = integer(structure.endUtf16);
+    if (!Number.isSafeInteger(startUtf16)
+      || !Number.isSafeInteger(endUtf16)
+      || startUtf16 < 0
+      || endUtf16 <= startUtf16
+      || endUtf16 > body.length
+      || (startUtf16 > 0 && body[startUtf16 - 1] !== "\n")
+      || (endUtf16 < body.length && body[endUtf16] !== "\n")) return undefined;
+    const normalized: VoiceWritingBlockStyle = {
+      kind: structure.kind as VoiceWritingBlockKind,
+      startUtf16,
+      endUtf16,
+    };
+    const identity = `${normalized.kind}:${startUtf16}:${endUtf16}`;
+    if (!structureIdentities.has(identity)) {
+      structureIdentities.add(identity);
+      structures.push(normalized);
+    }
+  }
+  structures.sort((left, right) => left.startUtf16 - right.startUtf16
+    || left.endUtf16 - right.endUtf16
+    || left.kind.localeCompare(right.kind));
+  if (structures.some((structure, index) => {
+    const previous = structures[index - 1];
+    return previous && structure.startUtf16 < previous.endUtf16;
+  })) return undefined;
+  return {
+    schema: "quipsly-writing-runs-v1",
+    text: body,
+    marks: merged,
+    structures,
+  };
 }
 
 export function validateMobileVoiceWriting(value: unknown): MobileVoiceWritingValidation {

@@ -4,6 +4,7 @@ import {
   VOICE_WRITING_MARK_KINDS,
   VOICE_WRITING_RICH_TEXT_SCHEMA,
   emptyVoiceWritingRichText,
+  type VoiceWritingBlockStyle,
   type VoiceWritingMark,
   type VoiceWritingMarkKind,
   type VoiceWritingRichText,
@@ -68,8 +69,12 @@ export function voiceWritingRichTextToTiptap(
   const richText = normalizedRichText(value, fallbackText);
   let offset = 0;
   const paragraphs = richText.text.split("\n").map((line) => {
+    const structure = (richText.structures ?? []).find((candidate) =>
+      candidate.startUtf16 === offset && candidate.endUtf16 === offset + line.length,
+    );
     const paragraph: JSONContent = {
-      type: "paragraph",
+      type: structure ? "heading" : "paragraph",
+      ...(structure ? { attrs: { level: structure.kind === "heading" ? 1 : 2 } } : {}),
       content: inlineContentForLine(line, offset, richText.marks),
     };
     offset += line.length + 1;
@@ -81,6 +86,7 @@ export function voiceWritingRichTextToTiptap(
 type Serializer = {
   text: string;
   marks: VoiceWritingMark[];
+  structures: VoiceWritingBlockStyle[];
 };
 
 function appendText(target: Serializer, text: string, marks: JSONContent["marks"]) {
@@ -126,6 +132,19 @@ function appendBlock(target: Serializer, node: JSONContent, orderedIndex = 1) {
     target.text += "—";
     return;
   }
+  if (node.type === "heading") {
+    const startUtf16 = target.text.length;
+    appendInline(target, node);
+    const endUtf16 = target.text.length;
+    if (endUtf16 > startUtf16) {
+      target.structures.push({
+        kind: Number(node.attrs?.level) <= 1 ? "heading" : "subheading",
+        startUtf16,
+        endUtf16,
+      });
+    }
+    return;
+  }
   appendInline(target, node);
 }
 
@@ -155,7 +174,7 @@ function mergeMarks(text: string, marks: VoiceWritingMark[]) {
  * opaque web-only document.
  */
 export function tiptapToVoiceWritingRichText(document: JSONContent): VoiceWritingRichText {
-  const serialized: Serializer = { text: "", marks: [] };
+  const serialized: Serializer = { text: "", marks: [], structures: [] };
   (document.content ?? []).forEach((block, index) => {
     if (index > 0) serialized.text += "\n";
     appendBlock(serialized, block);
@@ -164,5 +183,6 @@ export function tiptapToVoiceWritingRichText(document: JSONContent): VoiceWritin
     schema: VOICE_WRITING_RICH_TEXT_SCHEMA,
     text: serialized.text,
     marks: mergeMarks(serialized.text, serialized.marks),
+    structures: serialized.structures,
   };
 }
