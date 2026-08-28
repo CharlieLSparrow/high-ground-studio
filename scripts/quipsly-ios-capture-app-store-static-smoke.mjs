@@ -520,7 +520,7 @@ for (const needle of [
   "Download English speech model",
   "Quipsly turns the finished recording into timed, editable text",
   "Your original audio stays unchanged",
-  "Corrects words or speaker labels while keeping every edit linked to the original audio",
+  "Your original audio and first transcript stay safe. Corrections change the words you read and remain linked to the exact moment.",
 ]) {
   requireIncludes(
     capturePhoneShellText,
@@ -1046,7 +1046,7 @@ for (const needle of [
   "CaptureStudioHandoffCard_",
   "CaptureSourceTruthFootnote",
   "CaptureLibraryJournalWarning",
-  "Local source is production truth",
+  "This iPhone keeps the original microphone recording.",
   "Local source stopped; upload recovery remains independent.",
 ]) {
   requireAnyIncludes(shippingCaptureUIText, [needle, needle.replace("\\(", "(")], "reachable capture reviewer UI");
@@ -1091,7 +1091,7 @@ for (const needle of [
   "CaptureConsentTranscriptionToggle",
   "CaptureConsentSaveChoicesButton",
   "CaptureConsentDeclineButton",
-  "Local source is production truth",
+  "This iPhone keeps the original microphone recording.",
   "GlobalCaptureBanner",
   "model.activeCaptureSession?.id == session.id",
   "model.activeVideoCaptureSession?.id == session.id",
