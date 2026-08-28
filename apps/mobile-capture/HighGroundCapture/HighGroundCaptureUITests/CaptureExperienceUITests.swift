@@ -230,6 +230,10 @@ final class CaptureExperienceUITests: XCTestCase {
         )
         XCTAssertTrue(app.buttons["Write"].exists)
         XCTAssertTrue(app.buttons["Transcript"].exists)
+        XCTAssertTrue(
+            app.buttons["CaptureVoiceWritingContinueToolbar"].exists,
+            "Someone writing by voice should always be one obvious tap from continuing to speak."
+        )
         for control in ["Paragraph", "Bullets", "Numbered", "Checklist", "Quote"] {
             XCTAssertTrue(
                 app.buttons["CaptureVoiceWritingStructure_\(control)"].exists,
@@ -242,6 +246,10 @@ final class CaptureExperienceUITests: XCTestCase {
         let bullets = app.buttons["CaptureVoiceWritingStructure_Bullets"]
         XCTAssertTrue(bullets.isHittable)
         bullets.tap()
+        XCTAssertTrue(
+            app.buttons["CaptureVoiceWritingContinueKeyboard"].exists,
+            "Keep talking should remain reachable while the keyboard is open."
+        )
         XCTAssertTrue(
             ((writing.value as? String) ?? "").contains("• "),
             "A visible structure control must change the actual editable writing."

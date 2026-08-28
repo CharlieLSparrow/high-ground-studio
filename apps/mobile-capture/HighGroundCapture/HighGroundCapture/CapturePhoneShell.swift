@@ -7058,12 +7058,33 @@ private struct CaptureVoiceWritingEditor: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
+                Button(action: continueByVoice) {
+                    HStack(spacing: 5) {
+                        Image(systemName: "mic.badge.plus")
+                        Text("Speak")
+                            .font(.subheadline.weight(.semibold))
+                    }
+                }
+                .disabled(currentDraft == nil)
+                .accessibilityLabel("Keep talking")
+                .accessibilityHint("Saves this writing and starts another recording that will be added to it.")
+                .accessibilityIdentifier("CaptureVoiceWritingContinueToolbar")
+            }
+            ToolbarItem(placement: .topBarTrailing) {
                 ShareLink(item: shareText) {
                     Image(systemName: "square.and.arrow.up")
                 }
                 .accessibilityLabel(selectedSurface == .writing ? "Share writing" : "Share transcript")
             }
             ToolbarItemGroup(placement: .keyboard) {
+                Button(action: continueByVoice) {
+                    HStack(spacing: 5) {
+                        Image(systemName: "mic")
+                        Text("Keep talking")
+                    }
+                }
+                .disabled(currentDraft == nil)
+                .accessibilityIdentifier("CaptureVoiceWritingContinueKeyboard")
                 Spacer()
                 Button("Done") { bodyIsFocused = false }
             }
@@ -7178,19 +7199,14 @@ private struct CaptureVoiceWritingEditor: View {
         }
 
         Section {
-            Button {
-                saveImmediately()
-                guard let draft = currentDraft else { return }
-                onContinueByVoice(draft)
-                dismiss()
-            } label: {
-                Label("Continue by voice", systemImage: "mic.badge.plus")
+            Button(action: continueByVoice) {
+                Label("Keep talking", systemImage: "mic.badge.plus")
                     .font(.headline)
                     .frame(maxWidth: .infinity, minHeight: 48)
             }
             .buttonStyle(.borderedProminent)
             .disabled(currentDraft == nil)
-            .accessibilityHint("Starts another recording and adds its transcript to this writing.")
+            .accessibilityHint("Saves this writing and starts another recording that will be added to it.")
             .accessibilityIdentifier("CaptureVoiceWritingContinueByVoice")
         }
 
@@ -7229,7 +7245,9 @@ private struct CaptureVoiceWritingEditor: View {
                 Image(systemName: "magnifyingglass")
                     .foregroundStyle(.secondary)
                     .accessibilityHidden(true)
-                TextField("Find in transcript", text: $transcriptQuery)
+                TextField("Find in transcript", text: $transcriptQuery, axis: .vertical)
+                    .lineLimit(1...2)
+                    .padding(.vertical, 10)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
                     .submitLabel(.search)
@@ -7264,6 +7282,24 @@ private struct CaptureVoiceWritingEditor: View {
                 .disabled(transcriptText.isEmpty)
                 .accessibilityLabel(transcriptWasCopied ? "Transcript copied" : "Copy transcript")
                 .accessibilityIdentifier("CaptureVoiceWritingCopyTranscript")
+            }
+
+            if let roomID = currentDraft?.callRoomID?.nonempty {
+                NavigationLink {
+                    CaptureTranscriptReviewView(
+                        roomID: roomID,
+                        sessionTitle: title.nonempty ?? "Voice note",
+                        recording: recording,
+                        previewOnly: false
+                    )
+                } label: {
+                    Label("Correct transcript", systemImage: "pencil.and.list.clipboard")
+                        .font(.subheadline.weight(.semibold))
+                        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                }
+                .buttonStyle(.bordered)
+                .accessibilityHint("Corrects words or speaker labels while keeping every edit linked to the original audio.")
+                .accessibilityIdentifier("CaptureVoiceWritingCorrectTranscript")
             }
 
             if visibleTranscriptSources.isEmpty {
@@ -7383,6 +7419,14 @@ private struct CaptureVoiceWritingEditor: View {
 
     private var recording: LocalRecording? {
         recordingLibrary.recording(id: recordingID)
+    }
+
+    private func continueByVoice() {
+        bodyIsFocused = false
+        saveImmediately()
+        guard let draft = currentDraft else { return }
+        onContinueByVoice(draft)
+        dismiss()
     }
 
     private var sourceRecordings: [LocalRecording] {
