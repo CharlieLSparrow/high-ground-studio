@@ -1,6 +1,6 @@
 # High Ground Odyssey TestFlight Rehearsal
 
-Last verified: 2026-08-27
+Last verified: 2026-08-28
 
 This is the operator runbook for the first Charlie-and-Homer Quipsly Capture
 rehearsal. It distinguishes what is ready now from what the rehearsal still
@@ -8,10 +8,10 @@ needs to prove.
 
 ## Current release state
 
-- App: **Quipsly Capture 1.0 (39)**
+- App: **Quipsly Capture 1.0 (44)**
 - Exact native source:
-  `17bdaf2a1e8eb7b6fcc248fdefc3d9a8ef248093`
-- App Store Connect build ID: `4e6f95e4-d388-4146-8570-d97caaaab7b3`
+  `83057ca33a094c4a61f84eba2988032bc743dc17`
+- App Store Connect build ID: `eacf21a3-e981-4e5e-91bb-02f2aa221fb8`
 - External TestFlight group: **Quipsly Capture Rehearsal**
 - TestFlight Apple Account: `shomers@icloud.com`
 - Quipsly Google identity: `shomers@gmail.com`
@@ -22,12 +22,15 @@ needs to prove.
 - Automatic tester notification: enabled
 - Installation mode: public-link-only; neither a named-tester email nor a
   redemption code is required
-- Build 39 is the current approved public beta identified by the canonical
-  release ledger and Apple readback. It passed 90 serialized iPhone and Share
-  Extension journeys plus signed archive/export verification. It simplifies
-  device choice, system permission, consent, join, and recording readiness and
-  remains subject to a real physical-iPhone handoff, call, recording, retained
-  playback, and cross-device acceptance test.
+- Build 44 is the current approved public beta identified by the canonical
+  release ledger and Apple readback. It adds the direct **Speak to write** path,
+  on-device long-form dictation, timed transcript correction, structured rich
+  writing, Word export, and clearer Private / Owned / Shared Nest navigation.
+  It remains subject to a real physical-iPhone handoff, atypical-speech sample,
+  call, recording, retained playback, and cross-device acceptance test.
+- Build 45 is the next source candidate. It is not uploaded, assigned, or live;
+  this runbook must continue to identify Build 44 until Apple distribution is
+  verified and the canonical release ledger advances.
 - Build 28 passed all 63 serialized iPhone and Share Extension journeys,
   exact-source preflight, signed archive/export inspection, Apple processing,
   external beta review, external-group readback, and an anonymous HTTP 200 read

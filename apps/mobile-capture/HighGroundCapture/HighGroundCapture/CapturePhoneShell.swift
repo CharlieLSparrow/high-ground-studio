@@ -3145,7 +3145,7 @@ private struct CaptureCalendarContinuityCard: View {
                         .accessibilityIdentifier("CaptureCalendarError")
                 }
 
-                Text("Subscriptions are read-only and revocable. They contain schedule labels and links back to Quipsly—not recordings, transcript text, coaching notes, participant addresses, manuscripts, chat, or provider credentials. Calendar apps choose their own refresh timing.")
+                Text("Shared calendars are read-only and can be turned off anytime. They include titles, times, and links back to Quipsly—not your recordings or notes.")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .accessibilityIdentifier("CaptureCalendarBoundary")
@@ -3297,7 +3297,7 @@ private struct CaptureCalendarContinuityCard: View {
                     .accessibilityIdentifier("CaptureGoogleCalendarError")
             }
 
-            Text("Manage the connection and calendar choices securely in Nest.")
+            Text("Manage your connection and calendar choices in Nest.")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
                 .accessibilityIdentifier("CaptureGoogleCalendarBoundary")
@@ -4600,7 +4600,7 @@ struct TodayFollowThroughCard: View {
             titleVisibility: .visible
         ) {
             if let task = missedOccurrenceToSkip {
-                Button("Preserve as skipped", role: .destructive) {
+                Button("Skip occurrence", role: .destructive) {
                     missedOccurrenceToSkip = nil
                     Task {
                         _ = await client.setTaskStatus(
@@ -4613,7 +4613,7 @@ struct TodayFollowThroughCard: View {
             }
             Button("Keep it open", role: .cancel) { missedOccurrenceToSkip = nil }
         } message: {
-            Text("This occurrence will be marked skipped and the repeating task will continue.")
+            Text("The repeating task will continue with its next occurrence.")
         }
         .sheet(item: $recurrenceToEdit) { task in
             CaptureRecurrenceEditSheet(client: client, task: task)
@@ -5623,7 +5623,7 @@ private struct CaptureSourceFilingSheet: View {
 
                 if client.supportsSourceAnnotation {
                     Section("Optional source annotation") {
-                        Text("Add your thought and existing Nest tags now. The annotation is anchored to the complete preserved capture, not only this preview.")
+                        Text("Add a thought or tag. Your note stays linked to the complete capture, not just this preview.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
 
@@ -5653,7 +5653,7 @@ private struct CaptureSourceFilingSheet: View {
                         .accessibilityIdentifier("CaptureSourceFilingAnnotationBody")
 
                         if availableTags.isEmpty {
-                            Text("This Nest has no active tags yet. File the source now, then create reusable vocabulary from Work or Nest.")
+                            Text("This Nest has no tags yet. You can add them later.")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         } else {
@@ -6766,8 +6766,8 @@ private struct CaptureRecurrenceEditSheet: View {
                     .accessibilityIdentifier("CaptureRecurrenceEditScope")
 
                     Text(scope == "THIS_OCCURRENCE"
-                         ? "Only this open task’s wording changes. Its date, repeat rule, and every other occurrence stay exactly as they are."
-                         : "Quipsly preserves completed and skipped history, closes the old repeat at this next open task, and creates a new future series. There is no rewrite-history option.")
+                         ? "Changes only this task’s title and details."
+                         : "Changes this task and future repeats. Past tasks stay as they are.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -6827,7 +6827,7 @@ private struct CaptureRecurrenceEditSheet: View {
                 }
 
                 Section {
-                    Text("Completed and skipped tasks stay in your history.")
+                    Text("Past tasks stay as they are.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .accessibilityIdentifier("CaptureRecurrenceEditBoundary")

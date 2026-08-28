@@ -504,7 +504,8 @@ requireIncludes(sessionNoteEditOutboxText, "completeFileProtectionUntilFirstUser
 requireIncludes(sessionNoteEditOutboxText, "ownerAccountID", "Session-note edit outbox partitions drafts by verified actor");
 requireIncludes(capturePhoneShellText, "Skip missed occurrence…", "Capture exposes an explicit missed-occurrence decision instead of an unattended scheduler");
 requireIncludes(capturePhoneShellText, 'decisionReason: "MISSED_OCCURRENCE_SKIPPED"', "Capture sends the exact bounded missed-occurrence decision reason");
-requireIncludes(capturePhoneShellText, "retain the overdue task and occurrence as skipped", "Capture confirmation explains immutable history before the missed-occurrence mutation");
+requireIncludes(capturePhoneShellText, 'status: "CANCELED"', "Capture marks the missed occurrence skipped through the task status operation");
+requireIncludes(capturePhoneShellText, "The repeating task will continue with its next occurrence.", "Capture explains the direct effect of skipping a missed occurrence");
 requireIncludes(capturePhoneShellText, "CaptureSessionFollowUpStatus", "the production phone recorder owns client follow-up readiness");
 requireIncludes(capturePhoneShellText, "CaptureSessionResultsCard", "the production phone recorder reaches automatically created editable Session results");
 requireIncludes(capturePhoneShellText, "session.coachingTranscriptResults", "Capture renders canonical transcript-derived work without a second approval queue");
@@ -662,9 +663,9 @@ for (const needle of [
   'accessibilityIdentifier("CaptureSourceFilingAnnotationBody")',
   'accessibilityIdentifier("CaptureSourceFilingAnnotationVisibility")',
   '"File + annotate"',
-  "annotation is anchored to the complete preserved capture",
-  "Keeps the private Inbox capture unchanged",
-  "No task, calendar event, message, delivery, provider request, or publication is created.",
+  "Your note stays linked to the complete capture, not just this preview.",
+  "Keeps the original Inbox capture unchanged",
+  "Keeps this source and where it came from together",
 ]) {
   requireIncludes(
     capturePhoneShellText,
@@ -1394,7 +1395,7 @@ for (const needle of [
   "CaptureTodayAnnotationDraftPending_",
   "CaptureTodayAnnotationDraftRetry_",
   "Start private draft",
-  "durable citation",
+  "Creates a private draft linked to this source.",
 ]) {
   requireIncludes(capturePhoneShellText, needle, "accessible private source-to-writing UX");
 }
@@ -1423,8 +1424,8 @@ for (const needle of [
   'Button("Edit repeat…", systemImage: "pencil")',
   'Text("This task").tag("THIS_OCCURRENCE")',
   'Text("This + future").tag("THIS_AND_FUTURE")',
-  "There is no rewrite-history option.",
-  "Editing stays inside Quipsly. It does not change completed history, schedule a reminder, create or edit a provider calendar event, send a message, deliver, or publish.",
+  "Changes only this task’s title and details.",
+  "Changes this task and future repeats. Past tasks stay as they are.",
 ]) {
   requireIncludes(capturePhoneShellText, needle, "immutable-history native recurrence editing UX");
 }
@@ -1446,7 +1447,7 @@ for (const needle of [
   '"action": "task-edit"',
   'payload.action == "task-edit"',
   "acknowledgedDueLocal == requestedDueLocal",
-  "Reconnect to Nest before editing this task. The protected snapshot was not modified.",
+  "Reconnect to edit this task. Your saved copy is unchanged.",
 ]) {
   requireIncludes(bridgeText, needle, "fail-closed native task-edit acknowledgement");
 }
@@ -1469,7 +1470,7 @@ for (const needle of [
   'payload.action == "goal-edit"',
   'case "KEEP":',
   "acknowledgedTargetLocalDate == requestedTargetLocalDate",
-  "Reconnect to Nest before editing this goal. The protected snapshot was not modified.",
+  "Reconnect to edit this goal. Your saved copy is unchanged.",
 ]) {
   requireIncludes(bridgeText, needle, "fail-closed native goal-edit acknowledgement");
 }
@@ -1661,7 +1662,7 @@ for (const needle of [
   "Share first",
   "ConfirmDeleteLocalOriginalButton",
   "LocalRecordingDeletionSheet",
-  "protected audit row with the deletion time",
+  "Quipsly keeps a recovery record with the deletion time, original size, and cloud-verification state.",
 ]) {
   requireIncludes(capturePhoneShellText, needle, "explicit local-original deletion UX");
 }
@@ -1985,20 +1986,20 @@ requireIncludes(capturePhoneShellText, 'accessibilityIdentifier("CaptureCalendar
 requireIncludes(capturePhoneShellText, "Subscribe in Apple Calendar", "shipping calendar continuity offers an Apple Calendar subscription action");
 requireIncludes(capturePhoneShellText, 'accessibilityIdentifier("CaptureGoogleCalendarProjection")', "shipping calendar continuity exposes managed Google projection status");
 requireIncludes(capturePhoneShellText, 'accessibilityIdentifier("CaptureGoogleCalendarManage")', "shipping calendar continuity links to deliberate Google Calendar management");
-requireIncludes(capturePhoneShellText, "Connecting is optional and separate from signing in", "native Google Calendar copy preserves optional separate consent");
-requireIncludes(capturePhoneShellText, "Google receives only events you explicitly project", "native Google Calendar copy preserves canonical Quipsly truth");
+requireIncludes(capturePhoneShellText, "Connect Google Calendar", "native Google Calendar connection is a direct optional action");
+requireIncludes(capturePhoneShellText, "choose where coaching, podcast, and personal events should appear", "native Google Calendar copy exposes explicit calendar choices");
 requireIncludes(capturePhoneShellText, "Share for Google or another calendar", "shipping calendar continuity offers a standard cross-provider subscription link");
 requireIncludes(capturePhoneShellText, "Google's mobile app cannot add a calendar from a URL.", "shipping Google calendar setup states the provider's desktop-only URL subscription boundary");
 requireIncludes(capturePhoneShellText, "Shown once", "shipping calendar capability is explicitly one-time");
-requireIncludes(capturePhoneShellText, "Subscriptions are read-only and revocable.", "shipping calendar projection states its lifecycle boundary");
-requireIncludes(capturePhoneShellText, "not recordings, transcript text, coaching notes, participant addresses, manuscripts, chat, or provider credentials", "shipping calendar projection excludes private working content");
+requireIncludes(capturePhoneShellText, "Shared calendars are read-only and can be turned off anytime.", "shipping calendar projection states its lifecycle boundary");
+requireIncludes(capturePhoneShellText, "not your recordings or notes", "shipping calendar projection excludes private working content");
 requireIncludes(bridgeText, "final class CaptureCalendarSubscriptionClient", "native calendar subscriptions use a dedicated authenticated client");
 requireIncludes(bridgeText, "/api/calendar/connections/google?view=summary", "native Google Calendar status uses the credential-free stored summary");
 requireIncludes(bridgeText, "MobileGoogleCalendarSummaryResponse", "native decodes safe Google connection and lane status");
 requireIncludes(bridgeText, "/api/calendar/feeds", "native calendar subscriptions use the canonical Nest API");
 requireIncludes(bridgeText, "AuthManager.shared.authenticatedData", "native calendar subscription operations require the signed-in Nest identity");
 requireIncludes(bridgeText, "oneTimeFeed = nil", "native calendar capability can be removed from memory");
-requireIncludes(bridgeText, "Quipsly stores only its digest and cannot show this exact link again.", "native calendar capability copy states non-recoverability");
+requireIncludes(bridgeText, "for your privacy, this exact link is shown only once.", "native calendar capability copy states one-time visibility");
 requireIncludes(captureExperienceText, "calendarSubscriptionClient.loadPreview()", "deterministic native preview loads non-secret calendar status");
 requireIncludes(deterministicUITestsText, "testTodayExposesReadOnlyCalendarContinuityWithoutLeakingPrivateLinks", "native calendar privacy boundary has a focused UI acceptance test");
 requireIncludes(mobileText, "Load Nest", "native session context exposes an explicit canonical load");
@@ -2373,7 +2374,7 @@ requireIncludes(reviewerChecklistText, "Production calls should happen inside Qu
 requireIncludes(reviewerChecklistText, "Regular Phone or FaceTime calls are fallback/import sources only", "reviewer checklist phone fallback boundary");
 requireIncludes(capturePhoneShellText, "Preview data — no server actions", "native preview mode visibly refuses server mutations");
 requireIncludes(capturePhoneShellText, 'accessibilityIdentifier("CapturePreviewModeBadge")', "native preview boundary has a stable automation identity");
-requireIncludes(capturePhoneShellText, "Preview data · no canonical work will change", "native work preview does not imply canonical mutation");
+requireIncludes(capturePhoneShellText, "Preview data · changes are off", "native work preview does not imply a saved mutation");
 
 requireIncludes(mobileCaptureReadinessRouteText, "calendarReadiness", "mobile capture exposes calendar readiness");
 requireIncludes(mobileCaptureReadinessRouteText, "/api/coaching/calendar/readiness", "mobile capture advertises coaching calendar readiness route");

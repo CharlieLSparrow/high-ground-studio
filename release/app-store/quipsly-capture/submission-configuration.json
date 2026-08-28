@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "appId": "6780995957",
   "version": "1.0",
-  "build": "39",
+  "build": "44",
   "contentRightsDeclaration": "USES_THIRD_PARTY_CONTENT",
   "contentRightsBasis": "Quipsly can import, display, synchronize, and discuss media selected by authorized users. The conservative App Store declaration is that the app uses third-party content.",
   "usesIdfa": false,

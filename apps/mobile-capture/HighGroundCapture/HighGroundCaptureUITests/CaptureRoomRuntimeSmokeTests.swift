@@ -4583,7 +4583,7 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         XCTAssertTrue(scope.waitForExistence(timeout: 5))
         scope.tap()
         XCTAssertTrue(app.staticTexts.matching(
-            NSPredicate(format: "label CONTAINS %@", "There is no rewrite-history option")
+            NSPredicate(format: "label CONTAINS %@", "Past tasks stay as they are")
         ).firstMatch.waitForExistence(timeout: 5))
 
         let title = app.textFields["CaptureRecurrenceEditTitle"].firstMatch
@@ -4644,10 +4644,10 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         XCTAssertTrue(waitForRuntimeElement(skip, in: app, timeout: 12, swipeAttempts: 8))
         XCTAssertTrue(skip.isEnabled)
         skip.tap()
-        let confirm = app.buttons["Preserve as skipped"].firstMatch
+        let confirm = app.buttons["Skip occurrence"].firstMatch
         XCTAssertTrue(confirm.waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts.matching(
-            NSPredicate(format: "label CONTAINS %@", "retain the overdue task and occurrence as skipped")
+            NSPredicate(format: "label CONTAINS %@", "repeating task will continue")
         ).firstMatch.exists)
         confirm.tap()
 

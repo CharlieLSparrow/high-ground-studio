@@ -6474,7 +6474,7 @@ final class CaptureCalendarSubscriptionClient: ObservableObject {
                 )
             }
             oneTimeFeed = feed
-            statusMessage = "Private link created. Add or share it now; Quipsly stores only its digest and cannot show this exact link again."
+            statusMessage = "Private link created. Add or share it now; for your privacy, this exact link is shown only once."
             await load()
             return true
         } catch {
