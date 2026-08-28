@@ -60,7 +60,7 @@ const appStoreReadiness = read(paths.appStoreReadiness);
   "reviewer-capture@dev.test",
   "Create capture reviewer login",
   "Firebase email/password",
-  "free starter/Home Nest",
+  "free starter access and Home Nest",
 ].forEach((marker) => assertIncludes(adminPage, marker, paths.adminPage));
 
 [
