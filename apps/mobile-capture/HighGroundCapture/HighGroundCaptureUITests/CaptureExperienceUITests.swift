@@ -2143,7 +2143,13 @@ final class CaptureExperienceUITests: XCTestCase {
         let finishDetails = app.descendants(matching: .any)["CaptureFinishQueueDetails"].firstMatch
         XCTAssertTrue(finishDetails.exists)
         finishDetails.tap()
-        XCTAssertTrue(app.descendants(matching: .any)["CaptureFinishQueueBoundary"].exists)
+        let safetyExplanation = app.staticTexts[
+            "Review only: no recording, meeting, payment, or publish side effects."
+        ]
+        XCTAssertTrue(
+            safetyExplanation.waitForExistence(timeout: 5),
+            "Expanded recording details should expose their safety explanation to both VoiceOver and UI automation."
+        )
 
         let action = app.buttons[
             "CaptureFinishAction_room-preview-studio-group-ready_confirm-endpoint-drain"

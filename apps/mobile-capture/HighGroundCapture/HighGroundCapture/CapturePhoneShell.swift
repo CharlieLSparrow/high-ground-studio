@@ -810,7 +810,6 @@ private struct CaptureFinishQueueCard: View {
                             .font(.caption2.weight(.semibold))
                             .foregroundStyle(.secondary)
                             .padding(.top, 6)
-                            .accessibilityIdentifier("CaptureFinishQueueBoundary")
                     }
                     .font(.caption.weight(.semibold))
                     .accessibilityIdentifier("CaptureFinishQueueDetails")
