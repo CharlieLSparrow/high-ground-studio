@@ -68,6 +68,8 @@ for (const needle of [
   'accessibilityIdentifier("CaptureCallInputRoute")',
   'accessibilityIdentifier("CaptureUseCallAudioToggle")',
   'accessibilityIdentifier("ProviderJoinRoomButton")',
+  'accessibilityIdentifier("CapturePrepareProviderRecordingReceipt")',
+  'accessibilityIdentifier("CaptureRecordWithoutJoiningButton")',
   'accessibilityIdentifier: "ProviderToggleMuteButton"',
   'accessibilityIdentifier: "ProviderLeaveRoomButton"',
   'accessibilityIdentifier("CapturePersistentCallDock")',
@@ -76,11 +78,28 @@ for (const needle of [
   "model.providerRoom.providerRuntimeDetail",
   "readiness.providerEgressLabel",
   "readiness.providerEgressDetail",
-  "Creates only the Nest receipt slot. It does not join the room or start recording.",
-  "Joins the conversation. Recording starts only when someone taps Record.",
 ]) {
   assertIncludes("CapturePhoneShell", phoneShell, needle, "the shipping Session workflow must distinguish app runtime, server egress, receipt, live-room, and local-recording truth");
 }
+
+assertIncludes(
+  "CapturePhoneShell",
+  phoneShell,
+  "await model.joinRoom(",
+  "joining the conversation must remain an explicit action",
+);
+assertIncludes(
+  "CapturePhoneShell",
+  phoneShell,
+  "Task { await prepareProviderRecordingReceipt() }",
+  "preparing a server recording receipt must remain separate from joining the conversation",
+);
+assertIncludes(
+  "CapturePhoneShell",
+  phoneShell,
+  "Button(action: onToggleLocalRecordingWorkspace)",
+  "opening local recording must remain separate from joining the conversation",
+);
 
 for (const forbidden of ["Operator start", "Operator stop", "START_EGRESS", "STOP_EGRESS"]) {
   if (phoneShell.includes(forbidden)) {
