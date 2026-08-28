@@ -32,7 +32,7 @@ final class CaptureExperienceUITests: XCTestCase {
         if name.contains("testSchedulingShowsKnownConflictBeforeSave") {
             app.launchArguments.append("--capture-conflict-scheduling-preview")
         }
-        if name.contains("testSchedulingRespectsWorkingHoursBeforeSave") {
+        if name.contains("testSchedulingRespectsAvailabilityBeforeSave") {
             app.launchArguments.append("--capture-availability-scheduling-preview")
         }
         if name.contains("testSchedulingRoutesUnsubscribedCoachToNativePlan") {
@@ -347,9 +347,9 @@ final class CaptureExperienceUITests: XCTestCase {
         )
         let newAppointment = app.buttons["CaptureCoachingNewAppointmentButton"]
         XCTAssertTrue(newAppointment.exists)
-        XCTAssertFalse(
+        XCTAssertTrue(
             newAppointment.isEnabled,
-            "Deterministic preview must show scheduling without pretending to create canonical records."
+            "Opening the native scheduling sheet is safe and should never look disabled; only final preview saves stay non-mutating."
         )
         XCTAssertTrue(
             app.descendants(matching: .any)["CaptureCoachingBooking_preview-booking"].exists,
@@ -362,6 +362,12 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertFalse(
             app.buttons["CaptureCoachingManage_preview-booking"].exists,
             "A deterministic first screen should not show disabled administration beside the primary Session action."
+        )
+        XCTAssertFalse(
+            app.staticTexts.matching(
+                NSPredicate(format: "label CONTAINS[c] %@", "needs a decision")
+            ).firstMatch.exists,
+            "Coaching should offer useful next steps without assigning the coach another review process."
         )
         // ShareLink's generated type varies between iOS releases. Its
         // explicit accessibility label is the operated fallback contract.
@@ -407,6 +413,28 @@ final class CaptureExperienceUITests: XCTestCase {
             primaryAction.label,
             "Open Session",
             "Preparation should remain available inside the Session without becoming required paperwork."
+        )
+    }
+
+    func testCoachWithoutAppointmentsStartsWithSchedulingInsteadOfAnEmptyDashboard() {
+        relaunchCoachingPreview(
+            role: "coach",
+            additionalArguments: ["--capture-availability-scheduling-preview"]
+        )
+        let coaching = app.buttons["CaptureOpenCoachingHome"]
+        XCTAssertTrue(coaching.waitForExistence(timeout: 5))
+        coaching.tap()
+
+        let schedule = app.buttons["CaptureCoachingNewAppointmentButton"]
+        XCTAssertTrue(schedule.waitForExistence(timeout: 5))
+        XCTAssertTrue(schedule.isHittable)
+        XCTAssertFalse(
+            app.staticTexts["No upcoming coaching appointments yet."].exists,
+            "An empty Upcoming dashboard should not precede the action that creates the first appointment."
+        )
+        XCTAssertFalse(
+            app.staticTexts["Upcoming"].exists,
+            "A new coach should begin with scheduling, not an empty status section."
         )
     }
 
@@ -841,7 +869,7 @@ final class CaptureExperienceUITests: XCTestCase {
         )
     }
 
-    func testSchedulingRespectsWorkingHoursBeforeSave() {
+    func testSchedulingRespectsAvailabilityBeforeSave() {
         let coaching = app.buttons["CaptureOpenCoachingHome"]
         XCTAssertTrue(coaching.waitForExistence(timeout: 5))
         coaching.tap()
@@ -853,8 +881,8 @@ final class CaptureExperienceUITests: XCTestCase {
         )
         workingHours.tap()
         XCTAssertTrue(
-            app.navigationBars["Working hours"].waitForExistence(timeout: 5),
-            "Working hours should be one conventional sheet, not a separate administration workflow."
+            app.navigationBars["Availability"].waitForExistence(timeout: 5),
+            "Availability should be one conventional sheet, not a separate administration workflow."
         )
         XCTAssertTrue(app.buttons["CaptureCoachingSaveWorkingHours"].exists)
         app.buttons["Cancel"].tap()

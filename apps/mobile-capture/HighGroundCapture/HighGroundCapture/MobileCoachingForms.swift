@@ -1785,13 +1785,13 @@ struct MobileCoachingFormsSummaryCard: View {
         if client.isCoach {
             let count = client.submittedForCoachCount
             return count == 0
-                ? "Send a reflection and review shared answers."
-                : "\(count) shared reflection\(count == 1 ? "" : "s") ready to review."
+                ? "Send a reflection whenever it would help."
+                : "\(count) shared reflection\(count == 1 ? "" : "s") available."
         }
         let count = client.outstandingCount
         return count == 0
             ? "You’re caught up. Shared reflections stay here."
-            : "\(count) reflection\(count == 1 ? "" : "s") to complete."
+            : "\(count) shared reflection\(count == 1 ? "" : "s") waiting."
     }
 }
 

@@ -1148,7 +1148,7 @@ final class MobileCoachingRunwayClient: ObservableObject {
             startingAt: draft.scheduledStart,
             durationMinutes: draft.durationMinutes
         ) {
-            errorMessage = "That time is outside your weekly working hours. Choose a listed time or update Working hours."
+            errorMessage = "That time is outside your availability. Choose a listed time or update Availability."
             return nil
         }
         guard allowAuthoritativeMutation() else { return nil }
@@ -1211,7 +1211,7 @@ final class MobileCoachingRunwayClient: ObservableObject {
             startingAt: scheduledStart,
             durationMinutes: durationMinutes
         ) {
-            errorMessage = "That time is outside your weekly working hours. Choose a listed time or update Working hours."
+            errorMessage = "That time is outside your availability. Choose a listed time or update Availability."
             return false
         }
         guard allowAuthoritativeMutation() else { return false }
@@ -1272,13 +1272,13 @@ final class MobileCoachingRunwayClient: ObservableObject {
                 },
             ])
             guard payload.ok else {
-                throw coachingClientError(payload.error ?? "Working hours could not be saved.")
+                throw coachingClientError(payload.error ?? "Availability could not be saved.")
             }
             await load()
-            status = "Working hours saved"
+            status = "Availability saved"
             return true
         } catch {
-            status = "Working hours need attention"
+            status = "Availability needs attention"
             errorMessage = error.localizedDescription
             return false
         }
@@ -1704,11 +1704,6 @@ struct CaptureCoachingHomeView: View {
     @State private var selectedPublicTime: MobileCoachingPublicTimeSelection?
 
     private var client: MobileCoachingRunwayClient { model.coachingRunwayClient }
-    private var allowsPreviewSchedulingInspection: Bool {
-        ProcessInfo.processInfo.arguments.contains("--capture-conflict-scheduling-preview")
-            || ProcessInfo.processInfo.arguments.contains("--capture-availability-scheduling-preview")
-            || ProcessInfo.processInfo.arguments.contains("--capture-subscription-required-preview")
-    }
 
     var body: some View {
         bookingTimeDialog
@@ -1726,7 +1721,7 @@ struct CaptureCoachingHomeView: View {
                         handoffCard(handoff)
                     }
 
-                    if client.isCoach || !displayedUpcomingBookings.isEmpty {
+                    if !displayedUpcomingBookings.isEmpty {
                         upcomingSection
                             .id("CaptureCoachingUpcoming")
                     }
@@ -1755,6 +1750,11 @@ struct CaptureCoachingHomeView: View {
                         }
                     }
 
+                    if client.isCoach {
+                        incomingRequestsSection
+                            .id("CaptureCoachingIncomingRequests")
+                    }
+
                     if client.isUsingProtectedCache {
                         offlineSnapshotCard
                     }
@@ -1767,13 +1767,6 @@ struct CaptureCoachingHomeView: View {
                         coachingChoiceCard
                     }
 
-                    MobileCoachingFormsSummaryCard(client: model.coachingFormsClient)
-
-                    if client.isCoach {
-                        incomingRequestsSection
-                            .id("CaptureCoachingIncomingRequests")
-                    }
-
                     if let error = client.errorMessage {
                         Label(error, systemImage: "exclamationmark.triangle.fill")
                             .font(.caption.weight(.semibold))
@@ -1783,6 +1776,8 @@ struct CaptureCoachingHomeView: View {
                     }
 
                     relationshipsSection
+
+                    MobileCoachingFormsSummaryCard(client: model.coachingFormsClient)
                 }
                 .padding(.horizontal, 18)
                 .padding(.bottom, 96)
@@ -1810,9 +1805,9 @@ struct CaptureCoachingHomeView: View {
                     .font(.caption2.weight(.black))
                     .tracking(1.5)
                     .foregroundStyle(.teal)
-                Text(items.count == 1 ? "One thing needs a decision" : "A few things need a decision")
+                Text(items.count == 1 ? "One useful next step" : "Useful next steps")
                     .font(.title2.weight(.black))
-                Text("Quipsly keeps ordinary preparation optional. Only requests, repairs, and follow-up that need you appear here.")
+                Text("Open what helps. Requests, recording repairs, and unfinished follow-up stay visible without blocking the rest of your work.")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
@@ -2257,29 +2252,30 @@ struct CaptureCoachingHomeView: View {
                 Button {
                     showsNewAppointment = true
                 } label: {
-                    Label("Schedule a session", systemImage: "calendar.badge.plus")
+                    Label("New session", systemImage: "calendar.badge.plus")
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.borderedProminent)
                 .disabled(
                     client.isMutating
                         || client.isUsingProtectedCache
-                        || (model.usesPreviewData && !allowsPreviewSchedulingInspection)
                 )
                 .accessibilityHint(
                     client.canScheduleNewWork
                         ? "Choose a client and time."
                         : "Opens Quipsly Coach plans, then continues scheduling after purchase or restore."
                 )
+                .accessibilityLabel("Schedule a coaching session")
                 .accessibilityIdentifier("CaptureCoachingNewAppointmentButton")
 
                 Button {
                     showsWorkingHours = true
                 } label: {
-                    Label("Working hours", systemImage: "clock.badge.checkmark")
+                    Label("Availability", systemImage: "clock.badge.checkmark")
                 }
                 .buttonStyle(.bordered)
                 .disabled(client.isMutating || client.isUsingProtectedCache)
+                .accessibilityLabel("Set coaching availability")
                 .accessibilityIdentifier("CaptureCoachingWorkingHoursButton")
             }
         }
@@ -4092,7 +4088,7 @@ private struct MobileCoachingAvailabilitySheet: View {
                     Section { Text(error).foregroundStyle(.red) }
                 }
             }
-            .navigationTitle("Working hours")
+            .navigationTitle("Availability")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
