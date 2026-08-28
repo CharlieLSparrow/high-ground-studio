@@ -28,7 +28,9 @@ async function checkHealthz() {
   console.log(`\n🩺 Checking Release Health at ${targetUrl}/api/healthz...`);
 
   try {
-    const res = await fetch(`${targetUrl}/api/healthz`);
+    const res = await fetch(`${targetUrl}/api/healthz`, {
+      signal: AbortSignal.timeout(10_000),
+    });
     if (!res.ok) {
       console.warn(`⚠️  Health check returned ${res.status}. Ensure the server is running if you expect a strict check.`);
       return false;
@@ -38,8 +40,20 @@ async function checkHealthz() {
     let hasMissingConfig = false;
 
     if (data.config) {
-      for (const [key, status] of Object.entries(data.config)) {
-        if (!status.configured) {
+      const requiredConfig = {
+        database: data.config.database?.configured === true,
+        authSecret:
+          data.config.authSecret?.configured === true ||
+          data.config.nextAuthSecret?.configured === true,
+        gemini: data.config.gemini?.configured === true,
+        studioCollab: data.config.studioCollab?.configured === true,
+        publicStudioCollab: data.config.publicStudioCollab?.configured === true,
+        releaseSmokeSecret: data.config.releaseSmokeSecret?.configured === true,
+        providerRecording: data.config.providerRecording?.configured === true,
+      };
+
+      for (const [key, configured] of Object.entries(requiredConfig)) {
+        if (!configured) {
           console.error(`❌ MISSING CONFIG: ${key} is required but missing from the runtime environment.`);
           hasMissingConfig = true;
         }
