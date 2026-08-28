@@ -12514,10 +12514,6 @@ private struct CaptureLibraryPreviewWritingCard: View {
 }
 
 private struct CaptureLibraryPreviewSourceCard: View {
-    private var presentsAppStoreStory: Bool {
-        CaptureLaunchConfiguration.usesAppStorePresentation
-    }
-
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .top, spacing: 12) {
@@ -12529,42 +12525,32 @@ private struct CaptureLibraryPreviewSourceCard: View {
                 VStack(alignment: .leading, spacing: 3) {
                     Text("Coaching session")
                         .font(.headline)
-                    Text(presentsAppStoreStory
-                         ? "Local audio source · 18.4 MB"
-                         : "Synthetic local source · 18.4 MB")
+                    Text("Today at 3:15 PM")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
 
                 Spacer(minLength: 8)
-            }
-
-            HStack(spacing: 8) {
                 CaptureStatusPill(
-                    label: "Saved on iPhone",
-                    systemImage: "internaldrive.fill",
+                    label: "Backed up",
+                    systemImage: "checkmark",
                     tint: .green
                 )
-                CaptureStatusPill(
-                    label: presentsAppStoreStory ? "Backed up in Quipsly" : "Waiting for Quipsly",
-                    systemImage: presentsAppStoreStory ? "checkmark.icloud.fill" : "arrow.clockwise.icloud",
-                    tint: presentsAppStoreStory ? .green : .orange
-                )
             }
 
-            Text(presentsAppStoreStory
-                 ? "The original remains safe on this iPhone. Its matching cloud copy is verified, and the transcript is ready to read and edit."
-                 : "The original is safe on this iPhone. Upload can be retried after reconnecting; Quipsly will not call it verified until the cloud copy matches.")
+            HStack(spacing: 16) {
+                Label("42 min", systemImage: "clock")
+                Label("Audio", systemImage: "waveform")
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
+
+            Text("The recording and its timed transcript are ready whenever you are.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
-            Label(
-                presentsAppStoreStory
-                    ? "Recording backed up · transcript ready"
-                    : "Recoverable · retry available when online",
-                systemImage: "checkmark.shield.fill"
-            )
+            Label("Transcript ready", systemImage: "text.quote")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(CapturePalette.accent)
         }
@@ -16015,6 +16001,7 @@ private struct UploadActivityCard: View {
 
 private struct LocalRecordingRow: View {
     @ObservedObject private var transcriptManager = OnDeviceTranscriptManager.shared
+    @State private var showsRecordingDetails = false
 
     let recording: LocalRecording
     let captureGroupSourceCount: Int
@@ -16045,48 +16032,24 @@ private struct LocalRecordingRow: View {
                 }
                 Spacer()
                 CaptureStatusPill(
-                    label: recording.statusLabel,
-                    systemImage: recording.status.isVerified ? "checkmark" : "internaldrive",
-                    tint: recording.status.isVerified ? .green : CapturePalette.accent
+                    label: displayStatusLabel,
+                    systemImage: displayStatusIcon,
+                    tint: displayStatusTint
                 )
                 .accessibilityElement(children: .combine)
-                .accessibilityLabel(recording.statusLabel)
+                .accessibilityLabel(displayStatusLabel)
                 .accessibilityIdentifier("LocalRecordingStatus_\(recording.id)")
             }
 
             HStack(spacing: 16) {
                 Label(recording.durationSeconds.captureDurationLabel, systemImage: "clock")
-                Label(ByteCountFormatter.string(fromByteCount: recording.byteCount, countStyle: .file), systemImage: "doc")
+                Label(
+                    recording.effectiveMediaKind == .video ? "Video" : "Audio",
+                    systemImage: recording.effectiveMediaKind == .video ? "video.fill" : "waveform"
+                )
             }
             .font(.caption)
             .foregroundStyle(.secondary)
-
-            if let recordedVideoProfileLabel = recording.recordedVideoProfileLabel {
-                Label(
-                    "Recorded · \(recordedVideoProfileLabel)",
-                    systemImage: "checkmark.seal.fill"
-                )
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-                .accessibilityIdentifier(
-                    "LocalRecordingRecordedVideoProfile_\(recording.id)"
-                )
-            }
-
-            if let captureGroupID = recording.captureGroupId,
-               captureGroupSourceCount > 1 {
-                Label(
-                    "Grouped take · \(captureGroupSourceCount) local masters",
-                    systemImage: "rectangle.stack.fill"
-                )
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(CapturePalette.accent)
-                .fixedSize(horizontal: false, vertical: true)
-                .accessibilityIdentifier(
-                    "LocalRecordingCaptureGroup_\(captureGroupID.uuidString)"
-                )
-            }
 
             if let sourceIntegrityHoldReason = recording.sourceIntegrityHoldReason {
                 Label(
@@ -16121,16 +16084,6 @@ private struct LocalRecordingRow: View {
                 .accessibilityIdentifier("LocalRecordingMomentMarks")
             }
 
-            Text(recording.statusDetail)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-
-            Label(recording.fileName, systemImage: "doc.fill")
-                .font(.caption2.monospaced())
-                .foregroundStyle(.tertiary)
-                .fixedSize(horizontal: false, vertical: true)
-                .accessibilityLabel("Source file \(recording.fileName)")
-
             HStack(spacing: 10) {
                 Button(action: onPlay) {
                     Label(
@@ -16155,14 +16108,30 @@ private struct LocalRecordingRow: View {
                         : "Auditions the immutable local audio source."
                     : "The source is not available for playback until capture is finalized and its complete stream is decoded.")
 
-                if retryIsAvailable {
-                    Button(action: onRetry) {
-                        Label("Retry", systemImage: "arrow.clockwise")
+                if let fileURL {
+                    ShareLink(item: fileURL) {
+                        Label("Share", systemImage: "square.and.arrow.up")
                             .frame(minHeight: 44)
                     }
                     .buttonStyle(.bordered)
+                } else {
+                    Button(action: {}) {
+                        Label("Share", systemImage: "square.and.arrow.up")
+                            .frame(minHeight: 44)
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(true)
                 }
                 Spacer()
+            }
+
+            if retryIsAvailable {
+                Button(action: onRetry) {
+                    Label("Try backup again", systemImage: "arrow.clockwise")
+                        .font(.subheadline.weight(.semibold))
+                        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                }
+                .buttonStyle(.bordered)
             }
 
             onDeviceTranscriptControl
@@ -16176,7 +16145,7 @@ private struct LocalRecordingRow: View {
                         previewOnly: previewOnly
                     )
                 } label: {
-                    Label("Review transcript against this source", systemImage: "waveform.and.magnifyingglass")
+                    Label("Open transcript", systemImage: "text.quote")
                         .font(.subheadline.weight(.semibold))
                         .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                 }
@@ -16196,33 +16165,69 @@ private struct LocalRecordingRow: View {
             .accessibilityHint("Shows the waveform and moments worth hearing. Recording and upload proof stays available under details.")
             .accessibilityIdentifier("CaptureSourceEvidenceLink_\(recording.id)")
 
-            HStack(spacing: 10) {
-                if let fileURL {
-                    ShareLink(item: fileURL) {
-                        Label("Share", systemImage: "square.and.arrow.up")
-                            .frame(minHeight: 44)
-                    }
-                    .buttonStyle(.bordered)
-                } else {
-                    Button(action: {}) {
-                        Label("Share", systemImage: "square.and.arrow.up")
-                            .frame(minHeight: 44)
-                    }
-                    .buttonStyle(.bordered)
-                    .disabled(true)
-                }
-
-                Button(role: .destructive, action: onDelete) {
-                    Label("Delete local original", systemImage: "trash")
-                        .frame(minHeight: 44)
+            DisclosureGroup(isExpanded: $showsRecordingDetails) {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text(recording.statusDetail)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
-                }
-                .buttonStyle(.bordered)
-                .disabled(!canDeleteLocalOriginal)
-                .accessibilityHint(localDeletionAccessibilityHint)
 
-                Spacer()
+                    HStack(spacing: 16) {
+                        Label(
+                            ByteCountFormatter.string(fromByteCount: recording.byteCount, countStyle: .file),
+                            systemImage: "internaldrive"
+                        )
+                        Label(recording.fileName, systemImage: "doc.fill")
+                            .lineLimit(2)
+                    }
+                    .font(.caption2.monospaced())
+                    .foregroundStyle(.tertiary)
+                    .accessibilityLabel(
+                        "Source file \(recording.fileName), \(ByteCountFormatter.string(fromByteCount: recording.byteCount, countStyle: .file))"
+                    )
+
+                    if let recordedVideoProfileLabel = recording.recordedVideoProfileLabel {
+                        Label(
+                            recordedVideoProfileLabel,
+                            systemImage: "checkmark.seal.fill"
+                        )
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier(
+                            "LocalRecordingRecordedVideoProfile_\(recording.id)"
+                        )
+                    }
+
+                    if let captureGroupID = recording.captureGroupId,
+                       captureGroupSourceCount > 1 {
+                        Label(
+                            "\(captureGroupSourceCount) synchronized originals in this take",
+                            systemImage: "rectangle.stack.fill"
+                        )
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(CapturePalette.accent)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier(
+                            "LocalRecordingCaptureGroup_\(captureGroupID.uuidString)"
+                        )
+                    }
+
+                    Button(role: .destructive, action: onDelete) {
+                        Label("Delete from this iPhone", systemImage: "trash")
+                            .frame(minHeight: 44)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(!canDeleteLocalOriginal)
+                    .accessibilityHint(localDeletionAccessibilityHint)
+                }
+                .padding(.top, 8)
+            } label: {
+                Label("Recording details", systemImage: "info.circle")
+                    .font(.subheadline.weight(.semibold))
             }
+            .accessibilityIdentifier("LocalRecordingDetails_\(recording.id)")
         }
         .captureCard()
         .onAppear {
@@ -16306,15 +16311,15 @@ private struct LocalRecordingRow: View {
     private func transcriptActionLabel(_ phase: OnDeviceTranscriptPhase) -> String {
         switch phase {
         case .modelDownloadRequired:
-            return "Download model & transcribe"
+            return "Download speech tools"
         case .savedLocally:
-            return "Attach saved transcript"
+            return "Sync transcript"
         case .waitingForVerifiedUpload:
-            return "Retry verified attachment"
+            return "Sync transcript"
         case .failed:
-            return hasSavedTranscript ? "Retry saved attachment" : "Retry on-device transcription"
+            return hasSavedTranscript ? "Try syncing again" : "Try transcript again"
         default:
-            return "Transcribe on this iPhone"
+            return "Create transcript"
         }
     }
 
@@ -16329,15 +16334,15 @@ private struct LocalRecordingRow: View {
 
     private func transcriptStatusTitle(_ phase: OnDeviceTranscriptPhase) -> String {
         switch phase {
-        case .idle: return "Private on-device transcript"
-        case .checkingSupport: return "Checking on-device speech support…"
-        case .modelDownloadRequired: return "Speech model download required"
-        case .installingModel: return "Installing Apple's on-device model…"
-        case .transcribing: return "Transcribing on this iPhone…"
-        case .savedLocally: return "Transcript protected on this iPhone"
-        case .waitingForVerifiedUpload: return "Transcript waiting for verified source"
-        case .submitting: return "Rechecking consent and source…"
-        case .attached: return "On-device transcript attached"
+        case .idle: return "Transcript"
+        case .checkingSupport: return "Preparing transcript…"
+        case .modelDownloadRequired: return "One-time speech download"
+        case .installingModel: return "Getting speech tools ready…"
+        case .transcribing: return "Creating transcript…"
+        case .savedLocally: return "Transcript ready on this iPhone"
+        case .waitingForVerifiedUpload: return "Transcript ready · waiting for backup"
+        case .submitting: return "Saving transcript…"
+        case .attached: return "Transcript ready"
         case .failed: return "Transcript needs attention"
         }
     }
@@ -16345,23 +16350,23 @@ private struct LocalRecordingRow: View {
     private func transcriptStatusDetail(_ phase: OnDeviceTranscriptPhase) -> String {
         switch phase {
         case .idle:
-            return "Recognition runs locally. Quipsly attaches only finalized text after the exact recording is cloud-verified and current all-party transcription consent is rechecked. Speaker labels still require human review."
+            return "Create timed text on this iPhone. Speaker names may need a quick correction."
         case .checkingSupport:
-            return "No model is downloaded without another explicit tap. The original recording remains unchanged."
+            return "Checking this iPhone's speech tools."
         case .modelDownloadRequired(let locale):
-            return "Apple's \(locale) speech model is not installed. Downloading it is an explicit device action; your recording is not uploaded to Apple."
+            return "This iPhone needs Apple's \(locale) speech tools once. Your recording stays in Quipsly."
         case .installingModel:
-            return "Keep Quipsly open while iOS installs the speech model. Recording bytes remain on this iPhone."
+            return "Keep Quipsly open while iOS finishes the one-time download."
         case .transcribing:
-            return "Quipsly is reading the immutable local source. Only finalized timed text will be saved."
+            return "Quipsly is turning the recording into timed text."
         case .savedLocally(let segmentCount):
-            return "\(segmentCount) finalized segment\(segmentCount == 1 ? "" : "s") saved with complete file protection. Attachment still requires online account, source, and consent verification."
+            return "\(segmentCount) timed passage\(segmentCount == 1 ? "" : "s") saved. Quipsly will sync them automatically."
         case .waitingForVerifiedUpload(let segmentCount):
-            return "\(segmentCount) segment\(segmentCount == 1 ? "" : "s") remain local. Upload and verify these exact recording bytes before attachment."
+            return "\(segmentCount) timed passage\(segmentCount == 1 ? " is" : "s are") safe here and will sync after the recording backs up."
         case .submitting(let segmentCount):
-            return "Nest is validating account ownership, SHA-256, byte count, Session access, and current transcription consent for \(segmentCount) segment\(segmentCount == 1 ? "" : "s")."
+            return "Saving \(segmentCount) timed passage\(segmentCount == 1 ? "" : "s") to this Session."
         case .attached(_, let segmentCount):
-            return "\(segmentCount) source-timed segment\(segmentCount == 1 ? "" : "s") are available for playback review. No speaker diarization was claimed."
+            return "\(segmentCount) timed passage\(segmentCount == 1 ? " is" : "s are") ready to read, correct, and play."
         case .failed(let message, _):
             return message
         }
@@ -16388,6 +16393,53 @@ private struct LocalRecordingRow: View {
 
     private var hasSavedTranscript: Bool {
         (try? OnDeviceTranscriptStore.load(for: recording.id)) != nil
+    }
+
+    private var displayStatusLabel: String {
+        switch recording.status {
+        case .armed: return "Ready"
+        case .recording: return "Recording"
+        case .paused: return "Paused"
+        case .finalizing: return "Saving"
+        case .saved: return "On this iPhone"
+        case .queued: return "Waiting to back up"
+        case .uploading:
+            if let progress = recording.uploadProgress {
+                return "Backing up \(Int((progress * 100).rounded()))%"
+            }
+            return "Backing up"
+        case .awaitingVerification: return "Finishing backup"
+        case .uploaded:
+            return recording.serverProcessingDisposition?.uppercased() == "HELD"
+                ? "Backed up · needs attention"
+                : "Backed up"
+        case .uploadHeld: return "Backup needs attention"
+        case .recovered: return "Recovered"
+        case .validatingRecovery: return "Checking recording"
+        case .needsRepair, .captureFailed: return "Needs attention"
+        case .missingFile: return "Unavailable"
+        case .deletedLocally: return "Removed from iPhone"
+        }
+    }
+
+    private var displayStatusIcon: String {
+        switch recording.status {
+        case .uploaded: return "checkmark"
+        case .uploadHeld, .needsRepair, .captureFailed, .missingFile: return "exclamationmark"
+        case .uploading, .awaitingVerification: return "arrow.clockwise"
+        case .recording: return "record.circle.fill"
+        case .paused: return "pause.fill"
+        default: return "internaldrive"
+        }
+    }
+
+    private var displayStatusTint: Color {
+        switch recording.status {
+        case .uploaded: return .green
+        case .uploadHeld, .needsRepair, .captureFailed, .missingFile: return .orange
+        case .recording: return .red
+        default: return CapturePalette.accent
+        }
     }
 
     private var canDeleteLocalOriginal: Bool {

@@ -4412,6 +4412,21 @@ final class CaptureAppStoreScreenshotUITests: XCTestCase {
             app.descendants(matching: .any)["CaptureLibraryPreviewSourceCard"]
                 .waitForExistence(timeout: 5)
         )
+        XCTAssertTrue(app.staticTexts["Backed up"].exists)
+        XCTAssertTrue(app.staticTexts["Transcript ready"].exists)
+        XCTAssertTrue(app.buttons["Open transcript"].exists)
+        XCTAssertFalse(
+            app.staticTexts.matching(
+                NSPredicate(format: "label CONTAINS[c] %@", "verified")
+            ).firstMatch.exists,
+            "Everyday recording review should not lead with storage-verification jargon."
+        )
+        XCTAssertFalse(
+            app.staticTexts.matching(
+                NSPredicate(format: "label CONTAINS %@", "18.4 MB")
+            ).firstMatch.exists,
+            "File size belongs in Recording details, not the ordinary Library surface."
+        )
         let transcriptReview = app.buttons["CaptureTranscriptReviewPreviewLink"]
         XCTAssertTrue(
             transcriptReview.waitForExistence(timeout: 5),
