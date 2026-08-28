@@ -584,55 +584,49 @@ private struct CaptureTodayView: View {
 }
 
 private struct CaptureTodayPrimaryActions: View {
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-
     let isStartingVoiceNote: Bool
     let canStart: Bool
     let onStartVoiceNote: () -> Void
     let onNewSession: () -> Void
 
     var body: some View {
-        Group {
-            if dynamicTypeSize.isAccessibilitySize {
-                VStack(spacing: 12) {
-                    speakToWriteButton
-                    newSessionButton
-                }
-            } else {
-                HStack(alignment: .top, spacing: 12) {
-                    speakToWriteButton
-                    newSessionButton
-                }
-            }
+        VStack(spacing: 12) {
+            speakToWriteButton
+            newSessionButton
         }
     }
 
     private var speakToWriteButton: some View {
         Button(action: onStartVoiceNote) {
-            VStack(alignment: .leading, spacing: 10) {
-                HStack {
-                    Image(systemName: "waveform.circle.fill")
-                        .font(.title2.weight(.semibold))
-                    Spacer(minLength: 8)
-                    if isStartingVoiceNote {
-                        ProgressView().tint(.white)
-                    } else {
-                        Image(systemName: "arrow.right.circle.fill")
-                            .font(.title3)
-                    }
+            HStack(spacing: 14) {
+                Image(systemName: "waveform")
+                    .font(.title2.weight(.semibold))
+                    .frame(width: 50, height: 50)
+                    .background(.white.opacity(0.18), in: Circle())
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Speak to write")
+                        .font(.headline)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text("Turn your voice into editable writing.")
+                        .font(.subheadline)
+                        .opacity(0.92)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
-                Text("Speak to write")
-                    .font(.headline)
-                    .fixedSize(horizontal: false, vertical: true)
-                Text("Draft a paper or capture a thought.")
-                    .font(.caption)
-                    .opacity(0.92)
-                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 8)
+                if isStartingVoiceNote {
+                    ProgressView().tint(.white)
+                } else {
+                    Image(systemName: "arrow.right.circle.fill")
+                        .font(.title2)
+                        .accessibilityHidden(true)
+                }
             }
-            .frame(maxWidth: .infinity, minHeight: 116, alignment: .topLeading)
-            .padding(16)
+            .frame(maxWidth: .infinity, minHeight: 82, alignment: .leading)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
             .foregroundStyle(.white)
-            .background(CapturePalette.accent.gradient, in: RoundedRectangle(cornerRadius: 22))
+            .background(CapturePalette.accent.gradient, in: RoundedRectangle(cornerRadius: 20))
         }
         .buttonStyle(.plain)
         .disabled(!canStart || isStartingVoiceNote)
@@ -643,30 +637,35 @@ private struct CaptureTodayPrimaryActions: View {
 
     private var newSessionButton: some View {
         Button(action: onNewSession) {
-            VStack(alignment: .leading, spacing: 10) {
-                HStack {
-                    Image(systemName: "person.2.wave.2.fill")
-                        .font(.title2.weight(.semibold))
-                        .foregroundStyle(CapturePalette.accent)
-                    Spacer(minLength: 8)
-                    Image(systemName: "chevron.right.circle.fill")
-                        .font(.title3)
-                        .foregroundStyle(CapturePalette.accent)
+            HStack(spacing: 14) {
+                Image(systemName: "person.2.wave.2.fill")
+                    .font(.title2.weight(.semibold))
+                    .foregroundStyle(CapturePalette.accent)
+                    .frame(width: 50, height: 50)
+                    .background(CapturePalette.accent.opacity(0.1), in: Circle())
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("New session")
+                        .font(.headline)
+                        .foregroundStyle(.primary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text("Schedule or start a recorded call.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
-                Text("New session")
-                    .font(.headline)
-                    .foregroundStyle(.primary)
-                    .fixedSize(horizontal: false, vertical: true)
-                Text("Schedule or start a call.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 8)
+                Image(systemName: "chevron.right.circle.fill")
+                    .font(.title2)
+                    .foregroundStyle(CapturePalette.accent)
+                    .accessibilityHidden(true)
             }
-            .frame(maxWidth: .infinity, minHeight: 116, alignment: .topLeading)
-            .padding(16)
-            .background(.background, in: RoundedRectangle(cornerRadius: 22))
+            .frame(maxWidth: .infinity, minHeight: 82, alignment: .leading)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+            .background(.background, in: RoundedRectangle(cornerRadius: 20))
             .overlay {
-                RoundedRectangle(cornerRadius: 22)
+                RoundedRectangle(cornerRadius: 20)
                     .stroke(.primary.opacity(0.1))
             }
         }
