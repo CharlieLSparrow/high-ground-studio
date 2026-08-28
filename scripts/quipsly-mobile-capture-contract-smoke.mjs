@@ -871,8 +871,8 @@ function checkMeetingSpineContractSources() {
   );
   expect(
     capturePhoneShellText.includes("CaptureProviderRecordingBoundary")
-      && capturePhoneShellText.includes("Prepare server-recording receipt")
-      && capturePhoneShellText.includes("It does not join the room or start recording.")
+      && capturePhoneShellText.includes("Prepare server recording")
+      && capturePhoneShellText.includes("Recording starts only when you choose Record.")
       && capturePhoneShellText.includes("session.providerReceiptActionLabel")
       && capturePhoneShellText.includes("readiness.providerEgressLabel"),
     "nativeCaptureShowsProviderRecordingBoundary",
@@ -1715,8 +1715,8 @@ function checkTranscriptCorrectionContractSources() {
       && bridgeText.includes('guard !isUsingProtectedCache')
       && shellText.includes('CaptureTodayGoalCheckIn_')
       && shellText.includes('CaptureTodayGoalCheckInSave_')
-      && shellText.includes('Goal check-ins record progress without changing goal status.')
-      && shellText.includes('Preview and protected snapshots stay read-only.'),
+      && shellText.includes('Adds a private progress note without completing the goal.')
+      && shellText.includes('Reconnect to Nest to save this check-in.'),
     "mobileTodayGoalProgressEvidenceBoundary",
     "iPhone Today appends owner-only goal-progress evidence with optimistic concurrency while preview/offline states remain read-only and goal status plus external systems stay unchanged.",
   );
@@ -1736,7 +1736,7 @@ function checkTranscriptCorrectionContractSources() {
       && shellText.includes('CaptureTodayRecurrenceMenu_')
       && shellText.includes('CaptureTodayTaskDone_')
       && shellText.includes('CaptureTodayShowMoreTasks')
-      && shellText.includes("No reminder or provider event is implied."),
+      && shellText.includes("Pause, resume, edit, or end this repeating task."),
     "mobileTodayCanonicalRecurrenceBoundary",
     "iPhone Today and Nest share one canonical optimistic task transaction, keep series controls owner-only and protected snapshots read-only, retain bounded status receipts, and never imply a notification or provider-calendar side effect.",
   );
@@ -1798,7 +1798,7 @@ function checkTranscriptCorrectionContractSources() {
       && shellText.includes('TextField("Find a tag"')
       && shellText.includes('LabeledContent("Save to", value: "Personal Inbox")')
       && shellText.includes("CaptureQuickEntryPending_")
-      && shellText.includes("Saved on iPhone · waiting for Nest")
+      && shellText.includes("Saved on iPhone · waiting to sync")
       && inboxText.includes('where: { userId, collectionId: null, researchFilings: { none: {} } }')
       && inboxText.includes("Review personal source")
       && collectionsText.includes("snapshot.items.some((item) => item.id === requestedCaptureId)")
@@ -1905,7 +1905,7 @@ function checkTranscriptCorrectionContractSources() {
       && bridgeText.includes("ACKNOWLEDGEMENT_MISMATCH")
       && shellText.includes("CaptureTodayAnnotationDraftStart_")
       && shellText.includes("Start private draft")
-      && shellText.includes("durable citation"),
+      && shellText.includes("Creates a private draft linked to this source."),
     "protectedSourceAnnotationWritingHandoff",
     "iPhone protects one exact annotation-to-writing decision before network use, Nest authorizes its writable project and creates one private citation-backed canonical draft, exact acknowledgements close the outbox, and sources plus external systems remain unchanged.",
   );
@@ -2365,7 +2365,11 @@ function checkTranscriptCorrectionContractSources() {
       && weeklyPlanOutboxText.includes("completeFileProtectionUntilFirstUserAuthentication")
       && weeklyPlanOutboxText.includes("ownerAccountID")
       && shellText.includes("CaptureWeeklyPlanSheet")
-      && shellText.includes("does not send a message")
+      && shellText.includes("CaptureWeeklyPlanOutboxBoundary")
+      && shellText.includes("Saved on this iPhone, then synced with Nest")
+      && todayRouteText.includes("weeklyPlanExternalSideEffects: false")
+      && todayRouteText.includes("externalCalendarMutated: false")
+      && todayRouteText.includes("providerMutated: false")
       && captureUITestText.includes("testTodayWeeklyPlanEditorKeepsReflectionHonestAndOfflineSafe"),
     "protectedIPhoneWeeklyPlanReflection",
     "Nest and Capture share one optimistic weekly-plan transaction while iPhone protects complete plan and reflection intent before sync, retries by stable identity, holds conflicts, and changes no task, goal, calendar, message, or provider.",

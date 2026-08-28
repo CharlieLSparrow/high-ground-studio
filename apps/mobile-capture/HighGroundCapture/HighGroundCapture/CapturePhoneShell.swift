@@ -1028,7 +1028,7 @@ private struct CaptureSourceRecoveryCard: View {
 
                     recordingEvidenceDetails
 
-                    Text("A verified cloud copy does not prove that every browser, Mac, or iPhone has finished its protected local queue.")
+                    Text("A verified cloud copy does not mean every device has finished uploading.")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -1170,8 +1170,8 @@ private struct CaptureSourceRecoveryCard: View {
         }
 
         if let resolvedEvidence = readiness.resolvedCaptureEvidence, !resolvedEvidence.isEmpty {
-            recoverySection("Resolved capture evidence", systemImage: "checkmark.shield.fill") {
-                Text("These interrupted capture receipts remain in the audit trail, but a reasoned recording-plan revision means they no longer block the verified masters.")
+            recoverySection("Resolved recording issues", systemImage: "checkmark.shield.fill") {
+                Text("These interrupted recordings remain in history, but they no longer block your verified originals.")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -1182,7 +1182,7 @@ private struct CaptureSourceRecoveryCard: View {
                         title: source.label,
                         detail: source.disposition.map {
                             "Plan revision \($0.revision) · \($0.status) · \($0.reason)"
-                        } ?? "Resolved without discarding the capture receipt",
+                        } ?? "Resolved without discarding the recording history",
                         tone: .green
                     )
                 }
@@ -1255,8 +1255,8 @@ private struct CaptureSourceRecoveryCard: View {
         switch state {
         case "CAPTURE_AWAITING_MEDIA": "capture is waiting for media"
         case "SERVER_COPY_PENDING": "server copy is still pending"
-        case "SERVER_COPY_VERIFIED_HELD": "verified copy is held for review"
-        case "FINALIZATION_RECEIPT_MISSING": "finalization receipt is missing"
+        case "SERVER_COPY_VERIFIED_HELD": "verified copy needs attention"
+        case "FINALIZATION_RECEIPT_MISSING": "recording verification is incomplete"
         default: state.replacingOccurrences(of: "_", with: " ").lowercased()
         }
     }
@@ -1296,7 +1296,7 @@ private struct CaptureGoalMergedEvidenceCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
-            Text("Latest reviewed evidence")
+            Text("From your session")
                 .font(.caption2.weight(.bold))
                 .foregroundStyle(.blue)
             Text(evidence.sourceAnchor.effectiveTextSnapshot)
@@ -1307,12 +1307,11 @@ private struct CaptureGoalMergedEvidenceCard: View {
                 authority: evidence.sourceAnchor.speakerAuthority,
                 identifier: "CaptureTodayGoalMergedSpeakerEvidence_\(goalID)"
             )
-            if let governance = evidence.governance {
-                Text("Governed action receipt · \(governance.shortActionID)")
-                    .font(.caption2.monospaced().weight(.semibold))
+            if evidence.governance != nil {
+                Label("Source linked", systemImage: "link.circle.fill")
+                    .font(.caption2.weight(.semibold))
                     .foregroundStyle(.blue)
                     .accessibilityIdentifier("\(accessibilityIdentifierPrefix)Governance_\(goalID)")
-                    .accessibilityHint("Identifies the governed operation that appended this evidence without changing the goal.")
             }
             NavigationLink(value: CaptureTranscriptSourceDestination(
                 roomID: evidence.sourceAnchor.roomId,
@@ -1329,7 +1328,7 @@ private struct CaptureGoalMergedEvidenceCard: View {
             .buttonStyle(.bordered)
             .tint(.blue)
             .accessibilityIdentifier("\(accessibilityIdentifierPrefix)_\(goalID)")
-            .accessibilityHint("Opens the exact reviewed transcript and retained recording evidence appended to this goal.")
+            .accessibilityHint("Opens the linked transcript and recording for this goal.")
         }
         .padding(10)
         .background(Color.blue.opacity(0.07), in: RoundedRectangle(cornerRadius: 12))
@@ -1641,7 +1640,7 @@ private struct CaptureWorkView: View {
                         .accessibilityIdentifier("CaptureWorkProtectedSnapshot")
                 } else if model.usesPreviewData
                     && !CaptureLaunchConfiguration.usesAppStorePresentation {
-                    Label("Preview data · no canonical work will change", systemImage: "hammer.fill")
+                    Label("Preview data · changes are off", systemImage: "hammer.fill")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(.orange)
                         .padding(.horizontal, 12)
@@ -2155,7 +2154,7 @@ private struct CaptureWorkView: View {
                 searchResultContent(item)
             }
             .buttonStyle(.plain)
-            .accessibilityHint("Opens this canonical result in Nest without changing it.")
+            .accessibilityHint("Opens this result in Nest.")
             .accessibilityIdentifier("CaptureWorkGlobalSearchResult_\(item.kind.rawValue)_\(item.id)")
         } else {
             searchResultContent(item)
@@ -2582,16 +2581,16 @@ private struct CaptureWorkView: View {
                 }
                 if let evidence = task.lastMergedTranscriptEvidence {
                     VStack(alignment: .leading, spacing: 5) {
-                        Text("Latest reviewed evidence")
+                        Text("From your session")
                             .font(.caption2.weight(.bold))
                             .foregroundStyle(.blue)
                         Text(evidence.sourceAnchor.effectiveTextSnapshot)
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .lineLimit(3)
-                        if let governance = evidence.governance {
-                            Text("Governed action receipt · \(governance.shortActionID)")
-                                .font(.caption2.monospaced().weight(.semibold))
+                        if evidence.governance != nil {
+                            Label("Source linked", systemImage: "link.circle.fill")
+                                .font(.caption2.weight(.semibold))
                                 .foregroundStyle(.blue)
                                 .accessibilityIdentifier("CaptureWorkTaskMergedEvidenceGovernance_\(task.id)")
                         }
@@ -2631,8 +2630,8 @@ private struct CaptureWorkView: View {
                     .disabled(decisionsDisabled)
                     .accessibilityIdentifier("CaptureWorkTaskEdit_\(task.id)")
                     .accessibilityHint(task.recurrence == nil
-                        ? "Edits the canonical title, detail, and due date without changing tags, reminders, status, or external systems."
-                        : "Opens the history-preserving repeating-task editor.")
+                        ? "Edit this task's title, detail, or due date."
+                        : "Edit this occurrence or future repeats.")
                 }
                 if task.canEditTags == true {
                     Button {
@@ -2646,7 +2645,7 @@ private struct CaptureWorkView: View {
                     .disabled(model.todayClient.isMutating || pendingTags != nil)
                     .accessibilityLabel("\(model.usesPreviewData ? "Explore" : "Edit") tags for \(task.title)")
                     .accessibilityIdentifier("CaptureWorkTaskTagsEdit_\(task.id)")
-                    .accessibilityHint("Protects the complete tag selection on this iPhone before reconciling it with the same Nest.")
+                    .accessibilityHint("Choose the tags for this task.")
                 }
             }
             Spacer(minLength: 0)
@@ -2733,7 +2732,7 @@ private struct CaptureWorkView: View {
                 .buttonStyle(.bordered)
                 .disabled(decisionsDisabled)
                 .accessibilityIdentifier("CaptureWorkGoalEdit_\(goal.id)")
-                .accessibilityHint("Edits the canonical goal definition and target without changing progress, tasks, tags, source evidence, or external calendars.")
+                .accessibilityHint("Edit this goal's title, description, or target date.")
             }
             if goal.canEditTags == true {
                 Button {
@@ -2747,7 +2746,7 @@ private struct CaptureWorkView: View {
                 .disabled(model.todayClient.isMutating || pendingTags != nil)
                 .accessibilityLabel("\(model.usesPreviewData ? "Explore" : "Edit") tags for \(goal.title)")
                 .accessibilityIdentifier("CaptureWorkGoalTagsEdit_\(goal.id)")
-                .accessibilityHint("Protects the complete tag selection on this iPhone before reconciling it with the same Nest.")
+                .accessibilityHint("Choose the tags for this goal.")
             }
         }
         .padding(14)
@@ -2782,7 +2781,7 @@ private struct CaptureWorkView: View {
                     workNoteContent(note, tagLabels: visibleTagLabels)
                 }
                 .buttonStyle(.plain)
-                .accessibilityHint(client.isUsingProtectedCache ? "Requires a connection to open the canonical Nest note." : "Opens the canonical note in Nest.")
+                .accessibilityHint(client.isUsingProtectedCache ? "Reconnect to open this note in Nest." : "Opens this note in Nest.")
                 .accessibilityIdentifier("CaptureWorkNote_\(note.id)")
             } else {
                 workNoteContent(note, tagLabels: visibleTagLabels)
@@ -2790,8 +2789,8 @@ private struct CaptureWorkView: View {
             if let pendingEdit {
                 Label(
                     pendingEdit.disposition == .held
-                        ? "Protected draft held for review"
-                        : "Protected draft waiting for Nest",
+                        ? "This note changed elsewhere"
+                        : "Waiting to sync",
                     systemImage: pendingEdit.disposition == .held
                         ? "exclamationmark.shield"
                         : "lock.iphone"
@@ -2816,7 +2815,7 @@ private struct CaptureWorkView: View {
                     .buttonStyle(.borderedProminent)
                     .disabled(pendingEdit?.disposition == .pending || client.isSyncingDocumentNoteEdits)
                     .accessibilityIdentifier("CaptureWorkNoteEdit_\(note.id)")
-                    .accessibilityHint("Protects the complete title and stable block content before Nest reconciles the canonical document revision.")
+                    .accessibilityHint("Edit this note's title and sections.")
                 }
                 if note.canEditTags == true, note.tagRevision != nil {
                 Button {
@@ -2830,7 +2829,7 @@ private struct CaptureWorkView: View {
                 .disabled(model.todayClient.isMutating || pendingTags != nil)
                 .accessibilityLabel("\(model.usesPreviewData ? "Explore" : "Edit") tags for \(note.title)")
                 .accessibilityIdentifier("CaptureWorkNoteTagsEdit_\(note.id)")
-                .accessibilityHint("Protects the complete document tag selection on this iPhone before reconciling it with the same Nest.")
+                .accessibilityHint("Choose the tags for this note.")
                 }
             }
             if note.canEditContent != true, let boundary = note.contentEditBoundary {
@@ -2908,7 +2907,7 @@ private struct CaptureWorkView: View {
     ) -> some View {
         if let pending = model.todayClient.pendingWorkTagDecision(kind: kind, entityID: entityID) {
             Label(
-                pending.disposition == .held ? "Phone tag change needs review" : "Tag change queued for Nest",
+                pending.disposition == .held ? "Tags changed elsewhere" : "Tags waiting to sync",
                 systemImage: pending.disposition == .held ? "exclamationmark.triangle.fill" : "tag.fill"
             )
             .font(.caption2.weight(.semibold))
@@ -3211,7 +3210,7 @@ private struct CaptureCalendarContinuityCard: View {
     private var googleCalendarProjection: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Label("Google Calendar projection", systemImage: "calendar.badge.checkmark")
+                Label("Google Calendar", systemImage: "calendar.badge.checkmark")
                     .font(.subheadline.weight(.bold))
                 Spacer()
                 if let connection = client.googleConnection {
@@ -3236,7 +3235,7 @@ private struct CaptureCalendarContinuityCard: View {
                     .accessibilityIdentifier("CaptureGoogleCalendarAccount")
 
                 if client.googleSelections.isEmpty {
-                    Text("No Quipsly lane is allowed to project events yet.")
+                    Text("Choose which Quipsly calendars you want to sync.")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                 } else {
@@ -3253,7 +3252,7 @@ private struct CaptureCalendarContinuityCard: View {
                                     .font(.caption2)
                                     .foregroundStyle(.secondary)
                                 if selection.liveUpdatesEnabled {
-                                    Text("Provider changes monitored")
+                                    Text("Changes sync automatically")
                                         .font(.caption2.weight(.semibold))
                                         .foregroundStyle(.blue)
                                 }
@@ -3267,7 +3266,7 @@ private struct CaptureCalendarContinuityCard: View {
                     }
                 }
             } else if client.hasLoadedGoogleSummary {
-                Text("Connect an account in Nest, then choose exactly which owned calendar may receive each coaching, podcast, or personal lane.")
+                Text("Connect Google Calendar, then choose where coaching, podcast, and personal events should appear.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             } else {
@@ -3298,7 +3297,7 @@ private struct CaptureCalendarContinuityCard: View {
                     .accessibilityIdentifier("CaptureGoogleCalendarError")
             }
 
-            Text("Nest opens in your browser for Google consent and calendar choice. Connecting is optional and separate from signing in. Quipsly remains scheduling truth; Google receives only events you explicitly project.")
+            Text("Manage the connection and calendar choices securely in Nest.")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
                 .accessibilityIdentifier("CaptureGoogleCalendarBoundary")
@@ -3537,7 +3536,7 @@ struct TodayFollowThroughCard: View {
                     }
                     .buttonStyle(.borderedProminent)
                     .disabled(focusDecisionDisabled(focus))
-                    .accessibilityHint("Asks for actual minutes, protects the decision on this iPhone, then completes only this personal focus block when Nest acknowledges it. The task or goal remains unchanged.")
+                    .accessibilityHint("Record the time you spent on this focus block.")
                     .accessibilityIdentifier("CaptureTodayFocusDoneButton")
                 }
                 .padding(12)
@@ -3546,7 +3545,7 @@ struct TodayFollowThroughCard: View {
 
             if !client.focusDecisions.isEmpty {
                 VStack(alignment: .leading, spacing: 9) {
-                    Label("Protected focus outbox", systemImage: "iphone.and.arrow.forward")
+                    Label("Focus updates", systemImage: "iphone.and.arrow.forward")
                         .font(.caption.weight(.bold))
                         .foregroundStyle(client.heldFocusDecisionCount > 0 ? Color.orange : Color.indigo)
                     ForEach(client.focusDecisions) { decision in
@@ -3556,8 +3555,8 @@ struct TodayFollowThroughCard: View {
                             Text(title).font(.subheadline.weight(.semibold))
                             Label(
                                 decision.disposition == .held
-                                    ? "Needs review before Nest can apply it"
-                                    : "Saved on this iPhone · waiting for Nest",
+                                    ? "Needs attention"
+                                    : "Saved on this iPhone · waiting to sync",
                                 systemImage: decision.disposition == .held
                                     ? "exclamationmark.triangle.fill"
                                     : "lock.doc.fill"
@@ -3636,7 +3635,7 @@ struct TodayFollowThroughCard: View {
                                         )
                                         if let pendingTags {
                                             Label(
-                                                pendingTags.disposition == .held ? "Phone tag change needs review" : "Tag change queued for Nest",
+                                                pendingTags.disposition == .held ? "Tags need attention" : "Tags waiting to sync",
                                                 systemImage: pendingTags.disposition == .held ? "exclamationmark.triangle.fill" : "tag.fill"
                                             )
                                             .font(.caption2.weight(.semibold))
@@ -3644,7 +3643,7 @@ struct TodayFollowThroughCard: View {
                                             .accessibilityIdentifier("CaptureTodayTaskTagsPending_\(task.id)")
                                             .accessibilityValue(pendingTags.disposition == .held ? "Held" : "Queued")
                                             if pendingTags.disposition == .held {
-                                                Button("Discard phone tag change") {
+                                                Button("Discard changes") {
                                                     Task {
                                                         await client.discardHeldWorkTagDecision(kind: .task, entityID: task.id)
                                                     }
@@ -3665,7 +3664,7 @@ struct TodayFollowThroughCard: View {
                                             .buttonStyle(.bordered)
                                             .disabled(previewOnly || client.isMutating || pendingTags != nil)
                                             .accessibilityIdentifier("CaptureTodayTaskTagsEdit_\(task.id)")
-                                            .accessibilityHint("Protects the complete tag selection on this iPhone before reconciling it with the same Nest.")
+                                            .accessibilityHint("Choose the tags for this task.")
                                         }
                                     } else if !(task.tagLabels ?? []).isEmpty {
                                         TodayProjectTagLine(project: nil, tagLabels: task.tagLabels ?? [], identifier: "CaptureTodayTaskTags_\(task.id)")
@@ -3689,7 +3688,7 @@ struct TodayFollowThroughCard: View {
                                         .buttonStyle(.bordered)
                                         .disabled(decisionsDisabled)
                                         .accessibilityIdentifier("CaptureTodayTaskEdit_\(task.id)")
-                                        .accessibilityHint("Edits the canonical title, detail, and due date without changing tags, reminders, status, or external systems.")
+                                        .accessibilityHint("Edit this task's title, detail, or due date.")
 
                                     }
                                     if task.status == "OPEN" {
@@ -3697,7 +3696,7 @@ struct TodayFollowThroughCard: View {
                                             Label(
                                                 pendingPlan.disposition == .held
                                                     ? "Focus plan needs review"
-                                                    : "Focus plan saved on iPhone · waiting for Nest",
+                                                    : "Focus plan saved · waiting to sync",
                                                 systemImage: pendingPlan.disposition == .held
                                                     ? "exclamationmark.triangle.fill"
                                                     : "lock.doc.fill"
@@ -3735,7 +3734,7 @@ struct TodayFollowThroughCard: View {
                                                     || client.brief?.boundaries?.focusBlockPlanningAvailable != true
                                             )
                                             .accessibilityIdentifier("CaptureTodayTaskPlanFocus_\(task.id)")
-                                            .accessibilityHint("Plans private work time in Quipsly. It does not change the deadline, reminder, task status, appointment, or external calendar.")
+                                            .accessibilityHint("Set aside private focus time for this task.")
                                         }
                                     }
                                     if let reminder = task.reminder,
@@ -3747,13 +3746,13 @@ struct TodayFollowThroughCard: View {
                                         .font(.caption2.weight(.semibold))
                                         .foregroundStyle(.pink)
                                         .accessibilityIdentifier("CaptureTodayTaskReminder_\(task.id)")
-                                        .accessibilityHint("Canonical reminder intent from Nest. Local alert scheduling still depends on this iPhone’s notification permission.")
+                                        .accessibilityHint("This reminder is saved in Nest. Alerts use this iPhone’s notification settings.")
                                     }
                                     if task.recurrence == nil, task.status == "OPEN" {
                                         if let pending = client.pendingReminderDecision(for: task.id) {
                                             Label(
-                                                pending.remindAt.map { "Pending Nest: \($0.formatted(date: .abbreviated, time: .shortened))" }
-                                                    ?? "Pending Nest: cancel reminder",
+                                                pending.remindAt.map { "Waiting to sync: \($0.formatted(date: .abbreviated, time: .shortened))" }
+                                                    ?? "Reminder removal waiting to sync",
                                                 systemImage: pending.disposition == .held
                                                     ? "exclamationmark.triangle.fill"
                                                     : "arrow.triangle.2.circlepath"
@@ -3762,14 +3761,14 @@ struct TodayFollowThroughCard: View {
                                             .foregroundStyle(pending.disposition == .held ? Color.orange : Color.blue)
                                             .accessibilityIdentifier("CaptureTodayTaskReminderPending_\(task.id)")
                                             if pending.disposition == .held {
-                                                Button("Discard phone change") {
+                                                Button("Discard changes") {
                                                     Task {
                                                         await client.discardHeldReminderDecision(for: task.id)
                                                     }
                                                 }
                                                 .font(.caption.weight(.bold))
                                                 .buttonStyle(.bordered)
-                                                .accessibilityHint("Removes the conflicted phone decision and restores the current canonical reminder from Nest.")
+                                                .accessibilityHint("Discard this change and restore the reminder currently saved in Nest.")
                                                 .accessibilityIdentifier("CaptureTodayTaskReminderDiscard_\(task.id)")
                                             }
                                         }
@@ -3789,7 +3788,7 @@ struct TodayFollowThroughCard: View {
                                                     || client.pendingReminderDecision(for: task.id) != nil
                                             )
                                             .accessibilityIdentifier("CaptureTodayTaskReminderEdit_\(task.id)")
-                                            .accessibilityHint("Protects the decision on this iPhone first, then reconciles the canonical reminder with Nest.")
+                                            .accessibilityHint("Saves this reminder and syncs it with Nest.")
 
                                             if task.reminder?.status == "ACTIVE" {
                                                 Button(role: .destructive) {
@@ -3813,7 +3812,7 @@ struct TodayFollowThroughCard: View {
                                             Label(recurrenceSummary(recurrence), systemImage: "repeat")
                                                 .font(.caption2.weight(.semibold))
                                                 .foregroundStyle(.purple)
-                                            Text("Occurrence \(recurrence.scheduledLocalDate) · \(recurrence.status.capitalized). No reminder or provider event is implied.")
+                                            Text("Due \(recurrence.scheduledLocalDate) · \(recurrence.status.capitalized)")
                                                 .font(.caption2)
                                                 .foregroundStyle(.secondary)
                                             if recurrence.ownerCanManage && recurrenceManagerTaskIDs.contains(task.id) && recurrence.status != "ENDED" {
@@ -3839,7 +3838,7 @@ struct TodayFollowThroughCard: View {
                                                 }
                                                 .disabled(decisionsDisabled)
                                                 .accessibilityIdentifier("CaptureTodayRecurrenceMenu_\(recurrence.seriesId)")
-                                                .accessibilityHint("Pauses, resumes, or permanently ends this Quipsly series without changing a provider calendar or reminder.")
+                                                .accessibilityHint("Pause, resume, edit, or end this repeating task.")
                                             }
                                         }
                                         .accessibilityElement(children: .contain)
@@ -3855,7 +3854,7 @@ struct TodayFollowThroughCard: View {
                                     .buttonStyle(.bordered)
                                     .disabled(decisionsDisabled)
                                     .accessibilityIdentifier("CaptureTodayTaskDone_\(task.id)")
-                                    .accessibilityHint(task.recurrence == nil ? "Marks the committed task done in Quipsly with a private receipt." : "Marks this occurrence done and creates the next canonical occurrence when the active series requires one. No reminder or provider event is scheduled.")
+                                    .accessibilityHint(task.recurrence == nil ? "Marks this task done." : "Completes this occurrence and schedules the next one.")
                                 }
                             }
                             if task.isOverdue == true, task.recurrence != nil, recurrenceManagerTaskIDs.contains(task.id) {
@@ -3869,7 +3868,7 @@ struct TodayFollowThroughCard: View {
                                 .buttonStyle(.bordered)
                                 .disabled(decisionsDisabled)
                                 .accessibilityIdentifier("CaptureTodaySkipMissed_\(task.id)")
-                                .accessibilityHint("Preserves this overdue occurrence as skipped and continues the canonical series without sending or scheduling anything elsewhere.")
+                                .accessibilityHint("Marks this occurrence skipped and continues the repeating task.")
                             }
                             if let source = task.sourceAnchor, source.roomId == task.roomId {
                                 CaptureTranscriptSpeakerEvidenceBadge(
@@ -3902,7 +3901,7 @@ struct TodayFollowThroughCard: View {
                             }
                             if let evidence = task.lastMergedTranscriptEvidence {
                                 VStack(alignment: .leading, spacing: 6) {
-                                    Text("Latest reviewed evidence added")
+                                    Text("Added from your session")
                                         .font(.caption2.weight(.bold))
                                         .foregroundStyle(.blue)
                                     Text(evidence.sourceAnchor.effectiveTextSnapshot)
@@ -3913,12 +3912,11 @@ struct TodayFollowThroughCard: View {
                                         authority: evidence.sourceAnchor.speakerAuthority,
                                         identifier: "CaptureTodayTaskMergedSpeakerEvidence_\(task.id)"
                                     )
-                                    if let governance = evidence.governance {
-                                        Text("Governed action receipt · \(governance.shortActionID)")
-                                            .font(.caption2.monospaced().weight(.semibold))
+                                    if evidence.governance != nil {
+                                        Label("Source linked", systemImage: "link.circle.fill")
+                                            .font(.caption2.weight(.semibold))
                                             .foregroundStyle(.blue)
                                             .accessibilityIdentifier("CaptureTodayTaskMergedEvidenceGovernance_\(task.id)")
-                                            .accessibilityHint("Identifies the governed operation that appended this evidence without changing the task.")
                                     }
                                     NavigationLink {
                                         CaptureTranscriptReviewView(
@@ -4064,7 +4062,7 @@ struct TodayFollowThroughCard: View {
                                 .buttonStyle(.bordered)
                                 .disabled(decisionsDisabled)
                                 .accessibilityIdentifier("CaptureTodayGoalEdit_\(goal.id)")
-                                .accessibilityHint("Edits the canonical goal definition and target without changing progress, tasks, tags, source evidence, or external calendars.")
+                                .accessibilityHint("Edit this goal's title, description, or target date.")
                             }
                             if let project = goal.project {
                                 TodayProjectTagLine(
@@ -4080,7 +4078,7 @@ struct TodayFollowThroughCard: View {
                                 )
                                 if let pendingTags {
                                     Label(
-                                        pendingTags.disposition == .held ? "Phone tag change needs review" : "Tag change queued for Nest",
+                                        pendingTags.disposition == .held ? "Tags need attention" : "Tags waiting to sync",
                                         systemImage: pendingTags.disposition == .held ? "exclamationmark.triangle.fill" : "tag.fill"
                                     )
                                     .font(.caption2.weight(.semibold))
@@ -4088,7 +4086,7 @@ struct TodayFollowThroughCard: View {
                                     .accessibilityIdentifier("CaptureTodayGoalTagsPending_\(goal.id)")
                                     .accessibilityValue(pendingTags.disposition == .held ? "Held" : "Queued")
                                     if pendingTags.disposition == .held {
-                                        Button("Discard phone tag change") {
+                                        Button("Discard changes") {
                                             Task {
                                                 await client.discardHeldWorkTagDecision(kind: .goal, entityID: goal.id)
                                             }
@@ -4109,7 +4107,7 @@ struct TodayFollowThroughCard: View {
                                     .buttonStyle(.bordered)
                                     .disabled(previewOnly || client.isMutating || pendingTags != nil)
                                     .accessibilityIdentifier("CaptureTodayGoalTagsEdit_\(goal.id)")
-                                    .accessibilityHint("Protects the complete tag selection on this iPhone before reconciling it with the same Nest.")
+                                    .accessibilityHint("Choose the tags for this goal.")
                                 }
                             } else if !(goal.tagLabels ?? []).isEmpty {
                                 TodayProjectTagLine(project: nil, tagLabels: goal.tagLabels ?? [], identifier: "CaptureTodayGoalTags_\(goal.id)")
@@ -4169,7 +4167,7 @@ struct TodayFollowThroughCard: View {
                     Label("Research cues", systemImage: "text.quote")
                         .font(.caption.weight(.bold))
                         .foregroundStyle(.indigo)
-                    Text("The same source-linked evidence and review state as Nest")
+                    Text("Linked to the same source as Nest")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
 
@@ -4216,13 +4214,13 @@ struct TodayFollowThroughCard: View {
                             ProgressView().controlSize(.small)
                         }
                     }
-                    Text("Review captured passages and links, then deliberately preserve one in a writable Research Nest.")
+                    Text("File captured passages and links into a Research Nest when they are useful.")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
 
                     if inboxClient.isUsingProtectedCache {
                         Label(
-                            "Protected offline snapshot · filing choices can queue safely",
+                            "Offline copy · changes will sync when you reconnect",
                             systemImage: "lock.iphone"
                         )
                         .font(.caption2.weight(.semibold))
@@ -4259,8 +4257,8 @@ struct TodayFollowThroughCard: View {
                             if let pending {
                                 Label(
                                     pending.disposition == .held
-                                        ? "Phone filing needs review"
-                                        : "Protected filing queued for \(pending.projectName)",
+                                        ? "Filing needs attention"
+                                        : "Saving to \(pending.projectName)",
                                     systemImage: pending.disposition == .held
                                         ? "exclamationmark.triangle.fill"
                                         : "arrow.triangle.2.circlepath"
@@ -4276,7 +4274,7 @@ struct TodayFollowThroughCard: View {
                                     pending.disposition == .held ? "Held" : "Queued"
                                 )
                                 if pending.disposition == .held {
-                                    Button("Discard phone filing") {
+                                    Button("Discard changes") {
                                         Task {
                                             await inboxClient.discardHeldFiling(
                                                 for: source.id
@@ -4294,7 +4292,7 @@ struct TodayFollowThroughCard: View {
                                     sourceToFile = source
                                 } label: {
                                     Label(
-                                        previewOnly ? "Explore filing" : "Choose Research Nest",
+                                        previewOnly ? "Preview filing" : "Save to Research",
                                         systemImage: "folder.badge.plus"
                                     )
                                     .frame(minHeight: 44)
@@ -4308,7 +4306,7 @@ struct TodayFollowThroughCard: View {
                                     "CaptureSourceInboxFile_\(source.id)"
                                 )
                                 .accessibilityHint(
-                                    "Protects this decision on the iPhone before creating an immutable Research source. The private capture stays unchanged."
+                                    "Choose a Research Nest and keep this source linked to the original capture."
                                 )
                             }
                         }
@@ -4409,7 +4407,7 @@ struct TodayFollowThroughCard: View {
                                 Spacer(minLength: 8)
                                 Text(goal.healthLabel).font(.caption2.weight(.bold)).foregroundStyle(goal.health == "needs-attention" ? Color.orange : Color.green)
                             }
-                            Text(goal.latestEvidence ?? "No recent evidence receipt")
+                            Text(goal.latestEvidence ?? "No recent progress note")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                                 .lineLimit(2)
@@ -4487,7 +4485,7 @@ struct TodayFollowThroughCard: View {
                     Label("Plan the week", systemImage: "calendar.badge.plus")
                         .font(.caption.weight(.bold))
                         .foregroundStyle(.green)
-                    Text("Choose up to three concrete commitments, name the support you need, and reflect without pretending a task or goal is complete.")
+                    Text("Choose up to three commitments and note the support you need.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     weeklyPlanDecisionStatus
@@ -4509,7 +4507,7 @@ struct TodayFollowThroughCard: View {
             }
 
             if client.tasks.isEmpty, client.goals.isEmpty, client.focusBlocks.isEmpty, client.transcriptReviews.isEmpty, client.sourceAnnotations.isEmpty, inboxClient.sources.isEmpty, client.presentedWeeklyPlan == nil, client.weeklyReview == nil, !client.isLoading, !inboxClient.isLoading {
-                Text("No committed follow-through is available yet. Add a task, goal, focus block, weekly plan, or source annotation in Nest; Today will use the same canonical record.")
+                Text("Nothing needs your attention yet. Add a task, goal, weekly plan, or source when you are ready.")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .accessibilityIdentifier("CaptureTodayFollowThroughEmpty")
@@ -4573,7 +4571,7 @@ struct TodayFollowThroughCard: View {
             }
             Button("Keep reminder", role: .cancel) { reminderToCancel = nil }
         } message: {
-            Text("The pending alert is removed from this iPhone first. Nest cancellation is queued safely if you are offline; no delivery is claimed.")
+            Text("The reminder will be removed here and in Nest. If you are offline, Quipsly will sync the change when you reconnect.")
         }
         .confirmationDialog(
             "End this repeat permanently?",
@@ -4591,7 +4589,7 @@ struct TodayFollowThroughCard: View {
             }
             Button("Keep repeat", role: .cancel) { recurrenceToEnd = nil }
         } message: {
-            Text("Existing task occurrences remain in Quipsly. No reminder or provider calendar event will be changed.")
+            Text("Past task occurrences stay in your history. Future repeats will stop.")
         }
         .confirmationDialog(
             "Skip this missed occurrence?",
@@ -4615,7 +4613,7 @@ struct TodayFollowThroughCard: View {
             }
             Button("Keep it open", role: .cancel) { missedOccurrenceToSkip = nil }
         } message: {
-            Text("Quipsly will retain the overdue task and occurrence as skipped, then continue the canonical series. It will not create a reminder or provider calendar event, send a message, deliver, or publish.")
+            Text("This occurrence will be marked skipped and the repeating task will continue.")
         }
         .sheet(item: $recurrenceToEdit) { task in
             CaptureRecurrenceEditSheet(client: client, task: task)
@@ -4663,7 +4661,7 @@ struct TodayFollowThroughCard: View {
             Label(
                 pending.disposition == .held
                     ? "Phone plan needs review"
-                    : "Protected on this iPhone · waiting for Nest",
+                    : "Saved on this iPhone · waiting to sync",
                 systemImage: pending.disposition == .held
                     ? "exclamationmark.triangle.fill"
                     : "lock.iphone"
@@ -4758,7 +4756,7 @@ struct TodayFollowThroughCard: View {
                 Label(
                     pending.disposition == .held
                         ? "Writing handoff needs review"
-                        : "Private draft queued for Nest",
+                        : "Private draft waiting to sync",
                     systemImage: pending.disposition == .held
                         ? "exclamationmark.triangle.fill"
                         : "lock.doc.fill"
@@ -4798,7 +4796,7 @@ struct TodayFollowThroughCard: View {
                         .frame(minHeight: 44)
                 }
                 .accessibilityIdentifier("CaptureTodayAnnotationDraftOpen_\(annotation.id)")
-                .accessibilityHint("Opens your private canonical draft with its source citation intact.")
+                .accessibilityHint("Opens your private draft with its source citation.")
             } else if annotation.canStartWriting == true {
                 Button {
                     Task {
@@ -4812,7 +4810,7 @@ struct TodayFollowThroughCard: View {
                 .buttonStyle(.borderedProminent)
                 .disabled(previewOnly || client.isMutating)
                 .accessibilityIdentifier("CaptureTodayAnnotationDraftStart_\(annotation.id)")
-                .accessibilityHint("Protects this exact writing decision on the iPhone, then creates a private Nest draft with a durable citation.")
+                .accessibilityHint("Creates a private draft linked to this source.")
             }
         }
         .padding(10)
@@ -4969,7 +4967,7 @@ private struct CaptureWeeklyPlanSheet: View {
                         .lineLimit(2...5)
                         .focused($focusedField, equals: .commitmentThree)
                         .accessibilityIdentifier("CaptureWeeklyPlanCommitmentThree")
-                    Text("These are deliberate commitments, not automatically completed Tasks or Goals.")
+                    Text("These commitments stay together in this weekly plan.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -4986,21 +4984,17 @@ private struct CaptureWeeklyPlanSheet: View {
                         .disabled(reviewAlreadyRecorded)
                         .accessibilityIdentifier("CaptureWeeklyPlanReviewed")
                     if reviewAlreadyRecorded {
-                        Text("Review was already recorded and remains part of the plan's audit history.")
+                        Text("Review saved.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
-                    Text("Review records your reflection separately. It never marks linked work complete or tells your coach that something happened when it did not.")
+                    Text("Your reflection does not mark linked tasks complete.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
-                Section("Safety") {
-                    Label("Saved to a protected iPhone outbox before Nest sync", systemImage: "lock.iphone")
+                Section("Saving") {
+                    Label("Saved on this iPhone, then synced with Nest", systemImage: "lock.iphone")
                         .accessibilityIdentifier("CaptureWeeklyPlanOutboxBoundary")
-                    Text("This changes one private Quipsly weekly plan. It does not send a message, schedule a calendar event, change a Task or Goal, or contact a provider.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .accessibilityIdentifier("CaptureWeeklyPlanSideEffectBoundary")
                 }
             }
             .accessibilityIdentifier("CaptureWeeklyPlanForm")
@@ -5132,13 +5126,10 @@ private struct CaptureFocusPlanningSheet: View {
                     .accessibilityIdentifier("CaptureTodayFocusPlanDuration")
                 }
 
-                Section("Clear boundaries") {
-                    Label("Creates one private Quipsly focus block", systemImage: "checkmark.circle.fill")
+                Section("About focus time") {
+                    Label("Private to you", systemImage: "person.crop.circle.badge.checkmark")
                         .foregroundStyle(.green)
-                    Label("Does not change the task deadline or status", systemImage: "minus.circle")
-                    Label("Does not create a reminder or appointment", systemImage: "minus.circle")
-                    Label("Does not write to Google or Apple Calendar", systemImage: "calendar.badge.minus")
-                    Text("The exact plan is protected on this iPhone before sync. If Nest’s response is interrupted, the same request identity is retried without creating a duplicate block.")
+                    Text("Focus time stays beside this task in Quipsly. You can record how much time you spent when you finish.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -5155,13 +5146,13 @@ private struct CaptureFocusPlanningSheet: View {
                             }
                         }
                     } label: {
-                        Label("Plan focus block", systemImage: "timer")
+                        Label("Save focus time", systemImage: "timer")
                     }
                     .disabled(previewOnly || client.isMutating || !(15...720).contains(durationMinutes))
                     .accessibilityIdentifier("CaptureTodayFocusPlanSave")
                 }
             }
-            .navigationTitle("Plan focus")
+            .navigationTitle("Focus time")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
@@ -5256,7 +5247,7 @@ private struct CaptureTagVocabularySheet: View {
                     Label(
                         readOnly
                             ? "Read-only here. Reconnect to Nest with editor access to make changes."
-                            : "Vocabulary changes are verified live and never queued offline.",
+                            : "Tag changes need an internet connection.",
                         systemImage: readOnly ? "lock.fill" : "checkmark.shield.fill"
                     )
                     .font(.caption.weight(.semibold))
@@ -5278,7 +5269,7 @@ private struct CaptureTagVocabularySheet: View {
                             .textInputAutocapitalization(.sentences)
                             .autocorrectionDisabled(false)
                             .focused($focusedField, equals: .create)
-                            .accessibilityLabel("New canonical tag")
+                            .accessibilityLabel("New tag")
                             .accessibilityIdentifier("CaptureTagVocabularyCreateField")
                         if let matchingCreateTag {
                             Label(
@@ -5318,8 +5309,8 @@ private struct CaptureTagVocabularySheet: View {
                         } label: {
                             Label(
                                 matchingCreateTag == nil
-                                    ? "Create canonical tag"
-                                    : "Reuse canonical tag",
+                                    ? "Create tag"
+                                    : "Use existing tag",
                                 systemImage: matchingCreateTag == nil
                                     ? "plus.circle.fill"
                                     : "arrow.triangle.2.circlepath"
@@ -5331,7 +5322,7 @@ private struct CaptureTagVocabularySheet: View {
                     } header: {
                         Text("Build this vocabulary")
                     } footer: {
-                        Text("Creation is verified live, recorded in tag history, and never queued offline. It creates no Task, Goal, Note, assignment, calendar event, message, or publication.")
+                        Text("Tags are available throughout this Nest as soon as they are saved.")
                     }
                 }
 
@@ -5352,7 +5343,7 @@ private struct CaptureTagVocabularySheet: View {
                             description: Text(
                                 showsRetired
                                     ? "Archived names and merge redirects will remain visible here."
-                                    : "Create the first canonical tag above, then assign it wherever the work belongs."
+                                    : "Create the first tag above, then use it wherever the work belongs."
                             )
                         )
                     } else {
@@ -5362,8 +5353,8 @@ private struct CaptureTagVocabularySheet: View {
                     }
                 }
 
-                Section("Higher-impact cleanup") {
-                    Text("Merging tags rewrites multiple assignments and keeps a rollback receipt. Use Nest’s vocabulary manager for merge review and history.")
+                Section("Merge and clean up") {
+                    Text("Use Nest to merge duplicate tags or review tag history.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     if let url = nestVocabularyURL {
@@ -5676,36 +5667,33 @@ private struct CaptureSourceFilingSheet: View {
                     }
                 } else {
                     Section("Annotation") {
-                        Text("This Nest version can file the source safely. Update Nest before attaching an iPhone annotation or canonical tags in the same protected decision.")
+                        Text("Update Nest to add annotations and tags while filing from iPhone.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
                 }
 
-                Section("What this does") {
+                Section("Save to Research") {
                     Label(
-                        "Creates one immutable, source-linked Research record",
+                        "Keeps this source and where it came from together",
                         systemImage: "checkmark.shield"
                     )
                     Label(
-                        "Keeps the private Inbox capture unchanged",
+                        "Keeps the original Inbox capture unchanged",
                         systemImage: "lock"
                     )
                     Label(
                         source.captureType == .bookmark
-                            ? "Saves the link as evidence; it does not claim the page was imported"
-                            : "Preserves the captured passage and its source URL",
+                            ? "Saves the link for later"
+                            : "Saves the passage and source URL",
                         systemImage: "doc.text.magnifyingglass"
                     )
                     if hasAnnotation {
                         Label(
-                            "Adds one exact-source annotation with canonical Nest tags",
+                            "Adds your annotation and tags",
                             systemImage: "tag"
                         )
                     }
-                    Text("No task, calendar event, message, delivery, provider request, or publication is created.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
                 }
 
                 if previewOnly {
@@ -5756,8 +5744,8 @@ private struct CaptureSourceFilingSheet: View {
                             if accepted {
                                 dismiss()
                             } else {
-                                localMessage = client.errorMessage
-                                    ?? "The protected filing decision needs review."
+                    localMessage = client.errorMessage
+                                    ?? "This source could not be filed yet."
                             }
                         }
                     }
@@ -5836,7 +5824,7 @@ private struct CaptureDocumentNoteEditSheet: View {
 
     private var validationMessage: String? {
         if normalizedTitle.isEmpty {
-            return "Add a title before protecting this edit."
+            return "Add a title before saving this note."
         }
         if normalizedTitle.count > 160 {
             return "Shorten the title to 160 characters. Quipsly will not truncate it."
@@ -5880,7 +5868,7 @@ private struct CaptureDocumentNoteEditSheet: View {
                         Label(project.name, systemImage: project.isHomeNest ? "house.fill" : "square.grid.2x2.fill")
                             .font(.caption.weight(.bold))
                             .foregroundStyle(CapturePalette.accent)
-                        Text("Edit the canonical note")
+                        Text("Edit note")
                             .font(.title2.weight(.bold))
                         Text(note.contentEditBoundary ?? "This updates the same private Nest document.")
                             .font(.caption)
@@ -5892,8 +5880,8 @@ private struct CaptureDocumentNoteEditSheet: View {
                         VStack(alignment: .leading, spacing: 6) {
                             Label(
                                 protectedEdit.disposition == .held
-                                    ? "Protected draft held for review"
-                                    : "Protected draft waiting for Nest",
+                                    ? "This note changed elsewhere"
+                                    : "Waiting to sync",
                                 systemImage: protectedEdit.disposition == .held
                                     ? "exclamationmark.shield.fill"
                                     : "lock.iphone"
@@ -5983,16 +5971,16 @@ private struct CaptureDocumentNoteEditSheet: View {
                             dismiss()
                         } else {
                             localMessage = client.errorMessage
-                                ?? "This note draft could not be protected."
+                                ?? "This note could not be saved yet."
                         }
                     } label: {
                         Label(
                             note.id.hasPrefix("preview-")
-                                ? "Explore protected save"
+                                ? "Preview save"
                                 : AuthManager.shared.networkActionsAllowed
-                                    ? "Protect & sync note"
-                                    : "Protect for later sync",
-                            systemImage: "lock.shield"
+                                    ? "Save note"
+                                    : "Save on this iPhone",
+                            systemImage: "checkmark.circle"
                         )
                         .frame(maxWidth: .infinity)
                         .frame(minHeight: 50)
@@ -6008,7 +5996,7 @@ private struct CaptureDocumentNoteEditSheet: View {
                                 dismiss()
                             }
                         } label: {
-                            Label("Discard protected draft", systemImage: "trash")
+                            Label("Discard draft", systemImage: "trash")
                                 .frame(maxWidth: .infinity)
                                 .frame(minHeight: 48)
                         }
@@ -6079,7 +6067,7 @@ private struct TodayTaskReminderSheet: View {
                         .foregroundStyle(.secondary)
                 }
                 Section {
-                    Text("Saving protects this decision on the iPhone before syncing the canonical reminder to Nest. Quipsly asks for notification permission only after this explicit choice. iOS controls delivery.")
+                    Text("Quipsly saves the reminder to Nest and asks for iPhone notification access only when needed.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -6234,7 +6222,7 @@ private struct TodayWorkTagSheet: View {
                 if readOnlyPreview {
                     Section {
                         Label(
-                            "Preview data · explore this editor, but Save stays off and no canonical tag can change.",
+                            "Preview data · explore this editor while Save stays off.",
                             systemImage: "eye"
                         )
                         .font(.caption.weight(.semibold))
@@ -6838,8 +6826,8 @@ private struct CaptureRecurrenceEditSheet: View {
                     }
                 }
 
-                Section("Boundary") {
-                    Text("Editing stays inside Quipsly. It does not change completed history, schedule a reminder, create or edit a provider calendar event, send a message, deliver, or publish.")
+                Section {
+                    Text("Completed and skipped tasks stay in your history.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .accessibilityIdentifier("CaptureRecurrenceEditBoundary")
@@ -6951,7 +6939,7 @@ private struct TodayGoalCheckInControls: View {
     var body: some View {
         if isEditing {
             VStack(alignment: .leading, spacing: 10) {
-                Text("Goal check-ins record progress without changing goal status. They add evidence; they do not complete the goal.")
+                Text("A check-in updates progress without completing the goal.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
@@ -6986,12 +6974,12 @@ private struct TodayGoalCheckInControls: View {
                     .buttonStyle(.borderedProminent)
                     .tint(.purple)
                     .disabled(decisionsDisabled)
-                    .accessibilityHint("Adds private goal-progress evidence. It does not complete the goal or trigger an external action.")
+                    .accessibilityHint("Adds a private progress note without completing the goal.")
                     .accessibilityIdentifier("CaptureTodayGoalCheckInSave_\(goal.id)")
                 }
 
                 if decisionsDisabled {
-                    Text("Reconnect to Nest to save. Preview and protected snapshots stay read-only.")
+                    Text("Reconnect to Nest to save this check-in.")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                 }
@@ -7008,7 +6996,7 @@ private struct TodayGoalCheckInControls: View {
             .font(.caption.weight(.bold))
             .buttonStyle(.bordered)
             .tint(.purple)
-            .accessibilityHint("Opens a progress and evidence form. Opening it does not change this goal.")
+            .accessibilityHint("Opens the progress check-in form.")
             .accessibilityIdentifier("CaptureTodayGoalCheckIn_\(goal.id)")
         }
     }
@@ -9496,7 +9484,7 @@ private struct CaptureRecorderView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .accessibilityIdentifier("CaptureSessionAuthorityStatus")
                 } else if model.sessionClient.sessionsAreStale {
-                    Label("Protected offline session snapshot", systemImage: "lock.shield")
+                    Label("Offline copy · some actions unavailable", systemImage: "wifi.slash")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(.orange)
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -10198,7 +10186,7 @@ private struct CaptureRecorderView: View {
                             guard let sourceSession = model.sessions.first(where: {
                                 $0.id == priorFollowThrough.sourceRoom.id
                             }) else {
-                                model.message = "Refresh Sessions to open the exact source Session. The released follow-through and canonical work remain unchanged."
+                                model.message = "Refresh Sessions to open the original Session. Your shared follow-up remains unchanged."
                                 return
                             }
                             model.select(sourceSession)
@@ -10279,7 +10267,7 @@ private struct CaptureRecorderView: View {
                     CaptureEmptyCard(
                         systemImage: "record.circle",
                         title: "Choose a session",
-                        detail: "Recording belongs to a Quipsly session so consent, upload, and transcript receipts stay together.",
+                        detail: "Choose a Session to keep the call, consent, recordings, and transcript together.",
                         actionTitle: "Choose session",
                         action: { showsSessionPicker = true }
                     )
@@ -10816,7 +10804,7 @@ private struct CaptureRecorderView: View {
         await model.leaveRoom()
         guard !model.providerRoom.isConnected else { return }
         model.message = protectedLocalSource
-            ? "Call ended. Your recording is protected on this iPhone. Keep Quipsly open until this Session says Safe to close."
+            ? "Call ended. Your recording is saved on this iPhone. Keep Quipsly open until this Session says Safe to close."
             : "You left the call."
         if shouldMonitorRecordingExit {
             model.monitorSourceExitReadiness(roomID: session.callRoomId)
@@ -10849,7 +10837,7 @@ private struct CaptureRecorderView: View {
                 state: state,
                 captureID: captureID,
                 detail: started
-                    ? "Protected local iPhone capture started."
+                    ? "Recording started on this iPhone."
                     : "The local recorder did not start; no media success is claimed."
             )
             return
@@ -11276,7 +11264,7 @@ private struct MobilePriorSessionContinuityCard: View {
                             .buttonStyle(.bordered)
                             .tint(.blue)
                             .accessibilityIdentifier("CapturePriorContinuityTaskEvidence_\(item.taskId)")
-                            .accessibilityHint("Opens the exact reviewed transcript and retained recording evidence without changing the task or starting playback.")
+                            .accessibilityHint("Opens the linked transcript and recording without starting playback.")
                         }
                         .padding(10)
                         .background(Color.blue.opacity(0.07), in: RoundedRectangle(cornerRadius: 12))
@@ -11637,7 +11625,7 @@ private struct CaptureSessionTruthPanel: View {
                         CaptureStatusPill(
                             label: session.hasProviderRecordingReceiptSlot
                                 ? "Receipt \(session.providerReceiptStatusLabel)"
-                                : "No server-recording receipt",
+                                : "Server recording not prepared",
                             systemImage: session.hasProviderRecordingReceiptSlot ? "doc.badge.checkmark" : "doc.badge.plus",
                             tint: session.hasProviderRecordingReceiptSlot ? .green : .secondary
                         )
@@ -11655,13 +11643,13 @@ private struct CaptureSessionTruthPanel: View {
                                     ProgressView()
                                         .frame(maxWidth: .infinity)
                                 } else {
-                                    Label("Prepare server-recording receipt", systemImage: "doc.badge.plus")
+                                    Label("Prepare server recording", systemImage: "doc.badge.plus")
                                         .frame(maxWidth: .infinity)
                                 }
                             }
                             .buttonStyle(.bordered)
                             .disabled(isPreparingProviderReceipt || model.providerControlsLockedForLocalCapture)
-                            .accessibilityHint("Creates only the Nest receipt slot. It does not join the room or start recording.")
+                            .accessibilityHint("Prepares this Session for server recording. Recording starts only when you choose Record.")
                             .accessibilityIdentifier("CapturePrepareProviderRecordingReceipt")
                         }
                     }
@@ -11741,7 +11729,7 @@ private struct CaptureSessionTruthPanel: View {
                     .foregroundStyle(.secondary)
             }
 
-            Text("A prepared room, a connected call track, or a server-recording receipt is not a retained master. Only verified recording assets appear here.")
+            Text("Only recordings that finished uploading and passed verification appear here.")
                 .font(.caption2.weight(.semibold))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -12130,9 +12118,9 @@ struct CaptureQuickEntryBar: View {
                     .buttonStyle(.bordered)
                     .tint(kind == .note ? CapturePalette.accent : kind == .task ? .blue : kind == .goal ? .purple : .teal)
                     .accessibilityHint(kind == .source
-                        ? "Opens a protected personal source capture for Nest Inbox."
+                        ? "Opens a private source capture for your Nest Inbox."
                         : session.map { "Opens a local-first \(kind.title.lowercased()) for \($0.displayTitle), with a private Home Nest option." }
-                            ?? "Opens a protected personal \(kind.title.lowercased()) for your private Home Nest.")
+                            ?? "Opens a private \(kind.title.lowercased()) for your Home Nest.")
                     .accessibilityIdentifier("CaptureQuickEntry_\(kind.rawValue)_\(session?.id ?? "personal")")
                 }
             }
@@ -12211,7 +12199,7 @@ struct CaptureQuickEntrySyncCard: View {
                                 .lineLimit(entry.sourceURL == nil ? 2 : 3)
                                 .textSelection(.enabled)
                         }
-                        Text(entry.disposition == .held ? "Held for review" : "Saved on iPhone · waiting for Nest")
+                        Text(entry.disposition == .held ? "Needs attention" : "Saved on iPhone · waiting to sync")
                             .font(.caption2)
                             .foregroundStyle(entry.disposition == .held ? Color.orange : Color.secondary)
                     }
@@ -12223,7 +12211,7 @@ struct CaptureQuickEntrySyncCard: View {
                     if model.isSyncingQuickEntries {
                         ProgressView().frame(maxWidth: .infinity)
                     } else {
-                        Label("Retry protected captures", systemImage: "arrow.clockwise")
+                        Label("Retry sync", systemImage: "arrow.clockwise")
                             .frame(maxWidth: .infinity)
                     }
                 }
@@ -15383,8 +15371,8 @@ private struct CaptureRecordingCoordinationStatus: View {
 
                 if recordingHealth.attentionParticipantCount > 0 {
                     Text(selfOnly
-                        ? "Keep Quipsly open on this iPhone. It will retry your protected recording automatically."
-                        : "Open Quipsly on the affected recording device. It will retry the protected recording automatically.")
+                        ? "Keep Quipsly open on this iPhone. It will retry the recording automatically."
+                        : "Open Quipsly on the affected recording device. It will retry automatically.")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(.orange)
                 }
@@ -15409,7 +15397,7 @@ private struct CaptureRecordingCoordinationStatus: View {
                     .font(.caption.weight(.semibold))
                 }
 
-                Text("Wait for Upload complete before closing a recording device. Source receipts and verification details remain available for support.")
+                Text("Wait for Upload complete before closing Quipsly on a recording device. Upload details remain available for support.")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
@@ -15453,12 +15441,12 @@ private struct CaptureRecordingCoordinationStatus: View {
         }
         if health.allParticipantsRecording {
             return selfOnly
-                ? "This iPhone is recording your protected local source."
+                ? "This iPhone is recording your local source."
                 : "Each expected participant has a local source in progress."
         }
         if health.allParticipantsStoppedSafely {
             return selfOnly
-                ? "This iPhone confirmed that your protected local source stopped."
+                ? "This iPhone confirmed that your local recording stopped."
                 : "Each expected recorder confirmed its local stop."
         }
         if selfOnly {
@@ -16050,7 +16038,7 @@ private struct VideoRecorderHero: View {
                 : videoReady
                     ? "Camera and consent ready"
                     : "Camera ready · video consent needed"
-        case .arming: "Protecting source identity…"
+        case .arming: "Starting camera…"
         case .recording:
             switch mode {
             case .podcastAV:
@@ -16185,7 +16173,7 @@ private struct CoordinatedPodcastAudioStatus: View {
         case .recording:
             "Audio is recording locally beside the video-only camera source."
         case .paused:
-            "Audio is paused; the current movie boundary is safely closed."
+            "Audio is paused and the current video clip is saved."
         case .preparing:
             "Preparing and verifying the selected microphone route."
         case .finalizing:
@@ -17178,7 +17166,7 @@ private struct ProviderRoomVideoStage: View {
             .padding(8)
             .accessibilityLabel("Switch camera")
             .accessibilityHint(
-                "Switches the live camera. During recording, Quipsly preserves an explicit source boundary."
+                "Switches the live camera. During recording, Quipsly saves a new clip without losing your place."
             )
             .accessibilityIdentifier("ProviderSwitchCameraButton")
         }
@@ -17880,11 +17868,11 @@ private struct UploadActivityCard: View {
             }
             if model.uploadManager.isUploading {
                 ProgressView(value: model.uploadManager.uploadProgress)
-                Text(model.uploadManager.statusText ?? "Uploading the protected original…")
+                Text(model.uploadManager.statusText ?? "Uploading the original recording…")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             } else {
-                Text("\(model.uploadManager.recoverableUploadCount) recording\(model.uploadManager.recoverableUploadCount == 1 ? "" : "s") still need\(model.uploadManager.recoverableUploadCount == 1 ? "s" : "") to upload. The original\(model.uploadManager.recoverableUploadCount == 1 ? " is" : "s are") protected on this iPhone.")
+                Text("\(model.uploadManager.recoverableUploadCount) recording\(model.uploadManager.recoverableUploadCount == 1 ? "" : "s") still need\(model.uploadManager.recoverableUploadCount == 1 ? "s" : "") to upload. The original\(model.uploadManager.recoverableUploadCount == 1 ? " remains" : "s remain") on this iPhone.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 if let statusText = model.uploadManager.statusText?.nonempty {
@@ -17900,7 +17888,7 @@ private struct UploadActivityCard: View {
             if model.uploadManager.recoverableUploadCount > 0 && !model.uploadManager.isUploading {
                 Button("Try upload again") { model.retryUploads() }
                     .buttonStyle(.borderedProminent)
-                    .accessibilityHint("Retries every eligible protected upload. Originals stay on this iPhone until Quipsly verifies them.")
+                    .accessibilityHint("Retries each pending upload. Originals stay on this iPhone until Quipsly verifies them.")
             }
         }
         .captureCard()
@@ -18537,7 +18525,7 @@ private struct LocalRecordingDeletionSheet: View {
                         "I understand this permanently removes only the local original from this iPhone",
                         isOn: $confirmsIrreversibleDeletion
                     )
-                    Text("Quipsly keeps a protected audit row with the deletion time, original byte count, and cloud-verification state. Server/account evidence is not deleted by this action.")
+                    Text("Quipsly keeps a recovery record with the deletion time, original size, and cloud-verification state.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }

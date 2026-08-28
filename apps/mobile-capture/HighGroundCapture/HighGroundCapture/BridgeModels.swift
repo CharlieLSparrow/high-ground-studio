@@ -1182,9 +1182,9 @@ struct MobileCaptureSession: Codable, Identifiable, Hashable {
 
     var lifecycleReceiptLine: String {
         let chips = lifecycleReceiptChips
-        if chips.isEmpty { return "Receipt slots waiting for Nest lifecycle data." }
+        if chips.isEmpty { return "Session details are still loading." }
         let present = chips.filter { $0.1 }.count
-        return "\(present)/\(chips.count) lifecycle receipts present"
+        return "\(present) of \(chips.count) session steps ready"
     }
 
     var lifecycleSafeActions: [MobileCaptureLifecycleSafeAction] {
@@ -2636,9 +2636,9 @@ struct MobileCaptureTranscriptPacketBoundaries: Codable, Hashable {
             && noTranscriptProviderRunFromPacketRead == true
             && noExternalDelivery == true
             && noPublicationClaim == true {
-            return "Packet build is review-only: recordings stay source truth, transcripts stay derived evidence, and nothing is delivered or published."
+            return "Your recording stays linked as the original, and everything created from it remains editable."
         }
-        return "Packet boundary needs review before treating this as safe reviewer evidence."
+        return "Your follow-up is ready to edit. The original recording remains linked."
     }
 
     var reviewLine: String {
@@ -2646,7 +2646,7 @@ struct MobileCaptureTranscriptPacketBoundaries: Codable, Hashable {
         if !rule.isEmpty {
             return rule
         }
-        return "Packet output waits for human review before client delivery, publication, or canonical use."
+        return "Notes, tasks, and goals are ready to adjust and share whenever you choose."
     }
 }
 
@@ -4938,7 +4938,7 @@ final class CaptureTodayClient: ObservableObject {
         } catch {
             if brief == nil { _ = restoreProtectedCache() }
             errorMessage = isUsingProtectedCache
-                ? "Nest is unavailable. Showing a protected Today snapshot; focus plans and completion, reminders, tags, weekly plans, reflections, and source-to-writing handoffs can be queued safely, while other online work decisions stay disabled."
+                ? "You're offline. Showing your saved Today list; available changes will sync when you reconnect."
                 : error.localizedDescription
         }
     }
@@ -4964,7 +4964,7 @@ final class CaptureTodayClient: ObservableObject {
             )
             publishWeeklyPlanDecisionCounts()
             guard AuthManager.shared.networkActionsAllowed else {
-                errorMessage = "Weekly plan protected on this iPhone and queued for Nest. No task, goal, calendar, or message changed."
+                errorMessage = "Weekly plan saved on this iPhone and waiting to sync."
                 return true
             }
             isMutating = true
@@ -5029,8 +5029,8 @@ final class CaptureTodayClient: ObservableObject {
             }
             guard AuthManager.shared.networkActionsAllowed else {
                 errorMessage = remindAt == nil
-                    ? "Reminder removed on this iPhone and queued for Nest. Reconnect to finish canonical cancellation."
-                    : "Reminder protected on this iPhone and queued for Nest. iOS controls alert delivery."
+                    ? "Reminder removed on this iPhone and waiting to sync."
+                    : "Reminder saved on this iPhone and waiting to sync. Alerts use iOS notification settings."
                 return true
             }
             isMutating = true
@@ -5094,7 +5094,7 @@ final class CaptureTodayClient: ObservableObject {
             )
             publishWorkTagDecisionCounts()
             guard AuthManager.shared.networkActionsAllowed else {
-                errorMessage = "Tag choices are protected on this iPhone and queued for Nest."
+                errorMessage = "Tags saved on this iPhone and waiting to sync."
                 return true
             }
             isMutating = true
@@ -5175,7 +5175,7 @@ final class CaptureTodayClient: ObservableObject {
               AuthManager.shared.networkActionsAllowed,
               !isMutating,
               let url = URL(string: "\(baseURL)/api/mobile/capture/today") else {
-            errorMessage = "Reconnect to Nest before editing this task. The protected snapshot was not modified."
+            errorMessage = "Reconnect to edit this task. Your saved copy is unchanged."
             return false
         }
 
@@ -5259,7 +5259,7 @@ final class CaptureTodayClient: ObservableObject {
               AuthManager.shared.networkActionsAllowed,
               !isMutating,
               let url = URL(string: "\(baseURL)/api/mobile/capture/today") else {
-            errorMessage = "Reconnect to Nest before editing this goal. The protected snapshot was not modified."
+            errorMessage = "Reconnect to edit this goal. Your saved copy is unchanged."
             return false
         }
 
@@ -5381,7 +5381,7 @@ final class CaptureTodayClient: ObservableObject {
             )
             publishFocusDecisionCounts()
             guard AuthManager.shared.networkActionsAllowed else {
-                errorMessage = "Actual time is protected on this iPhone and queued for Nest. The linked task and goal remain unchanged."
+                errorMessage = "Time saved on this iPhone and waiting to sync."
                 return true
             }
             isMutating = true
@@ -5410,7 +5410,7 @@ final class CaptureTodayClient: ObservableObject {
             return false
         }
         guard brief?.boundaries?.focusBlockPlanningAvailable == true else {
-            errorMessage = "This Nest does not yet advertise safe iPhone focus planning."
+            errorMessage = "Focus planning is not available in this Nest yet."
             return false
         }
         let timezone = TimeZone.current.identifier
@@ -5424,7 +5424,7 @@ final class CaptureTodayClient: ObservableObject {
             )
             publishFocusPlanCounts()
             guard AuthManager.shared.networkActionsAllowed else {
-                errorMessage = "Focus plan protected on this iPhone and queued for Nest. No deadline, reminder, appointment, or external calendar changed."
+                errorMessage = "Focus time saved on this iPhone and waiting to sync."
                 return true
             }
             isMutating = true
@@ -5446,7 +5446,7 @@ final class CaptureTodayClient: ObservableObject {
         if plan.disposition == .held { focusPlanOutbox.releaseForRetry(plan.id) }
         publishFocusPlanCounts()
         guard AuthManager.shared.networkActionsAllowed else {
-            errorMessage = "The focus plan remains protected for retry when Nest reconnects."
+            errorMessage = "Focus time is saved and will retry when you reconnect."
             return
         }
         isMutating = true
@@ -5470,7 +5470,7 @@ final class CaptureTodayClient: ObservableObject {
         }
         publishFocusDecisionCounts()
         guard AuthManager.shared.networkActionsAllowed else {
-            errorMessage = "The focus decision remains protected for retry when Nest reconnects."
+            errorMessage = "Your focus update is saved and will retry when you reconnect."
             return
         }
         isMutating = true
@@ -5511,7 +5511,7 @@ final class CaptureTodayClient: ObservableObject {
             )
             publishWritingDraftDecisionCounts()
             guard AuthManager.shared.networkActionsAllowed else {
-                errorMessage = "Private writing handoff protected on this iPhone and queued for Nest."
+                errorMessage = "Private writing draft saved on this iPhone and waiting to sync."
                 return nil
             }
             isMutating = true
@@ -5536,7 +5536,7 @@ final class CaptureTodayClient: ObservableObject {
         writingDraftOutbox.releaseForRetry(decision.id)
         publishWritingDraftDecisionCounts()
         guard AuthManager.shared.networkActionsAllowed else {
-            errorMessage = "Writing handoff remains protected for retry when Nest reconnects."
+            errorMessage = "Your writing draft is saved and will retry when you reconnect."
             return nil
         }
         isMutating = true
@@ -5579,7 +5579,7 @@ final class CaptureTodayClient: ObservableObject {
               AuthManager.shared.networkActionsAllowed,
               !isMutating,
               let url = URL(string: "\(baseURL)/api/mobile/capture/today") else {
-            errorMessage = "Reconnect to Nest before changing Today work. The protected snapshot was not modified."
+            errorMessage = "Reconnect to change this work. Your saved copy is unchanged."
             return false
         }
         isMutating = true
@@ -5686,7 +5686,7 @@ final class CaptureTodayClient: ObservableObject {
                     expectedDocumentID: documentID,
                     expectedResponseBlockID: responseBlockID
                   ) else {
-                let message = "Nest returned a different draft identity or safety boundary. The protected phone decision is held for review."
+                let message = "This draft changed in Nest. Your iPhone copy is safe; refresh to compare the latest version."
                 writingDraftOutbox.markHeld(
                     decision.id,
                     code: "ACKNOWLEDGEMENT_MISMATCH",
@@ -5702,7 +5702,7 @@ final class CaptureTodayClient: ObservableObject {
             return draftURL
         } catch {
             writingDraftOutbox.markRetryable(decision.id, message: error.localizedDescription)
-            errorMessage = "Writing handoff remains protected for retry: \(error.localizedDescription)"
+            errorMessage = "Your writing draft is saved and will retry: \(error.localizedDescription)"
             publishWritingDraftDecisionCounts()
             return nil
         }
@@ -5815,7 +5815,7 @@ final class CaptureTodayClient: ObservableObject {
                   payload.boundaries?.weeklyPlanExternalSideEffects == false,
                   payload.boundaries?.externalCalendarMutated == false,
                   payload.boundaries?.providerMutated == false else {
-                let message = "Nest returned a different weekly plan, receipt, or safety boundary. The protected phone decision is held for review."
+                let message = "Your weekly plan changed in Nest. Your iPhone copy is safe; refresh to compare the latest version."
                 weeklyPlanOutbox.markHeld(decision.id, code: "ACKNOWLEDGEMENT_MISMATCH", message: message)
                 errorMessage = message
                 publishWeeklyPlanDecisionCounts()
@@ -5826,7 +5826,7 @@ final class CaptureTodayClient: ObservableObject {
             return true
         } catch {
             weeklyPlanOutbox.markRetryable(decision.id, message: error.localizedDescription)
-            errorMessage = "Weekly plan remains protected for retry: \(error.localizedDescription)"
+            errorMessage = "Your weekly plan is saved and will retry: \(error.localizedDescription)"
             publishWeeklyPlanDecisionCounts()
             return false
         }
@@ -5899,7 +5899,7 @@ final class CaptureTodayClient: ObservableObject {
                   payload.boundaries?.planningFocusBlockSchedulesReminder == false,
                   payload.boundaries?.externalCalendarMutated == false,
                   payload.boundaries?.providerMutated == false else {
-                let message = "Nest returned a different focus-plan identity or safety boundary. The protected phone plan is held for review."
+                let message = "This focus time changed in Nest. Your iPhone copy is safe; refresh to compare the latest version."
                 focusPlanOutbox.markHeld(plan.id, code: "ACKNOWLEDGEMENT_MISMATCH", message: message)
                 errorMessage = message
                 publishFocusPlanCounts()
@@ -5910,7 +5910,7 @@ final class CaptureTodayClient: ObservableObject {
             return true
         } catch {
             focusPlanOutbox.markRetryable(plan.id, message: error.localizedDescription)
-            errorMessage = "Focus plan remains protected for retry: \(error.localizedDescription)"
+            errorMessage = "Your focus time is saved and will retry: \(error.localizedDescription)"
             publishFocusPlanCounts()
             return false
         }
@@ -5982,7 +5982,7 @@ final class CaptureTodayClient: ObservableObject {
                   payload.boundaries?.focusBlockActualTimeExplicitOnly == true,
                   payload.boundaries?.completingFocusBlockMutatesTarget == false,
                   payload.boundaries?.externalCalendarMutated == false else {
-                let message = "Nest returned different focus time, identity, or safety boundaries. The protected phone decision is held for review."
+                let message = "This focus update changed in Nest. Your iPhone copy is safe; refresh to compare the latest version."
                 focusDecisionOutbox.markHeld(decision.id, code: "ACKNOWLEDGEMENT_MISMATCH", message: message)
                 errorMessage = message
                 publishFocusDecisionCounts()
@@ -5993,7 +5993,7 @@ final class CaptureTodayClient: ObservableObject {
             return true
         } catch {
             focusDecisionOutbox.markRetryable(decision.id, message: error.localizedDescription)
-            errorMessage = "Focus decision remains protected for retry: \(error.localizedDescription)"
+            errorMessage = "Your focus update is saved and will retry: \(error.localizedDescription)"
             publishFocusDecisionCounts()
             return false
         }
@@ -6061,7 +6061,7 @@ final class CaptureTodayClient: ObservableObject {
                     ? canonical.status == "CANCELED"
                     : canonical.status == "ACTIVE"
                         && abs(canonical.remindAt.timeIntervalSince(decision.remindAt!)) < 0.5) else {
-                let message = "Nest returned a different reminder identity or time. The protected phone decision is held for review."
+                let message = "This reminder changed in Nest. Your iPhone copy is safe; refresh to compare the latest version."
                 reminderDecisionOutbox.markHeld(decision.id, code: "ACKNOWLEDGEMENT_MISMATCH", message: message)
                 errorMessage = message
                 publishReminderDecisionCounts()
@@ -6076,7 +6076,7 @@ final class CaptureTodayClient: ObservableObject {
             return true
         } catch {
             reminderDecisionOutbox.markRetryable(decision.id, message: error.localizedDescription)
-            errorMessage = "Reminder change remains protected for retry: \(error.localizedDescription)"
+            errorMessage = "Your reminder change is saved and will retry: \(error.localizedDescription)"
             publishReminderDecisionCounts()
             return false
         }
@@ -6164,7 +6164,7 @@ final class CaptureTodayClient: ObservableObject {
                   acknowledgedFinalTagIDs == expectedFinalTagIDs,
                   documentRevisionMatches,
                   payload.receiptId == "work-tags-\(decision.clientRequestID)" else {
-                let message = "Nest returned a different tag identity or selection. The protected phone decision is held for review."
+                let message = "These tags changed in Nest. Your iPhone copy is safe; refresh to compare the latest version."
                 workTagDecisionOutbox.markHeld(decision.id, code: "ACKNOWLEDGEMENT_MISMATCH", message: message)
                 errorMessage = message
                 publishWorkTagDecisionCounts()
@@ -6175,7 +6175,7 @@ final class CaptureTodayClient: ObservableObject {
             return true
         } catch {
             workTagDecisionOutbox.markRetryable(decision.id, message: error.localizedDescription)
-            errorMessage = "Tag change remains protected for retry: \(error.localizedDescription)"
+            errorMessage = "Your tag changes are saved and will retry: \(error.localizedDescription)"
             publishWorkTagDecisionCounts()
             return false
         }
@@ -6762,7 +6762,7 @@ final class CaptureWorkClient: ObservableObject {
         replacingHeld: Bool
     ) -> Bool {
         if note.id.hasPrefix("preview-") {
-            documentNoteEditMessage = "Preview only — no canonical document note or revision was changed."
+            documentNoteEditMessage = "Preview only — the note was not changed."
             return true
         }
         guard note.canEditContent == true,
@@ -6802,7 +6802,7 @@ final class CaptureWorkClient: ObservableObject {
                 replacingHeld: replacingHeld
             )
             publishDocumentNoteEditCounts()
-            documentNoteEditMessage = "The complete note edit is protected on this iPhone. Nest will recheck access, stable blocks, anchors, and the exact content revision before applying it."
+            documentNoteEditMessage = "Note saved on this iPhone and ready to sync."
             Task { [weak self] in
                 await self?.syncDocumentNoteEdit(edit, refreshWork: true)
             }
@@ -6819,16 +6819,16 @@ final class CaptureWorkClient: ObservableObject {
             await load(projectID: selectedProjectID)
         } else if let held = documentNoteEditOutbox.entries.first(where: { $0.disposition == .held }) {
             documentNoteEditMessage = held.lastErrorMessage
-                ?? "A protected project-note edit needs review beside Nest's current revision."
+                ?? "This note also changed in Nest. Refresh to compare the latest version."
         } else if documentNoteEditOutbox.pendingCount == 0 {
-            documentNoteEditMessage = "No protected project-note edits need retry."
+            documentNoteEditMessage = "All note changes are synced."
         }
     }
 
     func discardDocumentNoteEdit(noteID: String) async {
         documentNoteEditOutbox.discard(noteID: noteID)
         publishDocumentNoteEditCounts()
-        documentNoteEditMessage = "The protected iPhone draft was discarded. The canonical Nest note was not changed."
+        documentNoteEditMessage = "The iPhone draft was discarded. The Nest note was not changed."
         await load(projectID: selectedProjectID)
     }
 
@@ -6842,7 +6842,7 @@ final class CaptureWorkClient: ObservableObject {
               !isUsingProtectedCache,
               AuthManager.shared.networkActionsAllowed,
               let url = URL(string: "\(baseURL)/api/mobile/capture/projects") else {
-            errorMessage = "Reconnect to Nest before creating a canonical project."
+            errorMessage = "Reconnect to Nest before creating a new Nest."
             return nil
         }
         isCreatingProject = true
@@ -6880,7 +6880,7 @@ final class CaptureWorkClient: ObservableObject {
                 throw NSError(
                     domain: "CaptureWork",
                     code: 409,
-                    userInfo: [NSLocalizedDescriptionKey: "Nest created the project, but the canonical Work readback did not select the same identity."]
+                    userInfo: [NSLocalizedDescriptionKey: "Nest created the project, but Work could not open it yet. Refresh and try again."]
                 )
             }
             return project
@@ -6897,7 +6897,7 @@ final class CaptureWorkClient: ObservableObject {
     ) async -> Bool {
         guard !isMutatingTagVocabulary else { return false }
         guard !projectID.hasPrefix("preview-") else {
-            tagVocabularyMessage = "Preview only — no canonical tag or assignment was created."
+            tagVocabularyMessage = "Preview only — no tag was created."
             return false
         }
         guard !isUsingProtectedCache,
@@ -6957,7 +6957,7 @@ final class CaptureWorkClient: ObservableObject {
                   !savedTag.slug.isEmpty,
                   payload.created != nil else {
                 tagVocabularyMessage = payload.error
-                    ?? "Nest did not acknowledge this canonical tag. Refresh before trying again."
+                    ?? "Nest did not confirm this tag. Refresh before trying again."
                 if response.statusCode == 409 {
                     await load(projectID: selectedProjectID)
                 }
@@ -6992,7 +6992,7 @@ final class CaptureWorkClient: ObservableObject {
         let canonicalOperation = operation.uppercased()
         guard !isMutatingTagVocabulary else { return false }
         guard !tag.id.hasPrefix("preview-") else {
-            tagVocabularyMessage = "Preview only — no canonical tag or assignment was changed."
+            tagVocabularyMessage = "Preview only — no tag was changed."
             return false
         }
         guard !isUsingProtectedCache,
@@ -7311,7 +7311,7 @@ final class CaptureWorkClient: ObservableObject {
             if brief == nil { _ = restoreProtectedCache() }
             isUsingProtectedCache = brief != nil
             errorMessage = isUsingProtectedCache
-                ? "Nest is unavailable. Showing the last protected project snapshot; changes stay disabled until the canonical records can be verified."
+                ? "Nest is unavailable. Showing your last saved copy; reconnect to make changes."
                 : error.localizedDescription
         }
     }
@@ -7353,13 +7353,13 @@ final class CaptureWorkClient: ObservableObject {
             return false
         }
         guard AuthManager.shared.networkActionsAllowed else {
-            documentNoteEditMessage = "Nest is offline. The complete project-note edit remains protected on this iPhone."
+            documentNoteEditMessage = "You're offline. This note is saved on your iPhone and will sync later."
             return false
         }
         let encodedNoteID = edit.noteID.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed)
             ?? edit.noteID
         guard let url = URL(string: "\(baseURL)/api/mobile/capture/work/notes/\(encodedNoteID)") else {
-            let message = "The configured Nest URL is invalid. The protected note draft remains on this iPhone."
+            let message = "Quipsly could not reach Nest. This note remains saved on your iPhone."
             documentNoteEditOutbox.markHeld(edit.id, code: "BAD_NEST_URL", message: message)
             documentNoteEditMessage = message
             return false
@@ -7381,7 +7381,7 @@ final class CaptureWorkClient: ObservableObject {
                 || response.statusCode == 408
                 || response.statusCode == 429 {
                 let message = payload.error
-                    ?? "Nest is temporarily unavailable. The complete note draft remains protected for retry."
+                    ?? "Nest is temporarily unavailable. This note is saved and will retry."
                 documentNoteEditOutbox.markRetryable(edit.id, message: message)
                 documentNoteEditMessage = message
                 return false
@@ -7391,7 +7391,7 @@ final class CaptureWorkClient: ObservableObject {
                   payload.schema == "quipsly-mobile-document-note-edit-v1",
                   let saved = payload.note else {
                 let message = payload.error
-                    ?? "Nest held this note edit. Review the protected iPhone draft beside the canonical note."
+                    ?? "This note also changed elsewhere. Review both versions before saving."
                 documentNoteEditOutbox.markHeld(edit.id, code: payload.code, message: message)
                 documentNoteEditMessage = message
                 return false
@@ -7421,7 +7421,7 @@ final class CaptureWorkClient: ObservableObject {
                     options: .regularExpression
                   ) != nil,
                   payload.receiptId == expectedReceipt else {
-                let message = "Nest returned a different note, stable block set, content, or revision receipt. The protected iPhone draft is held for review."
+                let message = "This note changed in Nest. Your iPhone draft is safe; refresh to compare the latest version."
                 documentNoteEditOutbox.markHeld(
                     edit.id,
                     code: "DOCUMENT_NOTE_EDIT_ACKNOWLEDGEMENT_MISMATCH",
@@ -7434,14 +7434,14 @@ final class CaptureWorkClient: ObservableObject {
             documentNoteEditOutbox.markAcknowledged(edit.id)
             publishDocumentNoteEditCounts()
             documentNoteEditMessage = payload.idempotentReplay == true
-                ? "Nest already applied this exact protected note edit; no revision was duplicated."
-                : "The canonical project note is updated. Stable blocks and safe anchors were preserved; nothing was sent or published."
+                ? "This note was already synced."
+                : "Note updated."
             if refreshWork {
                 await load(projectID: edit.projectID)
             }
             return true
         } catch {
-            let message = "\(error.localizedDescription) The complete note draft remains protected for retry."
+            let message = "\(error.localizedDescription) Your note remains saved and will retry."
             documentNoteEditOutbox.markRetryable(edit.id, message: message)
             documentNoteEditMessage = message
             publishDocumentNoteEditCounts()
@@ -7688,10 +7688,10 @@ final class CaptureSessionClient: ObservableObject {
                 if restoredCache {
                     status = "Offline · cached sessions"
                     errorMessage = cachedSessionStatusLine
-                        ?? "Nest is unavailable. Showing a protected offline session snapshot; network actions are disabled."
+                        ?? "You're offline. Showing your saved Sessions; online actions are unavailable."
                 } else {
                     status = "Nest unavailable"
-                    errorMessage = "Nest is temporarily unreachable. Protected local recordings remain available."
+                    errorMessage = "Nest is temporarily unreachable. Your local recordings remain available."
                 }
                 return .transportUnavailable(message: message)
             }
@@ -7851,7 +7851,7 @@ final class CaptureSessionClient: ObservableObject {
                     throw NSError(
                         domain: "CaptureSessions",
                         code: 3,
-                        userInfo: [NSLocalizedDescriptionKey: "Recording consent is incomplete. Choose audio, video, or both and confirm the nearby-participant safety attestation; transcription remains a separate choice."]
+                        userInfo: [NSLocalizedDescriptionKey: "Choose audio, video, or both, then confirm that everyone nearby agrees to be recorded. Transcription is a separate choice."]
                     )
                 }
                 requestBody["canRecordAudio"] = grantAttestation.canRecordAudio
@@ -8518,7 +8518,7 @@ final class CaptureSessionClient: ObservableObject {
 
     func syncQuickEntry(_ entry: PendingMobileQuickEntry) async -> MobileQuickEntrySyncResult {
         guard let url = URL(string: "\(baseURL.trimmingCharacters(in: .whitespacesAndNewlines))/api/mobile/capture/quick-entry") else {
-            return .held(code: "BAD_NEST_URL", message: "The configured Nest URL is not valid. The protected phone copy remains queued.")
+            return .held(code: "BAD_NEST_URL", message: "Quipsly could not reach Nest. Your iPhone copy is saved.")
         }
 
         do {
@@ -8530,19 +8530,19 @@ final class CaptureSessionClient: ObservableObject {
             let payload = try JSONDecoder().decode(MobileQuickEntrySaveResponse.self, from: data)
 
             if response.statusCode >= 500 || response.statusCode == 408 || response.statusCode == 429 {
-                return .retryable(message: payload.error ?? "Nest is temporarily unavailable. The protected phone copy remains queued.")
+                return .retryable(message: payload.error ?? "Nest is temporarily unavailable. Your iPhone copy will retry.")
             }
             guard response.statusCode < 400, payload.ok, let saved = payload.entry else {
                 return .held(
                     code: payload.code,
-                    message: payload.error ?? "Nest held this quick capture. The protected phone copy remains available for review."
+                    message: payload.error ?? "This quick capture needs attention. Your iPhone copy is safe."
                 )
             }
             if let destinationProjectID = entry.destinationProjectID,
                saved.projectId != destinationProjectID {
                 return .held(
                     code: "QUICK_ENTRY_DESTINATION_ACKNOWLEDGEMENT_MISMATCH",
-                    message: "Nest acknowledged a different destination. The protected phone copy remains available for review."
+                    message: "This destination changed in Nest. Your iPhone copy is safe; refresh to choose again."
                 )
             }
             return .acknowledged(
@@ -8552,7 +8552,7 @@ final class CaptureSessionClient: ObservableObject {
                 reminder: saved.reminder
             )
         } catch {
-            return .retryable(message: "\(error.localizedDescription) The protected phone copy remains queued.")
+            return .retryable(message: "\(error.localizedDescription) Your iPhone copy is saved and will retry.")
         }
     }
 
@@ -8562,7 +8562,7 @@ final class CaptureSessionClient: ObservableObject {
         guard let url = URL(string: "\(baseURL.trimmingCharacters(in: .whitespacesAndNewlines))/api/notes/\(encodedNoteID)") else {
             return .held(
                 code: "BAD_NEST_URL",
-                message: "The configured Nest URL is not valid. The protected note draft remains on this iPhone."
+                message: "Quipsly could not reach Nest. This note remains saved on your iPhone."
             )
         }
 
@@ -8575,7 +8575,7 @@ final class CaptureSessionClient: ObservableObject {
             let payload = try JSONDecoder().decode(MobileSessionNoteEditResponse.self, from: data)
             if response.statusCode >= 500 || response.statusCode == 408 || response.statusCode == 429 {
                 return .retryable(
-                    message: payload.error ?? "Nest is temporarily unavailable. The complete note draft remains protected for retry."
+                    message: payload.error ?? "Nest is temporarily unavailable. This note is saved and will retry."
                 )
             }
             guard response.statusCode < 400,
@@ -8583,7 +8583,7 @@ final class CaptureSessionClient: ObservableObject {
                   let saved = payload.note else {
                 return .held(
                     code: payload.code,
-                    message: payload.error ?? "Nest held this note edit. Review the protected iPhone draft beside the canonical note."
+                    message: payload.error ?? "This note also changed elsewhere. Review both versions before saving."
                 )
             }
             let receiptMatches = payload.receiptId == "session-note-edit-\(Self.sessionNoteEditDigest(ownerID: edit.ownerAccountID, requestID: edit.clientRequestID))"
@@ -8598,18 +8598,18 @@ final class CaptureSessionClient: ObservableObject {
                   payload.idempotentReplay == true || intentMatchesCurrent else {
                 return .held(
                     code: "SESSION_NOTE_EDIT_ACKNOWLEDGEMENT_MISMATCH",
-                    message: "Nest returned a different note, audience, tag set, or revision receipt. The protected iPhone draft is held for review."
+                    message: "This note changed elsewhere. Your iPhone draft is still available for comparison."
                 )
             }
             return .acknowledged(
                 idempotentReplay: payload.idempotentReplay == true,
                 message: payload.idempotentReplay == true
-                    ? "Nest already applied this exact protected note edit; no revision was duplicated."
+                    ? "This note was already synced."
                     : "Note updated. Earlier versions remain available."
             )
         } catch {
             return .retryable(
-                message: "\(error.localizedDescription) The complete note draft remains protected for retry."
+                message: "\(error.localizedDescription) This note is saved and will retry."
             )
         }
     }
@@ -9107,7 +9107,7 @@ final class CaptureSessionClient: ObservableObject {
                 )
             }
             status = payload.idempotentReplay == true ? "Follow-up already released" : "Follow-up released in Quipsly"
-            errorMessage = "No email, message, calendar event, or publication action occurred."
+            errorMessage = nil
             await refreshClientFollowUp(forSessionID: session.id)
             return true
         } catch {

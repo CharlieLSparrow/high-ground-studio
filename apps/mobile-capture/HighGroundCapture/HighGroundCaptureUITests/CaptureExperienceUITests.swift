@@ -2557,11 +2557,7 @@ final class CaptureExperienceUITests: XCTestCase {
         let outboxBoundary = app.descendants(matching: .any)["CaptureWeeklyPlanOutboxBoundary"].firstMatch
         revealBelow(outboxBoundary, in: weeklyPlanForm)
         XCTAssertTrue(outboxBoundary.waitForExistence(timeout: 5))
-        let boundary = app.descendants(matching: .any)["CaptureWeeklyPlanSideEffectBoundary"].firstMatch
-        revealBelow(boundary, in: weeklyPlanForm)
-        XCTAssertTrue(boundary.waitForExistence(timeout: 5))
-        XCTAssertTrue(boundary.label.contains("change a Task or Goal"))
-        XCTAssertTrue(boundary.label.contains("contact a provider"))
+        XCTAssertTrue(app.staticTexts["Saved on this iPhone, then synced with Nest"].exists)
         XCTAssertFalse(
             app.buttons["CaptureWeeklyPlanSave"].isEnabled,
             "Preview may demonstrate the complete editor but must not claim a canonical or queued save."
@@ -2707,8 +2703,8 @@ final class CaptureExperienceUITests: XCTestCase {
             decision.waitForExistence(timeout: 8),
             "An offline completion must remain visibly protected before Nest acknowledges it. \(app.debugDescription)"
         )
-        XCTAssertTrue(app.staticTexts["Protected focus outbox"].exists)
-        XCTAssertTrue(app.staticTexts["Saved on this iPhone · waiting for Nest"].exists)
+        XCTAssertTrue(app.staticTexts["Focus updates"].exists)
+        XCTAssertTrue(app.staticTexts["Saved on this iPhone · waiting to sync"].exists)
         XCTAssertTrue(app.staticTexts["35 actual minutes · linked work unchanged"].exists)
         let retry = app.buttons["CaptureTodayFocusDecisionRetry_preview-block"]
         XCTAssertTrue(retry.exists)
@@ -2765,9 +2761,8 @@ final class CaptureExperienceUITests: XCTestCase {
         )
         let googleBoundary = app.staticTexts["CaptureGoogleCalendarBoundary"]
         XCTAssertTrue(googleBoundary.exists)
-        XCTAssertTrue(googleBoundary.label.contains("optional"))
-        XCTAssertTrue(googleBoundary.label.contains("separate from signing in"))
-        XCTAssertTrue(googleBoundary.label.contains("explicitly project"))
+        XCTAssertTrue(googleBoundary.label.contains("Manage the connection"))
+        XCTAssertTrue(googleBoundary.label.contains("in Nest"))
 
         for purpose in ["PERSONAL_COMMITMENTS", "COACHING", "PODCAST_PRODUCTION"] {
             let lane = app.descendants(matching: .any)["CaptureCalendarLane_\(purpose)"]
@@ -2917,14 +2912,10 @@ final class CaptureExperienceUITests: XCTestCase {
             confirm.isEnabled,
             "Preview must never create a Research source or clear a private Inbox item."
         )
-        let noSideEffects = app.staticTexts.matching(
-            NSPredicate(
-                format: "label CONTAINS %@",
-                "No task, calendar event, message, delivery, provider request, or publication"
-            )
-        ).firstMatch
-        reveal(noSideEffects)
-        XCTAssertTrue(noSideEffects.exists)
+        let previewSaveBoundary = app.descendants(matching: .any)["CaptureSourceFilingPreviewBoundary"].firstMatch
+        reveal(previewSaveBoundary)
+        XCTAssertTrue(previewSaveBoundary.exists)
+        XCTAssertTrue(app.staticTexts["Preview only · no filing decision will be saved"].exists)
         app.buttons["Cancel"].tap()
         XCTAssertTrue(
             app.descendants(matching: .any)["CaptureSourceInboxItem_preview-source"].exists
