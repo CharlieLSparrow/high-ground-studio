@@ -2251,6 +2251,7 @@ struct CaptureCoachingHomeView: View {
                 Image(systemName: "person.badge.plus")
                     .font(.title2)
                     .foregroundStyle(.teal)
+                    .accessibilityHidden(true)
             }
             HStack {
                 Button {

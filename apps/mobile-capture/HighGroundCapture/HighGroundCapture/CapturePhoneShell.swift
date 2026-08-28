@@ -7134,8 +7134,9 @@ private struct CaptureVoiceWritingEditor: View {
     @ViewBuilder
     private var writingSections: some View {
         Section {
-            TextField("Title", text: $title)
+            TextField("Title", text: $title, axis: .vertical)
                 .font(.title2.weight(.bold))
+                .lineLimit(1...3)
                 .textInputAutocapitalization(.sentences)
                 .accessibilityIdentifier("CaptureVoiceWritingTitle")
 

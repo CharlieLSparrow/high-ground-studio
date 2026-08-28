@@ -63,7 +63,8 @@ final class CaptureExperienceUITests: XCTestCase {
                 "--capture-coaching-forms-coach-preview",
             ]
         }
-        if name.contains("testCoachingHomeMakesThePhoneOnlyWorkflowConcrete") {
+        if name.contains("testCoachingHomeMakesThePhoneOnlyWorkflowConcrete")
+            || name.contains("testCoachingHomeKeepsPrimaryActionsReachableAtLargestTextSize") {
             app.launchArguments.append("--capture-coach-booking-preview")
         }
         if name.contains(
@@ -260,6 +261,52 @@ final class CaptureExperienceUITests: XCTestCase {
         add(screenshot)
     }
 
+    func testVoiceWritingRemainsReadableAtLargestAccessibilityTextSize() throws {
+        app.terminate()
+        app.launchArguments = [
+            "--capture-ui-preview",
+            "-UIPreferredContentSizeCategoryName",
+            "UICTContentSizeCategoryAccessibilityExtraExtraExtraLarge",
+        ]
+        app.launch()
+
+        XCTAssertTrue(app.tabBars.firstMatch.waitForExistence(timeout: 12))
+        app.tabBars.buttons["Library"].tap()
+        let writingSection = app.buttons["Writing"]
+        XCTAssertTrue(writingSection.waitForExistence(timeout: 5))
+        writingSection.tap()
+        let previewDraft = app.descendants(matching: .any)["CaptureLibraryPreviewWritingCard"]
+        let library = app.scrollViews["CaptureLibraryView"]
+        for _ in 0..<4 where !previewDraft.exists {
+            library.swipeUp()
+        }
+        XCTAssertTrue(previewDraft.waitForExistence(timeout: 5))
+        reveal(previewDraft)
+        previewDraft.tap()
+
+        XCTAssertTrue(
+            app.descendants(matching: .any)["CaptureVoiceWritingEditor"]
+                .waitForExistence(timeout: 5)
+        )
+        XCTAssertTrue(app.buttons["Write"].isHittable)
+        XCTAssertTrue(app.buttons["Transcript"].isHittable)
+        XCTAssertTrue(app.textFields["CaptureVoiceWritingTitle"].isHittable)
+        XCTAssertTrue(
+            app.descendants(matching: .any)["CaptureVoiceWritingBody"].isHittable,
+            "The spoken draft must remain directly editable at the largest accessibility text size."
+        )
+        XCTAssertTrue(
+            app.buttons["CaptureVoiceWritingContinueToolbar"].exists,
+            "The persistent microphone action must not disappear when text grows."
+        )
+
+        try app.performAccessibilityAudit(for: [
+            .hitRegion,
+            .sufficientElementDescription,
+            .textClipped,
+        ])
+    }
+
     func testCoachingHomeMakesThePhoneOnlyWorkflowConcrete() {
         relaunchCoachingPreview(role: "coach")
         let coaching = app.buttons["CaptureOpenCoachingHome"]
@@ -350,6 +397,50 @@ final class CaptureExperienceUITests: XCTestCase {
             "Open Session",
             "Preparation should remain available inside the Session without becoming required paperwork."
         )
+    }
+
+    func testCoachingHomeKeepsPrimaryActionsReachableAtLargestTextSize() throws {
+        app.terminate()
+        app.launchArguments = [
+            "--capture-ui-preview",
+            "--capture-coach-booking-preview",
+            "-UIPreferredContentSizeCategoryName",
+            "UICTContentSizeCategoryAccessibilityExtraExtraExtraLarge",
+        ]
+        app.launchEnvironment["CAPTURE_COACHING_PREVIEW_ROLE"] = "coach"
+        app.launch()
+
+        let coaching = app.buttons["CaptureOpenCoachingHome"]
+        XCTAssertTrue(coaching.waitForExistence(timeout: 12))
+        reveal(coaching)
+        coaching.tap()
+
+        let openSession = app.buttons["CaptureCoachingOpen_preview-booking"]
+        XCTAssertTrue(openSession.waitForExistence(timeout: 5))
+        XCTAssertTrue(
+            openSession.isHittable,
+            "The next coaching Session must remain reachable at the largest accessibility text size."
+        )
+
+        let shareInvite = app.descendants(matching: .any)["Share coaching invitation"]
+        reveal(shareInvite)
+        XCTAssertTrue(
+            shareInvite.isHittable,
+            "The standard share sheet must remain reachable without shrinking its label."
+        )
+
+        let relationship = app.descendants(matching: .any)["CaptureCoachingRelationship_preview-engagement"]
+        reveal(relationship)
+        XCTAssertTrue(
+            relationship.isHittable,
+            "The client space must remain reachable at the largest accessibility text size."
+        )
+
+        try app.performAccessibilityAudit(for: [
+            .hitRegion,
+            .sufficientElementDescription,
+            .textClipped,
+        ])
     }
 
     func testClientCoachingFormDraftSurvivesRelaunchOnPhone() throws {
