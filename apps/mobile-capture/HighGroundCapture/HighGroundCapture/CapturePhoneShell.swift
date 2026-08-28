@@ -7854,7 +7854,7 @@ private struct CaptureVoiceWritingEditor: View {
                     .accessibilityIdentifier("CaptureVoiceWritingTranscriptCorrectionsLoading")
                 } else if transcriptCorrections.desk?.segments.isEmpty == false {
                     Label(
-                        "Play any passage or tap its pencil to correct the words.",
+                        "Play any passage or tap Correct to fix the words.",
                         systemImage: "pencil.and.waveform"
                     )
                     .font(.caption.weight(.semibold))
@@ -7863,7 +7863,7 @@ private struct CaptureVoiceWritingEditor: View {
                     .accessibilityIdentifier("CaptureVoiceWritingTranscriptCorrectionsReady")
                 } else if let error = transcriptCorrections.errorMessage?.nonempty {
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("Your timed transcript remains available on this iPhone. Reconnect when you want versioned corrections to sync with Nest.")
+                        Text("Your timed transcript is still available on this iPhone. Reconnect when you want corrections to sync with your Nest.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
@@ -7926,10 +7926,10 @@ private struct CaptureVoiceWritingEditor: View {
                             Button {
                                 correctionSegment = canonical
                             } label: {
-                                Image(systemName: correctionStatusSymbol(for: canonical))
-                                    .font(.body.weight(.semibold))
+                                Label("Correct", systemImage: correctionStatusSymbol(for: canonical))
+                                    .font(.caption.weight(.semibold))
                                     .foregroundStyle(correctionStatusColor(for: canonical))
-                                    .frame(width: 44, height: 44)
+                                    .frame(minWidth: 72, minHeight: 44)
                             }
                             .buttonStyle(.plain)
                             .disabled(transcriptCorrections.isMutating)
@@ -7949,7 +7949,7 @@ private struct CaptureVoiceWritingEditor: View {
         } header: {
             Label("Time-linked transcript", systemImage: "waveform.and.magnifyingglass")
         } footer: {
-            Text("The original transcript and audio never change. Corrections are versioned overlays that remain linked to the exact source moment.")
+            Text("Your original audio and first transcript stay safe. Corrections change the words you read and remain linked to the exact moment.")
                 .accessibilityIdentifier("CaptureVoiceWritingTranscriptSourceBoundary")
         }
     }
@@ -8204,11 +8204,11 @@ private struct CaptureVoiceWritingEditor: View {
     }
 
     private func correctionStatusSymbol(for segment: CaptureTranscriptSegment) -> String {
-        guard let roomID = directCorrectionRoomID else { return "pencil.circle" }
+        guard let roomID = directCorrectionRoomID else { return "pencil" }
         if transcriptCorrections.pendingDecision(roomID: roomID, segmentID: segment.id) != nil {
-            return "clock.arrow.2.circlepath"
+            return "clock"
         }
-        return segment.acceptedCorrection == nil ? "pencil.circle" : "pencil.circle.fill"
+        return segment.acceptedCorrection == nil ? "pencil" : "checkmark"
     }
 
     private func correctionStatusColor(for segment: CaptureTranscriptSegment) -> Color {
@@ -8424,7 +8424,7 @@ private struct CaptureVoiceWritingTranscriptCorrectionSheet: View {
                 }
 
                 if recording == nil {
-                    Text("The matching source is not stored on this iPhone. You can still correct the words; the versioned edit remains linked to the canonical recording in Nest.")
+                    Text("This recording is not stored on this iPhone. You can still correct the words; Quipsly keeps them linked to the same moment in your recording.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -8443,7 +8443,9 @@ private struct CaptureVoiceWritingTranscriptCorrectionSheet: View {
 
                 if let accepted = segment.acceptedCorrection {
                     Label(
-                        "Editing correction revision \(max(1, accepted.revisions.count))",
+                        accepted.revisions.isEmpty
+                            ? "An earlier correction is saved"
+                            : "Earlier corrections are saved",
                         systemImage: "clock.arrow.circlepath"
                     )
                     .font(.caption.weight(.semibold))
@@ -8452,15 +8454,15 @@ private struct CaptureVoiceWritingTranscriptCorrectionSheet: View {
             } header: {
                 Text("Correct words")
             } footer: {
-                Text("This changes the readable transcript, not the recording or the writing you may already have reshaped. Every revision remains recoverable.")
+                Text("This corrects the transcript you read. It does not change the recording or writing you have already shaped, and earlier corrections remain available.")
             }
 
             if let pending = client.pendingDecision(roomID: roomID, segmentID: segment.id) {
                 Section {
                     Label(
                         pending.disposition == .held
-                            ? "Saved on this iPhone; reconnect and retry when ready."
-                            : "Saved on this iPhone and syncing to Nest.",
+                            ? "Saved here. Reconnect and try syncing again when ready."
+                            : "Saved here and syncing with your Nest.",
                         systemImage: pending.disposition == .held
                             ? "exclamationmark.icloud"
                             : "icloud.and.arrow.up"
