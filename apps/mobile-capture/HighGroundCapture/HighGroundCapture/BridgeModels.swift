@@ -2368,6 +2368,12 @@ struct MobileCaptureSearchTag: Codable, Identifiable, Hashable {
     let isActive: Bool
 }
 
+enum MobileCaptureSearchNativeDestination: String, Codable, Hashable {
+    case work = "WORK"
+    case writing = "WRITING"
+    case session = "SESSION"
+}
+
 struct MobileCaptureSearchItem: Codable, Identifiable, Hashable {
     let id: String
     let kind: MobileCaptureSearchKind
@@ -2376,6 +2382,7 @@ struct MobileCaptureSearchItem: Codable, Identifiable, Hashable {
     let project: MobileCaptureSearchProject?
     let tags: [MobileCaptureSearchTag]
     let nativeTargetId: String?
+    let nativeDestination: MobileCaptureSearchNativeDestination?
     let webPath: String
 }
 
@@ -6597,6 +6604,7 @@ final class CaptureWorkspaceSearchClient: ObservableObject {
                 project: home,
                 tags: [.init(id: "preview-writing", label: "Writing", isActive: true)],
                 nativeTargetId: "preview-work-note",
+                nativeDestination: .work,
                 webPath: "/create?project=preview-home&document=preview-work-note"
             ),
             MobileCaptureSearchItem(
@@ -6607,6 +6615,7 @@ final class CaptureWorkspaceSearchClient: ObservableObject {
                 project: research,
                 tags: [.init(id: "preview-school", label: "School", isActive: true)],
                 nativeTargetId: "preview-work-task",
+                nativeDestination: .work,
                 webPath: "/work?task=preview-work-task"
             ),
             MobileCaptureSearchItem(
@@ -6617,6 +6626,7 @@ final class CaptureWorkspaceSearchClient: ObservableObject {
                 project: shared,
                 tags: [],
                 nativeTargetId: "preview-coaching-ready",
+                nativeDestination: .session,
                 webPath: "/sessions/preview-coaching-ready"
             ),
         ]

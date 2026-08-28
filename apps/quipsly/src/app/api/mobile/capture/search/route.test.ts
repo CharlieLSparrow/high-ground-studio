@@ -17,6 +17,8 @@ jest.mock("@/lib/server/workspace-search", () => ({
 }));
 
 describe("mobile Capture search contract", () => {
+  const voiceWritingDraftId = "7a9b10f0-97bd-4bbb-a7dd-0b93fbc5918b";
+
   beforeEach(() => jest.clearAllMocks());
 
   it("does not disclose search or project data while signed out", async () => {
@@ -95,7 +97,7 @@ describe("mobile Capture search contract", () => {
         tagLinks: [],
       }],
       documents: [{
-        id: "document-1",
+        id: `voice-writing-${voiceWritingDraftId}`,
         title: "Dissertation chapter idea",
         sourceLabel: "document-kind:note;origin:ios-voice-writing",
         projectionStatus: "private",
@@ -147,11 +149,12 @@ describe("mobile Capture search contract", () => {
           nativeTargetId: "room-1",
         },
         {
-          id: "document-1",
+          id: `voice-writing-${voiceWritingDraftId}`,
           kind: "WRITING",
           project: { id: "home-1", isHomeNest: true },
-          nativeTargetId: "document-1",
-          webPath: "/create?project=home-person&document=document-1&block=block-1",
+          nativeTargetId: voiceWritingDraftId,
+          nativeDestination: "WRITING",
+          webPath: `/writing/${voiceWritingDraftId}`,
         },
       ],
       boundaries: {

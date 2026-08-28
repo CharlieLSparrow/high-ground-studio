@@ -180,6 +180,10 @@ final class VoiceWritingDraftStore: ObservableObject {
         drafts.first { $0.allSources.contains(where: { $0.localRecordingID == recordingID }) }
     }
 
+    func draft(id: UUID) -> VoiceWritingDraft? {
+        drafts.first { $0.id == id }
+    }
+
     func stageContinuation(callRoomID: String, draftID: UUID) throws {
         let owner = try requireActiveOwner()
         let roomID = callRoomID.trimmingCharacters(in: .whitespacesAndNewlines)

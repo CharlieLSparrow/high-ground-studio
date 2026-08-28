@@ -7,6 +7,7 @@ import {
   normalizeWorkspaceSearchQuery,
   searchWorkspace,
 } from "@/lib/server/workspace-search";
+import { mobileVoiceWritingDraftIdFromDocumentId } from "@/lib/server/mobile-voice-writing";
 import { sourceLabelForNestKind } from "@/lib/studio/project-registry";
 
 export const dynamic = "force-dynamic";
@@ -111,6 +112,7 @@ export async function GET(request: Request) {
       project: projectFor(item.project, projects),
       tags: assignedTags(item.tagLinks),
       nativeTargetId: item.id,
+      nativeDestination: "WORK" as const,
       webPath: `/work?task=${encodePathSegment(item.id)}`,
     })),
     ...search.goals.map((item) => ({
@@ -121,6 +123,7 @@ export async function GET(request: Request) {
       project: projectFor(item.project, projects),
       tags: assignedTags(item.tagLinks),
       nativeTargetId: item.id,
+      nativeDestination: "WORK" as const,
       webPath: `/work?goal=${encodePathSegment(item.id)}`,
     })),
     ...search.sessions.map((item) => ({
@@ -133,6 +136,7 @@ export async function GET(request: Request) {
       project: projectFor(item.project, projects),
       tags: assignedTags(item.tagLinks),
       nativeTargetId: item.id,
+      nativeDestination: "SESSION" as const,
       webPath: `/sessions/${encodePathSegment(item.id)}`,
     })),
     ...search.notes.map((item) => ({
@@ -143,11 +147,15 @@ export async function GET(request: Request) {
       project: null,
       tags: assignedTags(item.tagLinks),
       nativeTargetId: item.room.id,
+      nativeDestination: "SESSION" as const,
       webPath: `/sessions/${encodePathSegment(item.room.id)}?mode=notes#session-note-${encodePathSegment(item.id)}`,
     })),
     ...search.documents.map((item) => {
       const project = projectFor(item.project, projects);
       const isWriting = item.sourceLabel?.toLowerCase().includes("document-kind:note") === true;
+      const voiceWritingDraftId = item.sourceLabel?.toLowerCase().includes("origin:ios-voice-writing")
+        ? mobileVoiceWritingDraftIdFromDocumentId(item.id)
+        : null;
       const blockId = item.blocks[0]?.id;
       const params = new URLSearchParams({
         project: item.project.slug,
@@ -161,8 +169,15 @@ export async function GET(request: Request) {
         detail: cleanText(item.blocks[0]?.body),
         project,
         tags: assignedTags(item.tagLinks),
-        nativeTargetId: isWriting ? item.id : null,
-        webPath: `/create?${params.toString()}`,
+        nativeTargetId: voiceWritingDraftId ?? (isWriting ? item.id : null),
+        nativeDestination: voiceWritingDraftId
+          ? "WRITING" as const
+          : isWriting
+            ? "WORK" as const
+            : null,
+        webPath: voiceWritingDraftId
+          ? `/writing/${encodePathSegment(voiceWritingDraftId)}`
+          : `/create?${params.toString()}`,
       };
     }),
     ...search.sources.map((item) => ({

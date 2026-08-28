@@ -14,6 +14,7 @@ struct CapturePhoneShell: View {
     @State private var showsNewSession = false
     @State private var isRoutingSessionLink = false
     @State private var localOnlyRecordingSessionID: String?
+    @State private var requestedWritingDraftID: UUID?
     @Binding var visibleTab: CaptureRootTab
 
     var body: some View {
@@ -211,7 +212,11 @@ struct CapturePhoneShell: View {
             .tag(CaptureRootTab.record)
 
             NavigationStack {
-                CaptureWorkView(model: model, visibleTab: $visibleTab)
+                CaptureWorkView(
+                    model: model,
+                    visibleTab: $visibleTab,
+                    requestedWritingDraftID: $requestedWritingDraftID
+                )
             }
             .tabItem { Label(CaptureRootTab.work.title, systemImage: CaptureRootTab.work.systemImage) }
             .tag(CaptureRootTab.work)
@@ -220,6 +225,7 @@ struct CapturePhoneShell: View {
                 CaptureLibraryView(
                     model: model,
                     visibleTab: $visibleTab,
+                    requestedWritingDraftID: $requestedWritingDraftID,
                     onStartVoiceNote: startVoiceNote
                 )
             }
@@ -1219,11 +1225,15 @@ private struct CaptureGoalMergedEvidenceCard: View {
 }
 
 private struct CaptureWorkView: View {
+    @Environment(\.openURL) private var openURL
     @ObservedObject var model: CaptureExperienceModel
     @ObservedObject private var client: CaptureWorkClient
     @StateObject private var searchClient = CaptureWorkspaceSearchClient()
     @StateObject private var library = LocalRecordingLibrary.shared
+    @ObservedObject private var writingStore = VoiceWritingDraftStore.shared
+    @ObservedObject private var writingSync = VoiceWritingDraftSyncClient.shared
     @Binding var visibleTab: CaptureRootTab
+    @Binding var requestedWritingDraftID: UUID?
     @State private var selectedProjectID: String?
     @State private var searchText = ""
     @FocusState private var searchIsFocused: Bool
@@ -1241,10 +1251,15 @@ private struct CaptureWorkView: View {
     @State private var noteToEdit: MobileCaptureWorkNote?
     @State private var focusedWorkEntityID: String?
 
-    init(model: CaptureExperienceModel, visibleTab: Binding<CaptureRootTab>) {
+    init(
+        model: CaptureExperienceModel,
+        visibleTab: Binding<CaptureRootTab>,
+        requestedWritingDraftID: Binding<UUID?>
+    ) {
         self.model = model
         client = model.workClient
         _visibleTab = visibleTab
+        _requestedWritingDraftID = requestedWritingDraftID
     }
 
     private var workspace: MobileCaptureWorkWorkspace? {
@@ -1952,14 +1967,7 @@ private struct CaptureWorkView: View {
     }
 
     private func opensNatively(_ item: MobileCaptureSearchItem) -> Bool {
-        switch item.kind {
-        case .task, .goal, .writing:
-            item.project != nil && item.nativeTargetId != nil
-        case .session, .sessionNote:
-            item.nativeTargetId != nil
-        case .document, .source, .annotation, .tag:
-            false
-        }
+        item.nativeDestination != nil && item.nativeTargetId != nil
     }
 
     private func searchResultURL(_ item: MobileCaptureSearchItem) -> URL? {
@@ -1974,8 +1982,8 @@ private struct CaptureWorkView: View {
         _ item: MobileCaptureSearchItem,
         proxy: ScrollViewProxy
     ) {
-        switch item.kind {
-        case .task, .goal, .writing:
+        switch item.nativeDestination {
+        case .work:
             guard let projectID = item.project?.id,
                   let targetID = item.nativeTargetId else { return }
             Task {
@@ -1999,7 +2007,22 @@ private struct CaptureWorkView: View {
                     proxy.scrollTo("\(prefix)_\(targetID)", anchor: .center)
                 }
             }
-        case .session, .sessionNote:
+        case .writing:
+            guard let targetID = item.nativeTargetId,
+                  let draftID = UUID(uuidString: targetID) else { return }
+            Task {
+                if writingStore.draft(id: draftID) == nil,
+                   !model.usesPreviewData {
+                    await writingSync.refreshFromNest()
+                }
+                guard writingStore.draft(id: draftID) != nil else {
+                    if let url = searchResultURL(item) { openURL(url) }
+                    return
+                }
+                requestedWritingDraftID = draftID
+                visibleTab = .library
+            }
+        case .session:
             guard let roomID = item.nativeTargetId else { return }
             Task {
                 if model.usesPreviewData,
@@ -2015,7 +2038,7 @@ private struct CaptureWorkView: View {
                     visibleTab = tab
                 }
             }
-        case .document, .source, .annotation, .tag:
+        case .none:
             break
         }
     }
@@ -6934,7 +6957,7 @@ private struct CapturePersonalVoiceNoteHeader: View {
                     .font(.caption.weight(.semibold))
                 Spacer()
                 if hasRecording {
-                    Button("Audio & transcripts", action: onOpenLibrary)
+                    Button("All writing", action: onOpenLibrary)
                         .buttonStyle(.bordered)
                         .accessibilityIdentifier("CaptureVoiceNoteOpenLibrary")
                 }
@@ -12459,6 +12482,7 @@ private enum CaptureLibrarySection: String, CaseIterable, Identifiable {
 private struct CaptureLibraryView: View {
     @ObservedObject var model: CaptureExperienceModel
     @Binding var visibleTab: CaptureRootTab
+    @Binding var requestedWritingDraftID: UUID?
     let onStartVoiceNote: () -> Void
     @EnvironmentObject private var audioCapture: AudioCaptureController
     @StateObject private var library = LocalRecordingLibrary.shared
@@ -12562,11 +12586,34 @@ private struct CaptureLibraryView: View {
             guard !model.usesPreviewData else { return }
             await writingSync.refreshFromNest()
         }
+        .navigationDestination(item: $requestedWritingDraftID) { draftID in
+            writingDestination(draftID: draftID)
+        }
         .onDisappear { playback.stop() }
     }
 
     private var normalizedSearch: String {
         searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    @ViewBuilder
+    private func writingDestination(draftID: UUID) -> some View {
+        if let draft = writingStore.draft(id: draftID) {
+            CaptureVoiceWritingEditor(
+                recordingID: draft.localRecordingID,
+                initialDraft: draft,
+                timedTranscript: OnDeviceTranscriptManager.shared
+                    .storedTranscript(for: draft.localRecordingID)?.segments ?? [],
+                tagClient: model.todayClient,
+                onContinueByVoice: continueVoiceWriting
+            )
+        } else {
+            ContentUnavailableView(
+                "Writing unavailable",
+                systemImage: "doc.text.magnifyingglass",
+                description: Text("Refresh Library to load this private writing again.")
+            )
+        }
     }
 
     private var filteredDrafts: [VoiceWritingDraft] {
@@ -14906,6 +14953,15 @@ private struct RecorderHero: View {
                     .minimumScaleFactor(0.72)
                     .accessibilityLabel("Elapsed time \(formattedDuration)")
                     .accessibilityIdentifier("CaptureElapsedTime")
+                if session.isPersonalVoiceNote {
+                    Text(voiceWritingDetail)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.top, 3)
+                        .accessibilityIdentifier("CaptureVoiceWritingRecorderDetail")
+                }
             }
 
             InputLevelMeter(
@@ -14946,23 +15002,33 @@ private struct RecorderHero: View {
             }
 
             if isCaptureActive && captureState != .finalizing {
-                HStack(spacing: 12) {
+                if session.isPersonalVoiceNote {
                     Button(action: onPauseResume) {
                         Label(captureState == .paused ? "Resume" : "Pause", systemImage: captureState == .paused ? "play.fill" : "pause.fill")
-                            .frame(minWidth: 82)
+                            .frame(maxWidth: .infinity, minHeight: 44)
                     }
                     .buttonStyle(.bordered)
                     .controlSize(.large)
+                    .accessibilityIdentifier("CaptureVoiceWritingPauseResumeButton")
+                } else {
+                    HStack(spacing: 12) {
+                        Button(action: onPauseResume) {
+                            Label(captureState == .paused ? "Resume" : "Pause", systemImage: captureState == .paused ? "play.fill" : "pause.fill")
+                                .frame(minWidth: 82)
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.large)
 
-                    Button(action: onMark) {
-                        Label(userMarkOffsets.isEmpty ? "Mark" : "Mark \(userMarkOffsets.count)", systemImage: "bookmark.fill")
-                            .frame(minWidth: 82)
+                        Button(action: onMark) {
+                            Label(userMarkOffsets.isEmpty ? "Mark" : "Mark \(userMarkOffsets.count)", systemImage: "bookmark.fill")
+                                .frame(minWidth: 82)
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.large)
+                        .disabled(captureState != .recording)
+                        .accessibilityHint("Adds a source-timeline marker without pausing or changing the audio file.")
+                        .accessibilityIdentifier("CaptureMarkMomentButton")
                     }
-                    .buttonStyle(.bordered)
-                    .controlSize(.large)
-                    .disabled(captureState != .recording)
-                    .accessibilityHint("Adds a source-timeline marker without pausing or changing the audio file.")
-                    .accessibilityIdentifier("CaptureMarkMomentButton")
                 }
             }
 
@@ -15046,6 +15112,17 @@ private struct RecorderHero: View {
     }
 
     private var stateTitle: String {
+        if session.isPersonalVoiceNote {
+            switch captureState {
+            case .idle: return "Ready to speak"
+            case .preparing: return "Getting the microphone ready…"
+            case .recording: return "Listening…"
+            case .paused: return "Listening paused"
+            case .finalizing: return "Saving your words…"
+            case .saved: return "Creating your writing…"
+            case .failed: return "Recording needs attention"
+            }
+        }
         switch captureState {
         case .idle:
             if waitingForHost { return "Ready · waiting for host" }
@@ -15057,6 +15134,25 @@ private struct RecorderHero: View {
         case .finalizing: return "Saving local source…"
         case .saved: return "Saved on this iPhone"
         case .failed: return "Recorder needs attention"
+        }
+    }
+
+    private var voiceWritingDetail: String {
+        switch captureState {
+        case .idle:
+            return "Speak naturally. When you stop, Quipsly creates editable writing and keeps the original audio connected."
+        case .preparing:
+            return "Quipsly is checking this iPhone's microphone before listening."
+        case .recording:
+            return "Keep going. Your original audio is safe on this iPhone, and editable writing comes next."
+        case .paused:
+            return "Take your time. Resume when you are ready; everything already recorded stays safe."
+        case .finalizing:
+            return "Quipsly is closing the original recording before creating its timed transcript."
+        case .saved:
+            return "The audio is safe. Quipsly is turning it into editable, time-linked writing."
+        case .failed:
+            return "Nothing will be discarded. Open Library to review any audio that was saved."
         }
     }
 
@@ -15140,7 +15236,7 @@ struct InputLevelMeter: View {
                 tint: safePeakDB >= -1 ? .red : safePeakDB >= -3 ? .orange : .purple
             )
 
-            Text("Aim for Healthy speech range and avoid Clipping risk. Quipsly checks the complete saved recording after the call.")
+            Text("Aim for Healthy speech range and avoid Clipping risk. Quipsly checks the complete saved recording after you stop.")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -15856,6 +15952,15 @@ private struct CapturePersistentRecorderDock: View {
     }
 
     private var statusTitle: String {
+        if session.isPersonalVoiceNote {
+            if captureIsActive {
+                return audioState == .paused ? "Listening paused" : "Listening…"
+            }
+            if isBusy || audioState == .preparing { return "Getting ready…" }
+            if audioState == .saved { return "Creating your writing…" }
+            if audioState == .failed { return "Recording needs attention" }
+            return "Ready to speak"
+        }
         if captureIsActive {
             return mode == .audio ? "Recording audio" : "Recording \(mode.title.lowercased())"
         }
@@ -15869,6 +15974,18 @@ private struct CapturePersistentRecorderDock: View {
     }
 
     private var statusDetail: String {
+        if session.isPersonalVoiceNote {
+            if captureIsActive {
+                return "\(duration.captureDurationLabel) · stop to create editable writing"
+            }
+            if audioState == .saved {
+                return "Your original audio is safe; the timed transcript comes next"
+            }
+            if audioState == .failed {
+                return "Open Library to review any audio that was saved"
+            }
+            return "Your audio and timed transcript stay connected"
+        }
         if captureIsActive {
             return "\(duration.captureDurationLabel) · saved locally when stopped"
         }

@@ -206,6 +206,15 @@ final class CaptureExperienceUITests: XCTestCase {
             app.buttons["CaptureStartButton"].isEnabled,
             "A private thought must remain recordable without creating an online Session first."
         )
+        XCTAssertEqual(
+            app.staticTexts["CaptureRecorderStateLabel"].label,
+            "Ready to speak",
+            "Private dictation should use familiar speech-to-writing language instead of meeting consent language."
+        )
+        XCTAssertTrue(
+            app.staticTexts["CaptureVoiceWritingRecorderDetail"].label.contains("editable writing"),
+            "Before recording, Quipsly should make the automatic speech-to-writing outcome obvious."
+        )
         XCTAssertTrue(
             app.staticTexts["CaptureSessionStatusMessage"].label.contains("offline"),
             "The local-first path should explain that recording and writing remain available without Nest."
