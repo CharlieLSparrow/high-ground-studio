@@ -239,6 +239,10 @@ final class CaptureExperienceUITests: XCTestCase {
                 .waitForExistence(timeout: 8),
             "Voice Note should open a private writing recorder directly."
         )
+        XCTAssertTrue(
+            app.navigationBars["Speak to write"].exists,
+            "The focused writing path should use the same plain-language name as its Home action."
+        )
         XCTAssertTrue(app.otherElements["CaptureRecorderHero"].exists)
         XCTAssertTrue(app.tabBars.buttons["Record"].isSelected)
         XCTAssertFalse(

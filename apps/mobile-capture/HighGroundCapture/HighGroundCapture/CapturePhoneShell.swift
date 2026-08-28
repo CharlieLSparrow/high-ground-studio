@@ -10242,7 +10242,7 @@ private struct CaptureRecorderView: View {
             }
         }
         .background(CaptureCanvas())
-        .navigationTitle(model.selectedSession?.isPersonalVoiceNote == true ? "Voice note" : "Record")
+        .navigationTitle(model.selectedSession?.isPersonalVoiceNote == true ? "Speak to write" : "Record")
         .navigationBarTitleDisplayMode(.inline)
         .sheet(isPresented: $showsSessionPicker) {
             SessionPickerSheet(model: model, isPresented: $showsSessionPicker)
