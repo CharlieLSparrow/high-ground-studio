@@ -1736,13 +1736,13 @@ final class AudioCaptureController: NSObject, ObservableObject {
             if finalized.isPersonalVoiceNote {
                 // A voice note's ordinary outcome is searchable writing, not a
                 // recording stranded in Library. SpeechAnalyzer reads only the
-                // finalized immutable local source. If Apple's language model
-                // is not installed, the manager pauses at a visible download
-                // action instead of downloading assets without the person.
-                OnDeviceTranscriptManager.shared.begin(
+                // finalized immutable local source. Tapping Speak to write is
+                // the person's request for that outcome, so install Apple's
+                // system-managed language asset when needed and show progress
+                // instead of adding another post-record setup step.
+                OnDeviceTranscriptManager.shared.beginVoiceWriting(
                     recording: finalized,
-                    fileURL: fileURL,
-                    allowModelDownload: false
+                    fileURL: fileURL
                 )
             }
             localRecordingRecoveryNote = recoverySummary()

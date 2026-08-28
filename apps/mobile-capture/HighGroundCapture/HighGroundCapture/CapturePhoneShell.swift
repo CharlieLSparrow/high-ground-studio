@@ -6842,10 +6842,9 @@ private struct CapturePersonalVoiceNoteTranscriptCard: View {
                recording.status.isPlaybackEligible,
                !previewOnly {
                 openWritingWhenReady = true
-                transcriptManager.begin(
+                transcriptManager.beginVoiceWriting(
                     recording: recording,
-                    fileURL: fileURL,
-                    allowModelDownload: true
+                    fileURL: fileURL
                 )
             }
         }
@@ -6876,12 +6875,12 @@ private struct CapturePersonalVoiceNoteTranscriptCard: View {
         switch phase {
         case .modelDownloadRequired:
             guard let fileURL else { return }
-            transcriptManager.begin(recording: recording, fileURL: fileURL, allowModelDownload: true)
+            transcriptManager.beginVoiceWriting(recording: recording, fileURL: fileURL)
         case .savedLocally, .waitingForVerifiedUpload:
             transcriptManager.submitSavedTranscript(recording: recording)
         default:
             guard let fileURL else { return }
-            transcriptManager.begin(recording: recording, fileURL: fileURL, allowModelDownload: false)
+            transcriptManager.beginVoiceWriting(recording: recording, fileURL: fileURL)
         }
     }
 

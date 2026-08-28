@@ -638,6 +638,23 @@ final class OnDeviceTranscriptManager: ObservableObject {
         Task { await transcribe(recording: recording, fileURL: fileURL, allowModelDownload: allowModelDownload, locale: locale) }
     }
 
+    /// “Speak to write” is one user intent, not a recording followed by a
+    /// speech-tools setup workflow. Apple keeps SpeechTranscriber assets in
+    /// system storage and updates them independently, so voice writing always
+    /// installs the required locale asset when it is not already available.
+    func beginVoiceWriting(
+        recording: LocalRecording,
+        fileURL: URL,
+        locale: Locale = Locale(identifier: "en-US")
+    ) {
+        begin(
+            recording: recording,
+            fileURL: fileURL,
+            allowModelDownload: true,
+            locale: locale
+        )
+    }
+
     func submitSavedTranscript(recording: LocalRecording) {
         guard !phase(for: recording.id).isBusy else { return }
         Task { await submit(recording: recording) }
