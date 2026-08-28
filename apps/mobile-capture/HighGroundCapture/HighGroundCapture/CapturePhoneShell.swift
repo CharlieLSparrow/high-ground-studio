@@ -786,7 +786,7 @@ private struct CaptureFinishQueueCard: View {
                     }
                 }
                 .disabled(previewOnly || client.isLoading)
-                .accessibilityLabel("Refresh finish queue")
+                .accessibilityLabel("Refresh recording activity")
             }
 
             if let digest = client.response?.digest {

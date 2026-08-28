@@ -1165,8 +1165,9 @@ function checkReviewDigestContractSources() {
   );
   expect(
     capturePhoneShellText.includes("CaptureFinishQueueCard")
-      && capturePhoneShellText.includes("Recordings & transcripts")
-      && capturePhoneShellText.includes("Keep every session moving from recording to transcript and edit.")
+      && capturePhoneShellText.includes("Recording activity")
+      && capturePhoneShellText.includes("Recent recordings are safe or processing normally.")
+      && capturePhoneShellText.includes("Refresh recording activity")
       && capturePhoneShellText.includes("CaptureFinishQueueMetrics")
       && capturePhoneShellText.includes("CaptureFinishQueueDetails")
       && capturePhoneShellText.includes("DisclosureGroup(\"Recording details\"")
@@ -1175,10 +1176,11 @@ function checkReviewDigestContractSources() {
       && capturePhoneShellText.includes("exit.experience.title")
       && capturePhoneShellText.includes("exit.experience.detail")
       && capturePhoneShellText.includes("CaptureFinishAction_\\(action.callRoomId)_\\(action.kind)")
-      && capturePhoneShellText.includes("model.sessions.first(where: { $0.callRoomId == roomID })")
+      && capturePhoneShellText.includes("private func openSession(_ roomID: String)")
+      && capturePhoneShellText.includes("$0.id == roomID || $0.callRoomId == roomID")
       && capturePhoneShellText.includes("visibleTab = .record"),
     "nativeFinishQueueVisible",
-    "Today exposes a plain-language recordings and transcripts status card that opens the exact Session while keeping technical recording details available on demand.",
+    "Today exposes a calm recording-activity status card that opens the exact Session while keeping technical recording details available on demand.",
   );
   expect(
     digestRouteText.includes("missingPlannedSources")
