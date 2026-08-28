@@ -2350,10 +2350,16 @@ final class CaptureExperienceUITests: XCTestCase {
             card.waitForExistence(timeout: 5),
             "Library should keep recording and transcript readiness reachable without cluttering Home."
         )
-        XCTAssertTrue(app.descendants(matching: .any)["CaptureFinishQueueMetrics"].exists)
         let finishDetails = app.descendants(matching: .any)["CaptureFinishQueueDetails"].firstMatch
         XCTAssertTrue(finishDetails.exists)
         finishDetails.tap()
+        let recordingCounts = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "still saving · 1 backed up")
+        ).firstMatch
+        XCTAssertTrue(
+            recordingCounts.waitForExistence(timeout: 5),
+            "Operational counts should remain available on demand without leading the recording Library."
+        )
         let safetyExplanation = app.staticTexts[
             "Review only: no recording, meeting, payment, or publish side effects."
         ]

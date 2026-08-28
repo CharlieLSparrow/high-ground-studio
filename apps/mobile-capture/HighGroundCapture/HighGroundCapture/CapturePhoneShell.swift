@@ -754,18 +754,26 @@ private struct CaptureFinishQueueCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .top, spacing: 12) {
-                Image(systemName: "checklist.checked")
+                Image(systemName: needsDeviceAttention ? "externaldrive.badge.exclamationmark" : "checkmark.icloud")
                     .font(.system(size: 20, weight: .bold))
-                    .foregroundStyle(.purple)
+                    .foregroundStyle(needsDeviceAttention ? Color.orange : Color.green)
                     .frame(minWidth: 36, minHeight: 36)
-                    .background(Color.purple.opacity(0.12), in: RoundedRectangle(cornerRadius: 11))
+                    .background(
+                        (needsDeviceAttention ? Color.orange : Color.green).opacity(0.12),
+                        in: RoundedRectangle(cornerRadius: 11)
+                    )
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("Recordings & transcripts")
+                    Text(needsDeviceAttention ? attentionTitle : "Recording activity")
                         .font(.headline)
-                    Text("Keep every session moving from recording to transcript and edit.")
+                    Text(
+                        needsDeviceAttention
+                            ? "Quipsly keeps trying automatically. Keep the named recording device open until it finishes."
+                            : "Recent recordings are safe or processing normally."
+                    )
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
                 Spacer(minLength: 0)
                 Button {
@@ -782,34 +790,9 @@ private struct CaptureFinishQueueCard: View {
             }
 
             if let digest = client.response?.digest {
-                HStack(spacing: 8) {
-                    finishMetric(
-                        value: digest.recoveryOpen ?? 0,
-                        label: "Needs care",
-                        tint: .orange
-                    )
-                    finishMetric(
-                        value: digest.safeToLeave ?? 0,
-                        label: "Backed up",
-                        tint: .green
-                    )
-                    finishMetric(
-                        value: digest.recordingPromotedToMedia ?? 0,
-                        label: "Ready to edit",
-                        tint: .blue
-                    )
-                    finishMetric(
-                        value: digest.reviewReady ?? 0,
-                        label: "Transcript ready",
-                        tint: .green
-                    )
-                }
-                .accessibilityElement(children: .contain)
-                .accessibilityIdentifier("CaptureFinishQueueMetrics")
-
-                if let actions = digest.finishActions, !actions.isEmpty {
+                if !sourceRecoveryActions.isEmpty {
                     VStack(alignment: .leading, spacing: 9) {
-                        ForEach(actions.prefix(4)) { action in
+                        ForEach(sourceRecoveryActions.prefix(2)) { action in
                             Button {
                                 onOpenSession(action.callRoomId)
                             } label: {
@@ -855,10 +838,10 @@ private struct CaptureFinishQueueCard: View {
                             .accessibilityHint("Opens this session.")
                         }
                     }
-                } else {
+                } else if needsDeviceAttention {
                     Label(
-                        "Your recent sessions are moving along. If anything needs attention, it will appear here.",
-                        systemImage: "checkmark.circle"
+                        "Open the Session that is still saving to see the exact device and progress.",
+                        systemImage: "arrow.triangle.2.circlepath"
                     )
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
@@ -866,6 +849,18 @@ private struct CaptureFinishQueueCard: View {
 
                 if let boundary = client.response?.boundaries {
                     DisclosureGroup("Recording details", isExpanded: $showsDetails) {
+                        Text(
+                            "\(digest.recoveryOpen ?? 0) still saving · "
+                                + "\(digest.safeToLeave ?? 0) backed up · "
+                                + "\(digest.recordingPromotedToMedia ?? 0) editable · "
+                                + "\(digest.reviewReady ?? 0) transcript ready"
+                        )
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.top, 8)
+                        .accessibilityIdentifier("CaptureFinishQueueMetrics")
+
                         Label(boundary.safetyLine, systemImage: "shield.lefthalf.filled")
                             .font(.caption2.weight(.semibold))
                             .foregroundStyle(.secondary)
@@ -898,18 +893,19 @@ private struct CaptureFinishQueueCard: View {
         .accessibilityIdentifier("CaptureFinishQueueCard")
     }
 
-    private func finishMetric(value: Int, label: String, tint: Color) -> some View {
-        VStack(spacing: 2) {
-            Text("\(value)")
-                .font(.headline.monospacedDigit())
-            Text(label)
-                .font(.system(size: 9, weight: .bold))
-                .lineLimit(1)
-                .minimumScaleFactor(0.72)
+    private var sourceRecoveryActions: [MobileCaptureReviewDigestFinishAction] {
+        (client.response?.digest?.finishActions ?? []).filter {
+            $0.kind == "protect-recording-sources" || $0.kind == "confirm-endpoint-drain"
         }
-        .foregroundStyle(tint)
-        .frame(maxWidth: .infinity, minHeight: 50)
-        .background(tint.opacity(0.08), in: RoundedRectangle(cornerRadius: 11))
+    }
+
+    private var needsDeviceAttention: Bool {
+        (client.response?.digest?.recoveryOpen ?? 0) > 0 || !sourceRecoveryActions.isEmpty
+    }
+
+    private var attentionTitle: String {
+        let count = max(client.response?.digest?.recoveryOpen ?? 0, sourceRecoveryActions.count)
+        return count == 1 ? "One recording is still saving" : "\(count) recordings are still saving"
     }
 
     private func finishActionIcon(_ kind: String) -> String {
