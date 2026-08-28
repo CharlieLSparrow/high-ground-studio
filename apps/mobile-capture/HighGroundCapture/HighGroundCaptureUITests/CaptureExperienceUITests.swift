@@ -1637,6 +1637,16 @@ final class CaptureExperienceUITests: XCTestCase {
         let picker = app.descendants(matching: .any)["CaptureWorkProjectPicker"]
         reveal(picker)
         picker.tap()
+        XCTAssertTrue(
+            app.descendants(matching: .any)["CaptureNestSwitcher"].waitForExistence(timeout: 3),
+            "Switching Nests should open one searchable, grouped destination surface."
+        )
+        for section in ["Private", "Owned by you", "Shared with you"] {
+            XCTAssertTrue(
+                app.staticTexts[section].exists,
+                "The Nest switcher should expose the \(section.lowercased()) scope before someone changes destinations."
+            )
+        }
         XCTAssertTrue(app.buttons["Charlie Home Nest"].waitForExistence(timeout: 3))
         app.buttons["Charlie Home Nest"].tap()
         XCTAssertTrue(

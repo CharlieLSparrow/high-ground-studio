@@ -1224,6 +1224,133 @@ private struct CaptureGoalMergedEvidenceCard: View {
     }
 }
 
+private struct CaptureNestSwitcher: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var searchText = ""
+
+    let projects: [MobileCaptureWorkProject]
+    let selectedProjectID: String?
+    let onSelect: (MobileCaptureWorkProject) -> Void
+
+    private var normalizedQuery: String {
+        searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var filteredProjects: [MobileCaptureWorkProject] {
+        guard !normalizedQuery.isEmpty else { return projects }
+        return projects.filter {
+            $0.name.localizedCaseInsensitiveContains(normalizedQuery)
+                || contextLabel($0).localizedCaseInsensitiveContains(normalizedQuery)
+        }
+    }
+
+    private var privateProjects: [MobileCaptureWorkProject] {
+        filteredProjects.filter(\.isHomeNest)
+    }
+
+    private var ownedProjects: [MobileCaptureWorkProject] {
+        filteredProjects.filter { !$0.isHomeNest && $0.role == "OWNER" }
+    }
+
+    private var sharedProjects: [MobileCaptureWorkProject] {
+        filteredProjects.filter { !$0.isHomeNest && $0.role != "OWNER" }
+    }
+
+    var body: some View {
+        NavigationStack {
+            Group {
+                if filteredProjects.isEmpty {
+                    ContentUnavailableView.search(text: normalizedQuery)
+                } else {
+                    List {
+                        nestSection("Private", projects: privateProjects)
+                        nestSection("Owned by you", projects: ownedProjects)
+                        nestSection("Shared with you", projects: sharedProjects)
+                    }
+                    .listStyle(.insetGrouped)
+                }
+            }
+            .navigationTitle("Choose a Nest")
+            .navigationBarTitleDisplayMode(.inline)
+            .searchable(
+                text: $searchText,
+                placement: .navigationBarDrawer(displayMode: .always),
+                prompt: "Search your Nests"
+            )
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
+        .accessibilityIdentifier("CaptureNestSwitcher")
+    }
+
+    @ViewBuilder
+    private func nestSection(
+        _ title: String,
+        projects: [MobileCaptureWorkProject]
+    ) -> some View {
+        if !projects.isEmpty {
+            Section(title) {
+                ForEach(projects) { project in
+                    Button {
+                        onSelect(project)
+                        dismiss()
+                    } label: {
+                        HStack(spacing: 12) {
+                            Image(systemName: project.isHomeNest ? "house.fill" : "q.circle.fill")
+                                .font(.title3.weight(.semibold))
+                                .foregroundStyle(CapturePalette.accent)
+                                .frame(width: 38, height: 38)
+                                .background(CapturePalette.accent.opacity(0.1), in: Circle())
+                                .accessibilityHidden(true)
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(project.name)
+                                    .font(.body.weight(.semibold))
+                                    .foregroundStyle(.primary)
+                                    .multilineTextAlignment(.leading)
+                                Text(contextLabel(project))
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                            Spacer(minLength: 8)
+                            if project.id == selectedProjectID {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .foregroundStyle(CapturePalette.accent)
+                                    .accessibilityHidden(true)
+                            }
+                        }
+                        .frame(maxWidth: .infinity, minHeight: 52, alignment: .leading)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(project.name)
+                    .accessibilityValue(
+                        project.id == selectedProjectID
+                            ? "\(contextLabel(project)), selected"
+                            : contextLabel(project)
+                    )
+                    .accessibilityHint("Switches to this Nest.")
+                    .accessibilityIdentifier("CaptureNestSwitcherChoice_\(project.id)")
+                }
+            }
+        }
+    }
+
+    private func contextLabel(_ project: MobileCaptureWorkProject) -> String {
+        if project.isHomeNest { return "Only you can see this Nest" }
+        switch project.role {
+        case "OWNER": return "You own this Nest"
+        case "EDITOR": return "Shared with you · you can edit"
+        case "VIEWER": return "Shared with you · view only"
+        default: return "Shared with you"
+        }
+    }
+}
+
 private struct CaptureWorkView: View {
     @Environment(\.openURL) private var openURL
     @ObservedObject var model: CaptureExperienceModel
@@ -1237,6 +1364,7 @@ private struct CaptureWorkView: View {
     @State private var selectedProjectID: String?
     @State private var searchText = ""
     @FocusState private var searchIsFocused: Bool
+    @State private var showsNestSwitcher = false
     @State private var selectedTagID: String?
     @State private var showsCompletedTasks = false
     @State private var showsTagVocabulary = false
@@ -1465,6 +1593,13 @@ private struct CaptureWorkView: View {
             NewCaptureProjectSheet(client: client)
                 .presentationDetents([.large])
         }
+        .sheet(isPresented: $showsNestSwitcher) {
+            CaptureNestSwitcher(
+                projects: client.projects,
+                selectedProjectID: selectedProject?.id,
+                onSelect: selectProject
+            )
+        }
         .sheet(isPresented: $showsTagVocabulary) {
             if let workspace {
                 CaptureTagVocabularySheet(
@@ -1684,28 +1819,15 @@ private struct CaptureWorkView: View {
     private var header: some View {
         VStack(alignment: .leading, spacing: 10) {
             if !client.projects.isEmpty {
-                Menu {
-                    if !privateProjects.isEmpty {
-                        Section("Private") {
-                            ForEach(privateProjects) { project in
-                                projectPickerButton(project)
-                            }
-                        }
-                    }
-                    if !ownedProjects.isEmpty {
-                        Section("Owned by me") {
-                            ForEach(ownedProjects) { project in
-                                projectPickerButton(project)
-                            }
-                        }
-                    }
-                    if !sharedProjects.isEmpty {
-                        Section("Shared with me") {
-                            ForEach(sharedProjects) { project in
-                                projectPickerButton(project)
-                            }
-                        }
-                    }
+                Text("Current Nest")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(.secondary)
+                    .textCase(.uppercase)
+                    .tracking(0.6)
+                    .accessibilityHidden(true)
+
+                Button {
+                    showsNestSwitcher = true
                 } label: {
                     HStack(spacing: 11) {
                         Image(systemName: selectedProject?.isHomeNest == true ? "house.fill" : "q.circle.fill")
@@ -1723,9 +1845,13 @@ private struct CaptureWorkView: View {
                                 .foregroundStyle(.secondary)
                         }
                         Spacer()
-                        Image(systemName: "chevron.up.chevron.down")
-                            .font(.caption.weight(.bold))
-                            .foregroundStyle(.secondary)
+                        VStack(alignment: .trailing, spacing: 3) {
+                            Text("Switch")
+                                .font(.caption.weight(.semibold))
+                            Image(systemName: "chevron.right")
+                                .font(.caption.weight(.bold))
+                        }
+                        .foregroundStyle(CapturePalette.accent)
                     }
                     .frame(maxWidth: .infinity)
                     .padding(.horizontal, 12)
@@ -1788,18 +1914,6 @@ private struct CaptureWorkView: View {
         .padding(.top, 10)
     }
 
-    private var privateProjects: [MobileCaptureWorkProject] {
-        client.projects.filter(\.isHomeNest)
-    }
-
-    private var ownedProjects: [MobileCaptureWorkProject] {
-        client.projects.filter { !$0.isHomeNest && $0.role == "OWNER" }
-    }
-
-    private var sharedProjects: [MobileCaptureWorkProject] {
-        client.projects.filter { !$0.isHomeNest && $0.role != "OWNER" }
-    }
-
     private var selectedProjectContextLabel: String {
         guard let selectedProject else { return "Private and shared spaces" }
         if selectedProject.isHomeNest { return "Private to you" }
@@ -1807,29 +1921,18 @@ private struct CaptureWorkView: View {
         return "Shared with you"
     }
 
-    private func projectPickerButton(_ project: MobileCaptureWorkProject) -> some View {
-        Button {
-            selectedTagID = nil
-            searchText = ""
-            client.tagVocabularyMessage = nil
-            if model.usesPreviewData {
-                selectedProjectID = project.id
-                client.loadPreview(projectID: project.id)
-            } else {
-                Task {
-                    await client.load(projectID: project.id)
-                    selectedProjectID = client.selectedProjectID
-                }
+    private func selectProject(_ project: MobileCaptureWorkProject) {
+        selectedTagID = nil
+        searchText = ""
+        client.tagVocabularyMessage = nil
+        if model.usesPreviewData {
+            selectedProjectID = project.id
+            client.loadPreview(projectID: project.id)
+        } else {
+            Task {
+                await client.load(projectID: project.id)
+                selectedProjectID = client.selectedProjectID
             }
-        } label: {
-            Label(
-                project.name,
-                systemImage: project.id == selectedProject?.id
-                    ? "checkmark.circle.fill"
-                    : project.isHomeNest
-                        ? "house"
-                        : "square.stack.3d.up"
-            )
         }
     }
 
@@ -7021,14 +7124,8 @@ private struct CapturePersonalVoiceNoteTranscriptCard: View {
                     .lineLimit(4)
                     .frame(maxWidth: .infinity, alignment: .leading)
 
-                NavigationLink(isActive: $opensWriting) {
-                    CaptureVoiceWritingEditor(
-                        recordingID: recording.id,
-                        initialDraft: draft,
-                        timedTranscript: transcriptManager.storedTranscript(for: recording.id)?.segments ?? [],
-                        tagClient: tagClient,
-                        onContinueByVoice: onContinueByVoice
-                    )
+                Button {
+                    opensWriting = true
                 } label: {
                     Label("Open writing", systemImage: "square.and.pencil")
                         .font(.headline)
@@ -7099,6 +7196,17 @@ private struct CapturePersonalVoiceNoteTranscriptCard: View {
         .onChange(of: transcriptManager.phases[recording.id]) { _, _ in
             seedWritingIfAvailable()
             openFreshWritingIfReady()
+        }
+        .navigationDestination(isPresented: $opensWriting) {
+            if let draft {
+                CaptureVoiceWritingEditor(
+                    recordingID: recording.id,
+                    initialDraft: draft,
+                    timedTranscript: transcriptManager.storedTranscript(for: recording.id)?.segments ?? [],
+                    tagClient: tagClient,
+                    onContinueByVoice: onContinueByVoice
+                )
+            }
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("CapturePersonalVoiceTranscriptCard_\(recording.id)")
