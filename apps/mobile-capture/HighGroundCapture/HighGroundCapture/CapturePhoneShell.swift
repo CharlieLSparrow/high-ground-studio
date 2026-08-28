@@ -366,6 +366,25 @@ private struct CaptureTodayView: View {
             VStack(alignment: .leading, spacing: 18) {
                 todayHeader
 
+                if let next = model.nextSession {
+                    NextCaptureCard(
+                        session: next,
+                        onOpen: {
+                            model.select(next)
+                            visibleTab = .record
+                        },
+                        onAddToCalendar: CaptureCalendarEventDraft(session: next).map { draft in
+                            {
+                                calendarEditorStatus = nil
+                                calendarEventDraft = draft
+                            }
+                        }
+                    )
+                    .disabled(model.isSessionContextLocked && model.selectedSession?.id != next.id)
+                } else if model.isRefreshing {
+                    CaptureLoadingCard(label: "Loading your sessions…")
+                }
+
                 CaptureTodayPrimaryActions(
                     isStartingVoiceNote: model.isCreatingSession,
                     canStart: !model.isSessionContextLocked,
@@ -420,34 +439,6 @@ private struct CaptureTodayView: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityIdentifier("CaptureOpenCoachingHome")
-
-                if let next = model.nextSession {
-                    NextCaptureCard(
-                        session: next,
-                        onOpen: {
-                            model.select(next)
-                            visibleTab = .record
-                        },
-                        onAddToCalendar: CaptureCalendarEventDraft(session: next).map { draft in
-                            {
-                                calendarEditorStatus = nil
-                                calendarEventDraft = draft
-                            }
-                        }
-                    )
-                    .disabled(model.isSessionContextLocked && model.selectedSession?.id != next.id)
-                } else if model.isRefreshing {
-                    CaptureLoadingCard(label: "Loading your sessions…")
-                } else {
-                    CaptureEmptyCard(
-                        systemImage: "calendar.badge.plus",
-                        title: "Nothing scheduled yet",
-                        detail: "Create a session now. Recording will still wait for explicit consent.",
-                        actionTitle: "New session",
-                        action: { showsNewSession = true }
-                    )
-                    .disabled(model.isSessionContextLocked)
-                }
 
                 if let calendarEditorStatus {
                     Label(calendarEditorStatus, systemImage: "calendar.badge.checkmark")
@@ -602,80 +593,97 @@ private struct CaptureTodayView: View {
 }
 
 private struct CaptureTodayPrimaryActions: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
     let isStartingVoiceNote: Bool
     let canStart: Bool
     let onStartVoiceNote: () -> Void
     let onNewSession: () -> Void
 
     var body: some View {
-        VStack(spacing: 12) {
-            Button(action: onStartVoiceNote) {
-                HStack(spacing: 15) {
+        Group {
+            if dynamicTypeSize.isAccessibilitySize {
+                VStack(spacing: 12) {
+                    speakToWriteButton
+                    newSessionButton
+                }
+            } else {
+                HStack(alignment: .top, spacing: 12) {
+                    speakToWriteButton
+                    newSessionButton
+                }
+            }
+        }
+    }
+
+    private var speakToWriteButton: some View {
+        Button(action: onStartVoiceNote) {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
                     Image(systemName: "waveform.circle.fill")
-                        .font(.title.weight(.semibold))
-                        .frame(width: 50, height: 50)
-                        .background(.white.opacity(0.16), in: Circle())
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Speak to write")
-                            .font(.title3.weight(.bold))
-                        Text("Record a thought and turn it into editable writing")
-                            .font(.subheadline)
-                            .opacity(0.92)
-                    }
+                        .font(.title2.weight(.semibold))
                     Spacer(minLength: 8)
                     if isStartingVoiceNote {
-                        ProgressView()
-                            .tint(.white)
+                        ProgressView().tint(.white)
                     } else {
                         Image(systemName: "arrow.right.circle.fill")
-                            .font(.title2)
+                            .font(.title3)
                     }
                 }
-                .frame(maxWidth: .infinity, minHeight: 88, alignment: .leading)
-                .padding(.horizontal, 18)
-                .padding(.vertical, 12)
-                .foregroundStyle(.white)
-                .background(CapturePalette.accent.gradient, in: RoundedRectangle(cornerRadius: 22))
+                Text("Speak to write")
+                    .font(.headline)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text("Record a thought. Get editable text.")
+                    .font(.caption)
+                    .opacity(0.92)
+                    .fixedSize(horizontal: false, vertical: true)
             }
-            .buttonStyle(.plain)
-            .disabled(!canStart || isStartingVoiceNote)
-            .accessibilityLabel("Speak to write")
-            .accessibilityHint("Starts a private recording and turns your words into editable writing.")
-            .accessibilityIdentifier("CaptureStartVoiceNote")
+            .frame(maxWidth: .infinity, minHeight: 116, alignment: .topLeading)
+            .padding(16)
+            .foregroundStyle(.white)
+            .background(CapturePalette.accent.gradient, in: RoundedRectangle(cornerRadius: 22))
+        }
+        .buttonStyle(.plain)
+        .disabled(!canStart || isStartingVoiceNote)
+        .accessibilityLabel("Speak to write")
+        .accessibilityHint("Starts a private recording and turns your words into editable writing.")
+        .accessibilityIdentifier("CaptureStartVoiceNote")
+    }
 
-            Button(action: onNewSession) {
-                HStack(spacing: 15) {
+    private var newSessionButton: some View {
+        Button(action: onNewSession) {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
                     Image(systemName: "person.2.wave.2.fill")
                         .font(.title2.weight(.semibold))
                         .foregroundStyle(CapturePalette.accent)
-                        .frame(width: 48, height: 48)
-                        .background(CapturePalette.accent.opacity(0.11), in: Circle())
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("New session")
-                            .font(.headline)
-                            .foregroundStyle(.primary)
-                        Text("Schedule coaching, meet now, or record together")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                    }
                     Spacer(minLength: 8)
-                    Image(systemName: "chevron.right")
-                        .font(.headline.weight(.semibold))
-                        .foregroundStyle(.tertiary)
+                    Image(systemName: "chevron.right.circle.fill")
+                        .font(.title3)
+                        .foregroundStyle(CapturePalette.accent)
                 }
-                .frame(maxWidth: .infinity, minHeight: 72, alignment: .leading)
-                .padding(.horizontal, 18)
-                .padding(.vertical, 10)
-                .background(.background, in: RoundedRectangle(cornerRadius: 22))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 22)
-                        .stroke(.primary.opacity(0.1))
-                }
+                Text("New session")
+                    .font(.headline)
+                    .foregroundStyle(.primary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text("Schedule or start a call.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
-            .buttonStyle(.plain)
-            .disabled(!canStart)
-            .accessibilityIdentifier("CaptureStartSession")
+            .frame(maxWidth: .infinity, minHeight: 116, alignment: .topLeading)
+            .padding(16)
+            .background(.background, in: RoundedRectangle(cornerRadius: 22))
+            .overlay {
+                RoundedRectangle(cornerRadius: 22)
+                    .stroke(.primary.opacity(0.1))
+            }
         }
+        .buttonStyle(.plain)
+        .disabled(!canStart)
+        .accessibilityLabel("New session")
+        .accessibilityHint("Schedules coaching, starts a call, or records with someone else.")
+        .accessibilityIdentifier("CaptureStartSession")
     }
 }
 
@@ -12183,11 +12191,16 @@ private struct CaptureLibraryView: View {
                 .accessibilityHidden(true)
             TextField(
                 selectedSection == .writing ? "Search your writing" : "Search recordings",
-                text: $searchText
+                text: $searchText,
+                axis: .vertical
             )
+            .font(.body)
+            .lineLimit(1...2)
+            .padding(.vertical, 12)
             .textInputAutocapitalization(.never)
             .autocorrectionDisabled()
             .submitLabel(.search)
+            .accessibilityLabel(selectedSection == .writing ? "Search your writing" : "Search recordings")
             .accessibilityIdentifier("CaptureLibrarySearch")
             if !searchText.isEmpty {
                 Button {
@@ -12984,31 +12997,27 @@ private struct CaptureStorageAndUploadSettingsView: View {
 }
 
 private struct NextCaptureCard: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
     let session: MobileCaptureSession
     let onOpen: () -> Void
     let onAddToCalendar: (() -> Void)?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            HStack(alignment: .top) {
-                VStack(alignment: .leading, spacing: 5) {
-                    Text("UP NEXT")
-                        .font(.caption2.weight(.bold))
-                        .tracking(1.2)
-                        .foregroundStyle(CapturePalette.accent)
-                    Text(session.displayTitle)
-                        .font(.title2.weight(.bold))
-                        .fixedSize(horizontal: false, vertical: true)
-                    Text(session.captureScheduleLabel)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
+            Group {
+                if dynamicTypeSize.isAccessibilitySize {
+                    VStack(alignment: .leading, spacing: 10) {
+                        sessionIdentity
+                        sessionActions
+                    }
+                } else {
+                    HStack(alignment: .top) {
+                        sessionIdentity
+                        Spacer(minLength: 12)
+                        sessionActions
+                    }
                 }
-                Spacer(minLength: 12)
-                CaptureStatusPill(
-                    label: session.entryReadinessLabel,
-                    systemImage: session.entryIsImmediatelyReady ? "checkmark" : "ellipsis",
-                    tint: session.entryIsImmediatelyReady ? .green : .orange
-                )
             }
 
             Text(session.entryReadinessDetail)
@@ -13025,20 +13034,46 @@ private struct NextCaptureCard: View {
             .controlSize(.large)
             .accessibilityIdentifier("CaptureOpenNextSessionButton")
 
-            if let onAddToCalendar {
-                Button(action: onAddToCalendar) {
-                    Label("Add to Calendar", systemImage: "calendar.badge.plus")
-                        .font(.subheadline.weight(.semibold))
-                        .frame(maxWidth: .infinity, minHeight: 44)
-                }
-                .buttonStyle(.bordered)
-                .accessibilityHint("Opens Apple's event editor with this session title and time.")
-                .accessibilityIdentifier("CaptureAddNextSessionToCalendar")
-            }
         }
         .captureCard()
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("CaptureNextSessionCard")
+    }
+
+    private var sessionIdentity: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text("UP NEXT")
+                .font(.caption2.weight(.bold))
+                .tracking(1.2)
+                .foregroundStyle(CapturePalette.accent)
+            Text(session.displayTitle)
+                .font(.title2.weight(.bold))
+                .fixedSize(horizontal: false, vertical: true)
+            Text(session.captureScheduleLabel)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private var sessionActions: some View {
+        HStack(spacing: 6) {
+            CaptureStatusPill(
+                label: session.entryReadinessLabel,
+                systemImage: session.entryIsImmediatelyReady ? "checkmark" : "ellipsis",
+                tint: session.entryIsImmediatelyReady ? .green : .orange
+            )
+            if let onAddToCalendar {
+                Button(action: onAddToCalendar) {
+                    Image(systemName: "calendar.badge.plus")
+                        .frame(width: 34, height: 34)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .accessibilityLabel("Add to Calendar")
+                .accessibilityHint("Opens Apple's event editor with this session title and time.")
+                .accessibilityIdentifier("CaptureAddNextSessionToCalendar")
+            }
+        }
     }
 }
 
