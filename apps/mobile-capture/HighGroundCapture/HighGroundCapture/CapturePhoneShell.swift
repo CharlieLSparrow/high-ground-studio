@@ -446,86 +446,21 @@ private struct CaptureTodayView: View {
                 .buttonStyle(.plain)
                 .accessibilityIdentifier("CaptureOpenCoachingHome")
 
+                CaptureHomeContinueSection(
+                    todayClient: model.todayClient,
+                    reviewClient: model.reviewDigestClient,
+                    uploadManager: model.uploadManager,
+                    onOpenFollowUp: openSession,
+                    onOpenTranscript: openSession,
+                    onOpenLibrary: { visibleTab = .library }
+                )
+
                 if let calendarEditorStatus {
                     Label(calendarEditorStatus, systemImage: "calendar.badge.checkmark")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(.secondary)
                         .padding(.horizontal, 4)
                         .accessibilityIdentifier("CaptureCalendarEditorStatus")
-                }
-
-                CaptureCalendarContinuityCard(
-                    client: model.calendarSubscriptionClient,
-                    projects: model.workClient.projects,
-                    previewOnly: model.usesPreviewData
-                )
-
-                TodayFollowThroughCard(
-                    client: model.todayClient,
-                    inboxClient: model.sourceInboxClient,
-                    previewOnly: model.usesPreviewData,
-                    onOpenClientFollowUp: { roomID in
-                        guard let session = model.sessions.first(where: { $0.id == roomID }) else {
-                            model.message = "Refresh Sessions to open this exact coaching follow-up. The released snapshot remains unchanged."
-                            return
-                        }
-                        model.select(session)
-                        visibleTab = .record
-                    }
-                )
-
-                CaptureFinishQueueCard(
-                    client: model.reviewDigestClient,
-                    previewOnly: model.usesPreviewData,
-                    onOpenSession: { roomID in
-                        guard let session = model.sessions.first(where: { $0.callRoomId == roomID }) else {
-                            model.message = "Refresh Sessions to open this exact finishing action. The review digest performed no mutation."
-                            return
-                        }
-                        model.select(session)
-                        visibleTab = .record
-                    }
-                )
-
-                if model.uploadManager.recoverableUploadCount > 0 {
-                    CaptureAttentionCard(
-                        systemImage: "icloud.and.arrow.up",
-                        title: "Saved locally",
-                        detail: "\(model.uploadManager.recoverableUploadCount) recording\(model.uploadManager.recoverableUploadCount == 1 ? " is" : "s are") waiting to upload. The originals remain on this iPhone.",
-                        buttonTitle: "Open Library"
-                    ) {
-                        visibleTab = .library
-                    }
-                }
-
-                LocalSafetySummary(
-                    recordingCount: library.recordings.count,
-                    pendingCount: library.recordings.filter { !$0.status.isVerified }.count
-                )
-
-                if !laterSessions.isEmpty {
-                    VStack(alignment: .leading, spacing: 10) {
-                        HStack {
-                            Text("Later")
-                                .font(.title3.weight(.bold))
-                            Spacer()
-                            Button {
-                                showsNewSession = true
-                            } label: {
-                                Label("New session", systemImage: "plus")
-                            }
-                            .buttonStyle(.bordered)
-                            .disabled(model.isSessionContextLocked)
-                        }
-
-                        ForEach(laterSessions) { session in
-                            SessionListRow(session: session, isSelected: session.id == model.selectedSession?.id) {
-                                model.select(session)
-                                visibleTab = .record
-                            }
-                            .disabled(model.isSessionContextLocked && model.selectedSession?.id != session.id)
-                        }
-                    }
                 }
             }
             .padding(.horizontal, 18)
@@ -557,19 +492,14 @@ private struct CaptureTodayView: View {
 
     private var todayHeader: some View {
         VStack(alignment: .leading, spacing: 5) {
-            Text("Today")
-                .font(.largeTitle.weight(.bold))
+            Text(greeting)
+                .font(.title2.weight(.bold))
                 .minimumScaleFactor(0.8)
-            Text("\(greeting) · \(Date.now.formatted(.dateTime.weekday(.wide).month(.wide).day()))")
+            Text(Date.now.formatted(.dateTime.weekday(.wide).month(.wide).day()))
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
         }
         .padding(.top, 10)
-    }
-
-    private var laterSessions: [MobileCaptureSession] {
-        guard let nextSessionID = model.nextSession?.id else { return model.scheduledSessions }
-        return model.scheduledSessions.filter { $0.id != nextSessionID }
     }
 
     private func continueVoiceWriting(_ draft: VoiceWritingDraft) {
@@ -595,6 +525,17 @@ private struct CaptureTodayView: View {
             .first
             .map(String.init)
         return firstName.map { "\(salutation), \($0)" } ?? salutation
+    }
+
+    private func openSession(_ roomID: String) {
+        guard let session = model.sessions.first(where: {
+            $0.id == roomID || $0.callRoomId == roomID
+        }) else {
+            model.message = "Refresh Sessions to open this Session. Nothing was changed."
+            return
+        }
+        model.select(session)
+        visibleTab = .record
     }
 }
 
@@ -690,6 +631,117 @@ private struct CaptureTodayPrimaryActions: View {
         .accessibilityLabel("New session")
         .accessibilityHint("Schedules coaching, starts a call, or records with someone else.")
         .accessibilityIdentifier("CaptureStartSession")
+    }
+}
+
+/// Home only surfaces work that is immediately useful. Pipeline controls,
+/// cross-Nest planning, calendar connections, and storage details live in the
+/// destinations that own them instead of turning the first screen into an
+/// operations dashboard.
+private struct CaptureHomeContinueSection: View {
+    @ObservedObject var todayClient: CaptureTodayClient
+    @ObservedObject var reviewClient: CaptureReviewDigestClient
+    @ObservedObject var uploadManager: UploadManager
+    let onOpenFollowUp: (String) -> Void
+    let onOpenTranscript: (String) -> Void
+    let onOpenLibrary: () -> Void
+
+    private var readyTranscript: MobileCaptureReviewDigestFinishAction? {
+        reviewClient.response?.digest?.finishActions?.first {
+            $0.kind == "review-packet"
+        }
+    }
+
+    private var hasSomethingToContinue: Bool {
+        todayClient.clientFollowUpAttention != nil
+            || readyTranscript != nil
+            || uploadManager.recoverableUploadCount > 0
+    }
+
+    @ViewBuilder
+    var body: some View {
+        if hasSomethingToContinue {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Continue")
+                    .font(.title3.weight(.bold))
+                    .accessibilityIdentifier("CaptureHomeContinueHeading")
+
+                if let followUp = todayClient.clientFollowUpAttention {
+                    continueButton(
+                        title: followUp.title,
+                        detail: "Notes and next steps from \(followUp.sessionTitle)",
+                        systemImage: "person.crop.circle.badge.checkmark",
+                        tint: .green
+                    ) {
+                        onOpenFollowUp(followUp.roomId)
+                    }
+                    .accessibilityIdentifier("CaptureHomeContinueFollowUp_\(followUp.id)")
+                }
+
+                if let transcript = readyTranscript {
+                    continueButton(
+                        title: transcript.titleLabel,
+                        detail: "Recording and transcript ready",
+                        systemImage: "text.quote",
+                        tint: CapturePalette.accent
+                    ) {
+                        onOpenTranscript(transcript.callRoomId)
+                    }
+                    .accessibilityIdentifier("CaptureHomeContinueTranscript_\(transcript.callRoomId)")
+                }
+
+                if uploadManager.recoverableUploadCount > 0 {
+                    continueButton(
+                        title: "Finish backing up",
+                        detail: "\(uploadManager.recoverableUploadCount) recording\(uploadManager.recoverableUploadCount == 1 ? "" : "s") saved safely on this iPhone",
+                        systemImage: "icloud.and.arrow.up",
+                        tint: .orange,
+                        action: onOpenLibrary
+                    )
+                    .accessibilityIdentifier("CaptureHomeContinueUpload")
+                }
+            }
+        }
+    }
+
+    private func continueButton(
+        title: String,
+        detail: String,
+        systemImage: String,
+        tint: Color,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            HStack(spacing: 12) {
+                Image(systemName: systemImage)
+                    .font(.headline)
+                    .foregroundStyle(tint)
+                    .frame(width: 38, height: 38)
+                    .background(tint.opacity(0.11), in: Circle())
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(title)
+                        .font(.subheadline.weight(.bold))
+                        .foregroundStyle(.primary)
+                        .multilineTextAlignment(.leading)
+                    Text(detail)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.leading)
+                }
+                Spacer(minLength: 6)
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(.tertiary)
+                    .accessibilityHidden(true)
+            }
+            .frame(maxWidth: .infinity, minHeight: 54, alignment: .leading)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
+            .background(.background, in: RoundedRectangle(cornerRadius: 16))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 }
 
@@ -1547,6 +1599,42 @@ private struct CaptureWorkView: View {
                     || client.heldDocumentNoteEditCount > 0
                     || client.documentNoteEditMessage != nil {
                     documentNoteEditStatus
+                }
+
+                if normalizedQuery.isEmpty {
+                    NavigationLink {
+                        CaptureAcrossNestsFollowThroughView(
+                            model: model,
+                            visibleTab: $visibleTab
+                        )
+                    } label: {
+                        HStack(spacing: 12) {
+                            Image(systemName: "checklist")
+                                .font(.headline)
+                                .foregroundStyle(CapturePalette.accent)
+                                .frame(width: 40, height: 40)
+                                .background(CapturePalette.accent.opacity(0.1), in: Circle())
+                                .accessibilityHidden(true)
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text("Across your Nests")
+                                    .font(.headline)
+                                    .foregroundStyle(.primary)
+                                Text("See tasks, goals, reminders, and Session follow-through together.")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .multilineTextAlignment(.leading)
+                            }
+                            Spacer(minLength: 6)
+                            Image(systemName: "chevron.right")
+                                .font(.caption.weight(.bold))
+                                .foregroundStyle(.tertiary)
+                                .accessibilityHidden(true)
+                        }
+                        .frame(maxWidth: .infinity, minHeight: 58, alignment: .leading)
+                        .captureCard()
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("CaptureOpenAcrossNestsFollowThrough")
                 }
 
                 if normalizedQuery.count >= 2 {
@@ -2795,6 +2883,70 @@ private struct CaptureWorkView: View {
     }
 }
 
+private struct CaptureAcrossNestsFollowThroughView: View {
+    @ObservedObject var model: CaptureExperienceModel
+    @Binding var visibleTab: CaptureRootTab
+    @StateObject private var library = LocalRecordingLibrary.shared
+
+    var body: some View {
+        ScrollView {
+            TodayFollowThroughCard(
+                client: model.todayClient,
+                inboxClient: model.sourceInboxClient,
+                previewOnly: model.usesPreviewData,
+                onOpenClientFollowUp: openSession
+            )
+            .padding(.horizontal, 18)
+            .padding(.top, 16)
+            .padding(.bottom, 96)
+        }
+        .background(CaptureCanvas())
+        .navigationTitle("Across your Nests")
+        .navigationBarTitleDisplayMode(.inline)
+        .refreshable {
+            await model.todayClient.load()
+            await model.sourceInboxClient.load()
+        }
+        .navigationDestination(for: CaptureTranscriptSourceDestination.self) { destination in
+            CaptureTranscriptReviewView(
+                roomID: destination.roomID,
+                sessionTitle: destination.sessionTitle,
+                recording: matchingRecording(
+                    roomID: destination.roomID,
+                    recordingAssetID: destination.source.recordingAssetId
+                ),
+                previewOnly: model.usesPreviewData,
+                focusSegmentID: destination.source.segmentId
+            )
+        }
+        .accessibilityIdentifier("CaptureAcrossNestsFollowThroughView")
+    }
+
+    private func openSession(_ roomID: String) {
+        guard let session = model.sessions.first(where: {
+            $0.id == roomID || $0.callRoomId == roomID
+        }) else {
+            model.message = "Refresh Sessions to open this Session. Nothing was changed."
+            return
+        }
+        model.select(session)
+        visibleTab = .record
+    }
+
+    private func matchingRecording(
+        roomID: String,
+        recordingAssetID: String?
+    ) -> LocalRecording? {
+        guard let recordingAssetID = recordingAssetID?.nonempty else { return nil }
+        return library.recordings.first {
+            $0.callRoomId == roomID
+                && $0.recordingAssetId == recordingAssetID
+                && $0.status.isPlaybackEligible
+                && library.fileURL(for: $0) != nil
+        }
+    }
+}
+
 private struct CaptureCalendarContinuityCard: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @ObservedObject var client: CaptureCalendarSubscriptionClient
@@ -3664,11 +3816,18 @@ struct TodayFollowThroughCard: View {
                                     authority: source.speakerAuthority,
                                     identifier: "CaptureTodayTaskSpeakerEvidence_\(task.id)"
                                 )
-                                NavigationLink(value: CaptureTranscriptSourceDestination(
-                                    roomID: source.roomId,
-                                    sessionTitle: task.sessionTitle ?? "Capture session",
-                                    source: source
-                                )) {
+                                NavigationLink {
+                                    CaptureTranscriptReviewView(
+                                        roomID: source.roomId,
+                                        sessionTitle: task.sessionTitle ?? "Capture session",
+                                        recording: matchingRecording(
+                                            roomID: source.roomId,
+                                            recordingAssetID: source.recordingAssetId
+                                        ),
+                                        previewOnly: previewOnly,
+                                        focusSegmentID: source.segmentId
+                                    )
+                                } label: {
                                     Label(
                                         "Return to \(source.startSeconds.captureDurationLabel)–\(source.endSeconds.captureDurationLabel)",
                                         systemImage: "waveform.and.magnifyingglass"
@@ -3701,11 +3860,18 @@ struct TodayFollowThroughCard: View {
                                             .accessibilityIdentifier("CaptureTodayTaskMergedEvidenceGovernance_\(task.id)")
                                             .accessibilityHint("Identifies the governed operation that appended this evidence without changing the task.")
                                     }
-                                    NavigationLink(value: CaptureTranscriptSourceDestination(
-                                        roomID: evidence.sourceAnchor.roomId,
-                                        sessionTitle: task.sessionTitle ?? "Capture session",
-                                        source: evidence.sourceAnchor
-                                    )) {
+                                    NavigationLink {
+                                        CaptureTranscriptReviewView(
+                                            roomID: evidence.sourceAnchor.roomId,
+                                            sessionTitle: task.sessionTitle ?? "Capture session",
+                                            recording: matchingRecording(
+                                                roomID: evidence.sourceAnchor.roomId,
+                                                recordingAssetID: evidence.sourceAnchor.recordingAssetId
+                                            ),
+                                            previewOnly: previewOnly,
+                                            focusSegmentID: evidence.sourceAnchor.segmentId
+                                        )
+                                    } label: {
                                         Label("Return to \(evidence.sourceAnchor.startSeconds.captureDurationLabel)–\(evidence.sourceAnchor.endSeconds.captureDurationLabel)", systemImage: "waveform.and.magnifyingglass")
                                             .font(.caption.weight(.bold))
                                             .frame(minHeight: 44)
@@ -3900,11 +4066,18 @@ struct TodayFollowThroughCard: View {
                                     authority: source.speakerAuthority,
                                     identifier: "CaptureTodayGoalSpeakerEvidence_\(goal.id)"
                                 )
-                                NavigationLink(value: CaptureTranscriptSourceDestination(
-                                    roomID: source.roomId,
-                                    sessionTitle: goal.sessionTitle ?? "Capture session",
-                                    source: source
-                                )) {
+                                NavigationLink {
+                                    CaptureTranscriptReviewView(
+                                        roomID: source.roomId,
+                                        sessionTitle: goal.sessionTitle ?? "Capture session",
+                                        recording: matchingRecording(
+                                            roomID: source.roomId,
+                                            recordingAssetID: source.recordingAssetId
+                                        ),
+                                        previewOnly: previewOnly,
+                                        focusSegmentID: source.segmentId
+                                    )
+                                } label: {
                                     Label(
                                         "Return to \(source.startSeconds.captureDurationLabel)–\(source.endSeconds.captureDurationLabel)",
                                         systemImage: "waveform.and.magnifyingglass"
@@ -12817,6 +12990,12 @@ private struct CaptureLibraryView: View {
 
     @ViewBuilder
     private var recordingContent: some View {
+        CaptureFinishQueueCard(
+            client: model.reviewDigestClient,
+            previewOnly: model.usesPreviewData,
+            onOpenSession: openSession
+        )
+
         if model.uploadManager.isUploading || model.uploadManager.recoverableUploadCount > 0 {
             UploadActivityCard(model: model)
         }
@@ -12900,6 +13079,13 @@ private struct CaptureLibraryView: View {
                 )
             }
         }
+
+        if !library.recordings.isEmpty {
+            LocalSafetySummary(
+                recordingCount: library.recordings.count,
+                pendingCount: library.recordings.filter { !$0.status.isVerified }.count
+            )
+        }
     }
 
     private var playingVideoTitle: String {
@@ -12937,6 +13123,17 @@ private struct CaptureLibraryView: View {
                 model.errorMessage = "The new Voice Note is ready, but Quipsly could not connect it to that writing yet: \(error.localizedDescription)"
             }
         }
+    }
+
+    private func openSession(_ roomID: String) {
+        guard let session = model.sessions.first(where: {
+            $0.id == roomID || $0.callRoomId == roomID
+        }) else {
+            model.message = "Refresh Sessions to open this Session. Nothing was changed."
+            return
+        }
+        model.select(session)
+        visibleTab = .record
     }
 }
 
@@ -13264,6 +13461,12 @@ private struct CaptureAccountView: View {
                 .buttonStyle(.plain)
                 .captureCard()
                 .accessibilityIdentifier("CaptureAccountStorageAndUploads")
+
+                CaptureCalendarContinuityCard(
+                    client: model.calendarSubscriptionClient,
+                    projects: model.workClient.projects,
+                    previewOnly: model.usesPreviewData
+                )
 
                 DisclosureGroup {
                     VStack(alignment: .leading, spacing: 12) {
@@ -17803,11 +18006,13 @@ private struct LocalSafetySummary: View {
                 .font(.title2)
                 .foregroundStyle(CapturePalette.accent)
             VStack(alignment: .leading, spacing: 3) {
-                Text("Local source is production truth")
+                Text("Originals on this iPhone")
                     .font(.subheadline.weight(.semibold))
                 Text(recordingCount == 0
-                     ? "Completed takes will stay on this iPhone until verification."
-                     : "\(recordingCount) local source\(recordingCount == 1 ? "" : "s") · \(pendingCount) awaiting verification")
+                     ? "Your original recordings stay here while Quipsly prepares safe copies."
+                     : pendingCount == 0
+                        ? "\(recordingCount) original recording\(recordingCount == 1 ? "" : "s") · safely backed up"
+                        : "\(recordingCount) original recording\(recordingCount == 1 ? "" : "s") · \(pendingCount) still backing up")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

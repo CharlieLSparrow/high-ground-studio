@@ -188,6 +188,47 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(app.navigationBars["Account"].waitForExistence(timeout: 5))
     }
 
+    func testHomeStaysCalmWhileDeeperToolsRemainReachable() {
+        XCTAssertTrue(app.scrollViews["CaptureTodayView"].waitForExistence(timeout: 5))
+        XCTAssertFalse(
+            app.descendants(matching: .any)["CaptureTodayFollowThroughCard"].exists,
+            "The first screen should not expand the entire cross-Nest work dashboard."
+        )
+        XCTAssertFalse(
+            app.descendants(matching: .any)["CaptureFinishQueueCard"].exists,
+            "Recording pipeline detail belongs in Library, not beneath Home's primary actions."
+        )
+        XCTAssertFalse(
+            app.descendants(matching: .any)["CaptureCalendarContinuityCard"].exists,
+            "Calendar connections are account setup, not daily Home content."
+        )
+
+        openAcrossNestsFollowThrough()
+        XCTAssertTrue(
+            app.descendants(matching: .any)["CaptureTodayFollowThroughCard"]
+                .waitForExistence(timeout: 5),
+            "Moving cross-Nest follow-through must not remove the capability."
+        )
+
+        app.tabBars.buttons["Library"].tap()
+        XCTAssertTrue(app.scrollViews["CaptureLibraryView"].waitForExistence(timeout: 5))
+        app.segmentedControls["CaptureLibrarySectionPicker"].buttons["Recordings"].tap()
+        XCTAssertTrue(
+            app.descendants(matching: .any)["CaptureFinishQueueCard"]
+                .waitForExistence(timeout: 5),
+            "Recording and transcript readiness should remain available in Library."
+        )
+
+        app.tabBars.buttons["Account"].tap()
+        XCTAssertTrue(app.navigationBars["Account"].waitForExistence(timeout: 5))
+        let calendar = app.descendants(matching: .any)["CaptureCalendarContinuityCard"]
+        reveal(calendar)
+        XCTAssertTrue(
+            calendar.waitForExistence(timeout: 5),
+            "Calendar connections should remain reachable from Account."
+        )
+    }
+
     func testPrivateVoiceNoteOpensCaptureWithoutMeetingPaperwork() {
         let voiceNote = app.buttons["CaptureStartVoiceNote"]
         XCTAssertTrue(voiceNote.waitForExistence(timeout: 5))
@@ -2253,24 +2294,18 @@ final class CaptureExperienceUITests: XCTestCase {
 
     func testTodayOpensTheExactNewClientFollowUpWithoutAcknowledgingIt() {
         let attention = app.descendants(matching: .any)[
-            "CaptureTodayClientFollowUp_preview-client-follow-up"
+            "CaptureHomeContinueFollowUp_preview-client-follow-up"
         ].firstMatch
         reveal(attention)
         XCTAssertTrue(attention.waitForExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts["New coaching follow-up"].exists)
         XCTAssertTrue(app.staticTexts["Your next useful step"].exists)
-        XCTAssertTrue(app.staticTexts["From Homer · Coaching session"].exists)
-
-        let open = app.buttons[
-            "CaptureTodayClientFollowUpOpen_preview-client-follow-up"
-        ].firstMatch
-        reveal(open)
-        XCTAssertTrue(open.isHittable)
+        XCTAssertTrue(app.staticTexts["Notes and next steps from Coaching session"].exists)
+        XCTAssertTrue(attention.isHittable)
         let screenshot = XCTAttachment(screenshot: app.screenshot())
-        screenshot.name = "Today new coaching follow-up"
+        screenshot.name = "Home continuation"
         screenshot.lifetime = .keepAlways
         add(screenshot)
-        open.tap()
+        attention.tap()
 
         openLocalRecorderIfNeeded()
         XCTAssertTrue(app.otherElements["CaptureRecorderHero"].waitForExistence(timeout: 5))
@@ -2287,11 +2322,14 @@ final class CaptureExperienceUITests: XCTestCase {
     }
 
     func testTodayFinishQueueOpensExactSessionWithoutPerformingAction() {
+        app.tabBars.buttons["Library"].tap()
+        XCTAssertTrue(app.scrollViews["CaptureLibraryView"].waitForExistence(timeout: 5))
+        app.segmentedControls["CaptureLibrarySectionPicker"].buttons["Recordings"].tap()
         let card = app.descendants(matching: .any)["CaptureFinishQueueCard"]
         reveal(card)
         XCTAssertTrue(
             card.waitForExistence(timeout: 5),
-            "Today should expose the account-scoped Nest finishing queue without adding another primary tab."
+            "Library should keep recording and transcript readiness reachable without cluttering Home."
         )
         XCTAssertTrue(app.descendants(matching: .any)["CaptureFinishQueueMetrics"].exists)
         let finishDetails = app.descendants(matching: .any)["CaptureFinishQueueDetails"].firstMatch
@@ -2342,6 +2380,7 @@ final class CaptureExperienceUITests: XCTestCase {
     }
 
     func testTodayWeeklyPlanEditorKeepsReflectionHonestAndOfflineSafe() {
+        openAcrossNestsFollowThrough()
         let plan = app.descendants(matching: .any)["CaptureTodayWeeklyPlan"].firstMatch
         reveal(plan)
         XCTAssertTrue(plan.waitForExistence(timeout: 5))
@@ -2375,6 +2414,7 @@ final class CaptureExperienceUITests: XCTestCase {
     }
 
     func testTodayUsesCanonicalFollowThroughWithoutImplyingExternalActions() {
+        openAcrossNestsFollowThrough()
         let card = app.descendants(matching: .any)["CaptureTodayFollowThroughCard"]
         XCTAssertTrue(card.waitForExistence(timeout: 5))
         let complete = app.buttons["CaptureTodayFocusDoneButton"]
@@ -2455,6 +2495,7 @@ final class CaptureExperienceUITests: XCTestCase {
     }
 
     func testTodayWeeklyReviewKeepsPlannedActualAndMissingTimeTruthDistinct() {
+        openAcrossNestsFollowThrough()
         let review = app.descendants(matching: .any)["CaptureTodayWeeklyReview"]
         reveal(review)
         XCTAssertTrue(
@@ -2497,6 +2538,8 @@ final class CaptureExperienceUITests: XCTestCase {
         app.launchArguments = launchArguments
         app.launch()
 
+        openAcrossNestsFollowThrough()
+
         let decision = app.descendants(matching: .any)[
             "CaptureTodayFocusDecision_preview-block"
         ]
@@ -2522,6 +2565,7 @@ final class CaptureExperienceUITests: XCTestCase {
         app.terminate()
         app.launchArguments = launchArguments
         app.launch()
+        openAcrossNestsFollowThrough()
         let recoveredDecision = app.descendants(matching: .any)[
             "CaptureTodayFocusDecision_preview-block"
         ]
@@ -2534,11 +2578,13 @@ final class CaptureExperienceUITests: XCTestCase {
     }
 
     func testTodayExposesReadOnlyCalendarContinuityWithoutLeakingPrivateLinks() {
+        app.tabBars.buttons["Account"].tap()
+        XCTAssertTrue(app.navigationBars["Account"].waitForExistence(timeout: 5))
         let card = app.descendants(matching: .any)["CaptureCalendarContinuityCard"]
         reveal(card)
         XCTAssertTrue(
             card.waitForExistence(timeout: 5),
-            "Today should make calendar continuity reachable without adding a sixth primary tab."
+            "Account should keep calendar connections reachable without adding a primary tab or Home dashboard."
         )
         let manage = app.buttons["CaptureCalendarManage"]
         XCTAssertTrue(manage.isHittable)
@@ -2620,6 +2666,7 @@ final class CaptureExperienceUITests: XCTestCase {
     }
 
     func testTodayShowsCanonicalRecurrenceWithoutEnablingPreviewMutation() {
+        openAcrossNestsFollowThrough()
         let recurrence = app.descendants(matching: .any)["CaptureTodayRecurrence_preview-series_preview-task"]
         reveal(recurrence)
         XCTAssertTrue(recurrence.exists)
@@ -2639,6 +2686,7 @@ final class CaptureExperienceUITests: XCTestCase {
     }
 
     func testTodayReviewsPrivateSourceInboxWithoutInventingResearchFiling() {
+        openAcrossNestsFollowThrough()
         let inbox = app.descendants(matching: .any)["CaptureSourceInbox"]
         reveal(inbox)
         XCTAssertTrue(
@@ -3456,6 +3504,7 @@ final class CaptureExperienceUITests: XCTestCase {
     }
 
     func testTodayKeepsTranscriptDerivedGoalLinkedToExactSource() {
+        openAcrossNestsFollowThrough()
         let sourceLink = app.buttons["CaptureTodayGoalSourceLink_preview-goal"]
         reveal(sourceLink)
         XCTAssertTrue(sourceLink.isHittable, "A transcript-derived goal should keep a one-action route back to its exact segment.")
@@ -3465,6 +3514,7 @@ final class CaptureExperienceUITests: XCTestCase {
     }
 
     func testTodayGoalCheckInRecordsEvidenceWithoutImplyingCompletion() {
+        openAcrossNestsFollowThrough()
         let checkIn = app.buttons["CaptureTodayGoalCheckIn_preview-goal"]
         reveal(checkIn, searchAboveFirst: false)
         XCTAssertTrue(checkIn.isHittable)
@@ -4414,6 +4464,27 @@ final class CaptureExperienceUITests: XCTestCase {
             "The linked transcript segment must be the focused, visible review context.",
             file: file,
             line: line
+        )
+    }
+
+    private func openAcrossNestsFollowThrough() {
+        if app.scrollViews["CaptureAcrossNestsFollowThroughView"].exists {
+            return
+        }
+        let nests = app.tabBars.buttons["Nests"]
+        XCTAssertTrue(nests.waitForExistence(timeout: 8))
+        nests.tap()
+        XCTAssertTrue(app.scrollViews["CaptureWorkView"].waitForExistence(timeout: 8))
+        let acrossNests = app.buttons["CaptureOpenAcrossNestsFollowThrough"]
+        reveal(acrossNests)
+        XCTAssertTrue(
+            acrossNests.isHittable,
+            "Cross-Nest work should have one obvious route from Nests."
+        )
+        acrossNests.tap()
+        XCTAssertTrue(
+            app.scrollViews["CaptureAcrossNestsFollowThroughView"]
+                .waitForExistence(timeout: 8)
         )
     }
 
