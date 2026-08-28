@@ -2986,7 +2986,8 @@ final class CaptureExperienceModel: ObservableObject {
             guard let created = await sessionClient.createQuickSession(
                 title: candidate.sessionTitle ?? candidate.displayTitle,
                 purpose: "PERSONAL_NOTE",
-                provider: "planned"
+                provider: "planned",
+                clientRequestID: candidate.id.uuidString.lowercased()
             ) else {
                 // The original and any completed writing remain local. A
                 // foreground refresh or the next launch retries automatically.

@@ -304,15 +304,18 @@ runLocalDatabaseSmoke("iPhone Session note privacy projection", () => {
 
   it("creates a private self-recording voice note without a coaching or consent detour", async () => {
     signedInAs(ownerUserId, ownerEmail);
+    const clientRequestId = `offline-voice-note-${nonce}`;
+    const requestBody = {
+      purpose: "FIELD_NOTE",
+      title: "Dissertation thought",
+      projectSlug,
+      provider: "livekit",
+      clientRequestId,
+    };
     const response = await POST(new Request("http://localhost/api/mobile/capture/sessions", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        purpose: "FIELD_NOTE",
-        title: "Dissertation thought",
-        projectSlug,
-        provider: "livekit",
-      }),
+      body: JSON.stringify(requestBody),
     }));
     expect(response.status).toBe(201);
     const payload = await response.json();
@@ -331,6 +334,25 @@ runLocalDatabaseSmoke("iPhone Session note privacy projection", () => {
       recordingStarted: false,
     });
     personalNoteRoomId = payload.session.id;
+
+    const replayResponse = await POST(new Request("http://localhost/api/mobile/capture/sessions", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(requestBody),
+    }));
+    expect(replayResponse.status).toBe(200);
+    await expect(replayResponse.json()).resolves.toMatchObject({
+      ok: true,
+      created: false,
+      replayed: true,
+      session: { id: personalNoteRoomId },
+    });
+    expect(await prisma.callRoom.count({
+      where: {
+        createdByUserId: ownerUserId,
+        metadataJson: { path: ["clientRequestId"], equals: clientRequestId },
+      },
+    })).toBe(1);
 
     const readback = await prisma.callRoom.findUnique({
       where: { id: personalNoteRoomId },

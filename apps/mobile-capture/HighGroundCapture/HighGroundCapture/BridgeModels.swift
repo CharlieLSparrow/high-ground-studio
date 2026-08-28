@@ -7467,7 +7467,8 @@ final class CaptureSessionClient: ObservableObject {
         purpose: String,
         provider: String = "livekit",
         projectSlug: String? = nil,
-        coachingEngagementId: String? = nil
+        coachingEngagementId: String? = nil,
+        clientRequestID: String? = nil
     ) async -> MobileCaptureSession? {
         guard let url = URL(string: "\(baseURL.trimmingCharacters(in: .whitespacesAndNewlines))/api/mobile/capture/sessions") else {
             status = "Bad Nest URL"
@@ -7497,6 +7498,10 @@ final class CaptureSessionClient: ObservableObject {
             if let coachingEngagementId = coachingEngagementId?.trimmingCharacters(in: .whitespacesAndNewlines),
                !coachingEngagementId.isEmpty {
                 requestBody["coachingEngagementId"] = coachingEngagementId
+            }
+            if let clientRequestID = clientRequestID?.trimmingCharacters(in: .whitespacesAndNewlines),
+               !clientRequestID.isEmpty {
+                requestBody["clientRequestId"] = clientRequestID.lowercased()
             }
             request.httpBody = try JSONSerialization.data(withJSONObject: requestBody)
 

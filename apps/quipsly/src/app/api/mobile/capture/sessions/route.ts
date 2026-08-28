@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { chooseQuipslyCoachingClientPriority } from "@high-ground/quipsly-domain/coaching-client-priority";
 
 import {
@@ -223,6 +223,111 @@ function parseDate(value: unknown) {
   if (!raw) return null;
   const date = new Date(raw);
   return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function parseSessionCreateRequestId(value: unknown) {
+  const requestId = text(value).toLowerCase();
+  if (!requestId) return null;
+  if (!/^[a-z0-9][a-z0-9._:-]{7,127}$/.test(requestId)) return undefined;
+  return requestId;
+}
+
+function durableSessionId(userId: string, clientRequestId: string) {
+  const digest = createHash("sha256")
+    .update(`quipsly-mobile-session-v1\n${userId}\n${clientRequestId}`)
+    .digest("hex")
+    .slice(0, 32);
+  return `mobile-session-${digest}`;
+}
+
+async function loadMappedCaptureRoom({
+  prisma,
+  roomId,
+  actor,
+}: {
+  prisma: any;
+  roomId: string;
+  actor: any;
+}) {
+  const room = await prisma.callRoom.findUnique({
+    where: { id: roomId },
+    include: MOBILE_CAPTURE_ROOM_INCLUDE,
+  });
+  if (!room || room.createdByUserId !== actor.id) return null;
+
+  const identity = {
+    id: room.id,
+    title: room.title,
+    purpose: room.purpose,
+    projectId: room.projectId,
+    scheduledStart: room.scheduledStart,
+    endedAt: room.endedAt,
+    createdAt: room.createdAt,
+    booking: room.booking ? {
+      clientUserId: room.booking.clientUserId,
+      coachUserId: room.booking.coachUserId,
+    } : null,
+  };
+  const [priorContinuityByRoomId, priorFollowThroughByRoomId] = await Promise.all([
+    loadPriorSessionContinuityByRoomId({ prisma, actor, rooms: [identity] }),
+    loadPriorSessionFollowThroughByRoomId({ prisma, actor, rooms: [identity] }),
+  ]);
+  const [mapped] = mapMobileCaptureSessionsForUser({
+    rooms: [room],
+    userId: actor.id,
+    isStaff: actor.isStaff === true,
+    productionNoteProjectIds: room.projectId ? [room.projectId] : [],
+    priorContinuityByRoomId,
+    priorFollowThroughByRoomId,
+  });
+  return mapped ? { room, mapped } : null;
+}
+
+function captureSessionCreateResponse({
+  room,
+  mapped,
+  purpose,
+  episodeBound,
+  created,
+}: {
+  room: any;
+  mapped: any;
+  purpose: string;
+  episodeBound: boolean;
+  created: boolean;
+}) {
+  const hostParticipant = room.participants.find((item: any) => item.userId === room.createdByUserId)
+    || room.participants[0]
+    || null;
+  return NextResponse.json(
+    {
+      ok: true,
+      created,
+      replayed: !created,
+      session: mapped,
+      boundaries: {
+        appOwnedRoomCreated: created,
+        episodeBound,
+        participantCreated: Boolean(hostParticipant?.id),
+        participantCount: room.participants.length,
+        relationshipParticipantsAttached: Boolean(
+          room.coachingEngagementId && room.participants.length >= 2,
+        ),
+        consentRequested: purpose !== "PERSONAL_NOTE",
+        selfCaptureConsentGranted: purpose === "PERSONAL_NOTE",
+        recordingStarted: false,
+        providerJoined: false,
+        providerTokenMinted: false,
+        calendarMutated: false,
+        stripeMutated: false,
+        externalInviteSent: false,
+        nextAction: purpose === "PERSONAL_NOTE"
+          ? "Record when ready. If another person can be heard, start a Session so they can consent."
+          : "Open this Quipsly capture session, collect explicit consent, then join or record from visible controls.",
+      },
+    },
+    { status: created ? 201 : 200 },
+  );
 }
 
 export async function GET(request: Request) {
@@ -608,6 +713,32 @@ export async function POST(request: Request) {
     );
   }
   const prisma = getPrismaClient() as any;
+  const clientRequestId = parseSessionCreateRequestId(body.clientRequestId);
+  if (clientRequestId === undefined) {
+    return NextResponse.json(
+      { ok: false, error: "Use a valid client request ID when retrying Session creation.", code: "QUIPSLY_SESSION_CREATE_REQUEST_ID_INVALID" },
+      { status: 400 },
+    );
+  }
+  const requestedRoomId = clientRequestId
+    ? durableSessionId(session.user.id, clientRequestId)
+    : null;
+  if (requestedRoomId) {
+    const replay = await loadMappedCaptureRoom({
+      prisma,
+      roomId: requestedRoomId,
+      actor: session.user,
+    });
+    if (replay) {
+      return captureSessionCreateResponse({
+        room: replay.room,
+        mapped: replay.mapped,
+        purpose: replay.room.purpose,
+        episodeBound: Boolean(replay.room.episodeProductionId),
+        created: false,
+      });
+    }
+  }
   const createSessionAccess = await quipslyCoachCapabilityAccess({
     prisma,
     userId: session.user.id,
@@ -738,166 +869,140 @@ export async function POST(request: Request) {
     });
   }
 
-  const room = await prisma.callRoom.create({
-    data: {
-      createdByUserId: userId,
-      projectId: captureProjectId,
-      episodeProductionId: episodeBinding.episodeProductionId,
-      coachingEngagementId: coachingEngagement?.id || null,
-      purpose,
-      status: "PLANNED",
-      provider,
-      providerRoomId,
-      title,
-      scheduledStart,
-      scheduledEnd,
-      nestSlug: captureProjectSlug,
-      projectSlug: captureProjectSlug,
-      recordingPolicyJson: {
-        source: "mobile-capture-session-create",
-        explicitConsentRequired: purpose !== "PERSONAL_NOTE",
-        hiddenRecordingAllowed: false,
-        joiningStartsRecording: false,
-        localRecordingRequiresConsent: true,
-        providerRecordingRequiresAllParticipantConsent: purpose !== "PERSONAL_NOTE",
-        visibleRecordingIndicatorRequired: true,
-        selfCaptureOnly: purpose === "PERSONAL_NOTE",
-      },
-      transcriptPolicyJson: {
-        source: "mobile-capture-session-create",
-        transcriptRequiresRecordingEvidence: true,
-        transcriptRequiresConsent: true,
-        packetRequiresHumanReview: false,
-        automaticEditableWork: true,
-      },
-      metadataJson: {
-        source: "ios-capture",
-        appSurface: "HighGroundCapture",
-        createdFrom: "api/mobile/capture/sessions POST",
-        createdByUserId: userId,
-        projectId: captureProjectId,
-        projectSlug: captureProjectSlug,
-        episodeSlug: episodeBinding.episodeSlug,
-        coachingEngagementId: coachingEngagement?.id || null,
-        coachingEngagementTitle: coachingEngagement?.title || null,
-        quickSession: true,
-        personalSelfCapture: purpose === "PERSONAL_NOTE",
-        otherAudibleParticipantsAllowed: purpose !== "PERSONAL_NOTE",
-        externalSideEffects: {
-          calendarMutated: false,
-          stripeMutated: false,
-          providerJoined: false,
-          tokenMinted: false,
-          recordingStarted: false,
-          inviteSent: false,
+  let room: any;
+  try {
+    room = await prisma.$transaction(async (tx: any) => {
+      const created = await tx.callRoom.create({
+        data: {
+          ...(requestedRoomId ? { id: requestedRoomId } : {}),
+          createdByUserId: userId,
+          projectId: captureProjectId,
+          episodeProductionId: episodeBinding.episodeProductionId,
+          coachingEngagementId: coachingEngagement?.id || null,
+          purpose,
+          status: "PLANNED",
+          provider,
+          providerRoomId,
+          title,
+          scheduledStart,
+          scheduledEnd,
+          nestSlug: captureProjectSlug,
+          projectSlug: captureProjectSlug,
+          recordingPolicyJson: {
+            source: "mobile-capture-session-create",
+            explicitConsentRequired: purpose !== "PERSONAL_NOTE",
+            hiddenRecordingAllowed: false,
+            joiningStartsRecording: false,
+            localRecordingRequiresConsent: true,
+            providerRecordingRequiresAllParticipantConsent: purpose !== "PERSONAL_NOTE",
+            visibleRecordingIndicatorRequired: true,
+            selfCaptureOnly: purpose === "PERSONAL_NOTE",
+          },
+          transcriptPolicyJson: {
+            source: "mobile-capture-session-create",
+            transcriptRequiresRecordingEvidence: true,
+            transcriptRequiresConsent: true,
+            packetRequiresHumanReview: false,
+            automaticEditableWork: true,
+          },
+          metadataJson: {
+            source: "ios-capture",
+            appSurface: "HighGroundCapture",
+            createdFrom: "api/mobile/capture/sessions POST",
+            clientRequestId,
+            createdByUserId: userId,
+            projectId: captureProjectId,
+            projectSlug: captureProjectSlug,
+            episodeSlug: episodeBinding.episodeSlug,
+            coachingEngagementId: coachingEngagement?.id || null,
+            coachingEngagementTitle: coachingEngagement?.title || null,
+            quickSession: true,
+            personalSelfCapture: purpose === "PERSONAL_NOTE",
+            otherAudibleParticipantsAllowed: purpose !== "PERSONAL_NOTE",
+            externalSideEffects: {
+              calendarMutated: false,
+              stripeMutated: false,
+              providerJoined: false,
+              tokenMinted: false,
+              recordingStarted: false,
+              inviteSent: false,
+            },
+            createdAt: now.toISOString(),
+          },
+          participants: {
+            create: participantRows,
+          },
         },
-        createdAt: now.toISOString(),
-      },
-      participants: {
-        create: participantRows,
-      },
-    },
-    include: { participants: { where: { accessStatus: "ACTIVE" } } },
-  });
+        include: { participants: { where: { accessStatus: "ACTIVE" } } },
+      });
 
-  const hostParticipant = room.participants.find((item: any) => item.userId === userId) || room.participants[0] || null;
-  await prisma.recordingConsent.createMany({
-    data: room.participants.map((participant: any) => ({
-      roomId: room.id,
-      participantId: participant.id,
-      userId: participant.userId,
-      status: purpose === "PERSONAL_NOTE" ? "GRANTED" : "REQUESTED",
-      consentText: MOBILE_CAPTURE_CONSENT_TEXT,
-      policyVersion: MOBILE_CAPTURE_CONSENT_POLICY_VERSION,
-      canRecordAudio: purpose === "PERSONAL_NOTE",
-      canRecordVideo: false,
-      canTranscribe: purpose === "PERSONAL_NOTE",
-      consentedAt: purpose === "PERSONAL_NOTE" ? now : null,
-      metadataJson: {
-        source: purpose === "PERSONAL_NOTE" ? "ios-personal-self-capture" : "ios-capture-session-create",
-        appSurface: "HighGroundCapture",
-        requestedByUserId: userId,
-        attestationKind: purpose === "PERSONAL_NOTE"
-          ? "actor-recording-self"
-          : "recorder-all-heard-participants-notified-and-agreed",
-        independentParticipantReceiptsRequiredForProviderEgress: purpose !== "PERSONAL_NOTE",
-        selfCaptureOnly: purpose === "PERSONAL_NOTE",
-        consentTextHash: MOBILE_CAPTURE_CONSENT_TEXT_SHA256,
-        consentEvidenceVersion: 2,
-        requestedAt: now.toISOString(),
-      },
-    })),
-  });
-
-  const createdRoom = await prisma.callRoom.findUnique({
-    where: { id: room.id },
-    include: MOBILE_CAPTURE_ROOM_INCLUDE,
-  });
-  const createdRoomIdentity = createdRoom ? {
-    id: createdRoom.id,
-    title: createdRoom.title,
-    purpose: createdRoom.purpose,
-    projectId: createdRoom.projectId,
-    scheduledStart: createdRoom.scheduledStart,
-    endedAt: createdRoom.endedAt,
-    createdAt: createdRoom.createdAt,
-    booking: createdRoom.booking ? {
-      clientUserId: createdRoom.booking.clientUserId,
-      coachUserId: createdRoom.booking.coachUserId,
-    } : null,
-  } : null;
-  const createdPriorContinuity = createdRoomIdentity
-    ? await loadPriorSessionContinuityByRoomId({
+      await tx.recordingConsent.createMany({
+        data: created.participants.map((participant: any) => ({
+          roomId: created.id,
+          participantId: participant.id,
+          userId: participant.userId,
+          status: purpose === "PERSONAL_NOTE" ? "GRANTED" : "REQUESTED",
+          consentText: MOBILE_CAPTURE_CONSENT_TEXT,
+          policyVersion: MOBILE_CAPTURE_CONSENT_POLICY_VERSION,
+          canRecordAudio: purpose === "PERSONAL_NOTE",
+          canRecordVideo: false,
+          canTranscribe: purpose === "PERSONAL_NOTE",
+          consentedAt: purpose === "PERSONAL_NOTE" ? now : null,
+          metadataJson: {
+            source: purpose === "PERSONAL_NOTE" ? "ios-personal-self-capture" : "ios-capture-session-create",
+            appSurface: "HighGroundCapture",
+            requestedByUserId: userId,
+            attestationKind: purpose === "PERSONAL_NOTE"
+              ? "actor-recording-self"
+              : "recorder-all-heard-participants-notified-and-agreed",
+            independentParticipantReceiptsRequiredForProviderEgress: purpose !== "PERSONAL_NOTE",
+            selfCaptureOnly: purpose === "PERSONAL_NOTE",
+            consentTextHash: MOBILE_CAPTURE_CONSENT_TEXT_SHA256,
+            consentEvidenceVersion: 2,
+            requestedAt: now.toISOString(),
+          },
+        })),
+      });
+      return created;
+    });
+  } catch (error) {
+    if (requestedRoomId && (error as { code?: string })?.code === "P2002") {
+      const replay = await loadMappedCaptureRoom({
         prisma,
+        roomId: requestedRoomId,
         actor: session.user,
-        rooms: [createdRoomIdentity],
-      })
-    : {};
-  const createdPriorFollowThrough = createdRoomIdentity
-    ? await loadPriorSessionFollowThroughByRoomId({
-        prisma,
-        actor: session.user,
-        rooms: [createdRoomIdentity],
-      })
-    : {};
+      });
+      if (replay) {
+        return captureSessionCreateResponse({
+          room: replay.room,
+          mapped: replay.mapped,
+          purpose: replay.room.purpose,
+          episodeBound: Boolean(replay.room.episodeProductionId),
+          created: false,
+        });
+      }
+    }
+    throw error;
+  }
 
-  const [mapped] = mapMobileCaptureSessionsForUser({
-    rooms: createdRoom ? [createdRoom] : [],
-    userId,
-    isStaff: session.user.isStaff === true,
-    productionNoteProjectIds: createdRoom?.projectId ? [createdRoom.projectId] : [],
-    priorContinuityByRoomId: createdPriorContinuity,
-    priorFollowThroughByRoomId: createdPriorFollowThrough,
+  const createdProjection = await loadMappedCaptureRoom({
+    prisma,
+    roomId: room.id,
+    actor: session.user,
   });
-
-  return NextResponse.json(
-    {
-      ok: true,
-      created: true,
-      session: mapped,
-      boundaries: {
-        appOwnedRoomCreated: true,
-        episodeBound: Boolean(episodeBinding.episodeProductionId),
-        participantCreated: Boolean(hostParticipant?.id),
-        participantCount: room.participants.length,
-        relationshipParticipantsAttached: Boolean(
-          coachingEngagement && room.participants.length >= 2,
-        ),
-        consentRequested: purpose !== "PERSONAL_NOTE",
-        selfCaptureConsentGranted: purpose === "PERSONAL_NOTE",
-        recordingStarted: false,
-        providerJoined: false,
-        providerTokenMinted: false,
-        calendarMutated: false,
-        stripeMutated: false,
-        externalInviteSent: false,
-        nextAction: purpose === "PERSONAL_NOTE"
-          ? "Record when ready. If another person can be heard, start a Session so they can consent."
-          : "Open this Quipsly capture session, collect explicit consent, then join or record from visible controls.",
-      },
-    },
-    { status: 201 },
-  );
+  if (!createdProjection) {
+    return NextResponse.json(
+      { ok: false, error: "Quipsly created the Session but could not read it back for this account." },
+      { status: 500 },
+    );
+  }
+  return captureSessionCreateResponse({
+    room: createdProjection.room,
+    mapped: createdProjection.mapped,
+    purpose,
+    episodeBound: Boolean(episodeBinding.episodeProductionId),
+    created: true,
+  });
 }
 
 export async function PATCH(request: Request) {
