@@ -1836,7 +1836,7 @@ private struct CaptureWorkView: View {
                     Button {
                         showsNewProject = true
                     } label: {
-                        Image(systemName: "folder.badge.plus")
+                        Label("New", systemImage: "plus")
                     }
                     .disabled(projectCreationDisabled)
                     .accessibilityLabel("New Nest")
