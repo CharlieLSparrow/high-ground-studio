@@ -844,6 +844,28 @@ final class LocalRecordingLibrary: ObservableObject {
         try makeUniqueSourceURL(mediaKind: .audio, startedAt: startedAt)
     }
 
+    /// Removes only a never-started encoder file created before the durable
+    /// recording ledger accepted ownership. A URL that left the canonical
+    /// folder, does not match Quipsly's generated audio naming contract, or is
+    /// already represented by any ledger row is preserved for recovery.
+    /// Finalized and in-progress recordings must use the explicit source
+    /// lifecycle; this helper can never delete them.
+    func discardUncommittedPreflightFile(at fileURL: URL) throws {
+        let candidate = fileURL.standardizedFileURL
+        guard candidate.deletingLastPathComponent() == recordingsDirectoryURL.standardizedFileURL,
+              isSafeRecordingFileName(
+                candidate.lastPathComponent,
+                expectedMediaKind: .audio
+              ),
+              !storedRecordings.contains(where: { $0.fileName == candidate.lastPathComponent }) else {
+            throw LibraryError.localDeletionBlocked(
+                "Quipsly preserved this file because it may already be recording evidence."
+            )
+        }
+        guard fileManager.fileExists(atPath: candidate.path) else { return }
+        try fileManager.removeItem(at: candidate)
+    }
+
     func makeUniqueSourceURL(
         mediaKind: LocalRecordingMediaKind,
         fileExtension: String? = nil,

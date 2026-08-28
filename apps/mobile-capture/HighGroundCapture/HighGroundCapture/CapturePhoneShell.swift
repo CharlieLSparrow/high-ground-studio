@@ -8851,6 +8851,9 @@ private struct CaptureRecorderView: View {
                             peakPowerDB: audioCapture.peakInputLevelDB,
                             inputRoute: audioCapture.inputRouteName,
                             capturePipeline: audioCapture.capturePipelineLabel,
+                            liveWritingFinalText: audioCapture.liveWritingFinalText,
+                            liveWritingVolatileText: audioCapture.liveWritingVolatileText,
+                            liveWritingPreviewMessage: audioCapture.liveWritingPreviewMessage,
                             userMarkOffsets: audioCapture.userMarkOffsets,
                             isBusy: model.isChangingCapture,
                             canStartRecording:
@@ -15039,6 +15042,9 @@ private struct RecorderHero: View {
     let peakPowerDB: Float
     let inputRoute: String
     let capturePipeline: String
+    let liveWritingFinalText: String
+    let liveWritingVolatileText: String
+    let liveWritingPreviewMessage: String?
     let userMarkOffsets: [TimeInterval]
     let isBusy: Bool
     let canStartRecording: Bool
@@ -15138,6 +15144,11 @@ private struct RecorderHero: View {
                         .accessibilityIdentifier("CaptureMarkMomentButton")
                     }
                 }
+            }
+
+            if session.isPersonalVoiceNote,
+               captureState == .recording || captureState == .paused {
+                liveWritingPreview
             }
 
             if let lastMark = userMarkOffsets.last {
@@ -15261,6 +15272,49 @@ private struct RecorderHero: View {
             return "The audio is safe. Quipsly is turning it into editable, time-linked writing."
         case .failed:
             return "Nothing will be discarded. Open Library to review any audio that was saved."
+        }
+    }
+
+    @ViewBuilder
+    private var liveWritingPreview: some View {
+        let finalText = liveWritingFinalText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let volatileText = liveWritingVolatileText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let combined = [finalText, volatileText]
+            .filter { !$0.isEmpty }
+            .joined(separator: finalText.isEmpty || volatileText.isEmpty ? "" : " ")
+
+        if !combined.isEmpty {
+            VStack(alignment: .leading, spacing: 6) {
+                Label("Live words", systemImage: "text.quote")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(CapturePalette.accent)
+                Text(String(combined.suffix(520)))
+                    .font(.body)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .lineLimit(7)
+                    .accessibilityLabel("Live transcription: \(combined)")
+            }
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                CapturePalette.accent.opacity(0.08),
+                in: RoundedRectangle(cornerRadius: 16, style: .continuous)
+            )
+            .accessibilityElement(children: .combine)
+            .accessibilityIdentifier("CaptureVoiceWritingLiveTranscript")
+        } else {
+            Label(
+                liveWritingPreviewMessage == nil
+                    ? "Listening… Your original audio is being saved."
+                    : "Your audio is safe. Editable writing will appear after Stop.",
+                systemImage: liveWritingPreviewMessage == nil
+                    ? "waveform"
+                    : "waveform.badge.checkmark"
+            )
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityIdentifier("CaptureVoiceWritingDeferredTranscript")
         }
     }
 

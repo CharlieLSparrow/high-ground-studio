@@ -32,6 +32,9 @@ final class AudioCaptureController: NSObject, ObservableObject {
     @Published private(set) var peakInputLevelDB: Float = -160
     @Published private(set) var inputRouteName: String = "No microphone selected"
     @Published private(set) var inputRoutePortType: String?
+    @Published private(set) var liveWritingFinalText: String = ""
+    @Published private(set) var liveWritingVolatileText: String = ""
+    @Published private(set) var liveWritingPreviewMessage: String?
     @Published private(set) var failureMessage: String?
     @Published private(set) var lastErrorMessage: String?
     @Published private(set) var automaticStopReason: String?
@@ -58,6 +61,7 @@ final class AudioCaptureController: NSObject, ObservableObject {
     private let storageProjectionWindowSeconds: Int64 = 180
     private let storageCheckInterval: TimeInterval = 2
     private var audioRecorder: AVAudioRecorder?
+    private var voiceWritingLiveSource: VoiceWritingLiveSourceRecording?
     #if canImport(LiveKit)
     private var providerAudioMaster: ProviderAudioMasterRecorder?
     #endif
@@ -86,6 +90,9 @@ final class AudioCaptureController: NSObject, ObservableObject {
     private var providerCallTransportGapStartedAt: Date?
 
     var capturePipelineLabel: String {
+        if voiceWritingLiveSource != nil {
+            return "Original audio + live words on this iPhone"
+        }
         #if canImport(LiveKit)
         if providerAudioMaster != nil {
             return "Same microphone as the live room"
@@ -139,6 +146,17 @@ final class AudioCaptureController: NSObject, ObservableObject {
     private var activeRecordingConsentId: String?
     private var activeRecordingAssetId: String?
     private var activeCapturePurpose: String?
+
+    private var isPersonalVoiceWritingPurpose: Bool {
+        let value = activeCapturePurpose?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .uppercased()
+            .replacingOccurrences(of: "-", with: "_")
+            .replacingOccurrences(of: " ", with: "_") ?? ""
+        return value == "PERSONAL_NOTE"
+            || value == "VOICE_NOTE"
+            || value == "FIELD_NOTE"
+    }
 
     private var segments: [RecordingSegment] = []
     private var currentSegmentStart: Date?
@@ -652,6 +670,10 @@ final class AudioCaptureController: NSObject, ObservableObject {
             transition(to: .preparing)
             failureMessage = nil
             lastErrorMessage = nil
+            if isPersonalVoiceWritingPurpose {
+                beginPersonalVoiceWritingRecording()
+                return
+            }
             do {
                 try activateAudioSessionAndBeginRecording()
             } catch {
@@ -708,9 +730,116 @@ final class AudioCaptureController: NSObject, ObservableObject {
         }
 
         do {
-            try activateAudioSessionAndBeginRecording()
+            if isPersonalVoiceWritingPurpose {
+                try await activateAudioSessionAndBeginPersonalVoiceWriting()
+            } else {
+                try activateAudioSessionAndBeginRecording()
+            }
         } catch {
             handleStartFailure(error)
+        }
+    }
+
+    private func beginPersonalVoiceWritingRecording() {
+        startTask?.cancel()
+        startTask = Task { [weak self] in
+            guard let self else { return }
+            do {
+                try await self.activateAudioSessionAndBeginPersonalVoiceWriting()
+            } catch is CancellationError {
+                // The visible Stop action owns the START-boundary cleanup.
+            } catch {
+                self.handleStartFailure(error)
+            }
+            self.startTask = nil
+        }
+    }
+
+    /// Attempts Apple's low-latency iOS 26 transcription recorder, but never
+    /// makes live preview a prerequisite for source capture. If models or
+    /// formats are unavailable, beginActualRecording falls back to the proven
+    /// AVAudioRecorder path and the finalized file is transcribed after Stop.
+    private func activateAudioSessionAndBeginPersonalVoiceWriting() async throws {
+        try audioSessionCoordinator.activateLocalCapture()
+        refreshInputRoute()
+        try Task.checkCancellation()
+
+        #if canImport(LiveKit)
+        // A connected room already owns the microphone through LiveKit's
+        // observed local-input PCM boundary. Do not even prepare a second
+        // AVAudioEngine tap; preserve the proven single-owner call recorder.
+        if audioSessionCoordinator.isProviderRoomActive {
+            try beginActualRecording()
+            return
+        }
+        #endif
+
+        let startedAt = Date()
+        let audioFilename = try localRecordingLibrary.makeUniqueRecordingURL(
+            startedAt: startedAt
+        )
+        let settings = directAudioSettings
+        liveWritingFinalText = ""
+        liveWritingVolatileText = ""
+        liveWritingPreviewMessage = nil
+
+        let prepared = await VoiceWritingLiveSourceFactory.prepareIfAvailable(
+            fileURL: audioFilename,
+            audioSettings: settings,
+            onTextChange: { [weak self] finalized, volatile in
+                Task { @MainActor [weak self] in
+                    guard let self, self.captureState == .recording || self.captureState == .paused else {
+                        return
+                    }
+                    self.liveWritingFinalText = finalized
+                    self.liveWritingVolatileText = volatile
+                }
+            },
+            onPreviewUnavailable: { [weak self] reason in
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
+                    self.liveWritingPreviewMessage = reason
+                }
+            },
+            onSourceWriteFailure: { [weak self] reason in
+                Task { @MainActor [weak self] in
+                    guard let self,
+                          self.captureState == .recording || self.captureState == .paused else {
+                        return
+                    }
+                    self.finishCaptureFailure(
+                        "The original audio file stopped accepting microphone data: \(reason) Quipsly preserved every byte written before the failure."
+                    )
+                }
+            }
+        )
+
+        do {
+            try Task.checkCancellation()
+            guard pendingCaptureOwnerIsCurrent else {
+                prepared?.abort()
+                throw CaptureError.captureOwnerChanged
+            }
+            if let prepared {
+                try beginActualRecording(
+                    startedAt: startedAt,
+                    audioFilename: audioFilename,
+                    settings: settings,
+                    preparedVoiceWritingSource: prepared
+                )
+            } else {
+                try beginActualRecording()
+            }
+        } catch {
+            if voiceWritingLiveSource !== prepared {
+                prepared?.abort()
+            }
+            if activeLocalRecordingID == nil {
+                try? localRecordingLibrary.discardUncommittedPreflightFile(
+                    at: audioFilename
+                )
+            }
+            throw error
         }
     }
 
@@ -861,8 +990,22 @@ final class AudioCaptureController: NSObject, ObservableObject {
         try beginActualRecording()
     }
 
-    private func beginActualRecording() throws {
-        let startedAt = Date()
+    private var directAudioSettings: [String: Any] {
+        [
+            AVFormatIDKey: Int(kAudioFormatMPEG4AAC),
+            AVSampleRateKey: 48_000.0,
+            AVNumberOfChannelsKey: 1,
+            AVEncoderBitRateKey: 192_000,
+            AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue
+        ]
+    }
+
+    private func beginActualRecording(
+        startedAt: Date = Date(),
+        audioFilename suppliedAudioFilename: URL? = nil,
+        settings suppliedSettings: [String: Any]? = nil,
+        preparedVoiceWritingSource: VoiceWritingLiveSourceRecording? = nil
+    ) throws {
         if activeCallRoomId != nil, pendingCaptureIntent == nil {
             throw CaptureError.startReceiptNotDurable
         }
@@ -878,19 +1021,15 @@ final class AudioCaptureController: NSObject, ObservableObject {
            captureIntent.callRoomID != activeCallRoomId {
             throw CaptureError.armedRoomMismatch
         }
-        let audioFilename = try localRecordingLibrary.makeUniqueRecordingURL(startedAt: startedAt)
-        let settings: [String: Any] = [
-            AVFormatIDKey: Int(kAudioFormatMPEG4AAC),
-            AVSampleRateKey: 48_000.0,
-            AVNumberOfChannelsKey: 1,
-            AVEncoderBitRateKey: 192_000,
-            AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue
-        ]
+        let audioFilename = try suppliedAudioFilename
+            ?? localRecordingLibrary.makeUniqueRecordingURL(startedAt: startedAt)
+        let settings = suppliedSettings ?? directAudioSettings
 
         var directRecorder: AVAudioRecorder?
         #if canImport(LiveKit)
         var providerRecorder: ProviderAudioMasterRecorder?
         if audioSessionCoordinator.isProviderRoomActive {
+            preparedVoiceWritingSource?.abort()
             guard audioSessionCoordinator.providerInputObservationAvailable else {
                 throw CaptureError.providerInputUnavailable
             }
@@ -898,7 +1037,7 @@ final class AudioCaptureController: NSObject, ObservableObject {
                 fileURL: audioFilename,
                 audioSettings: settings
             )
-        } else {
+        } else if preparedVoiceWritingSource == nil {
             let recorder = try AVAudioRecorder(url: audioFilename, settings: settings)
             recorder.delegate = self
             recorder.isMeteringEnabled = true
@@ -908,13 +1047,15 @@ final class AudioCaptureController: NSObject, ObservableObject {
             directRecorder = recorder
         }
         #else
-        let recorder = try AVAudioRecorder(url: audioFilename, settings: settings)
-        recorder.delegate = self
-        recorder.isMeteringEnabled = true
-        guard recorder.prepareToRecord() else {
-            throw CaptureError.couldNotPrepareRecorder
+        if preparedVoiceWritingSource == nil {
+            let recorder = try AVAudioRecorder(url: audioFilename, settings: settings)
+            recorder.delegate = self
+            recorder.isMeteringEnabled = true
+            guard recorder.prepareToRecord() else {
+                throw CaptureError.couldNotPrepareRecorder
+            }
+            directRecorder = recorder
         }
-        directRecorder = recorder
         #endif
         try localRecordingLibrary.setInProgressFileProtection(at: audioFilename)
         #if canImport(LiveKit)
@@ -922,6 +1063,7 @@ final class AudioCaptureController: NSObject, ObservableObject {
         #else
         let usesProviderPCM = false
         #endif
+        let usesLiveVoiceWritingSource = preparedVoiceWritingSource != nil && !usesProviderPCM
         let runtimeEvidence = CaptureRuntimeEvidence.current(
             audioSession: audioSession
         )
@@ -955,10 +1097,14 @@ final class AudioCaptureController: NSObject, ObservableObject {
                 audioChannelCount: 1,
                 audioCapturePipeline: usesProviderPCM
                     ? "livekit-local-input-pcm"
-                    : "av-audio-recorder-direct-input",
+                    : usesLiveVoiceWritingSource
+                        ? "av-audio-engine-source-plus-speech-analyzer-preview"
+                        : "av-audio-recorder-direct-input",
                 pauseTimelinePolicy: usesProviderPCM
                     ? "silence-preserves-wall-clock"
-                    : "recorder-native-pause",
+                    : usesLiveVoiceWritingSource
+                        ? "audio-engine-native-pause"
+                        : "recorder-native-pause",
                 captureAppVersion: runtimeEvidence.appVersion,
                 captureAppBuild: runtimeEvidence.appBuild,
                 deviceModelIdentifier: runtimeEvidence.deviceModelIdentifier,
@@ -1023,6 +1169,30 @@ final class AudioCaptureController: NSObject, ObservableObject {
             return
         }
         #endif
+
+        if let preparedVoiceWritingSource {
+            voiceWritingLiveSource = preparedVoiceWritingSource
+            do {
+                try preparedVoiceWritingSource.start()
+                try localRecordingLibrary.markRecording(
+                    ledgerEntry.id,
+                    durationSeconds: 0
+                )
+            } catch {
+                preparedVoiceWritingSource.abort()
+                voiceWritingLiveSource = nil
+                throw error
+            }
+            startNewSegment(at: startedAt)
+            startDurationAndMeterTimer()
+            transition(to: .recording)
+            startPeriodicClockEvidence(
+                recordingID: ledgerEntry.id,
+                captureIntent: captureIntent
+            )
+            updateNowPlayingInfo()
+            return
+        }
 
         guard let directRecorder else {
             throw CaptureError.couldNotPrepareRecorder
@@ -1169,6 +1339,19 @@ final class AudioCaptureController: NSObject, ObservableObject {
         }
         #endif
 
+        if let voiceWritingLiveSource {
+            voiceWritingLiveSource.closeSource()
+            self.voiceWritingLiveSource = nil
+            // The immutable AAC source is already closed. SpeechAnalyzer's
+            // volatile preview is explicitly best-effort and can finish in the
+            // background without delaying ledger validation or upload.
+            Task {
+                await voiceWritingLiveSource.finishPreview()
+            }
+            finalizeSuccessfulRecording()
+            return
+        }
+
         guard let audioRecorder else {
             finishCaptureFailure("The recorder became unavailable while Quipsly was finalizing the file.")
             return
@@ -1193,11 +1376,17 @@ final class AudioCaptureController: NSObject, ObservableObject {
         #if canImport(LiveKit)
         if let providerAudioMaster {
             providerAudioMaster.pause()
+        } else if let voiceWritingLiveSource {
+            voiceWritingLiveSource.pause()
         } else {
             audioRecorder?.pause()
         }
         #else
-        audioRecorder?.pause()
+        if let voiceWritingLiveSource {
+            voiceWritingLiveSource.pause()
+        } else {
+            audioRecorder?.pause()
+        }
         #endif
         endCurrentSegment(
             reason: reason,
@@ -1281,6 +1470,22 @@ final class AudioCaptureController: NSObject, ObservableObject {
             }
             #endif
 
+            if let voiceWritingLiveSource {
+                try voiceWritingLiveSource.resume()
+                startTime = resumedAt
+                startNewSegment(at: resumedAt)
+                if let activeLocalRecordingID {
+                    try localRecordingLibrary.markRecording(
+                        activeLocalRecordingID,
+                        durationSeconds: accumulatedDuration
+                    )
+                }
+                startDurationAndMeterTimer()
+                transition(to: .recording)
+                updateNowPlayingInfo()
+                return
+            }
+
             guard let audioRecorder, audioRecorder.record() else {
                 throw CaptureError.couldNotResumeRecorder
             }
@@ -1299,6 +1504,7 @@ final class AudioCaptureController: NSObject, ObservableObject {
             updateNowPlayingInfo()
         } catch {
             audioRecorder?.pause()
+            voiceWritingLiveSource?.pause()
             #if canImport(LiveKit)
             providerAudioMaster?.pause()
             #endif
@@ -1419,6 +1625,9 @@ final class AudioCaptureController: NSObject, ObservableObject {
             return providerAudioMaster.currentTime
         }
         #endif
+        if let voiceWritingLiveSource {
+            return max(accumulatedDuration, voiceWritingLiveSource.currentTime)
+        }
         if let audioRecorder {
             return max(accumulatedDuration, audioRecorder.currentTime)
         }
@@ -1536,6 +1745,23 @@ final class AudioCaptureController: NSObject, ObservableObject {
             return
         }
         #endif
+        if let voiceWritingLiveSource {
+            if let writeFailure = voiceWritingLiveSource.sourceWriteFailure {
+                finishCaptureFailure(
+                    "The original audio file stopped accepting microphone data: \(writeFailure) Quipsly preserved every byte written before the failure."
+                )
+                return
+            }
+            guard captureState == .recording, voiceWritingLiveSource.isRecording else {
+                inputLevelDB = -160
+                peakInputLevelDB = -160
+                return
+            }
+            let snapshot = voiceWritingLiveSource.meterSnapshot
+            inputLevelDB = snapshot.averagePowerDB
+            peakInputLevelDB = snapshot.peakPowerDB
+            return
+        }
         guard let audioRecorder, audioRecorder.isRecording else {
             inputLevelDB = -160
             peakInputLevelDB = -160
@@ -1868,6 +2094,8 @@ final class AudioCaptureController: NSObject, ObservableObject {
         captureClockSamplingTask = nil
         audioRecorder?.stop()
         audioRecorder = nil
+        voiceWritingLiveSource?.abort()
+        voiceWritingLiveSource = nil
         #if canImport(LiveKit)
         providerAudioMaster?.stop()
         providerAudioMaster = nil

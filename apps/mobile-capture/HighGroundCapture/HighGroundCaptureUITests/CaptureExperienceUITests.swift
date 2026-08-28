@@ -20,8 +20,18 @@ final class CaptureExperienceUITests: XCTestCase {
                 "--capture-consent-needed-next-preview"
             )
         }
-        if name.contains("testPrivateVoiceNoteOpensCaptureWithoutMeetingPaperwork") {
+        if name.contains("testPrivateVoiceNoteOpensCaptureWithoutMeetingPaperwork")
+            || name.contains("testVoiceWritingRecordsAndStopsThroughTheSourceFirstPath") {
             app.launchArguments.append("--capture-force-local-voice-note-ui-test")
+        }
+        if name.contains("testVoiceWritingRecordsAndStopsThroughTheSourceFirstPath") {
+            // The recording path requires an explicit, account-partitioned
+            // owner even in preview mode. This DEBUG simulator marker is the
+            // same narrow identity boundary used by the share/recovery tests;
+            // it never exists in release or on a physical device.
+            app.launchArguments.append(
+                "--capture-share-owner-ui-preview=voice-writing-source-owner"
+            )
         }
         if name.contains("testCoachFollowUpHoldsReleaseWhenCanonicalSourceChanged") {
             app.launchArguments.append("--capture-follow-up-source-changed-preview")
@@ -218,6 +228,59 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(
             app.staticTexts["CaptureSessionStatusMessage"].label.contains("offline"),
             "The local-first path should explain that recording and writing remain available without Nest."
+        )
+    }
+
+    func testVoiceWritingRecordsAndStopsThroughTheSourceFirstPath() {
+        app.buttons["CaptureStartVoiceNote"].tap()
+        XCTAssertTrue(
+            app.otherElements["CaptureRecorderHero"].waitForExistence(timeout: 8)
+        )
+
+        addUIInterruptionMonitor(withDescription: "Microphone permission") { alert in
+            let allow = alert.buttons["Allow"]
+            if allow.exists {
+                allow.tap()
+                return true
+            }
+            let allowWhileUsing = alert.buttons["Allow While Using App"]
+            if allowWhileUsing.exists {
+                allowWhileUsing.tap()
+                return true
+            }
+            return false
+        }
+
+        let start = app.buttons["CaptureStartButton"]
+        XCTAssertTrue(start.waitForExistence(timeout: 5))
+        start.tap()
+        app.tap()
+
+        let stop = app.buttons["CaptureStopButton"]
+        XCTAssertTrue(
+            stop.waitForExistence(timeout: 15),
+            "Private speech-to-writing should enter a visible recording state after one ordinary permission prompt."
+        )
+        XCTAssertTrue(
+            app.buttons["CaptureVoiceWritingPauseResumeButton"].exists,
+            "Pause must remain next to the active recorder instead of becoming a setup workflow."
+        )
+
+        let deferred = app.descendants(matching: .any)["CaptureVoiceWritingDeferredTranscript"]
+        let live = app.descendants(matching: .any)["CaptureVoiceWritingLiveTranscript"]
+        XCTAssertTrue(
+            deferred.waitForExistence(timeout: 4) || live.exists,
+            "Voice writing should either show live words or plainly promise the source-backed writing after Stop."
+        )
+
+        stop.tap()
+        XCTAssertTrue(
+            app.staticTexts["CaptureRecorderStateLabel"]
+                .waitForExistence(timeout: 10)
+        )
+        XCTAssertTrue(
+            app.buttons["CaptureStopButton"].waitForNonExistence(timeout: 10),
+            "Stopping voice writing must close the microphone-owned source instead of leaving capture active."
         )
     }
 
