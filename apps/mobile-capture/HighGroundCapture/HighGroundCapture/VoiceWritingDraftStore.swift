@@ -27,6 +27,7 @@ struct VoiceWritingRemoteDraft: Codable, Equatable {
     let sources: [VoiceWritingSourceReference]
     let tagRevision: Int
     let tags: [MobileCaptureTag]
+    let availableTags: [MobileCaptureTag]
     let serverUpdatedAt: String
     let createdAt: Date
     let updatedAt: Date
@@ -54,6 +55,7 @@ struct VoiceWritingDraft: Codable, Identifiable, Equatable {
     var canonicalProjectSlug: String?
     var canonicalTagRevision: Int?
     var canonicalTags: [MobileCaptureTag]?
+    var canonicalAvailableTags: [MobileCaptureTag]? = nil
     var canonicalUpdatedAt: String?
     var lastSyncedAt: Date?
     var lastSyncError: String?
@@ -344,6 +346,7 @@ final class VoiceWritingDraftStore: ObservableObject {
         projectSlug: String,
         tagRevision: Int,
         tags: [MobileCaptureTag],
+        availableTags: [MobileCaptureTag],
         sources: [VoiceWritingSourceReference],
         richText: VoiceWritingRichText?,
         serverUpdatedAt: String,
@@ -362,6 +365,7 @@ final class VoiceWritingDraftStore: ObservableObject {
         storedDrafts[index].canonicalProjectSlug = projectSlug
         storedDrafts[index].canonicalTagRevision = tagRevision
         storedDrafts[index].canonicalTags = tags
+        storedDrafts[index].canonicalAvailableTags = availableTags
         storedDrafts[index].sources = sources
         if storedDrafts[index].localRevision == syncedLocalRevision {
             storedDrafts[index].richText = richText
@@ -387,6 +391,7 @@ final class VoiceWritingDraftStore: ObservableObject {
             storedDrafts[index].canonicalProjectSlug = remote.projectSlug
             storedDrafts[index].canonicalTagRevision = remote.tagRevision
             storedDrafts[index].canonicalTags = remote.tags
+            storedDrafts[index].canonicalAvailableTags = remote.availableTags
             storedDrafts[index].canonicalUpdatedAt = remote.serverUpdatedAt
             storedDrafts[index].sources = mergedSources
             let hasLocalChanges = storedDrafts[index].serverRevision != storedDrafts[index].localRevision
@@ -438,6 +443,7 @@ final class VoiceWritingDraftStore: ObservableObject {
                 canonicalProjectSlug: remote.projectSlug,
                 canonicalTagRevision: remote.tagRevision,
                 canonicalTags: remote.tags,
+                canonicalAvailableTags: remote.availableTags,
                 canonicalUpdatedAt: remote.serverUpdatedAt,
                 lastSyncedAt: Date(),
                 lastSyncError: nil,
@@ -670,6 +676,19 @@ struct VoiceWritingHomeProject: Codable, Equatable {
     let slug: String
 }
 
+struct VoiceWritingNestDestination: Codable, Equatable, Identifiable {
+    let id: String
+    let name: String
+    let slug: String
+    let role: String
+    let isHome: Bool
+
+    var accessLabel: String {
+        if isHome { return "My Nest" }
+        return role.uppercased() == "OWNER" ? "Owned Nest" : "Shared Nest"
+    }
+}
+
 private struct VoiceWritingSyncResponse: Decodable {
     struct SavedSource: Decodable {
         let localRecordingId: String
@@ -697,6 +716,7 @@ private struct VoiceWritingSyncResponse: Decodable {
         let sources: [SavedSource]?
         let tagRevision: Int
         let tags: [MobileCaptureTag]
+        let availableTags: [MobileCaptureTag]?
         let createdAt: String?
         let updatedAt: String
     }
@@ -708,6 +728,7 @@ private struct VoiceWritingSyncResponse: Decodable {
     let current: SavedDraft?
     let homeProject: VoiceWritingHomeProject?
     let availableTags: [MobileCaptureTag]?
+    let destinations: [VoiceWritingNestDestination]?
 }
 
 private struct VoiceWritingListResponse: Decodable {
@@ -716,6 +737,22 @@ private struct VoiceWritingListResponse: Decodable {
     let drafts: [VoiceWritingSyncResponse.SavedDraft]?
     let homeProject: VoiceWritingHomeProject?
     let availableTags: [MobileCaptureTag]?
+    let destinations: [VoiceWritingNestDestination]?
+}
+
+private struct VoiceWritingMoveRequest: Encodable {
+    let draftId: String
+    let destinationProjectId: String
+    let expectedProjectId: String
+    let clientRequestId: String
+}
+
+private struct VoiceWritingMoveResponse: Decodable {
+    let ok: Bool
+    let code: String?
+    let error: String?
+    let draft: VoiceWritingSyncResponse.SavedDraft?
+    let current: VoiceWritingSyncResponse.SavedDraft?
 }
 
 private struct VoiceWritingDeleteRequest: Encodable {
@@ -737,10 +774,12 @@ final class VoiceWritingDraftSyncClient: ObservableObject {
     static let shared = VoiceWritingDraftSyncClient()
 
     @Published private(set) var syncingRecordingIDs: Set<UUID> = []
+    @Published private(set) var movingRecordingIDs: Set<UUID> = []
     @Published private(set) var isRefreshing = false
     @Published private(set) var refreshError: String?
     @Published private(set) var homeProject: VoiceWritingHomeProject?
     @Published private(set) var availableTags: [MobileCaptureTag] = []
+    @Published private(set) var destinations: [VoiceWritingNestDestination] = []
     private var pendingTasks: [UUID: Task<Void, Never>] = [:]
     private let apiBaseURL = normalizedNestAPIBaseURL(
         Bundle.main.object(forInfoDictionaryKey: "QUIPSLY_API_BASE_URL") as? String
@@ -786,6 +825,7 @@ final class VoiceWritingDraftSyncClient: ObservableObject {
             }
             homeProject = payload.homeProject
             availableTags = (payload.availableTags ?? []).filter { $0.isActive != false }
+            destinations = payload.destinations ?? []
             for saved in payload.drafts ?? [] {
                 if let remote = Self.remoteDraft(from: saved) {
                     VoiceWritingDraftStore.shared.reconcile(remote)
@@ -857,6 +897,84 @@ final class VoiceWritingDraftSyncClient: ObservableObject {
         try VoiceWritingDraftStore.shared.remove(recordingID: recordingID)
     }
 
+    func move(recordingID: UUID, to destination: VoiceWritingNestDestination) async throws {
+        guard !movingRecordingIDs.contains(recordingID) else { return }
+        pendingTasks[recordingID]?.cancel()
+        pendingTasks[recordingID] = nil
+        for _ in 0..<100 where syncingRecordingIDs.contains(recordingID) {
+            try await Task.sleep(for: .milliseconds(50))
+        }
+        guard !syncingRecordingIDs.contains(recordingID) else {
+            throw NSError(
+                domain: "QuipslyVoiceWriting",
+                code: -3,
+                userInfo: [NSLocalizedDescriptionKey: "Quipsly is finishing the last save. Try moving this writing again in a moment."]
+            )
+        }
+        if VoiceWritingDraftStore.shared.draft(for: recordingID)?.isSynced != true {
+            await syncLatest(recordingID: recordingID)
+        }
+        guard let draft = VoiceWritingDraftStore.shared.draft(for: recordingID),
+              draft.isSynced,
+              let currentProjectID = draft.canonicalProjectID?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !currentProjectID.isEmpty else {
+            throw NSError(
+                domain: "QuipslyVoiceWriting",
+                code: -4,
+                userInfo: [NSLocalizedDescriptionKey: "Let this writing finish saving before moving it."]
+            )
+        }
+        guard destination.id != currentProjectID else { return }
+        guard AuthManager.shared.networkActionsAllowed,
+              let endpoint = URL(string: "\(apiBaseURL)/api/mobile/capture/voice-writing") else {
+            throw NSError(
+                domain: "QuipslyVoiceWriting",
+                code: -1,
+                userInfo: [NSLocalizedDescriptionKey: "Connect to Quipsly before moving this writing."]
+            )
+        }
+
+        movingRecordingIDs.insert(recordingID)
+        defer { movingRecordingIDs.remove(recordingID) }
+        var request = URLRequest(url: endpoint)
+        request.httpMethod = "PATCH"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.httpBody = try JSONEncoder().encode(VoiceWritingMoveRequest(
+            draftId: draft.id.uuidString.lowercased(),
+            destinationProjectId: destination.id,
+            expectedProjectId: currentProjectID,
+            clientRequestId: UUID().uuidString.lowercased()
+        ))
+        let (data, response) = try await AuthManager.shared.authenticatedData(
+            for: request,
+            expectedOwnerAccountID: draft.ownerAccountID
+        )
+        let payload = try JSONDecoder().decode(VoiceWritingMoveResponse.self, from: data)
+        if response.statusCode == 409,
+           payload.code == "VOICE_WRITING_MOVE_CONFLICT",
+           let current = payload.current,
+           let remote = Self.remoteDraft(from: current) {
+            VoiceWritingDraftStore.shared.reconcile(remote)
+            throw NSError(
+                domain: "QuipslyVoiceWriting",
+                code: response.statusCode,
+                userInfo: [NSLocalizedDescriptionKey: payload.error ?? "This writing moved somewhere else. Its current Nest is now shown."]
+            )
+        }
+        guard (200...299).contains(response.statusCode),
+              payload.ok,
+              let saved = payload.draft,
+              let remote = Self.remoteDraft(from: saved) else {
+            throw NSError(
+                domain: "QuipslyVoiceWriting",
+                code: response.statusCode,
+                userInfo: [NSLocalizedDescriptionKey: payload.error ?? "This writing could not move yet."]
+            )
+        }
+        VoiceWritingDraftStore.shared.reconcile(remote)
+    }
+
     private func syncLatest(recordingID: UUID) async {
         if syncingRecordingIDs.contains(recordingID) {
             if let latest = VoiceWritingDraftStore.shared.draft(for: recordingID) {
@@ -915,6 +1033,7 @@ final class VoiceWritingDraftSyncClient: ObservableObject {
                 projectSlug: saved.projectSlug,
                 tagRevision: saved.tagRevision,
                 tags: saved.tags,
+                availableTags: (saved.availableTags ?? []).filter { $0.isActive != false },
                 sources: Self.mergedSources(
                     draft.allSources,
                     Self.sourceReferences(from: saved)
@@ -924,6 +1043,9 @@ final class VoiceWritingDraftSyncClient: ObservableObject {
             )
             homeProject = payload.homeProject
             availableTags = (payload.availableTags ?? []).filter { $0.isActive != false }
+            if let updatedDestinations = payload.destinations {
+                destinations = updatedDestinations
+            }
             if let latest = VoiceWritingDraftStore.shared.draft(for: recordingID),
                !latest.isSynced {
                 schedule(latest, delay: .milliseconds(250))
@@ -962,6 +1084,7 @@ final class VoiceWritingDraftSyncClient: ObservableObject {
             sources: sourceReferences(from: saved),
             tagRevision: saved.tagRevision,
             tags: saved.tags,
+            availableTags: (saved.availableTags ?? []).filter { $0.isActive != false },
             serverUpdatedAt: saved.updatedAt,
             createdAt: createdAt,
             updatedAt: updatedAt

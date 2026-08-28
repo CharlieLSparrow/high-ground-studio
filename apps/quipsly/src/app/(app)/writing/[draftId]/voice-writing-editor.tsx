@@ -11,6 +11,7 @@ import {
   Cloud,
   CloudAlert,
   Download,
+  FolderInput,
   Heading1,
   Heading2,
   Italic,
@@ -83,9 +84,18 @@ type WritingDraft = {
   updatedAt: string;
 };
 
+type WritingNestDestination = {
+  id: string;
+  name: string;
+  slug: string;
+  role: "OWNER" | "EDITOR" | string;
+  isHome: boolean;
+};
+
 type LoadResponse = {
   ok: boolean;
   drafts?: WritingDraft[];
+  destinations?: WritingNestDestination[];
   error?: string;
 };
 
@@ -160,6 +170,9 @@ export function VoiceWritingEditor({ draftId }: { draftId: string }) {
   const [exportError, setExportError] = useState("");
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState("");
+  const [destinations, setDestinations] = useState<WritingNestDestination[]>([]);
+  const [moving, setMoving] = useState(false);
+  const [moveError, setMoveError] = useState("");
   const [changeVersion, setChangeVersion] = useState(0);
   const [conflictingDraft, setConflictingDraft] = useState<WritingDraft | null>(null);
   const draftRef = useRef<WritingDraft | null>(null);
@@ -216,6 +229,7 @@ export function VoiceWritingEditor({ draftId }: { draftId: string }) {
       if (!response.ok || !payload.ok || !next) {
         throw new Error(payload.error || "This writing could not be loaded.");
       }
+      setDestinations(payload.destinations ?? []);
       installDraft(next);
     } catch (error) {
       setLoadError(error instanceof Error ? error.message : "This writing could not be loaded.");
@@ -403,6 +417,44 @@ export function VoiceWritingEditor({ draftId }: { draftId: string }) {
     }
   }
 
+  async function moveWriting(destinationProjectId: string) {
+    const base = draftRef.current;
+    if (!base || moving || destinationProjectId === base.projectId) return;
+    if (saveState !== "saved" || dirtyRef.current || savingRef.current) {
+      setMoveError("Let this writing finish saving, then choose its Nest again.");
+      return;
+    }
+    setMoving(true);
+    setMoveError("");
+    try {
+      const response = await fetch("/api/mobile/capture/voice-writing", {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          draftId: base.draftId,
+          destinationProjectId,
+          expectedProjectId: base.projectId,
+          clientRequestId: crypto.randomUUID(),
+        }),
+      });
+      const payload = await response.json() as SaveResponse;
+      if (response.status === 409 && payload.code === "VOICE_WRITING_MOVE_CONFLICT" && payload.current) {
+        installDraft(payload.current);
+        throw new Error(payload.error || "This writing moved somewhere else. Its current Nest is now shown.");
+      }
+      if (!response.ok || !payload.ok || !payload.draft) {
+        throw new Error(payload.error || "This writing could not move yet.");
+      }
+      draftRef.current = payload.draft;
+      setDraft(payload.draft);
+      router.refresh();
+    } catch (error) {
+      setMoveError(error instanceof Error ? error.message : "This writing could not move yet.");
+    } finally {
+      setMoving(false);
+    }
+  }
+
   if (loadError) {
     return <main className="mx-auto grid min-h-[70vh] max-w-2xl place-items-center px-4 py-10 text-[#3d3122]">
       <section className="w-full rounded-3xl border border-red-200 bg-red-50 p-7">
@@ -473,6 +525,39 @@ export function VoiceWritingEditor({ draftId }: { draftId: string }) {
       <p className="text-sm font-bold text-red-950">{deleteError}</p>
       <button type="button" onClick={() => setDeleteError("")} className="min-h-10 rounded-full border border-red-300 bg-white px-4 text-xs font-black text-red-950">Dismiss</button>
     </section> : null}
+
+    {moveError ? <section role="alert" className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4">
+      <p className="text-sm font-bold text-amber-950">{moveError}</p>
+      <button type="button" onClick={() => setMoveError("")} className="min-h-10 rounded-full border border-amber-300 bg-white px-4 text-xs font-black text-amber-950">Dismiss</button>
+    </section> : null}
+
+    <section className="mt-4 flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-[#dfcba6] bg-white px-5 py-4" aria-label="Writing location">
+      <div className="flex min-w-0 items-center gap-3">
+        <span className="rounded-xl bg-[#f5ead8] p-2 text-[#765f40]"><FolderInput className="h-5 w-5" aria-hidden="true" /></span>
+        <div>
+          <p className="text-xs font-black uppercase tracking-wide text-[#87663d]">Filed in</p>
+          <p className="truncate font-serif text-lg font-black">{draft.projectName}</p>
+          <p className="text-xs font-semibold text-[#765f40]">Private to you, including inside a shared Nest.</p>
+        </div>
+      </div>
+      {destinations.some((destination) => destination.id !== draft.projectId) ? <label className="flex min-h-11 items-center gap-2 text-sm font-black text-[#58442d]">
+        <span>{moving ? "Moving…" : "Move to"}</span>
+        <select
+          aria-label="Move writing to Nest"
+          value={destinations.some((destination) => destination.id === draft.projectId) ? draft.projectId : ""}
+          disabled={moving || saveState !== "saved"}
+          onChange={(event) => void moveWriting(event.target.value)}
+          className="min-h-11 rounded-xl border border-[#d8c4a1] bg-[#fffaf3] px-3 text-sm font-black outline-none focus:border-[#87663d] disabled:opacity-60"
+        >
+          {destinations.some((destination) => destination.id === draft.projectId)
+            ? null
+            : <option value="" disabled>{draft.projectName} · No longer shared</option>}
+          {destinations.map((destination) => <option key={destination.id} value={destination.id}>
+            {destination.name} · {destination.isHome ? "My Nest" : destination.role === "OWNER" ? "Owned" : "Shared"}
+          </option>)}
+        </select>
+      </label> : null}
+    </section>
 
     <section className="mt-4 overflow-hidden rounded-[2rem] border border-[#dfcba6] bg-[#fffefb] shadow-sm" aria-label="Writing editor">
       <div className="sticky top-0 z-10 flex flex-wrap items-center gap-2 border-b border-[#eadcc2] bg-[#fffaf2]/95 px-3 py-3 backdrop-blur sm:px-5" role="toolbar" aria-label="Text formatting">

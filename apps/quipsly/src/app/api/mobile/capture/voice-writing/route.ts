@@ -2,7 +2,10 @@ import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 
 import { getPrismaClient } from "@/lib/prisma";
-import { ensureHomeNestForEmail } from "@/lib/server/home-nest";
+import {
+  ensureHomeNestForEmail,
+  listProjectsVisibleToEmail,
+} from "@/lib/server/home-nest";
 import {
   mobileVoiceWritingBodyBlockId,
   mobileVoiceWritingContentHash,
@@ -14,6 +17,7 @@ import {
   type MobileVoiceWritingInput,
 } from "@/lib/server/mobile-voice-writing";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
+import { resolveStudioProjectAccess } from "@/lib/server/studio-project-access";
 
 export const dynamic = "force-dynamic";
 
@@ -86,6 +90,44 @@ function availableVoiceWritingTags(document: any) {
     .filter((tag: any) => tag.id && tag.projectId && tag.slug && tag.label && tag.isActive);
 }
 
+function voiceWritingDestination(project: any, homeProjectId?: string | null) {
+  return {
+    id: String(project?.id || ""),
+    name: String(project?.name || "Nest"),
+    slug: String(project?.slug || ""),
+    role: String(project?.role || "EDITOR"),
+    isHome: Boolean(homeProjectId && project?.id === homeProjectId),
+  };
+}
+
+function voiceWritingDocumentInclude() {
+  return {
+    project: {
+      select: {
+        name: true,
+        slug: true,
+        tags: {
+          where: { isActive: true, mergedIntoTagId: null },
+          orderBy: [{ label: "asc" }, { id: "asc" }],
+          select: { id: true, projectId: true, slug: true, label: true, isActive: true },
+        },
+      },
+    },
+    blocks: { where: { archivedAt: null }, orderBy: [{ order: "asc" }, { id: "asc" }] },
+    tagLinks: {
+      orderBy: [{ createdAt: "asc" }, { tagId: "asc" }],
+      select: {
+        tag: { select: { id: true, projectId: true, slug: true, label: true, isActive: true } },
+      },
+    },
+    documentOperations: {
+      where: { operationType: "mobile-voice-writing-sync" },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      take: 1,
+    },
+  };
+}
+
 function publicDraft(document: any, serverRevision: number, input: MobileVoiceWritingInput) {
   const body = voiceWritingBody(document, input.draftId) || input.body;
   const richText = voiceWritingRichText(document);
@@ -108,6 +150,7 @@ function publicDraft(document: any, serverRevision: number, input: MobileVoiceWr
     sources: input.sources,
     tagRevision: Number(document.tagRevision) || 0,
     tags: voiceWritingTags(document),
+    availableTags: availableVoiceWritingTags(document),
     updatedAt: document.updatedAt.toISOString(),
   };
 }
@@ -145,6 +188,7 @@ function publicStoredDraft(document: any) {
     sources,
     tagRevision: Number(document.tagRevision) || 0,
     tags: voiceWritingTags(document),
+    availableTags: availableVoiceWritingTags(document),
     createdAt: document.createdAt.toISOString(),
     updatedAt: document.updatedAt.toISOString(),
   };
@@ -153,7 +197,10 @@ function publicStoredDraft(document: any) {
 export async function GET(request: Request) {
   const session = await getQuipslySessionFromRequest(request);
   const actorUserId = String(session?.user?.id || "").trim();
-  if (!actorUserId) {
+  const actorEmail = String(session?.user?.primaryEmail || session?.user?.email || "")
+    .trim()
+    .toLowerCase();
+  if (!actorUserId || !actorEmail) {
     return NextResponse.json(
       { ok: false, code: "AUTH_REQUIRED", error: "Sign in before loading private writing." },
       { status: 401 },
@@ -169,7 +216,8 @@ export async function GET(request: Request) {
   }
 
   const prisma = getPrismaClient() as any;
-  const documents = await prisma.studioDocument.findMany({
+  const [documents, visibleProjects] = await Promise.all([
+    prisma.studioDocument.findMany({
     where: {
       personalOwnerUserId: actorUserId,
       AND: [
@@ -180,44 +228,195 @@ export async function GET(request: Request) {
     },
     orderBy: [{ updatedAt: "desc" }, { id: "asc" }],
     take: requestedDraftId ? 1 : 250,
-    include: {
-      project: {
-        select: {
-          name: true,
-          slug: true,
-          tags: {
-            where: { isActive: true, mergedIntoTagId: null },
-            orderBy: [{ label: "asc" }, { id: "asc" }],
-            select: { id: true, projectId: true, slug: true, label: true, isActive: true },
-          },
-        },
-      },
-      blocks: { where: { archivedAt: null }, orderBy: [{ order: "asc" }, { id: "asc" }] },
-      tagLinks: {
-        orderBy: [{ createdAt: "asc" }, { tagId: "asc" }],
-        select: {
-          tag: { select: { id: true, projectId: true, slug: true, label: true, isActive: true } },
-        },
-      },
-      documentOperations: {
-        where: { operationType: "mobile-voice-writing-sync" },
-        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-        take: 1,
-      },
-    },
-  });
+      include: voiceWritingDocumentInclude(),
+    }),
+    listProjectsVisibleToEmail(actorEmail, prisma),
+  ]);
   const drafts = documents.map(publicStoredDraft).filter(Boolean);
-  const homeDocument = documents[0];
+  const writableProjects = visibleProjects.filter((project: any) => (
+    project.role === "OWNER" || project.role === "EDITOR"
+  ));
+  const homeProject = writableProjects.find((project: any) => (
+    String(project.sourceLabel || "").includes("nest-kind:home")
+  )) ?? null;
+  const requestedDocument = requestedDraftId ? documents[0] : null;
   return NextResponse.json({
     ok: true,
     schema: "quipsly-mobile-voice-writing-list-v1",
     drafts,
-    homeProject: homeDocument ? {
-      id: homeDocument.projectId,
-      name: homeDocument.project?.name || "My Nest",
-      slug: homeDocument.project?.slug || "",
+    homeProject: homeProject ? {
+      id: homeProject.id,
+      name: homeProject.name || "My Nest",
+      slug: homeProject.slug || "",
     } : null,
-    availableTags: homeDocument ? availableVoiceWritingTags(homeDocument) : [],
+    destinations: writableProjects.map((project: any) => (
+      voiceWritingDestination(project, homeProject?.id)
+    )),
+    availableTags: requestedDocument
+      ? availableVoiceWritingTags(requestedDocument)
+      : [],
+    nextAction: null,
+  });
+}
+
+export async function PATCH(request: Request) {
+  const session = await getQuipslySessionFromRequest(request);
+  const actorUserId = String(session?.user?.id || "").trim();
+  const actorEmail = String(session?.user?.primaryEmail || session?.user?.email || "")
+    .trim()
+    .toLowerCase();
+  if (!actorUserId || !actorEmail) {
+    return NextResponse.json(
+      { ok: false, code: "AUTH_REQUIRED", error: "Sign in before moving private writing." },
+      { status: 401 },
+    );
+  }
+
+  const input = record(await requestBody(request));
+  const draftId = String(input.draftId || "").trim().toLowerCase();
+  const destinationProjectId = String(input.destinationProjectId || "").trim();
+  const expectedProjectId = String(input.expectedProjectId || "").trim();
+  const clientRequestId = String(input.clientRequestId || "").trim().toLowerCase();
+  if (!mobileVoiceWritingDraftIdFromDocumentId(mobileVoiceWritingDocumentId(draftId))
+    || !destinationProjectId
+    || !expectedProjectId
+    || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(clientRequestId)) {
+    return NextResponse.json(
+      { ok: false, code: "VOICE_WRITING_MOVE_INVALID", error: "Choose one current writing and one writable Nest." },
+      { status: 400 },
+    );
+  }
+
+  const prisma = getPrismaClient() as any;
+  const documentId = mobileVoiceWritingDocumentId(draftId);
+  const operationId = `${documentId}-move-${clientRequestId}`;
+  const move = () => prisma.$transaction(async (tx: any) => {
+    const document = await tx.studioDocument.findFirst({
+      where: {
+        id: documentId,
+        personalOwnerUserId: actorUserId,
+        sourceLabel: { contains: "origin:ios-voice-writing", mode: "insensitive" },
+        NOT: { sourceLabel: { contains: "state:deleted", mode: "insensitive" } },
+      },
+      include: voiceWritingDocumentInclude(),
+    });
+    if (!document) return { kind: "missing" as const };
+
+    const exactOperation = await tx.studioDocumentOperation.findUnique({ where: { id: operationId } });
+    if (exactOperation) {
+      const payload = record(exactOperation.payloadJson);
+      if (payload.documentId !== documentId || payload.destinationProjectId !== destinationProjectId) {
+        return { kind: "identity-conflict" as const };
+      }
+      return { kind: "moved" as const, document, idempotentReplay: true, previousProjectId: expectedProjectId };
+    }
+    if (document.projectId !== expectedProjectId) {
+      return { kind: "stale" as const, document };
+    }
+    if (document.projectId === destinationProjectId) {
+      return { kind: "moved" as const, document, idempotentReplay: true, previousProjectId: document.projectId };
+    }
+
+    const destination = await tx.studioProject.findUnique({
+      where: { id: destinationProjectId },
+      select: { id: true, slug: true, name: true },
+    });
+    if (!destination) return { kind: "destination-missing" as const };
+    const access = await resolveStudioProjectAccess({
+      projectSlug: destination.slug,
+      projectId: destination.id,
+      email: actorEmail,
+      action: "write",
+      prisma: tx,
+    });
+    if (!access.allowed) return { kind: "destination-forbidden" as const };
+
+    const previousProjectId = document.projectId;
+    await tx.studioDocument.update({
+      where: { id: documentId },
+      data: {
+        projectId: destination.id,
+        tagRevision: { increment: 1 },
+        tagLinks: { deleteMany: {} },
+        documentOperations: {
+          create: {
+            id: operationId,
+            projectId: destination.id,
+            groupId: draftId,
+            actorEmail,
+            origin: "ios-capture",
+            operationType: "mobile-voice-writing-move",
+            status: "applied",
+            beforeJson: { projectId: previousProjectId, tagRevision: document.tagRevision },
+            afterJson: { projectId: destination.id, tagRevision: Number(document.tagRevision || 0) + 1 },
+            payloadJson: { documentId, destinationProjectId, clientRequestId },
+            reversible: true,
+          },
+        },
+      },
+    });
+    const movedDocument = await tx.studioDocument.findUniqueOrThrow({
+      where: { id: documentId },
+      include: voiceWritingDocumentInclude(),
+    });
+    return { kind: "moved" as const, document: movedDocument, idempotentReplay: false, previousProjectId };
+  }, { isolationLevel: "Serializable" });
+
+  let result;
+  try {
+    result = await move();
+  } catch (error) {
+    const code = record(error).code;
+    if (code !== "P2002" && code !== "P2034") throw error;
+    result = await move();
+  }
+
+  if (result.kind === "missing") {
+    return NextResponse.json(
+      { ok: false, code: "VOICE_WRITING_NOT_FOUND", error: "This private writing is not available." },
+      { status: 404 },
+    );
+  }
+  if (result.kind === "destination-missing") {
+    return NextResponse.json(
+      { ok: false, code: "VOICE_WRITING_DESTINATION_NOT_FOUND", error: "That Nest is no longer available." },
+      { status: 404 },
+    );
+  }
+  if (result.kind === "destination-forbidden") {
+    return NextResponse.json(
+      { ok: false, code: "VOICE_WRITING_DESTINATION_FORBIDDEN", error: "Editor access is required to file writing in that Nest." },
+      { status: 403 },
+    );
+  }
+  if (result.kind === "identity-conflict") {
+    return NextResponse.json(
+      { ok: false, code: "VOICE_WRITING_MOVE_IDENTITY_CONFLICT", error: "That move identity already belongs to another destination." },
+      { status: 409 },
+    );
+  }
+  if (result.kind === "stale") {
+    return NextResponse.json(
+      {
+        ok: false,
+        code: "VOICE_WRITING_MOVE_CONFLICT",
+        error: "This writing moved somewhere else. Quipsly refreshed its current Nest instead of guessing.",
+        current: publicStoredDraft(result.document),
+      },
+      { status: 409 },
+    );
+  }
+
+  revalidatePath("/library");
+  revalidatePath(`/writing/${draftId}`);
+  revalidatePath(`/nests/${result.document.project?.slug || ""}`);
+  return NextResponse.json({
+    ok: true,
+    schema: "quipsly-mobile-voice-writing-move-v1",
+    draft: publicStoredDraft(result.document),
+    idempotentReplay: result.idempotentReplay,
+    previousProjectId: result.previousProjectId,
+    privacy: "personal",
     nextAction: null,
   });
 }
@@ -355,7 +554,11 @@ export async function POST(request: Request) {
             tag: { select: { id: true, projectId: true, slug: true, label: true, isActive: true } },
           },
         },
-        documentOperations: { orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: 1 },
+        documentOperations: {
+          where: { operationType: "mobile-voice-writing-sync" },
+          orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+          take: 1,
+        },
       },
     });
 
@@ -435,7 +638,11 @@ export async function POST(request: Request) {
               tag: { select: { id: true, projectId: true, slug: true, label: true, isActive: true } },
             },
           },
-          documentOperations: { orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: 1 },
+          documentOperations: {
+            where: { operationType: "mobile-voice-writing-sync" },
+            orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+            take: 1,
+          },
         },
       });
       return { kind: "saved" as const, document, serverRevision: input.localRevision, idempotentReplay: false };
@@ -443,7 +650,6 @@ export async function POST(request: Request) {
 
     if (
       existing.personalOwnerUserId !== actorUserId
-      || existing.projectId !== home.id
       || !String(existing.sourceLabel || "").includes("origin:ios-voice-writing")
     ) {
       return { kind: "forbidden" as const };
@@ -498,7 +704,7 @@ export async function POST(request: Request) {
         documentOperations: {
           create: {
             id: operationId,
-            projectId: home.id,
+            projectId: existing.projectId,
             groupId: input.draftId,
             actorEmail,
             origin: "ios-capture",
@@ -543,7 +749,11 @@ export async function POST(request: Request) {
             tag: { select: { id: true, projectId: true, slug: true, label: true, isActive: true } },
           },
         },
-        documentOperations: { orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: 1 },
+        documentOperations: {
+          where: { operationType: "mobile-voice-writing-sync" },
+          orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+          take: 1,
+        },
       },
     });
     return { kind: "saved" as const, document, serverRevision: input.localRevision, idempotentReplay: false };
@@ -597,13 +807,9 @@ export async function POST(request: Request) {
     ok: true,
     schema: "quipsly-mobile-voice-writing-v1",
     draft: publicDraft(result.document, result.serverRevision, input),
-    homeProject: {
-      id: result.document.projectId,
-      name: result.document.project?.name || "My Nest",
-      slug: result.document.project?.slug || "",
-    },
+    homeProject: { id: home.id, name: home.name || "My Nest", slug: home.slug || "" },
     availableTags: availableVoiceWritingTags(result.document),
     idempotentReplay: result.idempotentReplay,
-    nextAction: "Writing saved privately to My Nest.",
+    nextAction: `Writing saved privately to ${result.document.project?.name || "your Nest"}.`,
   });
 }

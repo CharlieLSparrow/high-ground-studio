@@ -7587,6 +7587,8 @@ private struct CaptureVoiceWritingEditor: View {
     @State private var isDeletingWriting = false
     @State private var deleteWritingError: String?
     @State private var showsDeleteWritingError = false
+    @State private var nestMoveError: String?
+    @State private var showsNestMoveError = false
 
     init(
         recordingID: UUID,
@@ -7800,6 +7802,11 @@ private struct CaptureVoiceWritingEditor: View {
         } message: {
             Text(deleteWritingError ?? "Try again when you’re connected.")
         }
+        .alert("Couldn’t move writing", isPresented: $showsNestMoveError) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(nestMoveError ?? "Try again when you’re connected.")
+        }
         .accessibilityIdentifier("CaptureVoiceWritingEditor")
     }
 
@@ -7844,6 +7851,56 @@ private struct CaptureVoiceWritingEditor: View {
         }
 
         Section("Organize") {
+            HStack(alignment: .center, spacing: 12) {
+                Label {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(currentDraft?.canonicalProjectName?.nonempty ?? "On this iPhone")
+                            .font(.body.weight(.semibold))
+                        Text("Private to you")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                } icon: {
+                    Image(systemName: "birdhouse.fill")
+                        .foregroundStyle(CapturePalette.accent)
+                }
+                Spacer()
+                if writingSync.movingRecordingIDs.contains(recordingID) {
+                    ProgressView()
+                        .accessibilityLabel("Moving writing")
+                }
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilityIdentifier("CaptureVoiceWritingNest")
+
+            if writableNestDestinations.contains(where: {
+                $0.id != currentDraft?.canonicalProjectID
+            }) {
+                Menu {
+                    ForEach(writableNestDestinations) { destination in
+                        Button {
+                            Task { await moveWriting(to: destination) }
+                        } label: {
+                            if destination.id == currentDraft?.canonicalProjectID {
+                                Label(destination.name, systemImage: "checkmark")
+                            } else {
+                                Label(destination.name, systemImage: destination.isHome ? "person.crop.circle" : "person.2")
+                            }
+                        }
+                        .disabled(destination.id == currentDraft?.canonicalProjectID)
+                    }
+                } label: {
+                    Label("Move to another Nest", systemImage: "folder")
+                        .frame(minHeight: 44)
+                }
+                .disabled(
+                    currentDraft?.isSynced != true
+                        || writingSync.movingRecordingIDs.contains(recordingID)
+                )
+                .accessibilityHint("Files this private writing in another Nest. Other Nest members cannot see it.")
+                .accessibilityIdentifier("CaptureVoiceWritingMoveNest")
+            }
+
             if !canonicalTags.isEmpty {
                 TodayProjectTagLine(
                     project: nil,
@@ -7866,10 +7923,14 @@ private struct CaptureVoiceWritingEditor: View {
             .accessibilityIdentifier("CaptureVoiceWritingEditTags")
 
             if tagEditingContext == nil {
-                Text("Tags will be ready as soon as this note finishes saving to My Nest.")
+                Text("Tags will be ready as soon as this writing finishes saving to its Nest.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
+
+            Text("Moving changes where you find this writing. It never shares the writing or its recording with other Nest members.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
 
         Section {
@@ -8135,7 +8196,8 @@ private struct CaptureVoiceWritingEditor: View {
     private var availableVoiceTags: [MobileCaptureTodayTag] {
         guard let projectID = currentDraft?.canonicalProjectID?.nonempty
                 ?? writingSync.homeProject?.id.nonempty else { return [] }
-        return writingSync.availableTags.map {
+        let tags = currentDraft?.canonicalAvailableTags ?? writingSync.availableTags
+        return tags.map {
             MobileCaptureTodayTag(
                 id: $0.id,
                 projectId: projectID,
@@ -8162,6 +8224,26 @@ private struct CaptureVoiceWritingEditor: View {
         )
     }
 
+    private var writableNestDestinations: [VoiceWritingNestDestination] {
+        writingSync.destinations.sorted { left, right in
+            if left.isHome != right.isHome { return left.isHome }
+            return left.name.localizedCaseInsensitiveCompare(right.name) == .orderedAscending
+        }
+    }
+
+    @MainActor
+    private func moveWriting(to destination: VoiceWritingNestDestination) async {
+        bodyIsFocused = false
+        saveTask?.cancel()
+        saveImmediately()
+        do {
+            try await writingSync.move(recordingID: recordingID, to: destination)
+        } catch {
+            nestMoveError = error.localizedDescription
+            showsNestMoveError = true
+        }
+    }
+
     @ViewBuilder
     private var syncStatus: some View {
         if writingSync.syncingRecordingIDs.contains(recordingID) {
@@ -8170,7 +8252,10 @@ private struct CaptureVoiceWritingEditor: View {
             Label("Two copies", systemImage: "arrow.triangle.branch")
                 .foregroundStyle(.orange)
         } else if currentDraft?.isSynced == true {
-            Label("My Nest", systemImage: "checkmark.icloud.fill")
+            Label(
+                currentDraft?.canonicalProjectName?.nonempty ?? "Saved",
+                systemImage: "checkmark.icloud.fill"
+            )
                 .foregroundStyle(.green)
         } else {
             Label("On iPhone", systemImage: "iphone")
