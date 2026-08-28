@@ -14378,15 +14378,15 @@ private struct CaptureAccountView: View {
             if #available(iOS 26.0, *) {
                 Toggle(isOn: recognitionAdaptationBinding) {
                     VStack(alignment: .leading, spacing: 3) {
-                        Text("Adapt recognition to my speech")
+                        Text("Help Quipsly understand my speech")
                             .font(.subheadline.weight(.semibold))
-                        Text("Helps when ordinary speech recognition often misunderstands you. Quipsly remembers this choice and uses it for finished writing.")
+                        Text("Use this if speech-to-text often misunderstands you. Quipsly remembers the setting for future writing.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                 }
-                .accessibilityHint("Uses Apple's on-device speech adaptation after you stop recording. The original audio stays unchanged.")
+                .accessibilityHint("Uses Apple's on-device recognition for speech differences after you stop recording. The original audio stays unchanged.")
                 .accessibilityIdentifier("CaptureSpeechAdaptationToggle")
             }
 
@@ -16373,9 +16373,9 @@ private struct RecorderHero: View {
             )
         ) {
             VStack(alignment: .leading, spacing: 3) {
-                Text("Adapt recognition to my speech")
+                Text("Help Quipsly understand my speech")
                     .font(.subheadline.weight(.semibold))
-                Text("Turn this on if speech-to-text often misunderstands you. It is remembered for next time.")
+                Text("Use this if speech-to-text often misunderstands you. Quipsly remembers it for next time.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -16386,7 +16386,7 @@ private struct RecorderHero: View {
             CapturePalette.accent.opacity(0.08),
             in: RoundedRectangle(cornerRadius: 16, style: .continuous)
         )
-        .accessibilityHint("Uses Apple's on-device speech adaptation for finished writing without changing the original audio.")
+        .accessibilityHint("Uses Apple's on-device recognition for speech differences without changing the original audio.")
         .accessibilityIdentifier("CaptureVoiceWritingSpeechAdaptationToggle")
     }
 
