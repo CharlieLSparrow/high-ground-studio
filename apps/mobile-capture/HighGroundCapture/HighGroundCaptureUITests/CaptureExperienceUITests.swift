@@ -273,6 +273,10 @@ final class CaptureExperienceUITests: XCTestCase {
     }
 
     func testVoiceWritingRecordsAndStopsThroughTheSourceFirstPath() {
+        XCTAssertTrue(
+            app.staticTexts["Draft a paper or capture a thought."].exists,
+            "Home should present speech-to-writing as a serious drafting tool, not only a quick voice memo."
+        )
         app.buttons["CaptureStartVoiceNote"].tap()
         XCTAssertTrue(
             app.otherElements["CaptureRecorderHero"].waitForExistence(timeout: 8)

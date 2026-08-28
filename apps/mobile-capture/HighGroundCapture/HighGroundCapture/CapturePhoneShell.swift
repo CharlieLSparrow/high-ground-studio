@@ -580,7 +580,7 @@ private struct CaptureTodayPrimaryActions: View {
                 Text("Speak to write")
                     .font(.headline)
                     .fixedSize(horizontal: false, vertical: true)
-                Text("Record a thought. Get editable text.")
+                Text("Draft a paper or capture a thought.")
                     .font(.caption)
                     .opacity(0.92)
                     .fixedSize(horizontal: false, vertical: true)
@@ -7221,7 +7221,7 @@ private struct CapturePersonalVoiceNoteHeader: View {
             Text(
                 hasRecording
                     ? "Your original audio is saved. Quipsly keeps the transcript time-linked so you can listen, correct it, and shape it into writing."
-                    : "Tap Record and speak naturally. Say “new paragraph” or “new line” as you organize your thoughts."
+                    : "Tap Record and speak naturally. Quipsly turns your words into editable writing; say “new paragraph” or “new line” to organize as you go."
             )
             .font(.subheadline)
             .foregroundStyle(.secondary)
@@ -10158,7 +10158,13 @@ private struct CaptureRecorderView: View {
             }
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            if let session = model.selectedSession {
+            // Personal writing already has one large, obvious recorder in the
+            // focused workspace. A second persistent recorder duplicated the
+            // action and could cover that primary button on smaller screens.
+            // Keep the dock for collaborative sessions, where call controls
+            // must remain reachable while people move through the workspace.
+            if let session = model.selectedSession,
+               !session.isPersonalVoiceNote {
                 if model.providerRoom.isConnected {
                     VStack(spacing: 0) {
                         CapturePersistentRecorderDock(
@@ -13417,7 +13423,7 @@ private struct CaptureLibraryView: View {
                         .font(.title2.weight(.bold))
                     Text(
                         selectedSection == .writing
-                            ? "Voice Notes become editable writing while their timed transcripts and original audio stay connected."
+                            ? "Papers, drafts, and Voice Notes stay editable while their timed transcripts and original audio remain connected."
                             : "Play, share, and open the transcript for any Session or Voice Note."
                     )
                         .font(.subheadline)
@@ -13599,9 +13605,9 @@ private struct CaptureLibraryView: View {
         if filteredDrafts.isEmpty && !model.usesPreviewData {
             CaptureEmptyCard(
                 systemImage: "waveform.badge.mic",
-                title: normalizedSearch.isEmpty ? "Your writing starts here" : "No writing found",
+                title: normalizedSearch.isEmpty ? "Start writing with your voice" : "No writing found",
                 detail: normalizedSearch.isEmpty
-                    ? "Record a thought. Quipsly will keep the audio, create a timed transcript, and give you text you can edit."
+                    ? "Talk through a paper or an idea. Quipsly keeps the audio, creates a timed transcript, and gives you text you can edit."
                     : "Try a different word or clear the search.",
                 actionTitle: normalizedSearch.isEmpty ? "Speak to write" : "Clear search",
                 action: normalizedSearch.isEmpty ? onStartVoiceNote : { searchText = "" }
