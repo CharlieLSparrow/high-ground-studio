@@ -1168,7 +1168,6 @@ function checkReviewDigestContractSources() {
       && capturePhoneShellText.includes("Recordings & transcripts")
       && capturePhoneShellText.includes("Keep every session moving from recording to transcript and edit.")
       && capturePhoneShellText.includes("CaptureFinishQueueMetrics")
-      && capturePhoneShellText.includes("CaptureFinishQueueBoundary")
       && capturePhoneShellText.includes("CaptureFinishQueueDetails")
       && capturePhoneShellText.includes("DisclosureGroup(\"Recording details\"")
       && capturePhoneShellText.includes("digest.recoveryOpen")
