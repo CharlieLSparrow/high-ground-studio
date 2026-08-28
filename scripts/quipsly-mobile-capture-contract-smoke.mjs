@@ -685,10 +685,11 @@ function checkMeetingSpineContractSources() {
       && sessionsRouteText.includes("status: \"PLANNED\"")
       && sessionsRouteText.includes("providerRoomId")
       && sessionsRouteText.includes("randomUUID")
-      && sessionsRouteText.includes("status: \"REQUESTED\"")
-      && sessionsRouteText.includes("canRecordAudio: false")
+      && sessionsRouteText.includes('status: purpose === "PERSONAL_NOTE" ? "GRANTED" : "REQUESTED"')
+      && sessionsRouteText.includes('canRecordAudio: purpose === "PERSONAL_NOTE"')
       && sessionsRouteText.includes("canRecordVideo: false")
-      && sessionsRouteText.includes("canTranscribe: false")
+      && sessionsRouteText.includes('canTranscribe: purpose === "PERSONAL_NOTE"')
+      && sessionsRouteText.includes('selfCaptureOnly: purpose === "PERSONAL_NOTE"')
       && sessionsRouteText.includes("recordingStarted: false")
       && sessionsRouteText.includes("providerJoined: false")
       && sessionsRouteText.includes("providerTokenMinted: false")
@@ -730,7 +731,7 @@ function checkMeetingSpineContractSources() {
       && capturePhoneShellText.includes("NewCaptureSessionSheet")
       && capturePhoneShellText.includes("showsNewSession")
       && capturePhoneShellText.includes('accessibilityIdentifier("NewCaptureSessionCreateButton")')
-      && capturePhoneShellText.includes("Recording will still wait for explicit consent.")
+      && capturePhoneShellText.includes("Joining the call never starts a recording. Recording starts only after everyone has allowed it and someone taps Record.")
       && capturePhoneShellText.includes("await model.createSession()")
       && capturePhoneShellText.includes('accessibilityIdentifier("CaptureOpenNextSessionButton")')
       && capturePhoneShellText.includes("TabView(selection: $visibleTab)")
@@ -748,7 +749,7 @@ function checkMeetingSpineContractSources() {
       && sessionsRouteText.includes("coachingEngagementId: coachingEngagement?.id || null")
       && sessionsRouteText.includes('role: { in: ["COACH", "CLIENT", "SUPPORT"] }')
       && sessionsRouteText.includes("create: participantRows")
-      && sessionsRouteText.includes("data: room.participants.map")
+      && sessionsRouteText.includes("data: created.participants.map")
       && sessionsRouteText.includes("relationshipParticipantsAttached")
       && bridgeText.includes("struct MobileCaptureCoachingEngagement")
       && bridgeText.includes("let coachingEngagements: [MobileCaptureCoachingEngagement]?")
@@ -1230,8 +1231,9 @@ function checkReviewDigestContractSources() {
       && capturePhoneShellText.includes("CaptureRootTab.work")
       && capturePhoneShellText.includes("CaptureRootTab.library")
       && capturePhoneShellText.includes("CaptureRootTab.account")
-      && capturePhoneShellText.includes("Your recording is safe")
-      && capturePhoneShellText.includes("The original stays on this iPhone while a backed-up copy becomes ready in Quipsly."),
+      && captureExperienceModelText.includes('case .today: "Home"')
+      && captureExperienceModelText.includes('case .work: "Nests"')
+      && capturePhoneShellText.includes("Original recordings stay on this iPhone until you choose to remove an eligible copy from Library."),
     "nativeReviewDigestOnSessionSurfaces",
     "The production iPhone root keeps Today, Record, Work, Library, and Account focused, preserves active capture across auth expiry, and retains protected offline recovery.",
   );
@@ -2526,12 +2528,13 @@ function checkUnifiedNestOperatingShellSources() {
       && libraryModelText.includes("permissionFilteredBeforeProjection: true")
       && libraryModelText.includes("promotedCaptureMediaDeduplicated: true")
       && libraryModelText.includes("localPhoneRecordingsRemainDeviceOwned: true")
-      && libraryPageText.includes("Library results are a read-only index")
+      && libraryPageText.includes("Start with your voice on iPhone, keep writing here")
+      && libraryPageText.includes("Private to you in")
       && libraryPageText.includes("OR: [{ visibility: \"project\" }, { createdByUserId: userId }]")
       && researchPageText.includes("snapshot.sources.some((source) => source.id === requestedSourceId)")
       && !calendarPageText.includes("Real rooms, grouped by current status"),
     "canonicalNestOperatingShell",
-    "Nest makes Today, Inbox, Work, Sessions, Library, and Calendar primary while Today stays bounded, Inbox combines actor-owned unfiled sources with source-linked proposal review, and Library permission-filters canonical identities with exact continuation and promoted-capture deduplication.",
+    "Nest makes Today, Inbox, Work, Sessions, Library, and Calendar primary while Today stays bounded, Inbox combines actor-owned unfiled sources with source-linked review, and Library permission-filters canonical identities while supporting direct private writing and promoted-capture deduplication.",
   );
 }
 
