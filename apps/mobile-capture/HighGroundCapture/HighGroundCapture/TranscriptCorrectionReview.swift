@@ -3437,11 +3437,6 @@ struct CaptureTranscriptReviewView: View {
                 }
             }
             .id(transcriptPresentationMode)
-            .accessibilityIdentifier(
-                transcriptPresentationMode == .conversation
-                    ? "CaptureTranscriptConversationSegments"
-                    : "CaptureTranscriptTimelineSegments"
-            )
         }
     }
 

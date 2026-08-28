@@ -3309,9 +3309,9 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(timelineMode.waitForExistence(timeout: 5))
         timelineMode.tap()
         XCTAssertTrue(
-            app.descendants(matching: .any)["CaptureTranscriptTimelineSegments"]
+            app.descendants(matching: .any)["CaptureTranscriptSegmentSpeakerEvidence_preview-segment"]
                 .waitForExistence(timeout: 5),
-            "Timeline selection should publish timeline content without querying a recycled segmented-control parent."
+            "Timeline selection should publish the source-bound segment without hiding its controls behind a container accessibility node."
         )
         let aiProposal = app.staticTexts["CaptureTranscriptAIProposal"]
         reveal(aiProposal)
