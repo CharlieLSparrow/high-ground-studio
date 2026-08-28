@@ -348,6 +348,15 @@ final class CaptureExperienceUITests: XCTestCase {
             app.buttons["CaptureVoiceWritingContinueToolbar"].exists,
             "Someone writing by voice should always be one obvious tap from continuing to speak."
         )
+        let shareMenu = app.buttons["CaptureVoiceWritingShareMenu"]
+        XCTAssertTrue(shareMenu.exists, "Writing should expose the familiar system share action.")
+        shareMenu.tap()
+        XCTAssertTrue(
+            app.buttons["CaptureVoiceWritingShareWord"].exists,
+            "Speech-created writing should be directly shareable as a Word document."
+        )
+        XCTAssertTrue(app.buttons["CaptureVoiceWritingShareText"].exists)
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.1, dy: 0.35)).tap()
         let styleMenu = app.buttons["CaptureVoiceWritingStyleMenu"]
         XCTAssertTrue(styleMenu.exists, "Paper structure should use the familiar compact text-style menu.")
         styleMenu.tap()

@@ -7490,6 +7490,40 @@ private enum CaptureVoiceWritingSurface: String, CaseIterable, Identifiable {
     var id: Self { self }
 }
 
+private struct CaptureVoiceWritingWordExportRequest: Encodable {
+    let title: String
+    let body: String
+    let richText: VoiceWritingRichText?
+}
+
+private struct CaptureVoiceWritingWordExportErrorEnvelope: Decodable {
+    let error: String?
+}
+
+private enum CaptureVoiceWritingWordExportError: LocalizedError {
+    case message(String)
+
+    var errorDescription: String? {
+        switch self {
+        case .message(let message): message
+        }
+    }
+}
+
+private struct CaptureVoiceWritingShareSheet: UIViewControllerRepresentable {
+    let fileURL: URL
+    let title: String
+
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(
+            activityItems: [title, fileURL],
+            applicationActivities: nil
+        )
+    }
+
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
+}
+
 private struct CaptureVoiceWritingEditor: View {
     @ObservedObject private var writingStore = VoiceWritingDraftStore.shared
     @ObservedObject private var writingSync = VoiceWritingDraftSyncClient.shared
@@ -7514,6 +7548,11 @@ private struct CaptureVoiceWritingEditor: View {
     @State private var correctionSegment: CaptureTranscriptSegment?
     @State private var resumesAfterScrubbing = false
     @State private var saveTask: Task<Void, Never>?
+    @State private var isExportingWordDocument = false
+    @State private var wordDocumentURL: URL?
+    @State private var showsWordDocumentShare = false
+    @State private var wordDocumentError: String?
+    @State private var showsWordDocumentError = false
 
     init(
         recordingID: UUID,
@@ -7600,10 +7639,34 @@ private struct CaptureVoiceWritingEditor: View {
                 .accessibilityIdentifier("CaptureVoiceWritingContinueToolbar")
             }
             ToolbarItem(placement: .topBarTrailing) {
-                ShareLink(item: shareText) {
-                    Image(systemName: "square.and.arrow.up")
+                Menu {
+                    if selectedSurface == .writing {
+                        Button {
+                            Task { await exportWordDocument() }
+                        } label: {
+                            Label("Share as Word document", systemImage: "doc.richtext")
+                        }
+                        .disabled(isExportingWordDocument || bodyText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        .accessibilityIdentifier("CaptureVoiceWritingShareWord")
+                    }
+
+                    ShareLink(item: shareText) {
+                        Label(
+                            selectedSurface == .writing ? "Share as text" : "Share transcript",
+                            systemImage: "text.alignleft"
+                        )
+                    }
+                    .accessibilityIdentifier("CaptureVoiceWritingShareText")
+                } label: {
+                    if isExportingWordDocument {
+                        ProgressView()
+                    } else {
+                        Image(systemName: "square.and.arrow.up")
+                    }
                 }
-                .accessibilityLabel(selectedSurface == .writing ? "Share writing" : "Share transcript")
+                .accessibilityLabel(isExportingWordDocument ? "Creating Word document" : "Share")
+                .accessibilityHint("Share the current writing as a Word document or plain text.")
+                .accessibilityIdentifier("CaptureVoiceWritingShareMenu")
             }
             ToolbarItemGroup(placement: .keyboard) {
                 Button(action: continueByVoice) {
@@ -7679,6 +7742,16 @@ private struct CaptureVoiceWritingEditor: View {
                     )
                 }
             }
+        }
+        .sheet(isPresented: $showsWordDocumentShare) {
+            if let wordDocumentURL {
+                CaptureVoiceWritingShareSheet(fileURL: wordDocumentURL, title: title)
+            }
+        }
+        .alert("Couldn’t create Word document", isPresented: $showsWordDocumentError) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(wordDocumentError ?? "Try again when you’re connected.")
         }
         .accessibilityIdentifier("CaptureVoiceWritingEditor")
     }
@@ -8353,6 +8426,115 @@ private struct CaptureVoiceWritingEditor: View {
             richText: richText
         ) else { return }
         writingSync.schedule(draft)
+    }
+
+    @MainActor
+    private func exportWordDocument() async {
+        guard !isExportingWordDocument else { return }
+        bodyIsFocused = false
+        saveImmediately()
+        guard AuthManager.shared.networkActionsAllowed,
+              let owner = AuthManager.shared.stableOwnerSnapshot() else {
+            showWordDocumentError("Sign in and connect to the internet before sharing a Word document. Your writing is still safe on this iPhone.")
+            return
+        }
+        let apiBaseURL = normalizedNestAPIBaseURL(
+            Bundle.main.object(forInfoDictionaryKey: "QUIPSLY_API_BASE_URL") as? String
+                ?? "https://nest.quipsly.com"
+        )
+        guard let endpoint = URL(string: "\(apiBaseURL)/api/mobile/capture/voice-writing/export") else {
+            showWordDocumentError("Quipsly’s private writing address is unavailable.")
+            return
+        }
+
+        isExportingWordDocument = true
+        defer { isExportingWordDocument = false }
+        do {
+            var request = URLRequest(url: endpoint)
+            request.httpMethod = "POST"
+            request.cachePolicy = .reloadIgnoringLocalCacheData
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.setValue(
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                forHTTPHeaderField: "Accept"
+            )
+            request.httpBody = try JSONEncoder().encode(
+                CaptureVoiceWritingWordExportRequest(
+                    title: title,
+                    body: bodyText,
+                    richText: richText
+                )
+            )
+            let (temporaryURL, response) = try await AuthManager.shared.authenticatedDownload(
+                for: request,
+                expectedOwnerAccountID: owner.ownerAccountID
+            )
+            guard (200...299).contains(response.statusCode) else {
+                let data = (try? Data(contentsOf: temporaryURL, options: [.mappedIfSafe])) ?? Data()
+                try? FileManager.default.removeItem(at: temporaryURL)
+                let envelope = try? JSONDecoder().decode(
+                    CaptureVoiceWritingWordExportErrorEnvelope.self,
+                    from: data
+                )
+                throw CaptureVoiceWritingWordExportError.message(
+                    envelope?.error ?? "The Word document could not be created yet."
+                )
+            }
+            guard response.value(forHTTPHeaderField: "Content-Type")?
+                .lowercased()
+                .contains("wordprocessingml.document") == true else {
+                try? FileManager.default.removeItem(at: temporaryURL)
+                throw CaptureVoiceWritingWordExportError.message(
+                    "Quipsly did not receive a valid Word document. Please try again."
+                )
+            }
+            let attributes = try FileManager.default.attributesOfItem(atPath: temporaryURL.path)
+            let size = (attributes[.size] as? NSNumber)?.int64Value ?? 0
+            let handle = try FileHandle(forReadingFrom: temporaryURL)
+            let signature = try handle.read(upToCount: 4) ?? Data()
+            try handle.close()
+            guard size > 1_000, signature == Data([0x50, 0x4B, 0x03, 0x04]) else {
+                try? FileManager.default.removeItem(at: temporaryURL)
+                throw CaptureVoiceWritingWordExportError.message(
+                    "The downloaded document was incomplete, so Quipsly did not share it. Please try again."
+                )
+            }
+
+            let directory = FileManager.default.temporaryDirectory
+                .appendingPathComponent("Quipsly-Writing-\(UUID().uuidString)", isDirectory: true)
+            try FileManager.default.createDirectory(
+                at: directory,
+                withIntermediateDirectories: true,
+                attributes: [.protectionKey: FileProtectionType.complete]
+            )
+            let destination = directory.appendingPathComponent(wordDocumentFileName)
+            try FileManager.default.moveItem(at: temporaryURL, to: destination)
+            try FileManager.default.setAttributes(
+                [.protectionKey: FileProtectionType.complete],
+                ofItemAtPath: destination.path
+            )
+            wordDocumentURL = destination
+            showsWordDocumentShare = true
+        } catch {
+            showWordDocumentError(error.localizedDescription)
+        }
+    }
+
+    private var wordDocumentFileName: String {
+        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: " -_()."))
+        let cleanTitle = title.unicodeScalars
+            .map { allowed.contains($0) ? String($0) : " " }
+            .joined()
+            .split(whereSeparator: \Character.isWhitespace)
+            .joined(separator: " ")
+            .prefix(96)
+        let base = cleanTitle.isEmpty ? "Voice note" : String(cleanTitle)
+        return "\(base).docx"
+    }
+
+    private func showWordDocumentError(_ message: String) {
+        wordDocumentError = message
+        showsWordDocumentError = true
     }
 
     private func timestamp(_ seconds: Double) -> String {

@@ -10,6 +10,7 @@ import {
   ChevronLeft,
   Cloud,
   CloudAlert,
+  Download,
   Heading1,
   Heading2,
   Italic,
@@ -152,6 +153,8 @@ export function VoiceWritingEditor({ draftId }: { draftId: string }) {
   const [loadError, setLoadError] = useState("");
   const [saveError, setSaveError] = useState("");
   const [saveState, setSaveState] = useState<SaveState>("saved");
+  const [exportingWord, setExportingWord] = useState(false);
+  const [exportError, setExportError] = useState("");
   const [changeVersion, setChangeVersion] = useState(0);
   const [conflictingDraft, setConflictingDraft] = useState<WritingDraft | null>(null);
   const draftRef = useRef<WritingDraft | null>(null);
@@ -319,6 +322,53 @@ export function VoiceWritingEditor({ draftId }: { draftId: string }) {
     setChangeVersion((value) => value + 1);
   }
 
+  async function downloadWordDocument() {
+    if (!editor || exportingWord) return;
+    const richText = tiptapToVoiceWritingRichText(editor.getJSON() as JSONContent);
+    if (!richText.text.trim()) {
+      setExportError("Add at least one word before downloading a Word document.");
+      return;
+    }
+    setExportingWord(true);
+    setExportError("");
+    try {
+      const currentTitle = titleRef.current.replace(/\s+/g, " ").trim().slice(0, 320) || "Voice note";
+      const response = await fetch("/api/mobile/capture/voice-writing/export", {
+        method: "POST",
+        headers: {
+          accept: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ title: currentTitle, body: richText.text, richText }),
+      });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null) as { error?: string } | null;
+        throw new Error(payload?.error || "The Word document could not be created yet.");
+      }
+      const blob = await response.blob();
+      if (!blob.type.includes("wordprocessingml.document") || blob.size <= 1_000) {
+        throw new Error("Quipsly did not receive a complete Word document. Please try again.");
+      }
+      const safeTitle = currentTitle
+        .replace(/[^a-z0-9 ._()-]+/gi, " ")
+        .replace(/\s+/g, " ")
+        .trim()
+        .slice(0, 96) || "Voice note";
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `${safeTitle}.docx`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 0);
+    } catch (error) {
+      setExportError(error instanceof Error ? error.message : "The Word document could not be created yet.");
+    } finally {
+      setExportingWord(false);
+    }
+  }
+
   if (loadError) {
     return <main className="mx-auto grid min-h-[70vh] max-w-2xl place-items-center px-4 py-10 text-[#3d3122]">
       <section className="w-full rounded-3xl border border-red-200 bg-red-50 p-7">
@@ -338,7 +388,21 @@ export function VoiceWritingEditor({ draftId }: { draftId: string }) {
     <header className="rounded-[2rem] border border-[#dfcba6] bg-[radial-gradient(circle_at_top_right,_#d8eee5,_transparent_45%),linear-gradient(135deg,#fffaf0,#f8edda)] px-5 py-5 shadow-sm sm:px-7">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <Link href="/library?kind=NOTE" className="inline-flex min-h-11 items-center gap-1 rounded-full border border-[#d8c4a1] bg-white/85 px-4 text-sm font-black text-[#5b472f]"><ChevronLeft className="h-4 w-4" />Library</Link>
-        <SaveStatus state={saveState} updatedAt={draft.updatedAt} />
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <SaveStatus state={saveState} updatedAt={draft.updatedAt} />
+          <button
+            type="button"
+            onClick={() => void downloadWordDocument()}
+            disabled={exportingWord}
+            className="inline-flex min-h-11 items-center gap-2 rounded-full border border-[#c8b188] bg-white/90 px-4 text-sm font-black text-[#4d3b27] shadow-sm transition hover:border-[#87663d] hover:bg-white disabled:cursor-wait disabled:opacity-60"
+            aria-label={exportingWord ? "Creating Word document" : "Download as Word document"}
+          >
+            {exportingWord
+              ? <LoaderCircle className="h-4 w-4 animate-spin" aria-hidden="true" />
+              : <Download className="h-4 w-4" aria-hidden="true" />}
+            {exportingWord ? "Creating…" : "Word document"}
+          </button>
+        </div>
       </div>
       <div className="mt-5 flex items-start gap-3">
         <span className="mt-1 rounded-2xl border border-emerald-200 bg-emerald-50 p-2.5 text-emerald-800"><BookOpenText className="h-5 w-5" aria-hidden="true" /></span>
@@ -353,6 +417,11 @@ export function VoiceWritingEditor({ draftId }: { draftId: string }) {
       <p className="font-black text-[#3d3122]">{saveState === "conflict" ? "This writing changed on another device." : "Your latest changes are still in this editor."}</p>
       <p className="mt-1 text-sm font-semibold text-[#765f40]">{saveError}</p>
       <div className="mt-3 flex flex-wrap gap-2">{saveState === "conflict" ? <><button type="button" onClick={keepMyVersion} className="min-h-11 rounded-full bg-[#3e2f21] px-5 text-sm font-black text-white">Keep my version</button><button type="button" onClick={useNestVersion} className="min-h-11 rounded-full border border-amber-300 bg-white px-5 text-sm font-black text-amber-900">Use the other version</button></> : <button type="button" onClick={() => void persist()} className="inline-flex min-h-11 items-center gap-2 rounded-full bg-[#3e2f21] px-5 text-sm font-black text-white"><RefreshCw className="h-4 w-4" />Save again</button>}</div>
+    </section> : null}
+
+    {exportError ? <section role="alert" className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4">
+      <p className="text-sm font-bold text-amber-950">{exportError}</p>
+      <button type="button" onClick={() => setExportError("")} className="min-h-10 rounded-full border border-amber-300 bg-white px-4 text-xs font-black text-amber-950">Dismiss</button>
     </section> : null}
 
     <section className="mt-4 overflow-hidden rounded-[2rem] border border-[#dfcba6] bg-[#fffefb] shadow-sm" aria-label="Writing editor">

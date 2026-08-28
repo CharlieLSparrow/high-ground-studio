@@ -67,7 +67,10 @@ function source(value: unknown): MobileVoiceWritingSourceInput | null {
   return { localRecordingId, transcriptClientRequestId, sourceSha256, callRoomId };
 }
 
-function richText(value: unknown, body: string): VoiceWritingRichText | null | undefined {
+export function normalizeMobileVoiceWritingRichText(
+  value: unknown,
+  body: string,
+): VoiceWritingRichText | null | undefined {
   if (value === undefined || value === null) return null;
   if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
   const input = value as Record<string, unknown>;
@@ -213,7 +216,7 @@ export function validateMobileVoiceWriting(value: unknown): MobileVoiceWritingVa
     || validSources[0]?.callRoomId !== callRoomId) {
     return { ok: false, code: "VOICE_WRITING_SOURCES_INVALID", error: "Connected recordings must be unique and begin with the draft's original source." };
   }
-  const normalizedRichText = richText(input.richText, body);
+  const normalizedRichText = normalizeMobileVoiceWritingRichText(input.richText, body);
   if (normalizedRichText === undefined) {
     return { ok: false, code: "VOICE_WRITING_RICH_TEXT_INVALID", error: "The writing format does not match its searchable text." };
   }
