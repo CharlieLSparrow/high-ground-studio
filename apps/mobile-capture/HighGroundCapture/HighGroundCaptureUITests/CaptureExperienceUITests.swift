@@ -453,9 +453,28 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(
             app.staticTexts["The first idea connects the experience I described to the research question."].exists
         )
+        let editPassage = app.buttons[
+            "CaptureVoiceWritingEditTranscript_voice-writing-preview-a17f4c12-0000-4000-8000-000000000032-0"
+        ]
         XCTAssertTrue(
-            app.staticTexts["This is the unchanged source transcript. Corrections and media edits remain traceable to the original audio."].exists,
-            "Editable writing should never obscure which words still come from the retained source."
+            editPassage.waitForExistence(timeout: 5),
+            "A timed voice-writing passage should be directly correctable without opening the coaching follow-through desk."
+        )
+        editPassage.tap()
+        XCTAssertTrue(
+            app.descendants(matching: .any)["CaptureVoiceWritingCorrectionSheet"]
+                .waitForExistence(timeout: 5)
+        )
+        XCTAssertTrue(app.descendants(matching: .any)["CaptureVoiceWritingCorrectionText"].exists)
+        XCTAssertTrue(app.buttons["CaptureVoiceWritingCorrectionPlay"].exists)
+        XCTAssertFalse(
+            app.buttons["CaptureVoiceWritingSaveCorrection"].isEnabled,
+            "The deterministic presentation must show the real correction UI without pretending it saved a mutation."
+        )
+        app.buttons["Cancel"].tap()
+        XCTAssertTrue(
+            app.staticTexts["CaptureVoiceWritingTranscriptSourceBoundary"].exists,
+            "Direct correction should never obscure which words still come from the retained source."
         )
     }
 

@@ -7500,6 +7500,7 @@ private struct CaptureVoiceWritingEditor: View {
     @ObservedObject private var transcriptManager = OnDeviceTranscriptManager.shared
     @StateObject private var recordingLibrary = LocalRecordingLibrary.shared
     @StateObject private var playback = LocalRecordingPlaybackController()
+    @StateObject private var transcriptCorrections = CaptureTranscriptCorrectionClient()
     @ObservedObject var tagClient: CaptureTodayClient
     let onContinueByVoice: (VoiceWritingDraft) -> Void
     @Environment(\.dismiss) private var dismiss
@@ -7514,6 +7515,7 @@ private struct CaptureVoiceWritingEditor: View {
     @State private var transcriptQuery = ""
     @State private var transcriptWasCopied = false
     @State private var showsTagEditor = false
+    @State private var correctionSegment: CaptureTranscriptSegment?
     @State private var resumesAfterScrubbing = false
     @State private var saveTask: Task<Void, Never>?
 
@@ -7636,6 +7638,14 @@ private struct CaptureVoiceWritingEditor: View {
             bodyText = refreshed.body
             richText = refreshed.richText ?? VoiceWritingRichText(text: refreshed.body)
         }
+        .task(id: directCorrectionLoadKey) {
+            guard selectedSurface == .transcript,
+                  let roomID = directCorrectionRoomID else { return }
+            await transcriptCorrections.loadForDirectEditing(
+                roomID: roomID,
+                previewOnly: CaptureLaunchConfiguration.usesPreviewData
+            )
+        }
         .onDisappear {
             playback.stop()
             saveTask?.cancel()
@@ -7657,6 +7667,21 @@ private struct CaptureVoiceWritingEditor: View {
                         Task { await writingSync.refreshFromNest() }
                     }
                 )
+            }
+        }
+        .sheet(item: $correctionSegment) { segment in
+            if let roomID = directCorrectionRoomID {
+                NavigationStack {
+                    CaptureVoiceWritingTranscriptCorrectionSheet(
+                        roomID: roomID,
+                        segment: segment,
+                        recording: localRecording(for: segment),
+                        recordingLibrary: recordingLibrary,
+                        playback: playback,
+                        client: transcriptCorrections,
+                        previewOnly: CaptureLaunchConfiguration.usesPreviewData
+                    )
+                }
             }
         }
         .accessibilityIdentifier("CaptureVoiceWritingEditor")
@@ -7817,22 +7842,39 @@ private struct CaptureVoiceWritingEditor: View {
                 .accessibilityIdentifier("CaptureVoiceWritingCopyTranscript")
             }
 
-            if let roomID = currentDraft?.callRoomID?.nonempty {
-                NavigationLink {
-                    CaptureTranscriptReviewView(
-                        roomID: roomID,
-                        sessionTitle: title.nonempty ?? "Voice note",
-                        recording: recording,
-                        previewOnly: false
+            if directCorrectionRoomID != nil {
+                if transcriptCorrections.isLoading {
+                    HStack(spacing: 10) {
+                        ProgressView()
+                        Text("Connecting transcript edits…")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+                    .frame(minHeight: 44)
+                    .accessibilityIdentifier("CaptureVoiceWritingTranscriptCorrectionsLoading")
+                } else if transcriptCorrections.desk?.segments.isEmpty == false {
+                    Label(
+                        "Play any passage or tap its pencil to correct the words.",
+                        systemImage: "pencil.and.waveform"
                     )
-                } label: {
-                    Label("Correct transcript", systemImage: "pencil.and.list.clipboard")
-                        .font(.subheadline.weight(.semibold))
-                        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("CaptureVoiceWritingTranscriptCorrectionsReady")
+                } else if let error = transcriptCorrections.errorMessage?.nonempty {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Your timed transcript remains available on this iPhone. Reconnect when you want versioned corrections to sync with Nest.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Button("Try transcript edits again") {
+                            Task { await loadDirectTranscriptCorrections() }
+                        }
+                        .frame(minHeight: 44)
+                        .accessibilityHint(error)
+                        .accessibilityIdentifier("CaptureVoiceWritingRetryTranscriptCorrections")
+                    }
                 }
-                .buttonStyle(.bordered)
-                .accessibilityHint("Corrects words or speaker labels while keeping every edit linked to the original audio.")
-                .accessibilityIdentifier("CaptureVoiceWritingCorrectTranscript")
             }
 
             if visibleTranscriptSources.isEmpty {
@@ -7852,42 +7894,63 @@ private struct CaptureVoiceWritingEditor: View {
                         .foregroundStyle(.secondary)
                 }
                 ForEach(Array(source.segments.enumerated()), id: \.offset) { _, segment in
-                    Button {
-                        play(segment, recordingID: source.id)
-                    } label: {
-                        HStack(alignment: .top, spacing: 10) {
-                            Image(systemName: isPlaying(segment, recordingID: source.id) ? "speaker.wave.2.fill" : "play.circle")
-                                .foregroundStyle(CapturePalette.accent)
-                                .frame(width: 24)
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(timestamp(segment.startSeconds))
-                                    .font(.caption.monospacedDigit().weight(.semibold))
+                    let canonical = canonicalSegment(for: segment, recordingID: source.id)
+                    let displayedText = transcriptDisplayText(for: segment, recordingID: source.id)
+                    HStack(alignment: .top, spacing: 8) {
+                        Button {
+                            play(segment, recordingID: source.id)
+                        } label: {
+                            HStack(alignment: .top, spacing: 10) {
+                                Image(systemName: isPlaying(segment, recordingID: source.id) ? "speaker.wave.2.fill" : "play.circle")
                                     .foregroundStyle(CapturePalette.accent)
-                                Text(segment.text)
-                                    .font(.subheadline)
-                                    .foregroundStyle(.primary)
-                                    .multilineTextAlignment(.leading)
+                                    .frame(width: 24)
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(timestamp(segment.startSeconds))
+                                        .font(.caption.monospacedDigit().weight(.semibold))
+                                        .foregroundStyle(CapturePalette.accent)
+                                    Text(displayedText)
+                                        .font(.subheadline)
+                                        .foregroundStyle(.primary)
+                                        .multilineTextAlignment(.leading)
+                                }
+                                Spacer(minLength: 0)
                             }
-                            Spacer(minLength: 0)
+                            .contentShape(Rectangle())
                         }
-                        .contentShape(Rectangle())
+                        .buttonStyle(.plain)
+                        .disabled(recordingLibrary.recording(id: source.id) == nil)
+                        .accessibilityLabel("Play transcript at \(timestamp(segment.startSeconds)): \(displayedText)")
+                        .accessibilityIdentifier("CaptureVoiceWritingTranscriptSegment_\(source.id)_\(Int(segment.startSeconds * 1000))")
+
+                        if let canonical {
+                            Button {
+                                correctionSegment = canonical
+                            } label: {
+                                Image(systemName: correctionStatusSymbol(for: canonical))
+                                    .font(.body.weight(.semibold))
+                                    .foregroundStyle(correctionStatusColor(for: canonical))
+                                    .frame(width: 44, height: 44)
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(transcriptCorrections.isMutating)
+                            .accessibilityLabel("Correct transcript passage")
+                            .accessibilityHint("Edit these words while keeping the correction linked to the original audio.")
+                            .accessibilityIdentifier("CaptureVoiceWritingEditTranscript_\(canonical.id)")
+                        }
                     }
-                    .buttonStyle(.plain)
                     .listRowBackground(
                         isCurrent(segment, recordingID: source.id)
                             ? CapturePalette.accent.opacity(0.12)
                             : Color.clear
                     )
-                    .disabled(recordingLibrary.recording(id: source.id) == nil)
-                    .accessibilityLabel("Play transcript at \(timestamp(segment.startSeconds)): \(segment.text)")
-                    .accessibilityIdentifier("CaptureVoiceWritingTranscriptSegment_\(source.id)_\(Int(segment.startSeconds * 1000))")
                     .padding(.vertical, 3)
                 }
             }
         } header: {
             Label("Time-linked transcript", systemImage: "waveform.and.magnifyingglass")
         } footer: {
-            Text("This is the unchanged source transcript. Corrections and media edits remain traceable to the original audio.")
+            Text("The original transcript and audio never change. Corrections are versioned overlays that remain linked to the exact source moment.")
+                .accessibilityIdentifier("CaptureVoiceWritingTranscriptSourceBoundary")
         }
     }
 
@@ -8015,7 +8078,8 @@ private struct CaptureVoiceWritingEditor: View {
         guard !normalizedTranscriptQuery.isEmpty else { return transcriptSources }
         return transcriptSources.compactMap { source in
             let matches = source.segments.filter {
-                $0.text.localizedCaseInsensitiveContains(normalizedTranscriptQuery)
+                let displayed = transcriptDisplayText(for: $0, recordingID: source.id)
+                return displayed.localizedCaseInsensitiveContains(normalizedTranscriptQuery)
             }
             guard !matches.isEmpty else { return nil }
             return TimedTranscriptSource(id: source.id, title: source.title, segments: matches)
@@ -8039,10 +8103,120 @@ private struct CaptureVoiceWritingEditor: View {
 
     private var transcriptText: String {
         transcriptSources.map { source in
-            let words = source.segments.map(\.text).joined(separator: " ")
+            let words = source.segments.map {
+                transcriptDisplayText(for: $0, recordingID: source.id)
+            }.joined(separator: " ")
             return transcriptSources.count > 1 ? "\(source.title)\n\(words)" : words
         }
         .joined(separator: "\n\n")
+    }
+
+    private var directCorrectionRoomID: String? {
+        currentDraft?.callRoomID?.nonempty
+            ?? (CaptureLaunchConfiguration.usesPreviewData ? "preview-voice-writing" : nil)
+    }
+
+    private var directCorrectionLoadKey: String {
+        "\(selectedSurface.rawValue)|\(directCorrectionRoomID ?? "local")"
+    }
+
+    private func loadDirectTranscriptCorrections() async {
+        guard let roomID = directCorrectionRoomID else { return }
+        await transcriptCorrections.loadForDirectEditing(
+            roomID: roomID,
+            previewOnly: CaptureLaunchConfiguration.usesPreviewData
+        )
+    }
+
+    /// The on-device and canonical transcript share the exact submitted source
+    /// timing. Matching also requires the canonical recording asset whenever
+    /// one is known so continuations cannot accidentally edit a neighboring
+    /// recording that happens to start at the same timestamp.
+    private func canonicalSegment(
+        for local: OnDeviceTranscriptSegment,
+        recordingID: UUID
+    ) -> CaptureTranscriptSegment? {
+        if CaptureLaunchConfiguration.usesPreviewData {
+            return CaptureTranscriptSegment(
+                id: "voice-writing-preview-\(recordingID.uuidString.lowercased())-\(Int(local.startSeconds * 1000))",
+                speakerLabel: nil,
+                providerSpeakerLabel: nil,
+                startSeconds: local.startSeconds,
+                endSeconds: local.endSeconds,
+                text: local.text,
+                providerText: local.text,
+                providerTextSha256: String(repeating: "a", count: 64),
+                confidence: nil,
+                acceptedCorrection: nil,
+                acceptedVerification: nil,
+                speakerAttribution: nil,
+                proposals: [],
+                correctionHistory: []
+            )
+        }
+        guard let desk = transcriptCorrections.desk else { return nil }
+        let localRecording = recordingLibrary.recording(id: recordingID)
+        let expectedAssetID = localRecording?.recordingAssetId?.nonempty
+        let candidates = desk.segments.filter { candidate in
+            if let expectedAssetID,
+               let candidateAssetID = candidate.recordingAssetId?.nonempty,
+               candidateAssetID != expectedAssetID {
+                return false
+            }
+            let start = candidate.playbackStartSeconds
+            let end = candidate.playbackEndSeconds
+            let overlap = min(end, local.endSeconds) - max(start, local.startSeconds)
+            return overlap > 0 || abs(start - local.startSeconds) <= 0.25
+        }
+        return candidates.min { lhs, rhs in
+            let lhsDelta = abs(lhs.playbackStartSeconds - local.startSeconds)
+                + abs(lhs.playbackEndSeconds - local.endSeconds)
+            let rhsDelta = abs(rhs.playbackStartSeconds - local.startSeconds)
+                + abs(rhs.playbackEndSeconds - local.endSeconds)
+            return lhsDelta < rhsDelta
+        }
+    }
+
+    private func transcriptDisplayText(
+        for local: OnDeviceTranscriptSegment,
+        recordingID: UUID
+    ) -> String {
+        guard let canonical = canonicalSegment(for: local, recordingID: recordingID) else {
+            return local.text
+        }
+        if let roomID = directCorrectionRoomID,
+           let pending = transcriptCorrections.pendingDecision(
+                roomID: roomID,
+                segmentID: canonical.id
+           ),
+           let corrected = pending.correctedText?.nonempty {
+            return corrected
+        }
+        return canonical.text
+    }
+
+    private func localRecording(for segment: CaptureTranscriptSegment) -> LocalRecording? {
+        if let assetID = segment.recordingAssetId?.nonempty,
+           let exact = sourceRecordings.first(where: { $0.recordingAssetId == assetID }) {
+            return exact
+        }
+        return sourceRecordings.count == 1 ? sourceRecordings.first : nil
+    }
+
+    private func correctionStatusSymbol(for segment: CaptureTranscriptSegment) -> String {
+        guard let roomID = directCorrectionRoomID else { return "pencil.circle" }
+        if transcriptCorrections.pendingDecision(roomID: roomID, segmentID: segment.id) != nil {
+            return "clock.arrow.2.circlepath"
+        }
+        return segment.acceptedCorrection == nil ? "pencil.circle" : "pencil.circle.fill"
+    }
+
+    private func correctionStatusColor(for segment: CaptureTranscriptSegment) -> Color {
+        guard let roomID = directCorrectionRoomID else { return CapturePalette.accent }
+        if let pending = transcriptCorrections.pendingDecision(roomID: roomID, segmentID: segment.id) {
+            return pending.disposition == .held ? .orange : .blue
+        }
+        return segment.acceptedCorrection == nil ? CapturePalette.accent : .green
     }
 
     private func voiceSourcePlayer(_ recording: LocalRecording) -> some View {
@@ -8186,6 +8360,222 @@ private struct CaptureVoiceWritingEditor: View {
     }
 
     private func timestamp(_ seconds: Double) -> String {
+        let total = max(0, Int(seconds.rounded(.down)))
+        return String(format: "%d:%02d", total / 60, total % 60)
+    }
+}
+
+private struct CaptureVoiceWritingTranscriptCorrectionSheet: View {
+    let roomID: String
+    let segment: CaptureTranscriptSegment
+    let recording: LocalRecording?
+    @ObservedObject var recordingLibrary: LocalRecordingLibrary
+    @ObservedObject var playback: LocalRecordingPlaybackController
+    @ObservedObject var client: CaptureTranscriptCorrectionClient
+    let previewOnly: Bool
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var correctedText: String
+    @State private var isSaving = false
+    @FocusState private var wordsAreFocused: Bool
+
+    init(
+        roomID: String,
+        segment: CaptureTranscriptSegment,
+        recording: LocalRecording?,
+        recordingLibrary: LocalRecordingLibrary,
+        playback: LocalRecordingPlaybackController,
+        client: CaptureTranscriptCorrectionClient,
+        previewOnly: Bool
+    ) {
+        self.roomID = roomID
+        self.segment = segment
+        self.recording = recording
+        self.recordingLibrary = recordingLibrary
+        self.playback = playback
+        self.client = client
+        self.previewOnly = previewOnly
+        _correctedText = State(initialValue: segment.text)
+    }
+
+    var body: some View {
+        Form {
+            Section("Original moment") {
+                HStack(alignment: .center, spacing: 12) {
+                    Button(action: playSourceMoment) {
+                        Image(systemName: isPlaying ? "pause.fill" : "play.fill")
+                            .font(.headline)
+                            .frame(width: 48, height: 48)
+                            .background(CapturePalette.accent.opacity(0.12), in: Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(recording == nil)
+                    .accessibilityLabel(isPlaying ? "Pause original audio" : "Play original audio at this passage")
+                    .accessibilityIdentifier("CaptureVoiceWritingCorrectionPlay")
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(timeRange)
+                            .font(.caption.monospacedDigit().weight(.bold))
+                            .foregroundStyle(CapturePalette.accent)
+                        Text(segment.providerText)
+                            .font(.subheadline)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+
+                if recording == nil {
+                    Text("The matching source is not stored on this iPhone. You can still correct the words; the versioned edit remains linked to the canonical recording in Nest.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+
+            Section {
+                TextEditor(text: $correctedText)
+                    .font(.body)
+                    .frame(minHeight: 150)
+                    .focused($wordsAreFocused)
+                    .scrollContentBackground(.hidden)
+                    .accessibilityLabel("Correct transcript words")
+                    .accessibilityHint("Edit only this timed passage. The original transcript and audio remain unchanged.")
+                    .accessibilityIdentifier("CaptureVoiceWritingCorrectionText")
+
+                if let accepted = segment.acceptedCorrection {
+                    Label(
+                        "Editing correction revision \(max(1, accepted.revisions.count))",
+                        systemImage: "clock.arrow.circlepath"
+                    )
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                }
+            } header: {
+                Text("Correct words")
+            } footer: {
+                Text("This changes the readable transcript, not the recording or the writing you may already have reshaped. Every revision remains recoverable.")
+            }
+
+            if let pending = client.pendingDecision(roomID: roomID, segmentID: segment.id) {
+                Section {
+                    Label(
+                        pending.disposition == .held
+                            ? "Saved on this iPhone; reconnect and retry when ready."
+                            : "Saved on this iPhone and syncing to Nest.",
+                        systemImage: pending.disposition == .held
+                            ? "exclamationmark.icloud"
+                            : "icloud.and.arrow.up"
+                    )
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(pending.disposition == .held ? Color.orange : Color.blue)
+                    .accessibilityIdentifier("CaptureVoiceWritingCorrectionPending")
+                }
+            }
+
+            if let error = client.errorMessage?.nonempty {
+                Section {
+                    Label(error, systemImage: "exclamationmark.triangle.fill")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+
+            Section {
+                Button(action: save) {
+                    if isSaving {
+                        ProgressView()
+                            .frame(maxWidth: .infinity, minHeight: 48)
+                    } else {
+                        Label("Save correction", systemImage: "checkmark")
+                            .font(.headline)
+                            .frame(maxWidth: .infinity, minHeight: 48)
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(isSaving || previewOnly || correctionIsUnchanged)
+                .accessibilityIdentifier("CaptureVoiceWritingSaveCorrection")
+            } footer: {
+                if previewOnly {
+                    Text("Saving is disabled in this presentation preview.")
+                } else if correctionIsUnchanged {
+                    Text("Change at least one word to save a correction.")
+                }
+            }
+        }
+        .navigationTitle("Correct passage")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .cancellationAction) {
+                Button("Cancel") { dismiss() }
+            }
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button("Done") { wordsAreFocused = false }
+            }
+        }
+        .onDisappear {
+            if isPlaying { playback.pause() }
+        }
+        .accessibilityIdentifier("CaptureVoiceWritingCorrectionSheet")
+    }
+
+    private var correctionIsUnchanged: Bool {
+        let clean = correctedText.trimmingCharacters(in: .whitespacesAndNewlines)
+        return clean.isEmpty || clean == segment.text.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var isPlaying: Bool {
+        guard let recording else { return false }
+        return playback.isPlaying(recordingID: recording.id)
+            && playback.currentTime >= segment.playbackStartSeconds
+            && playback.currentTime < segment.playbackEndSeconds
+    }
+
+    private var playbackPosition: TimeInterval? {
+        guard let recording,
+              playback.playingRecordingID == recording.id,
+              playback.currentTime >= segment.playbackStartSeconds,
+              playback.currentTime <= segment.playbackEndSeconds + 0.5 else { return nil }
+        return playback.currentTime
+    }
+
+    private var timeRange: String {
+        "\(timestamp(segment.playbackStartSeconds))–\(timestamp(segment.playbackEndSeconds))"
+    }
+
+    private func playSourceMoment() {
+        guard let recording else { return }
+        if isPlaying {
+            playback.pause()
+        } else {
+            playback.play(
+                recording: recording,
+                library: recordingLibrary,
+                from: segment.playbackStartSeconds,
+                until: segment.playbackEndSeconds
+            )
+        }
+    }
+
+    private func save() {
+        wordsAreFocused = false
+        isSaving = true
+        Task {
+            let saved = await client.acceptHumanCorrection(
+                roomID: roomID,
+                segment: segment,
+                correctedText: correctedText,
+                correctedSpeaker: segment.speakerLabel ?? segment.providerSpeakerLabel ?? "",
+                reason: "Corrected while writing",
+                playbackPosition: playbackPosition,
+                previewOnly: previewOnly
+            )
+            isSaving = false
+            if saved { dismiss() }
+        }
+    }
+
+    private func timestamp(_ seconds: TimeInterval) -> String {
         let total = max(0, Int(seconds.rounded(.down)))
         return String(format: "%d:%02d", total / 60, total % 60)
     }

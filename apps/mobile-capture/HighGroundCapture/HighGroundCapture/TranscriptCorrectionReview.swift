@@ -917,6 +917,7 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
     private var isFlushingReviewDecisions = false
     private var isFlushingSpeakerAttributions = false
     private var activeRoomID: String?
+    private var includesFollowUpWorkspace = true
     private var automaticPacketAttemptKeys: Set<String> = []
     private var packetSnapshotSHA256: String?
 
@@ -950,6 +951,39 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
     }
 
     func load(roomID: String, previewOnly: Bool) async {
+        includesFollowUpWorkspace = true
+        await loadDesk(
+            roomID: roomID,
+            previewOnly: previewOnly,
+            includeFollowUpWorkspace: true
+        )
+    }
+
+    /// Loads only the canonical, source-bound transcript and correction ledger.
+    /// Voice writing uses this path so correcting ordinary dictation does not
+    /// also prepare coaching packets, goals, tasks, or AI follow-through.
+    func loadForDirectEditing(roomID: String, previewOnly: Bool = false) async {
+        includesFollowUpWorkspace = false
+        await loadDesk(
+            roomID: roomID,
+            previewOnly: previewOnly,
+            includeFollowUpWorkspace: false
+        )
+    }
+
+    private func reloadActiveDesk(roomID: String) async {
+        await loadDesk(
+            roomID: roomID,
+            previewOnly: false,
+            includeFollowUpWorkspace: includesFollowUpWorkspace
+        )
+    }
+
+    private func loadDesk(
+        roomID: String,
+        previewOnly: Bool,
+        includeFollowUpWorkspace: Bool
+    ) async {
         let normalizedRoomID = roomID.trimmingCharacters(in: .whitespacesAndNewlines)
         if activeRoomID != normalizedRoomID {
             removePreparedMentorReport()
@@ -957,6 +991,14 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
         activeRoomID = normalizedRoomID
         guard !previewOnly else {
             desk = .preview(roomID: roomID)
+            if !includeFollowUpWorkspace {
+                clearFollowUpWorkspace()
+                isUsingProtectedCache = false
+                message = nil
+                errorMessage = nil
+                publishOutboxCounts()
+                return
+            }
             if CaptureLaunchConfiguration.usesTranscriptReviewOutboxUITest,
                let previewOwner = CaptureLaunchConfiguration.shareExtensionUITestOwner,
                let segment = desk?.segments.first {
@@ -1053,13 +1095,19 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
             isUsingProtectedCache = false
             if let desk { persist(desk, roomID: roomID) }
             message = nil
-            await loadPacketCandidates(roomID: roomID)
-            await prepareFollowUpIfNeeded(roomID: roomID)
+            if includeFollowUpWorkspace {
+                await loadPacketCandidates(roomID: roomID)
+                await prepareFollowUpIfNeeded(roomID: roomID)
+            } else {
+                clearFollowUpWorkspace()
+            }
             let synchronizedReview = await flushReviewDecisions()
-            let synchronizedSpeaker = await flushSpeakerAttributions()
+            let synchronizedSpeaker = includeFollowUpWorkspace
+                ? await flushSpeakerAttributions()
+                : false
             if synchronizedReview || synchronizedSpeaker {
                 Task { [weak self] in
-                    await self?.load(roomID: roomID, previewOnly: false)
+                    await self?.reloadActiveDesk(roomID: roomID)
                 }
             }
         } catch {
@@ -1082,6 +1130,24 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
                 errorMessage = error.localizedDescription
             }
         }
+    }
+
+    private func clearFollowUpWorkspace() {
+        packetGoalCandidates = []
+        packetGoalMergeTargets = []
+        packetNoteCandidates = []
+        packetNoteMergeTargets = []
+        packetActionCandidates = []
+        packetTaskMergeTargets = []
+        packetTaskTags = []
+        packetTaskProjectName = nil
+        packetGoalReviewContext = nil
+        packetReviewError = nil
+        packetStatus = nil
+        followUpPreparationFailed = false
+        canReviewPrivatePacket = true
+        privatePacketBoundary = nil
+        resetPacketReviewState()
     }
 
     func prepareMentorReport(roomID: String, sessionTitle: String) async {
@@ -1172,7 +1238,7 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
             if AuthManager.shared.networkActionsAllowed {
                 _ = await flushReviewDecisions()
                 if reviewDecisionOutbox.decision(roomID: roomID, segmentID: segment.id) == nil {
-                    await load(roomID: roomID, previewOnly: false)
+                    await reloadActiveDesk(roomID: roomID)
                     if errorMessage == nil { message = "Transcript correction saved." }
                 }
             }
@@ -1209,7 +1275,7 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
             if AuthManager.shared.networkActionsAllowed {
                 _ = await flushReviewDecisions()
                 if reviewDecisionOutbox.decision(roomID: roomID, segmentID: segment.id) == nil {
-                    await load(roomID: roomID, previewOnly: false)
+                    await reloadActiveDesk(roomID: roomID)
                     if errorMessage == nil {
                         message = "Segment confirmed as heard. Provider evidence stayed unchanged."
                     }
@@ -1257,7 +1323,7 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
                     roomID: roomID,
                     providerSpeakerLabel: group.providerSpeakerLabel
                 ) == nil {
-                    await load(roomID: roomID, previewOnly: false)
+                    await reloadActiveDesk(roomID: roomID)
                     if errorMessage == nil {
                         message = "Voice identified from protected playback samples. No words were marked reviewed."
                     }
@@ -1936,7 +2002,7 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
         publishOutboxCounts()
         _ = await flushReviewDecisions()
         if reviewDecisionOutbox.entries.contains(where: { $0.id == id }) == false {
-            await load(roomID: roomID, previewOnly: false)
+            await reloadActiveDesk(roomID: roomID)
         }
     }
 
@@ -1945,7 +2011,7 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
         publishOutboxCounts()
         _ = await flushSpeakerAttributions()
         if speakerAttributionOutbox.entries.contains(where: { $0.id == id }) == false {
-            await load(roomID: roomID, previewOnly: false)
+            await reloadActiveDesk(roomID: roomID)
         }
     }
 
@@ -2274,7 +2340,7 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
             let payload = try JSONDecoder().decode(CaptureTranscriptMutationResponse.self, from: data)
             guard payload.ok else { throw captureTranscriptError(data: data, fallback: "Transcript review could not be saved.") }
             message = payload.idempotentReplay == true ? replay : success
-            await load(roomID: roomID, previewOnly: false)
+            await reloadActiveDesk(roomID: roomID)
             if errorMessage == nil { message = payload.idempotentReplay == true ? replay : success }
         } catch {
             errorMessage = error.localizedDescription
