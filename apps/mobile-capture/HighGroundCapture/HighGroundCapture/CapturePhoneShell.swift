@@ -383,6 +383,13 @@ private struct CaptureTodayView: View {
             VStack(alignment: .leading, spacing: 18) {
                 todayHeader
 
+                CaptureTodayPrimaryActions(
+                    isStartingVoiceNote: model.isCreatingSession,
+                    canStart: !model.isSessionContextLocked,
+                    onStartVoiceNote: onStartVoiceNote,
+                    onNewSession: { showsNewSession = true }
+                )
+
                 if let next = model.nextSession {
                     NextCaptureCard(
                         session: next,
@@ -401,13 +408,6 @@ private struct CaptureTodayView: View {
                 } else if model.isRefreshing {
                     CaptureLoadingCard(label: "Loading your sessions…")
                 }
-
-                CaptureTodayPrimaryActions(
-                    isStartingVoiceNote: model.isCreatingSession,
-                    canStart: !model.isSessionContextLocked,
-                    onStartVoiceNote: onStartVoiceNote,
-                    onNewSession: { showsNewSession = true }
-                )
 
                 if let draft = writingStore.drafts.first {
                     VStack(alignment: .leading, spacing: 10) {
@@ -478,7 +478,7 @@ private struct CaptureTodayView: View {
             .padding(.bottom, 96)
         }
         .background(CaptureCanvas())
-        .navigationTitle("Quipsly Capture")
+        .navigationTitle("Home")
         .navigationBarTitleDisplayMode(.inline)
         .refreshable { await model.load() }
         .task {
@@ -7627,8 +7627,14 @@ private struct CaptureVoiceWritingEditor: View {
                     : "Tap a passage to hear the exact moment in the original audio.")
             }
 
+            if selectedSurface == .writing {
+                writingSections
+            } else {
+                transcriptSections
+            }
+
             if !sourceRecordings.isEmpty {
-                Section(sourceRecordings.count == 1 ? "Original audio" : "Original recordings") {
+                Section(sourceRecordings.count == 1 ? "Listen to the original" : "Original recordings") {
                     if sourceRecordings.count == 1, let recording = sourceRecordings.first {
                         voiceSourcePlayer(recording)
                     } else {
@@ -7637,12 +7643,6 @@ private struct CaptureVoiceWritingEditor: View {
                         }
                     }
                 }
-            }
-
-            if selectedSurface == .writing {
-                writingSections
-            } else {
-                transcriptSections
             }
 
             if let message = currentDraft?.lastSyncError?.nonempty {

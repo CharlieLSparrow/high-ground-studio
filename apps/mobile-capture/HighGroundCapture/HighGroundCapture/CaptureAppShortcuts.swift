@@ -21,6 +21,7 @@ struct QuipslyCaptureShortcuts: AppShortcutsProvider {
             phrases: [
                 "Start writing by voice in \(.applicationName)",
                 "Start a paper in \(.applicationName)",
+                "Help me write in \(.applicationName)",
                 "Record a voice note in \(.applicationName)",
                 "Write by voice in \(.applicationName)",
             ],
