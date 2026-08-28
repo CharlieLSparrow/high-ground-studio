@@ -755,10 +755,11 @@ private struct CaptureFinishQueueCard: View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .top, spacing: 12) {
                 Image(systemName: "checklist.checked")
-                    .font(.title3.weight(.bold))
+                    .font(.system(size: 20, weight: .bold))
                     .foregroundStyle(.purple)
-                    .frame(width: 36, height: 36)
+                    .frame(minWidth: 36, minHeight: 36)
                     .background(Color.purple.opacity(0.12), in: RoundedRectangle(cornerRadius: 11))
+                    .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 3) {
                     Text("Recordings & transcripts")
                         .font(.headline)
@@ -814,10 +815,11 @@ private struct CaptureFinishQueueCard: View {
                             } label: {
                                 HStack(alignment: .center, spacing: 11) {
                                     Image(systemName: finishActionIcon(action.kind))
-                                        .font(.subheadline.weight(.bold))
+                                        .font(.system(size: 14, weight: .bold))
                                         .foregroundStyle(.purple)
-                                        .frame(width: 30, height: 30)
+                                        .frame(minWidth: 30, minHeight: 30)
                                         .background(Color.purple.opacity(0.1), in: Circle())
+                                        .accessibilityHidden(true)
                                     VStack(alignment: .leading, spacing: 2) {
                                         Text(action.titleLabel)
                                             .font(.subheadline.weight(.bold))
@@ -829,7 +831,7 @@ private struct CaptureFinishQueueCard: View {
                                             Text(exit.experience.detail)
                                                 .font(.caption2)
                                                 .foregroundStyle(.secondary)
-                                                .lineLimit(3)
+                                                .fixedSize(horizontal: false, vertical: true)
                                         } else {
                                             Text(action.label)
                                                 .font(.caption.weight(.semibold))
@@ -837,7 +839,7 @@ private struct CaptureFinishQueueCard: View {
                                             Text(action.detail)
                                                 .font(.caption2)
                                                 .foregroundStyle(.secondary)
-                                                .lineLimit(3)
+                                                .fixedSize(horizontal: false, vertical: true)
                                         }
                                     }
                                     Spacer(minLength: 4)
