@@ -1060,6 +1060,14 @@ struct MobileCaptureSession: Codable, Identifiable, Hashable {
             || normalizedPurpose == "FIELD_NOTE"
     }
 
+    /// A private thought can begin before Nest is reachable. These sessions
+    /// exist only long enough to bind the local recording and its transcript
+    /// into the writing workspace; they are never treated as multi-person
+    /// rooms or as evidence of server-side consent.
+    var isLocalPersonalVoiceNoteDraft: Bool {
+        isPersonalVoiceNote && id.hasPrefix("local-voice-note-")
+    }
+
     var detailLine: String {
         var parts: [String] = []
         if let purpose, !purpose.isEmpty { parts.append(purpose.lowercased()) }

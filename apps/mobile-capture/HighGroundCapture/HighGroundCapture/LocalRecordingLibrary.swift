@@ -287,6 +287,9 @@ struct LocalRecording: Codable, Identifiable, Equatable {
     var recordingConsentGranted: Bool
     var recordingAssetId: String?
     var capturePurpose: String?
+    /// Stable local writing identity retained after an offline voice note is
+    /// bound to its canonical Nest room for source backup.
+    var localDraftCallRoomId: String? = nil
     // Optional on disk so every pre-video ledger remains decodable. New
     // captures always persist all three fields before media bytes begin.
     var mediaKind: LocalRecordingMediaKind? = nil
@@ -335,6 +338,33 @@ struct LocalRecording: Codable, Identifiable, Equatable {
         return normalized == "PERSONAL_NOTE"
             || normalized == "VOICE_NOTE"
             || normalized == "FIELD_NOTE"
+    }
+
+    var voiceWritingCallRoomId: String? {
+        let local = localDraftCallRoomId?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if let local, !local.isEmpty { return local }
+        let canonical = callRoomId?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return canonical?.isEmpty == false ? canonical : nil
+    }
+
+    var needsPersonalVoiceNoteMaterialization: Bool {
+        guard isPersonalVoiceNote, status.isUploadEligible else { return false }
+        let roomID = callRoomId?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return roomID.hasPrefix("local-voice-note-")
+    }
+
+    var needsPersonalVoiceNoteUploadStart: Bool {
+        isPersonalVoiceNote
+            && status.isUploadEligible
+            && status != .uploaded
+            && status != .awaitingVerification
+            && status != .queued
+            && status != .uploading
+            && projectSlug?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+            && episodeSlug?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+            && callRoomId?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+            && recordingConsentId?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
     }
 
     var encodedSourceProfileJSON: String? {
@@ -1175,6 +1205,52 @@ final class LocalRecordingLibrary: ObservableObject {
         try mutate(id) { recording in
             recording.transcriptJobId = normalizedJobId
         }
+    }
+
+    @discardableResult
+    func bindLocalPersonalVoiceNote(
+        _ id: UUID,
+        projectSlug: String,
+        episodeSlug: String,
+        callRoomId: String,
+        participantId: String?,
+        recordingConsentId: String,
+        sessionTitle: String
+    ) throws -> LocalRecording {
+        let normalizedProject = projectSlug.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedEpisode = episodeSlug.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedRoom = callRoomId.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedConsent = recordingConsentId.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedProject.isEmpty,
+              !normalizedEpisode.isEmpty,
+              !normalizedRoom.isEmpty,
+              !normalizedConsent.isEmpty else {
+            throw LibraryError.recordingNotFound
+        }
+        try mutate(id) { recording in
+            guard recording.isPersonalVoiceNote,
+                  recording.status.isUploadEligible else {
+                throw LibraryError.recordingNotFound
+            }
+            let previousRoom = recording.callRoomId?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            if recording.localDraftCallRoomId == nil,
+               previousRoom?.hasPrefix("local-voice-note-") == true {
+                recording.localDraftCallRoomId = previousRoom
+            }
+            recording.projectSlug = normalizedProject
+            recording.episodeSlug = normalizedEpisode
+            recording.callRoomId = normalizedRoom
+            recording.participantId = self.nonempty(participantId)
+            recording.recordingConsentId = normalizedConsent
+            recording.recordingConsentGranted = true
+            recording.sessionTitle = self.nonempty(sessionTitle) ?? recording.sessionTitle
+            recording.statusMessage = nil
+        }
+        guard let recording = recording(id: id) else {
+            throw LibraryError.recordingNotFound
+        }
+        return recording
     }
 
     func markRoomStopReceipt(_ id: UUID, receiptID: UUID) throws {

@@ -20,6 +20,9 @@ final class CaptureExperienceUITests: XCTestCase {
                 "--capture-consent-needed-next-preview"
             )
         }
+        if name.contains("testPrivateVoiceNoteOpensCaptureWithoutMeetingPaperwork") {
+            app.launchArguments.append("--capture-force-local-voice-note-ui-test")
+        }
         if name.contains("testCoachFollowUpHoldsReleaseWhenCanonicalSourceChanged") {
             app.launchArguments.append("--capture-follow-up-source-changed-preview")
         }
@@ -197,6 +200,14 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertFalse(
             app.otherElements["CaptureRecordingModePicker"].exists,
             "Voice Note should default to audio instead of asking for production setup."
+        )
+        XCTAssertTrue(
+            app.buttons["CaptureStartButton"].isEnabled,
+            "A private thought must remain recordable without creating an online Session first."
+        )
+        XCTAssertTrue(
+            app.staticTexts["CaptureSessionStatusMessage"].label.contains("offline"),
+            "The local-first path should explain that recording and writing remain available without Nest."
         )
     }
 

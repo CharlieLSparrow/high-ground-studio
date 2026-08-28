@@ -571,8 +571,8 @@ private struct CaptureTodayView: View {
     }
 
     private var laterSessions: [MobileCaptureSession] {
-        guard let nextSessionID = model.nextSession?.id else { return model.sessions }
-        return model.sessions.filter { $0.id != nextSessionID }
+        guard let nextSessionID = model.nextSession?.id else { return model.scheduledSessions }
+        return model.scheduledSessions.filter { $0.id != nextSessionID }
     }
 
     private func continueVoiceWriting(_ draft: VoiceWritingDraft) {
@@ -9416,7 +9416,10 @@ private struct CaptureRecorderView: View {
 
     private func sessionHasRecording(_ session: MobileCaptureSession) -> Bool {
         session.recordingCount > 0
-            || library.recordings.contains { $0.callRoomId == session.callRoomId }
+            || library.recordings.contains {
+                $0.callRoomId == session.callRoomId
+                    || $0.localDraftCallRoomId == session.callRoomId
+            }
     }
 
     private func latestPersonalVoiceRecording(
@@ -9424,7 +9427,8 @@ private struct CaptureRecorderView: View {
     ) -> LocalRecording? {
         library.recordings
             .filter {
-                $0.callRoomId == session.callRoomId
+                ($0.callRoomId == session.callRoomId
+                    || $0.localDraftCallRoomId == session.callRoomId)
                     && $0.isPersonalVoiceNote
                     && $0.status.isPlaybackEligible
             }
@@ -16698,7 +16702,7 @@ private struct SessionPickerSheet: View {
     var body: some View {
         NavigationStack {
             List {
-                if model.isRefreshing && model.sessions.isEmpty {
+                if model.isRefreshing && model.scheduledSessions.isEmpty {
                     VStack(spacing: 12) {
                         ProgressView()
                         Text("Loading sessions from Nest…")
@@ -16711,11 +16715,11 @@ private struct SessionPickerSheet: View {
                     .frame(maxWidth: .infinity, minHeight: 220)
                     .accessibilityElement(children: .combine)
                     .accessibilityIdentifier("CaptureSessionPickerLoading")
-                } else if model.sessions.isEmpty {
+                } else if model.scheduledSessions.isEmpty {
                     ContentUnavailableView("No sessions", systemImage: "calendar", description: Text("Create a session to keep consent and recordings together."))
                         .accessibilityIdentifier("CaptureSessionPickerEmpty")
                 } else {
-                    ForEach(model.sessions) { session in
+                    ForEach(model.scheduledSessions) { session in
                         Button {
                             model.select(session)
                             isPresented = false

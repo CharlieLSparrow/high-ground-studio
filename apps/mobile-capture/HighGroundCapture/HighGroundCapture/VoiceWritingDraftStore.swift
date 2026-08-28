@@ -333,7 +333,7 @@ final class VoiceWritingDraftStore: ObservableObject {
             localRecordingID: recording.id,
             sourceTranscriptClientRequestID: transcript.clientRequestId,
             sourceSHA256: transcript.sourceSha256,
-            callRoomID: recording.callRoomId?.trimmingCharacters(in: .whitespacesAndNewlines),
+            callRoomID: recording.voiceWritingCallRoomId,
             sources: [Self.sourceReference(transcript: transcript, recording: recording)],
             createdAt: now,
             title: title,
@@ -638,7 +638,7 @@ final class VoiceWritingDraftStore: ObservableObject {
             localRecordingID: recording.id,
             transcriptClientRequestID: transcript.clientRequestId,
             sourceSHA256: transcript.sourceSha256,
-            callRoomID: recording.callRoomId?.trimmingCharacters(in: .whitespacesAndNewlines)
+            callRoomID: recording.voiceWritingCallRoomId
         )
     }
 

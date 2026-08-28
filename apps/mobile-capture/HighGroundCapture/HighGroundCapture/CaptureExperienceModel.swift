@@ -152,6 +152,17 @@ enum CaptureLaunchConfiguration {
         #endif
     }
 
+    static var forcesLocalVoiceNoteUITest: Bool {
+        #if DEBUG && targetEnvironment(simulator)
+        usesPreviewData
+            && ProcessInfo.processInfo.arguments.contains(
+                "--capture-force-local-voice-note-ui-test"
+            )
+        #else
+        false
+        #endif
+    }
+
     /// A DEBUG-only presentation layer for deterministic App Store layout
     /// drafts. It uses the same mutation-free preview model, but removes
     /// engineering boundary labels and substitutes clearly fictional account
@@ -385,6 +396,7 @@ final class CaptureExperienceModel: ObservableObject {
     private var initialSessionAuthorityVerifiedAt: Date?
     private var observedReceiptOwnerAccountID: String?
     private var automaticallyQueuedRecoveredRecordingIDs = Set<UUID>()
+    private var isMaterializingPersonalVoiceNotes = false
     private var isChildModelRefreshScheduled = false
     private var suppressesChildModelRefreshesUntilInitialLoadCompletes = true
     private var cancellables = Set<AnyCancellable>()
@@ -509,6 +521,15 @@ final class CaptureExperienceModel: ObservableObject {
         sessionClient.sessions
     }
 
+    /// Appointments and collaborative rooms belong in Today and the Record
+    /// session chooser. PERSONAL_NOTE rows share the same durable server model
+    /// so they can inherit upload, transcript, and Nest behavior, but presenting
+    /// them as meetings makes a person's writing history look like a schedule.
+    /// Writing and Library are the intentional surfaces for those private notes.
+    var scheduledSessions: [MobileCaptureSession] {
+        sessions.filter { !$0.isPersonalVoiceNote }
+    }
+
     var captureProjects: [MobileCaptureProjectDestination] {
         sessionClient.captureProjects
     }
@@ -547,7 +568,7 @@ final class CaptureExperienceModel: ObservableObject {
     }
 
     var nextSession: MobileCaptureSession? {
-        let activeSessions = sessions.filter {
+        let activeSessions = scheduledSessions.filter {
             !["ENDED", "CANCELED", "FAILED"].contains(($0.status ?? "").uppercased())
         }
         return activeSessions.min { left, right in
@@ -561,7 +582,7 @@ final class CaptureExperienceModel: ObservableObject {
             case (nil, nil):
                 return left.id < right.id
             }
-        } ?? sessions.first
+        } ?? scheduledSessions.first
     }
 
     var isProviderConnected: Bool {
@@ -785,6 +806,7 @@ final class CaptureExperienceModel: ObservableObject {
             reviewDigestLoad,
             recordingReceiptFlush
         )
+        await materializePendingPersonalVoiceNotes()
         // The Library can finish crash validation before Nest has restored
         // network authority. Re-evaluate recovered sources after the signed-in
         // product load so an early protected/offline emission is not the only
@@ -1311,7 +1333,7 @@ final class CaptureExperienceModel: ObservableObject {
         } else {
             title = "Voice note · \(Date.now.formatted(.dateTime.month(.abbreviated).day().hour().minute()))"
         }
-        if usesPreviewData {
+        if usesPreviewData && !CaptureLaunchConfiguration.forcesLocalVoiceNoteUITest {
             let created = MobileCaptureSession.capturePreview(
                 id: "preview-voice-note-\(UUID().uuidString)",
                 title: title,
@@ -1325,16 +1347,38 @@ final class CaptureExperienceModel: ObservableObject {
             return created
         }
 
-        guard let created = await sessionClient.createQuickSession(
+        if !AuthManager.shared.networkActionsAllowed {
+            return createLocalPersonalVoiceNote(title: title)
+        }
+
+        if let created = await sessionClient.createQuickSession(
             title: title,
             purpose: "PERSONAL_NOTE",
             provider: "planned"
-        ) else {
-            errorMessage = sessionClient.errorMessage ?? "Quipsly could not create the voice note."
-            return nil
+        ) {
+            selectedSessionID = created.id
+            message = "Voice note ready. Tap Record when you are ready."
+            return created
         }
+
+        // Losing the network must never lose a thought. Session creation is a
+        // background synchronization concern for private writing, not a gate
+        // in front of the microphone.
+        return createLocalPersonalVoiceNote(title: title)
+    }
+
+    private func createLocalPersonalVoiceNote(title: String) -> MobileCaptureSession {
+        let created = MobileCaptureSession.capturePreview(
+            id: "local-voice-note-\(UUID().uuidString.lowercased())",
+            title: title,
+            purpose: "PERSONAL_NOTE",
+            consentGranted: true,
+            scheduledStart: ISO8601DateFormatter().string(from: Date()),
+            localPersonalDraft: true
+        )
+        sessionClient.sessions.insert(created, at: 0)
         selectedSessionID = created.id
-        message = "Voice note ready. Tap Record when you are ready."
+        message = "Voice note ready. Recording and writing work even while Nest is offline."
         return created
     }
 
@@ -2196,6 +2240,7 @@ final class CaptureExperienceModel: ObservableObject {
             errorMessage = "Choose or create a session before recording."
             return
         }
+        let usesLocalPersonalVoiceNoteAuthority = session.isLocalPersonalVoiceNoteDraft
         guard session.recordingConsentGranted else {
             errorMessage = "Save the recorder consent attestation before recording starts."
             return
@@ -2245,7 +2290,7 @@ final class CaptureExperienceModel: ObservableObject {
         // Starting a new capture is an online-authority action. Refresh
         // immediately before opening AVAudioRecorder so cached consent or
         // readiness can never be mistaken for current permission to record.
-        if !usesPreviewData {
+        if !usesPreviewData && !usesLocalPersonalVoiceNoteAuthority {
             let loadOutcome = await sessionClient.load(authoritativeSessionID: session.id)
             guard AuthManager.shared.matchesStableOwnerSnapshot(ownerSnapshot) else {
                 isChangingCapture = false
@@ -2285,7 +2330,7 @@ final class CaptureExperienceModel: ObservableObject {
         let contextSlugs = MobileContextManager.shared.getTargetSlugs()
         let captureID = UUID()
         let resolvedCaptureGroupID = captureGroupID ?? session.captureGroupId ?? captureID
-        let clockSamples = usesPreviewData
+        let clockSamples = usesPreviewData || usesLocalPersonalVoiceNoteAuthority
             ? []
             : await CaptureClockClient.shared.measureBurst(
                 callRoomID: session.callRoomId,
@@ -2303,7 +2348,7 @@ final class CaptureExperienceModel: ObservableObject {
                 captureGroupID: resolvedCaptureGroupID,
                 sessionID: session.id,
                 callRoomID: session.callRoomId,
-                requiresDurableRoomReceipt: !usesPreviewData,
+                requiresDurableRoomReceipt: !usesPreviewData && !usesLocalPersonalVoiceNoteAuthority,
                 expectedOwnerSnapshot: ownerSnapshot,
                 clockSamples: clockSamples
             )
@@ -2320,7 +2365,7 @@ final class CaptureExperienceModel: ObservableObject {
                 audioCapture.abortArmedCaptureBeforeRecording()
                 isChangingCapture = false
                 errorMessage = "The camera source ended while the microphone boundary was being armed. Quipsly closed the durable audio START without opening microphone bytes."
-                if !usesPreviewData { scheduleReceiptFlush() }
+                if !usesPreviewData && !usesLocalPersonalVoiceNoteAuthority { scheduleReceiptFlush() }
                 return
             }
         }
@@ -2328,16 +2373,20 @@ final class CaptureExperienceModel: ObservableObject {
             audioCapture.abortArmedCaptureBeforeRecording()
             isChangingCapture = false
             errorMessage = captureOwnerChangedBeforeStartMessage
-            if !usesPreviewData { scheduleReceiptFlush() }
+            if !usesPreviewData && !usesLocalPersonalVoiceNoteAuthority { scheduleReceiptFlush() }
             return
         }
         let command = RecorderCommand(
             action: .start,
-            projectSlug: session.projectSlug ?? contextSlugs.projectSlug ?? "capture-inbox",
-            episodeSlug: session.episodeSlug ?? contextSlugs.episodeSlug ?? "session-capture",
+            projectSlug: usesLocalPersonalVoiceNoteAuthority
+                ? nil
+                : session.projectSlug ?? contextSlugs.projectSlug ?? "capture-inbox",
+            episodeSlug: usesLocalPersonalVoiceNoteAuthority
+                ? nil
+                : session.episodeSlug ?? contextSlugs.episodeSlug ?? "session-capture",
             callRoomId: session.callRoomId,
-            participantId: session.participantId,
-            recordingConsentId: session.recordingConsentId,
+            participantId: usesLocalPersonalVoiceNoteAuthority ? nil : session.participantId,
+            recordingConsentId: usesLocalPersonalVoiceNoteAuthority ? nil : session.recordingConsentId,
             recordingConsentGranted: true,
             capturePurpose: session.purpose ?? "capture"
         )
@@ -2347,7 +2396,7 @@ final class CaptureExperienceModel: ObservableObject {
         guard audioStarted, audioCapture.captureState == .recording else {
             isChangingCapture = false
             errorMessage = audioCapture.lastErrorMessage ?? "The local recorder did not start. Nothing was recorded."
-            if !usesPreviewData {
+            if !usesPreviewData && !usesLocalPersonalVoiceNoteAuthority {
                 scheduleReceiptFlush()
             }
             return
@@ -2369,6 +2418,11 @@ final class CaptureExperienceModel: ObservableObject {
 
         if usesPreviewData {
             message = "Recording this iPhone's microphone. Preview mode does not contact Nest."
+            return
+        }
+
+        if usesLocalPersonalVoiceNoteAuthority {
+            message = "Recording this iPhone's microphone. Your private voice note is safe locally and will sync when Nest reconnects."
             return
         }
 
@@ -2397,6 +2451,9 @@ final class CaptureExperienceModel: ObservableObject {
 
         if savedLocally || audioCapture.captureState != .finalizing {
             finishActiveCaptureContext(stoppedAt: stoppedAt)
+        }
+        if savedLocally {
+            await materializePendingPersonalVoiceNotes()
         }
     }
 
@@ -2903,6 +2960,74 @@ final class CaptureExperienceModel: ObservableObject {
         uploadManager.retryRecoverableUploads()
     }
 
+    /// Private dictation is deliberately local-first. Once Nest is reachable,
+    /// bind the same protected source to an actor-owned Home Nest Session and
+    /// enter the ordinary resumable upload path. The writing/source identity
+    /// remains the local room ID so continuations and transcript anchors never
+    /// change underneath an editor that is already open.
+    private func materializePendingPersonalVoiceNotes() async {
+        guard !usesPreviewData,
+              !isMaterializingPersonalVoiceNotes,
+              AuthManager.shared.networkActionsAllowed,
+              let ownerSnapshot = AuthManager.shared.stableOwnerSnapshot() else {
+            return
+        }
+        isMaterializingPersonalVoiceNotes = true
+        defer { isMaterializingPersonalVoiceNotes = false }
+
+        let library = LocalRecordingLibrary.shared
+        let activeOwnerID = normalizedOwnerAccountID(ownerSnapshot.ownerAccountID)
+
+        for candidate in library.recordings where candidate.needsPersonalVoiceNoteMaterialization {
+            guard AuthManager.shared.matchesStableOwnerSnapshot(ownerSnapshot),
+                  normalizedOwnerAccountID(candidate.ownerAccountID) == activeOwnerID else {
+                return
+            }
+            guard let created = await sessionClient.createQuickSession(
+                title: candidate.sessionTitle ?? candidate.displayTitle,
+                purpose: "PERSONAL_NOTE",
+                provider: "planned"
+            ) else {
+                // The original and any completed writing remain local. A
+                // foreground refresh or the next launch retries automatically.
+                continue
+            }
+            guard AuthManager.shared.matchesStableOwnerSnapshot(ownerSnapshot),
+                  let consentID = created.recordingConsentId else {
+                return
+            }
+            do {
+                let bound = try library.bindLocalPersonalVoiceNote(
+                    candidate.id,
+                    projectSlug: created.projectSlug ?? "capture-inbox",
+                    episodeSlug: created.episodeSlug ?? "session-capture",
+                    callRoomId: created.callRoomId,
+                    participantId: created.participantId,
+                    recordingConsentId: consentID,
+                    sessionTitle: created.title
+                )
+                retryUpload(for: bound, quietly: true)
+            } catch {
+                // Never replace the person's successful local-save message
+                // with background-sync mechanics. The exact source remains in
+                // the protected Library and will be retried later.
+                continue
+            }
+        }
+
+        // Cover a process death after canonical binding but before the upload
+        // job reached durable storage.
+        for candidate in library.recordings
+            where candidate.localDraftCallRoomId != nil
+                && candidate.needsPersonalVoiceNoteUploadStart {
+            guard AuthManager.shared.matchesStableOwnerSnapshot(ownerSnapshot),
+                  normalizedOwnerAccountID(candidate.ownerAccountID) == activeOwnerID else {
+                return
+            }
+            retryUpload(for: candidate, quietly: true)
+        }
+    }
+
     private func queueRecoveredUploadsWhenSafe(_ recordings: [LocalRecording]) {
         guard !usesPreviewData,
               AuthManager.shared.networkActionsAllowed,
@@ -2933,8 +3058,9 @@ final class CaptureExperienceModel: ObservableObject {
         }
     }
 
-    func retryUpload(for recording: LocalRecording) {
+    func retryUpload(for recording: LocalRecording, quietly: Bool = false) {
         guard recording.isUploadEligible else {
+            guard !quietly else { return }
             if recording.status == .validatingRecovery {
                 errorMessage = "Quipsly is still validating this preserved source through its end. Upload will unlock only after that check is durably saved."
             } else if recording.status == .needsRepair {
@@ -2947,29 +3073,39 @@ final class CaptureExperienceModel: ObservableObject {
             return
         }
         guard !recording.status.isVerified else {
-            message = "This recording already has a verified Quipsly receipt. The local original remains available."
+            if !quietly {
+                message = "This recording already has a verified Quipsly receipt. The local original remains available."
+            }
             return
         }
         if uploadManager.retryUpload(localRecordingID: recording.id) {
-            message = "Retrying this recording. The local original remains on this iPhone."
+            if !quietly {
+                message = "Retrying this recording. The local original remains on this iPhone."
+            }
             return
         }
 
         guard let projectSlug = recording.projectSlug,
               let episodeSlug = recording.episodeSlug else {
-            errorMessage = "This recovered source needs a project and episode before it can upload. The file remains local."
+            if !quietly {
+                errorMessage = "This recovered source needs a project and episode before it can upload. The file remains local."
+            }
             return
         }
 
         let library = LocalRecordingLibrary.shared
         guard let fileURL = library.fileURL(for: recording) else {
-            errorMessage = "This protected source is not available to the current Quipsly account."
+            if !quietly {
+                errorMessage = "This protected source is not available to the current Quipsly account."
+            }
             return
         }
         do {
             try library.markUploadQueued(recording.id)
         } catch {
-            errorMessage = "The upload could not be queued: \(error.localizedDescription)"
+            if !quietly {
+                errorMessage = "The upload could not be queued: \(error.localizedDescription)"
+            }
             return
         }
 
@@ -2992,7 +3128,9 @@ final class CaptureExperienceModel: ObservableObject {
             localRecordingID: recording.id,
             ownerAccountID: recording.ownerAccountID
         )
-        message = "Upload queued for this recording. The local original remains on this iPhone."
+        if !quietly {
+            message = "Upload queued for this recording. The local original remains on this iPhone."
+        }
     }
 
     /// Coordinates the two protected local ledgers involved in an explicit
@@ -3048,7 +3186,7 @@ final class CaptureExperienceModel: ObservableObject {
         let captureID = activeCaptureID ?? UUID()
         let captureOwnerAccountID = activeCaptureOwnerSnapshot?.ownerAccountID
 
-        if !usesPreviewData {
+        if !usesPreviewData && !session.isLocalPersonalVoiceNoteDraft {
             _ = receiptStore.enqueue(
                 captureID: captureID,
                 sessionID: session.id,
@@ -3071,7 +3209,9 @@ final class CaptureExperienceModel: ObservableObject {
         activeAudioCapture = nil
         captureRequiresNewTake = false
         captureSafetyNotice = nil
-        scheduleReceiptFlush()
+        if !session.isLocalPersonalVoiceNoteDraft {
+            scheduleReceiptFlush()
+        }
     }
 
     private func scheduleReceiptFlush() {
@@ -3620,7 +3760,8 @@ extension MobileCaptureSession {
         scheduledEnd: String? = nil,
         captureSources: [MobileCaptureSourceSummary] = [],
         transcriptResults: MobileCaptureTranscriptResults? = nil,
-        clientFollowUpWorkspace: MobileCaptureClientFollowUpWorkspace? = nil
+        clientFollowUpWorkspace: MobileCaptureClientFollowUpWorkspace? = nil,
+        localPersonalDraft: Bool = false
     ) -> MobileCaptureSession {
         let appStoreCoachingPresentation = CaptureLaunchConfiguration.usesAppStorePresentation
             && purpose == "COACHING"
@@ -3659,20 +3800,20 @@ extension MobileCaptureSession {
 
         return MobileCaptureSession(
             id: id,
-            callRoomId: "room-\(id)",
+            callRoomId: localPersonalDraft ? id : "room-\(id)",
             title: title,
             purpose: purpose,
             status: "PLANNED",
             updatedAt: ISO8601DateFormatter().string(from: Date()),
-            provider: "livekit",
-            providerRoomId: "provider-\(id)",
-            providerCanJoin: true,
-            providerReadiness: "ready",
-            providerNextAction: "Join only when the other participant is ready.",
-            projectId: "preview-high-ground",
-            projectSlug: appStoreCoachingPresentation ? "my-coaching-practice" : "high-ground-odyssey",
-            projectName: appStoreCoachingPresentation ? "My coaching practice" : "High Ground Odyssey",
-            availableTags: [
+            provider: localPersonalDraft ? "local" : "livekit",
+            providerRoomId: localPersonalDraft ? nil : "provider-\(id)",
+            providerCanJoin: localPersonalDraft ? false : true,
+            providerReadiness: localPersonalDraft ? "local" : "ready",
+            providerNextAction: localPersonalDraft ? "Record whenever you are ready." : "Join only when the other participant is ready.",
+            projectId: localPersonalDraft ? nil : "preview-high-ground",
+            projectSlug: localPersonalDraft ? nil : (appStoreCoachingPresentation ? "my-coaching-practice" : "high-ground-odyssey"),
+            projectName: localPersonalDraft ? nil : (appStoreCoachingPresentation ? "My coaching practice" : "High Ground Odyssey"),
+            availableTags: localPersonalDraft ? nil : [
                 MobileCaptureTag(
                     id: "preview-production",
                     slug: appStoreCoachingPresentation ? "follow-through" : "production",
@@ -3680,10 +3821,10 @@ extension MobileCaptureSession {
                 ),
                 MobileCaptureTag(id: "preview-coaching", slug: "coaching", label: "Coaching"),
             ],
-            projectBindingSource: "canonical-session-project",
+            projectBindingSource: localPersonalDraft ? "local-private-draft" : "canonical-session-project",
             projectLegacySlugDrift: false,
-            episodeSlug: appStoreCoachingPresentation ? nil : "session-capture",
-            episodeProductionId: appStoreCoachingPresentation ? nil : "preview-session-capture",
+            episodeSlug: localPersonalDraft || appStoreCoachingPresentation ? nil : "session-capture",
+            episodeProductionId: localPersonalDraft || appStoreCoachingPresentation ? nil : "preview-session-capture",
             coachingEngagementId: purpose == "COACHING" ? "preview-engagement" : nil,
             coachingEngagementTitle: purpose == "COACHING"
                 ? (appStoreCoachingPresentation ? "Coaching with a new client" : "Coaching with Homer")
@@ -3691,8 +3832,8 @@ extension MobileCaptureSession {
             coachingEngagementStatus: purpose == "COACHING" ? "ACTIVE" : nil,
             scheduledStart: scheduledStart,
             scheduledEnd: scheduledEnd,
-            participantId: "preview-host",
-            recordingConsentId: "consent-\(id)",
+            participantId: localPersonalDraft ? nil : "preview-host",
+            recordingConsentId: localPersonalDraft ? nil : "consent-\(id)",
             recordingConsentStatus: consentGranted ? "GRANTED" : "REQUESTED",
             recordingConsentGranted: audioConsentGranted,
             recordingConsentCanRecordAudio: audioConsentGranted,

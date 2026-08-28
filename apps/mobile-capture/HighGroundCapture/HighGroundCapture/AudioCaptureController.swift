@@ -435,6 +435,19 @@ final class AudioCaptureController: NSObject, ObservableObject {
                         transcriptDisposition: userInfo["transcriptDisposition"] as? String,
                         detail: UploadManager.shared.lastServerVerificationDetail
                     )
+                    if let uploaded = localRecordingLibrary.recording(id: recordingID),
+                       uploaded.status.isVerified,
+                       uploaded.isPersonalVoiceNote,
+                       (try? OnDeviceTranscriptStore.load(for: recordingID)) != nil {
+                        // Transcription may finish before a large audio upload.
+                        // Verification is the event that makes the saved
+                        // source-bound transcript eligible for attachment, so
+                        // continue automatically instead of making the person
+                        // find and press a retry button.
+                        OnDeviceTranscriptManager.shared.submitSavedTranscript(
+                            recording: uploaded
+                        )
+                    }
                 } catch {
                     print("Could not update local upload receipt: \(error.localizedDescription)")
                 }
