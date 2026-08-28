@@ -415,7 +415,11 @@ private enum AppleOnDeviceTranscriptEngine {
         return Prepared(transcriber: transcriber, locale: locale, assetStatus: status)
     }
 
-    static func transcribe(fileURL: URL, prepared: Prepared) async throws -> [OnDeviceTranscriptSegment] {
+    static func transcribe(
+        fileURL: URL,
+        prepared: Prepared,
+        contextualPhrases: [String]
+    ) async throws -> [OnDeviceTranscriptSegment] {
         let audioFile: AVAudioFile
         do {
             audioFile = try AVAudioFile(forReading: fileURL)
@@ -423,6 +427,11 @@ private enum AppleOnDeviceTranscriptEngine {
             throw OnDeviceTranscriptFailure.sourceHasNoAudio
         }
         let analyzer = SpeechAnalyzer(modules: [prepared.transcriber])
+        if !contextualPhrases.isEmpty {
+            let context = AnalysisContext()
+            context.contextualStrings[.general] = Array(contextualPhrases.prefix(100))
+            try? await analyzer.setContext(context)
+        }
         async let resultCollection = collectFinalResults(from: prepared.transcriber)
         if let lastSample = try await analyzer.analyzeSequence(from: audioFile) {
             try await analyzer.finalizeAndFinish(through: lastSample)
@@ -495,7 +504,11 @@ private enum AppleSpeechAdaptedTranscriptEngine {
         return Prepared(transcriber: transcriber, locale: locale, assetStatus: status)
     }
 
-    static func transcribe(fileURL: URL, prepared: Prepared) async throws -> [OnDeviceTranscriptSegment] {
+    static func transcribe(
+        fileURL: URL,
+        prepared: Prepared,
+        contextualPhrases: [String]
+    ) async throws -> [OnDeviceTranscriptSegment] {
         let audioFile: AVAudioFile
         do {
             audioFile = try AVAudioFile(forReading: fileURL)
@@ -503,6 +516,11 @@ private enum AppleSpeechAdaptedTranscriptEngine {
             throw OnDeviceTranscriptFailure.sourceHasNoAudio
         }
         let analyzer = SpeechAnalyzer(modules: [prepared.transcriber])
+        if !contextualPhrases.isEmpty {
+            let context = AnalysisContext()
+            context.contextualStrings[.general] = Array(contextualPhrases.prefix(100))
+            try? await analyzer.setContext(context)
+        }
         async let resultCollection = collectResults(from: prepared.transcriber)
         if let lastSample = try await analyzer.analyzeSequence(from: audioFile) {
             try await analyzer.finalizeAndFinish(through: lastSample)
@@ -548,7 +566,11 @@ private enum AppleCompatibleTranscriptEngine {
         let preset: String
     }
 
-    static func transcribe(fileURL: URL, locale: Locale) async throws -> Result {
+    static func transcribe(
+        fileURL: URL,
+        locale: Locale,
+        contextualPhrases: [String]
+    ) async throws -> Result {
         let authorization = await speechAuthorization()
         guard authorization == .authorized else {
             throw OnDeviceTranscriptFailure.speechPermissionDenied
@@ -559,6 +581,7 @@ private enum AppleCompatibleTranscriptEngine {
 
         let request = SFSpeechURLRecognitionRequest(url: fileURL)
         request.shouldReportPartialResults = false
+        request.contextualStrings = Array(contextualPhrases.prefix(100))
         if #available(iOS 16.0, *) {
             request.addsPunctuation = true
         }
@@ -764,6 +787,9 @@ final class OnDeviceTranscriptManager: ObservableObject {
             let recognitionProfile = VoiceWritingRecognitionPreferences.shared.profile(
                 for: ownerAccountId
             )
+            let contextualPhrases = VoiceWritingRecognitionPreferences.shared.learnedPhrases(
+                for: ownerAccountId
+            )
             let before = try await Task.detached(priority: .utility) {
                 try OnDeviceTranscriptSource.fingerprint(fileURL)
             }.value
@@ -790,7 +816,8 @@ final class OnDeviceTranscriptManager: ObservableObject {
                         )
                         segments = try await AppleSpeechAdaptedTranscriptEngine.transcribe(
                             fileURL: preparedAudio.url,
-                            prepared: prepared
+                            prepared: prepared,
+                            contextualPhrases: contextualPhrases
                         )
                         language = prepared.locale.identifier
                         recognitionExecution = "on-device"
@@ -804,7 +831,8 @@ final class OnDeviceTranscriptManager: ObservableObject {
                         let result = try await standardTranscriptResult(
                             fileURL: preparedAudio.url,
                             locale: locale,
-                            allowModelDownload: allowModelDownload
+                            allowModelDownload: allowModelDownload,
+                            contextualPhrases: contextualPhrases
                         )
                         segments = result.segments
                         language = result.language
@@ -817,7 +845,8 @@ final class OnDeviceTranscriptManager: ObservableObject {
                     let result = try await standardTranscriptResult(
                         fileURL: preparedAudio.url,
                         locale: locale,
-                        allowModelDownload: allowModelDownload
+                        allowModelDownload: allowModelDownload,
+                        contextualPhrases: contextualPhrases
                     )
                     segments = result.segments
                     language = result.language
@@ -829,7 +858,8 @@ final class OnDeviceTranscriptManager: ObservableObject {
             } else {
                 let result = try await AppleCompatibleTranscriptEngine.transcribe(
                     fileURL: preparedAudio.url,
-                    locale: locale
+                    locale: locale,
+                    contextualPhrases: contextualPhrases
                 )
                 segments = result.segments
                 language = result.language
@@ -888,7 +918,8 @@ final class OnDeviceTranscriptManager: ObservableObject {
     private func standardTranscriptResult(
         fileURL: URL,
         locale: Locale,
-        allowModelDownload: Bool
+        allowModelDownload: Bool,
+        contextualPhrases: [String]
     ) async throws -> (
         segments: [OnDeviceTranscriptSegment],
         language: String,
@@ -905,7 +936,8 @@ final class OnDeviceTranscriptManager: ObservableObject {
             return (
                 try await AppleOnDeviceTranscriptEngine.transcribe(
                     fileURL: fileURL,
-                    prepared: prepared
+                    prepared: prepared,
+                    contextualPhrases: contextualPhrases
                 ),
                 prepared.locale.identifier,
                 "on-device",
@@ -916,7 +948,8 @@ final class OnDeviceTranscriptManager: ObservableObject {
         } catch OnDeviceTranscriptFailure.unavailable {
             let result = try await AppleCompatibleTranscriptEngine.transcribe(
                 fileURL: fileURL,
-                locale: locale
+                locale: locale,
+                contextualPhrases: contextualPhrases
             )
             return (
                 result.segments,
@@ -929,7 +962,8 @@ final class OnDeviceTranscriptManager: ObservableObject {
         } catch OnDeviceTranscriptFailure.unsupportedLocale {
             let result = try await AppleCompatibleTranscriptEngine.transcribe(
                 fileURL: fileURL,
-                locale: locale
+                locale: locale,
+                contextualPhrases: contextualPhrases
             )
             return (
                 result.segments,

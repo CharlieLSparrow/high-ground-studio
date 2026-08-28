@@ -14076,9 +14076,7 @@ private struct CaptureAccountView: View {
                 .captureCard()
                 .accessibilityIdentifier("CaptureAccountQuipslyPlan")
 
-                if #available(iOS 26.0, *) {
-                    speechAndWritingCard
-                }
+                speechAndWritingCard
 
                 NavigationLink {
                     CaptureNestPortabilityView(
@@ -14268,18 +14266,50 @@ private struct CaptureAccountView: View {
             Label("Speech & writing", systemImage: "waveform.and.mic")
                 .font(.headline)
 
-            Toggle(isOn: recognitionAdaptationBinding) {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("Adapt recognition to my speech")
-                        .font(.subheadline.weight(.semibold))
-                    Text("Helps when ordinary speech recognition often misunderstands you. Quipsly remembers this choice and uses it for finished writing.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
+            if #available(iOS 26.0, *) {
+                Toggle(isOn: recognitionAdaptationBinding) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("Adapt recognition to my speech")
+                            .font(.subheadline.weight(.semibold))
+                        Text("Helps when ordinary speech recognition often misunderstands you. Quipsly remembers this choice and uses it for finished writing.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                 }
+                .accessibilityHint("Uses Apple's on-device speech adaptation after you stop recording. The original audio stays unchanged.")
+                .accessibilityIdentifier("CaptureSpeechAdaptationToggle")
             }
-            .accessibilityHint("Uses Apple's on-device speech adaptation after you stop recording. The original audio stays unchanged.")
-            .accessibilityIdentifier("CaptureSpeechAdaptationToggle")
+
+            Divider()
+
+            NavigationLink {
+                CaptureVoiceWritingVocabularyView(ownerAccountID: auth.accountOwnerID)
+            } label: {
+                HStack(spacing: 12) {
+                    Image(systemName: "text.badge.plus")
+                        .foregroundStyle(CapturePalette.accent)
+                        .frame(width: 28)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("Words Quipsly knows")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.primary)
+                        Text(recognitionPreferences.activeLearnedPhrases.isEmpty
+                            ? "Names and terms are learned when you correct them."
+                            : "\(recognitionPreferences.activeLearnedPhrases.count) learned word\(recognitionPreferences.activeLearnedPhrases.count == 1 ? "" : "s") or phrase\(recognitionPreferences.activeLearnedPhrases.count == 1 ? "" : "s").")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer(minLength: 8)
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(.tertiary)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityHint("View, add, or remove names and terms that improve speech recognition.")
+            .accessibilityIdentifier("CaptureSpeechVocabularyLink")
 
             Label("Live words are a preview. The finished writing stays linked to the original audio.", systemImage: "checkmark.shield")
                 .font(.caption)
@@ -14441,6 +14471,95 @@ private struct CaptureAccountView: View {
                 model.uploadManager.recoverableUploadCount,
             previewMode: model.usesPreviewData
         )
+    }
+}
+
+private struct CaptureVoiceWritingVocabularyView: View {
+    @ObservedObject private var preferences = VoiceWritingRecognitionPreferences.shared
+    @State private var newPhrase = ""
+    @FocusState private var phraseFieldIsFocused: Bool
+
+    let ownerAccountID: String?
+
+    var body: some View {
+        Form {
+            Section {
+                HStack(alignment: .firstTextBaseline, spacing: 10) {
+                    TextField("Name or term", text: $newPhrase)
+                        .textInputAutocapitalization(.words)
+                        .autocorrectionDisabled(false)
+                        .focused($phraseFieldIsFocused)
+                        .submitLabel(.done)
+                        .onSubmit(addPhrase)
+                        .accessibilityIdentifier("CaptureSpeechVocabularyField")
+                    Button("Add", action: addPhrase)
+                        .disabled(normalizedNewPhrase == nil)
+                        .accessibilityIdentifier("CaptureSpeechVocabularyAdd")
+                }
+            } header: {
+                Text("Help with important words")
+            } footer: {
+                Text("Optional. Quipsly also learns short names and terms automatically when you correct a transcript.")
+            }
+
+            Section {
+                if preferences.activeLearnedPhrases.isEmpty {
+                    ContentUnavailableView(
+                        "No learned words yet",
+                        systemImage: "text.badge.plus",
+                        description: Text("Just start speaking. Correct a name or term once and Quipsly can use it next time.")
+                    )
+                    .accessibilityIdentifier("CaptureSpeechVocabularyEmpty")
+                } else {
+                    ForEach(preferences.activeLearnedPhrases, id: \.self) { phrase in
+                        Text(phrase)
+                            .accessibilityIdentifier("CaptureSpeechVocabularyPhrase_\(phrase)")
+                    }
+                    .onDelete(perform: deletePhrases)
+                }
+            } header: {
+                Text("Learned words and phrases")
+            } footer: {
+                if !preferences.activeLearnedPhrases.isEmpty {
+                    Text("Swipe left to forget a phrase. This vocabulary belongs only to the signed-in Quipsly account on this iPhone.")
+                }
+            }
+        }
+        .navigationTitle("Words Quipsly knows")
+        .navigationBarTitleDisplayMode(.inline)
+        .task {
+            preferences.refresh(ownerAccountID: ownerAccountID)
+        }
+        .accessibilityIdentifier("CaptureSpeechVocabularyView")
+    }
+
+    private var normalizedNewPhrase: String? {
+        let value = newPhrase
+            .split(whereSeparator: { $0.isWhitespace })
+            .joined(separator: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard (2...80).contains(value.count),
+              value.contains(where: { $0.isLetter }),
+              value.split(separator: " ").count <= 8 else { return nil }
+        return value
+    }
+
+    private func addPhrase() {
+        guard let phrase = normalizedNewPhrase else { return }
+        preferences.addLearnedPhrase(phrase, ownerAccountID: ownerAccountID)
+        newPhrase = ""
+        phraseFieldIsFocused = false
+    }
+
+    private func deletePhrases(at offsets: IndexSet) {
+        let values = offsets.compactMap { index in
+            preferences.activeLearnedPhrases.indices.contains(index)
+                ? preferences.activeLearnedPhrases[index]
+                : nil
+        }
+        for value in values {
+            preferences.removeLearnedPhrase(value, ownerAccountID: ownerAccountID)
+        }
     }
 }
 

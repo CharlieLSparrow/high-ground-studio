@@ -1232,6 +1232,10 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
                 reason: reason,
                 playbackPositionSeconds: playbackPosition
             )
+            VoiceWritingRecognitionPreferences.shared.learnCorrection(
+                from: segment.text,
+                to: correctedText
+            )
             publishOutboxCounts()
             errorMessage = nil
             message = "Correction saved on this iPhone and syncing to Nest."

@@ -309,6 +309,28 @@ final class CaptureExperienceUITests: XCTestCase {
             "The account-partitioned speech choice should follow the person from the recorder to Account."
         )
 
+        let vocabularyLink = app.buttons["CaptureSpeechVocabularyLink"]
+        reveal(vocabularyLink)
+        XCTAssertTrue(vocabularyLink.waitForExistence(timeout: 5))
+        vocabularyLink.tap()
+        XCTAssertTrue(app.navigationBars["Words Quipsly knows"].waitForExistence(timeout: 5))
+
+        let phraseField = app.textFields["CaptureSpeechVocabularyField"]
+        XCTAssertTrue(phraseField.waitForExistence(timeout: 5))
+        phraseField.tap()
+        phraseField.typeText("Homer Sparrow")
+        app.buttons["CaptureSpeechVocabularyAdd"].tap()
+        let learnedPhrase = app.staticTexts["Homer Sparrow"]
+        XCTAssertTrue(
+            learnedPhrase.waitForExistence(timeout: 5),
+            "People should be able to see and adjust the names Quipsly uses for recognition."
+        )
+        learnedPhrase.swipeLeft()
+        let delete = app.buttons["Delete"].firstMatch
+        XCTAssertTrue(delete.waitForExistence(timeout: 3))
+        delete.tap()
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+
         // Restore the deterministic preview persona to its default so the
         // persisted accessibility preference cannot make later tests order-dependent.
         turnOff(accountToggle)
