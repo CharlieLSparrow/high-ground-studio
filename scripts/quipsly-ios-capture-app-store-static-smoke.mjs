@@ -379,8 +379,12 @@ requireIncludes(projectText, "INFOPLIST_FILE = HighGroundCapture/Info.plist", "a
 requireIncludes(appInfoText, "NSMicrophoneUsageDescription", "microphone usage string");
 requireIncludes(appInfoText, "when you join a call or explicitly start recording", "microphone usage call and recording boundary");
 requireIncludes(appInfoText, "NSSpeechRecognitionUsageDescription", "on-device speech usage string");
-requireIncludes(appInfoText, "after you explicitly choose Transcribe", "on-device speech requires explicit action");
-requireIncludes(appInfoText, "audio stays on-device during recognition", "on-device speech disclosure does not imply an Apple upload");
+requireIncludes(
+  appInfoText,
+  "your voice notes and chosen recordings",
+  "on-device speech stays scoped to user-started writing and selected recordings",
+);
+requireIncludes(appInfoText, "Audio stays on-device during recognition", "on-device speech disclosure does not imply an Apple upload");
 requireIncludes(appInfoText, "NSCameraUsageDescription", "camera usage string required by linked session SDK");
 requireIncludes(appInfoText, "only after you explicitly choose video", "camera usage explicit video choice");
 requireIncludes(appInfoText, "Audio recording does not use the camera", "camera usage audio boundary");
@@ -513,10 +517,10 @@ assert(
 );
 for (const needle of [
   "CaptureOnDeviceTranscriptAction_",
-  "Download model & transcribe",
-  "Recognition runs locally",
-  "current all-party transcription consent is rechecked",
-  "No speaker diarization was claimed",
+  "Download English speech model",
+  "Quipsly turns the finished recording into timed, editable text",
+  "Your original audio stays unchanged",
+  "Corrects words or speaker labels while keeping every edit linked to the original audio",
 ]) {
   requireIncludes(
     capturePhoneShellText,
@@ -795,7 +799,6 @@ for (const needle of [
   "QuipslyCaptureAppleSignInButton",
   "QuipslyCaptureGoogleIdentityContinuityHint",
   "QuipslyCaptureAccountSupportLink",
-  "Recordings stay on this iPhone after upload; Quipsly never silently deletes a source.",
 ]) {
   requireIncludes(authCombined, needle, "native reviewer auth");
 }
@@ -1044,7 +1047,7 @@ for (const needle of [
   "CaptureSourceTruthFootnote",
   "CaptureLibraryJournalWarning",
   "Local source is production truth",
-  "Capture success means saved locally. Upload and server verification are separate steps.",
+  "Local source stopped; upload recovery remains independent.",
 ]) {
   requireAnyIncludes(shippingCaptureUIText, [needle, needle.replace("\\(", "(")], "reachable capture reviewer UI");
 }
@@ -1658,7 +1661,7 @@ for (const needle of [
   "Share first",
   "ConfirmDeleteLocalOriginalButton",
   "LocalRecordingDeletionSheet",
-  "Deletion receipts",
+  "protected audit row with the deletion time",
 ]) {
   requireIncludes(capturePhoneShellText, needle, "explicit local-original deletion UX");
 }
