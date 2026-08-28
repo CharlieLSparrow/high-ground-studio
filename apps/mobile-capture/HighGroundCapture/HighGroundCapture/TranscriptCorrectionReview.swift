@@ -3154,6 +3154,10 @@ struct CaptureTranscriptReviewView: View {
             }
             .navigationTitle("Transcript")
             .navigationBarTitleDisplayMode(.inline)
+            // Transcript review is a focused destination with its own reading,
+            // playback, editing, and quality controls. Keep the global tabs
+            // from covering those controls; the standard Back button remains.
+            .toolbar(.hidden, for: .tabBar)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     if let returnLabel {
@@ -3437,10 +3441,6 @@ struct CaptureTranscriptReviewView: View {
             HStack {
                 Label("Transcript", systemImage: transcriptPresentationMode.systemImage)
                     .font(.headline)
-                Spacer()
-                Text("Remembered on this iPhone")
-                    .font(.caption2.weight(.bold))
-                    .foregroundStyle(.secondary)
             }
             Picker("Transcript view", selection: $transcriptPresentationMode) {
                 ForEach(CaptureTranscriptPresentationMode.allCases) { mode in
@@ -3454,7 +3454,7 @@ struct CaptureTranscriptReviewView: View {
             }
             Text(
                 transcriptPresentationMode == .conversation
-                    ? "Read the Session like a familiar conversation. Tap Edit to correct a passage or turn it into follow-through."
+                    ? "Read the Session like a conversation. Tap Edit to correct words, change a speaker, or make a cut."
                     : "Listen at exact timestamps, correct words or speakers, and create source-backed notes, tasks, and goals."
             )
             .font(.caption)
@@ -3606,35 +3606,29 @@ struct CaptureTranscriptReviewView: View {
         ]
         .compactMap { $0 }
         .joined(separator: " ")
+        let passageLabel = evidence.segmentCount == 1 ? "timed passage" : "timed passages"
+        let wordsToCheckLabel = evidence.lowConfidenceWordCount == 1 ? "word to check" : "words to check"
         return VStack(alignment: .leading, spacing: 11) {
-            HStack(alignment: .firstTextBaseline) {
-                Label("Transcript quality", systemImage: "waveform.badge.magnifyingglass")
-                    .font(.headline)
-                    .foregroundStyle(.indigo)
-                Spacer(minLength: 8)
-                if !providerLabel.isEmpty {
-                    Text(providerLabel)
-                        .font(.caption2.weight(.bold))
-                        .foregroundStyle(.secondary)
-                }
-            }
+            Label("Quality check", systemImage: "waveform.badge.magnifyingglass")
+                .font(.headline)
+                .foregroundStyle(.indigo)
             HStack(spacing: 8) {
                 transcriptEvidenceMetric(
                     value: "\(evidence.segmentCount)",
-                    label: "timed passages"
+                    label: passageLabel
                 )
                 transcriptEvidenceMetric(
                     value: evidence.lowConfidenceWordCount.map(String.init) ?? "—",
-                    label: "words to check"
+                    label: wordsToCheckLabel
                 )
                 transcriptEvidenceMetric(
                     value: evidence.measuredWordErrorRate.map { "\(Int(($0 * 100).rounded()))%" } ?? "—",
-                    label: "verified error rate"
+                    label: "measured error"
                 )
             }
             if let threshold = evidence.lowConfidenceThreshold,
                captureTranscriptNonempty(evidence.lowConfidenceThresholdAuthority) != nil {
-                Text("Quipsly highlights words below \(Int((threshold * 100).rounded()))% confidence so you can listen where it matters. Verified accuracy appears when a reference transcript is available.")
+                Text("Words below \(Int((threshold * 100).rounded()))% confidence are highlighted so you can listen and correct only what needs attention.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -3661,10 +3655,15 @@ struct CaptureTranscriptReviewView: View {
                 .tint(.indigo)
                 .accessibilityIdentifier("CaptureTranscriptEvidenceReviewFirst")
             }
-            Text("Verified accuracy appears only after a source-backed review; provider confidence is never presented as proven accuracy.")
-                .font(.caption2.weight(.semibold))
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
+            VStack(alignment: .leading, spacing: 3) {
+                if !providerLabel.isEmpty {
+                    Text("Transcribed with \(providerLabel)")
+                }
+                Text("Confidence finds passages worth checking. Measured error appears only when a reference transcript is available.")
+            }
+            .font(.caption2.weight(.semibold))
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
         }
         .reviewCard()
         .accessibilityElement(children: .contain)
@@ -3743,7 +3742,7 @@ struct CaptureTranscriptReviewView: View {
         VStack(alignment: .leading, spacing: 7) {
             Text(sessionTitle)
                 .font(.title3.weight(.bold))
-            Label("Recording and transcript linked", systemImage: "waveform.and.magnifyingglass")
+            Label("Ready to review", systemImage: "checkmark.circle.fill")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.green)
             if client.desk?.roomPurpose == "COACHING", !previewOnly {

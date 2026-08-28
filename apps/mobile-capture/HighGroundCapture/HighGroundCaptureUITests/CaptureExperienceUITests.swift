@@ -350,6 +350,10 @@ final class CaptureExperienceUITests: XCTestCase {
                 .waitForExistence(timeout: 5),
             "Writing should open inside Capture rather than handing off to another app."
         )
+        XCTAssertFalse(
+            app.tabBars.firstMatch.exists,
+            "Focused writing should use the full screen instead of letting global tabs cover editing controls."
+        )
         XCTAssertTrue(app.buttons["Write"].exists)
         XCTAssertTrue(app.buttons["Transcript"].exists)
         XCTAssertTrue(
@@ -4905,6 +4909,10 @@ final class CaptureAppStoreScreenshotUITests: XCTestCase {
         XCTAssertTrue(
             app.scrollViews["CaptureTranscriptReviewView"].waitForExistence(timeout: 5),
             "The source-linked transcript review must open inside Capture."
+        )
+        XCTAssertFalse(
+            app.tabBars.firstMatch.exists,
+            "Focused transcript reading and editing should not be covered by the global tab bar."
         )
         XCTAssertTrue(app.staticTexts["Coaching session"].exists)
         XCTAssertTrue(

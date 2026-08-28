@@ -7628,6 +7628,12 @@ private struct CaptureVoiceWritingEditor: View {
         }
         .navigationTitle("Writing")
         .navigationBarTitleDisplayMode(.inline)
+        // Writing is a focused document destination reached from Library.
+        // Hiding the global tabs here gives the editor its full safe area and
+        // prevents the tab bar from covering tags or the continue-by-voice
+        // action while the keyboard toolbar is visible. The standard Back
+        // button remains the familiar way out.
+        .toolbar(.hidden, for: .tabBar)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button(action: continueByVoice) {
