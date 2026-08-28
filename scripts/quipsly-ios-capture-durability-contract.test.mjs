@@ -65,13 +65,18 @@ check(
 
 const armMethod = audio.indexOf("func armNextCapture(");
 const durableStart = audio.indexOf("receiptStore.enqueueDurably(", armMethod);
-const beginMethod = audio.indexOf("private func beginActualRecording() throws");
+// The source can add explicitly injected recording inputs without changing
+// the durability boundary. Anchor the function declaration rather than one
+// historical zero-argument signature, then retain every ordering assertion
+// below against the same implementation body.
+const beginMethod = audio.indexOf("private func beginActualRecording(", armMethod);
 const localArm = audio.indexOf("localRecordingLibrary.beginRecording(", beginMethod);
 const avRecord = audio.indexOf("guard directRecorder.record()", beginMethod);
 const localActive = audio.indexOf("localRecordingLibrary.markRecording", avRecord);
 const providerRecord = audio.indexOf("try providerRecorder.start(at: startedAt)", beginMethod);
 const providerPCMConfirmation = audio.indexOf("private func confirmProviderAudioInput(", beginMethod);
 check("recorder exposes a throwing arm API", armMethod >= 0);
+check("recorder exposes the source-opening implementation", beginMethod > armMethod);
 check("arm API durably commits Nest START", durableStart > armMethod && durableStart < beginMethod);
 check("room capture cannot bypass durable arming", audio.includes("activeCallRoomId != nil, pendingCaptureIntent == nil") && audio.includes("armedRoomMismatch"));
 check("local armed row commits before AVAudioRecorder.record", localArm > beginMethod && localArm < avRecord);
