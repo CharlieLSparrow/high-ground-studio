@@ -119,7 +119,7 @@ test("local source rows and file access are filtered by exact nonempty owner", (
   assert.match(library, /private var storedRecordings: \[LocalRecording\] = \[\]/);
   assert.match(
     library,
-    /recordings = storedRecordings\.filter \{\s*normalizedOwnerID\(\$0\.ownerAccountID\) == activeOwnerAccountID\s*\}/,
+    /if let activeOwnerAccountID = normalizedOwnerID\(activeOwnerAccountID\) \{[\s\S]*?visibleRecordings = storedRecordings\.filter \{\s*normalizedOwnerID\(\$0\.ownerAccountID\) == activeOwnerAccountID\s*\}[\s\S]*?\} else \{\s*visibleRecordings = \[\]/,
   );
   assert.match(library, /guard ownsActivePartition\(recording\), isSafeRecordingFileName\(recording\.fileName\) else \{ return nil \}/);
   assert.match(library, /ownerAccountID: nil,[\s\S]*?displayTitle: "Recovered recording/);
@@ -259,17 +259,28 @@ test("deterministic owner-change-during-permission contract carries one immutabl
 });
 
 test("provider join token is canceled when its preparing owner generation changes", () => {
-  const joinStart = captureModel.indexOf("func joinRoom(useCallAudio:");
+  const joinStart = captureModel.indexOf("func joinRoom(");
   const join = captureModel.slice(
     joinStart,
     captureModel.indexOf("func leaveRoom() async"),
   );
   const snapshot = join.indexOf("stableOwnerSnapshot()");
-  const prepare = join.indexOf("await sessionClient.prepareRoomJoin", snapshot);
+  const permission = join.indexOf("await providerRoom.prepareMicrophonePermissionForJoin()", snapshot);
+  const permissionRecheck = join.indexOf("matchesStableOwnerSnapshot(ownerSnapshot)", permission);
+  const prepare = join.indexOf("await sessionClient.prepareRoomJoin", permissionRecheck);
   const prepareRecheck = join.indexOf("matchesStableOwnerSnapshot(ownerSnapshot)", prepare);
   const connect = join.indexOf("await providerRoom.connect", prepareRecheck);
   const connectRecheck = join.indexOf("matchesStableOwnerSnapshot(ownerSnapshot)", connect);
-  assert.ok(joinStart >= 0 && snapshot >= 0 && prepare > snapshot && prepareRecheck > prepare && connect > prepareRecheck && connectRecheck > connect);
+  assert.ok(
+    joinStart >= 0
+      && snapshot >= 0
+      && permission > snapshot
+      && permissionRecheck > permission
+      && prepare > permissionRecheck
+      && prepareRecheck > prepare
+      && connect > prepareRecheck
+      && connectRecheck > connect,
+  );
   assert.match(join, /expectedOwnerSnapshot: ownerSnapshot/);
   assert.match(join, /useCallAudio: useCallAudio/);
   assert.match(join, /await providerRoom\.disconnect\(\)/);
@@ -277,7 +288,7 @@ test("provider join token is canceled when its preparing owner generation change
   assert.match(providerRoom, /forName: \.quipslyCaptureAccountIdentityDidChange/);
   assert.match(providerRoom, /var activeOwnerSnapshot: AuthManager\.StableOwnerSnapshot\?/);
   assert.match(providerRoom, /try await room\.connect[\s\S]*?matchesStableOwnerSnapshot\(expectedOwnerSnapshot\)[\s\S]*?setMicrophone/);
-  assert.match(providerRoom, /setMicrophone\(enabled: useCallAudio\)[\s\S]*?matchesStableOwnerSnapshot\(expectedOwnerSnapshot\)/);
+  assert.match(providerRoom, /setMicrophone\([\s\S]*?enabled: useCallAudio && !joinMuted[\s\S]*?matchesStableOwnerSnapshot\(expectedOwnerSnapshot\)/);
   assert.match(providerRoom, /private func abortForAccountChange\(\) async[\s\S]*?await room\.disconnect\(\)[\s\S]*?activeOwnerSnapshot = nil/);
 });
 
@@ -304,7 +315,7 @@ test("consent grant sends exact separate recording, transcription, and nearby-pe
   assert.match(captureShell, /@State private var canTranscribe: Bool/);
   assert.match(captureShell, /@State private var presentationOwnerSnapshot: AuthManager\.StableOwnerSnapshot\?/);
   assert.match(captureShell, /matchesStableOwnerSnapshot\(presentationOwnerSnapshot\)/);
-  assert.match(captureShell, /Each signed-in person chooses for themselves/);
+  assert.match(captureShell, /Everyone chooses for themselves/);
 });
 
 test("daemon transfer is fail-closed on persistence and retries use bounded stable jitter", () => {
