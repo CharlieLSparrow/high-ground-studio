@@ -194,7 +194,7 @@ assert.equal(noNativeProvider.recordingCount, 1);
 assert.equal(noNativeProvider.latestRecordingAssetStatus, "VERIFIED");
 assert.equal(noNativeProvider.latestTranscriptStatus, "COMPLETED");
 assert.equal(noNativeProvider.latestTranscriptSegmentCount, 42);
-assert.equal(noNativeProvider.coachingPacketStatus, "READY_FOR_REVIEW");
+assert.equal(noNativeProvider.coachingPacketStatus, "RESULTS_READY");
 assert.equal(noNativeProvider.coachingPacketHighlightCount, 1);
 assert.equal(noNativeProvider.coachingPacketActionItemCount, 2);
 assert.equal(noNativeProvider.coachingPacketFirstOpenActionItemId, "action_item_1");
