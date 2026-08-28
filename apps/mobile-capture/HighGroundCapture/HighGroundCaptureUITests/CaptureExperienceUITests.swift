@@ -318,6 +318,34 @@ final class CaptureExperienceUITests: XCTestCase {
         ])
     }
 
+    func testVoiceWritingKeepsTimedSourceBesideEditableText() {
+        app.tabBars.buttons["Library"].tap()
+        app.buttons["Writing"].tap()
+        let previewDraft = app.descendants(matching: .any)["CaptureLibraryPreviewWritingCard"]
+        XCTAssertTrue(previewDraft.waitForExistence(timeout: 5))
+        previewDraft.tap()
+
+        let transcript = app.buttons["Transcript"]
+        XCTAssertTrue(transcript.waitForExistence(timeout: 5))
+        transcript.tap()
+
+        XCTAssertTrue(app.textFields["CaptureVoiceWritingTranscriptSearch"].exists)
+        XCTAssertTrue(app.buttons["CaptureVoiceWritingCopyTranscript"].exists)
+        XCTAssertTrue(
+            app.buttons["CaptureVoiceWritingTranscriptSegment_A17F4C12-0000-4000-8000-000000000032_0"].exists
+        )
+        XCTAssertTrue(
+            app.buttons["CaptureVoiceWritingTranscriptSegment_A17F4C12-0000-4000-8000-000000000032_6400"].exists
+        )
+        XCTAssertTrue(
+            app.staticTexts["The first idea connects the experience I described to the research question."].exists
+        )
+        XCTAssertTrue(
+            app.staticTexts["This is the unchanged source transcript. Corrections and media edits remain traceable to the original audio."].exists,
+            "Editable writing should never obscure which words still come from the retained source."
+        )
+    }
+
     func testCoachingHomeMakesThePhoneOnlyWorkflowConcrete() {
         relaunchCoachingPreview(role: "coach")
         let coaching = app.buttons["CaptureOpenCoachingHome"]

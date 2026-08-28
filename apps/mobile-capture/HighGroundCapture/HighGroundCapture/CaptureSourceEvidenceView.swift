@@ -224,7 +224,7 @@ struct CaptureSourceEvidenceView: View {
                         durationSeconds: signal.durationSeconds,
                         selectedSeconds: $selectedAudioSeconds,
                         playbackSeconds: playback.currentTime,
-                        isPlaying: playback.playingRecordingID == recording.id,
+                        isPlaying: playback.isPlaying(recordingID: recording.id),
                         markers: signalMarkers + boundaryMarkers + detectedMarkers
                     ) { seconds in
                         selectedAudioSeconds = seconds
@@ -328,7 +328,7 @@ struct CaptureSourceEvidenceView: View {
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(.green)
                     }
-                    if playback.playingRecordingID == recording.id {
+                    if playback.isPlaying(recordingID: recording.id) {
                         Label("Playing this local original", systemImage: "speaker.wave.2.fill")
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(.blue)

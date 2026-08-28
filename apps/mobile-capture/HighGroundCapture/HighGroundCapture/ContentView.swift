@@ -186,7 +186,7 @@ private struct ProtectedOfflineLibraryShell: View {
                         ForEach(library.recordings) { recording in
                             ProtectedOfflineRecordingRow(
                                 recording: recording,
-                                isPlaying: playback.playingRecordingID == recording.id,
+                                isPlaying: playback.isPlaying(recordingID: recording.id),
                                 onPlay: { playback.toggle(recording: recording, library: library) }
                             )
                         }

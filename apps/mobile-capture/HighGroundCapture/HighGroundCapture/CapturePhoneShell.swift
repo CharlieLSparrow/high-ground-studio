@@ -6982,6 +6982,7 @@ private struct CaptureVoiceWritingEditor: View {
     @State private var transcriptQuery = ""
     @State private var transcriptWasCopied = false
     @State private var showsTagEditor = false
+    @State private var resumesAfterScrubbing = false
     @State private var saveTask: Task<Void, Never>?
 
     init(
@@ -7340,6 +7341,11 @@ private struct CaptureVoiceWritingEditor: View {
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
+                    .listRowBackground(
+                        isCurrent(segment, recordingID: source.id)
+                            ? CapturePalette.accent.opacity(0.12)
+                            : Color.clear
+                    )
                     .disabled(recordingLibrary.recording(id: source.id) == nil)
                     .accessibilityLabel("Play transcript at \(timestamp(segment.startSeconds)): \(segment.text)")
                     .accessibilityIdentifier("CaptureVoiceWritingTranscriptSegment_\(source.id)_\(Int(segment.startSeconds * 1000))")
@@ -7508,30 +7514,90 @@ private struct CaptureVoiceWritingEditor: View {
     }
 
     private func voiceSourcePlayer(_ recording: LocalRecording) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        let isLoaded = playback.playingRecordingID == recording.id
+        let isActivelyPlaying = playback.isPlaying(recordingID: recording.id)
+        let displayedTime = isLoaded ? playback.currentTime : 0
+        let duration = max(recording.durationSeconds, 0.01)
+        return VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 12) {
                 Button {
                     playback.toggle(recording: recording, library: recordingLibrary)
                 } label: {
-                    Image(systemName: playback.playingRecordingID == recording.id ? "pause.fill" : "play.fill")
+                    Image(systemName: isActivelyPlaying ? "pause.fill" : "play.fill")
                         .font(.headline)
                         .frame(width: 44, height: 44)
                         .background(CapturePalette.accent.opacity(0.12), in: Circle())
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel(playback.playingRecordingID == recording.id ? "Pause original audio" : "Play original audio")
+                .accessibilityLabel(isActivelyPlaying ? "Pause original audio" : "Play original audio")
                 .accessibilityIdentifier("CaptureVoiceWritingSourcePlay")
 
                 VStack(alignment: .leading, spacing: 5) {
                     Text("Original audio")
                         .font(.subheadline.weight(.semibold))
-                    ProgressView(
-                        value: min(max(playback.currentTime, 0), max(recording.durationSeconds, 0.01)),
-                        total: max(recording.durationSeconds, 0.01)
+                    Slider(
+                        value: Binding(
+                            get: { min(max(displayedTime, 0), duration) },
+                            set: { seconds in
+                                playback.prepare(
+                                    recording: recording,
+                                    library: recordingLibrary,
+                                    at: seconds
+                                )
+                            }
+                        ),
+                        in: 0...duration,
+                        onEditingChanged: { isEditing in
+                            if isEditing {
+                                resumesAfterScrubbing = isActivelyPlaying
+                                if isActivelyPlaying { playback.pause() }
+                            } else if resumesAfterScrubbing {
+                                resumesAfterScrubbing = false
+                                playback.resume()
+                            }
+                        }
                     )
-                    Text("\(timestamp(playback.currentTime)) of \(recording.durationSeconds.captureDurationLabel)")
-                        .font(.caption.monospacedDigit())
-                        .foregroundStyle(.secondary)
+                    .accessibilityLabel("Original audio position")
+                    .accessibilityValue("\(timestamp(displayedTime)) of \(recording.durationSeconds.captureDurationLabel)")
+                    .accessibilityIdentifier("CaptureVoiceWritingSourceScrubber")
+
+                    HStack {
+                        Text("\(timestamp(displayedTime)) of \(recording.durationSeconds.captureDurationLabel)")
+                            .font(.caption.monospacedDigit())
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        Button {
+                            playback.prepare(
+                                recording: recording,
+                                library: recordingLibrary,
+                                at: displayedTime
+                            )
+                            playback.skip(by: -15)
+                        } label: {
+                            Label("Back 15 seconds", systemImage: "gobackward.15")
+                                .labelStyle(.iconOnly)
+                                .frame(width: 44, height: 44)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Back 15 seconds")
+                        .accessibilityIdentifier("CaptureVoiceWritingSourceBack15")
+
+                        Button {
+                            playback.prepare(
+                                recording: recording,
+                                library: recordingLibrary,
+                                at: displayedTime
+                            )
+                            playback.skip(by: 15)
+                        } label: {
+                            Label("Forward 15 seconds", systemImage: "goforward.15")
+                                .labelStyle(.iconOnly)
+                                .frame(width: 44, height: 44)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Forward 15 seconds")
+                        .accessibilityIdentifier("CaptureVoiceWritingSourceForward15")
+                    }
                 }
             }
 
@@ -7557,6 +7623,12 @@ private struct CaptureVoiceWritingEditor: View {
     }
 
     private func isPlaying(_ segment: OnDeviceTranscriptSegment, recordingID: UUID) -> Bool {
+        playback.isPlaying(recordingID: recordingID)
+            && playback.currentTime >= segment.startSeconds
+            && playback.currentTime < segment.endSeconds
+    }
+
+    private func isCurrent(_ segment: OnDeviceTranscriptSegment, recordingID: UUID) -> Bool {
         playback.playingRecordingID == recordingID
             && playback.currentTime >= segment.startSeconds
             && playback.currentTime < segment.endSeconds
@@ -12431,7 +12503,7 @@ private struct CaptureLibraryView: View {
                             && $0.captureGroupId == recording.captureGroupId
                     }.count,
                     fileURL: library.fileURL(for: recording),
-                    isPlaying: playback.playingRecordingID == recording.id,
+                    isPlaying: playback.isPlaying(recordingID: recording.id),
                     canAudition: !model.isSessionContextLocked,
                     canRequestDeletion: !model.isSessionContextLocked,
                     onPlay: { playback.toggle(recording: recording, library: library) },
@@ -12592,7 +12664,18 @@ private struct CaptureLibraryPreviewWritingCard: View {
             CaptureVoiceWritingEditor(
                 recordingID: Self.recordingID,
                 initialDraft: Self.draft,
-                timedTranscript: [],
+                timedTranscript: [
+                    OnDeviceTranscriptSegment(
+                        startSeconds: 0,
+                        endSeconds: 6.4,
+                        text: "The first idea connects the experience I described to the research question."
+                    ),
+                    OnDeviceTranscriptSegment(
+                        startSeconds: 6.4,
+                        endSeconds: 12.8,
+                        text: "I want to open with the concrete story, then explain why it matters."
+                    ),
+                ],
                 tagClient: tagClient,
                 onContinueByVoice: { _ in }
             )
