@@ -3176,6 +3176,32 @@ final class CaptureExperienceUITests: XCTestCase {
         moreSuggestions.tap()
         XCTAssertFalse(app.descendants(matching: .any)["CaptureTranscriptReviewProgressCount"].exists)
         XCTAssertTrue(app.descendants(matching: .any)["CapturePacketCandidateReviewFilter"].exists)
+
+        // Follow the rendered review order from top to bottom. Goal candidates
+        // precede task candidates in the transcript packet, and exercising
+        // them in that order keeps this acceptance journey aligned with the
+        // same one-directional reading flow a VoiceOver or touch user follows.
+        // It also avoids relying on stale accessibility geometry after a
+        // LazyVStack has recycled the goal row above the viewport.
+        let packetGoalAccept = app.buttons["CapturePacketGoalAcceptButton"]
+        reveal(packetGoalAccept)
+        XCTAssertTrue(app.buttons["CapturePacketGoalSource_preview-segment"].exists)
+        XCTAssertTrue(app.descendants(matching: .any)["CapturePacketGoalSourceReviewRequired"].exists)
+        XCTAssertFalse(packetGoalAccept.isEnabled, "Provider-only preview evidence must not open canonical goal creation.")
+        XCTAssertFalse(app.buttons["CapturePacketGoalDeferButton"].isEnabled)
+        XCTAssertFalse(app.buttons["CapturePacketGoalRejectButton"].isEnabled)
+        let editPacketGoal = app.buttons["CapturePacketGoalEditButton"]
+        reveal(editPacketGoal)
+        XCTAssertTrue(
+            editPacketGoal.isEnabled && editPacketGoal.isHittable,
+            "Preview may inspect a packet goal draft while every review mutation stays disabled."
+        )
+        editPacketGoal.tap()
+        XCTAssertTrue(app.textFields["CapturePacketGoalTitleField"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.textFields["CapturePacketGoalDescriptionField"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["CapturePacketGoalSaveDraftButton"].isEnabled)
+        app.buttons["CapturePacketGoalCancelEditButton"].tap()
+
         let packetTaskAccept = app.buttons["CapturePacketTaskAcceptButton"]
         reveal(packetTaskAccept)
         XCTAssertTrue(app.buttons["CapturePacketTaskSource_preview-segment"].exists)
@@ -3204,25 +3230,6 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(app.textFields["CapturePacketTaskDetailField"].waitForExistence(timeout: 5))
         XCTAssertFalse(app.buttons["CapturePacketTaskSaveDraftButton"].isEnabled)
         app.buttons["CapturePacketTaskCancelEditButton"].tap()
-
-        let packetGoalAccept = app.buttons["CapturePacketGoalAcceptButton"]
-        reveal(packetGoalAccept)
-        XCTAssertTrue(app.buttons["CapturePacketGoalSource_preview-segment"].exists)
-        XCTAssertTrue(app.descendants(matching: .any)["CapturePacketGoalSourceReviewRequired"].exists)
-        XCTAssertFalse(packetGoalAccept.isEnabled, "Provider-only preview evidence must not open canonical goal creation.")
-        XCTAssertFalse(app.buttons["CapturePacketGoalDeferButton"].isEnabled)
-        XCTAssertFalse(app.buttons["CapturePacketGoalRejectButton"].isEnabled)
-        let editPacketGoal = app.buttons["CapturePacketGoalEditButton"]
-        reveal(editPacketGoal)
-        XCTAssertTrue(
-            editPacketGoal.isEnabled && editPacketGoal.isHittable,
-            "Preview may inspect a packet goal draft while every review mutation stays disabled."
-        )
-        editPacketGoal.tap()
-        XCTAssertTrue(app.textFields["CapturePacketGoalTitleField"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.textFields["CapturePacketGoalDescriptionField"].waitForExistence(timeout: 5))
-        XCTAssertFalse(app.buttons["CapturePacketGoalSaveDraftButton"].isEnabled)
-        app.buttons["CapturePacketGoalCancelEditButton"].tap()
 
         let presentationControls = app.descendants(matching: .any)["CaptureTranscriptPresentationControls"].firstMatch
         reveal(presentationControls)
