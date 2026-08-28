@@ -7163,7 +7163,8 @@ private struct CaptureVoiceWritingEditor: View {
             }
         } footer: {
             HStack {
-                Text("\(bodyText.count.formatted()) characters")
+                Text(writingWordCount == 1 ? "1 word" : "\(writingWordCount.formatted()) words")
+                    .accessibilityIdentifier("CaptureVoiceWritingWordCount")
                 Spacer()
                 syncStatus
             }
@@ -7416,6 +7417,10 @@ private struct CaptureVoiceWritingEditor: View {
         }
         let cleanTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
         return cleanTitle.isEmpty ? bodyText : "\(cleanTitle)\n\n\(bodyText)"
+    }
+
+    private var writingWordCount: Int {
+        bodyText.split(whereSeparator: \Character.isWhitespace).count
     }
 
     private var recording: LocalRecording? {
@@ -12172,12 +12177,12 @@ private struct CaptureLibraryView: View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 14) {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text(selectedSection == .writing ? "Your writing" : "Original recordings")
+                    Text(selectedSection == .writing ? "Your writing" : "Your recordings")
                         .font(.title2.weight(.bold))
                     Text(
                         selectedSection == .writing
                             ? "Voice Notes become editable writing while their timed transcripts and original audio stay connected."
-                            : "Play, share, verify, or inspect the source behind your Sessions and Voice Notes."
+                            : "Play, share, and open the transcript for any Session or Voice Note."
                     )
                         .font(.subheadline)
                         .foregroundStyle(.secondary)

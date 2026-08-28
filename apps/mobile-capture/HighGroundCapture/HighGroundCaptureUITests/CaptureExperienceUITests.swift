@@ -303,6 +303,10 @@ final class CaptureExperienceUITests: XCTestCase {
             "The spoken draft must remain directly editable at the largest accessibility text size."
         )
         XCTAssertTrue(
+            app.staticTexts["CaptureVoiceWritingWordCount"].exists,
+            "A paper-writing surface should show a useful word count without adding another workflow."
+        )
+        XCTAssertTrue(
             app.buttons["CaptureVoiceWritingContinueToolbar"].exists,
             "The persistent microphone action must not disappear when text grows."
         )
@@ -4522,6 +4526,8 @@ final class CaptureAppStoreScreenshotUITests: XCTestCase {
         )
         XCTAssertTrue(app.staticTexts["Backed up"].exists)
         XCTAssertTrue(app.staticTexts["Transcript ready"].exists)
+        XCTAssertTrue(app.staticTexts["Your recordings"].exists)
+        XCTAssertTrue(app.staticTexts["Play, share, and open the transcript for any Session or Voice Note."].exists)
         XCTAssertTrue(app.buttons["Open transcript"].exists)
         XCTAssertFalse(
             app.staticTexts.matching(
