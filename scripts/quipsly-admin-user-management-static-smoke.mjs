@@ -34,7 +34,7 @@ const browserSmoke = read(browserSmokePath);
   "Create capture reviewer login",
   'name="firebasePassword"',
   "Firebase email/password",
-  "free starter/Home Nest",
+  "free starter access and Home Nest",
   'defaultValue="CLIENT"',
 ].forEach((marker) => assertIncludes(page, marker, pagePath));
 
