@@ -1447,6 +1447,48 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(boundary.label.contains("never claims physical-device"))
     }
 
+    func testNestsSearchLabelsPrivateOwnedAndSharedWorkAndOpensWritingInPlace() {
+        app.tabBars.buttons["Nests"].tap()
+        let searchField = app.descendants(matching: .any)["CaptureWorkSearchField"]
+        XCTAssertTrue(searchField.waitForExistence(timeout: 5))
+
+        searchField.tap()
+        searchField.typeText("paper")
+        let summary = app.descendants(matching: .any)["CaptureWorkGlobalSearchSummary"]
+        XCTAssertTrue(summary.waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["2 results · searched 3 Nests"].exists)
+        XCTAssertTrue(app.staticTexts["Doctoral research · Owned by you"].exists)
+        XCTAssertTrue(app.staticTexts["High Ground Odyssey · Shared with you"].exists)
+        XCTAssertTrue(
+            app.descendants(matching: .any)["CaptureWorkGlobalSearchResult_TASK_preview-work-task"].exists
+        )
+        XCTAssertTrue(
+            app.descendants(matching: .any)["CaptureWorkGlobalSearchResult_SESSION_preview-search-session"].exists
+        )
+
+        app.buttons["Clear work search"].tap()
+        searchField.tap()
+        searchField.typeText("Dissertation")
+        let writing = app.descendants(matching: .any)["CaptureWorkGlobalSearchResult_WRITING_preview-work-note"]
+        XCTAssertTrue(writing.waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["Charlie Home Nest · Private to you"].exists)
+
+        writing.tap()
+        let picker = app.descendants(matching: .any)["CaptureWorkProjectPicker"]
+        let privateNestSelected = expectation(
+            for: NSPredicate(
+                format: "value CONTAINS %@",
+                "Charlie Home Nest, Private to you"
+            ),
+            evaluatedWith: picker
+        )
+        wait(for: [privateNestSelected], timeout: 5)
+        XCTAssertTrue(
+            app.descendants(matching: .any)["CaptureWorkNote_preview-work-note"].waitForExistence(timeout: 3),
+            "A native writing result should open inside its exact Nest instead of dropping the person into a generic web page."
+        )
+    }
+
     func testWorkKeepsProjectsTasksGoalsNotesAndTagsTogether() {
         app.tabBars.buttons["Nests"].tap()
         let workScroll = app.scrollViews["CaptureWorkView"]
@@ -1473,15 +1515,17 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(searchField.waitForExistence(timeout: 3))
         XCTAssertTrue(searchField.isHittable, "Project Work search must be directly usable on iPhone.")
         searchField.tap()
-        searchField.typeText("Proof-listen")
+        searchField.typeText("paper")
         XCTAssertTrue(
-            app.staticTexts["Proof-listen the episode opening"].waitForExistence(timeout: 3),
-            "Work search must filter the retained project corpus through the visible shipping control."
+            app.descendants(matching: .any)["CaptureWorkGlobalSearchSummary"].waitForExistence(timeout: 3),
+            "Work search must cross the actor's permission-filtered Nests through the visible shipping control."
         )
+        XCTAssertTrue(app.staticTexts["Doctoral research · Owned by you"].exists)
+        XCTAssertTrue(app.staticTexts["High Ground Odyssey · Shared with you"].exists)
         let clearSearch = app.buttons["Clear work search"]
         XCTAssertTrue(clearSearch.isHittable)
         clearSearch.tap()
-        XCTAssertEqual(searchField.value as? String, "Find notes, work, or tags")
+        XCTAssertEqual(searchField.value as? String, "Search all your Nests")
         XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 3))
 
         let manageVocabulary = app.buttons["CaptureWorkManageTags"]

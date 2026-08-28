@@ -211,7 +211,7 @@ struct CapturePhoneShell: View {
             .tag(CaptureRootTab.record)
 
             NavigationStack {
-                CaptureWorkView(model: model)
+                CaptureWorkView(model: model, visibleTab: $visibleTab)
             }
             .tabItem { Label(CaptureRootTab.work.title, systemImage: CaptureRootTab.work.systemImage) }
             .tag(CaptureRootTab.work)
@@ -1221,7 +1221,9 @@ private struct CaptureGoalMergedEvidenceCard: View {
 private struct CaptureWorkView: View {
     @ObservedObject var model: CaptureExperienceModel
     @ObservedObject private var client: CaptureWorkClient
+    @StateObject private var searchClient = CaptureWorkspaceSearchClient()
     @StateObject private var library = LocalRecordingLibrary.shared
+    @Binding var visibleTab: CaptureRootTab
     @State private var selectedProjectID: String?
     @State private var searchText = ""
     @FocusState private var searchIsFocused: Bool
@@ -1239,9 +1241,10 @@ private struct CaptureWorkView: View {
     @State private var noteToEdit: MobileCaptureWorkNote?
     @State private var focusedWorkEntityID: String?
 
-    init(model: CaptureExperienceModel) {
+    init(model: CaptureExperienceModel, visibleTab: Binding<CaptureRootTab>) {
         self.model = model
         client = model.workClient
+        _visibleTab = visibleTab
     }
 
     private var workspace: MobileCaptureWorkWorkspace? {
@@ -1403,7 +1406,9 @@ private struct CaptureWorkView: View {
                     documentNoteEditStatus
                 }
 
-                if let workspace {
+                if normalizedQuery.count >= 2 {
+                    workspaceSearchResults(proxy: proxy)
+                } else if let workspace {
                     projectSummary(workspace)
                     quickCapture
                     CaptureQuickEntrySyncStatus(model: model)
@@ -1545,6 +1550,19 @@ private struct CaptureWorkView: View {
         }
         .onChange(of: client.selectedProjectID) { _, newValue in
             selectedProjectID = newValue
+        }
+        .task(id: normalizedQuery) {
+            guard normalizedQuery.count >= 2 else {
+                searchClient.clear()
+                return
+            }
+            try? await Task.sleep(for: .milliseconds(280))
+            guard !Task.isCancelled else { return }
+            if model.usesPreviewData {
+                searchClient.loadPreview(query: normalizedQuery)
+            } else {
+                await searchClient.search(normalizedQuery)
+            }
         }
         .navigationDestination(for: CaptureTranscriptSourceDestination.self) { destination in
             CaptureTranscriptReviewView(
@@ -1714,7 +1732,7 @@ private struct CaptureWorkView: View {
                     .foregroundStyle(.secondary)
                     .accessibilityHidden(true)
                 TextField(
-                    "Find notes, work, or tags",
+                    "Search all your Nests",
                     text: $searchText,
                     axis: .vertical
                 )
@@ -1726,7 +1744,7 @@ private struct CaptureWorkView: View {
                     .textInputAutocapitalization(.never)
                     .focused($searchIsFocused)
                     .onSubmit { searchIsFocused = false }
-                    .accessibilityLabel("Find notes, work, or tags")
+                    .accessibilityLabel("Search all your Nests")
                     .accessibilityIdentifier("CaptureWorkSearchField")
                 if !searchText.isEmpty {
                     Button {
@@ -1797,6 +1815,208 @@ private struct CaptureWorkView: View {
                         ? "house"
                         : "square.stack.3d.up"
             )
+        }
+    }
+
+    private struct SearchSection: Identifiable {
+        let kind: MobileCaptureSearchKind
+        let items: [MobileCaptureSearchItem]
+
+        var id: MobileCaptureSearchKind { kind }
+    }
+
+    private var searchSections: [SearchSection] {
+        MobileCaptureSearchKind.allCases.compactMap { kind in
+            let items = searchClient.results.filter { $0.kind == kind }
+            return items.isEmpty ? nil : SearchSection(kind: kind, items: items)
+        }
+    }
+
+    @ViewBuilder
+    private func workspaceSearchResults(proxy: ScrollViewProxy) -> some View {
+        if searchClient.isSearching {
+            CaptureLoadingCard(label: "Searching your Nests…")
+                .accessibilityIdentifier("CaptureWorkGlobalSearchLoading")
+        } else if let error = searchClient.errorMessage {
+            CaptureInlineWarning(text: error)
+                .accessibilityIdentifier("CaptureWorkGlobalSearchError")
+        } else if searchClient.results.isEmpty {
+            ContentUnavailableView.search(text: normalizedQuery)
+                .accessibilityIdentifier("CaptureWorkGlobalSearchEmpty")
+        } else {
+            VStack(alignment: .leading, spacing: 5) {
+                Text(
+                    "\(searchClient.results.count) result\(searchClient.results.count == 1 ? "" : "s") · searched \(searchClient.projectCount) Nest\(searchClient.projectCount == 1 ? "" : "s")"
+                )
+                    .font(.headline)
+                Text("Private, owned, and shared work stays labeled so you always know where you are.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityIdentifier("CaptureWorkGlobalSearchSummary")
+
+            ForEach(searchSections) { section in
+                VStack(alignment: .leading, spacing: 10) {
+                    Label(section.kind.sectionTitle, systemImage: section.kind.systemImage)
+                        .font(.title3.weight(.bold))
+                    ForEach(section.items) { item in
+                        searchResultRow(item, proxy: proxy)
+                    }
+                }
+                .accessibilityElement(children: .contain)
+                .accessibilityIdentifier("CaptureWorkGlobalSearchSection_\(section.kind.rawValue)")
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func searchResultRow(
+        _ item: MobileCaptureSearchItem,
+        proxy: ScrollViewProxy
+    ) -> some View {
+        if opensNatively(item) {
+            Button {
+                openSearchResult(item, proxy: proxy)
+            } label: {
+                searchResultContent(item)
+            }
+            .buttonStyle(.plain)
+            .accessibilityHint("Opens this result in Quipsly Capture without changing it.")
+            .accessibilityIdentifier("CaptureWorkGlobalSearchResult_\(item.kind.rawValue)_\(item.id)")
+        } else if let url = searchResultURL(item) {
+            Link(destination: url) {
+                searchResultContent(item)
+            }
+            .buttonStyle(.plain)
+            .accessibilityHint("Opens this canonical result in Nest without changing it.")
+            .accessibilityIdentifier("CaptureWorkGlobalSearchResult_\(item.kind.rawValue)_\(item.id)")
+        } else {
+            searchResultContent(item)
+        }
+    }
+
+    private func searchResultContent(_ item: MobileCaptureSearchItem) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: item.kind.systemImage)
+                .font(.title3)
+                .foregroundStyle(CapturePalette.accent)
+                .frame(width: 42, height: 42)
+                .background(CapturePalette.accent.opacity(0.1), in: Circle())
+            VStack(alignment: .leading, spacing: 5) {
+                Text(item.title)
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(.primary)
+                    .multilineTextAlignment(.leading)
+                if !item.detail.isEmpty {
+                    Text(item.detail)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(3)
+                        .multilineTextAlignment(.leading)
+                }
+                if let project = item.project {
+                    Text("\(project.name) · \(searchProjectContext(project))")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(project.isHomeNest ? CapturePalette.accent : .secondary)
+                } else if item.kind == .session || item.kind == .sessionNote {
+                    Text("Available in this Session")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                }
+                if !item.tags.isEmpty {
+                    Text(item.tags.map { "#\($0.label)" }.joined(separator: "  "))
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(CapturePalette.accent)
+                        .lineLimit(2)
+                }
+            }
+            Spacer(minLength: 0)
+            Image(systemName: opensNatively(item) ? "chevron.right" : "arrow.up.right")
+                .font(.caption.weight(.bold))
+                .foregroundStyle(.tertiary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(14)
+        .background(.background, in: RoundedRectangle(cornerRadius: 18))
+        .overlay {
+            RoundedRectangle(cornerRadius: 18)
+                .stroke(Color.primary.opacity(0.07))
+        }
+    }
+
+    private func searchProjectContext(_ project: MobileCaptureSearchProject) -> String {
+        if project.isHomeNest { return "Private to you" }
+        if project.role == "OWNER" { return "Owned by you" }
+        return "Shared with you"
+    }
+
+    private func opensNatively(_ item: MobileCaptureSearchItem) -> Bool {
+        switch item.kind {
+        case .task, .goal, .writing:
+            item.project != nil && item.nativeTargetId != nil
+        case .session, .sessionNote:
+            item.nativeTargetId != nil
+        case .document, .source, .annotation, .tag:
+            false
+        }
+    }
+
+    private func searchResultURL(_ item: MobileCaptureSearchItem) -> URL? {
+        let baseURL = normalizedNestBaseURL(
+            Bundle.main.object(forInfoDictionaryKey: "QUIPSLY_API_BASE_URL") as? String
+                ?? "https://nest.quipsly.com"
+        )
+        return URL(string: "\(baseURL)\(item.webPath)")
+    }
+
+    private func openSearchResult(
+        _ item: MobileCaptureSearchItem,
+        proxy: ScrollViewProxy
+    ) {
+        switch item.kind {
+        case .task, .goal, .writing:
+            guard let projectID = item.project?.id,
+                  let targetID = item.nativeTargetId else { return }
+            Task {
+                if model.usesPreviewData {
+                    client.loadPreview(projectID: projectID)
+                } else {
+                    await client.load(projectID: projectID)
+                }
+                guard client.selectedProjectID == projectID else { return }
+                selectedProjectID = projectID
+                focusedWorkEntityID = targetID
+                selectedTagID = nil
+                searchText = ""
+                await Task.yield()
+                let prefix = switch item.kind {
+                case .task: "CaptureWorkTask"
+                case .goal: "CaptureWorkGoal"
+                default: "CaptureWorkNote"
+                }
+                withAnimation(.easeInOut(duration: 0.25)) {
+                    proxy.scrollTo("\(prefix)_\(targetID)", anchor: .center)
+                }
+            }
+        case .session, .sessionNote:
+            guard let roomID = item.nativeTargetId else { return }
+            Task {
+                if model.usesPreviewData,
+                   let session = model.sessions.first(where: { $0.id == roomID }) {
+                    model.select(session)
+                    visibleTab = .record
+                    return
+                }
+                guard let url = URL(
+                    string: "https://nest.quipsly.com/sessions/\(roomID)?open=capture&mode=record"
+                ), let deepLink = CaptureSessionDeepLink(url: url) else { return }
+                if case let .opened(tab) = await model.focusSession(from: deepLink) {
+                    visibleTab = tab
+                }
+            }
+        case .document, .source, .annotation, .tag:
+            break
         }
     }
 
@@ -2349,8 +2569,14 @@ private struct CaptureWorkView: View {
         .background(.background, in: RoundedRectangle(cornerRadius: 18))
         .overlay {
             RoundedRectangle(cornerRadius: 18)
-                .stroke(Color.primary.opacity(0.07))
+                .stroke(
+                    focusedWorkEntityID == note.id
+                        ? CapturePalette.accent
+                        : Color.primary.opacity(0.07),
+                    lineWidth: focusedWorkEntityID == note.id ? 3 : 1
+                )
         }
+        .id("CaptureWorkNote_\(note.id)")
     }
 
     private func workNoteContent(_ note: MobileCaptureWorkNote, tagLabels: [String]) -> some View {

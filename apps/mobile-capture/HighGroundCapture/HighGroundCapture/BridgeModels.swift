@@ -2314,6 +2314,90 @@ struct MobileCaptureWorkResponse: Codable, Hashable {
     let boundaries: MobileCaptureWorkBoundaries?
 }
 
+enum MobileCaptureSearchKind: String, Codable, CaseIterable, Hashable {
+    case task = "TASK"
+    case goal = "GOAL"
+    case session = "SESSION"
+    case sessionNote = "SESSION_NOTE"
+    case writing = "WRITING"
+    case document = "DOCUMENT"
+    case source = "SOURCE"
+    case annotation = "ANNOTATION"
+    case tag = "TAG"
+
+    var sectionTitle: String {
+        switch self {
+        case .task: "Tasks"
+        case .goal: "Goals"
+        case .session: "Sessions"
+        case .sessionNote: "Session notes"
+        case .writing: "Writing"
+        case .document: "Documents"
+        case .source: "Research sources"
+        case .annotation: "Saved passages"
+        case .tag: "Tags"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .task: "checkmark.circle"
+        case .goal: "target"
+        case .session: "calendar"
+        case .sessionNote: "note.text"
+        case .writing: "doc.text.fill"
+        case .document: "doc.richtext"
+        case .source: "books.vertical"
+        case .annotation: "highlighter"
+        case .tag: "tag"
+        }
+    }
+}
+
+struct MobileCaptureSearchProject: Codable, Hashable {
+    let id: String
+    let slug: String
+    let name: String
+    let role: String
+    let isHomeNest: Bool
+}
+
+struct MobileCaptureSearchTag: Codable, Identifiable, Hashable {
+    let id: String
+    let label: String
+    let isActive: Bool
+}
+
+struct MobileCaptureSearchItem: Codable, Identifiable, Hashable {
+    let id: String
+    let kind: MobileCaptureSearchKind
+    let title: String
+    let detail: String
+    let project: MobileCaptureSearchProject?
+    let tags: [MobileCaptureSearchTag]
+    let nativeTargetId: String?
+    let webPath: String
+}
+
+struct MobileCaptureSearchBoundaries: Codable, Hashable {
+    let actorScoped: Bool?
+    let explicitProjectGrantRequired: Bool?
+    let minimumQueryLength: Int?
+    let unreviewedTranscriptCandidatesExcluded: Bool?
+    let externalSideEffects: Bool?
+}
+
+struct MobileCaptureSearchResponse: Codable, Hashable {
+    let ok: Bool
+    let code: String?
+    let error: String?
+    let schema: String?
+    let query: String?
+    let projectCount: Int?
+    let results: [MobileCaptureSearchItem]?
+    let boundaries: MobileCaptureSearchBoundaries?
+}
+
 enum MobileCalendarFeedPurpose: String, Codable, CaseIterable, Hashable, Identifiable {
     case personalCommitments = "PERSONAL_COMMITMENTS"
     case coaching = "COACHING"
@@ -6441,6 +6525,189 @@ final class CaptureCalendarSubscriptionClient: ObservableObject {
 
     func dismissOneTimeFeed() {
         oneTimeFeed = nil
+    }
+}
+
+@MainActor
+final class CaptureWorkspaceSearchClient: ObservableObject {
+    @Published private(set) var results: [MobileCaptureSearchItem] = []
+    @Published private(set) var projectCount = 0
+    @Published private(set) var isSearching = false
+    @Published private(set) var completedQuery = ""
+    @Published var errorMessage: String?
+
+    private let baseURL = normalizedNestBaseURL(
+        Bundle.main.object(forInfoDictionaryKey: "QUIPSLY_API_BASE_URL") as? String
+            ?? "https://nest.quipsly.com"
+    )
+    private var requestGeneration = UUID()
+    private var accountCancellable: AnyCancellable?
+
+    init() {
+        accountCancellable = NotificationCenter.default.publisher(
+            for: .quipslyCaptureAccountIdentityDidChange
+        ).sink { [weak self] _ in
+            Task { @MainActor in self?.clear() }
+        }
+    }
+
+    func clear() {
+        requestGeneration = UUID()
+        results = []
+        projectCount = 0
+        isSearching = false
+        completedQuery = ""
+        errorMessage = nil
+    }
+
+    func loadPreview(query rawQuery: String) {
+        let query = Self.normalizedQuery(rawQuery)
+        guard query.count >= 2 else {
+            clear()
+            return
+        }
+        let appStorePresentation = CaptureLaunchConfiguration.usesAppStorePresentation
+        let home = MobileCaptureSearchProject(
+            id: "preview-home",
+            slug: "preview-home",
+            name: appStorePresentation ? "My Quipsly" : "Charlie Home Nest",
+            role: "OWNER",
+            isHomeNest: true
+        )
+        let research = MobileCaptureSearchProject(
+            id: "preview-doctoral-research",
+            slug: "preview-doctoral-research",
+            name: "Doctoral research",
+            role: "OWNER",
+            isHomeNest: false
+        )
+        let shared = MobileCaptureSearchProject(
+            id: "preview-high-ground",
+            slug: "preview-high-ground",
+            name: appStorePresentation ? "My coaching practice" : "High Ground Odyssey",
+            role: "EDITOR",
+            isHomeNest: false
+        )
+        let candidates = [
+            MobileCaptureSearchItem(
+                id: "preview-work-note",
+                kind: .writing,
+                title: "Dissertation chapter idea",
+                detail: "The first spoken paragraph connects lived experience to the research question.",
+                project: home,
+                tags: [.init(id: "preview-writing", label: "Writing", isActive: true)],
+                nativeTargetId: "preview-work-note",
+                webPath: "/create?project=preview-home&document=preview-work-note"
+            ),
+            MobileCaptureSearchItem(
+                id: "preview-work-task",
+                kind: .task,
+                title: "Draft the methods paper",
+                detail: "Use the spoken outline as the starting point.",
+                project: research,
+                tags: [.init(id: "preview-school", label: "School", isActive: true)],
+                nativeTargetId: "preview-work-task",
+                webPath: "/work?task=preview-work-task"
+            ),
+            MobileCaptureSearchItem(
+                id: "preview-search-session",
+                kind: .session,
+                title: "Coaching session: paper confidence",
+                detail: "coaching · ended",
+                project: shared,
+                tags: [],
+                nativeTargetId: "preview-coaching-ready",
+                webPath: "/sessions/preview-coaching-ready"
+            ),
+        ]
+        results = candidates.filter {
+            $0.title.localizedCaseInsensitiveContains(query)
+                || $0.detail.localizedCaseInsensitiveContains(query)
+                || $0.project?.name.localizedCaseInsensitiveContains(query) == true
+                || $0.tags.contains { $0.label.localizedCaseInsensitiveContains(query) }
+        }
+        projectCount = 3
+        completedQuery = query
+        isSearching = false
+        errorMessage = nil
+    }
+
+    func search(_ rawQuery: String) async {
+        let query = Self.normalizedQuery(rawQuery)
+        guard query.count >= 2 else {
+            clear()
+            return
+        }
+        guard let ownerSnapshot = AuthManager.shared.stableOwnerSnapshot() else {
+            clear()
+            errorMessage = "Sign in before searching your Nests."
+            return
+        }
+        var components = URLComponents(string: "\(baseURL)/api/mobile/capture/search")
+        components?.queryItems = [URLQueryItem(name: "q", value: query)]
+        guard let url = components?.url else {
+            errorMessage = "The Nest search URL is not valid."
+            return
+        }
+
+        let generation = UUID()
+        requestGeneration = generation
+        isSearching = true
+        errorMessage = nil
+
+        do {
+            var request = URLRequest(url: url)
+            request.httpMethod = "GET"
+            request.cachePolicy = .reloadIgnoringLocalCacheData
+            request.setValue("application/json", forHTTPHeaderField: "Accept")
+            let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
+            let payload = try JSONDecoder().decode(MobileCaptureSearchResponse.self, from: data)
+            guard requestGeneration == generation else { return }
+            guard AuthManager.shared.matchesStableOwnerSnapshot(ownerSnapshot) else {
+                clear()
+                errorMessage = "The Quipsly account changed while search was loading. Search again in the current account."
+                return
+            }
+            guard response.statusCode < 400,
+                  payload.ok,
+                  payload.schema == "quipsly-mobile-search-v1",
+                  payload.boundaries?.actorScoped == true,
+                  payload.boundaries?.explicitProjectGrantRequired == true,
+                  payload.boundaries?.externalSideEffects == false else {
+                throw NSError(
+                    domain: "CaptureWorkspaceSearch",
+                    code: response.statusCode,
+                    userInfo: [
+                        NSLocalizedDescriptionKey:
+                            payload.error ?? "Nest could not verify a permission-filtered search."
+                    ]
+                )
+            }
+            results = payload.results ?? []
+            projectCount = payload.projectCount ?? 0
+            completedQuery = payload.query ?? query
+            isSearching = false
+        } catch {
+            guard requestGeneration == generation else { return }
+            guard AuthManager.shared.matchesStableOwnerSnapshot(ownerSnapshot) else {
+                clear()
+                return
+            }
+            results = []
+            projectCount = 0
+            completedQuery = query
+            isSearching = false
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private static func normalizedQuery(_ value: String) -> String {
+        String(
+            value
+                .split(whereSeparator: \.isWhitespace)
+                .joined(separator: " ")
+                .prefix(120)
+        )
     }
 }
 
