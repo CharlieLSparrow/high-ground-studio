@@ -31,11 +31,16 @@ function harness(input?: { status?: string; providerStatusAt?: Date | null }) {
       }),
     },
     callRoomInvitationDeliveryReceipt: {
-      findFirst: jest.fn(async () => ({ ...delivery })),
+      findFirst: jest.fn(async (): Promise<typeof delivery | null> => ({ ...delivery })),
       update: jest.fn(async ({ data }: any) => Object.assign(delivery, data)),
     },
     transactionalEmail: {
-      findFirst: jest.fn(async () => null),
+      findFirst: jest.fn(async (): Promise<{
+        id: string;
+        status: string;
+        providerStatusAt: Date;
+        recipientEmail: string;
+      } | null> => null),
       update: jest.fn(),
     },
     emailRecipientDeliveryState: {

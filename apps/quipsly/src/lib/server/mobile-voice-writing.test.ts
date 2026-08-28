@@ -117,7 +117,7 @@ describe("mobile voice writing", () => {
       { kind: "heading", startUtf16: 0, endUtf16: 4 },
       { kind: "subheading", startUtf16: 0, endUtf16: 4 },
     ] }, "overlapping structures"],
-  ])("rejects %s rich writing", (richText) => {
+  ])("rejects %s rich writing", (richText, _reason) => {
     expect(validateMobileVoiceWriting({
       draftId,
       localRecordingId: recordingId,
