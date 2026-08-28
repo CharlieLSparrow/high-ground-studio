@@ -15,6 +15,11 @@ export function GET() {
                 "?": { open: "capture" },
                 comment: "Open an authenticated Quipsly Session in Capture without carrying invitation or provider authority.",
               },
+              {
+                "/": "/writing/*",
+                "?": { open: "capture" },
+                comment: "Continue actor-owned private writing in Capture without treating the draft identifier as authority.",
+              },
             ],
           },
         ],

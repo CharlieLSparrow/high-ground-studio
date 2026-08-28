@@ -23,6 +23,7 @@ import {
   Pilcrow,
   Redo2,
   RefreshCw,
+  Smartphone,
   Strikethrough,
   Trash2,
   Underline as UnderlineIcon,
@@ -590,7 +591,15 @@ export function VoiceWritingEditor({ draftId }: { draftId: string }) {
       </div>
       <div className="rounded-2xl border border-[#dfcba6] bg-[#fffaf3] p-5 md:max-w-xs">
         <p className="text-xs font-black uppercase tracking-wide text-[#87663d]">Keep going by voice</p>
-        <p className="mt-2 text-sm font-semibold leading-6 text-[#765f40]">Open this writing in Quipsly Capture and tap <strong>Continue by voice</strong>. Your next recording appends here automatically.</p>
+        <p className="mt-2 text-sm font-semibold leading-6 text-[#765f40]">Your next recording appends to this same private writing automatically.</p>
+        <a
+          href={`quipsly://writing/${encodeURIComponent(draft.draftId)}?action=continue`}
+          className="mt-4 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-full bg-[#3e2f21] px-5 text-sm font-black text-white shadow-sm transition hover:bg-[#241b13]"
+        >
+          <Smartphone className="h-4 w-4" aria-hidden="true" />
+          Continue in Capture
+        </a>
+        <p className="mt-2 text-xs font-semibold leading-5 text-[#87663d]">On another device, open Capture → Library → this writing.</p>
       </div>
     </section>
   </main>;

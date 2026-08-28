@@ -277,9 +277,42 @@ struct CapturePhoneShell: View {
             deepLinkRouter.consumeVoiceNoteRequest(requestID)
             return
         }
-        guard let created = await model.createPersonalVoiceNote() else {
+
+        let continuingDraft: VoiceWritingDraft?
+        if let draftID = deepLinkRouter.pendingVoiceNoteDraftID {
+            if VoiceWritingDraftStore.shared.draft(id: draftID) == nil,
+               AuthManager.shared.networkActionsAllowed {
+                await VoiceWritingDraftSyncClient.shared.refreshFromNest()
+            }
+            guard let draft = VoiceWritingDraftStore.shared.draft(id: draftID) else {
+                model.errorMessage = AuthManager.shared.networkActionsAllowed
+                    ? "This private writing is not available to the signed-in account. Nothing was recorded or changed."
+                    : "Reconnect, then open Continue in Capture again so Quipsly can load this private writing."
+                deepLinkRouter.consumeVoiceNoteRequest(requestID)
+                return
+            }
+            continuingDraft = draft
+        } else {
+            continuingDraft = nil
+        }
+
+        guard let created = await model.createPersonalVoiceNote(
+            continuing: continuingDraft?.title
+        ) else {
             deepLinkRouter.consumeVoiceNoteRequest(requestID)
             return
+        }
+        if let continuingDraft {
+            do {
+                try VoiceWritingDraftStore.shared.stageContinuation(
+                    callRoomID: created.callRoomId,
+                    draftID: continuingDraft.id
+                )
+            } catch {
+                model.errorMessage = "Quipsly could not connect the new recording to this writing. Nothing has started recording: \(error.localizedDescription)"
+                deepLinkRouter.consumeVoiceNoteRequest(requestID)
+                return
+            }
         }
         localOnlyRecordingSessionID = created.id
         visibleTab = .record
@@ -7337,9 +7370,9 @@ private struct CapturePersonalVoiceNoteTranscriptCard: View {
                 HStack(spacing: 6) {
                     Image(systemName: draft.isSynced ? "checkmark.icloud.fill" : "icloud.and.arrow.up")
                     Text(draft.isSynced
-                        ? "Saved privately to My Nest"
+                        ? "Saved privately to \(draft.canonicalProjectName?.nonempty ?? "your Nest")"
                         : writingSync.syncingRecordingIDs.contains(recording.id)
-                            ? "Saving to My Nest…"
+                            ? "Saving to \(draft.canonicalProjectName?.nonempty ?? "your Nest")…"
                             : "Saved on this iPhone; syncing automatically")
                 }
                 .font(.caption.weight(.semibold))
@@ -7469,8 +7502,8 @@ private struct CapturePersonalVoiceNoteTranscriptCard: View {
     private var statusDetail: String {
         if let draft {
             return draft.isSynced
-                ? "Edit this like a note on your iPhone or continue from your private My Nest workspace. The timed transcript and original audio stay connected."
-                : "Your editable draft is saved on this iPhone. Quipsly will keep syncing it privately to My Nest."
+                ? "Edit this like a note on your iPhone or continue on the web. The timed transcript and original audio stay connected."
+                : "Your editable draft is saved on this iPhone. Quipsly will keep syncing it privately to its Nest."
         }
         switch phase {
         case .idle, .checkingSupport:
@@ -7484,7 +7517,7 @@ private struct CapturePersonalVoiceNoteTranscriptCard: View {
         case .savedLocally, .waitingForVerifiedUpload:
             return "The editable text is saved on this iPhone while the original finishes syncing."
         case .submitting:
-            return "Your writing is available now; Quipsly is connecting the timed transcript to My Nest."
+            return "Your writing is available now; Quipsly is connecting the timed transcript to its Nest."
         case .attached:
             return "The editable writing, timed transcript, and original audio are connected."
         case .failed(let message, _):
@@ -7652,7 +7685,7 @@ private struct CaptureVoiceWritingEditor: View {
                     Label(message, systemImage: "icloud.slash")
                         .font(.caption)
                         .foregroundStyle(.orange)
-                    Button("Try My Nest again") {
+                    Button("Try saving again") {
                         saveImmediately()
                         writingSync.syncNow(recordingID: recordingID)
                     }
@@ -13945,7 +13978,11 @@ private struct CaptureVoiceWritingLibraryRow: View {
 
                 HStack(spacing: 12) {
                     Label(
-                        draft.pendingRemote != nil ? "Changed on iPhone and web" : draft.isSynced ? "My Nest" : "On this iPhone",
+                        draft.pendingRemote != nil
+                            ? "Changed on iPhone and web"
+                            : draft.isSynced
+                                ? draft.canonicalProjectName?.nonempty ?? "Saved"
+                                : "On this iPhone",
                         systemImage: draft.pendingRemote != nil ? "arrow.triangle.branch" : draft.isSynced ? "checkmark.icloud.fill" : "iphone"
                     )
                     if let recording {

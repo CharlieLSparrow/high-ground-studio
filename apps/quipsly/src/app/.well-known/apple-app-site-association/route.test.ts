@@ -3,7 +3,7 @@
 import { GET } from "./route";
 
 describe("Apple app-site association", () => {
-  it("associates only explicit Capture Session handoffs", async () => {
+  it("associates only explicit Capture Session and private-writing handoffs", async () => {
     const response = GET();
     const body = await response.json();
 
@@ -19,6 +19,11 @@ describe("Apple app-site association", () => {
                 "/": "/sessions/*",
                 "?": { open: "capture" },
                 comment: expect.stringContaining("without carrying invitation"),
+              },
+              {
+                "/": "/writing/*",
+                "?": { open: "capture" },
+                comment: expect.stringContaining("without treating the draft identifier as authority"),
               },
             ],
           },
