@@ -13710,8 +13710,11 @@ private struct CaptureLibraryView: View {
     @StateObject private var library = LocalRecordingLibrary.shared
     @StateObject private var writingStore = VoiceWritingDraftStore.shared
     @StateObject private var writingSync = VoiceWritingDraftSyncClient.shared
+    @StateObject private var notesClient = CaptureWorkClient()
     @StateObject private var playback = LocalRecordingPlaybackController()
     @State private var recordingPendingLocalDeletion: LocalRecording?
+    @State private var quickEntryKind: MobileQuickEntryKind?
+    @State private var noteToEdit: MobileCaptureWorkNote?
     @State private var selectedSection: CaptureLibrarySection = .writing
     @State private var searchText = ""
 
@@ -13732,7 +13735,10 @@ private struct CaptureLibraryView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
 
                 if selectedSection == .writing {
-                    startWritingAction
+                    VStack(spacing: 10) {
+                        startWritingAction
+                        writeNoteAction
+                    }
                 }
 
                 librarySearch
@@ -13799,7 +13805,36 @@ private struct CaptureLibraryView: View {
         }
         .task {
             guard !model.usesPreviewData else { return }
-            await writingSync.refreshFromNest()
+            async let writingRefresh: Void = writingSync.refreshFromNest()
+            async let noteRefresh: Void = refreshPrivateNotes()
+            _ = await (writingRefresh, noteRefresh)
+        }
+        .onChange(of: model.captureProjects) { _, _ in
+            guard !model.usesPreviewData else { return }
+            Task { await refreshPrivateNotes() }
+        }
+        .onChange(of: model.quickEntrySyncMessage) { _, _ in
+            guard quickEntryKind == nil, !model.usesPreviewData else { return }
+            Task { await refreshPrivateNotes() }
+        }
+        .sheet(item: $quickEntryKind) { kind in
+            CaptureQuickEntrySheet(
+                kind: kind,
+                session: nil,
+                model: model,
+                initialProject: privateNestDestination
+            )
+            .presentationDetents([.large])
+        }
+        .sheet(item: $noteToEdit) { note in
+            if let project = notesClient.workspace?.project {
+                CaptureDocumentNoteEditSheet(
+                    client: notesClient,
+                    note: note,
+                    project: project
+                )
+                .presentationDetents([.large])
+            }
         }
         .navigationDestination(item: $requestedWritingDraftID) { draftID in
             writingDestination(draftID: draftID)
@@ -13846,6 +13881,47 @@ private struct CaptureLibraryView: View {
         .accessibilityIdentifier("CaptureLibrarySpeakToWrite")
     }
 
+    private var writeNoteAction: some View {
+        Button {
+            quickEntryKind = .note
+        } label: {
+            HStack(spacing: 13) {
+                Image(systemName: "square.and.pencil")
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(CapturePalette.accent)
+                    .frame(width: 44, height: 44)
+                    .background(CapturePalette.accent.opacity(0.1), in: Circle())
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Write a note")
+                        .font(.headline)
+                    Text("Start with the keyboard. It stays private in My Nest.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 8)
+                Image(systemName: "plus.circle.fill")
+                    .font(.title2)
+                    .foregroundStyle(CapturePalette.accent)
+                    .accessibilityHidden(true)
+            }
+            .frame(maxWidth: .infinity, minHeight: 60, alignment: .leading)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 7)
+            .background(.background, in: RoundedRectangle(cornerRadius: 18))
+            .overlay {
+                RoundedRectangle(cornerRadius: 18)
+                    .stroke(.primary.opacity(0.1))
+            }
+        }
+        .buttonStyle(.plain)
+        .disabled(model.isSessionContextLocked)
+        .accessibilityLabel("Write a note")
+        .accessibilityHint("Creates an editable note in My Nest, private to you.")
+        .accessibilityIdentifier("CaptureLibraryWriteNote")
+    }
+
     @ViewBuilder
     private func writingDestination(draftID: UUID) -> some View {
         if let draft = writingStore.draft(id: draftID) {
@@ -13872,6 +13948,41 @@ private struct CaptureLibraryView: View {
             $0.title.localizedCaseInsensitiveContains(normalizedSearch)
                 || $0.body.localizedCaseInsensitiveContains(normalizedSearch)
         }
+    }
+
+    private var filteredNotes: [MobileCaptureWorkNote] {
+        let notes = notesClient.workspace?.notes ?? []
+        guard !normalizedSearch.isEmpty else { return notes }
+        return notes.filter {
+            $0.title.localizedCaseInsensitiveContains(normalizedSearch)
+                || $0.excerpt.localizedCaseInsensitiveContains(normalizedSearch)
+                || $0.tagLabels.contains {
+                    $0.localizedCaseInsensitiveContains(normalizedSearch)
+                }
+        }
+    }
+
+    private var privateNestDestination: MobileCaptureProjectDestination? {
+        if let destination = model.captureProjects.first(where: \.isHome) {
+            return destination
+        }
+        guard let workspace = notesClient.workspace,
+              workspace.project.isHomeNest else { return nil }
+        return MobileCaptureProjectDestination(
+            id: workspace.project.id,
+            slug: workspace.project.slug,
+            name: workspace.project.name,
+            role: workspace.project.role,
+            isHomeNest: true,
+            availableTags: workspace.tags.filter(\.isActive).map {
+                MobileCaptureTag(
+                    id: $0.id,
+                    slug: $0.slug,
+                    label: $0.label,
+                    isActive: $0.isActive
+                )
+            }
+        )
     }
 
     private var filteredRecordings: [LocalRecording] {
@@ -13930,28 +14041,56 @@ private struct CaptureLibraryView: View {
             CaptureLibraryPreviewWritingCard(tagClient: model.todayClient)
         }
 
-        if filteredDrafts.isEmpty && !model.usesPreviewData {
+        if filteredDrafts.isEmpty && filteredNotes.isEmpty && !model.usesPreviewData {
             CaptureEmptyCard(
                 systemImage: "waveform.badge.mic",
-                title: normalizedSearch.isEmpty ? "Start writing with your voice" : "No writing found",
+                title: normalizedSearch.isEmpty ? "Start writing your way" : "No writing found",
                 detail: normalizedSearch.isEmpty
-                    ? "Talk through a paper or an idea. Quipsly keeps the audio, creates a timed transcript, and gives you text you can edit."
+                    ? "Talk through a paper or type a note. Quipsly keeps it private, editable, and ready on iPhone and the web."
                     : "Try a different word or clear the search.",
                 actionTitle: normalizedSearch.isEmpty ? "Speak to write" : "Clear search",
                 action: normalizedSearch.isEmpty ? onStartVoiceNote : { searchText = "" }
             )
         } else {
-            ForEach(filteredDrafts) { draft in
-                CaptureVoiceWritingLibraryRow(
-                    draft: draft,
-                    recording: library.recording(id: draft.localRecordingID),
-                    timedTranscript: OnDeviceTranscriptManager.shared
-                        .storedTranscript(for: draft.localRecordingID)?.segments ?? [],
-                    tagClient: model.todayClient,
-                    onContinueByVoice: continueVoiceWriting
-                )
+            if !filteredDrafts.isEmpty {
+                librarySectionHeading("Voice writing")
+                ForEach(filteredDrafts) { draft in
+                    CaptureVoiceWritingLibraryRow(
+                        draft: draft,
+                        recording: library.recording(id: draft.localRecordingID),
+                        timedTranscript: OnDeviceTranscriptManager.shared
+                            .storedTranscript(for: draft.localRecordingID)?.segments ?? [],
+                        tagClient: model.todayClient,
+                        onContinueByVoice: continueVoiceWriting
+                    )
+                }
+            }
+
+            if !filteredNotes.isEmpty {
+                librarySectionHeading("Notes in My Nest")
+                ForEach(filteredNotes) { note in
+                    CaptureLibraryNoteRow(
+                        note: note,
+                        projectName: notesClient.workspace?.project.name ?? "My Nest",
+                        onOpen: { noteToEdit = note }
+                    )
+                }
             }
         }
+    }
+
+    private func librarySectionHeading(_ title: String) -> some View {
+        Text(title)
+            .font(.headline)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.top, 2)
+    }
+
+    @MainActor
+    private func refreshPrivateNotes() async {
+        let homeProjectID = model.captureProjects.first(where: \.isHome)?.id
+            ?? notesClient.projects.first(where: \.isHomeNest)?.id
+        await notesClient.load(projectID: homeProjectID)
     }
 
     @ViewBuilder
@@ -14172,6 +14311,89 @@ private struct CaptureVoiceWritingLibraryRow: View {
         .buttonStyle(.plain)
         .accessibilityHint("Opens editable writing. The timed transcript and original source remain separate.")
         .accessibilityIdentifier("CaptureLibraryWriting_\(draft.id)")
+    }
+}
+
+private struct CaptureLibraryNoteRow: View {
+    @Environment(\.openURL) private var openURL
+
+    let note: MobileCaptureWorkNote
+    let projectName: String
+    let onOpen: () -> Void
+
+    private var canEditInCapture: Bool {
+        note.canEditContent == true
+            && note.contentRevision != nil
+            && note.blocks?.isEmpty == false
+    }
+
+    private var webURL: URL? {
+        let baseURL = normalizedNestBaseURL(
+            Bundle.main.object(forInfoDictionaryKey: "QUIPSLY_API_BASE_URL") as? String
+                ?? "https://nest.quipsly.com"
+        )
+        return URL(string: "\(baseURL)\(note.webPath)")
+    }
+
+    var body: some View {
+        Button {
+            if canEditInCapture {
+                onOpen()
+            } else if let webURL {
+                openURL(webURL)
+            }
+        } label: {
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: "note.text")
+                    .font(.title3)
+                    .foregroundStyle(CapturePalette.accent)
+                    .frame(width: 42, height: 42)
+                    .background(CapturePalette.accent.opacity(0.1), in: Circle())
+                    .accessibilityHidden(true)
+
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(note.title)
+                        .font(.headline)
+                        .foregroundStyle(.primary)
+                        .multilineTextAlignment(.leading)
+                    if !note.excerpt.isEmpty {
+                        Text(note.excerpt)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(4)
+                            .multilineTextAlignment(.leading)
+                    }
+                    HStack(spacing: 10) {
+                        Label(projectName, systemImage: "house.fill")
+                        if !note.tagLabels.isEmpty {
+                            Label(
+                                note.tagLabels.prefix(2).joined(separator: ", "),
+                                systemImage: "tag"
+                            )
+                        }
+                    }
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                }
+
+                Spacer(minLength: 0)
+                Image(systemName: canEditInCapture ? "square.and.pencil" : "arrow.up.right")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(CapturePalette.accent)
+                    .accessibilityHidden(true)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .captureCard()
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(note.title)
+        .accessibilityValue("Note in \(projectName)")
+        .accessibilityHint(
+            canEditInCapture
+                ? "Opens this note for editing in Quipsly Capture."
+                : "Opens this note in Nest."
+        )
+        .accessibilityIdentifier("CaptureLibraryNote_\(note.id)")
     }
 }
 

@@ -194,6 +194,48 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(app.navigationBars["Account"].waitForExistence(timeout: 5))
     }
 
+    func testLibraryOffersPrivateKeyboardWritingBesideVoiceWriting() {
+        app.terminate()
+        app.launchArguments = [
+            "--capture-ui-preview",
+            "--capture-app-store-presentation",
+            "--capture-ui-preview-tab=library",
+        ]
+        app.launch()
+        XCTAssertTrue(app.navigationBars["Library"].waitForExistence(timeout: 12))
+        XCTAssertTrue(app.scrollViews["CaptureLibraryView"].waitForExistence(timeout: 5))
+
+        XCTAssertTrue(
+            app.buttons["CaptureLibrarySpeakToWrite"].isHittable,
+            "A person who writes by speaking should have one obvious primary action."
+        )
+        let writeNote = app.buttons["CaptureLibraryWriteNote"]
+        XCTAssertTrue(
+            writeNote.isHittable,
+            "Keyboard-first writing should live beside voice writing instead of being hidden in Nests."
+        )
+
+        writeNote.tap()
+        XCTAssertTrue(
+            app.descendants(matching: .any)["CaptureQuickEntrySheet_NOTE"]
+                .waitForExistence(timeout: 5),
+            "Write a note should open the native note surface without leaving Capture."
+        )
+        XCTAssertTrue(app.textFields["CaptureQuickEntryTitle"].exists)
+        XCTAssertTrue(app.textFields["CaptureQuickEntryBody"].exists)
+        XCTAssertFalse(
+            app.buttons["CaptureQuickEntrySave"].isEnabled,
+            "An empty note should not create clutter."
+        )
+
+        let destination = app.buttons["CaptureQuickEntryNoteDestination"]
+        XCTAssertTrue(destination.exists)
+        XCTAssertTrue(
+            destination.label.contains("Save to") || destination.value as? String == "My Nest",
+            "A new Library note should make its private My Nest destination understandable."
+        )
+    }
+
     func testHomeStaysCalmWhileDeeperToolsRemainReachable() {
         XCTAssertTrue(app.scrollViews["CaptureTodayView"].waitForExistence(timeout: 5))
         XCTAssertFalse(
