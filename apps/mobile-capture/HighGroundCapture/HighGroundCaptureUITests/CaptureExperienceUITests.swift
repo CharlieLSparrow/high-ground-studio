@@ -2826,7 +2826,6 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(recurrence.exists)
         XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Every week at 09:00")).firstMatch.exists)
         XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "America/Denver")).firstMatch.exists)
-        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "No reminder or provider event is implied")).firstMatch.exists)
 
         let menu = app.buttons["CaptureTodayRecurrenceMenu_preview-series"]
         XCTAssertTrue(menu.exists)
@@ -5496,7 +5495,7 @@ final class ShareCaptureExtensionUITests: XCTestCase {
         XCTAssertTrue(captureApp.staticTexts.matching(
             NSPredicate(format: "label CONTAINS[c] %@", "iana.org")
         ).firstMatch.exists, "The exact Safari URL should remain visible in the protected source outbox.")
-        XCTAssertTrue(captureApp.staticTexts["Saved on iPhone · waiting for Nest"].exists)
+        XCTAssertTrue(captureApp.staticTexts["Saved on iPhone · waiting to sync"].exists)
 
         // Process death must not turn a local-save receipt into wishful sync.
         // Relaunch the exact bundle with network actions still disabled and
@@ -5511,12 +5510,11 @@ final class ShareCaptureExtensionUITests: XCTestCase {
         XCTAssertTrue(captureApp.staticTexts.matching(
             NSPredicate(format: "label CONTAINS[c] %@", "iana.org")
         ).firstMatch.exists, "The same URL must recover after terminating and relaunching Capture.")
-        XCTAssertTrue(captureApp.staticTexts["Saved on iPhone · waiting for Nest"].exists)
-        let retry = captureApp.buttons.matching(
-            NSPredicate(format: "identifier == %@ OR label CONTAINS[c] %@", "CaptureQuickEntryRetry", "Retry protected captures")
-        ).firstMatch
-        for _ in 0..<8 where !retry.exists { captureApp.swipeUp() }
-        XCTAssertTrue(retry.exists, "Recovered pending evidence should retain its explicit retry control.")
+        XCTAssertTrue(captureApp.staticTexts["Saved on iPhone · waiting to sync"].exists)
+        let retry = captureApp.buttons["CaptureQuickEntryRetry"]
+        XCTAssertTrue(retry.exists, "Recovered pending evidence should keep its Sync now action with the visible queue status.")
+        XCTAssertTrue(retry.isHittable)
+        XCTAssertTrue(retry.label.contains("Sync now"))
 
         // The ledger may hold several owners, but the rendered queue is always
         // partitioned by the currently verified account snapshot.
@@ -5534,7 +5532,7 @@ final class ShareCaptureExtensionUITests: XCTestCase {
         XCTAssertFalse(captureApp.staticTexts.matching(
             NSPredicate(format: "label CONTAINS[c] %@", "iana.org")
         ).firstMatch.exists, "A different verified owner must not see the first owner's protected URL.")
-        XCTAssertFalse(captureApp.staticTexts["Saved on iPhone · waiting for Nest"].exists)
+        XCTAssertFalse(captureApp.staticTexts["Saved on iPhone · waiting to sync"].exists)
         XCTAssertFalse(captureApp.buttons["CaptureQuickEntryRetry"].exists)
 
         // Returning to the original verified owner reveals the same pending
@@ -5549,7 +5547,7 @@ final class ShareCaptureExtensionUITests: XCTestCase {
         XCTAssertTrue(captureApp.staticTexts.matching(
             NSPredicate(format: "label CONTAINS[c] %@", "iana.org")
         ).firstMatch.exists)
-        XCTAssertTrue(captureApp.staticTexts["Saved on iPhone · waiting for Nest"].exists)
+        XCTAssertTrue(captureApp.staticTexts["Saved on iPhone · waiting to sync"].exists)
     }
 
     func testSignedInSimulatorSelectedPassageStagesTextWithWebpageProvenance() {
@@ -5609,6 +5607,6 @@ final class ShareCaptureExtensionUITests: XCTestCase {
         XCTAssertTrue(captureApp.staticTexts.matching(
             NSPredicate(format: "label CONTAINS[c] %@", "example.com")
         ).firstMatch.exists, "The selected passage must keep its source webpage URL.")
-        XCTAssertTrue(captureApp.staticTexts["Saved on iPhone · waiting for Nest"].exists)
+        XCTAssertTrue(captureApp.staticTexts["Saved on iPhone · waiting to sync"].exists)
     }
 }

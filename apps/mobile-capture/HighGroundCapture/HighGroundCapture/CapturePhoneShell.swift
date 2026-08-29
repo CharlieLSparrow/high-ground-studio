@@ -12169,6 +12169,7 @@ struct CaptureQuickEntrySyncCard: View {
                 VStack(alignment: .leading, spacing: 3) {
                     Text(syncTitle)
                         .font(.subheadline.weight(.bold))
+                        .accessibilityIdentifier("CaptureQuickEntrySyncCard")
                     if let message = model.quickEntrySyncMessage {
                         Text(message)
                             .font(.caption)
@@ -12176,6 +12177,22 @@ struct CaptureQuickEntrySyncCard: View {
                     }
                 }
                 Spacer()
+                if outbox.hasRetryableEntries {
+                    Button {
+                        Task { await model.retryQuickEntries() }
+                    } label: {
+                        Label(
+                            model.isSyncingQuickEntries ? "Syncing…" : "Sync now",
+                            systemImage: "arrow.clockwise"
+                        )
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .disabled(model.isSyncingQuickEntries)
+                    .accessibilityLabel(model.isSyncingQuickEntries ? "Syncing quick captures" : "Sync now")
+                    .accessibilityHint("Sends saved quick captures to their Quipsly Nests when a connection is available.")
+                    .accessibilityIdentifier("CaptureQuickEntryRetry")
+                }
             }
 
             if outbox.hasRetryableEntries {
@@ -12205,19 +12222,6 @@ struct CaptureQuickEntrySyncCard: View {
                     }
                     .accessibilityIdentifier("CaptureQuickEntryPending_\(entry.clientRequestID)")
                 }
-                Button {
-                    Task { await model.retryQuickEntries() }
-                } label: {
-                    if model.isSyncingQuickEntries {
-                        ProgressView().frame(maxWidth: .infinity)
-                    } else {
-                        Label("Retry sync", systemImage: "arrow.clockwise")
-                            .frame(maxWidth: .infinity)
-                    }
-                }
-                .buttonStyle(.bordered)
-                .disabled(model.isSyncingQuickEntries)
-                .accessibilityIdentifier("CaptureQuickEntryRetry")
             }
 
             CaptureTaskReminderProjection(scheduler: scheduler)
@@ -12229,7 +12233,7 @@ struct CaptureQuickEntrySyncCard: View {
             }
         }
         .captureCard()
-        .accessibilityIdentifier("CaptureQuickEntrySyncCard")
+        .accessibilityElement(children: .contain)
     }
 
     private var syncTitle: String {
