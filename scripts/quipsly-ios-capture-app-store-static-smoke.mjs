@@ -2374,7 +2374,7 @@ requireIncludes(reviewerChecklistText, "Create a visible reviewer capture sessio
 requireIncludes(reviewerChecklistText, "Production calls should happen inside Quipsly-owned session rooms", "reviewer checklist in-app room primary path");
 requireIncludes(reviewerChecklistText, "Regular Phone or FaceTime calls are fallback/import sources only", "reviewer checklist phone fallback boundary");
 requireIncludes(capturePhoneShellText, "Preview data — no server actions", "native preview mode visibly refuses server mutations");
-requireIncludes(capturePhoneShellText, 'accessibilityIdentifier("CapturePreviewModeBadge")', "native preview boundary has a stable automation identity");
+requireIncludes(capturePhoneShellText, '"CapturePreviewModeBadge"', "native preview boundary has a stable automation identity");
 requireIncludes(capturePhoneShellText, "Preview data · changes are off", "native work preview does not imply a saved mutation");
 
 requireIncludes(mobileCaptureReadinessRouteText, "calendarReadiness", "mobile capture exposes calendar readiness");

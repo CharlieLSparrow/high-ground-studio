@@ -12,7 +12,7 @@ does not pass the complete human-flight or 50-coach release gate.
 
 Current release target, read back on 2026-08-29:
 
-- **Quipsly Capture 1.0 (48)** through the open Apple public beta at
+- **Quipsly Capture 1.0 (49)** through the open Apple public beta at
   `https://testflight.apple.com/join/XwRRcYUm`;
 - **Nest revision `studio-00523-yun`**, source
   `e73fef64880362f3c6c5fc793c5b047408d22a40`, serving 100% of production
