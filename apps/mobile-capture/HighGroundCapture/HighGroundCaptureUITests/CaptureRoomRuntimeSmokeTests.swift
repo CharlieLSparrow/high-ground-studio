@@ -2081,8 +2081,8 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         let destination = app.descendants(matching: .any)["CaptureQuickEntryNoteDestination"].firstMatch
         XCTAssertTrue(destination.waitForExistence(timeout: 4))
         destination.tap()
-        XCTAssertTrue(app.buttons["Home Nest"].waitForExistence(timeout: 4))
-        app.buttons["Home Nest"].tap()
+        XCTAssertTrue(app.buttons["My Nest"].waitForExistence(timeout: 4))
+        app.buttons["My Nest"].tap()
 
         let environment = ProcessInfo.processInfo.environment
         let titleText = environment["QUIPSLY_CAPTURE_UI_TEST_PERSONAL_NOTE_TITLE"]
@@ -2109,7 +2109,7 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
 
         XCTAssertTrue(sheet.waitForNonExistence(timeout: 6))
         XCTAssertTrue(
-            app.staticTexts["The private note is saved in your Home Nest document kernel. Continue it from Library or Search."].waitForExistence(timeout: 20)
+            app.staticTexts["Your note is saved privately in My Nest. Continue it from Library or Search."].waitForExistence(timeout: 20)
         )
         XCTAssertFalse(app.buttons["CaptureQuickEntryRetry"].exists)
         attachRecordingIdentity(titleText, name: "Personal Home Nest note title")
@@ -2144,8 +2144,8 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         let destination = app.descendants(matching: .any)["CaptureQuickEntryNoteDestination"].firstMatch
         if destination.waitForExistence(timeout: 4) {
             destination.tap()
-            if app.buttons["Home Nest"].waitForExistence(timeout: 4) {
-                app.buttons["Home Nest"].tap()
+            if app.buttons["My Nest"].waitForExistence(timeout: 4) {
+                app.buttons["My Nest"].tap()
             }
         }
 
@@ -2197,7 +2197,7 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         app = try launchSignedInCaptureApp()
         tapRootTab("Record", in: app)
         XCTAssertTrue(
-            app.staticTexts["The private note is saved in your Home Nest document kernel. Continue it from Library or Search."].waitForExistence(timeout: 30)
+            app.staticTexts["Your note is saved privately in My Nest. Continue it from Library or Search."].waitForExistence(timeout: 30)
         )
         XCTAssertFalse(quickEntryRetryButton(in: app).exists)
         attachRecordingIdentity(titleText, name: "Offline personal Home Nest note title")

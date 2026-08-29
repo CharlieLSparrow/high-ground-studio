@@ -215,7 +215,7 @@ describe("mobile Capture quick-entry route", () => {
         messageSent: false,
         published: false,
       },
-      nextAction: expect.stringContaining("Home Nest"),
+      nextAction: expect.stringContaining("My Nest"),
     });
     expect(replayPayload).toMatchObject({
       ok: true,

@@ -801,7 +801,7 @@ export async function POST(request: Request) {
               : "The author-private Session note is saved. Review or expand it from the Session workspace."
         : input.projectId
           ? `The private note is saved in ${result.room.projectName}. Continue it from that Nest, Library, or Search.`
-          : "The private note is saved in your Home Nest document kernel. Continue it from Library or Search."
+          : "Your note is saved privately in My Nest. Continue it from Library or Search."
       : input.kind === "TASK"
         ? input.recurrence
           ? input.callRoomId

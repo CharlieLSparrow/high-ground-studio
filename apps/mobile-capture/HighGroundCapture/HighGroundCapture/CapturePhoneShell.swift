@@ -1739,7 +1739,7 @@ private struct CaptureWorkView: View {
                     CaptureEmptyCard(
                         systemImage: "square.stack.3d.up",
                         title: "No Nests yet",
-                        detail: "Nest will create your private Home Nest when your account is ready.",
+                        detail: "Quipsly will create My Nest, your private place for writing and personal work, when your account is ready.",
                         actionTitle: "Try again",
                         action: { Task { await client.load() } }
                     )
@@ -12271,8 +12271,8 @@ struct CaptureQuickEntryBar: View {
                     .tint(kind == .note ? CapturePalette.accent : kind == .task ? .blue : kind == .goal ? .purple : .teal)
                     .accessibilityHint(kind == .source
                         ? "Opens a private source capture for your Nest Inbox."
-                        : session.map { "Opens a local-first \(kind.title.lowercased()) for \($0.displayTitle), with a private Home Nest option." }
-                            ?? "Opens a private \(kind.title.lowercased()) for your Home Nest.")
+                        : session.map { "Opens a local-first \(kind.title.lowercased()) for \($0.displayTitle), with My Nest as a private option." }
+                            ?? "Opens a private \(kind.title.lowercased()) in My Nest.")
                     .accessibilityIdentifier("CaptureQuickEntry_\(kind.rawValue)_\(session?.id ?? "personal")")
                 }
             }
@@ -13248,9 +13248,9 @@ struct CaptureQuickEntrySheet: View {
     }
 
     private var destinationLabel: String {
-        if savesToHomeNest { return homeNest?.name ?? "Private Home Nest" }
+        if savesToHomeNest { return homeNest?.name ?? "My Nest" }
         if let selectedProject { return selectedProject.name }
-        return session?.displayTitle ?? "Private Home Nest"
+        return session?.displayTitle ?? "My Nest"
     }
 
     private var normalizedNewTagDraft: String {
@@ -13376,7 +13376,7 @@ struct CaptureQuickEntrySheet: View {
                             if session != nil {
                                 Text("Current Session").tag("SESSION")
                             }
-                            Text("Home Nest").tag("HOME_NEST")
+                            Text("My Nest").tag("HOME_NEST")
                             ForEach(projectDestinations) { project in
                                 Text(project.name).tag("NEST:\(project.id)")
                             }

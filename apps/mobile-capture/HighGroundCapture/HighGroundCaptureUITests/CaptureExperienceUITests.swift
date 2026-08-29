@@ -2087,9 +2087,9 @@ final class CaptureExperienceUITests: XCTestCase {
         reveal(destination)
         XCTAssertTrue(destination.exists)
         destination.tap()
-        XCTAssertTrue(app.buttons["Home Nest"].waitForExistence(timeout: 3))
-        app.buttons["Home Nest"].tap()
-        XCTAssertEqual(destination.value as? String, "Home Nest")
+        XCTAssertTrue(app.buttons["My Nest"].waitForExistence(timeout: 3))
+        app.buttons["My Nest"].tap()
+        XCTAssertEqual(destination.value as? String, "My Nest")
         XCTAssertTrue(app.textFields["CaptureQuickEntryTitle"].exists)
         let newTagField = app.textFields["CaptureQuickEntryNewTagField"]
         reveal(newTagField)
@@ -2243,9 +2243,9 @@ final class CaptureExperienceUITests: XCTestCase {
         let destination = app.descendants(matching: .any)["CaptureQuickEntryDestination"].firstMatch
         XCTAssertTrue(destination.exists)
         destination.tap()
-        XCTAssertTrue(app.buttons["Home Nest"].waitForExistence(timeout: 3))
-        app.buttons["Home Nest"].tap()
-        XCTAssertEqual(destination.value as? String, "Home Nest")
+        XCTAssertTrue(app.buttons["My Nest"].waitForExistence(timeout: 3))
+        app.buttons["My Nest"].tap()
+        XCTAssertEqual(destination.value as? String, "My Nest")
         XCTAssertTrue(app.staticTexts[
             "Saved privately. If you are offline, Quipsly syncs it when you reconnect."
         ].exists)

@@ -6577,7 +6577,7 @@ final class CaptureWorkspaceSearchClient: ObservableObject {
         let home = MobileCaptureSearchProject(
             id: "preview-home",
             slug: "preview-home",
-            name: appStorePresentation ? "My Quipsly" : "Charlie Home Nest",
+            name: appStorePresentation ? "My Nest" : "Charlie Home Nest",
             role: "OWNER",
             isHomeNest: true
         )
@@ -7079,7 +7079,7 @@ final class CaptureWorkClient: ObservableObject {
             MobileCaptureWorkProject(
                 id: "preview-home",
                 slug: "preview-home",
-                name: appStorePresentation ? "My Quipsly" : "Charlie Home Nest",
+                name: appStorePresentation ? "My Nest" : "Charlie Home Nest",
                 role: "OWNER",
                 canWrite: true,
                 isHomeNest: true,

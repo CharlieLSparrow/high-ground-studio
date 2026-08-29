@@ -677,7 +677,7 @@ final class CaptureExperienceModel: ObservableObject {
                 MobileCaptureProjectDestination(
                     id: "preview-home",
                     slug: "preview-home",
-                    name: appStorePresentation ? "My Quipsly" : "Charlie Home Nest",
+                    name: appStorePresentation ? "My Nest" : "Charlie Home Nest",
                     role: "OWNER",
                     isHomeNest: true,
                     availableTags: [
@@ -931,7 +931,7 @@ final class CaptureExperienceModel: ObservableObject {
             } else if let destinationProjectName {
                 quickEntrySyncMessage = "\(kind.title) saved on this iPhone for \(destinationProjectName). Nest sync will keep that exact project and retry-safe ID."
             } else if session == nil {
-                quickEntrySyncMessage = "\(kind.title) saved on this iPhone. Nest sync will create the same private Home Nest record."
+                quickEntrySyncMessage = "\(kind.title) saved on this iPhone. Quipsly will add it to My Nest when you reconnect."
             } else if kind == .note, let noteVisibility {
                 quickEntrySyncMessage = "\(noteKind?.title ?? "Session note") saved on this iPhone as \(noteVisibility.title.lowercased()). \(noteVisibility.boundary) Nest sync keeps the same retry-safe ID."
             } else if !newTagLabels.isEmpty {
