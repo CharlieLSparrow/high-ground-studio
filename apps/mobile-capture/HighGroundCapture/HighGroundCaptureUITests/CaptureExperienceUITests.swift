@@ -312,7 +312,7 @@ final class CaptureExperienceUITests: XCTestCase {
         add(tipsScreenshot)
     }
 
-    func testSpeechAdaptationIsOptionalRememberedAndEasyToReach() {
+    func testSpeechAdaptationIsOptionalRememberedAndEasyToReach() throws {
         app.buttons["CaptureStartVoiceNote"].tap()
         XCTAssertTrue(
             app.otherElements["CaptureRecorderHero"].waitForExistence(timeout: 8)
@@ -360,13 +360,22 @@ final class CaptureExperienceUITests: XCTestCase {
             "People should be able to see and adjust the names Quipsly uses for recognition."
         )
         XCTAssertTrue(
-            app.staticTexts["Swipe left to forget a phrase. This vocabulary follows the signed-in Quipsly account across devices."].exists,
+            app.staticTexts["This vocabulary follows the signed-in Quipsly account across devices."].exists,
             "Speech help should follow the person instead of being presented as an iPhone-only setting."
         )
-        learnedPhrase.swipeLeft()
-        let delete = app.buttons["Delete"].firstMatch
-        XCTAssertTrue(delete.waitForExistence(timeout: 3))
-        delete.tap()
+        let forget = app.buttons["CaptureSpeechVocabularyForget_Homer Sparrow"]
+        XCTAssertTrue(
+            forget.waitForExistence(timeout: 3),
+            "A learned word must have a visible deletion action instead of requiring a precision swipe."
+        )
+        XCTAssertEqual(forget.label, "Forget Homer Sparrow")
+        try app.performAccessibilityAudit(for: [
+            .hitRegion,
+            .sufficientElementDescription,
+            .textClipped,
+        ])
+        forget.tap()
+        XCTAssertFalse(learnedPhrase.waitForExistence(timeout: 2))
         app.navigationBars.buttons.element(boundBy: 0).tap()
 
         // Restore the deterministic preview persona to its default so the

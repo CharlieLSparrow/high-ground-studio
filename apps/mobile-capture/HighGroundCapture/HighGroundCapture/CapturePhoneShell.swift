@@ -649,6 +649,12 @@ private struct CaptureTodayPrimaryActions: View {
         .buttonStyle(.plain)
         .disabled(!canStart || isStartingVoiceNote)
         .accessibilityLabel("Speak to write")
+        .accessibilityInputLabels([
+            "Speak to write",
+            "Start writing",
+            "Start a paper",
+            "Voice writing",
+        ])
         .accessibilityHint("Starts a private recording and turns your words into editable writing.")
         .accessibilityIdentifier("CaptureStartVoiceNote")
     }
@@ -690,6 +696,12 @@ private struct CaptureTodayPrimaryActions: View {
         .buttonStyle(.plain)
         .disabled(!canStart)
         .accessibilityLabel("Start a session")
+        .accessibilityInputLabels([
+            "Start a session",
+            "New session",
+            "Start coaching",
+            "Start a call",
+        ])
         .accessibilityHint("Creates a coaching call, podcast, or interview.")
         .accessibilityIdentifier("CaptureStartSession")
     }
@@ -14777,6 +14789,7 @@ private struct CaptureAccountView: View {
 }
 
 private struct CaptureVoiceWritingVocabularyView: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @ObservedObject private var preferences = VoiceWritingRecognitionPreferences.shared
     @State private var newPhrase = ""
     @FocusState private var phraseFieldIsFocused: Bool
@@ -14786,17 +14799,17 @@ private struct CaptureVoiceWritingVocabularyView: View {
     var body: some View {
         Form {
             Section {
-                HStack(alignment: .firstTextBaseline, spacing: 10) {
-                    TextField("Name or term", text: $newPhrase)
-                        .textInputAutocapitalization(.words)
-                        .autocorrectionDisabled(false)
-                        .focused($phraseFieldIsFocused)
-                        .submitLabel(.done)
-                        .onSubmit(addPhrase)
-                        .accessibilityIdentifier("CaptureSpeechVocabularyField")
-                    Button("Add", action: addPhrase)
-                        .disabled(normalizedNewPhrase == nil)
-                        .accessibilityIdentifier("CaptureSpeechVocabularyAdd")
+                if dynamicTypeSize.isAccessibilitySize {
+                    VStack(alignment: .leading, spacing: 10) {
+                        phraseField
+                        addPhraseButton
+                            .frame(maxWidth: .infinity, minHeight: 44)
+                    }
+                } else {
+                    HStack(alignment: .firstTextBaseline, spacing: 10) {
+                        phraseField
+                        addPhraseButton
+                    }
                 }
             } header: {
                 Text("Help with important words")
@@ -14814,8 +14827,22 @@ private struct CaptureVoiceWritingVocabularyView: View {
                     .accessibilityIdentifier("CaptureSpeechVocabularyEmpty")
                 } else {
                     ForEach(preferences.activeLearnedPhrases, id: \.self) { phrase in
-                        Text(phrase)
-                            .accessibilityIdentifier("CaptureSpeechVocabularyPhrase_\(phrase)")
+                        HStack(spacing: 12) {
+                            Text(phrase)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .accessibilityIdentifier("CaptureSpeechVocabularyPhrase_\(phrase)")
+                            Button(role: .destructive) {
+                                forgetPhrase(phrase)
+                            } label: {
+                                Image(systemName: "trash")
+                                    .frame(width: 44, height: 44)
+                                    .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Forget \(phrase)")
+                            .accessibilityHint("Removes this word or phrase from future speech recognition.")
+                            .accessibilityIdentifier("CaptureSpeechVocabularyForget_\(phrase)")
+                        }
                     }
                     .onDelete(perform: deletePhrases)
                 }
@@ -14823,7 +14850,7 @@ private struct CaptureVoiceWritingVocabularyView: View {
                 Text("Learned words and phrases")
             } footer: {
                 if !preferences.activeLearnedPhrases.isEmpty {
-                    Text("Swipe left to forget a phrase. This vocabulary follows the signed-in Quipsly account across devices.")
+                    Text("This vocabulary follows the signed-in Quipsly account across devices.")
                 }
             }
         }
@@ -14846,6 +14873,24 @@ private struct CaptureVoiceWritingVocabularyView: View {
         return value
     }
 
+    private var phraseField: some View {
+        TextField("Name or term", text: $newPhrase, axis: .vertical)
+            .lineLimit(1...3)
+            .frame(minHeight: 44)
+            .textInputAutocapitalization(.words)
+            .autocorrectionDisabled(false)
+            .focused($phraseFieldIsFocused)
+            .submitLabel(.done)
+            .onSubmit(addPhrase)
+            .accessibilityIdentifier("CaptureSpeechVocabularyField")
+    }
+
+    private var addPhraseButton: some View {
+        Button("Add", action: addPhrase)
+            .disabled(normalizedNewPhrase == nil)
+            .accessibilityIdentifier("CaptureSpeechVocabularyAdd")
+    }
+
     private func addPhrase() {
         guard let phrase = normalizedNewPhrase else { return }
         preferences.addLearnedPhrase(phrase, ownerAccountID: ownerAccountID)
@@ -14862,6 +14907,10 @@ private struct CaptureVoiceWritingVocabularyView: View {
         for value in values {
             preferences.removeLearnedPhrase(value, ownerAccountID: ownerAccountID)
         }
+    }
+
+    private func forgetPhrase(_ phrase: String) {
+        preferences.removeLearnedPhrase(phrase, ownerAccountID: ownerAccountID)
     }
 }
 
