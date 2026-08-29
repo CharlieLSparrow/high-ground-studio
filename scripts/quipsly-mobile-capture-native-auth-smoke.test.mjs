@@ -15,6 +15,19 @@ test("JSON evidence reports credential presence without password fragments", () 
   assert.doesNotMatch(source, /function redact\(/);
 });
 
+test("production native smoke proves private writing continuity with the same account token", () => {
+  assert.match(
+    source,
+    /requestJson\(`\$\{baseUrl\}\/api\/mobile\/capture\/voice-writing`/,
+  );
+  assert.match(source, /Authorization: `Bearer \$\{idToken\}`/);
+  assert.match(source, /payload\?\.schema === "quipsly-mobile-voice-writing-list-v1"/);
+  assert.match(source, /Array\.isArray\(payload\?\.drafts\)/);
+  assert.match(source, /Array\.isArray\(payload\?\.destinations\)/);
+  assert.match(source, /Boolean\(payload\?\.homeProject\?\.slug\)/);
+  assert.match(source, /await verifyVoiceWritingContinuity\(signIn\.idToken\)/);
+});
+
 test("failed authentication setup never prints the supplied password", () => {
   const secret = "native-smoke-secret-prefix-7wyK9T-secret-suffix";
   const result = spawnSync(

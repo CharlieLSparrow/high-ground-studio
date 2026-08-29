@@ -217,6 +217,34 @@ async function verifyNativeSession(idToken) {
   return result.json;
 }
 
+async function verifyVoiceWritingContinuity(idToken) {
+  const result = await requestJson(`${baseUrl}/api/mobile/capture/voice-writing`, {
+    method: "GET",
+    headers: { Authorization: `Bearer ${idToken}` },
+  });
+  const payload = result.json;
+  const passed = result.ok
+    && result.status === 200
+    && payload?.ok === true
+    && payload?.schema === "quipsly-mobile-voice-writing-list-v1"
+    && Array.isArray(payload?.drafts)
+    && Array.isArray(payload?.destinations)
+    && Boolean(payload?.homeProject?.slug);
+  expect(
+    passed,
+    "authenticatedVoiceWritingContinuity",
+    "The same native bearer token can load private voice writing, its Home Nest, and writable cross-device destinations.",
+    {
+      status: result.status,
+      schema: payload?.schema || null,
+      draftCount: Array.isArray(payload?.drafts) ? payload.drafts.length : null,
+      destinationCount: Array.isArray(payload?.destinations) ? payload.destinations.length : null,
+      homeNestSlug: payload?.homeProject?.slug || null,
+      error: payload?.error || result.error || null,
+    },
+  );
+}
+
 function runContractSmoke(idToken) {
   const result = spawnSync(process.execPath, ["scripts/quipsly-mobile-capture-contract-smoke.mjs", `--base-url=${baseUrl}`, "--json"], {
     cwd: ROOT_DIR,
@@ -271,6 +299,7 @@ async function main() {
     const firebase = await fetchFirebaseConfig();
     const signIn = await signInWithFirebase(firebase.apiKey);
     await verifyNativeSession(signIn.idToken);
+    await verifyVoiceWritingContinuity(signIn.idToken);
     contractReport = runContractSmoke(signIn.idToken);
   }
 
