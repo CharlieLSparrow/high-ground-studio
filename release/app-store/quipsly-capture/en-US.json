@@ -43,7 +43,7 @@
       "NSPrivacyCollectedDataTypePhotosorVideos",
       "NSPrivacyCollectedDataTypeOtherUserContent"
     ],
-    "archiveAggregateValidatedBuild": "47",
+    "archiveAggregateValidatedBuild": "48",
     "aggregateCollectedDataTypeCount": 12,
     "publicationStatus": "requires-account-holder-approval"
   },
@@ -51,8 +51,8 @@
     "providerTarget": {
       "appId": "6780995957",
       "version": "1.0",
-      "build": "47",
-      "auditedAt": "2026-08-29T13:03:41.508Z"
+      "build": "48",
+      "auditedAt": "2026-08-29T16:14:30.280Z"
     },
     "contentRights": {
       "status": "configured-and-read-back",
@@ -190,7 +190,7 @@
     "readiness": "blocked",
     "blockers": [
       "Confirm the one-time DSA trader-status declaration in App Store Connect; the current United States-only release does not require EU trader-contact verification.",
-      "Install Build 47 from TestFlight on a physical iPhone, then prove speech-first writing plus the Session handoff, audio/video capture, camera switching, interruption, offline recovery, upload, assembled playback, and cross-device readback.",
+      "Install Build 48 from TestFlight on a physical iPhone, then prove speech-first writing plus the Session handoff, audio/video capture, camera switching, interruption, offline recovery, upload, assembled playback, and cross-device readback.",
       "Publish accurate App Privacy answers and prove the account-deletion workflow against a disposable production account."
     ]
   }
