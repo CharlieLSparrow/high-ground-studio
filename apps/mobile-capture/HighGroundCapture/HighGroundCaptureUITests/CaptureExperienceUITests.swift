@@ -371,11 +371,17 @@ final class CaptureExperienceUITests: XCTestCase {
     }
 
     func testVoiceWritingRecordsAndStopsThroughTheSourceFirstPath() {
+        let speakToWrite = app.buttons["CaptureStartVoiceNote"]
         XCTAssertTrue(
-            app.staticTexts["Record an idea, paper, or draft as editable writing."].exists,
-            "Home should present speech-to-writing as a serious drafting tool, not only a quick voice memo."
+            speakToWrite.exists && speakToWrite.isHittable,
+            "Home should present speech-to-writing as an obvious primary action."
         )
-        app.buttons["CaptureStartVoiceNote"].tap()
+        XCTAssertEqual(
+            speakToWrite.label,
+            "Speak to write",
+            "The primary action should name the outcome instead of freezing explanatory marketing copy."
+        )
+        speakToWrite.tap()
         XCTAssertTrue(
             app.otherElements["CaptureRecorderHero"].waitForExistence(timeout: 8)
         )
