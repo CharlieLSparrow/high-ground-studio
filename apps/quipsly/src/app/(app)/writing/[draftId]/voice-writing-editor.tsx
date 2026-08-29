@@ -39,6 +39,10 @@ import {
   tiptapToVoiceWritingRichText,
   voiceWritingRichTextToTiptap,
 } from "@/lib/voice-writing-tiptap";
+import {
+  type WritingViewMode,
+  voiceWritingViewLayout,
+} from "./voice-writing-view";
 
 const Underline = Mark.create({
   name: "underline",
@@ -171,6 +175,26 @@ function ToolbarButton({
   >{children}</button>;
 }
 
+function ViewModeButton({
+  active,
+  label,
+  onClick,
+}: {
+  active: boolean;
+  label: string;
+  onClick: () => void;
+}) {
+  return <button
+    type="button"
+    aria-pressed={active}
+    onClick={onClick}
+    className={`min-h-11 rounded-full px-4 text-sm font-black transition ${active
+      ? "bg-[#3e2f21] text-white shadow-sm"
+      : "text-[#684f33] hover:bg-white"
+    }`}
+  >{label}</button>;
+}
+
 function SaveStatus({ state, updatedAt }: { state: SaveState; updatedAt?: string }) {
   const details = state === "saving"
     ? { Icon: LoaderCircle, text: "Saving…", className: "text-[#765f40]" }
@@ -202,6 +226,7 @@ export function VoiceWritingEditor({ draftId }: { draftId: string }) {
   const [transcripts, setTranscripts] = useState<WritingTranscript[]>([]);
   const [moving, setMoving] = useState(false);
   const [moveError, setMoveError] = useState("");
+  const [viewMode, setViewMode] = useState<WritingViewMode>("writing");
   const [changeVersion, setChangeVersion] = useState(0);
   const [conflictingDraft, setConflictingDraft] = useState<WritingDraft | null>(null);
   const draftRef = useRef<WritingDraft | null>(null);
@@ -210,6 +235,11 @@ export function VoiceWritingEditor({ draftId }: { draftId: string }) {
   const loadingEditorRef = useRef(true);
   const savingRef = useRef(false);
   const saveAgainRef = useRef(false);
+  const hasTimedTranscript = transcripts.some((transcript) => transcript.segments.length > 0);
+  const { showsWriting, showsTranscript, usesSideBySideColumns } = voiceWritingViewLayout(
+    viewMode,
+    hasTimedTranscript,
+  );
 
   const noteChanged = useCallback(() => {
     if (loadingEditorRef.current) return;
@@ -269,6 +299,12 @@ export function VoiceWritingEditor({ draftId }: { draftId: string }) {
   useEffect(() => {
     void loadDraft();
   }, [loadDraft]);
+
+  useEffect(() => {
+    if (window.matchMedia("(min-width: 1024px)").matches) {
+      setViewMode("split");
+    }
+  }, []);
 
   const persist = useCallback(async () => {
     if (!editor || !dirtyRef.current || !draftRef.current) return;
@@ -589,7 +625,17 @@ export function VoiceWritingEditor({ draftId }: { draftId: string }) {
       </label> : null}
     </section>
 
-    <section className="mt-4 overflow-hidden rounded-[2rem] border border-[#dfcba6] bg-[#fffefb] shadow-sm" aria-label="Writing editor">
+    {hasTimedTranscript ? <nav className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[#dfcba6] bg-[#fffaf3] p-2 pl-4" aria-label="Writing view">
+      <p className="text-sm font-bold text-[#765f40]">Shape the paper and check the source without losing your place.</p>
+      <div className="flex flex-wrap gap-1 rounded-full bg-[#f2e5d0] p-1" role="group" aria-label="Choose writing view">
+        <ViewModeButton active={viewMode === "writing"} label="Writing" onClick={() => setViewMode("writing")} />
+        <ViewModeButton active={viewMode === "split"} label="Side by side" onClick={() => setViewMode("split")} />
+        <ViewModeButton active={viewMode === "transcript"} label="Transcript" onClick={() => setViewMode("transcript")} />
+      </div>
+    </nav> : null}
+
+    <div className={`mt-4 grid items-start gap-4 ${usesSideBySideColumns ? "lg:grid-cols-[minmax(0,1.35fr)_minmax(22rem,0.8fr)]" : ""}`}>
+    {showsWriting ? <section className="overflow-hidden rounded-[2rem] border border-[#dfcba6] bg-[#fffefb] shadow-sm" aria-label="Writing editor">
       <div className="sticky top-0 z-10 flex flex-wrap items-center gap-2 border-b border-[#eadcc2] bg-[#fffaf2]/95 px-3 py-3 backdrop-blur sm:px-5" role="toolbar" aria-label="Text formatting">
         <ToolbarButton label="Body" active={editor.isActive("paragraph")} onClick={() => editor.chain().focus().setParagraph().run()}><Pilcrow className="h-4 w-4" /></ToolbarButton>
         <ToolbarButton label="Heading" active={editor.isActive("heading", { level: 1 })} onClick={() => editor.chain().focus().setHeading({ level: 1 }).run()}><Heading1 className="h-4 w-4" /></ToolbarButton>
@@ -608,9 +654,9 @@ export function VoiceWritingEditor({ draftId }: { draftId: string }) {
         <ToolbarButton label="Redo" disabled={!editor.can().chain().focus().redo().run()} onClick={() => editor.chain().focus().redo().run()}><Redo2 className="h-4 w-4" /></ToolbarButton>
       </div>
       <EditorContent editor={editor} />
-    </section>
+    </section> : null}
 
-    {transcripts.some((transcript) => transcript.segments.length > 0) ? <section className="mt-4 rounded-[2rem] border border-[#cbded8] bg-[#f4fbf8] p-5 sm:p-6" aria-labelledby="voice-writing-transcript-title">
+    {showsTranscript ? <section className={`rounded-[2rem] border border-[#cbded8] bg-[#f4fbf8] p-5 sm:p-6 ${viewMode === "split" ? "lg:sticky lg:top-4 lg:max-h-[calc(100vh-2rem)] lg:overflow-y-auto" : ""}`} aria-labelledby="voice-writing-transcript-title">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="text-[11px] font-black uppercase tracking-[0.18em] text-emerald-800">Original words and timing</p>
@@ -634,6 +680,7 @@ export function VoiceWritingEditor({ draftId }: { draftId: string }) {
         }))}
       </ol>
     </section> : null}
+    </div>
 
     <section className="mt-4 grid gap-4 pb-10 md:grid-cols-[1fr_auto]">
       <div className="rounded-2xl border border-[#dfcba6] bg-white p-5">
