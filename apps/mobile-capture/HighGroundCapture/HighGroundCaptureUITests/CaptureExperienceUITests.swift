@@ -350,7 +350,7 @@ final class CaptureExperienceUITests: XCTestCase {
 
     func testVoiceWritingRecordsAndStopsThroughTheSourceFirstPath() {
         XCTAssertTrue(
-            app.staticTexts["Turn your voice into editable writing."].exists,
+            app.staticTexts["Record an idea, paper, or draft as editable writing."].exists,
             "Home should present speech-to-writing as a serious drafting tool, not only a quick voice memo."
         )
         app.buttons["CaptureStartVoiceNote"].tap()
