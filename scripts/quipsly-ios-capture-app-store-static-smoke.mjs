@@ -1992,7 +1992,8 @@ requireIncludes(capturePhoneShellText, "Share for Google or another calendar", "
 requireIncludes(capturePhoneShellText, "Google's mobile app cannot add a calendar from a URL.", "shipping Google calendar setup states the provider's desktop-only URL subscription boundary");
 requireIncludes(capturePhoneShellText, "Shown once", "shipping calendar capability is explicitly one-time");
 requireIncludes(capturePhoneShellText, "Shared calendars are read-only and can be turned off anytime.", "shipping calendar projection states its lifecycle boundary");
-requireIncludes(capturePhoneShellText, "not your recordings or notes", "shipping calendar projection excludes private working content");
+requireIncludes(capturePhoneShellText, "only titles, times, and links back to Quipsly", "shipping calendar projection limits exported event fields");
+requireIncludes(capturePhoneShellText, "not recordings, transcripts, notes, or participant details", "shipping calendar projection excludes private working content");
 requireIncludes(bridgeText, "final class CaptureCalendarSubscriptionClient", "native calendar subscriptions use a dedicated authenticated client");
 requireIncludes(bridgeText, "/api/calendar/connections/google?view=summary", "native Google Calendar status uses the credential-free stored summary");
 requireIncludes(bridgeText, "MobileGoogleCalendarSummaryResponse", "native decodes safe Google connection and lane status");
@@ -2001,7 +2002,7 @@ requireIncludes(bridgeText, "AuthManager.shared.authenticatedData", "native cale
 requireIncludes(bridgeText, "oneTimeFeed = nil", "native calendar capability can be removed from memory");
 requireIncludes(bridgeText, "for your privacy, this exact link is shown only once.", "native calendar capability copy states one-time visibility");
 requireIncludes(captureExperienceText, "calendarSubscriptionClient.loadPreview()", "deterministic native preview loads non-secret calendar status");
-requireIncludes(deterministicUITestsText, "testTodayExposesReadOnlyCalendarContinuityWithoutLeakingPrivateLinks", "native calendar privacy boundary has a focused UI acceptance test");
+requireIncludes(deterministicUITestsText, "testAccountKeepsCalendarConnectionsSeparateFromPrivateSubscriptionLinks", "native calendar privacy boundary has a focused UI acceptance test");
 requireIncludes(mobileText, "Load Nest", "native session context exposes an explicit canonical load");
 requireIncludes(mobileText, "Save Nest", "native session context exposes an explicit canonical save");
 requireIncludes(mobileText, "Local changes not synced", "native session context names unsynced local state");
