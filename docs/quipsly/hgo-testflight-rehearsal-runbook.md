@@ -8,10 +8,10 @@ needs to prove.
 
 ## Current release state
 
-- App: **Quipsly Capture 1.0 (46)**
+- App: **Quipsly Capture 1.0 (47)**
 - Exact native source:
-  `4dc325dd6c5547bbe2d5529ccaab288ad0eb6f1b`
-- App Store Connect build ID: `7d63ce65-703c-4eb3-94b8-957076ff5b64`
+  `02c06ed3c908fca8486d1dc1332661b0c39d2eb3`
+- App Store Connect build ID: `4d708582-3c28-4de9-93b2-6f849d04bac7`
 - External TestFlight group: **Quipsly Capture Rehearsal**
 - TestFlight Apple Account: `shomers@icloud.com`
 - Quipsly Google identity: `shomers@gmail.com`
@@ -22,16 +22,18 @@ needs to prove.
 - Automatic tester notification: enabled
 - Installation mode: public-link-only; neither a named-tester email nor a
   redemption code is required
-- Build 46 is the current approved public beta identified by the canonical
+- Build 47 is the current approved public beta identified by the canonical
   release ledger and Apple readback. It keeps one direct **Speak to write**
   path for editable long-form writing with a retained timed source, transcript
-  correction, headings and lists, learned vocabulary, Word export, and clear
-  Private / Owned / Shared Nest filing. It also replaces the former scrolling
+  correction, headings and lists, learned vocabulary, speaker-aware speech
+  adaptation, Word export, and clear Private / Owned / Shared Nest filing. It
+  also replaces the former scrolling
   call setup with one compact green room: visible input/output, familiar Mic
   and Camera controls, one primary **Join call** action, remembered safe device
   choices, and an optional second-device path. Generic session setup no longer
   asks for a required title, implies consent, or duplicates voice writing.
-  All four deterministic UI shards passed with zero aggregate failures, and
+  All four deterministic UI shards passed all 102 journeys with zero failures
+  or retries, and
   the exact signed archive and IPA passed packaged metadata, entitlement,
   provisioning, privacy-manifest, and nested-signature inspection before the
   sealed upload. App Store Connect independently reports `VALID`,
