@@ -8,10 +8,10 @@ needs to prove.
 
 ## Current release state
 
-- App: **Quipsly Capture 1.0 (49)**
+- App: **Quipsly Capture 1.0 (50)**
 - Exact native source:
-  `596c4485348e750ce5d458b1901534fa74fae270`
-- App Store Connect build ID: `37336d62-edf9-4eda-b445-661787a0552f`
+  `708541bda28b913557c7755170883629e9cbf25e`
+- App Store Connect build ID: `65931dc5-597c-487b-8a20-399396501605`
 - External TestFlight group: **Quipsly Capture Rehearsal**
 - TestFlight Apple Account: `shomers@icloud.com`
 - Quipsly Google identity: `shomers@gmail.com`
@@ -22,7 +22,7 @@ needs to prove.
 - Automatic tester notification: enabled
 - Installation mode: public-link-only; neither a named-tester email nor a
   redemption code is required
-- Build 49 is the current approved public beta identified by the canonical
+- Build 50 is the current approved public beta identified by the canonical
   release ledger and Apple readback. It keeps one direct **Speak to write**
   path for editable long-form writing with a retained timed source, transcript
   correction, headings and lists, learned vocabulary, optional speech
