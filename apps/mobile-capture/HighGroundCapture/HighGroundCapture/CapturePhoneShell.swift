@@ -626,7 +626,7 @@ private struct CaptureTodayPrimaryActions: View {
                     Text("Speak to write")
                         .font(.headline)
                         .fixedSize(horizontal: false, vertical: true)
-                    Text("Record an idea, paper, or draft as editable writing.")
+                    Text("Turn your voice into editable writing.")
                         .font(.subheadline)
                         .opacity(0.92)
                         .fixedSize(horizontal: false, vertical: true)
@@ -640,7 +640,7 @@ private struct CaptureTodayPrimaryActions: View {
                         .accessibilityHidden(true)
                 }
             }
-            .frame(maxWidth: .infinity, minHeight: 82, alignment: .leading)
+            .frame(maxWidth: .infinity, minHeight: 76, alignment: .leading)
             .padding(.horizontal, 16)
             .padding(.vertical, 10)
             .foregroundStyle(.white)
@@ -667,7 +667,7 @@ private struct CaptureTodayPrimaryActions: View {
                         .font(.headline)
                         .foregroundStyle(.primary)
                         .fixedSize(horizontal: false, vertical: true)
-                    Text("Set up a coaching call, podcast, or interview.")
+                    Text("Coaching, podcast, or interview.")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -678,7 +678,7 @@ private struct CaptureTodayPrimaryActions: View {
                     .foregroundStyle(CapturePalette.accent)
                     .accessibilityHidden(true)
             }
-            .frame(maxWidth: .infinity, minHeight: 82, alignment: .leading)
+            .frame(maxWidth: .infinity, minHeight: 68, alignment: .leading)
             .padding(.horizontal, 16)
             .padding(.vertical, 10)
             .background(.background, in: RoundedRectangle(cornerRadius: 20))
@@ -9068,24 +9068,15 @@ private struct CaptureRichWritingBody: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    styleMenu
-                    structureButton("Bullets", systemImage: "list.bullet", kind: .bulletedList)
-                    structureButton("Numbered", systemImage: "list.number", kind: .numberedList)
-                    structureButton("Checklist", systemImage: "checklist", kind: .checklist)
-                    structureButton("Quote", systemImage: "quote.opening", kind: .quote)
-
-                    Divider()
-                        .frame(height: 24)
-
-                    formatButton("Bold", systemImage: "bold", kind: .bold)
-                    formatButton("Italic", systemImage: "italic", kind: .italic)
-                    formatButton("Underline", systemImage: "underline", kind: .underline)
-                    formatButton("Strike", systemImage: "strikethrough", kind: .strikethrough)
-                }
-                .padding(.vertical, 2)
+            HStack(spacing: 8) {
+                styleMenu
+                structureButton("Bullets", systemImage: "list.bullet", kind: .bulletedList)
+                structureButton("Numbered", systemImage: "list.number", kind: .numberedList)
+                structureButton("Checklist", systemImage: "checklist", kind: .checklist)
+                moreFormattingMenu
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.vertical, 2)
             .accessibilityIdentifier("CaptureVoiceWritingEditorBar")
 
             TextEditor(text: $text, selection: $selection)
@@ -9138,32 +9129,14 @@ private struct CaptureRichWritingBody: View {
             .accessibilityIdentifier("CaptureVoiceWritingStyle_Body")
         } label: {
             Label("Style", systemImage: "textformat")
-                .font(.caption.weight(.semibold))
-                .padding(.horizontal, 10)
-                .frame(minHeight: 44)
+                .labelStyle(.iconOnly)
+                .font(.body.weight(.semibold))
+                .frame(width: 44, height: 44)
                 .background(.thinMaterial, in: Capsule())
         }
         .accessibilityLabel("Text style")
         .accessibilityHint("Choose a heading, subheading, or body style.")
         .accessibilityIdentifier("CaptureVoiceWritingStyleMenu")
-    }
-
-    private func formatButton(
-        _ title: String,
-        systemImage: String,
-        kind: VoiceWritingMarkKind
-    ) -> some View {
-        Button {
-            apply(kind)
-        } label: {
-            Label(title, systemImage: systemImage)
-                .font(.caption.weight(.semibold))
-                .padding(.horizontal, 10)
-                .frame(minHeight: 44)
-                .background(.thinMaterial, in: Capsule())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(title)
     }
 
     private func structureButton(
@@ -9175,14 +9148,64 @@ private struct CaptureRichWritingBody: View {
             applyStructure(kind)
         } label: {
             Label(title, systemImage: systemImage)
-                .font(.caption.weight(.semibold))
-                .padding(.horizontal, 10)
-                .frame(minHeight: 44)
+                .labelStyle(.iconOnly)
+                .font(.body.weight(.semibold))
+                .frame(width: 44, height: 44)
                 .background(.thinMaterial, in: Capsule())
         }
         .buttonStyle(.plain)
         .accessibilityLabel(title)
         .accessibilityIdentifier("CaptureVoiceWritingStructure_\(title)")
+    }
+
+    private var moreFormattingMenu: some View {
+        Menu {
+            Button {
+                applyStructure(.quote)
+            } label: {
+                Label("Quote", systemImage: "quote.opening")
+            }
+            .accessibilityIdentifier("CaptureVoiceWritingStructure_Quote")
+
+            Divider()
+
+            Button {
+                apply(.bold)
+            } label: {
+                Label("Bold", systemImage: "bold")
+            }
+            .accessibilityIdentifier("CaptureVoiceWritingFormat_Bold")
+
+            Button {
+                apply(.italic)
+            } label: {
+                Label("Italic", systemImage: "italic")
+            }
+            .accessibilityIdentifier("CaptureVoiceWritingFormat_Italic")
+
+            Button {
+                apply(.underline)
+            } label: {
+                Label("Underline", systemImage: "underline")
+            }
+            .accessibilityIdentifier("CaptureVoiceWritingFormat_Underline")
+
+            Button {
+                apply(.strikethrough)
+            } label: {
+                Label("Strikethrough", systemImage: "strikethrough")
+            }
+            .accessibilityIdentifier("CaptureVoiceWritingFormat_Strikethrough")
+        } label: {
+            Label("More formatting", systemImage: "ellipsis.circle")
+                .labelStyle(.iconOnly)
+                .font(.body.weight(.semibold))
+                .frame(width: 44, height: 44)
+                .background(.thinMaterial, in: Capsule())
+        }
+        .accessibilityLabel("More formatting")
+        .accessibilityHint("Shows quotes and character formatting.")
+        .accessibilityIdentifier("CaptureVoiceWritingMoreFormatting")
     }
 
     private func apply(_ kind: VoiceWritingMarkKind) {
@@ -14897,9 +14920,11 @@ private struct NextCaptureCard: View {
                 }
             }
 
-            Text(session.entryReadinessDetail)
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
+            if !session.entryIsImmediatelyReady {
+                Text(session.entryReadinessDetail)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
 
             Button(action: onOpen) {
                 Label(session.entryPrimaryActionLabel, systemImage: "arrow.right.circle.fill")

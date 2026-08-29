@@ -476,7 +476,7 @@ final class CaptureExperienceUITests: XCTestCase {
             "Editing the title should use the same single contextual microphone action as the writing body."
         )
         app.buttons["Done"].tap()
-        let styleMenu = app.buttons["CaptureVoiceWritingStyleMenu"]
+        let styleMenu = app.buttons["Text style"]
         XCTAssertTrue(styleMenu.exists, "Paper structure should use the familiar compact text-style menu.")
         styleMenu.tap()
         for style in ["Heading", "Subheading", "Body"] {
@@ -486,13 +486,24 @@ final class CaptureExperienceUITests: XCTestCase {
             )
         }
         app.buttons["CaptureVoiceWritingStyle_Body"].tap()
-        for control in ["Bullets", "Numbered", "Checklist", "Quote"] {
-            XCTAssertTrue(app.buttons["CaptureVoiceWritingStructure_\(control)"].exists)
+        for control in ["Bullets", "Numbered", "Checklist"] {
+            XCTAssertTrue(app.buttons[control].exists)
         }
+        let moreFormatting = app.buttons["More formatting"]
+        XCTAssertTrue(
+            moreFormatting.exists,
+            "Less common writing controls should remain available without creating a clipped horizontal toolbar."
+        )
+        moreFormatting.tap()
+        XCTAssertTrue(app.buttons["Quote"].exists)
+        for control in ["Bold", "Italic", "Underline", "Strikethrough"] {
+            XCTAssertTrue(app.buttons[control].exists)
+        }
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.1, dy: 0.35)).tap()
 
         let writing = app.descendants(matching: .any)["CaptureVoiceWritingBody"]
         XCTAssertTrue(writing.waitForExistence(timeout: 5))
-        let bullets = app.buttons["CaptureVoiceWritingStructure_Bullets"]
+        let bullets = app.buttons["Bullets"]
         XCTAssertTrue(bullets.isHittable)
         bullets.tap()
         XCTAssertTrue(
