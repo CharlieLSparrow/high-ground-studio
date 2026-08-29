@@ -1404,7 +1404,7 @@ final class CaptureExperienceModel: ObservableObject {
         )
         sessionClient.sessions.insert(created, at: 0)
         selectedSessionID = created.id
-        message = "Ready to write. Recording and writing work even while Nest is offline."
+        message = "Nest is offline. Recording and writing still work."
         return created
     }
 

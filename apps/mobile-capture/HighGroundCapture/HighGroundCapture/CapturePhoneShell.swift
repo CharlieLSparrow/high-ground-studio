@@ -7266,41 +7266,22 @@ private struct CapturePersonalVoiceNoteHeader: View {
     let onOpenLibrary: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(alignment: .top, spacing: 12) {
-                Image(systemName: "waveform.circle.fill")
-                    .font(.title2)
-                    .foregroundStyle(CapturePalette.accent)
-                    .frame(width: 44, height: 44)
-                    .background(CapturePalette.accent.opacity(0.12), in: Circle())
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("Speak to write")
-                        .font(.title3.weight(.bold))
-                    Text(session.title)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                }
-                Spacer(minLength: 0)
-                Label("Private", systemImage: "lock.fill")
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(.secondary)
-            }
+        HStack(alignment: .center, spacing: 12) {
+            Label("Private writing", systemImage: "lock.fill")
+                .font(.headline)
+                .foregroundStyle(.primary)
+
+            Spacer(minLength: 8)
 
             if hasRecording {
-                Text("Your original audio and time-linked writing are ready to continue.")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-            }
-
-            HStack(spacing: 8) {
+                Button("All writing", action: onOpenLibrary)
+                    .buttonStyle(.bordered)
+                    .accessibilityIdentifier("CaptureVoiceNoteOpenLibrary")
+            } else {
                 Label(session.projectName?.nonempty ?? "My Nest", systemImage: "house.fill")
-                    .font(.caption.weight(.semibold))
-                Spacer()
-                if hasRecording {
-                    Button("All writing", action: onOpenLibrary)
-                        .buttonStyle(.bordered)
-                        .accessibilityIdentifier("CaptureVoiceNoteOpenLibrary")
-                }
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
             }
         }
         .captureCard()
@@ -13727,17 +13708,6 @@ private struct CaptureLibraryView: View {
         .navigationTitle("Library")
         .navigationBarTitleDisplayMode(.inline)
         .accessibilityIdentifier("CaptureLibraryView")
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button(action: onStartVoiceNote) {
-                    Label("Speak", systemImage: "mic.badge.plus")
-                }
-                .disabled(model.isSessionContextLocked || model.isCreatingSession)
-                .accessibilityLabel("Speak to write")
-                .accessibilityHint("Creates a private recording that becomes editable writing.")
-                .accessibilityIdentifier("CaptureLibraryStartVoiceNote")
-            }
-        }
         .sheet(item: $recordingPendingLocalDeletion) { requestedRecording in
             let recording = library.recording(id: requestedRecording.id) ?? requestedRecording
             LocalRecordingDeletionSheet(
@@ -16370,6 +16340,7 @@ private struct RecorderHero: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @ScaledMetric(relativeTo: .largeTitle) private var timerFontSize: CGFloat = 40
     @ObservedObject private var recognitionPreferences = VoiceWritingRecognitionPreferences.shared
+    @State private var showsVoiceWritingTips = false
 
     let session: MobileCaptureSession
     let captureState: AudioCaptureState
@@ -16462,6 +16433,10 @@ private struct RecorderHero: View {
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
                     .accessibilityIdentifier("CaptureVoiceWritingRecorderDetail")
+
+                if captureState == .idle {
+                    voiceWritingTips
+                }
             }
 
             if session.isPersonalVoiceNote,
@@ -16568,9 +16543,9 @@ private struct RecorderHero: View {
             )
         ) {
             VStack(alignment: .leading, spacing: 3) {
-                Text("Help Quipsly understand my speech")
+                Text("Adapt to my speech")
                     .font(.subheadline.weight(.semibold))
-                Text("Use this if speech-to-text often misunderstands you. Quipsly remembers it for next time.")
+                Text("Improves recognition for accents and speech differences. Quipsly remembers this choice.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -16583,6 +16558,47 @@ private struct RecorderHero: View {
         )
         .accessibilityHint("Uses Apple's on-device recognition for speech differences without changing the original audio.")
         .accessibilityIdentifier("CaptureVoiceWritingSpeechAdaptationToggle")
+    }
+
+    private var voiceWritingTips: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Button {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    showsVoiceWritingTips.toggle()
+                }
+            } label: {
+                HStack(spacing: 8) {
+                    Label("Tips for speaking a draft", systemImage: "text.line.first.and.arrowtriangle.forward")
+                        .font(.subheadline.weight(.semibold))
+                        .accessibilityIdentifier("CaptureVoiceWritingTipsToggle")
+                    Spacer(minLength: 8)
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(.secondary)
+                        .rotationEffect(.degrees(showsVoiceWritingTips ? 90 : 0))
+                        .accessibilityHidden(true)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityValue(showsVoiceWritingTips ? "Expanded" : "Collapsed")
+            .accessibilityHint("Shows optional spoken commands for headings, paragraphs, and lists.")
+
+            if showsVoiceWritingTips {
+                Text("Say “new heading,” “new paragraph,” or “bullet point” when you want structure. You can format everything by touch afterward, too.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("CaptureVoiceWritingTipsDetail")
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .background(
+            Color.primary.opacity(0.045),
+            in: RoundedRectangle(cornerRadius: 16, style: .continuous)
+        )
     }
 
     private var isActuallyRecording: Bool { captureState == .recording }
@@ -16649,11 +16665,11 @@ private struct RecorderHero: View {
     private var voiceWritingDetail: String {
         switch captureState {
         case .idle:
-            return "Speak naturally. Say “new heading,” “new paragraph,” or “bullet point” when useful. When you stop, Quipsly creates editable writing and keeps the audio connected."
+            return "Tap Record and speak naturally. Quipsly creates editable writing and keeps the original audio connected."
         case .preparing:
             return "Quipsly is checking this iPhone's microphone before listening."
         case .recording:
-            return "Keep going. Say “new heading,” “new paragraph,” or “bullet point” when useful; your audio stays safe and editable writing comes next."
+            return "Keep going. Live words are a preview; your original audio stays safe and editable writing comes next."
         case .paused:
             return "Take your time. Resume when you are ready; everything already recorded stays safe."
         case .finalizing:

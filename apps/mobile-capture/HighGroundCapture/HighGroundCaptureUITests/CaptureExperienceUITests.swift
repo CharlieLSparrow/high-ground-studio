@@ -284,14 +284,32 @@ final class CaptureExperienceUITests: XCTestCase {
             app.staticTexts["CaptureVoiceWritingRecorderDetail"].label.contains("editable writing"),
             "Before recording, Quipsly should make the automatic speech-to-writing outcome obvious."
         )
-        XCTAssertTrue(
+        XCTAssertFalse(
             app.staticTexts["CaptureVoiceWritingRecorderDetail"].label.contains("new heading"),
-            "The recorder should teach spoken paper structure at the moment it is useful."
+            "Optional dictation instructions should not crowd the primary recording surface."
+        )
+        let writingTips = app.buttons["CaptureVoiceWritingTipsToggle"]
+        XCTAssertTrue(
+            writingTips.waitForExistence(timeout: 5),
+            "Spoken paper structure should remain available without becoming setup paperwork."
+        )
+        let recorderScreenshot = XCTAttachment(screenshot: app.screenshot())
+        recorderScreenshot.name = "private-speak-to-write-recorder.png"
+        recorderScreenshot.lifetime = .keepAlways
+        add(recorderScreenshot)
+        writingTips.tap()
+        XCTAssertTrue(
+            app.staticTexts["CaptureVoiceWritingTipsDetail"].label.contains("new heading"),
+            "The optional tips should teach spoken structure at the moment it is useful."
         )
         XCTAssertTrue(
             app.staticTexts["CaptureSessionStatusMessage"].label.contains("offline"),
             "The local-first path should explain that recording and writing remain available without Nest."
         )
+        let tipsScreenshot = XCTAttachment(screenshot: app.screenshot())
+        tipsScreenshot.name = "private-speak-to-write-tips.png"
+        tipsScreenshot.lifetime = .keepAlways
+        add(tipsScreenshot)
     }
 
     func testSpeechAdaptationIsOptionalRememberedAndEasyToReach() {
@@ -5028,7 +5046,10 @@ final class CaptureAppStoreScreenshotUITests: XCTestCase {
         )
         XCTAssertTrue(app.staticTexts["What I want to explore next"].exists)
         XCTAssertTrue(app.staticTexts["Timed transcript"].exists)
-        XCTAssertTrue(app.buttons["CaptureLibraryStartVoiceNote"].exists)
+        XCTAssertFalse(
+            app.buttons["CaptureLibraryStartVoiceNote"].exists,
+            "Library should not duplicate its full Speak to write action in the toolbar."
+        )
         XCTAssertTrue(
             app.buttons["CaptureLibrarySpeakToWrite"].isHittable,
             "Library should expose speech-to-writing as a visible primary action, not only as a toolbar icon."
