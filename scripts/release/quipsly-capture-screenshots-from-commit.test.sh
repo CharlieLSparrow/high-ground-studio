@@ -56,6 +56,9 @@ mkdir -p \
   "$QUIPSLY_CAPTURE_SCREENSHOT_DIR/QuipslyCapture-AppStore-Drafts.xcresult"
 printf '[{"attachments":[{"deviceName":"iPhone Test","deviceId":"fixture-device"}]}]\n' \
   >"$QUIPSLY_CAPTURE_SCREENSHOT_DIR/xcresult-attachments/manifest.json"
+if [[ "${MOCK_RECOVERABLE_FAILURE:-0}" == "1" ]]; then
+  exit 43
+fi
 if [[ "${MOCK_SKIP_RECEIPT:-0}" == "1" ]]; then
   exit 0
 fi
@@ -197,8 +200,52 @@ fallback_receipt="${canonical_fixture_artifacts}/${source_revision:0:12}/fallbac
 node - "$fallback_receipt" <<'NODE'
 const fs = require("node:fs");
 const receipt = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
-if (receipt.materializationMode !== "exact-committed-recovery") {
-  throw new Error("missing runner receipt did not use exact committed recovery");
+if (receipt.materializationMode !== "committed-metadata-recovery") {
+  throw new Error("missing runner receipt did not use committed metadata recovery");
+}
+NODE
+
+MOCK_RUNNER_RECEIPT_PATH="$runner_receipt" \
+MOCK_RECOVERABLE_FAILURE=1 \
+QUIPSLY_CAPTURE_SCREENSHOT_ARTIFACT_ROOT="$fixture_artifacts" \
+QUIPSLY_CAPTURE_SCREENSHOT_RUN_ID="recoverable-failure-run" \
+"${fixture_repo}/scripts/release/quipsly-capture-screenshots-from-commit.sh" \
+  --revision "$source_revision" \
+  --device "iPhone Test"
+recoverable_receipt="${canonical_fixture_artifacts}/${source_revision:0:12}/recoverable-failure-run/committed-source-receipt.json"
+node - "$recoverable_receipt" <<'NODE'
+const fs = require("node:fs");
+const receipt = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
+if (
+  receipt.materializationMode !== "committed-metadata-recovery"
+  || receipt.captureRunnerExitCode !== 43
+) {
+  throw new Error("post-capture metadata failure was not recovered precisely");
+}
+NODE
+
+printf '\n' >>"${fixture_repo}/release/app-store/quipsly-capture/en-US.json"
+git -C "$fixture_repo" add release/app-store/quipsly-capture/en-US.json
+git -C "$fixture_repo" commit -qm "release: advance screenshot metadata"
+metadata_revision="$(git -C "$fixture_repo" rev-parse HEAD)"
+MOCK_RUNNER_RECEIPT_PATH="$runner_receipt" \
+QUIPSLY_CAPTURE_SCREENSHOT_ARTIFACT_ROOT="$fixture_artifacts" \
+QUIPSLY_CAPTURE_SCREENSHOT_RUN_ID="split-provenance-run" \
+"${fixture_repo}/scripts/release/quipsly-capture-screenshots-from-commit.sh" \
+  --revision "$source_revision" \
+  --metadata-revision "$metadata_revision" \
+  --device "iPhone Test"
+split_receipt="${canonical_fixture_artifacts}/${source_revision:0:12}/split-provenance-run/committed-source-receipt.json"
+node - "$split_receipt" "$source_revision" "$metadata_revision" <<'NODE'
+const fs = require("node:fs");
+const [receiptPath, sourceRevision, metadataRevision] = process.argv.slice(2);
+const receipt = JSON.parse(fs.readFileSync(receiptPath, "utf8"));
+if (
+  receipt.sourceRevision !== sourceRevision
+  || receipt.metadataRevision !== metadataRevision
+  || !/^[0-9a-f]{64}$/.test(receipt.metadataSHA256 || "")
+) {
+  throw new Error("app and listing metadata provenance were not kept separate");
 }
 NODE
 

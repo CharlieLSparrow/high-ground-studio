@@ -5,11 +5,16 @@ set -euo pipefail
 usage() {
   cat <<'USAGE'
 Usage:
-  scripts/release/quipsly-capture-screenshots-from-commit.sh [--revision <commit-ish>] [--device <simulator-name>]
+  scripts/release/quipsly-capture-screenshots-from-commit.sh [--revision <commit-ish>] [--metadata-revision <commit-ish>] [--device <simulator-name>]
 
 Captures Quipsly Capture's private-data-safe App Store layout drafts from a
 disposable detached worktree at one resolved commit. Any uncommitted files in
 the caller's worktree are excluded.
+
+Store metadata can advance after a signed binary is built. --revision always
+identifies the exact app source rendered by Xcode; --metadata-revision identifies
+the clean committed listing plan used to name and validate those pixels. It
+defaults to --revision for backwards compatibility.
 
 These DEBUG preview images remain draft composition evidence. Candidate-bound
 qualification performs exact hash, visual, and signed-release checks before
@@ -23,6 +28,7 @@ fail() {
 }
 
 revision="HEAD"
+metadata_revision_input=""
 device_name="${QUIPSLY_CAPTURE_SCREENSHOT_DEVICE:-iPhone 17 Pro Max}"
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -34,6 +40,16 @@ while [[ $# -gt 0 ]]; do
     --revision=*)
       revision="${1#--revision=}"
       [[ -n "$revision" ]] || fail "--revision requires a commit-ish value."
+      shift
+      ;;
+    --metadata-revision)
+      [[ $# -ge 2 ]] || fail "--metadata-revision requires a commit-ish value."
+      metadata_revision_input="$2"
+      shift 2
+      ;;
+    --metadata-revision=*)
+      metadata_revision_input="${1#--metadata-revision=}"
+      [[ -n "$metadata_revision_input" ]] || fail "--metadata-revision requires a commit-ish value."
       shift
       ;;
     --device)
@@ -61,6 +77,11 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(git -C "${script_dir}/../.." rev-parse --show-toplevel)"
 source_revision="$(git -C "$repo_root" rev-parse --verify --end-of-options "${revision}^{commit}")" ||
   fail "Could not resolve revision '$revision' to a commit."
+if [[ -z "$metadata_revision_input" ]]; then
+  metadata_revision_input="$revision"
+fi
+metadata_revision="$(git -C "$repo_root" rev-parse --verify --end-of-options "${metadata_revision_input}^{commit}")" ||
+  fail "Could not resolve metadata revision '$metadata_revision_input' to a commit."
 
 artifact_root_input="${QUIPSLY_CAPTURE_SCREENSHOT_ARTIFACT_ROOT:-/tmp/quipsly-capture-app-store-drafts}"
 mkdir -p "$artifact_root_input"
@@ -82,10 +103,15 @@ output_directory="${artifact_root}/${source_revision:0:12}/${run_id}"
 temporary_root="$(mktemp -d "${TMPDIR:-/tmp}/quipsly-capture-screenshot-worktree.XXXXXX")"
 worktree_path="${temporary_root}/source"
 worktree_added=0
+metadata_worktree_path="$worktree_path"
+metadata_worktree_added=0
 
 cleanup() {
   if [[ "$worktree_added" -eq 1 ]]; then
     git -C "$repo_root" worktree remove --force "$worktree_path" >/dev/null 2>&1 || true
+  fi
+  if [[ "$metadata_worktree_added" -eq 1 ]]; then
+    git -C "$repo_root" worktree remove --force "$metadata_worktree_path" >/dev/null 2>&1 || true
   fi
   rm -rf -- "$temporary_root"
 }
@@ -94,6 +120,12 @@ trap cleanup EXIT INT TERM
 echo "Preparing Quipsly Capture App Store drafts from committed source ${source_revision}"
 git -C "$repo_root" worktree add --detach "$worktree_path" "$source_revision"
 worktree_added=1
+if [[ "$metadata_revision" != "$source_revision" ]]; then
+  metadata_worktree_path="${temporary_root}/metadata"
+  echo "Preparing committed App Store metadata from ${metadata_revision}"
+  git -C "$repo_root" worktree add --detach "$metadata_worktree_path" "$metadata_revision"
+  metadata_worktree_added=1
+fi
 
 capture_runner="${worktree_path}/apps/mobile-capture/HighGroundCapture/scripts/capture-app-store-draft-screenshots.sh"
 [[ -x "$capture_runner" ]] ||
@@ -105,21 +137,34 @@ export QUIPSLY_CAPTURE_SCREENSHOT_RUN_ID="$run_id"
 export QUIPSLY_CAPTURE_SCREENSHOT_SOURCE_ISOLATION="detached-worktree"
 
 echo "Screenshot evidence: ${output_directory}"
+capture_runner_exit_code=0
+set +e
 (
   cd "$worktree_path"
   "$capture_runner"
 )
+capture_runner_exit_code=$?
+set -e
 
 draft_receipt="${output_directory}/draft-receipt.json"
-metadata_path="${worktree_path}/release/app-store/quipsly-capture/en-US.json"
+metadata_path="${metadata_worktree_path}/release/app-store/quipsly-capture/en-US.json"
 [[ -f "$metadata_path" ]] ||
   fail "Committed App Store metadata is unavailable at ${metadata_path}"
 materialization_mode="runner"
+if [[ "$capture_runner_exit_code" -ne 0 ]]; then
+  [[ ! -f "$draft_receipt" ]] ||
+    fail "Committed screenshot runner failed after producing a draft receipt."
+  [[ -f "${output_directory}/xcresult-attachments/manifest.json" ]] ||
+    fail "Committed screenshot runner failed before exporting its attachment manifest."
+  [[ -d "${output_directory}/QuipslyCapture-AppStore-Drafts.xcresult" ]] ||
+    fail "Committed screenshot runner failed before preserving its Xcode result bundle."
+  echo "WARN Exact-source capture completed, but its older listing metadata could not materialize the images; recovering with committed metadata ${metadata_revision}."
+fi
 if [[ ! -f "$draft_receipt" ]]; then
   manifest_path="${output_directory}/xcresult-attachments/manifest.json"
   result_bundle="${output_directory}/QuipslyCapture-AppStore-Drafts.xcresult"
   attachment_directory="${output_directory}/xcresult-attachments"
-  materializer="${worktree_path}/apps/mobile-capture/HighGroundCapture/scripts/app-store-draft-screenshots.mjs"
+  materializer="${metadata_worktree_path}/apps/mobile-capture/HighGroundCapture/scripts/app-store-draft-screenshots.mjs"
   [[ -f "$manifest_path" ]] ||
     fail "Committed screenshot runner returned without a receipt or attachment manifest."
   [[ -d "$result_bundle" ]] ||
@@ -164,24 +209,29 @@ if (result !== 0) {
   process.exit(result);
 }
 NODE
-  materialization_mode="exact-committed-recovery"
+  materialization_mode="committed-metadata-recovery"
 fi
 [[ -f "$draft_receipt" ]] ||
   fail "Exact committed screenshot materialization returned without a draft receipt."
 
-node - "$draft_receipt" "$metadata_path" "$output_directory" "$source_revision" "$materialization_mode" <<'NODE'
+node - "$draft_receipt" "$metadata_path" "$output_directory" "$source_revision" "$metadata_revision" "$materialization_mode" "$capture_runner_exit_code" <<'NODE'
 const fs = require("node:fs");
 const path = require("node:path");
+const crypto = require("node:crypto");
 
 const [
   draftReceiptPath,
   metadataPath,
   outputDirectory,
   sourceRevision,
+  metadataRevision,
   materializationMode,
+  captureRunnerExitCodeInput,
 ] = process.argv.slice(2);
 const draft = JSON.parse(fs.readFileSync(draftReceiptPath, "utf8"));
-const metadata = JSON.parse(fs.readFileSync(metadataPath, "utf8"));
+const metadataBytes = fs.readFileSync(metadataPath);
+const metadata = JSON.parse(metadataBytes);
+const captureRunnerExitCode = Number(captureRunnerExitCodeInput);
 const plannedScreenshots = metadata?.screenshots?.planned;
 if (
   !Array.isArray(plannedScreenshots)
@@ -229,7 +279,10 @@ const receipt = {
   sourceRevision,
   sourceDirty: false,
   sourceIsolation: "detached-worktree",
+  metadataRevision,
+  metadataSHA256: crypto.createHash("sha256").update(metadataBytes).digest("hex"),
   materializationMode,
+  captureRunnerExitCode,
   draftReceiptPath,
   expectedScreenshotCount,
   screenshotCount: draft.screenshots.length,
