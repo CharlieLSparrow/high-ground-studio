@@ -21,6 +21,7 @@ import {
   MessageSquareQuote,
   Mic2,
   Pilcrow,
+  Play,
   Redo2,
   RefreshCw,
   Smartphone,
@@ -93,10 +94,26 @@ type WritingNestDestination = {
   isHome: boolean;
 };
 
+type WritingTranscript = {
+  transcriptClientRequestId: string;
+  transcriptJobId: string;
+  roomId: string | null;
+  language: string | null;
+  completedAt: string | null;
+  segments: Array<{
+    id: string;
+    startSeconds: number;
+    endSeconds: number;
+    text: string;
+    speakerLabel: string | null;
+  }>;
+};
+
 type LoadResponse = {
   ok: boolean;
   drafts?: WritingDraft[];
   destinations?: WritingNestDestination[];
+  transcripts?: WritingTranscript[];
   error?: string;
 };
 
@@ -115,6 +132,16 @@ function formatSavedTime(value: string | undefined) {
   const date = new Date(value);
   if (!Number.isFinite(date.getTime())) return "Saved to your Nest";
   return `Saved ${new Intl.DateTimeFormat("en-US", { hour: "numeric", minute: "2-digit" }).format(date)}`;
+}
+
+function formatMediaTime(seconds: number) {
+  const safe = Math.max(0, Math.floor(Number.isFinite(seconds) ? seconds : 0));
+  const hours = Math.floor(safe / 3600);
+  const minutes = Math.floor((safe % 3600) / 60);
+  const remainder = safe % 60;
+  return hours > 0
+    ? `${hours}:${String(minutes).padStart(2, "0")}:${String(remainder).padStart(2, "0")}`
+    : `${minutes}:${String(remainder).padStart(2, "0")}`;
 }
 
 function ToolbarButton({
@@ -172,6 +199,7 @@ export function VoiceWritingEditor({ draftId }: { draftId: string }) {
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState("");
   const [destinations, setDestinations] = useState<WritingNestDestination[]>([]);
+  const [transcripts, setTranscripts] = useState<WritingTranscript[]>([]);
   const [moving, setMoving] = useState(false);
   const [moveError, setMoveError] = useState("");
   const [changeVersion, setChangeVersion] = useState(0);
@@ -231,6 +259,7 @@ export function VoiceWritingEditor({ draftId }: { draftId: string }) {
         throw new Error(payload.error || "This writing could not be loaded.");
       }
       setDestinations(payload.destinations ?? []);
+      setTranscripts(payload.transcripts ?? []);
       installDraft(next);
     } catch (error) {
       setLoadError(error instanceof Error ? error.message : "This writing could not be loaded.");
@@ -410,7 +439,7 @@ export function VoiceWritingEditor({ draftId }: { draftId: string }) {
       if (!response.ok || !payload?.ok) {
         throw new Error(payload?.error || "This writing could not be deleted yet.");
       }
-      router.replace("/library?kind=NOTE");
+      router.replace("/library?kind=DOCUMENT");
       router.refresh();
     } catch (error) {
       setDeleteError(error instanceof Error ? error.message : "This writing could not be deleted yet.");
@@ -462,7 +491,7 @@ export function VoiceWritingEditor({ draftId }: { draftId: string }) {
         <CloudAlert className="h-8 w-8 text-red-700" aria-hidden="true" />
         <h1 className="mt-4 font-serif text-3xl font-black">We couldn’t open this writing.</h1>
         <p className="mt-3 font-semibold text-[#765f40]">{loadError}</p>
-        <div className="mt-5 flex flex-wrap gap-3"><button type="button" onClick={() => void loadDraft()} className="inline-flex min-h-11 items-center gap-2 rounded-full bg-[#3e2f21] px-5 py-2.5 text-sm font-black text-white"><RefreshCw className="h-4 w-4" />Try again</button><Link href="/library?kind=NOTE" className="inline-flex min-h-11 items-center rounded-full border border-red-200 bg-white px-5 py-2.5 text-sm font-black text-red-900">Back to Library</Link></div>
+        <div className="mt-5 flex flex-wrap gap-3"><button type="button" onClick={() => void loadDraft()} className="inline-flex min-h-11 items-center gap-2 rounded-full bg-[#3e2f21] px-5 py-2.5 text-sm font-black text-white"><RefreshCw className="h-4 w-4" />Try again</button><Link href="/library?kind=DOCUMENT" className="inline-flex min-h-11 items-center rounded-full border border-red-200 bg-white px-5 py-2.5 text-sm font-black text-red-900">Back to Library</Link></div>
       </section>
     </main>;
   }
@@ -474,7 +503,7 @@ export function VoiceWritingEditor({ draftId }: { draftId: string }) {
   return <main className="mx-auto max-w-[1120px] px-2 py-2 text-[#3d3122] sm:px-4">
     <header className="rounded-[2rem] border border-[#dfcba6] bg-[radial-gradient(circle_at_top_right,_#d8eee5,_transparent_45%),linear-gradient(135deg,#fffaf0,#f8edda)] px-5 py-5 shadow-sm sm:px-7">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <Link href="/library?kind=NOTE" className="inline-flex min-h-11 items-center gap-1 rounded-full border border-[#d8c4a1] bg-white/85 px-4 text-sm font-black text-[#5b472f]"><ChevronLeft className="h-4 w-4" />Library</Link>
+        <Link href="/library?kind=DOCUMENT" className="inline-flex min-h-11 items-center gap-1 rounded-full border border-[#d8c4a1] bg-white/85 px-4 text-sm font-black text-[#5b472f]"><ChevronLeft className="h-4 w-4" />Library</Link>
         <div className="flex flex-wrap items-center justify-end gap-2">
           <SaveStatus state={saveState} updatedAt={draft.updatedAt} />
           <button
@@ -581,12 +610,37 @@ export function VoiceWritingEditor({ draftId }: { draftId: string }) {
       <EditorContent editor={editor} />
     </section>
 
+    {transcripts.some((transcript) => transcript.segments.length > 0) ? <section className="mt-4 rounded-[2rem] border border-[#cbded8] bg-[#f4fbf8] p-5 sm:p-6" aria-labelledby="voice-writing-transcript-title">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="text-[11px] font-black uppercase tracking-[0.18em] text-emerald-800">Original words and timing</p>
+          <h2 id="voice-writing-transcript-title" className="mt-1 font-serif text-2xl font-black text-[#33281d]">Timed transcript</h2>
+          <p className="mt-1 max-w-2xl text-sm font-semibold leading-6 text-[#765f40]">Use the transcript to find what you said. Your writing above stays free to reorganize and polish.</p>
+        </div>
+        <span className="rounded-full border border-emerald-200 bg-white px-3 py-2 text-xs font-black text-emerald-900">{transcripts.reduce((count, transcript) => count + transcript.segments.length, 0)} passages</span>
+      </div>
+      <ol className="mt-4 space-y-2">
+        {transcripts.flatMap((transcript) => transcript.segments.map((segment) => {
+          const label = `${formatMediaTime(segment.startSeconds)}–${formatMediaTime(segment.endSeconds)}`;
+          const content = <>
+            <span className="inline-flex min-w-[5.5rem] items-center gap-1 text-xs font-black text-emerald-800"><Play className="h-3.5 w-3.5" aria-hidden="true" />{label}</span>
+            <span className="min-w-0 flex-1 text-sm font-semibold leading-6 text-[#493b2c]">{segment.speakerLabel ? <strong className="mr-1 font-black">{segment.speakerLabel}:</strong> : null}{segment.text}</span>
+          </>;
+          return <li key={`${transcript.transcriptJobId}:${segment.id}`}>
+            {transcript.roomId
+              ? <Link href={`/sessions/${encodeURIComponent(transcript.roomId)}?mode=transcript#transcript-segment-${encodeURIComponent(segment.id)}`} className="flex min-h-11 items-start gap-3 rounded-2xl border border-emerald-100 bg-white px-4 py-3 transition hover:border-emerald-300 hover:bg-emerald-50" aria-label={`Open recording at ${label}`}>{content}</Link>
+              : <div className="flex min-h-11 items-start gap-3 rounded-2xl border border-emerald-100 bg-white px-4 py-3">{content}</div>}
+          </li>;
+        }))}
+      </ol>
+    </section> : null}
+
     <section className="mt-4 grid gap-4 pb-10 md:grid-cols-[1fr_auto]">
       <div className="rounded-2xl border border-[#dfcba6] bg-white p-5">
         <div className="flex items-center gap-2"><Mic2 className="h-5 w-5 text-[#87663d]" aria-hidden="true" /><h2 className="font-serif text-xl font-black">Connected to your voice</h2></div>
-        <p className="mt-2 text-sm font-semibold leading-6 text-[#765f40]">{draft.sources.length} source recording{draft.sources.length === 1 ? " stays" : "s stay"} connected while you rewrite the paper. Editing these words never changes the original recording or timed transcript.</p>
+        <p className="mt-2 text-sm font-semibold leading-6 text-[#765f40]">{draft.sources.length} original recording{draft.sources.length === 1 ? " stays" : "s stay"} connected while you shape this draft. Editing these words never changes the recording or timed transcript.</p>
         <div className="mt-3 flex flex-wrap gap-2">{draft.sources.map((source, index) => source.callRoomId
-          ? <Link key={source.localRecordingId} href={`/sessions/${encodeURIComponent(source.callRoomId)}`} className="inline-flex min-h-10 items-center rounded-full border border-[#d8c4a1] bg-[#fffaf3] px-4 text-xs font-black text-[#5b472f]">Open recording {index + 1}</Link>
+          ? <Link key={source.localRecordingId} href={`/sessions/${encodeURIComponent(source.callRoomId)}?mode=transcript`} className="inline-flex min-h-10 items-center rounded-full border border-[#d8c4a1] bg-[#fffaf3] px-4 text-xs font-black text-[#5b472f]">Open recording {index + 1}</Link>
           : <span key={source.localRecordingId} className="inline-flex min-h-10 items-center rounded-full border border-[#d8c4a1] bg-[#fffaf3] px-4 text-xs font-black text-[#5b472f]">iPhone recording {index + 1}</span>)}</div>
       </div>
       <div className="rounded-2xl border border-[#dfcba6] bg-[#fffaf3] p-5 md:max-w-xs">

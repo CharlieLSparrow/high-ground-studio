@@ -21,6 +21,8 @@ import { resolveStudioProjectAccess } from "@/lib/server/studio-project-access";
 
 export const dynamic = "force-dynamic";
 
+const ON_DEVICE_TRANSCRIPT_PROVIDER = "apple-speech-transcriber-on-device";
+
 function record(value: unknown): Record<string, any> {
   return value && typeof value === "object" && !Array.isArray(value)
     ? value as Record<string, any>
@@ -194,6 +196,37 @@ function publicStoredDraft(document: any) {
   };
 }
 
+function transcriptRequestIdsForDrafts(drafts: any[]) {
+  return Array.from(new Set(drafts.flatMap((draft: any) => (
+    Array.isArray(draft?.sources) ? draft.sources : []
+  )).map((source: any) => String(source?.transcriptClientRequestId || "").trim().toLowerCase())
+    .filter(Boolean)));
+}
+
+function publicVoiceTranscript(job: any) {
+  const providerRequestId = String(job?.providerRequestId || "");
+  const transcriptClientRequestId = providerRequestId.startsWith("apple-speech:")
+    ? providerRequestId.slice("apple-speech:".length)
+    : "";
+  return {
+    transcriptClientRequestId,
+    transcriptJobId: String(job?.id || ""),
+    roomId: typeof job?.roomId === "string" ? job.roomId : null,
+    language: typeof job?.language === "string" ? job.language : null,
+    completedAt: job?.completedAt?.toISOString?.() ?? job?.completedAt ?? null,
+    segments: (job?.segments || []).map((segment: any) => {
+      const accepted = segment?.corrections?.[0] ?? null;
+      return {
+        id: String(segment?.id || ""),
+        startSeconds: Number(segment?.startSeconds) || 0,
+        endSeconds: Number(segment?.endSeconds) || 0,
+        text: String(accepted?.correctedText || segment?.text || ""),
+        speakerLabel: accepted?.correctedSpeakerLabel ?? segment?.speakerLabel ?? null,
+      };
+    }).filter((segment: any) => segment.id && segment.text),
+  };
+}
+
 export async function GET(request: Request) {
   const session = await getQuipslySessionFromRequest(request);
   const actorUserId = String(session?.user?.id || "").trim();
@@ -233,6 +266,43 @@ export async function GET(request: Request) {
     listProjectsVisibleToEmail(actorEmail, prisma),
   ]);
   const drafts = documents.map(publicStoredDraft).filter(Boolean);
+  const transcriptRequestIds = requestedDraftId ? transcriptRequestIdsForDrafts(drafts) : [];
+  const transcriptJobs = transcriptRequestIds.length
+    ? await prisma.transcriptJob.findMany({
+      where: {
+        requestedBy: actorUserId,
+        provider: ON_DEVICE_TRANSCRIPT_PROVIDER,
+        status: "COMPLETED",
+        providerRequestId: {
+          in: transcriptRequestIds.map((requestId) => `apple-speech:${requestId}`),
+        },
+      },
+      orderBy: [{ completedAt: "desc" }, { createdAt: "desc" }, { id: "desc" }],
+      select: {
+        id: true,
+        roomId: true,
+        language: true,
+        providerRequestId: true,
+        completedAt: true,
+        segments: {
+          orderBy: [{ startSeconds: "asc" }, { id: "asc" }],
+          select: {
+            id: true,
+            startSeconds: true,
+            endSeconds: true,
+            text: true,
+            speakerLabel: true,
+            corrections: {
+              where: { status: "accepted" },
+              orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
+              take: 1,
+              select: { correctedText: true, correctedSpeakerLabel: true },
+            },
+          },
+        },
+      },
+    })
+    : [];
   const writableProjects = visibleProjects.filter((project: any) => (
     project.role === "OWNER" || project.role === "EDITOR"
   ));
@@ -255,6 +325,7 @@ export async function GET(request: Request) {
     availableTags: requestedDocument
       ? availableVoiceWritingTags(requestedDocument)
       : [],
+    transcripts: transcriptJobs.map(publicVoiceTranscript),
     nextAction: null,
   });
 }

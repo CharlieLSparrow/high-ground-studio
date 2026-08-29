@@ -137,7 +137,25 @@ describe("mobile voice-writing continuation", () => {
         },
       }],
     }]);
-    jest.mocked(getPrismaClient).mockReturnValue({ studioDocument: { findMany } } as never);
+    const findTranscripts = jest.fn().mockResolvedValue([{
+      id: "transcript-job-continued",
+      roomId: "continued-room",
+      language: "en-US",
+      providerRequestId: `apple-speech:${continuationTranscriptId}`,
+      completedAt: updatedAt,
+      segments: [{
+        id: "segment-1",
+        startSeconds: 4.2,
+        endSeconds: 8.8,
+        text: "Provider text.",
+        speakerLabel: null,
+        corrections: [{ correctedText: "Corrected words.", correctedSpeakerLabel: "Homer" }],
+      }],
+    }]);
+    jest.mocked(getPrismaClient).mockReturnValue({
+      studioDocument: { findMany },
+      transcriptJob: { findMany: findTranscripts },
+    } as never);
 
     const response = await GET(new Request(`http://localhost/api/mobile/capture/voice-writing?draftId=${draftId}`));
     const payload = await response.json();
@@ -196,7 +214,33 @@ describe("mobile voice-writing continuation", () => {
         role: "OWNER",
         isHome: true,
       }],
+      transcripts: [{
+        transcriptClientRequestId: continuationTranscriptId,
+        transcriptJobId: "transcript-job-continued",
+        roomId: "continued-room",
+        language: "en-US",
+        segments: [{
+          id: "segment-1",
+          startSeconds: 4.2,
+          endSeconds: 8.8,
+          text: "Corrected words.",
+          speakerLabel: "Homer",
+        }],
+      }],
     });
+    expect(findTranscripts).toHaveBeenCalledWith(expect.objectContaining({
+      where: {
+        requestedBy: "actor-1",
+        provider: "apple-speech-transcriber-on-device",
+        status: "COMPLETED",
+        providerRequestId: {
+          in: [
+            `apple-speech:${transcriptId}`,
+            `apple-speech:${continuationTranscriptId}`,
+          ],
+        },
+      },
+    }));
   });
 
   it("moves actor-owned writing to an exact writable Nest without sharing it", async () => {
