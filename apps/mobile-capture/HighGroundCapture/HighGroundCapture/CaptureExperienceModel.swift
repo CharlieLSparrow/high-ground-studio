@@ -672,9 +672,6 @@ final class CaptureExperienceModel: ObservableObject {
                     quickEntrySyncMessage = "Imported \(importedSharedSources) protected Share Sheet source\(importedSharedSources == 1 ? "" : "s") into this account's outbox."
                 }
             }
-            await taskReminderScheduler.reconcile(
-                drafts: quickEntryOutbox.entries.compactMap(\.taskReminderDraft)
-            )
             sessionClient.sessions = MobileCaptureSession.capturePreviewFixtures
             sessionClient.captureProjects = [
                 MobileCaptureProjectDestination(
@@ -779,6 +776,13 @@ final class CaptureExperienceModel: ObservableObject {
                 ?? requestedPreviewSessionID
                 ?? sessionClient.sessions.first?.id
             hasCompletedInitialSessionAuthorityLoad = true
+            // Task-reminder projection is useful preview evidence, but it is
+            // not a prerequisite for mounting Sessions, Library, or recording
+            // recovery truth. Publish the complete core fixture graph first;
+            // the await below then yields that ready state on a cold install.
+            await taskReminderScheduler.reconcile(
+                drafts: quickEntryOutbox.entries.compactMap(\.taskReminderDraft)
+            )
             return
         }
 

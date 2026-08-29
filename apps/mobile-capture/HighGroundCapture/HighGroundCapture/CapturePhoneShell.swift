@@ -100,7 +100,13 @@ struct CapturePhoneShell: View {
             // drains its pending candidates idempotently, so an offline-to-
             // online shell swap cannot publish the same restoration twice.
             async let subscriptionLoad: Void = subscriptionStore.load()
-            await LocalRecordingLibrary.shared.validatePendingRecoveredSources()
+            // Deterministic preview data has no recovered local source to
+            // validate. Let its canonical fixtures become ready immediately
+            // instead of making every cold UI flight wait on an unrelated
+            // device-library pass.
+            if !model.usesPreviewData {
+                await LocalRecordingLibrary.shared.validatePendingRecoveredSources()
+            }
             await model.load()
             _ = await subscriptionLoad
             if !model.usesPreviewData {
@@ -476,7 +482,14 @@ private struct CaptureTodayView: View {
                         .padding(.horizontal, 12)
                         .padding(.vertical, 8)
                         .background(.orange.opacity(0.12), in: Capsule())
-                        .accessibilityIdentifier("CapturePreviewModeBadge")
+                        // XCTest must not mistake the first mounted frame for
+                        // a usable fixture graph. The ready identifier appears
+                        // only after every core preview projection is present.
+                        .accessibilityIdentifier(
+                            model.hasCompletedInitialSessionAuthorityLoad
+                                ? "CapturePreviewModeBadge"
+                                : "CapturePreviewModeLoadingBadge"
+                        )
                 }
 
                 NavigationLink {
