@@ -1710,7 +1710,11 @@ final class CaptureExperienceUITests: XCTestCase {
         )
         waitForExpectations(timeout: 3)
         XCTAssertTrue(manuscript.label.contains("The Swear Jar"))
-        XCTAssertTrue(manuscript.label.contains("34 protected blocks"))
+        XCTAssertTrue(manuscript.label.contains("34 blocks ready"))
+        XCTAssertFalse(
+            manuscript.label.contains("protected"),
+            "A readable Episode script should use ordinary readiness language, not internal protection terminology."
+        )
 
         let watch = app.descendants(matching: .any)[
             "CaptureRehearsalCheck_watch"
