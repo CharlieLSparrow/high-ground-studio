@@ -7,19 +7,22 @@ struct VoiceWritingTimedPhrase: Equatable {
 }
 
 /// Turns immutable timed speech into an editable first draft. Speech timing
-/// supplies sensible paragraph breaks, while Apple's ordinary dictation
-/// phrases ("new line" and "new paragraph") remain useful even when the
-/// recognizer returns a command and nearby prose in the same result.
+/// supplies sensible paragraph breaks. Apple's ordinary dictation phrases
+/// ("new line" and "new paragraph") and the familiar "bullet point" phrase
+/// remain useful even when the recognizer returns a command and nearby prose
+/// in the same result.
 enum VoiceWritingTextComposer {
     private enum SpokenPiece: Equatable {
         case text(String)
         case lineBreak
         case paragraphBreak
+        case bulletPoint
     }
 
     private enum BreakKind {
         case line
         case paragraph
+        case bullet
     }
 
     nonisolated static func body(from phrases: [VoiceWritingTimedPhrase]) -> String {
@@ -35,10 +38,25 @@ enum VoiceWritingTextComposer {
 
         func append(_ text: String) {
             guard !text.isEmpty else { return }
-            if current.isEmpty || current.last == "\n" {
+            if current.isEmpty || current.last == "\n" || current.last == " " {
                 current += text
             } else {
                 current += " \(text)"
+            }
+        }
+
+        func startBullet() {
+            let trimmed = current.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else {
+                current = "• "
+                return
+            }
+            let finalLine = trimmed.components(separatedBy: "\n").last ?? ""
+            if finalLine.hasPrefix("• ") {
+                current = trimmed + "\n• "
+            } else {
+                flush()
+                current = "• "
             }
         }
 
@@ -56,6 +74,8 @@ enum VoiceWritingTextComposer {
                     if !trimmed.isEmpty {
                         current = trimmed + "\n"
                     }
+                case .bulletPoint:
+                    startBullet()
                 case .text(let text):
                     if !consideredTimedPause {
                         let pause = previousEnd.map { max(0, phrase.startSeconds - $0) } ?? 0
@@ -100,7 +120,7 @@ enum VoiceWritingTextComposer {
 
         let fullRange = NSRange(value.startIndex..<value.endIndex, in: value)
         let inlineCommandPattern = try! NSRegularExpression(
-            pattern: #"\b(new paragraph|next paragraph|new line)\b[.!?]?"#,
+            pattern: #"\b(new paragraph|next paragraph|new line|bullet point)\b[.!?]?"#,
             options: [.caseInsensitive]
         )
         let matches = inlineCommandPattern.matches(in: value, range: fullRange)
@@ -140,6 +160,7 @@ enum VoiceWritingTextComposer {
         switch command {
         case "new line": return .line
         case "new paragraph", "next paragraph": return .paragraph
+        case "bullet point": return .bullet
         default: return nil
         }
     }
@@ -148,6 +169,7 @@ enum VoiceWritingTextComposer {
         switch kind {
         case .line: .lineBreak
         case .paragraph: .paragraphBreak
+        case .bullet: .bulletPoint
         }
     }
 

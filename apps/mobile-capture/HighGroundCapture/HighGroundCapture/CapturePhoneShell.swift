@@ -16519,11 +16519,11 @@ private struct RecorderHero: View {
     private var voiceWritingDetail: String {
         switch captureState {
         case .idle:
-            return "Speak naturally. When you stop, Quipsly creates editable writing and keeps the original audio connected."
+            return "Speak naturally. Say “new paragraph” or “bullet point” when useful. When you stop, Quipsly creates editable writing and keeps the audio connected."
         case .preparing:
             return "Quipsly is checking this iPhone's microphone before listening."
         case .recording:
-            return "Keep going. Your original audio is safe on this iPhone, and editable writing comes next."
+            return "Keep going. Say “new paragraph” or “bullet point” when useful; your audio stays safe and editable writing comes next."
         case .paused:
             return "Take your time. Resume when you are ready; everything already recorded stays safe."
         case .finalizing:

@@ -15,9 +15,23 @@ private struct VoiceWritingTextComposerHarness {
     static func main() throws {
         try exactCommandsCreateStructure()
         try inlineCommandsSurviveRecognizerChunking()
+        try familiarBulletCommandsCreateAList()
         try ordinaryProseIsNotMistakenForACommand()
         try pausesStillCreateReadableParagraphs()
         print("PASS Voice writing speech structure composition")
+    }
+
+    private static func familiarBulletCommandsCreateAList() throws {
+        let body = VoiceWritingTextComposer.body(from: [
+            phrase("Three things matter.", 0, 1),
+            phrase("Bullet point. Protect the source.", 1, 2),
+            phrase("Bullet point keep the writing editable.", 2, 3),
+            phrase("Bullet point make sharing simple.", 3, 4),
+        ])
+        try require(
+            body == "Three things matter.\n\n• Protect the source.\n• keep the writing editable.\n• make sharing simple.",
+            "A familiar bullet point command should create one compact list instead of entering command words."
+        )
     }
 
     private static func exactCommandsCreateStructure() throws {
