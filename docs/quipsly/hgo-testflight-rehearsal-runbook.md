@@ -1,6 +1,6 @@
 # High Ground Odyssey TestFlight Rehearsal
 
-Last verified: 2026-08-28
+Last verified: 2026-08-29
 
 This is the operator runbook for the first Charlie-and-Homer Quipsly Capture
 rehearsal. It distinguishes what is ready now from what the rehearsal still
@@ -8,10 +8,10 @@ needs to prove.
 
 ## Current release state
 
-- App: **Quipsly Capture 1.0 (45)**
+- App: **Quipsly Capture 1.0 (46)**
 - Exact native source:
-  `efce500ba90e469b65d7c3bda36ea98e3fa5bb78`
-- App Store Connect build ID: `391e52f3-d3a9-49e2-b4c0-c9f85ec1914c`
+  `4dc325dd6c5547bbe2d5529ccaab288ad0eb6f1b`
+- App Store Connect build ID: `7d63ce65-703c-4eb3-94b8-957076ff5b64`
 - External TestFlight group: **Quipsly Capture Rehearsal**
 - TestFlight Apple Account: `shomers@icloud.com`
 - Quipsly Google identity: `shomers@gmail.com`
@@ -22,10 +22,20 @@ needs to prove.
 - Automatic tester notification: enabled
 - Installation mode: public-link-only; neither a named-tester email nor a
   redemption code is required
-- Build 45 is the current approved public beta identified by the canonical
-  release ledger and Apple readback. It adds the direct **Speak to write** path,
-  on-device long-form dictation, timed transcript correction, structured rich
-  writing, Word export, and clearer Private / Owned / Shared Nest navigation.
+- Build 46 is the current approved public beta identified by the canonical
+  release ledger and Apple readback. It keeps one direct **Speak to write**
+  path for editable long-form writing with a retained timed source, transcript
+  correction, headings and lists, learned vocabulary, Word export, and clear
+  Private / Owned / Shared Nest filing. It also replaces the former scrolling
+  call setup with one compact green room: visible input/output, familiar Mic
+  and Camera controls, one primary **Join call** action, remembered safe device
+  choices, and an optional second-device path. Generic session setup no longer
+  asks for a required title, implies consent, or duplicates voice writing.
+  All four deterministic UI shards passed with zero aggregate failures, and
+  the exact signed archive and IPA passed packaged metadata, entitlement,
+  provisioning, privacy-manifest, and nested-signature inspection before the
+  sealed upload. App Store Connect independently reports `VALID`,
+  `IN_BETA_TESTING`, `APPROVED`, and included in the external rehearsal group.
   It remains subject to a real physical-iPhone handoff, atypical-speech sample,
   call, recording, retained playback, and cross-device acceptance test.
 - Build 28 passed all 63 serialized iPhone and Share Extension journeys,
