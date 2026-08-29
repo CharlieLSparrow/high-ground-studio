@@ -3818,14 +3818,14 @@ export function SessionReviewClient({
           idempotentReplay?: boolean;
         };
         if (!response.ok || !body.ok)
-          throw new Error(body.error || "The review packet was not built.");
+          throw new Error(body.error || "Session follow-through was not created.");
         await load();
         setMessage(
           options?.automatic
-            ? "Your session summary and suggested next steps are ready to review. Nothing was assigned, sent, or shared."
+            ? "Your Session recap, notes, tasks, and goals are ready. Everything stays editable and linked to the recording."
             : body.idempotentReplay
-              ? "The current source-bound review packet already existed; no duplicate review artifacts were created."
-              : "Review packet built from the completed transcript. Its summary and candidates remain internal until you explicitly review them.",
+              ? "Your current Session follow-through is already up to date."
+              : "Session follow-through is ready. Edit, complete, reassign, or remove anything whenever you like.",
         );
       } catch (error) {
         setMessage(
@@ -3833,7 +3833,7 @@ export function SessionReviewClient({
             ? "Quipsly could not prepare the follow-up yet. Your transcript is safe; try again below."
             : error instanceof Error
               ? error.message
-              : "The review packet was not built.",
+              : "Session follow-through was not created.",
         );
       } finally {
         setBuildingPacket(false);

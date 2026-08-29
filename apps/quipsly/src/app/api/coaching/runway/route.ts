@@ -472,11 +472,11 @@ function nextRoomAction(room: any, receipts: any[] = []) {
     ) || null;
 
   if (!transcriptGate.allowed && latestRecordingAsset) {
-    return "Capture evidence is preserved. Await reviewed transcript release before running, retrying, building, or reviewing packet work.";
+    return "The recording is preserved but is not available for transcription yet. Update its processing permission in the Session.";
   }
-  if (packetSummary) return "Packet exists. Review highlights and inferred candidates before committing action items.";
-  if (latestTranscript?.status === "COMPLETED") return "Transcript complete. Build the coaching or podcast packet.";
-  if (latestTranscript?.status === "RUNNING") return "Transcription is running. Refresh before packet work.";
+  if (packetSummary) return "Follow-through is ready. Open the Session to read, edit, complete, or remove its notes, tasks, and goals.";
+  if (latestTranscript?.status === "COMPLETED") return "Transcript complete. Create the Session recap and follow-through.";
+  if (latestTranscript?.status === "RUNNING") return "Transcription is running. Refresh to see the latest progress.";
   if (latestTranscript) return "Transcript job exists. Run, retry, or resolve its held/failed state.";
   if (safeCount(room.recordingAssets?.filter((asset: any) => !isProviderRecordingReceiptSlot(asset)).length) > 0) {
     return "Recording exists. Queue or run transcription.";

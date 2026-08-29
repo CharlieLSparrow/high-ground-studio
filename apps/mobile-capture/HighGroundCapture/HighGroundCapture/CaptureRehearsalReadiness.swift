@@ -299,7 +299,7 @@ struct CaptureRehearsalReadinessCard: View {
         } else {
             detail = ready
                 ? "Current \(mode.title.lowercased()) consent is ready."
-                : "Review and save the required consent choices."
+                : "Choose what this Session may record."
         }
         return item(
             "consent",
@@ -427,7 +427,7 @@ struct CaptureRehearsalReadinessCard: View {
             return item(
                 "camera",
                 "Camera source",
-                "Prepare the \(videoCapture.cameraPosition.rawValue) camera and review the exact profile.",
+                "Turn on the \(videoCapture.cameraPosition.rawValue) camera to see its format and framing.",
                 videoCapture.state == .failed ? .blocked : .action
             )
         }
@@ -456,7 +456,7 @@ struct CaptureRehearsalReadinessCard: View {
         return item(
             "manuscript",
             "Episode script",
-            "\(manuscript.displayTitle) · \(count) protected blocks",
+            "\(manuscript.displayTitle) · \(count) blocks ready",
             .ready
         )
     }
@@ -483,8 +483,8 @@ struct CaptureRehearsalReadinessCard: View {
             "watch",
             "First shared clip",
             watch.isPrepared
-                ? "\(clip.title) is protected and decodable on this iPhone."
-                : "\(clip.title) is selected but still needs local preparation.",
+                ? "\(clip.title) is downloaded and ready on this iPhone."
+                : "\(clip.title) is selected; download it before the Session.",
             watch.isPrepared ? .ready : .action
         )
     }
@@ -542,7 +542,7 @@ struct CaptureRehearsalReadinessCard: View {
             return "Optional"
         }
         if remainingRequiredCount == 0 {
-            return "Optional check needs attention"
+            return "Optional issue found"
         }
         return "Action needed"
     }
@@ -579,9 +579,9 @@ struct CaptureRehearsalReadinessCard: View {
             return "Preview never invents microphone, camera, storage, or protected-download proof."
         }
         if providerConnected {
-            return "Refreshes the canonical script and selected protected clip without reconfiguring live audio."
+            return "Refreshes the Session script and selected clip without changing live audio."
         }
-        return "Verifies microphone, storage, camera when selected, canonical script, and the first protected Watch clip. It never starts recording or joins the live room."
+        return "Checks microphone, storage, camera when selected, the Session script, and the first shared clip. It never starts recording or joins the call."
     }
 
     private var boundaryCopy: String {
@@ -699,7 +699,7 @@ private struct CaptureAudioSoundCheckControls: View {
                 Button {
                     controller.finishRecording()
                 } label: {
-                    Label("Stop and evaluate", systemImage: "stop.fill")
+                    Label("Stop sound check", systemImage: "stop.fill")
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.borderedProminent)
@@ -795,7 +795,7 @@ private struct CaptureAudioSoundCheckControls: View {
                         }
                     }
                 } else {
-                    Text("A meter reading cannot approve mouth noise, echo, rubbing, or playback bleed. Listen to the complete sample before Quipsly can share a ready receipt.")
+                    Text("The meter can show levels, but only listening reveals mouth noise, echo, rubbing, or playback bleed. Listen back if you want to check the complete sound.")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
