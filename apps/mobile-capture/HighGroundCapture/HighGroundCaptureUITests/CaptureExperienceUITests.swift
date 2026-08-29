@@ -3690,12 +3690,11 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(note.exists)
         XCTAssertTrue(save.exists)
         XCTAssertFalse(save.isEnabled, "Preview goal check-ins must remain inspectable but must never write a fake progress receipt.")
-        XCTAssertTrue(app.staticTexts["Reconnect to Nest to save. Preview and protected snapshots stay read-only."].exists)
+        XCTAssertTrue(app.staticTexts["Reconnect to Nest to save this check-in."].exists)
 
         let boundary = app.staticTexts.matching(
-            NSPredicate(format: "label BEGINSWITH %@", "Goal check-ins record progress without changing goal status.")
+            NSPredicate(format: "label BEGINSWITH %@", "A check-in updates progress without completing the goal.")
         ).firstMatch
-        reveal(boundary)
         XCTAssertTrue(boundary.exists)
     }
 
