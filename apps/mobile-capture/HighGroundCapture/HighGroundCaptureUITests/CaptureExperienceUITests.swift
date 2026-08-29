@@ -159,7 +159,7 @@ final class CaptureExperienceUITests: XCTestCase {
             app.descendants(matching: .any)["CaptureSessionListRow_preview-coaching-ready"].exists,
             "Today should not repeat the same next session in the Later session list."
         )
-        XCTAssertTrue(app.buttons["New session"].exists)
+        XCTAssertTrue(app.buttons["Call or schedule"].exists)
         XCTAssertTrue(
             app.buttons["CaptureStartVoiceNote"].exists,
             "Private speech-to-writing should be a primary Home action, not hidden in Session setup."
@@ -2951,7 +2951,7 @@ final class CaptureExperienceUITests: XCTestCase {
         )
     }
 
-    func testPacketNoteReviewRequiresPurposeAudienceAndFinalHumanSave() throws {
+    func testOptionalTranscriptIdeaCanBeAddedOrAdjustedWithoutPaperwork() throws {
         app.tabBars.buttons["Library"].tap()
         XCTAssertTrue(app.scrollViews["CaptureLibraryView"].waitForExistence(timeout: 5))
 
@@ -2972,15 +2972,14 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(app.buttons["CapturePacketNoteSourceButton_\(candidateKey)"].exists)
         XCTAssertTrue(app.descendants(matching: .any)["CapturePacketSpeakerEvidence_source-binding"].exists)
         let packetNoteReview = app.buttons["CapturePacketReviewNoteButton_\(candidateKey)"]
-        XCTAssertTrue(packetNoteReview.isEnabled, "Preview may inspect note purpose and audience while the final write stays disabled.")
+        XCTAssertFalse(packetNoteReview.isEnabled, "Preview must not write, while the real suggestion is a one-tap private note.")
         let packetNoteEdit = app.buttons["CapturePacketNoteEditButton_\(candidateKey)"]
-        XCTAssertTrue(packetNoteEdit.isEnabled, "A provider-only candidate should still be editable without becoming canonical work.")
-        XCTAssertFalse(app.buttons["CapturePacketNoteDeferButton_\(candidateKey)"].isEnabled)
+        XCTAssertTrue(packetNoteEdit.isEnabled, "The adjustment surface remains inspectable without requiring source review.")
         XCTAssertFalse(app.buttons["CapturePacketNoteRejectButton_\(candidateKey)"].isEnabled)
         XCTAssertFalse(app.buttons["CapturePacketNoteMergeButton_\(candidateKey)"].isEnabled)
         let decisionBoundary = app.staticTexts["CapturePacketNoteDecisionBoundary"]
-        XCTAssertTrue(decisionBoundary.label.contains("Save this as a note"))
-        XCTAssertTrue(decisionBoundary.label.contains("keep it for later"))
+        XCTAssertTrue(decisionBoundary.label.contains("Add it now"))
+        XCTAssertTrue(decisionBoundary.label.contains("adjust the wording"))
         XCTAssertTrue(decisionBoundary.label.contains("dismiss it"))
         packetNoteEdit.tap()
         XCTAssertTrue(app.textFields["CapturePacketNoteTitleField"].exists)
@@ -2991,7 +2990,7 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertFalse(app.buttons["CapturePacketCreateNoteButton_\(candidateKey)"].isEnabled)
         let packetNoteBoundary = app.staticTexts["CapturePacketNoteBoundary"]
         reveal(packetNoteBoundary)
-        XCTAssertTrue(packetNoteBoundary.label.contains("without creating or sharing a note"))
+        XCTAssertTrue(packetNoteBoundary.label.contains("private, editable note"))
         let packetNoteScreenshot = XCTAttachment(screenshot: app.screenshot())
         packetNoteScreenshot.name = "Transcript note materialization review"
         packetNoteScreenshot.lifetime = .keepAlways
@@ -3282,19 +3281,18 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(app.buttons["CapturePacketGoalSource_preview-segment"].exists)
         XCTAssertTrue(app.descendants(matching: .any)["CapturePacketGoalSourceReviewRequired"].exists)
         XCTAssertFalse(packetGoalAccept.isEnabled, "Provider-only preview evidence must not open canonical goal creation.")
-        XCTAssertFalse(app.buttons["CapturePacketGoalDeferButton"].isEnabled)
         XCTAssertFalse(app.buttons["CapturePacketGoalRejectButton"].isEnabled)
         let editPacketGoal = app.buttons["CapturePacketGoalEditButton"]
         reveal(editPacketGoal)
         XCTAssertTrue(
             editPacketGoal.isEnabled && editPacketGoal.isHittable,
-            "Preview may inspect a packet goal draft while every review mutation stays disabled."
+            "Preview may inspect goal adjustments while every write stays disabled."
         )
         editPacketGoal.tap()
-        XCTAssertTrue(app.textFields["CapturePacketGoalTitleField"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.textFields["CapturePacketGoalDescriptionField"].waitForExistence(timeout: 5))
-        XCTAssertFalse(app.buttons["CapturePacketGoalSaveDraftButton"].isEnabled)
-        app.buttons["CapturePacketGoalCancelEditButton"].tap()
+        XCTAssertTrue(app.textFields["CapturePacketGoalCreateTitleField"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.textFields["CapturePacketGoalCreateDescriptionField"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["CapturePacketGoalCreateButton"].isEnabled)
+        app.buttons["CapturePacketGoalCancelCreateButton"].tap()
 
         let packetTaskAccept = app.buttons["CapturePacketTaskAcceptButton"]
         reveal(packetTaskAccept)
@@ -3302,7 +3300,6 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(app.descendants(matching: .any)["CapturePacketSpeakerEvidence_source-binding"].exists)
         XCTAssertTrue(app.descendants(matching: .any)["CapturePacketTaskSourceReviewRequired"].exists)
         XCTAssertFalse(packetTaskAccept.isEnabled, "Provider-only preview evidence must not open canonical task creation.")
-        XCTAssertFalse(app.buttons["CapturePacketTaskDeferButton"].isEnabled)
         XCTAssertFalse(app.buttons["CapturePacketTaskRejectButton"].isEnabled)
         // Hit regions and descriptions were audited before the optional
         // suggestions expanded. Preserve this exact rendered task row as
@@ -3316,13 +3313,13 @@ final class CaptureExperienceUITests: XCTestCase {
         reveal(editPacketTask)
         XCTAssertTrue(
             editPacketTask.isEnabled && editPacketTask.isHittable,
-            "Preview may inspect a packet task draft while every review mutation stays disabled."
+            "Preview may inspect task adjustments while every write stays disabled."
         )
         editPacketTask.tap()
-        XCTAssertTrue(app.textFields["CapturePacketTaskTitleField"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.textFields["CapturePacketTaskDetailField"].waitForExistence(timeout: 5))
-        XCTAssertFalse(app.buttons["CapturePacketTaskSaveDraftButton"].isEnabled)
-        app.buttons["CapturePacketTaskCancelEditButton"].tap()
+        XCTAssertTrue(app.textFields["CapturePacketTaskCreateTitleField"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.textFields["CapturePacketTaskCreateDetailField"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["CapturePacketTaskCreateButton"].isEnabled)
+        app.buttons["CapturePacketTaskCancelCreateButton"].tap()
 
         let presentationControls = app.descendants(matching: .any)["CaptureTranscriptPresentationControls"].firstMatch
         reveal(presentationControls)
@@ -4141,7 +4138,7 @@ final class CaptureExperienceUITests: XCTestCase {
     }
 
     func testNewSessionDoesNotImplyConsentOrStartRecording() {
-        let newButton = app.buttons["New session"].firstMatch
+        let newButton = app.buttons["Call or schedule"].firstMatch
         XCTAssertTrue(newButton.waitForExistence(timeout: 5))
         newButton.tap()
 
@@ -4995,6 +4992,10 @@ final class CaptureAppStoreScreenshotUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["What I want to explore next"].exists)
         XCTAssertTrue(app.staticTexts["Timed transcript"].exists)
         XCTAssertTrue(app.buttons["CaptureLibraryStartVoiceNote"].exists)
+        XCTAssertTrue(
+            app.buttons["CaptureLibrarySpeakToWrite"].isHittable,
+            "Library should expose speech-to-writing as a visible primary action, not only as a toolbar icon."
+        )
         keepScreenshot("04-library.png")
 
         let writingDraft = app.descendants(matching: .any)["CaptureLibraryPreviewWritingCard"]

@@ -613,7 +613,7 @@ private struct CaptureTodayPrimaryActions: View {
                     Text("Speak to write")
                         .font(.headline)
                         .fixedSize(horizontal: false, vertical: true)
-                    Text("Turn your voice into editable writing.")
+                    Text("Record an idea, paper, or draft as editable writing.")
                         .font(.subheadline)
                         .opacity(0.92)
                         .fixedSize(horizontal: false, vertical: true)
@@ -650,11 +650,11 @@ private struct CaptureTodayPrimaryActions: View {
                     .background(CapturePalette.accent.opacity(0.1), in: Circle())
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("New session")
+                    Text("Call or schedule")
                         .font(.headline)
                         .foregroundStyle(.primary)
                         .fixedSize(horizontal: false, vertical: true)
-                    Text("Schedule or start a recorded call.")
+                    Text("Meet, record, and work together in one session.")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -676,8 +676,8 @@ private struct CaptureTodayPrimaryActions: View {
         }
         .buttonStyle(.plain)
         .disabled(!canStart)
-        .accessibilityLabel("New session")
-        .accessibilityHint("Schedules coaching, starts a call, or records with someone else.")
+        .accessibilityLabel("Call or schedule")
+        .accessibilityHint("Starts a call now or schedules a Session for later.")
         .accessibilityIdentifier("CaptureStartSession")
     }
 }
@@ -13584,6 +13584,10 @@ private struct CaptureLibraryView: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
 
+                if selectedSection == .writing {
+                    startWritingAction
+                }
+
                 librarySearch
 
                 Picker("Library section", selection: $selectedSection) {
@@ -13616,10 +13620,10 @@ private struct CaptureLibraryView: View {
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button(action: onStartVoiceNote) {
-                    Image(systemName: "mic.badge.plus")
+                    Label("Speak", systemImage: "mic.badge.plus")
                 }
                 .disabled(model.isSessionContextLocked || model.isCreatingSession)
-                .accessibilityLabel("New writing")
+                .accessibilityLabel("Speak to write")
                 .accessibilityHint("Creates a private recording that becomes editable writing.")
                 .accessibilityIdentifier("CaptureLibraryStartVoiceNote")
             }
@@ -13669,6 +13673,41 @@ private struct CaptureLibraryView: View {
 
     private var normalizedSearch: String {
         searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var startWritingAction: some View {
+        Button(action: onStartVoiceNote) {
+            HStack(spacing: 13) {
+                Image(systemName: "waveform")
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(.white)
+                    .frame(width: 44, height: 44)
+                    .background(.white.opacity(0.18), in: Circle())
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Speak to write")
+                        .font(.headline)
+                    Text("Talk naturally. Edit, organize, or export the text afterward.")
+                        .font(.caption)
+                        .opacity(0.92)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 8)
+                Image(systemName: "plus.circle.fill")
+                    .font(.title2)
+                    .accessibilityHidden(true)
+            }
+            .frame(maxWidth: .infinity, minHeight: 64, alignment: .leading)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
+            .foregroundStyle(.white)
+            .background(CapturePalette.accent.gradient, in: RoundedRectangle(cornerRadius: 18))
+        }
+        .buttonStyle(.plain)
+        .disabled(model.isSessionContextLocked || model.isCreatingSession)
+        .accessibilityLabel("Speak to write")
+        .accessibilityHint("Starts a private recording and turns it into editable, time-linked writing.")
+        .accessibilityIdentifier("CaptureLibrarySpeakToWrite")
     }
 
     @ViewBuilder

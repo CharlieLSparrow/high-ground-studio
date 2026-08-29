@@ -2862,34 +2862,13 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         XCTAssertTrue(noteBody.waitForExistence(timeout: 8))
         replaceText(in: noteTitle, with: editedNoteTitle, app: app)
         replaceText(in: noteBody, with: editedNoteBody, app: app)
-        let saveDraft = app.buttons["CapturePacketCreateNoteButton_\(candidateKey)"].firstMatch
-        XCTAssertTrue(saveDraft.isEnabled)
-        saveDraft.tap()
-        XCTAssertTrue(
-            app.staticTexts.matching(NSPredicate(format: "label == %@", "EDITED DRAFT")).firstMatch
-                .waitForExistence(timeout: 30),
-            "The non-canonical edit must read back from Nest before acceptance."
-        )
-        XCTAssertFalse(app.descendants(matching: .any)["CapturePacketNoteSaved_\(candidateKey)"].exists)
-
-        let reviewNote = app.buttons["CapturePacketReviewNoteButton_\(candidateKey)"].firstMatch
-        XCTAssertTrue(waitForRuntimeElement(reviewNote, in: app, timeout: 12, swipeAttempts: 6))
-        reviewNote.tap()
-        XCTAssertTrue(noteTitle.waitForExistence(timeout: 8))
-        XCTAssertEqual(noteTitle.value as? String, editedNoteTitle)
-        XCTAssertEqual(noteBody.value as? String, editedNoteBody)
         let saveCanonicalNote = app.buttons["CapturePacketCreateNoteButton_\(candidateKey)"].firstMatch
         XCTAssertTrue(saveCanonicalNote.isEnabled)
         saveCanonicalNote.tap()
         XCTAssertTrue(
             app.descendants(matching: .any)["CapturePacketNoteSaved_\(candidateKey)"].firstMatch
                 .waitForExistence(timeout: 30),
-            "The separate playback-gated save must read back as one canonical Session note."
-        )
-        XCTAssertTrue(
-            app.descendants(matching: .any)["CapturePacketNoteGovernance_\(candidateKey)"].firstMatch
-                .waitForExistence(timeout: 12),
-            "The canonical note must expose its governed materialization receipt in Capture."
+            "Adjusted wording must save directly as an ordinary editable Session note."
         )
 
         jumpMenu.tap()
@@ -2906,10 +2885,6 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         ).firstMatch
         XCTAssertTrue(exactGoalTitle.waitForExistence(timeout: 8))
         accept.tap()
-        let create = app.buttons["CapturePacketGoalCreateButton"].firstMatch
-        XCTAssertTrue(create.waitForExistence(timeout: 8))
-        XCTAssertTrue(create.isEnabled)
-        create.tap()
 
         let accepted = app.descendants(matching: .any).matching(
             NSPredicate(format: "identifier BEGINSWITH %@", "CapturePacketGoalAccepted_")
@@ -2936,10 +2911,6 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         XCTAssertTrue(waitForRuntimeElement(acceptTask, in: app, timeout: 12, swipeAttempts: 6))
         XCTAssertTrue(acceptTask.isEnabled)
         acceptTask.tap()
-        let createTask = app.buttons["CapturePacketTaskCreateButton"].firstMatch
-        XCTAssertTrue(createTask.waitForExistence(timeout: 8))
-        XCTAssertTrue(createTask.isEnabled)
-        createTask.tap()
         XCTAssertTrue(
             app.descendants(matching: .any).matching(
                 NSPredicate(format: "identifier BEGINSWITH %@", "CapturePacketTaskAccepted_")
@@ -3278,13 +3249,7 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
                 NSPredicate(format: "identifier BEGINSWITH %@", "CapturePacketGoalAccepted_")
             ).firstMatch.waitForExistence(timeout: 30)
         )
-        XCTAssertTrue(app.staticTexts["Added as reviewed evidence to one existing goal"].firstMatch.exists)
-        XCTAssertTrue(
-            app.descendants(matching: .any).matching(
-                NSPredicate(format: "identifier BEGINSWITH %@", "CapturePacketGoalGovernance_")
-            ).firstMatch.waitForExistence(timeout: 10),
-            "The accepted goal candidate must expose its durable governed action receipt after server readback."
-        )
+        XCTAssertTrue(app.staticTexts["Added to an existing goal"].firstMatch.exists)
         attachRuntimeScreenshot(app, name: "Reviewed transcript evidence added to exact existing goal")
 
         app.terminate()
@@ -3406,13 +3371,7 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         XCTAssertTrue(app.descendants(matching: .any).matching(
             NSPredicate(format: "identifier BEGINSWITH %@", "CapturePacketTaskAccepted_")
         ).firstMatch.waitForExistence(timeout: 30))
-        XCTAssertTrue(app.staticTexts["Added as reviewed evidence to one existing task"].firstMatch.exists)
-        XCTAssertTrue(
-            app.descendants(matching: .any).matching(
-                NSPredicate(format: "identifier BEGINSWITH %@", "CapturePacketTaskGovernance_")
-            ).firstMatch.waitForExistence(timeout: 10),
-            "The accepted task candidate must expose its durable governed action receipt after server readback."
-        )
+        XCTAssertTrue(app.staticTexts["Added to an existing task"].firstMatch.exists)
         attachRuntimeScreenshot(app, name: "Reviewed transcript evidence added to exact existing task")
 
         app.terminate()
@@ -4854,7 +4813,7 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         }
         var app = try launchSignedInCaptureApp()
 
-        let newSession = app.buttons["New session"].firstMatch
+        let newSession = app.buttons["Call or schedule"].firstMatch
         XCTAssertTrue(newSession.waitForExistence(timeout: 20))
         newSession.tap()
         XCTAssertTrue(app.navigationBars["New session"].waitForExistence(timeout: 6))

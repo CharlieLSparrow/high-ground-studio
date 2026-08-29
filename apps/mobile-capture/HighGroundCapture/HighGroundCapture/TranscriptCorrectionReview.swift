@@ -4395,10 +4395,10 @@ struct CapturePacketNoteReviewPreviewView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                Label("Source-linked Session note", systemImage: "note.text.badge.plus")
+                Label("Optional transcript idea", systemImage: "note.text.badge.plus")
                     .font(.title2.weight(.bold))
                     .foregroundStyle(.orange)
-                Text("Preview the deliberate review step. The final save stays disabled, no network request runs, and no canonical note or external side effect is created.")
+                Text("Quipsly can add this as a private note in one tap, or you can adjust it first. This preview never saves anything.")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -4417,7 +4417,7 @@ struct CapturePacketNoteReviewPreviewView: View {
             .padding(.bottom, 48)
         }
         .background(Color(uiColor: .systemGroupedBackground))
-        .navigationTitle("Review note")
+        .navigationTitle("Transcript idea")
         .navigationBarTitleDisplayMode(.inline)
         .accessibilityIdentifier("CapturePacketNoteReviewPreviewView")
     }
@@ -4463,8 +4463,7 @@ struct CaptureTranscriptSpeakerEvidenceBadge: View {
 
 private struct CapturePacketNoteCandidateCard: View {
     private enum ReviewMode {
-        case accept
-        case edit
+        case adjust
         case merge
     }
 
@@ -4518,7 +4517,7 @@ private struct CapturePacketNoteCandidateCard: View {
             || candidate.reviewStatus == "MERGED_INTO_NOTE"
     }
     private var laneRejected: Bool { candidate.laneStatus == "REJECTED_BY_HUMAN" }
-    private var sourceFullyReviewed: Bool {
+    private var sourceWasReviewed: Bool {
         candidate.transcriptReviewStatus == "human-reviewed"
             && (candidate.sourceSpan?.segments.allSatisfy { $0.reviewStatus == "human-reviewed" } ?? true)
     }
@@ -4538,7 +4537,6 @@ private struct CapturePacketNoteCandidateCard: View {
         default: candidate.laneStatus.replacingOccurrences(of: "_", with: " ")
         }
     }
-    private var isEditingDraft: Bool { reviewMode == .edit }
     private var selectedMergeTarget: CapturePacketNoteMergeTarget? {
         mergeTargets.first { $0.id == mergeTargetID }
     }
@@ -4588,8 +4586,8 @@ private struct CapturePacketNoteCandidateCard: View {
             .buttonStyle(.bordered)
             .frame(minHeight: 44)
             .accessibilityIdentifier("CapturePacketNoteSourceButton_\(candidate.accessibilityKey)")
-            if !accepted && !sourceFullyReviewed {
-                Label("The source is ready if you want to double-check this suggestion.", systemImage: "play.circle")
+            if !accepted && !sourceWasReviewed {
+                Label("Play the source whenever you want to double-check this idea.", systemImage: "play.circle")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.orange)
                     .fixedSize(horizontal: false, vertical: true)
@@ -4597,7 +4595,7 @@ private struct CapturePacketNoteCandidateCard: View {
             }
             if let carried = candidate.carriedForwardDraft, carried.exactSourceMatch {
                 Label(
-                    "Your prior draft was carried into this rebuilt packet because its source span and provider evidence still match exactly. Review it again before saving.",
+                    "Your previous wording was carried forward because its source still matches.",
                     systemImage: "arrow.triangle.2.circlepath.doc.on.clipboard"
                 )
                 .font(.caption.weight(.semibold))
@@ -4616,17 +4614,11 @@ private struct CapturePacketNoteCandidateCard: View {
                     .font(.caption.weight(.bold))
                     .foregroundStyle(.green)
                     .accessibilityIdentifier("CapturePacketNoteSaved_\(candidate.accessibilityKey)")
-                if let governance = candidate.lastHumanReview?.governance {
-                    Label("Governed receipt \(governance.shortActionID)", systemImage: "checkmark.seal")
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                        .accessibilityIdentifier("CapturePacketNoteGovernance_\(candidate.accessibilityKey)")
-                }
             } else if reviewMode != nil {
                 Divider()
                 Label(
-                    isEditingDraft ? "Refine candidate for later review" : reviewMode == .merge ? "Merge into one existing Session note" : "Save one source-linked Session note",
-                    systemImage: isEditingDraft ? "pencil.line" : reviewMode == .merge ? "arrow.triangle.merge" : "note.text.badge.plus"
+                    reviewMode == .merge ? "Add to an existing note" : "Adjust note",
+                    systemImage: reviewMode == .merge ? "arrow.triangle.merge" : "pencil.line"
                 )
                     .font(.caption.weight(.bold))
                     .foregroundStyle(.orange)
@@ -4677,11 +4669,11 @@ private struct CapturePacketNoteCandidateCard: View {
                     .fixedSize(horizontal: false, vertical: true)
                     .accessibilityIdentifier("CapturePacketNoteAudienceBoundary")
                 HStack {
-                    Button(isEditingDraft ? "Save edited draft" : reviewMode == .merge ? "Merge as new revision" : "Save source-linked note") {
+                    Button(reviewMode == .merge ? "Add to note" : "Add note") {
                         Task {
                             if await client.reviewPacketNote(
                                 candidate: candidate,
-                                decision: isEditingDraft ? "EDIT" : reviewMode == .merge ? "MERGE" : "ACCEPT",
+                                decision: reviewMode == .merge ? "MERGE" : "ACCEPT",
                                 title: title,
                                 body: noteBody,
                                 kind: kind,
@@ -4713,11 +4705,9 @@ private struct CapturePacketNoteCandidateCard: View {
                         .frame(minHeight: 44)
                         .accessibilityIdentifier("CapturePacketCancelNoteButton_\(candidate.accessibilityKey)")
                 }
-                Text(isEditingDraft
-                    ? "Saves this wording for review without creating or sharing a note."
-                    : reviewMode == .merge
+                Text(reviewMode == .merge
                         ? "Adds this source to the selected note. Its previous version stays recoverable."
-                        : "Saves one source-linked note. Nothing is sent or shared automatically.")
+                        : "Adds a private, editable note with this source attached. Nothing is sent or shared.")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -4725,23 +4715,28 @@ private struct CapturePacketNoteCandidateCard: View {
             } else {
                 VStack(alignment: .leading, spacing: 8) {
                     Button {
-                        beginReview(.accept)
+                        Task {
+                            _ = await client.reviewPacketNote(
+                                candidate: candidate,
+                                decision: "ACCEPT",
+                                title: candidate.suggestedTitle,
+                                body: candidate.suggestedBody,
+                                kind: availableKinds.contains(where: { $0.rawValue == candidate.suggestedKind })
+                                    ? MobileSessionNoteKind(rawValue: candidate.suggestedKind) ?? .sessionNote
+                                    : .sessionNote,
+                                visibility: .authorPrivate,
+                                previewOnly: previewOnly
+                            )
+                        }
                     } label: {
-                        Label(
-                            sourceFullyReviewed ? "Review & save note" : "Review note details",
-                            systemImage: "note.text.badge.plus"
-                        )
+                        Label("Add private note", systemImage: "note.text.badge.plus")
                     }
                     .buttonStyle(.borderedProminent)
                     .tint(.orange)
                     .frame(minHeight: 44)
-                    .disabled(client.isMutating || decisionsLocked || laneRejected)
+                    .disabled(client.isMutating || previewOnly || decisionsLocked || laneRejected)
                     .accessibilityIdentifier("CapturePacketReviewNoteButton_\(candidate.accessibilityKey)")
-                    .accessibilityHint(
-                        sourceFullyReviewed
-                            ? "Creates nothing until you inspect purpose and audience and press Save source-linked note."
-                            : "Inspect purpose and audience now. Saving remains unavailable until you listen through and confirm every source segment."
-                    )
+                    .accessibilityHint("Adds this idea as a private editable note. You can change or remove it afterward.")
 
                     HStack {
                         Button("Add to existing note") { reviewMode = .merge }
@@ -4749,24 +4744,11 @@ private struct CapturePacketNoteCandidateCard: View {
                             .frame(minHeight: 44)
                         .disabled(client.isMutating || previewOnly || decisionsLocked || laneRejected || mergeTargets.isEmpty)
                             .accessibilityIdentifier("CapturePacketNoteMergeButton_\(candidate.accessibilityKey)")
-                        Button("Edit") { beginReview(.edit) }
+                        Button("Adjust") { beginReview(.adjust) }
                             .buttonStyle(.bordered)
                             .frame(minHeight: 44)
                             .disabled(client.isMutating || decisionsLocked || laneRejected)
                             .accessibilityIdentifier("CapturePacketNoteEditButton_\(candidate.accessibilityKey)")
-                        Button("Later") {
-                            Task {
-                                _ = await client.reviewPacketNote(
-                                    candidate: candidate,
-                                    decision: "DEFER",
-                                    previewOnly: previewOnly
-                                )
-                            }
-                        }
-                        .buttonStyle(.bordered)
-                        .frame(minHeight: 44)
-                        .disabled(client.isMutating || previewOnly || decisionsLocked || laneRejected)
-                        .accessibilityIdentifier("CapturePacketNoteDeferButton_\(candidate.accessibilityKey)")
                         Button("Dismiss", role: .destructive) { isConfirmingReject = true }
                             .buttonStyle(.bordered)
                             .frame(minHeight: 44)
@@ -4774,8 +4756,8 @@ private struct CapturePacketNoteCandidateCard: View {
                             .accessibilityIdentifier("CapturePacketNoteRejectButton_\(candidate.accessibilityKey)")
                     }
                     Text(mergeTargets.isEmpty
-                        ? "Save this as a note, edit it, keep it for later, or dismiss it."
-                        : "Save this as a note, add it to an existing note, edit it, keep it for later, or dismiss it.")
+                        ? "Add it now, adjust the wording, or dismiss it."
+                        : "Add it now, adjust it, add it to an existing note, or dismiss it.")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -4807,7 +4789,7 @@ private struct CapturePacketNoteCandidateCard: View {
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("The source and candidate remain in packet history. No canonical note, task, calendar event, message, delivery, or publication is created.")
+            Text("The idea disappears from this list. The recording and transcript remain unchanged.")
         }
         .toolbar {
             ToolbarItemGroup(placement: .keyboard) {
@@ -4844,7 +4826,6 @@ private struct CapturePacketTaskCandidateCard: View {
     @ObservedObject var client: CaptureTranscriptCorrectionClient
     let onOpenSource: () -> Void
 
-    @State private var isEditing = false
     @State private var isCreating = false
     @State private var isMerging = false
     @State private var mergeTargetID = ""
@@ -4884,7 +4865,7 @@ private struct CapturePacketTaskCandidateCard: View {
             || candidate.reviewStatus == "MERGED_INTO_ACTION_ITEM"
     }
 
-    private var sourceFullyReviewed: Bool {
+    private var sourceWasReviewed: Bool {
         candidate.transcriptReviewStatus == "human-reviewed"
             && (candidate.sourceSpan?.segments.allSatisfy { $0.reviewStatus == "human-reviewed" } ?? true)
     }
@@ -4925,8 +4906,8 @@ private struct CapturePacketTaskCandidateCard: View {
                 .buttonStyle(.bordered)
             .frame(minHeight: 44)
             .accessibilityIdentifier("CapturePacketTaskSource_\(candidate.segmentId)")
-            if !accepted && !sourceFullyReviewed {
-                Label("The source is ready if you want to double-check this suggestion.", systemImage: "play.circle")
+            if !accepted && !sourceWasReviewed {
+                Label("Play the source whenever you want to double-check this idea.", systemImage: "play.circle")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.orange)
                     .accessibilityIdentifier("CapturePacketTaskSourceReviewRequired")
@@ -4936,27 +4917,20 @@ private struct CapturePacketTaskCandidateCard: View {
                 VStack(alignment: .leading, spacing: 5) {
                     Label(
                         candidate.reviewStatus == "MERGED_INTO_ACTION_ITEM"
-                            ? "Added as reviewed evidence to one existing task"
-                            : "Accepted as canonical Quipsly work",
-                        systemImage: "checkmark.shield.fill"
+                            ? "Added to an existing task"
+                            : "Added to your tasks",
+                        systemImage: "checkmark.circle.fill"
                     )
                         .font(.subheadline.weight(.bold))
                         .foregroundStyle(.green)
                         .accessibilityIdentifier("CapturePacketTaskAccepted_\(candidate.id)")
-                    if let governance = candidate.lastHumanReview?.governance {
-                        Label("Governed receipt \(governance.shortActionID)", systemImage: "checkmark.seal")
-                            .font(.caption.monospaced().weight(.semibold))
-                            .foregroundStyle(.secondary)
-                            .accessibilityIdentifier("CapturePacketTaskGovernance_\(candidate.id)")
-                            .accessibilityHint("Identifies the durable governed action and receipt for this reviewed task decision.")
-                    }
                 }
             } else if isMerging {
                 VStack(alignment: .leading, spacing: 12) {
-                    Label("Add evidence to one existing task", systemImage: "link.badge.plus")
+                    Label("Add to an existing task", systemImage: "link.badge.plus")
                         .font(.subheadline.weight(.bold))
                         .foregroundStyle(.blue)
-                    Text("Choose deliberately. Quipsly appends this reviewed transcript and playback pointer; it does not rewrite the selected task.")
+                    Text("The transcript moment will stay attached without changing the task's wording, owner, or dates.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -4983,7 +4957,7 @@ private struct CapturePacketTaskCandidateCard: View {
                         .accessibilityIdentifier("CapturePacketTaskMergeTargetSummary_\(target.id)")
                     }
                     HStack {
-                        Button("Add reviewed evidence") {
+                        Button("Add to task") {
                             guard let target = mergeTargets.first(where: { $0.id == mergeTargetID }) else { return }
                             Task {
                                 _ = await client.reviewPacketAction(candidate: candidate, decision: "MERGE", title: nil, detail: nil, mergeTarget: target, previewOnly: previewOnly)
@@ -4996,17 +4970,17 @@ private struct CapturePacketTaskCandidateCard: View {
                             .buttonStyle(.bordered)
                             .accessibilityIdentifier("CapturePacketTaskCancelMergeButton")
                     }
-                    Text("Task identity, title, detail, status, owner, dates, reminder, recurrence, tags, goal links, and project remain unchanged. The exact transcript source remains playable.")
+                    Text("The existing task stays editable and the exact transcript source remains playable.")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             } else if isCreating {
                 VStack(alignment: .leading, spacing: 12) {
-                    Label("Create one canonical task", systemImage: "checklist.checked")
+                    Label("Adjust task", systemImage: "checklist.checked")
                         .font(.subheadline.weight(.bold))
                         .foregroundStyle(.green)
-                    Text("Review every field. Only the choices shown here become task state.")
+                    Text("Change anything you want, or keep Quipsly's defaults.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     TextField("Task title", text: $title, axis: .vertical)
@@ -5059,7 +5033,7 @@ private struct CapturePacketTaskCandidateCard: View {
                             .foregroundStyle(.secondary)
                     }
                     HStack {
-                        Button("Create task") {
+                        Button("Add task") {
                             Task {
                                 _ = await client.reviewPacketAction(
                                     candidate: candidate,
@@ -5080,38 +5054,31 @@ private struct CapturePacketTaskCandidateCard: View {
                             .buttonStyle(.bordered)
                             .accessibilityIdentifier("CapturePacketTaskCancelCreateButton")
                     }
-                    Text("The exact transcript segment and protected playback source stay attached. Reminder, calendar placement, delivery, and publication remain separate decisions.")
+                    Text("The transcript moment stays attached. You can edit or remove the task afterward.")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
-            } else if isEditing {
-                TextField("Task title", text: $title, axis: .vertical)
-                    .lineLimit(2...4)
-                    .textFieldStyle(.roundedBorder)
-                    .accessibilityIdentifier("CapturePacketTaskTitleField")
-                TextField("Evidence-backed detail", text: $detail, axis: .vertical)
-                    .lineLimit(2...5)
-                    .textFieldStyle(.roundedBorder)
-                    .accessibilityIdentifier("CapturePacketTaskDetailField")
-                HStack {
-                    Button("Save for review") {
-                        Task { _ = await client.reviewPacketAction(candidate: candidate, decision: "EDIT", title: title, detail: detail, previewOnly: previewOnly) }
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(decisionsDisabled || title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                    .accessibilityIdentifier("CapturePacketTaskSaveDraftButton")
-                    Button("Cancel") { isEditing = false }
-                        .buttonStyle(.bordered)
-                        .accessibilityIdentifier("CapturePacketTaskCancelEditButton")
-                }
             } else {
                 HStack {
-                    Button("Create task") { isCreating = true }
+                    Button("Add task") {
+                        Task {
+                            _ = await client.reviewPacketAction(
+                                candidate: candidate,
+                                decision: "ACCEPT",
+                                title: candidate.title,
+                                detail: candidate.detail,
+                                assignToMe: true,
+                                dueAt: nil,
+                                tagIDs: Array(Set(availableTags.filter(\.selectedForSession).map(\.id))),
+                                previewOnly: previewOnly
+                            )
+                        }
+                    }
                     .buttonStyle(.borderedProminent)
                     .disabled(previewOnly || decisionsLocked || client.isMutating)
                     .accessibilityIdentifier("CapturePacketTaskAcceptButton")
-                    Button("Edit") { isEditing = true }
+                    Button("Adjust") { isCreating = true }
                         .buttonStyle(.bordered)
                         .disabled(decisionsLocked || client.isMutating)
                         .accessibilityIdentifier("CapturePacketTaskEditButton")
@@ -5123,25 +5090,17 @@ private struct CapturePacketTaskCandidateCard: View {
                 .buttonStyle(.bordered)
                 .disabled(decisionsDisabled || mergeTargets.isEmpty)
                 .accessibilityIdentifier("CapturePacketTaskMergeModeButton")
-                HStack {
-                    Button("Later") {
-                        Task { _ = await client.reviewPacketAction(candidate: candidate, decision: "DEFER", title: nil, detail: nil, previewOnly: previewOnly) }
-                    }
-                    .buttonStyle(.bordered)
-                    .disabled(decisionsDisabled)
-                    .accessibilityIdentifier("CapturePacketTaskDeferButton")
-                    Button("Dismiss", role: .destructive) {
-                        Task { _ = await client.reviewPacketAction(candidate: candidate, decision: "REJECT", title: nil, detail: nil, previewOnly: previewOnly) }
-                    }
-                    .buttonStyle(.bordered)
-                    .disabled(decisionsDisabled)
-                    .accessibilityIdentifier("CapturePacketTaskRejectButton")
+                Button("Dismiss", role: .destructive) {
+                    Task { _ = await client.reviewPacketAction(candidate: candidate, decision: "REJECT", title: nil, detail: nil, previewOnly: previewOnly) }
                 }
+                .buttonStyle(.bordered)
+                .disabled(decisionsDisabled)
+                .accessibilityIdentifier("CapturePacketTaskRejectButton")
             }
             if !accepted && !isCreating && !isMerging {
                 Text(mergeTargets.isEmpty
-                    ? "Nothing changes until you choose. Create a task, edit the suggestion, keep it for later, or dismiss it."
-                    : "Nothing changes until you choose. Create a task, add this source to an existing task, edit it, keep it for later, or dismiss it.")
+                    ? "Add it now, adjust it first, or dismiss it."
+                    : "Add it now, adjust it, add it to an existing task, or dismiss it.")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -5152,7 +5111,6 @@ private struct CapturePacketTaskCandidateCard: View {
         .onChange(of: candidate.reviewStatus) { _, _ in
             title = candidate.title
             detail = candidate.detail
-            isEditing = false
             isCreating = false
             isMerging = false
             assignToMe = true
@@ -5178,7 +5136,6 @@ private struct CapturePacketGoalCandidateCard: View {
     @ObservedObject var client: CaptureTranscriptCorrectionClient
     let onOpenSource: () -> Void
 
-    @State private var isEditing = false
     @State private var isCreating = false
     @State private var isMerging = false
     @State private var mergeTargetID = ""
@@ -5217,7 +5174,7 @@ private struct CapturePacketGoalCandidateCard: View {
             || candidate.reviewStatus == "MERGED_INTO_GOAL"
     }
 
-    private var sourceFullyReviewed: Bool {
+    private var sourceWasReviewed: Bool {
         candidate.transcriptReviewStatus == "human-reviewed"
             && (candidate.sourceSpan?.segments.allSatisfy { $0.reviewStatus == "human-reviewed" } ?? true)
     }
@@ -5258,8 +5215,8 @@ private struct CapturePacketGoalCandidateCard: View {
                 .buttonStyle(.bordered)
             .frame(minHeight: 44)
             .accessibilityIdentifier("CapturePacketGoalSource_\(candidate.segmentId)")
-            if !accepted && !sourceFullyReviewed {
-                Label("The source is ready if you want to double-check this suggestion.", systemImage: "play.circle")
+            if !accepted && !sourceWasReviewed {
+                Label("Play the source whenever you want to double-check this idea.", systemImage: "play.circle")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.orange)
                     .accessibilityIdentifier("CapturePacketGoalSourceReviewRequired")
@@ -5269,27 +5226,20 @@ private struct CapturePacketGoalCandidateCard: View {
                 VStack(alignment: .leading, spacing: 5) {
                     Label(
                         candidate.reviewStatus == "MERGED_INTO_GOAL"
-                            ? "Added as reviewed evidence to one existing goal"
-                            : "Accepted as one canonical goal",
-                        systemImage: "checkmark.shield.fill"
+                            ? "Added to an existing goal"
+                            : "Added to your goals",
+                        systemImage: "checkmark.circle.fill"
                     )
                         .font(.subheadline.weight(.bold))
                         .foregroundStyle(.green)
                         .accessibilityIdentifier("CapturePacketGoalAccepted_\(candidate.id)")
-                    if let governance = candidate.lastHumanReview?.governance {
-                        Label("Governed receipt \(governance.shortActionID)", systemImage: "checkmark.seal")
-                            .font(.caption.monospaced().weight(.semibold))
-                            .foregroundStyle(.secondary)
-                            .accessibilityIdentifier("CapturePacketGoalGovernance_\(candidate.id)")
-                            .accessibilityHint("Identifies the durable governed action and receipt for this reviewed goal decision.")
-                    }
                 }
             } else if isCreating {
                 VStack(alignment: .leading, spacing: 12) {
-                    Label("Create one canonical goal", systemImage: "target")
+                    Label("Adjust goal", systemImage: "target")
                         .font(.subheadline.weight(.bold))
                         .foregroundStyle(.purple)
-                    Text("Review every field. Only the choices shown here become goal state.")
+                    Text("Change anything you want, or keep Quipsly's defaults.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     TextField("Goal title", text: $title, axis: .vertical)
@@ -5336,7 +5286,7 @@ private struct CapturePacketGoalCandidateCard: View {
                             .foregroundStyle(.secondary)
                     }
                     HStack {
-                        Button("Create goal") {
+                        Button("Add goal") {
                             Task {
                                 let normalizedTarget = hasTargetDate
                                     ? Calendar.current.date(bySettingHour: 12, minute: 0, second: 0, of: targetAt)
@@ -5360,17 +5310,17 @@ private struct CapturePacketGoalCandidateCard: View {
                             .buttonStyle(.bordered)
                             .accessibilityIdentifier("CapturePacketGoalCancelCreateButton")
                     }
-                    Text("Every transcript segment in this evidence span and the protected playback source stay attached. Tasks, focus blocks, reminders, calendar placement, delivery, and publication remain separate decisions.")
+                    Text("The transcript moment stays attached. You can edit or remove the goal afterward.")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             } else if isMerging {
                 VStack(alignment: .leading, spacing: 12) {
-                    Label("Add evidence to one existing goal", systemImage: "target")
+                    Label("Add to an existing goal", systemImage: "target")
                         .font(.subheadline.weight(.bold))
                         .foregroundStyle(.blue)
-                    Text("Choose deliberately. Quipsly appends this reviewed transcript and playback pointer; it does not rewrite the selected goal.")
+                    Text("The transcript moment will stay attached without changing the goal's wording, status, or date.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -5415,7 +5365,7 @@ private struct CapturePacketGoalCandidateCard: View {
                         .accessibilityIdentifier("CapturePacketGoalMergeTargetSummary_\(target.id)")
                     }
                     HStack {
-                        Button("Add reviewed evidence") {
+                        Button("Add to goal") {
                             guard let target = mergeTargets.first(where: { $0.id == mergeTargetID }) else { return }
                             Task {
                                 _ = await client.reviewPacketGoal(
@@ -5444,43 +5394,26 @@ private struct CapturePacketGoalCandidateCard: View {
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
-            } else if isEditing {
-                TextField("Goal title", text: $title, axis: .vertical)
-                    .lineLimit(2...4)
-                    .textFieldStyle(.roundedBorder)
-                    .accessibilityIdentifier("CapturePacketGoalTitleField")
-                TextField("Definition of progress", text: $description, axis: .vertical)
-                    .lineLimit(2...5)
-                    .textFieldStyle(.roundedBorder)
-                    .accessibilityIdentifier("CapturePacketGoalDescriptionField")
+            } else {
                 HStack {
-                    Button("Save for review") {
+                    Button("Add goal") {
                         Task {
                             _ = await client.reviewPacketGoal(
                                 candidate: candidate,
-                                decision: "EDIT",
-                                title: title,
-                                description: description,
+                                decision: "ACCEPT",
+                                title: candidate.suggestedTitle,
+                                description: candidate.suggestedDescription,
+                                targetAt: nil,
+                                tagIDs: Array(Set(availableTags.filter(\.selectedForSession).map(\.id))),
                                 previewOnly: previewOnly
                             )
                         }
                     }
                     .buttonStyle(.borderedProminent)
                     .tint(.purple)
-                    .disabled(decisionsDisabled || title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                    .accessibilityIdentifier("CapturePacketGoalSaveDraftButton")
-                    Button("Cancel") { isEditing = false }
-                        .buttonStyle(.bordered)
-                        .accessibilityIdentifier("CapturePacketGoalCancelEditButton")
-                }
-            } else {
-                HStack {
-                    Button("Create goal") { isCreating = true }
-                    .buttonStyle(.borderedProminent)
-                    .tint(.purple)
                     .disabled(previewOnly || decisionsLocked || client.isMutating)
                     .accessibilityIdentifier("CapturePacketGoalAcceptButton")
-                    Button("Edit") { isEditing = true }
+                    Button("Adjust") { isCreating = true }
                         .buttonStyle(.bordered)
                         .disabled(decisionsLocked || client.isMutating)
                         .accessibilityIdentifier("CapturePacketGoalEditButton")
@@ -5496,23 +5429,15 @@ private struct CapturePacketGoalCandidateCard: View {
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
-                HStack {
-                    Button("Later") {
-                        Task { _ = await client.reviewPacketGoal(candidate: candidate, decision: "DEFER", title: nil, description: nil, previewOnly: previewOnly) }
-                    }
-                    .buttonStyle(.bordered)
-                    .disabled(decisionsDisabled)
-                    .accessibilityIdentifier("CapturePacketGoalDeferButton")
-                    Button("Dismiss", role: .destructive) {
-                        Task { _ = await client.reviewPacketGoal(candidate: candidate, decision: "REJECT", title: nil, description: nil, previewOnly: previewOnly) }
-                    }
-                    .buttonStyle(.bordered)
-                    .disabled(decisionsDisabled)
-                    .accessibilityIdentifier("CapturePacketGoalRejectButton")
+                Button("Dismiss", role: .destructive) {
+                    Task { _ = await client.reviewPacketGoal(candidate: candidate, decision: "REJECT", title: nil, description: nil, previewOnly: previewOnly) }
                 }
+                .buttonStyle(.bordered)
+                .disabled(decisionsDisabled)
+                .accessibilityIdentifier("CapturePacketGoalRejectButton")
             }
             if !accepted && !isCreating && !isMerging {
-                Text("Nothing changes until you choose. Create a goal, add this source to an existing goal, edit the suggestion, keep it for later, or dismiss it.")
+                Text("Add it now, adjust it first, add it to an existing goal, or dismiss it.")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -5523,7 +5448,6 @@ private struct CapturePacketGoalCandidateCard: View {
         .onChange(of: candidate.reviewStatus) { _, _ in
             title = candidate.suggestedTitle
             description = candidate.suggestedDescription
-            isEditing = false
             isCreating = false
             isMerging = false
             mergeTargetID = ""
