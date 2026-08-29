@@ -518,8 +518,18 @@ final class CaptureExperienceUITests: XCTestCase {
             ((writing.value as? String) ?? "").contains("• "),
             "A visible structure control must change the actual editable writing."
         )
+        app.buttons["Done"].tap()
+        let webContinuation = app.descendants(matching: .any)["CaptureVoiceWritingContinueOnWeb"]
+        for _ in 0..<6 where !webContinuation.exists || !webContinuation.isHittable {
+            app.descendants(matching: .any)["CaptureVoiceWritingEditor"].swipeUp()
+        }
+        XCTAssertTrue(
+            webContinuation.waitForExistence(timeout: 5),
+            "A synced voice-written paper should have an obvious path to the same browser editor."
+        )
+        XCTAssertTrue(webContinuation.isHittable)
         let screenshot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
-        screenshot.name = "voice-writing-structure-editor.png"
+        screenshot.name = "voice-writing-phone-to-web.png"
         screenshot.lifetime = .keepAlways
         add(screenshot)
     }

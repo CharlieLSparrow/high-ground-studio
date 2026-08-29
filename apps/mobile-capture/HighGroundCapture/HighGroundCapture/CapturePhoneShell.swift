@@ -8009,6 +8009,15 @@ private struct CaptureVoiceWritingEditor: View {
                     .foregroundStyle(.secondary)
             }
 
+            if let webWritingURL {
+                Link(destination: webWritingURL) {
+                    Label("Continue on web", systemImage: "macbook")
+                        .frame(minHeight: 44)
+                }
+                .accessibilityHint("Opens this same private writing in your browser.")
+                .accessibilityIdentifier("CaptureVoiceWritingContinueOnWeb")
+            }
+
             Text("Moving changes where you find this writing. It never shares the writing or its recording with other Nest members.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -8311,6 +8320,18 @@ private struct CaptureVoiceWritingEditor: View {
             if left.isHome != right.isHome { return left.isHome }
             return left.name.localizedCaseInsensitiveCompare(right.name) == .orderedAscending
         }
+    }
+
+    private var webWritingURL: URL? {
+        guard currentDraft?.isSynced == true,
+              let draftID = currentDraft?.id else { return nil }
+        let baseURL = normalizedNestBaseURL(
+            Bundle.main.object(forInfoDictionaryKey: "QUIPSLY_API_BASE_URL") as? String
+                ?? "https://nest.quipsly.com"
+        )
+        return URL(string: baseURL)?
+            .appendingPathComponent("writing", isDirectory: true)
+            .appendingPathComponent(draftID.uuidString.lowercased(), isDirectory: false)
     }
 
     @MainActor
