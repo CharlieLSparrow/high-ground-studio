@@ -4,13 +4,13 @@
     "appId": "6780995957",
     "bundleId": "com.highgroundodyssey.HighGroundCapture",
     "version": "1.0",
-    "build": "44",
-    "sourceRevision": "83057ca33a094c4a61f84eba2988032bc743dc17"
+    "build": "45",
+    "sourceRevision": "efce500ba90e469b65d7c3bda36ea98e3fa5bb78"
   },
   "publication": {
     "status": "requires-account-holder-approval",
     "providerPublished": false,
-    "boundary": "Engineering recommendation validated against the exact signed and uploaded Build 44 archive; the Account Holder must publish the matching App Store Connect answers."
+    "boundary": "Engineering recommendation validated against the exact signed and uploaded Build 45 archive; the Account Holder must publish the matching App Store Connect answers."
   },
   "tracking": {
     "used": false,

@@ -26,7 +26,7 @@
     "demoAccountRequired": true,
     "credentialsCommitted": false,
     "credentialStorage": "App Store Connect App Review Information only",
-    "whatToTest": "Sign in with the supplied reviewer account. Open the supplied synthetic coaching Session, join its green room, confirm the independent call and recording controls, and make a short disposable recording after granting consent. Confirm the local original appears in Library, then open its transcript to correct text and inspect basic editing and follow-through. Open Today and Work to view and edit the connected notes, task, goal, project, and tags. Confirm Account exposes Privacy and Request Account Deletion. Do not use private client, podcast, or unpublished source material."
+    "whatToTest": "Sign in with the supplied reviewer account. Try Speak to write: make a short recording, stop, open the editable writing, correct a word, and confirm the original audio remains connected. Open the supplied synthetic coaching Session, join its call, make a short local recording, and confirm Library playback and transcript access. Create and edit a note, task, or goal. Confirm Account exposes Privacy and Request Account Deletion. Do not use private client, podcast, or unpublished source material."
   },
   "privacy": {
     "sourceManifest": "apps/mobile-capture/HighGroundCapture/HighGroundCapture/PrivacyInfo.xcprivacy",
@@ -43,7 +43,7 @@
       "NSPrivacyCollectedDataTypePhotosorVideos",
       "NSPrivacyCollectedDataTypeOtherUserContent"
     ],
-    "archiveAggregateValidatedBuild": "44",
+    "archiveAggregateValidatedBuild": "45",
     "aggregateCollectedDataTypeCount": 12,
     "publicationStatus": "requires-account-holder-approval"
   },
@@ -51,8 +51,8 @@
     "providerTarget": {
       "appId": "6780995957",
       "version": "1.0",
-      "build": "44",
-      "auditedAt": "2026-08-28T23:25:05.447Z"
+      "build": "45",
+      "auditedAt": "2026-08-29T05:38:25.100Z"
     },
     "contentRights": {
       "status": "configured-and-read-back",

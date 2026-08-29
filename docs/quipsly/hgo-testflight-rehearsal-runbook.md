@@ -8,10 +8,10 @@ needs to prove.
 
 ## Current release state
 
-- App: **Quipsly Capture 1.0 (44)**
+- App: **Quipsly Capture 1.0 (45)**
 - Exact native source:
-  `83057ca33a094c4a61f84eba2988032bc743dc17`
-- App Store Connect build ID: `eacf21a3-e981-4e5e-91bb-02f2aa221fb8`
+  `efce500ba90e469b65d7c3bda36ea98e3fa5bb78`
+- App Store Connect build ID: `391e52f3-d3a9-49e2-b4c0-c9f85ec1914c`
 - External TestFlight group: **Quipsly Capture Rehearsal**
 - TestFlight Apple Account: `shomers@icloud.com`
 - Quipsly Google identity: `shomers@gmail.com`
@@ -22,15 +22,12 @@ needs to prove.
 - Automatic tester notification: enabled
 - Installation mode: public-link-only; neither a named-tester email nor a
   redemption code is required
-- Build 44 is the current approved public beta identified by the canonical
+- Build 45 is the current approved public beta identified by the canonical
   release ledger and Apple readback. It adds the direct **Speak to write** path,
   on-device long-form dictation, timed transcript correction, structured rich
   writing, Word export, and clearer Private / Owned / Shared Nest navigation.
   It remains subject to a real physical-iPhone handoff, atypical-speech sample,
   call, recording, retained playback, and cross-device acceptance test.
-- Build 45 is the next source candidate. It is not uploaded, assigned, or live;
-  this runbook must continue to identify Build 44 until Apple distribution is
-  verified and the canonical release ledger advances.
 - Build 28 passed all 63 serialized iPhone and Share Extension journeys,
   exact-source preflight, signed archive/export inspection, Apple processing,
   external beta review, external-group readback, and an anonymous HTTP 200 read
