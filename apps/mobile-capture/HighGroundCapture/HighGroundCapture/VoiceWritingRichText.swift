@@ -149,7 +149,7 @@ struct VoiceWritingRichText: Codable, Equatable {
         )
     }
 
-    private static func isWholeLine(_ structure: VoiceWritingBlockStyle, in text: String) -> Bool {
+    nonisolated private static func isWholeLine(_ structure: VoiceWritingBlockStyle, in text: String) -> Bool {
         let source = text as NSString
         let beginsLine = structure.startUtf16 == 0
             || source.substring(with: NSRange(location: structure.startUtf16 - 1, length: 1)) == "\n"

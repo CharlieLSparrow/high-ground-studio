@@ -2523,7 +2523,10 @@ final class CaptureExperienceUITests: XCTestCase {
             "Library should keep recording and transcript readiness reachable without cluttering Home."
         )
         let finishDetails = app.descendants(matching: .any)["CaptureFinishQueueDetails"].firstMatch
-        reveal(finishDetails)
+        // Recording details follow the visible recovery actions in this card.
+        // Search downward first so a lazy Library stack does not spend a full
+        // pass looking above the card before materializing the disclosure.
+        reveal(finishDetails, searchAboveFirst: false)
         XCTAssertTrue(finishDetails.waitForExistence(timeout: 5))
         finishDetails.tap()
         let recordingCounts = app.staticTexts.matching(
