@@ -4966,8 +4966,11 @@ rehearsal`) in an iPhone 17 Pro simulator. The signed-in UI acceptance opened
   **Account**. **Nest** remains the durable private/owned/shared workspace term;
   a queue is reserved for temporary attention ordering rather than becoming a
   second word users must learn for the same place.
-- The source contract smoke passes, three focused web suites pass (31 tests),
+- The source contract smoke passes, three focused web suites pass (32 tests),
   the generic simulator build passes, and the focused iPhone 17 Pro Library
   writing UI test passes. Physical-device, authenticated cross-device, and
   natural-speech evidence remains outstanding and is not inferred from these
   automated checks.
+- These changes are grouped as the deliberate Quipsly Capture **Build 51**
+  release train; Build 50 remains the public TestFlight truth until the exact
+  Build 51 commit is qualified, uploaded, processed, assigned, and read back.
