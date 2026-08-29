@@ -33,6 +33,8 @@ enum VoiceWritingLiveSourceFactory {
         fileURL: URL,
         audioSettings: [String: Any],
         locale requestedLocale: Locale = Locale(identifier: "en-US"),
+        recognitionProfile: VoiceWritingRecognitionProfile = .standard,
+        contextualPhrases: [String] = [],
         onTextChange: @escaping (_ finalized: String, _ volatile: String) -> Void,
         onPreviewUnavailable: @escaping (_ reason: String) -> Void,
         onSourceWriteFailure: @escaping (_ reason: String) -> Void
@@ -43,6 +45,8 @@ enum VoiceWritingLiveSourceFactory {
                 fileURL: fileURL,
                 audioSettings: audioSettings,
                 requestedLocale: requestedLocale,
+                recognitionProfile: recognitionProfile,
+                contextualPhrases: contextualPhrases,
                 onTextChange: onTextChange,
                 onPreviewUnavailable: onPreviewUnavailable,
                 onSourceWriteFailure: onSourceWriteFailure
@@ -90,24 +94,58 @@ private final class AppleVoiceWritingLiveSourceRecorder: VoiceWritingLiveSourceR
         fileURL: URL,
         audioSettings: [String: Any],
         requestedLocale: Locale,
+        recognitionProfile: VoiceWritingRecognitionProfile,
+        contextualPhrases: [String],
         onTextChange: @escaping (_ finalized: String, _ volatile: String) -> Void,
         onPreviewUnavailable: @escaping (_ reason: String) -> Void,
         onSourceWriteFailure: @escaping (_ reason: String) -> Void
     ) async throws -> AppleVoiceWritingLiveSourceRecorder {
-        guard SpeechTranscriber.isAvailable else {
-            throw LivePreviewFailure.speechAnalyzerUnavailable
+        let transcriptState = LiveTranscriptState(onTextChange: onTextChange)
+        let modules: [any SpeechModule]
+        let makeResultTask: () -> Task<Void, Never>
+        if recognitionProfile.adaptsToSpeech,
+           let locale = await DictationTranscriber.supportedLocale(
+               equivalentTo: requestedLocale
+           ) {
+            let transcriber = DictationTranscriber(
+                locale: locale,
+                contentHints: [.atypicalSpeech],
+                transcriptionOptions: [.punctuation],
+                reportingOptions: [.volatileResults, .frequentFinalization],
+                attributeOptions: [.audioTimeRange]
+            )
+            modules = [transcriber]
+            makeResultTask = {
+                adaptedResultTask(
+                    transcriber: transcriber,
+                    transcriptState: transcriptState,
+                    onPreviewUnavailable: onPreviewUnavailable
+                )
+            }
+        } else {
+            guard SpeechTranscriber.isAvailable else {
+                throw LivePreviewFailure.speechAnalyzerUnavailable
+            }
+            guard let locale = await SpeechTranscriber.supportedLocale(
+                equivalentTo: requestedLocale
+            ) else {
+                throw LivePreviewFailure.unsupportedLocale
+            }
+            let transcriber = SpeechTranscriber(
+                locale: locale,
+                transcriptionOptions: [],
+                reportingOptions: [.volatileResults, .fastResults],
+                attributeOptions: [.audioTimeRange]
+            )
+            modules = [transcriber]
+            makeResultTask = {
+                standardResultTask(
+                    transcriber: transcriber,
+                    transcriptState: transcriptState,
+                    onPreviewUnavailable: onPreviewUnavailable
+                )
+            }
         }
-        guard let locale = await SpeechTranscriber.supportedLocale(equivalentTo: requestedLocale) else {
-            throw LivePreviewFailure.unsupportedLocale
-        }
-
-        let transcriber = SpeechTranscriber(
-            locale: locale,
-            transcriptionOptions: [],
-            reportingOptions: [.volatileResults],
-            attributeOptions: [.audioTimeRange]
-        )
-        let modules: [any SpeechModule] = [transcriber]
         guard await AssetInventory.status(forModules: modules) == .installed else {
             // Post-capture voice writing owns model installation because it can
             // display durable progress without holding an armed microphone.
@@ -133,26 +171,15 @@ private final class AppleVoiceWritingLiveSourceRecorder: VoiceWritingLiveSourceR
             interleaved: inputFormat.isInterleaved
         )
         let analyzer = SpeechAnalyzer(modules: modules)
+        if !contextualPhrases.isEmpty {
+            let context = AnalysisContext()
+            context.contextualStrings[.general] = Array(contextualPhrases.prefix(100))
+            try? await analyzer.setContext(context)
+        }
         let (inputSequence, inputContinuation) = AsyncStream<AnalyzerInput>.makeStream(
             bufferingPolicy: .bufferingNewest(24)
         )
-        let transcriptState = LiveTranscriptState(onTextChange: onTextChange)
-        let resultTask = Task {
-            do {
-                for try await result in transcriber.results {
-                    transcriptState.consume(
-                        text: String(result.text.characters),
-                        isFinal: result.isFinal
-                    )
-                }
-            } catch is CancellationError {
-                return
-            } catch {
-                onPreviewUnavailable(
-                    "Live words paused; the complete recording will still be transcribed after you stop."
-                )
-            }
-        }
+        let resultTask = makeResultTask()
 
         do {
             try await analyzer.start(inputSequence: inputSequence)
@@ -188,6 +215,51 @@ private final class AppleVoiceWritingLiveSourceRecorder: VoiceWritingLiveSourceR
             onPreviewUnavailable: onPreviewUnavailable
         )
     }
+
+    private static func standardResultTask(
+        transcriber: SpeechTranscriber,
+        transcriptState: LiveTranscriptState,
+        onPreviewUnavailable: @escaping (String) -> Void
+    ) -> Task<Void, Never> {
+        Task {
+            do {
+                for try await result in transcriber.results {
+                    transcriptState.consume(
+                        text: String(result.text.characters),
+                        isFinal: result.isFinal
+                    )
+                }
+            } catch is CancellationError {
+                return
+            } catch {
+                onPreviewUnavailable(Self.livePreviewEndedMessage)
+            }
+        }
+    }
+
+    private static func adaptedResultTask(
+        transcriber: DictationTranscriber,
+        transcriptState: LiveTranscriptState,
+        onPreviewUnavailable: @escaping (String) -> Void
+    ) -> Task<Void, Never> {
+        Task {
+            do {
+                for try await result in transcriber.results {
+                    transcriptState.consume(
+                        text: String(result.text.characters),
+                        isFinal: result.isFinal
+                    )
+                }
+            } catch is CancellationError {
+                return
+            } catch {
+                onPreviewUnavailable(Self.livePreviewEndedMessage)
+            }
+        }
+    }
+
+    private static let livePreviewEndedMessage =
+        "Live words paused; the complete recording will still be transcribed after you stop."
 
     func start() throws {
         guard !stopped else { throw LivePreviewFailure.recorderAlreadyStopped }

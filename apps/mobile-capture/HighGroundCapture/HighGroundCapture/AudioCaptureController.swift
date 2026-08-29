@@ -782,10 +782,19 @@ final class AudioCaptureController: NSObject, ObservableObject {
         liveWritingFinalText = ""
         liveWritingVolatileText = ""
         liveWritingPreviewMessage = nil
+        let recognitionOwner = AuthManager.currentStoredOwnerID()
+        let recognitionProfile = VoiceWritingRecognitionPreferences.shared.profile(
+            for: recognitionOwner
+        )
+        let contextualPhrases = VoiceWritingRecognitionPreferences.shared.learnedPhrases(
+            for: recognitionOwner
+        )
 
         let prepared = await VoiceWritingLiveSourceFactory.prepareIfAvailable(
             fileURL: audioFilename,
             audioSettings: settings,
+            recognitionProfile: recognitionProfile,
+            contextualPhrases: contextualPhrases,
             onTextChange: { [weak self] finalized, volatile in
                 Task { @MainActor [weak self] in
                     guard let self, self.captureState == .recording || self.captureState == .paused else {

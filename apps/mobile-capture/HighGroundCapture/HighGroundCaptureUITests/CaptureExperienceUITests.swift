@@ -449,6 +449,15 @@ final class CaptureExperienceUITests: XCTestCase {
         )
         XCTAssertTrue(app.buttons["CaptureVoiceWritingShareText"].exists)
         app.coordinate(withNormalizedOffset: CGVector(dx: 0.1, dy: 0.35)).tap()
+        let title = app.descendants(matching: .any)["CaptureVoiceWritingTitle"]
+        XCTAssertTrue(title.exists)
+        title.tap()
+        XCTAssertTrue(app.buttons["CaptureVoiceWritingContinueKeyboard"].exists)
+        XCTAssertFalse(
+            app.buttons["CaptureVoiceWritingContinueToolbar"].exists,
+            "Editing the title should use the same single contextual microphone action as the writing body."
+        )
+        app.buttons["Done"].tap()
         let styleMenu = app.buttons["CaptureVoiceWritingStyleMenu"]
         XCTAssertTrue(styleMenu.exists, "Paper structure should use the familiar compact text-style menu.")
         styleMenu.tap()
@@ -471,6 +480,10 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(
             app.buttons["CaptureVoiceWritingContinueKeyboard"].exists,
             "Keep talking should remain reachable while the keyboard is open."
+        )
+        XCTAssertFalse(
+            app.buttons["CaptureVoiceWritingContinueToolbar"].exists,
+            "The focused editor should not show the same microphone action above and below the writing at once."
         )
         XCTAssertTrue(
             ((writing.value as? String) ?? "").contains("• "),

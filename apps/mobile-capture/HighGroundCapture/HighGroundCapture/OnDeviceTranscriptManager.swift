@@ -462,8 +462,9 @@ private enum AppleOnDeviceTranscriptEngine {
 
 /// Apple's DictationTranscriber has a dedicated atypical-speech content hint.
 /// Quipsly uses it only when the signed-in person has opted into speech
-/// adaptation, and only for the finished, source-bound transcript. Live words
-/// remain a provisional convenience and the immutable recording remains truth.
+/// adaptation. Both live preview and the finished source-bound transcript use
+/// the same profile; the immutable recording remains truth and is transcribed
+/// again after Stop before Quipsly creates editable writing.
 @available(iOS 26.0, *)
 private enum AppleSpeechAdaptedTranscriptEngine {
     struct Prepared: Sendable {

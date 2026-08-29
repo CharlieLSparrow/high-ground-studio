@@ -7587,6 +7587,7 @@ private struct CaptureVoiceWritingEditor: View {
     @ObservedObject var tagClient: CaptureTodayClient
     let onContinueByVoice: (VoiceWritingDraft) -> Void
     @Environment(\.dismiss) private var dismiss
+    @FocusState private var titleIsFocused: Bool
     @FocusState private var bodyIsFocused: Bool
 
     let recordingID: UUID
@@ -7693,18 +7694,20 @@ private struct CaptureVoiceWritingEditor: View {
         // button remains the familiar way out.
         .toolbar(.hidden, for: .tabBar)
         .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button(action: continueByVoice) {
-                    HStack(spacing: 5) {
-                        Image(systemName: "mic.badge.plus")
-                        Text("Speak")
-                            .font(.subheadline.weight(.semibold))
+            if !titleIsFocused && !bodyIsFocused {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button(action: continueByVoice) {
+                        HStack(spacing: 5) {
+                            Image(systemName: "mic.badge.plus")
+                            Text("Speak")
+                                .font(.subheadline.weight(.semibold))
+                        }
                     }
+                    .disabled(currentDraft == nil)
+                    .accessibilityLabel("Keep talking")
+                    .accessibilityHint("Saves this writing and starts another recording that will be added to it.")
+                    .accessibilityIdentifier("CaptureVoiceWritingContinueToolbar")
                 }
-                .disabled(currentDraft == nil)
-                .accessibilityLabel("Keep talking")
-                .accessibilityHint("Saves this writing and starts another recording that will be added to it.")
-                .accessibilityIdentifier("CaptureVoiceWritingContinueToolbar")
             }
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
@@ -7751,10 +7754,14 @@ private struct CaptureVoiceWritingEditor: View {
                 .disabled(currentDraft == nil)
                 .accessibilityIdentifier("CaptureVoiceWritingContinueKeyboard")
                 Spacer()
-                Button("Done") { bodyIsFocused = false }
+                Button("Done") {
+                    titleIsFocused = false
+                    bodyIsFocused = false
+                }
             }
         }
         .onChange(of: selectedSurface) { _, _ in
+            titleIsFocused = false
             bodyIsFocused = false
             transcriptWasCopied = false
         }
@@ -7763,7 +7770,8 @@ private struct CaptureVoiceWritingEditor: View {
         .onChange(of: richText) { _, _ in scheduleSave() }
         .task {
             await writingSync.refreshFromNest()
-            guard !bodyIsFocused,
+            guard !titleIsFocused,
+                  !bodyIsFocused,
                   let refreshed = currentDraft,
                   refreshed.pendingRemote == nil else { return }
             title = refreshed.title
@@ -7841,6 +7849,7 @@ private struct CaptureVoiceWritingEditor: View {
                 .font(.title2.weight(.bold))
                 .lineLimit(1...3)
                 .textInputAutocapitalization(.sentences)
+                .focused($titleIsFocused)
                 .accessibilityIdentifier("CaptureVoiceWritingTitle")
 
             if #available(iOS 26.0, *) {
@@ -7971,6 +7980,7 @@ private struct CaptureVoiceWritingEditor: View {
 
         Section {
             Button(role: .destructive) {
+                titleIsFocused = false
                 bodyIsFocused = false
                 showsDeleteConfirmation = true
             } label: {
@@ -8257,6 +8267,7 @@ private struct CaptureVoiceWritingEditor: View {
 
     @MainActor
     private func moveWriting(to destination: VoiceWritingNestDestination) async {
+        titleIsFocused = false
         bodyIsFocused = false
         saveTask?.cancel()
         saveImmediately()
@@ -8303,6 +8314,7 @@ private struct CaptureVoiceWritingEditor: View {
     }
 
     private func continueByVoice() {
+        titleIsFocused = false
         bodyIsFocused = false
         saveImmediately()
         guard let draft = currentDraft else { return }
@@ -8638,6 +8650,7 @@ private struct CaptureVoiceWritingEditor: View {
     @MainActor
     private func exportWordDocument() async {
         guard !isExportingWordDocument else { return }
+        titleIsFocused = false
         bodyIsFocused = false
         saveImmediately()
         guard AuthManager.shared.networkActionsAllowed,
