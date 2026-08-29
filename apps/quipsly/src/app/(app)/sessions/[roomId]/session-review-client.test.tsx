@@ -965,7 +965,9 @@ describe("Session review goal candidates", () => {
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
     expect(fetchMock.mock.calls[1][0]).toBe("/api/mobile/capture/transcripts/packet");
     expect(JSON.parse(String(fetchMock.mock.calls[1][1]?.body))).toEqual({ transcriptJobId: "job-1", force: false });
-    expect(await screen.findByRole("status")).toHaveTextContent("Nothing was assigned, sent, or shared");
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      "Your Session recap, notes, tasks, and goals are ready. Everything stays editable and linked to the recording.",
+    );
     expect(screen.getByRole("heading", { name: "Session brief" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Candidate goals" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /00:12-00:17.*build a repeatable coaching review habit/i })).toHaveAttribute("href", "#transcript-segment-segment-1");
