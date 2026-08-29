@@ -328,6 +328,10 @@ final class CaptureExperienceUITests: XCTestCase {
         )
         turnOff(recorderToggle)
         turnOn(recorderToggle)
+        XCTAssertTrue(
+            app.buttons["CaptureVoiceWritingVocabularyLink"].exists,
+            "Names and research terms should be teachable beside the recorder, not hidden in account setup."
+        )
 
         app.tabBars.buttons["Account"].tap()
         let accountToggle = app.switches["CaptureSpeechAdaptationToggle"]

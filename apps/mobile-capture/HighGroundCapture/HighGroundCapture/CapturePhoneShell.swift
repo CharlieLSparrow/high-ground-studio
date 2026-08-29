@@ -16385,6 +16385,7 @@ private struct CoordinatedPodcastAudioStatus: View {
 private struct RecorderHero: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @ScaledMetric(relativeTo: .largeTitle) private var timerFontSize: CGFloat = 40
+    @ObservedObject private var auth = AuthManager.shared
     @ObservedObject private var recognitionPreferences = VoiceWritingRecognitionPreferences.shared
     @State private var showsVoiceWritingTips = false
 
@@ -16582,28 +16583,65 @@ private struct RecorderHero: View {
     }
 
     private var speechAdaptationControl: some View {
-        Toggle(
-            isOn: Binding(
-                get: { recognitionPreferences.adaptsRecognitionToSpeech },
-                set: { recognitionPreferences.setAdaptsRecognitionToSpeech($0) }
-            )
-        ) {
-            VStack(alignment: .leading, spacing: 3) {
-                Text("Adapt to my speech")
-                    .font(.subheadline.weight(.semibold))
-                Text("Improves recognition for accents and speech differences. Quipsly remembers this choice.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+        VStack(alignment: .leading, spacing: 10) {
+            Toggle(
+                isOn: Binding(
+                    get: { recognitionPreferences.adaptsRecognitionToSpeech },
+                    set: { recognitionPreferences.setAdaptsRecognitionToSpeech($0) }
+                )
+            ) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Adapt to my speech")
+                        .font(.subheadline.weight(.semibold))
+                    Text("Improves recognition for accents and speech differences. Quipsly remembers this choice.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
+            .accessibilityHint("Uses Apple's on-device recognition for speech differences without changing the original audio.")
+            .accessibilityIdentifier("CaptureVoiceWritingSpeechAdaptationToggle")
+
+            Divider()
+
+            NavigationLink {
+                CaptureVoiceWritingVocabularyView(
+                    ownerAccountID: auth.accountOwnerID
+                )
+            } label: {
+                HStack(spacing: 10) {
+                    Image(systemName: "text.badge.plus")
+                        .foregroundStyle(CapturePalette.accent)
+                        .frame(width: 26)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Names & terms")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.primary)
+                        Text("Teach Quipsly words it may not know yet.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    Spacer(minLength: 8)
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(.tertiary)
+                        .accessibilityHidden(true)
+                }
+                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityHint("Add names, authors, research terms, and phrases that improve speech recognition.")
+            .accessibilityIdentifier("CaptureVoiceWritingVocabularyLink")
         }
         .padding(12)
         .background(
             CapturePalette.accent.opacity(0.08),
             in: RoundedRectangle(cornerRadius: 16, style: .continuous)
         )
-        .accessibilityHint("Uses Apple's on-device recognition for speech differences without changing the original audio.")
-        .accessibilityIdentifier("CaptureVoiceWritingSpeechAdaptationToggle")
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("CaptureVoiceWritingSpeechAccuracyCard")
     }
 
     private var voiceWritingTips: some View {
