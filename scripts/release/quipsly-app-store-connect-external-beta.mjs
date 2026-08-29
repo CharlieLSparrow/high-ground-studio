@@ -35,13 +35,12 @@ export const BETA_DESCRIPTION = [
 ].join(" ");
 
 export const WHAT_TO_TEST = [
-  "Sign in to your Quipsly account and open the supplied test Session.",
-  "Confirm the visible consent gate before recording.",
-  "Test a two-person audio room, local audio and iPhone video capture, pause/resume,",
-  "and switching between front and back cameras while recording.",
-  "End capture, reconnect if needed, confirm upload status, and open the assembled timeline or playback.",
-  "Also create a disposable note and task and verify they remain after relaunch.",
-  "Do not record anyone without their explicit permission.",
+  "Try Speak to write: record a thought, stop, edit and organize the transcript,",
+  "then reopen it after relaunch.",
+  "Schedule or open a coaching session, join a two-person call, record local audio or iPhone video,",
+  "pause and resume, switch cameras, and confirm playback and upload status.",
+  "Create and edit a note, task, or goal.",
+  "Please report anything confusing, slow, or unreliable.",
 ].join(" ");
 
 export const REVIEW_NOTES = [

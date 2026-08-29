@@ -11,6 +11,7 @@ import {
   parseExternalBetaArguments,
   relationshipDocumentIncludes,
   resolveExternalBetaTargets,
+  WHAT_TO_TEST,
 } from "./quipsly-app-store-connect-external-beta.mjs";
 import { QUIPSLY_CAPTURE_RELEASE_TARGET } from "./quipsly-capture-release-target.mjs";
 
@@ -70,6 +71,15 @@ test("requires apply before a beta-review submission", () => {
     () => parseExternalBetaArguments(["--submit-for-review"]),
     /requires --apply/,
   );
+});
+
+test("asks external testers to exercise ordinary writing and coaching work", () => {
+  assert.match(WHAT_TO_TEST, /Speak to write/);
+  assert.match(WHAT_TO_TEST, /coaching session/);
+  assert.match(WHAT_TO_TEST, /edit a note, task, or goal/);
+  assert.doesNotMatch(WHAT_TO_TEST, /supplied test Session/i);
+  assert.doesNotMatch(WHAT_TO_TEST, /consent gate/i);
+  assert.doesNotMatch(WHAT_TO_TEST, /disposable/i);
 });
 
 test("defaults read-only planning to the canonical current external release", () => {
