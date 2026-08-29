@@ -2871,7 +2871,7 @@ final class CaptureExperienceUITests: XCTestCase {
         let annotationBody = app.descendants(matching: .any)[
             "CaptureSourceFilingAnnotationBody"
         ].firstMatch
-        reveal(annotationBody)
+        reveal(annotationBody, searchAboveFirst: false)
         XCTAssertTrue(
             annotationBody.exists,
             "A source filing should offer one optional exact-source annotation without inventing a second research model."
@@ -2897,14 +2897,19 @@ final class CaptureExperienceUITests: XCTestCase {
         let canonicalTag = app.switches[
             "CaptureSourceFilingTag_preview-tag-episode-seed"
         ].firstMatch
-        reveal(canonicalTag)
+        reveal(canonicalTag, searchAboveFirst: false)
         XCTAssertTrue(canonicalTag.exists)
         turnOn(canonicalTag)
         XCTAssertEqual(canonicalTag.value as? String, "1")
         let previewBoundary = app.descendants(matching: .any)[
             "CaptureSourceFilingPreviewBoundary"
         ].firstMatch
-        reveal(previewBoundary)
+        let sourceFilingForm = app.descendants(matching: .any)[
+            "CaptureSourceFilingForm"
+        ].firstMatch
+        for _ in 0..<4 where !previewBoundary.exists {
+            sourceFilingForm.swipeUp()
+        }
         XCTAssertTrue(previewBoundary.exists)
         let confirm = app.buttons["CaptureSourceFilingConfirm"]
         XCTAssertTrue(confirm.exists)
@@ -2912,9 +2917,6 @@ final class CaptureExperienceUITests: XCTestCase {
             confirm.isEnabled,
             "Preview must never create a Research source or clear a private Inbox item."
         )
-        let previewSaveBoundary = app.descendants(matching: .any)["CaptureSourceFilingPreviewBoundary"].firstMatch
-        reveal(previewSaveBoundary)
-        XCTAssertTrue(previewSaveBoundary.exists)
         XCTAssertTrue(app.staticTexts["Preview only · no filing decision will be saved"].exists)
         app.buttons["Cancel"].tap()
         XCTAssertTrue(
@@ -4697,7 +4699,11 @@ final class CaptureExperienceUITests: XCTestCase {
         _ element: XCUIElement,
         searchAboveFirst: Bool = true
     ) {
-        let visibleBottom = app.frame.maxY - 96
+        let sourceFilingForm = app.descendants(matching: .any)["CaptureSourceFilingForm"].firstMatch
+        let visibleBottom = app.frame.maxY - (sourceFilingForm.exists ? 12 : 96)
+        if sourceFilingForm.exists, element.exists, element.isHittable {
+            return
+        }
         if element.exists,
            element.isHittable,
            element.frame.minY >= app.frame.minY + 72,
@@ -4715,13 +4721,15 @@ final class CaptureExperienceUITests: XCTestCase {
         let transcriptReview = app.scrollViews["CaptureTranscriptReviewView"].firstMatch
         let coachingFormResponse = app.scrollViews["CaptureCoachingFormResponse"].firstMatch
         let coachingFormsHome = app.scrollViews["CaptureCoachingFormsHome"].firstMatch
-        let scrollSurface = namedForm.exists
-            ? namedForm
-            : transcriptReview.exists
-                ? transcriptReview
-                : coachingFormResponse.exists
-                    ? coachingFormResponse
-                    : coachingFormsHome.exists ? coachingFormsHome : app.scrollViews.firstMatch
+        let scrollSurface = sourceFilingForm.exists
+            ? sourceFilingForm
+            : namedForm.exists
+                ? namedForm
+                : transcriptReview.exists
+                    ? transcriptReview
+                    : coachingFormResponse.exists
+                        ? coachingFormResponse
+                        : coachingFormsHome.exists ? coachingFormsHome : app.scrollViews.firstMatch
         // A LazyVStack removes distant rows from the accessibility tree. If a
         // target does not currently exist, search above first, then below,
         // instead of assuming every unseen control is farther down the page.
@@ -4731,7 +4739,16 @@ final class CaptureExperienceUITests: XCTestCase {
                 let shouldMoveContentDown = element.exists
                     ? element.frame.maxY <= app.frame.minY + 72
                     : searchAbove
-                if scrollSurface.exists {
+                if sourceFilingForm.exists {
+                    if shouldMoveContentDown {
+                        sourceFilingForm.swipeDown()
+                    } else {
+                        sourceFilingForm.swipeUp()
+                    }
+                    RunLoop.current.run(
+                        until: Date().addingTimeInterval(0.15)
+                    )
+                } else if scrollSurface.exists {
                     let startY = shouldMoveContentDown ? 0.34 : 0.72
                     let endY = shouldMoveContentDown ? 0.64 : 0.42
                     scrollSurface
@@ -4752,10 +4769,14 @@ final class CaptureExperienceUITests: XCTestCase {
                 } else {
                     app.swipeUp()
                 }
-                if element.exists,
-                   element.isHittable,
-                   element.frame.minY >= app.frame.minY + 72,
-                   element.frame.maxY <= visibleBottom {
+                if sourceFilingForm.exists {
+                    if element.exists, element.isHittable {
+                        return
+                    }
+                } else if element.exists,
+                          element.isHittable,
+                          element.frame.minY >= app.frame.minY + 72,
+                          element.frame.maxY <= visibleBottom {
                     return
                 }
             }

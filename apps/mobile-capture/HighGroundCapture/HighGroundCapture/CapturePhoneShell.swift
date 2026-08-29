@@ -4526,7 +4526,7 @@ struct TodayFollowThroughCard: View {
                 source: source,
                 previewOnly: previewOnly
             )
-            .presentationDetents([.medium, .large])
+            .presentationDetents([.large])
         }
         .sheet(item: $focusToComplete) { focus in
             CaptureFocusCompletionSheet(client: client, block: focus)
@@ -5715,6 +5715,7 @@ private struct CaptureSourceFilingSheet: View {
                     }
                 }
             }
+            .accessibilityIdentifier("CaptureSourceFilingForm")
             .scrollDismissesKeyboard(.interactively)
             .navigationTitle("File into Research")
             .navigationBarTitleDisplayMode(.inline)
