@@ -3269,7 +3269,16 @@ final class CaptureExperienceModel: ObservableObject {
         observedReceiptOwnerAccountID = ownerAccountID
         taskReminderScheduler.activateOwner(ownerAccountID)
         sessionNoteEditOutbox.activateOwner(ownerAccountID)
-        reviewDigestClient.clear()
+        if usesPreviewData {
+            // Preview flights intentionally exercise account-partitioned
+            // outboxes across consecutive app launches. A synthetic identity
+            // handoff must not erase the deterministic Library fixture after
+            // core readiness has already been published. Production account
+            // changes still clear the prior owner's digest below.
+            reviewDigestClient.loadPreview()
+        } else {
+            reviewDigestClient.clear()
+        }
 
         sourceExitMonitorTask?.cancel()
         sourceExitMonitorTask = nil
