@@ -677,7 +677,7 @@ private struct CaptureTodayPrimaryActions: View {
         .buttonStyle(.plain)
         .disabled(!canStart)
         .accessibilityLabel("Start a session")
-        .accessibilityHint("Creates a coaching call, podcast, interview, or personal recording.")
+        .accessibilityHint("Creates a coaching call, podcast, or interview.")
         .accessibilityIdentifier("CaptureStartSession")
     }
 }
@@ -18824,7 +18824,6 @@ private struct NewCaptureSessionSheet: View {
     @ObservedObject var subscriptionStore: QuipslySubscriptionStore
     @Binding var isPresented: Bool
     let onCreated: () -> Void
-    @FocusState private var titleFocused: Bool
 
     var body: some View {
         NavigationStack {
@@ -18838,15 +18837,13 @@ private struct NewCaptureSessionSheet: View {
             } else {
                 Form {
                 Section("Session") {
-                    TextField("Session title", text: $model.newSessionTitle)
+                    TextField("Session title (optional)", text: $model.newSessionTitle)
                         .textInputAutocapitalization(.sentences)
-                        .focused($titleFocused)
                         .accessibilityIdentifier("NewCaptureSessionTitleField")
                     Picker("Purpose", selection: $model.newSessionPurpose) {
                         Label("Coaching", systemImage: "person.2").tag("COACHING")
                         Label("Podcast", systemImage: "mic.and.signal.meter").tag("PODCAST")
                         Label("Interview", systemImage: "quote.bubble").tag("RESEARCH_INTERVIEW")
-                        Label("Voice note", systemImage: "waveform").tag("PERSONAL_NOTE")
                     }
                     .onChange(of: model.newSessionPurpose) { _, purpose in
                         if purpose != "COACHING" {
@@ -18901,11 +18898,10 @@ private struct NewCaptureSessionSheet: View {
                                 }
                             }
                         }
-                        .disabled(model.isCreatingSession || model.newSessionTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        .disabled(model.isCreatingSession)
                         .accessibilityIdentifier("NewCaptureSessionCreateButton")
                     }
                 }
-                .onAppear { titleFocused = true }
             }
         }
         .task {

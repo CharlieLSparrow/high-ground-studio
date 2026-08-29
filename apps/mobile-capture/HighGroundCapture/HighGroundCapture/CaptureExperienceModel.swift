@@ -1274,11 +1274,8 @@ final class CaptureExperienceModel: ObservableObject {
             errorMessage = "Finish the active recording or live room before creating another session."
             return false
         }
-        let title = newSessionTitle.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !title.isEmpty else {
-            errorMessage = "Give this session a short title."
-            return false
-        }
+        let enteredTitle = newSessionTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+        let title = enteredTitle.isEmpty ? defaultNewSessionTitle : enteredTitle
         guard !isCreatingSession else { return false }
         if newSessionPurpose == "COACHING",
            !newSessionCoachingEngagementID.isEmpty,
@@ -1301,7 +1298,7 @@ final class CaptureExperienceModel: ObservableObject {
             sessionClient.sessions.insert(created, at: 0)
             selectedSessionID = created.id
             newSessionTitle = ""
-            message = "Session created. Confirm consent when everyone is ready."
+            message = "Session ready."
             return true
         }
 
@@ -1318,11 +1315,25 @@ final class CaptureExperienceModel: ObservableObject {
         selectedSessionID = created.id
         newSessionTitle = ""
         if let engagement = selectedNewSessionCoachingEngagement {
-            message = "Session created in \(engagement.title). Confirm consent when everyone is ready."
+            message = "Session ready in \(engagement.title)."
         } else {
-            message = "Session created. Confirm consent when everyone is ready."
+            message = "Session ready."
         }
         return true
+    }
+
+    private var defaultNewSessionTitle: String {
+        if newSessionPurpose == "COACHING",
+           let engagementTitle = selectedNewSessionCoachingEngagement?.title
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+           !engagementTitle.isEmpty {
+            return engagementTitle
+        }
+        switch newSessionPurpose {
+        case "PODCAST": return "Podcast session"
+        case "RESEARCH_INTERVIEW": return "Interview"
+        default: return "Coaching session"
+        }
     }
 
     func createPersonalVoiceNote(continuing draftTitle: String? = nil) async -> MobileCaptureSession? {

@@ -1602,19 +1602,19 @@ function checkTranscriptCorrectionContractSources() {
       && nativeText.includes("func reviewPacketNote(")
       && nativeText.includes('"EDITED_FOR_REVIEW"')
       && nativeText.includes("CapturePacketNoteEditButton")
-      && nativeText.includes("CapturePacketNoteDeferButton")
       && nativeText.includes("CapturePacketNoteRejectButton")
       && nativeText.includes("CapturePacketNoteMergeButton")
       && nativeText.includes("CapturePacketNoteMergeTargetPicker")
       && nativeText.includes("CapturePacketNoteCarriedDraft_")
       && nativeText.includes("CapturePacketNoteSourceText_")
-      && nativeText.includes("source span and provider evidence still match exactly")
+      && nativeText.includes("Play the source whenever you want to double-check this idea.")
       && nativeText.includes("Adds this source to the selected note. Its previous version stays recoverable.")
-      && captureUITestText.includes("testPacketNoteReviewRequiresPurposeAudienceAndFinalHumanSave")
+      && !nativeText.includes("CapturePacketNoteDeferButton_")
+      && captureUITestText.includes("testOptionalTranscriptIdeaCanBeAddedOrAdjustedWithoutPaperwork")
       && captureUITestText.includes("CapturePacketNoteDecisionBoundary")
       && runtimeUITestText.includes("expectedPacketNoteLaneID"),
-    "nativePacketNoteFiveWayReview",
-    "Capture matches Nest's explicit accept, edit, merge, defer, and reject packet-note review while preserving playback gates, recoverable note revisions, source return, no-side-effect boundaries, and exact retry receipts.",
+    "nativePacketNoteOptionalIdeaFlow",
+    "Capture keeps exact-source transcript ideas optional and offers ordinary add, adjust, merge, or dismiss actions while preserving recoverable note revisions and retry receipts.",
   );
   expect(
     taskRouteText.includes("schema: TRANSCRIPT_DERIVED_TASK_SCHEMA")
@@ -2293,8 +2293,8 @@ function checkTranscriptCorrectionContractSources() {
       && nativeText.includes("Use, edit, or dismiss any idea whenever it helps.")
       && nativeText.includes("CapturePacketNoteSourceButton_")
       && nativeText.includes("CapturePacketNoteEditButton_")
-      && nativeText.includes("CapturePacketNoteDeferButton_")
       && nativeText.includes("CapturePacketNoteRejectButton_")
+      && !nativeText.includes("CapturePacketNoteDeferButton_")
       && noteMaterializationRouteText.includes("packetSnapshotRechecked")
       && noteMaterializationRouteText.includes("exactReplay")
       && noteMaterializationRouteText.includes('decision === "MERGE"')

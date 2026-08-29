@@ -4157,10 +4157,13 @@ final class CaptureExperienceUITests: XCTestCase {
 
         let title = app.textFields["NewCaptureSessionTitleField"]
         XCTAssertTrue(title.waitForExistence(timeout: 5))
-        title.typeText("Field interview")
+        XCTAssertEqual(title.placeholderValue, "Session title (optional)")
 
         let create = app.buttons["NewCaptureSessionCreateButton"]
-        XCTAssertTrue(create.isEnabled)
+        XCTAssertTrue(
+            create.isEnabled,
+            "Starting an ordinary Session should not require naming paperwork. Quipsly can use the selected purpose as a sensible title."
+        )
         create.tap()
 
         XCTAssertTrue(
@@ -4168,6 +4171,7 @@ final class CaptureExperienceUITests: XCTestCase {
             "Creating a session should close the chooser and land on that session's standard call lobby."
         )
         XCTAssertTrue(app.buttons["ProviderJoinRoomButton"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Coaching session"].exists)
         XCTAssertFalse(app.buttons["CaptureConfirmConsentButton"].exists)
         openLocalRecorderIfNeeded()
         XCTAssertTrue(app.otherElements["CaptureRecorderHero"].waitForExistence(timeout: 5))
