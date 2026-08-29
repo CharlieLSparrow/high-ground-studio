@@ -8,10 +8,16 @@ enum VoiceWritingRecognitionProfile: String, Codable, Equatable, Sendable {
     var adaptsToSpeech: Bool { self == .speechAdaptation }
 }
 
+struct VoiceWritingRecognitionSyncedPhrase: Equatable, Sendable {
+    let text: String
+    let count: Int
+    let updatedAt: Date
+}
+
 /// A small, account-partitioned accessibility preference for finished voice
-/// writing. The preference never changes or deletes source audio, and it is not
-/// sent to Nest. Keeping it per Quipsly owner prevents one person's recognition
-/// choice from silently following another person who signs in on the same phone.
+/// writing. The preference never changes or deletes source audio. Its local
+/// projection is partitioned by Quipsly owner and synchronized independently,
+/// so it follows that person without bleeding into another account or Nest.
 @MainActor
 final class VoiceWritingRecognitionPreferences: ObservableObject {
     static let shared = VoiceWritingRecognitionPreferences()
@@ -40,7 +46,7 @@ final class VoiceWritingRecognitionPreferences: ObservableObject {
     func refresh(ownerAccountID: String? = AuthManager.currentStoredOwnerID()) {
         let owner = Self.normalizedOwnerID(ownerAccountID)
         activeProfile = profile(for: owner)
-        activeLearnedPhrases = learnedPhrases(for: owner)
+        activeLearnedPhrases = self.learnedPhrases(for: owner)
     }
 
     func setAdaptsRecognitionToSpeech(
@@ -60,6 +66,10 @@ final class VoiceWritingRecognitionPreferences: ObservableObject {
         }
         persist(profiles)
         activeProfile = profile
+        VoiceWritingRecognitionSyncClient.shared.enqueueAdaptation(
+            enabled,
+            ownerAccountID: owner
+        )
     }
 
     func profile(for ownerAccountID: String?) -> VoiceWritingRecognitionProfile {
@@ -109,6 +119,13 @@ final class VoiceWritingRecognitionPreferences: ObservableObject {
         vocabulary[owner] = Array(records.sorted(by: Self.phrasePriority).prefix(maximumPhraseCount))
         persistVocabulary(vocabulary)
         refreshActiveVocabularyIfNeeded(owner: owner)
+        for phrase in phrases {
+            VoiceWritingRecognitionSyncClient.shared.enqueueLearnedPhrase(
+                phrase,
+                weight: 1,
+                ownerAccountID: owner
+            )
+        }
     }
 
     func addLearnedPhrase(
@@ -132,6 +149,11 @@ final class VoiceWritingRecognitionPreferences: ObservableObject {
         vocabulary[owner] = Array(records.sorted(by: Self.phrasePriority).prefix(maximumPhraseCount))
         persistVocabulary(vocabulary)
         refreshActiveVocabularyIfNeeded(owner: owner)
+        VoiceWritingRecognitionSyncClient.shared.enqueueLearnedPhrase(
+            phrase,
+            weight: 3,
+            ownerAccountID: owner
+        )
     }
 
     func removeLearnedPhrase(
@@ -151,6 +173,50 @@ final class VoiceWritingRecognitionPreferences: ObservableObject {
         }
         persistVocabulary(vocabulary)
         refreshActiveVocabularyIfNeeded(owner: owner)
+        VoiceWritingRecognitionSyncClient.shared.enqueueForgottenPhrase(
+            value,
+            ownerAccountID: owner
+        )
+    }
+
+    /// Replaces the local account projection only after the outbox has drained.
+    /// Recording and editing never wait for this reconciliation; the server
+    /// copy simply lets the same person keep their speech help on another
+    /// signed-in device.
+    func applySyncedProfile(
+        adaptationEnabled: Bool,
+        learnedPhrases: [VoiceWritingRecognitionSyncedPhrase],
+        ownerAccountID: String
+    ) {
+        guard let owner = Self.normalizedOwnerID(ownerAccountID) else { return }
+
+        var profiles = storedProfiles()
+        if adaptationEnabled {
+            profiles[owner] = VoiceWritingRecognitionProfile.speechAdaptation.rawValue
+        } else {
+            profiles.removeValue(forKey: owner)
+        }
+        persist(profiles)
+
+        var vocabulary = storedVocabulary()
+        let records = learnedPhrases.prefix(maximumPhraseCount).compactMap { phrase -> LearnedPhrase? in
+            guard let text = Self.normalizedPhrase(phrase.text) else { return nil }
+            return LearnedPhrase(
+                text: text,
+                count: max(0, phrase.count),
+                updatedAt: phrase.updatedAt
+            )
+        }
+        if records.isEmpty {
+            vocabulary.removeValue(forKey: owner)
+        } else {
+            vocabulary[owner] = records
+        }
+        persistVocabulary(vocabulary)
+
+        guard owner == Self.normalizedOwnerID(AuthManager.currentStoredOwnerID()) else { return }
+        activeProfile = adaptationEnabled ? .speechAdaptation : .standard
+        activeLearnedPhrases = self.learnedPhrases(for: owner)
     }
 
     private func storedProfiles() -> [String: String] {

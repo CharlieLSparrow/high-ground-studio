@@ -333,6 +333,10 @@ final class CaptureExperienceUITests: XCTestCase {
             learnedPhrase.waitForExistence(timeout: 5),
             "People should be able to see and adjust the names Quipsly uses for recognition."
         )
+        XCTAssertTrue(
+            app.staticTexts["Swipe left to forget a phrase. This vocabulary follows the signed-in Quipsly account across devices."].exists,
+            "Speech help should follow the person instead of being presented as an iPhone-only setting."
+        )
         learnedPhrase.swipeLeft()
         let delete = app.buttons["Delete"].firstMatch
         XCTAssertTrue(delete.waitForExistence(timeout: 3))

@@ -918,14 +918,15 @@ model User {
   sessions     Session[]
   quipslyNotes QuipslyNote[]
 
-  aliases               UserEmail[]
-  authIdentities        UserAuthIdentity[]
-  roles                 UserRole[]
-  clientProfile         ClientProfile?
-  coachProfile          CoachProfile?          @relation("CoachProfileUser")
-  memberships           Membership[]           @relation("MembershipUser")
-  coachingFeatureGrants CoachingFeatureGrant[] @relation("CoachingFeatureGrantUser")
-  weeklyCommitments     WeeklyCommitment[]     @relation("WeeklyCommitmentClient")
+  aliases                    UserEmail[]
+  authIdentities             UserAuthIdentity[]
+  roles                      UserRole[]
+  voiceRecognitionPreference VoiceRecognitionPreference?
+  clientProfile              ClientProfile?
+  coachProfile               CoachProfile?               @relation("CoachProfileUser")
+  memberships                Membership[]                @relation("MembershipUser")
+  coachingFeatureGrants      CoachingFeatureGrant[]      @relation("CoachingFeatureGrantUser")
+  weeklyCommitments          WeeklyCommitment[]          @relation("WeeklyCommitmentClient")
 
   clientAppointments                    Appointment[]                               @relation("AppointmentClient")
   coachAppointments                     Appointment[]                               @relation("AppointmentCoach")
@@ -1217,6 +1218,52 @@ model UserAuthIdentity {
   @@unique([authority, subject])
   @@index([userId])
   @@index([emailAtLink])
+}
+
+// Speech recognition adaptation belongs to a person, not a Nest. The current
+// preference and vocabulary are a fast account-scoped projection; idempotent
+// operations let multiple devices reconcile without making recording or
+// writing wait for the network.
+model VoiceRecognitionPreference {
+  userId            String   @id
+  adaptationEnabled Boolean  @default(false)
+  revision          Int      @default(0)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  user       User                        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  terms      VoiceRecognitionTerm[]
+  operations VoiceRecognitionOperation[]
+}
+
+model VoiceRecognitionTerm {
+  id               String   @id @default(cuid())
+  preferenceUserId String
+  normalizedText   String
+  text             String
+  count            Int      @default(1)
+  isActive         Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  preference VoiceRecognitionPreference @relation(fields: [preferenceUserId], references: [userId], onDelete: Cascade)
+
+  @@unique([preferenceUserId, normalizedText])
+  @@index([preferenceUserId, isActive, count, updatedAt])
+}
+
+model VoiceRecognitionOperation {
+  id                String   @id
+  preferenceUserId  String
+  operationKind     String
+  payloadHash       String
+  payloadJson       Json
+  resultingRevision Int
+  createdAt         DateTime @default(now())
+
+  preference VoiceRecognitionPreference @relation(fields: [preferenceUserId], references: [userId], onDelete: Cascade)
+
+  @@index([preferenceUserId, createdAt])
 }
 
 // Separate role rows mean a user can hold several badges at once without

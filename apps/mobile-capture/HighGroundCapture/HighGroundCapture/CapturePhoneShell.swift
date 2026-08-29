@@ -103,6 +103,9 @@ struct CapturePhoneShell: View {
             await LocalRecordingLibrary.shared.validatePendingRecoveredSources()
             await model.load()
             _ = await subscriptionLoad
+            if !model.usesPreviewData {
+                await VoiceWritingRecognitionSyncClient.shared.synchronize()
+            }
             showRejectedLinkNotice()
             await routePendingSessionLink()
             await routePendingVoiceNote()
@@ -168,7 +171,9 @@ struct CapturePhoneShell: View {
                     .refreshGoogleCalendarSummary()
                 async let sessionRefresh: Void = model
                     .refreshSelectedSessionEntryReadiness()
-                _ = await (calendarRefresh, sessionRefresh)
+                async let speechProfileRefresh: Void = VoiceWritingRecognitionSyncClient.shared
+                    .synchronize()
+                _ = await (calendarRefresh, sessionRefresh, speechProfileRefresh)
             }
         }
         .onChange(of: audioCapture.captureState) { _, state in
@@ -14635,7 +14640,7 @@ private struct CaptureVoiceWritingVocabularyView: View {
                 Text("Learned words and phrases")
             } footer: {
                 if !preferences.activeLearnedPhrases.isEmpty {
-                    Text("Swipe left to forget a phrase. This vocabulary belongs only to the signed-in Quipsly account on this iPhone.")
+                    Text("Swipe left to forget a phrase. This vocabulary follows the signed-in Quipsly account across devices.")
                 }
             }
         }
