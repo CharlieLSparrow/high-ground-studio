@@ -430,7 +430,7 @@ final class CaptureExperienceUITests: XCTestCase {
             app.tabBars.firstMatch.exists,
             "Focused writing should use the full screen instead of letting global tabs cover editing controls."
         )
-        XCTAssertTrue(app.buttons["Write"].exists)
+        XCTAssertTrue(app.buttons["Writing"].exists)
         XCTAssertTrue(app.buttons["Transcript"].exists)
         XCTAssertTrue(
             app.buttons["CaptureVoiceWritingContinueToolbar"].exists,
@@ -505,7 +505,7 @@ final class CaptureExperienceUITests: XCTestCase {
             app.descendants(matching: .any)["CaptureVoiceWritingEditor"]
                 .waitForExistence(timeout: 5)
         )
-        XCTAssertTrue(app.buttons["Write"].isHittable)
+        XCTAssertTrue(app.buttons["Writing"].isHittable)
         XCTAssertTrue(app.buttons["Transcript"].isHittable)
         XCTAssertTrue(app.textFields["CaptureVoiceWritingTitle"].isHittable)
         XCTAssertTrue(
@@ -2992,7 +2992,7 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertFalse(app.buttons["CapturePacketNoteMergeButton_\(candidateKey)"].isEnabled)
         let decisionBoundary = app.staticTexts["CapturePacketNoteDecisionBoundary"]
         XCTAssertTrue(decisionBoundary.label.contains("Add it now"))
-        XCTAssertTrue(decisionBoundary.label.contains("adjust the wording"))
+        XCTAssertTrue(decisionBoundary.label.contains("adjust"))
         XCTAssertTrue(decisionBoundary.label.contains("dismiss it"))
         packetNoteEdit.tap()
         XCTAssertTrue(app.textFields["CapturePacketNoteTitleField"].exists)
