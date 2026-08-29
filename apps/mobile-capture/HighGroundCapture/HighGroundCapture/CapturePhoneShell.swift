@@ -7627,6 +7627,8 @@ private struct CaptureVoiceWritingEditor: View {
     @State private var showsDeleteWritingError = false
     @State private var nestMoveError: String?
     @State private var showsNestMoveError = false
+    @State private var outlineIsExpanded = false
+    @State private var requestedWritingSelection: NSRange?
 
     init(
         recordingID: UUID,
@@ -7869,12 +7871,14 @@ private struct CaptureVoiceWritingEditor: View {
                 CaptureRichWritingBody(
                     plainText: $bodyText,
                     richText: $richText,
-                    focus: $bodyIsFocused
+                    focus: $bodyIsFocused,
+                    requestedSelection: $requestedWritingSelection
                 )
             } else if #available(iOS 18.0, *) {
                 CaptureStructuredWritingBody(
                     text: $bodyText,
-                    focus: $bodyIsFocused
+                    focus: $bodyIsFocused,
+                    requestedSelection: $requestedWritingSelection
                 )
             } else {
                 TextEditor(text: $bodyText)
@@ -7888,12 +7892,62 @@ private struct CaptureVoiceWritingEditor: View {
             }
         } footer: {
             HStack {
-                Text(writingWordCount == 1 ? "1 word" : "\(writingWordCount.formatted()) words")
+                Text(documentProgressLabel)
                     .accessibilityIdentifier("CaptureVoiceWritingWordCount")
                 Spacer()
                 syncStatus
             }
             .font(.caption)
+        }
+
+        if !documentInsights.outline.isEmpty {
+            Section {
+                DisclosureGroup(isExpanded: $outlineIsExpanded) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        ForEach(documentInsights.outline) { entry in
+                            Button {
+                                requestedWritingSelection = entry.rangeUtf16
+                                bodyIsFocused = true
+                            } label: {
+                                HStack(spacing: 10) {
+                                    Image(systemName: entry.kind == .heading ? "textformat.size.larger" : "textformat.size")
+                                        .font(.caption.weight(.semibold))
+                                        .foregroundStyle(CapturePalette.accent)
+                                        .frame(width: 24)
+                                        .accessibilityHidden(true)
+                                    Text(entry.title)
+                                        .font(entry.kind == .heading ? .body.weight(.semibold) : .subheadline)
+                                        .foregroundStyle(.primary)
+                                        .lineLimit(2)
+                                        .multilineTextAlignment(.leading)
+                                    Spacer(minLength: 8)
+                                    Image(systemName: "arrow.down.to.line.compact")
+                                        .font(.caption.weight(.semibold))
+                                        .foregroundStyle(.tertiary)
+                                        .accessibilityHidden(true)
+                                }
+                                .padding(.leading, entry.kind == .subheading ? 16 : 0)
+                                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Jump to \(entry.kind == .heading ? "heading" : "subheading"), \(entry.title)")
+                            .accessibilityIdentifier("CaptureVoiceWritingOutline_\(entry.id)")
+                        }
+                    }
+                    .padding(.top, 6)
+                } label: {
+                    Label(
+                        "Outline · \(documentInsights.outline.count) section\(documentInsights.outline.count == 1 ? "" : "s")",
+                        systemImage: "list.bullet.indent"
+                    )
+                    .font(.body.weight(.semibold))
+                    .accessibilityIdentifier("CaptureVoiceWritingOutlineToggle")
+                }
+                .accessibilityHint("Shows headings in this writing and lets you jump to a section.")
+            } footer: {
+                Text("Headings become a map automatically. There is no separate outline to keep updated.")
+            }
         }
 
         Section("Organize") {
@@ -8318,8 +8372,21 @@ private struct CaptureVoiceWritingEditor: View {
         return cleanTitle.isEmpty ? bodyText : "\(cleanTitle)\n\n\(bodyText)"
     }
 
-    private var writingWordCount: Int {
-        bodyText.split(whereSeparator: \Character.isWhitespace).count
+    private var documentInsights: VoiceWritingDocumentInsights {
+        let source: VoiceWritingRichText
+        if let richText, richText.text == bodyText {
+            source = richText
+        } else {
+            source = VoiceWritingRichText(text: bodyText)
+        }
+        return VoiceWritingDocumentInsights(source)
+    }
+
+    private var documentProgressLabel: String {
+        let count = documentInsights.wordCount
+        let words = count == 1 ? "1 word" : "\(count.formatted()) words"
+        guard documentInsights.estimatedReadingMinutes > 0 else { return words }
+        return "\(words) · \(documentInsights.estimatedReadingMinutes) min read"
     }
 
     private var recording: LocalRecording? {
@@ -8999,17 +9066,20 @@ private struct CaptureRichWritingBody: View {
     @Binding var plainText: String
     @Binding var richText: VoiceWritingRichText?
     let focus: FocusState<Bool>.Binding
+    @Binding var requestedSelection: NSRange?
     @State private var text: AttributedString
     @State private var selection = AttributedTextSelection()
 
     init(
         plainText: Binding<String>,
         richText: Binding<VoiceWritingRichText?>,
-        focus: FocusState<Bool>.Binding
+        focus: FocusState<Bool>.Binding,
+        requestedSelection: Binding<NSRange?>
     ) {
         _plainText = plainText
         _richText = richText
         self.focus = focus
+        _requestedSelection = requestedSelection
         _text = State(initialValue: Self.attributed(
             from: richText.wrappedValue ?? VoiceWritingRichText(text: plainText.wrappedValue)
         ))
@@ -9053,6 +9123,12 @@ private struct CaptureRichWritingBody: View {
                 .onChange(of: richText) { _, updated in
                     guard let updated, Self.portable(from: text) != updated else { return }
                     text = Self.attributed(from: updated)
+                }
+                .onChange(of: requestedSelection) { _, requested in
+                    guard let requested else { return }
+                    selection = Self.attributedSelection(from: requested, in: text)
+                    focus.wrappedValue = true
+                    requestedSelection = nil
                 }
         }
     }
@@ -9302,6 +9378,7 @@ private struct CaptureRichWritingBody: View {
 private struct CaptureStructuredWritingBody: View {
     @Binding var text: String
     let focus: FocusState<Bool>.Binding
+    @Binding var requestedSelection: NSRange?
     @State private var selection: TextSelection?
 
     var body: some View {
@@ -9336,6 +9413,13 @@ private struct CaptureStructuredWritingBody: View {
                 .accessibilityLabel("Writing")
                 .accessibilityHint("Edit the text created from your voice. Use the writing controls for paragraphs, lists, checklists, and quotes. Your original transcript and audio are unchanged.")
                 .accessibilityIdentifier("CaptureVoiceWritingBody")
+                .onChange(of: requestedSelection) { _, requested in
+                    guard let requested,
+                          let range = Range(requested, in: text) else { return }
+                    selection = TextSelection(range: range)
+                    focus.wrappedValue = true
+                    requestedSelection = nil
+                }
         }
     }
 
@@ -14069,6 +14153,14 @@ private struct CaptureLibraryPreviewWritingCard: View {
     @ObservedObject var tagClient: CaptureTodayClient
 
     private static let recordingID = UUID(uuidString: "A17F4C12-0000-4000-8000-000000000032")!
+    private static let previewBody = """
+    Opening story
+    The first idea connects the experience I described to the research question.
+    Why it matters
+    I want to open with the concrete story, then explain why it matters.
+    """
+    private static let openingRange = (previewBody as NSString).range(of: "Opening story")
+    private static let meaningRange = (previewBody as NSString).range(of: "Why it matters")
     private static let draft = VoiceWritingDraft(
         id: UUID(uuidString: "A17F4C12-0000-4000-8000-000000000033")!,
         ownerAccountID: "preview-owner",
@@ -14079,10 +14171,22 @@ private struct CaptureLibraryPreviewWritingCard: View {
         sources: nil,
         createdAt: Date(timeIntervalSince1970: 1_787_820_000),
         title: "What I want to explore next",
-        body: "The first idea connects the experience I described to the research question. I want to open with the concrete story, then explain why it matters.",
+        body: previewBody,
         richText: VoiceWritingRichText(
-            text: "The first idea connects the experience I described to the research question. I want to open with the concrete story, then explain why it matters.",
-            marks: [.init(kind: .bold, startUtf16: 0, endUtf16: 14)]
+            text: previewBody,
+            marks: [.init(kind: .bold, startUtf16: 14, endUtf16: 28)],
+            structures: [
+                .init(
+                    kind: .heading,
+                    startUtf16: openingRange.location,
+                    endUtf16: NSMaxRange(openingRange)
+                ),
+                .init(
+                    kind: .subheading,
+                    startUtf16: meaningRange.location,
+                    endUtf16: NSMaxRange(meaningRange)
+                ),
+            ]
         ),
         updatedAt: Date(timeIntervalSince1970: 1_787_820_300),
         localRevision: 2,

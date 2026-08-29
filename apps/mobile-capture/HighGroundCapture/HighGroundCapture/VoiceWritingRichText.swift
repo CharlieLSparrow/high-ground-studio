@@ -24,6 +24,50 @@ struct VoiceWritingBlockStyle: Codable, Equatable {
     let endUtf16: Int
 }
 
+struct VoiceWritingOutlineEntry: Identifiable, Equatable {
+    let kind: VoiceWritingBlockKind
+    let title: String
+    let rangeUtf16: NSRange
+
+    var id: String {
+        "\(kind.rawValue):\(rangeUtf16.location):\(rangeUtf16.length)"
+    }
+}
+
+/// A small, deterministic document map shared by the native writing surfaces.
+/// It derives orientation from the writing itself, so a long paper gains useful
+/// progress and navigation without introducing a second outline document for a
+/// person to maintain.
+struct VoiceWritingDocumentInsights: Equatable {
+    let wordCount: Int
+    let estimatedReadingMinutes: Int
+    let outline: [VoiceWritingOutlineEntry]
+
+    nonisolated init(_ source: VoiceWritingRichText) {
+        wordCount = source.text.split(whereSeparator: \Character.isWhitespace).count
+        estimatedReadingMinutes = wordCount == 0 ? 0 : max(1, Int(ceil(Double(wordCount) / 200.0)))
+
+        let text = source.text as NSString
+        outline = source.structures.compactMap { structure in
+            let range = NSRange(
+                location: structure.startUtf16,
+                length: structure.endUtf16 - structure.startUtf16
+            )
+            guard range.location >= 0,
+                  range.length > 0,
+                  NSMaxRange(range) <= text.length else { return nil }
+            let title = text.substring(with: range)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !title.isEmpty else { return nil }
+            return VoiceWritingOutlineEntry(
+                kind: structure.kind,
+                title: title,
+                rangeUtf16: range
+            )
+        }
+    }
+}
+
 /// Cross-platform rich writing that stays independent of Apple's private
 /// attributed-string encoding. UTF-16 offsets agree with both NSString and
 /// JavaScript, while `text` remains the searchable Studio block projection.

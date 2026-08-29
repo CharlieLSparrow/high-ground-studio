@@ -20,6 +20,8 @@ private struct VoiceWritingStructureEditorHarness {
         try anEmptyLineCanStartAList()
         try headingsStayStructuralAndToggleCleanly()
         try listConversionRemovesIncompatibleHeadingStyle()
+        try longWritingProducesProgressAndAnOutline()
+        try outlineRangesStayCorrectAroundEmoji()
         try existingWritingDecodesWithoutMigrationWork()
         print("PASS Voice writing structure and rich-text portability")
     }
@@ -193,6 +195,56 @@ private struct VoiceWritingStructureEditorHarness {
         try require(
             result.richText.structures.isEmpty,
             "Turning a heading into a list should remove the incompatible heading style instead of retaining a malformed partial-line range."
+        )
+    }
+
+    private static func longWritingProducesProgressAndAnOutline() throws {
+        let body = (1...401).map { "word\($0)" }.joined(separator: " ")
+        let text = "Introduction\n\(body)\nWhat this means\nClosing thought"
+        let source = VoiceWritingRichText(
+            text: text,
+            structures: [
+                .init(kind: .heading, startUtf16: 0, endUtf16: 12),
+                .init(
+                    kind: .subheading,
+                    startUtf16: ("Introduction\n\(body)\n" as NSString).length,
+                    endUtf16: ("Introduction\n\(body)\nWhat this means" as NSString).length
+                ),
+            ]
+        )
+        let insights = VoiceWritingDocumentInsights(source)
+
+        try require(insights.wordCount == 407, "Progress should count the actual words in the writing.")
+        try require(insights.estimatedReadingMinutes == 3, "Read time should round a partial minute up.")
+        try require(
+            insights.outline.map(\.title) == ["Introduction", "What this means"],
+            "The outline should use the person's heading text in document order."
+        )
+        try require(
+            insights.outline.map(\.kind) == [.heading, .subheading],
+            "The outline should preserve heading hierarchy without another user-maintained model."
+        )
+    }
+
+    private static func outlineRangesStayCorrectAroundEmoji() throws {
+        let text = "😀 Opening\nBody\nNext section"
+        let nextStart = ("😀 Opening\nBody\n" as NSString).length
+        let source = VoiceWritingRichText(
+            text: text,
+            structures: [
+                .init(kind: .heading, startUtf16: 0, endUtf16: ("😀 Opening" as NSString).length),
+                .init(kind: .heading, startUtf16: nextStart, endUtf16: (text as NSString).length),
+            ]
+        )
+        let outline = VoiceWritingDocumentInsights(source).outline
+
+        try require(
+            outline.map(\.title) == ["😀 Opening", "Next section"],
+            "Outline extraction should use the same UTF-16 coordinate system as iOS and the web."
+        )
+        try require(
+            outline.last?.rangeUtf16.location == nextStart,
+            "A non-BMP character in an earlier heading must not shift a later jump target."
         )
     }
 

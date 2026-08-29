@@ -5051,6 +5051,32 @@ final class CaptureAppStoreScreenshotUITests: XCTestCase {
             app.buttons["CaptureVoiceWritingContinueToolbar"].isEnabled,
             "The release story must make continuing by voice immediately available."
         )
+        let outline = app.buttons["CaptureVoiceWritingOutlineToggle"]
+        reveal(outline)
+        XCTAssertTrue(
+            outline.waitForExistence(timeout: 5),
+            "A structured paper should expose a calm, automatically maintained outline on iPhone."
+        )
+        XCTAssertTrue(
+            app.staticTexts["CaptureVoiceWritingWordCount"].label.contains("min read"),
+            "Long-form writing should show progress without creating a separate planning workflow."
+        )
+        outline.tap()
+        let openingSection = app.descendants(matching: .any).matching(
+            NSPredicate(format: "label == %@", "Jump to heading, Opening story")
+        ).firstMatch
+        XCTAssertTrue(
+            openingSection.waitForExistence(timeout: 5),
+            "Opening the outline should reveal the paper's real headings."
+        )
+        openingSection.tap()
+        XCTAssertTrue(
+            app.keyboards.firstMatch.waitForExistence(timeout: 5),
+            "Choosing an outline section should move focus into the writing instead of opening another planning screen."
+        )
+        app.buttons["Done"].firstMatch.tap()
+        reveal(outline)
+        outline.tap()
         Thread.sleep(forTimeInterval: 0.8)
         keepScreenshot("05-writing.png")
 
@@ -5159,6 +5185,12 @@ final class CaptureAppStoreScreenshotUITests: XCTestCase {
         attachment.name = filename
         attachment.lifetime = .keepAlways
         add(attachment)
+    }
+
+    private func reveal(_ element: XCUIElement) {
+        for _ in 0..<10 where !element.isHittable {
+            app.swipeUp()
+        }
     }
 
     private func turnOnConsentChoice(_ identifier: String) {
