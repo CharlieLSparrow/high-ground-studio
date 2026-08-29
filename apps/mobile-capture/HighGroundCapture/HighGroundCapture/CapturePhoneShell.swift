@@ -3144,7 +3144,7 @@ private struct CaptureCalendarContinuityCard: View {
                         .accessibilityIdentifier("CaptureCalendarError")
                 }
 
-                Text("Shared calendars are read-only and can be turned off anytime. They include titles, times, and links back to Quipsly—not your recordings or notes.")
+                Text("Shared calendars are read-only and can be turned off anytime. They include only titles, times, and links back to Quipsly—not recordings, transcripts, notes, or participant details.")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .accessibilityIdentifier("CaptureCalendarBoundary")

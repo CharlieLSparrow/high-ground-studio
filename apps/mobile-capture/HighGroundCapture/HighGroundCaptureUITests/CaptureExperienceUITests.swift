@@ -2741,7 +2741,7 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["35 actual minutes · linked work unchanged"].exists)
     }
 
-    func testTodayExposesReadOnlyCalendarContinuityWithoutLeakingPrivateLinks() {
+    func testAccountKeepsCalendarConnectionsSeparateFromPrivateSubscriptionLinks() {
         app.tabBars.buttons["Account"].tap()
         XCTAssertTrue(app.navigationBars["Account"].waitForExistence(timeout: 5))
         let card = app.descendants(matching: .any)["CaptureCalendarContinuityCard"]
@@ -2770,8 +2770,14 @@ final class CaptureExperienceUITests: XCTestCase {
         )
         let googleBoundary = app.staticTexts["CaptureGoogleCalendarBoundary"]
         XCTAssertTrue(googleBoundary.exists)
-        XCTAssertTrue(googleBoundary.label.contains("Manage the connection"))
-        XCTAssertTrue(googleBoundary.label.contains("in Nest"))
+        XCTAssertTrue(
+            googleBoundary.label.contains("Manage your connection"),
+            "Unexpected Google calendar boundary: \(googleBoundary.label)"
+        )
+        XCTAssertTrue(
+            googleBoundary.label.contains("in Nest"),
+            "Unexpected Google calendar boundary: \(googleBoundary.label)"
+        )
 
         for purpose in ["PERSONAL_COMMITMENTS", "COACHING", "PODCAST_PRODUCTION"] {
             let lane = app.descendants(matching: .any)["CaptureCalendarLane_\(purpose)"]
@@ -2795,12 +2801,9 @@ final class CaptureExperienceUITests: XCTestCase {
 
         let boundary = app.staticTexts["CaptureCalendarBoundary"]
         XCTAssertTrue(boundary.exists)
-        XCTAssertTrue(boundary.label.contains("read-only and revocable"))
-        XCTAssertTrue(boundary.label.contains("not recordings"))
-        XCTAssertTrue(boundary.label.contains("transcript text"))
-        XCTAssertTrue(boundary.label.contains("coaching notes"))
-        XCTAssertTrue(boundary.label.contains("participant addresses"))
-        XCTAssertTrue(boundary.label.contains("provider credentials"))
+        XCTAssertTrue(boundary.label.contains("read-only and can be turned off anytime"))
+        XCTAssertTrue(boundary.label.contains("only titles, times, and links back to Quipsly"))
+        XCTAssertTrue(boundary.label.contains("not recordings, transcripts, notes, or participant details"))
     }
 
     func testTodayUsesTheStandardAppleCalendarEditorWithoutExtraDismissalWork() {
