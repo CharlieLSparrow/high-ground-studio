@@ -16,7 +16,7 @@ describe("source-first Library model", () => {
       ],
     });
     expect(result.entries.map((entry) => entry.id)).toEqual(["session:room-1", "media:standalone"]);
-    expect(result.entries[0]).toMatchObject({ href: "/sessions/room-1", detail: "1 source recording; 84 transcript segments." });
+    expect(result.entries[0]).toMatchObject({ href: "/sessions/room-1", detail: "1 recording · 84 timed transcript segments." });
     expect(result.promotedMediaIds).toEqual(["media-promoted"]);
     expect(result.boundaries).toMatchObject({ immutableSourcesPreserved: true, promotedCaptureMediaDeduplicated: true });
   });
@@ -106,12 +106,13 @@ describe("source-first Library model", () => {
     });
 
     expect(result.entries[0]).toMatchObject({
-      kind: "NOTE",
+      kind: "DOCUMENT",
       href: "/writing/7a9b10f0-97bd-4bbb-a7dd-0b93fbc5918b",
       actionLabel: "Continue writing",
-      stateLabel: "Voice note",
-      badges: ["From Quipsly Capture", "2 sections"],
+      stateLabel: "Voice writing",
+      badges: ["From iPhone", "Timed audio source"],
     });
+    expect(result.counts).toMatchObject({ notes: 0, documents: 1 });
   });
 
   it("fails closed when a promotion manifest is malformed", () => {

@@ -19,7 +19,7 @@ export const dynamic = "force-dynamic";
 
 export const metadata = {
   title: "Library - Quipsly",
-  description: "Continue from canonical Sessions, recordings, transcripts, preserved sources, annotations, manuscripts, and reusable media.",
+  description: "Find and continue your writing, notes, recordings, transcripts, research, and media.",
 };
 
 function roomAccess(userId: string, isStaff: boolean, projectIds: string[] = []) {
@@ -227,12 +227,12 @@ function formatDate(value: string) {
 }
 
 const kindDetails: Record<LibraryKind, { label: string; icon: typeof Library; tone: string }> = {
-  SESSION: { label: "Session source", icon: FileAudio, tone: "border-sky-200 bg-sky-50 text-sky-800" },
+  SESSION: { label: "Recording", icon: FileAudio, tone: "border-sky-200 bg-sky-50 text-sky-800" },
   NOTE: { label: "Note", icon: MessageSquareText, tone: "border-teal-200 bg-teal-50 text-teal-800" },
-  SOURCE: { label: "Research source", icon: Highlighter, tone: "border-amber-200 bg-amber-50 text-amber-800" },
-  DOCUMENT: { label: "Document", icon: BookOpenText, tone: "border-emerald-200 bg-emerald-50 text-emerald-800" },
+  SOURCE: { label: "Research", icon: Highlighter, tone: "border-amber-200 bg-amber-50 text-amber-800" },
+  DOCUMENT: { label: "Writing", icon: BookOpenText, tone: "border-emerald-200 bg-emerald-50 text-emerald-800" },
   MEDIA: { label: "Studio media", icon: Film, tone: "border-violet-200 bg-violet-50 text-violet-800" },
-  SAVED: { label: "Saved capture", icon: FileText, tone: "border-stone-200 bg-stone-50 text-stone-700" },
+  SAVED: { label: "Saved", icon: FileText, tone: "border-stone-200 bg-stone-50 text-stone-700" },
 };
 
 function LibraryCard({ entry }: { entry: LibraryEntry }) {
@@ -288,12 +288,12 @@ export default async function LibraryPage({ searchParams }: { searchParams?: Pro
       </section>
 
       <section aria-labelledby="library-results"><div className="flex flex-wrap items-end justify-between gap-3"><div><p className="text-xs font-black uppercase tracking-[0.18em] text-[#987443]">Recently updated</p><h2 id="library-results" className="mt-1 font-serif text-3xl font-black">{entries.length} item{entries.length === 1 ? "" : "s"}</h2></div><div className="flex flex-wrap gap-2"><Link href="/research" className="rounded-full border border-[#d9c7a5] bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-[#5b472f]">Research</Link><Link href="/media" className="rounded-full border border-[#d9c7a5] bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-[#5b472f]">Media</Link></div></div>
-        {entries.length ? <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">{entries.map((entry) => <LibraryCard key={entry.id} entry={entry} />)}</div> : <div className="mt-4 rounded-2xl border border-dashed border-[#d8c7a7] bg-white/55 p-8 text-sm font-semibold text-[#765f40]">No accessible canonical source matches this filter. Library does not insert sample books, recordings, transcripts, or media.</div>}
+        {entries.length ? <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">{entries.map((entry) => <LibraryCard key={entry.id} entry={entry} />)}</div> : <div className="mt-4 rounded-2xl border border-dashed border-[#d8c7a7] bg-white/55 p-8 text-sm font-semibold text-[#765f40]">Nothing matches this filter yet. Try another search or start a new note.</div>}
       </section>
 
     </main>;
   } catch (error) {
     console.error("[library] failed to load permission-filtered sources", error);
-    return <main className="mx-auto grid min-h-[70vh] max-w-3xl place-items-center px-4 py-10 text-[#3d3122]"><section role="status" aria-label="Library unavailable" className="w-full rounded-3xl border border-amber-200 bg-amber-50 p-7"><CircleAlert className="h-8 w-8 text-amber-700" aria-hidden="true" /><p className="mt-5 text-xs font-black uppercase tracking-wide text-amber-800">Private read unavailable</p><h1 className="mt-2 font-serif text-3xl font-black">Library could not be verified</h1><p className="mt-3 font-semibold text-[#765f40]">No sample source is standing in, and no saved record was changed.</p><Link href="/library" className="mt-5 inline-flex rounded-full border border-amber-300 bg-white px-5 py-2.5 text-xs font-black uppercase tracking-wide text-amber-900">Retry read</Link></section></main>;
+    return <main className="mx-auto grid min-h-[70vh] max-w-3xl place-items-center px-4 py-10 text-[#3d3122]"><section role="status" aria-label="Library unavailable" className="w-full rounded-3xl border border-amber-200 bg-amber-50 p-7"><CircleAlert className="h-8 w-8 text-amber-700" aria-hidden="true" /><p className="mt-5 text-xs font-black uppercase tracking-wide text-amber-800">Library unavailable</p><h1 className="mt-2 font-serif text-3xl font-black">We could not load your Library</h1><p className="mt-3 font-semibold text-[#765f40]">Nothing changed. Try again when your connection is ready.</p><Link href="/library" className="mt-5 inline-flex rounded-full border border-amber-300 bg-white px-5 py-2.5 text-xs font-black uppercase tracking-wide text-amber-900">Try again</Link></section></main>;
   }
 }

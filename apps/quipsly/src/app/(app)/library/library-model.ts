@@ -117,16 +117,18 @@ export function buildLibraryEntries(input: {
       id: `session:${session.id}`,
       kind: "SESSION",
       title,
-      detail: `${session.recordingAssets.length} source recording${session.recordingAssets.length === 1 ? "" : "s"}; ${latestTranscript ? `${segmentCount} transcript segment${segmentCount === 1 ? "" : "s"}` : "no transcript yet"}.`,
+      detail: `${session.recordingAssets.length} recording${session.recordingAssets.length === 1 ? "" : "s"} · ${latestTranscript ? `${segmentCount} timed transcript segment${segmentCount === 1 ? "" : "s"}` : "transcript not ready yet"}.`,
       projectName: session.project?.name ?? null,
       projectSlug: session.project?.slug ?? null,
       href: `/sessions/${encode(session.id)}`,
       updatedAt: iso(session.updatedAt),
-      stateLabel: latestTranscript ? `Transcript ${clean(latestTranscript.status).replaceAll("_", " ")}` : clean(session.status).replaceAll("_", " "),
+      stateLabel: latestTranscript
+        ? clean(latestTranscript.status).toUpperCase() === "COMPLETED" ? "Transcript ready" : "Creating transcript"
+        : clean(session.status).replaceAll("_", " "),
       badges: [
         `${session.recordingAssets.length} recording${session.recordingAssets.length === 1 ? "" : "s"}`,
-        verifiedCount ? `${verifiedCount} verified` : "Verification pending",
-        latestTranscript ? `${segmentCount} segments` : "No transcript",
+        verifiedCount ? `${verifiedCount} safely saved` : "Saving",
+        latestTranscript ? `${segmentCount} timed segment${segmentCount === 1 ? "" : "s"}` : "Transcript pending",
       ],
       searchText: [title, session.purpose, session.status, session.project?.name, ...recordingNames, latestTranscript?.provider].map(clean).join(" "),
     });
@@ -149,11 +151,13 @@ export function buildLibraryEntries(input: {
       projectSlug: note.room.project?.slug ?? null,
       href: `/sessions/${encode(note.room.id)}?mode=notes#session-note-${encode(note.id)}`,
       updatedAt: iso(note.updatedAt),
-      stateLabel: `${capturedOnPhone ? "iPhone capture" : clean(note.kind).replaceAll("_", " ").toLowerCase() || "Session note"} · ${clean(note.visibility).replaceAll("_", " ").toLowerCase() || "author private"}`,
+      stateLabel: clean(note.visibility).toUpperCase() === "AUTHOR_PRIVATE"
+        ? "Private note"
+        : capturedOnPhone ? "iPhone note" : "Session note",
       badges: [
         clean(note.room.title) || "Capture session",
         ...tagBadges,
-        capturedOnPhone ? "Offline retry safe" : clean(note.authorUser?.name) || "Actor-authored",
+        capturedOnPhone ? "From iPhone" : clean(note.authorUser?.name) || "Session note",
       ],
       searchText: [title, body, note.kind, note.visibility, note.authorUser?.name, note.room.title, note.room.project?.name, ...note.tags.flatMap((tag) => [tag.label, tag.slug])].map(clean).join(" "),
     });
@@ -198,7 +202,7 @@ export function buildLibraryEntries(input: {
     const tagBadges = documentTags.map((tag) => `#${clean(tag.label)}`).filter((tag) => tag !== "#");
     entries.push({
       id: `document:${document.id}`,
-      kind: writingNote ? "NOTE" : "DOCUMENT",
+      kind: voiceWriting ? "DOCUMENT" : writingNote ? "NOTE" : "DOCUMENT",
       title: clean(document.title) || "Untitled document",
       detail: writingNote && preview
         ? (preview.length > 220 ? `${preview.slice(0, 217)}…` : preview)
@@ -216,9 +220,11 @@ export function buildLibraryEntries(input: {
         : `/create?project=${encode(document.project.slug)}&document=${encode(document.id)}`,
       updatedAt: iso(document.updatedAt),
       actionLabel: voiceWritingDraftId ? "Continue writing" : undefined,
-      stateLabel: voiceWriting ? "Voice note" : writingNote ? "Note" : episode ? `Episode ${clean(episode.status).replaceAll("_", " ")}` : clean(document.projectionStatus).replaceAll("_", " "),
-      badges: writingNote
-        ? [voiceWriting ? "From Quipsly Capture" : "Writing", ...tagBadges, `${blockCount} section${blockCount === 1 ? "" : "s"}`]
+      stateLabel: voiceWriting ? "Voice writing" : writingNote ? "Note" : episode ? `Episode ${clean(episode.status).replaceAll("_", " ")}` : clean(document.projectionStatus).replaceAll("_", " "),
+      badges: voiceWriting
+        ? ["From iPhone", "Timed audio source", ...tagBadges]
+        : writingNote
+        ? ["Writing", ...tagBadges, `${blockCount} section${blockCount === 1 ? "" : "s"}`]
         : [episode ? "Episode manuscript" : "Writing", ...tagBadges, `${blockCount} section${blockCount === 1 ? "" : "s"}`],
       searchText: [document.title, document.projectionStatus, document.project.name, episode?.title, episode?.status, ...documentTags.flatMap((tag) => [tag.label, tag.slug]), ...(document.blocks ?? []).flatMap((block) => [block.title, block.body])].map(clean).join(" "),
     });
@@ -249,12 +255,12 @@ export function buildLibraryEntries(input: {
       id: "saved:legacy-collections",
       kind: "SAVED",
       title: "Saved snippets and bookmarks",
-      detail: "Legacy personal captures remain actor-owned and readable while they are migrated into canonical Nest sources deliberately.",
+      detail: "Your saved snippets, bookmarks, and collections.",
       projectName: null,
       projectSlug: null,
       href: "/collections",
       updatedAt: iso(input.saved.updatedAt),
-      stateLabel: "Legacy personal sources",
+      stateLabel: "Saved",
       badges: [`${input.saved.collectionCount} collections`, `${input.saved.snippetCount} snippets`, `${input.saved.bookmarkCount} bookmarks`],
       searchText: "saved snippets bookmarks legacy collections personal sources",
     });
