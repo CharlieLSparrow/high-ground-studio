@@ -243,6 +243,175 @@ describe("mobile voice-writing continuation", () => {
     }));
   });
 
+  it("exposes source-less typed writing only to the versioned writing client", async () => {
+    jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({
+      user: { id: "actor-1", primaryEmail: "person@example.com" },
+    } as never);
+    const typedDocument = {
+      ...storedVoiceDocument(),
+      title: "Keyboard-first research note",
+      blocks: [
+        { id: `voice-writing-${draftId}-title`, order: 0, body: "Keyboard-first research note" },
+        { id: `voice-writing-${draftId}-body`, order: 1, body: "No recording was invented." },
+      ],
+      documentOperations: [{
+        operationType: "mobile-voice-writing-sync",
+        afterJson: { serverRevision: 1 },
+        payloadJson: {
+          schema: "quipsly-mobile-writing-v2",
+          writingOrigin: "typed",
+          sources: [],
+        },
+      }],
+    };
+    const findMany = jest.fn().mockResolvedValue([typedDocument]);
+    jest.mocked(getPrismaClient).mockReturnValue({
+      studioDocument: { findMany },
+    } as never);
+
+    const legacyResponse = await GET(new Request("http://localhost/api/mobile/capture/voice-writing"));
+    expect((await legacyResponse.json()).drafts).toEqual([]);
+
+    const modernResponse = await GET(new Request("http://localhost/api/mobile/capture/voice-writing", {
+      headers: { "x-quipsly-writing-version": "2" },
+    }));
+    expect(await modernResponse.json()).toMatchObject({
+      drafts: [{
+        draftId,
+        writingOrigin: "typed",
+        localRecordingId: null,
+        transcriptClientRequestId: null,
+        sourceSha256: null,
+        sources: [],
+      }],
+    });
+  });
+
+  it("requires the source-less writing protocol before accepting a typed draft", async () => {
+    jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({
+      user: { id: "actor-1", primaryEmail: "person@example.com" },
+    } as never);
+    const response = await POST(new Request("http://localhost/api/mobile/capture/voice-writing", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        draftId,
+        writingOrigin: "typed",
+        localRecordingId: null,
+        transcriptClientRequestId: null,
+        sourceSha256: null,
+        callRoomId: null,
+        sources: [],
+        title: "Research note",
+        body: "Start with the concrete story.",
+        localRevision: 1,
+        expectedServerRevision: 0,
+        expectedContentRevision: null,
+        richText: null,
+      }),
+    }));
+
+    expect(response.status).toBe(426);
+    expect(await response.json()).toMatchObject({
+      ok: false,
+      code: "VOICE_WRITING_VERSION_REQUIRED",
+    });
+    expect(getPrismaClient).not.toHaveBeenCalled();
+  });
+
+  it("creates source-less typed writing as a private canonical document", async () => {
+    jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({
+      user: { id: "actor-1", primaryEmail: "person@example.com" },
+    } as never);
+    jest.mocked(ensureHomeNestForEmail).mockResolvedValue({
+      id: "project-home",
+      name: "Person Home Nest",
+      slug: "person-home",
+    } as never);
+    const createdDocument = {
+      ...storedVoiceDocument(),
+      title: "Keyboard-first research note",
+      blocks: [
+        { id: `voice-writing-${draftId}-title`, order: 0, body: "Keyboard-first research note" },
+        { id: `voice-writing-${draftId}-body`, order: 1, body: "No recording was invented." },
+      ],
+      documentOperations: [{
+        operationType: "mobile-voice-writing-sync",
+        afterJson: { serverRevision: 1 },
+        payloadJson: {
+          schema: "quipsly-mobile-writing-v2",
+          writingOrigin: "typed",
+          localRecordingId: null,
+          transcriptClientRequestId: null,
+          sourceSha256: null,
+          callRoomId: null,
+          sources: [],
+        },
+      }],
+    };
+    const create = jest.fn().mockResolvedValue(createdDocument);
+    const transaction = jest.fn(async (callback: (tx: unknown) => unknown) => callback({
+      studioDocument: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        create,
+      },
+    }));
+    jest.mocked(getPrismaClient).mockReturnValue({ $transaction: transaction } as never);
+
+    const response = await POST(new Request("http://localhost/api/mobile/capture/voice-writing", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-quipsly-writing-version": "2",
+      },
+      body: JSON.stringify({
+        draftId,
+        writingOrigin: "typed",
+        localRecordingId: null,
+        transcriptClientRequestId: null,
+        sourceSha256: null,
+        callRoomId: null,
+        sources: [],
+        title: "Keyboard-first research note",
+        body: "No recording was invented.",
+        localRevision: 1,
+        expectedServerRevision: 0,
+        expectedContentRevision: null,
+        richText: null,
+      }),
+    }));
+
+    expect(response.status).toBe(200);
+    expect(create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        projectId: "project-home",
+        personalOwnerUserId: "actor-1",
+        title: "Keyboard-first research note",
+        projectionStatus: "private",
+        isPrivate: true,
+        documentOperations: { create: expect.objectContaining({
+          payloadJson: expect.objectContaining({
+            schema: "quipsly-mobile-writing-v2",
+            writingOrigin: "typed",
+            sources: [],
+          }),
+        }) },
+      }),
+    }));
+    await expect(response.json()).resolves.toMatchObject({
+      ok: true,
+      draft: {
+        draftId,
+        writingOrigin: "typed",
+        localRecordingId: null,
+        transcriptClientRequestId: null,
+        sourceSha256: null,
+        sources: [],
+      },
+      homeProject: { id: "project-home", name: "Person Home Nest", slug: "person-home" },
+    });
+  });
+
   it("moves actor-owned writing to an exact writable Nest without sharing it", async () => {
     jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({
       user: { id: "actor-1", primaryEmail: "person@example.com" },

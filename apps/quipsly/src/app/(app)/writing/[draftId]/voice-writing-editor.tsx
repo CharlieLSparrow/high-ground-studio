@@ -84,9 +84,10 @@ type WritingDraft = {
   localRevision: number;
   serverRevision: number;
   contentRevision: string;
-  localRecordingId: string;
-  transcriptClientRequestId: string;
-  sourceSha256: string;
+  writingOrigin: "typed" | "recorded";
+  localRecordingId: string | null;
+  transcriptClientRequestId: string | null;
+  sourceSha256: string | null;
   callRoomId: string | null;
   sources: WritingSource[];
   tags: Array<{ id: string; label: string; slug: string }>;
@@ -310,6 +311,7 @@ export function VoiceWritingEditor({ draftId }: { draftId: string }) {
     try {
       const response = await fetch(`/api/mobile/capture/voice-writing?draftId=${encodeURIComponent(draftId)}`, {
         cache: "no-store",
+        headers: { "x-quipsly-writing-version": "2" },
       });
       const payload = await response.json() as LoadResponse;
       const next = payload.drafts?.[0] ?? null;
@@ -347,7 +349,7 @@ export function VoiceWritingEditor({ draftId }: { draftId: string }) {
       setSaveError("Add at least one word before saving this writing.");
       return;
     }
-    const titleToSave = titleRef.current.replace(/\s+/g, " ").trim().slice(0, 320) || "Voice note";
+    const titleToSave = titleRef.current.replace(/\s+/g, " ").trim().slice(0, 320) || "Untitled";
     const localRevision = Math.max(base.localRevision, base.serverRevision) + 1;
     savingRef.current = true;
     dirtyRef.current = false;
@@ -356,9 +358,13 @@ export function VoiceWritingEditor({ draftId }: { draftId: string }) {
     try {
       const response = await fetch("/api/mobile/capture/voice-writing", {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: {
+          "content-type": "application/json",
+          "x-quipsly-writing-version": "2",
+        },
         body: JSON.stringify({
           draftId: base.draftId,
+          writingOrigin: base.writingOrigin,
           localRecordingId: base.localRecordingId,
           transcriptClientRequestId: base.transcriptClientRequestId,
           sourceSha256: base.sourceSha256,
@@ -452,7 +458,7 @@ export function VoiceWritingEditor({ draftId }: { draftId: string }) {
     setExportingWord(true);
     setExportError("");
     try {
-      const currentTitle = titleRef.current.replace(/\s+/g, " ").trim().slice(0, 320) || "Voice note";
+      const currentTitle = titleRef.current.replace(/\s+/g, " ").trim().slice(0, 320) || "Untitled";
       const response = await fetch("/api/mobile/capture/voice-writing/export", {
         method: "POST",
         headers: {
@@ -473,7 +479,7 @@ export function VoiceWritingEditor({ draftId }: { draftId: string }) {
         .replace(/[^a-z0-9 ._()-]+/gi, " ")
         .replace(/\s+/g, " ")
         .trim()
-        .slice(0, 96) || "Voice note";
+        .slice(0, 96) || "Untitled";
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement("a");
       anchor.href = url;

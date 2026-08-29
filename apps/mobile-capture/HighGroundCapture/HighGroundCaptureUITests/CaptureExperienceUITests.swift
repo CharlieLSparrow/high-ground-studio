@@ -217,23 +217,22 @@ final class CaptureExperienceUITests: XCTestCase {
 
         writeNote.tap()
         XCTAssertTrue(
-            app.descendants(matching: .any)["CaptureQuickEntrySheet_NOTE"]
+            app.descendants(matching: .any)["CaptureVoiceWritingEditor"]
                 .waitForExistence(timeout: 5),
-            "Write a note should open the native note surface without leaving Capture."
+            "Start writing should open the same first-class writing surface as speech instead of a lesser quick-entry form."
         )
-        XCTAssertTrue(app.textFields["CaptureQuickEntryTitle"].exists)
-        XCTAssertTrue(app.textFields["CaptureQuickEntryBody"].exists)
+        XCTAssertTrue(app.textFields["CaptureVoiceWritingTitle"].exists)
+        XCTAssertTrue(app.descendants(matching: .any)["CaptureVoiceWritingBody"].exists)
         XCTAssertFalse(
-            app.buttons["CaptureQuickEntrySave"].isEnabled,
-            "An empty note should not create clutter."
+            app.buttons["Transcript"].exists,
+            "Keyboard-first writing should not pretend that an audio transcript exists."
         )
-
-        let destination = app.buttons["CaptureQuickEntryNoteDestination"]
-        XCTAssertTrue(destination.exists)
         XCTAssertTrue(
-            destination.label.contains("Save to") || destination.value as? String == "My Nest",
-            "A new Library note should make its private My Nest destination understandable."
+            app.buttons["CaptureVoiceWritingContinueToolbar"].exists
+                || app.buttons["CaptureVoiceWritingContinueKeyboard"].exists,
+            "A keyboard-first paper should be one obvious tap from adding a real voice source."
         )
+        XCTAssertTrue(app.buttons["CaptureVoiceWritingShareMenu"].exists)
     }
 
     func testHomeStaysCalmWhileDeeperToolsRemainReachable() {

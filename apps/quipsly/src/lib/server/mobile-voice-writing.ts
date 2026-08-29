@@ -22,9 +22,10 @@ const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3
 
 export type MobileVoiceWritingInput = {
   draftId: string;
-  localRecordingId: string;
-  transcriptClientRequestId: string;
-  sourceSha256: string;
+  writingOrigin: "typed" | "recorded";
+  localRecordingId: string | null;
+  transcriptClientRequestId: string | null;
+  sourceSha256: string | null;
   callRoomId: string | null;
   title: string;
   body: string;
@@ -168,9 +169,11 @@ export function validateMobileVoiceWriting(value: unknown): MobileVoiceWritingVa
   }
   const input = value as Record<string, unknown>;
   const draftId = text(input.draftId, 80).toLowerCase();
-  const localRecordingId = text(input.localRecordingId, 80).toLowerCase();
-  const transcriptClientRequestId = text(input.transcriptClientRequestId, 80).toLowerCase();
-  const sourceSha256 = text(input.sourceSha256, 64).toLowerCase();
+  const requestedWritingOrigin = text(input.writingOrigin, 20).toLowerCase();
+  const writingOrigin = requestedWritingOrigin === "typed" ? "typed" : "recorded";
+  const localRecordingId = text(input.localRecordingId, 80).toLowerCase() || null;
+  const transcriptClientRequestId = text(input.transcriptClientRequestId, 80).toLowerCase() || null;
+  const sourceSha256 = text(input.sourceSha256, 64).toLowerCase() || null;
   const callRoomId = text(input.callRoomId, 200) || null;
   const title = typeof input.title === "string"
     ? input.title.replace(/\s+/g, " ").trim().slice(0, 320)
@@ -181,11 +184,20 @@ export function validateMobileVoiceWriting(value: unknown): MobileVoiceWritingVa
   const localRevision = integer(input.localRevision);
   const expectedServerRevision = integer(input.expectedServerRevision);
   const expectedContentRevision = text(input.expectedContentRevision, 64).toLowerCase() || null;
-  if (![draftId, localRecordingId, transcriptClientRequestId].every((id) => UUID_PATTERN.test(id))) {
+  if (!UUID_PATTERN.test(draftId)) {
     return { ok: false, code: "VOICE_WRITING_ID_INVALID", error: "The writing identity is invalid." };
   }
-  if (!/^[0-9a-f]{64}$/.test(sourceSha256)) {
-    return { ok: false, code: "VOICE_WRITING_SOURCE_INVALID", error: "The transcript source fingerprint is invalid." };
+  const hasAnyLegacySource = Boolean(localRecordingId || transcriptClientRequestId || sourceSha256 || callRoomId);
+  const hasCompleteLegacySource = Boolean(
+    localRecordingId
+      && transcriptClientRequestId
+      && sourceSha256
+      && UUID_PATTERN.test(localRecordingId)
+      && UUID_PATTERN.test(transcriptClientRequestId)
+      && /^[0-9a-f]{64}$/.test(sourceSha256),
+  );
+  if (hasAnyLegacySource && !hasCompleteLegacySource) {
+    return { ok: false, code: "VOICE_WRITING_SOURCE_INVALID", error: "The connected transcript source is incomplete." };
   }
   if (!body.trim()) {
     return { ok: false, code: "VOICE_WRITING_EMPTY", error: "Speak or write something before syncing this note." };
@@ -199,22 +211,33 @@ export function validateMobileVoiceWriting(value: unknown): MobileVoiceWritingVa
   if (expectedContentRevision && !/^[0-9a-f]{64}$/.test(expectedContentRevision)) {
     return { ok: false, code: "VOICE_WRITING_REVISION_INVALID", error: "The expected Nest content revision is invalid." };
   }
-  const fallbackSource = { localRecordingId, transcriptClientRequestId, sourceSha256, callRoomId };
-  const requestedSources = input.sources === undefined ? [fallbackSource] : input.sources;
-  if (!Array.isArray(requestedSources) || requestedSources.length < 1 || requestedSources.length > 100) {
-    return { ok: false, code: "VOICE_WRITING_SOURCES_INVALID", error: "Keep between 1 and 100 source recordings connected to one writing draft." };
+  const fallbackSource = hasCompleteLegacySource
+    ? { localRecordingId: localRecordingId!, transcriptClientRequestId: transcriptClientRequestId!, sourceSha256: sourceSha256!, callRoomId }
+    : null;
+  const requestedSources = input.sources === undefined
+    ? (fallbackSource ? [fallbackSource] : [])
+    : input.sources;
+  if (!Array.isArray(requestedSources) || requestedSources.length > 100) {
+    return { ok: false, code: "VOICE_WRITING_SOURCES_INVALID", error: "Keep up to 100 source recordings connected to one writing draft." };
   }
   const sources = requestedSources.map(source);
   if (sources.some((item) => !item)) {
     return { ok: false, code: "VOICE_WRITING_SOURCES_INVALID", error: "A connected source recording is invalid." };
   }
   const validSources = sources as MobileVoiceWritingSourceInput[];
-  if (new Set(validSources.map((item) => item.localRecordingId)).size !== validSources.length
-    || validSources[0]?.localRecordingId !== localRecordingId
-    || validSources[0]?.transcriptClientRequestId !== transcriptClientRequestId
-    || validSources[0]?.sourceSha256 !== sourceSha256
-    || validSources[0]?.callRoomId !== callRoomId) {
-    return { ok: false, code: "VOICE_WRITING_SOURCES_INVALID", error: "Connected recordings must be unique and begin with the draft's original source." };
+  if (new Set(validSources.map((item) => item.localRecordingId)).size !== validSources.length) {
+    return { ok: false, code: "VOICE_WRITING_SOURCES_INVALID", error: "Connected recordings must be unique." };
+  }
+  if (hasCompleteLegacySource && (
+    validSources[0]?.localRecordingId !== localRecordingId
+      || validSources[0]?.transcriptClientRequestId !== transcriptClientRequestId
+      || validSources[0]?.sourceSha256 !== sourceSha256
+      || validSources[0]?.callRoomId !== callRoomId
+  )) {
+    return { ok: false, code: "VOICE_WRITING_SOURCES_INVALID", error: "Connected recordings must begin with the draft's original source." };
+  }
+  if (writingOrigin === "recorded" && validSources.length < 1) {
+    return { ok: false, code: "VOICE_WRITING_SOURCES_INVALID", error: "Recorded writing must retain its original source." };
   }
   const normalizedRichText = normalizeMobileVoiceWritingRichText(input.richText, body);
   if (normalizedRichText === undefined) {
@@ -224,11 +247,12 @@ export function validateMobileVoiceWriting(value: unknown): MobileVoiceWritingVa
     ok: true,
     value: {
       draftId,
+      writingOrigin,
       localRecordingId,
       transcriptClientRequestId,
       sourceSha256,
       callRoomId,
-      title: title || "Voice note",
+      title: title || "Untitled",
       body,
       localRevision,
       expectedServerRevision,
@@ -267,10 +291,11 @@ export function mobileVoiceWritingContentHash(
 
 export function mobileVoiceWritingSource(input: MobileVoiceWritingInput, actorUserId: string) {
   return {
-    schema: "quipsly-mobile-voice-writing-v1",
+    schema: "quipsly-mobile-writing-v2",
     surface: "ios-capture",
     actorUserId,
     draftId: input.draftId,
+    writingOrigin: input.writingOrigin,
     localRecordingId: input.localRecordingId,
     transcriptClientRequestId: input.transcriptClientRequestId,
     sourceSha256: input.sourceSha256,

@@ -220,9 +220,9 @@ export function buildLibraryEntries(input: {
         : `/create?project=${encode(document.project.slug)}&document=${encode(document.id)}`,
       updatedAt: iso(document.updatedAt),
       actionLabel: voiceWritingDraftId ? "Continue writing" : undefined,
-      stateLabel: voiceWriting ? "Voice writing" : writingNote ? "Note" : episode ? `Episode ${clean(episode.status).replaceAll("_", " ")}` : clean(document.projectionStatus).replaceAll("_", " "),
+      stateLabel: voiceWriting ? "Writing" : writingNote ? "Note" : episode ? `Episode ${clean(episode.status).replaceAll("_", " ")}` : clean(document.projectionStatus).replaceAll("_", " "),
       badges: voiceWriting
-        ? ["From iPhone", "Timed audio source", ...tagBadges]
+        ? ["From iPhone", ...tagBadges]
         : writingNote
         ? ["Writing", ...tagBadges, `${blockCount} section${blockCount === 1 ? "" : "s"}`]
         : [episode ? "Episode manuscript" : "Writing", ...tagBadges, `${blockCount} section${blockCount === 1 ? "" : "s"}`],

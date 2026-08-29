@@ -22,6 +22,7 @@ import { resolveStudioProjectAccess } from "@/lib/server/studio-project-access";
 export const dynamic = "force-dynamic";
 
 const ON_DEVICE_TRANSCRIPT_PROVIDER = "apple-speech-transcriber-on-device";
+const SOURCELESS_WRITING_VERSION = "2";
 
 function record(value: unknown): Record<string, any> {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -64,7 +65,7 @@ function voiceWritingRichText(document: any) {
 
 function voiceWritingContentRevision(document: any, draftId: string) {
   return mobileVoiceWritingContentHash({
-    title: String(document?.title || "Voice note"),
+    title: String(document?.title || "Untitled"),
     body: voiceWritingBody(document, draftId),
     richText: voiceWritingRichText(document),
   });
@@ -145,6 +146,7 @@ function publicDraft(document: any, serverRevision: number, input: MobileVoiceWr
     localRevision: input.localRevision,
     serverRevision,
     contentRevision: mobileVoiceWritingContentHash({ title: document.title, body, richText }),
+    writingOrigin: input.writingOrigin,
     localRecordingId: input.localRecordingId,
     transcriptClientRequestId: input.transcriptClientRequestId,
     sourceSha256: input.sourceSha256,
@@ -166,14 +168,19 @@ function publicStoredDraft(document: any) {
   const body = voiceWritingBody(document, draftId);
   const richText = voiceWritingRichText(document);
   const legacySource = {
-    localRecordingId: String(source.localRecordingId || draftId),
-    transcriptClientRequestId: String(source.transcriptClientRequestId || draftId),
-    sourceSha256: String(source.sourceSha256 || "").toLowerCase(),
+    localRecordingId: typeof source.localRecordingId === "string" ? source.localRecordingId : null,
+    transcriptClientRequestId: typeof source.transcriptClientRequestId === "string" ? source.transcriptClientRequestId : null,
+    sourceSha256: typeof source.sourceSha256 === "string" ? source.sourceSha256.toLowerCase() : null,
     callRoomId: typeof source.callRoomId === "string" ? source.callRoomId : null,
   };
-  const sources = Array.isArray(source.sources) && source.sources.length
+  const hasLegacySource = Boolean(
+    legacySource.localRecordingId
+      && legacySource.transcriptClientRequestId
+      && legacySource.sourceSha256,
+  );
+  const sources = Array.isArray(source.sources)
     ? source.sources
-    : [legacySource];
+    : hasLegacySource ? [legacySource] : [];
   return {
     draftId,
     documentId: document.id,
@@ -186,6 +193,7 @@ function publicStoredDraft(document: any) {
     localRevision: current.serverRevision ?? 1,
     serverRevision: current.serverRevision ?? 1,
     contentRevision: mobileVoiceWritingContentHash({ title: document.title, body, richText }),
+    writingOrigin: source.writingOrigin === "typed" ? "typed" : "recorded",
     ...legacySource,
     sources,
     tagRevision: Number(document.tagRevision) || 0,
@@ -265,7 +273,19 @@ export async function GET(request: Request) {
     }),
     listProjectsVisibleToEmail(actorEmail, prisma),
   ]);
-  const drafts = documents.map(publicStoredDraft).filter(Boolean);
+  const supportsSourcelessWriting = request.headers.get("x-quipsly-writing-version") === SOURCELESS_WRITING_VERSION;
+  const storedDrafts = documents.map(publicStoredDraft).filter(Boolean) as any[];
+  const drafts = supportsSourcelessWriting
+    ? storedDrafts
+    : storedDrafts
+      .filter((draft: any) => draft.sources.length > 0)
+      .map((draft: any) => ({
+        ...draft,
+        localRecordingId: draft.sources[0].localRecordingId,
+        transcriptClientRequestId: draft.sources[0].transcriptClientRequestId,
+        sourceSha256: draft.sources[0].sourceSha256,
+        callRoomId: draft.sources[0].callRoomId,
+      }));
   const transcriptRequestIds = requestedDraftId ? transcriptRequestIdsForDrafts(drafts) : [];
   const transcriptJobs = transcriptRequestIds.length
     ? await prisma.transcriptJob.findMany({
@@ -594,6 +614,13 @@ export async function POST(request: Request) {
     return NextResponse.json(validation, { status: 400 });
   }
   const input = validation.value;
+  if (input.sources.length === 0
+    && request.headers.get("x-quipsly-writing-version") !== SOURCELESS_WRITING_VERSION) {
+    return NextResponse.json(
+      { ok: false, code: "VOICE_WRITING_VERSION_REQUIRED", error: "Update Quipsly before creating writing without a recording." },
+      { status: 426 },
+    );
+  }
   const prisma = getPrismaClient() as any;
   const home = await ensureHomeNestForEmail(actorEmail, prisma);
   const documentId = mobileVoiceWritingDocumentId(input.draftId);

@@ -98,13 +98,76 @@ describe("mobile voice writing", () => {
       mobileVoiceWritingContentHash({ title: result.value.title, body: result.value.body }),
     );
     expect(mobileVoiceWritingSource(result.value, "user-1")).toMatchObject({
-      schema: "quipsly-mobile-voice-writing-v1",
+      schema: "quipsly-mobile-writing-v2",
+      writingOrigin: "recorded",
       localRevision: 4,
       actorUserId: "user-1",
       sources: expect.arrayContaining([
         expect.objectContaining({ localRecordingId: continuationRecordingId }),
       ]),
     });
+  });
+
+  it("accepts keyboard-first writing without inventing an audio or transcript source", () => {
+    const result = validateMobileVoiceWriting({
+      draftId,
+      writingOrigin: "typed",
+      localRecordingId: null,
+      transcriptClientRequestId: null,
+      sourceSha256: null,
+      callRoomId: null,
+      sources: [],
+      title: "  Research   reflection ",
+      body: "A first paragraph written on iPhone.",
+      localRevision: 1,
+      expectedServerRevision: 0,
+      expectedContentRevision: null,
+      richText: null,
+    });
+
+    expect(result).toEqual({
+      ok: true,
+      value: {
+        draftId,
+        writingOrigin: "typed",
+        localRecordingId: null,
+        transcriptClientRequestId: null,
+        sourceSha256: null,
+        callRoomId: null,
+        sources: [],
+        title: "Research reflection",
+        body: "A first paragraph written on iPhone.",
+        localRevision: 1,
+        expectedServerRevision: 0,
+        expectedContentRevision: null,
+        richText: null,
+      },
+    });
+    if (!result.ok) throw new Error(result.error);
+    expect(mobileVoiceWritingSource(result.value, "user-1")).toMatchObject({
+      schema: "quipsly-mobile-writing-v2",
+      writingOrigin: "typed",
+      localRecordingId: null,
+      transcriptClientRequestId: null,
+      sourceSha256: null,
+      sources: [],
+    });
+  });
+
+  it("does not let recorded writing lose its source evidence", () => {
+    expect(validateMobileVoiceWriting({
+      draftId,
+      writingOrigin: "recorded",
+      localRecordingId: null,
+      transcriptClientRequestId: null,
+      sourceSha256: null,
+      callRoomId: null,
+      sources: [],
+      title: "Draft",
+      body: "Text",
+      localRevision: 1,
+      expectedServerRevision: 0,
+    })).toMatchObject({ ok: false, code: "VOICE_WRITING_SOURCES_INVALID" });
   });
 
   it.each([

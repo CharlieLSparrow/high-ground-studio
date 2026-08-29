@@ -109,8 +109,8 @@ describe("source-first Library model", () => {
       kind: "DOCUMENT",
       href: "/writing/7a9b10f0-97bd-4bbb-a7dd-0b93fbc5918b",
       actionLabel: "Continue writing",
-      stateLabel: "Voice writing",
-      badges: ["From iPhone", "Timed audio source"],
+      stateLabel: "Writing",
+      badges: ["From iPhone"],
     });
     expect(result.counts).toMatchObject({ notes: 0, documents: 1 });
   });

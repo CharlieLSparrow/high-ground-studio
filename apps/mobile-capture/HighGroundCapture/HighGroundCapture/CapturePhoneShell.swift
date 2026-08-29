@@ -464,9 +464,10 @@ private struct CaptureTodayView: View {
                         }
                         CaptureVoiceWritingLibraryRow(
                             draft: draft,
-                            recording: library.recording(id: draft.localRecordingID),
-                            timedTranscript: OnDeviceTranscriptManager.shared
-                                .storedTranscript(for: draft.localRecordingID)?.segments ?? [],
+                            recording: draft.primaryRecordingID.flatMap { library.recording(id: $0) },
+                            timedTranscript: draft.primaryRecordingID.flatMap {
+                                OnDeviceTranscriptManager.shared.storedTranscript(for: $0)?.segments
+                            } ?? [],
                             tagClient: model.todayClient,
                             onContinueByVoice: continueVoiceWriting
                         )
@@ -7369,7 +7370,7 @@ private struct CapturePersonalVoiceNoteTranscriptCard: View {
                     Image(systemName: draft.isSynced ? "checkmark.icloud.fill" : "icloud.and.arrow.up")
                     Text(draft.isSynced
                         ? "Saved privately to \(draft.canonicalProjectName?.nonempty ?? "your Nest")"
-                        : writingSync.syncingRecordingIDs.contains(recording.id)
+                        : writingSync.syncingDraftIDs.contains(draft.id)
                             ? "Saving to \(draft.canonicalProjectName?.nonempty ?? "your Nest")…"
                             : "Saved on this iPhone; syncing automatically")
                 }
@@ -7431,7 +7432,7 @@ private struct CapturePersonalVoiceNoteTranscriptCard: View {
         .navigationDestination(isPresented: $opensWriting) {
             if let draft {
                 CaptureVoiceWritingEditor(
-                    recordingID: recording.id,
+                    draftID: draft.id,
                     initialDraft: draft,
                     timedTranscript: transcriptManager.storedTranscript(for: recording.id)?.segments ?? [],
                     tagClient: tagClient,
@@ -7597,7 +7598,7 @@ private struct CaptureVoiceWritingEditor: View {
     @FocusState private var titleIsFocused: Bool
     @FocusState private var bodyIsFocused: Bool
 
-    let recordingID: UUID
+    let draftID: UUID
     let timedTranscript: [OnDeviceTranscriptSegment]
     private let initialDraft: VoiceWritingDraft
     @State private var title: String
@@ -7625,13 +7626,13 @@ private struct CaptureVoiceWritingEditor: View {
     @State private var requestedWritingSelection: NSRange?
 
     init(
-        recordingID: UUID,
+        draftID: UUID,
         initialDraft: VoiceWritingDraft,
         timedTranscript: [OnDeviceTranscriptSegment],
         tagClient: CaptureTodayClient,
         onContinueByVoice: @escaping (VoiceWritingDraft) -> Void
     ) {
-        self.recordingID = recordingID
+        self.draftID = draftID
         self.timedTranscript = timedTranscript
         self.initialDraft = initialDraft
         self.tagClient = tagClient
@@ -7642,25 +7643,31 @@ private struct CaptureVoiceWritingEditor: View {
     }
 
     private var currentDraft: VoiceWritingDraft? {
-        writingStore.draft(for: recordingID)
+        writingStore.draft(id: draftID)
             ?? (CaptureLaunchConfiguration.usesPreviewData ? initialDraft : nil)
+    }
+
+    private var hasTranscriptSurface: Bool {
+        currentDraft?.allSources.isEmpty == false || !timedTranscript.isEmpty
     }
 
     var body: some View {
         Form {
-            Section {
-                Picker("Document view", selection: $selectedSurface) {
-                    ForEach(CaptureVoiceWritingSurface.allCases) { surface in
-                        Text(surface.rawValue).tag(surface)
+            if hasTranscriptSurface {
+                Section {
+                    Picker("Document view", selection: $selectedSurface) {
+                        ForEach(CaptureVoiceWritingSurface.allCases) { surface in
+                            Text(surface.rawValue).tag(surface)
+                        }
                     }
+                    .pickerStyle(.segmented)
+                    .accessibilityHint("Switch between editable writing and the time-linked source transcript.")
+                    .accessibilityIdentifier("CaptureVoiceWritingSurfacePicker")
+                } footer: {
+                    Text(selectedSurface == .writing
+                        ? "Shape your words here. Quipsly saves as you type."
+                        : "Tap a passage to hear the exact moment in the original audio.")
                 }
-                .pickerStyle(.segmented)
-                .accessibilityHint("Switch between editable writing and the time-linked source transcript.")
-                .accessibilityIdentifier("CaptureVoiceWritingSurfacePicker")
-            } footer: {
-                Text(selectedSurface == .writing
-                    ? "Shape your words here. Quipsly saves as you type."
-                    : "Tap a passage to hear the exact moment in the original audio.")
             }
 
             if selectedSurface == .writing {
@@ -7688,7 +7695,7 @@ private struct CaptureVoiceWritingEditor: View {
                         .foregroundStyle(.orange)
                     Button("Try saving again") {
                         saveImmediately()
-                        writingSync.syncNow(recordingID: recordingID)
+                        writingSync.syncNow(draftID: draftID)
                     }
                     .frame(minHeight: 44)
                 }
@@ -7786,6 +7793,9 @@ private struct CaptureVoiceWritingEditor: View {
             title = refreshed.title
             bodyText = refreshed.body
             richText = refreshed.richText ?? VoiceWritingRichText(text: refreshed.body)
+            if refreshed.body.isEmpty {
+                bodyIsFocused = true
+            }
         }
         .task(id: directCorrectionLoadKey) {
             guard selectedSurface == .transcript,
@@ -7798,7 +7808,13 @@ private struct CaptureVoiceWritingEditor: View {
         .onDisappear {
             playback.stop()
             saveTask?.cancel()
-            saveImmediately()
+            if bodyText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+               title.trimmingCharacters(in: .whitespacesAndNewlines) == "Untitled",
+               currentDraft?.isUntouchedTypedDraft == true {
+                try? writingStore.remove(draftID: draftID)
+            } else {
+                saveImmediately()
+            }
         }
         .sheet(isPresented: $showsTagEditor) {
             if let context = tagEditingContext {
@@ -7959,7 +7975,7 @@ private struct CaptureVoiceWritingEditor: View {
                         .foregroundStyle(CapturePalette.accent)
                 }
                 Spacer()
-                if writingSync.movingRecordingIDs.contains(recordingID) {
+                if writingSync.movingDraftIDs.contains(draftID) {
                     ProgressView()
                         .accessibilityLabel("Moving writing")
                 }
@@ -7989,7 +8005,7 @@ private struct CaptureVoiceWritingEditor: View {
                 }
                 .disabled(
                     currentDraft?.isSynced != true
-                        || writingSync.movingRecordingIDs.contains(recordingID)
+                        || writingSync.movingDraftIDs.contains(draftID)
                 )
                 .accessibilityHint("Files this private writing in another Nest. Other Nest members cannot see it.")
                 .accessibilityIdentifier("CaptureVoiceWritingMoveNest")
@@ -8031,7 +8047,7 @@ private struct CaptureVoiceWritingEditor: View {
                 .accessibilityIdentifier("CaptureVoiceWritingContinueOnWeb")
             }
 
-            Text("Moving changes where you find this writing. It never shares the writing or its recording with other Nest members.")
+                Text("Moving changes where you find this writing. It never shares the writing or any connected recording with other Nest members.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -8070,7 +8086,9 @@ private struct CaptureVoiceWritingEditor: View {
                 isDeletingWriting
                     || (currentDraft == nil && !CaptureLaunchConfiguration.usesPreviewData)
             )
-            .accessibilityHint("Removes the editable writing while keeping its original recording and timed transcript.")
+            .accessibilityHint(currentDraft?.allSources.isEmpty == false
+                ? "Removes the editable writing while keeping its original recording and timed transcript."
+                : "Removes this editable writing from your Library.")
             .accessibilityIdentifier("CaptureVoiceWritingDelete")
             .alert("Delete this writing?", isPresented: $showsDeleteConfirmation) {
                 Button("Delete writing", role: .destructive) {
@@ -8079,7 +8097,9 @@ private struct CaptureVoiceWritingEditor: View {
                 .accessibilityIdentifier("CaptureVoiceWritingConfirmDelete")
                 Button("Cancel", role: .cancel) {}
             } message: {
-                Text("The editable writing will leave your Library. Its original recording and timed transcript stay safe.")
+                Text(currentDraft?.allSources.isEmpty == false
+                    ? "The editable writing will leave your Library. Its original recording and timed transcript stay safe."
+                    : "The editable writing will leave your Library.")
                     .accessibilityIdentifier("CaptureVoiceWritingDeleteMessage")
             }
         }
@@ -8097,14 +8117,14 @@ private struct CaptureVoiceWritingEditor: View {
                         .lineLimit(5)
                 }
                 Button("Use Nest copy") {
-                    guard let resolved = writingStore.useNestVersion(recordingID: recordingID) else { return }
+                    guard let resolved = writingStore.useNestVersion(draftID: draftID) else { return }
                     title = resolved.title
                     bodyText = resolved.body
                     richText = resolved.richText ?? VoiceWritingRichText(text: resolved.body)
                 }
                 .frame(minHeight: 44)
                 Button("Keep this iPhone copy") {
-                    guard let resolved = writingStore.keepIPhoneVersion(recordingID: recordingID) else { return }
+                    guard let resolved = writingStore.keepIPhoneVersion(draftID: draftID) else { return }
                     writingSync.schedule(resolved, delay: .zero)
                 }
                 .frame(minHeight: 44)
@@ -8120,7 +8140,7 @@ private struct CaptureVoiceWritingEditor: View {
         isDeletingWriting = true
         defer { isDeletingWriting = false }
         do {
-            try await writingSync.delete(recordingID: recordingID)
+            try await writingSync.delete(draftID: draftID)
             dismiss()
         } catch {
             deleteWritingError = error.localizedDescription
@@ -8354,7 +8374,7 @@ private struct CaptureVoiceWritingEditor: View {
         saveTask?.cancel()
         saveImmediately()
         do {
-            try await writingSync.move(recordingID: recordingID, to: destination)
+            try await writingSync.move(draftID: draftID, to: destination)
         } catch {
             nestMoveError = error.localizedDescription
             showsNestMoveError = true
@@ -8363,7 +8383,7 @@ private struct CaptureVoiceWritingEditor: View {
 
     @ViewBuilder
     private var syncStatus: some View {
-        if writingSync.syncingRecordingIDs.contains(recordingID) {
+        if writingSync.syncingDraftIDs.contains(draftID) {
             Label("Saving…", systemImage: "icloud.and.arrow.up")
         } else if currentDraft?.pendingRemote != nil {
             Label("Two copies", systemImage: "arrow.triangle.branch")
@@ -8405,7 +8425,7 @@ private struct CaptureVoiceWritingEditor: View {
     }
 
     private var recording: LocalRecording? {
-        recordingLibrary.recording(id: recordingID)
+        currentDraft?.primaryRecordingID.flatMap { recordingLibrary.recording(id: $0) }
     }
 
     private func continueByVoice() {
@@ -8418,7 +8438,7 @@ private struct CaptureVoiceWritingEditor: View {
     }
 
     private var sourceRecordings: [LocalRecording] {
-        let sourceIDs = currentDraft?.allSources.map(\.localRecordingID) ?? [recordingID]
+        let sourceIDs = currentDraft?.allSources.map(\.localRecordingID) ?? []
         return sourceIDs.compactMap { recordingLibrary.recording(id: $0) }
     }
 
@@ -8442,8 +8462,10 @@ private struct CaptureVoiceWritingEditor: View {
             )
         }
         if !mapped.isEmpty { return mapped }
-        return timedTranscript.isEmpty ? [] : [TimedTranscriptSource(
-            id: recordingID,
+        guard !timedTranscript.isEmpty,
+              let primaryRecordingID = currentDraft?.primaryRecordingID else { return [] }
+        return [TimedTranscriptSource(
+            id: primaryRecordingID,
             title: recording?.displayTitle ?? "Original recording",
             segments: timedTranscript
         )]
@@ -8495,7 +8517,7 @@ private struct CaptureVoiceWritingEditor: View {
     }
 
     private var directCorrectionRoomID: String? {
-        currentDraft?.callRoomID?.nonempty
+        currentDraft?.effectiveCallRoomID?.nonempty
             ?? (CaptureLaunchConfiguration.usesPreviewData ? "preview-voice-writing" : nil)
     }
 
@@ -8734,7 +8756,7 @@ private struct CaptureVoiceWritingEditor: View {
 
     private func saveImmediately() {
         guard let draft = try? writingStore.update(
-            recordingID: recordingID,
+            draftID: draftID,
             title: title,
             body: bodyText,
             richText: richText
@@ -13733,8 +13755,8 @@ private struct CaptureLibraryView: View {
     @StateObject private var notesClient = CaptureWorkClient()
     @StateObject private var playback = LocalRecordingPlaybackController()
     @State private var recordingPendingLocalDeletion: LocalRecording?
-    @State private var quickEntryKind: MobileQuickEntryKind?
     @State private var noteToEdit: MobileCaptureWorkNote?
+    @State private var createWritingError: String?
     @State private var selectedSection: CaptureLibrarySection = .writing
     @State private var searchText = ""
 
@@ -13834,17 +13856,8 @@ private struct CaptureLibraryView: View {
             Task { await refreshPrivateNotes() }
         }
         .onChange(of: model.quickEntrySyncMessage) { _, _ in
-            guard quickEntryKind == nil, !model.usesPreviewData else { return }
+            guard !model.usesPreviewData else { return }
             Task { await refreshPrivateNotes() }
-        }
-        .sheet(item: $quickEntryKind) { kind in
-            CaptureQuickEntrySheet(
-                kind: kind,
-                session: nil,
-                model: model,
-                initialProject: privateNestDestination
-            )
-            .presentationDetents([.large])
         }
         .sheet(item: $noteToEdit) { note in
             if let project = notesClient.workspace?.project {
@@ -13858,6 +13871,14 @@ private struct CaptureLibraryView: View {
         }
         .navigationDestination(item: $requestedWritingDraftID) { draftID in
             writingDestination(draftID: draftID)
+        }
+        .alert("Couldn’t start writing", isPresented: Binding(
+            get: { createWritingError != nil },
+            set: { if !$0 { createWritingError = nil } }
+        )) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(createWritingError ?? "Try again after unlocking this iPhone.")
         }
         .onDisappear { playback.stop() }
     }
@@ -13903,7 +13924,12 @@ private struct CaptureLibraryView: View {
 
     private var writeNoteAction: some View {
         Button {
-            quickEntryKind = .note
+            do {
+                let draft = try writingStore.createTypedDraft()
+                requestedWritingDraftID = draft.id
+            } catch {
+                createWritingError = error.localizedDescription
+            }
         } label: {
             HStack(spacing: 13) {
                 Image(systemName: "square.and.pencil")
@@ -13913,9 +13939,9 @@ private struct CaptureLibraryView: View {
                     .background(CapturePalette.accent.opacity(0.1), in: Circle())
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Write a note")
+                    Text("Start writing")
                         .font(.headline)
-                    Text("Start with the keyboard. It stays private in My Nest.")
+                    Text("Start with the keyboard, then add your voice whenever it helps.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -13937,8 +13963,8 @@ private struct CaptureLibraryView: View {
         }
         .buttonStyle(.plain)
         .disabled(model.isSessionContextLocked)
-        .accessibilityLabel("Write a note")
-        .accessibilityHint("Creates an editable note in My Nest, private to you.")
+        .accessibilityLabel("Start writing")
+        .accessibilityHint("Opens a private document with formatting, voice, organization, and export tools.")
         .accessibilityIdentifier("CaptureLibraryWriteNote")
     }
 
@@ -13946,10 +13972,11 @@ private struct CaptureLibraryView: View {
     private func writingDestination(draftID: UUID) -> some View {
         if let draft = writingStore.draft(id: draftID) {
             CaptureVoiceWritingEditor(
-                recordingID: draft.localRecordingID,
+                draftID: draft.id,
                 initialDraft: draft,
-                timedTranscript: OnDeviceTranscriptManager.shared
-                    .storedTranscript(for: draft.localRecordingID)?.segments ?? [],
+                timedTranscript: draft.primaryRecordingID.flatMap {
+                    OnDeviceTranscriptManager.shared.storedTranscript(for: $0)?.segments
+                } ?? [],
                 tagClient: model.todayClient,
                 onContinueByVoice: continueVoiceWriting
             )
@@ -13996,29 +14023,6 @@ private struct CaptureLibraryView: View {
             if $0.updatedAt != $1.updatedAt { return $0.updatedAt > $1.updatedAt }
             return $0.id < $1.id
         }
-    }
-
-    private var privateNestDestination: MobileCaptureProjectDestination? {
-        if let destination = model.captureProjects.first(where: \.isHome) {
-            return destination
-        }
-        guard let workspace = notesClient.workspace,
-              workspace.project.isHomeNest else { return nil }
-        return MobileCaptureProjectDestination(
-            id: workspace.project.id,
-            slug: workspace.project.slug,
-            name: workspace.project.name,
-            role: workspace.project.role,
-            isHomeNest: true,
-            availableTags: workspace.tags.filter(\.isActive).map {
-                MobileCaptureTag(
-                    id: $0.id,
-                    slug: $0.slug,
-                    label: $0.label,
-                    isActive: $0.isActive
-                )
-            }
-        )
     }
 
     private var filteredRecordings: [LocalRecording] {
@@ -14093,9 +14097,10 @@ private struct CaptureLibraryView: View {
                 case .voice(let draft):
                     CaptureVoiceWritingLibraryRow(
                         draft: draft,
-                        recording: library.recording(id: draft.localRecordingID),
-                        timedTranscript: OnDeviceTranscriptManager.shared
-                            .storedTranscript(for: draft.localRecordingID)?.segments ?? [],
+                        recording: draft.primaryRecordingID.flatMap { library.recording(id: $0) },
+                        timedTranscript: draft.primaryRecordingID.flatMap {
+                            OnDeviceTranscriptManager.shared.storedTranscript(for: $0)?.segments
+                        } ?? [],
                         tagClient: model.todayClient,
                         onContinueByVoice: continueVoiceWriting
                     )
@@ -14276,7 +14281,7 @@ private struct CaptureVoiceWritingLibraryRow: View {
     var body: some View {
         NavigationLink {
             CaptureVoiceWritingEditor(
-                recordingID: draft.localRecordingID,
+                draftID: draft.id,
                 initialDraft: draft,
                 timedTranscript: timedTranscript,
                 tagClient: tagClient,
@@ -14333,7 +14338,9 @@ private struct CaptureVoiceWritingLibraryRow: View {
             .captureCard()
         }
         .buttonStyle(.plain)
-        .accessibilityHint("Opens editable writing. The timed transcript and original source remain separate.")
+        .accessibilityHint(draft.allSources.isEmpty
+            ? "Opens editable writing with formatting, voice, organization, and export tools."
+            : "Opens editable writing. The timed transcript and original source remain separate.")
         .accessibilityIdentifier("CaptureLibraryWriting_\(draft.id)")
     }
 }
@@ -14439,6 +14446,7 @@ private struct CaptureLibraryPreviewWritingCard: View {
     private static let draft = VoiceWritingDraft(
         id: UUID(uuidString: "A17F4C12-0000-4000-8000-000000000033")!,
         ownerAccountID: "preview-owner",
+        writingOrigin: "recorded",
         localRecordingID: recordingID,
         sourceTranscriptClientRequestID: UUID(uuidString: "A17F4C12-0000-4000-8000-000000000034")!,
         sourceSHA256: String(repeating: "a", count: 64),
@@ -14482,7 +14490,7 @@ private struct CaptureLibraryPreviewWritingCard: View {
     var body: some View {
         NavigationLink {
             CaptureVoiceWritingEditor(
-                recordingID: Self.recordingID,
+                draftID: Self.draft.id,
                 initialDraft: Self.draft,
                 timedTranscript: [
                     OnDeviceTranscriptSegment(

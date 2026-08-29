@@ -4945,3 +4945,24 @@ rehearsal`) in an iPhone 17 Pro simulator. The signed-in UI acceptance opened
   `Test-HighGroundCapture-2026.08.26_05-03-18--0600.xcresult`. Canonical form
   automation suites remain green at 12/12. Physical-device mutation/readback
   and minimally instructed human use remain honest release evidence.
+
+### 2026-08-29 unified mobile writing
+
+- Quipsly Capture's **Start writing** and **Speak to write** paths now open the
+  same protected, rich document editor. A keyboard-first document begins with
+  no recording or transcript source; adding speech later appends a real timed
+  source to that document instead of manufacturing recording identifiers.
+- The canonical `StudioDocument` remains the shared phone/web writing model.
+  Mobile writing contract v2 makes sources optional for typed writing while
+  preserving the invariant that recorded writing cannot lose its original
+  source. Older clients hide source-less documents and receive a compatible
+  primary-source projection for source-backed documents during release skew.
+- Empty local typed drafts are pruned instead of becoming Library clutter;
+  non-empty work is saved locally before synchronization. Source-less writing
+  does not show transcript or audio affordances, while source-backed writing
+  retains timed transcript correction, playback, and source provenance.
+- The source contract smoke passes, three focused web suites pass (31 tests),
+  the generic simulator build passes, and the focused iPhone 17 Pro Library
+  writing UI test passes. Physical-device, authenticated cross-device, and
+  natural-speech evidence remains outstanding and is not inferred from these
+  automated checks.
