@@ -16,9 +16,73 @@ private struct VoiceWritingTextComposerHarness {
         try exactCommandsCreateStructure()
         try inlineCommandsSurviveRecognizerChunking()
         try familiarBulletCommandsCreateAList()
+        try spokenHeadingsCreatePortableStructure()
+        try headingCommandsCanArriveBeforeTheirText()
+        try richContinuationPreservesBothDocuments()
         try ordinaryProseIsNotMistakenForACommand()
         try pausesStillCreateReadableParagraphs()
         print("PASS Voice writing speech structure composition")
+    }
+
+    private static func spokenHeadingsCreatePortableStructure() throws {
+        let writing = VoiceWritingTextComposer.richText(from: [
+            phrase("New heading. Why Courage Matters", 0, 2),
+            phrase("Courage makes difficult action possible.", 2, 4),
+            phrase("New subheading Evidence from experience", 4, 6),
+            phrase("A concrete example belongs here.", 6, 8),
+        ])
+        try require(
+            writing.text == "Why Courage Matters\n\nCourage makes difficult action possible.\n\nEvidence from experience\n\nA concrete example belongs here.",
+            "Heading commands should leave clean editable prose."
+        )
+        try require(
+            writing.structures == [
+                .init(kind: .heading, startUtf16: 0, endUtf16: 19),
+                .init(kind: .subheading, startUtf16: 63, endUtf16: 87),
+            ],
+            "Spoken headings should become real portable block structure."
+        )
+    }
+
+    private static func headingCommandsCanArriveBeforeTheirText() throws {
+        let writing = VoiceWritingTextComposer.richText(from: [
+            phrase("new heading", 0, 0.5),
+            phrase("Methods", 0.5, 1.2),
+            phrase("This section explains the approach.", 1.2, 3),
+        ])
+        try require(
+            writing.text == "Methods\n\nThis section explains the approach.",
+            "A command recognized separately should style the next phrase only."
+        )
+        try require(
+            writing.structures == [.init(kind: .heading, startUtf16: 0, endUtf16: 7)],
+            "A separately recognized heading must keep its semantic structure."
+        )
+    }
+
+    private static func richContinuationPreservesBothDocuments() throws {
+        let first = VoiceWritingRichText(
+            text: "Opening",
+            marks: [.init(kind: .bold, startUtf16: 0, endUtf16: 7)],
+            structures: [.init(kind: .heading, startUtf16: 0, endUtf16: 7)]
+        )
+        let next = VoiceWritingTextComposer.richText(from: [
+            phrase("New subheading Next steps", 0, 1),
+            phrase("Keep writing.", 1, 2),
+        ])
+        let combined = first.appending(next)
+        try require(combined.text == "Opening\n\nNext steps\n\nKeep writing.", "Continuation text should remain readable.")
+        try require(
+            combined.marks == [.init(kind: .bold, startUtf16: 0, endUtf16: 7)],
+            "Continuation must preserve existing inline formatting."
+        )
+        try require(
+            combined.structures == [
+                .init(kind: .heading, startUtf16: 0, endUtf16: 7),
+                .init(kind: .subheading, startUtf16: 9, endUtf16: 19),
+            ],
+            "Continuation must preserve and offset both documents' structure."
+        )
     }
 
     private static func familiarBulletCommandsCreateAList() throws {
@@ -61,9 +125,10 @@ private struct VoiceWritingTextComposerHarness {
     private static func ordinaryProseIsNotMistakenForACommand() throws {
         let body = VoiceWritingTextComposer.body(from: [
             phrase("I need a new paragraph about courage before the conclusion.", 0, 4),
+            phrase("I am heading to the library to research it.", 4, 6),
         ])
         try require(
-            body == "I need a new paragraph about courage before the conclusion.",
+            body == "I need a new paragraph about courage before the conclusion. I am heading to the library to research it.",
             "A dictation phrase inside an ordinary sentence must remain the author's words."
         )
     }

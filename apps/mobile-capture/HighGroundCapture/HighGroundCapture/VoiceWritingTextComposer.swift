@@ -8,32 +8,42 @@ struct VoiceWritingTimedPhrase: Equatable {
 
 /// Turns immutable timed speech into an editable first draft. Speech timing
 /// supplies sensible paragraph breaks. Apple's ordinary dictation phrases
-/// ("new line" and "new paragraph") and the familiar "bullet point" phrase
-/// remain useful even when the recognizer returns a command and nearby prose
-/// in the same result.
+/// ("new line" and "new paragraph"), the familiar "bullet point" phrase,
+/// and explicit heading commands remain useful even when the recognizer
+/// returns a command and nearby prose in the same result.
 enum VoiceWritingTextComposer {
     private enum SpokenPiece: Equatable {
         case text(String)
         case lineBreak
         case paragraphBreak
         case bulletPoint
+        case heading
+        case subheading
     }
 
     private enum BreakKind {
         case line
         case paragraph
         case bullet
+        case heading
+        case subheading
     }
 
     nonisolated static func body(from phrases: [VoiceWritingTimedPhrase]) -> String {
-        var paragraphs: [String] = []
+        richText(from: phrases).text
+    }
+
+    nonisolated static func richText(from phrases: [VoiceWritingTimedPhrase]) -> VoiceWritingRichText {
+        var paragraphs: [(text: String, style: VoiceWritingBlockKind?)] = []
         var current = ""
+        var currentStyle: VoiceWritingBlockKind?
         var previousEnd: Double?
 
         func flush() {
             let paragraph = current.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !paragraph.isEmpty { paragraphs.append(paragraph) }
+            if !paragraph.isEmpty { paragraphs.append((paragraph, currentStyle)) }
             current = ""
+            currentStyle = nil
         }
 
         func append(_ text: String) {
@@ -60,10 +70,16 @@ enum VoiceWritingTextComposer {
             }
         }
 
+        func startStructure(_ style: VoiceWritingBlockKind) {
+            flush()
+            currentStyle = style
+        }
+
         for phrase in phrases.sorted(by: phraseOrder) {
             let pieces = spokenPieces(in: phrase.text)
             guard !pieces.isEmpty else { continue }
             var consideredTimedPause = false
+            var appendedStructuredText = false
 
             for piece in pieces {
                 switch piece {
@@ -76,6 +92,10 @@ enum VoiceWritingTextComposer {
                     }
                 case .bulletPoint:
                     startBullet()
+                case .heading:
+                    startStructure(.heading)
+                case .subheading:
+                    startStructure(.subheading)
                 case .text(let text):
                     if !consideredTimedPause {
                         let pause = previousEnd.map { max(0, phrase.startSeconds - $0) } ?? 0
@@ -89,12 +109,33 @@ enum VoiceWritingTextComposer {
                         consideredTimedPause = true
                     }
                     append(text)
+                    appendedStructuredText = appendedStructuredText || currentStyle != nil
                 }
             }
+            // A heading command styles exactly the nearby spoken phrase. When
+            // the command arrives alone, its style remains pending for the
+            // next recognized phrase instead of creating an empty heading.
+            if appendedStructuredText { flush() }
             previousEnd = phrase.endSeconds
         }
         flush()
-        return paragraphs.joined(separator: "\n\n")
+
+        var text = ""
+        var structures: [VoiceWritingBlockStyle] = []
+        for paragraph in paragraphs {
+            if !text.isEmpty { text += "\n\n" }
+            let start = text.utf16.count
+            text += paragraph.text
+            let end = text.utf16.count
+            if let style = paragraph.style, end > start {
+                structures.append(VoiceWritingBlockStyle(
+                    kind: style,
+                    startUtf16: start,
+                    endUtf16: end
+                ))
+            }
+        }
+        return VoiceWritingRichText(text: text, structures: structures)
     }
 
     nonisolated static func suggestedTitle(from body: String) -> String? {
@@ -120,7 +161,7 @@ enum VoiceWritingTextComposer {
 
         let fullRange = NSRange(value.startIndex..<value.endIndex, in: value)
         let inlineCommandPattern = try! NSRegularExpression(
-            pattern: #"\b(new paragraph|next paragraph|new line|bullet point)\b[.!?]?"#,
+            pattern: #"\b(new paragraph|next paragraph|new line|bullet point|new heading|new subheading)\b[.!?]?"#,
             options: [.caseInsensitive]
         )
         let matches = inlineCommandPattern.matches(in: value, range: fullRange)
@@ -161,6 +202,8 @@ enum VoiceWritingTextComposer {
         case "new line": return .line
         case "new paragraph", "next paragraph": return .paragraph
         case "bullet point": return .bullet
+        case "new heading": return .heading
+        case "new subheading": return .subheading
         default: return nil
         }
     }
@@ -170,6 +213,8 @@ enum VoiceWritingTextComposer {
         case .line: .lineBreak
         case .paragraph: .paragraphBreak
         case .bullet: .bulletPoint
+        case .heading: .heading
+        case .subheading: .subheading
         }
     }
 

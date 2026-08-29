@@ -15,6 +15,7 @@ trap cleanup EXIT
 export DEVELOPER_DIR="${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}"
 xcrun swiftc \
   -parse-as-library \
+  "$repo_root/apps/mobile-capture/HighGroundCapture/HighGroundCapture/VoiceWritingRichText.swift" \
   "$repo_root/apps/mobile-capture/HighGroundCapture/HighGroundCapture/VoiceWritingTextComposer.swift" \
   "$repo_root/apps/mobile-capture/HighGroundCapture/Testing/VoiceWritingTextComposerHarness.swift" \
   -o "$temporary_directory/voice-writing-composer-harness"

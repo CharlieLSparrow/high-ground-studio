@@ -221,13 +221,14 @@ final class VoiceWritingDraftStore: ObservableObject {
             return existing
         }
 
-        let body = VoiceWritingTextComposer.body(from: transcript.segments.map {
+        let composedWriting = VoiceWritingTextComposer.richText(from: transcript.segments.map {
             VoiceWritingTimedPhrase(
                 text: $0.text,
                 startSeconds: $0.startSeconds,
                 endSeconds: $0.endSeconds
             )
         })
+        let body = composedWriting.text
         guard !body.isEmpty else { return nil }
 
         if let roomID = recording.callRoomId?.trimmingCharacters(in: .whitespacesAndNewlines),
@@ -244,7 +245,7 @@ final class VoiceWritingDraftStore: ObservableObject {
                 storedDrafts[index].body = existingBody.isEmpty ? body : "\(existingBody)\n\n\(body)"
                 storedDrafts[index].richText = (storedDrafts[index].richText
                     ?? VoiceWritingRichText(text: existingBody))
-                    .appending(body)
+                    .appending(composedWriting)
                 storedDrafts[index].updatedAt = now
                 storedDrafts[index].localRevision += 1
                 storedDrafts[index].lastSyncError = nil
@@ -276,7 +277,7 @@ final class VoiceWritingDraftStore: ObservableObject {
             createdAt: now,
             title: title,
             body: body,
-            richText: VoiceWritingRichText(text: body),
+            richText: composedWriting,
             updatedAt: now,
             localRevision: 1,
             serverRevision: nil,

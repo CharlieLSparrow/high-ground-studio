@@ -285,6 +285,10 @@ final class CaptureExperienceUITests: XCTestCase {
             "Before recording, Quipsly should make the automatic speech-to-writing outcome obvious."
         )
         XCTAssertTrue(
+            app.staticTexts["CaptureVoiceWritingRecorderDetail"].label.contains("new heading"),
+            "The recorder should teach spoken paper structure at the moment it is useful."
+        )
+        XCTAssertTrue(
             app.staticTexts["CaptureSessionStatusMessage"].label.contains("offline"),
             "The local-first path should explain that recording and writing remain available without Nest."
         )

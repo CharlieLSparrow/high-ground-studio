@@ -33,7 +33,7 @@ struct VoiceWritingRichText: Codable, Equatable {
     let marks: [VoiceWritingTextMark]
     let structures: [VoiceWritingBlockStyle]
 
-    init(
+    nonisolated init(
         text: String,
         marks: [VoiceWritingTextMark] = [],
         structures: [VoiceWritingBlockStyle] = []
@@ -121,13 +121,31 @@ struct VoiceWritingRichText: Codable, Equatable {
     }
 
     func appending(_ addition: String) -> VoiceWritingRichText {
+        appending(VoiceWritingRichText(text: addition))
+    }
+
+    func appending(_ addition: VoiceWritingRichText) -> VoiceWritingRichText {
         let base = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        let suffix = addition.trimmingCharacters(in: .whitespacesAndNewlines)
+        let suffix = addition.text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !suffix.isEmpty else { return self }
+        let separator = base.isEmpty ? "" : "\n\n"
+        let offset = base.utf16.count + separator.utf16.count
         return VoiceWritingRichText(
-            text: base.isEmpty ? suffix : "\(base)\n\n\(suffix)",
-            marks: marks,
-            structures: structures
+            text: "\(base)\(separator)\(suffix)",
+            marks: marks + addition.marks.map {
+                VoiceWritingTextMark(
+                    kind: $0.kind,
+                    startUtf16: $0.startUtf16 + offset,
+                    endUtf16: $0.endUtf16 + offset
+                )
+            },
+            structures: structures + addition.structures.map {
+                VoiceWritingBlockStyle(
+                    kind: $0.kind,
+                    startUtf16: $0.startUtf16 + offset,
+                    endUtf16: $0.endUtf16 + offset
+                )
+            }
         )
     }
 
