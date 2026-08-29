@@ -3837,13 +3837,12 @@ private struct MobileCoachingRescheduleSheet: View {
     }
 }
 
-private struct NewMobileCoachingAppointmentSheet: View {
-    @EnvironmentObject private var subscriptionStore: QuipslySubscriptionStore
+struct MobileCoachingAppointmentFields: View {
     @ObservedObject var client: MobileCoachingRunwayClient
-    @Binding var isPresented: Bool
-    let onCreated: @MainActor (MobileCoachingAppointmentResult) async -> Void
-    @State private var draft = MobileCoachingAppointmentDraft()
+    @Binding var draft: MobileCoachingAppointmentDraft
     @FocusState private var focusedField: Field?
+
+    private enum Field { case name, email, title }
 
     private var scheduleConflict: MobileCoachingBooking? {
         client.scheduleConflict(
@@ -3859,7 +3858,102 @@ private struct NewMobileCoachingAppointmentSheet: View {
         )
     }
 
-    private enum Field { case name, email, title }
+    var body: some View {
+        Section("Invite") {
+            TextField("Client email", text: $draft.clientEmail)
+                .textContentType(.emailAddress)
+                .keyboardType(.emailAddress)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .focused($focusedField, equals: .email)
+                .accessibilityIdentifier("CaptureCoachingClientEmail")
+            Text("Quipsly sends a private link. They can join from iPhone, tablet, or desktop.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+
+        Section("When") {
+            DatePicker(
+                "Starts",
+                selection: $draft.scheduledStart,
+                in: Date()...,
+                displayedComponents: [.date, .hourAndMinute]
+            )
+            .accessibilityIdentifier("CaptureCoachingSessionStart")
+            Picker("Duration", selection: $draft.durationMinutes) {
+                Text("30 minutes").tag(30)
+                Text("45 minutes").tag(45)
+                Text("60 minutes").tag(60)
+                Text("90 minutes").tag(90)
+            }
+            LabeledContent(
+                "Time zone",
+                value: TimeZone.current.localizedName(
+                    for: .standard,
+                    locale: .current
+                ) ?? TimeZone.current.identifier
+            )
+            if let conflict = scheduleConflict {
+                Label(
+                    "Conflicts with \(conflict.title) · \(conflict.scheduleLabel)",
+                    systemImage: "exclamationmark.triangle.fill"
+                )
+                .font(.caption)
+                .foregroundStyle(.red)
+                .accessibilityIdentifier("CaptureCoachingAppointmentConflict")
+            } else if isOutsideWorkingHours {
+                Label(
+                    "Outside your availability",
+                    systemImage: "clock.badge.exclamationmark.fill"
+                )
+                .font(.caption)
+                .foregroundStyle(.orange)
+                .accessibilityIdentifier("CaptureCoachingAppointmentOutsideWorkingHours")
+            }
+        }
+
+        Section {
+            DisclosureGroup("Optional details") {
+                TextField("Client name", text: $draft.clientName)
+                    .textContentType(.name)
+                    .focused($focusedField, equals: .name)
+                    .submitLabel(.next)
+                    .onSubmit { focusedField = .title }
+                    .accessibilityIdentifier("CaptureCoachingClientName")
+                TextField("Session name", text: $draft.title)
+                    .focused($focusedField, equals: .title)
+                    .submitLabel(.done)
+                    .onSubmit { focusedField = nil }
+                    .accessibilityIdentifier("CaptureCoachingSessionTitle")
+            }
+        }
+
+        if let error = client.errorMessage {
+            Section { Text(error).foregroundStyle(.red) }
+        }
+    }
+}
+
+private struct NewMobileCoachingAppointmentSheet: View {
+    @EnvironmentObject private var subscriptionStore: QuipslySubscriptionStore
+    @ObservedObject var client: MobileCoachingRunwayClient
+    @Binding var isPresented: Bool
+    let onCreated: @MainActor (MobileCoachingAppointmentResult) async -> Void
+    @State private var draft = MobileCoachingAppointmentDraft()
+
+    private var scheduleConflict: MobileCoachingBooking? {
+        client.scheduleConflict(
+            startingAt: draft.scheduledStart,
+            durationMinutes: draft.durationMinutes
+        )
+    }
+
+    private var isOutsideWorkingHours: Bool {
+        client.isOutsideWeeklyAvailability(
+            startingAt: draft.scheduledStart,
+            durationMinutes: draft.durationMinutes
+        )
+    }
 
     var body: some View {
         NavigationStack {
@@ -3896,107 +3990,39 @@ private struct NewMobileCoachingAppointmentSheet: View {
 
     private var appointmentForm: some View {
         Form {
-                Section("Invite") {
-                    TextField("Email", text: $draft.clientEmail)
-                        .textContentType(.emailAddress)
-                        .keyboardType(.emailAddress)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                        .focused($focusedField, equals: .email)
-                        .accessibilityIdentifier("CaptureCoachingClientEmail")
-                    Text("Quipsly will send a private invitation to this address.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-
-                Section("When") {
-                    DatePicker(
-                        "Starts",
-                        selection: $draft.scheduledStart,
-                        in: Date()...,
-                        displayedComponents: [.date, .hourAndMinute]
-                    )
-                    Text("\(draft.durationMinutes) minutes · \(TimeZone.current.identifier)")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    if let conflict = scheduleConflict {
-                        Label(
-                            "Conflicts with \(conflict.title) · \(conflict.scheduleLabel)",
-                            systemImage: "exclamationmark.triangle.fill"
-                        )
-                        .font(.caption)
-                        .foregroundStyle(.red)
-                        .accessibilityIdentifier("CaptureCoachingAppointmentConflict")
-                    } else if isOutsideWorkingHours {
-                        Label(
-                            "Outside your working hours",
-                            systemImage: "clock.badge.exclamationmark.fill"
-                        )
-                        .font(.caption)
-                        .foregroundStyle(.orange)
-                        .accessibilityIdentifier("CaptureCoachingAppointmentOutsideWorkingHours")
-                    }
-                }
-
-                Section {
-                    DisclosureGroup("Optional details") {
-                        TextField("Client name", text: $draft.clientName)
-                            .textContentType(.name)
-                            .focused($focusedField, equals: .name)
-                            .submitLabel(.next)
-                            .onSubmit { focusedField = .title }
-                            .accessibilityIdentifier("CaptureCoachingClientName")
-                        TextField("Session name", text: $draft.title)
-                            .focused($focusedField, equals: .title)
-                            .submitLabel(.done)
-                            .onSubmit { focusedField = nil }
-                            .accessibilityIdentifier("CaptureCoachingSessionTitle")
-                        Picker("Duration", selection: $draft.durationMinutes) {
-                            Text("30 minutes").tag(30)
-                            Text("45 minutes").tag(45)
-                            Text("60 minutes").tag(60)
-                            Text("90 minutes").tag(90)
-                        }
-                        LabeledContent("Time zone", value: TimeZone.current.identifier)
-                    }
-                }
-
-                if let error = client.errorMessage {
-                    Section { Text(error).foregroundStyle(.red) }
-                }
+            MobileCoachingAppointmentFields(client: client, draft: $draft)
+        }
+        .navigationTitle("Schedule coaching")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .cancellationAction) {
+                Button("Cancel") { isPresented = false }
             }
-            .navigationTitle("Schedule coaching")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { isPresented = false }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button(client.isMutating ? "Scheduling…" : "Schedule & invite") {
-                        Task {
-                            guard let result = await client.createAppointment(draft) else { return }
-                            if client.invitationEmailAvailable, let roomID = result.callRoomId {
-                                _ = await client.sendInvitationEmail(
-                                    roomID: roomID,
-                                    recipientEmail: draft.normalizedEmail,
-                                    recipientName: draft.clientName
-                                )
-                            }
-                            await onCreated(result)
-                            isPresented = false
+            ToolbarItem(placement: .confirmationAction) {
+                Button(client.isMutating ? "Scheduling…" : "Schedule & invite") {
+                    Task {
+                        guard let result = await client.createAppointment(draft) else { return }
+                        if client.invitationEmailAvailable, let roomID = result.callRoomId {
+                            _ = await client.sendInvitationEmail(
+                                roomID: roomID,
+                                recipientEmail: draft.normalizedEmail,
+                                recipientName: draft.clientName
+                            )
                         }
+                        await onCreated(result)
+                        isPresented = false
                     }
-                    .disabled(
-                        client.isMutating
-                            || client.isUsingProtectedCache
-                            || !draft.isReady
-                            || scheduleConflict != nil
-                            || isOutsideWorkingHours
-                    )
-                    .accessibilityIdentifier("CaptureCoachingCreateAppointment")
                 }
+                .disabled(
+                    client.isMutating
+                        || client.isUsingProtectedCache
+                        || !draft.isReady
+                        || scheduleConflict != nil
+                        || isOutsideWorkingHours
+                )
+                .accessibilityIdentifier("CaptureCoachingCreateAppointment")
             }
-            .onAppear { focusedField = .email }
+        }
     }
 }
 

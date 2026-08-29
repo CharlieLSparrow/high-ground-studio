@@ -4830,6 +4830,10 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         newSession.tap()
         XCTAssertTrue(app.navigationBars["New session"].waitForExistence(timeout: 6))
 
+        let intent = app.segmentedControls["NewCaptureSessionIntentPicker"].firstMatch
+        XCTAssertTrue(intent.waitForExistence(timeout: 4))
+        intent.buttons["Start now"].tap()
+
         let title = app.textFields["NewCaptureSessionTitleField"].firstMatch
         XCTAssertTrue(title.waitForExistence(timeout: 4))
         title.tap()

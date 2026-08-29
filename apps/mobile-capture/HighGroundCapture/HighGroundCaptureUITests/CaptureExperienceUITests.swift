@@ -4279,6 +4279,10 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(newButton.waitForExistence(timeout: 5))
         newButton.tap()
 
+        let intent = app.segmentedControls["NewCaptureSessionIntentPicker"]
+        XCTAssertTrue(intent.waitForExistence(timeout: 5))
+        intent.buttons["Start now"].tap()
+
         let title = app.textFields["NewCaptureSessionTitleField"]
         XCTAssertTrue(title.waitForExistence(timeout: 5))
         XCTAssertEqual(title.placeholderValue, "Session title (optional)")
@@ -4304,6 +4308,34 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(confirmConsent.exists)
         XCTAssertFalse(app.buttons["CaptureStartButton"].isEnabled)
         XCTAssertFalse(app.otherElements["GlobalCaptureBanner"].exists)
+    }
+
+    func testNewCoachingSessionDefaultsToSimpleSchedulingAndInvitation() {
+        let newButton = app.buttons["Start a session"].firstMatch
+        XCTAssertTrue(newButton.waitForExistence(timeout: 5))
+        newButton.tap()
+
+        let intent = app.segmentedControls["NewCaptureSessionIntentPicker"]
+        XCTAssertTrue(intent.waitForExistence(timeout: 5))
+        XCTAssertTrue(intent.buttons["Schedule"].isSelected)
+
+        let email = app.textFields["CaptureCoachingClientEmail"]
+        XCTAssertTrue(email.waitForExistence(timeout: 5))
+        XCTAssertEqual(email.placeholderValue, "Client email")
+        XCTAssertTrue(app.datePickers["CaptureCoachingSessionStart"].exists)
+        XCTAssertTrue(
+            app.staticTexts["Quipsly sends a private link. They can join from iPhone, tablet, or desktop."].exists
+        )
+
+        let schedule = app.buttons["NewCaptureSessionScheduleButton"]
+        XCTAssertTrue(schedule.exists)
+        XCTAssertFalse(schedule.isEnabled)
+        email.tap()
+        email.typeText("client@example.test")
+        XCTAssertTrue(
+            schedule.isEnabled || app.descendants(matching: .any)["CaptureCoachingAppointmentConflict"].exists,
+            "A conventional client email and future time should be enough to schedule without setup paperwork; only a real calendar conflict may hold the action."
+        )
     }
 
     func testPrimaryRecordSurfacePassesAccessibilityAudit() throws {

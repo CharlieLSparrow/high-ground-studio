@@ -322,6 +322,13 @@ struct CaptureSessionEntryNotice: Equatable {
     let message: String
 }
 
+struct CaptureCoachingScheduleOutcome: Equatable {
+    let appointment: MobileCoachingAppointmentResult
+    let invitationEmailSent: Bool
+    let invitationURL: URL?
+    let sessionReadyOnDevice: Bool
+}
+
 @MainActor
 final class CaptureExperienceModel: ObservableObject {
     @Published var selectedSessionID: String?
@@ -1324,6 +1331,105 @@ final class CaptureExperienceModel: ObservableObject {
             message = "Session ready."
         }
         return true
+    }
+
+    /// Presents scheduling as one ordinary action while preserving separate,
+    /// honest receipts underneath. The appointment is canonical before email
+    /// delivery begins, so a mail-provider failure can never erase the Session.
+    func scheduleCoachingSession(
+        _ draft: MobileCoachingAppointmentDraft
+    ) async -> CaptureCoachingScheduleOutcome? {
+        guard !isSessionContextLocked else {
+            errorMessage = "Finish the active recording or live room before scheduling another session."
+            return nil
+        }
+
+        if usesPreviewData {
+            let roomID = "preview-scheduled-\(UUID().uuidString.lowercased())"
+            let start = ISO8601DateFormatter().string(from: draft.scheduledStart)
+            let end = ISO8601DateFormatter().string(
+                from: draft.scheduledStart.addingTimeInterval(
+                    TimeInterval(draft.durationMinutes * 60)
+                )
+            )
+            let created = MobileCaptureSession.capturePreview(
+                id: roomID,
+                title: draft.title,
+                purpose: "COACHING",
+                consentGranted: false,
+                scheduledStart: start,
+                scheduledEnd: end
+            )
+            sessionClient.sessions.insert(created, at: 0)
+            selectedSessionID = created.id
+            let appointment = MobileCoachingAppointmentResult(
+                appointmentId: nil,
+                bookingId: "preview-booking-\(UUID().uuidString.lowercased())",
+                callRoomId: roomID,
+                engagementId: nil,
+                clientEntryPath: "/sessions/\(roomID)?mode=live",
+                engagementPath: nil,
+                liveSessionPath: "/sessions/\(roomID)?mode=live",
+                sessionWorkspacePath: "/sessions/\(roomID)",
+                clientUserId: nil,
+                status: "CONFIRMED",
+                nextAction: "Open the Session when everyone is ready."
+            )
+            message = "Session scheduled and invitation sent."
+            return CaptureCoachingScheduleOutcome(
+                appointment: appointment,
+                invitationEmailSent: true,
+                invitationURL: coachingRunwayClient.absoluteURL(for: appointment.clientEntryPath),
+                sessionReadyOnDevice: true
+            )
+        }
+
+        guard let appointment = await coachingRunwayClient.createAppointment(draft) else {
+            return nil
+        }
+
+        let roomID = appointment.callRoomId?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let invitationEmailSent: Bool
+        if coachingRunwayClient.invitationEmailAvailable,
+           let roomID,
+           !roomID.isEmpty {
+            invitationEmailSent = await coachingRunwayClient.sendInvitationEmail(
+                roomID: roomID,
+                recipientEmail: draft.normalizedEmail,
+                recipientName: draft.clientName
+            )
+        } else {
+            invitationEmailSent = false
+        }
+
+        let sessionReadyOnDevice: Bool
+        if let roomID, !roomID.isEmpty {
+            let loadOutcome = await sessionClient.load(authoritativeSessionID: roomID)
+            if loadOutcome == .loaded,
+               let created = sessions.first(where: {
+                   $0.callRoomId == roomID || $0.id == roomID
+               }) {
+                selectedSessionID = created.id
+                sessionReadyOnDevice = true
+            } else {
+                sessionReadyOnDevice = false
+            }
+        } else {
+            sessionReadyOnDevice = false
+        }
+
+        if invitationEmailSent {
+            message = "Session scheduled and invitation sent."
+        } else {
+            message = "Session scheduled. Share the private invitation link to make sure your client receives it."
+        }
+
+        return CaptureCoachingScheduleOutcome(
+            appointment: appointment,
+            invitationEmailSent: invitationEmailSent,
+            invitationURL: coachingRunwayClient.absoluteURL(for: appointment.clientEntryPath),
+            sessionReadyOnDevice: sessionReadyOnDevice
+        )
     }
 
     private var defaultNewSessionTitle: String {

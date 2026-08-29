@@ -19352,6 +19352,28 @@ private struct NewCaptureSessionSheet: View {
     @ObservedObject var subscriptionStore: QuipslySubscriptionStore
     @Binding var isPresented: Bool
     let onCreated: () -> Void
+    @State private var creationIntent = CreationIntent.schedule
+    @State private var coachingDraft = MobileCoachingAppointmentDraft()
+    @State private var coachingOutcome: CaptureCoachingScheduleOutcome?
+
+    private enum CreationIntent: String {
+        case schedule
+        case startNow
+    }
+
+    private var coachingConflict: MobileCoachingBooking? {
+        model.coachingRunwayClient.scheduleConflict(
+            startingAt: coachingDraft.scheduledStart,
+            durationMinutes: coachingDraft.durationMinutes
+        )
+    }
+
+    private var coachingOutsideAvailability: Bool {
+        model.coachingRunwayClient.isOutsideWeeklyAvailability(
+            startingAt: coachingDraft.scheduledStart,
+            durationMinutes: coachingDraft.durationMinutes
+        )
+    }
 
     var body: some View {
         NavigationStack {
@@ -19364,70 +19386,79 @@ private struct NewCaptureSessionSheet: View {
                     }
             } else {
                 Form {
-                Section("Session") {
-                    TextField("Session title (optional)", text: $model.newSessionTitle)
-                        .textInputAutocapitalization(.sentences)
-                        .accessibilityIdentifier("NewCaptureSessionTitleField")
-                    Picker("Purpose", selection: $model.newSessionPurpose) {
-                        Label("Coaching", systemImage: "person.2").tag("COACHING")
-                        Label("Podcast", systemImage: "mic.and.signal.meter").tag("PODCAST")
-                        Label("Interview", systemImage: "quote.bubble").tag("RESEARCH_INTERVIEW")
-                    }
-                    .onChange(of: model.newSessionPurpose) { _, purpose in
-                        if purpose != "COACHING" {
-                            model.newSessionCoachingEngagementID = ""
+                    Section {
+                        Picker("New session", selection: $creationIntent) {
+                            Text("Schedule").tag(CreationIntent.schedule)
+                            Text("Start now").tag(CreationIntent.startNow)
                         }
+                        .pickerStyle(.segmented)
+                        .accessibilityIdentifier("NewCaptureSessionIntentPicker")
                     }
-                }
 
-                if model.newSessionPurpose == "COACHING" {
-                    Section("Client space") {
-                        Picker("Client", selection: $model.newSessionCoachingEngagementID) {
-                            Text("Invite later").tag("")
-                            ForEach(model.coachingEngagements) { engagement in
-                                Text(engagement.title).tag(engagement.id)
-                            }
-                        }
-                        .pickerStyle(.navigationLink)
-                        .accessibilityIdentifier("NewCaptureSessionEngagementPicker")
-
-                        if let engagement = model.selectedNewSessionCoachingEngagement {
-                            LabeledContent("Project", value: engagement.projectName)
-                            if !engagement.participantLine.isEmpty {
-                                LabeledContent("People", value: engagement.participantLine)
-                            }
-                            Text("Keeps this client's shared notes, tasks, goals, messages, and session history together.")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        } else if model.coachingEngagements.isEmpty {
-                            Text("Create the session now, then invite the client when you're ready.")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+                    if creationIntent == .schedule {
+                        if let coachingOutcome {
+                            scheduledCoachingConfirmation(coachingOutcome)
                         } else {
-                            Text("Choose a client to keep their work together, or invite someone after creating the session.")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+                            MobileCoachingAppointmentFields(
+                                client: model.coachingRunwayClient,
+                                draft: $coachingDraft
+                            )
+                        }
+                    } else {
+                        Section("Session") {
+                            TextField("Session title (optional)", text: $model.newSessionTitle)
+                                .textInputAutocapitalization(.sentences)
+                                .accessibilityIdentifier("NewCaptureSessionTitleField")
+                            Picker("Purpose", selection: $model.newSessionPurpose) {
+                                Label("Coaching", systemImage: "person.2").tag("COACHING")
+                                Label("Podcast", systemImage: "mic.and.signal.meter").tag("PODCAST")
+                                Label("Interview", systemImage: "quote.bubble").tag("RESEARCH_INTERVIEW")
+                            }
+                            .onChange(of: model.newSessionPurpose) { _, purpose in
+                                if purpose != "COACHING" {
+                                    model.newSessionCoachingEngagementID = ""
+                                }
+                            }
+                        }
+
+                        if model.newSessionPurpose == "COACHING" {
+                            Section("Client space") {
+                                Picker("Client", selection: $model.newSessionCoachingEngagementID) {
+                                    Text("None").tag("")
+                                    ForEach(model.coachingEngagements) { engagement in
+                                        Text(engagement.title).tag(engagement.id)
+                                    }
+                                }
+                                .pickerStyle(.navigationLink)
+                                .accessibilityIdentifier("NewCaptureSessionEngagementPicker")
+
+                                if let engagement = model.selectedNewSessionCoachingEngagement {
+                                    LabeledContent("Nest", value: engagement.projectName)
+                                    if !engagement.participantLine.isEmpty {
+                                        LabeledContent("People", value: engagement.participantLine)
+                                    }
+                                    Text("Starts now in this client's shared space.")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                } else {
+                                    Text("For a client appointment, use Schedule so Quipsly can send the private invite first.")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
                         }
                     }
-                }
-
                 }
                 .navigationTitle("New session")
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) {
-                        Button("Cancel") { isPresented = false }
+                        Button(coachingOutcome == nil ? "Cancel" : "Close") {
+                            isPresented = false
+                        }
                     }
                     ToolbarItem(placement: .confirmationAction) {
-                        Button(model.isCreatingSession ? "Creating…" : "Create") {
-                            Task {
-                                if await model.createSession() {
-                                    onCreated()
-                                }
-                            }
-                        }
-                        .disabled(model.isCreatingSession)
-                        .accessibilityIdentifier("NewCaptureSessionCreateButton")
+                        confirmationAction
                     }
                 }
             }
@@ -19442,6 +19473,100 @@ private struct NewCaptureSessionSheet: View {
     private var subscriptionRequired: Bool {
         guard let entitlement = subscriptionStore.entitlement else { return false }
         return entitlement.enforcementEnabled && !entitlement.entitled
+    }
+
+    @ViewBuilder
+    private var confirmationAction: some View {
+        if let coachingOutcome {
+            Button("Done") {
+                if coachingOutcome.sessionReadyOnDevice {
+                    onCreated()
+                } else {
+                    isPresented = false
+                }
+            }
+            .accessibilityIdentifier("NewCaptureSessionDoneButton")
+        } else if creationIntent == .schedule {
+            Button(
+                model.coachingRunwayClient.isMutating
+                    ? "Scheduling…"
+                    : "Schedule & invite"
+            ) {
+                Task {
+                    guard let outcome = await model.scheduleCoachingSession(coachingDraft) else {
+                        return
+                    }
+                    coachingOutcome = outcome
+                    if outcome.invitationEmailSent && outcome.sessionReadyOnDevice {
+                        onCreated()
+                    }
+                }
+            }
+            .disabled(
+                model.coachingRunwayClient.isMutating
+                    || model.coachingRunwayClient.isUsingProtectedCache
+                    || !coachingDraft.isReady
+                    || coachingConflict != nil
+                    || coachingOutsideAvailability
+            )
+            .accessibilityIdentifier("NewCaptureSessionScheduleButton")
+        } else {
+            Button(model.isCreatingSession ? "Creating…" : "Start") {
+                Task {
+                    if await model.createSession() {
+                        onCreated()
+                    }
+                }
+            }
+            .disabled(model.isCreatingSession)
+            .accessibilityIdentifier("NewCaptureSessionCreateButton")
+        }
+    }
+
+    @ViewBuilder
+    private func scheduledCoachingConfirmation(
+        _ outcome: CaptureCoachingScheduleOutcome
+    ) -> some View {
+        Section {
+            Label("Session scheduled", systemImage: "checkmark.circle.fill")
+                .font(.headline)
+                .foregroundStyle(.green)
+            Text(
+                outcome.invitationEmailSent
+                    ? "The private invitation was emailed to \(coachingDraft.normalizedEmail)."
+                    : "The Session is saved. Email delivery needs attention, so share the private link below."
+            )
+            .font(.subheadline)
+            .foregroundStyle(.secondary)
+
+            if !outcome.invitationEmailSent,
+               let invitationURL = outcome.invitationURL {
+                ShareLink(
+                    item: invitationURL,
+                    subject: Text("Join my Quipsly coaching session"),
+                    message: Text("Join this private Quipsly Session on iPhone, tablet, or desktop: \(invitationURL.absoluteString)")
+                ) {
+                    Label("Share invite", systemImage: "square.and.arrow.up")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .accessibilityIdentifier("NewCaptureSessionShareInvite")
+            }
+
+            if !outcome.invitationEmailSent,
+               let deliveryError = model.coachingRunwayClient.errorMessage {
+                Text(deliveryError)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            if !outcome.sessionReadyOnDevice {
+                Text("The appointment is safely stored in Quipsly. Return to Home and refresh if it does not appear immediately on this iPhone.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .accessibilityIdentifier("NewCaptureSessionScheduledConfirmation")
     }
 }
 

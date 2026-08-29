@@ -2583,6 +2583,40 @@ function checkNativeUnifiedWritingLibrarySources() {
   );
 }
 
+function checkNativeSessionSchedulingSources() {
+  const shellText = sourceText(
+    "apps/mobile-capture/HighGroundCapture/HighGroundCapture/CapturePhoneShell.swift",
+  );
+  const modelText = sourceText(
+    "apps/mobile-capture/HighGroundCapture/HighGroundCapture/CaptureExperienceModel.swift",
+  );
+  const coachingText = sourceText(
+    "apps/mobile-capture/HighGroundCapture/HighGroundCapture/CaptureCoachingHome.swift",
+  );
+  const uiTestText = sourceText(
+    "apps/mobile-capture/HighGroundCapture/HighGroundCaptureUITests/CaptureExperienceUITests.swift",
+  );
+
+  expect(
+    shellText.includes("@State private var creationIntent = CreationIntent.schedule")
+      && shellText.includes('Text("Schedule").tag(CreationIntent.schedule)')
+      && shellText.includes('Text("Start now").tag(CreationIntent.startNow)')
+      && shellText.includes("MobileCoachingAppointmentFields(")
+      && shellText.includes('"Schedule & invite"')
+      && shellText.includes("NewCaptureSessionShareInvite")
+      && modelText.includes("func scheduleCoachingSession(")
+      && modelText.includes("coachingRunwayClient.createAppointment(draft)")
+      && modelText.includes("coachingRunwayClient.sendInvitationEmail(")
+      && modelText.includes("sessionClient.load(authoritativeSessionID: roomID)")
+      && coachingText.includes('TextField("Client email", text: $draft.clientEmail)')
+      && coachingText.includes("They can join from iPhone, tablet, or desktop.")
+      && uiTestText.includes("testNewCoachingSessionDefaultsToSimpleSchedulingAndInvitation")
+      && uiTestText.includes("without setup paperwork"),
+    "nativeSessionSchedulingAndInvitation",
+    "Capture defaults New Session to conventional client email plus time scheduling, composes durable appointment and idempotent invitation receipts, and retains an immediate share fallback without blocking Start now.",
+  );
+}
+
 function checkSessionCalendarCancellationContractSources() {
   const providerText = sourceText("apps/quipsly/src/lib/server/google-calendar-session-projection.ts");
   const operationText = sourceText("apps/quipsly/src/lib/server/google-calendar-projection-operation.ts");
@@ -3006,6 +3040,7 @@ async function main() {
   checkGoogleCalendarReconciliationContractSources();
   checkUnifiedNestOperatingShellSources();
   checkNativeUnifiedWritingLibrarySources();
+  checkNativeSessionSchedulingSources();
   if (!sourceOnly) {
     await checkReadiness();
     await checkProtectedRoutes();
