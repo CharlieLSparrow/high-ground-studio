@@ -32,13 +32,17 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { VoiceWritingRichText } from "@/lib/voice-writing-contract";
 import {
   tiptapToVoiceWritingRichText,
   voiceWritingRichTextToTiptap,
 } from "@/lib/voice-writing-tiptap";
+import {
+  voiceWritingDocumentStats,
+  voiceWritingSectionCountLabel,
+} from "./voice-writing-document-insights";
 import {
   type WritingViewMode,
   voiceWritingViewLayout,
@@ -130,6 +134,12 @@ type SaveResponse = {
 };
 
 type SaveState = "saved" | "unsaved" | "saving" | "error" | "conflict";
+
+type WritingHeading = {
+  level: number;
+  position: number;
+  text: string;
+};
 
 function formatSavedTime(value: string | undefined) {
   if (!value) return "Saved to your Nest";
@@ -240,7 +250,6 @@ export function VoiceWritingEditor({ draftId }: { draftId: string }) {
     viewMode,
     hasTimedTranscript,
   );
-
   const noteChanged = useCallback(() => {
     if (loadingEditorRef.current) return;
     dirtyRef.current = true;
@@ -260,6 +269,25 @@ export function VoiceWritingEditor({ draftId }: { draftId: string }) {
     },
     onUpdate: noteChanged,
   });
+  const documentStats = useMemo(
+    () => voiceWritingDocumentStats(editor?.getText() ?? draft?.body ?? ""),
+    [changeVersion, draft?.body, editor],
+  );
+  const writingHeadings = useMemo(() => {
+    if (!editor) return [] as WritingHeading[];
+    const headings: WritingHeading[] = [];
+    editor.state.doc.descendants((node, position) => {
+      if (node.type.name !== "heading") return;
+      const text = node.textContent.replace(/\s+/g, " ").trim();
+      if (!text) return;
+      headings.push({
+        level: Number(node.attrs.level) || 1,
+        position,
+        text,
+      });
+    });
+    return headings;
+  }, [changeVersion, draft?.contentRevision, editor]);
 
   const installDraft = useCallback((next: WritingDraft) => {
     if (!editor) return;
@@ -386,6 +414,13 @@ export function VoiceWritingEditor({ draftId }: { draftId: string }) {
     titleRef.current = next;
     setTitle(next);
     noteChanged();
+  }
+
+  function jumpToHeading(position: number) {
+    setViewMode("writing");
+    window.requestAnimationFrame(() => {
+      editor?.chain().focus().setTextSelection(position + 1).scrollIntoView().run();
+    });
   }
 
   function useNestVersion() {
@@ -652,6 +687,30 @@ export function VoiceWritingEditor({ draftId }: { draftId: string }) {
         <span className="mx-1 h-7 w-px bg-[#e0cfb1]" aria-hidden="true" />
         <ToolbarButton label="Undo" disabled={!editor.can().chain().focus().undo().run()} onClick={() => editor.chain().focus().undo().run()}><Undo2 className="h-4 w-4" /></ToolbarButton>
         <ToolbarButton label="Redo" disabled={!editor.can().chain().focus().redo().run()} onClick={() => editor.chain().focus().redo().run()}><Redo2 className="h-4 w-4" /></ToolbarButton>
+      </div>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-[#efe3cf] bg-white px-5 py-3 text-xs font-bold text-[#765f40]" aria-label="Writing progress">
+        <span>{documentStats.wordCount.toLocaleString()} {documentStats.wordCount === 1 ? "word" : "words"}</span>
+        <span aria-hidden="true">·</span>
+        <span>{documentStats.estimatedReadingMinutes === 0 ? "Less than a minute" : `${documentStats.estimatedReadingMinutes} min read`}</span>
+        {writingHeadings.length ? <>
+          <span aria-hidden="true">·</span>
+          <details className="group relative">
+            <summary className="min-h-10 cursor-pointer list-none rounded-full border border-[#e1d1b6] bg-[#fffaf3] px-3 py-2.5 font-black text-[#58442d] marker:content-none hover:border-[#b89b70]">
+              Outline · {voiceWritingSectionCountLabel(writingHeadings.length)}
+            </summary>
+            <div className="absolute left-0 z-20 mt-2 max-h-80 w-[min(22rem,calc(100vw-3rem))] overflow-y-auto rounded-2xl border border-[#d8c4a1] bg-white p-2 shadow-xl">
+              {writingHeadings.map((heading, index) => <button
+                key={`${heading.position}:${heading.text}`}
+                type="button"
+                onClick={(event) => {
+                  jumpToHeading(heading.position);
+                  event.currentTarget.closest("details")?.removeAttribute("open");
+                }}
+                className={`block min-h-11 w-full rounded-xl px-3 py-2 text-left text-sm font-bold text-[#4d3b27] hover:bg-[#fff4df] ${heading.level > 1 ? "pl-7" : ""}`}
+              >{index + 1}. {heading.text}</button>)}
+            </div>
+          </details>
+        </> : null}
       </div>
       <EditorContent editor={editor} />
     </section> : null}
