@@ -5860,32 +5860,34 @@ private struct CaptureDocumentNoteEditSheet: View {
             return "Shorten the title to 160 characters. Quipsly will not truncate it."
         }
         if blocks.isEmpty {
-            return "Refresh this note before editing its stable sections."
+            return "Refresh this note before editing it on this iPhone."
         }
         if Set(blocks.map(\.id)).count != blocks.count
             || Set(blocks.map(\.stableId)).count != blocks.count {
-            return "The stable section identities need a refresh before this note can be edited."
+            return "This note changed elsewhere. Refresh it before editing here."
         }
         if let oversized = blocks.first(where: { $0.body.count > 20_000 }) {
             return "Section \(oversized.order) is over 20,000 characters. Quipsly will not truncate it."
         }
         if normalizedBodies.reduce(0, { $0 + $1.count }) > 60_000 {
-            return "This focused iPhone edit is over 60,000 characters. Continue the structured note in Nest."
+            return "This note is too large to save from iPhone right now. Continue it in Nest on the web."
         }
         if !blocks.contains(where: {
             !$0.body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         }) {
             return "Keep at least one non-empty note section."
         }
-        if normalizedTitle == note.title
-            && normalizedBodies == (note.blocks ?? []).map(\.body) {
-            return "Change the title or note before saving."
-        }
         return nil
     }
 
+    private var hasChanges: Bool {
+        normalizedTitle != note.title
+            || normalizedBodies != (note.blocks ?? []).map(\.body)
+    }
+
     private var canSave: Bool {
-        validationMessage == nil
+        hasChanges
+            && validationMessage == nil
             && !client.isSyncingDocumentNoteEdits
             && protectedEdit?.disposition != .pending
     }
@@ -5900,10 +5902,7 @@ private struct CaptureDocumentNoteEditSheet: View {
                             .foregroundStyle(CapturePalette.accent)
                         Text("Edit note")
                             .font(.title2.weight(.bold))
-                        Text(note.contentEditBoundary ?? "This updates the same private Nest document.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .accessibilityIdentifier("CaptureWorkNoteEditBoundary")
+                            .accessibilityIdentifier("CaptureWorkNoteEditHeading")
                     }
 
                     if let protectedEdit {
@@ -5969,9 +5968,11 @@ private struct CaptureDocumentNoteEditSheet: View {
                             }
                             .focused($focusedBlockID, equals: block.id)
                             .accessibilityIdentifier("CaptureWorkNoteEditBody_\(block.id)")
-                            Text("\(block.body.count.formatted()) / 20,000 characters")
-                                .font(.caption2.monospacedDigit())
-                                .foregroundStyle(block.body.count > 20_000 ? .orange : .secondary)
+                            if block.body.count >= 18_000 {
+                                Text("\(block.body.count.formatted()) / 20,000 characters")
+                                    .font(.caption2.monospacedDigit())
+                                    .foregroundStyle(block.body.count > 20_000 ? .orange : .secondary)
+                            }
                         }
                     }
 
@@ -6037,7 +6038,7 @@ private struct CaptureDocumentNoteEditSheet: View {
                 .padding(18)
             }
             .background(CaptureCanvas())
-            .navigationTitle("Project note")
+            .navigationTitle("Note")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -13701,6 +13702,25 @@ private enum CaptureLibrarySection: String, CaseIterable, Identifiable {
     var id: Self { self }
 }
 
+private enum CaptureLibraryWritingItem: Identifiable {
+    case voice(VoiceWritingDraft)
+    case note(MobileCaptureWorkNote)
+
+    var id: String {
+        switch self {
+        case .voice(let draft): "voice:\(draft.id.uuidString.lowercased())"
+        case .note(let note): "note:\(note.id)"
+        }
+    }
+
+    var updatedAt: Date {
+        switch self {
+        case .voice(let draft): draft.updatedAt
+        case .note(let note): captureTaskDate(note.updatedAt) ?? .distantPast
+        }
+    }
+}
+
 private struct CaptureLibraryView: View {
     @ObservedObject var model: CaptureExperienceModel
     @Binding var visibleTab: CaptureRootTab
@@ -13951,7 +13971,12 @@ private struct CaptureLibraryView: View {
     }
 
     private var filteredNotes: [MobileCaptureWorkNote] {
-        let notes = notesClient.workspace?.notes ?? []
+        let canonicalVoiceDocumentIDs = Set(
+            writingStore.drafts.compactMap(\.canonicalDocumentID)
+        )
+        let notes = (notesClient.workspace?.notes ?? []).filter {
+            !canonicalVoiceDocumentIDs.contains($0.id)
+        }
         guard !normalizedSearch.isEmpty else { return notes }
         return notes.filter {
             $0.title.localizedCaseInsensitiveContains(normalizedSearch)
@@ -13959,6 +13984,17 @@ private struct CaptureLibraryView: View {
                 || $0.tagLabels.contains {
                     $0.localizedCaseInsensitiveContains(normalizedSearch)
                 }
+        }
+    }
+
+    private var writingItems: [CaptureLibraryWritingItem] {
+        (
+            filteredDrafts.map(CaptureLibraryWritingItem.voice)
+                + filteredNotes.map(CaptureLibraryWritingItem.note)
+        )
+        .sorted {
+            if $0.updatedAt != $1.updatedAt { return $0.updatedAt > $1.updatedAt }
+            return $0.id < $1.id
         }
     }
 
@@ -14041,7 +14077,7 @@ private struct CaptureLibraryView: View {
             CaptureLibraryPreviewWritingCard(tagClient: model.todayClient)
         }
 
-        if filteredDrafts.isEmpty && filteredNotes.isEmpty && !model.usesPreviewData {
+        if writingItems.isEmpty && !model.usesPreviewData {
             CaptureEmptyCard(
                 systemImage: "waveform.badge.mic",
                 title: normalizedSearch.isEmpty ? "Start writing your way" : "No writing found",
@@ -14052,9 +14088,9 @@ private struct CaptureLibraryView: View {
                 action: normalizedSearch.isEmpty ? onStartVoiceNote : { searchText = "" }
             )
         } else {
-            if !filteredDrafts.isEmpty {
-                librarySectionHeading("Voice writing")
-                ForEach(filteredDrafts) { draft in
+            ForEach(writingItems) { item in
+                switch item {
+                case .voice(let draft):
                     CaptureVoiceWritingLibraryRow(
                         draft: draft,
                         recording: library.recording(id: draft.localRecordingID),
@@ -14063,12 +14099,7 @@ private struct CaptureLibraryView: View {
                         tagClient: model.todayClient,
                         onContinueByVoice: continueVoiceWriting
                     )
-                }
-            }
-
-            if !filteredNotes.isEmpty {
-                librarySectionHeading("Notes in My Nest")
-                ForEach(filteredNotes) { note in
+                case .note(let note):
                     CaptureLibraryNoteRow(
                         note: note,
                         projectName: notesClient.workspace?.project.name ?? "My Nest",
@@ -14077,13 +14108,6 @@ private struct CaptureLibraryView: View {
                 }
             }
         }
-    }
-
-    private func librarySectionHeading(_ title: String) -> some View {
-        Text(title)
-            .font(.headline)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.top, 2)
     }
 
     @MainActor
@@ -14365,6 +14389,9 @@ private struct CaptureLibraryNoteRow: View {
                     }
                     HStack(spacing: 10) {
                         Label(projectName, systemImage: "house.fill")
+                        if let updatedAt = captureTaskDate(note.updatedAt) {
+                            Text(updatedAt.formatted(date: .abbreviated, time: .shortened))
+                        }
                         if !note.tagLabels.isEmpty {
                             Label(
                                 note.tagLabels.prefix(2).joined(separator: ", "),

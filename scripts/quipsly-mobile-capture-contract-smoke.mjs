@@ -2543,6 +2543,46 @@ function checkUnifiedNestOperatingShellSources() {
   );
 }
 
+function checkNativeUnifiedWritingLibrarySources() {
+  const shellText = sourceText(
+    "apps/mobile-capture/HighGroundCapture/HighGroundCapture/CapturePhoneShell.swift",
+  );
+  const transcriptText = sourceText(
+    "apps/mobile-capture/HighGroundCapture/HighGroundCapture/OnDeviceTranscriptManager.swift",
+  );
+  const uiTestText = [
+    sourceText(
+      "apps/mobile-capture/HighGroundCapture/HighGroundCaptureUITests/CaptureExperienceUITests.swift",
+    ),
+    sourceText(
+      "apps/mobile-capture/HighGroundCapture/HighGroundCaptureUITests/CaptureRoomRuntimeSmokeTests.swift",
+    ),
+  ].join("\n");
+
+  expect(
+    shellText.includes("private enum CaptureLibraryWritingItem")
+      && shellText.includes("case voice(VoiceWritingDraft)")
+      && shellText.includes("case note(MobileCaptureWorkNote)")
+      && shellText.includes("writingItems")
+      && shellText.includes("canonicalVoiceDocumentIDs")
+      && shellText.includes("!canonicalVoiceDocumentIDs.contains($0.id)")
+      && shellText.includes("filteredDrafts.map(CaptureLibraryWritingItem.voice)")
+      && shellText.includes("filteredNotes.map(CaptureLibraryWritingItem.note)")
+      && shellText.includes("CaptureLibrarySpeakToWrite")
+      && shellText.includes("CaptureLibraryWriteNote")
+      && shellText.includes("private var hasChanges: Bool")
+      && shellText.includes("hasChanges\n            && validationMessage == nil")
+      && !shellText.includes("CaptureWorkNoteEditBoundary")
+      && !shellText.includes('librarySectionHeading("Voice writing")')
+      && !shellText.includes('librarySectionHeading("Notes in My Nest")')
+      && transcriptText.includes(".atypicalSpeech")
+      && uiTestText.includes("testLibraryOffersPrivateKeyboardWritingBesideVoiceWriting")
+      && uiTestText.includes("Opening an unchanged valid note should not begin with an orange warning."),
+    "nativeUnifiedWritingLibrary",
+    "Capture presents voice and typed writing in one chronological, duplicate-safe Library while keeping speech adaptation and calm canonical note editing intact.",
+  );
+}
+
 function checkSessionCalendarCancellationContractSources() {
   const providerText = sourceText("apps/quipsly/src/lib/server/google-calendar-session-projection.ts");
   const operationText = sourceText("apps/quipsly/src/lib/server/google-calendar-projection-operation.ts");
@@ -2965,6 +3005,7 @@ async function main() {
   checkSessionCalendarCancellationContractSources();
   checkGoogleCalendarReconciliationContractSources();
   checkUnifiedNestOperatingShellSources();
+  checkNativeUnifiedWritingLibrarySources();
   if (!sourceOnly) {
     await checkReadiness();
     await checkProtectedRoutes();

@@ -4175,7 +4175,11 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         func replaceNote(title: String, body: String) {
             let sheet = app.descendants(matching: .any)["CaptureWorkNoteEditSheet"].firstMatch
             XCTAssertTrue(sheet.waitForExistence(timeout: 8))
-            XCTAssertTrue(app.descendants(matching: .any)["CaptureWorkNoteEditBoundary"].exists)
+            XCTAssertTrue(app.descendants(matching: .any)["CaptureWorkNoteEditHeading"].exists)
+            XCTAssertFalse(
+                app.descendants(matching: .any)["CaptureWorkNoteEditValidation"].exists,
+                "Opening an unchanged valid note should not begin with an orange warning."
+            )
 
             let titleField = app.textFields["CaptureWorkNoteEditTitle"].firstMatch
             XCTAssertTrue(titleField.waitForExistence(timeout: 6))
