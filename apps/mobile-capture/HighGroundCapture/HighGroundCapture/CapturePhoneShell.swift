@@ -16743,6 +16743,7 @@ private struct CaptureSystemAudioRoutePicker: UIViewRepresentable {
 private struct ProviderRoomControls: View {
     @ObservedObject var model: CaptureExperienceModel
     @ObservedObject private var callAudioSession = CaptureAudioSessionCoordinator.shared
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @EnvironmentObject private var videoCapture: VideoCaptureController
     let session: MobileCaptureSession
     let inputRoute: String
@@ -16784,33 +16785,36 @@ private struct ProviderRoomControls: View {
                     VStack(alignment: .leading, spacing: 3) {
                         HStack(alignment: .firstTextBaseline, spacing: 6) {
                             Image(systemName: "mic.fill")
-                            Text(inputRoute)
+                            Text("Microphone · \(inputRoute)")
                                 .fixedSize(horizontal: false, vertical: true)
                         }
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                             .accessibilityElement(children: .combine)
-                            .accessibilityLabel(inputRoute)
+                            .accessibilityLabel("Microphone, \(inputRoute)")
                             .accessibilityIdentifier("CaptureCallInputRoute")
                         HStack {
-                            Text("Listening on \(callAudioSession.currentOutputRouteName)")
+                            Text("Output · \(callAudioSession.currentOutputRouteName)")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
                         .padding(.vertical, 3)
                         .accessibilityElement(children: .combine)
-                        .accessibilityLabel("Listening on \(callAudioSession.currentOutputRouteName)")
+                        .accessibilityLabel("Output, \(callAudioSession.currentOutputRouteName)")
                         .accessibilityIdentifier("CaptureCallOutputRoute")
                     }
                     Spacer(minLength: 8)
                     CaptureSystemAudioRoutePicker()
                         .frame(width: 44, height: 44)
                 }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 9)
+                .background(.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                 .accessibilityElement(children: .contain)
                 .accessibilityIdentifier("CaptureCallAudioRouteSummary")
             } else {
-                Label("Call audio on another device", systemImage: "iphone.and.arrow.forward")
+                Label("Using another device for call audio", systemImage: "iphone.and.arrow.forward")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .accessibilityIdentifier("CaptureCallInputRoute")
@@ -16941,73 +16945,18 @@ private struct ProviderRoomControls: View {
                         }
                     }
 
-                    Toggle(isOn: Binding(
-                        get: { !callAudioOnAnotherDevice },
-                        set: { callAudioOnAnotherDevice = !$0 }
-                    )) {
-                        Label(
-                            "Use this iPhone for call audio",
-                            systemImage: callAudioOnAnotherDevice ? "mic.slash.fill" : "iphone.radiowaves.left.and.right"
-                        )
-                            .font(.subheadline)
-                    }
-                    .toggleStyle(.switch)
-                    .disabled(providerControlsLocked || model.isChangingRoom)
-                    .accessibilityIdentifier("CaptureUseCallAudioToggle")
-
-                    Toggle(isOn: Binding(
-                        get: { !joinCameraOff },
-                        set: { cameraOn in
-                            joinCameraOff = !cameraOn
-                            Task {
-                                if cameraOn {
-                                    await model.prepareRoomCameraPreview(
-                                        using: videoCapture,
-                                        position: cameraPosition,
-                                        qualityIntent: videoQualityIntent
-                                    )
-                                    if videoCapture.state == .ready {
-                                        cameraPosition = videoCapture.cameraPosition
-                                    }
-                                } else {
-                                    if !localRecordingWorkspaceOpen {
-                                        await model.dismissRoomCameraPreview(using: videoCapture)
-                                    }
-                                }
+                    Group {
+                        if dynamicTypeSize.isAccessibilitySize {
+                            VStack(spacing: 10) {
+                                prejoinMicrophoneButton
+                                prejoinCameraButton
+                            }
+                        } else {
+                            HStack(spacing: 10) {
+                                prejoinMicrophoneButton
+                                prejoinCameraButton
                             }
                         }
-                    )) {
-                        Label(
-                            "Camera",
-                            systemImage: joinCameraOff ? "video.slash.fill" : "video.fill"
-                        )
-                            .font(.subheadline)
-                    }
-                    .toggleStyle(.switch)
-                    .disabled(
-                        providerControlsLocked
-                        || model.isChangingRoom
-                        || model.isChangingCapture
-                        || localRecordingWorkspaceOpen
-                    )
-                    .accessibilityHint(joinCameraOff ? "Turns the camera on before joining." : "Turns the camera off before joining.")
-                    .accessibilityIdentifier("CaptureJoinCameraToggle")
-
-                    if !callAudioOnAnotherDevice {
-                        Toggle(isOn: Binding(
-                            get: { !joinMuted },
-                            set: { joinMuted = !$0 }
-                        )) {
-                            Label(
-                                "Microphone",
-                                systemImage: joinMuted ? "mic.slash.fill" : "mic.fill"
-                            )
-                                .font(.subheadline)
-                        }
-                        .toggleStyle(.switch)
-                        .disabled(providerControlsLocked || model.isChangingRoom)
-                        .accessibilityHint(joinMuted ? "Turns the microphone on before joining." : "Turns the microphone off before joining.")
-                        .accessibilityIdentifier("CaptureJoinMicrophoneToggle")
                     }
 
                     if callAudioOnAnotherDevice {
@@ -17053,13 +17002,33 @@ private struct ProviderRoomControls: View {
                     .disabled((providerControlsLocked && !canRejoinSession) || model.isChangingRoom || session.providerCanJoin != true)
                     .accessibilityHint(providerControlHint)
                     .accessibilityIdentifier("ProviderJoinRoomButton")
+
+                    DisclosureGroup("Using another device?") {
+                        Toggle(isOn: Binding(
+                            get: { !callAudioOnAnotherDevice },
+                            set: { callAudioOnAnotherDevice = !$0 }
+                        )) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Use this iPhone for call audio")
+                                    .font(.subheadline.weight(.semibold))
+                                Text("Turn this off when another device owns the call audio.")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .toggleStyle(.switch)
+                        .disabled(providerControlsLocked || model.isChangingRoom)
+                        .accessibilityIdentifier("CaptureUseCallAudioToggle")
+                    }
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.secondary)
                 }
 
                 Button(action: onToggleLocalRecordingWorkspace) {
                     Text(
                         localRecordingWorkspaceOpen
                             ? "Hide recording controls"
-                            : "Record without joining"
+                            : "Record without a call"
                     )
                     .font(.subheadline.weight(.semibold))
                     .frame(maxWidth: .infinity, minHeight: 44)
@@ -17071,7 +17040,7 @@ private struct ProviderRoomControls: View {
                 .accessibilityHint(
                     localRecordingWorkspaceOpen
                         ? "Returns to the call lobby without changing any recording."
-                        : "Shows local recording controls for solo work or when the call is unavailable."
+                        : "Shows recording controls for solo work or when the call is unavailable."
                 )
                 .accessibilityIdentifier("CaptureRecordWithoutJoiningButton")
             }
@@ -17122,6 +17091,106 @@ private struct ProviderRoomControls: View {
 
     private var providerControlsLocked: Bool {
         model.providerControlsLockedForLocalCapture
+    }
+
+    private var prejoinMicrophoneButton: some View {
+        Button {
+            guard !callAudioOnAnotherDevice else { return }
+            joinMuted.toggle()
+        } label: {
+            prejoinControlLabel(
+                title: callAudioOnAnotherDevice
+                    ? "Other device"
+                    : joinMuted ? "Mic off" : "Mic on",
+                systemImage: callAudioOnAnotherDevice || joinMuted
+                    ? "mic.slash.fill"
+                    : "mic.fill",
+                isEnabled: !callAudioOnAnotherDevice && !joinMuted
+            )
+        }
+        .buttonStyle(.plain)
+        .disabled(
+            callAudioOnAnotherDevice
+                || providerControlsLocked
+                || model.isChangingRoom
+        )
+        .accessibilityLabel(
+            callAudioOnAnotherDevice
+                ? "Microphone is on another device"
+                : joinMuted ? "Microphone off" : "Microphone on"
+        )
+        .accessibilityHint(
+            callAudioOnAnotherDevice
+                ? "Turn off the another-device option to use this microphone."
+                : joinMuted ? "Turns the microphone on before joining." : "Turns the microphone off before joining."
+        )
+        .accessibilityIdentifier("CaptureJoinMicrophoneToggle")
+    }
+
+    private var prejoinCameraButton: some View {
+        Button {
+            let cameraOn = joinCameraOff
+            joinCameraOff = !cameraOn
+            Task {
+                if cameraOn {
+                    await model.prepareRoomCameraPreview(
+                        using: videoCapture,
+                        position: cameraPosition,
+                        qualityIntent: videoQualityIntent
+                    )
+                    if videoCapture.state == .ready {
+                        cameraPosition = videoCapture.cameraPosition
+                    }
+                } else if !localRecordingWorkspaceOpen {
+                    await model.dismissRoomCameraPreview(using: videoCapture)
+                }
+            }
+        } label: {
+            prejoinControlLabel(
+                title: joinCameraOff ? "Camera off" : "Camera on",
+                systemImage: joinCameraOff ? "video.slash.fill" : "video.fill",
+                isEnabled: !joinCameraOff
+            )
+        }
+        .buttonStyle(.plain)
+        .disabled(
+            providerControlsLocked
+                || model.isChangingRoom
+                || model.isChangingCapture
+                || localRecordingWorkspaceOpen
+        )
+        .accessibilityLabel(joinCameraOff ? "Camera off" : "Camera on")
+        .accessibilityHint(joinCameraOff ? "Turns the camera on before joining." : "Turns the camera off before joining.")
+        .accessibilityIdentifier("CaptureJoinCameraToggle")
+    }
+
+    private func prejoinControlLabel(
+        title: String,
+        systemImage: String,
+        isEnabled: Bool
+    ) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: systemImage)
+                .font(.headline)
+                .frame(width: 32, height: 32)
+                .background(
+                    isEnabled
+                        ? CapturePalette.accent.opacity(0.16)
+                        : Color.secondary.opacity(0.12),
+                    in: Circle()
+                )
+                .foregroundStyle(isEnabled ? CapturePalette.accent : Color.secondary)
+            Text(title)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.primary)
+                .lineLimit(2)
+                .minimumScaleFactor(0.8)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 12)
+        .frame(maxWidth: .infinity, minHeight: 52, alignment: .leading)
+        .background(.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
     /// A denied system choice should not turn a valid listen-only join into

@@ -728,7 +728,7 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
     private func openLocalRecorderIfNeeded(in app: XCUIApplication) {
         let localOnly = app.buttons["CaptureRecordWithoutJoiningButton"].firstMatch
         guard waitForRuntimeElement(localOnly, in: app, timeout: 4, swipeAttempts: 2),
-              localOnly.label == "Record without joining" else { return }
+              localOnly.label == "Record without a call" else { return }
         localOnly.tap()
         XCTAssertTrue(
             waitForRuntimeElement(
@@ -4683,7 +4683,15 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             scrollRuntimeElementIntoHittableView(liveRoom, in: app),
             "The standard call controls should be directly reachable before recorder details."
         )
-        XCTAssertTrue(waitForRuntimeElement(app.switches["CaptureUseCallAudioToggle"].firstMatch, in: app, timeout: 8, swipeAttempts: 2), "The standard green room should expose a remembered call-audio device choice.")
+        XCTAssertTrue(
+            waitForRuntimeElement(
+                app.buttons["Using another device?"].firstMatch,
+                in: app,
+                timeout: 8,
+                swipeAttempts: 2
+            ),
+            "The standard green room should keep its optional second-device choice available without turning it into primary setup."
+        )
         XCTAssertTrue(waitForRuntimeElement(app.buttons["ProviderJoinRoomButton"].firstMatch, in: app, timeout: 8, swipeAttempts: 2), "Joining a call must remain a distinct action from starting local recording.")
         XCTAssertTrue(waitForRuntimeElement(app.descendants(matching: .any)["CaptureSourceTruthFootnote"].firstMatch, in: app), "The selected-microphone source boundary should remain visible in the runtime path.")
 
@@ -5340,9 +5348,15 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             "A consented LiveKit-ready Session should expose an explicit Join room action."
         )
         XCTAssertTrue(join.isEnabled)
+        let deviceOptions = app.buttons["Using another device?"].firstMatch
+        XCTAssertTrue(
+            waitForRuntimeElement(deviceOptions, in: app, timeout: 8, swipeAttempts: 2),
+            "The real lobby should keep the second-device audio choice reachable."
+        )
+        deviceOptions.tap()
         let useCallAudio = app.switches["CaptureUseCallAudioToggle"].firstMatch
         XCTAssertTrue(
-            useCallAudio.exists,
+            useCallAudio.waitForExistence(timeout: 5),
             "The real signed-in lobby should expose its remembered call-audio endpoint choice."
         )
         turnOn(useCallAudio, in: app)
@@ -5354,21 +5368,22 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             app.descendants(matching: .any)["CaptureCallAudioRoutePicker"].firstMatch.exists,
             "The real signed-in lobby should expose the standard system audio-route picker."
         )
-        let camera = app.switches["CaptureJoinCameraToggle"].firstMatch
+        let camera = app.descendants(matching: .any)["CaptureJoinCameraToggle"].firstMatch
         XCTAssertTrue(
             camera.exists,
             "The real signed-in call lobby should expose its ordinary camera choice before joining."
         )
-        turnOff(camera, in: app)
-        let microphone = app.switches["CaptureJoinMicrophoneToggle"].firstMatch
+        if camera.label == "Camera on" { camera.tap() }
+        XCTAssertEqual(camera.label, "Camera off")
+        let microphone = app.descendants(matching: .any)["CaptureJoinMicrophoneToggle"].firstMatch
         XCTAssertTrue(
             microphone.exists,
             "The real signed-in call lobby should expose the conventional microphone-on or microphone-off choice before joining."
         )
-        turnOn(microphone, in: app)
+        if microphone.label == "Microphone off" { microphone.tap() }
         XCTAssertEqual(
-            microphone.value as? String,
-            "1",
+            microphone.label,
+            "Microphone on",
             "This permission flight should deliberately exercise the microphone-on join path regardless of the person's saved preference."
         )
 
