@@ -159,7 +159,7 @@ final class CaptureExperienceUITests: XCTestCase {
             app.descendants(matching: .any)["CaptureSessionListRow_preview-coaching-ready"].exists,
             "Today should not repeat the same next session in the Later session list."
         )
-        XCTAssertTrue(app.buttons["Call or schedule"].exists)
+        XCTAssertTrue(app.buttons["Start a session"].exists)
         XCTAssertTrue(
             app.buttons["CaptureStartVoiceNote"].exists,
             "Private speech-to-writing should be a primary Home action, not hidden in Session setup."
@@ -4138,7 +4138,7 @@ final class CaptureExperienceUITests: XCTestCase {
     }
 
     func testNewSessionDoesNotImplyConsentOrStartRecording() {
-        let newButton = app.buttons["Call or schedule"].firstMatch
+        let newButton = app.buttons["Start a session"].firstMatch
         XCTAssertTrue(newButton.waitForExistence(timeout: 5))
         newButton.tap()
 

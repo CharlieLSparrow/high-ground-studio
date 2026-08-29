@@ -650,11 +650,11 @@ private struct CaptureTodayPrimaryActions: View {
                     .background(CapturePalette.accent.opacity(0.1), in: Circle())
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("Call or schedule")
+                    Text("Start a session")
                         .font(.headline)
                         .foregroundStyle(.primary)
                         .fixedSize(horizontal: false, vertical: true)
-                    Text("Meet, record, and work together in one session.")
+                    Text("Set up a coaching call, podcast, or interview.")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -676,8 +676,8 @@ private struct CaptureTodayPrimaryActions: View {
         }
         .buttonStyle(.plain)
         .disabled(!canStart)
-        .accessibilityLabel("Call or schedule")
-        .accessibilityHint("Starts a call now or schedules a Session for later.")
+        .accessibilityLabel("Start a session")
+        .accessibilityHint("Creates a coaching call, podcast, interview, or personal recording.")
         .accessibilityIdentifier("CaptureStartSession")
     }
 }
@@ -7537,7 +7537,7 @@ private struct CapturePersonalVoiceNoteTranscriptCard: View {
 }
 
 private enum CaptureVoiceWritingSurface: String, CaseIterable, Identifiable {
-    case writing = "Write"
+    case writing = "Writing"
     case transcript = "Transcript"
 
     var id: Self { self }

@@ -4813,7 +4813,7 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         }
         var app = try launchSignedInCaptureApp()
 
-        let newSession = app.buttons["Call or schedule"].firstMatch
+        let newSession = app.buttons["Start a session"].firstMatch
         XCTAssertTrue(newSession.waitForExistence(timeout: 20))
         newSession.tap()
         XCTAssertTrue(app.navigationBars["New session"].waitForExistence(timeout: 6))
