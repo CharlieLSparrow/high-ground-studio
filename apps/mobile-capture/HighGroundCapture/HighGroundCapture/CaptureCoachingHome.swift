@@ -3187,7 +3187,7 @@ private struct CaptureCoachingEngagementWorkspaceView: View {
                     )
                     .accessibilityHint(
                         canonicalPriority?.kind == "REVIEW_OVERDUE_COMMITMENTS"
-                            ? "Shows shared coaching tasks so past-due commitments can be reviewed."
+                            ? "Shows shared coaching tasks with any past-due commitments."
                             : "Adds a shared note, task, or goal to this coaching relationship."
                     )
                     .accessibilityIdentifier("CaptureCoachingRelationshipPrimaryAction")
@@ -3295,7 +3295,7 @@ private struct CaptureCoachingEngagementWorkspaceView: View {
     private func relationshipPulseEyebrow(session: MobileCaptureSession?) -> String {
         switch canonicalPriority?.kind {
         case "JOIN_LIVE_SESSION": return "Happening now"
-        case "REVIEW_LATE_SESSION": return "Needs review"
+        case "REVIEW_LATE_SESSION": return "Session missed"
         case "PREPARE_UPCOMING_SESSION", "PREPARE_UNSCHEDULED_SESSION": return "Next Session"
         case "REVIEW_COACH_FOLLOW_UP": return "Follow-up needed"
         case "VIEW_RELEASED_FOLLOW_UP": return "Follow-up ready"
@@ -3306,14 +3306,14 @@ private struct CaptureCoachingEngagementWorkspaceView: View {
         if relationshipPulseIsLive(session) { return "Happening now" }
         if session.status?.uppercased() == "ENDED" { return "Last Session" }
         if let start = session.scheduledStart.flatMap(coachingISO8601Date), start < Date() {
-            return "Needs review"
+            return "Session missed"
         }
         return "Next Session"
     }
 
     private func relationshipPulseTitle(session: MobileCaptureSession?) -> String {
         if canonicalPriority?.kind == "REVIEW_OVERDUE_COMMITMENTS" {
-            return "Past-due commitments need review"
+            return "Past-due commitments"
         }
         if canonicalPriority?.kind == "OPEN_RELATIONSHIP" {
             return "Keep the relationship moving"
@@ -3327,7 +3327,7 @@ private struct CaptureCoachingEngagementWorkspaceView: View {
         if canonicalPriority?.kind == "REVIEW_OVERDUE_COMMITMENTS" {
             let count = canonicalPriority?.overdueCommitmentCount ?? 0
             let subject = count == 1 ? "commitment is" : "commitments are"
-            return "\(count) shared \(subject) past due. Review together before assigning anything new."
+            return "\(count) shared \(subject) past due. Update the date, mark the work done, or leave it as-is."
         }
         guard let session else {
             return "Use the conversation and shared work below until the next Session is scheduled."

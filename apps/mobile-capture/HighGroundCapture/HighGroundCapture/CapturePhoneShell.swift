@@ -3712,7 +3712,7 @@ struct TodayFollowThroughCard: View {
                                         if let pendingPlan = client.pendingFocusPlan(for: task.id) {
                                             Label(
                                                 pendingPlan.disposition == .held
-                                                    ? "Focus plan needs review"
+                                                    ? "Focus plan needs attention"
                                                     : "Focus plan saved · waiting to sync",
                                                 systemImage: pendingPlan.disposition == .held
                                                     ? "exclamationmark.triangle.fill"
@@ -4015,7 +4015,7 @@ struct TodayFollowThroughCard: View {
                                     .font(.caption)
                                     .foregroundStyle(.purple)
                                 Label(
-                                    matchingRecording(for: review) == nil ? "Review only — exact local source unavailable" : "Exact local source ready",
+                                    matchingRecording(for: review) == nil ? "Transcript available — recording is in Nest" : "Exact local source ready",
                                     systemImage: matchingRecording(for: review) == nil ? "lock.fill" : "checkmark.shield.fill"
                                 )
                                 .font(.caption2.weight(.semibold))

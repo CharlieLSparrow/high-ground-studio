@@ -3613,7 +3613,7 @@ struct CaptureTranscriptReviewView: View {
         let passageLabel = evidence.segmentCount == 1 ? "timed passage" : "timed passages"
         let wordsToCheckLabel = evidence.lowConfidenceWordCount == 1 ? "word to check" : "words to check"
         return VStack(alignment: .leading, spacing: 11) {
-            Label("Quality check", systemImage: "waveform.badge.magnifyingglass")
+            Label("Accuracy insights", systemImage: "waveform.badge.magnifyingglass")
                 .font(.headline)
                 .foregroundStyle(.indigo)
             HStack(spacing: 8) {
@@ -3632,7 +3632,7 @@ struct CaptureTranscriptReviewView: View {
             }
             if let threshold = evidence.lowConfidenceThreshold,
                captureTranscriptNonempty(evidence.lowConfidenceThresholdAuthority) != nil {
-                Text("Words below \(Int((threshold * 100).rounded()))% confidence are highlighted so you can listen and correct only what needs attention.")
+                Text("Words below \(Int((threshold * 100).rounded()))% confidence are highlighted. Listen or correct them when it is useful.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -3650,7 +3650,7 @@ struct CaptureTranscriptReviewView: View {
                     accessibilityFocusedSegmentID = firstAttentionSegmentID
                 } label: {
                     Label(
-                        "Listen to first highlight",
+                        "Go to first highlight",
                         systemImage: "ear.badge.exclamationmark"
                     )
                     .frame(minHeight: 44)
@@ -3663,7 +3663,7 @@ struct CaptureTranscriptReviewView: View {
                 if !providerLabel.isEmpty {
                     Text("Transcribed with \(providerLabel)")
                 }
-                Text("Confidence finds passages worth checking. Measured error appears only when a reference transcript is available.")
+                Text("Confidence helps locate uncertain words. Measured error appears only when a reference transcript is available.")
             }
             .font(.caption2.weight(.semibold))
             .foregroundStyle(.secondary)
@@ -3746,7 +3746,7 @@ struct CaptureTranscriptReviewView: View {
         VStack(alignment: .leading, spacing: 7) {
             Text(sessionTitle)
                 .font(.title3.weight(.bold))
-            Label("Ready to review", systemImage: "checkmark.circle.fill")
+            Label("Transcript ready", systemImage: "checkmark.circle.fill")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.green)
             if client.desk?.roomPurpose == "COACHING", !previewOnly {
@@ -3801,12 +3801,12 @@ struct CaptureTranscriptReviewView: View {
         let firstSegmentID = affected.first?.0
         return VStack(alignment: .leading, spacing: 10) {
             Label(
-                "\(affected.count) linked work item\(affected.count == 1 ? "" : "s") need review",
+                "\(affected.count) linked work item\(affected.count == 1 ? " uses" : "s use") earlier wording",
                 systemImage: "arrow.triangle.branch"
             )
             .font(.headline)
             .foregroundStyle(.orange)
-            Text("A reviewed transcript correction changed evidence already carried into notes, tasks, goals, or follow-ups. Quipsly will not silently rewrite that work.")
+            Text("Your existing notes, tasks, goals, and follow-ups stay as they are. The transcript change remains visible from the linked work, and everything stays editable.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -3820,14 +3820,14 @@ struct CaptureTranscriptReviewView: View {
                     }
                     accessibilityFocusedSegmentID = firstSegmentID
                 } label: {
-                    Label("Review first affected source", systemImage: "waveform.and.magnifyingglass")
+                    Label("Show changed passage", systemImage: "waveform.and.magnifyingglass")
                         .frame(minHeight: 44)
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(.orange)
                 .accessibilityIdentifier("CaptureTranscriptImpactReviewFirst")
             }
-            Text("Reviewing only appends an owner-scoped receipt. The linked item's words, state, owner, dates, tags, delivery, and publication remain unchanged.")
+            Text("Nothing is blocked. Open any linked item if you want to update it; otherwise keep working.")
                 .font(.caption2.weight(.semibold))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -3847,7 +3847,7 @@ struct CaptureTranscriptReviewView: View {
             Label(
                 appStorePresentation
                     ? "Recording and transcript stay linked"
-                    : (exactMatch ? "Recording ready to play" : "Transcript ready to review"),
+                    : (exactMatch ? "Recording ready to play" : "Transcript ready"),
                 systemImage: appStorePresentation ? "waveform.and.magnifyingglass" : (exactMatch ? "checkmark.circle.fill" : "text.bubble")
             )
                 .font(.headline)

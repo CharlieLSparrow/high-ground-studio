@@ -1983,7 +1983,7 @@ struct MobileCoachingFormsHomeView: View {
         let waiting = coachAssignments.filter { !$0.coachCanRead }
 
         if !shared.isEmpty {
-            formSectionTitle("Ready to review", count: shared.count)
+            formSectionTitle("Responses", count: shared.count)
             ForEach(shared) { assignment in
                 coachAssignmentCard(assignment)
             }
