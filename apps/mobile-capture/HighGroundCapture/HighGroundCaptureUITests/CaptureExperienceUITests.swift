@@ -2568,7 +2568,7 @@ final class CaptureExperienceUITests: XCTestCase {
         add(screenshot)
     }
 
-    func testTodayUsesCanonicalFollowThroughWithoutImplyingExternalActions() {
+    func testTodayPlansPrivateFocusTimeWithoutPaperwork() {
         openAcrossNestsFollowThrough()
         let card = app.descendants(matching: .any)["CaptureTodayFollowThroughCard"]
         XCTAssertTrue(card.waitForExistence(timeout: 5))
@@ -2596,16 +2596,16 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertEqual(planFocus.label, "Plan focus")
         XCTAssertTrue(planFocus.isEnabled, "Opening the no-side-effect planner should remain testable in preview mode.")
         planFocus.tap()
-        XCTAssertTrue(app.navigationBars["Plan focus"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.navigationBars["Focus time"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.descendants(matching: .any)["CaptureTodayFocusPlanStart"].exists)
         XCTAssertTrue(app.descendants(matching: .any)["CaptureTodayFocusPlanDuration"].exists)
-        XCTAssertTrue(app.staticTexts["Does not change the task deadline or status"].exists)
-        let reminderBoundary = app.staticTexts["Does not create a reminder or appointment"]
-        reveal(reminderBoundary)
-        XCTAssertTrue(reminderBoundary.exists)
-        let calendarBoundary = app.staticTexts["Does not write to Google or Apple Calendar"]
-        reveal(calendarBoundary)
-        XCTAssertTrue(calendarBoundary.exists)
+        XCTAssertTrue(app.staticTexts["Private to you"].exists)
+        XCTAssertTrue(
+            app.staticTexts[
+                "Focus time stays beside this task in Quipsly. You can record how much time you spent when you finish."
+            ].exists,
+            "The planner should explain the useful result once instead of making people review a list of non-actions."
+        )
         let savePlan = app.buttons["CaptureTodayFocusPlanSave"]
         let focusPlanForm = app.collectionViews.firstMatch
         XCTAssertTrue(focusPlanForm.waitForExistence(timeout: 5))
@@ -2613,7 +2613,7 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(savePlan.exists)
         XCTAssertFalse(savePlan.isEnabled, "Preview inspection must never write a canonical focus block.")
         app.buttons["Cancel"].tap()
-        XCTAssertFalse(app.navigationBars["Plan focus"].exists)
+        XCTAssertFalse(app.navigationBars["Focus time"].exists)
 
         let transcriptReview = app.staticTexts["Transcripts"]
         reveal(transcriptReview)
@@ -2637,12 +2637,21 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertEqual(reopenAnnotation.label, "Reopen")
         XCTAssertFalse(reopenAnnotation.isEnabled, "Preview resolved annotations must remain read-only.")
 
-        for _ in 0..<8 where !sourceLink.isHittable {
-            app.swipeDown()
-        }
-        XCTAssertTrue(sourceLink.isHittable)
+        reveal(sourceLink)
+        XCTAssertTrue(
+            sourceLink.isHittable,
+            "The exact transcript source should settle inside the safe tappable viewport before navigation."
+        )
         sourceLink.tap()
-        XCTAssertTrue(app.scrollViews["CaptureTranscriptReviewView"].waitForExistence(timeout: 5))
+        let transcriptReviewView = app.scrollViews["CaptureTranscriptReviewView"]
+        guard transcriptReviewView.waitForExistence(timeout: 5) else {
+            let screenshot = XCTAttachment(screenshot: app.screenshot())
+            screenshot.name = "Task source link did not open transcript"
+            screenshot.lifetime = .keepAlways
+            add(screenshot)
+            XCTFail("Task source link did not open its transcript.\n\(app.debugDescription)")
+            return
+        }
         assertFocusedTranscriptSegment("preview-segment")
         let transcriptSpeakerEvidence = app.descendants(matching: .any)["CaptureTranscriptSegmentSpeakerEvidence_preview-segment"]
         XCTAssertTrue(transcriptSpeakerEvidence.waitForExistence(timeout: 3))
