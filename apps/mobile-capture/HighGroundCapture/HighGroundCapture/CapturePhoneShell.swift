@@ -10561,7 +10561,7 @@ private struct CaptureRecorderView: View {
             }
         }
         .background(CaptureCanvas())
-        .navigationTitle(model.selectedSession?.isPersonalVoiceNote == true ? "Speak to write" : "Record")
+        .navigationTitle(model.selectedSession?.isPersonalVoiceNote == true ? "Speak to write" : "Sessions")
         .navigationBarTitleDisplayMode(.inline)
         .sheet(isPresented: $showsSessionPicker) {
             SessionPickerSheet(model: model, isPresented: $showsSessionPicker)
@@ -13768,7 +13768,7 @@ private struct CaptureLibraryView: View {
                         .font(.title2.weight(.bold))
                     Text(
                         selectedSection == .writing
-                            ? "Papers, drafts, and voice writing stay editable while their timed transcripts and original audio remain connected."
+                            ? "Write by keyboard or voice. Speech stays connected to its timed transcript and original audio."
                             : "Play, share, and open the transcript for any Session or voice recording."
                     )
                         .font(.subheadline)

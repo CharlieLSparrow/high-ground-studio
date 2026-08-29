@@ -4961,6 +4961,11 @@ rehearsal`) in an iPhone 17 Pro simulator. The signed-in UI acceptance opened
   non-empty work is saved locally before synchronization. Source-less writing
   does not show transcript or audio affordances, while source-backed writing
   retains timed transcript correction, playback, and source provenance.
+- The five root destinations now describe places rather than mixing places
+  with an action: **Home**, **Sessions**, **Nests**, **Library**, and
+  **Account**. **Nest** remains the durable private/owned/shared workspace term;
+  a queue is reserved for temporary attention ordering rather than becoming a
+  second word users must learn for the same place.
 - The source contract smoke passes, three focused web suites pass (31 tests),
   the generic simulator build passes, and the focused iPhone 17 Pro Library
   writing UI test passes. Physical-device, authenticated cross-device, and

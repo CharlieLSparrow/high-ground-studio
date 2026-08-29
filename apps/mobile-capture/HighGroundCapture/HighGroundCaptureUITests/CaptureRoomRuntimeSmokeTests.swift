@@ -690,7 +690,7 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         switch title {
         case "Today":
             destination = app.descendants(matching: .any)["CaptureTodayView"].firstMatch
-        case "Record":
+        case "Sessions":
             destination = app.scrollViews["CaptureRecorderView"].firstMatch
         case "Work":
             destination = app.descendants(matching: .any)["CaptureWorkView"].firstMatch
@@ -1248,7 +1248,7 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             throw XCTSkip("Tag authoring requires an exact Session ID, unique Task title, and unique tag label.")
         }
         let app = try launchSignedInCaptureApp()
-        tapRootTab("Record", in: app)
+        tapRootTab("Sessions", in: app)
         selectRequestedSession(in: app, credentials: credentials)
 
         saveQuickEntry(
@@ -2066,7 +2066,7 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
     func testPersonalHomeNestNoteSyncsToDocumentKernel() throws {
         let credentials = try runtimeSmokeCredentials()
         let app = try launchSignedInCaptureApp()
-        tapRootTab("Record", in: app)
+        tapRootTab("Sessions", in: app)
 
         let noteButton = app.buttons.matching(
             NSPredicate(format: "identifier BEGINSWITH %@", "CaptureQuickEntry_NOTE_")
@@ -2195,7 +2195,7 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         // Reconnect through the normal signed lane. Startup reconciliation
         // must acknowledge the same UUID before removing the phone copy.
         app = try launchSignedInCaptureApp()
-        tapRootTab("Record", in: app)
+        tapRootTab("Sessions", in: app)
         XCTAssertTrue(
             app.staticTexts["Your note is saved privately in My Nest. Continue it from Library or Search."].waitForExistence(timeout: 30)
         )
@@ -2209,7 +2209,7 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             throw XCTSkip("The coaching quick-entry journey requires an exact canonical Session ID.")
         }
         let app = try launchSignedInCaptureApp()
-        tapRootTab("Record", in: app)
+        tapRootTab("Sessions", in: app)
         selectRequestedSession(in: app, credentials: credentials)
 
         saveQuickEntry(
@@ -2245,7 +2245,7 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         let proofID = UUID().uuidString.lowercased().prefix(8)
         let bodyText = "Client-safe iPhone decision \(proofID): name the next experiment without sending a message."
         let app = try launchSignedInCaptureApp()
-        tapRootTab("Record", in: app)
+        tapRootTab("Sessions", in: app)
         selectRequestedSession(in: app, credentials: credentials)
 
         let entryButton = app.buttons["CaptureQuickEntry_NOTE_\(sessionID)"].firstMatch
@@ -2401,7 +2401,7 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
 
         app.terminate()
         let relaunched = try launchSignedInCaptureApp()
-        tapRootTab("Record", in: relaunched)
+        tapRootTab("Sessions", in: relaunched)
         selectRequestedSession(in: relaunched, credentials: credentials)
         let relaunchedNotes = relaunched.descendants(matching: .any)["CaptureSessionNotesToggle"].firstMatch
         XCTAssertTrue(waitForRuntimeElement(relaunchedNotes, in: relaunched, timeout: 20, swipeAttempts: 10))
@@ -2600,7 +2600,7 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             "A room participant who does not own the reviewed task must not receive its title."
         )
 
-        tapRootTab("Record", in: app)
+        tapRootTab("Sessions", in: app)
         selectRequestedSession(in: app, credentials: credentials)
         let reviewLink = app.descendants(matching: .any)["CaptureSessionTranscriptReviewLink_\(sessionID)"].firstMatch
         XCTAssertTrue(
@@ -3681,7 +3681,7 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             "Another account must not see the retained transcript-derived goal."
         )
 
-        tapRootTab("Record", in: app)
+        tapRootTab("Sessions", in: app)
         let sessionChooser = app.buttons["CaptureSessionChooser"].firstMatch
         XCTAssertTrue(sessionChooser.waitForExistence(timeout: 15))
         sessionChooser.tap()
@@ -4403,7 +4403,7 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             throw XCTSkip("The recurrence authoring journey requires an exact unique task title.")
         }
         let app = try launchSignedInCaptureApp()
-        tapRootTab("Record", in: app)
+        tapRootTab("Sessions", in: app)
 
         let taskButton = app.buttons.matching(
             NSPredicate(format: "identifier BEGINSWITH %@", "CaptureQuickEntry_TASK_")
@@ -4626,7 +4626,7 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         let credentials = try runtimeSmokeCredentials()
         let app = try launchSignedInCaptureApp()
 
-        let recordTab = app.tabBars.buttons["Record"].firstMatch
+        let recordTab = app.tabBars.buttons["Sessions"].firstMatch
         XCTAssertTrue(recordTab.waitForExistence(timeout: 20), "Signed-in Capture app should expose the Record tab.")
         recordTab.tap()
 
@@ -4970,7 +4970,7 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             throw XCTSkip("The coach follow-up journey requires exact Session and unique draft-copy identities.")
         }
         let app = try launchSignedInCaptureApp()
-        tapRootTab("Record", in: app)
+        tapRootTab("Sessions", in: app)
         selectRequestedSession(in: app, credentials: credentials)
 
         let card = app.descendants(matching: .any)["CaptureCoachClientFollowUp"].firstMatch
@@ -5074,7 +5074,7 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             throw XCTSkip("The client follow-up journey requires exact Session, released output, task, goal, title, and SHA-256 identities.")
         }
         let app = try launchSignedInCaptureApp()
-        tapRootTab("Record", in: app)
+        tapRootTab("Sessions", in: app)
         selectRequestedSession(in: app, credentials: credentials)
 
         let card = app.descendants(matching: .any)["CaptureClientFollowUp_\(outputID)"].firstMatch
@@ -5158,7 +5158,7 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             throw XCTSkip("The coaching-continuity journey requires the exact next Session ID and title.")
         }
         let app = try launchSignedInCaptureApp()
-        tapRootTab("Record", in: app)
+        tapRootTab("Sessions", in: app)
         selectRequestedSession(in: app, credentials: credentials)
 
         let followThrough = app.descendants(matching: .any)["CapturePriorSessionFollowThrough"].firstMatch
@@ -5341,7 +5341,7 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         }
 
         let app = try launchSignedInCaptureApp()
-        tapRootTab("Record", in: app)
+        tapRootTab("Sessions", in: app)
         selectRequestedSession(in: app, credentials: credentials)
 
         let liveRoom = app.descendants(matching: .any)["CaptureProviderRoomControls"].firstMatch
@@ -5472,7 +5472,7 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         }
 
         var app = try launchSignedInCaptureApp()
-        tapRootTab("Record", in: app)
+        tapRootTab("Sessions", in: app)
         selectRequestedSession(in: app, credentials: credentials)
         openLocalRecorderIfNeeded(in: app)
 
@@ -5517,7 +5517,7 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         tapRootTab("Library", in: app)
         XCTAssertTrue(app.scrollViews["CaptureLibraryView"].waitForExistence(timeout: 8))
         let recordingsBeforeSafeTake = recordingIdentifiers(in: app, prefix: "LocalRecordingRow_")
-        tapRootTab("Record", in: app)
+        tapRootTab("Sessions", in: app)
 
         let startActions = recordingStartActions(in: app)
         XCTAssertTrue(
@@ -5627,7 +5627,7 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         )
 
         let recordingsBeforeCrashTake = recordingIdentifiers(in: app, prefix: "LocalRecordingRow_")
-        tapRootTab("Record", in: app)
+        tapRootTab("Sessions", in: app)
         let secondStartActions = recordingStartActions(in: app)
         var secondStartVisible = waitForAnyRuntimeElement(
             secondStartActions,
@@ -5709,7 +5709,7 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         XCTAssertTrue(app.descendants(matching: .any)[crashIdentifier].waitForExistence(timeout: 12))
         XCTAssertFalse(app.otherElements["GlobalCaptureBanner"].exists, "An orphaned take must not relaunch as an active recording.")
 
-        tapRootTab("Record", in: app)
+        tapRootTab("Sessions", in: app)
         selectRequestedSession(in: app, credentials: credentials)
         openLocalRecorderIfNeeded(in: app)
 
@@ -5872,7 +5872,7 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             in: app,
             prefix: "LocalRecordingRow_"
         )
-        tapRootTab("Record", in: app)
+        tapRootTab("Sessions", in: app)
 
         let cameraPermission = addUIInterruptionMonitor(
             withDescription: "Physical camera permission"

@@ -13,7 +13,7 @@ enum CaptureRootTab: String, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .today: "Home"
-        case .record: "Record"
+        case .record: "Sessions"
         case .work: "Nests"
         case .library: "Library"
         case .account: "Account"
@@ -23,7 +23,7 @@ enum CaptureRootTab: String, CaseIterable, Identifiable {
     var systemImage: String {
         switch self {
         case .today: "house.fill"
-        case .record: "waveform.circle.fill"
+        case .record: "person.2.wave.2.fill"
         case .work: "q.circle.fill"
         case .library: "books.vertical.fill"
         case .account: "person.crop.circle"
