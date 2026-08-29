@@ -9,6 +9,7 @@ import {
   summarizeConfiguration,
   tokenScopesForRequest,
   validateConfiguration,
+  verifyConfigurationWithRetry,
 } from "./quipsly-app-store-connect-submission-configuration.mjs";
 
 const configuration = JSON.parse(readFileSync(
@@ -97,6 +98,18 @@ test("complete provider state is idempotent and preserves manual gates", () => {
   assert.deepEqual(receipt.blockers, []);
   assert.equal(receipt.screenshotsUploaded, false);
   assert.equal(receipt.reviewSubmissionCreated, false);
+});
+
+test("configuration verification tolerates App Store propagation delay", async () => {
+  let reads = 0;
+  const sleeps = [];
+  const verification = await verifyConfigurationWithRetry({
+    readReceipt: async () => ({ configurationComplete: ++reads >= 3 }),
+    sleep: async (milliseconds) => { sleeps.push(milliseconds); },
+  });
+  assert.equal(verification.receipt.configurationComplete, true);
+  assert.equal(verification.attempts, 3);
+  assert.deepEqual(sleeps, [250, 500]);
 });
 
 test("missing provider state produces bounded configuration actions", () => {

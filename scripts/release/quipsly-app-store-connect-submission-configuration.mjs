@@ -619,6 +619,23 @@ async function writeReceipt(outputPath, receipt) {
   await chmod(outputPath, 0o600);
 }
 
+export async function verifyConfigurationWithRetry({
+  readReceipt,
+  maxAttempts = 5,
+  initialDelayMilliseconds = 250,
+  sleep = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)),
+}) {
+  let receipt;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    receipt = await readReceipt();
+    if (receipt.configurationComplete || attempt === maxAttempts) {
+      return { receipt, attempts: attempt };
+    }
+    await sleep(initialDelayMilliseconds * (2 ** (attempt - 1)));
+  }
+  return { receipt, attempts: maxAttempts };
+}
+
 export async function run(options) {
   const configuration = JSON.parse(await readFile(options.configurationPath, "utf8"));
   const errors = validateConfiguration(configuration, {
@@ -670,14 +687,20 @@ export async function run(options) {
       await writeReceipt(options.outputPath, receipt);
       throw error;
     }
-    documents = await discover({ options, key });
-    receipt = summarizeConfiguration({
-      options,
-      configuration,
-      documents,
-      applied: true,
-      externalMutation: plannedActions.length > 0,
+    const verification = await verifyConfigurationWithRetry({
+      readReceipt: async () => {
+        documents = await discover({ options, key });
+        return summarizeConfiguration({
+          options,
+          configuration,
+          documents,
+          applied: true,
+          externalMutation: plannedActions.length > 0,
+        });
+      },
     });
+    receipt = verification.receipt;
+    receipt.verificationAttempts = verification.attempts;
     receipt.plannedActions = plannedActions;
     receipt.appliedActions = plannedActions;
     await writeReceipt(options.outputPath, receipt);

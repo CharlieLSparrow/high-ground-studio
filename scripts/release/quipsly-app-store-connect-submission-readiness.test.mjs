@@ -154,7 +154,7 @@ function completeFixture() {
         id: "screenshots-1",
         attributes: { screenshotDisplayType: "APP_IPHONE_67" },
       },
-      included: Array.from({ length: 6 }, (_, index) => ({
+      included: Array.from({ length: metadata.screenshots.planned.length }, (_, index) => ({
         type: "appScreenshots",
         id: `screenshot-${index + 1}`,
         attributes: { assetDeliveryState: { state: "COMPLETE" } },
@@ -174,7 +174,7 @@ test("complete provider state still preserves manual legal and physical gates", 
   const receipt = summarizeSubmissionReadiness(completeFixture());
   assert.equal(receipt.providerChecksPassed, true);
   assert.equal(receipt.submissionReady, false);
-  assert.equal(receipt.screenshots.providerCount, 6);
+  assert.equal(receipt.screenshots.providerCount, metadata.screenshots.planned.length);
   assert.equal(receipt.pricing.complete, true);
   assert.equal(receipt.availability.complete, true);
   assert.equal(receipt.compatibility.iosBuildMacAppStoreCompatible, true);
