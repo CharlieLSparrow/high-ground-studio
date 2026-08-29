@@ -267,6 +267,14 @@ final class CaptureExperienceUITests: XCTestCase {
             app.buttons["CaptureStartButton"].isEnabled,
             "A private thought must remain recordable without creating an online Session first."
         )
+        XCTAssertTrue(
+            app.buttons["CaptureStartButton"].isHittable,
+            "Speak to write must show its primary Record action immediately, without scrolling past setup or explanation."
+        )
+        XCTAssertFalse(
+            app.buttons["CaptureSessionChooser"].exists,
+            "Private writing should not look like choosing or configuring a meeting Session."
+        )
         XCTAssertEqual(
             app.staticTexts["CaptureRecorderStateLabel"].label,
             "Ready to speak",

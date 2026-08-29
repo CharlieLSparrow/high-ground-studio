@@ -795,7 +795,7 @@ private struct CaptureFinishQueueCard: View {
     @State private var showsDetails = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .top, spacing: 12) {
                 Image(systemName: needsDeviceAttention ? "externaldrive.badge.exclamationmark" : "checkmark.icloud")
                     .font(.system(size: 20, weight: .bold))
@@ -7268,13 +7268,11 @@ private struct CapturePersonalVoiceNoteHeader: View {
                     .foregroundStyle(.secondary)
             }
 
-            Text(
-                hasRecording
-                    ? "Your original audio is saved. Quipsly keeps the transcript time-linked so you can listen, correct it, and shape it into writing."
-                    : "Tap Record and speak naturally. Quipsly turns your words into editable writing; say “new paragraph” or “new line” to organize as you go."
-            )
-            .font(.subheadline)
-            .foregroundStyle(.secondary)
+            if hasRecording {
+                Text("Your original audio and time-linked writing are ready to continue.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
 
             HStack(spacing: 8) {
                 Label(session.projectName?.nonempty ?? "My Nest", systemImage: "house.fill")
@@ -9472,10 +9470,12 @@ private struct CaptureRecorderView: View {
             // capture card can overflow SwiftUI's AttributeGraph stack before
             // the person reaches the consent controls.
             LazyVStack(spacing: 16) {
-                SessionChooserButton(session: model.selectedSession) {
-                    showsSessionPicker = true
+                if model.selectedSession?.isPersonalVoiceNote != true {
+                    SessionChooserButton(session: model.selectedSession) {
+                        showsSessionPicker = true
+                    }
+                    .disabled(model.isSessionContextLocked)
                 }
-                .disabled(model.isSessionContextLocked)
 
                 if model.isRefreshing {
                     Label("Verifying saved session with Nest…", systemImage: "arrow.trianglehead.2.clockwise.rotate.90")
@@ -16229,52 +16229,17 @@ private struct RecorderHero: View {
                     .minimumScaleFactor(0.72)
                     .accessibilityLabel("Elapsed time \(formattedDuration)")
                     .accessibilityIdentifier("CaptureElapsedTime")
-                if session.isPersonalVoiceNote {
-                    Text(voiceWritingDetail)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.center)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .padding(.top, 3)
-                        .accessibilityIdentifier("CaptureVoiceWritingRecorderDetail")
-                }
             }
 
-            InputLevelMeter(
-                averagePowerDB: averagePowerDB,
-                peakPowerDB: peakPowerDB,
-                isActive: isActuallyRecording
-            )
-
-            if waitingForHost && !isCaptureActive {
-                CaptureReadyForHostIndicator(
-                    title: "Microphone ready",
-                    detail: "The coach or host starts recording for the Session"
-                )
-                .accessibilityIdentifier("CaptureAudioWaitingForHostStatus")
+            if session.isPersonalVoiceNote {
+                primaryControl
             } else {
-                Button(action: onPrimaryAction) {
-                    ZStack {
-                        Circle()
-                            .fill(primaryTint.opacity(0.14))
-                            .frame(width: 126, height: 126)
-                        Circle()
-                            .fill(primaryTint)
-                            .frame(width: 96, height: 96)
-                        if isBusy || captureState == .finalizing {
-                            ProgressView().tint(.white).controlSize(.large)
-                        } else {
-                            Image(systemName: primarySystemImage)
-                                .font(.system(size: 35, weight: .bold))
-                                .foregroundStyle(.white)
-                        }
-                    }
-                }
-                .buttonStyle(CaptureRecordButtonStyle())
-                .disabled(primaryDisabled)
-                .accessibilityLabel(primaryAccessibilityLabel)
-                .accessibilityValue(formattedDuration)
-                .accessibilityIdentifier(isCaptureActive ? "CaptureStopButton" : "CaptureStartButton")
+                InputLevelMeter(
+                    averagePowerDB: averagePowerDB,
+                    peakPowerDB: peakPowerDB,
+                    isActive: isActuallyRecording
+                )
+                primaryControl
             }
 
             if isCaptureActive && captureState != .finalizing {
@@ -16306,6 +16271,23 @@ private struct RecorderHero: View {
                         .accessibilityIdentifier("CaptureMarkMomentButton")
                     }
                 }
+            }
+
+            if session.isPersonalVoiceNote {
+                if isCaptureActive {
+                    InputLevelMeter(
+                        averagePowerDB: averagePowerDB,
+                        peakPowerDB: peakPowerDB,
+                        isActive: isActuallyRecording
+                    )
+                }
+
+                Text(voiceWritingDetail)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("CaptureVoiceWritingRecorderDetail")
             }
 
             if session.isPersonalVoiceNote,
@@ -16367,6 +16349,40 @@ private struct RecorderHero: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .quipslyCaptureAccountIdentityDidChange)) { _ in
             recognitionPreferences.refresh()
+        }
+    }
+
+    @ViewBuilder
+    private var primaryControl: some View {
+        if waitingForHost && !isCaptureActive {
+            CaptureReadyForHostIndicator(
+                title: "Microphone ready",
+                detail: "The coach or host starts recording for the Session"
+            )
+            .accessibilityIdentifier("CaptureAudioWaitingForHostStatus")
+        } else {
+            Button(action: onPrimaryAction) {
+                ZStack {
+                    Circle()
+                        .fill(primaryTint.opacity(0.14))
+                        .frame(width: 126, height: 126)
+                    Circle()
+                        .fill(primaryTint)
+                        .frame(width: 96, height: 96)
+                    if isBusy || captureState == .finalizing {
+                        ProgressView().tint(.white).controlSize(.large)
+                    } else {
+                        Image(systemName: primarySystemImage)
+                            .font(.system(size: 35, weight: .bold))
+                            .foregroundStyle(.white)
+                    }
+                }
+            }
+            .buttonStyle(CaptureRecordButtonStyle())
+            .disabled(primaryDisabled)
+            .accessibilityLabel(primaryAccessibilityLabel)
+            .accessibilityValue(formattedDuration)
+            .accessibilityIdentifier(isCaptureActive ? "CaptureStopButton" : "CaptureStartButton")
         }
     }
 
