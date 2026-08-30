@@ -1448,6 +1448,15 @@ for (const needle of [
   requireIncludes(capturePhoneShellText, needle, "adaptive warm tan and dark brown Capture visual foundation");
 }
 for (const needle of [
+  "@Environment(\\.scenePhase) private var scenePhase",
+  ".onChange(of: scenePhase)",
+  "saveTask?.cancel()",
+  "saveImmediately()",
+  "Try saving on this iPhone again",
+]) {
+  requireIncludes(capturePhoneShellText, needle, "writing flushes its protected local copy at app lifecycle boundaries");
+}
+for (const needle of [
   "struct MobileQuickEntryRecurrence: Codable, Equatable",
   "let recurrence: MobileQuickEntryRecurrence?",
   "guard recurrence == nil || kind == .task",

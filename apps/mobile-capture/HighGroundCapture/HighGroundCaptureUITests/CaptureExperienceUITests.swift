@@ -39,6 +39,11 @@ final class CaptureExperienceUITests: XCTestCase {
                 "--capture-share-owner-ui-preview=voice-writing-source-owner"
             )
         }
+        if name.contains("testWritingFlushesToProtectedStorageWhenTheAppLeavesForeground") {
+            app.launchArguments.append(
+                "--capture-share-owner-ui-preview=writing-lifecycle-owner"
+            )
+        }
         if name.contains("testCoachFollowUpHoldsReleaseWhenCanonicalSourceChanged") {
             app.launchArguments.append("--capture-follow-up-source-changed-preview")
         }
@@ -279,6 +284,44 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertFalse(
             app.buttons["Transcript"].exists,
             "Keyboard-first writing must not invent an audio source or transcript."
+        )
+    }
+
+    func testWritingFlushesToProtectedStorageWhenTheAppLeavesForeground() {
+        let uniqueTitle = "Background save proof 8472"
+        app.buttons["CaptureStartWriting"].tap()
+        let editor = app.descendants(matching: .any)["CaptureVoiceWritingEditor"]
+        XCTAssertTrue(editor.waitForExistence(timeout: 5))
+
+        let title = app.textFields["CaptureVoiceWritingTitle"]
+        XCTAssertTrue(title.waitForExistence(timeout: 3))
+        title.tap()
+        title.typeText(" \(uniqueTitle)")
+        let body = app.descendants(matching: .any)["CaptureVoiceWritingBody"]
+        XCTAssertTrue(body.waitForExistence(timeout: 3))
+        body.tap()
+        body.typeText("The last paragraph must survive an immediate app switch.")
+
+        XCUIDevice.shared.press(.home)
+        app.terminate()
+        app.launch()
+        XCTAssertTrue(
+            app.descendants(matching: .any)["CapturePreviewModeBadge"]
+                .waitForExistence(timeout: 12)
+        )
+        app.tabBars.buttons["Library"].tap()
+        let writingSection = app.buttons["Writing"]
+        XCTAssertTrue(writingSection.waitForExistence(timeout: 5))
+        writingSection.tap()
+        let search = app.descendants(matching: .any)["CaptureLibrarySearch"]
+        XCTAssertTrue(search.waitForExistence(timeout: 5))
+        search.tap()
+        search.typeText(uniqueTitle)
+        XCTAssertTrue(
+            app.staticTexts.matching(
+                NSPredicate(format: "label CONTAINS %@", uniqueTitle)
+            ).firstMatch.waitForExistence(timeout: 5),
+            "Backgrounding must synchronously preserve the latest local writing before the process can terminate."
         )
     }
 

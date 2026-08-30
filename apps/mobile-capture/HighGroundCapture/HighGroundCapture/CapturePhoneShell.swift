@@ -7820,6 +7820,7 @@ private struct CaptureVoiceWritingEditor: View {
     @ObservedObject var tagClient: CaptureTodayClient
     let onContinueByVoice: CaptureVoiceWritingContinuationAction
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.scenePhase) private var scenePhase
     @FocusState private var titleIsFocused: Bool
     @FocusState private var bodyIsFocused: Bool
 
@@ -7846,6 +7847,7 @@ private struct CaptureVoiceWritingEditor: View {
     @State private var isDeletingWriting = false
     @State private var deleteWritingError: String?
     @State private var showsDeleteWritingError = false
+    @State private var localSaveError: String?
     @State private var nestMoveError: String?
     @State private var showsNestMoveError = false
     @State private var outlineIsExpanded = false
@@ -7929,6 +7931,18 @@ private struct CaptureVoiceWritingEditor: View {
                     Button("Try saving again") {
                         saveImmediately()
                         writingSync.syncNow(draftID: draftID)
+                    }
+                    .frame(minHeight: 44)
+                }
+            }
+
+            if let localSaveError {
+                Section {
+                    Label(localSaveError, systemImage: "externaldrive.badge.exclamationmark")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                    Button("Try saving on this iPhone again") {
+                        saveImmediately()
                     }
                     .frame(minHeight: 44)
                 }
@@ -8018,6 +8032,16 @@ private struct CaptureVoiceWritingEditor: View {
         .onChange(of: title) { _, _ in scheduleSave() }
         .onChange(of: bodyText) { _, _ in scheduleSave() }
         .onChange(of: richText) { _, _ in scheduleSave() }
+        .onChange(of: scenePhase) { _, phase in
+            guard phase != .active else { return }
+            // onDisappear is not guaranteed when iOS suspends or terminates
+            // the process. Flush the protected local copy at the lifecycle
+            // boundary so a phone call, app switch, or memory pressure cannot
+            // strand the last paragraph inside a pending debounce task.
+            saveTask?.cancel()
+            saveTask = nil
+            saveImmediately()
+        }
         .task {
             await writingSync.refreshFromNest()
             await writingSync.refreshTranscripts(draftID: draftID)
@@ -9165,20 +9189,25 @@ private struct CaptureVoiceWritingEditor: View {
     private func scheduleSave() {
         saveTask?.cancel()
         saveTask = Task {
-            try? await Task.sleep(for: .milliseconds(450))
+            try? await Task.sleep(for: .milliseconds(220))
             guard !Task.isCancelled else { return }
             saveImmediately()
         }
     }
 
     private func saveImmediately() {
-        guard let draft = try? writingStore.update(
-            draftID: draftID,
-            title: title,
-            body: bodyText,
-            richText: richText
-        ) else { return }
-        writingSync.schedule(draft)
+        do {
+            let draft = try writingStore.update(
+                draftID: draftID,
+                title: title,
+                body: bodyText,
+                richText: richText
+            )
+            localSaveError = nil
+            writingSync.schedule(draft)
+        } catch {
+            localSaveError = "This edit is still open, but iPhone storage has not confirmed it yet. \(error.localizedDescription)"
+        }
     }
 
     @MainActor

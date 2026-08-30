@@ -674,6 +674,7 @@ final class CaptureExperienceModel: ObservableObject {
             if let previewOwner = CaptureLaunchConfiguration.shareExtensionUITestOwner {
                 quickEntryOutbox.activateOwner(previewOwner)
                 sessionNoteEditOutbox.activateOwner(previewOwner)
+                VoiceWritingDraftStore.shared.activateOwner(previewOwner)
                 let importedSharedSources = quickEntryOutbox.importShareExtensionCaptures()
                 if importedSharedSources > 0 {
                     quickEntrySyncMessage = "Imported \(importedSharedSources) protected Share Sheet source\(importedSharedSources == 1 ? "" : "s") into this account's outbox."
