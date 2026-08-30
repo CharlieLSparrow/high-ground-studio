@@ -1547,6 +1547,8 @@ for (const needle of [
   "static let canvasLift = adaptive(",
   "static let surface = adaptive(",
   "static let locationBarBackground = adaptive(",
+  "static let primaryText = adaptive(",
+  "static let secondaryText = adaptive(",
   "static let accentGradient = LinearGradient(",
 ]) {
   requireIncludes(capturePhoneShellText, needle, "adaptive warm tan and dark brown Capture visual foundation");

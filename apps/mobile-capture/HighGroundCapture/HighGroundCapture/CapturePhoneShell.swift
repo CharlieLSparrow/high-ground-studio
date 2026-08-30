@@ -25,6 +25,7 @@ struct CapturePhoneShell: View {
         captureTabs
             .environmentObject(subscriptionStore)
             .tint(CapturePalette.accent)
+            .foregroundStyle(CapturePalette.primaryText)
             .modifier(CaptureBottomNavigationEdgeEffect())
             .safeAreaInset(edge: .top, spacing: 0) {
                 VStack(spacing: 0) {
@@ -21437,7 +21438,7 @@ private struct CaptureWorkLocationBar: View {
                 VStack(alignment: .leading, spacing: 1) {
                     Text(nestName)
                         .font(.caption.weight(.bold))
-                        .foregroundStyle(.primary)
+                        .foregroundStyle(CapturePalette.primaryText)
                         .lineLimit(1)
                     HStack(spacing: 5) {
                         Image(systemName: "chevron.right")
@@ -21447,7 +21448,7 @@ private struct CaptureWorkLocationBar: View {
                             .lineLimit(1)
                     }
                     .font(.caption2.weight(.semibold))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(CapturePalette.secondaryText)
                 }
                 Spacer(minLength: 8)
                 Text(switchDisabled ? "Recording" : "Switch")
@@ -21515,6 +21516,14 @@ private enum CapturePalette {
     static let divider = adaptive(
         light: UIColor(red: 0.28, green: 0.18, blue: 0.12, alpha: 0.13),
         dark: UIColor(red: 0.94, green: 0.85, blue: 0.70, alpha: 0.16)
+    )
+    static let primaryText = adaptive(
+        light: UIColor(red: 0.16, green: 0.09, blue: 0.055, alpha: 1),
+        dark: UIColor(red: 0.96, green: 0.88, blue: 0.73, alpha: 1)
+    )
+    static let secondaryText = adaptive(
+        light: UIColor(red: 0.34, green: 0.23, blue: 0.16, alpha: 0.78),
+        dark: UIColor(red: 0.83, green: 0.73, blue: 0.58, alpha: 0.82)
     )
     static let accent = adaptive(
         light: UIColor(red: 0.10, green: 0.39, blue: 0.45, alpha: 1),
