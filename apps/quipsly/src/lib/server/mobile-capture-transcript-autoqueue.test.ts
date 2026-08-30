@@ -59,6 +59,20 @@ describe("automatic Capture transcription handoff", () => {
     });
   });
 
+  it("retains the canonical fallback job without purchasing duplicate ASR when the device sidecar is expected", async () => {
+    await expect(ensureMobileCaptureTranscriptAutoqueued({
+      prisma: { name: "canonical-prisma" },
+      manifest: manifest({ onDeviceTranscriptExpected: true }),
+      finalization: finalization(),
+    })).resolves.toMatchObject({
+      status: "device-transcript-expected",
+      transcriptJobId: "transcript-job-1",
+      executionRequested: false,
+    });
+
+    expect(ensureCaptureTranscriptProcessingQueued).not.toHaveBeenCalled();
+  });
+
   it.each([
     ["processing-held", finalization({ processingDisposition: "HELD" })],
     ["transcription-held", finalization({ transcriptDisposition: "HELD" })],

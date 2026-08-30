@@ -73,6 +73,7 @@ type CreatePayload = {
   startedAt: string;
   stoppedAt: string;
   recordingSegmentsJson: string | null;
+  onDeviceTranscriptExpected: boolean;
   restartUploadSession: boolean;
 };
 
@@ -205,6 +206,7 @@ function parseCreatePayload(value: unknown):
   const stoppedAt = normalizedDate(body.stoppedAt);
   const hasSegments = body.recordingSegmentsJson != null || body.recordingSegments != null;
   const normalizedSegments = segmentsJson(body.recordingSegmentsJson ?? body.recordingSegments);
+  const onDeviceTranscriptExpected = body.onDeviceTranscriptExpected === true;
   const restartUploadSession = body.restartUploadSession === true;
 
   if (!isSafeMobileCaptureUploadSessionId(uploadSessionId)) {
@@ -262,6 +264,13 @@ function parseCreatePayload(value: unknown):
   if (normalizedSourceProfile) {
     const profile = JSON.parse(normalizedSourceProfile) as Record<string, unknown>;
     if (
+      onDeviceTranscriptExpected
+      && rawSourceType === "video"
+      && profile.includesAudio !== true
+    ) {
+      return { ok: false, error: "onDeviceTranscriptExpected requires a source with audio." };
+    }
+    if (
       Object.prototype.hasOwnProperty.call(profile, "audibleEventAnalysis")
       && !audibleEventDetectorReceiptMatchesSource(
         profile.audibleEventAnalysis,
@@ -297,6 +306,7 @@ function parseCreatePayload(value: unknown):
       startedAt,
       stoppedAt,
       recordingSegmentsJson: normalizedSegments,
+      onDeviceTranscriptExpected,
       restartUploadSession,
     },
   };
@@ -623,6 +633,7 @@ export async function POST(request: Request) {
       startedAt: payload.startedAt,
       stoppedAt: payload.stoppedAt,
       recordingSegmentsJson: payload.recordingSegmentsJson,
+      onDeviceTranscriptExpected: payload.onDeviceTranscriptExpected,
     };
 
     developmentStage = "load-resumable-manifest";

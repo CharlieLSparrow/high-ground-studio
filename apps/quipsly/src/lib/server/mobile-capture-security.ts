@@ -101,6 +101,12 @@ export type MobileCaptureResumableImmutableBinding = MobileCaptureUploadManifest
   startedAt: string | null;
   stoppedAt: string | null;
   recordingSegmentsJson: string | null;
+  /**
+   * The signed-in capture client will attach a fingerprinted, timed transcript
+   * sidecar from this exact immutable source. This controls automatic provider
+   * spending only; it never bypasses consent or exact-byte verification.
+   */
+  onDeviceTranscriptExpected: boolean;
 };
 
 export function mobileCaptureResumableBindingMismatch(
@@ -130,6 +136,7 @@ export function mobileCaptureResumableBindingMismatch(
     "startedAt",
     "stoppedAt",
     "recordingSegmentsJson",
+    "onDeviceTranscriptExpected",
   ] as const;
 
   const changed = fields.find((field) => manifest[field] !== expected[field]);

@@ -1975,6 +1975,8 @@ final class CaptureExperienceModel: ObservableObject {
             displayTitle: "\(refreshed.displayTitle) · \(mode.title)",
             consentAllowsVideo: true,
             consentAllowsAudio: refreshed.recordingConsentCanRecordAudio == true,
+            transcriptionConsentGranted:
+                refreshed.allRegisteredParticipantTranscriptionConsentGranted == true,
             longSourceUploadEnabled: uploadReadiness?.longSourceVerifierEnabled == true,
             maximumVideoSourceBytes:
                 uploadReadiness?.maximumVideoSourceBytes ?? 2_147_483_648
@@ -2523,6 +2525,8 @@ final class CaptureExperienceModel: ObservableObject {
             participantId: usesLocalPersonalVoiceNoteAuthority ? nil : session.participantId,
             recordingConsentId: usesLocalPersonalVoiceNoteAuthority ? nil : session.recordingConsentId,
             recordingConsentGranted: true,
+            transcriptionConsentGranted: usesLocalPersonalVoiceNoteAuthority
+                || session.allRegisteredParticipantTranscriptionConsentGranted == true,
             capturePurpose: session.purpose ?? "capture"
         )
         audioCapture.handleCommand(command)
@@ -3253,6 +3257,7 @@ final class CaptureExperienceModel: ObservableObject {
             participantId: recording.participantId,
             recordingConsentId: recording.recordingConsentId,
             recordingConsentGranted: recording.recordingConsentGranted,
+            onDeviceTranscriptExpected: recording.shouldBeginAutomaticOnDeviceTranscript,
             recordingAssetId: recording.recordingAssetId,
             capturePurpose: recording.capturePurpose,
             sourceType: recording.effectiveMediaKind.uploadSourceType,

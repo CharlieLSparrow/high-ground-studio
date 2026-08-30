@@ -18,6 +18,7 @@ export type MobileCaptureTranscriptAutoqueueResult =
         | "transcription-held"
         | "transcript-job-missing"
         | "transcript-job-not-queueable"
+        | "device-transcript-expected"
         | "interruption-repair-pending";
       transcriptJobId: string | null;
       executionRequested: false;
@@ -66,6 +67,12 @@ export async function ensureMobileCaptureTranscriptAutoqueued(input: {
   }
   if (!["QUEUED", "RUNNING", "COMPLETED"].includes(finalization.transcriptJobStatus || "")) {
     return skipped("transcript-job-not-queueable", transcriptJobId);
+  }
+  if (manifest.onDeviceTranscriptExpected === true) {
+    // The canonical job remains the source-bound fallback handle. The device
+    // sidecar endpoint completes that same job after verifying the uploaded
+    // bytes, so provider ASR is not purchased speculatively.
+    return skipped("device-transcript-expected", transcriptJobId);
   }
   if (
     mobileCaptureInterruptionRepairRequired(manifest.sourceProfileJson)

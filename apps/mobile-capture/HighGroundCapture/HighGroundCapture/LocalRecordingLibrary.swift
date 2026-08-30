@@ -285,6 +285,9 @@ struct LocalRecording: Codable, Identifiable, Equatable {
     var participantId: String?
     var recordingConsentId: String?
     var recordingConsentGranted: Bool
+    /// Optional so ledgers written before device-first Session transcription
+    /// remain decodable. New captures persist an explicit true/false snapshot.
+    var transcriptionConsentGranted: Bool? = nil
     var recordingAssetId: String?
     var capturePurpose: String?
     /// Stable local writing identity retained after an offline voice note is
@@ -338,6 +341,18 @@ struct LocalRecording: Codable, Identifiable, Equatable {
         return normalized == "PERSONAL_NOTE"
             || normalized == "VOICE_NOTE"
             || normalized == "FIELD_NOTE"
+    }
+
+    var includesTranscribableAudio: Bool {
+        effectiveMediaKind == .audio || sourceProfile?.includesAudio == true
+    }
+
+    /// Personal voice writing is an explicit transcription action. Shared
+    /// Sessions require the separate all-party transcription decision captured
+    /// at the same authoritative refresh that allowed recording to start.
+    var shouldBeginAutomaticOnDeviceTranscript: Bool {
+        includesTranscribableAudio
+            && (isPersonalVoiceNote || transcriptionConsentGranted == true)
     }
 
     var voiceWritingCallRoomId: String? {
@@ -555,6 +570,7 @@ struct LocalRecordingSessionContext: Codable, Equatable {
     var participantId: String?
     var recordingConsentId: String?
     var recordingConsentGranted: Bool
+    var transcriptionConsentGranted: Bool? = nil
     var recordingAssetId: String?
     var capturePurpose: String?
 
@@ -951,6 +967,7 @@ final class LocalRecordingLibrary: ObservableObject {
             participantId: nonempty(context.participantId),
             recordingConsentId: nonempty(context.recordingConsentId),
             recordingConsentGranted: context.recordingConsentGranted,
+            transcriptionConsentGranted: context.transcriptionConsentGranted,
             recordingAssetId: nonempty(context.recordingAssetId),
             capturePurpose: nonempty(context.capturePurpose),
             mediaKind: mediaKind,

@@ -38,6 +38,11 @@ struct RecorderCommand: Codable {
     let recordingConsentId: String?
     let recordingAssetId: String?
     let recordingConsentGranted: Bool?
+    /// The all-party transcription decision observed immediately before this
+    /// source opened. The server rechecks current canonical consent before it
+    /// accepts any sidecar; retaining the start decision lets the recorder
+    /// safely choose whether local speech work should begin after finalization.
+    let transcriptionConsentGranted: Bool?
     let capturePurpose: String?
 
     init(
@@ -49,6 +54,7 @@ struct RecorderCommand: Codable {
         recordingConsentId: String? = nil,
         recordingAssetId: String? = nil,
         recordingConsentGranted: Bool? = nil,
+        transcriptionConsentGranted: Bool? = nil,
         capturePurpose: String? = nil
     ) {
         self.action = action
@@ -59,6 +65,7 @@ struct RecorderCommand: Codable {
         self.recordingConsentId = recordingConsentId
         self.recordingAssetId = recordingAssetId
         self.recordingConsentGranted = recordingConsentGranted
+        self.transcriptionConsentGranted = transcriptionConsentGranted
         self.capturePurpose = capturePurpose
     }
 

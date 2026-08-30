@@ -44,6 +44,7 @@ final class AudioCaptureController: NSObject, ObservableObject {
     // title state, so publishing these duplicates only creates a second,
     // transient SwiftUI truth during recorder startup.
     private(set) var recordingConsentGranted: Bool = false
+    private(set) var transcriptionConsentGranted: Bool = false
     private(set) var activeCallRoomLabel: String = "No coaching/podcast room selected"
     @Published private(set) var localRecordingRecoveryNote: String = "Local recordings are preserved until Quipsly verifies upload."
 
@@ -455,7 +456,7 @@ final class AudioCaptureController: NSObject, ObservableObject {
                     )
                     if let uploaded = localRecordingLibrary.recording(id: recordingID),
                        uploaded.status.isVerified,
-                       uploaded.isPersonalVoiceNote,
+                       uploaded.shouldBeginAutomaticOnDeviceTranscript,
                        (try? OnDeviceTranscriptStore.load(for: recordingID)) != nil {
                         // Transcription may finish before a large audio upload.
                         // Verification is the event that makes the saved
@@ -639,6 +640,7 @@ final class AudioCaptureController: NSObject, ObservableObject {
         activeRecordingAssetId = normalized(command.recordingAssetId)
         activeCapturePurpose = normalized(command.capturePurpose)
         recordingConsentGranted = command.recordingConsentGranted == true
+        transcriptionConsentGranted = command.transcriptionConsentGranted == true
 
         activeCallRoomLabel = activeEpisodeSlug
             ?? activeProjectSlug
@@ -1092,6 +1094,7 @@ final class AudioCaptureController: NSObject, ObservableObject {
             participantId: activeParticipantId ?? localFallbackParticipantId,
             recordingConsentId: activeRecordingConsentId,
             recordingConsentGranted: recordingConsentGranted,
+            transcriptionConsentGranted: transcriptionConsentGranted,
             recordingAssetId: activeRecordingAssetId,
             capturePurpose: activeCapturePurpose
         )
@@ -1975,14 +1978,13 @@ final class AudioCaptureController: NSObject, ObservableObject {
             transition(to: .saved)
 
             queueUploadIfPossible(recording: finalized, stoppedAt: stoppedAt, segmentsJson: segmentsJson)
-            if finalized.isPersonalVoiceNote {
-                // A voice note's ordinary outcome is searchable writing, not a
-                // recording stranded in Library. SpeechAnalyzer reads only the
-                // finalized immutable local source. Tapping Speak to write is
-                // the person's request for that outcome, so install Apple's
-                // system-managed language asset when needed and show progress
-                // instead of adding another post-record setup step.
-                OnDeviceTranscriptManager.shared.beginVoiceWriting(
+            if finalized.shouldBeginAutomaticOnDeviceTranscript {
+                // Speech reads the finalized immutable local master, never the
+                // live call mix. Shared Sessions enter this path only with the
+                // all-party transcription decision retained in the source
+                // ledger; Nest rechecks canonical consent when the exact-byte
+                // sidecar is attached.
+                OnDeviceTranscriptManager.shared.beginAutomaticTranscript(
                     recording: finalized,
                     fileURL: fileURL
                 )
@@ -2068,6 +2070,7 @@ final class AudioCaptureController: NSObject, ObservableObject {
             participantId: recording.participantId,
             recordingConsentId: recording.recordingConsentId,
             recordingConsentGranted: recording.recordingConsentGranted,
+            onDeviceTranscriptExpected: recording.shouldBeginAutomaticOnDeviceTranscript,
             recordingAssetId: recording.recordingAssetId,
             capturePurpose: recording.capturePurpose,
             sourceType: recording.effectiveMediaKind.uploadSourceType,

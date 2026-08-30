@@ -31,6 +31,7 @@ struct VideoCaptureContext: Equatable {
     let displayTitle: String
     let consentAllowsVideo: Bool
     let consentAllowsAudio: Bool
+    let transcriptionConsentGranted: Bool
     let longSourceUploadEnabled: Bool
     let maximumVideoSourceBytes: Int64
 }
@@ -471,6 +472,7 @@ final class VideoCaptureController: ObservableObject {
                 participantId: context.participantID,
                 recordingConsentId: context.recordingConsentID,
                 recordingConsentGranted: true,
+                transcriptionConsentGranted: context.transcriptionConsentGranted,
                 recordingAssetId: context.recordingAssetID,
                 capturePurpose: context.capturePurpose
             )
@@ -755,6 +757,13 @@ final class VideoCaptureController: ObservableObject {
         durationSeconds = duration
 
         if let finalized, finalized.isUploadEligible {
+            if let fileURL = library.fileURL(for: finalized),
+               finalized.shouldBeginAutomaticOnDeviceTranscript {
+                OnDeviceTranscriptManager.shared.beginAutomaticTranscript(
+                    recording: finalized,
+                    fileURL: fileURL
+                )
+            }
             if finalized.byteCount <= synchronousCloudVerificationLimitBytes
                 || (
                     finishedCapture.context.longSourceUploadEnabled
@@ -865,6 +874,7 @@ final class VideoCaptureController: ObservableObject {
             participantId: recording.participantId,
             recordingConsentId: recording.recordingConsentId,
             recordingConsentGranted: recording.recordingConsentGranted,
+            onDeviceTranscriptExpected: recording.shouldBeginAutomaticOnDeviceTranscript,
             recordingAssetId: recording.recordingAssetId,
             capturePurpose: recording.capturePurpose,
             sourceType: recording.effectiveMediaKind.uploadSourceType,

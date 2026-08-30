@@ -85,6 +85,10 @@ final class UploadManager: NSObject, ObservableObject, URLSessionTaskDelegate, U
         let participantId: String?
         let recordingConsentId: String?
         let recordingConsentGranted: Bool?
+        /// True only when this exact source is expected to produce a protected
+        /// Apple Speech sidecar locally. Nest keeps a cloud job as a fallback
+        /// handle but does not spend provider work automatically.
+        let onDeviceTranscriptExpected: Bool?
         let recordingAssetId: String?
         let capturePurpose: String?
         let sourceType: String
@@ -247,6 +251,7 @@ final class UploadManager: NSObject, ObservableObject, URLSessionTaskDelegate, U
             participantId: String?,
             recordingConsentId: String?,
             recordingConsentGranted: Bool,
+            onDeviceTranscriptExpected: Bool = false,
             recordingAssetId: String?,
             capturePurpose: String?,
             sourceType: String,
@@ -275,6 +280,7 @@ final class UploadManager: NSObject, ObservableObject, URLSessionTaskDelegate, U
             self.participantId = participantId
             self.recordingConsentId = recordingConsentId
             self.recordingConsentGranted = recordingConsentGranted
+            self.onDeviceTranscriptExpected = onDeviceTranscriptExpected
             self.recordingAssetId = recordingAssetId
             self.capturePurpose = capturePurpose
             self.sourceType = sourceType
@@ -420,6 +426,7 @@ final class UploadManager: NSObject, ObservableObject, URLSessionTaskDelegate, U
         participantId: String? = nil,
         recordingConsentId: String? = nil,
         recordingConsentGranted: Bool = false,
+        onDeviceTranscriptExpected: Bool = false,
         recordingAssetId: String? = nil,
         capturePurpose: String? = nil,
         sourceType: String = "audio",
@@ -496,6 +503,7 @@ final class UploadManager: NSObject, ObservableObject, URLSessionTaskDelegate, U
                 participantId: participantId,
                 recordingConsentId: recordingConsentId,
                 recordingConsentGranted: recordingConsentGranted,
+                onDeviceTranscriptExpected: onDeviceTranscriptExpected,
                 recordingAssetId: recordingAssetId,
                 capturePurpose: capturePurpose,
                 sourceType: normalizedSourceType,
@@ -1060,6 +1068,9 @@ final class UploadManager: NSObject, ObservableObject, URLSessionTaskDelegate, U
         ]
         if let value = nonempty(uploadSession.participantId) { body["participantId"] = value }
         if let value = nonempty(uploadSession.recordingAssetId) { body["recordingAssetId"] = value }
+        if uploadSession.onDeviceTranscriptExpected == true {
+            body["onDeviceTranscriptExpected"] = true
+        }
         if let value = nonempty(uploadSession.capturePurpose) { body["capturePurpose"] = value }
         if let value = uploadSession.captureGroupId?.uuidString.lowercased() {
             body["captureGroupId"] = value

@@ -762,6 +762,23 @@ final class OnDeviceTranscriptManager: ObservableObject {
         )
     }
 
+    /// Starts the ordinary post-capture path for a finalized participant-owned
+    /// master. Model assets are system-managed and may be installed after Stop;
+    /// this work never delays or mutates the original recording.
+    func beginAutomaticTranscript(
+        recording: LocalRecording,
+        fileURL: URL,
+        locale: Locale = Locale(identifier: "en-US")
+    ) {
+        guard recording.shouldBeginAutomaticOnDeviceTranscript else { return }
+        begin(
+            recording: recording,
+            fileURL: fileURL,
+            allowModelDownload: true,
+            locale: locale
+        )
+    }
+
     func submitSavedTranscript(recording: LocalRecording) {
         guard !phase(for: recording.id).isBusy else { return }
         Task { await submit(recording: recording) }
@@ -911,7 +928,13 @@ final class OnDeviceTranscriptManager: ObservableObject {
                 VoiceWritingDraftSyncClient.shared.schedule(draft, delay: .zero)
             }
             phases[recording.id] = .savedLocally(segmentCount: segments.count)
-            await submit(recording: recording)
+            // Upload verification and local Speech run concurrently. Refresh
+            // the ledger so a fast upload cannot leave this sidecar waiting on
+            // the stale pre-upload value captured when transcription began.
+            let currentRecording = LocalRecordingLibrary.shared.recording(
+                id: recording.id
+            ) ?? recording
+            await submit(recording: currentRecording)
         } catch OnDeviceTranscriptFailure.modelDownloadRequired(let localeIdentifier) {
             phases[recording.id] = .modelDownloadRequired(locale: localeIdentifier)
         } catch {

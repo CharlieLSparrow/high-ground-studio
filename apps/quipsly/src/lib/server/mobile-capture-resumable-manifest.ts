@@ -125,6 +125,7 @@ export function normalizeMobileCaptureResumableManifestForRead(
     captureId,
     captureGroupId,
     sourceProfileJson: value.sourceProfileJson ?? null,
+    onDeviceTranscriptExpected: value.onDeviceTranscriptExpected === true,
     uploadOrigin: value.uploadOrigin ?? null,
     initialRoomReadiness: hasHardenedRoomBinding
       ? {
