@@ -44,6 +44,11 @@ final class CaptureExperienceUITests: XCTestCase {
                 "--capture-share-owner-ui-preview=writing-lifecycle-owner"
             )
         }
+        if name.contains("testNestNoteWorkingDraftSurvivesDismissalAndRelaunch") {
+            app.launchArguments.append(
+                "--capture-share-owner-ui-preview=nest-note-working-draft-owner"
+            )
+        }
         if name.contains("testCoachFollowUpHoldsReleaseWhenCanonicalSourceChanged") {
             app.launchArguments.append("--capture-follow-up-source-changed-preview")
         }
@@ -2355,6 +2360,64 @@ final class CaptureExperienceUITests: XCTestCase {
             "Returning to shared work should preserve the same one-control navigation model."
         )
         XCTAssertEqual(app.staticTexts["Access"].value as? String, "Can edit")
+    }
+
+    func testNestNoteWorkingDraftSurvivesDismissalAndRelaunch() {
+        let retainedWords = " Retained after an ordinary dismissal and relaunch."
+
+        func openPreviewNote() {
+            app.tabBars.buttons["Work"].tap()
+            let workScroll = app.scrollViews["CaptureWorkView"]
+            XCTAssertTrue(workScroll.waitForExistence(timeout: 5))
+            let editNote = app.buttons["CaptureWorkNoteEdit_preview-work-note"]
+            reveal(editNote)
+            XCTAssertTrue(editNote.isHittable)
+            editNote.tap()
+            XCTAssertTrue(
+                app.descendants(matching: .any)["CaptureWorkNoteEditSheet"]
+                    .waitForExistence(timeout: 5)
+            )
+        }
+
+        openPreviewNote()
+        let body = app.textViews["CaptureWorkNoteEditBody_preview-work-note-body"]
+        XCTAssertTrue(body.waitForExistence(timeout: 3))
+        body.tap()
+        body.typeText(retainedWords)
+        let keyboardDone = app.buttons["CaptureWorkNoteEditKeyboardDone"]
+        XCTAssertTrue(keyboardDone.waitForExistence(timeout: 3))
+        keyboardDone.tap()
+        app.buttons["Close"].tap()
+        XCTAssertTrue(
+            app.descendants(matching: .any)["CaptureWorkNoteEditSheet"]
+                .waitForNonExistence(timeout: 5)
+        )
+
+        openPreviewNote()
+        XCTAssertTrue((body.value as? String)?.contains(retainedWords) == true)
+        XCTAssertTrue(
+            app.descendants(matching: .any)["CaptureWorkNoteWorkingDraftStatus"]
+                .waitForExistence(timeout: 3)
+        )
+        app.buttons["Close"].tap()
+
+        app.terminate()
+        app.launch()
+        openPreviewNote()
+        XCTAssertTrue(
+            (app.textViews["CaptureWorkNoteEditBody_preview-work-note-body"].value as? String)?
+                .contains(retainedWords) == true,
+            "A protected Nest-note working draft must survive process death without pretending it already changed the canonical document."
+        )
+
+        let previewSave = app.buttons["CaptureWorkNoteEditSave"]
+        XCTAssertTrue(previewSave.isEnabled)
+        previewSave.tap()
+        XCTAssertTrue(
+            app.descendants(matching: .any)["CaptureWorkNoteEditSheet"]
+                .waitForNonExistence(timeout: 5),
+            "Preview save removes the test working draft so it cannot bleed into another launch."
+        )
     }
 
     func testRecordQuickCaptureMakesNoteTaskAndGoalImmediateWithoutFakingPreviewWrites() {

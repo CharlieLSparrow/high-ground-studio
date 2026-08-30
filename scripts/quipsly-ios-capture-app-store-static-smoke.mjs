@@ -1591,6 +1591,11 @@ for (const needle of [
 ]) {
   requireIncludes(capturePhoneShellText, needle, "Nest note editing survives dismissal and iPhone lifecycle changes without bypassing conflict checks");
 }
+requireIncludes(
+  deterministicUITestsText,
+  "func testNestNoteWorkingDraftSurvivesDismissalAndRelaunch()",
+  "deterministic iPhone proof covers Nest-note draft recovery after dismissal and process death",
+);
 for (const needle of [
   "struct MobileQuickEntryRecurrence: Codable, Equatable",
   "let recurrence: MobileQuickEntryRecurrence?",
