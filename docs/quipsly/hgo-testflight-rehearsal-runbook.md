@@ -1,6 +1,6 @@
 # High Ground Odyssey TestFlight Rehearsal
 
-Last verified: 2026-08-29
+Last verified: 2026-08-30
 
 This is the operator runbook for the first Charlie-and-Homer Quipsly Capture
 rehearsal. It distinguishes what is ready now from what the rehearsal still
@@ -8,10 +8,10 @@ needs to prove.
 
 ## Current release state
 
-- App: **Quipsly Capture 1.0 (50)**
+- App: **Quipsly Capture 1.0 (58)**
 - Exact native source:
-  `708541bda28b913557c7755170883629e9cbf25e`
-- App Store Connect build ID: `65931dc5-597c-487b-8a20-399396501605`
+  `1e3d8f6e1befb67679ff3df4fff959008a0b1367`
+- App Store Connect build ID: `97819668-03dd-4bb8-b711-972acbcb25e5`
 - External TestFlight group: **Quipsly Capture Rehearsal**
 - TestFlight Apple Account: `shomers@icloud.com`
 - Quipsly Google identity: `shomers@gmail.com`
@@ -22,26 +22,19 @@ needs to prove.
 - Automatic tester notification: enabled
 - Installation mode: public-link-only; neither a named-tester email nor a
   redemption code is required
-- Build 50 is the current approved public beta identified by the canonical
-  release ledger and Apple readback. It keeps one direct **Speak to write**
-  path for editable long-form writing with a retained timed source, transcript
-  correction, headings and lists, learned vocabulary, optional speech
-  adaptation, word and reading progress, a section outline with tap-to-jump,
-  Word export, and clear Private / Owned / Shared Nest filing. Private voice
-  writing now opens as a compact, single-purpose recorder with optional
-  speaking tips instead of repeating its identity or exposing internal
-  workflow language. It also keeps the compact green room: visible
-  input/output, familiar Mic and Camera controls, one primary **Join call**
-  action, remembered safe device choices, and an optional second-device path.
-  Generic session setup no longer asks for a required title, implies consent,
-  or duplicates voice writing.
-  All four deterministic UI shards passed all 102 journeys with zero failures
-  or retries, and the exact signed archive and IPA passed packaged metadata,
-  entitlement, provisioning, privacy-manifest, and nested-signature inspection
-  before the sealed upload. App Store Connect independently reports `VALID`,
-  `IN_BETA_TESTING`, `APPROVED`, and included in the external rehearsal group.
-  It remains subject to a real physical-iPhone handoff, atypical-speech sample,
-  call, recording, retained playback, and cross-device acceptance test.
+- Build 58 is the current approved public beta identified by the canonical
+  release ledger and Apple readback. It supersedes Build 55, whose Sessions and
+  Speak to Write entries could exhaust the physical iPhone main-thread stack
+  while SwiftUI constructed one oversized recorder view. Build 58 preserves the
+  same features but places the recorder behind bounded view-type sections.
+  All four deterministic UI shards passed all 106 journeys with zero failures,
+  including both affected entries, recording, consent, voice writing, maximum
+  accessibility text, post-call editing, and Share. The exact signed archive
+  and IPA passed packaged metadata, entitlement, provisioning, privacy-manifest,
+  and nested-signature inspection before upload. App Store Connect independently
+  reports `VALID`, `IN_BETA_TESTING`, `APPROVED`, and inclusion in the external
+  rehearsal group; Apple's public installation page and TestFlight handoff are
+  open. A physical Build 58 install remains the final crash-fix acceptance proof.
 - Build 28 passed all 63 serialized iPhone and Share Extension journeys,
   exact-source preflight, signed archive/export inspection, Apple processing,
   external beta review, external-group readback, and an anonymous HTTP 200 read
