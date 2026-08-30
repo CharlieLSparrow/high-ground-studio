@@ -1430,6 +1430,24 @@ for (const needle of [
   requireIncludes(capturePhoneShellText, needle, "accessible private source-to-writing UX");
 }
 for (const needle of [
+  "CaptureWorkLocationBar(",
+  'accessibilityIdentifier("CaptureGlobalWorkLocation")',
+  'nestName: visibleContextNest?.name ?? "My Nest"',
+  "spaceName: visibleContextSpaceName",
+  "CaptureNestSwitcher(",
+]) {
+  requireIncludes(capturePhoneShellText, needle, "persistent two-level Nest and Space location UX");
+}
+for (const needle of [
+  "static let canvas = adaptive(",
+  "static let canvasLift = adaptive(",
+  "static let surface = adaptive(",
+  "static let locationBarBackground = adaptive(",
+  "static let accentGradient = LinearGradient(",
+]) {
+  requireIncludes(capturePhoneShellText, needle, "adaptive warm tan and dark brown Capture visual foundation");
+}
+for (const needle of [
   "struct MobileQuickEntryRecurrence: Codable, Equatable",
   "let recurrence: MobileQuickEntryRecurrence?",
   "guard recurrence == nil || kind == .task",

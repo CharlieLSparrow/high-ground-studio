@@ -2038,6 +2038,38 @@ final class CaptureExperienceUITests: XCTestCase {
         )
     }
 
+    func testWorkLocationRemainsVisibleAndSwitchesToTheChosenNest() {
+        let location = app.buttons["CaptureGlobalWorkLocation"]
+        XCTAssertTrue(
+            location.waitForExistence(timeout: 5),
+            "Every work surface should show the current Nest and Space."
+        )
+        XCTAssertTrue(location.value as? String == "High Ground Odyssey, Today")
+
+        location.tap()
+        XCTAssertTrue(
+            app.otherElements["CaptureNestSwitcher"].waitForExistence(timeout: 5)
+        )
+        let researchNest = app.buttons[
+            "CaptureNestSwitcherChoice_preview-doctoral-research"
+        ]
+        XCTAssertTrue(researchNest.waitForExistence(timeout: 3))
+        researchNest.tap()
+
+        XCTAssertTrue(
+            app.scrollViews["CaptureWorkView"].waitForExistence(timeout: 5),
+            "Choosing a Nest should open its working surface, not leave the person in an unrelated feature."
+        )
+        let selected = expectation(
+            for: NSPredicate(
+                format: "value == %@",
+                "Doctoral research, Work"
+            ),
+            evaluatedWith: location
+        )
+        wait(for: [selected], timeout: 5)
+    }
+
     func testWorkKeepsProjectsTasksGoalsNotesAndTagsTogether() {
         app.tabBars.buttons["Nests"].tap()
         let workScroll = app.scrollViews["CaptureWorkView"]

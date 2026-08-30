@@ -17,6 +17,7 @@ struct CapturePhoneShell: View {
     @State private var requestedWritingDraftID: UUID?
     @State private var requestedLibrarySection: CaptureLibrarySection?
     @State private var recordNavigationResetID = UUID()
+    @State private var showsGlobalNestSwitcher = false
     @Binding var visibleTab: CaptureRootTab
 
     var body: some View {
@@ -25,46 +26,19 @@ struct CapturePhoneShell: View {
             .tint(CapturePalette.accent)
             .modifier(CaptureBottomNavigationEdgeEffect())
             .safeAreaInset(edge: .top, spacing: 0) {
-            if model.activeCoordinatedCaptureGroupID != nil,
-               audioCaptureIsActive || videoCaptureIsActive {
-                GlobalCaptureBanner(
-                    title: coordinatedCaptureBannerTitle,
-                    duration: max(
-                        audioCapture.currentDuration,
-                        videoCapture.durationSeconds
-                    ),
-                    tint: coordinatedCaptureIsPaused ? .orange : .red,
-                    isPulsing:
-                        audioCapture.captureState == .recording
-                        && videoCapture.state == .recording,
-                    action: openActiveRecorder
-                )
-            } else if audioCaptureIsActive {
-                GlobalCaptureBanner(
-                    title: audioCapture.captureState == .paused
-                        ? "Audio paused"
-                        : audioCapture.captureState == .finalizing
-                            ? "Saving audio"
-                            : "Recording audio",
-                    duration: audioCapture.currentDuration,
-                    tint: audioCapture.captureState == .paused ? .orange : .red,
-                    isPulsing: audioCapture.captureState == .recording,
-                    action: openActiveRecorder
-                )
-            } else if videoCaptureIsActive {
-                GlobalCaptureBanner(
-                    title: videoCapture.state == .paused
-                        ? "Camera paused"
-                        : videoCapture.state == .finalizing
-                            ? "Saving video"
-                            : "Recording video",
-                    duration: videoCapture.durationSeconds,
-                    tint: videoCapture.state == .paused ? .orange : .red,
-                    isPulsing: videoCapture.state == .recording,
-                    action: openActiveRecorder
-                )
+                VStack(spacing: 0) {
+                    activeCaptureBanner
+                    if visibleTab != .account {
+                        CaptureWorkLocationBar(
+                            nestName: visibleContextNest?.name ?? "My Nest",
+                            nestIsPrivate: visibleContextNest?.isHomeNest ?? true,
+                            spaceName: visibleContextSpaceName,
+                            switchDisabled: model.isSessionContextLocked,
+                            onSwitch: { showsGlobalNestSwitcher = true }
+                        )
+                    }
+                }
             }
-        }
         .sheet(isPresented: $showsNewSession) {
             NewCaptureSessionSheet(
                 model: model,
@@ -76,6 +50,13 @@ struct CapturePhoneShell: View {
                 }
             )
                 .presentationDetents([.medium, .large])
+        }
+        .sheet(isPresented: $showsGlobalNestSwitcher) {
+            CaptureNestSwitcher(
+                projects: model.workClient.projects,
+                selectedProjectID: visibleContextNest?.id,
+                onSelect: selectGlobalNest
+            )
         }
         .alert("Capture needs attention", isPresented: errorIsPresented) {
             Button("OK") { model.errorMessage = nil }
@@ -198,6 +179,88 @@ struct CapturePhoneShell: View {
                 await Task.yield()
                 model.reconcileVideoCaptureState(state, using: videoCapture)
             }
+        }
+    }
+
+    @ViewBuilder
+    private var activeCaptureBanner: some View {
+        if model.activeCoordinatedCaptureGroupID != nil,
+           audioCaptureIsActive || videoCaptureIsActive {
+            GlobalCaptureBanner(
+                title: coordinatedCaptureBannerTitle,
+                duration: max(
+                    audioCapture.currentDuration,
+                    videoCapture.durationSeconds
+                ),
+                tint: coordinatedCaptureIsPaused ? .orange : .red,
+                isPulsing:
+                    audioCapture.captureState == .recording
+                    && videoCapture.state == .recording,
+                action: openActiveRecorder
+            )
+        } else if audioCaptureIsActive {
+            GlobalCaptureBanner(
+                title: audioCapture.captureState == .paused
+                    ? "Audio paused"
+                    : audioCapture.captureState == .finalizing
+                        ? "Saving audio"
+                        : "Recording audio",
+                duration: audioCapture.currentDuration,
+                tint: audioCapture.captureState == .paused ? .orange : .red,
+                isPulsing: audioCapture.captureState == .recording,
+                action: openActiveRecorder
+            )
+        } else if videoCaptureIsActive {
+            GlobalCaptureBanner(
+                title: videoCapture.state == .paused
+                    ? "Camera paused"
+                    : videoCapture.state == .finalizing
+                        ? "Saving video"
+                        : "Recording video",
+                duration: videoCapture.durationSeconds,
+                tint: videoCapture.state == .paused ? .orange : .red,
+                isPulsing: videoCapture.state == .recording,
+                action: openActiveRecorder
+            )
+        }
+    }
+
+    private var visibleContextNest: MobileCaptureWorkProject? {
+        if visibleTab == .record,
+           let sessionProjectID = model.selectedSession?.projectId,
+           let sessionProject = model.workClient.projects.first(where: {
+               $0.id == sessionProjectID
+           }) {
+            return sessionProject
+        }
+        return model.workClient.projects.first(where: {
+            $0.id == model.workClient.selectedProjectID
+        }) ?? model.workClient.workspace?.project
+    }
+
+    private var visibleContextSpaceName: String {
+        switch visibleTab {
+        case .today:
+            "Today"
+        case .record:
+            model.selectedSession?.coachingEngagementTitle?.nonempty
+                ?? model.selectedSession?.title.nonempty
+                ?? "Sessions"
+        case .work:
+            "Work"
+        case .library:
+            "Library"
+        case .account:
+            "Account"
+        }
+    }
+
+    private func selectGlobalNest(_ project: MobileCaptureWorkProject) {
+        visibleTab = .work
+        if model.usesPreviewData {
+            model.workClient.loadPreview(projectID: project.id)
+        } else {
+            Task { await model.workClient.load(projectID: project.id) }
         }
     }
 
@@ -572,8 +635,16 @@ private struct CaptureTodayView: View {
             .padding(.bottom, 96)
         }
         .background(CaptureCanvas())
+        // The persistent Nest > Space bar now owns top-level orientation.
+        // Keep NavigationStack available for pushed destinations without
+        // painting a second, competing title behind that context.
         .navigationTitle("Home")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .principal) {
+                Color.clear.frame(width: 1, height: 1).accessibilityHidden(true)
+            }
+        }
         .refreshable { await model.load() }
         .task {
             guard !model.usesPreviewData else { return }
@@ -697,10 +768,10 @@ private struct CaptureTodayPrimaryActions: View {
             .frame(maxWidth: .infinity, minHeight: 58, alignment: .leading)
             .padding(.horizontal, 16)
             .padding(.vertical, 7)
-            .background(.background, in: RoundedRectangle(cornerRadius: 18))
+            .background(CapturePalette.surface, in: RoundedRectangle(cornerRadius: 18))
             .overlay {
                 RoundedRectangle(cornerRadius: 18)
-                    .stroke(.primary.opacity(0.08))
+                    .stroke(CapturePalette.divider)
             }
         }
         .buttonStyle(.plain)
@@ -740,7 +811,7 @@ private struct CaptureTodayPrimaryActions: View {
             .padding(.horizontal, 16)
             .padding(.vertical, 10)
             .foregroundStyle(.white)
-            .background(CapturePalette.accent.gradient, in: RoundedRectangle(cornerRadius: 20))
+            .background(CapturePalette.accentGradient, in: RoundedRectangle(cornerRadius: 20))
         }
         .buttonStyle(.plain)
         .disabled(!canStart || isStartingVoiceNote)
@@ -783,10 +854,10 @@ private struct CaptureTodayPrimaryActions: View {
             .frame(maxWidth: .infinity, minHeight: 68, alignment: .leading)
             .padding(.horizontal, 16)
             .padding(.vertical, 10)
-            .background(.background, in: RoundedRectangle(cornerRadius: 20))
+            .background(CapturePalette.surface, in: RoundedRectangle(cornerRadius: 20))
             .overlay {
                 RoundedRectangle(cornerRadius: 20)
-                    .stroke(.primary.opacity(0.1))
+                    .stroke(CapturePalette.divider)
             }
         }
         .buttonStyle(.plain)
@@ -1849,6 +1920,11 @@ private struct CaptureWorkView: View {
         .background(CaptureCanvas())
         .navigationTitle("Nests")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .principal) {
+                Color.clear.frame(width: 1, height: 1).accessibilityHidden(true)
+            }
+        }
         .refreshable {
             await model.todayClient.load()
             await client.load(projectID: selectedProject?.id)
@@ -14244,6 +14320,11 @@ private struct CaptureLibraryView: View {
         .background(CaptureCanvas())
         .navigationTitle("Library")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .principal) {
+                Color.clear.frame(width: 1, height: 1).accessibilityHidden(true)
+            }
+        }
         // The personal speech writer hides global tabs while recording. Make
         // Library an automatic restoration boundary so leaving through "All
         // writing" never strands someone without the app's primary navigation,
@@ -20766,14 +20847,80 @@ private struct CaptureRecordButtonStyle: ButtonStyle {
     }
 }
 
+/// The work location is persistent because Capture is a multi-context tool,
+/// not a stack of disconnected features. Keep the hierarchy to two visible
+/// levels on iPhone: the Nest that controls people/access, and the Space where
+/// the current coaching, episode, lesson, writing, or research work lives.
+private struct CaptureWorkLocationBar: View {
+    let nestName: String
+    let nestIsPrivate: Bool
+    let spaceName: String
+    let switchDisabled: Bool
+    let onSwitch: () -> Void
+
+    var body: some View {
+        Button(action: onSwitch) {
+            HStack(spacing: 10) {
+                Image(systemName: nestIsPrivate ? "house.fill" : "q.circle.fill")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(CapturePalette.accent)
+                    .frame(width: 30, height: 30)
+                    .background(CapturePalette.accent.opacity(0.12), in: Circle())
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(nestName)
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                    HStack(spacing: 5) {
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 8, weight: .black))
+                            .accessibilityHidden(true)
+                        Text(spaceName)
+                            .lineLimit(1)
+                    }
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 8)
+                Text(switchDisabled ? "Recording" : "Switch")
+                    .font(.caption2.weight(.bold))
+                    .foregroundStyle(switchDisabled ? .secondary : CapturePalette.accent)
+                Image(systemName: switchDisabled ? "lock.fill" : "chevron.down")
+                    .font(.caption2.weight(.black))
+                    .foregroundStyle(switchDisabled ? .secondary : CapturePalette.accent)
+                    .accessibilityHidden(true)
+            }
+            .padding(.horizontal, 16)
+            .frame(maxWidth: .infinity, minHeight: 48)
+            .background(CapturePalette.locationBarBackground)
+            .overlay(alignment: .bottom) {
+                Rectangle()
+                    .fill(CapturePalette.divider)
+                    .frame(height: 1)
+            }
+        }
+        .buttonStyle(.plain)
+        .disabled(switchDisabled)
+        .accessibilityLabel("Work location")
+        .accessibilityValue("\(nestName), \(spaceName)")
+        .accessibilityHint(
+            switchDisabled
+                ? "Finish the active recording before switching Nests."
+                : "Choose a private, owned, or shared Nest."
+        )
+        .accessibilityIdentifier("CaptureGlobalWorkLocation")
+    }
+}
+
 struct CaptureCanvas: View {
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         LinearGradient(
             colors: colorScheme == .dark
-                ? [Color.black, Color(red: 0.02, green: 0.12, blue: 0.14)]
-                : [Color(.systemGroupedBackground), CapturePalette.accent.opacity(0.055)],
+                ? [CapturePalette.canvas, CapturePalette.canvasLift]
+                : [CapturePalette.canvas, CapturePalette.canvasLift],
             startPoint: .top,
             endPoint: .bottomTrailing
         )
@@ -20782,23 +20929,57 @@ struct CaptureCanvas: View {
 }
 
 private enum CapturePalette {
-    static let accent = Color(red: 0.02, green: 0.67, blue: 0.69)
+    static let canvas = adaptive(
+        light: UIColor(red: 0.95, green: 0.90, blue: 0.82, alpha: 1),
+        dark: UIColor(red: 0.105, green: 0.067, blue: 0.052, alpha: 1)
+    )
+    static let canvasLift = adaptive(
+        light: UIColor(red: 0.90, green: 0.84, blue: 0.74, alpha: 1),
+        dark: UIColor(red: 0.17, green: 0.105, blue: 0.078, alpha: 1)
+    )
+    static let surface = adaptive(
+        light: UIColor(red: 1.00, green: 0.975, blue: 0.925, alpha: 0.94),
+        dark: UIColor(red: 0.19, green: 0.12, blue: 0.09, alpha: 0.94)
+    )
+    static let locationBarBackground = adaptive(
+        light: UIColor(red: 0.985, green: 0.945, blue: 0.875, alpha: 0.97),
+        dark: UIColor(red: 0.135, green: 0.083, blue: 0.065, alpha: 0.97)
+    )
+    static let divider = adaptive(
+        light: UIColor(red: 0.28, green: 0.18, blue: 0.12, alpha: 0.13),
+        dark: UIColor(red: 0.94, green: 0.85, blue: 0.70, alpha: 0.16)
+    )
+    static let accent = adaptive(
+        light: UIColor(red: 0.10, green: 0.39, blue: 0.45, alpha: 1),
+        dark: UIColor(red: 0.43, green: 0.78, blue: 0.78, alpha: 1)
+    )
+    static let accentGradient = LinearGradient(
+        colors: [accent, Color(red: 0.38, green: 0.32, blue: 0.67)],
+        startPoint: .leading,
+        endPoint: .trailing
+    )
     static let record = Color(red: 0.92, green: 0.13, blue: 0.19)
     static let meterGradient = LinearGradient(
         colors: [accent, .green, .yellow, .orange],
         startPoint: .leading,
         endPoint: .trailing
     )
+
+    private static func adaptive(light: UIColor, dark: UIColor) -> Color {
+        Color(uiColor: UIColor { traits in
+            traits.userInterfaceStyle == .dark ? dark : light
+        })
+    }
 }
 
 extension View {
     func captureCard(contentPadding: CGFloat = 16) -> some View {
         self
             .padding(contentPadding)
-            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+            .background(CapturePalette.surface, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
             .overlay {
                 RoundedRectangle(cornerRadius: 20, style: .continuous)
-                    .stroke(.primary.opacity(0.055), lineWidth: 1)
+                    .stroke(CapturePalette.divider, lineWidth: 1)
                     .allowsHitTesting(false)
             }
     }

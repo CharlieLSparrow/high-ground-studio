@@ -6742,6 +6742,7 @@ final class CaptureWorkClient: ObservableObject {
 
     private let baseURL = normalizedNestBaseURL(Bundle.main.object(forInfoDictionaryKey: "QUIPSLY_API_BASE_URL") as? String ?? "https://nest.quipsly.com")
     private let documentNoteEditOutbox = DocumentNoteEditOutbox.shared
+    private var queuedProjectID: String?
 
     private struct ProtectedCache: Codable {
         let schemaVersion: Int
@@ -7275,12 +7276,28 @@ final class CaptureWorkClient: ObservableObject {
     }
 
     func load(projectID: String? = nil) async {
-        guard !isLoading else { return }
+        guard !isLoading else {
+            // A Nest choice is user intent, not a disposable refresh. If an
+            // older request is still finishing, retain the newest explicit
+            // destination and reconcile it immediately afterward.
+            if let projectID, !projectID.isEmpty {
+                queuedProjectID = projectID
+            }
+            return
+        }
         if brief == nil {
             _ = restoreProtectedCache()
         }
         isLoading = true
-        defer { isLoading = false }
+        defer {
+            isLoading = false
+            if let queuedProjectID {
+                self.queuedProjectID = nil
+                if queuedProjectID != selectedProjectID {
+                    Task { await self.load(projectID: queuedProjectID) }
+                }
+            }
+        }
         errorMessage = nil
 
         var components = URLComponents(string: "\(baseURL)/api/mobile/capture/work")
