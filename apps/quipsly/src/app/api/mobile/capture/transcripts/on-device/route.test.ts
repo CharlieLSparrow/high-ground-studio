@@ -68,6 +68,13 @@ function asset(overrides: Record<string, unknown> = {}) {
     byteSize: BigInt(1024),
     durationSeconds: 10,
     localManifestJson: { storageGeneration: "7" },
+    participantId: "participant-1",
+    participant: {
+      id: "participant-1",
+      userId: "user-1",
+      displayName: "Coach Homer",
+      email: "homer@example.test",
+    },
     ...overrides,
   };
 }
@@ -127,6 +134,11 @@ describe("on-device transcript ingestion", () => {
           { room: { project: { accessGrants: { some: { email: "producer@example.com", status: "ACTIVE" } } } } },
         ]),
       }),
+      include: {
+        participant: {
+          select: { id: true, userId: true, displayName: true, email: true },
+        },
+      },
     });
     expect(create).toHaveBeenCalledWith({
       data: expect.objectContaining({
@@ -150,16 +162,74 @@ describe("on-device transcript ingestion", () => {
           speakerDiarization: "unavailable",
           humanPlaybackReviewRequired: true,
           segmentCount: 2,
+          processingControl: {
+            version: 1,
+            sourceRole: "recording-original",
+            consentGateCheckedAt: expect.any(String),
+            reconciliationRequiresFreshConsentGate: false,
+            routing: expect.objectContaining({
+              schema: "quipsly-transcript-routing-summary-v1",
+              sourceTopology: "participant-isolated",
+              participantLabel: "Coach Homer",
+              speakerAuthority: "source-binding",
+              provider: "apple-speech-transcriber-on-device",
+              model: "SpeechTranscriber · transcription",
+              modelRevisionPolicy: "installed",
+              language: "en-US",
+              diarizationRequested: false,
+              timingGranularity: "segment",
+              manifestBacked: false,
+              providerOutputRemainsImmutable: true,
+              configurationHash,
+            }),
+          },
         }),
         segments: {
           create: [
-            expect.objectContaining({ speakerLabel: null, speakerUserId: null, confidence: null, metadataJson: expect.objectContaining({ finalizedResult: true, speakerAttribution: "unavailable" }) }),
-            expect.objectContaining({ speakerLabel: null, speakerUserId: null, confidence: null, metadataJson: expect.objectContaining({ finalizedResult: true, speakerAttribution: "unavailable" }) }),
+            expect.objectContaining({ speakerLabel: null, speakerUserId: null, confidence: null, metadataJson: expect.objectContaining({ finalizedResult: true, speakerAttribution: "source-binding" }) }),
+            expect.objectContaining({ speakerLabel: null, speakerUserId: null, confidence: null, metadataJson: expect.objectContaining({ finalizedResult: true, speakerAttribution: "source-binding" }) }),
           ],
         },
       }),
       select: { id: true },
     });
+  });
+
+  it("does not invent a speaker identity for a mixed source", async () => {
+    const { create } = installPrisma({
+      asset: asset({
+        kind: "SERVER_MIX",
+        participantId: null,
+        participant: null,
+      }),
+    });
+
+    const response = await post(body());
+
+    expect(response.status).toBe(201);
+    expect(create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        resultJson: expect.objectContaining({
+          speakerDiarization: "unavailable",
+          processingControl: expect.objectContaining({
+            routing: expect.objectContaining({
+              sourceTopology: "mixed-room",
+              participantLabel: null,
+              speakerAuthority: "unresolved",
+              diarizationRequested: false,
+            }),
+          }),
+        }),
+        segments: {
+          create: expect.arrayContaining([
+            expect.objectContaining({
+              speakerLabel: null,
+              metadataJson: expect.objectContaining({ speakerAttribution: "unresolved" }),
+            }),
+          ]),
+        },
+      }),
+    }));
   });
 
   it("replays the exact request without creating another transcript version", async () => {

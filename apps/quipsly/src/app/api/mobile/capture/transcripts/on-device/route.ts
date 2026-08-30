@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { NextResponse } from "next/server";
 
 import { getPrismaClient } from "@/lib/prisma";
+import { captureTranscriptSourceTopology } from "@/lib/server/capture-transcript-processing";
 import { mobileCaptureTranscriptProcessingGate } from "@/lib/server/mobile-capture-processing-gates";
 import { acquirePrismaAdvisoryTransactionLock } from "@/lib/server/prisma-advisory-lock";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
@@ -87,6 +88,42 @@ function isProviderRecordingReceiptSlot(asset: any) {
 function sourceGeneration(asset: any) {
   const manifest = isObject(asset?.localManifestJson) ? asset.localManifestJson : {};
   return text(manifest.storageGeneration, 240) || null;
+}
+
+function onDeviceTranscriptRoutingSummary(input: {
+  asset: any;
+  engine: {
+    transcriber: string;
+    preset: string;
+    configurationHash: string;
+    modelAssetStatus: string;
+  };
+  language: string;
+}) {
+  const topology = captureTranscriptSourceTopology(input.asset);
+  return {
+    schema: "quipsly-transcript-routing-summary-v1",
+    sourceTopology: topology.kind,
+    participantLabel: topology.kind === "participant-isolated"
+      ? topology.participantLabel
+      : null,
+    speakerAuthority: topology.kind === "participant-isolated"
+      ? "source-binding"
+      : "unresolved",
+    provider: PROVIDER,
+    model: [input.engine.transcriber, input.engine.preset]
+      .filter(Boolean)
+      .join(" · ") || null,
+    modelRevisionPolicy: input.engine.modelAssetStatus || "device-managed",
+    language: input.language,
+    diarizationRequested: false,
+    timingGranularity: "segment",
+    terminologySnapshotSha256: null,
+    terminologyKeytermCount: 0,
+    manifestBacked: false,
+    providerOutputRemainsImmutable: true,
+    configurationHash: input.engine.configurationHash,
+  };
 }
 
 function normalizeSegments(value: unknown, assetDurationSeconds: number | null) {
@@ -216,6 +253,11 @@ export async function POST(request: Request) {
         where: session.user.isStaff
           ? { id: recordingAssetId }
           : { id: recordingAssetId, OR: accessibleRoomWhere(userId, actorEmail) },
+        include: {
+          participant: {
+            select: { id: true, userId: true, displayName: true, email: true },
+          },
+        },
       });
       if (!asset) {
         throw new OnDeviceTranscriptError(404, "ON_DEVICE_TRANSCRIPT_ASSET_NOT_FOUND", "You do not have access to this recording.");
@@ -259,6 +301,11 @@ export async function POST(request: Request) {
       if (!SHA256_PATTERN.test(normalizedEngine.configurationHash)) {
         throw new OnDeviceTranscriptError(400, "ON_DEVICE_TRANSCRIPT_CONFIGURATION_HASH_INVALID", "The recognition configuration SHA-256 is required.");
       }
+      const routing = onDeviceTranscriptRoutingSummary({
+        asset,
+        engine: normalizedEngine,
+        language,
+      });
 
       const immutableInput = {
         schemaVersion: 1,
@@ -318,6 +365,13 @@ export async function POST(request: Request) {
             humanPlaybackReviewRequired: true,
             uploadConsentRecheckedAt: now.toISOString(),
             submittedByUserId: userId,
+            processingControl: {
+              version: 1,
+              sourceRole: "recording-original",
+              consentGateCheckedAt: now.toISOString(),
+              reconciliationRequiresFreshConsentGate: false,
+              routing,
+            },
             engine: normalizedEngine,
             device: normalizedDevice,
             segmentCount: segments.length,
@@ -335,7 +389,7 @@ export async function POST(request: Request) {
                 source: "apple-speech-transcriber-final-result",
                 providerSegmentIndex: index,
                 finalizedResult: true,
-                speakerAttribution: "unavailable",
+                speakerAttribution: routing.speakerAuthority,
                 humanPlaybackReviewRequired: true,
                 sidecarSha256,
               },
