@@ -551,6 +551,15 @@ async function loadAccessibleRoom(
               storageObjectPath: true,
               localManifestJson: true,
               segmentsJson: true,
+              participant: {
+                select: {
+                  id: true,
+                  userId: true,
+                  displayName: true,
+                  email: true,
+                  user: { select: { name: true, primaryEmail: true } },
+                },
+              },
             },
           },
           segments: {
@@ -1355,7 +1364,7 @@ function transcriptProcessingSummary(job: any) {
   const result = object(job.resultJson);
   const control = object(result.processingControl);
   const routing = object(control.routing);
-  const routingSummary = routing.schema === "quipsly-transcript-routing-summary-v1"
+  const persistedRoutingSummary = routing.schema === "quipsly-transcript-routing-summary-v1"
     ? {
         sourceTopology: text(routing.sourceTopology) || "unknown",
         participantLabel: text(routing.participantLabel) || null,
@@ -1375,13 +1384,33 @@ function transcriptProcessingSummary(job: any) {
           routing.providerOutputRemainsImmutable === true,
       }
     : null;
+  const sourceParticipantLabel = ["LOCAL_AUDIO", "LOCAL_VIDEO"].includes(text(job.asset?.kind))
+    && text(job.asset?.participantId)
+    ? participantDisplayLabel(job.asset?.participant)
+    : "";
+  const routingSummary = persistedRoutingSummary ?? (sourceParticipantLabel
+    ? {
+        sourceTopology: "participant-isolated",
+        participantLabel: sourceParticipantLabel,
+        speakerAuthority: "source-binding",
+        provider: text(job.provider) || null,
+        model: text(result.model) || text(object(result.engine).transcriber) || null,
+        modelRevisionPolicy: "canonical-recording-participant",
+        language: text(job.language) || null,
+        diarizationRequested: false,
+        timingGranularity: (job._count?.words ?? 0) > 0 ? "word" : "segment",
+        terminologySnapshotSha256: null,
+        terminologyKeytermCount: 0,
+        manifestBacked: Boolean(job.processingManifestObject),
+        providerOutputRemainsImmutable: true,
+      }
+    : null);
   return {
     status: job.status,
     message: job.errorMessage ?? null,
     wordCount: job._count?.words ?? 0,
     sourceBound: Boolean(
-      job.processingManifestObject
-      && job.sourceGeneration
+      job.sourceGeneration
       && job.sourceSha256,
     ),
     executionRequestedAt: text(control.executionRequestedAt) || null,

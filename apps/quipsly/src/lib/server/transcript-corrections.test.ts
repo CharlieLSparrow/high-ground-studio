@@ -519,6 +519,65 @@ describe("transcript correction desk", () => {
     });
   });
 
+  it("recovers speaker identity for an earlier on-device transcript from its canonical participant source", async () => {
+    const room: any = accessibleRoom();
+    room.transcriptJobs[0].provider = "apple-speech-transcriber-on-device";
+    room.transcriptJobs[0].language = "en-US";
+    room.transcriptJobs[0].sourceGeneration = "1742";
+    room.transcriptJobs[0].sourceSha256 = "a".repeat(64);
+    room.transcriptJobs[0].resultJson = {
+      source: "quipsly-capture-on-device-transcript-v1",
+      engine: { transcriber: "SpeechTranscriber" },
+    };
+    room.transcriptJobs[0]._count = { words: 0 };
+    room.transcriptJobs[0].asset = {
+      ...room.transcriptJobs[0].asset,
+      kind: "LOCAL_AUDIO",
+      participantId: "participant-1",
+      participant: participant(),
+    };
+    room.transcriptJobs[0].segments = [{
+      ...segment(),
+      speakerLabel: null,
+      words: [{ ...segment().words[0], speakerLabel: null }],
+    }];
+    const prisma = {
+      callRoom: {
+        findFirst: jest.fn(async () => room),
+        findUnique: jest.fn(async () => ({ id: "room-1", participants: [], recordingConsents: [] })),
+      },
+      mobileCaptureFinalizationReceipt: { findMany: jest.fn(async () => [{ id: "receipt-1" }]) },
+    };
+
+    const result = await readTranscriptCorrectionDesk({
+      prisma,
+      roomId: "room-1",
+      recordingAssetId: "asset-1",
+      actor,
+    });
+
+    expect(result.processing).toMatchObject({
+      sourceBound: true,
+      routing: {
+        sourceTopology: "participant-isolated",
+        participantLabel: "Charlie",
+        speakerAuthority: "source-binding",
+        provider: "apple-speech-transcriber-on-device",
+        model: "SpeechTranscriber",
+        modelRevisionPolicy: "canonical-recording-participant",
+        diarizationRequested: false,
+        timingGranularity: "segment",
+        providerOutputRemainsImmutable: true,
+      },
+    });
+    expect(result.segments[0]).toMatchObject({
+      speakerLabel: "Charlie",
+      providerSpeakerLabel: null,
+      speakerAuthority: "source-binding",
+      sourceBoundParticipantId: "participant-1",
+    });
+  });
+
   it("projects correction impact from accessible canonical provenance without exposing private notes", async () => {
     const accepted = correctionRecord({
       id: "correction-current",
