@@ -85,6 +85,7 @@ describe("source-first Library model", () => {
 
   it("opens iPhone voice writing in the focused cross-device editor", () => {
     const result = buildLibraryEntries({
+      viewerUserId: "homer-user",
       sessions: [],
       notes: [],
       sources: [],
@@ -92,6 +93,8 @@ describe("source-first Library model", () => {
         id: "voice-writing-7a9b10f0-97bd-4bbb-a7dd-0b93fbc5918b",
         title: "Dissertation reflection",
         sourceLabel: "document-kind:note;origin:ios-voice-writing",
+        personalOwnerUserId: "homer-user",
+        isPrivate: true,
         projectionStatus: "private",
         updatedAt: "2026-08-27T18:00:00Z",
         project: { name: "Homer's Nest", slug: "home-homer" },
@@ -113,6 +116,36 @@ describe("source-first Library model", () => {
       badges: ["From iPhone"],
     });
     expect(result.counts).toMatchObject({ notes: 0, documents: 1 });
+  });
+
+  it("opens a collaborator's shared iPhone writing in the ordinary Nest editor", () => {
+    const result = buildLibraryEntries({
+      viewerUserId: "collaborator-user",
+      sessions: [],
+      notes: [],
+      sources: [],
+      documents: [{
+        id: "voice-writing-7a9b10f0-97bd-4bbb-a7dd-0b93fbc5918b",
+        title: "Shared research reflection",
+        sourceLabel: "document-kind:note;origin:ios-voice-writing",
+        personalOwnerUserId: "homer-user",
+        isPrivate: false,
+        projectionStatus: "draft",
+        updatedAt: "2026-08-27T18:00:00Z",
+        project: { name: "Research Lab", slug: "research-lab" },
+        blocks: [{ id: "voice-body", body: "A shared thought." }],
+        episodeProductions: [],
+        _count: { blocks: 1 },
+      }],
+      media: [],
+    });
+
+    expect(result.entries[0]).toMatchObject({
+      href: "/create?project=research-lab&document=voice-writing-7a9b10f0-97bd-4bbb-a7dd-0b93fbc5918b&block=voice-body",
+      actionLabel: "Continue writing",
+      stateLabel: "Shared writing",
+      badges: ["From iPhone", "Nest members"],
+    });
   });
 
   it("fails closed when a promotion manifest is malformed", () => {

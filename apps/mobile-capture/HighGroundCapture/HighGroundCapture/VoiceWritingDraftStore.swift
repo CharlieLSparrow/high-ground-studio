@@ -16,6 +16,7 @@ struct VoiceWritingRemoteDraft: Codable, Equatable {
     let projectID: String
     let projectName: String
     let projectSlug: String
+    let visibility: String?
     let title: String
     let body: String
     let richText: VoiceWritingRichText?
@@ -56,6 +57,7 @@ struct VoiceWritingDraft: Codable, Identifiable, Equatable {
     var canonicalProjectID: String?
     var canonicalProjectName: String?
     var canonicalProjectSlug: String?
+    var canonicalVisibility: String?
     var canonicalTagRevision: Int?
     var canonicalTags: [MobileCaptureTag]?
     var canonicalAvailableTags: [MobileCaptureTag]? = nil
@@ -99,6 +101,8 @@ struct VoiceWritingDraft: Codable, Identifiable, Equatable {
             && canonicalDocumentID != nil
             && pendingRemote == nil
     }
+
+    var isSharedWithNest: Bool { canonicalVisibility == "nest" }
 }
 
 enum VoiceWritingDraftStoreError: LocalizedError {
@@ -270,6 +274,7 @@ final class VoiceWritingDraftStore: ObservableObject {
             canonicalProjectID: nil,
             canonicalProjectName: nil,
             canonicalProjectSlug: nil,
+            canonicalVisibility: nil,
             canonicalTagRevision: nil,
             canonicalTags: nil,
             canonicalAvailableTags: nil,
@@ -407,6 +412,7 @@ final class VoiceWritingDraftStore: ObservableObject {
             canonicalProjectID: nil,
             canonicalProjectName: nil,
             canonicalProjectSlug: nil,
+            canonicalVisibility: nil,
             canonicalTagRevision: nil,
             canonicalTags: nil,
             canonicalUpdatedAt: nil,
@@ -485,6 +491,7 @@ final class VoiceWritingDraftStore: ObservableObject {
         projectID: String,
         projectName: String,
         projectSlug: String,
+        visibility: String,
         tagRevision: Int,
         tags: [MobileCaptureTag],
         availableTags: [MobileCaptureTag],
@@ -503,6 +510,7 @@ final class VoiceWritingDraftStore: ObservableObject {
         storedDrafts[index].canonicalProjectID = projectID
         storedDrafts[index].canonicalProjectName = projectName
         storedDrafts[index].canonicalProjectSlug = projectSlug
+        storedDrafts[index].canonicalVisibility = visibility
         storedDrafts[index].canonicalTagRevision = tagRevision
         storedDrafts[index].canonicalTags = tags
         storedDrafts[index].canonicalAvailableTags = availableTags
@@ -529,6 +537,7 @@ final class VoiceWritingDraftStore: ObservableObject {
             storedDrafts[index].canonicalProjectID = remote.projectID
             storedDrafts[index].canonicalProjectName = remote.projectName
             storedDrafts[index].canonicalProjectSlug = remote.projectSlug
+            storedDrafts[index].canonicalVisibility = remote.visibility ?? "personal"
             storedDrafts[index].canonicalTagRevision = remote.tagRevision
             storedDrafts[index].canonicalTags = remote.tags
             storedDrafts[index].canonicalAvailableTags = remote.availableTags
@@ -582,6 +591,7 @@ final class VoiceWritingDraftStore: ObservableObject {
                 canonicalProjectID: remote.projectID,
                 canonicalProjectName: remote.projectName,
                 canonicalProjectSlug: remote.projectSlug,
+                canonicalVisibility: remote.visibility ?? "personal",
                 canonicalTagRevision: remote.tagRevision,
                 canonicalTags: remote.tags,
                 canonicalAvailableTags: remote.availableTags,
@@ -610,6 +620,7 @@ final class VoiceWritingDraftStore: ObservableObject {
         storedDrafts[index].serverRevision = storedDrafts[index].localRevision
         storedDrafts[index].serverContentRevision = remote.contentRevision
         storedDrafts[index].canonicalDocumentID = remote.documentID
+        storedDrafts[index].canonicalVisibility = remote.visibility ?? "personal"
         storedDrafts[index].lastSyncedAt = Date()
         storedDrafts[index].lastSyncError = nil
         storedDrafts[index].pendingRemote = nil
@@ -629,6 +640,7 @@ final class VoiceWritingDraftStore: ObservableObject {
         storedDrafts[index].serverRevision = remote.localRevision
         storedDrafts[index].serverContentRevision = remote.contentRevision
         storedDrafts[index].canonicalDocumentID = remote.documentID
+        storedDrafts[index].canonicalVisibility = remote.visibility ?? "personal"
         storedDrafts[index].lastSyncError = nil
         storedDrafts[index].pendingRemote = nil
         commitBestEffort()
@@ -846,6 +858,7 @@ private struct VoiceWritingSyncResponse: Decodable {
         let projectId: String
         let projectName: String
         let projectSlug: String
+        let visibility: String?
         let title: String
         let body: String
         let richText: VoiceWritingRichText?
@@ -888,6 +901,7 @@ private struct VoiceWritingMoveRequest: Encodable {
     let draftId: String
     let destinationProjectId: String
     let expectedProjectId: String
+    let visibility: String
     let clientRequestId: String
 }
 
@@ -1047,7 +1061,11 @@ final class VoiceWritingDraftSyncClient: ObservableObject {
         try VoiceWritingDraftStore.shared.remove(draftID: draftID)
     }
 
-    func move(draftID: UUID, to destination: VoiceWritingNestDestination) async throws {
+    func move(
+        draftID: UUID,
+        to destination: VoiceWritingNestDestination,
+        visibility: String? = nil
+    ) async throws {
         guard !movingDraftIDs.contains(draftID) else { return }
         pendingTasks[draftID]?.cancel()
         pendingTasks[draftID] = nil
@@ -1074,7 +1092,9 @@ final class VoiceWritingDraftSyncClient: ObservableObject {
                 userInfo: [NSLocalizedDescriptionKey: "Let this writing finish saving before moving it."]
             )
         }
-        guard destination.id != currentProjectID else { return }
+        let resolvedVisibility = visibility ?? (destination.isHome ? "personal" : "nest")
+        guard destination.id != currentProjectID
+                || draft.canonicalVisibility != resolvedVisibility else { return }
         guard AuthManager.shared.networkActionsAllowed,
               let endpoint = URL(string: "\(apiBaseURL)/api/mobile/capture/voice-writing") else {
             throw NSError(
@@ -1094,6 +1114,7 @@ final class VoiceWritingDraftSyncClient: ObservableObject {
             draftId: draft.id.uuidString.lowercased(),
             destinationProjectId: destination.id,
             expectedProjectId: currentProjectID,
+            visibility: resolvedVisibility,
             clientRequestId: UUID().uuidString.lowercased()
         ))
         let (data, response) = try await AuthManager.shared.authenticatedData(
@@ -1182,6 +1203,7 @@ final class VoiceWritingDraftSyncClient: ObservableObject {
                 projectID: saved.projectId,
                 projectName: saved.projectName,
                 projectSlug: saved.projectSlug,
+                visibility: saved.visibility ?? "personal",
                 tagRevision: saved.tagRevision,
                 tags: saved.tags,
                 availableTags: (saved.availableTags ?? []).filter { $0.isActive != false },
@@ -1225,6 +1247,7 @@ final class VoiceWritingDraftSyncClient: ObservableObject {
             projectID: saved.projectId,
             projectName: saved.projectName,
             projectSlug: saved.projectSlug,
+            visibility: saved.visibility ?? "personal",
             title: saved.title,
             body: saved.body,
             richText: saved.richText,

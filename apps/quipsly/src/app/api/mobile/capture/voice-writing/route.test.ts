@@ -23,11 +23,18 @@ const continuationRecordingId = "44444444-4444-4444-8444-444444444444";
 const continuationTranscriptId = "55555555-5555-4555-8555-555555555555";
 const updatedAt = new Date("2026-08-27T20:00:00.000Z");
 
-function storedVoiceDocument(projectId = "project-home", projectName = "Person Home Nest", projectSlug = "person-home") {
+function storedVoiceDocument(
+  projectId = "project-home",
+  projectName = "Person Home Nest",
+  projectSlug = "person-home",
+  isPrivate = true,
+) {
   return {
     id: `voice-writing-${draftId}`,
     projectId,
     personalOwnerUserId: "actor-1",
+    isPrivate,
+    projectionStatus: isPrivate ? "private" : "draft",
     title: "Dissertation opening",
     sourceLabel: "document-kind:note;origin:ios-voice-writing",
     tagRevision: 2,
@@ -412,13 +419,13 @@ describe("mobile voice-writing continuation", () => {
     });
   });
 
-  it("moves actor-owned writing to an exact writable Nest without sharing it", async () => {
+  it("moves actor-owned writing to an exact writable Nest and shares it with Nest members", async () => {
     jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({
       user: { id: "actor-1", primaryEmail: "person@example.com" },
     } as never);
     jest.mocked(resolveStudioProjectAccess).mockResolvedValue({ allowed: true, role: "EDITOR" } as never);
     const original = storedVoiceDocument();
-    const moved = storedVoiceDocument("project-shared", "Research Lab", "research-lab");
+    const moved = storedVoiceDocument("project-shared", "Research Lab", "research-lab", false);
     const findFirst = jest.fn().mockResolvedValue(original);
     const findOperation = jest.fn().mockResolvedValue(null);
     const findProject = jest.fn().mockResolvedValue({ id: "project-shared", name: "Research Lab", slug: "research-lab" });
@@ -438,6 +445,7 @@ describe("mobile voice-writing continuation", () => {
         draftId,
         destinationProjectId: "project-shared",
         expectedProjectId: "project-home",
+        visibility: "nest",
         clientRequestId: "88888888-8888-4888-8888-888888888888",
       }),
     }));
@@ -453,24 +461,82 @@ describe("mobile voice-writing continuation", () => {
       where: { id: `voice-writing-${draftId}` },
       data: expect.objectContaining({
         projectId: "project-shared",
+        isPrivate: false,
+        projectionStatus: "draft",
         tagRevision: { increment: 1 },
         tagLinks: { deleteMany: {} },
+        blocks: { updateMany: expect.objectContaining({
+          data: { isPrivate: false, projectionStatus: "draft" },
+        }) },
         documentOperations: { create: expect.objectContaining({
           projectId: "project-shared",
-          operationType: "mobile-voice-writing-move",
+          operationType: "mobile-voice-writing-organize",
+          payloadJson: expect.objectContaining({ visibility: "nest" }),
           reversible: true,
         }) },
       }),
     }));
     await expect(response.json()).resolves.toMatchObject({
       ok: true,
-      privacy: "personal",
+      visibility: "nest",
       previousProjectId: "project-home",
       draft: {
         projectId: "project-shared",
         projectName: "Research Lab",
         projectSlug: "research-lab",
+        visibility: "nest",
       },
+    });
+  });
+
+  it("changes who can open writing without dropping its Nest tags", async () => {
+    jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({
+      user: { id: "actor-1", primaryEmail: "person@example.com" },
+    } as never);
+    jest.mocked(resolveStudioProjectAccess).mockResolvedValue({ allowed: true, role: "EDITOR" } as never);
+    const original = storedVoiceDocument("project-shared", "Research Lab", "research-lab", true);
+    const shared = storedVoiceDocument("project-shared", "Research Lab", "research-lab", false);
+    const update = jest.fn().mockResolvedValue({});
+    const transaction = jest.fn(async (callback: (tx: unknown) => unknown) => callback({
+      studioDocument: {
+        findFirst: jest.fn().mockResolvedValue(original),
+        update,
+        findUniqueOrThrow: jest.fn().mockResolvedValue(shared),
+      },
+      studioDocumentOperation: { findUnique: jest.fn().mockResolvedValue(null) },
+      studioProject: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "project-shared",
+          name: "Research Lab",
+          slug: "research-lab",
+        }),
+      },
+    }));
+    jest.mocked(getPrismaClient).mockReturnValue({ $transaction: transaction } as never);
+
+    const response = await PATCH(new Request("http://localhost/api/mobile/capture/voice-writing", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        draftId,
+        destinationProjectId: "project-shared",
+        expectedProjectId: "project-shared",
+        visibility: "nest",
+        clientRequestId: "12121212-1212-4212-8212-121212121212",
+      }),
+    }));
+
+    expect(response.status).toBe(200);
+    expect(update).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.not.objectContaining({
+        tagRevision: expect.anything(),
+        tagLinks: expect.anything(),
+      }),
+    }));
+    await expect(response.json()).resolves.toMatchObject({
+      ok: true,
+      visibility: "nest",
+      draft: { visibility: "nest", projectId: "project-shared", tagRevision: 2 },
     });
   });
 

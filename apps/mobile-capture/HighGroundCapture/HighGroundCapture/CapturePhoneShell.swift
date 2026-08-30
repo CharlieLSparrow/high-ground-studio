@@ -8062,7 +8062,7 @@ private struct CaptureVoiceWritingEditor: View {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(currentDraft?.canonicalProjectName?.nonempty ?? "On this iPhone")
                             .font(.body.weight(.semibold))
-                        Text("Private to you")
+                        Text(currentDraft?.isSharedWithNest == true ? "Nest members" : "Only me")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
@@ -8090,7 +8090,10 @@ private struct CaptureVoiceWritingEditor: View {
                             if destination.id == currentDraft?.canonicalProjectID {
                                 Label(destination.name, systemImage: "checkmark")
                             } else {
-                                Label(destination.name, systemImage: destination.isHome ? "person.crop.circle" : "person.2")
+                                Label(
+                                    "\(destination.name) · \(destination.isHome ? "Only me" : "Nest members")",
+                                    systemImage: destination.isHome ? "person.crop.circle" : "person.2"
+                                )
                             }
                         }
                         .disabled(destination.id == currentDraft?.canonicalProjectID)
@@ -8103,8 +8106,39 @@ private struct CaptureVoiceWritingEditor: View {
                     currentDraft?.isSynced != true
                         || writingSync.movingDraftIDs.contains(draftID)
                 )
-                .accessibilityHint("Files this private writing in another Nest. Other Nest members cannot see it.")
+                .accessibilityHint("Moves writing to another Nest. My Nest stays private; another Nest shares it with Nest members.")
                 .accessibilityIdentifier("CaptureVoiceWritingMoveNest")
+            }
+
+            if currentDraft?.canonicalProjectID != writingSync.homeProject?.id,
+               currentDraft?.canonicalProjectID?.nonempty != nil {
+                Button {
+                    Task {
+                        await setWritingVisibility(
+                            sharedWithNest: currentDraft?.isSharedWithNest != true
+                        )
+                    }
+                } label: {
+                    Label(
+                        currentDraft?.isSharedWithNest == true
+                            ? "Make visible only to me"
+                            : "Share with Nest members",
+                        systemImage: currentDraft?.isSharedWithNest == true
+                            ? "person.crop.circle"
+                            : "person.2"
+                    )
+                    .frame(minHeight: 44)
+                }
+                .disabled(
+                    currentDraft?.isSynced != true
+                        || writingSync.movingDraftIDs.contains(draftID)
+                )
+                .accessibilityHint(
+                    currentDraft?.isSharedWithNest == true
+                        ? "Keeps the writing in this Nest but makes it visible only to you."
+                        : "Lets members of this Nest open and edit the writing."
+                )
+                .accessibilityIdentifier("CaptureVoiceWritingVisibility")
             }
 
             if !canonicalTags.isEmpty {
@@ -8143,7 +8177,9 @@ private struct CaptureVoiceWritingEditor: View {
                 .accessibilityIdentifier("CaptureVoiceWritingContinueOnWeb")
             }
 
-                Text("Moving changes where you find this writing. It never shares the writing or any connected recording with other Nest members.")
+                Text(currentDraft?.isSharedWithNest == true
+                     ? "Nest members can open and edit this writing. Your connected recording remains yours unless you share it separately."
+                     : "Only you can open this writing. Moving it to another Nest shares the writing there; your connected recording remains yours.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -8471,6 +8507,28 @@ private struct CaptureVoiceWritingEditor: View {
         saveImmediately()
         do {
             try await writingSync.move(draftID: draftID, to: destination)
+        } catch {
+            nestMoveError = error.localizedDescription
+            showsNestMoveError = true
+        }
+    }
+
+    @MainActor
+    private func setWritingVisibility(sharedWithNest: Bool) async {
+        guard let currentProjectID = currentDraft?.canonicalProjectID,
+              let destination = writableNestDestinations.first(where: {
+                  $0.id == currentProjectID
+              }) else { return }
+        titleIsFocused = false
+        bodyIsFocused = false
+        saveTask?.cancel()
+        saveImmediately()
+        do {
+            try await writingSync.move(
+                draftID: draftID,
+                to: destination,
+                visibility: sharedWithNest ? "nest" : "personal"
+            )
         } catch {
             nestMoveError = error.localizedDescription
             showsNestMoveError = true
@@ -14889,6 +14947,7 @@ private struct CaptureLibraryPreviewWritingCard: View {
         canonicalProjectID: "preview-home-project",
         canonicalProjectName: "My Nest",
         canonicalProjectSlug: "home-preview",
+        canonicalVisibility: "personal",
         canonicalTagRevision: 0,
         canonicalTags: [],
         canonicalUpdatedAt: "2026-08-27T17:00:00Z",

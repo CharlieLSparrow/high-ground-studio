@@ -38,9 +38,11 @@ export async function searchQuotes(
         projectId: backend.projectId,
         nodeType: "quote",
         sourceText: { contains: input.query, mode: "insensitive" },
-        // Project-wide retrieval is a shared Nest surface. Personal writing is
-        // intentionally absent until the index itself is actor-partitioned.
-        document: { personalOwnerUserId: null },
+        // Project-wide retrieval includes shared Nest writing while personal
+        // writing remains absent until the index itself is actor-partitioned.
+        document: {
+          OR: [{ personalOwnerUserId: null }, { isPrivate: false }],
+        },
       };
 
       if (backend.nodeTypes && backend.nodeTypes.length > 0 && !backend.nodeTypes.includes("quote")) {
@@ -280,7 +282,9 @@ export async function searchExamples(
           id: { in: blendedHits.map(h => h.sourceId) },
           // Keep the read boundary explicit even if a stale or malformed
           // embedding row points at a personal document.
-          document: { personalOwnerUserId: null },
+          document: {
+            OR: [{ personalOwnerUserId: null }, { isPrivate: false }],
+          },
         },
         include: {
           document: {

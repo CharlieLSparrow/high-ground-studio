@@ -96,13 +96,13 @@ export async function embedAndStoreDocumentBlock(
   const block = await prisma.studioDocumentBlock.findUnique({
     where: { id: blockId },
     select: {
-      document: { select: { personalOwnerUserId: true } },
+      document: { select: { personalOwnerUserId: true, isPrivate: true } },
     },
   });
   if (!block) {
     throw new Error("Writing block not found; no content was sent to the embedding provider.");
   }
-  if (block.document.personalOwnerUserId) {
+  if (block.document.personalOwnerUserId && block.document.isPrivate) {
     await prisma.retrievalEmbedding.deleteMany({
       where: {
         projectId,
@@ -131,7 +131,10 @@ export async function syncProjectEmbeddings(projectId: string, provider: Embeddi
   const prisma = getPrismaClient();
 
   const documents = await prisma.studioDocument.findMany({
-    where: { projectId, personalOwnerUserId: null },
+    where: {
+      projectId,
+      OR: [{ personalOwnerUserId: null }, { isPrivate: false }],
+    },
     select: {
       title: true,
       blocks: {
@@ -218,7 +221,10 @@ export async function hybridSearchExamples(
   )).slice(0, 10);
   const keywordHits = queryTerms.length > 0 ? await prisma.studioDocumentBlock.findMany({
     where: {
-      document: { projectId, personalOwnerUserId: null },
+      document: {
+        projectId,
+        OR: [{ personalOwnerUserId: null }, { isPrivate: false }],
+      },
       OR: queryTerms.map((term) => ({ body: { contains: term, mode: "insensitive" as const } })),
     },
     take: limit * 2,
@@ -248,7 +254,7 @@ export async function hybridSearchExamples(
         WHERE embedding."projectId" = ${projectId}
           AND embedding."sourceOrigin" = 'studio-document-block'
           AND embedding.embedding IS NOT NULL
-          AND document."personalOwnerUserId" IS NULL
+          AND (document."personalOwnerUserId" IS NULL OR document."isPrivate" = false)
         ORDER BY distance ASC
         LIMIT ${limit * 2};
       `;

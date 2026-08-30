@@ -8,7 +8,7 @@ import { Prisma } from "@prisma/client";
 export function researchWritingUseVisibilitySql(actorUserId: string | null | undefined) {
   return actorUserId
     ? Prisma.sql`(
-        (document."personalOwnerUserId" IS NULL AND document."isPrivate" = false)
+        document."isPrivate" = false
         OR document."personalOwnerUserId" = ${actorUserId}
         OR (
           document."personalOwnerUserId" IS NULL

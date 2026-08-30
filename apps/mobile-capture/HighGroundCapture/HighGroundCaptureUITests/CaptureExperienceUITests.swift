@@ -733,14 +733,14 @@ final class CaptureExperienceUITests: XCTestCase {
         }
         XCTAssertTrue(
             app.descendants(matching: .any)["CaptureVoiceWritingNest"].exists,
-            "Organization should show the current Nest and private ownership without opening settings."
+            "Organization should show the current Nest and who can open the writing without opening settings."
         )
         XCTAssertTrue(
             app.staticTexts.matching(NSPredicate(
                 format: "label CONTAINS[c] %@",
-                "never shares the writing"
+                "Moving it to another Nest shares the writing there"
             )).firstMatch.exists,
-            "Filing in a Nest must not imply that a private paper was shared."
+            "Moving writing must say plainly whether Nest members will receive access."
         )
         XCTAssertTrue(
             delete.waitForExistence(timeout: 5),

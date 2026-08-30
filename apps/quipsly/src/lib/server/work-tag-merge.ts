@@ -3,7 +3,10 @@ import { createHash, randomUUID } from "node:crypto";
 import type { PrismaClient } from "@prisma/client";
 
 import { listProjectsVisibleToEmail } from "./home-nest";
-import { resolvePersonalWritingActorUserId } from "./personal-writing-documents";
+import {
+  canReadPersonalWritingDocument,
+  resolvePersonalWritingActorUserId,
+} from "./personal-writing-documents";
 
 const RELATION_LIMIT = 5_000;
 
@@ -148,23 +151,32 @@ async function buildMergePreview(prisma: any, input: {
   const affectedDocumentOwners = affectedDocumentIds.length
     ? await prisma.studioDocument.findMany({
         where: { id: { in: [...new Set(affectedDocumentIds)] } },
-        select: { id: true, personalOwnerUserId: true },
+        select: { id: true, personalOwnerUserId: true, isPrivate: true },
       })
     : [];
-  const ownerByDocumentId = new Map<string, string | null>(
+  const visibilityByDocumentId = new Map<string, { ownerUserId: string | null; isPrivate: boolean }>(
     affectedDocumentOwners.map((document: any) => [
       String(document.id),
-      document.personalOwnerUserId ? String(document.personalOwnerUserId) : null,
+      {
+        ownerUserId: document.personalOwnerUserId ? String(document.personalOwnerUserId) : null,
+        isPrivate: document.isPrivate !== false,
+      },
     ]),
   );
   const actorCanSeeDocument = (documentId: unknown) => {
-    const ownerUserId = ownerByDocumentId.get(String(documentId)) ?? null;
-    return !ownerUserId || ownerUserId === input.actorUserId;
+    const visibility = visibilityByDocumentId.get(String(documentId))
+      ?? { ownerUserId: null, isPrivate: false };
+    return canReadPersonalWritingDocument(
+      visibility.ownerUserId,
+      input.actorUserId,
+      visibility.isPrivate,
+    );
   };
   const personalDocumentOwnershipConflict = affectedDocumentOwners.some(
     (document: any) =>
       document.personalOwnerUserId
-      && document.personalOwnerUserId !== input.actorUserId,
+      && document.personalOwnerUserId !== input.actorUserId
+      && document.isPrivate !== false,
   );
   const documentLinks = documentLinksRaw.filter((row: any) =>
     actorCanSeeDocument(row.documentId),

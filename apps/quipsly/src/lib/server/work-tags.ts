@@ -429,6 +429,7 @@ function entityWhere(
               OR: [
                 { personalOwnerUserId: null },
                 { personalOwnerUserId: actorUserId },
+                { isPrivate: false },
               ],
             }
         : { id: entityId, createdByUserId: actorUserId };
@@ -632,6 +633,7 @@ export async function createAndAssignWorkEntityTag(input: {
             OR: [
               { personalOwnerUserId: null },
               { personalOwnerUserId: actorUserId },
+              { isPrivate: false },
             ],
           },
           data: { tagRevision: { increment: 1 } },
@@ -936,6 +938,7 @@ export async function replaceWorkEntityTags(input: {
             OR: [
               { personalOwnerUserId: null },
               { personalOwnerUserId: actorUserId },
+              { isPrivate: false },
             ],
           },
           data: { tagRevision: { increment: 1 } },

@@ -143,6 +143,8 @@ export async function loadLibrary(userId: string, actorEmail: string, isStaff: b
         id: true,
         title: true,
         sourceLabel: true,
+        personalOwnerUserId: true,
+        isPrivate: true,
         projectionStatus: true,
         updatedAt: true,
         project: { select: { name: true, slug: true } },
@@ -191,6 +193,7 @@ export async function loadLibrary(userId: string, actorEmail: string, isStaff: b
     .sort((left: Date, right: Date) => right.getTime() - left.getTime())[0] ?? null;
 
   const library = buildLibraryEntries({
+    viewerUserId: userId,
     sessions: sessions.map((session: any) => ({
       ...session,
       project: session.project && visibleProjectIds.has(session.project.id) ? session.project : null,

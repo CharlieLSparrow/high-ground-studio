@@ -39,6 +39,7 @@ export function promotedMediaAssetId(value: unknown) {
 }
 
 export function buildLibraryEntries(input: {
+  viewerUserId?: string | null;
   sessions: Array<{
     id: string;
     title?: string | null;
@@ -80,6 +81,8 @@ export function buildLibraryEntries(input: {
     id: string;
     title: string;
     sourceLabel?: string | null;
+    personalOwnerUserId?: string | null;
+    isPrivate?: boolean;
     projectionStatus: string;
     updatedAt: Date | string;
     project: { name: string; slug: string };
@@ -190,6 +193,9 @@ export function buildLibraryEntries(input: {
     const voiceWritingDraftId = voiceWriting
       ? /^voice-writing-([0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/i.exec(document.id)?.[1]?.toLowerCase() ?? null
       : null;
+    const voiceWritingOwned = voiceWriting
+      && Boolean(input.viewerUserId)
+      && document.personalOwnerUserId === input.viewerUserId;
     const previewBlock = (document.blocks ?? []).find((block) => {
       const body = clean(block.body);
       return body
@@ -211,7 +217,7 @@ export function buildLibraryEntries(input: {
         : `${blockCount} active manuscript block${blockCount === 1 ? "" : "s"}.`,
       projectName: document.project.name,
       projectSlug: document.project.slug,
-      href: voiceWritingDraftId
+      href: voiceWritingDraftId && voiceWritingOwned
         ? `/writing/${encode(voiceWritingDraftId)}`
         : writingNote
         ? `/create?project=${encode(document.project.slug)}&document=${encode(document.id)}${previewBlock ? `&block=${encode(previewBlock.id)}` : ""}`
@@ -220,9 +226,11 @@ export function buildLibraryEntries(input: {
         : `/create?project=${encode(document.project.slug)}&document=${encode(document.id)}`,
       updatedAt: iso(document.updatedAt),
       actionLabel: voiceWritingDraftId ? "Continue writing" : undefined,
-      stateLabel: voiceWriting ? "Writing" : writingNote ? "Note" : episode ? `Episode ${clean(episode.status).replaceAll("_", " ")}` : clean(document.projectionStatus).replaceAll("_", " "),
+      stateLabel: voiceWriting
+        ? document.isPrivate === false ? "Shared writing" : "Writing"
+        : writingNote ? "Note" : episode ? `Episode ${clean(episode.status).replaceAll("_", " ")}` : clean(document.projectionStatus).replaceAll("_", " "),
       badges: voiceWriting
-        ? ["From iPhone", ...tagBadges]
+        ? ["From iPhone", ...(document.isPrivate === false ? ["Nest members"] : []), ...tagBadges]
         : writingNote
         ? ["Writing", ...tagBadges, `${blockCount} section${blockCount === 1 ? "" : "s"}`]
         : [episode ? "Episode manuscript" : "Writing", ...tagBadges, `${blockCount} section${blockCount === 1 ? "" : "s"}`],

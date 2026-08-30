@@ -36,6 +36,7 @@ export function personalWritingDocumentVisibilityWhere(
         OR: [
           { personalOwnerUserId: null },
           { personalOwnerUserId: actorUserId },
+          { isPrivate: false },
         ],
       }
     : { personalOwnerUserId: null };
@@ -44,15 +45,17 @@ export function personalWritingDocumentVisibilityWhere(
 export function canReadPersonalWritingDocument(
   personalOwnerUserId: string | null | undefined,
   actorUserId: string | null | undefined,
+  isPrivate: boolean = true,
 ) {
-  return !personalOwnerUserId || personalOwnerUserId === actorUserId;
+  return !personalOwnerUserId || personalOwnerUserId === actorUserId || !isPrivate;
 }
 
 export function assertPersonalWritingDocumentAccess(
   personalOwnerUserId: string | null | undefined,
   actorUserId: string | null | undefined,
+  isPrivate: boolean = true,
 ) {
-  if (!canReadPersonalWritingDocument(personalOwnerUserId, actorUserId)) {
+  if (!canReadPersonalWritingDocument(personalOwnerUserId, actorUserId, isPrivate)) {
     // Deliberately indistinguishable from an absent document.
     throw new Error("Document not found.");
   }

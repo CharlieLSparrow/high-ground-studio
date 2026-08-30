@@ -14,8 +14,11 @@ describe("personal writing document access", () => {
     expect(canReadPersonalWritingDocument(null, "actor-1")).toBe(true);
     expect(canReadPersonalWritingDocument("actor-1", "actor-1")).toBe(true);
     expect(canReadPersonalWritingDocument("actor-1", "actor-2")).toBe(false);
+    expect(canReadPersonalWritingDocument("actor-1", "actor-2", false)).toBe(true);
     expect(() => assertPersonalWritingDocumentAccess("actor-1", "actor-2"))
       .toThrow("Document not found.");
+    expect(() => assertPersonalWritingDocumentAccess("actor-1", "actor-2", false))
+      .not.toThrow();
   });
 
   it("builds a fail-closed Prisma filter for signed-out and signed-in reads", () => {
@@ -26,6 +29,7 @@ describe("personal writing document access", () => {
       OR: [
         { personalOwnerUserId: null },
         { personalOwnerUserId: "actor-1" },
+        { isPrivate: false },
       ],
     });
   });

@@ -41,6 +41,7 @@ describe("writing retrieval privacy", () => {
       OR: [
         { personalOwnerUserId: null },
         { personalOwnerUserId: "writer-user" },
+        { isPrivate: false },
       ],
     };
     expect(findFirst).toHaveBeenCalledWith({
@@ -64,7 +65,7 @@ describe("writing retrieval privacy", () => {
     }));
   });
 
-  test("keeps project-wide quote retrieval out of every personal document", async () => {
+  test("keeps project-wide quote retrieval out of private writing while including Nest-shared writing", async () => {
     const findMany = jest.fn().mockResolvedValue([]);
     mockedGetPrismaClient.mockReturnValue({
       studioKnowledgeNode: { findMany },
@@ -77,12 +78,14 @@ describe("writing retrieval privacy", () => {
 
     expect(findMany).toHaveBeenCalledWith(expect.objectContaining({
       where: expect.objectContaining({
-        document: { personalOwnerUserId: null },
+        document: {
+          OR: [{ personalOwnerUserId: null }, { isPrivate: false }],
+        },
       }),
     }));
   });
 
-  test("defends the block read even when a stale shared-search hit names a personal block", async () => {
+  test("defends the block read even when a stale shared-search hit names private writing", async () => {
     mockedHybridSearchExamples.mockResolvedValue([
       { sourceId: "block-private", score: 1 },
     ]);
@@ -99,7 +102,9 @@ describe("writing retrieval privacy", () => {
     expect(findMany).toHaveBeenCalledWith(expect.objectContaining({
       where: {
         id: { in: ["block-private"] },
-        document: { personalOwnerUserId: null },
+        document: {
+          OR: [{ personalOwnerUserId: null }, { isPrivate: false }],
+        },
       },
     }));
   });

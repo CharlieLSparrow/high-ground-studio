@@ -303,6 +303,7 @@ async function requireProjectAccessByDocumentId(
     where: { id: documentId },
     select: {
       personalOwnerUserId: true,
+      isPrivate: true,
       project: { select: { slug: true } },
     },
   });
@@ -315,6 +316,7 @@ async function requireProjectAccessByDocumentId(
   assertPersonalWritingDocumentAccess(
     document.personalOwnerUserId,
     actorUserId,
+    document.isPrivate,
   );
   await requireProjectAccessBySlug(prisma, document.project.slug, action);
 }
@@ -330,6 +332,7 @@ async function requireProjectAccessByBlockId(
       document: {
         select: {
           personalOwnerUserId: true,
+          isPrivate: true,
           project: { select: { slug: true } },
         },
       },
@@ -344,6 +347,7 @@ async function requireProjectAccessByBlockId(
   assertPersonalWritingDocumentAccess(
     block.document.personalOwnerUserId,
     actorUserId,
+    block.document.isPrivate,
   );
   await requireProjectAccessBySlug(prisma, block.document.project.slug, action);
 }
@@ -377,12 +381,13 @@ async function requireProjectAccessByAssistantActionId(
   if (assistantAction.session.documentId) {
     const document = await prisma.studioDocument.findUnique({
       where: { id: assistantAction.session.documentId },
-      select: { personalOwnerUserId: true },
+      select: { personalOwnerUserId: true, isPrivate: true },
     });
     if (!document) throw new Error("Assistant action not found.");
     assertPersonalWritingDocumentAccess(
       document.personalOwnerUserId,
       actorUserId,
+      document.isPrivate,
     );
   }
   await requireProjectAccessByProjectId(prisma, assistantAction.session.projectId, action);

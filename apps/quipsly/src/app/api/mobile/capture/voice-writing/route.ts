@@ -140,6 +140,7 @@ function publicDraft(document: any, serverRevision: number, input: MobileVoiceWr
     projectId: document.projectId,
     projectName: document.project?.name || "My Nest",
     projectSlug: document.project?.slug || "",
+    visibility: document.isPrivate === false ? "nest" : "personal",
     title: document.title,
     body,
     richText,
@@ -187,6 +188,7 @@ function publicStoredDraft(document: any) {
     projectId: document.projectId,
     projectName: document.project?.name || "My Nest",
     projectSlug: document.project?.slug || "",
+    visibility: document.isPrivate === false ? "nest" : "personal",
     title: document.title,
     body,
     richText,
@@ -358,7 +360,7 @@ export async function PATCH(request: Request) {
     .toLowerCase();
   if (!actorUserId || !actorEmail) {
     return NextResponse.json(
-      { ok: false, code: "AUTH_REQUIRED", error: "Sign in before moving private writing." },
+      { ok: false, code: "AUTH_REQUIRED", error: "Sign in before organizing writing." },
       { status: 401 },
     );
   }
@@ -367,13 +369,17 @@ export async function PATCH(request: Request) {
   const draftId = String(input.draftId || "").trim().toLowerCase();
   const destinationProjectId = String(input.destinationProjectId || "").trim();
   const expectedProjectId = String(input.expectedProjectId || "").trim();
+  const requestedVisibility = input.visibility === "nest"
+    ? "nest"
+    : input.visibility === "personal" ? "personal" : null;
   const clientRequestId = String(input.clientRequestId || "").trim().toLowerCase();
   if (!mobileVoiceWritingDraftIdFromDocumentId(mobileVoiceWritingDocumentId(draftId))
     || !destinationProjectId
     || !expectedProjectId
+    || (Object.prototype.hasOwnProperty.call(input, "visibility") && !requestedVisibility)
     || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(clientRequestId)) {
     return NextResponse.json(
-      { ok: false, code: "VOICE_WRITING_MOVE_INVALID", error: "Choose one current writing and one writable Nest." },
+      { ok: false, code: "VOICE_WRITING_MOVE_INVALID", error: "Choose one current writing, one writable Nest, and who can open it." },
       { status: 400 },
     );
   }
@@ -396,7 +402,9 @@ export async function PATCH(request: Request) {
     const exactOperation = await tx.studioDocumentOperation.findUnique({ where: { id: operationId } });
     if (exactOperation) {
       const payload = record(exactOperation.payloadJson);
-      if (payload.documentId !== documentId || payload.destinationProjectId !== destinationProjectId) {
+      if (payload.documentId !== documentId
+        || payload.destinationProjectId !== destinationProjectId
+        || (requestedVisibility && payload.visibility !== requestedVisibility)) {
         return { kind: "identity-conflict" as const };
       }
       return { kind: "moved" as const, document, idempotentReplay: true, previousProjectId: expectedProjectId };
@@ -404,7 +412,9 @@ export async function PATCH(request: Request) {
     if (document.projectId !== expectedProjectId) {
       return { kind: "stale" as const, document };
     }
-    if (document.projectId === destinationProjectId) {
+    const currentVisibility = document.isPrivate === false ? "nest" : "personal";
+    const visibility = requestedVisibility ?? currentVisibility;
+    if (document.projectId === destinationProjectId && currentVisibility === visibility) {
       return { kind: "moved" as const, document, idempotentReplay: true, previousProjectId: document.projectId };
     }
 
@@ -423,12 +433,29 @@ export async function PATCH(request: Request) {
     if (!access.allowed) return { kind: "destination-forbidden" as const };
 
     const previousProjectId = document.projectId;
+    const changesProject = previousProjectId !== destination.id;
+    const nextTagRevision = changesProject
+      ? Number(document.tagRevision || 0) + 1
+      : Number(document.tagRevision || 0);
     await tx.studioDocument.update({
       where: { id: documentId },
       data: {
         projectId: destination.id,
-        tagRevision: { increment: 1 },
-        tagLinks: { deleteMany: {} },
+        isPrivate: visibility === "personal",
+        projectionStatus: visibility === "personal" ? "private" : "draft",
+        ...(changesProject ? {
+          tagRevision: { increment: 1 },
+          tagLinks: { deleteMany: {} },
+        } : {}),
+        blocks: {
+          updateMany: {
+            where: {},
+            data: {
+              isPrivate: visibility === "personal",
+              projectionStatus: visibility === "personal" ? "private" : "draft",
+            },
+          },
+        },
         documentOperations: {
           create: {
             id: operationId,
@@ -436,11 +463,19 @@ export async function PATCH(request: Request) {
             groupId: draftId,
             actorEmail,
             origin: "ios-capture",
-            operationType: "mobile-voice-writing-move",
+            operationType: "mobile-voice-writing-organize",
             status: "applied",
-            beforeJson: { projectId: previousProjectId, tagRevision: document.tagRevision },
-            afterJson: { projectId: destination.id, tagRevision: Number(document.tagRevision || 0) + 1 },
-            payloadJson: { documentId, destinationProjectId, clientRequestId },
+            beforeJson: {
+              projectId: previousProjectId,
+              visibility: currentVisibility,
+              tagRevision: document.tagRevision,
+            },
+            afterJson: {
+              projectId: destination.id,
+              visibility,
+              tagRevision: nextTagRevision,
+            },
+            payloadJson: { documentId, destinationProjectId, visibility, clientRequestId },
             reversible: true,
           },
         },
@@ -464,7 +499,7 @@ export async function PATCH(request: Request) {
 
   if (result.kind === "missing") {
     return NextResponse.json(
-      { ok: false, code: "VOICE_WRITING_NOT_FOUND", error: "This private writing is not available." },
+      { ok: false, code: "VOICE_WRITING_NOT_FOUND", error: "This writing is not available." },
       { status: 404 },
     );
   }
@@ -503,11 +538,11 @@ export async function PATCH(request: Request) {
   revalidatePath(`/nests/${result.document.project?.slug || ""}`);
   return NextResponse.json({
     ok: true,
-    schema: "quipsly-mobile-voice-writing-move-v1",
+    schema: "quipsly-mobile-voice-writing-organize-v2",
     draft: publicStoredDraft(result.document),
     idempotentReplay: result.idempotentReplay,
     previousProjectId: result.previousProjectId,
-    privacy: "personal",
+    visibility: result.document.isPrivate === false ? "nest" : "personal",
     nextAction: null,
   });
 }

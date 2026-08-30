@@ -12,6 +12,7 @@ import type { Prisma, PrismaClient } from "@prisma/client";
 import { getPrismaClient } from "@/lib/prisma";
 import { isImmutableSourceEvidenceExternalId } from "@/lib/studio/immutable-source";
 import { resolveStudioProjectAccess } from "@/lib/server/studio-project-access";
+import { canReadPersonalWritingDocument } from "@/lib/server/personal-writing-documents";
 
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -551,10 +552,11 @@ export async function editCanonicalDocumentNoteInTransaction(
           error: "That canonical note is not available.",
         } as const;
       }
-      if (
-        note.personalOwnerUserId &&
-        note.personalOwnerUserId !== input.actorUserId
-      ) {
+      if (!canReadPersonalWritingDocument(
+        note.personalOwnerUserId,
+        input.actorUserId,
+        note.isPrivate,
+      )) {
         return {
           ok: false,
           code: "NOT_FOUND",
