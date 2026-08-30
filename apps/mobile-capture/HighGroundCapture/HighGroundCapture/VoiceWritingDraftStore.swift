@@ -357,6 +357,13 @@ final class VoiceWritingDraftStore: ObservableObject {
                         afterUtf16: $0
                     )
                 } ?? existingWriting.appending(composedWriting)
+                if let suggestedTitle = VoiceWritingTextComposer.suggestedContinuationTitle(
+                    currentTitle: storedDrafts[index].title,
+                    currentBody: existingBody,
+                    combinedBody: combinedWriting.text
+                ) {
+                    storedDrafts[index].title = suggestedTitle
+                }
                 storedDrafts[index].body = combinedWriting.text
                 storedDrafts[index].richText = combinedWriting
                 storedDrafts[index].updatedAt = now

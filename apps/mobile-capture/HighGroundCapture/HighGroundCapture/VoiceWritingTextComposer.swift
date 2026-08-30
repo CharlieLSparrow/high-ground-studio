@@ -152,6 +152,23 @@ enum VoiceWritingTextComposer {
         return String(candidate.prefix(80))
     }
 
+    /// A keyboard-first draft can be empty when someone decides speaking is
+    /// easier. In that one narrow case, use the same calm automatic title as a
+    /// voice-first draft. Deliberate titles and already-written documents are
+    /// never renamed behind the person's back.
+    nonisolated static func suggestedContinuationTitle(
+        currentTitle: String,
+        currentBody: String,
+        combinedBody: String
+    ) -> String? {
+        guard currentTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+                .localizedCaseInsensitiveCompare("Untitled") == .orderedSame,
+              currentBody.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return nil
+        }
+        return suggestedTitle(from: combinedBody)
+    }
+
     nonisolated private static func spokenPieces(in rawValue: String) -> [SpokenPiece] {
         let value = normalized(rawValue)
         guard !value.isEmpty else { return [] }

@@ -19,6 +19,7 @@ private struct VoiceWritingTextComposerHarness {
         try spokenHeadingsCreatePortableStructure()
         try headingCommandsCanArriveBeforeTheirText()
         try richContinuationPreservesBothDocuments()
+        try emptyKeyboardDraftCanGainAVoiceTitleWithoutRenamingRealWork()
         try ordinaryProseIsNotMistakenForACommand()
         try pausesStillCreateReadableParagraphs()
         print("PASS Voice writing speech structure composition")
@@ -82,6 +83,34 @@ private struct VoiceWritingTextComposerHarness {
                 .init(kind: .subheading, startUtf16: 9, endUtf16: 19),
             ],
             "Continuation must preserve and offset both documents' structure."
+        )
+    }
+
+    private static func emptyKeyboardDraftCanGainAVoiceTitleWithoutRenamingRealWork() throws {
+        let suggested = VoiceWritingTextComposer.suggestedContinuationTitle(
+            currentTitle: "Untitled",
+            currentBody: "",
+            combinedBody: "A practical framework for coaching conversations begins with careful listening."
+        )
+        try require(
+            suggested == "A practical framework for coaching conversations begins with careful listening",
+            "An empty keyboard-first draft should organize itself when the person switches to voice."
+        )
+        try require(
+            VoiceWritingTextComposer.suggestedContinuationTitle(
+                currentTitle: "Dissertation methods",
+                currentBody: "",
+                combinedBody: "New spoken material belongs here."
+            ) == nil,
+            "A deliberate title must never be replaced automatically."
+        )
+        try require(
+            VoiceWritingTextComposer.suggestedContinuationTitle(
+                currentTitle: "Untitled",
+                currentBody: "An existing paragraph.",
+                combinedBody: "An existing paragraph.\n\nA new spoken paragraph."
+            ) == nil,
+            "An existing document must not be renamed merely because its current title is Untitled."
         )
     }
 
