@@ -1481,6 +1481,16 @@ for (const needle of [
 ]) {
   requireIncludes(captureExperienceModelText, needle, "familiar task-oriented primary navigation label");
 }
+for (const needle of [
+  "let titleBeforeRefresh = title",
+  "let bodyBeforeRefresh = bodyText",
+  "let richTextBeforeRefresh = richText",
+  "guard title == titleBeforeRefresh",
+  "bodyText == bodyBeforeRefresh",
+  "richText == richTextBeforeRefresh",
+]) {
+  requireIncludes(capturePhoneShellText, needle, "Nest refresh cannot overwrite newer in-progress writing");
+}
 requireExcludes(
   capturePhoneShellText,
   "CaptureWorkProjectPicker",

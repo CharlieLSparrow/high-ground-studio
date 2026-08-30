@@ -8446,9 +8446,20 @@ private struct CaptureVoiceWritingEditor: View {
             saveImmediately()
         }
         .task {
+            // A Nest refresh can outlive the first keystroke on a slow or
+            // reconnecting network. Snapshot the editor itself, not only its
+            // focus state: people commonly dismiss the keyboard before the
+            // response arrives. Never replace newer local words with the
+            // response that started against this older screen state.
+            let titleBeforeRefresh = title
+            let bodyBeforeRefresh = bodyText
+            let richTextBeforeRefresh = richText
             await writingSync.refreshFromNest()
             await writingSync.refreshTranscripts(draftID: draftID)
-            guard !titleIsFocused,
+            guard title == titleBeforeRefresh,
+                  bodyText == bodyBeforeRefresh,
+                  richText == richTextBeforeRefresh,
+                  !titleIsFocused,
                   !bodyIsFocused,
                   let refreshed = currentDraft,
                   refreshed.pendingRemote == nil else { return }
