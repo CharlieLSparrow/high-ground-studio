@@ -73,6 +73,7 @@ const files = {
   voiceWritingDraftStore: path.join(sourceRoot, "VoiceWritingDraftStore.swift"),
   subscriptionStore: path.join(sourceRoot, "QuipslySubscriptionStore.swift"),
   captureCoachingHome: path.join(sourceRoot, "CaptureCoachingHome.swift"),
+  mobileCoachingSessionPreparation: path.join(sourceRoot, "MobileCoachingSessionPreparation.swift"),
   captureCalendarEventEditor: path.join(sourceRoot, "CaptureCalendarEventEditor.swift"),
   captureSupportSnapshot: path.join(sourceRoot, "CaptureSupportSnapshot.swift"),
   captureRecordingShare: path.join(sourceRoot, "CaptureRecordingShare.swift"),
@@ -229,6 +230,7 @@ const episodeWatchText = read(files.episodeWatch);
 const episodeManuscriptText = read(files.episodeManuscript);
 const episodeChatText = read(files.episodeChat);
 const captureCoachingHomeText = read(files.captureCoachingHome);
+const mobileCoachingSessionPreparationText = read(files.mobileCoachingSessionPreparation);
 const sessionConversationText = read(files.sessionConversation);
 const uploadText = read(files.uploadManager);
 const uploadLedgerText = read(files.uploadLedgerStore);
@@ -1620,6 +1622,40 @@ requireIncludes(
   deterministicUITestsText,
   "func testSessionNoteWorkingDraftSurvivesDismissalAndRelaunch()",
   "deterministic iPhone proof covers Session-note draft recovery after dismissal and process death",
+);
+for (const needle of [
+  "final class MobileCoachingSessionPreparationWorkingDraftStore",
+  "QuipslyCapture/CoachingPreparationWorkingDrafts",
+  "FileProtectionType.completeUntilFirstUserAuthentication",
+  "lastKnownGoodURL",
+  "ownerAccountID",
+]) {
+  requireIncludes(
+    mobileCoachingSessionPreparationText,
+    needle,
+    "coaching preparation keystrokes have an actor-partitioned protected working draft",
+  );
+}
+for (const needle of [
+  "activeLoadID == loadID",
+  "activeRoomID == requestedRoomID",
+  "mayReplaceEditor = current == canonicalSnapshot",
+  ".onChange(of: scenePhase)",
+  "saveWorkingDraftImmediately()",
+  "Recovered your saved iPhone draft.",
+  "Saved on this iPhone while you work.",
+  "CaptureSessionPreparationKeyboardDone",
+]) {
+  requireIncludes(
+    mobileCoachingSessionPreparationText,
+    needle,
+    "coaching preparation survives refresh races, dismissal, and iPhone lifecycle changes",
+  );
+}
+requireIncludes(
+  deterministicUITestsText,
+  "func testCoachingPreparationDraftSurvivesRefreshAndRelaunch()",
+  "deterministic iPhone proof covers coaching-preparation recovery after refresh and process death",
 );
 for (const needle of [
   "struct MobileQuickEntryRecurrence: Codable, Equatable",

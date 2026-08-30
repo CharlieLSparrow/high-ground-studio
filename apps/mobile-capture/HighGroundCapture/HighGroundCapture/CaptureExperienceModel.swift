@@ -190,6 +190,17 @@ enum CaptureLaunchConfiguration {
         #endif
     }
 
+    static var usesCoachingPreparationWorkingDraftPreview: Bool {
+        #if DEBUG && targetEnvironment(simulator)
+        usesPreviewData
+            && ProcessInfo.processInfo.arguments.contains(
+                "--capture-coaching-preparation-working-draft-preview"
+            )
+        #else
+        false
+        #endif
+    }
+
     static var usesReminderDeterministicUITest: Bool {
         #if DEBUG && targetEnvironment(simulator)
         ProcessInfo.processInfo.arguments.contains("--capture-reminder-deterministic-ui-test")
@@ -3761,6 +3772,9 @@ extension MobileCaptureSession {
         let consentNeededIsNext =
             CaptureLaunchConfiguration
                 .usesConsentNeededNextPreview
+        let preparationWorkingDraftPreview =
+            CaptureLaunchConfiguration
+                .usesCoachingPreparationWorkingDraftPreview
         let coachingStart = Date().addingTimeInterval(
             consentNeededIsNext ? 24 * 60 * 60 : 35 * 60
         )
@@ -3775,8 +3789,12 @@ extension MobileCaptureSession {
                 consentGranted: true,
                 scheduledStart: ISO8601DateFormatter().string(from: coachingStart),
                 scheduledEnd: ISO8601DateFormatter().string(from: coachingStart.addingTimeInterval(50 * 60)),
-                transcriptResults: capturePreviewTranscriptResults,
-                clientFollowUpWorkspace: capturePreviewClientFollowUpWorkspace
+                transcriptResults: preparationWorkingDraftPreview
+                    ? nil
+                    : capturePreviewTranscriptResults,
+                clientFollowUpWorkspace: preparationWorkingDraftPreview
+                    ? nil
+                    : capturePreviewClientFollowUpWorkspace
             ),
             capturePreview(
                 id: "preview-podcast-consent",

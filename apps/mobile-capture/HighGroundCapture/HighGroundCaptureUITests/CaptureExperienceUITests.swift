@@ -10,6 +10,7 @@ final class CaptureExperienceUITests: XCTestCase {
         let clientPreview = name.contains("testClientCanSeePublishedTimesAndOwnPendingRequest")
             || name.contains("testOfflineCoachingSnapshotIsClearlyReadOnly")
             || name.contains("testClientCoachingFormDraftSurvivesRelaunchOnPhone")
+            || name.contains("testCoachingPreparationDraftSurvivesRefreshAndRelaunch")
         app.launchEnvironment["CAPTURE_COACHING_PREVIEW_ROLE"] = clientPreview
             ? "client"
             : "coach"
@@ -53,6 +54,12 @@ final class CaptureExperienceUITests: XCTestCase {
             app.launchArguments.append(
                 "--capture-share-owner-ui-preview=session-note-working-draft-owner"
             )
+        }
+        if name.contains("testCoachingPreparationDraftSurvivesRefreshAndRelaunch") {
+            app.launchArguments += [
+                "--capture-share-owner-ui-preview=coaching-preparation-working-draft-owner",
+                "--capture-coaching-preparation-working-draft-preview",
+            ]
         }
         if name.contains("testCoachFollowUpHoldsReleaseWhenCanonicalSourceChanged") {
             app.launchArguments.append("--capture-follow-up-source-changed-preview")
@@ -2687,6 +2694,60 @@ final class CaptureExperienceUITests: XCTestCase {
             app.descendants(matching: .any)["CaptureSessionNoteEditSheet"]
                 .waitForNonExistence(timeout: 5),
             "Preview save removes the test working draft so it cannot bleed into another launch."
+        )
+    }
+
+    func testCoachingPreparationDraftSurvivesRefreshAndRelaunch() {
+        let retainedWords = " Retained while Session details refresh and after relaunch."
+
+        func revealPreparationFocus() -> XCUIElement {
+            app.tabBars.buttons["Home"].tap()
+            let openSession = app.buttons["CaptureOpenNextSessionButton"]
+            XCTAssertTrue(openSession.waitForExistence(timeout: 5))
+            openSession.tap()
+            openLocalRecorderIfNeeded()
+            let focus = app.descendants(matching: .any)[
+                "CaptureSessionPreparationFocus"
+            ].firstMatch
+            reveal(focus, searchAboveFirst: false)
+            XCTAssertTrue(
+                focus.waitForExistence(timeout: 5),
+                "A coaching client should reach Session preparation inside the Session without a separate workflow."
+            )
+            return focus
+        }
+
+        let focus = revealPreparationFocus()
+        let canonicalValue = focus.value as? String
+        XCTAssertTrue(canonicalValue?.isEmpty == false)
+        focus.tap()
+        focus.typeText(retainedWords)
+        let keyboardDone = app.buttons["CaptureSessionPreparationKeyboardDone"]
+        XCTAssertTrue(keyboardDone.waitForExistence(timeout: 3))
+        keyboardDone.tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 3))
+        let editedValue = focus.value as? String
+        XCTAssertTrue(editedValue?.contains(retainedWords) == true)
+
+        app.tabBars.buttons["Home"].tap()
+        let recoveredAfterDismissal = revealPreparationFocus()
+        XCTAssertEqual(
+            recoveredAfterDismissal.value as? String,
+            editedValue,
+            "A late canonical refresh must not overwrite newer Session preparation typed on the phone."
+        )
+        XCTAssertTrue(
+            app.descendants(matching: .any)["CaptureSessionPreparationWorkingDraftStatus"]
+                .waitForExistence(timeout: 3)
+        )
+
+        app.terminate()
+        app.launch()
+        let recoveredAfterRelaunch = revealPreparationFocus()
+        XCTAssertEqual(
+            recoveredAfterRelaunch.value as? String,
+            editedValue,
+            "Protected coaching preparation must survive process death without pretending it was shared."
         )
     }
 
