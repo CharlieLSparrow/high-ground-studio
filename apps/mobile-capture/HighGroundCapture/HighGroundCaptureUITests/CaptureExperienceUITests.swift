@@ -474,6 +474,21 @@ final class CaptureExperienceUITests: XCTestCase {
             "Names and research terms should be teachable beside the recorder, not hidden in account setup."
         )
 
+        // The personal writer intentionally hides global tabs so the recording
+        // surface stays calm. Leave through its explicit writing-library route,
+        // then prove the account-partitioned preference was retained globally.
+        speechAccuracy.tap()
+        let allWriting = app.buttons["CaptureVoiceNoteOpenLibrary"]
+        let recorder = app.scrollViews["CaptureRecorderView"]
+        for _ in 0..<4 where !allWriting.isHittable {
+            recorder.swipeDown()
+        }
+        XCTAssertTrue(
+            allWriting.waitForExistence(timeout: 5) && allWriting.isHittable,
+            "The focused writer should keep an obvious route back to all writing."
+        )
+        allWriting.tap()
+        XCTAssertTrue(app.tabBars.buttons["Account"].waitForExistence(timeout: 5))
         app.tabBars.buttons["Account"].tap()
         let accountToggle = app.switches["CaptureSpeechAdaptationToggle"]
         reveal(accountToggle)

@@ -14111,6 +14111,12 @@ private struct CaptureLibraryView: View {
         .background(CaptureCanvas())
         .navigationTitle("Library")
         .navigationBarTitleDisplayMode(.inline)
+        // The personal speech writer hides global tabs while recording. Make
+        // Library an explicit restoration boundary so leaving through "All
+        // writing" never strands someone without the app's primary navigation.
+        // A pushed writing document can still hide the bar for its own focused
+        // editing destination.
+        .toolbar(.visible, for: .tabBar)
         .accessibilityIdentifier("CaptureLibraryView")
         .sheet(item: $recordingPendingLocalDeletion) { requestedRecording in
             let recording = library.recording(id: requestedRecording.id) ?? requestedRecording
