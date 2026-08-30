@@ -6077,10 +6077,10 @@ private struct CaptureTranscriptSegmentCard: View {
             if segment.acceptedCorrection == nil,
                segment.acceptedVerification != nil {
                 VStack(alignment: .leading, spacing: 5) {
-                    Label("Reviewed as heard · provider text confirmed", systemImage: "checkmark.shield.fill")
+                    Label("Checked against the audio", systemImage: "checkmark.circle.fill")
                         .font(.caption.weight(.bold))
                         .foregroundStyle(.green)
-                    Text("This exact local timestamp was played and confirmed without inventing a no-op correction.")
+                    Text("You listened to this passage and left the words as they are.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -6164,9 +6164,17 @@ private struct CaptureTranscriptSegmentCard: View {
             if isEditing {
                 correctionEditor
             } else {
+                Button(segment.acceptedCorrection == nil ? "Edit transcript" : "Revise correction") {
+                    beginEditing()
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.blue)
+                .disabled(client.isMutating || pendingDecision != nil)
+                .accessibilityIdentifier("CaptureTranscriptCorrectButton_\(segment.id)")
+
                 if segment.acceptedCorrection == nil,
                    segment.acceptedVerification == nil {
-                    Button(decisionsLocked ? "Queue correct as heard" : "Confirm correct as heard") {
+                    Button("Mark checked") {
                         guard let playbackPosition else { return }
                         Task {
                             await client.confirmSegmentAsIs(
@@ -6177,18 +6185,16 @@ private struct CaptureTranscriptSegmentCard: View {
                             )
                         }
                     }
-                    .buttonStyle(.borderedProminent)
-                    .tint(.green)
+                    .buttonStyle(.bordered)
+                    .tint(.secondary)
                     .disabled(playbackPosition == nil || client.isMutating || previewOnly || pendingDecision != nil)
                     .accessibilityIdentifier("CaptureTranscriptConfirmAsIsButton_\(segment.id)")
-                    .accessibilityHint("Plays no media and saves only after this exact timestamp was already played.")
+                    .accessibilityHint(
+                        decisionsLocked
+                            ? "Optional. Saves that you checked this passage on this iPhone and syncs when Quipsly reconnects."
+                            : "Optional. Marks this passage checked after you listen to it."
+                    )
                 }
-                Button(segment.acceptedCorrection == nil ? "Edit transcript" : "Revise correction") {
-                    beginEditing()
-                }
-                .buttonStyle(.bordered)
-                .disabled(client.isMutating || pendingDecision != nil)
-                .accessibilityIdentifier("CaptureTranscriptCorrectButton_\(segment.id)")
             }
 
             if !previewOnly, let transcriptJobID {
