@@ -248,6 +248,9 @@ function publicVoiceTranscript(job: any) {
         endSeconds: Number(segment?.endSeconds) || 0,
         text: String(accepted?.correctedText || segment?.text || ""),
         speakerLabel: accepted?.correctedSpeakerLabel ?? segment?.speakerLabel ?? null,
+        providerText: String(segment?.text || ""),
+        providerSpeakerLabel: segment?.speakerLabel ?? null,
+        acceptedCorrectionId: typeof accepted?.id === "string" ? accepted.id : null,
       };
     }).filter((segment: any) => segment.id && segment.text),
   };
@@ -334,7 +337,7 @@ export async function GET(request: Request) {
               where: { status: "accepted" },
               orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
               take: 1,
-              select: { correctedText: true, correctedSpeakerLabel: true },
+              select: { id: true, correctedText: true, correctedSpeakerLabel: true },
             },
           },
         },

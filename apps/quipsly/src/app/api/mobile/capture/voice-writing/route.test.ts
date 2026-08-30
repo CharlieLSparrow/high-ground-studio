@@ -157,7 +157,11 @@ describe("mobile voice-writing continuation", () => {
         endSeconds: 8.8,
         text: "Provider text.",
         speakerLabel: null,
-        corrections: [{ correctedText: "Corrected words.", correctedSpeakerLabel: "Homer" }],
+        corrections: [{
+          id: "correction-1",
+          correctedText: "Corrected words.",
+          correctedSpeakerLabel: "Homer",
+        }],
       }],
     }]);
     jest.mocked(getPrismaClient).mockReturnValue({
@@ -233,6 +237,9 @@ describe("mobile voice-writing continuation", () => {
           endSeconds: 8.8,
           text: "Corrected words.",
           speakerLabel: "Homer",
+          providerText: "Provider text.",
+          providerSpeakerLabel: null,
+          acceptedCorrectionId: "correction-1",
         }],
       }],
     });

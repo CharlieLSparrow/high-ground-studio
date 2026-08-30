@@ -21,6 +21,7 @@ import {
   LockKeyhole,
   MessageSquareQuote,
   Mic2,
+  PencilLine,
   Pilcrow,
   Play,
   Redo2,
@@ -31,6 +32,7 @@ import {
   Underline as UnderlineIcon,
   Undo2,
   Users,
+  X,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -55,6 +57,11 @@ import {
   voiceWritingMoveVisibility,
   voiceWritingSourceBoundary,
 } from "./voice-writing-visibility";
+import {
+  type VoiceWritingTranscriptCorrectionDraft,
+  voiceWritingTranscriptCorrectionHasChanges,
+  voiceWritingTranscriptCorrectionPayload,
+} from "./voice-writing-transcript-edit";
 
 const Underline = Mark.create({
   name: "underline",
@@ -124,7 +131,20 @@ type WritingTranscript = {
     endSeconds: number;
     text: string;
     speakerLabel: string | null;
+    providerText: string;
+    providerSpeakerLabel: string | null;
+    acceptedCorrectionId: string | null;
   }>;
+};
+
+type TranscriptCorrectionResponse = {
+  ok?: boolean;
+  error?: string;
+  correction?: {
+    id: string;
+    correctedText: string | null;
+    correctedSpeakerLabel: string | null;
+  };
 };
 
 type LoadResponse = {
@@ -247,6 +267,9 @@ export function VoiceWritingEditor({ draftId }: { draftId: string }) {
   const [moving, setMoving] = useState(false);
   const [moveError, setMoveError] = useState("");
   const [viewMode, setViewMode] = useState<WritingViewMode>("writing");
+  const [transcriptEdit, setTranscriptEdit] = useState<VoiceWritingTranscriptCorrectionDraft | null>(null);
+  const [transcriptEditError, setTranscriptEditError] = useState("");
+  const [savingTranscriptEdit, setSavingTranscriptEdit] = useState(false);
   const [changeVersion, setChangeVersion] = useState(0);
   const [conflictingDraft, setConflictingDraft] = useState<WritingDraft | null>(null);
   const draftRef = useRef<WritingDraft | null>(null);
@@ -455,6 +478,75 @@ export function VoiceWritingEditor({ draftId }: { draftId: string }) {
     dirtyRef.current = true;
     setSaveState("unsaved");
     setChangeVersion((value) => value + 1);
+  }
+
+  function beginTranscriptEdit(
+    transcript: WritingTranscript,
+    segment: WritingTranscript["segments"][number],
+  ) {
+    if (!transcript.roomId) return;
+    setTranscriptEditError("");
+    setTranscriptEdit({
+      roomId: transcript.roomId,
+      transcriptJobId: transcript.transcriptJobId,
+      segment,
+      correctedText: segment.text,
+      correctedSpeakerLabel: segment.speakerLabel ?? "",
+      clientRequestId: crypto.randomUUID(),
+    });
+  }
+
+  async function saveTranscriptEdit() {
+    if (!transcriptEdit || savingTranscriptEdit) return;
+    if (!transcriptEdit.correctedText.trim()) {
+      setTranscriptEditError("A transcript passage needs at least one word.");
+      return;
+    }
+    if (!voiceWritingTranscriptCorrectionHasChanges(transcriptEdit)) {
+      setTranscriptEdit(null);
+      setTranscriptEditError("");
+      return;
+    }
+    setSavingTranscriptEdit(true);
+    setTranscriptEditError("");
+    try {
+      const response = await fetch("/api/mobile/capture/transcripts/corrections", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(voiceWritingTranscriptCorrectionPayload(transcriptEdit)),
+      });
+      const payload = await response.json() as TranscriptCorrectionResponse;
+      if (!response.ok || !payload.ok || !payload.correction) {
+        throw new Error(payload.error || "This transcript correction could not be saved yet.");
+      }
+      const savedText = payload.correction.correctedText?.trim()
+        || transcriptEdit.segment.providerText;
+      const savedSpeaker = payload.correction.correctedSpeakerLabel?.trim() || null;
+      setTranscripts((current) => current.map((transcript) => (
+        transcript.transcriptJobId !== transcriptEdit.transcriptJobId
+          ? transcript
+          : {
+              ...transcript,
+              segments: transcript.segments.map((segment) => (
+                segment.id !== transcriptEdit.segment.id
+                  ? segment
+                  : {
+                      ...segment,
+                      text: savedText,
+                      speakerLabel: savedSpeaker,
+                      acceptedCorrectionId: payload.correction?.id ?? segment.acceptedCorrectionId,
+                    }
+              )),
+            }
+      )));
+      setTranscriptEdit(null);
+    } catch (error) {
+      setTranscriptEditError(error instanceof Error
+        ? error.message
+        : "This transcript correction could not be saved yet.");
+    } finally {
+      setSavingTranscriptEdit(false);
+    }
   }
 
   async function downloadWordDocument() {
@@ -783,10 +875,44 @@ export function VoiceWritingEditor({ draftId }: { draftId: string }) {
             <span className="inline-flex min-w-[5.5rem] items-center gap-1 text-xs font-black text-emerald-800"><Play className="h-3.5 w-3.5" aria-hidden="true" />{label}</span>
             <span className="min-w-0 flex-1 text-sm font-semibold leading-6 text-[#493b2c]">{segment.speakerLabel ? <strong className="mr-1 font-black">{segment.speakerLabel}:</strong> : null}{segment.text}</span>
           </>;
+          const isEditing = transcriptEdit?.transcriptJobId === transcript.transcriptJobId
+            && transcriptEdit.segment.id === segment.id;
           return <li key={`${transcript.transcriptJobId}:${segment.id}`}>
-            {transcript.roomId
-              ? <Link href={`/sessions/${encodeURIComponent(transcript.roomId)}?mode=transcript#transcript-segment-${encodeURIComponent(segment.id)}`} className="flex min-h-11 items-start gap-3 rounded-2xl border border-emerald-100 bg-white px-4 py-3 transition hover:border-emerald-300 hover:bg-emerald-50" aria-label={`Open recording at ${label}`}>{content}</Link>
-              : <div className="flex min-h-11 items-start gap-3 rounded-2xl border border-emerald-100 bg-white px-4 py-3">{content}</div>}
+            {isEditing && transcriptEdit ? <div className="rounded-2xl border border-emerald-300 bg-white p-4 shadow-sm">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-xs font-black text-emerald-800">Correct passage · {label}</p>
+                <button type="button" onClick={() => { setTranscriptEdit(null); setTranscriptEditError(""); }} disabled={savingTranscriptEdit} className="inline-flex min-h-10 items-center gap-1 rounded-full px-3 text-xs font-black text-[#765f40] hover:bg-[#fff4df] disabled:opacity-50"><X className="h-4 w-4" aria-hidden="true" />Cancel</button>
+              </div>
+              <label className="mt-3 block text-xs font-black text-[#58442d]">Words
+                <textarea
+                  value={transcriptEdit.correctedText}
+                  onChange={(event) => setTranscriptEdit((current) => current ? { ...current, correctedText: event.target.value } : current)}
+                  rows={4}
+                  maxLength={10_000}
+                  autoFocus
+                  className="mt-1 block w-full rounded-xl border border-[#d8c4a1] bg-[#fffefb] px-3 py-2 text-sm font-semibold leading-6 text-[#34291e] outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
+                />
+              </label>
+              <label className="mt-3 block text-xs font-black text-[#58442d]">Speaker name <span className="font-semibold text-[#87663d]">(optional)</span>
+                <input
+                  value={transcriptEdit.correctedSpeakerLabel}
+                  onChange={(event) => setTranscriptEdit((current) => current ? { ...current, correctedSpeakerLabel: event.target.value } : current)}
+                  maxLength={160}
+                  className="mt-1 block min-h-11 w-full rounded-xl border border-[#d8c4a1] bg-[#fffefb] px-3 text-sm font-semibold text-[#34291e] outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
+                />
+              </label>
+              {transcriptEditError ? <p role="alert" className="mt-3 text-sm font-bold text-red-800">{transcriptEditError}</p> : null}
+              <div className="mt-4 flex flex-wrap items-center gap-3">
+                <button type="button" onClick={() => void saveTranscriptEdit()} disabled={savingTranscriptEdit || !transcriptEdit.correctedText.trim()} className="inline-flex min-h-11 items-center gap-2 rounded-full bg-[#3e2f21] px-5 text-sm font-black text-white disabled:cursor-wait disabled:opacity-50">{savingTranscriptEdit ? <LoaderCircle className="h-4 w-4 animate-spin" aria-hidden="true" /> : <Check className="h-4 w-4" aria-hidden="true" />}{savingTranscriptEdit ? "Saving…" : "Save correction"}</button>
+                <p className="text-xs font-semibold leading-5 text-[#87663d]">The original recording and timing stay unchanged.</p>
+              </div>
+            </div> : <div className="rounded-2xl border border-emerald-100 bg-white px-4 py-3 transition hover:border-emerald-300 hover:bg-emerald-50">
+              <div className="flex min-h-11 items-start gap-3">{content}</div>
+              {transcript.roomId ? <div className="mt-2 flex flex-wrap items-center gap-2 border-t border-emerald-100 pt-2">
+                <button type="button" onClick={() => beginTranscriptEdit(transcript, segment)} className="inline-flex min-h-10 items-center gap-1.5 rounded-full px-3 text-xs font-black text-emerald-900 hover:bg-emerald-100"><PencilLine className="h-3.5 w-3.5" aria-hidden="true" />Correct words</button>
+                <Link href={`/sessions/${encodeURIComponent(transcript.roomId)}?mode=transcript#transcript-segment-${encodeURIComponent(segment.id)}`} className="inline-flex min-h-10 items-center gap-1.5 rounded-full px-3 text-xs font-black text-[#765f40] hover:bg-[#fff4df]" aria-label={`Hear recording at ${label}`}><Play className="h-3.5 w-3.5" aria-hidden="true" />Hear in Session</Link>
+              </div> : null}
+            </div>}
           </li>;
         }))}
       </ol>
