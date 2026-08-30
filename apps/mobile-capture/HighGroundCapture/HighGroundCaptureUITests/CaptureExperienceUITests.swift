@@ -828,6 +828,11 @@ final class CaptureExperienceUITests: XCTestCase {
             openNextSession.exists && openNextSession.isHittable,
             "The coach's next Session must be immediately actionable without scrolling."
         )
+        let scheduleToolbar = app.buttons["CaptureCoachingScheduleToolbar"]
+        XCTAssertTrue(
+            scheduleToolbar.exists && scheduleToolbar.isHittable,
+            "A coach should be able to schedule from the navigation bar without scrolling through existing work."
+        )
         let newAppointment = app.buttons["CaptureCoachingNewAppointmentButton"]
         XCTAssertTrue(newAppointment.exists)
         XCTAssertTrue(

@@ -1787,6 +1787,20 @@ struct CaptureCoachingHomeView: View {
         .background(CaptureCanvas())
         .navigationTitle("Coaching")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            if client.isCoach {
+                ToolbarItem(placement: .primaryAction) {
+                    Button {
+                        showsNewAppointment = true
+                    } label: {
+                        Label("Schedule", systemImage: "calendar.badge.plus")
+                    }
+                    .disabled(client.isMutating || client.isUsingProtectedCache)
+                    .accessibilityHint("Schedules a coaching session and invites the client.")
+                    .accessibilityIdentifier("CaptureCoachingScheduleToolbar")
+                }
+            }
+        }
         .refreshable {
             guard !model.usesPreviewData else { return }
             async let coachingLoad: Void = client.load()
