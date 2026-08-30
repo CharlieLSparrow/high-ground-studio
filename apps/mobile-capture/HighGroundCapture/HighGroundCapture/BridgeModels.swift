@@ -6765,14 +6765,15 @@ final class CaptureWorkClient: ObservableObject {
         projectID: String,
         title: String,
         blocks: [MobileCaptureWorkNoteBlock],
-        replacingHeld: Bool
+        replacingHeld: Bool,
+        expectedContentRevisionOverride: String? = nil
     ) -> Bool {
         if note.id.hasPrefix("preview-") {
             documentNoteEditMessage = "Preview only — the note was not changed."
             return true
         }
         guard note.canEditContent == true,
-              let expectedContentRevision = note.contentRevision,
+              let expectedContentRevision = expectedContentRevisionOverride ?? note.contentRevision,
               expectedContentRevision.count == 64,
               let canonicalBlocks = note.blocks,
               !canonicalBlocks.isEmpty,

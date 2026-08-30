@@ -65,6 +65,7 @@ const files = {
   sourceInboxFiling: path.join(sourceRoot, "CaptureSourceInbox.swift"),
   sourceAnnotationDraftOutbox: path.join(sourceRoot, "SourceAnnotationDraftOutbox.swift"),
   sessionNoteEditOutbox: path.join(sourceRoot, "SessionNoteEditOutbox.swift"),
+  documentNoteEditOutbox: path.join(sourceRoot, "DocumentNoteEditOutbox.swift"),
   captureReceiptStore: path.join(sourceRoot, "CaptureRoomReceiptStore.swift"),
   captureRecordingCoordinator: path.join(sourceRoot, "CaptureRecordingCoordinator.swift"),
   captureRecordingReceiptOutbox: path.join(sourceRoot, "CaptureRecordingReceiptOutbox.swift"),
@@ -237,6 +238,7 @@ const mobileQuickEntryOutboxText = read(files.mobileQuickEntryOutbox);
 const sourceInboxFilingText = read(files.sourceInboxFiling);
 const sourceAnnotationDraftOutboxText = read(files.sourceAnnotationDraftOutbox);
 const sessionNoteEditOutboxText = read(files.sessionNoteEditOutbox);
+const documentNoteEditOutboxText = read(files.documentNoteEditOutbox);
 const captureReceiptStoreText = read(files.captureReceiptStore);
 const captureRecordingCoordinatorText = read(files.captureRecordingCoordinator);
 const captureRecordingReceiptOutboxText = read(files.captureRecordingReceiptOutbox);
@@ -1566,6 +1568,26 @@ for (const needle of [
   "await load(projectID: nil)",
 ]) {
   requireIncludes(bridgeText, needle, "Work relaunch restores the actor-bound Nest and safely forgets revoked access");
+}
+for (const needle of [
+  "final class DocumentNoteWorkingDraftStore",
+  "QuipslyCapture/DocumentNoteWorkingDrafts",
+  "FileProtectionType.completeUntilFirstUserAuthentication",
+  "baseContentRevision: String",
+  "lastKnownGoodURL",
+]) {
+  requireIncludes(documentNoteEditOutboxText, needle, "Nest note keystrokes have an actor-partitioned protected working draft");
+}
+for (const needle of [
+  "DocumentNoteWorkingDraftStore.shared.draft(for: note.id)",
+  ".onChange(of: blocks)",
+  ".onChange(of: scenePhase)",
+  "saveWorkingDraftImmediately()",
+  "expectedContentRevisionOverride: baseContentRevision",
+  "committedToOutbox = true",
+  "Saved on this iPhone while you work.",
+]) {
+  requireIncludes(capturePhoneShellText, needle, "Nest note editing survives dismissal and iPhone lifecycle changes without bypassing conflict checks");
 }
 for (const needle of [
   "struct MobileQuickEntryRecurrence: Codable, Equatable",

@@ -31,6 +31,179 @@ struct PendingDocumentNoteEdit: Codable, Equatable, Identifiable {
     var clientRequestID: String { id.uuidString.lowercased() }
 }
 
+struct DocumentNoteWorkingDraft: Codable, Equatable {
+    let ownerAccountID: String
+    let projectID: String
+    let noteID: String
+    let title: String
+    let blocks: [MobileCaptureWorkNoteBlock]
+    let baseContentRevision: String
+    let updatedAt: Date
+}
+
+/// Continuously protects in-progress Nest note text before the person asks to
+/// sync it. This is deliberately separate from the mutation outbox: a partial
+/// sentence is a local working draft, while an outbox entry is an idempotent
+/// request to change the canonical Nest document.
+@MainActor
+final class DocumentNoteWorkingDraftStore {
+    static let shared = DocumentNoteWorkingDraftStore()
+
+    private let fileManager: FileManager
+    private let ledgerURL: URL
+    private let lastKnownGoodURL: URL
+    private var storedDrafts: [DocumentNoteWorkingDraft] = []
+    private var activeOwnerAccountID: String?
+    private var accountObserver: NSObjectProtocol?
+
+    init(
+        fileManager: FileManager = .default,
+        directoryURL: URL? = nil,
+        initialOwnerAccountID: String? = nil,
+        observeAccountChanges: Bool = true
+    ) {
+        self.fileManager = fileManager
+        activeOwnerAccountID = Self.normalizedOwnerID(
+            initialOwnerAccountID ?? AuthManager.currentStoredOwnerID()
+        )
+        let support = directoryURL
+            ?? fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first?
+                .appendingPathComponent("QuipslyCapture/DocumentNoteWorkingDrafts", isDirectory: true)
+            ?? URL(fileURLWithPath: NSHomeDirectory())
+                .appendingPathComponent("Library/Application Support/QuipslyCapture/DocumentNoteWorkingDrafts", isDirectory: true)
+        ledgerURL = support.appendingPathComponent("document-note-working-drafts-v1.json")
+        lastKnownGoodURL = support.appendingPathComponent("document-note-working-drafts-v1.last-known-good.json")
+
+        do {
+            try fileManager.createDirectory(at: support, withIntermediateDirectories: true)
+            try? fileManager.setAttributes(
+                [.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication],
+                ofItemAtPath: support.path
+            )
+            var protectedSupport = support
+            var resourceValues = URLResourceValues()
+            resourceValues.isExcludedFromBackup = true
+            try? protectedSupport.setResourceValues(resourceValues)
+            storedDrafts = try loadLedger()
+        } catch {
+            storedDrafts = []
+        }
+
+        if observeAccountChanges {
+            accountObserver = NotificationCenter.default.addObserver(
+                forName: .quipslyCaptureAccountIdentityDidChange,
+                object: nil,
+                queue: .main
+            ) { [weak self] notification in
+                MainActor.assumeIsolated {
+                    self?.activeOwnerAccountID = Self.normalizedOwnerID(notification.object as? String)
+                }
+            }
+        }
+    }
+
+    deinit {
+        if let accountObserver {
+            NotificationCenter.default.removeObserver(accountObserver)
+        }
+    }
+
+    func draft(for noteID: String) -> DocumentNoteWorkingDraft? {
+        guard let owner = activeOwnerAccountID else { return nil }
+        return storedDrafts.first {
+            Self.normalizedOwnerID($0.ownerAccountID) == owner
+                && $0.noteID == noteID
+        }
+    }
+
+    @discardableResult
+    func save(
+        projectID: String,
+        noteID: String,
+        title: String,
+        blocks: [MobileCaptureWorkNoteBlock],
+        baseContentRevision: String
+    ) -> Bool {
+        guard let owner = activeOwnerAccountID,
+              owner == Self.normalizedOwnerID(AuthManager.currentStoredOwnerID()),
+              !projectID.isEmpty,
+              !noteID.isEmpty,
+              !blocks.isEmpty,
+              blocks.count <= 24,
+              Set(blocks.map(\.id)).count == blocks.count,
+              Set(blocks.map(\.stableId)).count == blocks.count,
+              blocks.allSatisfy({ $0.body.count <= 100_000 }),
+              blocks.reduce(0, { $0 + $1.body.count }) <= 500_000,
+              baseContentRevision.range(of: "^[0-9a-f]{64}$", options: .regularExpression) != nil else {
+            return false
+        }
+        let draft = DocumentNoteWorkingDraft(
+            ownerAccountID: owner,
+            projectID: projectID,
+            noteID: noteID,
+            title: String(title.prefix(5_000)),
+            blocks: blocks,
+            baseContentRevision: baseContentRevision,
+            updatedAt: Date()
+        )
+        var updated = storedDrafts.filter {
+            !(Self.normalizedOwnerID($0.ownerAccountID) == owner && $0.noteID == noteID)
+        }
+        updated.append(draft)
+        return commit(updated)
+    }
+
+    func remove(noteID: String) {
+        guard let owner = activeOwnerAccountID else { return }
+        let updated = storedDrafts.filter {
+            !(Self.normalizedOwnerID($0.ownerAccountID) == owner && $0.noteID == noteID)
+        }
+        _ = commit(updated)
+    }
+
+    private func commit(_ updated: [DocumentNoteWorkingDraft]) -> Bool {
+        do {
+            let encoder = JSONEncoder()
+            encoder.dateEncodingStrategy = .iso8601
+            encoder.outputFormatting = [.sortedKeys]
+            let data = try encoder.encode(updated)
+            try data.write(
+                to: lastKnownGoodURL,
+                options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication]
+            )
+            try data.write(
+                to: ledgerURL,
+                options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication]
+            )
+            storedDrafts = updated
+            return true
+        } catch {
+            return false
+        }
+    }
+
+    private func loadLedger() throws -> [DocumentNoteWorkingDraft] {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        for url in [ledgerURL, lastKnownGoodURL] where fileManager.fileExists(atPath: url.path) {
+            if let data = try? Data(contentsOf: url),
+               let drafts = try? decoder.decode([DocumentNoteWorkingDraft].self, from: data) {
+                return drafts
+            }
+        }
+        return []
+    }
+
+    nonisolated private static func normalizedOwnerID(_ value: String?) -> String? {
+        guard let normalized = value?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased(),
+              !normalized.isEmpty,
+              normalized.count <= 256 else { return nil }
+        return normalized
+    }
+}
+
 enum DocumentNoteEditStoreError: LocalizedError {
     case accountIdentityUnavailable
     case invalidEdit

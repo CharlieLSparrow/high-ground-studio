@@ -6460,6 +6460,7 @@ private struct CaptureSourceFilingSheet: View {
 }
 
 private struct CaptureDocumentNoteEditSheet: View {
+    @Environment(\.scenePhase) private var scenePhase
     @ObservedObject var client: CaptureWorkClient
     let note: MobileCaptureWorkNote
     let project: MobileCaptureWorkProject
@@ -6469,6 +6470,11 @@ private struct CaptureDocumentNoteEditSheet: View {
     @State private var title: String
     @State private var blocks: [MobileCaptureWorkNoteBlock]
     @State private var localMessage: String?
+    @State private var workingDraftSaveTask: Task<Void, Never>?
+    @State private var committedToOutbox = false
+    @State private var workingDraftStatus: String?
+    private let workingDraftStore = DocumentNoteWorkingDraftStore.shared
+    private let baseContentRevision: String
 
     init(
         client: CaptureWorkClient,
@@ -6479,7 +6485,13 @@ private struct CaptureDocumentNoteEditSheet: View {
         self.note = note
         self.project = project
         let protectedEdit = client.pendingDocumentNoteEdit(for: note.id)
-        _title = State(initialValue: protectedEdit?.title ?? note.title)
+        let workingDraft = protectedEdit == nil
+            ? DocumentNoteWorkingDraftStore.shared.draft(for: note.id)
+            : nil
+        baseContentRevision = workingDraft?.baseContentRevision
+            ?? note.contentRevision
+            ?? ""
+        _title = State(initialValue: protectedEdit?.title ?? workingDraft?.title ?? note.title)
         _blocks = State(initialValue: protectedEdit?.blocks.map {
             MobileCaptureWorkNoteBlock(
                 id: $0.id,
@@ -6487,7 +6499,12 @@ private struct CaptureDocumentNoteEditSheet: View {
                 order: $0.order,
                 body: $0.body
             )
-        } ?? note.blocks ?? [])
+        } ?? workingDraft?.blocks ?? note.blocks ?? [])
+        _workingDraftStatus = State(
+            initialValue: workingDraft == nil
+                ? nil
+                : "Recovered your saved iPhone draft."
+        )
     }
 
     private var protectedEdit: PendingDocumentNoteEdit? {
@@ -6644,15 +6661,27 @@ private struct CaptureDocumentNoteEditSheet: View {
                             .accessibilityIdentifier("CaptureWorkNoteEditMessage")
                     }
 
+                    if let workingDraftStatus,
+                       protectedEdit == nil {
+                        Label(workingDraftStatus, systemImage: "checkmark.icloud")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .accessibilityIdentifier("CaptureWorkNoteWorkingDraftStatus")
+                    }
+
                     Button {
                         let saved = client.saveDocumentNoteEdit(
                             note: note,
                             projectID: project.id,
                             title: title,
                             blocks: blocks,
-                            replacingHeld: protectedEdit?.disposition == .held
+                            replacingHeld: protectedEdit?.disposition == .held,
+                            expectedContentRevisionOverride: baseContentRevision
                         )
                         if saved {
+                            committedToOutbox = true
+                            workingDraftSaveTask?.cancel()
+                            workingDraftStore.remove(noteID: note.id)
                             dismiss()
                         } else {
                             localMessage = client.errorMessage
@@ -6705,7 +6734,48 @@ private struct CaptureDocumentNoteEditSheet: View {
                 }
             }
         }
+        .onChange(of: title) { _, _ in scheduleWorkingDraftSave() }
+        .onChange(of: blocks) { _, _ in scheduleWorkingDraftSave() }
+        .onChange(of: scenePhase) { _, phase in
+            guard phase != .active else { return }
+            workingDraftSaveTask?.cancel()
+            saveWorkingDraftImmediately()
+        }
+        .onDisappear {
+            workingDraftSaveTask?.cancel()
+            saveWorkingDraftImmediately()
+        }
         .accessibilityIdentifier("CaptureWorkNoteEditSheet")
+    }
+
+    private func scheduleWorkingDraftSave() {
+        workingDraftSaveTask?.cancel()
+        workingDraftSaveTask = Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(220))
+            guard !Task.isCancelled else { return }
+            saveWorkingDraftImmediately()
+        }
+    }
+
+    private func saveWorkingDraftImmediately() {
+        guard !committedToOutbox else { return }
+        guard hasChanges else {
+            workingDraftStore.remove(noteID: note.id)
+            return
+        }
+        let saved = workingDraftStore.save(
+            projectID: project.id,
+            noteID: note.id,
+            title: title,
+            blocks: blocks,
+            baseContentRevision: baseContentRevision
+        )
+        if !saved {
+            localMessage = "This draft could not be protected on this iPhone yet. Keep this screen open and try again."
+        } else {
+            localMessage = nil
+            workingDraftStatus = "Saved on this iPhone while you work."
+        }
     }
 }
 
