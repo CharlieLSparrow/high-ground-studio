@@ -356,7 +356,14 @@ final class CaptureExperienceUITests: XCTestCase {
             "The focused writing path should use the same plain-language name as its Home action."
         )
         XCTAssertTrue(app.otherElements["CaptureRecorderHero"].exists)
-        XCTAssertTrue(app.tabBars.buttons["Sessions"].isSelected)
+        XCTAssertFalse(
+            app.tabBars.firstMatch.exists,
+            "Focused speech-to-writing should not misleadingly present the global Sessions tab as its location."
+        )
+        XCTAssertTrue(
+            app.buttons["CaptureVoiceNoteOpenLibrary"].exists,
+            "A focused recorder still needs one obvious exit to all writing before the first recording exists."
+        )
         XCTAssertFalse(
             app.otherElements["CaptureProviderRoomControls"].exists,
             "A private Voice Note must not look like a meeting room."
@@ -368,6 +375,14 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertFalse(
             app.otherElements["CaptureRecordingModePicker"].exists,
             "Voice Note should default to audio instead of asking for production setup."
+        )
+        XCTAssertFalse(
+            app.buttons["CaptureSessionPlanOpen"].exists,
+            "Private writing must not inherit the collaborative Session workspace below its recorder."
+        )
+        XCTAssertFalse(
+            app.buttons["CaptureSessionNotesToggle"].exists,
+            "Private writing should stay in its connected paper instead of exposing unrelated Session Notes."
         )
         XCTAssertTrue(
             app.buttons["CaptureStartButton"].isEnabled,
@@ -416,6 +431,16 @@ final class CaptureExperienceUITests: XCTestCase {
         tipsScreenshot.name = "private-speak-to-write-tips.png"
         tipsScreenshot.lifetime = .keepAlways
         add(tipsScreenshot)
+
+        app.buttons["CaptureVoiceNoteOpenLibrary"].tap()
+        XCTAssertTrue(
+            app.scrollViews["CaptureLibraryView"].waitForExistence(timeout: 5),
+            "All writing should leave the focused recorder without routing through the Sessions workspace."
+        )
+        XCTAssertTrue(
+            app.buttons["CaptureLibrarySpeakToWrite"].exists,
+            "All writing should open the Library's writing section, not recordings or Sessions."
+        )
     }
 
     func testSpeechAdaptationIsOptionalRememberedAndEasyToReach() throws {

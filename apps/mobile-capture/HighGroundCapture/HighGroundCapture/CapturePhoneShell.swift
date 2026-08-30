@@ -15,6 +15,7 @@ struct CapturePhoneShell: View {
     @State private var isRoutingSessionLink = false
     @State private var localOnlyRecordingSessionID: String?
     @State private var requestedWritingDraftID: UUID?
+    @State private var requestedLibrarySection: CaptureLibrarySection?
     @State private var recordNavigationResetID = UUID()
     @Binding var visibleTab: CaptureRootTab
 
@@ -218,7 +219,8 @@ struct CapturePhoneShell: View {
                 CaptureRecorderView(
                     model: model,
                     visibleTab: $visibleTab,
-                    localOnlyRecordingSessionID: $localOnlyRecordingSessionID
+                    localOnlyRecordingSessionID: $localOnlyRecordingSessionID,
+                    requestedLibrarySection: $requestedLibrarySection
                 )
             }
             .id(recordNavigationResetID)
@@ -240,6 +242,7 @@ struct CapturePhoneShell: View {
                     model: model,
                     visibleTab: $visibleTab,
                     requestedWritingDraftID: $requestedWritingDraftID,
+                    requestedSection: $requestedLibrarySection,
                     onStartVoiceNote: startVoiceNote
                 )
             }
@@ -7413,8 +7416,6 @@ private enum CaptureCallPreferences {
 }
 
 private struct CapturePersonalVoiceNoteHeader: View {
-    let session: MobileCaptureSession
-    let hasRecording: Bool
     let onOpenLibrary: () -> Void
 
     var body: some View {
@@ -7425,16 +7426,9 @@ private struct CapturePersonalVoiceNoteHeader: View {
 
             Spacer(minLength: 8)
 
-            if hasRecording {
-                Button("All writing", action: onOpenLibrary)
-                    .buttonStyle(.bordered)
-                    .accessibilityIdentifier("CaptureVoiceNoteOpenLibrary")
-            } else {
-                Label(session.projectName?.nonempty ?? "My Nest", systemImage: "house.fill")
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
+            Button("All writing", action: onOpenLibrary)
+                .buttonStyle(.bordered)
+                .accessibilityIdentifier("CaptureVoiceNoteOpenLibrary")
         }
         .captureCard()
         .accessibilityElement(children: .contain)
@@ -9860,6 +9854,7 @@ private struct CaptureRecorderView: View {
     @ObservedObject var model: CaptureExperienceModel
     @Binding var visibleTab: CaptureRootTab
     @Binding var localOnlyRecordingSessionID: String?
+    @Binding var requestedLibrarySection: CaptureLibrarySection?
     @EnvironmentObject private var audioCapture: AudioCaptureController
     @EnvironmentObject private var videoCapture: VideoCaptureController
     @EnvironmentObject private var deepLinkRouter: CaptureDeepLinkRouter
@@ -9935,9 +9930,10 @@ private struct CaptureRecorderView: View {
                 if let session = model.selectedSession {
                     if session.isPersonalVoiceNote {
                         CapturePersonalVoiceNoteHeader(
-                            session: session,
-                            hasRecording: sessionHasRecording(session),
-                            onOpenLibrary: { visibleTab = .library }
+                            onOpenLibrary: {
+                                requestedLibrarySection = .writing
+                                visibleTab = .library
+                            }
                         )
                         if let recording = latestPersonalVoiceRecording(for: session) {
                             CapturePersonalVoiceNoteTranscriptCard(
@@ -10363,16 +10359,17 @@ private struct CaptureRecorderView: View {
                         }
                     }
 
-                    // Once the live/local recorder workspace collapses, keep the
-                    // ordinary post-call action in the Session itself. The
-                    // editor used to disappear with the recorder, precisely
-                    // when a coach naturally wanted to continue into trimming
-                    // and sharing.
-                    if sessionHasRecording(session)
-                        && !model.providerRoom.isConnected
-                        && !localRecordingWorkspaceIsOpen(for: session) {
-                        CaptureRecordingEditCard(session: session)
-                    }
+                    if !session.isPersonalVoiceNote {
+                        // Once the live/local recorder workspace collapses, keep the
+                        // ordinary post-call action in the Session itself. The
+                        // editor used to disappear with the recorder, precisely
+                        // when a coach naturally wanted to continue into trimming
+                        // and sharing.
+                        if sessionHasRecording(session)
+                            && !model.providerRoom.isConnected
+                            && !localRecordingWorkspaceIsOpen(for: session) {
+                            CaptureRecordingEditCard(session: session)
+                        }
 
                     if session.isCoachingSession && !sessionHasPostCallWork(session) {
                         MobileCoachingSessionPreparationCard(
@@ -10679,7 +10676,6 @@ private struct CaptureRecorderView: View {
                     .accessibilityIdentifier("CaptureSessionPlanOpen")
                     .accessibilityHint("Opens the local-first session note, goals, tasks, and Nest revision controls in a focused workspace.")
 
-                    if !session.isPersonalVoiceNote {
                         SourceTruthFootnote(mode: recordingMode)
                     }
                 } else if model.isRefreshing {
@@ -10809,6 +10805,10 @@ private struct CaptureRecorderView: View {
         .background(CaptureCanvas())
         .navigationTitle(model.selectedSession?.isPersonalVoiceNote == true ? "Speak to write" : "Sessions")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar(
+            model.selectedSession?.isPersonalVoiceNote == true ? .hidden : .visible,
+            for: .tabBar
+        )
         .sheet(isPresented: $showsSessionPicker) {
             SessionPickerSheet(model: model, isPresented: $showsSessionPicker)
                 .presentationDetents([.medium, .large])
@@ -14040,6 +14040,7 @@ private struct CaptureLibraryView: View {
     @ObservedObject var model: CaptureExperienceModel
     @Binding var visibleTab: CaptureRootTab
     @Binding var requestedWritingDraftID: UUID?
+    @Binding var requestedSection: CaptureLibrarySection?
     let onStartVoiceNote: () -> Void
     @EnvironmentObject private var audioCapture: AudioCaptureController
     @StateObject private var library = LocalRecordingLibrary.shared
@@ -14140,9 +14141,17 @@ private struct CaptureLibraryView: View {
             )
         }
         .onAppear {
-            if model.usesPreviewData && !CaptureLaunchConfiguration.usesAppStorePresentation {
+            if let requestedSection {
+                selectedSection = requestedSection
+                self.requestedSection = nil
+            } else if model.usesPreviewData && !CaptureLaunchConfiguration.usesAppStorePresentation {
                 selectedSection = .recordings
             }
+        }
+        .onChange(of: requestedSection) { _, section in
+            guard let section else { return }
+            selectedSection = section
+            requestedSection = nil
         }
         .task {
             guard !model.usesPreviewData else { return }
