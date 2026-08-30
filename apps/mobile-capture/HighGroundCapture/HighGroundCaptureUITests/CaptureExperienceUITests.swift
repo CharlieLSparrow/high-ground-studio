@@ -424,6 +424,16 @@ final class CaptureExperienceUITests: XCTestCase {
             app.otherElements["CaptureRecorderHero"].waitForExistence(timeout: 8)
         )
 
+        let speechAccuracy = app.buttons[
+            "CaptureVoiceWritingSpeechAccuracyDisclosure"
+        ]
+        reveal(speechAccuracy)
+        XCTAssertTrue(
+            speechAccuracy.waitForExistence(timeout: 5),
+            "Speech help should remain one tap from the writing recorder without becoming required setup."
+        )
+        speechAccuracy.tap()
+
         let recorderToggle = app.switches[
             "CaptureVoiceWritingSpeechAdaptationToggle"
         ]

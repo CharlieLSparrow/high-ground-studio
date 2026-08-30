@@ -17105,6 +17105,7 @@ private struct RecorderHero: View {
     @ObservedObject private var recognitionPreferences = VoiceWritingRecognitionPreferences.shared
     @ObservedObject private var writingStore = VoiceWritingDraftStore.shared
     @State private var showsVoiceWritingTips = false
+    @State private var showsSpeechAccuracy = false
 
     let session: MobileCaptureSession
     let captureState: AudioCaptureState
@@ -17211,7 +17212,7 @@ private struct RecorderHero: View {
             if #available(iOS 26.0, *) {
                 if session.isPersonalVoiceNote,
                    captureState == .idle || captureState == .saved || captureState == .failed {
-                    speechAdaptationControl
+                    speechAccuracyControl
                 }
             }
 
@@ -17299,7 +17300,62 @@ private struct RecorderHero: View {
         }
     }
 
-    private var speechAdaptationControl: some View {
+    private var speechAccuracyControl: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Button {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    showsSpeechAccuracy.toggle()
+                }
+            } label: {
+                HStack(spacing: 10) {
+                    Image(systemName: "waveform.badge.mic")
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(CapturePalette.accent)
+                        .frame(width: 28)
+                        .accessibilityHidden(true)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Speech accuracy")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.primary)
+                        Text(recognitionPreferences.adaptsRecognitionToSpeech
+                             ? "Extra speech help is on"
+                             : "Recognition, names, and terms")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    Spacer(minLength: 8)
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(.secondary)
+                        .rotationEffect(.degrees(showsSpeechAccuracy ? 90 : 0))
+                        .accessibilityHidden(true)
+                }
+                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityValue(showsSpeechAccuracy ? "Expanded" : "Collapsed")
+            .accessibilityHint("Shows optional help for speech differences, names, and research terms.")
+            .accessibilityIdentifier("CaptureVoiceWritingSpeechAccuracyDisclosure")
+
+            if showsSpeechAccuracy {
+                Divider()
+
+                speechAdaptationSettings
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
+        .padding(12)
+        .background(
+            CapturePalette.accent.opacity(0.08),
+            in: RoundedRectangle(cornerRadius: 16, style: .continuous)
+        )
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("CaptureVoiceWritingSpeechAccuracyCard")
+    }
+
+    private var speechAdaptationSettings: some View {
         VStack(alignment: .leading, spacing: 10) {
             Toggle(
                 isOn: Binding(
@@ -17308,9 +17364,9 @@ private struct RecorderHero: View {
                 )
             ) {
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("Adapt to my speech")
+                    Text("Help Quipsly understand my speech")
                         .font(.subheadline.weight(.semibold))
-                    Text("Improves recognition for accents and speech differences. Quipsly remembers this choice.")
+                    Text("Use this if speech-to-text often misunderstands you. Quipsly remembers this choice.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -17372,13 +17428,6 @@ private struct RecorderHero: View {
                 .accessibilityIdentifier("CaptureVoiceWritingAutomaticRecognitionContext")
             }
         }
-        .padding(12)
-        .background(
-            CapturePalette.accent.opacity(0.08),
-            in: RoundedRectangle(cornerRadius: 16, style: .continuous)
-        )
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("CaptureVoiceWritingSpeechAccuracyCard")
     }
 
     private var automaticRecognitionSummary: String? {
