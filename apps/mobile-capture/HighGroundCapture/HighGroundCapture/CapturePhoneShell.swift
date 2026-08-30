@@ -8230,7 +8230,7 @@ private struct CaptureVoiceWritingEditor: View {
                     Label("Continue on web", systemImage: "macbook")
                         .frame(minHeight: 44)
                 }
-                .accessibilityHint("Opens this same private writing in your browser.")
+                .accessibilityHint("Opens this same writing in your browser.")
                 .accessibilityIdentifier("CaptureVoiceWritingContinueOnWeb")
             }
 

@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 
 export const metadata = {
   title: "Writing - Quipsly",
-  description: "Continue private writing captured from your voice.",
+  description: "Continue writing captured from your voice.",
 };
 
 export default async function VoiceWritingPage({ params }: { params: Promise<{ draftId: string }> }) {

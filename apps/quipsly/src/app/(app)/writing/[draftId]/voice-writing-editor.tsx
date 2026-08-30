@@ -18,6 +18,7 @@ import {
   List,
   ListOrdered,
   LoaderCircle,
+  LockKeyhole,
   MessageSquareQuote,
   Mic2,
   Pilcrow,
@@ -29,6 +30,7 @@ import {
   Trash2,
   Underline as UnderlineIcon,
   Undo2,
+  Users,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -47,6 +49,12 @@ import {
   type WritingViewMode,
   voiceWritingViewLayout,
 } from "./voice-writing-view";
+import {
+  type WritingVisibility,
+  voiceWritingAudience,
+  voiceWritingMoveVisibility,
+  voiceWritingSourceBoundary,
+} from "./voice-writing-visibility";
 
 const Underline = Mark.create({
   name: "underline",
@@ -78,6 +86,7 @@ type WritingDraft = {
   projectId: string;
   projectName: string;
   projectSlug: string;
+  visibility: WritingVisibility;
   title: string;
   body: string;
   richText: VoiceWritingRichText | null;
@@ -524,9 +533,13 @@ export function VoiceWritingEditor({ draftId }: { draftId: string }) {
     }
   }
 
-  async function moveWriting(destinationProjectId: string) {
+  async function organizeWriting(
+    destinationProjectId: string,
+    visibility: WritingVisibility,
+  ) {
     const base = draftRef.current;
-    if (!base || moving || destinationProjectId === base.projectId) return;
+    if (!base || moving
+      || (destinationProjectId === base.projectId && visibility === base.visibility)) return;
     if (saveState !== "saved" || dirtyRef.current || savingRef.current) {
       setMoveError("Let this writing finish saving, then choose its Nest again.");
       return;
@@ -541,6 +554,7 @@ export function VoiceWritingEditor({ draftId }: { draftId: string }) {
           draftId: base.draftId,
           destinationProjectId,
           expectedProjectId: base.projectId,
+          visibility,
           clientRequestId: crypto.randomUUID(),
         }),
       });
@@ -577,6 +591,10 @@ export function VoiceWritingEditor({ draftId }: { draftId: string }) {
     return <main className="grid min-h-[70vh] place-items-center text-[#765f40]"><p role="status" className="inline-flex items-center gap-3 font-bold"><LoaderCircle className="h-5 w-5 animate-spin" />Opening your writing…</p></main>;
   }
 
+  const audience = voiceWritingAudience(draft.visibility);
+  const currentDestination = destinations.find((destination) => destination.id === draft.projectId);
+  const canChangeAudience = Boolean(currentDestination && !currentDestination.isHome);
+
   return <main className="mx-auto max-w-[1120px] px-2 py-2 text-[#3d3122] sm:px-4">
     <header className="rounded-[2rem] border border-[#dfcba6] bg-[radial-gradient(circle_at_top_right,_#d8eee5,_transparent_45%),linear-gradient(135deg,#fffaf0,#f8edda)] px-5 py-5 shadow-sm sm:px-7">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -611,7 +629,7 @@ export function VoiceWritingEditor({ draftId }: { draftId: string }) {
       <div className="mt-5 flex items-start gap-3">
         <span className="mt-1 rounded-2xl border border-emerald-200 bg-emerald-50 p-2.5 text-emerald-800"><BookOpenText className="h-5 w-5" aria-hidden="true" /></span>
         <div className="min-w-0 flex-1">
-          <p className="text-[11px] font-black uppercase tracking-[0.18em] text-[#87663d]">Private writing · {draft.projectName}</p>
+          <p className="text-[11px] font-black uppercase tracking-[0.18em] text-[#87663d]">{audience.eyebrow} · {draft.projectName}</p>
           <input value={title} onChange={(event) => changeTitle(event.target.value)} maxLength={320} aria-label="Writing title" className="mt-1 w-full border-0 bg-transparent p-0 font-serif text-3xl font-black leading-tight text-[#33281d] outline-none placeholder:text-[#a18b6c] sm:text-4xl" placeholder="Give this a title" />
         </div>
       </div>
@@ -638,32 +656,60 @@ export function VoiceWritingEditor({ draftId }: { draftId: string }) {
       <button type="button" onClick={() => setMoveError("")} className="min-h-10 rounded-full border border-amber-300 bg-white px-4 text-xs font-black text-amber-950">Dismiss</button>
     </section> : null}
 
-    <section className="mt-4 flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-[#dfcba6] bg-white px-5 py-4" aria-label="Writing location">
+    <section className="mt-4 flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-[#dfcba6] bg-white px-5 py-4" aria-label="Writing location and audience">
       <div className="flex min-w-0 items-center gap-3">
         <span className="rounded-xl bg-[#f5ead8] p-2 text-[#765f40]"><FolderInput className="h-5 w-5" aria-hidden="true" /></span>
         <div>
           <p className="text-xs font-black uppercase tracking-wide text-[#87663d]">Filed in</p>
           <p className="truncate font-serif text-lg font-black">{draft.projectName}</p>
-          <p className="text-xs font-semibold text-[#765f40]">Private to you, including inside a shared Nest.</p>
+          <p className="mt-0.5 inline-flex items-center gap-1.5 text-xs font-semibold text-[#765f40]">
+            {draft.visibility === "nest"
+              ? <Users className="h-3.5 w-3.5" aria-hidden="true" />
+              : <LockKeyhole className="h-3.5 w-3.5" aria-hidden="true" />}
+            {audience.description}
+          </p>
         </div>
       </div>
-      {destinations.some((destination) => destination.id !== draft.projectId) ? <label className="flex min-h-11 items-center gap-2 text-sm font-black text-[#58442d]">
-        <span>{moving ? "Moving…" : "Move to"}</span>
-        <select
-          aria-label="Move writing to Nest"
-          value={destinations.some((destination) => destination.id === draft.projectId) ? draft.projectId : ""}
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        {canChangeAudience ? <button
+          type="button"
+          onClick={() => void organizeWriting(
+            draft.projectId,
+            draft.visibility === "nest" ? "personal" : "nest",
+          )}
           disabled={moving || saveState !== "saved"}
-          onChange={(event) => void moveWriting(event.target.value)}
-          className="min-h-11 rounded-xl border border-[#d8c4a1] bg-[#fffaf3] px-3 text-sm font-black outline-none focus:border-[#87663d] disabled:opacity-60"
+          className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-[#d8c4a1] bg-[#fffaf3] px-4 text-sm font-black text-[#58442d] transition hover:border-[#87663d] disabled:cursor-wait disabled:opacity-60"
         >
-          {destinations.some((destination) => destination.id === draft.projectId)
-            ? null
-            : <option value="" disabled>{draft.projectName} · No longer shared</option>}
-          {destinations.map((destination) => <option key={destination.id} value={destination.id}>
-            {destination.name} · {destination.isHome ? "My Nest" : destination.role === "OWNER" ? "Owned" : "Shared"}
-          </option>)}
-        </select>
-      </label> : null}
+          {draft.visibility === "nest"
+            ? <LockKeyhole className="h-4 w-4" aria-hidden="true" />
+            : <Users className="h-4 w-4" aria-hidden="true" />}
+          {moving ? "Updating…" : audience.action}
+        </button> : null}
+        {destinations.some((destination) => destination.id !== draft.projectId) ? <label className="flex min-h-11 items-center gap-2 text-sm font-black text-[#58442d]">
+          <span>{moving ? "Moving…" : "Move to"}</span>
+          <select
+            aria-label="Move writing to Nest"
+            value={destinations.some((destination) => destination.id === draft.projectId) ? draft.projectId : ""}
+            disabled={moving || saveState !== "saved"}
+            onChange={(event) => {
+              const destination = destinations.find((candidate) => candidate.id === event.target.value);
+              if (destination) void organizeWriting(
+                destination.id,
+                voiceWritingMoveVisibility(destination),
+              );
+            }}
+            className="min-h-11 rounded-xl border border-[#d8c4a1] bg-[#fffaf3] px-3 text-sm font-black outline-none focus:border-[#87663d] disabled:opacity-60"
+          >
+            {destinations.some((destination) => destination.id === draft.projectId)
+              ? null
+              : <option value="" disabled>{draft.projectName} · No longer shared</option>}
+            {destinations.map((destination) => <option key={destination.id} value={destination.id}>
+              {destination.name} · {destination.isHome ? "Private" : destination.role === "OWNER" ? "Owned · shared" : "Shared"}
+            </option>)}
+          </select>
+        </label> : null}
+      </div>
+      <p className="w-full text-xs font-semibold leading-5 text-[#87663d]">{voiceWritingSourceBoundary}</p>
     </section>
 
     {hasTimedTranscript ? <nav className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[#dfcba6] bg-[#fffaf3] p-2 pl-4" aria-label="Writing view">
@@ -757,7 +803,7 @@ export function VoiceWritingEditor({ draftId }: { draftId: string }) {
       </div>
       <div className="rounded-2xl border border-[#dfcba6] bg-[#fffaf3] p-5 md:max-w-xs">
         <p className="text-xs font-black uppercase tracking-wide text-[#87663d]">Keep going by voice</p>
-        <p className="mt-2 text-sm font-semibold leading-6 text-[#765f40]">Your next recording appends to this same private writing automatically.</p>
+        <p className="mt-2 text-sm font-semibold leading-6 text-[#765f40]">Your next recording appends to this same writing automatically.</p>
         <a
           href={`quipsly://writing/${encodeURIComponent(draft.draftId)}?action=continue`}
           className="mt-4 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-full bg-[#3e2f21] px-5 text-sm font-black text-white shadow-sm transition hover:bg-[#241b13]"
