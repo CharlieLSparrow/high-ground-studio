@@ -475,6 +475,14 @@ private struct CaptureTodayView: View {
                     CaptureLoadingCard(label: "Loading your sessions…")
                 }
 
+                CaptureTodayPrimaryActions(
+                    isStartingVoiceNote: model.isCreatingSession,
+                    canStart: !model.isSessionContextLocked,
+                    onStartVoiceNote: onStartVoiceNote,
+                    onStartWriting: onStartWriting,
+                    onNewSession: { showsNewSession = true }
+                )
+
                 if let draft = writingStore.drafts.first {
                     VStack(alignment: .leading, spacing: 10) {
                         HStack {
@@ -495,15 +503,19 @@ private struct CaptureTodayView: View {
                         )
                     }
                     .accessibilityIdentifier("CaptureTodayContinueWriting")
+                } else if model.usesPreviewData {
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack {
+                            Text("Continue writing")
+                                .font(.title3.weight(.bold))
+                            Spacer()
+                            Button("All writing") { visibleTab = .library }
+                                .buttonStyle(.bordered)
+                        }
+                        CaptureLibraryPreviewWritingCard(tagClient: model.todayClient)
+                    }
+                    .accessibilityIdentifier("CaptureTodayContinueWriting")
                 }
-
-                CaptureTodayPrimaryActions(
-                    isStartingVoiceNote: model.isCreatingSession,
-                    canStart: !model.isSessionContextLocked,
-                    onStartVoiceNote: onStartVoiceNote,
-                    onStartWriting: onStartWriting,
-                    onNewSession: { showsNewSession = true }
-                )
 
                 if model.usesPreviewData
                     && !CaptureLaunchConfiguration.usesAppStorePresentation {

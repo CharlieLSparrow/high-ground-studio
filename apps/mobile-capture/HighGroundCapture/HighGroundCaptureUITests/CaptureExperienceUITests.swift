@@ -177,6 +177,21 @@ final class CaptureExperienceUITests: XCTestCase {
             speakToWrite.frame.minY,
             "A ready appointment should appear before creation tools so joining follows time priority instead of page depth."
         )
+        let continueWriting = app.staticTexts["CaptureTodayContinueWriting"].firstMatch
+        XCTAssertTrue(
+            continueWriting.exists,
+            "The preview should retain a real draft so Home priority can be tested with both creation and continuation present."
+        )
+        XCTAssertLessThan(
+            speakToWrite.frame.minY,
+            continueWriting.frame.minY,
+            "Starting fresh speech-to-writing must remain immediately discoverable instead of being buried beneath an older draft."
+        )
+        XCTAssertLessThan(
+            app.buttons["CaptureStartSession"].frame.minY,
+            continueWriting.frame.minY,
+            "Starting or scheduling a session must remain ahead of passive continuation content on Home."
+        )
 
         let joinSession = app.buttons["CaptureOpenNextSessionButton"]
         XCTAssertEqual(
