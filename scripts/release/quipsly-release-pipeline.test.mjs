@@ -99,7 +99,20 @@ test("no-traffic preview can repair drift without weakening candidate checks", (
     preflight,
     /Current production has blockers; continuing only because a no-traffic preview may repair them/,
   );
-  assert.match(preflight, /QUIPSLY_PREFLIGHT_PURPOSE.*audit\|preview/s);
+  assert.match(preflight, /QUIPSLY_PREFLIGHT_PURPOSE.*audit\|preview\|promotion/s);
+});
+
+test("promotion proves boundaries that a zero-traffic preview may defer", () => {
+  assert.match(promote, /QUIPSLY_PREFLIGHT_PURPOSE=promotion/);
+  assert.doesNotMatch(promote, /QUIPSLY_PREFLIGHT_PURPOSE=preview/);
+  assert.match(
+    preflight,
+    /elif \[\[ "\$\{QUIPSLY_PREFLIGHT_PURPOSE\}" == "preview" \]\]; then\s+warn "Could not prove the media-vault IAM contract/s,
+  );
+  assert.match(
+    preflight,
+    /else\s+fail "Nest mobile-capture media IAM is incomplete/s,
+  );
 });
 
 test("preview retries reuse the content-addressed image without bypassing preflight", () => {

@@ -16,10 +16,10 @@ QUIPSLY_PREFLIGHT_PURPOSE="${QUIPSLY_PREFLIGHT_PURPOSE:-audit}"
 QUIPSLY_PREFLIGHT_BUILD="${QUIPSLY_PREFLIGHT_BUILD:-1}"
 
 case "${QUIPSLY_PREFLIGHT_PURPOSE}" in
-  audit|preview)
+  audit|preview|promotion)
     ;;
   *)
-    echo "QUIPSLY_PREFLIGHT_PURPOSE must be audit or preview." >&2
+    echo "QUIPSLY_PREFLIGHT_PURPOSE must be audit, preview, or promotion." >&2
     exit 2
     ;;
 esac

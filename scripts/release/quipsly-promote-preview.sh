@@ -101,7 +101,7 @@ if [[ "${preview_channel}" != "preview" ]]; then
 fi
 
 SOURCE_REF="${expected_source_sha}" \
-  QUIPSLY_PREFLIGHT_PURPOSE=preview \
+  QUIPSLY_PREFLIGHT_PURPOSE=promotion \
   bash "${repo_root}/scripts/release/quipsly-release-preflight.sh"
 
 echo "=========================================================="

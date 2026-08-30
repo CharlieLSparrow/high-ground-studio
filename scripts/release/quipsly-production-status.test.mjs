@@ -44,3 +44,12 @@ test("production readback detects a one-instance global availability trap", () =
   assert.match(script, /max_instances >= 2/);
   assert.match(script, /one unavailable instance cannot cause global HTTP 429 responses/);
 });
+
+test("production readback distinguishes authorization gaps from unhealthy infrastructure", () => {
+  assert.match(script, /report_inspection_failure/);
+  assert.match(script, /Release automation is not authorized to inspect/);
+  assert.match(script, /Project billing is disabled/);
+  assert.match(script, /Attached billing account is closed/);
+  assert.doesNotMatch(script, /Project billing is not enabled/);
+  assert.doesNotMatch(script, /missing, closed, or inaccessible/);
+});

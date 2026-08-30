@@ -25,6 +25,16 @@ fail() {
   failures=$((failures + 1))
 }
 
+report_inspection_failure() {
+  local resource="$1"
+  local error_file="$2"
+  if grep -Eqi 'PERMISSION_DENIED|IAM_PERMISSION_DENIED|does not have permission|permission .* denied' "${error_file}"; then
+    fail "Release automation is not authorized to inspect ${resource}; grant its auditor identity the required read permission."
+  else
+    fail "Could not inspect ${resource}; the infrastructure command failed."
+  fi
+}
+
 http_status() {
   curl -sS --max-time 20 -o /dev/null -w "%{http_code}" "$1" 2>/dev/null || true
 }
@@ -120,48 +130,61 @@ else
   pass "gcloud user authentication is usable."
 fi
 
-billing_report="$(
+billing_error="$(mktemp)"
+billing_report=""
+if billing_report="$(
   gcloud billing projects describe "${PROJECT_ID}" \
-    --format='value(billingEnabled,billingAccountName)' 2>/dev/null || true
-)"
-billing_enabled="$(printf "%s" "${billing_report}" | awk '{print $1}')"
-billing_account_resource="$(printf "%s" "${billing_report}" | awk '{print $2}')"
-billing_account_id="${billing_account_resource##*/}"
+    --format='value(billingEnabled,billingAccountName)' 2>"${billing_error}"
+)"; then
+  billing_enabled="$(printf "%s" "${billing_report}" | awk '{print $1}')"
+  billing_account_resource="$(printf "%s" "${billing_report}" | awk '{print $2}')"
+  billing_account_id="${billing_account_resource##*/}"
 
-if [[ "${billing_enabled}" == "True" || "${billing_enabled}" == "true" ]]; then
-  pass "Project billing is enabled."
+  if [[ "${billing_enabled}" == "True" || "${billing_enabled}" == "true" ]]; then
+    pass "Project billing is enabled."
+  else
+    fail "Project billing is disabled."
+  fi
 else
-  fail "Project billing is not enabled."
+  billing_account_id=""
+  report_inspection_failure "the project's billing attachment" "${billing_error}"
 fi
 
 if [[ -n "${billing_account_id}" ]]; then
-  billing_account_open="$(
+  billing_account_error="$(mktemp)"
+  if billing_account_open="$(
     gcloud billing accounts describe "${billing_account_id}" \
-      --format='value(open)' 2>/dev/null || true
-  )"
-  if [[ "${billing_account_open}" == "True" || "${billing_account_open}" == "true" ]]; then
-    pass "Attached billing account is open."
+      --format='value(open)' 2>"${billing_account_error}"
+  )"; then
+    if [[ "${billing_account_open}" == "True" || "${billing_account_open}" == "true" ]]; then
+      pass "Attached billing account is open."
+    else
+      fail "Attached billing account is closed."
+    fi
   else
-    fail "Attached billing account is missing, closed, or inaccessible."
+    report_inspection_failure "the attached billing account" "${billing_account_error}"
   fi
-else
-  fail "Project has no readable billing account attachment."
 fi
 
-sql_state="$(
+sql_error="$(mktemp)"
+if sql_state="$(
   gcloud sql instances describe "${CLOUD_SQL_INSTANCE}" \
     --project="${PROJECT_ID}" \
-    --format='value(state)' 2>/dev/null || true
-)"
-if [[ "${sql_state}" == "RUNNABLE" ]]; then
-  pass "Cloud SQL ${CLOUD_SQL_INSTANCE} is RUNNABLE."
+    --format='value(state)' 2>"${sql_error}"
+)"; then
+  if [[ "${sql_state}" == "RUNNABLE" ]]; then
+    pass "Cloud SQL ${CLOUD_SQL_INSTANCE} is RUNNABLE."
+  else
+    fail "Cloud SQL ${CLOUD_SQL_INSTANCE} is ${sql_state:-in an unknown state}, expected RUNNABLE."
+  fi
 else
-  fail "Cloud SQL ${CLOUD_SQL_INSTANCE} is ${sql_state:-unreadable}, expected RUNNABLE."
+  report_inspection_failure "Cloud SQL ${CLOUD_SQL_INSTANCE}" "${sql_error}"
 fi
 
 service_json="$(mktemp)"
 domain_json="$(mktemp)"
-trap 'rm -f "${service_json}" "${domain_json}"' EXIT
+domain_error="$(mktemp)"
+trap 'rm -f "${billing_error}" "${billing_account_error:-}" "${sql_error}" "${service_json}" "${domain_json}" "${domain_error}"' EXIT
 
 if gcloud run services describe "${SERVICE_NAME}" \
   --project="${PROJECT_ID}" \
@@ -222,7 +245,7 @@ if gcloud beta run domain-mappings describe \
   --domain="${PRODUCTION_DOMAIN}" \
   --project="${PROJECT_ID}" \
   --region="${REGION}" \
-  --format=json >"${domain_json}" 2>/dev/null; then
+  --format=json >"${domain_json}" 2>"${domain_error}"; then
   if node - "${domain_json}" <<'NODE'
 const fs = require("fs");
 const mapping = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
@@ -238,7 +261,7 @@ NODE
     fail "Domain mapping is not fully ready."
   fi
 else
-  fail "Domain mapping ${PRODUCTION_DOMAIN} could not be described."
+  report_inspection_failure "domain mapping ${PRODUCTION_DOMAIN}" "${domain_error}"
 fi
 
 expect_http "/" "200 301 302 303 307 308"
