@@ -16,7 +16,12 @@ import {
 } from "@/lib/server/mobile-capture-consent-readiness.js";
 import { quarantineRoomTranscriptsForConsentChange } from "@/lib/server/capture-transcript-privacy";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
-import { captureRoomAccessWhere } from "@/lib/server/mobile-capture-room-join-diagnostics";
+import {
+  buildCaptureRoomJoinDiagnostic,
+  buildCaptureRoomSessionEntryProjection,
+  captureRoomAccessWhere,
+  paymentHoldForRoom,
+} from "@/lib/server/mobile-capture-room-join-diagnostics";
 import { sessionInvitationAccessWhere } from "@/lib/server/session-access";
 
 function isObject(value: unknown): value is Record<string, unknown> {
@@ -130,7 +135,7 @@ export async function GET(request: Request) {
   const room = await prisma.callRoom.findFirst({
     where: captureRoomAccessWhere(callRoomId, session.user),
     include: {
-      booking: true,
+      booking: { include: { paymentRecord: true } },
       participants: { where: { accessStatus: "ACTIVE" } },
       recordingConsents: true,
     },
@@ -322,7 +327,7 @@ export async function POST(request: Request) {
   const room = await prisma.callRoom.findFirst({
     where: captureRoomAccessWhere(callRoomId, session.user),
     include: {
-      booking: true,
+      booking: { include: { paymentRecord: true } },
       participants: { where: { accessStatus: "ACTIVE" } },
       recordingConsents: true,
     },
@@ -546,6 +551,23 @@ export async function POST(request: Request) {
   const selectedSourceConsentsReady =
     (!consent.canRecordAudio || allRegisteredParticipantConsentGranted) &&
     (!consent.canRecordVideo || allRegisteredParticipantVideoConsentGranted);
+  const roomAfterConsent = {
+    ...room,
+    participants,
+    recordingConsents: currentConsents,
+  };
+  const joinDiagnostic = buildCaptureRoomJoinDiagnostic({
+    room: roomAfterConsent,
+    user: session.user,
+  });
+  const entry = buildCaptureRoomSessionEntryProjection({
+    room: roomAfterConsent,
+    actorUserId: userId,
+    currentParticipant: participant,
+    providerCanJoin: joinDiagnostic.canJoin,
+    providerReadiness: joinDiagnostic.providerReadiness,
+    paymentBlocked: paymentHoldForRoom(roomAfterConsent).blocked,
+  });
   const canControlRoom = await actorCanControlRoom({
     prisma,
     room,
@@ -588,6 +610,13 @@ export async function POST(request: Request) {
       allRegisteredParticipantVideoConsentGranted,
       transcriptionConsentGrantedParticipantCount,
       allRegisteredParticipantTranscriptionConsentGranted,
+      entryReadiness: entry.entryReadiness,
+      canRecordNow:
+        entry.entryReadiness.permissions.canStartAudioRecording,
+      canRecordAudioNow:
+        entry.entryReadiness.permissions.canStartAudioRecording,
+      canRecordVideoNow:
+        entry.entryReadiness.permissions.canStartVideoRecording,
       nextAction:
         consent.status === "GRANTED"
           ? selectedSourceConsentsReady

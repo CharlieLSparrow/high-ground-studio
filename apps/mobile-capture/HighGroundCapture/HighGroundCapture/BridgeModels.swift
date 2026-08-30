@@ -2532,6 +2532,10 @@ struct MobileCaptureConsentUpdate: Codable {
     let allRegisteredParticipantVideoConsentGranted: Bool?
     var transcriptionConsentGrantedParticipantCount: Int? = nil
     var allRegisteredParticipantTranscriptionConsentGranted: Bool? = nil
+    let entryReadiness: MobileCaptureSessionEntryReadiness?
+    let canRecordNow: Bool?
+    let canRecordAudioNow: Bool?
+    let canRecordVideoNow: Bool?
     let nextAction: String?
 }
 
@@ -7918,9 +7922,18 @@ final class CaptureSessionClient: ObservableObject {
                 recordingConsentCanRecordVideo: update?.recordingConsentCanRecordVideo ?? session.recordingConsentCanRecordVideo,
                 recordingConsentCanTranscribe: update?.recordingConsentCanTranscribe ?? session.recordingConsentCanTranscribe,
                 recordingConsentVideoGranted: update?.recordingConsentVideoGranted ?? session.recordingConsentVideoGranted,
-                canRecordNow: session.canRecordNow && (update?.recordingConsentGranted ?? session.recordingConsentGranted),
-                canRecordAudioNow: session.canRecordAudioNow,
-                canRecordVideoNow: session.canRecordVideoNow,
+                canRecordNow:
+                    update?.canRecordNow
+                    ?? update?.entryReadiness?.permissions.canStartAudioRecording
+                    ?? (session.canRecordNow && (update?.recordingConsentGranted ?? session.recordingConsentGranted)),
+                canRecordAudioNow:
+                    update?.canRecordAudioNow
+                    ?? update?.entryReadiness?.permissions.canStartAudioRecording
+                    ?? session.canRecordAudioNow,
+                canRecordVideoNow:
+                    update?.canRecordVideoNow
+                    ?? update?.entryReadiness?.permissions.canStartVideoRecording
+                    ?? session.canRecordVideoNow,
                 consentRequiredParticipantCount: update?.consentRequiredParticipantCount ?? session.consentRequiredParticipantCount,
                 consentGrantedParticipantCount: update?.consentGrantedParticipantCount ?? session.consentGrantedParticipantCount,
                 allRegisteredParticipantConsentGranted: update?.allRegisteredParticipantConsentGranted ?? session.allRegisteredParticipantConsentGranted,
@@ -7928,6 +7941,7 @@ final class CaptureSessionClient: ObservableObject {
                 allRegisteredParticipantVideoConsentGranted: update?.allRegisteredParticipantVideoConsentGranted ?? session.allRegisteredParticipantVideoConsentGranted,
                 transcriptionConsentGrantedParticipantCount: update?.transcriptionConsentGrantedParticipantCount ?? session.transcriptionConsentGrantedParticipantCount,
                 allRegisteredParticipantTranscriptionConsentGranted: update?.allRegisteredParticipantTranscriptionConsentGranted ?? session.allRegisteredParticipantTranscriptionConsentGranted,
+                entryReadiness: update?.entryReadiness ?? session.entryReadiness,
                 captureReadiness: session.captureReadiness,
                 videoCaptureReadiness: session.videoCaptureReadiness,
                 journeySummary: session.journeySummary,

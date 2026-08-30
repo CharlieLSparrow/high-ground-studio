@@ -1,8 +1,11 @@
 import "server-only";
 
+import { buildQuipslySessionEntryReadiness } from "@high-ground/quipsly-domain/session-entry-readiness";
+
 import {
   buildMobileCaptureConsentVersions,
   latestMobileCaptureConsentForParticipant,
+  mobileCaptureAllPartiesAllowTranscription,
   mobileCaptureAllPartiesReady,
 } from "@/lib/server/mobile-capture-room-readiness";
 
@@ -31,6 +34,107 @@ export function paymentHoldForRoom(room: any) {
     paymentPolicy,
     paymentStatus: paymentStatus || "MISSING",
     bookingStatus: bookingStatus || "UNKNOWN",
+  };
+}
+
+/**
+ * One side-effect-free Session entry projection shared by join, consent, and
+ * any future lobby surface. A consent response must not invent a second set of
+ * rules for when recording becomes available.
+ */
+export function buildCaptureRoomSessionEntryProjection(args: {
+  room: any;
+  actorUserId: string;
+  currentParticipant?: any | null;
+  providerCanJoin: boolean;
+  providerReadiness: string;
+  paymentBlocked: boolean;
+}) {
+  const participants = [
+    ...(Array.isArray(args.room.participants) ? args.room.participants : []),
+  ];
+  if (
+    args.currentParticipant &&
+    !participants.some((item: any) => item.id === args.currentParticipant.id)
+  ) {
+    participants.push(args.currentParticipant);
+  }
+  const eligibleParticipants = participants.filter(
+    (item: any) => item?.role !== "OBSERVER" && Boolean(item?.userId),
+  );
+  const consentVersions = buildMobileCaptureConsentVersions({
+    participants: eligibleParticipants,
+    consents: Array.isArray(args.room.recordingConsents)
+      ? args.room.recordingConsents
+      : [],
+  });
+  const actorParticipant =
+    args.currentParticipant ??
+    eligibleParticipants.find((item: any) => item.userId === args.actorUserId) ??
+    null;
+  const actorConsentVersion = actorParticipant
+    ? consentVersions.find(
+        (version) => version.participantId === actorParticipant.id,
+      ) ?? null
+    : null;
+  const requiredParticipantCount =
+    String(args.room.purpose || "").toUpperCase() === "COACHING" ? 2 : 1;
+  const participantSetComplete =
+    eligibleParticipants.length >= requiredParticipantCount;
+  const actorAudioConsentGranted = actorConsentVersion
+    ? mobileCaptureAllPartiesReady([actorConsentVersion], "audio")
+    : false;
+  const actorVideoConsentGranted = actorConsentVersion
+    ? mobileCaptureAllPartiesReady([actorConsentVersion], "video")
+    : false;
+  const actorTranscriptionConsentGranted = actorConsentVersion
+    ? mobileCaptureAllPartiesAllowTranscription([actorConsentVersion])
+    : false;
+  const allParticipantRecordingConsentGranted =
+    participantSetComplete &&
+    mobileCaptureAllPartiesReady(consentVersions, "audio");
+  const allParticipantVideoConsentGranted =
+    participantSetComplete &&
+    mobileCaptureAllPartiesReady(consentVersions, "video");
+  const allParticipantTranscriptionConsentGranted =
+    participantSetComplete &&
+    mobileCaptureAllPartiesAllowTranscription(consentVersions);
+  const entryReadiness = buildQuipslySessionEntryReadiness({
+    roomStatus: args.room.status,
+    purpose: args.room.purpose,
+    actorAttached: Boolean(actorParticipant),
+    actorAudioConsentGranted,
+    actorVideoConsentGranted,
+    actorTranscriptionConsentGranted,
+    participantCount: eligibleParticipants.length,
+    requiredParticipantCount,
+    audioConsentGrantedParticipantCount: consentVersions.filter((version) =>
+      mobileCaptureAllPartiesReady([version], "audio"),
+    ).length,
+    videoConsentGrantedParticipantCount: consentVersions.filter((version) =>
+      mobileCaptureAllPartiesReady([version], "video"),
+    ).length,
+    transcriptionConsentGrantedParticipantCount: consentVersions.filter(
+      (version) => mobileCaptureAllPartiesAllowTranscription([version]),
+    ).length,
+    allParticipantAudioConsentGranted:
+      allParticipantRecordingConsentGranted,
+    allParticipantVideoConsentGranted,
+    allParticipantTranscriptionConsentGranted,
+    providerCanJoin: args.providerCanJoin,
+    providerReadiness: args.providerReadiness,
+    localCaptureAvailable: true,
+    paymentBlocked: args.paymentBlocked,
+  });
+
+  return {
+    actorAudioConsentGranted,
+    allParticipantRecordingConsentGranted,
+    allParticipantVideoConsentGranted,
+    allParticipantTranscriptionConsentGranted,
+    participantCount: eligibleParticipants.length,
+    requiredParticipantCount,
+    entryReadiness,
   };
 }
 
