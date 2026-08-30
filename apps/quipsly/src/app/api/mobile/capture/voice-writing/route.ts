@@ -21,7 +21,10 @@ import { resolveStudioProjectAccess } from "@/lib/server/studio-project-access";
 
 export const dynamic = "force-dynamic";
 
-const ON_DEVICE_TRANSCRIPT_PROVIDER = "apple-speech-transcriber-on-device";
+const DEVICE_CREATED_TRANSCRIPT_PROVIDERS = [
+  "apple-speech-transcriber-on-device",
+  "apple-speech-recognizer-service",
+];
 const SOURCELESS_WRITING_VERSION = "2";
 
 function record(value: unknown): Record<string, any> {
@@ -318,7 +321,7 @@ export async function GET(request: Request) {
     ? await prisma.transcriptJob.findMany({
       where: {
         requestedBy: actorUserId,
-        provider: ON_DEVICE_TRANSCRIPT_PROVIDER,
+        provider: { in: DEVICE_CREATED_TRANSCRIPT_PROVIDERS },
         status: "COMPLETED",
         providerRequestId: {
           in: transcriptRequestIds.map((requestId) => `apple-speech:${requestId}`),

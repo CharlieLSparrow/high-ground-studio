@@ -413,7 +413,8 @@ requireIncludes(
   "your voice notes and chosen recordings",
   "on-device speech stays scoped to user-started writing and selected recordings",
 );
-requireIncludes(appInfoText, "Audio stays on-device during recognition", "on-device speech disclosure does not imply an Apple upload");
+requireIncludes(appInfoText, "Recognition stays on-device when Apple supports it", "speech disclosure distinguishes device recognition from Apple service fallback");
+requireIncludes(appInfoText, "otherwise Apple may use its speech service", "speech disclosure names Apple service fallback");
 requireIncludes(appInfoText, "NSCameraUsageDescription", "camera usage string required by linked session SDK");
 requireIncludes(appInfoText, "only after you explicitly choose video", "camera usage explicit video choice");
 requireIncludes(appInfoText, "Audio recording does not use the camera", "camera usage audio boundary");
@@ -580,6 +581,7 @@ for (const needle of [
   "FileProtectionType.complete",
   ".withoutOverwriting",
   "clientRequestId: sidecar.clientRequestId",
+  "recognitionExecution = sidecar.recognitionExecution",
   "artifactURLs(for: recordingId",
   "expectedOwnerAccountID: stored.sidecar.ownerAccountId",
   "verifiedCloudSHA256",
@@ -594,7 +596,9 @@ for (const needle of [
   );
 }
 for (const needle of [
-  'const PROVIDER = "apple-speech-transcriber-on-device"',
+  'const ON_DEVICE_PROVIDER = "apple-speech-transcriber-on-device"',
+  'const APPLE_SPEECH_SERVICE_PROVIDER = "apple-speech-recognizer-service"',
+  "recognitionExecutionForEngine",
   "acquirePrismaAdvisoryTransactionLock",
   'asset.status !== "VERIFIED"',
   "mobileCaptureTranscriptProcessingGate",
@@ -1571,7 +1575,8 @@ for (const needle of [
   "CaptureSessionTranscriptAssembly",
   "sessionTranscriptAssemblyStatus",
   "participant recordings · one Session transcript",
-  "cloud ASR",
+  "Quipsly cloud ASR",
+  "Apple speech service",
   "CaptureTranscriptAssemblyStatus",
   "sessionTranscriptAssemblyAccessibilityLabel",
 ]) {

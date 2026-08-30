@@ -8,7 +8,9 @@ import { mobileCaptureTranscriptProcessingGate } from "@/lib/server/mobile-captu
 import { acquirePrismaAdvisoryTransactionLock } from "@/lib/server/prisma-advisory-lock";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 
-const PROVIDER = "apple-speech-transcriber-on-device";
+const ON_DEVICE_PROVIDER = "apple-speech-transcriber-on-device";
+const APPLE_SPEECH_SERVICE_PROVIDER = "apple-speech-recognizer-service";
+const RECOGNITION_EXECUTIONS = new Set(["on-device", "apple-speech-service"]);
 const MAXIMUM_REQUEST_BYTES = 4 * 1024 * 1024;
 const MAXIMUM_SEGMENTS = 12_000;
 const MAXIMUM_SEGMENT_CHARACTERS = 12_000;
@@ -90,7 +92,40 @@ function sourceGeneration(asset: any) {
   return text(manifest.storageGeneration, 240) || null;
 }
 
-function onDeviceTranscriptRoutingSummary(input: {
+function providerForRecognitionExecution(recognitionExecution: string) {
+  return recognitionExecution === "apple-speech-service"
+    ? APPLE_SPEECH_SERVICE_PROVIDER
+    : ON_DEVICE_PROVIDER;
+}
+
+function recognitionExecutionForEngine(engine: {
+  transcriber: string;
+  preset: string;
+  modelAssetStatus: string;
+}) {
+  const transcriber = engine.transcriber.toLowerCase();
+  const preset = engine.preset.toLowerCase();
+  const assetStatus = engine.modelAssetStatus.toLowerCase();
+  if (preset.includes("apple-service") || assetStatus === "apple-service") {
+    return "apple-speech-service";
+  }
+  if (
+    transcriber === "speechtranscriber"
+    || transcriber === "dictationtranscriber"
+    || preset.includes("on-device")
+    || assetStatus === "installed"
+    || assetStatus === "built-in"
+  ) {
+    return "on-device";
+  }
+  throw new OnDeviceTranscriptError(
+    400,
+    "APPLE_SPEECH_EXECUTION_UNVERIFIABLE",
+    "The Apple Speech engine evidence does not identify whether recognition ran on-device or through Apple's speech service.",
+  );
+}
+
+function appleSpeechTranscriptRoutingSummary(input: {
   asset: any;
   engine: {
     transcriber: string;
@@ -99,6 +134,7 @@ function onDeviceTranscriptRoutingSummary(input: {
     modelAssetStatus: string;
   };
   language: string;
+  provider: string;
 }) {
   const topology = captureTranscriptSourceTopology(input.asset);
   return {
@@ -110,7 +146,7 @@ function onDeviceTranscriptRoutingSummary(input: {
     speakerAuthority: topology.kind === "participant-isolated"
       ? "source-binding"
       : "unresolved",
-    provider: PROVIDER,
+    provider: input.provider,
     model: [input.engine.transcriber, input.engine.preset]
       .filter(Boolean)
       .join(" · ") || null,
@@ -224,6 +260,7 @@ export async function POST(request: Request) {
     const sourceByteCount = integerString(body.sourceByteCount);
     const sidecarSha256 = text(body.sidecarSha256, 64).toLowerCase();
     const language = text(body.language, 64);
+    const claimedRecognitionExecution = text(body.recognitionExecution, 40).toLowerCase();
     const engine = isObject(body.engine) ? body.engine : {};
     const device = isObject(body.device) ? body.device : {};
 
@@ -301,10 +338,27 @@ export async function POST(request: Request) {
       if (!SHA256_PATTERN.test(normalizedEngine.configurationHash)) {
         throw new OnDeviceTranscriptError(400, "ON_DEVICE_TRANSCRIPT_CONFIGURATION_HASH_INVALID", "The recognition configuration SHA-256 is required.");
       }
-      const routing = onDeviceTranscriptRoutingSummary({
+      if (claimedRecognitionExecution && !RECOGNITION_EXECUTIONS.has(claimedRecognitionExecution)) {
+        throw new OnDeviceTranscriptError(
+          400,
+          "APPLE_SPEECH_EXECUTION_INVALID",
+          "Recognition execution must be on-device or apple-speech-service.",
+        );
+      }
+      const recognitionExecution = recognitionExecutionForEngine(normalizedEngine);
+      if (claimedRecognitionExecution && claimedRecognitionExecution !== recognitionExecution) {
+        throw new OnDeviceTranscriptError(
+          409,
+          "APPLE_SPEECH_EXECUTION_MISMATCH",
+          "The claimed Apple Speech execution does not match the submitted engine evidence.",
+        );
+      }
+      const provider = providerForRecognitionExecution(recognitionExecution);
+      const routing = appleSpeechTranscriptRoutingSummary({
         asset,
         engine: normalizedEngine,
         language,
+        provider,
       });
 
       const immutableInput = {
@@ -314,6 +368,7 @@ export async function POST(request: Request) {
         sourceByteCount,
         sidecarSha256,
         language,
+        recognitionExecution,
         engine: normalizedEngine,
         device: normalizedDevice,
         segments,
@@ -321,18 +376,21 @@ export async function POST(request: Request) {
       const inputSha256 = sha256(stableJson(immutableInput));
       const providerRequestId = `apple-speech:${clientRequestId}`;
       const prior = await transaction.transcriptJob.findFirst({
-        where: { assetId: recordingAssetId, provider: PROVIDER, providerRequestId },
+        where: { assetId: recordingAssetId, providerRequestId },
         include: { _count: { select: { segments: true, words: true } } },
       });
       if (prior) {
         const priorResult = isObject(prior.resultJson) ? prior.resultJson : {};
-        if (priorResult.inputSha256 !== inputSha256) {
+        const exactLegacySidecarReplay = priorResult.sidecarSha256 === sidecarSha256
+          && text(prior.sourceSha256, 64).toLowerCase() === sourceSha256;
+        if (priorResult.inputSha256 !== inputSha256 && !exactLegacySidecarReplay) {
           throw new OnDeviceTranscriptError(409, "ON_DEVICE_TRANSCRIPT_IDEMPOTENCY_CONFLICT", "This request ID was already used for different transcript evidence.");
         }
         return {
           transcriptJobId: prior.id,
           segmentCount: prior._count?.segments ?? segments.length,
           idempotentReplay: true,
+          provider: prior.provider || provider,
         };
       }
 
@@ -342,7 +400,7 @@ export async function POST(request: Request) {
           roomId: asset.roomId,
           assetId: asset.id,
           status: "COMPLETED",
-          provider: PROVIDER,
+          provider,
           language,
           requestedBy: userId,
           startedAt: now,
@@ -359,7 +417,7 @@ export async function POST(request: Request) {
             sidecarSha256,
             sourceByteCount,
             sourceVerification: "recording-asset-status-size-and-sha256",
-            recognitionExecution: "on-device",
+            recognitionExecution,
             providerNetworkRequestMadeByQuipsly: false,
             speakerDiarization: "unavailable",
             humanPlaybackReviewRequired: true,
@@ -398,13 +456,13 @@ export async function POST(request: Request) {
         },
         select: { id: true },
       });
-      return { transcriptJobId: created.id, segmentCount: segments.length, idempotentReplay: false };
+      return { transcriptJobId: created.id, segmentCount: segments.length, idempotentReplay: false, provider };
     }, { isolationLevel: "Serializable", maxWait: 10_000, timeout: 30_000 });
 
     return NextResponse.json({
       ok: true,
       status: "COMPLETED",
-      provider: PROVIDER,
+      provider: result.provider,
       wordCount: 0,
       speakerDiarization: "unavailable",
       humanPlaybackReviewRequired: true,

@@ -3819,8 +3819,9 @@ final class CaptureExperienceUITests: XCTestCase {
         let assembly = app.descendants(matching: .any)["CaptureTranscriptAssemblyStatus"]
         XCTAssertTrue(assembly.waitForExistence(timeout: 5))
         XCTAssertTrue(assembly.label.contains("2 participant recordings"))
-        XCTAssertTrue(assembly.label.contains("2 on-device"))
-        XCTAssertTrue(assembly.label.contains("0 cloud ASR"))
+        XCTAssertTrue(assembly.label.contains("1 on-device"))
+        XCTAssertTrue(assembly.label.contains("1 Apple speech service"))
+        XCTAssertTrue(assembly.label.contains("0 Quipsly cloud ASR"))
         XCTAssertTrue(assembly.label.contains("Provisional sync"))
     }
 

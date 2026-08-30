@@ -54,7 +54,7 @@
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Quipsly uses the microphone when you join a call or explicitly start recording a coaching session, podcast, interview, or field note.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
-	<string>Quipsly transcribes your voice notes and chosen recordings on this iPhone so you can search, correct, and write from them. Audio stays on-device during recognition.</string>
+	<string>Quipsly uses Apple Speech to transcribe your voice notes and chosen recordings so you can search, correct, and write from them. Recognition stays on-device when Apple supports it; otherwise Apple may use its speech service.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

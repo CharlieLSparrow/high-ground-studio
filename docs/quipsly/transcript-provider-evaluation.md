@@ -124,10 +124,15 @@ per-recording locked transaction:
 - sidecar and recognition-configuration hashes; and
 - exact idempotency intent for the client request UUID.
 
-Acceptance creates one new immutable completed `TranscriptJob` version with
-provider `apple-speech-transcriber-on-device`. It creates no provider words,
-speaker labels, notes, tasks, goals, calendar events, messages, deliveries, or
-publication effects. Those remain separate human review decisions.
+Acceptance creates one new immutable completed `TranscriptJob` version. Nest
+uses provider `apple-speech-transcriber-on-device` only when the submitted
+engine evidence proves local recognition; the iOS 17–25 compatibility path is
+stored as `apple-speech-recognizer-service` when Apple processed the source
+through its speech service. Both paths are device-created submissions and make
+no Quipsly server-side speech-provider request, but they remain visibly distinct
+for privacy, cost, support, and accuracy analysis. The ingestion creates no
+provider words, speaker labels, notes, tasks, goals, calendar events, messages,
+deliveries, or publication effects.
 
 Automated evidence as of 2026-08-01:
 

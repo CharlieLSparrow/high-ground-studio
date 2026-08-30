@@ -1085,6 +1085,7 @@ private struct OnDeviceTranscriptSubmission: Encodable {
     let sourceByteCount: String
     let sidecarSha256: String
     let language: String
+    let recognitionExecution: String
     let engine: OnDeviceTranscriptSidecar.Engine
     let device: OnDeviceTranscriptSidecar.Device
     let segments: [OnDeviceTranscriptSegment]
@@ -1096,6 +1097,7 @@ private struct OnDeviceTranscriptSubmission: Encodable {
         sourceByteCount = String(sidecar.sourceByteCount)
         self.sidecarSha256 = sidecarSha256
         language = sidecar.language
+        recognitionExecution = sidecar.recognitionExecution
         engine = sidecar.engine
         device = sidecar.device
         segments = sidecar.segments

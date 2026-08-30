@@ -25,6 +25,7 @@ function body(overrides: Record<string, unknown> = {}) {
     sourceByteCount: "1024",
     sidecarSha256,
     language: "en-US",
+    recognitionExecution: "on-device",
     engine: {
       framework: "Speech",
       transcriber: "SpeechTranscriber",
@@ -230,6 +231,70 @@ describe("on-device transcript ingestion", () => {
         },
       }),
     }));
+  });
+
+  it("preserves Apple speech-service execution without calling it on-device or Quipsly cloud ASR", async () => {
+    const { create } = installPrisma();
+
+    const response = await post(body({
+      recognitionExecution: "apple-speech-service",
+      engine: {
+        framework: "Speech",
+        transcriber: "SFSpeechRecognizer",
+        preset: "url-final-time-indexed-apple-service-v1",
+        configurationHash,
+        modelAssetStatus: "apple-service",
+      },
+    }));
+    const payload = await response.json();
+
+    expect(response.status).toBe(201);
+    expect(payload).toMatchObject({
+      ok: true,
+      provider: "apple-speech-recognizer-service",
+      transcriptJobId: "job-device-1",
+    });
+    expect(create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        provider: "apple-speech-recognizer-service",
+        resultJson: expect.objectContaining({
+          recognitionExecution: "apple-speech-service",
+          providerNetworkRequestMadeByQuipsly: false,
+          processingControl: expect.objectContaining({
+            routing: expect.objectContaining({
+              provider: "apple-speech-recognizer-service",
+              model: "SFSpeechRecognizer · url-final-time-indexed-apple-service-v1",
+            }),
+          }),
+        }),
+      }),
+    }));
+  });
+
+  it("infers execution for an older Capture build but rejects contradictory execution evidence", async () => {
+    installPrisma();
+    const legacy = await post(body({ recognitionExecution: undefined }));
+    await expect(legacy.json()).resolves.toMatchObject({
+      ok: true,
+      provider: "apple-speech-transcriber-on-device",
+    });
+
+    installPrisma();
+    const contradiction = await post(body({
+      recognitionExecution: "on-device",
+      engine: {
+        framework: "Speech",
+        transcriber: "SFSpeechRecognizer",
+        preset: "url-final-time-indexed-apple-service-v1",
+        configurationHash,
+        modelAssetStatus: "apple-service",
+      },
+    }));
+    expect(contradiction.status).toBe(409);
+    await expect(contradiction.json()).resolves.toMatchObject({
+      ok: false,
+      errorCode: "APPLE_SPEECH_EXECUTION_MISMATCH",
+    });
   });
 
   it("replays the exact request without creating another transcript version", async () => {

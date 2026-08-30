@@ -479,7 +479,7 @@ struct CaptureTranscriptCorrectionDesk: Codable, Equatable {
                             sourceTopology: "participant-isolated",
                             participantLabel: participantLabel,
                             speakerAuthority: "source-binding",
-                            provider: "apple-speech-transcriber-on-device"
+                            provider: "apple-speech-recognizer-service"
                         ))
                     ),
                     .init(
@@ -3483,9 +3483,13 @@ struct CaptureTranscriptReviewView: View {
             let onDeviceCount = assembly.sources.filter {
                 $0.processing?.routing?.provider == "apple-speech-transcriber-on-device"
             }.count
-            let providerBackedCount = assembly.sources.filter {
+            let appleSpeechServiceCount = assembly.sources.filter {
+                $0.processing?.routing?.provider == "apple-speech-recognizer-service"
+            }.count
+            let quipslyCloudCount = assembly.sources.filter {
                 guard let provider = $0.processing?.routing?.provider else { return false }
                 return provider != "apple-speech-transcriber-on-device"
+                    && provider != "apple-speech-recognizer-service"
             }.count
             VStack(alignment: .leading, spacing: 10) {
                 HStack(alignment: .top, spacing: 12) {
@@ -3513,7 +3517,10 @@ struct CaptureTranscriptReviewView: View {
 
                 HStack(spacing: 8) {
                     Label("\(onDeviceCount) on-device", systemImage: "iphone.gen3.radiowaves.left.and.right")
-                    Label("\(providerBackedCount) cloud ASR", systemImage: "cloud")
+                    if appleSpeechServiceCount > 0 {
+                        Label("\(appleSpeechServiceCount) Apple service", systemImage: "apple.logo")
+                    }
+                    Label("\(quipslyCloudCount) Quipsly cloud ASR", systemImage: "cloud")
                 }
                 .font(.caption2.weight(.bold))
                 .foregroundStyle(CapturePalette.accent)
@@ -3539,7 +3546,8 @@ struct CaptureTranscriptReviewView: View {
                 sessionTranscriptAssemblyAccessibilityLabel(
                     assembly,
                     onDeviceCount: onDeviceCount,
-                    providerBackedCount: providerBackedCount
+                    appleSpeechServiceCount: appleSpeechServiceCount,
+                    quipslyCloudCount: quipslyCloudCount
                 )
             )
             .accessibilityIdentifier("CaptureTranscriptAssemblyStatus")
@@ -3549,7 +3557,8 @@ struct CaptureTranscriptReviewView: View {
     private func sessionTranscriptAssemblyAccessibilityLabel(
         _ assembly: CaptureSessionTranscriptAssembly,
         onDeviceCount: Int,
-        providerBackedCount: Int
+        appleSpeechServiceCount: Int,
+        quipslyCloudCount: Int
     ) -> String {
         let clockStatus: String
         if let clock = assembly.programClock {
@@ -3563,7 +3572,8 @@ struct CaptureTranscriptReviewView: View {
             sessionTranscriptAssemblyTitle(assembly),
             sessionTranscriptAssemblyDetail(assembly),
             "\(onDeviceCount) on-device",
-            "\(providerBackedCount) cloud ASR",
+            appleSpeechServiceCount > 0 ? "\(appleSpeechServiceCount) Apple speech service" : "",
+            "\(quipslyCloudCount) Quipsly cloud ASR",
             clockStatus,
         ]
         .filter { !$0.isEmpty }
@@ -3593,10 +3603,23 @@ struct CaptureTranscriptReviewView: View {
         let onDeviceCount = assembly.sources.filter {
             $0.processing?.routing?.provider == "apple-speech-transcriber-on-device"
         }.count
+        let appleSpeechServiceCount = assembly.sources.filter {
+            $0.processing?.routing?.provider == "apple-speech-recognizer-service"
+        }.count
+        let quipslyCloudCount = assembly.sources.filter {
+            guard let provider = $0.processing?.routing?.provider else { return false }
+            return provider != "apple-speech-transcriber-on-device"
+                && provider != "apple-speech-recognizer-service"
+        }.count
         if assembly.status == "assembled", assembly.sourceCount > 1 {
-            let recognition = onDeviceCount == assembly.sourceCount
-                ? "Each verified participant master arrived with device-created, source-bound timed text, so Quipsly did not run cloud ASR for these sources."
-                : "\(onDeviceCount) of \(assembly.sourceCount) verified participant masters arrived with device-created text; remaining source transcripts stay visibly provider-backed."
+            let recognition: String
+            if onDeviceCount == assembly.sourceCount {
+                recognition = "Each verified participant master arrived with on-device, source-bound timed text, so Quipsly did not run cloud ASR for these sources."
+            } else if onDeviceCount + appleSpeechServiceCount == assembly.sourceCount {
+                recognition = "\(onDeviceCount) source transcript\(onDeviceCount == 1 ? " was" : "s were") created on-device and \(appleSpeechServiceCount) used Apple's speech service. Quipsly did not run a separate cloud ASR job."
+            } else {
+                recognition = "\(onDeviceCount) source transcript\(onDeviceCount == 1 ? " was" : "s were") created on-device, \(appleSpeechServiceCount) used Apple's speech service, and \(quipslyCloudCount) used Quipsly cloud ASR."
+            }
             return "Each person's high-quality recording remains its own source. Quipsly aligns the timed passages on one reversible Session timeline. \(recognition)"
         }
         return assembly.reason

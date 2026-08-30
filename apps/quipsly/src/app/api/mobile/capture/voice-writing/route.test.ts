@@ -249,7 +249,12 @@ describe("mobile voice-writing continuation", () => {
     expect(findTranscripts).toHaveBeenCalledWith(expect.objectContaining({
       where: {
         requestedBy: "actor-1",
-        provider: "apple-speech-transcriber-on-device",
+        provider: {
+          in: [
+            "apple-speech-transcriber-on-device",
+            "apple-speech-recognizer-service",
+          ],
+        },
         status: "COMPLETED",
         providerRequestId: {
           in: [
