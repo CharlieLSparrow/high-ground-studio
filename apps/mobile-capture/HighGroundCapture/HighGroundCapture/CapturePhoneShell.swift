@@ -2096,6 +2096,14 @@ private struct CaptureWorkView: View {
         }
     }
 
+    private var selectedProjectSpaces: [CaptureWorkSpaceLocation] {
+        guard let projectID = selectedProject?.id else { return [] }
+        return CaptureWorkSpaceLocation.project(
+            model.scheduledSessions,
+            engagements: model.coachingEngagements
+        ).filter { $0.nestID == projectID }
+    }
+
     private var decisionsDisabled: Bool {
         model.usesPreviewData || client.isUsingProtectedCache || !AuthManager.shared.networkActionsAllowed
     }
@@ -2182,6 +2190,7 @@ private struct CaptureWorkView: View {
                 if normalizedQuery.count >= 2 {
                     workspaceSearchResults(proxy: proxy)
                 } else if let workspace {
+                    workspaceSpaces
                     projectSummary(workspace)
                     quickCapture
                     CaptureQuickEntrySyncStatus(model: model)
@@ -2470,56 +2479,6 @@ private struct CaptureWorkView: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 10) {
-            if !client.projects.isEmpty {
-                Text("Current Nest")
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(.secondary)
-                    .textCase(.uppercase)
-                    .tracking(0.6)
-                    .accessibilityHidden(true)
-
-                Button {
-                    showsNestSwitcher = true
-                } label: {
-                    HStack(spacing: 11) {
-                        Image(systemName: selectedProject?.isHomeNest == true ? "house.fill" : "q.circle.fill")
-                            .font(.title3.weight(.semibold))
-                            .foregroundStyle(CapturePalette.accent)
-                            .frame(width: 40, height: 40)
-                            .background(CapturePalette.accent.opacity(0.1), in: Circle())
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(selectedProject?.name ?? "Choose a Nest")
-                                .font(.headline)
-                                .foregroundStyle(.primary)
-                                .fixedSize(horizontal: false, vertical: true)
-                            Text(selectedProjectContextLabel)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                        Spacer()
-                        VStack(alignment: .trailing, spacing: 3) {
-                            Text("Switch")
-                                .font(.caption.weight(.semibold))
-                            Image(systemName: "chevron.right")
-                                .font(.caption.weight(.bold))
-                        }
-                        .foregroundStyle(CapturePalette.accent)
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(.horizontal, 12)
-                    .frame(minHeight: 60)
-                    .background(.background, in: RoundedRectangle(cornerRadius: 18))
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 18)
-                            .stroke(CapturePalette.accent.opacity(0.22))
-                    }
-                }
-                .accessibilityLabel("Current Nest")
-                .accessibilityValue("\(selectedProject?.name ?? "None selected"), \(selectedProjectContextLabel)")
-                .accessibilityHint("Choose a private, owned, or shared Nest.")
-                .accessibilityIdentifier("CaptureWorkProjectPicker")
-            }
-
             HStack(spacing: 10) {
                 Image(systemName: "magnifyingglass")
                     .foregroundStyle(.secondary)
@@ -2564,13 +2523,6 @@ private struct CaptureWorkView: View {
             }
         }
         .padding(.top, 10)
-    }
-
-    private var selectedProjectContextLabel: String {
-        guard let selectedProject else { return "Private and shared spaces" }
-        if selectedProject.isHomeNest { return "Only you" }
-        if selectedProject.role == "OWNER" { return "Owned by you" }
-        return "Shared with you"
     }
 
     private func selectProject(_ project: MobileCaptureWorkProject) {
@@ -2891,6 +2843,68 @@ private struct CaptureWorkView: View {
                 .stroke(.primary.opacity(0.09))
         }
         .accessibilityIdentifier("CaptureWorkProjectSummary")
+    }
+
+    @ViewBuilder
+    private var workspaceSpaces: some View {
+        if !selectedProjectSpaces.isEmpty {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(alignment: .firstTextBaseline) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("Spaces")
+                            .font(.title3.weight(.bold))
+                        Text("Open the relationship, episode, or project where the work belongs.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer(minLength: 8)
+                    Button("All") { showsNestSwitcher = true }
+                        .font(.caption.weight(.bold))
+                        .accessibilityLabel("Show all Nests and Spaces")
+                }
+
+                ForEach(selectedProjectSpaces.prefix(6)) { space in
+                    Button {
+                        openSpace(space)
+                    } label: {
+                        HStack(spacing: 12) {
+                            Image(systemName: space.kind.systemImage)
+                                .font(.headline.weight(.semibold))
+                                .foregroundStyle(.white)
+                                .frame(width: 40, height: 40)
+                                .background(
+                                    CapturePalette.accentGradient,
+                                    in: RoundedRectangle(cornerRadius: 13, style: .continuous)
+                                )
+                                .accessibilityHidden(true)
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(space.name)
+                                    .font(.headline)
+                                    .foregroundStyle(.primary)
+                                    .multilineTextAlignment(.leading)
+                                Text(space.detail)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .multilineTextAlignment(.leading)
+                            }
+                            Spacer(minLength: 8)
+                            Image(systemName: "chevron.right")
+                                .font(.caption.weight(.bold))
+                                .foregroundStyle(.tertiary)
+                                .accessibilityHidden(true)
+                        }
+                        .frame(maxWidth: .infinity, minHeight: 54, alignment: .leading)
+                        .captureCard(contentPadding: 12)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(space.name)
+                    .accessibilityValue(space.detail)
+                    .accessibilityHint("Opens this collaboration Space.")
+                    .accessibilityIdentifier("CaptureWorkSpace_\(space.id)")
+                }
+            }
+            .accessibilityIdentifier("CaptureWorkSpaces")
+        }
     }
 
     private func projectAccessLabel(_ project: MobileCaptureWorkProject) -> String {

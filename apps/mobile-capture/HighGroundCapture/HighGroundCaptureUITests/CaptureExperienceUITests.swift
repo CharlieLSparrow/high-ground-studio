@@ -2049,7 +2049,7 @@ final class CaptureExperienceUITests: XCTestCase {
     }
 
     func testNestsSearchLabelsPrivateOwnedAndSharedWorkAndOpensWritingInPlace() {
-        app.tabBars.buttons["Nests"].tap()
+        app.tabBars.buttons["Work"].tap()
         let searchField = app.descendants(matching: .any)["CaptureWorkSearchField"]
         XCTAssertTrue(searchField.waitForExistence(timeout: 5))
 
@@ -2075,11 +2075,11 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Charlie Home Nest · Only you"].exists)
 
         writing.tap()
-        let picker = app.descendants(matching: .any)["CaptureWorkProjectPicker"]
+        let picker = app.buttons["CaptureGlobalWorkLocation"]
         let privateNestSelected = expectation(
             for: NSPredicate(
                 format: "value CONTAINS %@",
-                "Charlie Home Nest, Only you"
+                "Charlie Home Nest, Work"
             ),
             evaluatedWith: picker
         )
@@ -2157,7 +2157,7 @@ final class CaptureExperienceUITests: XCTestCase {
     }
 
     func testWorkKeepsProjectsTasksGoalsNotesAndTagsTogether() {
-        app.tabBars.buttons["Nests"].tap()
+        app.tabBars.buttons["Work"].tap()
         let workScroll = app.scrollViews["CaptureWorkView"]
         XCTAssertTrue(workScroll.waitForExistence(timeout: 5))
         let newProject = app.buttons["CaptureWorkNewProject"]
@@ -2169,7 +2169,8 @@ final class CaptureExperienceUITests: XCTestCase {
             newProject.isEnabled,
             "Deterministic preview must expose New Project without pretending to create a canonical Nest."
         )
-        XCTAssertTrue(app.descendants(matching: .any)["CaptureWorkProjectPicker"].exists)
+        XCTAssertTrue(app.buttons["CaptureGlobalWorkLocation"].exists)
+        XCTAssertTrue(app.descendants(matching: .any)["CaptureWorkSpaces"].exists)
         XCTAssertTrue(app.descendants(matching: .any)["CaptureWorkProjectSummary"].exists)
         XCTAssertEqual(
             app.staticTexts["Access"].value as? String,
@@ -2291,8 +2292,8 @@ final class CaptureExperienceUITests: XCTestCase {
         app.buttons["CaptureQuickEntrySave"].tap()
         XCTAssertTrue(app.staticTexts["Preview only — no note, task, goal, or source was saved."].waitForExistence(timeout: 5))
 
-        app.tabBars.buttons["Nests"].tap()
-        let picker = app.descendants(matching: .any)["CaptureWorkProjectPicker"]
+        app.tabBars.buttons["Work"].tap()
+        let picker = app.buttons["CaptureGlobalWorkLocation"]
         reveal(picker)
         picker.tap()
         XCTAssertTrue(
@@ -2300,15 +2301,23 @@ final class CaptureExperienceUITests: XCTestCase {
             "Switching Nests should open one searchable, grouped destination surface."
         )
         for section in ["Private", "Owned by you", "Shared with you"] {
+            let sectionHeading = app.staticTexts[section]
+            for _ in 0..<8 where !sectionHeading.exists {
+                app.swipeUp()
+            }
             XCTAssertTrue(
-                app.staticTexts[section].exists,
+                sectionHeading.exists,
                 "The Nest switcher should expose the \(section.lowercased()) scope before someone changes destinations."
             )
         }
-        XCTAssertTrue(app.buttons["Charlie Home Nest"].waitForExistence(timeout: 3))
-        app.buttons["Charlie Home Nest"].tap()
+        let homeNest = app.buttons["Charlie Home Nest"]
+        for _ in 0..<8 where !homeNest.isHittable {
+            app.swipeDown()
+        }
+        XCTAssertTrue(homeNest.waitForExistence(timeout: 3))
+        homeNest.tap()
         XCTAssertTrue(
-            (picker.value as? String)?.contains("Charlie Home Nest, Only you") == true,
+            (picker.value as? String)?.contains("Charlie Home Nest, Work") == true,
             "The Nest picker should make the selected private destination clear without repeating its name below."
         )
         XCTAssertEqual(
@@ -2318,10 +2327,12 @@ final class CaptureExperienceUITests: XCTestCase {
         )
 
         picker.tap()
-        XCTAssertTrue(app.buttons["Doctoral research"].waitForExistence(timeout: 3))
-        app.buttons["Doctoral research"].tap()
+        let ownedNest = app.buttons["Doctoral research"]
+        reveal(ownedNest, searchAboveFirst: false)
+        XCTAssertTrue(ownedNest.waitForExistence(timeout: 3))
+        ownedNest.tap()
         XCTAssertTrue(
-            (picker.value as? String)?.contains("Doctoral research, Owned by you") == true,
+            (picker.value as? String)?.contains("Doctoral research, Work") == true,
             "A separately owned Nest should not be conflated with a private Home Nest or a space someone else shared."
         )
         XCTAssertEqual(
@@ -2331,10 +2342,12 @@ final class CaptureExperienceUITests: XCTestCase {
         )
 
         picker.tap()
-        XCTAssertTrue(app.buttons["High Ground Odyssey"].waitForExistence(timeout: 3))
-        app.buttons["High Ground Odyssey"].tap()
+        let sharedNest = app.buttons["High Ground Odyssey"]
+        reveal(sharedNest, searchAboveFirst: false)
+        XCTAssertTrue(sharedNest.waitForExistence(timeout: 3))
+        sharedNest.tap()
         XCTAssertTrue(
-            (picker.value as? String)?.contains("High Ground Odyssey, Shared with you") == true,
+            (picker.value as? String)?.contains("High Ground Odyssey, Work") == true,
             "Returning to shared work should preserve the same one-control navigation model."
         )
         XCTAssertEqual(app.staticTexts["Access"].value as? String, "Can edit")
@@ -5115,7 +5128,7 @@ final class CaptureExperienceUITests: XCTestCase {
         if app.scrollViews["CaptureAcrossNestsFollowThroughView"].exists {
             return
         }
-        let nests = app.tabBars.buttons["Nests"]
+        let nests = app.tabBars.buttons["Work"]
         XCTAssertTrue(nests.waitForExistence(timeout: 8))
         nests.tap()
         XCTAssertTrue(app.scrollViews["CaptureWorkView"].waitForExistence(timeout: 8))

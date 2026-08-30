@@ -1946,7 +1946,7 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         let app = try launchSignedInCaptureApp()
         tapRootTab("Work", in: app)
         XCTAssertTrue(app.scrollViews["CaptureWorkView"].waitForExistence(timeout: 20))
-        let projectPicker = app.descendants(matching: .any)["CaptureWorkProjectPicker"].firstMatch
+        let projectPicker = app.buttons["CaptureGlobalWorkLocation"].firstMatch
         XCTAssertTrue(projectPicker.waitForExistence(timeout: 10))
         projectPicker.tap()
         let projectChoice = app.buttons[projectName].firstMatch
@@ -4160,7 +4160,7 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         tapRootTab("Work", in: app)
         XCTAssertTrue(app.scrollViews["CaptureWorkView"].waitForExistence(timeout: 20))
 
-        let projectPicker = app.descendants(matching: .any)["CaptureWorkProjectPicker"].firstMatch
+        let projectPicker = app.buttons["CaptureGlobalWorkLocation"].firstMatch
         XCTAssertTrue(projectPicker.waitForExistence(timeout: 10))
         projectPicker.tap()
         let projectChoice = app.buttons[projectName].firstMatch

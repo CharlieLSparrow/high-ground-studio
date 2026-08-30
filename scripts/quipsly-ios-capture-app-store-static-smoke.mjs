@@ -1477,6 +1477,16 @@ for (const needle of [
   requireIncludes(capturePhoneShellText, needle, "persistent two-level Nest and Space location UX");
 }
 for (const needle of [
+  'case .work: "Work"',
+]) {
+  requireIncludes(captureExperienceModelText, needle, "familiar task-oriented primary navigation label");
+}
+requireExcludes(
+  capturePhoneShellText,
+  "CaptureWorkProjectPicker",
+  "Work does not repeat a second Nest picker beneath the persistent Nest and Space location bar",
+);
+for (const needle of [
   "private struct CaptureWorkSpaceLocation",
   "engagements: [MobileCaptureCoachingEngagement]",
   "session.coachingEngagementId",
@@ -1489,6 +1499,8 @@ for (const needle of [
   "onSelectSpace: selectGlobalSpace",
   "CaptureCoachingEngagementWorkspaceView(",
   "requestedCoachingEngagement = engagement",
+  'accessibilityIdentifier("CaptureWorkSpaces")',
+  'accessibilityIdentifier("CaptureWorkSpace_\\(space.id)")',
 ]) {
   requireIncludes(capturePhoneShellText, needle, "accessible collaboration Spaces projected inside each Nest");
 }

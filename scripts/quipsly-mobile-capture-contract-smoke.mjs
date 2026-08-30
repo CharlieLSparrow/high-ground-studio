@@ -1233,7 +1233,7 @@ function checkReviewDigestContractSources() {
       && capturePhoneShellText.includes("CaptureRootTab.library")
       && capturePhoneShellText.includes("CaptureRootTab.account")
       && captureExperienceModelText.includes('case .today: "Home"')
-      && captureExperienceModelText.includes('case .work: "Nests"')
+      && captureExperienceModelText.includes('case .work: "Work"')
       && capturePhoneShellText.includes("Original recordings stay on this iPhone until you choose to remove an eligible copy from Library."),
     "nativeReviewDigestOnSessionSurfaces",
     "The production iPhone root keeps Today, Record, Work, Library, and Account focused, preserves active capture across auth expiry, and retains protected offline recovery.",
