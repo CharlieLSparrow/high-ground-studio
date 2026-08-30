@@ -2127,8 +2127,8 @@ requireIncludes(
 );
 requireIncludes(
   transcriptReviewText,
-  "Confirm correct as heard",
-  "native transcript review exposes an honest playback-backed confirmation action",
+  'Button("Mark checked")',
+  "native transcript review exposes a clear optional playback-backed confirmation action",
 );
 requireIncludes(
   transcriptReviewText,
