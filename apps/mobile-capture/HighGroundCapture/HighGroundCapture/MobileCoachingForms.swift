@@ -1752,9 +1752,9 @@ struct MobileCoachingFormsSummaryCard: View {
             HStack(alignment: .center, spacing: 14) {
                 Image(systemName: "list.clipboard.fill")
                     .font(.title2.weight(.bold))
-                    .foregroundStyle(.purple)
+                    .foregroundStyle(CapturePalette.accent)
                     .frame(width: 46, height: 46)
-                    .background(.purple.opacity(0.12), in: Circle())
+                    .background(CapturePalette.accent.opacity(0.12), in: Circle())
                 VStack(alignment: .leading, spacing: 3) {
                     Text("Forms")
                         .font(.headline)
@@ -1870,7 +1870,7 @@ struct MobileCoachingFormsHomeView: View {
             Text(client.isCoach ? "COACHING FOLLOW-THROUGH" : "YOUR COACHING")
                 .font(.caption2.weight(.black))
                 .tracking(1.4)
-                .foregroundStyle(.purple)
+                .foregroundStyle(CapturePalette.accent)
             Text(client.isCoach ? "Useful reflection, without paperwork" : clientHeadline)
                 .font(.largeTitle.weight(.black))
                 .fixedSize(horizontal: false, vertical: true)
@@ -1935,7 +1935,7 @@ struct MobileCoachingFormsHomeView: View {
                 .padding(.vertical, 4)
         }
         .buttonStyle(.borderedProminent)
-        .tint(.purple)
+        .tint(CapturePalette.accent)
         .controlSize(.large)
         .disabled(
             client.isUsingProtectedCache
@@ -1951,9 +1951,9 @@ struct MobileCoachingFormsHomeView: View {
             HStack(spacing: 13) {
                 Image(systemName: "clock.arrow.trianglehead.counterclockwise.rotate.90")
                     .font(.headline.weight(.bold))
-                    .foregroundStyle(.purple)
+                    .foregroundStyle(CapturePalette.accent)
                     .frame(width: 42, height: 42)
-                    .background(.purple.opacity(0.12), in: Circle())
+                    .background(CapturePalette.accent.opacity(0.12), in: Circle())
                 VStack(alignment: .leading, spacing: 3) {
                     Text("Automatic rhythm")
                         .font(.headline)
@@ -1972,7 +1972,7 @@ struct MobileCoachingFormsHomeView: View {
             .background(.background, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
             .overlay {
                 RoundedRectangle(cornerRadius: 20, style: .continuous)
-                    .stroke(.purple.opacity(0.16), lineWidth: 1)
+                    .stroke(CapturePalette.accent.opacity(0.16), lineWidth: 1)
             }
         }
         .buttonStyle(.plain)
@@ -2038,7 +2038,7 @@ struct MobileCoachingFormsHomeView: View {
             assignmentCard(
                 assignment,
                 status: assignment.isSubmitted ? "Shared" : assignment.response == nil ? "Not started" : "Private draft",
-                color: assignment.isSubmitted ? .green : .purple,
+                color: assignment.isSubmitted ? .green : CapturePalette.accent,
                 symbol: assignment.isSubmitted ? "checkmark.circle.fill" : "square.and.pencil"
             )
         }
@@ -2117,7 +2117,7 @@ struct MobileCoachingFormsHomeView: View {
                     Task { await client.load() }
                 }
                 .buttonStyle(.borderedProminent)
-                .tint(.purple)
+                .tint(CapturePalette.accent)
             }
         }
         .frame(maxWidth: .infinity)
@@ -2239,7 +2239,7 @@ struct MobileCoachingFormResponseView: View {
             Text(purposeLabel(assignment.template.purpose).uppercased())
                 .font(.caption2.weight(.black))
                 .tracking(1.1)
-                .foregroundStyle(.purple)
+                .foregroundStyle(CapturePalette.accent)
                 .lineLimit(nil)
                 .fixedSize(horizontal: false, vertical: true)
                 .accessibilityLabel(purposeLabel(assignment.template.purpose))
@@ -2298,7 +2298,7 @@ struct MobileCoachingFormResponseView: View {
                 .frame(maxWidth: .infinity)
             }
             .buttonStyle(.borderedProminent)
-            .tint(.purple)
+            .tint(CapturePalette.accent)
             .controlSize(.large)
             .disabled(busy || client.isUsingProtectedCache || CaptureLaunchConfiguration.usesPreviewData)
             .accessibilityIdentifier("CaptureCoachingFormSubmit")
@@ -2337,7 +2337,7 @@ private struct MobileCoachingFormAnswerField: View {
                 if field.required {
                     Text("Required")
                         .font(.caption2.weight(.black))
-                        .foregroundStyle(.purple)
+                        .foregroundStyle(CapturePalette.accent)
                         .accessibilityLabel("required")
                 }
             }
@@ -2404,7 +2404,7 @@ private struct MobileCoachingFormAnswerField: View {
                             .font(.subheadline.weight(.black))
                             .frame(minWidth: 48, minHeight: 48)
                             .background(
-                                value?.numberValue == Double(number) ? Color.purple : Color.clear,
+                                value?.numberValue == Double(number) ? CapturePalette.accent : Color.clear,
                                 in: Circle()
                             )
                             .foregroundStyle(value?.numberValue == Double(number) ? .white : .primary)
@@ -2513,7 +2513,7 @@ private struct MobileCoachingFormAnswerField: View {
         Button(action: action) {
             HStack(spacing: 10) {
                 Image(systemName: selected ? "checkmark.circle.fill" : "circle")
-                    .foregroundStyle(selected ? .purple : .secondary)
+                    .foregroundStyle(selected ? CapturePalette.accent : .secondary)
                 Text(label)
                     .font(.subheadline.weight(.semibold))
                     .multilineTextAlignment(.leading)
@@ -2521,10 +2521,10 @@ private struct MobileCoachingFormAnswerField: View {
             }
             .padding(.horizontal, 14)
             .frame(minHeight: 48)
-            .background(selected ? Color.purple.opacity(0.1) : Color.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .background(selected ? CapturePalette.accent.opacity(0.1) : Color.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
             .overlay {
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .stroke(selected ? Color.purple.opacity(0.5) : Color.primary.opacity(0.09), lineWidth: 1)
+                    .stroke(selected ? CapturePalette.accent.opacity(0.5) : Color.primary.opacity(0.09), lineWidth: 1)
             }
         }
         .buttonStyle(.plain)
@@ -2558,7 +2558,7 @@ struct MobileCoachingFormCoachReviewView: View {
                     Text(purposeLabel(assignment.template.purpose).uppercased())
                         .font(.caption2.weight(.black))
                         .tracking(1.1)
-                        .foregroundStyle(.purple)
+                        .foregroundStyle(CapturePalette.accent)
                         .lineLimit(nil)
                         .fixedSize(horizontal: false, vertical: true)
                         .accessibilityLabel(purposeLabel(assignment.template.purpose))
@@ -2623,7 +2623,7 @@ struct MobileCoachingFormCoachReviewView: View {
                             .accessibilityIdentifier("CaptureCoachingFormAdjustFollowThrough")
                         }
                         .padding(14)
-                        .background(.purple.opacity(0.08), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                        .background(CapturePalette.accent.opacity(0.08), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
 
                         if !assignment.visibleOutcomePromotions.isEmpty {
                             MobileCoachingFormOutcomeReceipts(
@@ -2718,7 +2718,7 @@ struct MobileCoachingFormCoachReviewView: View {
             .frame(maxWidth: .infinity, minHeight: 48)
         }
         .buttonStyle(.borderedProminent)
-        .tint(.purple)
+        .tint(CapturePalette.accent)
         .disabled(
             selectedFieldIDs.isEmpty
                 || !assignment.canCoachPromoteOutcome
@@ -2764,15 +2764,15 @@ private struct MobileCoachingFormAnswerReadback: View {
             if selected {
                 Label("Selected for follow-through", systemImage: "checkmark.circle.fill")
                     .font(.caption2.weight(.black))
-                    .foregroundStyle(.purple)
+                    .foregroundStyle(CapturePalette.accent)
             }
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(selected ? Color.purple.opacity(0.1) : Color.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .background(selected ? CapturePalette.accent.opacity(0.1) : Color.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .stroke(selected ? Color.purple.opacity(0.55) : Color.clear, lineWidth: 1.5)
+                .stroke(selected ? CapturePalette.accent.opacity(0.55) : Color.clear, lineWidth: 1.5)
         }
         .accessibilityIdentifier("CaptureCoachingFormAnswer_\(field.id)")
     }
@@ -3063,7 +3063,7 @@ struct MobileCoachingSendFormView: View {
                             .foregroundStyle(.secondary)
                         Text("\(template.definition.fields.count) question\(template.definition.fields.count == 1 ? "" : "s") · \(purposeLabel(template.purpose))")
                             .font(.caption2.weight(.bold))
-                            .foregroundStyle(.purple)
+                            .foregroundStyle(CapturePalette.accent)
                     }
                     .padding(.vertical, 4)
                 }

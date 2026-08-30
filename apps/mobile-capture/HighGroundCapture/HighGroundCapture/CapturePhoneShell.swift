@@ -22,27 +22,25 @@ struct CapturePhoneShell: View {
     @Binding var visibleTab: CaptureRootTab
 
     var body: some View {
-        captureTabs
+        VStack(spacing: 0) {
+            activeCaptureBanner
+            if visibleTab != .account {
+                CaptureWorkLocationBar(
+                    nestName: requestedCoachingEngagement?.projectName.nonempty
+                        ?? visibleContextNest?.name
+                        ?? "My Nest",
+                    nestIsPrivate: visibleContextNest?.isHomeNest ?? true,
+                    spaceName: visibleContextSpaceName,
+                    switchDisabled: model.isSessionContextLocked,
+                    onSwitch: { showsGlobalNestSwitcher = true }
+                )
+            }
+            captureTabs
+                .modifier(CaptureBottomNavigationEdgeEffect())
+        }
             .environmentObject(subscriptionStore)
             .tint(CapturePalette.accent)
             .foregroundStyle(CapturePalette.primaryText)
-            .modifier(CaptureBottomNavigationEdgeEffect())
-            .safeAreaInset(edge: .top, spacing: 0) {
-                VStack(spacing: 0) {
-                    activeCaptureBanner
-                    if visibleTab != .account {
-                        CaptureWorkLocationBar(
-                            nestName: requestedCoachingEngagement?.projectName.nonempty
-                                ?? visibleContextNest?.name
-                                ?? "My Nest",
-                            nestIsPrivate: visibleContextNest?.isHomeNest ?? true,
-                            spaceName: visibleContextSpaceName,
-                            switchDisabled: model.isSessionContextLocked,
-                            onSwitch: { showsGlobalNestSwitcher = true }
-                        )
-                    }
-                }
-            }
         .sheet(isPresented: $showsNewSession) {
             NewCaptureSessionSheet(
                 model: model,
@@ -21558,13 +21556,13 @@ private struct CaptureWorkLocationBar: View {
                     Text(nestName)
                         .font(.caption.weight(.bold))
                         .foregroundStyle(CapturePalette.primaryText)
-                        .lineLimit(1)
+                        .fixedSize(horizontal: false, vertical: true)
                     HStack(spacing: 5) {
                         Image(systemName: "chevron.right")
                             .font(.system(size: 8, weight: .black))
                             .accessibilityHidden(true)
                         Text(spaceName)
-                            .lineLimit(1)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(CapturePalette.secondaryText)
@@ -21615,7 +21613,14 @@ struct CaptureCanvas: View {
     }
 }
 
-private enum CapturePalette {
+/// Shared semantic color tokens for the shipping Capture experience.
+///
+/// Tan and brown establish the calm reading canvas; teal identifies the
+/// ordinary interactive/collaborative path. Feature screens should consume
+/// these tokens instead of inventing a new brand color for each workflow.
+/// Red, orange, green, and the audio meter remain reserved for familiar
+/// recording, warning, success, and signal meanings.
+enum CapturePalette {
     static let canvas = adaptive(
         light: UIColor(red: 0.95, green: 0.90, blue: 0.82, alpha: 1),
         dark: UIColor(red: 0.105, green: 0.067, blue: 0.052, alpha: 1)

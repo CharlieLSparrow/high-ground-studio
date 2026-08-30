@@ -601,11 +601,11 @@ struct MobileCoachingSessionPreparationCard: View {
                     HStack(alignment: .top, spacing: 12) {
                         Image(systemName: "scope")
                             .font(.title3.weight(.bold))
-                            .foregroundStyle(.purple)
+                            .foregroundStyle(CapturePalette.accent)
                         VStack(alignment: .leading, spacing: 3) {
                             Text("OPTIONAL · BEFORE THE CALL")
                                 .font(.caption2.weight(.black))
-                                .foregroundStyle(.purple)
+                                .foregroundStyle(CapturePalette.accent)
                             Text("Plan this Session")
                                 .font(.headline)
                             Text("A little focus helps you spend the call on what matters. Nothing here is required to join.")

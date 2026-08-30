@@ -198,7 +198,7 @@ struct MobileCoachingFormAutomationView: View {
             Text("AUTOMATIC RHYTHM")
                 .font(.caption2.weight(.black))
                 .tracking(1.1)
-                .foregroundStyle(.purple)
+                .foregroundStyle(CapturePalette.accent)
             Text("Set it once. Stay in control.")
                 .font(.largeTitle.weight(.black))
                 .fixedSize(horizontal: false, vertical: true)
@@ -220,7 +220,7 @@ struct MobileCoachingFormAutomationView: View {
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.borderedProminent)
-            .tint(.purple)
+            .tint(CapturePalette.accent)
             .controlSize(.large)
             .disabled(client.isUsingProtectedCache || client.isAutomationBusy)
             .accessibilityIdentifier("CaptureCoachingAutomationAdd")
@@ -316,7 +316,7 @@ struct MobileCoachingFormAutomationView: View {
         .background(.background, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .stroke(.purple.opacity(0.16), lineWidth: 1)
+                .stroke(CapturePalette.accent.opacity(0.16), lineWidth: 1)
         }
     }
 
@@ -343,7 +343,7 @@ struct MobileCoachingFormAutomationView: View {
                             Task { _ = await client.saveAutomationOverride(policyID: policy.id, bookingID: session.id, action: "SEND_NOW") }
                         }
                         .buttonStyle(.borderedProminent)
-                        .tint(.purple)
+                        .tint(CapturePalette.accent)
                         .accessibilityIdentifier("CaptureCoachingAutomationSendNow_\(policy.id)_\(session.id)")
                         Button("Skip once") {
                             Task { _ = await client.saveAutomationOverride(policyID: policy.id, bookingID: session.id, action: "SKIP") }
@@ -428,7 +428,7 @@ struct MobileCoachingFormAutomationView: View {
                     }
                 }
                 .buttonStyle(.borderedProminent)
-                .tint(.purple)
+                .tint(CapturePalette.accent)
                 .disabled(client.isAutomationBusy || CaptureLaunchConfiguration.usesPreviewData)
                 .accessibilityIdentifier("CaptureCoachingAutomationSave")
                 Button("Cancel") { draft = nil }

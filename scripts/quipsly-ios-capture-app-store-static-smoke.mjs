@@ -73,6 +73,8 @@ const files = {
   voiceWritingDraftStore: path.join(sourceRoot, "VoiceWritingDraftStore.swift"),
   subscriptionStore: path.join(sourceRoot, "QuipslySubscriptionStore.swift"),
   captureCoachingHome: path.join(sourceRoot, "CaptureCoachingHome.swift"),
+  mobileCoachingFormAutomation: path.join(sourceRoot, "MobileCoachingFormAutomation.swift"),
+  mobileCoachingForms: path.join(sourceRoot, "MobileCoachingForms.swift"),
   mobileCoachingSessionPreparation: path.join(sourceRoot, "MobileCoachingSessionPreparation.swift"),
   captureCalendarEventEditor: path.join(sourceRoot, "CaptureCalendarEventEditor.swift"),
   captureSupportSnapshot: path.join(sourceRoot, "CaptureSupportSnapshot.swift"),
@@ -230,6 +232,8 @@ const episodeWatchText = read(files.episodeWatch);
 const episodeManuscriptText = read(files.episodeManuscript);
 const episodeChatText = read(files.episodeChat);
 const captureCoachingHomeText = read(files.captureCoachingHome);
+const mobileCoachingFormAutomationText = read(files.mobileCoachingFormAutomation);
+const mobileCoachingFormsText = read(files.mobileCoachingForms);
 const mobileCoachingSessionPreparationText = read(files.mobileCoachingSessionPreparation);
 const sessionConversationText = read(files.sessionConversation);
 const uploadText = read(files.uploadManager);
@@ -1554,6 +1558,23 @@ for (const needle of [
   "static let accentGradient = LinearGradient(",
 ]) {
   requireIncludes(capturePhoneShellText, needle, "adaptive warm tan and dark brown Capture visual foundation");
+}
+assert(
+  !capturePhoneShellText.includes("private enum CapturePalette"),
+  "Capture's semantic palette remains reusable across native feature surfaces.",
+  { label: "shared Capture semantic palette is available to feature surfaces" },
+);
+for (const [text, surface] of [
+  [captureCoachingHomeText, "coaching home"],
+  [mobileCoachingFormAutomationText, "coaching form rhythm"],
+  [mobileCoachingFormsText, "coaching forms"],
+  [mobileCoachingSessionPreparationText, "Session preparation"],
+]) {
+  assert(
+    !/(?:Color\.)?(?:purple|indigo|blue|cyan|mint|teal)\b/.test(text),
+    "Primary coaching surfaces use the shared brand accent instead of unrelated system feature colors.",
+    { label: `${surface} uses the shared semantic accent` },
+  );
 }
 for (const needle of [
   "@Environment(\\.scenePhase) private var scenePhase",

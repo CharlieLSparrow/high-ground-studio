@@ -1679,9 +1679,9 @@ struct CaptureCoachingHomeCard: View {
         HStack(spacing: 14) {
             Image(systemName: "person.2.wave.2.fill")
                 .font(.title2)
-                .foregroundStyle(.teal)
+                .foregroundStyle(CapturePalette.accent)
                 .frame(width: 38, height: 38)
-                .background(.teal.opacity(0.1), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .background(CapturePalette.accent.opacity(0.1), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
             VStack(alignment: .leading, spacing: 4) {
                 Text("Coaching")
                     .font(.headline)
@@ -1822,20 +1822,6 @@ struct CaptureCoachingHomeView: View {
         .background(CaptureCanvas())
         .navigationTitle("Coaching")
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            if client.isCoach {
-                ToolbarItem(placement: .primaryAction) {
-                    Button {
-                        showsNewAppointment = true
-                    } label: {
-                        Label("Schedule", systemImage: "calendar.badge.plus")
-                    }
-                    .disabled(client.isMutating || client.isUsingProtectedCache)
-                    .accessibilityHint("Schedules a coaching session and invites the client.")
-                    .accessibilityIdentifier("CaptureCoachingScheduleToolbar")
-                }
-            }
-        }
         .refreshable {
             guard !model.usesPreviewData else { return }
             async let coachingLoad: Void = client.load()
@@ -1854,7 +1840,7 @@ struct CaptureCoachingHomeView: View {
                 Text("NEXT STEPS")
                     .font(.caption2.weight(.black))
                     .tracking(1.5)
-                    .foregroundStyle(.teal)
+                    .foregroundStyle(CapturePalette.accent)
                 Text(items.count == 1 ? "One useful next step" : "Useful next steps")
                     .font(.title2.weight(.black))
                 Text("Open what helps. Requests, recording repairs, and unfinished follow-up stay visible without blocking the rest of your work.")
@@ -1937,9 +1923,9 @@ struct CaptureCoachingHomeView: View {
         switch tone {
         case "live": return .green
         case "attention": return .orange
-        case "upcoming": return .blue
-        case "follow-up": return .purple
-        default: return .teal
+        case "upcoming": return CapturePalette.accent
+        case "follow-up": return CapturePalette.accent
+        default: return CapturePalette.accent
         }
     }
 
@@ -2115,7 +2101,7 @@ struct CaptureCoachingHomeView: View {
         VStack(alignment: .leading, spacing: 10) {
             Label("Your coaching space", systemImage: "lock.shield.fill")
                 .font(.headline)
-                .foregroundStyle(.teal)
+                .foregroundStyle(CapturePalette.accent)
             Text("Notes, goals, tasks, recordings, and forms shared with your coach stay together here between Sessions. Private coach material stays private.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
@@ -2202,7 +2188,7 @@ struct CaptureCoachingHomeView: View {
                     VStack(alignment: .leading, spacing: 8) {
                         Label("Waiting for \(request.coachLabel)", systemImage: "clock.fill")
                             .font(.headline)
-                            .foregroundStyle(.teal)
+                            .foregroundStyle(CapturePalette.accent)
                         Text(request.offeringTitle ?? "Coaching session")
                             .font(.subheadline.weight(.semibold))
                         Text(request.scheduleLabel)
@@ -2295,7 +2281,7 @@ struct CaptureCoachingHomeView: View {
                 Spacer(minLength: 12)
                 Image(systemName: "person.badge.plus")
                     .font(.title2)
-                    .foregroundStyle(.teal)
+                    .foregroundStyle(CapturePalette.accent)
                     .accessibilityHidden(true)
             }
             createActionLayout {
@@ -2437,10 +2423,10 @@ struct CaptureCoachingHomeView: View {
                             Spacer(minLength: 8)
                             Text(booking.status.replacingOccurrences(of: "_", with: " ").capitalized)
                                 .font(.caption2.weight(.bold))
-                                .foregroundStyle(.teal)
+                                .foregroundStyle(CapturePalette.accent)
                                 .padding(.horizontal, 8)
                                 .padding(.vertical, 5)
-                                .background(.teal.opacity(0.1), in: Capsule())
+                                .background(CapturePalette.accent.opacity(0.1), in: Capsule())
                         }
                         if client.isCoach {
                             HStack {
@@ -3199,7 +3185,7 @@ struct CaptureCoachingEngagementWorkspaceView: View {
                 Text(relationshipPulseEyebrow(session: pulseSession))
                     .font(.caption2.weight(.black))
                     .textCase(.uppercase)
-                    .foregroundStyle(.teal)
+                    .foregroundStyle(CapturePalette.accent)
                 Text(relationshipPulseTitle(session: pulseSession))
                     .font(.title3.weight(.black))
                 Text(relationshipPulseDetail(session: pulseSession))
@@ -3217,7 +3203,7 @@ struct CaptureCoachingEngagementWorkspaceView: View {
                         .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.borderedProminent)
-                    .tint(relationshipPulseIsLive(pulseSession) ? .red : .teal)
+                    .tint(relationshipPulseIsLive(pulseSession) ? .red : CapturePalette.accent)
                     .accessibilityIdentifier("CaptureCoachingRelationshipPrimaryAction")
                 } else {
                     Button {
@@ -3238,7 +3224,7 @@ struct CaptureCoachingEngagementWorkspaceView: View {
                             .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.borderedProminent)
-                    .tint(.teal)
+                    .tint(CapturePalette.accent)
                     .disabled(
                         canonicalPriority?.kind == "REVIEW_OVERDUE_COMMITMENTS"
                             ? false
@@ -3277,7 +3263,7 @@ struct CaptureCoachingEngagementWorkspaceView: View {
                 VStack(alignment: .leading, spacing: 5) {
                     Label("Bring forward", systemImage: carryForward.systemImage)
                         .font(.caption.weight(.bold))
-                        .foregroundStyle(.teal)
+                        .foregroundStyle(CapturePalette.accent)
                     Text(carryForward.title)
                         .font(.subheadline.weight(.bold))
                     if let detail = carryForward.detail?.nonemptyCoachingText {
@@ -3289,7 +3275,7 @@ struct CaptureCoachingEngagementWorkspaceView: View {
                 }
                 .padding(12)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(.teal.opacity(0.08), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .background(CapturePalette.accent.opacity(0.08), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
             }
 
             if !privateNotes.isEmpty {
@@ -3456,7 +3442,7 @@ struct CaptureCoachingEngagementWorkspaceView: View {
     ) -> some View {
         HStack(spacing: 6) {
             Image(systemName: systemImage)
-                .foregroundStyle(.teal)
+                .foregroundStyle(CapturePalette.accent)
             Text("\(value)")
                 .font(.caption.weight(.black))
             Text(label)
@@ -3555,7 +3541,7 @@ struct CaptureCoachingEngagementWorkspaceView: View {
             HStack(alignment: .top) {
                 Label(entry.kindLabel, systemImage: icon(for: entry))
                     .font(.caption.weight(.bold))
-                    .foregroundStyle(entry.visibility == "PRIVATE" ? .orange : .teal)
+                    .foregroundStyle(entry.visibility == "PRIVATE" ? .orange : CapturePalette.accent)
                 Spacer()
             }
 
@@ -4131,7 +4117,7 @@ private struct MobileCoachingAvailabilitySheet: View {
                                     .frame(maxWidth: .infinity, minHeight: 32)
                                     .foregroundStyle(selectedDays.contains(day) ? .white : .primary)
                                     .background(
-                                        selectedDays.contains(day) ? Color.teal : Color.secondary.opacity(0.12),
+                                        selectedDays.contains(day) ? CapturePalette.accent : Color.secondary.opacity(0.12),
                                         in: Capsule()
                                     )
                             }
