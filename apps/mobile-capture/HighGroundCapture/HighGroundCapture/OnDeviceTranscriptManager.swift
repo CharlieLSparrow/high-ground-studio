@@ -1,4 +1,5 @@
 @preconcurrency import AVFoundation
+import BackgroundTasks
 import Combine
 import CryptoKit
 import Foundation
@@ -143,9 +144,12 @@ enum OnDeviceTranscriptStore {
     }
 
     private static func writeProtected(_ data: Data, to url: URL) throws {
-        try data.write(to: url, options: [.withoutOverwriting, .completeFileProtection])
+        try data.write(
+            to: url,
+            options: [.withoutOverwriting, .completeFileProtectionUntilFirstUserAuthentication]
+        )
         try FileManager.default.setAttributes(
-            [.protectionKey: FileProtectionType.complete],
+            [.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication],
             ofItemAtPath: url.path
         )
         var values = URLResourceValues()
@@ -213,10 +217,12 @@ enum OnDeviceTranscriptStore {
             try FileManager.default.createDirectory(
                 at: directory,
                 withIntermediateDirectories: true,
-                attributes: [.protectionKey: FileProtectionType.complete]
+                attributes: [
+                    .protectionKey: FileProtectionType.completeUntilFirstUserAuthentication,
+                ]
             )
             try FileManager.default.setAttributes(
-                [.protectionKey: FileProtectionType.complete],
+                [.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication],
                 ofItemAtPath: directory.path
             )
             var values = URLResourceValues()
@@ -701,6 +707,8 @@ final class OnDeviceTranscriptManager: ObservableObject {
     static let shared = OnDeviceTranscriptManager()
 
     @Published private(set) var phases: [UUID: OnDeviceTranscriptPhase] = [:]
+    private var activeTasks: [UUID: Task<Void, Never>] = [:]
+    private var backgroundProtectionIdentifiers: [UUID: UIBackgroundTaskIdentifier] = [:]
 
     private let apiBaseURL = normalizedNestAPIBaseURL(
         Bundle.main.object(forInfoDictionaryKey: "QUIPSLY_API_BASE_URL") as? String
@@ -741,8 +749,19 @@ final class OnDeviceTranscriptManager: ObservableObject {
         allowModelDownload: Bool = false,
         locale: Locale = Locale(identifier: "en-US")
     ) {
-        guard !phase(for: recording.id).isBusy else { return }
-        Task { await transcribe(recording: recording, fileURL: fileURL, allowModelDownload: allowModelDownload, locale: locale) }
+        guard !phase(for: recording.id).isBusy,
+              activeTasks[recording.id] == nil else { return }
+        startProtectedWork(
+            recordingID: recording.id,
+            name: "Transcribe recording"
+        ) { [weak self] in
+            await self?.transcribe(
+                recording: recording,
+                fileURL: fileURL,
+                allowModelDownload: allowModelDownload,
+                locale: locale
+            )
+        }
     }
 
     /// “Speak to write” is one user intent, not a recording followed by a
@@ -781,8 +800,132 @@ final class OnDeviceTranscriptManager: ObservableObject {
     }
 
     func submitSavedTranscript(recording: LocalRecording) {
-        guard !phase(for: recording.id).isBusy else { return }
-        Task { await submit(recording: recording) }
+        guard !phase(for: recording.id).isBusy,
+              activeTasks[recording.id] == nil else { return }
+        startProtectedWork(
+            recordingID: recording.id,
+            name: "Attach recording transcript"
+        ) { [weak self] in
+            await self?.submit(recording: recording)
+        }
+    }
+
+    /// Reconciles transcript intent from the durable recording ledger rather
+    /// than relying on a person to revisit one particular Library row. Work is
+    /// serialized so a launch with several long masters cannot make every
+    /// speech engine compete for memory at once.
+    @discardableResult
+    func resumeEligibleRecordings(
+        maximumRecordings: Int? = nil,
+        retryFailures: Bool = false
+    ) async -> Int {
+        LocalRecordingLibrary.shared.activateOwner(AuthManager.currentStoredOwnerID())
+        var processed = 0
+        for recording in LocalRecordingLibrary.shared.recordings {
+            guard !Task.isCancelled else { break }
+            if let maximumRecordings, processed >= maximumRecordings { break }
+            if retryFailures, case .failed = phase(for: recording.id) {
+                phases[recording.id] = nil
+            }
+            restoreState(for: recording)
+            let currentPhase = phase(for: recording.id)
+            if currentPhase.isBusy { continue }
+            if case .failed = currentPhase { continue }
+            if case .attached = currentPhase { continue }
+
+            if let stored = try? OnDeviceTranscriptStore.load(for: recording.id) {
+                if (try? OnDeviceTranscriptStore.loadSubmissionReceipt(
+                    for: recording.id,
+                    clientRequestId: stored.sidecar.clientRequestId
+                )) != nil {
+                    continue
+                }
+                guard recording.status.isVerified else { continue }
+                submitSavedTranscript(recording: recording)
+                await waitForActiveTask(recordingID: recording.id)
+                processed += 1
+                continue
+            }
+
+            guard recording.shouldBeginAutomaticOnDeviceTranscript,
+                  currentPhase == .idle,
+                  recording.status.isPlaybackEligible,
+                  recording.transcriptJobId?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty != false,
+                  let fileURL = LocalRecordingLibrary.shared.fileURL(for: recording) else {
+                continue
+            }
+            beginAutomaticTranscript(recording: recording, fileURL: fileURL)
+            await waitForActiveTask(recordingID: recording.id)
+            processed += 1
+        }
+        return processed
+    }
+
+    func hasPendingEligibleWork() -> Bool {
+        LocalRecordingLibrary.shared.recordings.contains { recording in
+            guard recording.shouldBeginAutomaticOnDeviceTranscript,
+                  recording.transcriptJobId?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty != false else {
+                return false
+            }
+            let currentPhase = phase(for: recording.id)
+            if case .failed = currentPhase { return false }
+            if case .attached = currentPhase { return false }
+            if case .modelDownloadRequired = currentPhase { return false }
+            if let stored = try? OnDeviceTranscriptStore.load(for: recording.id) {
+                let receipt = try? OnDeviceTranscriptStore.loadSubmissionReceipt(
+                    for: recording.id,
+                    clientRequestId: stored.sidecar.clientRequestId
+                )
+                return receipt == nil && recording.status.isVerified
+            }
+            return recording.status.isPlaybackEligible
+                && LocalRecordingLibrary.shared.fileURL(for: recording) != nil
+        }
+    }
+
+    private func startProtectedWork(
+        recordingID: UUID,
+        name: String,
+        operation: @escaping @MainActor () async -> Void
+    ) {
+        OnDeviceTranscriptBackgroundCoordinator.shared.schedule()
+        let protectionIdentifier = UIApplication.shared.beginBackgroundTask(
+            withName: "Quipsly: \(name)"
+        ) { [weak self] in
+            Task { @MainActor in
+                self?.interruptForSystemExpiration(recordingID: recordingID)
+            }
+        }
+        backgroundProtectionIdentifiers[recordingID] = protectionIdentifier
+        activeTasks[recordingID] = Task { [weak self] in
+            await operation()
+            self?.finishProtectedWork(recordingID: recordingID)
+        }
+    }
+
+    private func waitForActiveTask(recordingID: UUID) async {
+        guard let activeTask = activeTasks[recordingID] else { return }
+        await withTaskCancellationHandler {
+            await activeTask.value
+        } onCancel: {
+            Task { @MainActor in
+                OnDeviceTranscriptManager.shared.interruptForSystemExpiration(
+                    recordingID: recordingID
+                )
+            }
+        }
+    }
+
+    private func interruptForSystemExpiration(recordingID: UUID) {
+        activeTasks[recordingID]?.cancel()
+    }
+
+    private func finishProtectedWork(recordingID: UUID) {
+        activeTasks[recordingID] = nil
+        if let identifier = backgroundProtectionIdentifiers.removeValue(forKey: recordingID),
+           identifier != .invalid {
+            UIApplication.shared.endBackgroundTask(identifier)
+        }
     }
 
     private func transcribe(
@@ -816,11 +959,13 @@ final class OnDeviceTranscriptManager: ObservableObject {
             let before = try await Task.detached(priority: .utility) {
                 try OnDeviceTranscriptSource.fingerprint(fileURL)
             }.value
+            try Task.checkCancellation()
             phases[recording.id] = .transcribing
             let preparedAudio = try await OnDeviceTranscriptSource.audioFileURL(
                 for: fileURL,
                 mediaKind: recording.effectiveMediaKind
             )
+            try Task.checkCancellation()
             defer {
                 if preparedAudio.isTemporary { try? FileManager.default.removeItem(at: preparedAudio.url) }
             }
@@ -893,10 +1038,12 @@ final class OnDeviceTranscriptManager: ObservableObject {
                     ? "built-in"
                     : "apple-service"
             }
+            try Task.checkCancellation()
             let after = try await Task.detached(priority: .utility) {
                 try OnDeviceTranscriptSource.fingerprint(fileURL)
             }.value
             guard before == after else { throw OnDeviceTranscriptFailure.sourceChanged }
+            try Task.checkCancellation()
 
             let configuration = "Speech|\(transcriber)|\(preset)|final-only|audio-time-range|\(language)"
             let sidecar = OnDeviceTranscriptSidecar(
@@ -939,7 +1086,12 @@ final class OnDeviceTranscriptManager: ObservableObject {
         } catch OnDeviceTranscriptFailure.modelDownloadRequired(let localeIdentifier) {
             phases[recording.id] = .modelDownloadRequired(locale: localeIdentifier)
         } catch {
-            phases[recording.id] = .failed(message: error.localizedDescription, retryable: true)
+            if Task.isCancelled || error is CancellationError {
+                phases[recording.id] = .idle
+                OnDeviceTranscriptBackgroundCoordinator.shared.schedule()
+            } else {
+                phases[recording.id] = .failed(message: error.localizedDescription, retryable: true)
+            }
         }
     }
 
@@ -1073,7 +1225,82 @@ final class OnDeviceTranscriptManager: ObservableObject {
                 segmentCount: stored.sidecar.segments.count
             )
         } catch {
-            phases[recording.id] = .failed(message: error.localizedDescription, retryable: true)
+            if Task.isCancelled || error is CancellationError {
+                let segmentCount = (try? OnDeviceTranscriptStore.load(for: recording.id))?
+                    .sidecar.segments.count ?? 0
+                phases[recording.id] = recording.status.isVerified
+                    ? .savedLocally(segmentCount: segmentCount)
+                    : .waitingForVerifiedUpload(segmentCount: segmentCount)
+                OnDeviceTranscriptBackgroundCoordinator.shared.schedule()
+            } else {
+                phases[recording.id] = .failed(message: error.localizedDescription, retryable: true)
+            }
+        }
+    }
+}
+
+@MainActor
+final class OnDeviceTranscriptBackgroundCoordinator {
+    static let shared = OnDeviceTranscriptBackgroundCoordinator()
+    static let processingTaskIdentifier = "com.highgroundodyssey.HighGroundCapture.transcription"
+
+    private var isRegistered = false
+    private var activeProcessingWork: Task<Void, Never>?
+
+    private init() {}
+
+    func register() {
+        guard !isRegistered else { return }
+        isRegistered = BGTaskScheduler.shared.register(
+            forTaskWithIdentifier: Self.processingTaskIdentifier,
+            using: nil
+        ) { task in
+            guard let processingTask = task as? BGProcessingTask else {
+                task.setTaskCompleted(success: false)
+                return
+            }
+            Task { @MainActor [weak self] in
+                self?.handle(processingTask)
+            }
+        }
+    }
+
+    func schedule(earliestBeginDate: Date = Date().addingTimeInterval(60)) {
+        guard !CaptureLaunchConfiguration.usesPreviewData else { return }
+        BGTaskScheduler.shared.cancel(taskRequestWithIdentifier: Self.processingTaskIdentifier)
+        let request = BGProcessingTaskRequest(identifier: Self.processingTaskIdentifier)
+        request.earliestBeginDate = earliestBeginDate
+        request.requiresExternalPower = false
+        request.requiresNetworkConnectivity = false
+        do {
+            try BGTaskScheduler.shared.submit(request)
+        } catch {
+            // Foreground and launch reconciliation remain authoritative. The
+            // system scheduler is an additional durable opportunity, and iOS
+            // may legitimately reject it when background refresh is disabled.
+            print("Could not schedule transcript recovery: \(error.localizedDescription)")
+        }
+    }
+
+    private func handle(_ task: BGProcessingTask) {
+        activeProcessingWork?.cancel()
+        task.expirationHandler = { [weak self] in
+            Task { @MainActor in self?.activeProcessingWork?.cancel() }
+        }
+        activeProcessingWork = Task { [weak self] in
+            guard let self else {
+                task.setTaskCompleted(success: false)
+                return
+            }
+            _ = await OnDeviceTranscriptManager.shared.resumeEligibleRecordings(
+                maximumRecordings: 1
+            )
+            let completed = !Task.isCancelled
+            task.setTaskCompleted(success: completed)
+            activeProcessingWork = nil
+            if OnDeviceTranscriptManager.shared.hasPendingEligibleWork() {
+                schedule()
+            }
         }
     }
 }

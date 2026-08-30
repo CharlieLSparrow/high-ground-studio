@@ -11,6 +11,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
+        OnDeviceTranscriptBackgroundCoordinator.shared.register()
         // Create the background URLSession during launch even when SwiftUI does
         // not visit upload UI, then reconcile daemon-owned tasks with the ledger.
         DispatchQueue.main.async {

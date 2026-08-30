@@ -134,6 +134,25 @@ for privacy, cost, support, and accuracy analysis. The ingestion creates no
 provider words, speaker labels, notes, tasks, goals, calendar events, messages,
 deliveries, or publication effects.
 
+### Device lifecycle and recovery
+
+The finalized local recording ledger is also the durable transcription work
+queue. Capture starts recognition immediately after a consent-eligible source
+closes, but correctness does not depend on that one process lifetime or on a
+person opening a Library row. The app reconciles missing sidecars at launch,
+foreground return, and account-partition changes. A finite UIKit background
+assertion protects work that started in the foreground; a registered
+`BGProcessingTask` handles deferred one-source-at-a-time recovery and honors
+system expiration by cancelling before any sidecar is committed.
+
+Source masters, transcript sidecars, and submission receipts use iOS complete
+protection until first user authentication. That keeps the artifacts encrypted
+across restart before the first unlock while allowing the operating system to
+resume explicitly scheduled work after the owner has unlocked the phone once.
+Cancellation or termination never mutates the source: the next eligible pass
+fingerprints the complete master again and writes a new protected sidecar only
+after finalized timed text and the before/after source hash agree.
+
 Automated evidence as of 2026-08-01:
 
 - focused Nest ingestion and cloud-run route suites: 11 tests passed;

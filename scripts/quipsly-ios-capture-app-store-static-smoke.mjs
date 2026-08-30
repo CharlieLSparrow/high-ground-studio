@@ -421,6 +421,13 @@ requireIncludes(appInfoText, "Audio recording does not use the camera", "camera 
 requireIncludes(providerRoomText, "configuration.supportsVideo = true", "CallKit supports the user-controlled native video path");
 requireIncludes(providerRoomText, "action.isVideo = false", "calls still begin with camera off by default");
 requireIncludes(appInfoText, "UIBackgroundModes", "background audio mode");
+requireIncludes(appInfoText, "BGTaskSchedulerPermittedIdentifiers", "system-scheduled transcript recovery is declared");
+requireIncludes(appInfoText, "com.highgroundodyssey.HighGroundCapture.transcription", "transcript recovery task identifier is stable");
+requireRegex(
+  appInfoText,
+  /<key>UIBackgroundModes<\/key>[\s\S]*?<string>processing<\/string>/,
+  "background processing mode supports deferred transcript recovery",
+);
 requireIncludes(appInfoText, "ITSAppUsesNonExemptEncryption", "export compliance declaration");
 requireRegex(
   appInfoText,
@@ -578,7 +585,8 @@ for (const needle of [
   "result.range.start.seconds",
   "OnDeviceTranscriptSource.fingerprint(fileURL)",
   "guard before == after",
-  "FileProtectionType.complete",
+  "Task.checkCancellation()",
+  "FileProtectionType.completeUntilFirstUserAuthentication",
   ".withoutOverwriting",
   "clientRequestId: sidecar.clientRequestId",
   "recognitionExecution = sidecar.recognitionExecution",
@@ -588,11 +596,36 @@ for (const needle of [
   "verifiedCloudSizeBytes",
   'speakerDiarization: "unavailable"',
   "humanPlaybackReviewRequired: true",
+  "func resumeEligibleRecordings(",
+  "beginBackgroundTask(",
+  "BGProcessingTaskRequest",
+  "maximumRecordings: 1",
 ]) {
   requireIncludes(
     onDeviceTranscriptManagerText,
     needle,
     "on-device transcript evidence remains protected, source-bound, and explicit",
+  );
+}
+for (const needle of [
+  "OnDeviceTranscriptBackgroundCoordinator.shared.register()",
+]) {
+  requireIncludes(
+    appDelegateText,
+    needle,
+    "transcript background recovery is registered during application launch",
+  );
+}
+for (const needle of [
+  "await OnDeviceTranscriptManager.shared.resumeEligibleRecordings(",
+  "case .active:",
+  "case .background:",
+  ".quipslyCaptureAccountIdentityDidChange",
+]) {
+  requireIncludes(
+    captureAppText,
+    needle,
+    "launch foreground and identity changes reconcile durable transcript intent",
   );
 }
 for (const needle of [

@@ -9,6 +9,7 @@ import SwiftUI
 
 @main
 struct HighGroundCaptureApp: App {
+    @Environment(\.scenePhase) private var scenePhase
     @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     @StateObject private var audioCapture = AudioCaptureController()
     @StateObject private var videoCapture = VideoCaptureController()
@@ -32,6 +33,43 @@ struct HighGroundCaptureApp: App {
                 .environmentObject(deepLinkRouter)
                 .onOpenURL { url in
                     deepLinkRouter.receive(url)
+                }
+                .task {
+                    await OnDeviceTranscriptManager.shared.resumeEligibleRecordings(
+                        retryFailures: true
+                    )
+                }
+                .onChange(of: scenePhase) { _, phase in
+                    switch phase {
+                    case .active:
+                        Task {
+                            await OnDeviceTranscriptManager.shared.resumeEligibleRecordings(
+                                retryFailures: true
+                            )
+                        }
+                    case .background:
+                        if OnDeviceTranscriptManager.shared.hasPendingEligibleWork() {
+                            OnDeviceTranscriptBackgroundCoordinator.shared.schedule()
+                        }
+                    case .inactive:
+                        break
+                    @unknown default:
+                        break
+                    }
+                }
+                .onReceive(
+                    NotificationCenter.default.publisher(
+                        for: .quipslyCaptureAccountIdentityDidChange
+                    )
+                ) { _ in
+                    Task {
+                        // LocalRecordingLibrary intentionally publishes the
+                        // new account partition on the next run-loop turn.
+                        await Task.yield()
+                        await OnDeviceTranscriptManager.shared.resumeEligibleRecordings(
+                            retryFailures: true
+                        )
+                    }
                 }
         }
     }

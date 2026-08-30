@@ -47,6 +47,10 @@
 	<string>249115653261-7vj9ksn320b0d800uqvdmvupqa85vba4.apps.googleusercontent.com</string>
 	<key>GIDServerClientID</key>
 	<string>249115653261-g6lvadv4e1a64eu50u0glkepamtq709b.apps.googleusercontent.com</string>
+	<key>BGTaskSchedulerPermittedIdentifiers</key>
+	<array>
+		<string>com.highgroundodyssey.HighGroundCapture.transcription</string>
+	</array>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 	<key>NSCameraUsageDescription</key>
@@ -80,6 +84,7 @@
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>audio</string>
+		<string>processing</string>
 		<string>voip</string>
 	</array>
 	<key>UILaunchScreen</key>
