@@ -53,4 +53,18 @@ describe('Quipsly host routing', () => {
       'https://nest.quipsly.com/work?q=episode',
     )
   })
+
+  it.each([
+    '/.well-known/apple-app-site-association',
+    '/open/capture/write',
+    '/open/capture/writing/a17f4c12-0000-4000-8000-000000000033',
+  ])('serves the public Capture handoff directly without a redirect: %s', (path) => {
+    const response = proxy(
+      request(`https://quipsly.com:8080${path}`, 'quipsly.com'),
+    )
+
+    expect(response.status).toBe(200)
+    expect(response.headers.get('location')).toBeNull()
+    expect(response.headers.get('x-middleware-next')).toBe('1')
+  })
 })

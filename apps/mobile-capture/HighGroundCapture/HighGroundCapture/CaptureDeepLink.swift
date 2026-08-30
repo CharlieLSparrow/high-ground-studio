@@ -109,6 +109,12 @@ struct CaptureVoiceWritingDeepLink: Equatable {
                     && $0.value?.lowercased() == "capture"
             }) else { return nil }
             rawDraftID = parts[1]
+        case ("https", "quipsly.com", let parts)
+            where parts.count == 4
+                && parts[0] == "open"
+                && parts[1] == "capture"
+                && parts[2] == "writing":
+            rawDraftID = parts[3]
         default:
             return nil
         }
@@ -144,6 +150,9 @@ struct CaptureStartVoiceWritingDeepLink: Equatable {
         switch (scheme, host, pathParts) {
         case ("quipsly", "write", let parts) where parts.isEmpty,
              ("quipsly", "voice-note", let parts) where parts.isEmpty:
+            break
+        case ("https", "quipsly.com", let parts)
+            where parts == ["open", "capture", "write"]:
             break
         case ("https", "nest.quipsly.com", let parts)
             where parts == ["write"]:

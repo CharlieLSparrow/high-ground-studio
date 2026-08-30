@@ -931,7 +931,7 @@ export function VoiceWritingEditor({ draftId }: { draftId: string }) {
         <p className="text-xs font-black uppercase tracking-wide text-[#87663d]">Keep going by voice</p>
         <p className="mt-2 text-sm font-semibold leading-6 text-[#765f40]">Your next recording appends to this same writing automatically.</p>
         <a
-          href={`quipsly://writing/${encodeURIComponent(draft.draftId)}?action=continue`}
+          href={`https://quipsly.com/open/capture/writing/${encodeURIComponent(draft.draftId)}`}
           className="mt-4 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-full bg-[#3e2f21] px-5 text-sm font-black text-white shadow-sm transition hover:bg-[#241b13]"
         >
           <Smartphone className="h-4 w-4" aria-hidden="true" />

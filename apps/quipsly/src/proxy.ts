@@ -4,6 +4,7 @@ import type { NextRequest } from 'next/server'
 const marketingPathPrefixes = [
   '/creator',
   '/help',
+  '/open',
   '/philosophy',
   '/pricing',
   '/privacy',
@@ -32,6 +33,7 @@ function isPublicAssetPath(pathname: string) {
     pathname.startsWith('/apple-touch-icon') ||
     pathname.startsWith('/quipsly') ||
     pathname.startsWith('/brand-') ||
+    pathname.startsWith('/.well-known/') ||
     pathname === '/site.webmanifest' ||
     pathname === '/robots.txt'
   )

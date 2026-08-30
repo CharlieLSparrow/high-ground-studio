@@ -37,6 +37,10 @@ struct CaptureDeepLinkHarness {
             "https://nest.quipsly.com/writing/\(draftID.uuidString.lowercased())?open=capture",
             draftID: draftID
         )
+        expectWriting(
+            "https://quipsly.com/open/capture/writing/\(draftID.uuidString.lowercased())",
+            draftID: draftID
+        )
         expectWritingRejected(
             "https://nest.quipsly.com/writing/\(draftID.uuidString.lowercased())"
         )
@@ -51,6 +55,7 @@ struct CaptureDeepLinkHarness {
         expectNewWriting("quipsly://write")
         expectNewWriting("quipsly://voice-note")
         expectNewWriting("https://nest.quipsly.com/write?open=capture")
+        expectNewWriting("https://quipsly.com/open/capture/write")
         expectNewWritingRejected("https://nest.quipsly.com/write")
         expectNewWritingRejected("https://evil.example/write?open=capture")
         expectNewWritingRejected("quipsly://write?draftId=private-document")

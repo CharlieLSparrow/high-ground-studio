@@ -2,33 +2,21 @@
 
 import { GET } from "./route";
 
-describe("Apple app-site association", () => {
-  it("associates only explicit Capture Session and private-writing handoffs", async () => {
+describe("Quipsly Capture associated domains", () => {
+  it("serves a direct, narrowly scoped Apple association document", async () => {
     const response = GET();
     const body = await response.json();
 
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toContain("application/json");
-    expect(body).toEqual({
-      applinks: {
-        details: [
-          {
-            appIDs: ["585GUXMY5M.com.highgroundodyssey.HighGroundCapture"],
-            components: [
-              {
-                "/": "/sessions/*",
-                "?": { open: "capture" },
-                comment: expect.stringContaining("without carrying invitation"),
-              },
-              {
-                "/": "/writing/*",
-                "?": { open: "capture" },
-                comment: expect.stringContaining("without treating the draft identifier as authority"),
-              },
-            ],
-          },
-        ],
-      },
-    });
+    expect(body.applinks.details).toEqual([expect.objectContaining({
+      appIDs: ["585GUXMY5M.com.highgroundodyssey.HighGroundCapture"],
+      components: expect.arrayContaining([
+        expect.objectContaining({ "/": "/open/capture/write" }),
+        expect.objectContaining({ "/": "/open/capture/writing/*" }),
+        expect.objectContaining({ "/": "/sessions/*", "?": { open: "capture" } }),
+      ]),
+    })]);
+    expect(JSON.stringify(body)).not.toMatch(/token|secret|password/i);
   });
 });

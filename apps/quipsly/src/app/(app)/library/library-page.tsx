@@ -281,7 +281,7 @@ export default async function LibraryPage({ searchParams }: { searchParams?: Pro
             <form action={createDocumentAction.bind(null, library.homeNest.slug, "note")}>
               <button type="submit" className="inline-flex min-h-12 items-center gap-2 rounded-full bg-[#3e2f21] px-5 py-3 text-xs font-black uppercase tracking-wide text-white shadow-sm"><FilePlus2 size={17} aria-hidden="true" />New note</button>
             </form>
-            <a href="quipsly://write" className="inline-flex min-h-12 items-center gap-2 rounded-full border border-[#9dbeb2] bg-[#eff9f5] px-5 py-3 text-xs font-black uppercase tracking-wide text-[#244f42]"><Mic2 size={17} aria-hidden="true" />Speak on iPhone</a>
+            <a href="https://quipsly.com/open/capture/write" className="inline-flex min-h-12 items-center gap-2 rounded-full border border-[#9dbeb2] bg-[#eff9f5] px-5 py-3 text-xs font-black uppercase tracking-wide text-[#244f42]"><Mic2 size={17} aria-hidden="true" />Speak on iPhone</a>
           </div>
           <p className="mt-2 text-xs font-semibold text-[#715a3e]">Start here or on iPhone, then continue the same private writing on either device.</p>
         </div> : null}
