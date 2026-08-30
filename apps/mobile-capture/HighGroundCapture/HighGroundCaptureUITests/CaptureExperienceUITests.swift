@@ -2133,6 +2133,10 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(
             app.otherElements["CaptureNestSwitcher"].waitForExistence(timeout: 5)
         )
+        XCTAssertTrue(
+            app.staticTexts["Recent Spaces"].exists,
+            "A Space someone just opened should remain one tap away instead of requiring them to reconstruct the Nest hierarchy."
+        )
         let researchNest = app.buttons[
             "CaptureNestSwitcherChoice_preview-doctoral-research"
         ]

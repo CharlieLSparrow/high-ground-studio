@@ -284,6 +284,7 @@ struct CapturePhoneShell: View {
     }
 
     private func selectGlobalSpace(_ space: CaptureWorkSpaceLocation) {
+        CaptureRecentSpaceStore.remember(space.id)
         if let engagementID = space.coachingEngagementID,
            let engagement = model.coachingEngagements.first(where: {
                $0.id == engagementID
@@ -1732,6 +1733,20 @@ private struct CaptureWorkSpaceLocation: Identifiable, Equatable {
     }
 }
 
+private enum CaptureRecentSpaceStore {
+    private static let key = "quipsly.capture.recent-space-ids"
+    private static let limit = 6
+
+    static var ids: [String] {
+        UserDefaults.standard.stringArray(forKey: key) ?? []
+    }
+
+    static func remember(_ spaceID: String) {
+        let next = [spaceID] + ids.filter { $0 != spaceID }
+        UserDefaults.standard.set(Array(next.prefix(limit)), forKey: key)
+    }
+}
+
 private struct CaptureNestSwitcher: View {
     @Environment(\.dismiss) private var dismiss
     @State private var searchText = ""
@@ -1786,6 +1801,20 @@ private struct CaptureNestSwitcher: View {
         }
     }
 
+    private var recentSpaces: [CaptureWorkSpaceLocation] {
+        guard normalizedQuery.isEmpty else { return [] }
+        let positions = Dictionary(
+            uniqueKeysWithValues: CaptureRecentSpaceStore.ids.enumerated().map {
+                ($0.element, $0.offset)
+            }
+        )
+        return spaces
+            .filter { positions[$0.id] != nil }
+            .sorted {
+                (positions[$0.id] ?? .max) < (positions[$1.id] ?? .max)
+            }
+    }
+
     var body: some View {
         NavigationStack {
             Group {
@@ -1793,6 +1822,7 @@ private struct CaptureNestSwitcher: View {
                     ContentUnavailableView.search(text: normalizedQuery)
                 } else {
                     List {
+                        recentSpaceSection
                         spaceSection
                         otherSpaceSection
                         nestSection("Private", projects: privateProjects)
@@ -1821,6 +1851,15 @@ private struct CaptureNestSwitcher: View {
     }
 
     @ViewBuilder
+    private var recentSpaceSection: some View {
+        if !recentSpaces.isEmpty {
+            Section("Recent Spaces") {
+                spaceRows(recentSpaces)
+            }
+        }
+    }
+
+    @ViewBuilder
     private var spaceSection: some View {
         if let selectedNest, !selectedNestSpaces.isEmpty {
             Section("Spaces in \(selectedNest.name)") {
@@ -1842,6 +1881,7 @@ private struct CaptureNestSwitcher: View {
     private func spaceRows(_ rows: [CaptureWorkSpaceLocation]) -> some View {
         ForEach(rows) { space in
             Button {
+                CaptureRecentSpaceStore.remember(space.id)
                 onSelectSpace(space)
                 dismiss()
             } label: {
@@ -2542,6 +2582,7 @@ private struct CaptureWorkView: View {
     }
 
     private func openSpace(_ space: CaptureWorkSpaceLocation) {
+        CaptureRecentSpaceStore.remember(space.id)
         if let engagementID = space.coachingEngagementID,
            let engagement = model.coachingEngagements.first(where: {
                $0.id == engagementID

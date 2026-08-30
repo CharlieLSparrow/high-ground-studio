@@ -1501,6 +1501,9 @@ for (const needle of [
   "requestedCoachingEngagement = engagement",
   'accessibilityIdentifier("CaptureWorkSpaces")',
   'accessibilityIdentifier("CaptureWorkSpace_\\(space.id)")',
+  "private enum CaptureRecentSpaceStore",
+  'Section("Recent Spaces")',
+  "CaptureRecentSpaceStore.remember(space.id)",
 ]) {
   requireIncludes(capturePhoneShellText, needle, "accessible collaboration Spaces projected inside each Nest");
 }
