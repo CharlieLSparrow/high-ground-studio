@@ -52,6 +52,11 @@ git diff --cached --quiet
 if [[ "${MOCK_RUNNER_FAIL:-0}" == "1" ]]; then
   exit 42
 fi
+
+if [[ -n "${MOCK_CREATE_XCTEST_DEVICE_ID:-}" ]]; then
+  mkdir -p "${QUIPSLY_CAPTURE_XCTEST_DEVICE_ROOT}/${MOCK_CREATE_XCTEST_DEVICE_ID}"
+  printf 'disposable test device\n' >"${QUIPSLY_CAPTURE_XCTEST_DEVICE_ROOT}/${MOCK_CREATE_XCTEST_DEVICE_ID}/fixture.txt"
+fi
 MOCK
 chmod +x \
   "${fixture_repo}/scripts/release/quipsly-capture-release-from-commit.sh" \
@@ -66,6 +71,11 @@ git -C "$fixture_repo" add \
 git -C "$fixture_repo" commit -qm "test: committed release fixture"
 source_revision="$(git -C "$fixture_repo" rev-parse HEAD)"
 printf 'must not enter release\n' >"${fixture_repo}/uncommitted-only.txt"
+fixture_xctest_root="${fixture_root}/XCTestDevices"
+preexisting_xctest_device="11111111-1111-4111-8111-111111111111"
+created_xctest_device="22222222-2222-4222-8222-222222222222"
+mkdir -p "${fixture_xctest_root}/${preexisting_xctest_device}"
+printf 'keep me\n' >"${fixture_xctest_root}/${preexisting_xctest_device}/fixture.txt"
 
 if MOCK_RECEIPT_PATH="$receipt" \
   QUIPSLY_CAPTURE_MIN_FREE_GIB=999999999 \
@@ -79,6 +89,8 @@ fi
   fail "The committed runner must not start after the disk-capacity gate fails."
 
 MOCK_RECEIPT_PATH="$receipt" \
+MOCK_CREATE_XCTEST_DEVICE_ID="$created_xctest_device" \
+QUIPSLY_CAPTURE_XCTEST_DEVICE_ROOT="$fixture_xctest_root" \
 QUIPSLY_CAPTURE_RELEASE_DIR="$fixture_release" \
 "${fixture_repo}/scripts/release/quipsly-capture-release-from-commit.sh" \
   candidate \
@@ -100,6 +112,10 @@ grep -Eq '^releaseRunID=[A-Za-z0-9._-]+$' "$receipt" ||
   fail "Runner did not receive a safe unique release-run identity."
 grep -Fqx "arguments=<--device><iPhone Test>" "$receipt" ||
   fail "Fastlane arguments were not preserved exactly."
+[[ -d "${fixture_xctest_root}/${preexisting_xctest_device}" ]] ||
+  fail "Candidate cleanup removed a pre-existing XCTest device."
+[[ ! -e "${fixture_xctest_root}/${created_xctest_device}" ]] ||
+  fail "Candidate cleanup retained an XCTest device created by the run."
 
 MOCK_RECEIPT_PATH="$receipt" \
 QUIPSLY_CAPTURE_RELEASE_DIR="$fixture_release" \

@@ -159,8 +159,44 @@ release_run_id="${QUIPSLY_CAPTURE_RELEASE_RUN_ID:-$(date -u +%Y%m%dT%H%M%SZ)-$$}
 temporary_root="$(mktemp -d "${TMPDIR:-/tmp}/quipsly-capture-worktree.XXXXXX")"
 worktree_path="${temporary_root}/source"
 worktree_added=0
+xctest_device_root="${QUIPSLY_CAPTURE_XCTEST_DEVICE_ROOT:-${HOME}/Library/Developer/XCTestDevices}"
+xctest_devices_before="${temporary_root}/xctest-devices-before.txt"
+
+snapshot_xctest_devices() {
+  local destination="$1"
+  if [[ ! -d "$xctest_device_root" ]]; then
+    : >"$destination"
+    return
+  fi
+  find "$xctest_device_root" -mindepth 1 -maxdepth 1 -type d \
+    -exec basename {} \; | LC_ALL=C sort -u >"$destination"
+}
+
+cleanup_created_xctest_devices() {
+  [[ "$lane" == "candidate" || "$lane" == "beta" ]] || return
+  if [[ "${QUIPSLY_CAPTURE_KEEP_XCTEST_DEVICES:-0}" == "1" ]]; then
+    echo "Keeping XCTest devices created by this Capture run for diagnostics."
+    return
+  fi
+  [[ -d "$xctest_device_root" ]] || return
+
+  local devices_after="${temporary_root}/xctest-devices-after.txt"
+  snapshot_xctest_devices "$devices_after"
+  while IFS= read -r device_id; do
+    [[ "$device_id" =~ ^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$ ]] || continue
+    local device_path="${xctest_device_root}/${device_id}"
+    [[ -d "$device_path" ]] || continue
+    echo "Removing disposable XCTest device created by this Capture run: ${device_id}"
+    find "$device_path" -depth -delete
+  done < <(comm -13 "$xctest_devices_before" "$devices_after")
+}
+
+if [[ "$lane" == "candidate" || "$lane" == "beta" ]]; then
+  snapshot_xctest_devices "$xctest_devices_before"
+fi
 
 cleanup() {
+  cleanup_created_xctest_devices || true
   if [[ "$worktree_added" -eq 1 ]]; then
     git -C "$repo_root" worktree remove --force "$worktree_path" >/dev/null 2>&1 || true
   fi
