@@ -48,8 +48,9 @@ test("production readback detects a one-instance global availability trap", () =
 test("production readback distinguishes authorization gaps from unhealthy infrastructure", () => {
   assert.match(script, /report_inspection_failure/);
   assert.match(script, /Release automation is not authorized to inspect/);
+  assert.match(script, /Project billing is enabled through an open billing account/);
   assert.match(script, /Project billing is disabled/);
-  assert.match(script, /Attached billing account is closed/);
+  assert.doesNotMatch(script, /gcloud billing accounts describe/);
   assert.doesNotMatch(script, /Project billing is not enabled/);
   assert.doesNotMatch(script, /missing, closed, or inaccessible/);
 });

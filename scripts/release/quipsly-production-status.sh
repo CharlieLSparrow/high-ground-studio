@@ -134,36 +134,21 @@ billing_error="$(mktemp)"
 billing_report=""
 if billing_report="$(
   gcloud billing projects describe "${PROJECT_ID}" \
-    --format='value(billingEnabled,billingAccountName)' 2>"${billing_error}"
+    --format='value(billingEnabled)' 2>"${billing_error}"
 )"; then
   billing_enabled="$(printf "%s" "${billing_report}" | awk '{print $1}')"
-  billing_account_resource="$(printf "%s" "${billing_report}" | awk '{print $2}')"
-  billing_account_id="${billing_account_resource##*/}"
 
   if [[ "${billing_enabled}" == "True" || "${billing_enabled}" == "true" ]]; then
-    pass "Project billing is enabled."
+    # ProjectBillingInfo.billingEnabled is authoritative: Google sets it only
+    # when the project is associated with an open billing account. Avoid
+    # requiring release automation to read account-level costs or payment
+    # metadata merely to repeat the same availability check.
+    pass "Project billing is enabled through an open billing account."
   else
     fail "Project billing is disabled."
   fi
 else
-  billing_account_id=""
   report_inspection_failure "the project's billing attachment" "${billing_error}"
-fi
-
-if [[ -n "${billing_account_id}" ]]; then
-  billing_account_error="$(mktemp)"
-  if billing_account_open="$(
-    gcloud billing accounts describe "${billing_account_id}" \
-      --format='value(open)' 2>"${billing_account_error}"
-  )"; then
-    if [[ "${billing_account_open}" == "True" || "${billing_account_open}" == "true" ]]; then
-      pass "Attached billing account is open."
-    else
-      fail "Attached billing account is closed."
-    fi
-  else
-    report_inspection_failure "the attached billing account" "${billing_account_error}"
-  fi
 fi
 
 sql_error="$(mktemp)"
@@ -184,7 +169,7 @@ fi
 service_json="$(mktemp)"
 domain_json="$(mktemp)"
 domain_error="$(mktemp)"
-trap 'rm -f "${billing_error}" "${billing_account_error:-}" "${sql_error}" "${service_json}" "${domain_json}" "${domain_error}"' EXIT
+trap 'rm -f "${billing_error}" "${sql_error}" "${service_json}" "${domain_json}" "${domain_error}"' EXIT
 
 if gcloud run services describe "${SERVICE_NAME}" \
   --project="${PROJECT_ID}" \
