@@ -1599,10 +1599,17 @@ final class CaptureExperienceUITests: XCTestCase {
 
         localOnly.tap()
         XCTAssertTrue(consent.waitForExistence(timeout: 5))
+        let quickCapture = app.descendants(matching: .any)["CaptureQuickEntryBar"]
+        XCTAssertTrue(quickCapture.exists)
         XCTAssertLessThan(
             call.frame.minY,
             consent.frame.minY,
             "The normal call path must come before recording administration and production tools."
+        )
+        XCTAssertLessThan(
+            consent.frame.minY,
+            quickCapture.frame.minY,
+            "Consent and Record must stay contiguous with the call path instead of being interrupted by collaboration tools."
         )
         XCTAssertTrue(app.state == .runningForeground)
     }
