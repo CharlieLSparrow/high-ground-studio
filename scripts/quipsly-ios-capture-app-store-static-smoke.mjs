@@ -1597,6 +1597,31 @@ requireIncludes(
   "deterministic iPhone proof covers Nest-note draft recovery after dismissal and process death",
 );
 for (const needle of [
+  "final class SessionNoteWorkingDraftStore",
+  "QuipslyCapture/SessionNoteWorkingDrafts",
+  "FileProtectionType.completeUntilFirstUserAuthentication",
+  "baseUpdatedAt: String",
+  "lastKnownGoodURL",
+]) {
+  requireIncludes(sessionNoteEditOutboxText, needle, "Session note keystrokes have an actor-partitioned protected working draft");
+}
+for (const needle of [
+  "SessionNoteWorkingDraftStore.shared.draft(for: note.id)",
+  ".onChange(of: noteBody)",
+  ".onChange(of: scenePhase)",
+  "saveWorkingDraftImmediately()",
+  "expectedUpdatedAtOverride: baseUpdatedAt",
+  "committedToOutbox = true",
+  "Saved on this iPhone while you work.",
+]) {
+  requireIncludes(capturePhoneShellText, needle, "Session note editing survives dismissal and iPhone lifecycle changes without bypassing conflict checks");
+}
+requireIncludes(
+  deterministicUITestsText,
+  "func testSessionNoteWorkingDraftSurvivesDismissalAndRelaunch()",
+  "deterministic iPhone proof covers Session-note draft recovery after dismissal and process death",
+);
+for (const needle of [
   "struct MobileQuickEntryRecurrence: Codable, Equatable",
   "let recurrence: MobileQuickEntryRecurrence?",
   "guard recurrence == nil || kind == .task",

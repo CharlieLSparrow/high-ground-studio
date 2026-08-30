@@ -1075,14 +1075,16 @@ final class CaptureExperienceModel: ObservableObject {
         noteKind: MobileSessionNoteKind,
         noteVisibility: MobileSessionNoteVisibility,
         tagIDs: [String],
-        replacingHeld: Bool
+        replacingHeld: Bool,
+        expectedUpdatedAtOverride: String? = nil
     ) -> Bool {
         if usesPreviewData {
             sessionNoteEditMessage = "Preview only — no canonical Session note or revision was changed."
             sessionNoteEditMessageRoomID = roomID
             return true
         }
-        guard let expectedUpdatedAt = note.updatedAt, !expectedUpdatedAt.isEmpty else {
+        guard let expectedUpdatedAt = expectedUpdatedAtOverride ?? note.updatedAt,
+              !expectedUpdatedAt.isEmpty else {
             errorMessage = "Refresh this Session before editing its canonical note."
             return false
         }

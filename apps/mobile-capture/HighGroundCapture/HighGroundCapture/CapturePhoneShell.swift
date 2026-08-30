@@ -13810,6 +13810,7 @@ private struct CaptureSessionNoteEditSheet: View {
     let note: MobileCaptureSessionNote
     let protectedEdit: PendingSessionNoteEdit?
     @ObservedObject var model: CaptureExperienceModel
+    @Environment(\.scenePhase) private var scenePhase
     @Environment(\.dismiss) private var dismiss
     @State private var title: String
     @State private var noteBody: String
@@ -13817,7 +13818,13 @@ private struct CaptureSessionNoteEditSheet: View {
     @State private var noteVisibility: MobileSessionNoteVisibility
     @State private var selectedTagIDs: Set<String>
     @State private var tagSearchText = ""
+    @State private var localMessage: String?
+    @State private var workingDraftSaveTask: Task<Void, Never>?
+    @State private var committedToOutbox = false
+    @State private var workingDraftStatus: String?
     @FocusState private var focusedField: FocusedField?
+    private let workingDraftStore = SessionNoteWorkingDraftStore.shared
+    private let baseUpdatedAt: String
 
     init(
         session: MobileCaptureSession,
@@ -13829,11 +13836,28 @@ private struct CaptureSessionNoteEditSheet: View {
         self.note = note
         self.protectedEdit = protectedEdit
         self.model = model
-        _title = State(initialValue: protectedEdit?.title ?? note.title ?? "")
-        _noteBody = State(initialValue: protectedEdit?.body ?? note.body)
-        _noteKind = State(initialValue: protectedEdit?.noteKind ?? MobileSessionNoteKind(rawValue: note.kind) ?? .sessionNote)
-        _noteVisibility = State(initialValue: protectedEdit?.noteVisibility ?? MobileSessionNoteVisibility(rawValue: note.visibility) ?? .authorPrivate)
-        _selectedTagIDs = State(initialValue: Set(protectedEdit?.tagIDs ?? note.tags.map(\.id)))
+        let workingDraft = protectedEdit == nil
+            ? SessionNoteWorkingDraftStore.shared.draft(for: note.id)
+            : nil
+        baseUpdatedAt = workingDraft?.baseUpdatedAt ?? note.updatedAt ?? ""
+        _title = State(initialValue: protectedEdit?.title ?? workingDraft?.title ?? note.title ?? "")
+        _noteBody = State(initialValue: protectedEdit?.body ?? workingDraft?.body ?? note.body)
+        _noteKind = State(initialValue: protectedEdit?.noteKind
+            ?? workingDraft?.noteKind
+            ?? MobileSessionNoteKind(rawValue: note.kind)
+            ?? .sessionNote)
+        _noteVisibility = State(initialValue: protectedEdit?.noteVisibility
+            ?? workingDraft?.noteVisibility
+            ?? MobileSessionNoteVisibility(rawValue: note.visibility)
+            ?? .authorPrivate)
+        _selectedTagIDs = State(initialValue: Set(
+            protectedEdit?.tagIDs ?? workingDraft?.tagIDs ?? note.tags.map(\.id)
+        ))
+        _workingDraftStatus = State(
+            initialValue: workingDraft == nil
+                ? nil
+                : "Recovered your saved iPhone draft."
+        )
     }
 
     private var canUseProjectTeamNotes: Bool {
@@ -13867,8 +13891,28 @@ private struct CaptureSessionNoteEditSheet: View {
         protectedEdit?.disposition == .pending
     }
 
+    private var normalizedTitle: String? {
+        let clean = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        return clean.isEmpty ? nil : clean
+    }
+
+    private var normalizedBody: String {
+        noteBody
+            .replacingOccurrences(of: "\r\n", with: "\n")
+            .replacingOccurrences(of: "\r", with: "\n")
+    }
+
+    private var hasChanges: Bool {
+        normalizedTitle != note.title?.trimmingCharacters(in: .whitespacesAndNewlines).nonempty
+            || normalizedBody != note.body
+            || noteKind.rawValue != note.kind
+            || noteVisibility.rawValue != note.visibility
+            || selectedTagIDs != Set(note.tags.map(\.id))
+    }
+
     private var canSave: Bool {
         !isWaiting
+            && hasChanges
             && !noteBody.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && selectedTagIDs.count <= 24
             && !model.isSyncingSessionNoteEdits
@@ -13998,6 +14042,25 @@ private struct CaptureSessionNoteEditSheet: View {
                     }
                 }
 
+                if let workingDraftStatus,
+                   protectedEdit == nil {
+                    Section {
+                        Label(workingDraftStatus, systemImage: "checkmark.icloud")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .accessibilityIdentifier("CaptureSessionNoteWorkingDraftStatus")
+                    }
+                }
+
+                if let localMessage {
+                    Section {
+                        Label(localMessage, systemImage: "exclamationmark.triangle")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.orange)
+                            .accessibilityIdentifier("CaptureSessionNoteWorkingDraftError")
+                    }
+                }
+
                 Section {
                     Button {
                         let saved = model.saveSessionNoteEdit(
@@ -14008,9 +14071,18 @@ private struct CaptureSessionNoteEditSheet: View {
                             noteKind: noteKind,
                             noteVisibility: noteVisibility,
                             tagIDs: selectedTagIDs.sorted(),
-                            replacingHeld: protectedEdit?.disposition == .held
+                            replacingHeld: protectedEdit?.disposition == .held,
+                            expectedUpdatedAtOverride: baseUpdatedAt
                         )
-                        if saved { dismiss() }
+                        if saved {
+                            committedToOutbox = true
+                            workingDraftSaveTask?.cancel()
+                            workingDraftStore.remove(noteID: note.id)
+                            dismiss()
+                        } else {
+                            localMessage = model.errorMessage
+                                ?? "This note could not be saved yet."
+                        }
                     } label: {
                         Label(
                             "Save changes",
@@ -14048,10 +14120,57 @@ private struct CaptureSessionNoteEditSheet: View {
                 }
             }
             .accessibilityIdentifier("CaptureSessionNoteEditSheet")
+            .onChange(of: title) { _, _ in scheduleWorkingDraftSave() }
+            .onChange(of: noteBody) { _, _ in scheduleWorkingDraftSave() }
+            .onChange(of: noteKind) { _, _ in scheduleWorkingDraftSave() }
+            .onChange(of: noteVisibility) { _, _ in scheduleWorkingDraftSave() }
+            .onChange(of: selectedTagIDs) { _, _ in scheduleWorkingDraftSave() }
+            .onChange(of: scenePhase) { _, phase in
+                guard phase != .active else { return }
+                workingDraftSaveTask?.cancel()
+                saveWorkingDraftImmediately()
+            }
+            .onDisappear {
+                workingDraftSaveTask?.cancel()
+                saveWorkingDraftImmediately()
+            }
     }
 
     var body: some View {
         bodyView
+    }
+
+    private func scheduleWorkingDraftSave() {
+        workingDraftSaveTask?.cancel()
+        workingDraftSaveTask = Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(220))
+            guard !Task.isCancelled else { return }
+            saveWorkingDraftImmediately()
+        }
+    }
+
+    private func saveWorkingDraftImmediately() {
+        guard !committedToOutbox else { return }
+        guard hasChanges else {
+            workingDraftStore.remove(noteID: note.id)
+            return
+        }
+        let saved = workingDraftStore.save(
+            roomID: session.callRoomId,
+            noteID: note.id,
+            title: title,
+            body: noteBody,
+            noteKind: noteKind,
+            noteVisibility: noteVisibility,
+            tagIDs: selectedTagIDs.sorted(),
+            baseUpdatedAt: baseUpdatedAt
+        )
+        if !saved {
+            localMessage = "This draft could not be protected on this iPhone yet. Keep this screen open and try again."
+        } else {
+            localMessage = nil
+            workingDraftStatus = "Saved on this iPhone while you work."
+        }
     }
 }
 

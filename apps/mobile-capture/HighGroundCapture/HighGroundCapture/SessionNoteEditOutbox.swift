@@ -27,6 +27,189 @@ struct PendingSessionNoteEdit: Codable, Equatable, Identifiable {
     var clientRequestID: String { id.uuidString.lowercased() }
 }
 
+struct SessionNoteWorkingDraft: Codable, Equatable {
+    let ownerAccountID: String
+    let roomID: String
+    let noteID: String
+    let title: String
+    let body: String
+    let noteKind: MobileSessionNoteKind
+    let noteVisibility: MobileSessionNoteVisibility
+    let tagIDs: [String]
+    let baseUpdatedAt: String
+    let updatedAt: Date
+}
+
+/// Continuously protects unfinished Session-note text without claiming it has
+/// changed the shared Nest. Canonical edits still enter SessionNoteEditOutbox
+/// only when the person explicitly saves.
+@MainActor
+final class SessionNoteWorkingDraftStore {
+    static let shared = SessionNoteWorkingDraftStore()
+
+    private let fileManager: FileManager
+    private let ledgerURL: URL
+    private let lastKnownGoodURL: URL
+    private var storedDrafts: [SessionNoteWorkingDraft] = []
+    private var activeOwnerAccountID: String?
+    private var accountObserver: NSObjectProtocol?
+
+    init(
+        fileManager: FileManager = .default,
+        directoryURL: URL? = nil,
+        initialOwnerAccountID: String? = nil,
+        observeAccountChanges: Bool = true
+    ) {
+        self.fileManager = fileManager
+        activeOwnerAccountID = Self.normalizedOwnerID(
+            initialOwnerAccountID ?? AuthManager.currentStoredOwnerID()
+        )
+        let support = directoryURL
+            ?? fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first?
+                .appendingPathComponent("QuipslyCapture/SessionNoteWorkingDrafts", isDirectory: true)
+            ?? URL(fileURLWithPath: NSHomeDirectory())
+                .appendingPathComponent("Library/Application Support/QuipslyCapture/SessionNoteWorkingDrafts", isDirectory: true)
+        ledgerURL = support.appendingPathComponent("session-note-working-drafts-v1.json")
+        lastKnownGoodURL = support.appendingPathComponent("session-note-working-drafts-v1.last-known-good.json")
+
+        do {
+            try fileManager.createDirectory(at: support, withIntermediateDirectories: true)
+            try? fileManager.setAttributes(
+                [.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication],
+                ofItemAtPath: support.path
+            )
+            var protectedSupport = support
+            var resourceValues = URLResourceValues()
+            resourceValues.isExcludedFromBackup = true
+            try? protectedSupport.setResourceValues(resourceValues)
+            storedDrafts = try loadLedger()
+        } catch {
+            storedDrafts = []
+        }
+
+        if observeAccountChanges {
+            accountObserver = NotificationCenter.default.addObserver(
+                forName: .quipslyCaptureAccountIdentityDidChange,
+                object: nil,
+                queue: .main
+            ) { [weak self] notification in
+                MainActor.assumeIsolated {
+                    self?.activeOwnerAccountID = Self.normalizedOwnerID(notification.object as? String)
+                }
+            }
+        }
+    }
+
+    deinit {
+        if let accountObserver {
+            NotificationCenter.default.removeObserver(accountObserver)
+        }
+    }
+
+    func draft(for noteID: String) -> SessionNoteWorkingDraft? {
+        guard let owner = activeOwnerAccountID else { return nil }
+        return storedDrafts.first {
+            Self.normalizedOwnerID($0.ownerAccountID) == owner
+                && $0.noteID == noteID
+        }
+    }
+
+    @discardableResult
+    func save(
+        roomID: String,
+        noteID: String,
+        title: String,
+        body: String,
+        noteKind: MobileSessionNoteKind,
+        noteVisibility: MobileSessionNoteVisibility,
+        tagIDs: [String],
+        baseUpdatedAt: String
+    ) -> Bool {
+        let cleanTagIDs = Array(Set(tagIDs.map(Self.cleanID).filter { !$0.isEmpty })).sorted()
+        guard let owner = activeOwnerAccountID,
+              owner == Self.normalizedOwnerID(AuthManager.currentStoredOwnerID()),
+              !roomID.isEmpty,
+              !noteID.isEmpty,
+              title.count <= 5_000,
+              body.count <= 500_000,
+              cleanTagIDs.count == tagIDs.count,
+              cleanTagIDs.count <= 24 else {
+            return false
+        }
+        let draft = SessionNoteWorkingDraft(
+            ownerAccountID: owner,
+            roomID: String(roomID.prefix(200)),
+            noteID: String(noteID.prefix(200)),
+            title: title,
+            body: body,
+            noteKind: noteKind,
+            noteVisibility: noteVisibility,
+            tagIDs: cleanTagIDs,
+            baseUpdatedAt: baseUpdatedAt,
+            updatedAt: Date()
+        )
+        var updated = storedDrafts.filter {
+            !(Self.normalizedOwnerID($0.ownerAccountID) == owner && $0.noteID == noteID)
+        }
+        updated.append(draft)
+        return commit(updated)
+    }
+
+    func remove(noteID: String) {
+        guard let owner = activeOwnerAccountID else { return }
+        let updated = storedDrafts.filter {
+            !(Self.normalizedOwnerID($0.ownerAccountID) == owner && $0.noteID == noteID)
+        }
+        _ = commit(updated)
+    }
+
+    private func commit(_ updated: [SessionNoteWorkingDraft]) -> Bool {
+        do {
+            let encoder = JSONEncoder()
+            encoder.dateEncodingStrategy = .iso8601
+            encoder.outputFormatting = [.sortedKeys]
+            let data = try encoder.encode(updated)
+            try data.write(
+                to: lastKnownGoodURL,
+                options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication]
+            )
+            try data.write(
+                to: ledgerURL,
+                options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication]
+            )
+            storedDrafts = updated
+            return true
+        } catch {
+            return false
+        }
+    }
+
+    private func loadLedger() throws -> [SessionNoteWorkingDraft] {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        for url in [ledgerURL, lastKnownGoodURL] where fileManager.fileExists(atPath: url.path) {
+            if let data = try? Data(contentsOf: url),
+               let drafts = try? decoder.decode([SessionNoteWorkingDraft].self, from: data) {
+                return drafts
+            }
+        }
+        return []
+    }
+
+    nonisolated private static func cleanID(_ value: String) -> String {
+        String(value.trimmingCharacters(in: .whitespacesAndNewlines).prefix(200))
+    }
+
+    nonisolated private static func normalizedOwnerID(_ value: String?) -> String? {
+        guard let normalized = value?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased(),
+              !normalized.isEmpty,
+              normalized.count <= 256 else { return nil }
+        return normalized
+    }
+}
+
 enum SessionNoteEditStoreError: LocalizedError {
     case accountIdentityUnavailable
     case invalidEdit

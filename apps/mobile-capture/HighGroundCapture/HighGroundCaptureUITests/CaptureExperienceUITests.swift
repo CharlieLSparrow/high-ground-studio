@@ -49,6 +49,11 @@ final class CaptureExperienceUITests: XCTestCase {
                 "--capture-share-owner-ui-preview=nest-note-working-draft-owner"
             )
         }
+        if name.contains("testSessionNoteWorkingDraftSurvivesDismissalAndRelaunch") {
+            app.launchArguments.append(
+                "--capture-share-owner-ui-preview=session-note-working-draft-owner"
+            )
+        }
         if name.contains("testCoachFollowUpHoldsReleaseWhenCanonicalSourceChanged") {
             app.launchArguments.append("--capture-follow-up-source-changed-preview")
         }
@@ -2610,6 +2615,78 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(
             app.staticTexts["Ask what would make this session genuinely useful."].exists,
             "Preview must keep the canonical Session note unchanged."
+        )
+    }
+
+    func testSessionNoteWorkingDraftSurvivesDismissalAndRelaunch() {
+        let retainedWords = " Retained through dismissal and a complete app relaunch."
+
+        func openPreviewSessionNote() {
+            app.tabBars.buttons["Sessions"].tap()
+            let notesCard = app.descendants(matching: .any)["CaptureSessionNotesToggle"].firstMatch
+            reveal(notesCard, searchAboveFirst: false)
+            XCTAssertTrue(notesCard.isHittable)
+            if !app.buttons["CaptureSessionNoteEdit_preview-session-note"].exists {
+                notesCard.tap()
+            }
+            let edit = app.buttons["CaptureSessionNoteEdit_preview-session-note"].firstMatch
+            reveal(edit, searchAboveFirst: false)
+            XCTAssertTrue(edit.waitForExistence(timeout: 5))
+            XCTAssertTrue(edit.isHittable)
+            edit.tap()
+            XCTAssertTrue(
+                app.descendants(matching: .any)["CaptureSessionNoteEditSheet"]
+                    .waitForExistence(timeout: 5)
+            )
+        }
+
+        openPreviewSessionNote()
+        let body = app.textFields["CaptureSessionNoteEditBody"].firstMatch
+        XCTAssertTrue(body.waitForExistence(timeout: 3))
+        body.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.15)).tap()
+        expectation(
+            for: NSPredicate(format: "hasKeyboardFocus == true"),
+            evaluatedWith: body
+        )
+        waitForExpectations(timeout: 4)
+        body.typeText(retainedWords)
+        let keyboardDone = app.buttons["CaptureSessionNoteEditKeyboardDone"]
+        XCTAssertTrue(keyboardDone.waitForExistence(timeout: 3))
+        keyboardDone.tap()
+        app.buttons["Close"].tap()
+        XCTAssertTrue(
+            app.descendants(matching: .any)["CaptureSessionNoteEditSheet"]
+                .waitForNonExistence(timeout: 5)
+        )
+
+        openPreviewSessionNote()
+        XCTAssertTrue((body.value as? String)?.contains(retainedWords) == true)
+        XCTAssertTrue(
+            app.descendants(matching: .any)["CaptureSessionNoteWorkingDraftStatus"]
+                .waitForExistence(timeout: 3)
+        )
+        app.buttons["Close"].tap()
+
+        app.terminate()
+        app.launch()
+        openPreviewSessionNote()
+        XCTAssertTrue(
+            (app.textFields["CaptureSessionNoteEditBody"].firstMatch.value as? String)?
+                .contains(retainedWords) == true,
+            "A Session-note working draft must survive process death without pretending it already changed the shared note."
+        )
+
+        let previewSave = app.buttons["CaptureSessionNoteEditSave"].firstMatch
+        let editForm = app.collectionViews.firstMatch
+        for _ in 0..<10 where !previewSave.isHittable {
+            editForm.swipeUp()
+        }
+        XCTAssertTrue(previewSave.isEnabled)
+        previewSave.tap()
+        XCTAssertTrue(
+            app.descendants(matching: .any)["CaptureSessionNoteEditSheet"]
+                .waitForNonExistence(timeout: 5),
+            "Preview save removes the test working draft so it cannot bleed into another launch."
         )
     }
 
