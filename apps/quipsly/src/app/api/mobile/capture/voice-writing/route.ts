@@ -261,7 +261,7 @@ export async function GET(request: Request) {
     .toLowerCase();
   if (!actorUserId || !actorEmail) {
     return NextResponse.json(
-      { ok: false, code: "AUTH_REQUIRED", error: "Sign in before loading private writing." },
+      { ok: false, code: "AUTH_REQUIRED", error: "Sign in before loading writing." },
       { status: 401 },
     );
   }
@@ -269,7 +269,7 @@ export async function GET(request: Request) {
   const requestedDraftId = String(new URL(request.url).searchParams.get("draftId") || "").trim().toLowerCase();
   if (requestedDraftId && !mobileVoiceWritingDraftIdFromDocumentId(mobileVoiceWritingDocumentId(requestedDraftId))) {
     return NextResponse.json(
-      { ok: false, code: "VOICE_WRITING_ID_INVALID", error: "That private writing identity is invalid." },
+      { ok: false, code: "VOICE_WRITING_ID_INVALID", error: "That writing identity is invalid." },
       { status: 400 },
     );
   }
@@ -581,7 +581,7 @@ export async function DELETE(request: Request) {
     .toLowerCase();
   if (!actorUserId || !actorEmail) {
     return NextResponse.json(
-      { ok: false, code: "AUTH_REQUIRED", error: "Sign in before deleting private writing." },
+      { ok: false, code: "AUTH_REQUIRED", error: "Sign in before deleting writing." },
       { status: 401 },
     );
   }
@@ -665,7 +665,7 @@ export async function POST(request: Request) {
     .toLowerCase();
   if (!actorUserId || !actorEmail) {
     return NextResponse.json(
-      { ok: false, code: "AUTH_REQUIRED", error: "Sign in before syncing private writing." },
+      { ok: false, code: "AUTH_REQUIRED", error: "Sign in before syncing writing." },
       { status: 401 },
     );
   }
@@ -929,7 +929,7 @@ export async function POST(request: Request) {
 
   if (result.kind === "forbidden") {
     return NextResponse.json(
-      { ok: false, code: "VOICE_WRITING_FORBIDDEN", error: "That private writing identity belongs to a different account." },
+      { ok: false, code: "VOICE_WRITING_FORBIDDEN", error: "That writing identity belongs to a different account." },
       { status: 404 },
     );
   }
@@ -969,6 +969,8 @@ export async function POST(request: Request) {
     homeProject: { id: home.id, name: home.name || "My Nest", slug: home.slug || "" },
     availableTags: availableVoiceWritingTags(result.document),
     idempotentReplay: result.idempotentReplay,
-    nextAction: `Writing saved privately to ${result.document.project?.name || "your Nest"}.`,
+    nextAction: result.document.isPrivate === false
+      ? `Writing saved to ${result.document.project?.name || "your Nest"} and shared with Nest members.`
+      : `Writing saved to ${result.document.project?.name || "your Nest"}. Only you can open it.`,
   });
 }

@@ -450,6 +450,7 @@ describe("mobile voice-writing continuation", () => {
     }));
     await expect(response.json()).resolves.toMatchObject({
       ok: true,
+      nextAction: "Writing saved to Person Home Nest. Only you can open it.",
       draft: {
         draftId,
         writingOrigin: "typed",
@@ -459,6 +460,79 @@ describe("mobile voice-writing continuation", () => {
         sources: [],
       },
       homeProject: { id: "project-home", name: "Person Home Nest", slug: "person-home" },
+    });
+  });
+
+  it("describes a save into shared writing as shared", async () => {
+    jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({
+      user: { id: "actor-1", primaryEmail: "person@example.com" },
+    } as never);
+    jest.mocked(ensureHomeNestForEmail).mockResolvedValue({
+      id: "project-home",
+      name: "Person Home Nest",
+      slug: "person-home",
+    } as never);
+    const existing = storedVoiceDocument("project-shared", "Dissertation team", "dissertation-team", false);
+    const updated = {
+      ...existing,
+      title: "Revised dissertation opening",
+      blocks: existing.blocks.map((block) => block.id.endsWith("-title")
+        ? { ...block, body: "Revised dissertation opening" }
+        : { ...block, body: "Start with Homer's concrete story." }),
+      documentOperations: [{
+        ...existing.documentOperations[0],
+        afterJson: { serverRevision: 5 },
+      }],
+    };
+    const update = jest.fn().mockResolvedValue({});
+    const transaction = jest.fn(async (callback: (tx: unknown) => unknown) => callback({
+      studioDocument: {
+        findUnique: jest.fn().mockResolvedValue(existing),
+        update,
+        findUniqueOrThrow: jest.fn().mockResolvedValue(updated),
+      },
+      studioDocumentOperation: { findUnique: jest.fn().mockResolvedValue(null) },
+    }));
+    jest.mocked(getPrismaClient).mockReturnValue({ $transaction: transaction } as never);
+
+    const response = await POST(new Request("http://localhost/api/mobile/capture/voice-writing", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-quipsly-writing-version": "2",
+      },
+      body: JSON.stringify({
+        draftId,
+        writingOrigin: "recorded",
+        localRecordingId: recordingId,
+        transcriptClientRequestId: transcriptId,
+        sourceSha256: "a".repeat(64),
+        callRoomId: "voice-room-1",
+        sources: [{
+          localRecordingId: recordingId,
+          transcriptClientRequestId: transcriptId,
+          sourceSha256: "a".repeat(64),
+          callRoomId: "voice-room-1",
+        }],
+        title: "Revised dissertation opening",
+        body: "Start with Homer's concrete story.",
+        localRevision: 5,
+        expectedServerRevision: 4,
+        expectedContentRevision: mobileVoiceWritingContentHash({
+          title: existing.title,
+          body: "Start with the concrete story.",
+          richText: null,
+        }),
+        richText: null,
+      }),
+    }));
+
+    expect(response.status).toBe(200);
+    expect(update).toHaveBeenCalled();
+    await expect(response.json()).resolves.toMatchObject({
+      ok: true,
+      nextAction: "Writing saved to Dissertation team and shared with Nest members.",
+      draft: { visibility: "nest", projectId: "project-shared" },
     });
   });
 
