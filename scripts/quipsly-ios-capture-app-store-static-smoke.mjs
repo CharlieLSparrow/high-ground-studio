@@ -2190,6 +2190,31 @@ requireIncludes(
   "prepareTranscriptReviewFile",
   "transcript review reuses the verified account-bound Session playback cache",
 );
+requireIncludes(
+  transcriptReviewText,
+  "speakerGroupsRequiringIdentity(in: desk)",
+  "native transcript review exposes voice naming only for unresolved speaker groups",
+);
+requireIncludes(
+  transcriptReviewText,
+  'case "source-binding", "attribution", "correction":',
+  "authenticated source and saved speaker authority suppress redundant voice naming",
+);
+requireIncludes(
+  transcriptReviewText,
+  "CaptureTranscriptNameVoicesButton",
+  "genuinely unresolved mixed or imported voices retain an obvious optional naming action",
+);
+requireIncludes(
+  transcriptReviewText,
+  "await protectedController.prepareTranscriptReviewFile(source: source)",
+  "speaker samples can use exact protected Session playback on a different signed-in iPhone",
+);
+requireIncludes(
+  deterministicUITestsText,
+  "Source-bound participant recordings should not ask the user to name voices.",
+  "operated iPhone coverage keeps authenticated participant identity automatic",
+);
 requireIncludes(bridgeText, "visibleRecordingIndicatorRequired", "readiness recording policy");
 requireIncludes(bridgeText, "api/account/deletion-request", "native deletion request client");
 requireIncludes(bridgeText, "prepareRoomJoin", "provider room join prep");

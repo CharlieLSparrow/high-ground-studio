@@ -2663,6 +2663,45 @@ final class CaptureTranscriptPlaybackController: NSObject, ObservableObject {
     }
 
     func play(
+        sample: CaptureTranscriptSpeakerSample,
+        recording: LocalRecording?,
+        library: LocalRecordingLibrary,
+        expectedRecordingAssetID: String?,
+        protectedSource: CaptureTranscriptPlayback?,
+        protectedController: CaptureSessionProtectedPlaybackController
+    ) async {
+        if let recording,
+           recording.status.isPlaybackEligible,
+           recording.recordingAssetId == expectedRecordingAssetID,
+           library.fileURL(for: recording) != nil {
+            play(
+                sample: sample,
+                recording: recording,
+                library: library,
+                expectedRecordingAssetID: expectedRecordingAssetID
+            )
+            return
+        }
+        guard let expectedRecordingAssetID,
+              protectedSource?.recordingAssetId == expectedRecordingAssetID,
+              let source = protectedSource?.mobileProtectedSource,
+              let owner = AuthManager.shared.stableOwnerSnapshot(),
+              let fileURL = await protectedController.prepareTranscriptReviewFile(source: source),
+              AuthManager.shared.matchesStableOwnerSnapshot(owner) else {
+            errorMessage = protectedController.errorMessage
+                ?? "The exact protected Session source could not be prepared on this iPhone."
+            return
+        }
+        playFile(
+            anchorID: sample.segmentId,
+            startSeconds: sample.startSeconds,
+            endSeconds: sample.endSeconds,
+            fileURL: fileURL,
+            recordingAssetID: expectedRecordingAssetID
+        )
+    }
+
+    func play(
         listenPoint: CaptureTranscriptAudioListenPoint,
         recording: LocalRecording?,
         library: LocalRecordingLibrary,
@@ -3465,7 +3504,7 @@ struct CaptureTranscriptReviewView: View {
                 description: Text("Create the recording-backed transcript to read, play, and edit it here.")
             )
         } else {
-            transcriptPresentationPicker
+            transcriptPresentationPicker(desk, scrollProxy: scrollProxy)
                 .id(linkedTranscriptScrollTargetID)
             VStack(alignment: .leading, spacing: 16) {
                 if transcriptPresentationMode == .conversation {
@@ -3508,8 +3547,12 @@ struct CaptureTranscriptReviewView: View {
         }
     }
 
-    private var transcriptPresentationPicker: some View {
-        VStack(alignment: .leading, spacing: 9) {
+    private func transcriptPresentationPicker(
+        _ desk: CaptureTranscriptCorrectionDesk,
+        scrollProxy: ScrollViewProxy
+    ) -> some View {
+        let voicesToName = speakerGroupsRequiringIdentity(in: desk).count
+        return VStack(alignment: .leading, spacing: 9) {
             HStack {
                 Label("Transcript", systemImage: transcriptPresentationMode.systemImage)
                     .font(.headline)
@@ -3532,6 +3575,30 @@ struct CaptureTranscriptReviewView: View {
             .font(.caption)
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
+            if voicesToName > 0 {
+                Button {
+                    revealTranscriptTools(
+                        at: "speaker-identities",
+                        scrollProxy: scrollProxy
+                    )
+                } label: {
+                    HStack(spacing: 8) {
+                        Label(
+                            voicesToName == 1 ? "Name voice" : "Name \(voicesToName) voices",
+                            systemImage: "person.wave.2.fill"
+                        )
+                        Spacer(minLength: 8)
+                        Text("Optional")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                    }
+                    .frame(maxWidth: .infinity, minHeight: 44)
+                }
+                .buttonStyle(.bordered)
+                .tint(.indigo)
+                .accessibilityHint("Opens voice naming. The transcript remains usable if you skip it.")
+                .accessibilityIdentifier("CaptureTranscriptNameVoicesButton")
+            }
         }
         .reviewCard()
         .accessibilityElement(children: .contain)
@@ -3777,7 +3844,7 @@ struct CaptureTranscriptReviewView: View {
 
     @ViewBuilder
     private func speakerIdentitySection(_ desk: CaptureTranscriptCorrectionDesk) -> some View {
-        let groups = desk.speakerGroups ?? []
+        let groups = speakerGroupsRequiringIdentity(in: desk)
         let participants = desk.participants ?? []
         if !groups.isEmpty, let transcriptJobID = desk.transcriptJobId {
             VStack(alignment: .leading, spacing: 12) {
@@ -3796,6 +3863,8 @@ struct CaptureTranscriptReviewView: View {
                         participants: participants,
                         recording: recording,
                         expectedRecordingAssetID: desk.playback?.recordingAssetId,
+                        protectedSource: desk.playback,
+                        protectedPlayback: protectedSessionPlayback,
                         previewOnly: previewOnly,
                         client: client,
                         playback: playback,
@@ -3807,6 +3876,27 @@ struct CaptureTranscriptReviewView: View {
             .reviewCard()
             .accessibilityElement(children: .contain)
             .accessibilityIdentifier("CaptureTranscriptSpeakerIdentitySection")
+        }
+    }
+
+    private func speakerGroupsRequiringIdentity(
+        in desk: CaptureTranscriptCorrectionDesk
+    ) -> [CaptureTranscriptSpeakerGroup] {
+        (desk.speakerGroups ?? []).filter { group in
+            let matchingSegments = desk.segments.filter {
+                $0.providerSpeakerLabel == group.providerSpeakerLabel
+            }
+            guard !matchingSegments.isEmpty else {
+                return group.attribution == nil || group.staleAttribution
+            }
+            return matchingSegments.contains { segment in
+                switch segment.speakerAuthority {
+                case "source-binding", "attribution", "correction":
+                    return false
+                default:
+                    return true
+                }
+            }
         }
     }
 
@@ -5707,6 +5797,8 @@ private struct CaptureTranscriptSpeakerGroupCard: View {
     let participants: [CaptureTranscriptParticipant]
     let recording: LocalRecording?
     let expectedRecordingAssetID: String?
+    let protectedSource: CaptureTranscriptPlayback?
+    @ObservedObject var protectedPlayback: CaptureSessionProtectedPlaybackController
     let previewOnly: Bool
     @ObservedObject var client: CaptureTranscriptCorrectionClient
     @ObservedObject var playback: CaptureTranscriptPlaybackController
@@ -5844,11 +5936,11 @@ private struct CaptureTranscriptSpeakerGroupCard: View {
                         || client.isMutating
                         || selectedParticipantID.isEmpty
                         || confirmedSamplePositions.isEmpty
-                        || !hasExactLocalSource
+                        || !canPlaySource
                 )
             }
 
-            Text("Voice identity and word review are separate. This mapping changes display labels only; corrections and as-heard confirmations still require their own deliberate playback decision.")
+            Text("Voice naming changes display labels only. Editing words and the optional Mark checked action stay separate.")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -5893,18 +5985,27 @@ private struct CaptureTranscriptSpeakerGroupCard: View {
                 }
                 Spacer(minLength: 10)
                 Button {
-                    playback.play(
-                        sample: sample,
-                        recording: recording,
-                        library: library,
-                        expectedRecordingAssetID: expectedRecordingAssetID
-                    )
+                    Task {
+                        await playback.play(
+                            sample: sample,
+                            recording: recording,
+                            library: library,
+                            expectedRecordingAssetID: expectedRecordingAssetID,
+                            protectedSource: protectedSource,
+                            protectedController: protectedPlayback
+                        )
+                    }
                 } label: {
-                    Label("Play", systemImage: "play.fill")
-                        .frame(minHeight: 44)
+                    if protectedPlayback.isPreparing && !hasExactLocalSource {
+                        Label("Preparing…", systemImage: "arrow.down.circle")
+                            .frame(minHeight: 44)
+                    } else {
+                        Label("Play", systemImage: "play.fill")
+                            .frame(minHeight: 44)
+                    }
                 }
                 .buttonStyle(.bordered)
-                .disabled(!hasExactLocalSource || client.isMutating)
+                .disabled(!canPlaySource || client.isMutating || protectedPlayback.isPreparing)
                 .accessibilityLabel("Play voice sample from \(sample.startSeconds.captureTranscriptTimestamp)")
                 .accessibilityIdentifier("CaptureTranscriptSpeakerPlay_\(sample.segmentId)")
             }
@@ -5951,6 +6052,13 @@ private struct CaptureTranscriptSpeakerGroupCard: View {
               recording.recordingAssetId == expectedRecordingAssetID,
               library.fileURL(for: recording) != nil else { return false }
         return true
+    }
+
+    private var canPlaySource: Bool {
+        hasExactLocalSource || (
+            protectedSource?.recordingAssetId == expectedRecordingAssetID
+                && protectedSource?.mobileProtectedSource != nil
+        )
     }
 }
 

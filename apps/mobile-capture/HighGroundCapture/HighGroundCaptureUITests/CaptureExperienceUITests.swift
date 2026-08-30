@@ -3503,18 +3503,22 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(tools.waitForExistence(timeout: 5))
         XCTAssertEqual(tools.value as? String, "Collapsed")
 
+        let nameVoices = app.buttons["CaptureTranscriptNameVoicesButton"]
+        XCTAssertFalse(
+            nameVoices.waitForExistence(timeout: 1),
+            "Source-bound participant recordings should not ask the user to name voices."
+        )
+
         let identifySpeaker = app.buttons["CaptureTranscriptIdentifySpeaker_Speaker"].firstMatch
         XCTAssertFalse(
             identifySpeaker.exists,
-            "Optional voice-identity controls should stay out of the primary transcript until someone opens the audio tools."
+            "Source-bound participant recordings should not expose redundant voice evidence."
         )
         tools.tap()
         XCTAssertEqual(tools.value as? String, "Expanded")
-        reveal(identifySpeaker, searchAboveFirst: false)
-        XCTAssertTrue(identifySpeaker.waitForExistence(timeout: 5))
         XCTAssertFalse(
-            identifySpeaker.isEnabled,
-            "Preview voice identity must be disabled for touch, assistive technology, and UI automation."
+            identifySpeaker.waitForExistence(timeout: 1),
+            "Source-bound participant recordings should remain automatically identified in expanded tools."
         )
     }
 
