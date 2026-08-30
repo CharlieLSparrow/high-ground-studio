@@ -844,6 +844,45 @@ struct VoiceWritingNestDestination: Codable, Equatable, Identifiable {
     }
 }
 
+struct VoiceWritingRemoteTranscriptSegment: Decodable, Equatable, Identifiable {
+    let id: String
+    let startSeconds: Double
+    let endSeconds: Double
+    let text: String
+    let speakerLabel: String?
+    let providerText: String
+    let providerSpeakerLabel: String?
+    let acceptedCorrectionId: String?
+
+    var timedSegment: OnDeviceTranscriptSegment? {
+        let cleanText = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !id.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              !cleanText.isEmpty,
+              startSeconds.isFinite,
+              endSeconds.isFinite,
+              startSeconds >= 0,
+              endSeconds >= startSeconds else { return nil }
+        return OnDeviceTranscriptSegment(
+            startSeconds: startSeconds,
+            endSeconds: endSeconds,
+            text: cleanText
+        )
+    }
+}
+
+struct VoiceWritingRemoteTranscript: Decodable, Equatable {
+    let transcriptClientRequestId: String
+    let transcriptJobId: String
+    let roomId: String?
+    let language: String?
+    let completedAt: String?
+    let segments: [VoiceWritingRemoteTranscriptSegment]
+
+    var transcriptClientRequestID: UUID? {
+        UUID(uuidString: transcriptClientRequestId)
+    }
+}
+
 private struct VoiceWritingSyncResponse: Decodable {
     struct SavedSource: Decodable {
         let localRecordingId: String
@@ -895,6 +934,7 @@ private struct VoiceWritingListResponse: Decodable {
     let homeProject: VoiceWritingHomeProject?
     let availableTags: [MobileCaptureTag]?
     let destinations: [VoiceWritingNestDestination]?
+    let transcripts: [VoiceWritingRemoteTranscript]?
 }
 
 private struct VoiceWritingMoveRequest: Encodable {
@@ -938,13 +978,27 @@ final class VoiceWritingDraftSyncClient: ObservableObject {
     @Published private(set) var homeProject: VoiceWritingHomeProject?
     @Published private(set) var availableTags: [MobileCaptureTag] = []
     @Published private(set) var destinations: [VoiceWritingNestDestination] = []
+    @Published private(set) var remoteTranscriptsByRequestID: [UUID: VoiceWritingRemoteTranscript] = [:]
+    @Published private(set) var loadingTranscriptDraftIDs: Set<UUID> = []
+    @Published private(set) var transcriptRefreshErrors: [UUID: String] = [:]
     private var pendingTasks: [UUID: Task<Void, Never>] = [:]
+    private var accountCancellable: AnyCancellable?
     private let apiBaseURL = normalizedNestAPIBaseURL(
         Bundle.main.object(forInfoDictionaryKey: "QUIPSLY_API_BASE_URL") as? String
             ?? "https://nest.quipsly.com"
     )
 
-    private init() {}
+    private init() {
+        accountCancellable = NotificationCenter.default.publisher(
+            for: .quipslyCaptureAccountIdentityDidChange
+        ).sink { [weak self] _ in
+            Task { @MainActor in
+                self?.remoteTranscriptsByRequestID = [:]
+                self?.loadingTranscriptDraftIDs = []
+                self?.transcriptRefreshErrors = [:]
+            }
+        }
+    }
 
     func schedule(_ draft: VoiceWritingDraft, delay: Duration = .milliseconds(650)) {
         guard !draft.body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
@@ -998,6 +1052,91 @@ final class VoiceWritingDraftSyncClient: ObservableObject {
         } catch {
             refreshError = error.localizedDescription
         }
+    }
+
+    /// Loads timed transcript passages only for the writing a person opens.
+    /// The ordinary Library refresh intentionally stays lightweight; a source-
+    /// bound transcript may contain thousands of passages and should not be
+    /// downloaded for every draft. Results are memory-only and account-scoped.
+    func refreshTranscripts(draftID: UUID) async {
+        guard !loadingTranscriptDraftIDs.contains(draftID),
+              AuthManager.shared.networkActionsAllowed,
+              let draft = VoiceWritingDraftStore.shared.draft(id: draftID),
+              draft.canonicalDocumentID != nil,
+              !draft.allSources.isEmpty,
+              var components = URLComponents(string: "\(apiBaseURL)/api/mobile/capture/voice-writing") else { return }
+
+        components.queryItems = [
+            URLQueryItem(name: "draftId", value: draftID.uuidString.lowercased()),
+        ]
+        guard let endpoint = components.url else { return }
+
+        let expectedOwnerAccountID = draft.ownerAccountID
+        let expectedRequestIDs = Set(draft.allSources.map(\.transcriptClientRequestID))
+        loadingTranscriptDraftIDs.insert(draftID)
+        transcriptRefreshErrors[draftID] = nil
+        defer { loadingTranscriptDraftIDs.remove(draftID) }
+
+        do {
+            var request = URLRequest(url: endpoint)
+            request.httpMethod = "GET"
+            request.setValue("application/json", forHTTPHeaderField: "Accept")
+            request.setValue("2", forHTTPHeaderField: "X-Quipsly-Writing-Version")
+            let (data, response) = try await AuthManager.shared.authenticatedData(
+                for: request,
+                expectedOwnerAccountID: expectedOwnerAccountID
+            )
+            let payload = try JSONDecoder().decode(VoiceWritingListResponse.self, from: data)
+            guard (200...299).contains(response.statusCode), payload.ok else {
+                throw NSError(
+                    domain: "QuipslyVoiceWriting",
+                    code: response.statusCode,
+                    userInfo: [NSLocalizedDescriptionKey: payload.error ?? "The timed transcript could not refresh yet."]
+                )
+            }
+
+            // A response is useful only while the same account still owns the
+            // local working copy and the server returned the exact requested
+            // document. This prevents a late request from crossing sign-in or
+            // document-deletion boundaries.
+            guard let currentDraft = VoiceWritingDraftStore.shared.draft(id: draftID),
+                  currentDraft.ownerAccountID == expectedOwnerAccountID else { return }
+            var next = remoteTranscriptsByRequestID
+            for requestID in expectedRequestIDs {
+                next[requestID] = nil
+            }
+            guard payload.drafts?.contains(where: {
+                UUID(uuidString: $0.draftId) == draftID
+            }) == true else {
+                remoteTranscriptsByRequestID = next
+                return
+            }
+            for transcript in payload.transcripts ?? [] {
+                guard let requestID = transcript.transcriptClientRequestID,
+                      expectedRequestIDs.contains(requestID),
+                      next[requestID] == nil else { continue }
+                let validSegments = transcript.segments.filter { $0.timedSegment != nil }
+                guard !transcript.transcriptJobId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                      !validSegments.isEmpty else { continue }
+                next[requestID] = VoiceWritingRemoteTranscript(
+                    transcriptClientRequestId: transcript.transcriptClientRequestId,
+                    transcriptJobId: transcript.transcriptJobId,
+                    roomId: transcript.roomId,
+                    language: transcript.language,
+                    completedAt: transcript.completedAt,
+                    segments: validSegments
+                )
+            }
+            remoteTranscriptsByRequestID = next
+        } catch {
+            transcriptRefreshErrors[draftID] = error.localizedDescription
+        }
+    }
+
+    func remoteTranscript(
+        for transcriptClientRequestID: UUID
+    ) -> VoiceWritingRemoteTranscript? {
+        remoteTranscriptsByRequestID[transcriptClientRequestID]
     }
 
     func delete(draftID: UUID) async throws {

@@ -7746,6 +7746,7 @@ private struct CaptureVoiceWritingEditor: View {
     @State private var transcriptWasCopied = false
     @State private var showsTagEditor = false
     @State private var correctionSegment: CaptureTranscriptSegment?
+    @State private var correctionRecordingID: UUID?
     @State private var resumesAfterScrubbing = false
     @State private var saveTask: Task<Void, Never>?
     @State private var isExportingWordDocument = false
@@ -7931,6 +7932,7 @@ private struct CaptureVoiceWritingEditor: View {
         .onChange(of: richText) { _, _ in scheduleSave() }
         .task {
             await writingSync.refreshFromNest()
+            await writingSync.refreshTranscripts(draftID: draftID)
             guard !titleIsFocused,
                   !bodyIsFocused,
                   let refreshed = currentDraft,
@@ -7985,7 +7987,9 @@ private struct CaptureVoiceWritingEditor: View {
                     CaptureVoiceWritingTranscriptCorrectionSheet(
                         roomID: roomID,
                         segment: segment,
-                        recording: localRecording(for: segment),
+                        recording: correctionRecordingID.flatMap {
+                            recordingLibrary.recording(id: $0)
+                        },
                         recordingLibrary: recordingLibrary,
                         playback: playback,
                         client: transcriptCorrections,
@@ -8389,7 +8393,9 @@ private struct CaptureVoiceWritingEditor: View {
                     .accessibilityIdentifier("CaptureVoiceWritingTranscriptCorrectionsLoading")
                 } else if transcriptCorrections.desk?.segments.isEmpty == false {
                     Label(
-                        "Play any passage or tap Correct to fix the words.",
+                        hasRemoteOnlyTranscriptSources
+                            ? "Tap Correct to fix the words; timing stays linked to the source recording."
+                            : "Play any passage or tap Correct to fix the words.",
                         systemImage: "pencil.and.waveform"
                     )
                     .font(.caption.weight(.semibold))
@@ -8413,13 +8419,34 @@ private struct CaptureVoiceWritingEditor: View {
             }
 
             if visibleTranscriptSources.isEmpty {
-                Text(normalizedTranscriptQuery.isEmpty
-                    ? "The editable writing is ready. Exact word timing will appear here when the source transcript finishes syncing."
-                    : "No transcript passages match that search.")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.vertical, 8)
+                if writingSync.loadingTranscriptDraftIDs.contains(draftID) {
+                    HStack(spacing: 10) {
+                        ProgressView()
+                        Text("Restoring the timed transcript…")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+                    .frame(minHeight: 44)
+                    .accessibilityIdentifier("CaptureVoiceWritingRemoteTranscriptLoading")
+                } else {
+                    Text(normalizedTranscriptQuery.isEmpty
+                        ? "The editable writing is ready. Exact word timing will appear here when the source transcript finishes syncing."
+                        : "No transcript passages match that search.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.vertical, 8)
+                }
+
+                if normalizedTranscriptQuery.isEmpty,
+                   let error = writingSync.transcriptRefreshErrors[draftID]?.nonempty {
+                    Button("Try restoring transcript again") {
+                        Task { await writingSync.refreshTranscripts(draftID: draftID) }
+                    }
+                    .frame(minHeight: 44)
+                    .accessibilityHint(error)
+                    .accessibilityIdentifier("CaptureVoiceWritingRemoteTranscriptRetry")
+                }
             }
 
             ForEach(visibleTranscriptSources) { source in
@@ -8428,15 +8455,28 @@ private struct CaptureVoiceWritingEditor: View {
                         .font(.caption.weight(.bold))
                         .foregroundStyle(.secondary)
                 }
-                ForEach(Array(source.segments.enumerated()), id: \.offset) { _, segment in
-                    let canonical = canonicalSegment(for: segment, recordingID: source.id)
-                    let displayedText = transcriptDisplayText(for: segment, recordingID: source.id)
+                ForEach(Array(source.segments.enumerated()), id: \.offset) { index, segment in
+                    let canonicalSegmentID = source.canonicalSegmentIDs.indices.contains(index)
+                        ? source.canonicalSegmentIDs[index]
+                        : nil
+                    let canonical = canonicalSegment(
+                        for: segment,
+                        recordingID: source.id,
+                        canonicalSegmentID: canonicalSegmentID
+                    )
+                    let displayedText = transcriptDisplayText(
+                        for: segment,
+                        recordingID: source.id,
+                        canonicalSegmentID: canonicalSegmentID
+                    )
                     HStack(alignment: .top, spacing: 8) {
                         Button {
                             play(segment, recordingID: source.id)
                         } label: {
                             HStack(alignment: .top, spacing: 10) {
-                                Image(systemName: isPlaying(segment, recordingID: source.id) ? "speaker.wave.2.fill" : "play.circle")
+                                Image(systemName: source.isLocallyPlayable
+                                    ? (isPlaying(segment, recordingID: source.id) ? "speaker.wave.2.fill" : "play.circle")
+                                    : "text.quote")
                                     .foregroundStyle(CapturePalette.accent)
                                     .frame(width: 24)
                                 VStack(alignment: .leading, spacing: 4) {
@@ -8453,12 +8493,15 @@ private struct CaptureVoiceWritingEditor: View {
                             .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
-                        .disabled(recordingLibrary.recording(id: source.id) == nil)
-                        .accessibilityLabel("Play transcript at \(timestamp(segment.startSeconds)): \(displayedText)")
+                        .disabled(!source.isLocallyPlayable)
+                        .accessibilityLabel(source.isLocallyPlayable
+                            ? "Play transcript at \(timestamp(segment.startSeconds)): \(displayedText)"
+                            : "Transcript at \(timestamp(segment.startSeconds)): \(displayedText)")
                         .accessibilityIdentifier("CaptureVoiceWritingTranscriptSegment_\(source.id)_\(Int(segment.startSeconds * 1000))")
 
                         if let canonical {
                             Button {
+                                correctionRecordingID = source.id
                                 correctionSegment = canonical
                             } label: {
                                 Label("Correct", systemImage: correctionStatusSymbol(for: canonical))
@@ -8484,7 +8527,9 @@ private struct CaptureVoiceWritingEditor: View {
         } header: {
             Label("Time-linked transcript", systemImage: "waveform.and.magnifyingglass")
         } footer: {
-            Text("Your original audio and first transcript stay safe. Corrections change the words you read and remain linked to the exact moment.")
+            Text(hasRemoteOnlyTranscriptSources
+                ? "These timed words are restored from your Nest. Source playback is available on a device that has the original recording; corrections remain linked to the exact moment."
+                : "Your original audio and first transcript stay safe. Corrections change the words you read and remain linked to the exact moment.")
                 .accessibilityIdentifier("CaptureVoiceWritingTranscriptSourceBoundary")
         }
     }
@@ -8674,19 +8719,44 @@ private struct CaptureVoiceWritingEditor: View {
         let id: UUID
         let title: String
         let segments: [OnDeviceTranscriptSegment]
+        let canonicalSegmentIDs: [String?]
+        let isLocallyPlayable: Bool
     }
 
     private var transcriptSources: [TimedTranscriptSource] {
         let sources = currentDraft?.allSources ?? []
         let mapped = sources.compactMap { source -> TimedTranscriptSource? in
-            guard let transcript = transcriptManager.storedTranscript(for: source.localRecordingID),
-                  !transcript.segments.isEmpty else { return nil }
-            let title = recordingLibrary.recording(id: source.localRecordingID)?.displayTitle
+            let localRecording = recordingLibrary.recording(id: source.localRecordingID)
+            let title = localRecording?.displayTitle
                 ?? "Recording \(sources.firstIndex(of: source).map { $0 + 1 } ?? 1)"
+            if let transcript = transcriptManager.storedTranscript(for: source.localRecordingID),
+               !transcript.segments.isEmpty {
+                return TimedTranscriptSource(
+                    id: source.localRecordingID,
+                    title: title,
+                    segments: transcript.segments,
+                    canonicalSegmentIDs: [String?](
+                        repeating: nil,
+                        count: transcript.segments.count
+                    ),
+                    isLocallyPlayable: localRecording != nil
+                )
+            }
+            guard let remote = writingSync.remoteTranscript(
+                for: source.transcriptClientRequestID
+            ) else { return nil }
+            let remotePassages = remote.segments.compactMap {
+                segment -> (timed: OnDeviceTranscriptSegment, canonicalID: String)? in
+                guard let timed = segment.timedSegment else { return nil }
+                return (timed, segment.id)
+            }
+            guard !remotePassages.isEmpty else { return nil }
             return TimedTranscriptSource(
                 id: source.localRecordingID,
                 title: title,
-                segments: transcript.segments
+                segments: remotePassages.map(\.timed),
+                canonicalSegmentIDs: remotePassages.map(\.canonicalID),
+                isLocallyPlayable: localRecording != nil
             )
         }
         if !mapped.isEmpty { return mapped }
@@ -8695,8 +8765,14 @@ private struct CaptureVoiceWritingEditor: View {
         return [TimedTranscriptSource(
             id: primaryRecordingID,
             title: recording?.displayTitle ?? "Original recording",
-            segments: timedTranscript
+            segments: timedTranscript,
+            canonicalSegmentIDs: [String?](repeating: nil, count: timedTranscript.count),
+            isLocallyPlayable: recordingLibrary.recording(id: primaryRecordingID) != nil
         )]
+    }
+
+    private var hasRemoteOnlyTranscriptSources: Bool {
+        transcriptSources.contains { !$0.isLocallyPlayable }
     }
 
     private var transcriptSegmentCount: Int {
@@ -8710,12 +8786,29 @@ private struct CaptureVoiceWritingEditor: View {
     private var visibleTranscriptSources: [TimedTranscriptSource] {
         guard !normalizedTranscriptQuery.isEmpty else { return transcriptSources }
         return transcriptSources.compactMap { source in
-            let matches = source.segments.filter {
-                let displayed = transcriptDisplayText(for: $0, recordingID: source.id)
+            let matches = source.segments.enumerated().filter { index, segment in
+                let canonicalID = source.canonicalSegmentIDs.indices.contains(index)
+                    ? source.canonicalSegmentIDs[index]
+                    : nil
+                let displayed = transcriptDisplayText(
+                    for: segment,
+                    recordingID: source.id,
+                    canonicalSegmentID: canonicalID
+                )
                 return displayed.localizedCaseInsensitiveContains(normalizedTranscriptQuery)
             }
             guard !matches.isEmpty else { return nil }
-            return TimedTranscriptSource(id: source.id, title: source.title, segments: matches)
+            return TimedTranscriptSource(
+                id: source.id,
+                title: source.title,
+                segments: matches.map(\.element),
+                canonicalSegmentIDs: matches.map { index, _ in
+                    source.canonicalSegmentIDs.indices.contains(index)
+                        ? source.canonicalSegmentIDs[index]
+                        : nil
+                },
+                isLocallyPlayable: source.isLocallyPlayable
+            )
         }
     }
 
@@ -8736,8 +8829,14 @@ private struct CaptureVoiceWritingEditor: View {
 
     private var transcriptText: String {
         transcriptSources.map { source in
-            let words = source.segments.map {
-                transcriptDisplayText(for: $0, recordingID: source.id)
+            let words = source.segments.enumerated().map { index, segment in
+                transcriptDisplayText(
+                    for: segment,
+                    recordingID: source.id,
+                    canonicalSegmentID: source.canonicalSegmentIDs.indices.contains(index)
+                        ? source.canonicalSegmentIDs[index]
+                        : nil
+                )
             }.joined(separator: " ")
             return transcriptSources.count > 1 ? "\(source.title)\n\(words)" : words
         }
@@ -8767,7 +8866,8 @@ private struct CaptureVoiceWritingEditor: View {
     /// recording that happens to start at the same timestamp.
     private func canonicalSegment(
         for local: OnDeviceTranscriptSegment,
-        recordingID: UUID
+        recordingID: UUID,
+        canonicalSegmentID: String? = nil
     ) -> CaptureTranscriptSegment? {
         if CaptureLaunchConfiguration.usesPreviewData {
             return CaptureTranscriptSegment(
@@ -8788,6 +8888,10 @@ private struct CaptureVoiceWritingEditor: View {
             )
         }
         guard let desk = transcriptCorrections.desk else { return nil }
+        if let canonicalSegmentID,
+           let exact = desk.segments.first(where: { $0.id == canonicalSegmentID }) {
+            return exact
+        }
         let localRecording = recordingLibrary.recording(id: recordingID)
         let expectedAssetID = localRecording?.recordingAssetId?.nonempty
         let candidates = desk.segments.filter { candidate in
@@ -8812,9 +8916,14 @@ private struct CaptureVoiceWritingEditor: View {
 
     private func transcriptDisplayText(
         for local: OnDeviceTranscriptSegment,
-        recordingID: UUID
+        recordingID: UUID,
+        canonicalSegmentID: String? = nil
     ) -> String {
-        guard let canonical = canonicalSegment(for: local, recordingID: recordingID) else {
+        guard let canonical = canonicalSegment(
+            for: local,
+            recordingID: recordingID,
+            canonicalSegmentID: canonicalSegmentID
+        ) else {
             return local.text
         }
         if let roomID = directCorrectionRoomID,
@@ -8826,14 +8935,6 @@ private struct CaptureVoiceWritingEditor: View {
             return corrected
         }
         return canonical.text
-    }
-
-    private func localRecording(for segment: CaptureTranscriptSegment) -> LocalRecording? {
-        if let assetID = segment.recordingAssetId?.nonempty,
-           let exact = sourceRecordings.first(where: { $0.recordingAssetId == assetID }) {
-            return exact
-        }
-        return sourceRecordings.count == 1 ? sourceRecordings.first : nil
     }
 
     private func correctionStatusSymbol(for segment: CaptureTranscriptSegment) -> String {
