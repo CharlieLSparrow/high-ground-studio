@@ -75,6 +75,60 @@ describe("SessionRecordingShareCard", () => {
     }));
   });
 
+  it("searches long transcripts without changing retained cuts", async () => {
+    const retainedSegment = {
+      ...transcriptSegment,
+      segmentId: "transcript_segment_0002",
+      providerTextSha256: "b".repeat(64),
+      speakerLabel: "Client",
+      text: "Keep the accountability plan in the shared recording.",
+      startSeconds: 18,
+      endSeconds: 23,
+      cutStartSeconds: 18.1,
+      cutEndSeconds: 22.9,
+      timingFingerprint: "d".repeat(64),
+    };
+    const longTranscriptSnapshot = {
+      ...snapshot,
+      available: { ...snapshot.available, transcriptSegments: [transcriptSegment, retainedSegment] },
+    };
+    const requests: Array<Record<string, unknown>> = [];
+    global.fetch = jest.fn(async (_url, init) => {
+      if (init?.method === "POST") requests.push(JSON.parse(String(init.body)));
+      return response(longTranscriptSnapshot);
+    }) as jest.MockedFunction<typeof fetch>;
+
+    render(<SessionRecordingShareCard roomId="session_room_0001" />);
+    const removedPassage = await screen.findByText(transcriptSegment.text);
+    const removedCheckbox = removedPassage.closest("label")?.querySelector("input[type=checkbox]") as HTMLInputElement;
+    await userEvent.click(removedCheckbox);
+
+    await userEvent.type(screen.getByRole("searchbox", { name: "Search recording transcript" }), "accountability");
+    expect(screen.queryByText(transcriptSegment.text)).not.toBeInTheDocument();
+    expect(screen.getByText(retainedSegment.text)).toBeInTheDocument();
+    expect(screen.getByText(/showing 1 of 2 passages/i)).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Create private preview" }));
+    await waitFor(() => expect(requests).toHaveLength(1));
+    expect(requests[0]).toEqual(expect.objectContaining({
+      action: "PREPARE",
+      excludedTranscriptSegments: [expect.objectContaining({ segmentId: transcriptSegment.segmentId })],
+    }));
+  });
+
+  it("isolates removed passages without forcing a review step", async () => {
+    global.fetch = jest.fn(async (_input: RequestInfo | URL) => response(snapshot)) as jest.MockedFunction<typeof fetch>;
+
+    render(<SessionRecordingShareCard roomId="session_room_0001" />);
+    const passage = await screen.findByText(transcriptSegment.text);
+    const passageCheckbox = passage.closest("label")?.querySelector("input[type=checkbox]") as HTMLInputElement;
+    await userEvent.click(passageCheckbox);
+    await userEvent.click(screen.getByRole("button", { name: "Removed (1)" }));
+
+    expect(screen.getByText(transcriptSegment.text)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Removed (1)" })).toHaveAttribute("aria-pressed", "true");
+  });
+
   it("prepares through the verified cloud renderer when no local renderer is available", async () => {
     const cloudOnlySnapshot = { ...snapshot, readiness: { ...snapshot.readiness, localRendererAvailable: false, cloudRendererAvailable: true } };
     const requests: Array<Record<string, unknown>> = [];

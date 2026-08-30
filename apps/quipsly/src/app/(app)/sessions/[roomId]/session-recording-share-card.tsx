@@ -184,6 +184,8 @@ export function SessionRecordingShareCard({
   const [outputMediaKind, setOutputMediaKind] = useState<"audio" | "video">("audio");
   const [primaryVideoSourceId, setPrimaryVideoSourceId] = useState("");
   const [excludedTranscriptKeys, setExcludedTranscriptKeys] = useState<Set<string>>(new Set());
+  const [transcriptQuery, setTranscriptQuery] = useState("");
+  const [transcriptView, setTranscriptView] = useState<"all" | "removed">("all");
   const [editing, setEditing] = useState(false);
   const [audition, setAudition] = useState<PassageAudition | null>(null);
   const [auditionNotice, setAuditionNotice] = useState<string | null>(null);
@@ -254,6 +256,15 @@ export function SessionRecordingShareCard({
   const excludedTranscriptSegments = useMemo(() => editableTranscript.filter((segment) => (
     excludedTranscriptKeys.has(`${segment.transcriptJobId}:${segment.segmentId}`)
   )), [editableTranscript, excludedTranscriptKeys]);
+  const visibleTranscript = useMemo(() => {
+    const query = transcriptQuery.trim().toLocaleLowerCase();
+    return editableTranscript.filter((segment) => {
+      const key = `${segment.transcriptJobId}:${segment.segmentId}`;
+      if (transcriptView === "removed" && !excludedTranscriptKeys.has(key)) return false;
+      if (!query) return true;
+      return `${segment.speakerLabel} ${segment.text}`.toLocaleLowerCase().includes(query);
+    });
+  }, [editableTranscript, excludedTranscriptKeys, transcriptQuery, transcriptView]);
   const durationEstimate = useMemo(
     () => editDuration(startSeconds, endSeconds, excludedTranscriptSegments),
     [endSeconds, excludedTranscriptSegments, startSeconds],
@@ -557,8 +568,26 @@ export function SessionRecordingShareCard({
                 </div>
               ) : null}
               {auditionNotice ? <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs font-bold leading-5 text-amber-950" role="status">{auditionNotice}</p> : null}
+              <div className="mt-4 grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
+                <label className="relative block">
+                  <span className="sr-only">Search recording transcript</span>
+                  <input
+                    type="search"
+                    value={transcriptQuery}
+                    onChange={(event) => setTranscriptQuery(event.target.value)}
+                    placeholder="Find words or a speaker"
+                    aria-label="Search recording transcript"
+                    className="block min-h-11 w-full rounded-xl border border-sky-200 bg-sky-50/50 px-3 py-2.5 text-sm font-semibold text-sky-950 placeholder:text-sky-600"
+                  />
+                </label>
+                <div className="grid grid-cols-2 rounded-xl bg-sky-100 p-1" role="group" aria-label="Transcript passages to show">
+                  <button type="button" aria-pressed={transcriptView === "all"} onClick={() => setTranscriptView("all")} className={`min-h-9 rounded-lg px-3 text-xs font-black ${transcriptView === "all" ? "bg-white text-sky-950 shadow-sm" : "text-sky-800"}`}>All</button>
+                  <button type="button" aria-pressed={transcriptView === "removed"} onClick={() => setTranscriptView("removed")} className={`min-h-9 rounded-lg px-3 text-xs font-black ${transcriptView === "removed" ? "bg-white text-sky-950 shadow-sm" : "text-sky-800"}`}>Removed {excludedTranscriptSegments.length ? `(${excludedTranscriptSegments.length})` : ""}</button>
+                </div>
+              </div>
+              <p className="mt-2 text-[11px] font-bold text-sky-700">Showing {visibleTranscript.length} of {editableTranscript.length} passages. Search changes only this view, not your edit.</p>
               <div className="mt-3 max-h-80 space-y-2 overflow-y-auto pr-1">
-                {editableTranscript.map((segment) => {
+                {visibleTranscript.map((segment) => {
                   const key = `${segment.transcriptJobId}:${segment.segmentId}`;
                   const included = !excludedTranscriptKeys.has(key);
                   const safe = segment.cutSafety === "safe" && Boolean(segment.timingFingerprint);
@@ -594,6 +623,7 @@ export function SessionRecordingShareCard({
                     </div>
                   );
                 })}
+                {!visibleTranscript.length ? <div className="rounded-xl border border-dashed border-sky-200 bg-sky-50/50 p-5 text-center"><p className="text-sm font-black text-sky-950">No passages match this view</p><p className="mt-1 text-xs font-semibold text-sky-700">Try another search or show all passages.</p></div> : null}
               </div>
               <p className="mt-3 text-xs font-bold text-sky-800">{excludedTranscriptSegments.length ? `${excludedTranscriptSegments.length} passage${excludedTranscriptSegments.length === 1 ? "" : "s"} removed · ${time(durationEstimate.removedSeconds)} cut · preview about ${time(durationEstimate.previewSeconds)}.` : "Everything in the selected range is included."}</p>
             </fieldset>
