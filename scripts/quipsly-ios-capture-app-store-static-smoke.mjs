@@ -238,6 +238,21 @@ const captureReceiptStoreText = read(files.captureReceiptStore);
 const captureRecordingCoordinatorText = read(files.captureRecordingCoordinator);
 const captureRecordingReceiptOutboxText = read(files.captureRecordingReceiptOutbox);
 const capturePhoneShellText = read(files.capturePhoneShell);
+const recorderSurfaceStart = capturePhoneShellText.indexOf(
+  "private struct CaptureRecorderView: View",
+);
+const recorderSurfaceEnd = capturePhoneShellText.indexOf(
+  "private struct MobilePriorSessionFollowThroughCard: View",
+  recorderSurfaceStart,
+);
+assert(
+  recorderSurfaceStart >= 0 && recorderSurfaceEnd > recorderSurfaceStart,
+  "Capture recorder source boundary is missing.",
+);
+const recorderSurfaceText = capturePhoneShellText.slice(
+  recorderSurfaceStart,
+  recorderSurfaceEnd,
+);
 const subscriptionStoreText = read(files.subscriptionStore);
 const audioSoundCheckText = read(files.audioSoundCheck);
 const audioSoundCheckModelText = read(files.audioSoundCheckModel);
@@ -508,6 +523,16 @@ requireIncludes(capturePhoneShellText, 'status: "CANCELED"', "Capture marks the 
 requireIncludes(capturePhoneShellText, "The repeating task will continue with its next occurrence.", "Capture explains the direct effect of skipping a missed occurrence");
 requireIncludes(capturePhoneShellText, "CaptureSessionFollowUpStatus", "the production phone recorder owns client follow-up readiness");
 requireIncludes(capturePhoneShellText, "CaptureSessionResultsCard", "the production phone recorder reaches automatically created editable Session results");
+requireIncludes(
+  recorderSurfaceText,
+  "private var recorderScrollableSurface: AnyView",
+  "the production recorder keeps its physical-device stack behind a concrete type-erasure boundary",
+);
+assert(
+  recorderSurfaceText.match(/AnyView\(Group \{/g)?.length >= 6,
+  "Capture recorder stack boundaries were collapsed back into one giant SwiftUI result-builder type.",
+  { minimumBoundaries: 6 },
+);
 requireIncludes(capturePhoneShellText, "session.coachingTranscriptResults", "Capture renders canonical transcript-derived work without a second approval queue");
 requireIncludes(capturePhoneShellText, "Adjust or remove them like any other work", "Capture explains that generated Session work is ordinary editable work");
 requireExcludes(capturePhoneShellText, "private struct CapturePacketReviewLanesCard", "retired transcript suggestion approval queue");

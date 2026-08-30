@@ -9991,14 +9991,20 @@ private struct CaptureRecorderView: View {
     @StateObject private var sessionConversation = MobileSessionConversationClient()
     @StateObject private var sessionPreparation = MobileCoachingSessionPreparationClient()
 
-    var body: some View {
-        ScrollView {
+    /// Keep the scrollable workspace behind concrete type-erasure boundaries.
+    /// The Session surface intentionally contains many independently useful
+    /// cards. Returning their full nested generic type from `body` overflowed
+    /// the smaller main-thread stack on physical iPhones before SwiftUI could
+    /// render either Sessions or Speak to write.
+    private var recorderScrollableSurface: AnyView {
+        AnyView(ScrollView {
             // This surface can project a full Episode workspace. Lazy layout
             // is a correctness boundary on physical devices: eagerly laying
             // out every transcript, notes, follow-through, chat, Watch, and
             // capture card can overflow SwiftUI's AttributeGraph stack before
             // the person reaches the consent controls.
             LazyVStack(spacing: 16) {
+                AnyView(Group {
                 if model.selectedSession?.isPersonalVoiceNote != true {
                     SessionChooserButton(session: model.selectedSession) {
                         showsSessionPicker = true
@@ -10039,8 +10045,10 @@ private struct CaptureRecorderView: View {
                     )
                     .accessibilityIdentifier("CaptureSessionEntryNotice")
                 }
+                })
 
                 if let session = model.selectedSession {
+                    AnyView(Group {
                     if session.isPersonalVoiceNote {
                         CapturePersonalVoiceNoteHeader(
                             onOpenLibrary: {
@@ -10183,7 +10191,9 @@ private struct CaptureRecorderView: View {
                         }
                     }
                     }
+                    })
 
+                    AnyView(Group {
                     if model.providerRoom.isConnected
                         || localOnlyRecordingSessionID == session.id
                         || audioCapture.activeSessionID == session.id
@@ -10196,6 +10206,7 @@ private struct CaptureRecorderView: View {
                         // the explicit local-only fallback. The larger workflow
                         // workspace below remains lazy.
                         VStack(spacing: 16) {
+                            AnyView(Group {
                             if !session.isPersonalVoiceNote {
                             ConsentStrip(
                                 session: session,
@@ -10308,7 +10319,9 @@ private struct CaptureRecorderView: View {
                             )
                         }
                     }
+                    })
 
+                    AnyView(Group {
                     if !session.isPersonalVoiceNote {
                         CaptureSessionGuardianCard(
                             audioCapture: audioCapture,
@@ -10469,9 +10482,12 @@ private struct CaptureRecorderView: View {
                         episodeWatch.loadPreview(session: session)
                     }
                     }
+                    })
                         }
                     }
+                    })
 
+                    AnyView(Group {
                     if !session.isPersonalVoiceNote {
                         // Once the live/local recorder workspace collapses, keep the
                         // ordinary post-call action in the Session itself. The
@@ -10791,6 +10807,7 @@ private struct CaptureRecorderView: View {
 
                         SourceTruthFootnote(mode: recordingMode)
                     }
+                    })
                 } else if model.isRefreshing {
                     CaptureLoadingCard(label: "Loading capture sessions…")
                 } else {
@@ -10915,7 +10932,11 @@ private struct CaptureRecorderView: View {
                 }
             }
         }
-        .background(CaptureCanvas())
+        .background(CaptureCanvas()))
+    }
+
+    var body: some View {
+        recorderScrollableSurface
         .navigationTitle(model.selectedSession?.isPersonalVoiceNote == true ? "Speak to write" : "Sessions")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(
