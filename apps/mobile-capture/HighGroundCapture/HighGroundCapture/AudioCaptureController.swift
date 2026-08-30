@@ -286,10 +286,10 @@ final class AudioCaptureController: NSObject, ObservableObject {
         do {
             try configureAudioSession()
             refreshInputRoute()
-            guard !audioSession.currentRoute.inputs.isEmpty else {
-                failCapture("No microphone input is available. Connect or enable a microphone, then try again.")
-                return false
-            }
+            // Preparing the route is intentionally side-effect free. iOS may
+            // report no current input while another app still owns the active
+            // playback session. Record activates Quipsly, interrupts that
+            // playback conventionally, and then verifies the real input.
             transition(to: .idle)
             return true
         } catch {

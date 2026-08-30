@@ -1479,23 +1479,12 @@ final class CaptureExperienceModel: ObservableObject {
             return created
         }
 
-        if !AuthManager.shared.networkActionsAllowed {
-            return createLocalPersonalVoiceNote(title: title)
-        }
-
-        if let created = await sessionClient.createQuickSession(
-            title: title,
-            purpose: "PERSONAL_NOTE",
-            provider: "planned"
-        ) {
-            selectedSessionID = created.id
-            message = "Ready to write. Tap Record when you are ready."
-            return created
-        }
-
-        // Losing the network must never lose a thought. Session creation is a
-        // background synchronization concern for private writing, not a gate
-        // in front of the microphone.
+        // Private writing always opens locally first—even when Nest appears
+        // reachable. Home-Nest provisioning, a stale project context, or a
+        // transient service failure must never sit between a person and the
+        // microphone. After Stop, materializePendingPersonalVoiceNotes binds
+        // this exact protected source to the actor's canonical My Nest and
+        // resumes upload without changing the document or source identity.
         return createLocalPersonalVoiceNote(title: title)
     }
 
@@ -1510,7 +1499,7 @@ final class CaptureExperienceModel: ObservableObject {
         )
         sessionClient.sessions.insert(created, at: 0)
         selectedSessionID = created.id
-        message = "You’re offline. Recording and writing stay safe on this iPhone."
+        message = "Ready to write. Your recording and words start safely on this iPhone."
         return created
     }
 

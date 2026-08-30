@@ -78,6 +78,17 @@ final class CaptureAudioSessionCoordinator: ObservableObject {
             if !isCallKitAudioActive {
                 try audioSession.setActive(true)
             }
+            refreshRouteSnapshot()
+            guard !audioSession.currentRoute.inputs.isEmpty else {
+                throw NSError(
+                    domain: "CaptureAudioSession",
+                    code: 5,
+                    userInfo: [
+                        NSLocalizedDescriptionKey:
+                            "No microphone became active. Check Quipsly microphone access or reconnect the selected audio device, then try again."
+                    ]
+                )
+            }
             try requirePrivateRouteDuringCapture()
         } catch {
             isLocalCaptureActive = false
@@ -157,7 +168,7 @@ final class CaptureAudioSessionCoordinator: ObservableObject {
         try activatedSession.setCategory(
             .playAndRecord,
             mode: .voiceChat,
-            options: [.mixWithOthers, .defaultToSpeaker, .allowBluetoothHFP]
+            options: [.defaultToSpeaker, .allowBluetoothHFP]
         )
         #if canImport(LiveKit)
         try AudioManager.shared.setEngineAvailability(.default)
@@ -399,7 +410,13 @@ final class CaptureAudioSessionCoordinator: ObservableObject {
         try audioSession.setCategory(
             .playAndRecord,
             mode: mode,
-            options: [.defaultToSpeaker, .allowBluetoothHFP, .mixWithOthers]
+            // Capture is primary audio. A book, podcast, or music app should
+            // yield when Record/Join activates this session, just as it does
+            // for Voice Memos or a call. Mixing can also prevent aggregated
+            // input/output from becoming available when another app already
+            // owns a non-mixable audio session. Deactivation below uses
+            // notifyOthersOnDeactivation so the interrupted app may resume.
+            options: [.defaultToSpeaker, .allowBluetoothHFP]
         )
     }
 

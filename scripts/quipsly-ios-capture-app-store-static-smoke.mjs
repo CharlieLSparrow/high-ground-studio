@@ -1379,6 +1379,11 @@ for (const needle of [
 ]) {
   requireIncludes(captureExperienceText, needle, "local-first capture coordinator");
 }
+const personalVoiceStart = captureExperienceText.indexOf("func createPersonalVoiceNote(");
+const personalVoiceEnd = captureExperienceText.indexOf("private func createLocalPersonalVoiceNote", personalVoiceStart);
+const personalVoiceEntryBody = captureExperienceText.slice(personalVoiceStart, personalVoiceEnd);
+requireIncludes(personalVoiceEntryBody, "return createLocalPersonalVoiceNote(title: title)", "private voice writing opens its protected local source immediately");
+requireExcludes(personalVoiceEntryBody, "sessionClient.createQuickSession", "Home Nest provisioning never gates a new private voice recording");
 for (const needle of [
   "struct PendingSourceAnnotationDraftDecision",
   "let ownerAccountID: String",
@@ -1832,6 +1837,10 @@ requireIncludes(capturePhoneShellText, "AVRoutePickerView", "native call routing
 requireIncludes(captureAudioSessionCoordinatorText, '@Published private(set) var currentOutputRouteName', "shared native audio policy publishes the actual current listening route");
 requireIncludes(captureAudioSessionCoordinatorText, "AVAudioSession.routeChangeNotification", "shared native audio policy refreshes route truth after hardware or system changes");
 requireIncludes(captureAudioSessionCoordinatorText, "private func refreshRouteSnapshot()", "shared native audio policy derives display routes from the active AVAudioSession");
+requireIncludes(captureAudioSessionCoordinatorText, "No microphone became active.", "recording validates the real microphone only after Quipsly owns the active audio session");
+requireIncludes(captureAudioSessionCoordinatorText, "options: [.defaultToSpeaker, .allowBluetoothHFP]", "recording and calls use primary audio that conventionally interrupts background playback");
+requireExcludes(captureAudioSessionCoordinatorText, ".mixWithOthers", "recording does not lose microphone IO by mixing with a competing playback app");
+requireIncludes(audioText, "iOS may\n            // report no current input while another app still owns the active", "side-effect-free recorder preparation does not mistake an inactive route for missing hardware");
 requireIncludes(captureAudioSessionCoordinatorText, "isProviderInputRetentionActive", "provider-backed local masters retain an explicit input-engine lease across room lifecycle changes");
 requireIncludes(captureAudioSessionCoordinatorText, "func retainProviderInputForLocalCapture() throws", "provider input retention is an explicit recording boundary rather than an inferred CallKit side effect");
 requireIncludes(captureAudioSessionCoordinatorText, "isProviderInputRetentionActive ? .default : .none", "CallKit connect and deactivate preserve only an explicitly retained provider input");
