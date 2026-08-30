@@ -1867,10 +1867,10 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         tapRootTab("Work", in: app)
         XCTAssertTrue(app.scrollViews["CaptureWorkView"].waitForExistence(timeout: 20))
 
-        let newProject = app.buttons["CaptureWorkNewProjectInline"].firstMatch
+        let newProject = app.buttons["CaptureWorkNewProject"].firstMatch
         XCTAssertTrue(newProject.waitForExistence(timeout: 10))
         newProject.tap()
-        XCTAssertTrue(app.navigationBars["New project"].waitForExistence(timeout: 6))
+        XCTAssertTrue(app.navigationBars["New Nest"].waitForExistence(timeout: 6))
 
         let name = app.textFields["CaptureWorkProjectName"].firstMatch
         XCTAssertTrue(name.waitForExistence(timeout: 4))
@@ -1891,7 +1891,7 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         XCTAssertTrue(create.waitForExistence(timeout: 4))
         XCTAssertTrue(create.isEnabled)
         create.tap()
-        XCTAssertTrue(app.navigationBars["New project"].waitForNonExistence(timeout: 30))
+        XCTAssertTrue(app.navigationBars["New Nest"].waitForNonExistence(timeout: 30))
         XCTAssertTrue(
             app.staticTexts[projectName].firstMatch.waitForExistence(timeout: 30),
             "Work should select the exact canonical project created through the compiled app."

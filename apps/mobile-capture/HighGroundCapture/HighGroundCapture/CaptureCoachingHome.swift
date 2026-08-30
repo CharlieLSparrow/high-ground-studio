@@ -533,6 +533,28 @@ final class MobileCoachingRunwayClient: ObservableObject {
     @Published private(set) var isUsingProtectedCache = false
     @Published private(set) var cachedSnapshotSavedAt: Date?
     @Published private(set) var subscriptionRequired = false
+    private var preferredProjectSlug: String?
+    private static let preferredProjectSlugKey = "quipsly.coaching.preferred-project-slug.v1"
+    private static let preferredProjectOwnerKey = "quipsly.coaching.preferred-project-owner.v1"
+
+    /// Keeps newly scheduled coaching relationships inside the Nest the coach
+    /// deliberately chose. Engagement membership remains the client-facing
+    /// access boundary; choosing a practice Nest never grants clients access to
+    /// every other relationship in that Nest.
+    func preferProject(slug: String?) {
+        preferredProjectSlug = slug?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .nonemptyCoachingText
+        let defaults = UserDefaults.standard
+        guard let preferredProjectSlug,
+              let ownerAccountID = Self.normalizedOwnerAccountID(AuthManager.currentStoredOwnerID()) else {
+            defaults.removeObject(forKey: Self.preferredProjectSlugKey)
+            defaults.removeObject(forKey: Self.preferredProjectOwnerKey)
+            return
+        }
+        defaults.set(preferredProjectSlug, forKey: Self.preferredProjectSlugKey)
+        defaults.set(ownerAccountID, forKey: Self.preferredProjectOwnerKey)
+    }
 
     private let baseURL = normalizedNestBaseURL(
         Bundle.main.object(forInfoDictionaryKey: "QUIPSLY_API_BASE_URL") as? String
@@ -555,6 +577,13 @@ final class MobileCoachingRunwayClient: ObservableObject {
 
     init() {
         observedOwnerAccountID = Self.normalizedOwnerAccountID(AuthManager.currentStoredOwnerID())
+        if let observedOwnerAccountID,
+           UserDefaults.standard.string(forKey: Self.preferredProjectOwnerKey) == observedOwnerAccountID {
+            preferredProjectSlug = UserDefaults.standard
+                .string(forKey: Self.preferredProjectSlugKey)?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .nonemptyCoachingText
+        }
         accountIdentityObserver = NotificationCenter.default.addObserver(
             forName: .quipslyCaptureAccountIdentityDidChange,
             object: nil,
@@ -1426,7 +1455,12 @@ final class MobileCoachingRunwayClient: ObservableObject {
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        var contextualBody = body
+        if contextualBody["projectSlug"] == nil,
+           let preferredProjectSlug {
+            contextualBody["projectSlug"] = preferredProjectSlug
+        }
+        request.httpBody = try JSONSerialization.data(withJSONObject: contextualBody)
         let (data, httpResponse) = try await AuthManager.shared.authenticatedData(for: request)
         let payload = try JSONDecoder().decode(MobileCoachingActionResponse.self, from: data)
         if httpResponse.statusCode == 402 || payload.code == "QUIPSLY_SUBSCRIPTION_REQUIRED" {
@@ -1484,6 +1518,7 @@ final class MobileCoachingRunwayClient: ObservableObject {
         isUsingProtectedCache = false
         cachedSnapshotSavedAt = nil
         subscriptionRequired = false
+        preferProject(slug: nil)
         Self.clearProtectedSnapshot()
     }
 

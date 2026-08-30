@@ -2002,6 +2002,8 @@ private struct CaptureWorkView: View {
     @State private var showsTagVocabulary = false
     @State private var quickEntryKind: MobileQuickEntryKind?
     @State private var showsNewProject = false
+    @State private var showsCoachingSetup = false
+    @State private var pendingNewProjectTemplateID: String?
     @State private var taskToEdit: MobileCaptureTodayTask?
     @State private var recurrenceToEdit: MobileCaptureTodayTask?
     @State private var goalToEdit: MobileCaptureTodayGoal?
@@ -2274,7 +2276,12 @@ private struct CaptureWorkView: View {
             .presentationDetents([.large])
         }
         .sheet(isPresented: $showsNewProject) {
-            NewCaptureProjectSheet(client: client)
+            NewCaptureProjectSheet(client: client) { templateID, project in
+                pendingNewProjectTemplateID = templateID
+                if templateID == "coaching" {
+                    model.coachingRunwayClient.preferProject(slug: project.slug)
+                }
+            }
                 .presentationDetents([.large])
         }
         .sheet(isPresented: $showsNestSwitcher) {
@@ -2396,11 +2403,25 @@ private struct CaptureWorkView: View {
                 }
             )
         }
+        .navigationDestination(isPresented: $showsCoachingSetup) {
+            CaptureCoachingHomeView(
+                model: model,
+                visibleTab: $visibleTab
+            )
+        }
         .onAppear {
             selectedProjectID = selectedProjectID ?? client.selectedProjectID
         }
         .onChange(of: client.selectedProjectID) { _, newValue in
             selectedProjectID = newValue
+        }
+        .onChange(of: showsNewProject) { _, isPresented in
+            guard !isPresented,
+                  let templateID = pendingNewProjectTemplateID else { return }
+            pendingNewProjectTemplateID = nil
+            if templateID == "coaching" {
+                showsCoachingSetup = true
+            }
         }
         .task(id: normalizedQuery) {
             guard normalizedQuery.count >= 2 else {
@@ -7669,6 +7690,7 @@ private struct TodayGoalCheckInControls: View {
 private struct NewCaptureProjectSheet: View {
     private struct KindOption: Identifiable {
         let id: String
+        let nestKind: String
         let title: String
         let detail: String
         let systemImage: String
@@ -7676,43 +7698,60 @@ private struct NewCaptureProjectSheet: View {
 
     @Environment(\.dismiss) private var dismiss
     @ObservedObject var client: CaptureWorkClient
+    let onCreated: (String, MobileCaptureCreatedProject) -> Void
     @State private var name = ""
     @State private var description = ""
-    @State private var selectedKind = "mixed"
+    @State private var selectedTemplateID = "flexible"
     @State private var clientRequestID = UUID()
 
     private let kinds = [
         KindOption(
-            id: "mixed",
+            id: "flexible",
+            nestKind: "mixed",
             title: "Flexible Nest",
-            detail: "Notes, tasks, goals, sessions, and mixed source material.",
+            detail: "Start simple with Spaces, notes, tasks, goals, Sessions, and any source material.",
             systemImage: "square.grid.2x2"
         ),
         KindOption(
+            id: "coaching",
+            nestKind: "mixed",
+            title: "Coaching practice",
+            detail: "A shared Space for each client, with Sessions, notes, tasks, goals, and conversation.",
+            systemImage: "person.2.fill"
+        ),
+        KindOption(
             id: "production",
-            title: "Podcast or video",
-            detail: "Episode preparation, recordings, clips, editing, and delivery.",
+            nestKind: "production",
+            title: "Content, podcast, or video",
+            detail: "A Space for each episode or production, from planning and clips through editing and delivery.",
             systemImage: "waveform.and.person.filled"
         ),
         KindOption(
             id: "writing",
+            nestKind: "writing",
             title: "Writing",
-            detail: "Manuscripts, scripts, drafts, sources, and revisions.",
+            detail: "Manuscripts, papers, scripts, drafts, sources, and revisions.",
             systemImage: "text.book.closed"
         ),
         KindOption(
             id: "research",
+            nestKind: "research",
             title: "Research",
             detail: "Sources, evidence, annotations, notes, and writing uses.",
             systemImage: "books.vertical"
         ),
         KindOption(
-            id: "study",
-            title: "Study",
-            detail: "Reading, learning notes, questions, and durable takeaways.",
+            id: "teaching",
+            nestKind: "course",
+            title: "Course or teaching",
+            detail: "A Space for each lesson, with source material, activities, recordings, and learner resources.",
             systemImage: "graduationcap"
         ),
     ]
+
+    private var selectedKind: KindOption {
+        kinds.first { $0.id == selectedTemplateID } ?? kinds[0]
+    }
 
     private var normalizedName: String {
         name.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -7753,7 +7792,7 @@ private struct NewCaptureProjectSheet: View {
                 Section("Start with") {
                     ForEach(kinds) { kind in
                         Button {
-                            selectedKind = kind.id
+                            selectedTemplateID = kind.id
                         } label: {
                             HStack(alignment: .top, spacing: 12) {
                                 Image(systemName: kind.systemImage)
@@ -7769,14 +7808,14 @@ private struct NewCaptureProjectSheet: View {
                                         .foregroundStyle(.secondary)
                                 }
                                 Spacer()
-                                Image(systemName: selectedKind == kind.id ? "checkmark.circle.fill" : "circle")
-                                    .foregroundStyle(selectedKind == kind.id ? CapturePalette.accent : .secondary)
+                                Image(systemName: selectedTemplateID == kind.id ? "checkmark.circle.fill" : "circle")
+                                    .foregroundStyle(selectedTemplateID == kind.id ? CapturePalette.accent : .secondary)
                             }
                             .frame(minHeight: 48)
                         }
                         .buttonStyle(.plain)
                         .accessibilityIdentifier("CaptureWorkProjectKind_\(kind.id)")
-                        .accessibilityValue(selectedKind == kind.id ? "Selected" : "Not selected")
+                        .accessibilityValue(selectedTemplateID == kind.id ? "Selected" : "Not selected")
                     }
                 }
 
@@ -7811,11 +7850,12 @@ private struct NewCaptureProjectSheet: View {
                         Task {
                             let project = await client.createProject(
                                 name: normalizedName,
-                                nestKind: selectedKind,
+                                nestKind: selectedKind.nestKind,
                                 description: description.trimmingCharacters(in: .whitespacesAndNewlines),
                                 clientRequestID: clientRequestID
                             )
-                            if project != nil {
+                            if let project {
+                                onCreated(selectedTemplateID, project)
                                 dismiss()
                             }
                         }

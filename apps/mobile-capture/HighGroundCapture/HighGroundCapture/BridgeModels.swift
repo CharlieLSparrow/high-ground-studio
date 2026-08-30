@@ -7285,9 +7285,11 @@ final class CaptureWorkClient: ObservableObject {
             }
             return
         }
-        if brief == nil {
-            _ = restoreProtectedCache()
-        }
+        let restoredProtectedSelection = brief == nil && restoreProtectedCache()
+        // Resolve the destination only after restoring the actor-bound cache.
+        // Otherwise a relaunch asks the server for its default Nest before the
+        // app has a chance to remember where this person was actually working.
+        let requestedProjectID = projectID ?? brief?.selectedProjectId
         isLoading = true
         defer {
             isLoading = false
@@ -7301,8 +7303,8 @@ final class CaptureWorkClient: ObservableObject {
         errorMessage = nil
 
         var components = URLComponents(string: "\(baseURL)/api/mobile/capture/work")
-        if let projectID, !projectID.isEmpty {
-            components?.queryItems = [URLQueryItem(name: "projectId", value: projectID)]
+        if let requestedProjectID, !requestedProjectID.isEmpty {
+            components?.queryItems = [URLQueryItem(name: "projectId", value: requestedProjectID)]
         }
         guard let url = components?.url else {
             errorMessage = "The Nest Work URL is not valid."
@@ -7314,6 +7316,18 @@ final class CaptureWorkClient: ObservableObject {
             request.httpMethod = "GET"
             let (data, response) = try await AuthManager.shared.authenticatedData(for: request, allowOfflineRecovery: true)
             let payload = try JSONDecoder().decode(MobileCaptureWorkResponse.self, from: data)
+            if restoredProtectedSelection,
+               response.statusCode == 403 || response.statusCode == 404 {
+                // A removed grant must not strand the app on—or continue
+                // displaying—a remembered Nest. Forget only this actor-bound
+                // snapshot and let the server choose their current safe home.
+                Self.clearProtectedCache()
+                brief = nil
+                isUsingProtectedCache = false
+                isLoading = false
+                await load(projectID: nil)
+                return
+            }
             guard response.statusCode < 400, payload.ok else {
                 throw NSError(
                     domain: "CaptureWork",
@@ -7327,7 +7341,7 @@ final class CaptureWorkClient: ObservableObject {
             publishDocumentNoteEditCounts()
             if await flushDocumentNoteEdits() {
                 isLoading = false
-                await load(projectID: projectID)
+                await load(projectID: requestedProjectID)
                 return
             }
         } catch {

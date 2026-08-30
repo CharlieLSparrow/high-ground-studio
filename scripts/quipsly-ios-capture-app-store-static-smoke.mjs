@@ -1518,6 +1518,29 @@ for (const needle of [
   requireIncludes(capturePhoneShellText, needle, "accessible collaboration Spaces projected inside each Nest");
 }
 for (const needle of [
+  'id: "coaching",',
+  'title: "Coaching practice",',
+  'title: "Content, podcast, or video",',
+  'title: "Writing",',
+  'title: "Research",',
+  'title: "Course or teaching",',
+  "let nestKind: String",
+  'if templateID == "coaching"',
+  "model.coachingRunwayClient.preferProject(slug: project.slug)",
+  "CaptureCoachingHomeView(",
+]) {
+  requireIncludes(capturePhoneShellText, needle, "new Nest setup starts from familiar work without fragmenting canonical Nest kinds");
+}
+for (const needle of [
+  "private var preferredProjectSlug: String?",
+  "func preferProject(slug: String?)",
+  "quipsly.coaching.preferred-project-owner.v1",
+  "AuthManager.currentStoredOwnerID()",
+  'contextualBody["projectSlug"] = preferredProjectSlug',
+]) {
+  requireIncludes(captureCoachingHomeText, needle, "coaching scheduling creates client Spaces inside the coach-selected Nest");
+}
+for (const needle of [
   "static let canvas = adaptive(",
   "static let canvasLift = adaptive(",
   "static let surface = adaptive(",
@@ -1534,6 +1557,15 @@ for (const needle of [
   "Try saving on this iPhone again",
 ]) {
   requireIncludes(capturePhoneShellText, needle, "writing flushes its protected local copy at app lifecycle boundaries");
+}
+for (const needle of [
+  "let restoredProtectedSelection = brief == nil && restoreProtectedCache()",
+  "let requestedProjectID = projectID ?? brief?.selectedProjectId",
+  "response.statusCode == 403 || response.statusCode == 404",
+  "Self.clearProtectedCache()",
+  "await load(projectID: nil)",
+]) {
+  requireIncludes(bridgeText, needle, "Work relaunch restores the actor-bound Nest and safely forgets revoked access");
 }
 for (const needle of [
   "struct MobileQuickEntryRecurrence: Codable, Equatable",
