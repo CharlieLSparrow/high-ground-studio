@@ -699,7 +699,7 @@ private struct CaptureTodayPrimaryActions: View {
                     Text("Speak to write")
                         .font(.headline)
                         .fixedSize(horizontal: false, vertical: true)
-                    Text("Turn your voice into editable writing.")
+                    Text("Talk through a paper, note, or idea. Edit the words anytime.")
                         .font(.subheadline)
                         .opacity(0.92)
                         .fixedSize(horizontal: false, vertical: true)
@@ -728,7 +728,7 @@ private struct CaptureTodayPrimaryActions: View {
             "Start a paper",
             "Voice writing",
         ])
-        .accessibilityHint("Starts a private recording and turns your words into editable writing.")
+        .accessibilityHint("Starts a private recording and turns a spoken paper, note, or idea into editable writing.")
         .accessibilityIdentifier("CaptureStartVoiceNote")
     }
 
@@ -742,11 +742,11 @@ private struct CaptureTodayPrimaryActions: View {
                     .background(CapturePalette.accent.opacity(0.1), in: Circle())
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("Start a session")
+                    Text("New session")
                         .font(.headline)
                         .foregroundStyle(.primary)
                         .fixedSize(horizontal: false, vertical: true)
-                    Text("Coaching, podcast, or interview.")
+                    Text("Schedule or start coaching, a podcast, or an interview.")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -768,14 +768,15 @@ private struct CaptureTodayPrimaryActions: View {
         }
         .buttonStyle(.plain)
         .disabled(!canStart)
-        .accessibilityLabel("Start a session")
+        .accessibilityLabel("New session")
         .accessibilityInputLabels([
-            "Start a session",
             "New session",
+            "Start a session",
+            "Schedule a session",
             "Start coaching",
             "Start a call",
         ])
-        .accessibilityHint("Creates a coaching call, podcast, or interview.")
+        .accessibilityHint("Schedules or starts coaching, a podcast, or an interview.")
         .accessibilityIdentifier("CaptureStartSession")
     }
 }
@@ -14074,7 +14075,7 @@ private struct CaptureLibraryView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Speak to write")
                         .font(.headline)
-                    Text("Talk naturally. Edit, organize, or export the text afterward.")
+                    Text("Talk through a paper, note, or idea. Edit and organize the words afterward.")
                         .font(.caption)
                         .opacity(0.92)
                         .fixedSize(horizontal: false, vertical: true)
@@ -14093,7 +14094,7 @@ private struct CaptureLibraryView: View {
         .buttonStyle(.plain)
         .disabled(model.isSessionContextLocked || model.isCreatingSession)
         .accessibilityLabel("Speak to write")
-        .accessibilityHint("Starts a private recording and turns it into editable, time-linked writing.")
+        .accessibilityHint("Starts a private recording and turns a spoken paper, note, or idea into editable, time-linked writing.")
         .accessibilityIdentifier("CaptureLibrarySpeakToWrite")
     }
 
