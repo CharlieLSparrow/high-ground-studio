@@ -2973,6 +2973,7 @@ struct CaptureTranscriptReviewView: View {
     @State private var previousPacketCandidateStates: [String: CapturePacketCandidateReviewState] = [:]
     @State private var showsAllAudioListenPoints = false
     @State private var showsRecordingSource = false
+    @State private var showsTranscriptTools = false
     private static let transcriptPresentationModeKey = "quipsly.capture.transcript.presentation-mode"
     @State private var transcriptPresentationMode = CaptureTranscriptPresentationMode(
         rawValue: UserDefaults.standard.string(forKey: transcriptPresentationModeKey) ?? ""
@@ -3086,48 +3087,13 @@ struct CaptureTranscriptReviewView: View {
                             .frame(maxWidth: .infinity, minHeight: 120)
                     } else if let desk = client.desk {
                         transcriptSegments(desk, scrollProxy: scrollProxy)
-                        audioAttentionSection(desk, scrollProxy: scrollProxy)
-                            .id("audio-listen-points")
                         sourceTruth(desk)
                             .id("source-truth")
                         if !client.canReviewPrivatePacket {
                             participantFollowUpBoundary
                                 .id("shared-follow-up")
                         }
-                        if let evidence = desk.evidence?.transcript {
-                            transcriptEvidenceSummary(evidence)
-                                .id("transcript-evidence")
-                        }
-                        if desk.segments.contains(where: { segment in
-                            (segment.downstreamImpacts ?? []).contains(where: \.needsReview)
-                        }) {
-                            transcriptImpactSummary(desk)
-                                .id("linked-work-impact")
-                        }
-                        if let packetReviewError = client.packetReviewError {
-                            reviewNotice(
-                                title: "Follow-up unavailable",
-                                detail: packetReviewError,
-                                tint: .orange,
-                                icon: "target"
-                            )
-                            .accessibilityIdentifier("CaptureTranscriptPacketErrorBoundary")
-                        } else if client.canReviewPrivatePacket && client.followUpPreparationFailed && !client.packetNeedsRebuild {
-                            followUpRetryNotice
-                        }
-                        speakerIdentitySection(desk)
-                            .id("speaker-identities")
-                        if packetCandidateCount > 0 {
-                            packetCandidateReviewQueue { segmentID in
-                                withAnimation(
-                                    reduceMotion ? nil : .easeOut(duration: 0.3)
-                                ) {
-                                    scrollTargetSegmentID = segmentID
-                                }
-                                accessibilityFocusedSegmentID = segmentID
-                            }
-                            .id("packet-candidate-review")
-                        }
+                        transcriptTools(desk, scrollProxy: scrollProxy)
                     } else if client.errorMessage == nil {
                         ContentUnavailableView("Transcript unavailable", systemImage: "text.magnifyingglass")
                     }
@@ -3228,10 +3194,10 @@ struct CaptureTranscriptReviewView: View {
                         }
                         if !(client.desk?.speakerGroups ?? []).isEmpty {
                             Button {
-                                withAnimation(reduceMotion ? nil : .easeOut(duration: 0.3)) {
-                                    scrollTargetSegmentID = "speaker-identities"
-                                    scrollProxy.scrollTo("speaker-identities", anchor: .top)
-                                }
+                                revealTranscriptTools(
+                                    at: "speaker-identities",
+                                    scrollProxy: scrollProxy
+                                )
                             } label: {
                                 Label("Voice identities", systemImage: "person.wave.2")
                             }
@@ -3240,10 +3206,10 @@ struct CaptureTranscriptReviewView: View {
                         if let firstNote = packetCandidateQueue.first(where: { $0.kind == .note }) {
                             Button {
                                 showsAdditionalSuggestions = true
-                                withAnimation(reduceMotion ? nil : .easeOut(duration: 0.3)) {
-                                    scrollTargetSegmentID = firstNote.id
-                                    scrollProxy.scrollTo(firstNote.id, anchor: .center)
-                                }
+                                revealTranscriptTools(
+                                    at: firstNote.id,
+                                    scrollProxy: scrollProxy
+                                )
                             } label: {
                                 Label("Notes", systemImage: "note.text")
                             }
@@ -3252,10 +3218,10 @@ struct CaptureTranscriptReviewView: View {
                         if let firstGoal = packetCandidateQueue.first(where: { $0.kind == .goal }) {
                             Button {
                                 showsAdditionalSuggestions = true
-                                withAnimation(reduceMotion ? nil : .easeOut(duration: 0.3)) {
-                                    scrollTargetSegmentID = firstGoal.id
-                                    scrollProxy.scrollTo(firstGoal.id, anchor: .center)
-                                }
+                                revealTranscriptTools(
+                                    at: firstGoal.id,
+                                    scrollProxy: scrollProxy
+                                )
                             } label: {
                                 Label("Goals", systemImage: "target")
                             }
@@ -3264,10 +3230,10 @@ struct CaptureTranscriptReviewView: View {
                         if let firstTask = packetCandidateQueue.first(where: { $0.kind == .task }) {
                             Button {
                                 showsAdditionalSuggestions = true
-                                withAnimation(reduceMotion ? nil : .easeOut(duration: 0.3)) {
-                                    scrollTargetSegmentID = firstTask.id
-                                    scrollProxy.scrollTo(firstTask.id, anchor: .center)
-                                }
+                                revealTranscriptTools(
+                                    at: firstTask.id,
+                                    scrollProxy: scrollProxy
+                                )
                             } label: {
                                 Label("Tasks", systemImage: "checklist")
                             }
@@ -3276,10 +3242,10 @@ struct CaptureTranscriptReviewView: View {
                         if previewOnly || packetCandidateCount > 0 {
                             Button {
                                 showsAdditionalSuggestions = true
-                                withAnimation(reduceMotion ? nil : .easeOut(duration: 0.3)) {
-                                    scrollTargetSegmentID = nil
-                                    scrollProxy.scrollTo("packet-candidate-review", anchor: .top)
-                                }
+                                revealTranscriptTools(
+                                    at: "packet-candidate-review",
+                                    scrollProxy: scrollProxy
+                                )
                             } label: {
                                 Label("More suggestions", systemImage: "sparkles")
                             }
@@ -3367,6 +3333,108 @@ struct CaptureTranscriptReviewView: View {
             }
             .onDisappear { playback.pause(resetPosition: true) }
             .accessibilityIdentifier("CaptureTranscriptReviewView")
+        }
+    }
+
+    @ViewBuilder
+    private func transcriptTools(
+        _ desk: CaptureTranscriptCorrectionDesk,
+        scrollProxy: ScrollViewProxy
+    ) -> some View {
+        Button {
+            withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.2)) {
+                showsTranscriptTools.toggle()
+            }
+        } label: {
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: "waveform.badge.magnifyingglass")
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(.indigo)
+                    .frame(width: 42, height: 42)
+                    .background(Color.indigo.opacity(0.1), in: Circle())
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Audio, speakers & follow-up")
+                        .font(.headline)
+                        .foregroundStyle(.primary)
+                    Text("Accuracy highlights, voice names, notes, tasks, goals, and recording details.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.leading)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 8)
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(.secondary)
+                    .rotationEffect(.degrees(showsTranscriptTools ? 90 : 0))
+                    .accessibilityHidden(true)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .reviewCard()
+        .accessibilityValue(showsTranscriptTools ? "Expanded" : "Collapsed")
+        .accessibilityHint("Shows optional transcript and audio tools without changing the recording or transcript.")
+        .accessibilityIdentifier("CaptureTranscriptToolsDisclosure")
+
+        if showsTranscriptTools {
+            Group {
+                audioAttentionSection(desk, scrollProxy: scrollProxy)
+                    .id("audio-listen-points")
+                if let evidence = desk.evidence?.transcript {
+                    transcriptEvidenceSummary(evidence)
+                        .id("transcript-evidence")
+                }
+                if desk.segments.contains(where: { segment in
+                    (segment.downstreamImpacts ?? []).contains(where: \.needsReview)
+                }) {
+                    transcriptImpactSummary(desk)
+                        .id("linked-work-impact")
+                }
+                if let packetReviewError = client.packetReviewError {
+                    reviewNotice(
+                        title: "Follow-up unavailable",
+                        detail: packetReviewError,
+                        tint: .orange,
+                        icon: "target"
+                    )
+                    .accessibilityIdentifier("CaptureTranscriptPacketErrorBoundary")
+                } else if client.canReviewPrivatePacket && client.followUpPreparationFailed && !client.packetNeedsRebuild {
+                    followUpRetryNotice
+                }
+                speakerIdentitySection(desk)
+                    .id("speaker-identities")
+                if packetCandidateCount > 0 {
+                    packetCandidateReviewQueue { segmentID in
+                        withAnimation(
+                            reduceMotion ? nil : .easeOut(duration: 0.3)
+                        ) {
+                            scrollTargetSegmentID = segmentID
+                        }
+                        accessibilityFocusedSegmentID = segmentID
+                    }
+                    .id("packet-candidate-review")
+                }
+            }
+            .transition(.opacity.combined(with: .move(edge: .top)))
+        }
+    }
+
+    private func revealTranscriptTools(
+        at target: String,
+        scrollProxy: ScrollViewProxy
+    ) {
+        showsTranscriptTools = true
+        Task { @MainActor in
+            // The destination is inserted only after the disclosure expands.
+            // Give SwiftUI one reconciliation turn before asking the reader to
+            // navigate so menu actions remain deterministic on physical iPhones.
+            await Task.yield()
+            withAnimation(reduceMotion ? nil : .easeOut(duration: 0.3)) {
+                scrollTargetSegmentID = target
+                scrollProxy.scrollTo(target, anchor: .top)
+            }
         }
     }
 

@@ -3403,6 +3403,12 @@ final class CaptureExperienceUITests: XCTestCase {
         reviewLink.tap()
 
         XCTAssertTrue(app.scrollViews["CaptureTranscriptReviewView"].waitForExistence(timeout: 5))
+        let tools = app.descendants(matching: .any)["CaptureTranscriptToolsDisclosure"].firstMatch
+        reveal(tools, searchAboveFirst: false)
+        XCTAssertTrue(tools.waitForExistence(timeout: 5))
+        XCTAssertEqual(tools.value as? String, "Collapsed")
+        tools.tap()
+        XCTAssertEqual(tools.value as? String, "Expanded")
         let moreSuggestions = app.descendants(matching: .any)["CapturePacketAdditionalSuggestionsDisclosure"].firstMatch
         reveal(moreSuggestions, searchAboveFirst: false)
         XCTAssertTrue(
@@ -3448,6 +3454,12 @@ final class CaptureExperienceUITests: XCTestCase {
         let reviewOnlyBoundary = app.descendants(matching: .any)["CaptureTranscriptReviewOnlyBoundary"].firstMatch
         reveal(reviewOnlyBoundary, searchAboveFirst: false)
         XCTAssertTrue(reviewOnlyBoundary.exists)
+        let tools = app.descendants(matching: .any)["CaptureTranscriptToolsDisclosure"].firstMatch
+        reveal(tools, searchAboveFirst: false)
+        XCTAssertTrue(tools.waitForExistence(timeout: 5))
+        XCTAssertEqual(tools.value as? String, "Collapsed")
+        tools.tap()
+        XCTAssertEqual(tools.value as? String, "Expanded")
         let evidenceSummary = app.descendants(matching: .any)["CaptureTranscriptEvidenceSummary"].firstMatch
         reveal(evidenceSummary, searchAboveFirst: false)
         XCTAssertTrue(evidenceSummary.exists)
