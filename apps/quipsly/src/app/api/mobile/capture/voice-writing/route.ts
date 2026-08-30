@@ -693,7 +693,12 @@ export async function POST(request: Request) {
     );
   }
   const prisma = getPrismaClient() as any;
-  const home = await ensureHomeNestForEmail(actorEmail, prisma);
+  // A visible Nest choice is first-class document context. Only fall back to
+  // My Nest when an older client sends no destination; do not make a selected
+  // collaboration Nest depend on unrelated home-Nest provisioning.
+  const home = input.destinationProjectId
+    ? null
+    : await ensureHomeNestForEmail(actorEmail, prisma);
   const documentId = mobileVoiceWritingDocumentId(input.draftId);
   const titleBlockId = `${documentId}-title`;
   const bodyBlockId = mobileVoiceWritingBodyBlockId(input.draftId);
@@ -733,10 +738,27 @@ export async function POST(request: Request) {
 
     if (!existing) {
       if (input.expectedServerRevision !== 0) return { kind: "conflict" as const, document: null, serverRevision: 0 };
+      let destination = home;
+      if (input.destinationProjectId) {
+        destination = await tx.studioProject.findUnique({
+          where: { id: input.destinationProjectId },
+          select: { id: true, name: true, slug: true },
+        });
+        if (!destination) return { kind: "destination-missing" as const };
+        const access = await resolveStudioProjectAccess({
+          projectSlug: destination.slug,
+          projectId: destination.id,
+          email: actorEmail,
+          action: "write",
+          prisma: tx,
+        });
+        if (!access.allowed) return { kind: "destination-forbidden" as const };
+      }
+      if (!destination) return { kind: "destination-missing" as const };
       const document = await tx.studioDocument.create({
         data: {
           id: documentId,
-          projectId: home.id,
+          projectId: destination.id,
           personalOwnerUserId: actorUserId,
           stableId: documentId,
           title: input.title,
@@ -769,7 +791,7 @@ export async function POST(request: Request) {
           documentOperations: {
             create: {
               id: operationId,
-              projectId: home.id,
+              projectId: destination.id,
               groupId: input.draftId,
               actorEmail,
               origin: "ios-capture",
@@ -943,6 +965,18 @@ export async function POST(request: Request) {
       { status: 404 },
     );
   }
+  if (result.kind === "destination-missing") {
+    return NextResponse.json(
+      { ok: false, code: "VOICE_WRITING_DESTINATION_NOT_FOUND", error: "That Nest is no longer available. Your iPhone copy is unchanged." },
+      { status: 404 },
+    );
+  }
+  if (result.kind === "destination-forbidden") {
+    return NextResponse.json(
+      { ok: false, code: "VOICE_WRITING_DESTINATION_FORBIDDEN", error: "Editor access is required to save writing in that Nest. Your iPhone copy is unchanged." },
+      { status: 403 },
+    );
+  }
   if (result.kind === "deleted") {
     return NextResponse.json(
       { ok: false, code: "VOICE_WRITING_NOT_FOUND", error: "This writing is no longer available." },
@@ -976,7 +1010,9 @@ export async function POST(request: Request) {
     ok: true,
     schema: "quipsly-mobile-voice-writing-v1",
     draft: publicDraft(result.document, result.serverRevision, input),
-    homeProject: { id: home.id, name: home.name || "My Nest", slug: home.slug || "" },
+    homeProject: home
+      ? { id: home.id, name: home.name || "My Nest", slug: home.slug || "" }
+      : null,
     availableTags: availableVoiceWritingTags(result.document),
     idempotentReplay: result.idempotentReplay,
     nextAction: result.document.isPrivate === false

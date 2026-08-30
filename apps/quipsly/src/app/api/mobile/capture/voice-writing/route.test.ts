@@ -474,6 +474,144 @@ describe("mobile voice-writing continuation", () => {
     });
   });
 
+  it("creates new writing privately in the selected writable Nest without provisioning a default Nest first", async () => {
+    jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({
+      user: { id: "actor-1", primaryEmail: "person@example.com" },
+    } as never);
+    jest.mocked(resolveStudioProjectAccess).mockResolvedValue({
+      allowed: true,
+      role: "EDITOR",
+    } as never);
+    const createdDocument = {
+      ...storedVoiceDocument("project-research", "Research team", "research-team", true),
+      title: "Field note",
+      blocks: [
+        { id: `voice-writing-${draftId}-title`, order: 0, body: "Field note" },
+        { id: `voice-writing-${draftId}-body`, order: 1, body: "Keep this private until it is ready." },
+      ],
+      documentOperations: [{
+        operationType: "mobile-voice-writing-sync",
+        afterJson: { serverRevision: 1 },
+        payloadJson: { writingOrigin: "typed", sources: [] },
+      }],
+    };
+    const create = jest.fn().mockResolvedValue(createdDocument);
+    const transaction = jest.fn(async (callback: (tx: unknown) => unknown) => callback({
+      studioDocument: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        create,
+      },
+      studioProject: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "project-research",
+          name: "Research team",
+          slug: "research-team",
+        }),
+      },
+    }));
+    jest.mocked(getPrismaClient).mockReturnValue({ $transaction: transaction } as never);
+
+    const response = await POST(new Request("http://localhost/api/mobile/capture/voice-writing", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-quipsly-writing-version": "2",
+      },
+      body: JSON.stringify({
+        draftId,
+        writingOrigin: "typed",
+        sources: [],
+        title: "Field note",
+        body: "Keep this private until it is ready.",
+        localRevision: 1,
+        expectedServerRevision: 0,
+        expectedContentRevision: null,
+        destinationProjectId: "project-research",
+        richText: null,
+      }),
+    }));
+
+    expect(response.status).toBe(200);
+    expect(ensureHomeNestForEmail).not.toHaveBeenCalled();
+    expect(resolveStudioProjectAccess).toHaveBeenCalledWith(expect.objectContaining({
+      projectId: "project-research",
+      projectSlug: "research-team",
+      email: "person@example.com",
+      action: "write",
+    }));
+    expect(create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        projectId: "project-research",
+        personalOwnerUserId: "actor-1",
+        projectionStatus: "private",
+        isPrivate: true,
+      }),
+    }));
+    await expect(response.json()).resolves.toMatchObject({
+      ok: true,
+      homeProject: null,
+      draft: {
+        projectId: "project-research",
+        visibility: "personal",
+      },
+      nextAction: "Writing saved to Research team. Only you can open it.",
+    });
+  });
+
+  it("keeps the iPhone copy local when the selected Nest is not writable", async () => {
+    jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({
+      user: { id: "actor-1", primaryEmail: "person@example.com" },
+    } as never);
+    jest.mocked(resolveStudioProjectAccess).mockResolvedValue({
+      allowed: false,
+      role: null,
+    } as never);
+    const create = jest.fn();
+    const transaction = jest.fn(async (callback: (tx: unknown) => unknown) => callback({
+      studioDocument: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        create,
+      },
+      studioProject: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "project-read-only",
+          name: "Read only research",
+          slug: "read-only-research",
+        }),
+      },
+    }));
+    jest.mocked(getPrismaClient).mockReturnValue({ $transaction: transaction } as never);
+
+    const response = await POST(new Request("http://localhost/api/mobile/capture/voice-writing", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-quipsly-writing-version": "2",
+      },
+      body: JSON.stringify({
+        draftId,
+        writingOrigin: "typed",
+        sources: [],
+        title: "Private working copy",
+        body: "This must remain safely on the phone.",
+        localRevision: 1,
+        expectedServerRevision: 0,
+        expectedContentRevision: null,
+        destinationProjectId: "project-read-only",
+        richText: null,
+      }),
+    }));
+
+    expect(response.status).toBe(403);
+    expect(ensureHomeNestForEmail).not.toHaveBeenCalled();
+    expect(create).not.toHaveBeenCalled();
+    await expect(response.json()).resolves.toMatchObject({
+      ok: false,
+      code: "VOICE_WRITING_DESTINATION_FORBIDDEN",
+      error: expect.stringContaining("Your iPhone copy is unchanged"),
+    });
+  });
+
   it("describes a save into shared writing as shared", async () => {
     jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({
       user: { id: "actor-1", primaryEmail: "person@example.com" },

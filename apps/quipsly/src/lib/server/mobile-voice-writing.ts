@@ -32,6 +32,7 @@ export type MobileVoiceWritingInput = {
   localRevision: number;
   expectedServerRevision: number;
   expectedContentRevision: string | null;
+  destinationProjectId: string | null;
   sources: MobileVoiceWritingSourceInput[];
   richText: VoiceWritingRichText | null;
 };
@@ -184,6 +185,7 @@ export function validateMobileVoiceWriting(value: unknown): MobileVoiceWritingVa
   const localRevision = integer(input.localRevision);
   const expectedServerRevision = integer(input.expectedServerRevision);
   const expectedContentRevision = text(input.expectedContentRevision, 64).toLowerCase() || null;
+  const destinationProjectId = text(input.destinationProjectId, 200) || null;
   if (!UUID_PATTERN.test(draftId)) {
     return { ok: false, code: "VOICE_WRITING_ID_INVALID", error: "The writing identity is invalid." };
   }
@@ -210,6 +212,9 @@ export function validateMobileVoiceWriting(value: unknown): MobileVoiceWritingVa
   }
   if (expectedContentRevision && !/^[0-9a-f]{64}$/.test(expectedContentRevision)) {
     return { ok: false, code: "VOICE_WRITING_REVISION_INVALID", error: "The expected Nest content revision is invalid." };
+  }
+  if (destinationProjectId && !/^[A-Za-z0-9_-]{1,200}$/.test(destinationProjectId)) {
+    return { ok: false, code: "VOICE_WRITING_DESTINATION_INVALID", error: "The writing destination is invalid." };
   }
   const fallbackSource = hasCompleteLegacySource
     ? { localRecordingId: localRecordingId!, transcriptClientRequestId: transcriptClientRequestId!, sourceSha256: sourceSha256!, callRoomId }
@@ -257,6 +262,7 @@ export function validateMobileVoiceWriting(value: unknown): MobileVoiceWritingVa
       localRevision,
       expectedServerRevision,
       expectedContentRevision,
+      destinationProjectId,
       sources: validSources,
       richText: normalizedRichText,
     },
@@ -303,6 +309,7 @@ export function mobileVoiceWritingSource(input: MobileVoiceWritingInput, actorUs
     sources: input.sources,
     richText: input.richText,
     localRevision: input.localRevision,
+    destinationProjectId: input.destinationProjectId,
     contentHash: mobileVoiceWritingContentHash(input),
   };
 }

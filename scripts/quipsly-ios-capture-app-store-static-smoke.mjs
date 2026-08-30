@@ -69,6 +69,7 @@ const files = {
   captureRecordingCoordinator: path.join(sourceRoot, "CaptureRecordingCoordinator.swift"),
   captureRecordingReceiptOutbox: path.join(sourceRoot, "CaptureRecordingReceiptOutbox.swift"),
   capturePhoneShell: path.join(sourceRoot, "CapturePhoneShell.swift"),
+  voiceWritingDraftStore: path.join(sourceRoot, "VoiceWritingDraftStore.swift"),
   subscriptionStore: path.join(sourceRoot, "QuipslySubscriptionStore.swift"),
   captureCoachingHome: path.join(sourceRoot, "CaptureCoachingHome.swift"),
   captureCalendarEventEditor: path.join(sourceRoot, "CaptureCalendarEventEditor.swift"),
@@ -86,6 +87,8 @@ const files = {
   mobileCaptureReadinessRoute: path.join(root, "apps/quipsly/src/app/api/mobile/capture/readiness/route.ts"),
   mobileCaptureSessionsRoute: path.join(root, "apps/quipsly/src/app/api/mobile/capture/sessions/route.ts"),
   mobileCaptureProjectsRoute: path.join(root, "apps/quipsly/src/app/api/mobile/capture/projects/route.ts"),
+  mobileVoiceWritingRoute: path.join(root, "apps/quipsly/src/app/api/mobile/capture/voice-writing/route.ts"),
+  mobileVoiceWritingServer: path.join(root, "apps/quipsly/src/lib/server/mobile-voice-writing.ts"),
   webAppLayout: path.join(root, "apps/quipsly/src/app/(app)/layout.tsx"),
   webProjectCreateAction: path.join(root, "apps/quipsly/src/app/(app)/projects/actions.ts"),
   webSidebar: path.join(root, "apps/quipsly/src/components/SidebarLayout.tsx"),
@@ -238,6 +241,7 @@ const captureReceiptStoreText = read(files.captureReceiptStore);
 const captureRecordingCoordinatorText = read(files.captureRecordingCoordinator);
 const captureRecordingReceiptOutboxText = read(files.captureRecordingReceiptOutbox);
 const capturePhoneShellText = read(files.capturePhoneShell);
+const voiceWritingDraftStoreText = read(files.voiceWritingDraftStore);
 const recorderSurfaceStart = capturePhoneShellText.indexOf(
   "private struct CaptureRecorderView: View",
 );
@@ -274,6 +278,8 @@ const bridgeText = read(files.bridgeModels);
 const mobileCaptureReadinessRouteText = read(files.mobileCaptureReadinessRoute);
 const mobileCaptureSessionsRouteText = read(files.mobileCaptureSessionsRoute);
 const mobileCaptureProjectsRouteText = read(files.mobileCaptureProjectsRoute);
+const mobileVoiceWritingRouteText = read(files.mobileVoiceWritingRoute);
+const mobileVoiceWritingServerText = read(files.mobileVoiceWritingServer);
 const webAppLayoutText = read(files.webAppLayout);
 const webProjectCreateActionText = read(files.webProjectCreateAction);
 const webSidebarText = read(files.webSidebar);
@@ -1384,6 +1390,38 @@ const personalVoiceEnd = captureExperienceText.indexOf("private func createLocal
 const personalVoiceEntryBody = captureExperienceText.slice(personalVoiceStart, personalVoiceEnd);
 requireIncludes(personalVoiceEntryBody, "return createLocalPersonalVoiceNote(title: title)", "private voice writing opens its protected local source immediately");
 requireExcludes(personalVoiceEntryBody, "sessionClient.createQuickSession", "Home Nest provisioning never gates a new private voice recording");
+for (const needle of [
+  "projectID: visibleContextNest?.id",
+  "projectName: visibleContextNest?.name",
+  "projectSlug: visibleContextNest?.slug",
+  "currentDraft?.preferredProjectName?.nonempty",
+]) {
+  requireIncludes(capturePhoneShellText, needle, "new writing inherits the visible Nest before sync");
+}
+for (const needle of [
+  "var preferredProjectID: String? = nil",
+  "let destinationProjectId: String?",
+  "draft.canonicalDocumentID == nil",
+  "? draft.preferredProjectID",
+]) {
+  requireIncludes(voiceWritingDraftStoreText, needle, "protected writing preserves its intended Nest until first sync");
+}
+for (const needle of [
+  "destinationProjectId: string | null",
+  "VOICE_WRITING_DESTINATION_INVALID",
+  "destinationProjectId: input.destinationProjectId",
+]) {
+  requireIncludes(mobileVoiceWritingServerText, needle, "mobile writing validates and records its explicit Nest destination");
+}
+for (const needle of [
+  "input.destinationProjectId",
+  "ensureHomeNestForEmail(actorEmail, prisma)",
+  'action: "write"',
+  "VOICE_WRITING_DESTINATION_NOT_FOUND",
+  "VOICE_WRITING_DESTINATION_FORBIDDEN",
+]) {
+  requireIncludes(mobileVoiceWritingRouteText, needle, "selected-Nest writing is access-checked without depending on a default Nest");
+}
 for (const needle of [
   "struct PendingSourceAnnotationDraftDecision",
   "let ownerAccountID: String",

@@ -285,6 +285,15 @@ final class CaptureExperienceUITests: XCTestCase {
             app.buttons["Transcript"].exists,
             "Keyboard-first writing must not invent an audio source or transcript."
         )
+        let nest = app.descendants(matching: .any)["CaptureVoiceWritingNest"]
+        XCTAssertTrue(
+            nest.waitForExistence(timeout: 3),
+            "New writing should expose its Nest immediately instead of hiding a default destination until sync."
+        )
+        XCTAssertTrue(
+            nest.label.contains("High Ground Odyssey") && nest.label.contains("Only me"),
+            "Home writing should inherit the visible Nest while remaining private until the author shares it."
+        )
     }
 
     func testWritingFlushesToProtectedStorageWhenTheAppLeavesForeground() {

@@ -407,7 +407,11 @@ struct CapturePhoneShell: View {
 
     private func startWriting() {
         do {
-            let draft = try VoiceWritingDraftStore.shared.createTypedDraft()
+            let draft = try VoiceWritingDraftStore.shared.createTypedDraft(
+                projectID: visibleContextNest?.id,
+                projectName: visibleContextNest?.name,
+                projectSlug: visibleContextNest?.slug
+            )
             requestedWritingDraftID = draft.id
             visibleTab = .library
         } catch {
@@ -8227,7 +8231,11 @@ private struct CaptureVoiceWritingEditor: View {
             HStack(alignment: .center, spacing: 12) {
                 Label {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(currentDraft?.canonicalProjectName?.nonempty ?? "On this iPhone")
+                        Text(
+                            currentDraft?.canonicalProjectName?.nonempty
+                                ?? currentDraft?.preferredProjectName?.nonempty
+                                ?? "On this iPhone"
+                        )
                             .font(.body.weight(.semibold))
                         Text(currentDraft?.isSharedWithNest == true ? "Nest members" : "Only me")
                             .font(.caption)
@@ -14482,7 +14490,14 @@ private struct CaptureLibraryView: View {
     private var writeNoteAction: some View {
         Button {
             do {
-                let draft = try writingStore.createTypedDraft()
+                let destination = model.workClient.projects.first {
+                    $0.id == model.workClient.selectedProjectID
+                } ?? model.workClient.workspace?.project
+                let draft = try writingStore.createTypedDraft(
+                    projectID: destination?.id,
+                    projectName: destination?.name,
+                    projectSlug: destination?.slug
+                )
                 requestedWritingDraftID = draft.id
             } catch {
                 createWritingError = error.localizedDescription
@@ -14602,7 +14617,10 @@ private struct CaptureLibraryView: View {
             return true
         case .project(let projectID):
             if draft.canonicalProjectID == projectID { return true }
+            if draft.canonicalProjectID == nil,
+               draft.preferredProjectID == projectID { return true }
             return draft.canonicalProjectID == nil
+                && draft.preferredProjectID == nil
                 && writingSync.homeProject?.id == projectID
         case .tag(let tagID):
             return (draft.canonicalTags ?? []).contains { $0.id == tagID }

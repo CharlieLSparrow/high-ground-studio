@@ -122,6 +122,7 @@ describe("mobile voice writing", () => {
       localRevision: 1,
       expectedServerRevision: 0,
       expectedContentRevision: null,
+      destinationProjectId: "research-team",
       richText: null,
     });
 
@@ -140,6 +141,7 @@ describe("mobile voice writing", () => {
         localRevision: 1,
         expectedServerRevision: 0,
         expectedContentRevision: null,
+        destinationProjectId: "research-team",
         richText: null,
       },
     });
@@ -151,6 +153,7 @@ describe("mobile voice writing", () => {
       transcriptClientRequestId: null,
       sourceSha256: null,
       sources: [],
+      destinationProjectId: "research-team",
     });
   });
 
@@ -232,6 +235,7 @@ describe("mobile voice writing", () => {
     [{ draftId, localRecordingId: draftId, transcriptClientRequestId: draftId, sourceSha256: "nope", body: "Text", localRevision: 1, expectedServerRevision: 0 }, "VOICE_WRITING_SOURCE_INVALID"],
     [{ draftId, localRecordingId: draftId, transcriptClientRequestId: draftId, sourceSha256: "a".repeat(64), body: " ", localRevision: 1, expectedServerRevision: 0 }, "VOICE_WRITING_EMPTY"],
     [{ draftId, localRecordingId: draftId, transcriptClientRequestId: draftId, sourceSha256: "a".repeat(64), body: "Text", localRevision: 1, expectedServerRevision: 0, expectedContentRevision: "not-a-revision" }, "VOICE_WRITING_REVISION_INVALID"],
+    [{ draftId, writingOrigin: "typed", sources: [], body: "Text", localRevision: 1, expectedServerRevision: 0, destinationProjectId: "not a project" }, "VOICE_WRITING_DESTINATION_INVALID"],
   ])("rejects malformed durable drafts", (input, code) => {
     expect(validateMobileVoiceWriting(input)).toMatchObject({ ok: false, code });
   });

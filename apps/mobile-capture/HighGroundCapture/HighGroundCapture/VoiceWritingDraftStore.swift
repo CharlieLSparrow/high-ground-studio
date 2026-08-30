@@ -53,6 +53,9 @@ struct VoiceWritingDraft: Codable, Identifiable, Equatable {
     var localRevision: Int
     var serverRevision: Int?
     var serverContentRevision: String?
+    var preferredProjectID: String? = nil
+    var preferredProjectName: String? = nil
+    var preferredProjectSlug: String? = nil
     var canonicalDocumentID: String?
     var canonicalProjectID: String?
     var canonicalProjectName: String?
@@ -251,7 +254,12 @@ final class VoiceWritingDraftStore: ObservableObject {
     }
 
     @discardableResult
-    func createTypedDraft(now: Date = Date()) throws -> VoiceWritingDraft {
+    func createTypedDraft(
+        projectID: String? = nil,
+        projectName: String? = nil,
+        projectSlug: String? = nil,
+        now: Date = Date()
+    ) throws -> VoiceWritingDraft {
         let owner = try requireActiveOwner()
         let draft = VoiceWritingDraft(
             id: UUID(),
@@ -270,6 +278,9 @@ final class VoiceWritingDraftStore: ObservableObject {
             localRevision: 1,
             serverRevision: nil,
             serverContentRevision: nil,
+            preferredProjectID: Self.normalizedNonempty(projectID),
+            preferredProjectName: Self.normalizedNonempty(projectName),
+            preferredProjectSlug: Self.normalizedNonempty(projectSlug),
             canonicalDocumentID: nil,
             canonicalProjectID: nil,
             canonicalProjectName: nil,
@@ -773,6 +784,10 @@ final class VoiceWritingDraftStore: ObservableObject {
     }
 
     private static func normalizedOwnerID(_ value: String?) -> String? {
+        normalizedNonempty(value)
+    }
+
+    private static func normalizedNonempty(_ value: String?) -> String? {
         let normalized = value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         return normalized.isEmpty ? nil : normalized
     }
@@ -805,6 +820,7 @@ private struct VoiceWritingSyncRequest: Encodable {
     let localRevision: Int
     let expectedServerRevision: Int
     let expectedContentRevision: String?
+    let destinationProjectId: String?
     let sources: [Source]
 
     @MainActor
@@ -821,6 +837,9 @@ private struct VoiceWritingSyncRequest: Encodable {
         localRevision = draft.localRevision
         expectedServerRevision = draft.serverRevision ?? 0
         expectedContentRevision = draft.serverContentRevision
+        destinationProjectId = draft.canonicalDocumentID == nil
+            ? draft.preferredProjectID
+            : nil
         sources = draft.allSources.map(Source.init)
     }
 }
@@ -1353,7 +1372,9 @@ final class VoiceWritingDraftSyncClient: ObservableObject {
                 richText: saved.richText,
                 serverUpdatedAt: saved.updatedAt
             )
-            homeProject = payload.homeProject
+            if let returnedHomeProject = payload.homeProject {
+                homeProject = returnedHomeProject
+            }
             availableTags = (payload.availableTags ?? []).filter { $0.isActive != false }
             if let updatedDestinations = payload.destinations {
                 destinations = updatedDestinations
