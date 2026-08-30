@@ -234,10 +234,16 @@ function publicVoiceTranscript(job: any) {
   const transcriptClientRequestId = providerRequestId.startsWith("apple-speech:")
     ? providerRequestId.slice("apple-speech:".length)
     : "";
+  const roomId = typeof job?.roomId === "string" ? job.roomId : null;
+  const recordingAssetId = typeof job?.assetId === "string" ? job.assetId : null;
   return {
     transcriptClientRequestId,
     transcriptJobId: String(job?.id || ""),
-    roomId: typeof job?.roomId === "string" ? job.roomId : null,
+    roomId,
+    recordingAssetId,
+    mediaUrl: roomId && recordingAssetId
+      ? `/api/sessions/${encodeURIComponent(roomId)}/recordings/${encodeURIComponent(recordingAssetId)}/media`
+      : null,
     language: typeof job?.language === "string" ? job.language : null,
     completedAt: job?.completedAt?.toISOString?.() ?? job?.completedAt ?? null,
     segments: (job?.segments || []).map((segment: any) => {
@@ -322,6 +328,7 @@ export async function GET(request: Request) {
       select: {
         id: true,
         roomId: true,
+        assetId: true,
         language: true,
         providerRequestId: true,
         completedAt: true,

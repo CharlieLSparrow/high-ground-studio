@@ -69,6 +69,8 @@ function loadPayload(text = "Home is finishing his PhD.", acceptedCorrectionId: 
       transcriptClientRequestId: "request-1",
       transcriptJobId: "job-1",
       roomId: "room-1",
+      recordingAssetId: "recording-asset-1",
+      mediaUrl: "/api/sessions/room-1/recordings/recording-asset-1/media",
       language: "en-US",
       completedAt: "2026-08-30T07:00:00.000Z",
       segments: [{
@@ -96,6 +98,36 @@ describe("VoiceWritingEditor transcript correction", () => {
       configurable: true,
       value: jest.fn().mockReturnValue("correction-request-1"),
     });
+    Object.defineProperty(HTMLMediaElement.prototype, "play", {
+      configurable: true,
+      value: jest.fn().mockResolvedValue(undefined),
+    });
+    Object.defineProperty(HTMLMediaElement.prototype, "pause", {
+      configurable: true,
+      value: jest.fn(),
+    });
+  });
+
+  it("plays the exact timed passage beside the writing without leaving the page", async () => {
+    globalThis.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => loadPayload(),
+    }) as unknown as typeof fetch;
+
+    render(<VoiceWritingEditor draftId={draftId} />);
+
+    const passage = await screen.findByRole("button", { name: "Play passage at 0:04–0:08" });
+    const audio = screen.getByLabelText("Original recording 1") as HTMLAudioElement;
+    expect(audio).toHaveAttribute(
+      "src",
+      "/api/sessions/room-1/recordings/recording-asset-1/media",
+    );
+    fireEvent.click(passage);
+
+    await waitFor(() => expect(HTMLMediaElement.prototype.play).toHaveBeenCalled());
+    expect(audio.currentTime).toBe(4.2);
+    expect(await screen.findByRole("button", { name: "Pause passage at 0:04–0:08" })).toBeInTheDocument();
   });
 
   it("corrects a timed passage beside the writing without entering a review desk", async () => {

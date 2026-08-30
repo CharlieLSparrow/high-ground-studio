@@ -148,6 +148,7 @@ describe("mobile voice-writing continuation", () => {
     const findTranscripts = jest.fn().mockResolvedValue([{
       id: "transcript-job-continued",
       roomId: "continued-room",
+      assetId: "recording-asset-continued",
       language: "en-US",
       providerRequestId: `apple-speech:${continuationTranscriptId}`,
       completedAt: updatedAt,
@@ -230,6 +231,8 @@ describe("mobile voice-writing continuation", () => {
         transcriptClientRequestId: continuationTranscriptId,
         transcriptJobId: "transcript-job-continued",
         roomId: "continued-room",
+        recordingAssetId: "recording-asset-continued",
+        mediaUrl: "/api/sessions/continued-room/recordings/recording-asset-continued/media",
         language: "en-US",
         segments: [{
           id: "segment-1",
@@ -255,6 +258,7 @@ describe("mobile voice-writing continuation", () => {
           ],
         },
       },
+      select: expect.objectContaining({ assetId: true }),
     }));
   });
 

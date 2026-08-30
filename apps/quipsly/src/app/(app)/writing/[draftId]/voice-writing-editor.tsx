@@ -23,6 +23,7 @@ import {
   Mic2,
   PencilLine,
   Pilcrow,
+  Pause,
   Play,
   Redo2,
   RefreshCw,
@@ -123,6 +124,8 @@ type WritingTranscript = {
   transcriptClientRequestId: string;
   transcriptJobId: string;
   roomId: string | null;
+  recordingAssetId: string | null;
+  mediaUrl: string | null;
   language: string | null;
   completedAt: string | null;
   segments: Array<{
@@ -270,6 +273,8 @@ export function VoiceWritingEditor({ draftId }: { draftId: string }) {
   const [transcriptEdit, setTranscriptEdit] = useState<VoiceWritingTranscriptCorrectionDraft | null>(null);
   const [transcriptEditError, setTranscriptEditError] = useState("");
   const [savingTranscriptEdit, setSavingTranscriptEdit] = useState(false);
+  const [playingSegmentKey, setPlayingSegmentKey] = useState<string | null>(null);
+  const [playbackError, setPlaybackError] = useState("");
   const [changeVersion, setChangeVersion] = useState(0);
   const [conflictingDraft, setConflictingDraft] = useState<WritingDraft | null>(null);
   const draftRef = useRef<WritingDraft | null>(null);
@@ -278,6 +283,12 @@ export function VoiceWritingEditor({ draftId }: { draftId: string }) {
   const loadingEditorRef = useRef(true);
   const savingRef = useRef(false);
   const saveAgainRef = useRef(false);
+  const transcriptAudioRefs = useRef(new Map<string, HTMLAudioElement>());
+  const playbackEndRef = useRef<{
+    transcriptJobId: string;
+    segmentKey: string;
+    endSeconds: number;
+  } | null>(null);
   const hasTimedTranscript = transcripts.some((transcript) => transcript.segments.length > 0);
   const { showsWriting, showsTranscript, usesSideBySideColumns } = voiceWritingViewLayout(
     viewMode,
@@ -494,6 +505,68 @@ export function VoiceWritingEditor({ draftId }: { draftId: string }) {
       correctedSpeakerLabel: segment.speakerLabel ?? "",
       clientRequestId: crypto.randomUUID(),
     });
+  }
+
+  function bindTranscriptAudio(transcriptJobId: string, audio: HTMLAudioElement | null) {
+    if (audio) transcriptAudioRefs.current.set(transcriptJobId, audio);
+    else transcriptAudioRefs.current.delete(transcriptJobId);
+  }
+
+  async function playTranscriptPassage(
+    transcript: WritingTranscript,
+    segment: WritingTranscript["segments"][number],
+  ) {
+    if (!transcript.mediaUrl) return;
+    const audio = transcriptAudioRefs.current.get(transcript.transcriptJobId);
+    if (!audio) {
+      setPlaybackError("This recording is not ready to play here yet.");
+      return;
+    }
+    const segmentKey = `${transcript.transcriptJobId}:${segment.id}`;
+    if (playingSegmentKey === segmentKey && !audio.paused) {
+      audio.pause();
+      return;
+    }
+    for (const [jobId, otherAudio] of transcriptAudioRefs.current) {
+      if (jobId !== transcript.transcriptJobId && !otherAudio.paused) otherAudio.pause();
+    }
+    const startSeconds = Math.max(0, Number(segment.startSeconds) || 0);
+    const endSeconds = Math.max(startSeconds, Number(segment.endSeconds) || startSeconds);
+    try {
+      setPlaybackError("");
+      audio.currentTime = startSeconds;
+      playbackEndRef.current = {
+        transcriptJobId: transcript.transcriptJobId,
+        segmentKey,
+        endSeconds,
+      };
+      setPlayingSegmentKey(segmentKey);
+      await audio.play();
+    } catch {
+      playbackEndRef.current = null;
+      setPlayingSegmentKey(null);
+      setPlaybackError("This recording could not be played here. Open the full recording and try again.");
+    }
+  }
+
+  function trackTranscriptPlayback(transcriptJobId: string, audio: HTMLAudioElement) {
+    const active = playbackEndRef.current;
+    if (
+      !active
+      || active.transcriptJobId !== transcriptJobId
+      || active.endSeconds <= 0
+      || audio.currentTime < active.endSeconds - 0.04
+    ) return;
+    audio.pause();
+    playbackEndRef.current = null;
+    setPlayingSegmentKey(null);
+  }
+
+  function finishTranscriptPlayback(transcriptJobId: string) {
+    if (playbackEndRef.current?.transcriptJobId === transcriptJobId) {
+      playbackEndRef.current = null;
+      setPlayingSegmentKey(null);
+    }
   }
 
   async function saveTranscriptEdit() {
@@ -868,11 +941,34 @@ export function VoiceWritingEditor({ draftId }: { draftId: string }) {
         </div>
         <span className="rounded-full border border-emerald-200 bg-white px-3 py-2 text-xs font-black text-emerald-900">{transcripts.reduce((count, transcript) => count + transcript.segments.length, 0)} passages</span>
       </div>
+      {transcripts.some((transcript) => transcript.mediaUrl) ? <div className="mt-4 space-y-2" aria-label="Original recordings">
+        {transcripts.map((transcript, index) => transcript.mediaUrl ? <div key={transcript.transcriptJobId} className="rounded-2xl border border-emerald-200 bg-white p-3">
+          <p className="mb-2 text-xs font-black text-emerald-900">Recording {index + 1}</p>
+          <audio
+            ref={(audio) => bindTranscriptAudio(transcript.transcriptJobId, audio)}
+            src={transcript.mediaUrl}
+            controls
+            preload="metadata"
+            className="h-11 w-full"
+            aria-label={`Original recording ${index + 1}`}
+            onTimeUpdate={(event) => trackTranscriptPlayback(transcript.transcriptJobId, event.currentTarget)}
+            onPause={() => finishTranscriptPlayback(transcript.transcriptJobId)}
+            onEnded={() => finishTranscriptPlayback(transcript.transcriptJobId)}
+            onError={() => {
+              finishTranscriptPlayback(transcript.transcriptJobId);
+              setPlaybackError("This recording could not be played here. Open the full recording and try again.");
+            }}
+          />
+        </div> : null)}
+      </div> : null}
+      {playbackError ? <p role="alert" className="mt-3 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-bold text-amber-950">{playbackError}</p> : null}
       <ol className="mt-4 space-y-2">
         {transcripts.flatMap((transcript) => transcript.segments.map((segment) => {
           const label = `${formatMediaTime(segment.startSeconds)}–${formatMediaTime(segment.endSeconds)}`;
+          const segmentKey = `${transcript.transcriptJobId}:${segment.id}`;
+          const isPlaying = playingSegmentKey === segmentKey;
           const content = <>
-            <span className="inline-flex min-w-[5.5rem] items-center gap-1 text-xs font-black text-emerald-800"><Play className="h-3.5 w-3.5" aria-hidden="true" />{label}</span>
+            <span className="inline-flex min-w-[5.5rem] items-center gap-1 text-xs font-black text-emerald-800">{isPlaying ? <Pause className="h-3.5 w-3.5" aria-hidden="true" /> : <Play className="h-3.5 w-3.5" aria-hidden="true" />}{label}</span>
             <span className="min-w-0 flex-1 text-sm font-semibold leading-6 text-[#493b2c]">{segment.speakerLabel ? <strong className="mr-1 font-black">{segment.speakerLabel}:</strong> : null}{segment.text}</span>
           </>;
           const isEditing = transcriptEdit?.transcriptJobId === transcript.transcriptJobId
@@ -907,10 +1003,15 @@ export function VoiceWritingEditor({ draftId }: { draftId: string }) {
                 <p className="text-xs font-semibold leading-5 text-[#87663d]">The original recording and timing stay unchanged.</p>
               </div>
             </div> : <div className="rounded-2xl border border-emerald-100 bg-white px-4 py-3 transition hover:border-emerald-300 hover:bg-emerald-50">
-              <div className="flex min-h-11 items-start gap-3">{content}</div>
+              {transcript.mediaUrl ? <button
+                type="button"
+                onClick={() => void playTranscriptPassage(transcript, segment)}
+                className="flex min-h-11 w-full items-start gap-3 rounded-xl text-left outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2"
+                aria-label={`${isPlaying ? "Pause" : "Play"} passage at ${label}`}
+              >{content}</button> : <div className="flex min-h-11 items-start gap-3">{content}</div>}
               {transcript.roomId ? <div className="mt-2 flex flex-wrap items-center gap-2 border-t border-emerald-100 pt-2">
                 <button type="button" onClick={() => beginTranscriptEdit(transcript, segment)} className="inline-flex min-h-10 items-center gap-1.5 rounded-full px-3 text-xs font-black text-emerald-900 hover:bg-emerald-100"><PencilLine className="h-3.5 w-3.5" aria-hidden="true" />Correct words</button>
-                <Link href={`/sessions/${encodeURIComponent(transcript.roomId)}?mode=transcript#transcript-segment-${encodeURIComponent(segment.id)}`} className="inline-flex min-h-10 items-center gap-1.5 rounded-full px-3 text-xs font-black text-[#765f40] hover:bg-[#fff4df]" aria-label={`Hear recording at ${label}`}><Play className="h-3.5 w-3.5" aria-hidden="true" />Hear in Session</Link>
+                <Link href={`/sessions/${encodeURIComponent(transcript.roomId)}?mode=transcript#transcript-segment-${encodeURIComponent(segment.id)}`} className="inline-flex min-h-10 items-center gap-1.5 rounded-full px-3 text-xs font-black text-[#765f40] hover:bg-[#fff4df]" aria-label={`${transcript.mediaUrl ? "Open full recording" : "Hear recording"} at ${label}`}><Play className="h-3.5 w-3.5" aria-hidden="true" />{transcript.mediaUrl ? "Full recording" : "Hear in Session"}</Link>
               </div> : null}
             </div>}
           </li>;
