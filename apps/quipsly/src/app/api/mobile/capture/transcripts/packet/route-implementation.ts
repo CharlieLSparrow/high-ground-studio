@@ -549,7 +549,7 @@ function reviewLaneNextAction(status: string) {
   if (status === "REJECTED_BY_HUMAN") {
     return "This lane is rejected for now. Preserve the evidence, but do not route it into follow-up work unless a human reopens it.";
   }
-  return "This lane is ready for human review before it becomes a task, note, quote, clip, article, or client-facing packet.";
+  return "Optional transcript ideas are ready to use or adjust inside Quipsly. External delivery and publication remain separate actions.";
 }
 
 async function readJson(request: Request) {

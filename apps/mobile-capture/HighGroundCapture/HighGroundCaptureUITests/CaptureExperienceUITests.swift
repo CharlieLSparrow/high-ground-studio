@@ -3216,12 +3216,15 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertFalse(packetNoteReview.isEnabled, "Preview must not write, while the real suggestion is a one-tap private note.")
         let packetNoteEdit = app.buttons["CapturePacketNoteEditButton_\(candidateKey)"]
         XCTAssertTrue(packetNoteEdit.isEnabled, "The adjustment surface remains inspectable without requiring source review.")
+        XCTAssertEqual(packetNoteEdit.label, "Edit first")
         XCTAssertFalse(app.buttons["CapturePacketNoteRejectButton_\(candidateKey)"].isEnabled)
         XCTAssertFalse(app.buttons["CapturePacketNoteMergeButton_\(candidateKey)"].isEnabled)
-        let decisionBoundary = app.staticTexts["CapturePacketNoteDecisionBoundary"]
-        XCTAssertTrue(decisionBoundary.label.contains("Add it now"))
-        XCTAssertTrue(decisionBoundary.label.contains("adjust"))
-        XCTAssertTrue(decisionBoundary.label.contains("dismiss it"))
+        XCTAssertEqual(
+            app.buttons["CapturePacketNoteRejectButton_\(candidateKey)"].label,
+            "Hide"
+        )
+        XCTAssertTrue(app.staticTexts["IDEA"].exists)
+        XCTAssertFalse(app.staticTexts["ready for human review"].exists)
         packetNoteEdit.tap()
         XCTAssertTrue(app.textFields["CapturePacketNoteTitleField"].exists)
         XCTAssertTrue(app.textFields["CapturePacketNoteBodyField"].exists)

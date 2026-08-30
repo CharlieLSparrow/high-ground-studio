@@ -633,7 +633,7 @@ struct CapturePacketActionCandidate: Codable, Identifiable, Equatable {
         .init(
             id: "quipsly-transcript-action-candidate-v1:preview-transcript-job:preview-segment",
             title: "Review the final cut this week",
-            detail: "Source-backed commitment from the preview transcript; not open work until accepted.",
+            detail: "Optional task idea from the transcript. Add it, edit it, or leave it alone.",
             transcriptJobId: "preview-transcript-job",
             recordingAssetId: "preview-recording-asset",
             roomId: roomID,
@@ -2877,10 +2877,10 @@ private enum CapturePacketCandidateReviewState: String {
 
     var label: String {
         switch self {
-        case .ready: "Ready"
+        case .ready: "Easy to add"
         case .listenFirst: "Source available"
-        case .deferred: "Deferred"
-        case .decided: "Decided"
+        case .deferred: "Later"
+        case .decided: "Handled"
         }
     }
 
@@ -4597,12 +4597,11 @@ private struct CapturePacketNoteCandidateCard: View {
     }
     private var reviewStatusLabel: String {
         switch candidate.reviewStatus {
-        case "EDITED_FOR_REVIEW": "EDITED DRAFT"
-        case "DEFERRED_BY_HUMAN": "DEFERRED"
-        case "REJECTED_BY_HUMAN": "REJECTED"
-        case "ACCEPTED_AS_NOTE": "SAVED"
-        case "MERGED_INTO_NOTE": "MERGED"
-        default: candidate.laneStatus.replacingOccurrences(of: "_", with: " ")
+        case "EDITED_FOR_REVIEW": "ADJUSTED"
+        case "DEFERRED_BY_HUMAN": "LATER"
+        case "REJECTED_BY_HUMAN": "HIDDEN"
+        case "ACCEPTED_AS_NOTE", "MERGED_INTO_NOTE": "ADDED"
+        default: "IDEA"
         }
     }
     private var selectedMergeTarget: CapturePacketNoteMergeTarget? {
@@ -4632,7 +4631,7 @@ private struct CapturePacketNoteCandidateCard: View {
                         .font(.headline)
                 }
                 Spacer()
-                Text(accepted ? "SAVED" : reviewStatusLabel)
+                Text(accepted ? "ADDED" : reviewStatusLabel)
                     .font(.caption2.weight(.black))
                     .foregroundStyle(accepted ? .green : candidate.reviewStatus == "REJECTED_BY_HUMAN" || laneRejected ? .red : .orange)
                     .multilineTextAlignment(.trailing)
@@ -4812,27 +4811,20 @@ private struct CapturePacketNoteCandidateCard: View {
                             .frame(minHeight: 44)
                         .disabled(client.isMutating || previewOnly || decisionsLocked || laneRejected || mergeTargets.isEmpty)
                             .accessibilityIdentifier("CapturePacketNoteMergeButton_\(candidate.accessibilityKey)")
-                        Button("Adjust") { beginReview(.adjust) }
+                        Button("Edit first") { beginReview(.adjust) }
                             .buttonStyle(.bordered)
                             .frame(minHeight: 44)
                             .disabled(client.isMutating || decisionsLocked || laneRejected)
                             .accessibilityIdentifier("CapturePacketNoteEditButton_\(candidate.accessibilityKey)")
-                        Button("Dismiss", role: .destructive) { isConfirmingReject = true }
+                        Button("Hide", role: .destructive) { isConfirmingReject = true }
                             .buttonStyle(.bordered)
                             .frame(minHeight: 44)
                             .disabled(client.isMutating || previewOnly || decisionsLocked || laneRejected)
                             .accessibilityIdentifier("CapturePacketNoteRejectButton_\(candidate.accessibilityKey)")
                     }
-                    Text(mergeTargets.isEmpty
-                        ? "Add it now, adjust the wording, or dismiss it."
-                        : "Add it now, adjust it, add it to an existing note, or dismiss it.")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .accessibilityIdentifier("CapturePacketNoteDecisionBoundary")
                 }
                 if laneRejected {
-                    Text("This lane was rejected. Reopen it before saving one of its candidates.")
+                    Text("These earlier ideas are hidden. Restore them before adding one.")
                         .font(.caption2.weight(.semibold))
                         .foregroundStyle(.red)
                 }
@@ -4842,11 +4834,11 @@ private struct CapturePacketNoteCandidateCard: View {
         .background(Color.orange.opacity(0.06), in: RoundedRectangle(cornerRadius: 12))
         .accessibilityElement(children: .contain)
         .confirmationDialog(
-            "Reject this note candidate?",
+            "Hide this idea?",
             isPresented: $isConfirmingReject,
             titleVisibility: .visible
         ) {
-            Button("Reject candidate", role: .destructive) {
+            Button("Hide idea", role: .destructive) {
                 Task {
                     _ = await client.reviewPacketNote(
                         candidate: candidate,
@@ -4857,7 +4849,7 @@ private struct CapturePacketNoteCandidateCard: View {
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("The idea disappears from this list. The recording and transcript remain unchanged.")
+            Text("The idea moves to Handled. The recording and transcript remain unchanged.")
         }
         .toolbar {
             ToolbarItemGroup(placement: .keyboard) {
@@ -4942,6 +4934,16 @@ private struct CapturePacketTaskCandidateCard: View {
         previewOnly || decisionsLocked || client.isMutating
     }
 
+    private var statusLabel: String {
+        switch candidate.reviewStatus {
+        case "EDITED_FOR_REVIEW": "ADJUSTED"
+        case "DEFERRED_BY_HUMAN": "LATER"
+        case "REJECTED_BY_HUMAN": "HIDDEN"
+        case "ACCEPTED_AS_ACTION_ITEM", "MERGED_INTO_ACTION_ITEM": "ADDED"
+        default: "IDEA"
+        }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 9) {
             HStack(alignment: .top) {
@@ -4954,7 +4956,7 @@ private struct CapturePacketTaskCandidateCard: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 Spacer(minLength: 8)
-                Text(candidate.reviewStatus.replacingOccurrences(of: "_", with: " ").lowercased())
+                Text(statusLabel)
                     .font(.caption2.weight(.bold))
                     .padding(.horizontal, 8)
                     .padding(.vertical, 5)
@@ -5146,7 +5148,7 @@ private struct CapturePacketTaskCandidateCard: View {
                     .buttonStyle(.borderedProminent)
                     .disabled(previewOnly || decisionsLocked || client.isMutating)
                     .accessibilityIdentifier("CapturePacketTaskAcceptButton")
-                    Button("Adjust") { isCreating = true }
+                    Button("Edit first") { isCreating = true }
                         .buttonStyle(.bordered)
                         .disabled(decisionsLocked || client.isMutating)
                         .accessibilityIdentifier("CapturePacketTaskEditButton")
@@ -5158,20 +5160,12 @@ private struct CapturePacketTaskCandidateCard: View {
                 .buttonStyle(.bordered)
                 .disabled(decisionsDisabled || mergeTargets.isEmpty)
                 .accessibilityIdentifier("CapturePacketTaskMergeModeButton")
-                Button("Dismiss", role: .destructive) {
+                Button("Hide", role: .destructive) {
                     Task { _ = await client.reviewPacketAction(candidate: candidate, decision: "REJECT", title: nil, detail: nil, previewOnly: previewOnly) }
                 }
                 .buttonStyle(.bordered)
                 .disabled(decisionsDisabled)
                 .accessibilityIdentifier("CapturePacketTaskRejectButton")
-            }
-            if !accepted && !isCreating && !isMerging {
-                Text(mergeTargets.isEmpty
-                    ? "Add it now, adjust it first, or dismiss it."
-                    : "Add it now, adjust it, add it to an existing task, or dismiss it.")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
             }
         }
         .padding(12)
@@ -5251,6 +5245,16 @@ private struct CapturePacketGoalCandidateCard: View {
         previewOnly || decisionsLocked || client.isMutating
     }
 
+    private var statusLabel: String {
+        switch candidate.reviewStatus {
+        case "EDITED_FOR_REVIEW": "ADJUSTED"
+        case "DEFERRED_BY_HUMAN": "LATER"
+        case "REJECTED_BY_HUMAN": "HIDDEN"
+        case "ACCEPTED_AS_GOAL", "MERGED_INTO_GOAL": "ADDED"
+        default: "IDEA"
+        }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 9) {
             HStack(alignment: .top) {
@@ -5263,7 +5267,7 @@ private struct CapturePacketGoalCandidateCard: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 Spacer(minLength: 8)
-                Text(candidate.reviewStatus.replacingOccurrences(of: "_", with: " ").lowercased())
+                Text(statusLabel)
                     .font(.caption2.weight(.bold))
                     .padding(.horizontal, 8)
                     .padding(.vertical, 5)
@@ -5481,7 +5485,7 @@ private struct CapturePacketGoalCandidateCard: View {
                     .tint(.purple)
                     .disabled(previewOnly || decisionsLocked || client.isMutating)
                     .accessibilityIdentifier("CapturePacketGoalAcceptButton")
-                    Button("Adjust") { isCreating = true }
+                    Button("Edit first") { isCreating = true }
                         .buttonStyle(.bordered)
                         .disabled(decisionsLocked || client.isMutating)
                         .accessibilityIdentifier("CapturePacketGoalEditButton")
@@ -5497,18 +5501,12 @@ private struct CapturePacketGoalCandidateCard: View {
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
-                Button("Dismiss", role: .destructive) {
+                Button("Hide", role: .destructive) {
                     Task { _ = await client.reviewPacketGoal(candidate: candidate, decision: "REJECT", title: nil, description: nil, previewOnly: previewOnly) }
                 }
                 .buttonStyle(.bordered)
                 .disabled(decisionsDisabled)
                 .accessibilityIdentifier("CapturePacketGoalRejectButton")
-            }
-            if !accepted && !isCreating && !isMerging {
-                Text("Add it now, adjust it first, add it to an existing goal, or dismiss it.")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
             }
         }
         .padding(12)
