@@ -472,14 +472,6 @@ private struct CaptureTodayView: View {
                     CaptureLoadingCard(label: "Loading your sessions…")
                 }
 
-                CaptureTodayPrimaryActions(
-                    isStartingVoiceNote: model.isCreatingSession,
-                    canStart: !model.isSessionContextLocked,
-                    onStartVoiceNote: onStartVoiceNote,
-                    onStartWriting: onStartWriting,
-                    onNewSession: { showsNewSession = true }
-                )
-
                 if let draft = writingStore.drafts.first {
                     VStack(alignment: .leading, spacing: 10) {
                         HStack {
@@ -501,6 +493,14 @@ private struct CaptureTodayView: View {
                     }
                     .accessibilityIdentifier("CaptureTodayContinueWriting")
                 }
+
+                CaptureTodayPrimaryActions(
+                    isStartingVoiceNote: model.isCreatingSession,
+                    canStart: !model.isSessionContextLocked,
+                    onStartVoiceNote: onStartVoiceNote,
+                    onStartWriting: onStartWriting,
+                    onNewSession: { showsNewSession = true }
+                )
 
                 if model.usesPreviewData
                     && !CaptureLaunchConfiguration.usesAppStorePresentation {
