@@ -2116,8 +2116,9 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(coachingSpace.label.contains("Coaching with Homer"))
         coachingSpace.tap()
         XCTAssertTrue(
-            app.scrollViews["CaptureRecorderView"].waitForExistence(timeout: 5),
-            "Opening a Space should land in its working Session surface."
+            app.descendants(matching: .any)["CaptureCoachingEngagementWorkspace"]
+                .waitForExistence(timeout: 5),
+            "Opening a coaching Space should land in its durable relationship workspace, not one arbitrary Session."
         )
         let coachingLocation = expectation(
             for: NSPredicate(

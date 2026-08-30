@@ -2962,7 +2962,7 @@ private struct MobileCoachingInlineWarning: View {
     }
 }
 
-private struct CaptureCoachingEngagementWorkspaceView: View {
+struct CaptureCoachingEngagementWorkspaceView: View {
     let engagement: MobileCaptureCoachingEngagement
     let sessions: [MobileCaptureSession]
     let previewOnly: Bool

@@ -15,6 +15,7 @@ struct CapturePhoneShell: View {
     @State private var isRoutingSessionLink = false
     @State private var localOnlyRecordingSessionID: String?
     @State private var requestedWritingDraftID: UUID?
+    @State private var requestedCoachingEngagement: MobileCaptureCoachingEngagement?
     @State private var requestedLibrarySection: CaptureLibrarySection?
     @State private var recordNavigationResetID = UUID()
     @State private var showsGlobalNestSwitcher = false
@@ -30,7 +31,9 @@ struct CapturePhoneShell: View {
                     activeCaptureBanner
                     if visibleTab != .account {
                         CaptureWorkLocationBar(
-                            nestName: visibleContextNest?.name ?? "My Nest",
+                            nestName: requestedCoachingEngagement?.projectName.nonempty
+                                ?? visibleContextNest?.name
+                                ?? "My Nest",
                             nestIsPrivate: visibleContextNest?.isHomeNest ?? true,
                             spaceName: visibleContextSpaceName,
                             switchDisabled: model.isSessionContextLocked,
@@ -228,6 +231,12 @@ struct CapturePhoneShell: View {
     }
 
     private var visibleContextNest: MobileCaptureWorkProject? {
+        if let requestedCoachingEngagement,
+           let engagementProject = model.workClient.projects.first(where: {
+               $0.id == requestedCoachingEngagement.projectId
+           }) {
+            return engagementProject
+        }
         if visibleTab == .record,
            let sessionProjectID = model.selectedSession?.projectId,
            let sessionProject = model.workClient.projects.first(where: {
@@ -249,7 +258,7 @@ struct CapturePhoneShell: View {
                 ?? model.selectedSession?.title.nonempty
                 ?? "Sessions"
         case .work:
-            "Work"
+            requestedCoachingEngagement?.title.nonempty ?? "Work"
         case .library:
             "Library"
         case .account:
@@ -258,10 +267,14 @@ struct CapturePhoneShell: View {
     }
 
     private var workSpaces: [CaptureWorkSpaceLocation] {
-        CaptureWorkSpaceLocation.project(model.scheduledSessions)
+        CaptureWorkSpaceLocation.project(
+            model.scheduledSessions,
+            engagements: model.coachingEngagements
+        )
     }
 
     private func selectGlobalNest(_ project: MobileCaptureWorkProject) {
+        requestedCoachingEngagement = nil
         visibleTab = .work
         if model.usesPreviewData {
             model.workClient.loadPreview(projectID: project.id)
@@ -271,6 +284,15 @@ struct CapturePhoneShell: View {
     }
 
     private func selectGlobalSpace(_ space: CaptureWorkSpaceLocation) {
+        if let engagementID = space.coachingEngagementID,
+           let engagement = model.coachingEngagements.first(where: {
+               $0.id == engagementID
+           }) {
+            requestedCoachingEngagement = engagement
+            visibleTab = .work
+            return
+        }
+        requestedCoachingEngagement = nil
         guard let session = model.sessions.first(where: {
             $0.id == space.representativeSessionID
         }) else {
@@ -311,7 +333,8 @@ struct CapturePhoneShell: View {
                 CaptureWorkView(
                     model: model,
                     visibleTab: $visibleTab,
-                    requestedWritingDraftID: $requestedWritingDraftID
+                    requestedWritingDraftID: $requestedWritingDraftID,
+                    requestedCoachingEngagement: $requestedCoachingEngagement
                 )
             }
             .tabItem { Label(CaptureRootTab.work.title, systemImage: CaptureRootTab.work.systemImage) }
@@ -1580,12 +1603,16 @@ private struct CaptureWorkSpaceLocation: Identifiable, Equatable {
     let nestID: String
     let name: String
     let kind: Kind
-    let representativeSessionID: String
+    let representativeSessionID: String?
+    let coachingEngagementID: String?
     let sessionCount: Int
     let nextScheduledStart: String?
 
     var detail: String {
         let count = "\(sessionCount) session\(sessionCount == 1 ? "" : "s")"
+        if kind == .coaching, sessionCount == 0 {
+            return "Coaching · Ready to plan"
+        }
         guard let nextScheduledStart,
               let date = ISO8601DateFormatter().date(from: nextScheduledStart) else {
             return "\(kind.title) · \(count)"
@@ -1596,17 +1623,34 @@ private struct CaptureWorkSpaceLocation: Identifiable, Equatable {
         return "\(kind.title) · \(count) · \(timing)"
     }
 
-    static func project(_ sessions: [MobileCaptureSession]) -> [CaptureWorkSpaceLocation] {
+    static func project(
+        _ sessions: [MobileCaptureSession],
+        engagements: [MobileCaptureCoachingEngagement]
+    ) -> [CaptureWorkSpaceLocation] {
         struct Seed {
             let id: String
             let nestID: String
             let name: String
             let kind: Kind
+            let coachingEngagementID: String?
             var sessions: [MobileCaptureSession]
         }
 
         var order: [String] = []
         var seeds: [String: Seed] = [:]
+        for engagement in engagements where engagement.status.uppercased() != "ARCHIVED" {
+            let identity = "coaching:\(engagement.id)"
+            let key = "\(engagement.projectId):\(identity)"
+            order.append(key)
+            seeds[key] = Seed(
+                id: identity,
+                nestID: engagement.projectId,
+                name: engagement.title,
+                kind: .coaching,
+                coachingEngagementID: engagement.id,
+                sessions: []
+            )
+        }
         for session in sessions where !session.isPersonalVoiceNote {
             guard let nestID = session.projectId?.nonempty else { continue }
             let identity: String
@@ -1646,6 +1690,7 @@ private struct CaptureWorkSpaceLocation: Identifiable, Equatable {
                     nestID: nestID,
                     name: name,
                     kind: kind,
+                    coachingEngagementID: session.coachingEngagementId?.nonempty,
                     sessions: [session]
                 )
             }
@@ -1664,13 +1709,14 @@ private struct CaptureWorkSpaceLocation: Identifiable, Equatable {
             let active = chronologically.filter {
                 !["ENDED", "CANCELED", "FAILED"].contains(($0.status ?? "").uppercased())
             }
-            let representative = active.first ?? chronologically.last ?? seed.sessions[0]
+            let representative = active.first ?? chronologically.last
             return CaptureWorkSpaceLocation(
                 id: seed.id,
                 nestID: seed.nestID,
                 name: seed.name,
                 kind: seed.kind,
-                representativeSessionID: representative.id,
+                representativeSessionID: representative?.id,
+                coachingEngagementID: seed.coachingEngagementID,
                 sessionCount: seed.sessions.count,
                 nextScheduledStart: active.first?.scheduledStart
             )
@@ -1725,24 +1771,30 @@ private struct CaptureNestSwitcher: View {
     }
 
     private var selectedNestSpaces: [CaptureWorkSpaceLocation] {
-        guard normalizedQuery.isEmpty else {
-            return spaces.filter {
-                $0.nestID == selectedProjectID
-                    && ($0.name.localizedCaseInsensitiveContains(normalizedQuery)
-                        || $0.kind.title.localizedCaseInsensitiveContains(normalizedQuery))
-            }
+        filteredSpaces.filter { $0.nestID == selectedProjectID }
+    }
+
+    private var otherSpaces: [CaptureWorkSpaceLocation] {
+        filteredSpaces.filter { $0.nestID != selectedProjectID }
+    }
+
+    private var filteredSpaces: [CaptureWorkSpaceLocation] {
+        guard !normalizedQuery.isEmpty else { return spaces }
+        return spaces.filter {
+            $0.name.localizedCaseInsensitiveContains(normalizedQuery)
+                || $0.kind.title.localizedCaseInsensitiveContains(normalizedQuery)
         }
-        return spaces.filter { $0.nestID == selectedProjectID }
     }
 
     var body: some View {
         NavigationStack {
             Group {
-                if filteredProjects.isEmpty && selectedNestSpaces.isEmpty {
+                if filteredProjects.isEmpty && filteredSpaces.isEmpty {
                     ContentUnavailableView.search(text: normalizedQuery)
                 } else {
                     List {
                         spaceSection
+                        otherSpaceSection
                         nestSection("Private", projects: privateProjects)
                         nestSection("Owned by you", projects: ownedProjects)
                         nestSection("Shared with you", projects: sharedProjects)
@@ -1772,44 +1824,58 @@ private struct CaptureNestSwitcher: View {
     private var spaceSection: some View {
         if let selectedNest, !selectedNestSpaces.isEmpty {
             Section("Spaces in \(selectedNest.name)") {
-                ForEach(selectedNestSpaces) { space in
-                    Button {
-                        onSelectSpace(space)
-                        dismiss()
-                    } label: {
-                        HStack(spacing: 12) {
-                            Image(systemName: space.kind.systemImage)
-                                .font(.title3.weight(.semibold))
-                                .foregroundStyle(.white)
-                                .frame(width: 40, height: 40)
-                                .background(CapturePalette.accentGradient, in: RoundedRectangle(cornerRadius: 13))
-                                .accessibilityHidden(true)
-                            VStack(alignment: .leading, spacing: 3) {
-                                Text(space.name)
-                                    .font(.body.weight(.semibold))
-                                    .foregroundStyle(.primary)
-                                    .multilineTextAlignment(.leading)
-                                Text(space.detail)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                    .multilineTextAlignment(.leading)
-                            }
-                            Spacer(minLength: 8)
-                            Image(systemName: "chevron.right")
-                                .font(.caption.weight(.bold))
-                                .foregroundStyle(.tertiary)
-                                .accessibilityHidden(true)
-                        }
-                        .frame(maxWidth: .infinity, minHeight: 54, alignment: .leading)
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(space.name)
-                    .accessibilityValue(space.detail)
-                    .accessibilityHint("Opens this collaboration Space.")
-                    .accessibilityIdentifier("CaptureSpaceSwitcherChoice_\(space.id)")
-                }
+                spaceRows(selectedNestSpaces)
             }
+        }
+    }
+
+    @ViewBuilder
+    private var otherSpaceSection: some View {
+        if !otherSpaces.isEmpty {
+            Section(selectedNest == nil ? "Collaboration Spaces" : "Other Spaces") {
+                spaceRows(otherSpaces)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func spaceRows(_ rows: [CaptureWorkSpaceLocation]) -> some View {
+        ForEach(rows) { space in
+            Button {
+                onSelectSpace(space)
+                dismiss()
+            } label: {
+                HStack(spacing: 12) {
+                    Image(systemName: space.kind.systemImage)
+                        .font(.title3.weight(.semibold))
+                        .foregroundStyle(.white)
+                        .frame(width: 40, height: 40)
+                        .background(CapturePalette.accentGradient, in: RoundedRectangle(cornerRadius: 13))
+                        .accessibilityHidden(true)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(space.name)
+                            .font(.body.weight(.semibold))
+                            .foregroundStyle(.primary)
+                            .multilineTextAlignment(.leading)
+                        Text(space.detail)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.leading)
+                    }
+                    Spacer(minLength: 8)
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(.tertiary)
+                        .accessibilityHidden(true)
+                }
+                .frame(maxWidth: .infinity, minHeight: 54, alignment: .leading)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(space.name)
+            .accessibilityValue(space.detail)
+            .accessibilityHint("Opens this collaboration Space.")
+            .accessibilityIdentifier("CaptureSpaceSwitcherChoice_\(space.id)")
         }
     }
 
@@ -1886,6 +1952,7 @@ private struct CaptureWorkView: View {
     @ObservedObject private var writingSync = VoiceWritingDraftSyncClient.shared
     @Binding var visibleTab: CaptureRootTab
     @Binding var requestedWritingDraftID: UUID?
+    @Binding var requestedCoachingEngagement: MobileCaptureCoachingEngagement?
     @State private var selectedProjectID: String?
     @State private var searchText = ""
     @FocusState private var searchIsFocused: Bool
@@ -1907,12 +1974,14 @@ private struct CaptureWorkView: View {
     init(
         model: CaptureExperienceModel,
         visibleTab: Binding<CaptureRootTab>,
-        requestedWritingDraftID: Binding<UUID?>
+        requestedWritingDraftID: Binding<UUID?>,
+        requestedCoachingEngagement: Binding<MobileCaptureCoachingEngagement?>
     ) {
         self.model = model
         client = model.workClient
         _visibleTab = visibleTab
         _requestedWritingDraftID = requestedWritingDraftID
+        _requestedCoachingEngagement = requestedCoachingEngagement
     }
 
     private var workspace: MobileCaptureWorkWorkspace? {
@@ -2163,7 +2232,10 @@ private struct CaptureWorkView: View {
             CaptureNestSwitcher(
                 projects: client.projects,
                 selectedProjectID: selectedProject?.id,
-                spaces: CaptureWorkSpaceLocation.project(model.scheduledSessions),
+                spaces: CaptureWorkSpaceLocation.project(
+                    model.scheduledSessions,
+                    engagements: model.coachingEngagements
+                ),
                 onSelect: selectProject,
                 onSelectSpace: openSpace
             )
@@ -2262,6 +2334,18 @@ private struct CaptureWorkView: View {
                 )
                 .presentationDetents([.large])
             }
+        }
+        .navigationDestination(item: $requestedCoachingEngagement) { engagement in
+            CaptureCoachingEngagementWorkspaceView(
+                engagement: engagement,
+                sessions: model.sessions.filter {
+                    $0.coachingEngagementId == engagement.id
+                },
+                previewOnly: model.usesPreviewData,
+                onOpenSession: { roomID in
+                    await openCoachingSession(roomID: roomID)
+                }
+            )
         }
         .onAppear {
             selectedProjectID = selectedProjectID ?? client.selectedProjectID
@@ -2490,6 +2574,7 @@ private struct CaptureWorkView: View {
     }
 
     private func selectProject(_ project: MobileCaptureWorkProject) {
+        requestedCoachingEngagement = nil
         selectedTagID = nil
         searchText = ""
         client.tagVocabularyMessage = nil
@@ -2505,12 +2590,45 @@ private struct CaptureWorkView: View {
     }
 
     private func openSpace(_ space: CaptureWorkSpaceLocation) {
+        if let engagementID = space.coachingEngagementID,
+           let engagement = model.coachingEngagements.first(where: {
+               $0.id == engagementID
+           }) {
+            requestedCoachingEngagement = engagement
+            return
+        }
+        requestedCoachingEngagement = nil
         guard let session = model.sessions.first(where: {
             $0.id == space.representativeSessionID
         }) else {
             model.errorMessage = "That Space is not available on this device yet. Refresh and try again."
             return
         }
+        model.select(session)
+        visibleTab = .record
+    }
+
+    @MainActor
+    private func openCoachingSession(roomID: String) async {
+        if model.usesPreviewData,
+           let session = model.sessions.first(where: {
+               $0.callRoomId == roomID || $0.id == roomID
+           }) {
+            requestedCoachingEngagement = nil
+            model.select(session)
+            visibleTab = .record
+            return
+        }
+        let outcome = await model.sessionClient.load(authoritativeSessionID: roomID)
+        guard outcome == .loaded,
+              let session = model.sessions.first(where: {
+                  $0.callRoomId == roomID || $0.id == roomID
+              }) else {
+            model.errorMessage = model.sessionClient.errorMessage
+                ?? "That Session exists, but this iPhone could not open it yet. Refresh and try again."
+            return
+        }
+        requestedCoachingEngagement = nil
         model.select(session)
         visibleTab = .record
     }

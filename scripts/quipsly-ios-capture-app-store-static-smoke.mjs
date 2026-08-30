@@ -1470,7 +1470,7 @@ for (const needle of [
 for (const needle of [
   "CaptureWorkLocationBar(",
   'accessibilityIdentifier("CaptureGlobalWorkLocation")',
-  'nestName: visibleContextNest?.name ?? "My Nest"',
+  "nestName: requestedCoachingEngagement?.projectName.nonempty",
   "spaceName: visibleContextSpaceName",
   "CaptureNestSwitcher(",
 ]) {
@@ -1478,13 +1478,17 @@ for (const needle of [
 }
 for (const needle of [
   "private struct CaptureWorkSpaceLocation",
-  "static func project(_ sessions: [MobileCaptureSession])",
+  "engagements: [MobileCaptureCoachingEngagement]",
   "session.coachingEngagementId",
   "session.episodeProductionId",
   "session.episodeSlug",
+  'return "Coaching · Ready to plan"',
   'Section("Spaces in \\(selectedNest.name)")',
+  'Section(selectedNest == nil ? "Collaboration Spaces" : "Other Spaces")',
   'accessibilityIdentifier("CaptureSpaceSwitcherChoice_\\(space.id)")',
   "onSelectSpace: selectGlobalSpace",
+  "CaptureCoachingEngagementWorkspaceView(",
+  "requestedCoachingEngagement = engagement",
 ]) {
   requireIncludes(capturePhoneShellText, needle, "accessible collaboration Spaces projected inside each Nest");
 }
