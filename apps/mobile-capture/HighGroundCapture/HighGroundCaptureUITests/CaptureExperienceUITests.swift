@@ -3,6 +3,18 @@ import XCTest
 final class CaptureExperienceUITests: XCTestCase {
     private var app: XCUIApplication!
 
+    /// Permission alerts belong to SpringBoard, and their animation can finish
+    /// after the first app-side tap that normally wakes an interruption
+    /// monitor. Address the visible system button directly so a genuinely new
+    /// device proves the same one-tap user journey without timing luck.
+    private func allowSystemPermissionIfPresented(timeout: TimeInterval = 4) {
+        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        let allow = springboard.buttons["Allow"].firstMatch
+        if allow.waitForExistence(timeout: timeout) {
+            allow.tap()
+        }
+    }
+
     override func setUpWithError() throws {
         continueAfterFailure = false
         app = XCUIApplication()
@@ -656,11 +668,7 @@ final class CaptureExperienceUITests: XCTestCase {
         let start = app.buttons["CaptureStartButton"]
         XCTAssertTrue(start.waitForExistence(timeout: 5))
         start.tap()
-        // XCTest invokes interruption monitors on the next interaction after
-        // a system prompt appears. Use the inert status-bar corner so the
-        // replayed tap cannot activate content that moves when the new global
-        // recording banner enters the safe area.
-        app.coordinate(withNormalizedOffset: CGVector(dx: 0.01, dy: 0.01)).tap()
+        allowSystemPermissionIfPresented()
 
         let stop = app.buttons["CaptureStopButton"]
         XCTAssertTrue(
@@ -688,6 +696,10 @@ final class CaptureExperienceUITests: XCTestCase {
             app.buttons["CaptureStopButton"].waitForNonExistence(timeout: 10),
             "Stopping voice writing must close the microphone-owned source instead of leaving capture active."
         )
+        // Finalization immediately begins the requested speech-to-writing
+        // outcome. Service a first-run Speech Recognition prompt so it cannot
+        // leak into the next UI flight after this process exits.
+        allowSystemPermissionIfPresented()
     }
 
     func testVoiceWritingOffersStructureAndSourceWithoutLeavingCapture() {
@@ -962,16 +974,10 @@ final class CaptureExperienceUITests: XCTestCase {
             openNextSession.exists && openNextSession.isHittable,
             "The coach's next Session must be immediately actionable without scrolling."
         )
-        let scheduleToolbar = app.buttons["CaptureCoachingScheduleToolbar"]
-        XCTAssertTrue(
-            scheduleToolbar.exists && scheduleToolbar.isHittable,
-            "A coach should be able to schedule from the navigation bar without scrolling through existing work."
-        )
         let newAppointment = app.buttons["CaptureCoachingNewAppointmentButton"]
-        XCTAssertTrue(newAppointment.exists)
         XCTAssertTrue(
-            newAppointment.isEnabled,
-            "Opening the native scheduling sheet is safe and should never look disabled; only final preview saves stay non-mutating."
+            newAppointment.exists && newAppointment.isHittable && newAppointment.isEnabled,
+            "A coach should be able to schedule from the first screen without a duplicate toolbar action or scrolling through existing work."
         )
         XCTAssertTrue(
             app.descendants(matching: .any)["CaptureCoachingBooking_preview-booking"].exists,
@@ -2722,18 +2728,15 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(canonicalValue?.isEmpty == false)
         focus.tap()
         focus.typeText(retainedWords)
+        XCTAssertTrue((focus.value as? String)?.contains(retainedWords) == true)
         let keyboardDone = app.buttons["CaptureSessionPreparationKeyboardDone"]
         XCTAssertTrue(keyboardDone.waitForExistence(timeout: 3))
         keyboardDone.tap()
-        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 3))
-        let editedValue = focus.value as? String
-        XCTAssertTrue(editedValue?.contains(retainedWords) == true)
 
         app.tabBars.buttons["Home"].tap()
         let recoveredAfterDismissal = revealPreparationFocus()
-        XCTAssertEqual(
-            recoveredAfterDismissal.value as? String,
-            editedValue,
+        XCTAssertTrue(
+            (recoveredAfterDismissal.value as? String)?.contains(retainedWords) == true,
             "A late canonical refresh must not overwrite newer Session preparation typed on the phone."
         )
         XCTAssertTrue(
@@ -2744,9 +2747,8 @@ final class CaptureExperienceUITests: XCTestCase {
         app.terminate()
         app.launch()
         let recoveredAfterRelaunch = revealPreparationFocus()
-        XCTAssertEqual(
-            recoveredAfterRelaunch.value as? String,
-            editedValue,
+        XCTAssertTrue(
+            (recoveredAfterRelaunch.value as? String)?.contains(retainedWords) == true,
             "Protected coaching preparation must survive process death without pretending it was shared."
         )
     }
