@@ -3440,9 +3440,20 @@ final class CaptureExperienceUITests: XCTestCase {
         reviewLink.tap()
 
         XCTAssertTrue(app.scrollViews["CaptureTranscriptReviewView"].waitForExistence(timeout: 5))
+        let tools = app.descendants(matching: .any)["CaptureTranscriptToolsDisclosure"].firstMatch
+        reveal(tools, searchAboveFirst: false)
+        XCTAssertTrue(tools.waitForExistence(timeout: 5))
+        XCTAssertEqual(tools.value as? String, "Collapsed")
+
         let identifySpeaker = app.buttons["CaptureTranscriptIdentifySpeaker_Speaker"].firstMatch
+        XCTAssertFalse(
+            identifySpeaker.exists,
+            "Optional voice-identity controls should stay out of the primary transcript until someone opens the audio tools."
+        )
+        tools.tap()
+        XCTAssertEqual(tools.value as? String, "Expanded")
         reveal(identifySpeaker, searchAboveFirst: false)
-        XCTAssertTrue(identifySpeaker.exists)
+        XCTAssertTrue(identifySpeaker.waitForExistence(timeout: 5))
         XCTAssertFalse(
             identifySpeaker.isEnabled,
             "Preview voice identity must be disabled for touch, assistive technology, and UI automation."
