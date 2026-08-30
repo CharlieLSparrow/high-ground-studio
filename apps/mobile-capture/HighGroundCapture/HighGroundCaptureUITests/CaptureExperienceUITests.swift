@@ -169,6 +169,15 @@ final class CaptureExperienceUITests: XCTestCase {
             "Home should name the outcome plainly for someone who needs to draft by speaking."
         )
 
+        let nextSession = app.descendants(matching: .any)["CaptureNextSessionCard"]
+        let speakToWrite = app.buttons["CaptureStartVoiceNote"]
+        XCTAssertTrue(app.staticTexts["CaptureTodayCreateHeading"].exists)
+        XCTAssertLessThan(
+            nextSession.frame.minY,
+            speakToWrite.frame.minY,
+            "A ready appointment should appear before creation tools so joining follows time priority instead of page depth."
+        )
+
         let joinSession = app.buttons["CaptureOpenNextSessionButton"]
         XCTAssertEqual(
             joinSession.label,

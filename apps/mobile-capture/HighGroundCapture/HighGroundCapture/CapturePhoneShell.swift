@@ -453,14 +453,6 @@ private struct CaptureTodayView: View {
             VStack(alignment: .leading, spacing: 18) {
                 todayHeader
 
-                CaptureTodayPrimaryActions(
-                    isStartingVoiceNote: model.isCreatingSession,
-                    canStart: !model.isSessionContextLocked,
-                    onStartVoiceNote: onStartVoiceNote,
-                    onStartWriting: onStartWriting,
-                    onNewSession: { showsNewSession = true }
-                )
-
                 if let next = model.nextSession {
                     NextCaptureCard(
                         session: next,
@@ -479,6 +471,14 @@ private struct CaptureTodayView: View {
                 } else if model.isRefreshing {
                     CaptureLoadingCard(label: "Loading your sessions…")
                 }
+
+                CaptureTodayPrimaryActions(
+                    isStartingVoiceNote: model.isCreatingSession,
+                    canStart: !model.isSessionContextLocked,
+                    onStartVoiceNote: onStartVoiceNote,
+                    onStartWriting: onStartWriting,
+                    onNewSession: { showsNewSession = true }
+                )
 
                 if let draft = writingStore.drafts.first {
                     VStack(alignment: .leading, spacing: 10) {
@@ -641,7 +641,15 @@ private struct CaptureTodayPrimaryActions: View {
     let onNewSession: () -> Void
 
     var body: some View {
-        VStack(spacing: 12) {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Create")
+                .font(.caption.weight(.bold))
+                .foregroundStyle(.secondary)
+                .textCase(.uppercase)
+                .tracking(0.6)
+                .accessibilityAddTraits(.isHeader)
+                .accessibilityIdentifier("CaptureTodayCreateHeading")
+
             speakToWriteButton
             startWritingButton
             newSessionButton
