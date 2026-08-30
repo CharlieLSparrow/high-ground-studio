@@ -228,6 +228,14 @@ describe("TranscriptCorrectionDesk", () => {
       speakerAuthority: "source-binding",
       sourceBoundParticipantId: "participant-scott",
     }];
+    (routed as any).speakerGroups = [{
+      providerSpeakerLabel: "Speaker",
+      turnCount: 1,
+      providerSnapshotSha256: "c".repeat(64),
+      attribution: null,
+      staleAttribution: false,
+      samples: [{ segmentId: "segment-1", startSeconds: 3.66, endSeconds: 4.84, text: "Welcome, everybody." }],
+    }];
     global.fetch = jest.fn(async () => ({ ok: true, json: async () => routed })) as unknown as typeof fetch;
 
     render(<TranscriptCorrectionDesk roomId="room-1" />);
@@ -239,6 +247,8 @@ describe("TranscriptCorrectionDesk", () => {
     expect(screen.getByText(/nova-3@latest.*moving latest/i)).toBeInTheDocument();
     expect(screen.getByText(/source binding.*diarization off/i)).toBeInTheDocument();
     expect(screen.getByText("7 frozen keyterms")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /name the voices/i })).not.toBeInTheDocument();
+    expect(screen.getByText("1/1 voices identified")).toBeInTheDocument();
   });
 
   it("shows source-linked work that needs deliberate review after a correction", async () => {

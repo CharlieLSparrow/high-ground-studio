@@ -326,6 +326,34 @@ type Desk = {
   boundaries: Record<string, boolean>;
 };
 
+function speakerGroupNeedsIdentity(
+  desk: Pick<Desk, "segments">,
+  group: SpeakerGroup,
+) {
+  if (group.attribution && !group.staleAttribution) return false;
+  const matchingSegments = desk.segments.filter(
+    (segment) => segment.providerSpeakerLabel === group.providerSpeakerLabel,
+  );
+  if (!matchingSegments.length) return !group.attribution || group.staleAttribution;
+  return matchingSegments.some(
+    (segment) => !["source-binding", "attribution", "correction"].includes(
+      segment.speakerAuthority || "",
+    ),
+  );
+}
+
+function speakerGroupsRequiringIdentity(desk: Desk | null) {
+  if (!desk) return [];
+  return (desk.speakerGroups ?? []).filter((group) => speakerGroupNeedsIdentity(desk, group));
+}
+
+function speakerGroupsVisibleInIdentityTools(desk: Desk | null) {
+  if (!desk) return [];
+  return (desk.speakerGroups ?? []).filter(
+    (group) => Boolean(group.attribution) || speakerGroupNeedsIdentity(desk, group),
+  );
+}
+
 type EvaluationCandidate = {
   id: string;
   windowId: string;
@@ -1678,6 +1706,14 @@ export function TranscriptCorrectionDesk({
   const currentPlayback = activePlayback ?? desk?.playback ?? null;
   const playbackReady = Boolean(currentPlayback) && playbackState === "ready";
   const detectorDurationSeconds = desk?.playback?.durationSeconds ?? desk?.evaluation?.sourceDurationSeconds ?? desk?.evidence?.audio.signal?.durationSeconds ?? 0;
+  const speakerGroupsNeedingIdentity = useMemo(
+    () => speakerGroupsRequiringIdentity(desk),
+    [desk],
+  );
+  const speakerIdentityToolGroups = useMemo(
+    () => speakerGroupsVisibleInIdentityTools(desk),
+    [desk],
+  );
 
   const openRecordingEditorAt = useCallback((segment: Segment) => {
     const transcriptJobId = segment.transcriptJobId ?? desk?.transcriptJobId;
@@ -1754,11 +1790,10 @@ export function TranscriptCorrectionDesk({
 
   useEffect(() => {
     if (speakerNamingPromptedRef.current || !desk?.gate.allowed) return;
-    const groups = desk.speakerGroups ?? [];
-    if (!groups.some((group) => !group.attribution || group.staleAttribution)) return;
+    if (!speakerGroupsNeedingIdentity.length) return;
     speakerNamingPromptedRef.current = true;
     setShowSpeakerIdentity(true);
-  }, [desk]);
+  }, [desk?.gate.allowed, speakerGroupsNeedingIdentity]);
 
   useEffect(() => {
     const recordingId = desk?.recording?.id;
@@ -2058,8 +2093,8 @@ export function TranscriptCorrectionDesk({
   if (!desk) return <section className="rounded-2xl border border-rose-200 bg-rose-50 p-6" role="status"><CircleAlert className="text-rose-700" aria-hidden="true" /><h2 className="mt-3 font-serif text-2xl font-black text-[#3d3122]">Transcript correction is unavailable.</h2><p className="mt-2 text-sm font-semibold text-[#765f40]">{message || "No transcript text is substituted and no evidence was changed."}</p><button type="button" onClick={() => void load()} className="mt-4 inline-flex items-center gap-2 rounded-full border border-rose-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-rose-900"><RefreshCw size={14} aria-hidden="true" />Retry</button></section>;
 
   const reviewedSegmentCount = desk.segments.filter((segment) => segment.acceptedCorrection || segment.acceptedVerification).length;
-  const identifiedSpeakerCount = (desk.speakerGroups ?? []).filter((group) => group.attribution && !group.staleAttribution).length;
-  const unidentifiedSpeakerCount = (desk.speakerGroups?.length ?? 0) - identifiedSpeakerCount;
+  const unidentifiedSpeakerCount = speakerGroupsNeedingIdentity.length;
+  const identifiedSpeakerCount = Math.max(0, (desk.speakerGroups?.length ?? 0) - unidentifiedSpeakerCount);
   const timingIntegrity = desk.evidence?.transcript.timingIntegrity ?? null;
   const protectedPlaybackSurface = !desk.gate.allowed ? (
     <p className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm font-bold text-rose-900">{desk.gate.error || "Transcript evidence remains held by consent and release policy."}</p>
@@ -2157,7 +2192,7 @@ export function TranscriptCorrectionDesk({
 
       {showRecordingEditor && recordingEditor ? <div id="inline-recording-editor" className="scroll-mt-24">{typeof recordingEditor === "function" ? recordingEditor(recordingEditorFocus) : recordingEditor}</div> : null}
 
-      {desk.gate.allowed && (desk.speakerGroups ?? []).length > 0 ? (
+      {desk.gate.allowed && speakerIdentityToolGroups.length > 0 ? (
         <section className={`rounded-2xl border p-4 shadow-sm ${unidentifiedSpeakerCount > 0 ? "border-indigo-300 bg-indigo-50" : "border-emerald-200 bg-emerald-50/45"}`} aria-labelledby="voice-labels-heading">
           <button
             type="button"
@@ -2179,7 +2214,7 @@ export function TranscriptCorrectionDesk({
           {showSpeakerIdentity ? <div id="voice-labels-details" className="mt-4">
             <SpeakerAttributionPanel
               roomId={roomId}
-              groups={desk.speakerGroups ?? []}
+              groups={speakerIdentityToolGroups}
               participants={desk.participants ?? []}
               playbackReady={playbackReady}
               reviewedSecondBins={listenedSecondBins}
