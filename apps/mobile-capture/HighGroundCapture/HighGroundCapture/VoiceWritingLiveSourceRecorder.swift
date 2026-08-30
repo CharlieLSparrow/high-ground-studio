@@ -1,4 +1,4 @@
-import AVFoundation
+@preconcurrency import AVFoundation
 import Foundation
 import Speech
 
@@ -59,13 +59,48 @@ enum VoiceWritingLiveSourceFactory {
     }
 }
 
+/// Best-effort live words for a microphone stream that is already owned and
+/// persisted elsewhere. Connected calls use this boundary so SpeechAnalyzer
+/// can observe the exact LiveKit local-input PCM without opening a second
+/// AVAudioEngine or changing the protected participant master.
+protocol VoiceWritingLivePCMAnalyzing: AnyObject, Sendable {
+    nonisolated func consume(_ buffer: AVAudioPCMBuffer)
+    nonisolated func finish() async
+    nonisolated func cancel()
+}
+
+enum VoiceWritingLivePCMAnalyzerFactory {
+    /// Returns nil unless Apple's model is already installed. A connected call
+    /// must begin recording immediately; live captions never download a model,
+    /// delay source persistence, or become a recording prerequisite.
+    static func prepareIfAvailable(
+        locale requestedLocale: Locale = Locale(identifier: "en-US"),
+        recognitionProfile: VoiceWritingRecognitionProfile = .standard,
+        contextualPhrases: [String] = [],
+        onTextChange: @escaping (_ finalized: String, _ volatile: String) -> Void,
+        onPreviewUnavailable: @escaping (_ reason: String) -> Void
+    ) async -> VoiceWritingLivePCMAnalyzing? {
+        guard #available(iOS 26.0, *) else { return nil }
+        do {
+            return try await AppleVoiceWritingLivePCMAnalyzer.prepare(
+                requestedLocale: requestedLocale,
+                recognitionProfile: recognitionProfile,
+                contextualPhrases: contextualPhrases,
+                onTextChange: onTextChange,
+                onPreviewUnavailable: onPreviewUnavailable
+            )
+        } catch {
+            onPreviewUnavailable(error.localizedDescription)
+            return nil
+        }
+    }
+}
+
 @available(iOS 26.0, *)
 private final class AppleVoiceWritingLiveSourceRecorder: VoiceWritingLiveSourceRecording {
     private let audioEngine: AVAudioEngine
     private let tapState: AudioTapState
-    private let analyzer: SpeechAnalyzer
-    private let inputContinuation: AsyncStream<AnalyzerInput>.Continuation
-    private let resultTask: Task<Void, Never>
+    private let speechPipeline: AppleLiveSpeechPipeline
     private let onPreviewUnavailable: (String) -> Void
     private var stopped = false
 
@@ -77,16 +112,12 @@ private final class AppleVoiceWritingLiveSourceRecorder: VoiceWritingLiveSourceR
     private init(
         audioEngine: AVAudioEngine,
         tapState: AudioTapState,
-        analyzer: SpeechAnalyzer,
-        inputContinuation: AsyncStream<AnalyzerInput>.Continuation,
-        resultTask: Task<Void, Never>,
+        speechPipeline: AppleLiveSpeechPipeline,
         onPreviewUnavailable: @escaping (String) -> Void
     ) {
         self.audioEngine = audioEngine
         self.tapState = tapState
-        self.analyzer = analyzer
-        self.inputContinuation = inputContinuation
-        self.resultTask = resultTask
+        self.speechPipeline = speechPipeline
         self.onPreviewUnavailable = onPreviewUnavailable
     }
 
@@ -100,9 +131,192 @@ private final class AppleVoiceWritingLiveSourceRecorder: VoiceWritingLiveSourceR
         onPreviewUnavailable: @escaping (_ reason: String) -> Void,
         onSourceWriteFailure: @escaping (_ reason: String) -> Void
     ) async throws -> AppleVoiceWritingLiveSourceRecorder {
+        let audioEngine = AVAudioEngine()
+        let inputNode = audioEngine.inputNode
+        let inputFormat = inputNode.outputFormat(forBus: 0)
+        guard inputFormat.sampleRate > 0, inputFormat.channelCount > 0 else {
+            throw LivePreviewFailure.noMicrophoneFormat
+        }
+
+        let file = try AVAudioFile(
+            forWriting: fileURL,
+            settings: audioSettings,
+            commonFormat: inputFormat.commonFormat,
+            interleaved: inputFormat.isInterleaved
+        )
+        let speechPipeline = try await AppleLiveSpeechPipeline.prepare(
+            requestedLocale: requestedLocale,
+            recognitionProfile: recognitionProfile,
+            contextualPhrases: contextualPhrases,
+            onTextChange: onTextChange,
+            onPreviewUnavailable: onPreviewUnavailable
+        )
+        let tapState = AudioTapState(
+            file: file,
+            analyzerInput: AnalyzerPCMInputState(
+                analyzerFormat: speechPipeline.analyzerFormat,
+                inputContinuation: speechPipeline.inputContinuation,
+                onPreviewUnavailable: onPreviewUnavailable
+            ),
+            onSourceWriteFailure: onSourceWriteFailure
+        )
+        inputNode.removeTap(onBus: 0)
+        inputNode.installTap(
+            onBus: 0,
+            bufferSize: 4096,
+            format: inputFormat
+        ) { buffer, _ in
+            tapState.consume(buffer)
+        }
+        audioEngine.prepare()
+
+        return AppleVoiceWritingLiveSourceRecorder(
+            audioEngine: audioEngine,
+            tapState: tapState,
+            speechPipeline: speechPipeline,
+            onPreviewUnavailable: onPreviewUnavailable
+        )
+    }
+
+    func start() throws {
+        guard !stopped else { throw LivePreviewFailure.recorderAlreadyStopped }
+        try audioEngine.start()
+    }
+
+    func pause() {
+        guard !stopped else { return }
+        audioEngine.pause()
+    }
+
+    func resume() throws {
+        guard !stopped else { throw LivePreviewFailure.recorderAlreadyStopped }
+        try audioEngine.start()
+    }
+
+    func closeSource() {
+        guard !stopped else { return }
+        stopped = true
+        audioEngine.stop()
+        audioEngine.inputNode.removeTap(onBus: 0)
+        tapState.finish()
+        speechPipeline.inputContinuation.finish()
+    }
+
+    func finishPreview() async {
+        do {
+            try await speechPipeline.analyzer.finalizeAndFinishThroughEndOfInput()
+        } catch {
+            onPreviewUnavailable(
+                "Live words ended early; the complete recording will still be transcribed from the saved audio."
+            )
+            await speechPipeline.analyzer.cancelAndFinishNow()
+            speechPipeline.resultTask.cancel()
+        }
+        await speechPipeline.resultTask.value
+    }
+
+    func abort() {
+        guard !stopped else { return }
+        closeSource()
+        speechPipeline.resultTask.cancel()
+        Task { await speechPipeline.analyzer.cancelAndFinishNow() }
+    }
+}
+
+@available(iOS 26.0, *)
+private final class AppleVoiceWritingLivePCMAnalyzer: VoiceWritingLivePCMAnalyzing, @unchecked Sendable {
+    private let speechPipeline: AppleLiveSpeechPipeline
+    private let analyzerInput: AnalyzerPCMInputState
+    private let stateLock = NSLock()
+    nonisolated(unsafe) private var stopped = false
+
+    private init(
+        speechPipeline: AppleLiveSpeechPipeline,
+        analyzerInput: AnalyzerPCMInputState
+    ) {
+        self.speechPipeline = speechPipeline
+        self.analyzerInput = analyzerInput
+    }
+
+    static func prepare(
+        requestedLocale: Locale,
+        recognitionProfile: VoiceWritingRecognitionProfile,
+        contextualPhrases: [String],
+        onTextChange: @escaping (_ finalized: String, _ volatile: String) -> Void,
+        onPreviewUnavailable: @escaping (_ reason: String) -> Void
+    ) async throws -> AppleVoiceWritingLivePCMAnalyzer {
+        let speechPipeline = try await AppleLiveSpeechPipeline.prepare(
+            requestedLocale: requestedLocale,
+            recognitionProfile: recognitionProfile,
+            contextualPhrases: contextualPhrases,
+            onTextChange: onTextChange,
+            onPreviewUnavailable: onPreviewUnavailable
+        )
+        return AppleVoiceWritingLivePCMAnalyzer(
+            speechPipeline: speechPipeline,
+            analyzerInput: AnalyzerPCMInputState(
+                analyzerFormat: speechPipeline.analyzerFormat,
+                inputContinuation: speechPipeline.inputContinuation,
+                onPreviewUnavailable: onPreviewUnavailable
+            )
+        )
+    }
+
+    nonisolated func consume(_ buffer: AVAudioPCMBuffer) {
+        guard stateLock.withLock({ !stopped }) else { return }
+        analyzerInput.consume(buffer)
+    }
+
+    nonisolated func finish() async {
+        let shouldFinish = stateLock.withLock { () -> Bool in
+            guard !stopped else { return false }
+            stopped = true
+            return true
+        }
+        guard shouldFinish else { return }
+        analyzerInput.finish()
+        speechPipeline.inputContinuation.finish()
+        do {
+            try await speechPipeline.analyzer.finalizeAndFinishThroughEndOfInput()
+        } catch {
+            await speechPipeline.analyzer.cancelAndFinishNow()
+            speechPipeline.resultTask.cancel()
+        }
+        await speechPipeline.resultTask.value
+    }
+
+    nonisolated func cancel() {
+        let shouldCancel = stateLock.withLock { () -> Bool in
+            guard !stopped else { return false }
+            stopped = true
+            return true
+        }
+        guard shouldCancel else { return }
+        analyzerInput.finish()
+        speechPipeline.inputContinuation.finish()
+        speechPipeline.resultTask.cancel()
+        Task { await speechPipeline.analyzer.cancelAndFinishNow() }
+    }
+}
+
+@available(iOS 26.0, *)
+private struct AppleLiveSpeechPipeline: @unchecked Sendable {
+    let analyzer: SpeechAnalyzer
+    let analyzerFormat: AVAudioFormat
+    let inputContinuation: AsyncStream<AnalyzerInput>.Continuation
+    let resultTask: Task<Void, Never>
+
+    static func prepare(
+        requestedLocale: Locale,
+        recognitionProfile: VoiceWritingRecognitionProfile,
+        contextualPhrases: [String],
+        onTextChange: @escaping (_ finalized: String, _ volatile: String) -> Void,
+        onPreviewUnavailable: @escaping (_ reason: String) -> Void
+    ) async throws -> AppleLiveSpeechPipeline {
         let transcriptState = LiveTranscriptState(onTextChange: onTextChange)
         let modules: [any SpeechModule]
         let makeResultTask: () -> Task<Void, Never>
+
         if recognitionProfile.adaptsToSpeech,
            let locale = await DictationTranscriber.supportedLocale(
                equivalentTo: requestedLocale
@@ -146,9 +360,8 @@ private final class AppleVoiceWritingLiveSourceRecorder: VoiceWritingLiveSourceR
                 )
             }
         }
+
         guard await AssetInventory.status(forModules: modules) == .installed else {
-            // Post-capture voice writing owns model installation because it can
-            // display durable progress without holding an armed microphone.
             throw LivePreviewFailure.modelNotInstalled
         }
         guard let analyzerFormat = await SpeechAnalyzer.bestAvailableAudioFormat(
@@ -157,19 +370,6 @@ private final class AppleVoiceWritingLiveSourceRecorder: VoiceWritingLiveSourceR
             throw LivePreviewFailure.noCompatibleAnalyzerFormat
         }
 
-        let audioEngine = AVAudioEngine()
-        let inputNode = audioEngine.inputNode
-        let inputFormat = inputNode.outputFormat(forBus: 0)
-        guard inputFormat.sampleRate > 0, inputFormat.channelCount > 0 else {
-            throw LivePreviewFailure.noMicrophoneFormat
-        }
-
-        let file = try AVAudioFile(
-            forWriting: fileURL,
-            settings: audioSettings,
-            commonFormat: inputFormat.commonFormat,
-            interleaved: inputFormat.isInterleaved
-        )
         let analyzer = SpeechAnalyzer(modules: modules)
         if !contextualPhrases.isEmpty {
             let context = AnalysisContext()
@@ -180,7 +380,6 @@ private final class AppleVoiceWritingLiveSourceRecorder: VoiceWritingLiveSourceR
             bufferingPolicy: .bufferingNewest(24)
         )
         let resultTask = makeResultTask()
-
         do {
             try await analyzer.start(inputSequence: inputSequence)
         } catch {
@@ -188,31 +387,11 @@ private final class AppleVoiceWritingLiveSourceRecorder: VoiceWritingLiveSourceR
             resultTask.cancel()
             throw error
         }
-
-        let tapState = AudioTapState(
-            file: file,
+        return AppleLiveSpeechPipeline(
+            analyzer: analyzer,
             analyzerFormat: analyzerFormat,
             inputContinuation: inputContinuation,
-            onPreviewUnavailable: onPreviewUnavailable,
-            onSourceWriteFailure: onSourceWriteFailure
-        )
-        inputNode.removeTap(onBus: 0)
-        inputNode.installTap(
-            onBus: 0,
-            bufferSize: 4096,
-            format: inputFormat
-        ) { buffer, _ in
-            tapState.consume(buffer)
-        }
-        audioEngine.prepare()
-
-        return AppleVoiceWritingLiveSourceRecorder(
-            audioEngine: audioEngine,
-            tapState: tapState,
-            analyzer: analyzer,
-            inputContinuation: inputContinuation,
-            resultTask: resultTask,
-            onPreviewUnavailable: onPreviewUnavailable
+            resultTask: resultTask
         )
     }
 
@@ -232,7 +411,7 @@ private final class AppleVoiceWritingLiveSourceRecorder: VoiceWritingLiveSourceR
             } catch is CancellationError {
                 return
             } catch {
-                onPreviewUnavailable(Self.livePreviewEndedMessage)
+                onPreviewUnavailable(livePreviewEndedMessage)
             }
         }
     }
@@ -253,56 +432,136 @@ private final class AppleVoiceWritingLiveSourceRecorder: VoiceWritingLiveSourceR
             } catch is CancellationError {
                 return
             } catch {
-                onPreviewUnavailable(Self.livePreviewEndedMessage)
+                onPreviewUnavailable(livePreviewEndedMessage)
             }
         }
     }
 
     private static let livePreviewEndedMessage =
         "Live words paused; the complete recording will still be transcribed after you stop."
+}
 
-    func start() throws {
-        guard !stopped else { throw LivePreviewFailure.recorderAlreadyStopped }
-        try audioEngine.start()
+/// Converts every incoming SDK-owned buffer into memory owned by the analyzer
+/// stream. LiveKit and AVAudioEngine may recycle their callback buffers as soon
+/// as render/tap returns, while SpeechAnalyzer consumes them asynchronously.
+@available(iOS 26.0, *)
+private final class AnalyzerPCMInputState: @unchecked Sendable {
+    private let lock = NSLock()
+    private let analyzerFormat: AVAudioFormat
+    private let inputContinuation: AsyncStream<AnalyzerInput>.Continuation
+    nonisolated(unsafe) private let onPreviewUnavailable: (String) -> Void
+    nonisolated(unsafe) private var converter: AVAudioConverter?
+    nonisolated(unsafe) private var acceptsBuffers = true
+    nonisolated(unsafe) private var warnedAboutPreviewBackpressure = false
+
+    init(
+        analyzerFormat: AVAudioFormat,
+        inputContinuation: AsyncStream<AnalyzerInput>.Continuation,
+        onPreviewUnavailable: @escaping (String) -> Void
+    ) {
+        self.analyzerFormat = analyzerFormat
+        self.inputContinuation = inputContinuation
+        self.onPreviewUnavailable = onPreviewUnavailable
     }
 
-    func pause() {
-        guard !stopped else { return }
-        audioEngine.pause()
-    }
-
-    func resume() throws {
-        guard !stopped else { throw LivePreviewFailure.recorderAlreadyStopped }
-        try audioEngine.start()
-    }
-
-    func closeSource() {
-        guard !stopped else { return }
-        stopped = true
-        audioEngine.stop()
-        audioEngine.inputNode.removeTap(onBus: 0)
-        tapState.finish()
-        inputContinuation.finish()
-    }
-
-    func finishPreview() async {
+    nonisolated func consume(_ buffer: AVAudioPCMBuffer) {
+        let ownedBuffer: AVAudioPCMBuffer
         do {
-            try await analyzer.finalizeAndFinishThroughEndOfInput()
+            ownedBuffer = try lock.withLock {
+                guard acceptsBuffers else { throw LivePreviewFailure.previewAlreadyStopped }
+                return try makeOwnedAnalyzerBuffer(from: buffer)
+            }
+        } catch LivePreviewFailure.previewAlreadyStopped {
+            return
         } catch {
-            onPreviewUnavailable(
-                "Live words ended early; the complete recording will still be transcribed from the saved audio."
+            warnOnce(
+                "Live words are unavailable; the complete recording will be transcribed after you stop."
             )
-            await analyzer.cancelAndFinishNow()
-            resultTask.cancel()
+            return
         }
-        await resultTask.value
+
+        if case .dropped = inputContinuation.yield(AnalyzerInput(buffer: ownedBuffer)) {
+            warnOnce(
+                "Live words fell behind; the complete recording will be transcribed after you stop."
+            )
+        }
     }
 
-    func abort() {
-        guard !stopped else { return }
-        closeSource()
-        resultTask.cancel()
-        Task { await analyzer.cancelAndFinishNow() }
+    nonisolated func finish() {
+        lock.withLock {
+            acceptsBuffers = false
+            converter = nil
+        }
+    }
+
+    nonisolated private func makeOwnedAnalyzerBuffer(
+        from buffer: AVAudioPCMBuffer
+    ) throws -> AVAudioPCMBuffer {
+        if buffer.format == analyzerFormat {
+            guard let output = AVAudioPCMBuffer(
+                pcmFormat: analyzerFormat,
+                frameCapacity: max(1, buffer.frameLength)
+            ) else {
+                throw LivePreviewFailure.couldNotCreateConversionBuffer
+            }
+            output.frameLength = buffer.frameLength
+            let sourceBuffers = UnsafeMutableAudioBufferListPointer(buffer.mutableAudioBufferList)
+            let destinationBuffers = UnsafeMutableAudioBufferListPointer(output.mutableAudioBufferList)
+            guard sourceBuffers.count == destinationBuffers.count else {
+                throw LivePreviewFailure.conversionFailed
+            }
+            for index in sourceBuffers.indices {
+                guard let sourceData = sourceBuffers[index].mData,
+                      let destinationData = destinationBuffers[index].mData else {
+                    throw LivePreviewFailure.conversionFailed
+                }
+                let byteCount = Int(sourceBuffers[index].mDataByteSize)
+                memcpy(destinationData, sourceData, byteCount)
+                destinationBuffers[index].mDataByteSize = UInt32(byteCount)
+            }
+            return output
+        }
+
+        if converter == nil
+            || converter?.inputFormat != buffer.format
+            || converter?.outputFormat != analyzerFormat {
+            converter = AVAudioConverter(from: buffer.format, to: analyzerFormat)
+            converter?.primeMethod = .none
+        }
+        guard let converter else { throw LivePreviewFailure.couldNotCreateConverter }
+        let ratio = analyzerFormat.sampleRate / buffer.format.sampleRate
+        let capacity = AVAudioFrameCount((Double(buffer.frameLength) * ratio).rounded(.up))
+        guard let output = AVAudioPCMBuffer(
+            pcmFormat: analyzerFormat,
+            frameCapacity: max(1, capacity)
+        ) else {
+            throw LivePreviewFailure.couldNotCreateConversionBuffer
+        }
+
+        var conversionError: NSError?
+        var consumed = false
+        let status = converter.convert(to: output, error: &conversionError) { _, status in
+            if consumed {
+                status.pointee = .noDataNow
+                return nil
+            }
+            consumed = true
+            status.pointee = .haveData
+            return buffer
+        }
+        guard status != .error else {
+            throw conversionError ?? LivePreviewFailure.conversionFailed
+        }
+        return output
+    }
+
+    nonisolated private func warnOnce(_ message: String) {
+        let shouldWarn = lock.withLock { () -> Bool in
+            guard !warnedAboutPreviewBackpressure else { return false }
+            warnedAboutPreviewBackpressure = true
+            return true
+        }
+        if shouldWarn { onPreviewUnavailable(message) }
     }
 }
 
@@ -310,30 +569,22 @@ private final class AppleVoiceWritingLiveSourceRecorder: VoiceWritingLiveSourceR
 private final class AudioTapState: @unchecked Sendable {
     private let lock = NSLock()
     private var file: AVAudioFile?
-    private let analyzerFormat: AVAudioFormat
-    private let inputContinuation: AsyncStream<AnalyzerInput>.Continuation
-    private let onPreviewUnavailable: (String) -> Void
+    private let analyzerInput: AnalyzerPCMInputState
     private let onSourceWriteFailure: (String) -> Void
-    private var converter: AVAudioConverter?
     private var frameCount: AVAudioFramePosition = 0
     private var sampleRate: Double
     private var averagePowerDB: Float = -160
     private var peakPowerDB: Float = -160
     private var writeFailure: String?
     private var acceptsBuffers = true
-    private var warnedAboutPreviewBackpressure = false
 
     init(
         file: AVAudioFile,
-        analyzerFormat: AVAudioFormat,
-        inputContinuation: AsyncStream<AnalyzerInput>.Continuation,
-        onPreviewUnavailable: @escaping (String) -> Void,
+        analyzerInput: AnalyzerPCMInputState,
         onSourceWriteFailure: @escaping (String) -> Void
     ) {
         self.file = file
-        self.analyzerFormat = analyzerFormat
-        self.inputContinuation = inputContinuation
-        self.onPreviewUnavailable = onPreviewUnavailable
+        self.analyzerInput = analyzerInput
         self.onSourceWriteFailure = onSourceWriteFailure
         sampleRate = file.processingFormat.sampleRate
     }
@@ -380,35 +631,8 @@ private final class AudioTapState: @unchecked Sendable {
             return
         }
 
-        let converted: AVAudioPCMBuffer
-        do {
-            converted = try convert(buffer)
-        } catch {
-            if !warnedAboutPreviewBackpressure {
-                warnedAboutPreviewBackpressure = true
-                lock.unlock()
-                onPreviewUnavailable(
-                    "Live words are unavailable; the complete recording will be transcribed after you stop."
-                )
-                return
-            }
-            lock.unlock()
-            return
-        }
         lock.unlock()
-
-        if case .dropped = inputContinuation.yield(AnalyzerInput(buffer: converted)) {
-            let shouldWarn = lock.withLock { () -> Bool in
-                guard !warnedAboutPreviewBackpressure else { return false }
-                warnedAboutPreviewBackpressure = true
-                return true
-            }
-            if shouldWarn {
-                onPreviewUnavailable(
-                    "Live words fell behind; the complete recording will be transcribed after you stop."
-                )
-            }
-        }
+        analyzerInput.consume(buffer)
     }
 
     func finish() {
@@ -416,41 +640,7 @@ private final class AudioTapState: @unchecked Sendable {
             acceptsBuffers = false
             file = nil
         }
-    }
-
-    private func convert(_ buffer: AVAudioPCMBuffer) throws -> AVAudioPCMBuffer {
-        if buffer.format == analyzerFormat { return buffer }
-        if converter == nil
-            || converter?.inputFormat != buffer.format
-            || converter?.outputFormat != analyzerFormat {
-            converter = AVAudioConverter(from: buffer.format, to: analyzerFormat)
-            converter?.primeMethod = .none
-        }
-        guard let converter else { throw LivePreviewFailure.couldNotCreateConverter }
-        let ratio = analyzerFormat.sampleRate / buffer.format.sampleRate
-        let capacity = AVAudioFrameCount((Double(buffer.frameLength) * ratio).rounded(.up))
-        guard let output = AVAudioPCMBuffer(
-            pcmFormat: analyzerFormat,
-            frameCapacity: max(1, capacity)
-        ) else {
-            throw LivePreviewFailure.couldNotCreateConversionBuffer
-        }
-
-        var conversionError: NSError?
-        var consumed = false
-        let status = converter.convert(to: output, error: &conversionError) { _, status in
-            if consumed {
-                status.pointee = .noDataNow
-                return nil
-            }
-            consumed = true
-            status.pointee = .haveData
-            return buffer
-        }
-        guard status != .error else {
-            throw conversionError ?? LivePreviewFailure.conversionFailed
-        }
-        return output
+        analyzerInput.finish()
     }
 
     private static func meter(for buffer: AVAudioPCMBuffer) -> VoiceWritingLiveMeterSnapshot {
@@ -531,6 +721,7 @@ private enum LivePreviewFailure: LocalizedError {
     case couldNotCreateConverter
     case couldNotCreateConversionBuffer
     case conversionFailed
+    case previewAlreadyStopped
 
     var errorDescription: String? {
         switch self {
@@ -552,13 +743,15 @@ private enum LivePreviewFailure: LocalizedError {
             "Quipsly could not allocate a live transcription audio buffer."
         case .conversionFailed:
             "Quipsly could not convert an audio buffer for live transcription."
+        case .previewAlreadyStopped:
+            "The live transcription preview already stopped."
         }
     }
 }
 
 private extension NSLock {
     @discardableResult
-    func withLock<T>(_ body: () throws -> T) rethrows -> T {
+    nonisolated func withLock<T>(_ body: () throws -> T) rethrows -> T {
         lock()
         defer { unlock() }
         return try body()

@@ -35,6 +35,7 @@ final class AudioCaptureController: NSObject, ObservableObject {
     @Published private(set) var liveWritingFinalText: String = ""
     @Published private(set) var liveWritingVolatileText: String = ""
     @Published private(set) var liveWritingPreviewMessage: String?
+    @Published private(set) var liveTranscriptPreviewIsAvailable = false
     @Published private(set) var failureMessage: String?
     @Published private(set) var lastErrorMessage: String?
     @Published private(set) var automaticStopReason: String?
@@ -65,6 +66,8 @@ final class AudioCaptureController: NSObject, ObservableObject {
     private var voiceWritingLiveSource: VoiceWritingLiveSourceRecording?
     #if canImport(LiveKit)
     private var providerAudioMaster: ProviderAudioMasterRecorder?
+    private var providerLiveTranscriptAnalyzer: VoiceWritingLivePCMAnalyzing?
+    private var providerLiveTranscriptPreparationTask: Task<Void, Never>?
     #endif
     private var displayDurationTimer: Timer?
     private var startTask: Task<Void, Never>?
@@ -96,6 +99,9 @@ final class AudioCaptureController: NSObject, ObservableObject {
         }
         #if canImport(LiveKit)
         if providerAudioMaster != nil {
+            if providerLiveTranscriptAnalyzer != nil {
+                return "Same room microphone + provisional live words"
+            }
             return "Same microphone as the live room"
         }
         if audioSessionCoordinator.isProviderRoomActive {
@@ -1039,6 +1045,10 @@ final class AudioCaptureController: NSObject, ObservableObject {
            captureIntent.callRoomID != activeCallRoomId {
             throw CaptureError.armedRoomMismatch
         }
+        liveWritingFinalText = ""
+        liveWritingVolatileText = ""
+        liveWritingPreviewMessage = nil
+        liveTranscriptPreviewIsAvailable = false
         let audioFilename = try suppliedAudioFilename
             ?? localRecordingLibrary.makeUniqueRecordingURL(startedAt: startedAt)
         let settings = suppliedSettings ?? directAudioSettings
@@ -1183,6 +1193,10 @@ final class AudioCaptureController: NSObject, ObservableObject {
                 }
             }
             try providerRecorder.start(at: startedAt)
+            startProviderLiveTranscriptPreview(
+                providerRecorder: providerRecorder,
+                recordingID: ledgerEntry.id
+            )
             startProviderAudioWatchdog(recordingID: ledgerEntry.id)
             updateNowPlayingInfo()
             return
@@ -1238,6 +1252,108 @@ final class AudioCaptureController: NSObject, ObservableObject {
     }
 
     #if canImport(LiveKit)
+    /// Starts provisional call captions only after the protected participant
+    /// master is recording. Preparation is asynchronous and never delays or
+    /// fails capture; the finalized master remains the authoritative input for
+    /// the timed transcript and joint assembly after Stop.
+    private func startProviderLiveTranscriptPreview(
+        providerRecorder: ProviderAudioMasterRecorder,
+        recordingID: UUID
+    ) {
+        guard transcriptionConsentGranted else { return }
+        providerLiveTranscriptPreparationTask?.cancel()
+
+        let recognitionOwner = AuthManager.currentStoredOwnerID()
+        let recognitionProfile = VoiceWritingRecognitionPreferences.shared.profile(
+            for: recognitionOwner
+        )
+        let contextualPhrases = VoiceWritingRecognitionContext.mergedPhrases(
+            learnedPhrases: VoiceWritingRecognitionPreferences.shared.learnedPhrases(
+                for: recognitionOwner
+            ),
+            sessionTitle: activeCallRoomLabel,
+            context: VoiceWritingDraftStore.shared.recognitionContext(
+                callRoomID: activeCallRoomId,
+                ownerAccountID: recognitionOwner
+            )
+        )
+
+        providerLiveTranscriptPreparationTask = Task { [weak self, weak providerRecorder] in
+            guard let self, let providerRecorder else { return }
+            let analyzer = await VoiceWritingLivePCMAnalyzerFactory.prepareIfAvailable(
+                recognitionProfile: recognitionProfile,
+                contextualPhrases: contextualPhrases,
+                onTextChange: { [weak self] finalized, volatile in
+                    Task { @MainActor [weak self] in
+                        guard let self,
+                              self.acceptsProviderLiveTranscriptUpdate(
+                                  recordingID: recordingID
+                              ) else { return }
+                        self.liveWritingFinalText = finalized
+                        self.liveWritingVolatileText = volatile
+                    }
+                },
+                onPreviewUnavailable: { [weak self] reason in
+                    Task { @MainActor [weak self] in
+                        guard let self,
+                              self.acceptsProviderLiveTranscriptUpdate(
+                                  recordingID: recordingID
+                              ) else { return }
+                        self.liveWritingPreviewMessage = reason
+                    }
+                }
+            )
+
+            guard !Task.isCancelled else {
+                analyzer?.cancel()
+                return
+            }
+            guard let analyzer,
+                  self.activeLocalRecordingID == recordingID,
+                  self.providerAudioMaster === providerRecorder,
+                  self.captureState == .preparing
+                    || self.captureState == .recording
+                    || self.captureState == .paused else {
+                analyzer?.cancel()
+                return
+            }
+
+            self.providerLiveTranscriptAnalyzer = analyzer
+            self.liveTranscriptPreviewIsAvailable = true
+            providerRecorder.setLiveTranscriptPCMConsumer { [weak analyzer] pcmBuffer in
+                analyzer?.consume(pcmBuffer)
+            }
+            self.providerLiveTranscriptPreparationTask = nil
+        }
+    }
+
+    private func acceptsProviderLiveTranscriptUpdate(recordingID: UUID) -> Bool {
+        activeLocalRecordingID == recordingID
+            && providerAudioMaster != nil
+            && (captureState == .preparing
+                || captureState == .recording
+                || captureState == .paused)
+    }
+
+    /// Detaches the observer before the LiveKit-owned source closes. Returning
+    /// the analyzer lets a normal Stop finalize its volatile words without
+    /// delaying immutable source validation; failures cancel immediately.
+    private func detachProviderLiveTranscriptPreview(
+        cancelAnalyzer: Bool
+    ) -> VoiceWritingLivePCMAnalyzing? {
+        providerLiveTranscriptPreparationTask?.cancel()
+        providerLiveTranscriptPreparationTask = nil
+        providerAudioMaster?.setLiveTranscriptPCMConsumer(nil)
+        let analyzer = providerLiveTranscriptAnalyzer
+        providerLiveTranscriptAnalyzer = nil
+        liveTranscriptPreviewIsAvailable = false
+        if cancelAnalyzer {
+            analyzer?.cancel()
+            return nil
+        }
+        return analyzer
+    }
+
     private func confirmProviderAudioInput(recordingID: UUID) {
         guard activeLocalRecordingID == recordingID,
               captureState == .preparing,
@@ -1351,8 +1467,17 @@ final class AudioCaptureController: NSObject, ObservableObject {
 
         #if canImport(LiveKit)
         if let providerAudioMaster {
+            let liveTranscriptAnalyzer = detachProviderLiveTranscriptPreview(
+                cancelAnalyzer: false
+            )
             providerAudioMaster.stop(at: stoppedAt)
             self.providerAudioMaster = nil
+            // The source is already closed and immediately enters Quipsly's
+            // immutable validation path. Flushing provisional words is useful
+            // UI polish only and can never delay final-master transcription.
+            Task {
+                await liveTranscriptAnalyzer?.finish()
+            }
             finalizeSuccessfulRecording()
             return
         }
@@ -2116,6 +2241,7 @@ final class AudioCaptureController: NSObject, ObservableObject {
         voiceWritingLiveSource?.abort()
         voiceWritingLiveSource = nil
         #if canImport(LiveKit)
+        _ = detachProviderLiveTranscriptPreview(cancelAnalyzer: true)
         providerAudioMaster?.stop()
         providerAudioMaster = nil
         #endif
@@ -2258,6 +2384,10 @@ final class AudioCaptureController: NSObject, ObservableObject {
 
     deinit {
         startTask?.cancel()
+        #if canImport(LiveKit)
+        providerLiveTranscriptPreparationTask?.cancel()
+        providerLiveTranscriptAnalyzer?.cancel()
+        #endif
         displayDurationTimer?.invalidate()
         NotificationCenter.default.removeObserver(self)
         if let accountObserver {

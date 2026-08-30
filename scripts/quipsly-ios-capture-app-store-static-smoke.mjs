@@ -46,6 +46,8 @@ const files = {
     "HighGroundCapture.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved",
   ),
   audioCapture: path.join(sourceRoot, "AudioCaptureController.swift"),
+  providerAudioMaster: path.join(sourceRoot, "ProviderAudioMasterRecorder.swift"),
+  voiceWritingLiveSource: path.join(sourceRoot, "VoiceWritingLiveSourceRecorder.swift"),
   audioSoundCheck: path.join(sourceRoot, "CaptureAudioSoundCheck.swift"),
   audioSoundCheckModel: path.join(sourceRoot, "CaptureAudioSoundCheckModel.swift"),
   captureRehearsalReadiness: path.join(sourceRoot, "CaptureRehearsalReadiness.swift"),
@@ -225,6 +227,8 @@ const captureUniversalLinkBuilderText = read(files.captureUniversalLinkBuilder);
 const loginText = read(files.loginView);
 const swiftPackageResolutionText = read(files.swiftPackageResolution);
 const audioText = read(files.audioCapture);
+const providerAudioMasterText = read(files.providerAudioMaster);
+const voiceWritingLiveSourceText = read(files.voiceWritingLiveSource);
 const videoCaptureControllerText = read(files.videoCaptureController);
 const videoCaptureServiceText = read(files.videoCaptureService);
 const captureAudioSessionCoordinatorText = read(files.captureAudioSessionCoordinator);
@@ -2287,6 +2291,49 @@ requireIncludes(captureExperienceModelText, ".flushPendingReceipts()", "app load
 requireIncludes(capturePhoneShellText, 'accessibilityIdentifier: "ProviderToggleMuteButton"', "shipping persistent provider mute action is addressable");
 requireIncludes(audioText, "var isUsingProviderAudioMaster: Bool", "native recorder exposes whether LiveKit owns the exact local PCM path");
 requireIncludes(audioText, "providerAudioMaster != nil", "native provider-master truth is structural rather than inferred from a label");
+requireIncludes(audioText, "guard transcriptionConsentGranted else { return }", "provisional call transcription respects the canonical transcription-consent boundary");
+requireIncludes(audioText, "VoiceWritingLivePCMAnalyzerFactory.prepareIfAvailable", "connected calls reuse Apple device transcription without opening another microphone owner");
+requireIncludes(audioText, "startProviderLiveTranscriptPreview(", "the provider master starts its best-effort live transcript observer");
+requireIncludes(audioText, "detachProviderLiveTranscriptPreview(", "normal stop and failure paths detach the provider transcript observer");
+requireIncludes(audioText, "await liveTranscriptAnalyzer?.finish()", "provisional words flush without delaying immutable source finalization");
+const providerStartBoundary = audioText.slice(
+  audioText.indexOf("if let providerRecorder {"),
+  audioText.indexOf("if let preparedVoiceWritingSource {"),
+);
+assert(
+  providerStartBoundary.indexOf("try providerRecorder.start(at: startedAt)") >= 0
+    && providerStartBoundary.indexOf("try providerRecorder.start(at: startedAt)")
+      < providerStartBoundary.indexOf("startProviderLiveTranscriptPreview("),
+  "Best-effort live captions must never delay protected provider-master start.",
+  { label: "provider master starts before provisional transcript preparation" },
+);
+requireIncludes(providerAudioMasterText, "setLiveTranscriptPCMConsumer", "the LiveKit local-input recorder exposes one synchronized best-effort PCM observer");
+const providerRenderStart = providerAudioMasterText.indexOf(
+  "@objc func render(pcmBuffer: AVAudioPCMBuffer)",
+);
+const providerRenderEnd = providerAudioMasterText.indexOf("\n    }", providerRenderStart);
+assert(
+  providerRenderStart >= 0 && providerRenderEnd > providerRenderStart,
+  "The provider local-input render boundary must remain inspectable.",
+);
+const providerRenderText = providerAudioMasterText.slice(providerRenderStart, providerRenderEnd);
+assert(
+  providerRenderText.indexOf("source.render(pcmBuffer: pcmBuffer)") >= 0
+    && providerRenderText.indexOf("source.render(pcmBuffer: pcmBuffer)")
+      < providerRenderText.indexOf("liveTranscriptPCMConsumer?(pcmBuffer)"),
+  "Protected source persistence must be scheduled before best-effort live transcription.",
+  { label: "provider source writer remains first in PCM render order" },
+);
+requireIncludes(voiceWritingLiveSourceText, "makeOwnedAnalyzerBuffer", "SpeechAnalyzer receives owned PCM rather than an SDK-recycled callback buffer");
+requireIncludes(voiceWritingLiveSourceText, "bufferingPolicy: .bufferingNewest(24)", "live captions have bounded backpressure that cannot consume unbounded memory");
+assert(
+  (voiceWritingLiveSourceText.match(/AVAudioEngine\(\)/g) ?? []).length === 1,
+  "The provider transcript observer must not introduce a second microphone engine.",
+  { label: "only the standalone personal voice-writing path owns AVAudioEngine" },
+);
+requireIncludes(capturePhoneShellText, "Provisional live transcript", "connected-call words are visibly labeled as provisional");
+requireIncludes(capturePhoneShellText, "Final timed text is rebuilt from the saved high-quality master after Stop.", "the call UI preserves final-master transcript authority");
+requireIncludes(capturePhoneShellText, '"CaptureSessionLiveTranscript"', "connected-call live words have a stable automation identity");
 requireIncludes(captureExperienceModelText, "var providerMuteControlLockedForLocalCapture: Bool", "native mute has a narrower safety boundary than route and room controls");
 requireIncludes(captureExperienceModelText, "activeAudioCapture?.isUsingProviderAudioMaster != true", "native mute stays locked for any local audio source that does not share LiveKit input");
 requireIncludes(captureExperienceModelText, "case .recording, .paused:", "native mute stays available across active and deliberately paused provider masters");

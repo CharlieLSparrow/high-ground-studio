@@ -29,6 +29,7 @@ final class ProviderAudioMasterRecorder: NSObject, @unchecked Sendable, AudioRen
     private var averagePowerDB: Float = -160
     private var peakPowerDB: Float = -160
     private var receivedPCMAt: Date?
+    private var liveTranscriptPCMConsumer: (@Sendable (AVAudioPCMBuffer) -> Void)?
 
     var onFirstPCMBuffer: (@Sendable () -> Void)?
 
@@ -85,6 +86,7 @@ final class ProviderAudioMasterRecorder: NSObject, @unchecked Sendable, AudioRen
         pause()
         stateLock.quipslyLocked {
             stoppedAt = date
+            liveTranscriptPCMConsumer = nil
         }
         // LiveKit drains its utility writer queue and closes AVAudioFile before
         // returning, so the caller can immediately run Quipsly's full-file
@@ -115,6 +117,17 @@ final class ProviderAudioMasterRecorder: NSObject, @unchecked Sendable, AudioRen
         }
     }
 
+    /// Attaches a best-effort observer to the already-owned local input. The
+    /// source writer remains first in render order, and the observer must copy
+    /// anything it needs before returning because LiveKit owns the buffer.
+    func setLiveTranscriptPCMConsumer(
+        _ consumer: (@Sendable (AVAudioPCMBuffer) -> Void)?
+    ) {
+        stateLock.quipslyLocked {
+            liveTranscriptPCMConsumer = consumer
+        }
+    }
+
     @objc func render(pcmBuffer: AVAudioPCMBuffer) {
         let acceptsPCM = stateLock.quipslyLocked { self.acceptsPCM }
         guard acceptsPCM else { return }
@@ -122,6 +135,11 @@ final class ProviderAudioMasterRecorder: NSObject, @unchecked Sendable, AudioRen
         // AudioMixRecorderSource performs the SDK-owned format conversion and
         // schedules the buffer without opening another hardware input.
         source.render(pcmBuffer: pcmBuffer)
+
+        let liveTranscriptPCMConsumer = stateLock.quipslyLocked {
+            self.liveTranscriptPCMConsumer
+        }
+        liveTranscriptPCMConsumer?(pcmBuffer)
 
         let levels = ProviderAudioPCMLevelAnalyzer.levels(for: pcmBuffer)
         var firstPCMCallback: (@Sendable () -> Void)?

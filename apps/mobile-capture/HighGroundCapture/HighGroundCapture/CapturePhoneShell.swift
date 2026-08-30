@@ -10878,6 +10878,7 @@ private struct CaptureRecorderView: View {
                             liveWritingFinalText: audioCapture.liveWritingFinalText,
                             liveWritingVolatileText: audioCapture.liveWritingVolatileText,
                             liveWritingPreviewMessage: audioCapture.liveWritingPreviewMessage,
+                            liveTranscriptPreviewIsAvailable: audioCapture.liveTranscriptPreviewIsAvailable,
                             userMarkOffsets: audioCapture.userMarkOffsets,
                             isBusy: model.isChangingCapture,
                             canStartRecording:
@@ -18149,6 +18150,7 @@ private struct RecorderHero: View {
     let liveWritingFinalText: String
     let liveWritingVolatileText: String
     let liveWritingPreviewMessage: String?
+    let liveTranscriptPreviewIsAvailable: Bool
     let userMarkOffsets: [TimeInterval]
     let isBusy: Bool
     let canStartRecording: Bool
@@ -18236,7 +18238,7 @@ private struct RecorderHero: View {
                 }
             }
 
-            if session.isPersonalVoiceNote,
+            if (session.isPersonalVoiceNote || shouldShowSessionLiveTranscript),
                captureState == .recording || captureState == .paused {
                 liveWritingPreview
             }
@@ -18605,7 +18607,10 @@ private struct RecorderHero: View {
 
         if !combined.isEmpty {
             VStack(alignment: .leading, spacing: 6) {
-                Label("Live words", systemImage: "text.quote")
+                Label(
+                    session.isPersonalVoiceNote ? "Live words" : "Provisional live transcript",
+                    systemImage: "text.quote"
+                )
                     .font(.caption.weight(.bold))
                     .foregroundStyle(CapturePalette.accent)
                 Text(String(combined.suffix(520)))
@@ -18613,6 +18618,11 @@ private struct RecorderHero: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .lineLimit(7)
                     .accessibilityLabel("Live transcription: \(combined)")
+                if !session.isPersonalVoiceNote {
+                    Text("Final timed text is rebuilt from the saved high-quality master after Stop.")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
             }
             .padding(12)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -18621,12 +18631,14 @@ private struct RecorderHero: View {
                 in: RoundedRectangle(cornerRadius: 16, style: .continuous)
             )
             .accessibilityElement(children: .combine)
-            .accessibilityIdentifier("CaptureVoiceWritingLiveTranscript")
+            .accessibilityIdentifier(
+                session.isPersonalVoiceNote
+                    ? "CaptureVoiceWritingLiveTranscript"
+                    : "CaptureSessionLiveTranscript"
+            )
         } else {
             Label(
-                liveWritingPreviewMessage == nil
-                    ? "Listening… Your original audio is being saved."
-                    : "Your audio is safe. Editable writing will appear after Stop.",
+                deferredTranscriptLabel,
                 systemImage: liveWritingPreviewMessage == nil
                     ? "waveform"
                     : "waveform.badge.checkmark"
@@ -18634,8 +18646,30 @@ private struct RecorderHero: View {
             .font(.caption.weight(.semibold))
             .foregroundStyle(.secondary)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .accessibilityIdentifier("CaptureVoiceWritingDeferredTranscript")
+            .accessibilityIdentifier(
+                session.isPersonalVoiceNote
+                    ? "CaptureVoiceWritingDeferredTranscript"
+                    : "CaptureSessionDeferredTranscript"
+            )
         }
+    }
+
+    private var shouldShowSessionLiveTranscript: Bool {
+        liveTranscriptPreviewIsAvailable
+            || !liveWritingFinalText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            || !liveWritingVolatileText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            || liveWritingPreviewMessage != nil
+    }
+
+    private var deferredTranscriptLabel: String {
+        if session.isPersonalVoiceNote {
+            return liveWritingPreviewMessage == nil
+                ? "Listening… Your original audio is being saved."
+                : "Your audio is safe. Editable writing will appear after Stop."
+        }
+        return liveWritingPreviewMessage == nil
+            ? "Listening… The high-quality local master is being saved."
+            : "The local master is safe. Final timed text is rebuilt from it after Stop."
     }
 
     private var formattedDuration: String {
