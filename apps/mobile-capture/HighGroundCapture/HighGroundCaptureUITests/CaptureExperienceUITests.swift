@@ -3807,6 +3807,23 @@ final class CaptureExperienceUITests: XCTestCase {
         )
     }
 
+    func testTranscriptReviewShowsDeviceFirstJointAssembly() {
+        app.tabBars.buttons["Library"].tap()
+        XCTAssertTrue(app.scrollViews["CaptureLibraryView"].waitForExistence(timeout: 5))
+
+        let reviewLink = app.buttons["CaptureTranscriptReviewPreviewLink"]
+        XCTAssertTrue(reviewLink.waitForExistence(timeout: 5))
+        reviewLink.tap()
+        XCTAssertTrue(app.scrollViews["CaptureTranscriptReviewView"].waitForExistence(timeout: 5))
+
+        let assembly = app.descendants(matching: .any)["CaptureTranscriptAssemblyStatus"]
+        XCTAssertTrue(assembly.waitForExistence(timeout: 5))
+        XCTAssertTrue(assembly.label.contains("2 participant recordings"))
+        XCTAssertTrue(assembly.label.contains("2 on-device"))
+        XCTAssertTrue(assembly.label.contains("0 cloud ASR"))
+        XCTAssertTrue(assembly.label.contains("Provisional sync"))
+    }
+
     func testTranscriptReviewPresentsPlainFollowUpSuggestions() throws {
         app.tabBars.buttons["Library"].tap()
         XCTAssertTrue(app.scrollViews["CaptureLibraryView"].waitForExistence(timeout: 5))
@@ -3897,13 +3914,13 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(impactSummary.exists)
         XCTAssertTrue(app.buttons["CaptureTranscriptImpactReviewFirst"].exists)
         let speakerIdentity = app.descendants(matching: .any)["CaptureTranscriptSpeakerIdentitySection"].firstMatch
-        reveal(speakerIdentity, searchAboveFirst: false)
-        XCTAssertTrue(speakerIdentity.exists)
-        XCTAssertTrue(app.descendants(matching: .any)["CaptureTranscriptSpeakerGroup_Speaker"].exists)
-        XCTAssertTrue(app.descendants(matching: .any)["CaptureTranscriptSpeakerWordReviewBoundary_Speaker"].exists)
         XCTAssertFalse(
-            app.buttons["CaptureTranscriptIdentifySpeaker_Speaker"].isEnabled,
-            "Preview voice identity must explain the workflow without claiming playback or saving a mapping."
+            speakerIdentity.exists,
+            "Participant-isolated source recordings already identify the speaker and must not create redundant voice-naming work."
+        )
+        XCTAssertFalse(
+            app.buttons["CaptureTranscriptIdentifySpeaker_Speaker"].exists,
+            "Source-bound participant audio must not expose an unnecessary speaker-identification action."
         )
         try app.performAccessibilityAudit(for: [
             .hitRegion,

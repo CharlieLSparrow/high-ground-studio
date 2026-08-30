@@ -1559,6 +1559,24 @@ for (const needle of [
 ]) {
   requireIncludes(capturePhoneShellText, needle, "adaptive warm tan and dark brown Capture visual foundation");
 }
+for (const needle of [
+  "beginAutomaticTranscript(",
+  "Audio saved without transcription",
+  "No Quipsly cloud speech job was needed.",
+  "CaptureTranscriptSourceBadges_",
+]) {
+  requireIncludes(capturePhoneShellText, needle, "automatic exact-source device transcription visibility");
+}
+for (const needle of [
+  "CaptureSessionTranscriptAssembly",
+  "sessionTranscriptAssemblyStatus",
+  "participant recordings · one Session transcript",
+  "cloud ASR",
+  "CaptureTranscriptAssemblyStatus",
+  "sessionTranscriptAssemblyAccessibilityLabel",
+]) {
+  requireIncludes(transcriptReviewText, needle, "joint source-bound transcript assembly visibility");
+}
 assert(
   !capturePhoneShellText.includes("private enum CapturePalette"),
   "Capture's semantic palette remains reusable across native feature surfaces.",

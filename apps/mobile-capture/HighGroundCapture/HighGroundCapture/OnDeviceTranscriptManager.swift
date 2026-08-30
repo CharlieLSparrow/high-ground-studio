@@ -771,6 +771,7 @@ final class OnDeviceTranscriptManager: ObservableObject {
         locale: Locale = Locale(identifier: "en-US")
     ) {
         guard recording.shouldBeginAutomaticOnDeviceTranscript else { return }
+        guard phase(for: recording.id) == .idle else { return }
         begin(
             recording: recording,
             fileURL: fileURL,

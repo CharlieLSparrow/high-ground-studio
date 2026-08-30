@@ -243,6 +243,52 @@ struct CaptureTranscriptEvidence: Codable, Equatable {
     let transcript: CaptureTranscriptEvidenceSummary
 }
 
+struct CaptureSessionTranscriptSourceRouting: Codable, Equatable {
+    let sourceTopology: String?
+    let participantLabel: String?
+    let speakerAuthority: String?
+    let provider: String?
+}
+
+struct CaptureSessionTranscriptSourceProcessing: Codable, Equatable {
+    let routing: CaptureSessionTranscriptSourceRouting?
+}
+
+struct CaptureSessionTranscriptSource: Codable, Equatable, Identifiable {
+    let transcriptJobId: String
+    let recordingAssetId: String
+    let participantId: String?
+    let captureGroupId: String?
+    let programOffsetSeconds: TimeInterval?
+    let timingAuthority: String?
+    let timingUncertaintyMilliseconds: Double?
+    let timingReviewRequired: Bool?
+    let sampleAccurateClaimed: Bool?
+    let processing: CaptureSessionTranscriptSourceProcessing?
+
+    var id: String { recordingAssetId }
+}
+
+struct CaptureSessionTranscriptProgramClock: Codable, Equatable {
+    let schema: String
+    let authority: String
+    let captureGroupId: String?
+    let baselineRecordingAssetId: String
+    let baselineStartedAt: String
+    let waveformReviewRequired: Bool
+    let sampleAccurateClaimed: Bool
+    let reason: String
+}
+
+struct CaptureSessionTranscriptAssembly: Codable, Equatable {
+    let schema: String
+    let status: String
+    let reason: String
+    let sourceCount: Int
+    let programClock: CaptureSessionTranscriptProgramClock?
+    let sources: [CaptureSessionTranscriptSource]
+}
+
 struct CaptureTranscriptCorrectionDesk: Codable, Equatable {
     let ok: Bool
     let roomId: String
@@ -256,6 +302,7 @@ struct CaptureTranscriptCorrectionDesk: Codable, Equatable {
     let speakerGroups: [CaptureTranscriptSpeakerGroup]?
     let segments: [CaptureTranscriptSegment]
     let evidence: CaptureTranscriptEvidence?
+    var sessionTranscript: CaptureSessionTranscriptAssembly? = nil
     let boundaries: [String: Bool]
 
     static func preview(roomID: String) -> Self {
@@ -401,6 +448,58 @@ struct CaptureTranscriptCorrectionDesk: Codable, Equatable {
                         ),
                     ]
                 )
+            ),
+            sessionTranscript: .init(
+                schema: "quipsly-session-transcript-correction-desk-v1",
+                status: "assembled",
+                reason: "Validated capture clocks place both participant sources on one provisional Session timeline.",
+                sourceCount: 2,
+                programClock: .init(
+                    schema: "quipsly-session-transcript-program-clock-v1",
+                    authority: "capture-clock-proposal",
+                    captureGroupId: "preview-capture-group",
+                    baselineRecordingAssetId: "preview-recording-asset",
+                    baselineStartedAt: "2026-07-18T00:00:00.000Z",
+                    waveformReviewRequired: true,
+                    sampleAccurateClaimed: false,
+                    reason: "Capture clocks provide a reversible starting placement; waveform review can refine it."
+                ),
+                sources: [
+                    .init(
+                        transcriptJobId: "preview-transcript-job",
+                        recordingAssetId: "preview-recording-asset",
+                        participantId: "preview-participant-charlie",
+                        captureGroupId: "preview-capture-group",
+                        programOffsetSeconds: 0,
+                        timingAuthority: "capture-clock-proposal",
+                        timingUncertaintyMilliseconds: 18,
+                        timingReviewRequired: true,
+                        sampleAccurateClaimed: false,
+                        processing: .init(routing: .init(
+                            sourceTopology: "participant-isolated",
+                            participantLabel: participantLabel,
+                            speakerAuthority: "source-binding",
+                            provider: "apple-speech-transcriber-on-device"
+                        ))
+                    ),
+                    .init(
+                        transcriptJobId: "preview-transcript-job-client",
+                        recordingAssetId: "preview-recording-asset-client",
+                        participantId: "preview-participant-client",
+                        captureGroupId: "preview-capture-group",
+                        programOffsetSeconds: 0.18,
+                        timingAuthority: "capture-clock-proposal",
+                        timingUncertaintyMilliseconds: 24,
+                        timingReviewRequired: true,
+                        sampleAccurateClaimed: false,
+                        processing: .init(routing: .init(
+                            sourceTopology: "participant-isolated",
+                            participantLabel: appStorePresentation ? "Coach" : "Homer",
+                            speakerAuthority: "source-binding",
+                            provider: "apple-speech-transcriber-on-device"
+                        ))
+                    ),
+                ]
             ),
             boundaries: [
                 "providerSegmentsImmutable": true,
@@ -3125,6 +3224,7 @@ struct CaptureTranscriptReviewView: View {
                         ProgressView("Loading protected transcript…")
                             .frame(maxWidth: .infinity, minHeight: 120)
                     } else if let desk = client.desk {
+                        sessionTranscriptAssemblyStatus(desk)
                         transcriptSegments(desk, scrollProxy: scrollProxy)
                         sourceTruth(desk)
                             .id("source-truth")
@@ -3373,6 +3473,133 @@ struct CaptureTranscriptReviewView: View {
             .onDisappear { playback.pause(resetPosition: true) }
             .accessibilityIdentifier("CaptureTranscriptReviewView")
         }
+    }
+
+    @ViewBuilder
+    private func sessionTranscriptAssemblyStatus(
+        _ desk: CaptureTranscriptCorrectionDesk
+    ) -> some View {
+        if let assembly = desk.sessionTranscript {
+            let onDeviceCount = assembly.sources.filter {
+                $0.processing?.routing?.provider == "apple-speech-transcriber-on-device"
+            }.count
+            let providerBackedCount = assembly.sources.filter {
+                guard let provider = $0.processing?.routing?.provider else { return false }
+                return provider != "apple-speech-transcriber-on-device"
+            }.count
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(alignment: .top, spacing: 12) {
+                    Image(systemName: assembly.status == "assembled"
+                        ? "person.2.wave.2.fill"
+                        : "waveform.badge.exclamationmark")
+                        .font(.title3.weight(.semibold))
+                        .foregroundStyle(assembly.status == "assembled" ? CapturePalette.accent : .orange)
+                        .frame(width: 38, height: 38)
+                        .background(
+                            (assembly.status == "assembled" ? CapturePalette.accent : Color.orange)
+                                .opacity(0.1),
+                            in: Circle()
+                        )
+                        .accessibilityHidden(true)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(sessionTranscriptAssemblyTitle(assembly))
+                            .font(.headline)
+                        Text(sessionTranscriptAssemblyDetail(assembly))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+
+                HStack(spacing: 8) {
+                    Label("\(onDeviceCount) on-device", systemImage: "iphone.gen3.radiowaves.left.and.right")
+                    Label("\(providerBackedCount) cloud ASR", systemImage: "cloud")
+                }
+                .font(.caption2.weight(.bold))
+                .foregroundStyle(CapturePalette.accent)
+                .fixedSize(horizontal: false, vertical: true)
+
+                if let clock = assembly.programClock {
+                    Label(
+                        clock.waveformReviewRequired
+                            ? "Provisional sync · waveform and drift review remain available"
+                            : "Reviewed waveform placement",
+                        systemImage: clock.waveformReviewRequired
+                            ? "waveform.badge.magnifyingglass"
+                            : "checkmark.seal.fill"
+                    )
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(clock.waveformReviewRequired ? Color.orange : Color.green)
+                    .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .reviewCard()
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(
+                sessionTranscriptAssemblyAccessibilityLabel(
+                    assembly,
+                    onDeviceCount: onDeviceCount,
+                    providerBackedCount: providerBackedCount
+                )
+            )
+            .accessibilityIdentifier("CaptureTranscriptAssemblyStatus")
+        }
+    }
+
+    private func sessionTranscriptAssemblyAccessibilityLabel(
+        _ assembly: CaptureSessionTranscriptAssembly,
+        onDeviceCount: Int,
+        providerBackedCount: Int
+    ) -> String {
+        let clockStatus: String
+        if let clock = assembly.programClock {
+            clockStatus = clock.waveformReviewRequired
+                ? "Provisional sync. Waveform and drift review remain available."
+                : "Reviewed waveform placement."
+        } else {
+            clockStatus = ""
+        }
+        return [
+            sessionTranscriptAssemblyTitle(assembly),
+            sessionTranscriptAssemblyDetail(assembly),
+            "\(onDeviceCount) on-device",
+            "\(providerBackedCount) cloud ASR",
+            clockStatus,
+        ]
+        .filter { !$0.isEmpty }
+        .joined(separator: ". ")
+    }
+
+    private func sessionTranscriptAssemblyTitle(
+        _ assembly: CaptureSessionTranscriptAssembly
+    ) -> String {
+        switch assembly.status {
+        case "assembled":
+            return assembly.sourceCount == 1
+                ? "High-quality source transcript ready"
+                : "\(assembly.sourceCount) participant recordings · one Session transcript"
+        case "single-source":
+            return "One participant transcript ready"
+        case "held", "incomplete":
+            return "Joint transcript still syncing"
+        default:
+            return "Session transcript"
+        }
+    }
+
+    private func sessionTranscriptAssemblyDetail(
+        _ assembly: CaptureSessionTranscriptAssembly
+    ) -> String {
+        let onDeviceCount = assembly.sources.filter {
+            $0.processing?.routing?.provider == "apple-speech-transcriber-on-device"
+        }.count
+        if assembly.status == "assembled", assembly.sourceCount > 1 {
+            let recognition = onDeviceCount == assembly.sourceCount
+                ? "Each verified participant master arrived with device-created, source-bound timed text, so Quipsly did not run cloud ASR for these sources."
+                : "\(onDeviceCount) of \(assembly.sourceCount) verified participant masters arrived with device-created text; remaining source transcripts stay visibly provider-backed."
+            return "Each person's high-quality recording remains its own source. Quipsly aligns the timed passages on one reversible Session timeline. \(recognition)"
+        }
+        return assembly.reason
     }
 
     @ViewBuilder

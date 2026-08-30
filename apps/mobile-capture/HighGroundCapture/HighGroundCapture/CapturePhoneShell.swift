@@ -20334,6 +20334,13 @@ private struct LocalRecordingRow: View {
         .captureCard()
         .onAppear {
             transcriptManager.restoreState(for: recording)
+            guard !previewOnly,
+                  let fileURL,
+                  recording.status.isPlaybackEligible else { return }
+            transcriptManager.beginAutomaticTranscript(
+                recording: recording,
+                fileURL: fileURL
+            )
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("LocalRecordingRow_\(recording.id)")
@@ -20341,49 +20348,59 @@ private struct LocalRecordingRow: View {
 
     @ViewBuilder
     private var onDeviceTranscriptControl: some View {
-        if #available(iOS 26.0, *) {
-            let phase = transcriptManager.phase(for: recording.id)
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(alignment: .top, spacing: 10) {
-                    Image(systemName: transcriptStatusIcon(phase))
-                        .foregroundStyle(transcriptStatusTint(phase))
-                        .frame(width: 24, height: 24)
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(transcriptStatusTitle(phase))
-                            .font(.subheadline.weight(.semibold))
-                        Text(transcriptStatusDetail(phase))
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                }
-
-                if phase.isBusy {
-                    ProgressView()
-                        .controlSize(.small)
-                        .accessibilityLabel(transcriptStatusTitle(phase))
-                } else if let action = transcriptAction(phase) {
-                    Button {
-                        action()
-                    } label: {
-                        Label(transcriptActionLabel(phase), systemImage: transcriptActionIcon(phase))
-                            .font(.subheadline.weight(.semibold))
-                            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                    }
-                    .buttonStyle(.bordered)
-                    .disabled(previewOnly || fileURL == nil || !recording.status.isPlaybackEligible)
-                    .accessibilityIdentifier("CaptureOnDeviceTranscriptAction_\(recording.id)")
+        let phase = transcriptManager.phase(for: recording.id)
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: transcriptStatusIcon(phase))
+                    .foregroundStyle(transcriptStatusTint(phase))
+                    .frame(width: 24, height: 24)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(transcriptStatusTitle(phase))
+                        .font(.subheadline.weight(.semibold))
+                    Text(transcriptStatusDetail(phase))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
-            .padding(12)
-            .background(CapturePalette.accent.opacity(0.06), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-            .accessibilityElement(children: .contain)
-            .accessibilityIdentifier("CaptureOnDeviceTranscript_\(recording.id)")
-        } else {
-            Label("On-device transcription requires iOS 26 or later.", systemImage: "iphone.slash")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+
+            if let storedTranscript {
+                HStack(spacing: 8) {
+                    Label(
+                        transcriptExecutionLabel(storedTranscript),
+                        systemImage: storedTranscript.recognitionExecution == "on-device"
+                            ? "iphone.gen3.radiowaves.left.and.right"
+                            : "apple.logo"
+                    )
+                    Label("Exact source", systemImage: "checkmark.shield.fill")
+                }
+                .font(.caption2.weight(.bold))
+                .foregroundStyle(CapturePalette.accent)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier("CaptureTranscriptSourceBadges_\(recording.id)")
+            }
+
+            if phase.isBusy {
+                ProgressView()
+                    .controlSize(.small)
+                    .accessibilityLabel(transcriptStatusTitle(phase))
+            } else if let action = transcriptAction(phase) {
+                Button {
+                    action()
+                } label: {
+                    Label(transcriptActionLabel(phase), systemImage: transcriptActionIcon(phase))
+                        .font(.subheadline.weight(.semibold))
+                        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                }
+                .buttonStyle(.bordered)
+                .disabled(previewOnly || fileURL == nil || !recording.status.isPlaybackEligible)
+                .accessibilityIdentifier("CaptureOnDeviceTranscriptAction_\(recording.id)")
+            }
         }
+        .padding(12)
+        .background(CapturePalette.accent.opacity(0.06), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("CaptureOnDeviceTranscript_\(recording.id)")
     }
 
     private func transcriptAction(_ phase: OnDeviceTranscriptPhase) -> (() -> Void)? {
@@ -20394,6 +20411,7 @@ private struct LocalRecordingRow: View {
             guard recording.status.isVerified else { return nil }
             return { transcriptManager.submitSavedTranscript(recording: recording) }
         case .modelDownloadRequired:
+            guard recording.shouldBeginAutomaticOnDeviceTranscript else { return nil }
             return {
                 guard let fileURL else { return }
                 transcriptManager.begin(recording: recording, fileURL: fileURL, allowModelDownload: true)
@@ -20401,6 +20419,7 @@ private struct LocalRecordingRow: View {
         case .failed where hasSavedTranscript:
             return { transcriptManager.submitSavedTranscript(recording: recording) }
         case .idle, .failed:
+            guard recording.shouldBeginAutomaticOnDeviceTranscript else { return nil }
             return {
                 guard let fileURL else { return }
                 transcriptManager.begin(recording: recording, fileURL: fileURL)
@@ -20436,7 +20455,10 @@ private struct LocalRecordingRow: View {
 
     private func transcriptStatusTitle(_ phase: OnDeviceTranscriptPhase) -> String {
         switch phase {
-        case .idle: return "Transcript"
+        case .idle:
+            return recording.shouldBeginAutomaticOnDeviceTranscript
+                ? "Transcript starts automatically"
+                : "Audio saved without transcription"
         case .checkingSupport: return "Preparing transcript…"
         case .modelDownloadRequired: return "One-time speech download"
         case .installingModel: return "Getting speech tools ready…"
@@ -20452,7 +20474,9 @@ private struct LocalRecordingRow: View {
     private func transcriptStatusDetail(_ phase: OnDeviceTranscriptPhase) -> String {
         switch phase {
         case .idle:
-            return "Create timed text on this iPhone. Speaker names may need a quick correction."
+            return recording.shouldBeginAutomaticOnDeviceTranscript
+                ? "After Stop, Quipsly transcribes this exact high-quality recording and syncs its timed text to the Session."
+                : "This recording did not capture transcription permission. Its original audio stays available and no transcript is created."
         case .checkingSupport:
             return "Checking this iPhone's speech tools."
         case .modelDownloadRequired(let locale):
@@ -20460,15 +20484,15 @@ private struct LocalRecordingRow: View {
         case .installingModel:
             return "Keep Quipsly open while iOS finishes the one-time download."
         case .transcribing:
-            return "Quipsly is turning the recording into timed text."
+            return "Quipsly is turning the retained high-quality recording into timed text on this iPhone when supported."
         case .savedLocally(let segmentCount):
-            return "\(segmentCount) timed passage\(segmentCount == 1 ? "" : "s") saved. Quipsly will sync them automatically."
+            return "\(segmentCount) timed passage\(segmentCount == 1 ? "" : "s") saved from the exact source. Quipsly will sync them automatically.\(transcriptExecutionCostDetail)"
         case .waitingForVerifiedUpload(let segmentCount):
             return "\(segmentCount) timed passage\(segmentCount == 1 ? " is" : "s are") safe here and will sync after the recording backs up."
         case .submitting(let segmentCount):
             return "Saving \(segmentCount) timed passage\(segmentCount == 1 ? "" : "s") to this Session."
         case .attached(_, let segmentCount):
-            return "\(segmentCount) timed passage\(segmentCount == 1 ? " is" : "s are") ready to read, correct, and play."
+            return "\(segmentCount) timed passage\(segmentCount == 1 ? " is" : "s are") source-bound, synced to this Session, and ready to read, correct, and play.\(transcriptExecutionCostDetail)"
         case .failed(let message, _):
             return message
         }
@@ -20494,7 +20518,24 @@ private struct LocalRecordingRow: View {
     }
 
     private var hasSavedTranscript: Bool {
-        (try? OnDeviceTranscriptStore.load(for: recording.id)) != nil
+        storedTranscript != nil
+    }
+
+    private var storedTranscript: OnDeviceTranscriptSidecar? {
+        transcriptManager.storedTranscript(for: recording.id)
+    }
+
+    private func transcriptExecutionLabel(_ transcript: OnDeviceTranscriptSidecar) -> String {
+        transcript.recognitionExecution == "on-device"
+            ? "On-device"
+            : "Apple speech service"
+    }
+
+    private var transcriptExecutionCostDetail: String {
+        guard let storedTranscript else { return "" }
+        return storedTranscript.recognitionExecution == "on-device"
+            ? " No Quipsly cloud speech job was needed."
+            : " Quipsly did not run a separate cloud ASR job."
     }
 
     private var displayStatusLabel: String {
