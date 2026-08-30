@@ -48,6 +48,14 @@ struct CaptureDeepLinkHarness {
         )
         expectWritingRejected("quipsly://writing/not-a-uuid?action=continue")
 
+        expectNewWriting("quipsly://write")
+        expectNewWriting("quipsly://voice-note")
+        expectNewWriting("https://nest.quipsly.com/write?open=capture")
+        expectNewWritingRejected("https://nest.quipsly.com/write")
+        expectNewWritingRejected("https://evil.example/write?open=capture")
+        expectNewWritingRejected("quipsly://write?draftId=private-document")
+        expectNewWritingRejected("quipsly://write?token=secret")
+
         let router = CaptureDeepLinkRouter.shared
         guard let writingURL = URL(
             string: "quipsly://writing/\(draftID.uuidString.lowercased())?action=continue"
@@ -61,6 +69,18 @@ struct CaptureDeepLinkHarness {
         guard router.pendingVoiceNoteRequestID == nil,
               router.pendingVoiceNoteDraftID == nil else {
             fatalError("The router did not consume the complete writing request.")
+        }
+
+        guard let newWritingURL = URL(string: "quipsly://write"),
+              router.receive(newWritingURL),
+              let newWritingRequestID = router.pendingVoiceNoteRequestID,
+              router.pendingVoiceNoteDraftID == nil,
+              router.pendingSession == nil else {
+            fatalError("The router did not retain a new private voice-writing request.")
+        }
+        router.consumeVoiceNoteRequest(newWritingRequestID)
+        guard router.pendingVoiceNoteRequestID == nil else {
+            fatalError("The router did not consume the new writing request.")
         }
 
         print("Capture Session and writing deep-link harness passed")
@@ -96,6 +116,19 @@ struct CaptureDeepLinkHarness {
     private static func expectWritingRejected(_ value: String) {
         guard let url = URL(string: value), CaptureVoiceWritingDeepLink(url: url) == nil else {
             fatalError("Expected private-writing link rejection: \(value)")
+        }
+    }
+
+    private static func expectNewWriting(_ value: String) {
+        guard let url = URL(string: value),
+              CaptureStartVoiceWritingDeepLink(url: url) != nil else {
+            fatalError("Expected a valid new voice-writing link: \(value)")
+        }
+    }
+
+    private static func expectNewWritingRejected(_ value: String) {
+        guard let url = URL(string: value), CaptureStartVoiceWritingDeepLink(url: url) == nil else {
+            fatalError("Expected new voice-writing link rejection: \(value)")
         }
     }
 }

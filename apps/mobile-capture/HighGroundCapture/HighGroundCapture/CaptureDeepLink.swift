@@ -120,6 +120,43 @@ struct CaptureVoiceWritingDeepLink: Equatable {
     }
 }
 
+/// Starts a new private voice-writing draft without carrying identity, Nest,
+/// document, or recording authority in the URL. The signed-in Capture shell
+/// creates the local-first draft through the same path as its Home action.
+struct CaptureStartVoiceWritingDeepLink: Equatable {
+    init?(url: URL) {
+        guard let components = URLComponents(
+            url: url,
+            resolvingAgainstBaseURL: false
+        ) else { return nil }
+
+        let scheme = (components.scheme ?? "").lowercased()
+        let host = (components.host ?? "").lowercased()
+        let pathParts = components.path
+            .split(separator: "/", omittingEmptySubsequences: true)
+            .map(String.init)
+        let queryItems = components.queryItems ?? []
+        let prohibitedNames = Set(["token", "invitetoken", "participanttoken", "draftid"])
+        guard !queryItems.contains(where: {
+            prohibitedNames.contains($0.name.lowercased())
+        }) else { return nil }
+
+        switch (scheme, host, pathParts) {
+        case ("quipsly", "write", let parts) where parts.isEmpty,
+             ("quipsly", "voice-note", let parts) where parts.isEmpty:
+            break
+        case ("https", "nest.quipsly.com", let parts)
+            where parts == ["write"]:
+            guard queryItems.contains(where: {
+                $0.name.lowercased() == "open"
+                    && $0.value?.lowercased() == "capture"
+            }) else { return nil }
+        default:
+            return nil
+        }
+    }
+}
+
 @MainActor
 final class CaptureDeepLinkRouter: ObservableObject {
     static let shared = CaptureDeepLinkRouter()
@@ -146,6 +183,13 @@ final class CaptureDeepLinkRouter: ObservableObject {
             openedSession = nil
             pendingSession = nil
             requestVoiceNote(continuingDraftID: request.draftID)
+            return true
+        }
+        if CaptureStartVoiceWritingDeepLink(url: url) != nil {
+            rejectedLinkNotice = nil
+            openedSession = nil
+            pendingSession = nil
+            requestVoiceNote()
             return true
         }
 

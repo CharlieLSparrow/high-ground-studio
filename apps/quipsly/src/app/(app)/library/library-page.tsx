@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { BookOpenText, CircleAlert, FileAudio, FilePlus2, FileText, Film, Highlighter, Library, MessageSquareText, Search } from "lucide-react";
+import { BookOpenText, CircleAlert, FileAudio, FilePlus2, FileText, Film, Highlighter, Library, MessageSquareText, Mic2, Search } from "lucide-react";
 
 import { getPrismaClient } from "@/lib/prisma";
 import { homeNestSlugForEmail, listProjectsVisibleToEmail } from "@/lib/server/home-nest";
@@ -276,10 +276,15 @@ export default async function LibraryPage({ searchParams }: { searchParams?: Pro
         <p className="text-xs font-black uppercase tracking-[0.22em] text-[#76522c]">Library</p>
         <h1 className="mt-2 max-w-4xl font-serif text-4xl font-black tracking-tight md:text-5xl">Your ideas, recordings, and writing—ready when you are.</h1>
         <p className="mt-3 max-w-3xl text-sm font-semibold leading-6 text-[#715a3e]">Start with your voice on iPhone, keep writing here, or return to a Session, source, or recording without hunting through different tools.</p>
-        {library.homeNest ? <form action={createDocumentAction.bind(null, library.homeNest.slug, "note")} className="mt-5">
-          <button type="submit" className="inline-flex min-h-12 items-center gap-2 rounded-full bg-[#3e2f21] px-5 py-3 text-xs font-black uppercase tracking-wide text-white shadow-sm"><FilePlus2 size={17} aria-hidden="true" />New note</button>
-          <p className="mt-2 text-xs font-semibold text-[#715a3e]">Private to you in {library.homeNest.name} until you choose to share it.</p>
-        </form> : null}
+        {library.homeNest ? <div className="mt-5">
+          <div className="flex flex-wrap gap-3">
+            <form action={createDocumentAction.bind(null, library.homeNest.slug, "note")}>
+              <button type="submit" className="inline-flex min-h-12 items-center gap-2 rounded-full bg-[#3e2f21] px-5 py-3 text-xs font-black uppercase tracking-wide text-white shadow-sm"><FilePlus2 size={17} aria-hidden="true" />New note</button>
+            </form>
+            <a href="quipsly://write" className="inline-flex min-h-12 items-center gap-2 rounded-full border border-[#9dbeb2] bg-[#eff9f5] px-5 py-3 text-xs font-black uppercase tracking-wide text-[#244f42]"><Mic2 size={17} aria-hidden="true" />Speak on iPhone</a>
+          </div>
+          <p className="mt-2 text-xs font-semibold text-[#715a3e]">Start here or on iPhone, then continue the same private writing on either device.</p>
+        </div> : null}
         <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-6" aria-label="Library counts">{[
           ["Notes", library.counts.notes], ["Writing", library.counts.documents], ["Sessions", library.counts.sessions], ["Research", library.counts.sources], ["Media", library.counts.media], ["Saved", library.counts.saved],
         ].map(([label, value]) => <div key={label} className="rounded-2xl border border-white/80 bg-white/75 p-4"><p className="text-3xl font-black">{value}</p><p className="text-[10px] font-black uppercase tracking-wide text-[#806a4d]">{label}</p></div>)}</div>
