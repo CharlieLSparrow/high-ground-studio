@@ -1958,14 +1958,14 @@ final class CaptureExperienceUITests: XCTestCase {
         searchField.typeText("Dissertation")
         let writing = app.descendants(matching: .any)["CaptureWorkGlobalSearchResult_WRITING_preview-work-note"]
         XCTAssertTrue(writing.waitForExistence(timeout: 3))
-        XCTAssertTrue(app.staticTexts["Charlie Home Nest · Private to you"].exists)
+        XCTAssertTrue(app.staticTexts["Charlie Home Nest · Only you"].exists)
 
         writing.tap()
         let picker = app.descendants(matching: .any)["CaptureWorkProjectPicker"]
         let privateNestSelected = expectation(
             for: NSPredicate(
                 format: "value CONTAINS %@",
-                "Charlie Home Nest, Private to you"
+                "Charlie Home Nest, Only you"
             ),
             evaluatedWith: picker
         )
@@ -2128,7 +2128,7 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(app.buttons["Charlie Home Nest"].waitForExistence(timeout: 3))
         app.buttons["Charlie Home Nest"].tap()
         XCTAssertTrue(
-            (picker.value as? String)?.contains("Charlie Home Nest, Private to you") == true,
+            (picker.value as? String)?.contains("Charlie Home Nest, Only you") == true,
             "The Nest picker should make the selected private destination clear without repeating its name below."
         )
         XCTAssertEqual(

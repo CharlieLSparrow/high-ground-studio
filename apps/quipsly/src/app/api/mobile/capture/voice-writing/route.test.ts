@@ -2,6 +2,7 @@
 
 import { getPrismaClient } from "@/lib/prisma";
 import { ensureHomeNestForEmail, listProjectsVisibleToEmail } from "@/lib/server/home-nest";
+import { mobileVoiceWritingContentHash } from "@/lib/server/mobile-voice-writing";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 import { resolveStudioProjectAccess } from "@/lib/server/studio-project-access";
 
@@ -247,6 +248,48 @@ describe("mobile voice-writing continuation", () => {
           ],
         },
       },
+    }));
+  });
+
+  it("drops stale rich-text ranges after a Nest member edits the canonical words", async () => {
+    jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({
+      user: { id: "actor-1", primaryEmail: "person@example.com" },
+    } as never);
+    const document = storedVoiceDocument(
+      "project-shared",
+      "Dissertation team",
+      "dissertation-team",
+      false,
+    );
+    document.blocks[1].body = "Use the revised collaborative opening.";
+    document.documentOperations[0].afterJson = {
+      serverRevision: 4,
+      richText: {
+        schema: "quipsly-writing-runs-v1",
+        text: "Start with the concrete story.",
+        marks: [{ kind: "bold", startUtf16: 0, lengthUtf16: 5 }],
+        structures: [],
+      },
+    } as never;
+    jest.mocked(getPrismaClient).mockReturnValue({
+      studioDocument: { findMany: jest.fn().mockResolvedValue([document]) },
+    } as never);
+
+    const response = await GET(new Request("http://localhost/api/mobile/capture/voice-writing", {
+      headers: { "x-quipsly-writing-version": "2" },
+    }));
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.drafts[0]).toMatchObject({
+      body: "Use the revised collaborative opening.",
+      richText: null,
+      visibility: "nest",
+    });
+    expect(payload.drafts[0].contentRevision).toBe(mobileVoiceWritingContentHash({
+      title: "Dissertation opening",
+      body: "Use the revised collaborative opening.",
+      richText: null,
     }));
   });
 

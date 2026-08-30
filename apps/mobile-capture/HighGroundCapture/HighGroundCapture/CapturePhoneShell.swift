@@ -2174,7 +2174,7 @@ private struct CaptureWorkView: View {
 
     private var selectedProjectContextLabel: String {
         guard let selectedProject else { return "Private and shared spaces" }
-        if selectedProject.isHomeNest { return "Private to you" }
+        if selectedProject.isHomeNest { return "Only you" }
         if selectedProject.role == "OWNER" { return "Owned by you" }
         return "Shared with you"
     }
@@ -2322,7 +2322,7 @@ private struct CaptureWorkView: View {
     }
 
     private func searchProjectContext(_ project: MobileCaptureSearchProject) -> String {
-        if project.isHomeNest { return "Private to you" }
+        if project.isHomeNest { return "Only you" }
         if project.role == "OWNER" { return "Owned by you" }
         return "Shared with you"
     }
@@ -2887,12 +2887,21 @@ private struct CaptureWorkView: View {
         let visibleTagLabels = effectiveTagLabels(kind: .document, entityID: note.id, tagIDs: visibleTagIDs)
         let pendingEdit = client.pendingDocumentNoteEdit(for: note.id)
         VStack(alignment: .leading, spacing: 8) {
-            if let url = URL(string: "\(baseURL)\(note.webPath)") {
-                Link(destination: url) {
+            if note.canEditContent == true {
+                Button {
+                    openWorkNote(note)
+                } label: {
                     workNoteContent(note, tagLabels: visibleTagLabels)
                 }
                 .buttonStyle(.plain)
-                .accessibilityHint(client.isUsingProtectedCache ? "Reconnect to open this note in Nest." : "Opens this note in Nest.")
+                .accessibilityHint(workNoteOpenHint(note))
+                .accessibilityIdentifier("CaptureWorkNote_\(note.id)")
+            } else if let url = URL(string: "\(baseURL)\(note.webPath)") {
+                Link(destination: url) {
+                    workNoteContent(note, tagLabels: visibleTagLabels, opensOnWeb: true)
+                }
+                .buttonStyle(.plain)
+                .accessibilityHint(client.isUsingProtectedCache ? "Reconnect to open this note on the web." : "Opens this note on the web.")
                 .accessibilityIdentifier("CaptureWorkNote_\(note.id)")
             } else {
                 workNoteContent(note, tagLabels: visibleTagLabels)
@@ -2914,10 +2923,14 @@ private struct CaptureWorkView: View {
             HStack(spacing: 8) {
                 if note.canEditContent == true, note.contentRevision != nil, note.blocks?.isEmpty == false {
                     Button {
-                        noteToEdit = note
+                        openWorkNote(note)
                     } label: {
                         Label(
-                            model.usesPreviewData ? "Explore note" : pendingEdit?.disposition == .held ? "Review draft" : "Edit note",
+                            model.usesPreviewData
+                                ? "Explore note"
+                                : pendingEdit?.disposition == .held
+                                    ? "Review draft"
+                                    : opensInWritingEditor(note) ? "Open writing" : "Edit note",
                             systemImage: "square.and.pencil"
                         )
                         .frame(minHeight: 44)
@@ -2963,23 +2976,67 @@ private struct CaptureWorkView: View {
         .id("CaptureWorkNote_\(note.id)")
     }
 
-    private func workNoteContent(_ note: MobileCaptureWorkNote, tagLabels: [String]) -> some View {
+    private func workNoteContent(
+        _ note: MobileCaptureWorkNote,
+        tagLabels: [String],
+        opensOnWeb: Bool = false
+    ) -> some View {
         HStack(alignment: .top, spacing: 12) {
-            Image(systemName: "note.text")
+            Image(systemName: note.voiceWritingDraftId == nil ? "note.text" : "waveform.badge.mic")
                 .font(.title3)
                 .foregroundStyle(CapturePalette.accent)
             VStack(alignment: .leading, spacing: 5) {
                 Text(note.title).font(.body.weight(.semibold))
+                if note.voiceWritingDraftId != nil {
+                    Text("Voice writing")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(CapturePalette.accent)
+                }
                 if !note.excerpt.isEmpty {
                     Text(note.excerpt).font(.caption).foregroundStyle(.secondary).lineLimit(4)
                 }
                 workTagLabels(tagLabels)
             }
             Spacer(minLength: 0)
-            Image(systemName: "arrow.up.right")
+            Image(systemName: opensOnWeb ? "arrow.up.right" : "chevron.right")
                 .font(.caption.weight(.bold))
                 .foregroundStyle(.secondary)
         }
+    }
+
+    private func opensInWritingEditor(_ note: MobileCaptureWorkNote) -> Bool {
+        guard let draftID = note.voiceWritingDraftId else { return false }
+        return writingStore.draft(id: draftID) != nil
+    }
+
+    private func openWorkNote(_ note: MobileCaptureWorkNote) {
+        guard let draftID = note.voiceWritingDraftId else {
+            noteToEdit = note
+            return
+        }
+
+        Task {
+            if writingStore.draft(id: draftID) == nil,
+               !model.usesPreviewData {
+                await writingSync.refreshFromNest()
+            }
+            if writingStore.draft(id: draftID) != nil {
+                requestedWritingDraftID = draftID
+                visibleTab = .library
+            } else {
+                // The canonical Nest document is still completely editable if
+                // its private source recording is unavailable on this account
+                // or device. Never make the recording a gate to the words.
+                noteToEdit = note
+            }
+        }
+    }
+
+    private func workNoteOpenHint(_ note: MobileCaptureWorkNote) -> String {
+        if opensInWritingEditor(note) {
+            return "Opens this writing in the full iPhone editor."
+        }
+        return "Opens this note in the iPhone editor."
     }
 
     @ViewBuilder

@@ -13,6 +13,7 @@ import {
   projectCanonicalDocumentNote,
 } from "@/lib/server/canonical-document-note-edit";
 import { personalWritingDocumentVisibilityWhere } from "@/lib/server/personal-writing-documents";
+import { mobileVoiceWritingDraftIdFromDocumentId } from "@/lib/server/mobile-voice-writing";
 
 export const dynamic = "force-dynamic";
 
@@ -279,6 +280,11 @@ export async function GET(request: Request) {
       return tag ? [tag] : [];
     });
     const content = projectCanonicalDocumentNote(note);
+    const voiceWritingDraftId = String(note.sourceLabel || "")
+      .toLowerCase()
+      .includes("origin:ios-voice-writing")
+      ? mobileVoiceWritingDraftIdFromDocumentId(note.id)
+      : null;
     return {
       id: note.id,
       stableId: note.stableId,
@@ -291,6 +297,7 @@ export async function GET(request: Request) {
       contentRevision: content.contentRevision,
       contentEditBoundary: content.contentEditBoundary,
       blocks: content.blocks,
+      voiceWritingDraftId,
       tagIds: tags.map((tag) => tag.id),
       tagLabels: tags.map((tag) => tag.label),
       webPath: `/create?project=${encodeURIComponent(selectedProject.slug)}&document=${encodeURIComponent(note.id)}`,

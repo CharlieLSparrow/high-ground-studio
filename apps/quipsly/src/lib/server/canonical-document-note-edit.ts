@@ -263,7 +263,7 @@ function noteCanEdit(record: CanonicalDocumentNoteRecord) {
   }
   return {
     allowed: true,
-    boundary: "Edits update this same private Nest document. Tags and safe text anchors are preserved; nothing is sent, published, or added to a calendar.",
+    boundary: "Edits update this same Nest document. Tags and text anchors stay connected.",
   };
 }
 

@@ -60,7 +60,23 @@ function voiceWritingBody(document: any, draftId: string) {
 function voiceWritingRichText(document: any) {
   const operation = document?.documentOperations?.[0];
   if (!operation || operation.operationType !== "mobile-voice-writing-sync") return null;
-  return record(operation.afterJson).richText ?? record(operation.payloadJson).richText ?? null;
+  const richText = record(operation.afterJson).richText
+    ?? record(operation.payloadJson).richText
+    ?? null;
+  if (!richText) return null;
+
+  // A shared Nest member can edit the canonical note through the ordinary
+  // document editor without having access to the author's private recording
+  // metadata. That edit deliberately changes the document blocks rather than
+  // impersonating a mobile voice-writing revision. Never return formatting
+  // ranges captured for older words alongside the newly edited body: the
+  // owner receives the canonical text as plain rich text and can keep writing
+  // without stale ranges or an accidental overwrite.
+  const draftId = mobileVoiceWritingDraftIdFromDocumentId(String(document?.id || ""));
+  if (!draftId || record(richText).text !== voiceWritingBody(document, draftId)) {
+    return null;
+  }
+  return richText;
 }
 
 function voiceWritingContentRevision(document: any, draftId: string) {

@@ -2146,6 +2146,7 @@ struct MobileCaptureWorkNote: Codable, Identifiable, Hashable {
     let contentRevision: String?
     let contentEditBoundary: String?
     let blocks: [MobileCaptureWorkNoteBlock]?
+    let voiceWritingDraftId: UUID?
     let tagIds: [String]
     let tagLabels: [String]
     let webPath: String
@@ -7200,6 +7201,7 @@ final class CaptureWorkClient: ObservableObject {
                                 body: appStorePresentation ? "A smaller weekly commitment feels more achievable than a perfect daily routine." : "Begin with the moment the obvious answer stopped being obvious."
                             ),
                         ],
+                        voiceWritingDraftId: nil,
                         tagIds: ["preview-episode-4"],
                         tagLabels: appStorePresentation ? ["Coaching"] : ["Episode 4"],
                         webPath: "/create?project=preview-high-ground&document=preview-work-note"

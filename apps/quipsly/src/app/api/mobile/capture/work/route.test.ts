@@ -242,6 +242,7 @@ describe("mobile Capture Work contract", () => {
             order: 1,
             body: "Begin with the surprising admission.",
           }],
+          voiceWritingDraftId: null,
           tagLabels: ["Episode 4"],
           webPath: "/create?project=high-ground&document=note-1",
         }],
