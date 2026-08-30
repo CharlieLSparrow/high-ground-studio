@@ -598,6 +598,8 @@ struct CaptureRecordingShareEditor: View {
     @State private var editing = false
     @State private var auditionSegmentID: String?
     @State private var auditionNotice: String?
+    @State private var transcriptQuery = ""
+    @State private var showsRemovedPassagesOnly = false
     @State private var exportURL: URL?
     @State private var isPresentingExport = false
     @State private var exportNotice: String?
@@ -723,6 +725,10 @@ struct CaptureRecordingShareEditor: View {
             let sources = available?.sources ?? []
             let duration = available?.programDurationSeconds ?? 0
             let transcript = editableTranscript(snapshot)
+            let visibleTranscript = visibleEditableTranscript(transcript)
+            let removedPassageCount = transcript.filter {
+                excludedSegmentIDs.contains($0.id)
+            }.count
             let videoSources = sources.filter { $0.kind == "LOCAL_VIDEO" || ($0.contentType ?? "").hasPrefix("video/") }
 
             if sources.isEmpty {
@@ -852,7 +858,10 @@ struct CaptureRecordingShareEditor: View {
                         Text("Transcript edit").font(.subheadline.weight(.bold))
                         Spacer()
                         if !excludedSegmentIDs.isEmpty {
-                            Button("Include all") { excludedSegmentIDs.removeAll() }
+                            Button("Include all") {
+                                excludedSegmentIDs.removeAll()
+                                showsRemovedPassagesOnly = false
+                            }
                                 .font(.caption.weight(.bold))
                         }
                     }
@@ -861,7 +870,67 @@ struct CaptureRecordingShareEditor: View {
                     Text("Listen plays the original source without changing your edit.")
                         .font(.caption2.weight(.semibold))
                         .foregroundStyle(.secondary)
-                    ForEach(transcript) { segment in
+
+                    HStack(spacing: 8) {
+                        Image(systemName: "magnifyingglass")
+                            .foregroundStyle(.secondary)
+                            .accessibilityHidden(true)
+                        TextField("Find words or a speaker", text: $transcriptQuery)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                            .accessibilityLabel("Find a transcript passage")
+                            .accessibilityIdentifier("CaptureRecordingShareTranscriptSearch")
+                        if !transcriptQuery.isEmpty {
+                            Button {
+                                transcriptQuery = ""
+                            } label: {
+                                Image(systemName: "xmark.circle.fill")
+                                    .foregroundStyle(.secondary)
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Clear transcript search")
+                            .accessibilityIdentifier("CaptureRecordingShareTranscriptSearchClear")
+                        }
+                    }
+                    .padding(.horizontal, 10)
+                    .frame(minHeight: 44)
+                    .background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
+
+                    if removedPassageCount > 0 {
+                        Picker("Passages", selection: $showsRemovedPassagesOnly) {
+                            Text("All \(transcript.count)").tag(false)
+                            Text("Removed \(removedPassageCount)").tag(true)
+                        }
+                        .pickerStyle(.segmented)
+                        .accessibilityHint("Switch between every editable passage and passages removed from this private edit.")
+                        .accessibilityIdentifier("CaptureRecordingShareTranscriptScope")
+                    }
+
+                    Text(transcriptEditSummary(
+                        totalCount: transcript.count,
+                        visibleCount: visibleTranscript.count,
+                        removedCount: removedPassageCount
+                    ))
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .accessibilityIdentifier("CaptureRecordingShareTranscriptSummary")
+
+                    if visibleTranscript.isEmpty {
+                        Label(
+                            showsRemovedPassagesOnly
+                                ? "No removed passages match this search."
+                                : "No transcript passages match this search.",
+                            systemImage: "text.magnifyingglass"
+                        )
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .padding(12)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(Color.secondary.opacity(0.07), in: RoundedRectangle(cornerRadius: 12))
+                        .accessibilityIdentifier("CaptureRecordingShareTranscriptEmpty")
+                    }
+
+                    ForEach(visibleTranscript) { segment in
                         Toggle(isOn: segmentBinding(segment.id)) {
                             VStack(alignment: .leading, spacing: 3) {
                                 HStack {
@@ -1278,6 +1347,34 @@ struct CaptureRecordingShareEditor: View {
                 && $0.endSeconds > startSeconds
                 && $0.startSeconds < endSeconds
         }
+    }
+
+    private func visibleEditableTranscript(
+        _ transcript: [CaptureRecordingShareTranscriptSegment]
+    ) -> [CaptureRecordingShareTranscriptSegment] {
+        let query = transcriptQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        return transcript.filter { segment in
+            if showsRemovedPassagesOnly && !excludedSegmentIDs.contains(segment.id) {
+                return false
+            }
+            guard !query.isEmpty else { return true }
+            return segment.text.localizedCaseInsensitiveContains(query)
+                || segment.speakerLabel.localizedCaseInsensitiveContains(query)
+        }
+    }
+
+    private func transcriptEditSummary(
+        totalCount: Int,
+        visibleCount: Int,
+        removedCount: Int
+    ) -> String {
+        let removed = removedCount == 1 ? "1 passage removed" : "\(removedCount) passages removed"
+        let query = transcriptQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        if showsRemovedPassagesOnly || !query.isEmpty {
+            let shown = visibleCount == 1 ? "1 passage shown" : "\(visibleCount) passages shown"
+            return "\(shown) · \(removed) · \(totalCount) editable"
+        }
+        return "\(totalCount) editable · \(removed)"
     }
 
     private func sourceBinding(_ sourceID: String) -> Binding<Bool> {
