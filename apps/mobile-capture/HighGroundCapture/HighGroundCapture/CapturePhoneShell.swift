@@ -592,13 +592,17 @@ private struct CaptureTodayView: View {
         .padding(.top, 10)
     }
 
-    private func continueVoiceWriting(_ draft: VoiceWritingDraft) {
+    private func continueVoiceWriting(
+        _ draft: VoiceWritingDraft,
+        insertionUtf16: Int?
+    ) {
         Task {
             guard let created = await model.createPersonalVoiceNote(continuing: draft.title) else { return }
             do {
                 try writingStore.stageContinuation(
                     callRoomID: created.callRoomId,
-                    draftID: draft.id
+                    draftID: draft.id,
+                    insertionUtf16: insertionUtf16
                 )
                 visibleTab = .record
             } catch {
@@ -7381,7 +7385,7 @@ private struct CapturePersonalVoiceNoteTranscriptCard: View {
     let fileURL: URL?
     let previewOnly: Bool
     @ObservedObject var tagClient: CaptureTodayClient
-    let onContinueByVoice: (VoiceWritingDraft) -> Void
+    let onContinueByVoice: CaptureVoiceWritingContinuationAction
     @State private var opensWriting = false
     @State private var openWritingWhenReady = false
 
@@ -7619,6 +7623,11 @@ private enum CaptureVoiceWritingSurface: String, CaseIterable, Identifiable {
     var id: Self { self }
 }
 
+private typealias CaptureVoiceWritingContinuationAction = (
+    VoiceWritingDraft,
+    Int?
+) -> Void
+
 private struct CaptureVoiceWritingWordExportRequest: Encodable {
     let title: String
     let body: String
@@ -7661,7 +7670,7 @@ private struct CaptureVoiceWritingEditor: View {
     @StateObject private var playback = LocalRecordingPlaybackController()
     @StateObject private var transcriptCorrections = CaptureTranscriptCorrectionClient()
     @ObservedObject var tagClient: CaptureTodayClient
-    let onContinueByVoice: (VoiceWritingDraft) -> Void
+    let onContinueByVoice: CaptureVoiceWritingContinuationAction
     @Environment(\.dismiss) private var dismiss
     @FocusState private var titleIsFocused: Bool
     @FocusState private var bodyIsFocused: Bool
@@ -7692,13 +7701,14 @@ private struct CaptureVoiceWritingEditor: View {
     @State private var showsNestMoveError = false
     @State private var outlineIsExpanded = false
     @State private var requestedWritingSelection: NSRange?
+    @State private var currentWritingSelection: NSRange
 
     init(
         draftID: UUID,
         initialDraft: VoiceWritingDraft,
         timedTranscript: [OnDeviceTranscriptSegment],
         tagClient: CaptureTodayClient,
-        onContinueByVoice: @escaping (VoiceWritingDraft) -> Void
+        onContinueByVoice: @escaping CaptureVoiceWritingContinuationAction
     ) {
         self.draftID = draftID
         self.timedTranscript = timedTranscript
@@ -7708,6 +7718,12 @@ private struct CaptureVoiceWritingEditor: View {
         _title = State(initialValue: initialDraft.title)
         _bodyText = State(initialValue: initialDraft.body)
         _richText = State(initialValue: initialDraft.richText ?? VoiceWritingRichText(text: initialDraft.body))
+        _currentWritingSelection = State(
+            initialValue: NSRange(
+                location: (initialDraft.body as NSString).length,
+                length: 0
+            )
+        )
     }
 
     private var currentDraft: VoiceWritingDraft? {
@@ -7784,13 +7800,13 @@ private struct CaptureVoiceWritingEditor: View {
                     Button(action: continueByVoice) {
                         HStack(spacing: 5) {
                             Image(systemName: "mic.badge.plus")
-                            Text("Speak")
+                            Text(voiceContinuationInsertionUtf16 == nil ? "Speak" : "Add voice")
                                 .font(.subheadline.weight(.semibold))
                         }
                     }
                     .disabled(currentDraft == nil)
-                    .accessibilityLabel("Keep talking")
-                    .accessibilityHint("Saves this writing and starts another recording that will be added to it.")
+                    .accessibilityLabel(voiceContinuationLabel)
+                    .accessibilityHint(voiceContinuationHint)
                     .accessibilityIdentifier("CaptureVoiceWritingContinueToolbar")
                 }
             }
@@ -7833,7 +7849,7 @@ private struct CaptureVoiceWritingEditor: View {
                 Button(action: continueByVoice) {
                     HStack(spacing: 5) {
                         Image(systemName: "mic")
-                        Text("Keep talking")
+                        Text(voiceContinuationLabel)
                     }
                 }
                 .disabled(currentDraft == nil)
@@ -7951,13 +7967,15 @@ private struct CaptureVoiceWritingEditor: View {
                     plainText: $bodyText,
                     richText: $richText,
                     focus: $bodyIsFocused,
-                    requestedSelection: $requestedWritingSelection
+                    requestedSelection: $requestedWritingSelection,
+                    currentSelection: $currentWritingSelection
                 )
             } else if #available(iOS 18.0, *) {
                 CaptureStructuredWritingBody(
                     text: $bodyText,
                     focus: $bodyIsFocused,
-                    requestedSelection: $requestedWritingSelection
+                    requestedSelection: $requestedWritingSelection,
+                    currentSelection: $currentWritingSelection
                 )
             } else {
                 TextEditor(text: $bodyText)
@@ -8123,13 +8141,13 @@ private struct CaptureVoiceWritingEditor: View {
 
         Section {
             Button(action: continueByVoice) {
-                Label("Keep talking", systemImage: "mic.badge.plus")
+                Label(voiceContinuationLabel, systemImage: "mic.badge.plus")
                     .font(.headline)
                     .frame(maxWidth: .infinity, minHeight: 48)
             }
             .buttonStyle(.borderedProminent)
             .disabled(currentDraft == nil)
-            .accessibilityHint("Saves this writing and starts another recording that will be added to it.")
+            .accessibilityHint(voiceContinuationHint)
             .accessibilityIdentifier("CaptureVoiceWritingContinueByVoice")
         }
 
@@ -8498,12 +8516,35 @@ private struct CaptureVoiceWritingEditor: View {
     }
 
     private func continueByVoice() {
+        let insertionUtf16 = voiceContinuationInsertionUtf16
         titleIsFocused = false
         bodyIsFocused = false
         saveImmediately()
         guard let draft = currentDraft else { return }
-        onContinueByVoice(draft)
+        onContinueByVoice(draft, insertionUtf16)
         dismiss()
+    }
+
+    private var voiceContinuationInsertionUtf16: Int? {
+        guard selectedSurface == .writing,
+              !titleIsFocused else { return nil }
+        let bodyLength = (bodyText as NSString).length
+        let bounded = min(
+            max(0, NSMaxRange(currentWritingSelection)),
+            bodyLength
+        )
+        return bounded < bodyLength ? bounded : nil
+    }
+
+    private var voiceContinuationLabel: String {
+        voiceContinuationInsertionUtf16 == nil ? "Keep talking" : "Add voice below"
+    }
+
+    private var voiceContinuationHint: String {
+        if voiceContinuationInsertionUtf16 != nil {
+            return "Saves this writing and records a new passage below the paragraph containing the cursor."
+        }
+        return "Saves this writing and records a new passage at the end."
     }
 
     private var sourceRecordings: [LocalRecording] {
@@ -9173,6 +9214,7 @@ private struct CaptureRichWritingBody: View {
     @Binding var richText: VoiceWritingRichText?
     let focus: FocusState<Bool>.Binding
     @Binding var requestedSelection: NSRange?
+    @Binding var currentSelection: NSRange
     @State private var text: AttributedString
     @State private var selection = AttributedTextSelection()
 
@@ -9180,12 +9222,14 @@ private struct CaptureRichWritingBody: View {
         plainText: Binding<String>,
         richText: Binding<VoiceWritingRichText?>,
         focus: FocusState<Bool>.Binding,
-        requestedSelection: Binding<NSRange?>
+        requestedSelection: Binding<NSRange?>,
+        currentSelection: Binding<NSRange>
     ) {
         _plainText = plainText
         _richText = richText
         self.focus = focus
         _requestedSelection = requestedSelection
+        _currentSelection = currentSelection
         _text = State(initialValue: Self.attributed(
             from: richText.wrappedValue ?? VoiceWritingRichText(text: plainText.wrappedValue)
         ))
@@ -9221,9 +9265,13 @@ private struct CaptureRichWritingBody: View {
                     guard let updated, Self.portable(from: text) != updated else { return }
                     text = Self.attributed(from: updated)
                 }
+                .onChange(of: selection) { _, _ in
+                    currentSelection = selectedNSRange
+                }
                 .onChange(of: requestedSelection) { _, requested in
                     guard let requested else { return }
                     selection = Self.attributedSelection(from: requested, in: text)
+                    currentSelection = requested
                     focus.wrappedValue = true
                     requestedSelection = nil
                 }
@@ -9508,6 +9556,7 @@ private struct CaptureStructuredWritingBody: View {
     @Binding var text: String
     let focus: FocusState<Bool>.Binding
     @Binding var requestedSelection: NSRange?
+    @Binding var currentSelection: NSRange
     @State private var selection: TextSelection?
 
     var body: some View {
@@ -9542,10 +9591,14 @@ private struct CaptureStructuredWritingBody: View {
                 .accessibilityLabel("Writing")
                 .accessibilityHint("Edit the text created from your voice. Use the writing controls for paragraphs, lists, checklists, and quotes. Your original transcript and audio are unchanged.")
                 .accessibilityIdentifier("CaptureVoiceWritingBody")
+                .onChange(of: selection) { _, _ in
+                    currentSelection = selectedNSRange
+                }
                 .onChange(of: requestedSelection) { _, requested in
                     guard let requested,
                           let range = Range(requested, in: text) else { return }
                     selection = TextSelection(range: range)
+                    currentSelection = requested
                     focus.wrappedValue = true
                     requestedSelection = nil
                 }
@@ -10847,13 +10900,17 @@ private struct CaptureRecorderView: View {
         audioCaptureIsActive || videoCaptureIsActive
     }
 
-    private func continueVoiceWriting(_ draft: VoiceWritingDraft) {
+    private func continueVoiceWriting(
+        _ draft: VoiceWritingDraft,
+        insertionUtf16: Int?
+    ) {
         Task {
             guard let created = await model.createPersonalVoiceNote(continuing: draft.title) else { return }
             do {
                 try VoiceWritingDraftStore.shared.stageContinuation(
                     callRoomID: created.callRoomId,
-                    draftID: draft.id
+                    draftID: draft.id,
+                    insertionUtf16: insertionUtf16
                 )
                 localOnlyRecordingSessionID = created.id
                 visibleTab = .record
@@ -14584,13 +14641,17 @@ private struct CaptureLibraryView: View {
         }
     }
 
-    private func continueVoiceWriting(_ draft: VoiceWritingDraft) {
+    private func continueVoiceWriting(
+        _ draft: VoiceWritingDraft,
+        insertionUtf16: Int?
+    ) {
         Task {
             guard let created = await model.createPersonalVoiceNote(continuing: draft.title) else { return }
             do {
                 try VoiceWritingDraftStore.shared.stageContinuation(
                     callRoomID: created.callRoomId,
-                    draftID: draft.id
+                    draftID: draft.id,
+                    insertionUtf16: insertionUtf16
                 )
                 visibleTab = .record
             } catch {
@@ -14616,7 +14677,7 @@ private struct CaptureVoiceWritingLibraryRow: View {
     let recording: LocalRecording?
     let timedTranscript: [OnDeviceTranscriptSegment]
     @ObservedObject var tagClient: CaptureTodayClient
-    let onContinueByVoice: (VoiceWritingDraft) -> Void
+    let onContinueByVoice: CaptureVoiceWritingContinuationAction
 
     var body: some View {
         NavigationLink {
@@ -14845,7 +14906,7 @@ private struct CaptureLibraryPreviewWritingCard: View {
                     ),
                 ],
                 tagClient: tagClient,
-                onContinueByVoice: { _ in }
+                onContinueByVoice: { _, _ in }
             )
         } label: {
             VStack(alignment: .leading, spacing: 12) {

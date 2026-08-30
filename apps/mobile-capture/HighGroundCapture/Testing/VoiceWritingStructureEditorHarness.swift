@@ -22,6 +22,8 @@ private struct VoiceWritingStructureEditorHarness {
         try listConversionRemovesIncompatibleHeadingStyle()
         try longWritingProducesProgressAndAnOutline()
         try outlineRangesStayCorrectAroundEmoji()
+        try spokenContinuationLandsAfterTheCaretParagraph()
+        try spokenContinuationAtTheEndKeepsTheExistingAppendContract()
         try existingWritingDecodesWithoutMigrationWork()
         print("PASS Voice writing structure and rich-text portability")
     }
@@ -245,6 +247,59 @@ private struct VoiceWritingStructureEditorHarness {
         try require(
             outline.last?.rangeUtf16.location == nextStart,
             "A non-BMP character in an earlier heading must not shift a later jump target."
+        )
+    }
+
+    private static func spokenContinuationLandsAfterTheCaretParagraph() throws {
+        let text = "Opening story\n\nExisting middle\n\nClosing thought"
+        let closingStart = ("Opening story\n\nExisting middle\n\n" as NSString).length
+        let source = VoiceWritingRichText(
+            text: text,
+            marks: [
+                .init(kind: .bold, startUtf16: closingStart, endUtf16: (text as NSString).length),
+            ],
+            structures: [
+                .init(kind: .heading, startUtf16: 0, endUtf16: ("Opening story" as NSString).length),
+                .init(kind: .subheading, startUtf16: closingStart, endUtf16: (text as NSString).length),
+            ]
+        )
+        let spoken = VoiceWritingRichText(
+            text: "A new idea from speech.",
+            marks: [.init(kind: .italic, startUtf16: 2, endUtf16: 10)]
+        )
+        let result = source.insertingSpokenParagraph(spoken, afterUtf16: 4)
+
+        try require(
+            result.text == "Opening story\n\nA new idea from speech.\n\nExisting middle\n\nClosing thought",
+            "Speech should become a paragraph immediately below the section containing the caret."
+        )
+        let delta = ("A new idea from speech.\n\n" as NSString).length
+        try require(
+            result.structures == [
+                .init(kind: .heading, startUtf16: 0, endUtf16: 13),
+                .init(kind: .subheading, startUtf16: closingStart + delta, endUtf16: (text as NSString).length + delta),
+            ],
+            "Headings after inserted speech should move with their original words."
+        )
+        try require(
+            result.marks.contains(.init(kind: .italic, startUtf16: 17, endUtf16: 25)),
+            "Formatting created by the speech composer should move into the inserted paragraph."
+        )
+        try require(
+            result.marks.contains(.init(kind: .bold, startUtf16: closingStart + delta, endUtf16: (text as NSString).length + delta)),
+            "Formatting after the insertion should remain attached to the same words."
+        )
+    }
+
+    private static func spokenContinuationAtTheEndKeepsTheExistingAppendContract() throws {
+        let source = VoiceWritingRichText(text: "Existing thought")
+        let result = source.insertingSpokenParagraph(
+            VoiceWritingRichText(text: "Continued by voice"),
+            afterUtf16: (source.text as NSString).length
+        )
+        try require(
+            result.text == "Existing thought\n\nContinued by voice",
+            "Speech at the end should retain the familiar two-paragraph continuation."
         )
     }
 

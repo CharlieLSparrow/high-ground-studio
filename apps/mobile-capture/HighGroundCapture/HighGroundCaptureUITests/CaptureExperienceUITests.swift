@@ -5268,6 +5268,11 @@ final class CaptureAppStoreScreenshotUITests: XCTestCase {
             app.keyboards.firstMatch.waitForExistence(timeout: 5),
             "Choosing an outline section should move focus into the writing instead of opening another planning screen."
         )
+        XCTAssertEqual(
+            app.buttons["CaptureVoiceWritingContinueKeyboard"].label,
+            "Add voice below",
+            "After choosing a section, speech should be inserted there instead of silently appended to the end of the paper."
+        )
         app.buttons["Done"].firstMatch.tap()
         reveal(outline)
         outline.tap()

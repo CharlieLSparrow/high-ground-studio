@@ -133,6 +133,7 @@ final class VoiceWritingDraftStore: ObservableObject {
         let ownerAccountID: String
         let callRoomID: String
         let draftID: UUID
+        let insertionUtf16: Int?
     }
 
     private struct Ledger: Codable {
@@ -282,18 +283,28 @@ final class VoiceWritingDraftStore: ObservableObject {
         return draft
     }
 
-    func stageContinuation(callRoomID: String, draftID: UUID) throws {
+    func stageContinuation(
+        callRoomID: String,
+        draftID: UUID,
+        insertionUtf16: Int? = nil
+    ) throws {
         let owner = try requireActiveOwner()
         let roomID = callRoomID.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !roomID.isEmpty,
-              storedDrafts.contains(where: { $0.ownerAccountID == owner && $0.id == draftID }) else {
+              let draft = storedDrafts.first(where: {
+                  $0.ownerAccountID == owner && $0.id == draftID
+              }) else {
             throw VoiceWritingDraftStoreError.draftUnavailable
+        }
+        let boundedInsertion = insertionUtf16.map {
+            min(max(0, $0), (draft.body as NSString).length)
         }
         pendingContinuations.removeAll { $0.ownerAccountID == owner && $0.callRoomID == roomID }
         pendingContinuations.append(PendingContinuation(
             ownerAccountID: owner,
             callRoomID: roomID,
-            draftID: draftID
+            draftID: draftID,
+            insertionUtf16: boundedInsertion
         ))
         try commit()
     }
@@ -337,11 +348,17 @@ final class VoiceWritingDraftStore: ObservableObject {
             let source = Self.sourceReference(transcript: transcript, recording: recording)
             if !storedDrafts[index].allSources.contains(where: { $0.id == source.id }) {
                 storedDrafts[index].sources = storedDrafts[index].allSources + [source]
-                let existingBody = storedDrafts[index].body.trimmingCharacters(in: .whitespacesAndNewlines)
-                storedDrafts[index].body = existingBody.isEmpty ? body : "\(existingBody)\n\n\(body)"
-                storedDrafts[index].richText = (storedDrafts[index].richText
-                    ?? VoiceWritingRichText(text: existingBody))
-                    .appending(composedWriting)
+                let existingBody = storedDrafts[index].body
+                let existingWriting = storedDrafts[index].richText
+                    ?? VoiceWritingRichText(text: existingBody)
+                let combinedWriting = continuation.insertionUtf16.map {
+                    existingWriting.insertingSpokenParagraph(
+                        composedWriting,
+                        afterUtf16: $0
+                    )
+                } ?? existingWriting.appending(composedWriting)
+                storedDrafts[index].body = combinedWriting.text
+                storedDrafts[index].richText = combinedWriting
                 storedDrafts[index].updatedAt = now
                 storedDrafts[index].localRevision += 1
                 storedDrafts[index].lastSyncError = nil

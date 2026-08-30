@@ -193,6 +193,100 @@ struct VoiceWritingRichText: Codable, Equatable {
         )
     }
 
+    /// Inserts a newly dictated passage after the paragraph containing the
+    /// person's caret. Speech therefore lands where they are working instead
+    /// of always being dumped at the end of a long document. Existing text is
+    /// never replaced, and portable marks/heading ranges on either side move
+    /// with their words.
+    func insertingSpokenParagraph(
+        _ addition: VoiceWritingRichText,
+        afterUtf16 proposedLocation: Int
+    ) -> VoiceWritingRichText {
+        let spoken = addition.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !spoken.isEmpty else { return self }
+
+        let source = text as NSString
+        guard source.length > 0 else {
+            return VoiceWritingRichText(
+                text: spoken,
+                marks: addition.marks,
+                structures: addition.structures
+            )
+        }
+
+        let anchor = min(max(0, proposedLocation), source.length)
+        guard anchor < source.length else { return appending(addition) }
+
+        // Work at a paragraph boundary so spoken prose never inherits a
+        // heading/list mark just because the caret happened to be inside one.
+        let paragraph = source.paragraphRange(
+            for: NSRange(location: anchor, length: 0)
+        )
+        var insertion = NSMaxRange(paragraph)
+        while insertion < source.length,
+              source.substring(with: NSRange(location: insertion, length: 1)) == "\n" {
+            insertion += 1
+        }
+
+        guard insertion < source.length else { return appending(addition) }
+
+        let prefix = source.substring(to: insertion).hasSuffix("\n\n") ? "" : "\n"
+        let inserted = "\(prefix)\(spoken)\n\n"
+        let insertedLength = (inserted as NSString).length
+        let spokenOffset = insertion + (prefix as NSString).length
+        let output = NSMutableString(string: text)
+        output.insert(inserted, at: insertion)
+
+        func shiftedMark(_ mark: VoiceWritingTextMark) -> VoiceWritingTextMark? {
+            if mark.endUtf16 <= insertion { return mark }
+            if mark.startUtf16 >= insertion {
+                return VoiceWritingTextMark(
+                    kind: mark.kind,
+                    startUtf16: mark.startUtf16 + insertedLength,
+                    endUtf16: mark.endUtf16 + insertedLength
+                )
+            }
+            // A mark crossing a paragraph boundary is malformed for this
+            // operation; retain only its original words before the boundary.
+            guard mark.startUtf16 < insertion else { return nil }
+            return VoiceWritingTextMark(
+                kind: mark.kind,
+                startUtf16: mark.startUtf16,
+                endUtf16: insertion
+            )
+        }
+
+        func shiftedStructure(_ structure: VoiceWritingBlockStyle) -> VoiceWritingBlockStyle? {
+            if structure.endUtf16 <= insertion { return structure }
+            if structure.startUtf16 >= insertion {
+                return VoiceWritingBlockStyle(
+                    kind: structure.kind,
+                    startUtf16: structure.startUtf16 + insertedLength,
+                    endUtf16: structure.endUtf16 + insertedLength
+                )
+            }
+            return nil
+        }
+
+        return VoiceWritingRichText(
+            text: output as String,
+            marks: marks.compactMap(shiftedMark) + addition.marks.map {
+                VoiceWritingTextMark(
+                    kind: $0.kind,
+                    startUtf16: $0.startUtf16 + spokenOffset,
+                    endUtf16: $0.endUtf16 + spokenOffset
+                )
+            },
+            structures: structures.compactMap(shiftedStructure) + addition.structures.map {
+                VoiceWritingBlockStyle(
+                    kind: $0.kind,
+                    startUtf16: $0.startUtf16 + spokenOffset,
+                    endUtf16: $0.endUtf16 + spokenOffset
+                )
+            }
+        )
+    }
+
     nonisolated private static func isWholeLine(_ structure: VoiceWritingBlockStyle, in text: String) -> Bool {
         let source = text as NSString
         let beginsLine = structure.startUtf16 == 0
