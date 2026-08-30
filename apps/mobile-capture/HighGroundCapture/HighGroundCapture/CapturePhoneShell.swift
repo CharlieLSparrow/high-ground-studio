@@ -207,7 +207,8 @@ struct CapturePhoneShell: View {
                     model: model,
                     showsNewSession: $showsNewSession,
                     visibleTab: $visibleTab,
-                    onStartVoiceNote: startVoiceNote
+                    onStartVoiceNote: startVoiceNote,
+                    onStartWriting: startWriting
                 )
             }
             .tabItem { Label(CaptureRootTab.today.title, systemImage: CaptureRootTab.today.systemImage) }
@@ -338,6 +339,16 @@ struct CapturePhoneShell: View {
         }
     }
 
+    private func startWriting() {
+        do {
+            let draft = try VoiceWritingDraftStore.shared.createTypedDraft()
+            requestedWritingDraftID = draft.id
+            visibleTab = .library
+        } catch {
+            model.errorMessage = error.localizedDescription
+        }
+    }
+
     /// The persistent capture banner is an escape hatch, not merely a tab
     /// selector. Rebuild Record's navigation stack so a person who opened
     /// notes, transcript review, or an editor while capture was active always
@@ -410,11 +421,26 @@ private struct CaptureBottomNavigationEdgeEffect: ViewModifier {
     }
 }
 
+/// Long-form writing scrolls beneath iOS 26's floating navigation controls.
+/// A hard top edge keeps document guidance and transcript text readable instead
+/// of letting it compete visually with Back, Speak, and Share.
+private struct CaptureTopNavigationEdgeEffect: ViewModifier {
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if #available(iOS 26.0, *) {
+            content.scrollEdgeEffectStyle(.hard, for: .top)
+        } else {
+            content
+        }
+    }
+}
+
 private struct CaptureTodayView: View {
     @ObservedObject var model: CaptureExperienceModel
     @Binding var showsNewSession: Bool
     @Binding var visibleTab: CaptureRootTab
     let onStartVoiceNote: () -> Void
+    let onStartWriting: () -> Void
     @StateObject private var library = LocalRecordingLibrary.shared
     @StateObject private var writingStore = VoiceWritingDraftStore.shared
     @StateObject private var writingSync = VoiceWritingDraftSyncClient.shared
@@ -431,6 +457,7 @@ private struct CaptureTodayView: View {
                     isStartingVoiceNote: model.isCreatingSession,
                     canStart: !model.isSessionContextLocked,
                     onStartVoiceNote: onStartVoiceNote,
+                    onStartWriting: onStartWriting,
                     onNewSession: { showsNewSession = true }
                 )
 
@@ -606,13 +633,54 @@ private struct CaptureTodayPrimaryActions: View {
     let isStartingVoiceNote: Bool
     let canStart: Bool
     let onStartVoiceNote: () -> Void
+    let onStartWriting: () -> Void
     let onNewSession: () -> Void
 
     var body: some View {
         VStack(spacing: 12) {
             speakToWriteButton
+            startWritingButton
             newSessionButton
         }
+    }
+
+    private var startWritingButton: some View {
+        Button(action: onStartWriting) {
+            HStack(spacing: 12) {
+                Image(systemName: "square.and.pencil")
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(CapturePalette.accent)
+                    .frame(width: 44, height: 44)
+                    .background(CapturePalette.accent.opacity(0.1), in: Circle())
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Start writing")
+                        .font(.headline)
+                        .foregroundStyle(.primary)
+                    Text("Type first. Add your voice whenever it helps.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 8)
+                Image(systemName: "chevron.right")
+                    .font(.subheadline.weight(.bold))
+                    .foregroundStyle(.tertiary)
+                    .accessibilityHidden(true)
+            }
+            .frame(maxWidth: .infinity, minHeight: 58, alignment: .leading)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 7)
+            .background(.background, in: RoundedRectangle(cornerRadius: 18))
+            .overlay {
+                RoundedRectangle(cornerRadius: 18)
+                    .stroke(.primary.opacity(0.08))
+            }
+        }
+        .buttonStyle(.plain)
+        .disabled(!canStart)
+        .accessibilityLabel("Start writing")
+        .accessibilityHint("Opens a private writing document. You can add recorded speech later.")
+        .accessibilityIdentifier("CaptureStartWriting")
     }
 
     private var speakToWriteButton: some View {
@@ -7701,6 +7769,7 @@ private struct CaptureVoiceWritingEditor: View {
                 }
             }
         }
+        .modifier(CaptureTopNavigationEdgeEffect())
         .navigationTitle("Writing")
         .navigationBarTitleDisplayMode(.inline)
         // Writing is a focused document destination reached from Library.
@@ -13724,6 +13793,42 @@ private enum CaptureLibrarySection: String, CaseIterable, Identifiable {
     var id: Self { self }
 }
 
+private enum CaptureLibraryWritingScope: Hashable {
+    case all
+    case project(String)
+    case tag(String)
+}
+
+private enum CaptureLibraryWritingSort: String, CaseIterable, Identifiable {
+    case recent = "Recent"
+    case title = "Title"
+
+    var id: Self { self }
+
+    var systemImage: String {
+        switch self {
+        case .recent: "clock"
+        case .title: "textformat.abc"
+        }
+    }
+}
+
+private struct CaptureLibraryWritingProjectOption: Identifiable, Hashable {
+    let id: String
+    let name: String
+    let role: String
+    let isHome: Bool
+
+    var isOwned: Bool {
+        isHome || role.uppercased() == "OWNER"
+    }
+}
+
+private struct CaptureLibraryWritingTagOption: Identifiable, Hashable {
+    let id: String
+    let label: String
+}
+
 private enum CaptureLibraryWritingItem: Identifiable {
     case voice(VoiceWritingDraft)
     case note(MobileCaptureWorkNote)
@@ -13739,6 +13844,13 @@ private enum CaptureLibraryWritingItem: Identifiable {
         switch self {
         case .voice(let draft): draft.updatedAt
         case .note(let note): captureTaskDate(note.updatedAt) ?? .distantPast
+        }
+    }
+
+    var title: String {
+        switch self {
+        case .voice(let draft): draft.title
+        case .note(let note): note.title
         }
     }
 }
@@ -13759,6 +13871,8 @@ private struct CaptureLibraryView: View {
     @State private var createWritingError: String?
     @State private var selectedSection: CaptureLibrarySection = .writing
     @State private var searchText = ""
+    @State private var writingScope: CaptureLibraryWritingScope = .all
+    @State private var writingSort: CaptureLibraryWritingSort = .recent
 
     var body: some View {
         ScrollView {
@@ -13776,6 +13890,14 @@ private struct CaptureLibraryView: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
 
+                Picker("Library section", selection: $selectedSection) {
+                    ForEach(CaptureLibrarySection.allCases) { section in
+                        Text(section.rawValue).tag(section)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .accessibilityIdentifier("CaptureLibrarySectionPicker")
+
                 if selectedSection == .writing {
                     VStack(spacing: 10) {
                         startWritingAction
@@ -13785,13 +13907,9 @@ private struct CaptureLibraryView: View {
 
                 librarySearch
 
-                Picker("Library section", selection: $selectedSection) {
-                    ForEach(CaptureLibrarySection.allCases) { section in
-                        Text(section.rawValue).tag(section)
-                    }
+                if selectedSection == .writing {
+                    writingFilterBar
                 }
-                .pickerStyle(.segmented)
-                .accessibilityIdentifier("CaptureLibrarySectionPicker")
 
                 if selectedSection == .writing {
                     if writingSync.isRefreshing {
@@ -13990,10 +14108,11 @@ private struct CaptureLibraryView: View {
     }
 
     private var filteredDrafts: [VoiceWritingDraft] {
-        guard !normalizedSearch.isEmpty else { return writingStore.drafts }
-        return writingStore.drafts.filter {
-            $0.title.localizedCaseInsensitiveContains(normalizedSearch)
-                || $0.body.localizedCaseInsensitiveContains(normalizedSearch)
+        writingStore.drafts.filter { draft in
+            scopeMatches(draft)
+                && (normalizedSearch.isEmpty
+                    || draft.title.localizedCaseInsensitiveContains(normalizedSearch)
+                    || draft.body.localizedCaseInsensitiveContains(normalizedSearch))
         }
     }
 
@@ -14004,13 +14123,14 @@ private struct CaptureLibraryView: View {
         let notes = (notesClient.workspace?.notes ?? []).filter {
             !canonicalVoiceDocumentIDs.contains($0.id)
         }
-        guard !normalizedSearch.isEmpty else { return notes }
-        return notes.filter {
-            $0.title.localizedCaseInsensitiveContains(normalizedSearch)
-                || $0.excerpt.localizedCaseInsensitiveContains(normalizedSearch)
-                || $0.tagLabels.contains {
-                    $0.localizedCaseInsensitiveContains(normalizedSearch)
-                }
+        return notes.filter { note in
+            scopeMatches(note)
+                && (normalizedSearch.isEmpty
+                    || note.title.localizedCaseInsensitiveContains(normalizedSearch)
+                    || note.excerpt.localizedCaseInsensitiveContains(normalizedSearch)
+                    || note.tagLabels.contains {
+                        $0.localizedCaseInsensitiveContains(normalizedSearch)
+                    })
         }
     }
 
@@ -14019,10 +14139,230 @@ private struct CaptureLibraryView: View {
             filteredDrafts.map(CaptureLibraryWritingItem.voice)
                 + filteredNotes.map(CaptureLibraryWritingItem.note)
         )
-        .sorted {
-            if $0.updatedAt != $1.updatedAt { return $0.updatedAt > $1.updatedAt }
-            return $0.id < $1.id
+        .sorted { left, right in
+            switch writingSort {
+            case .recent:
+                if left.updatedAt != right.updatedAt { return left.updatedAt > right.updatedAt }
+                return left.id < right.id
+            case .title:
+                let comparison = left.title.localizedCaseInsensitiveCompare(right.title)
+                if comparison != .orderedSame { return comparison == .orderedAscending }
+                return left.id < right.id
+            }
         }
+    }
+
+    private var displayedWritingCount: Int {
+        writingItems.count
+            + (model.usesPreviewData && writingStore.drafts.isEmpty && writingScope == .all ? 1 : 0)
+    }
+
+    private func scopeMatches(_ draft: VoiceWritingDraft) -> Bool {
+        switch writingScope {
+        case .all:
+            return true
+        case .project(let projectID):
+            if draft.canonicalProjectID == projectID { return true }
+            return draft.canonicalProjectID == nil
+                && writingSync.homeProject?.id == projectID
+        case .tag(let tagID):
+            return (draft.canonicalTags ?? []).contains { $0.id == tagID }
+        }
+    }
+
+    private func scopeMatches(_ note: MobileCaptureWorkNote) -> Bool {
+        switch writingScope {
+        case .all:
+            return true
+        case .project(let projectID):
+            return notesClient.workspace?.project.id == projectID
+        case .tag(let tagID):
+            return note.tagIds.contains(tagID)
+        }
+    }
+
+    private var writingProjectOptions: [CaptureLibraryWritingProjectOption] {
+        var options: [CaptureLibraryWritingProjectOption] = writingSync.destinations.map {
+            CaptureLibraryWritingProjectOption(
+                id: $0.id,
+                name: $0.name,
+                role: $0.role,
+                isHome: $0.isHome
+            )
+        }
+        for draft in writingStore.drafts {
+            guard let id = draft.canonicalProjectID?.nonempty,
+                  let name = draft.canonicalProjectName?.nonempty,
+                  !options.contains(where: { $0.id == id }) else { continue }
+            let project = model.captureProjects.first { $0.id == id }
+            options.append(CaptureLibraryWritingProjectOption(
+                id: id,
+                name: name,
+                role: project?.role ?? "MEMBER",
+                isHome: id == writingSync.homeProject?.id
+            ))
+        }
+        return options.sorted { left, right in
+            if left.isHome != right.isHome { return left.isHome }
+            return left.name.localizedCaseInsensitiveCompare(right.name) == .orderedAscending
+        }
+    }
+
+    private var writingTagOptions: [CaptureLibraryWritingTagOption] {
+        var byID: [String: CaptureLibraryWritingTagOption] = [:]
+        for draft in writingStore.drafts {
+            for tag in draft.canonicalTags ?? [] where tag.isActive != false {
+                byID[tag.id] = CaptureLibraryWritingTagOption(id: tag.id, label: tag.label)
+            }
+        }
+        for note in notesClient.workspace?.notes ?? [] {
+            for (id, label) in zip(note.tagIds, note.tagLabels) {
+                byID[id] = CaptureLibraryWritingTagOption(id: id, label: label)
+            }
+        }
+        return byID.values.sorted {
+            $0.label.localizedCaseInsensitiveCompare($1.label) == .orderedAscending
+        }
+    }
+
+    private var writingScopeLabel: String {
+        switch writingScope {
+        case .all:
+            "All writing"
+        case .project(let projectID):
+            writingProjectOptions.first(where: { $0.id == projectID })?.name ?? "Nest"
+        case .tag(let tagID):
+            writingTagOptions.first(where: { $0.id == tagID }).map { "#\($0.label)" } ?? "Tag"
+        }
+    }
+
+    private var privateWritingProjectOptions: [CaptureLibraryWritingProjectOption] {
+        writingProjectOptions.filter(\.isHome)
+    }
+
+    private var ownedWritingProjectOptions: [CaptureLibraryWritingProjectOption] {
+        writingProjectOptions.filter { !$0.isHome && $0.isOwned }
+    }
+
+    private var sharedWritingProjectOptions: [CaptureLibraryWritingProjectOption] {
+        writingProjectOptions.filter { !$0.isHome && !$0.isOwned }
+    }
+
+    private var writingFilterBar: some View {
+        HStack(spacing: 10) {
+            Menu {
+                Button {
+                    writingScope = .all
+                } label: {
+                    Label("All writing", systemImage: writingScope == .all ? "checkmark" : "doc.on.doc")
+                }
+
+                if !privateWritingProjectOptions.isEmpty {
+                    Section("Private") {
+                        ForEach(privateWritingProjectOptions) { project in
+                            Button {
+                                writingScope = .project(project.id)
+                            } label: {
+                                Label(
+                                    project.name,
+                                    systemImage: writingScope == .project(project.id)
+                                        ? "checkmark"
+                                        : "person.crop.circle"
+                                )
+                            }
+                        }
+                    }
+                }
+
+                if !ownedWritingProjectOptions.isEmpty {
+                    Section("Owned by you") {
+                        ForEach(ownedWritingProjectOptions) { project in
+                            Button {
+                                writingScope = .project(project.id)
+                            } label: {
+                                Label(
+                                    project.name,
+                                    systemImage: writingScope == .project(project.id)
+                                        ? "checkmark"
+                                        : "q.circle.fill"
+                                )
+                            }
+                        }
+                    }
+                }
+
+                if !sharedWritingProjectOptions.isEmpty {
+                    Section("Shared with you") {
+                        ForEach(sharedWritingProjectOptions) { project in
+                            Button {
+                                writingScope = .project(project.id)
+                            } label: {
+                                Label(
+                                    project.name,
+                                    systemImage: writingScope == .project(project.id)
+                                        ? "checkmark"
+                                        : "person.2"
+                                )
+                            }
+                        }
+                    }
+                }
+
+                if !writingTagOptions.isEmpty {
+                    Section("Tags") {
+                        ForEach(writingTagOptions) { tag in
+                            Button {
+                                writingScope = .tag(tag.id)
+                            } label: {
+                                Label(
+                                    tag.label,
+                                    systemImage: writingScope == .tag(tag.id) ? "checkmark" : "tag"
+                                )
+                            }
+                        }
+                    }
+                }
+            } label: {
+                Label(writingScopeLabel, systemImage: "line.3.horizontal.decrease.circle")
+                    .lineLimit(1)
+                    .frame(minHeight: 44)
+            }
+            .buttonStyle(.bordered)
+            .accessibilityLabel("Filter writing, \(writingScopeLabel)")
+            .accessibilityIdentifier("CaptureLibraryWritingFilter")
+
+            Menu {
+                ForEach(CaptureLibraryWritingSort.allCases) { option in
+                    Button {
+                        writingSort = option
+                    } label: {
+                        Label(
+                            option.rawValue,
+                            systemImage: writingSort == option ? "checkmark" : option.systemImage
+                        )
+                    }
+                }
+            } label: {
+                Label(writingSort.rawValue, systemImage: writingSort.systemImage)
+                    .frame(minHeight: 44)
+            }
+            .buttonStyle(.bordered)
+            .accessibilityLabel("Sort writing, \(writingSort.rawValue)")
+            .accessibilityIdentifier("CaptureLibraryWritingSort")
+
+            Spacer(minLength: 0)
+
+            Text("\(displayedWritingCount)")
+                .font(.caption.monospacedDigit().weight(.bold))
+                .foregroundStyle(.secondary)
+                .accessibilityLabel(
+                    displayedWritingCount == 1
+                        ? "1 writing item"
+                        : "\(displayedWritingCount) writing items"
+                )
+                .accessibilityIdentifier("CaptureLibraryWritingCount")
+        }
+        .accessibilityElement(children: .contain)
     }
 
     private var filteredRecordings: [LocalRecording] {
@@ -16693,6 +17033,7 @@ private struct RecorderHero: View {
     @ScaledMetric(relativeTo: .largeTitle) private var timerFontSize: CGFloat = 40
     @ObservedObject private var auth = AuthManager.shared
     @ObservedObject private var recognitionPreferences = VoiceWritingRecognitionPreferences.shared
+    @ObservedObject private var writingStore = VoiceWritingDraftStore.shared
     @State private var showsVoiceWritingTips = false
 
     let session: MobileCaptureSession
@@ -16940,6 +17281,26 @@ private struct RecorderHero: View {
             .buttonStyle(.plain)
             .accessibilityHint("Add names, authors, research terms, and phrases that improve speech recognition.")
             .accessibilityIdentifier("CaptureVoiceWritingVocabularyLink")
+
+            if let automaticRecognitionSummary {
+                Divider()
+
+                Label {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Context from this writing")
+                            .font(.subheadline.weight(.semibold))
+                        Text(automaticRecognitionSummary)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                } icon: {
+                    Image(systemName: "doc.text.magnifyingglass")
+                        .foregroundStyle(CapturePalette.accent)
+                }
+                .accessibilityHint("Quipsly uses only the visible title, Nest, and tags to improve this recording. It does not feed the document body to speech recognition.")
+                .accessibilityIdentifier("CaptureVoiceWritingAutomaticRecognitionContext")
+            }
         }
         .padding(12)
         .background(
@@ -16948,6 +17309,18 @@ private struct RecorderHero: View {
         )
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("CaptureVoiceWritingSpeechAccuracyCard")
+    }
+
+    private var automaticRecognitionSummary: String? {
+        guard session.isPersonalVoiceNote else { return nil }
+        let phrases = writingStore.recognitionContext(
+            callRoomID: session.callRoomId,
+            ownerAccountID: auth.accountOwnerID
+        )?.visiblePhrases ?? []
+        guard !phrases.isEmpty else { return nil }
+        let shown = phrases.prefix(3).joined(separator: " · ")
+        let remainder = phrases.count - min(phrases.count, 3)
+        return remainder > 0 ? "\(shown) · +\(remainder) more" : shown
     }
 
     private var voiceWritingTips: some View {

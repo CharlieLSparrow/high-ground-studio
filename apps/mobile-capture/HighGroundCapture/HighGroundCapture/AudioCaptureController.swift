@@ -786,8 +786,15 @@ final class AudioCaptureController: NSObject, ObservableObject {
         let recognitionProfile = VoiceWritingRecognitionPreferences.shared.profile(
             for: recognitionOwner
         )
-        let contextualPhrases = VoiceWritingRecognitionPreferences.shared.learnedPhrases(
-            for: recognitionOwner
+        let contextualPhrases = VoiceWritingRecognitionContext.mergedPhrases(
+            learnedPhrases: VoiceWritingRecognitionPreferences.shared.learnedPhrases(
+                for: recognitionOwner
+            ),
+            sessionTitle: activeCallRoomId == nil ? nil : activeCallRoomLabel,
+            context: VoiceWritingDraftStore.shared.recognitionContext(
+                callRoomID: activeCallRoomId,
+                ownerAccountID: recognitionOwner
+            )
         )
 
         let prepared = await VoiceWritingLiveSourceFactory.prepareIfAvailable(

@@ -788,8 +788,12 @@ final class OnDeviceTranscriptManager: ObservableObject {
             let recognitionProfile = VoiceWritingRecognitionPreferences.shared.profile(
                 for: ownerAccountId
             )
-            let contextualPhrases = VoiceWritingRecognitionPreferences.shared.learnedPhrases(
-                for: ownerAccountId
+            let contextualPhrases = VoiceWritingRecognitionContext.mergedPhrases(
+                learnedPhrases: VoiceWritingRecognitionPreferences.shared.learnedPhrases(
+                    for: ownerAccountId
+                ),
+                sessionTitle: recording.sessionTitle,
+                context: VoiceWritingDraftStore.shared.recognitionContext(for: recording)
             )
             let before = try await Task.detached(priority: .utility) {
                 try OnDeviceTranscriptSource.fingerprint(fileURL)

@@ -5,7 +5,7 @@ CAPTURE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 REPO_ROOT="$(git -C "$CAPTURE_ROOT" rev-parse --show-toplevel)"
 PROJECT_PATH="$CAPTURE_ROOT/HighGroundCapture.xcodeproj"
 SCHEME="HighGroundCapture"
-DEVICE_NAME="${QUIPSLY_CAPTURE_SCREENSHOT_DEVICE:-iPhone 17 Pro Max}"
+REQUESTED_DEVICE_NAME="${QUIPSLY_CAPTURE_SCREENSHOT_DEVICE:-}"
 DEVELOPER_DIR="${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}"
 export DEVELOPER_DIR
 
@@ -18,25 +18,40 @@ ATTACHMENT_DIRECTORY="$OUTPUT_ROOT/xcresult-attachments"
 DERIVED_DATA="$OUTPUT_ROOT/DerivedData"
 METADATA_PATH="$REPO_ROOT/release/app-store/quipsly-capture/en-US.json"
 
-DEVICE_ID="$(
+DEVICE_RECORD="$(
   xcrun simctl list devices available --json |
     node -e '
       let input = "";
       process.stdin.on("data", (chunk) => { input += chunk; });
       process.stdin.on("end", () => {
-        const name = process.argv[1];
+        const requestedName = process.argv[1];
         const devices = Object.values(JSON.parse(input).devices).flat();
-        const match = devices.find((device) => device.name === name && device.isAvailable);
+        const preferredNames = [
+          "Quipsly App Store 17 Pro Max",
+          "iPhone 17 Pro Max",
+          "iPhone 17 Pro",
+        ];
+        const match = requestedName
+          ? devices.find((device) => device.name === requestedName && device.isAvailable)
+          : preferredNames
+              .map((name) => devices.find((device) => device.name === name && device.isAvailable))
+              .find(Boolean);
         if (!match) process.exit(2);
-        process.stdout.write(match.udid);
+        process.stdout.write(`${match.udid}|${match.name}`);
       });
-    ' "$DEVICE_NAME"
+    ' "$REQUESTED_DEVICE_NAME"
 )" || {
-  echo "FAIL No available simulator named $DEVICE_NAME." >&2
+  if [[ -n "$REQUESTED_DEVICE_NAME" ]]; then
+    echo "FAIL No available simulator named $REQUESTED_DEVICE_NAME." >&2
+  else
+    echo "FAIL No supported iPhone screenshot simulator is available." >&2
+  fi
   echo "Available devices:" >&2
   xcrun simctl list devices available >&2
   exit 1
 }
+DEVICE_ID="${DEVICE_RECORD%%|*}"
+DEVICE_NAME="${DEVICE_RECORD#*|}"
 
 mkdir -p "$OUTPUT_ROOT"
 xcrun simctl boot "$DEVICE_ID" >/dev/null 2>&1 || true

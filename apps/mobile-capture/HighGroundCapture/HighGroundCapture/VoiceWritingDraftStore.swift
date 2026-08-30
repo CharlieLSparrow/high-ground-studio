@@ -208,6 +208,43 @@ final class VoiceWritingDraftStore: ObservableObject {
         drafts.first { $0.id == id }
     }
 
+    /// Returns only deliberate document-level recognition context for the
+    /// signed-in owner. Body text stays out of speech configuration: context
+    /// should improve names and topics without silently biasing recognition
+    /// toward everything a person has written.
+    func recognitionContext(
+        callRoomID: String?,
+        ownerAccountID: String?
+    ) -> VoiceWritingRecognitionContext? {
+        guard let owner = Self.normalizedOwnerID(ownerAccountID),
+              owner == Self.normalizedOwnerID(activeOwnerAccountID),
+              let roomID = callRoomID?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !roomID.isEmpty else { return nil }
+
+        let pendingDraftID = pendingContinuations.first(where: {
+            $0.ownerAccountID == owner && $0.callRoomID == roomID
+        })?.draftID
+        let draft = storedDrafts.first(where: {
+            $0.ownerAccountID == owner
+                && ($0.id == pendingDraftID
+                    || $0.callRoomID == roomID
+                    || $0.allSources.contains(where: { $0.callRoomID == roomID }))
+        })
+        guard let draft else { return nil }
+        return VoiceWritingRecognitionContext(
+            documentTitle: draft.title,
+            nestName: draft.canonicalProjectName,
+            tagLabels: (draft.canonicalTags ?? []).map(\.label)
+        )
+    }
+
+    func recognitionContext(for recording: LocalRecording) -> VoiceWritingRecognitionContext? {
+        recognitionContext(
+            callRoomID: recording.voiceWritingCallRoomId,
+            ownerAccountID: recording.ownerAccountID
+        )
+    }
+
     @discardableResult
     func createTypedDraft(now: Date = Date()) throws -> VoiceWritingDraft {
         let owner = try requireActiveOwner()

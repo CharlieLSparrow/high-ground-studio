@@ -1693,6 +1693,7 @@ private struct MobileCoachingPublicTimeSelection: Identifiable {
 struct CaptureCoachingHomeView: View {
     @ObservedObject var model: CaptureExperienceModel
     @Binding var visibleTab: CaptureRootTab
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var showsNewAppointment = false
     @State private var showsWorkingHours = false
     @State private var bookingToReschedule: MobileCoachingBooking?
@@ -2248,7 +2249,7 @@ struct CaptureCoachingHomeView: View {
                     .foregroundStyle(.teal)
                     .accessibilityHidden(true)
             }
-            HStack {
+            createActionLayout {
                 Button {
                     showsNewAppointment = true
                 } label: {
@@ -2272,6 +2273,7 @@ struct CaptureCoachingHomeView: View {
                     showsWorkingHours = true
                 } label: {
                     Label("Availability", systemImage: "clock.badge.checkmark")
+                        .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.bordered)
                 .disabled(client.isMutating || client.isUsingProtectedCache)
@@ -2280,6 +2282,14 @@ struct CaptureCoachingHomeView: View {
             }
         }
         .captureCard()
+    }
+
+    private var createActionLayout: AnyLayout {
+        if dynamicTypeSize.isAccessibilitySize {
+            AnyLayout(VStackLayout(spacing: 10))
+        } else {
+            AnyLayout(HStackLayout(spacing: 10))
+        }
     }
 
     @ViewBuilder

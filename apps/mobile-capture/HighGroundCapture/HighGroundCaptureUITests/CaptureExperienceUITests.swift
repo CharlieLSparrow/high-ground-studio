@@ -235,6 +235,62 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(app.buttons["CaptureVoiceWritingShareMenu"].exists)
     }
 
+    func testHomeStartsKeyboardWritingWithoutALibraryDetour() {
+        XCTAssertTrue(app.scrollViews["CaptureTodayView"].waitForExistence(timeout: 5))
+        let startWriting = app.buttons["CaptureStartWriting"]
+        XCTAssertTrue(
+            startWriting.isHittable,
+            "Someone who cannot or does not want to speak should not have to discover Library before starting a paper."
+        )
+
+        startWriting.tap()
+        XCTAssertTrue(
+            app.descendants(matching: .any)["CaptureVoiceWritingEditor"]
+                .waitForExistence(timeout: 5),
+            "The Home keyboard action should open the canonical private editor directly."
+        )
+        XCTAssertFalse(app.tabBars.firstMatch.exists)
+        XCTAssertTrue(app.textFields["CaptureVoiceWritingTitle"].exists)
+        XCTAssertTrue(app.descendants(matching: .any)["CaptureVoiceWritingBody"].exists)
+        XCTAssertFalse(
+            app.buttons["Transcript"].exists,
+            "Keyboard-first writing must not invent an audio source or transcript."
+        )
+    }
+
+    func testLibraryOrganizesWritingWithoutAnotherPlanningSurface() {
+        app.terminate()
+        app.launchArguments = [
+            "--capture-ui-preview",
+            "--capture-app-store-presentation",
+            "--capture-ui-preview-tab=library",
+        ]
+        app.launch()
+        XCTAssertTrue(app.navigationBars["Library"].waitForExistence(timeout: 12))
+
+        let filter = app.buttons["CaptureLibraryWritingFilter"]
+        let sort = app.buttons["CaptureLibraryWritingSort"]
+        XCTAssertTrue(filter.waitForExistence(timeout: 5))
+        XCTAssertTrue(sort.exists)
+        XCTAssertTrue(filter.label.localizedCaseInsensitiveContains("All writing"))
+        XCTAssertTrue(sort.label.localizedCaseInsensitiveContains("Recent"))
+        XCTAssertEqual(
+            app.staticTexts["CaptureLibraryWritingCount"].label,
+            "1 writing item",
+            "The accessible count should describe the visible preview writing instead of an implementation-only backing store."
+        )
+
+        sort.tap()
+        let titleSort = app.buttons["Title"]
+        XCTAssertTrue(titleSort.waitForExistence(timeout: 3))
+        titleSort.tap()
+        XCTAssertTrue(
+            sort.label.localizedCaseInsensitiveContains("Title"),
+            "Sorting should happen directly in Library without creating another management screen."
+        )
+        XCTAssertTrue(app.staticTexts["What I want to explore next"].exists)
+    }
+
     func testHomeStaysCalmWhileDeeperToolsRemainReachable() {
         XCTAssertTrue(app.scrollViews["CaptureTodayView"].waitForExistence(timeout: 5))
         XCTAssertFalse(
