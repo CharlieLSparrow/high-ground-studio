@@ -15172,9 +15172,11 @@ private struct CaptureLibraryPreviewWritingCard: View {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("What I want to explore next")
                             .font(.headline)
+                            .fixedSize(horizontal: false, vertical: true)
                         Text("Edited a few minutes ago")
                             .font(.caption)
                             .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
                     Spacer()
                     Image(systemName: "chevron.right")
