@@ -2102,9 +2102,42 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(
             app.otherElements["CaptureNestSwitcher"].waitForExistence(timeout: 5)
         )
+        XCTAssertTrue(
+            app.staticTexts["Spaces in High Ground Odyssey"].exists,
+            "The location switcher should expose real collaboration Spaces inside the selected Nest."
+        )
+        let coachingSpace = app.buttons[
+            "CaptureSpaceSwitcherChoice_coaching:preview-engagement"
+        ]
+        XCTAssertTrue(
+            coachingSpace.waitForExistence(timeout: 3),
+            "Repeat coaching Sessions should roll up into one durable client Space."
+        )
+        XCTAssertTrue(coachingSpace.label.contains("Coaching with Homer"))
+        coachingSpace.tap()
+        XCTAssertTrue(
+            app.scrollViews["CaptureRecorderView"].waitForExistence(timeout: 5),
+            "Opening a Space should land in its working Session surface."
+        )
+        let coachingLocation = expectation(
+            for: NSPredicate(
+                format: "value == %@",
+                "High Ground Odyssey, Coaching with Homer"
+            ),
+            evaluatedWith: location
+        )
+        wait(for: [coachingLocation], timeout: 5)
+
+        location.tap()
+        XCTAssertTrue(
+            app.otherElements["CaptureNestSwitcher"].waitForExistence(timeout: 5)
+        )
         let researchNest = app.buttons[
             "CaptureNestSwitcherChoice_preview-doctoral-research"
         ]
+        if !researchNest.exists {
+            app.otherElements["CaptureNestSwitcher"].swipeUp()
+        }
         XCTAssertTrue(researchNest.waitForExistence(timeout: 3))
         researchNest.tap()
 

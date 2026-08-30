@@ -1477,6 +1477,18 @@ for (const needle of [
   requireIncludes(capturePhoneShellText, needle, "persistent two-level Nest and Space location UX");
 }
 for (const needle of [
+  "private struct CaptureWorkSpaceLocation",
+  "static func project(_ sessions: [MobileCaptureSession])",
+  "session.coachingEngagementId",
+  "session.episodeProductionId",
+  "session.episodeSlug",
+  'Section("Spaces in \\(selectedNest.name)")',
+  'accessibilityIdentifier("CaptureSpaceSwitcherChoice_\\(space.id)")',
+  "onSelectSpace: selectGlobalSpace",
+]) {
+  requireIncludes(capturePhoneShellText, needle, "accessible collaboration Spaces projected inside each Nest");
+}
+for (const needle of [
   "static let canvas = adaptive(",
   "static let canvasLift = adaptive(",
   "static let surface = adaptive(",

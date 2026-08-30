@@ -55,7 +55,9 @@ struct CapturePhoneShell: View {
             CaptureNestSwitcher(
                 projects: model.workClient.projects,
                 selectedProjectID: visibleContextNest?.id,
-                onSelect: selectGlobalNest
+                spaces: workSpaces,
+                onSelect: selectGlobalNest,
+                onSelectSpace: selectGlobalSpace
             )
         }
         .alert("Capture needs attention", isPresented: errorIsPresented) {
@@ -255,6 +257,10 @@ struct CapturePhoneShell: View {
         }
     }
 
+    private var workSpaces: [CaptureWorkSpaceLocation] {
+        CaptureWorkSpaceLocation.project(model.scheduledSessions)
+    }
+
     private func selectGlobalNest(_ project: MobileCaptureWorkProject) {
         visibleTab = .work
         if model.usesPreviewData {
@@ -262,6 +268,17 @@ struct CapturePhoneShell: View {
         } else {
             Task { await model.workClient.load(projectID: project.id) }
         }
+    }
+
+    private func selectGlobalSpace(_ space: CaptureWorkSpaceLocation) {
+        guard let session = model.sessions.first(where: {
+            $0.id == space.representativeSessionID
+        }) else {
+            model.errorMessage = "That Space is not available on this device yet. Refresh and try again."
+            return
+        }
+        model.select(session)
+        visibleTab = .record
     }
 
     private var captureTabs: some View {
@@ -1536,13 +1553,148 @@ private struct CaptureGoalMergedEvidenceCard: View {
     }
 }
 
+private struct CaptureWorkSpaceLocation: Identifiable, Equatable {
+    enum Kind: String {
+        case coaching
+        case episode
+        case session
+
+        var title: String {
+            switch self {
+            case .coaching: "Coaching"
+            case .episode: "Episode"
+            case .session: "Session"
+            }
+        }
+
+        var systemImage: String {
+            switch self {
+            case .coaching: "person.2.fill"
+            case .episode: "mic.and.signal.meter.fill"
+            case .session: "bubble.left.and.waveform.fill"
+            }
+        }
+    }
+
+    let id: String
+    let nestID: String
+    let name: String
+    let kind: Kind
+    let representativeSessionID: String
+    let sessionCount: Int
+    let nextScheduledStart: String?
+
+    var detail: String {
+        let count = "\(sessionCount) session\(sessionCount == 1 ? "" : "s")"
+        guard let nextScheduledStart,
+              let date = ISO8601DateFormatter().date(from: nextScheduledStart) else {
+            return "\(kind.title) · \(count)"
+        }
+        let timing = Calendar.current.isDateInToday(date)
+            ? "Today at \(date.formatted(date: .omitted, time: .shortened))"
+            : date.formatted(date: .abbreviated, time: .shortened)
+        return "\(kind.title) · \(count) · \(timing)"
+    }
+
+    static func project(_ sessions: [MobileCaptureSession]) -> [CaptureWorkSpaceLocation] {
+        struct Seed {
+            let id: String
+            let nestID: String
+            let name: String
+            let kind: Kind
+            var sessions: [MobileCaptureSession]
+        }
+
+        var order: [String] = []
+        var seeds: [String: Seed] = [:]
+        for session in sessions where !session.isPersonalVoiceNote {
+            guard let nestID = session.projectId?.nonempty else { continue }
+            let identity: String
+            let kind: Kind
+            let name: String
+            if let engagementID = session.coachingEngagementId?.nonempty {
+                identity = "coaching:\(engagementID)"
+                kind = .coaching
+                if let engagementTitle = session.coachingEngagementTitle?.nonempty {
+                    name = engagementTitle
+                } else if let clientLabel = session.clientLabel?.nonempty {
+                    name = "Coaching with \(clientLabel)"
+                } else {
+                    name = session.title
+                }
+            } else if let episodeID = session.episodeProductionId?.nonempty {
+                identity = "episode:\(episodeID)"
+                kind = .episode
+                name = session.title.nonempty ?? "Podcast episode"
+            } else if let episodeSlug = session.episodeSlug?.nonempty {
+                identity = "episode-slug:\(episodeSlug)"
+                kind = .episode
+                name = session.title.nonempty ?? episodeSlug.replacingOccurrences(of: "-", with: " ").capitalized
+            } else {
+                identity = "session:\(session.id)"
+                kind = .session
+                name = session.title.nonempty ?? "Untitled Session"
+            }
+            let key = "\(nestID):\(identity)"
+            if var seed = seeds[key] {
+                seed.sessions.append(session)
+                seeds[key] = seed
+            } else {
+                order.append(key)
+                seeds[key] = Seed(
+                    id: identity,
+                    nestID: nestID,
+                    name: name,
+                    kind: kind,
+                    sessions: [session]
+                )
+            }
+        }
+
+        return order.compactMap { key in
+            guard let seed = seeds[key] else { return nil }
+            let chronologically = seed.sessions.sorted { left, right in
+                switch (left.scheduledStart, right.scheduledStart) {
+                case let (left?, right?): return left < right
+                case (_?, nil): return true
+                case (nil, _?): return false
+                case (nil, nil): return left.id < right.id
+                }
+            }
+            let active = chronologically.filter {
+                !["ENDED", "CANCELED", "FAILED"].contains(($0.status ?? "").uppercased())
+            }
+            let representative = active.first ?? chronologically.last ?? seed.sessions[0]
+            return CaptureWorkSpaceLocation(
+                id: seed.id,
+                nestID: seed.nestID,
+                name: seed.name,
+                kind: seed.kind,
+                representativeSessionID: representative.id,
+                sessionCount: seed.sessions.count,
+                nextScheduledStart: active.first?.scheduledStart
+            )
+        }
+        .sorted { left, right in
+            switch (left.nextScheduledStart, right.nextScheduledStart) {
+            case let (left?, right?): return left < right
+            case (_?, nil): return true
+            case (nil, _?): return false
+            case (nil, nil): return left.name.localizedCaseInsensitiveCompare(right.name) == .orderedAscending
+            }
+        }
+    }
+}
+
 private struct CaptureNestSwitcher: View {
     @Environment(\.dismiss) private var dismiss
     @State private var searchText = ""
 
     let projects: [MobileCaptureWorkProject]
     let selectedProjectID: String?
+    let spaces: [CaptureWorkSpaceLocation]
     let onSelect: (MobileCaptureWorkProject) -> Void
+    let onSelectSpace: (CaptureWorkSpaceLocation) -> Void
 
     private var normalizedQuery: String {
         searchText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1568,13 +1720,29 @@ private struct CaptureNestSwitcher: View {
         filteredProjects.filter { !$0.isHomeNest && $0.role != "OWNER" }
     }
 
+    private var selectedNest: MobileCaptureWorkProject? {
+        projects.first { $0.id == selectedProjectID }
+    }
+
+    private var selectedNestSpaces: [CaptureWorkSpaceLocation] {
+        guard normalizedQuery.isEmpty else {
+            return spaces.filter {
+                $0.nestID == selectedProjectID
+                    && ($0.name.localizedCaseInsensitiveContains(normalizedQuery)
+                        || $0.kind.title.localizedCaseInsensitiveContains(normalizedQuery))
+            }
+        }
+        return spaces.filter { $0.nestID == selectedProjectID }
+    }
+
     var body: some View {
         NavigationStack {
             Group {
-                if filteredProjects.isEmpty {
+                if filteredProjects.isEmpty && selectedNestSpaces.isEmpty {
                     ContentUnavailableView.search(text: normalizedQuery)
                 } else {
                     List {
+                        spaceSection
                         nestSection("Private", projects: privateProjects)
                         nestSection("Owned by you", projects: ownedProjects)
                         nestSection("Shared with you", projects: sharedProjects)
@@ -1582,12 +1750,12 @@ private struct CaptureNestSwitcher: View {
                     .listStyle(.insetGrouped)
                 }
             }
-            .navigationTitle("Choose a Nest")
+            .navigationTitle("Choose where to work")
             .navigationBarTitleDisplayMode(.inline)
             .searchable(
                 text: $searchText,
                 placement: .navigationBarDrawer(displayMode: .always),
-                prompt: "Search your Nests"
+                prompt: "Search Nests and Spaces"
             )
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -1598,6 +1766,51 @@ private struct CaptureNestSwitcher: View {
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
         .accessibilityIdentifier("CaptureNestSwitcher")
+    }
+
+    @ViewBuilder
+    private var spaceSection: some View {
+        if let selectedNest, !selectedNestSpaces.isEmpty {
+            Section("Spaces in \(selectedNest.name)") {
+                ForEach(selectedNestSpaces) { space in
+                    Button {
+                        onSelectSpace(space)
+                        dismiss()
+                    } label: {
+                        HStack(spacing: 12) {
+                            Image(systemName: space.kind.systemImage)
+                                .font(.title3.weight(.semibold))
+                                .foregroundStyle(.white)
+                                .frame(width: 40, height: 40)
+                                .background(CapturePalette.accentGradient, in: RoundedRectangle(cornerRadius: 13))
+                                .accessibilityHidden(true)
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(space.name)
+                                    .font(.body.weight(.semibold))
+                                    .foregroundStyle(.primary)
+                                    .multilineTextAlignment(.leading)
+                                Text(space.detail)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .multilineTextAlignment(.leading)
+                            }
+                            Spacer(minLength: 8)
+                            Image(systemName: "chevron.right")
+                                .font(.caption.weight(.bold))
+                                .foregroundStyle(.tertiary)
+                                .accessibilityHidden(true)
+                        }
+                        .frame(maxWidth: .infinity, minHeight: 54, alignment: .leading)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(space.name)
+                    .accessibilityValue(space.detail)
+                    .accessibilityHint("Opens this collaboration Space.")
+                    .accessibilityIdentifier("CaptureSpaceSwitcherChoice_\(space.id)")
+                }
+            }
+        }
     }
 
     @ViewBuilder
@@ -1950,7 +2163,9 @@ private struct CaptureWorkView: View {
             CaptureNestSwitcher(
                 projects: client.projects,
                 selectedProjectID: selectedProject?.id,
-                onSelect: selectProject
+                spaces: CaptureWorkSpaceLocation.project(model.scheduledSessions),
+                onSelect: selectProject,
+                onSelectSpace: openSpace
             )
         }
         .sheet(isPresented: $showsTagVocabulary) {
@@ -2287,6 +2502,17 @@ private struct CaptureWorkView: View {
                 selectedProjectID = client.selectedProjectID
             }
         }
+    }
+
+    private func openSpace(_ space: CaptureWorkSpaceLocation) {
+        guard let session = model.sessions.first(where: {
+            $0.id == space.representativeSessionID
+        }) else {
+            model.errorMessage = "That Space is not available on this device yet. Refresh and try again."
+            return
+        }
+        model.select(session)
+        visibleTab = .record
     }
 
     private struct SearchSection: Identifiable {
