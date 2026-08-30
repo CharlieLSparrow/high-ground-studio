@@ -420,7 +420,7 @@ export async function PATCH(request: Request) {
 
     const destination = await tx.studioProject.findUnique({
       where: { id: destinationProjectId },
-      select: { id: true, slug: true, name: true },
+      select: { id: true, slug: true, name: true, sourceLabel: true },
     });
     if (!destination) return { kind: "destination-missing" as const };
     const access = await resolveStudioProjectAccess({
@@ -431,6 +431,10 @@ export async function PATCH(request: Request) {
       prisma: tx,
     });
     if (!access.allowed) return { kind: "destination-forbidden" as const };
+    if (visibility === "nest"
+      && String(destination.sourceLabel || "").includes("nest-kind:home")) {
+      return { kind: "home-private" as const };
+    }
 
     const previousProjectId = document.projectId;
     const changesProject = previousProjectId !== destination.id;
@@ -513,6 +517,12 @@ export async function PATCH(request: Request) {
     return NextResponse.json(
       { ok: false, code: "VOICE_WRITING_DESTINATION_FORBIDDEN", error: "Editor access is required to file writing in that Nest." },
       { status: 403 },
+    );
+  }
+  if (result.kind === "home-private") {
+    return NextResponse.json(
+      { ok: false, code: "VOICE_WRITING_HOME_PRIVATE", error: "My Nest is private. Choose another Nest to share this writing." },
+      { status: 400 },
     );
   }
   if (result.kind === "identity-conflict") {

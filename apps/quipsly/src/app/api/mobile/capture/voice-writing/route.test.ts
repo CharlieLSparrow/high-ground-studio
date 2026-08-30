@@ -540,6 +540,48 @@ describe("mobile voice-writing continuation", () => {
     });
   });
 
+  it("keeps My Nest private even if a stale client asks to share there", async () => {
+    jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({
+      user: { id: "actor-1", primaryEmail: "person@example.com" },
+    } as never);
+    jest.mocked(resolveStudioProjectAccess).mockResolvedValue({ allowed: true, role: "OWNER" } as never);
+    const update = jest.fn();
+    const transaction = jest.fn(async (callback: (tx: unknown) => unknown) => callback({
+      studioDocument: {
+        findFirst: jest.fn().mockResolvedValue(storedVoiceDocument()),
+        update,
+      },
+      studioDocumentOperation: { findUnique: jest.fn().mockResolvedValue(null) },
+      studioProject: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "project-home",
+          name: "Person Home Nest",
+          slug: "person-home",
+          sourceLabel: "nest-kind:home",
+        }),
+      },
+    }));
+    jest.mocked(getPrismaClient).mockReturnValue({ $transaction: transaction } as never);
+
+    const response = await PATCH(new Request("http://localhost/api/mobile/capture/voice-writing", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        draftId,
+        destinationProjectId: "project-home",
+        expectedProjectId: "project-home",
+        visibility: "nest",
+        clientRequestId: "13131313-1313-4313-8313-131313131313",
+      }),
+    }));
+
+    expect(response.status).toBe(400);
+    expect(update).not.toHaveBeenCalled();
+    await expect(response.json()).resolves.toMatchObject({
+      code: "VOICE_WRITING_HOME_PRIVATE",
+    });
+  });
+
   it("rejects a viewer destination and leaves the private writing untouched", async () => {
     jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({
       user: { id: "actor-1", primaryEmail: "person@example.com" },
