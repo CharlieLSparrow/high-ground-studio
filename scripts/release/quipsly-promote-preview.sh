@@ -156,11 +156,15 @@ gcloud run services update-traffic "${SERVICE_NAME}" \
 if PROJECT_ID="${PROJECT_ID}" \
   REGION="${REGION}" \
   SERVICE_NAME="${SERVICE_NAME}" \
-  bash "${repo_root}/scripts/release/quipsly-production-status.sh"; then
+  bash "${repo_root}/scripts/release/quipsly-production-status.sh" \
+  && PROJECT_ID="${PROJECT_ID}" \
+    REGION="${REGION}" \
+    SERVICE_NAME="${SERVICE_NAME}" \
+    bash "${repo_root}/scripts/release/quipsly-transcript-follow-through-scheduler.sh"; then
   echo "Current traffic after promotion:"
   "${repo_root}/scripts/release/quipsly-traffic.sh"
 else
-  echo "Production readback failed; rolling traffic back to ${previous_revision}." >&2
+  echo "Production or transcript automation readback failed; rolling traffic back to ${previous_revision}." >&2
   gcloud run services update-traffic "${SERVICE_NAME}" \
     --project="${PROJECT_ID}" \
     --region="${REGION}" \

@@ -200,6 +200,7 @@ test("promotion smokes and promotes one immutable source-bound revision", () => 
 
 test("failed production readback rolls back to the previous revision", () => {
   assert.match(promote, /quipsly-production-status\.sh/);
+  assert.match(promote, /quipsly-transcript-follow-through-scheduler\.sh/);
   assert.match(promote, /rolling traffic back to \$\{previous_revision\}/);
   assert.match(promote, /--to-revisions="\$\{previous_revision\}=100"/);
   assert.match(promote, /Number\(entry\.percent \|\| 0\) === 100 && entry\.revisionName/);

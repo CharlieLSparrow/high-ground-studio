@@ -19,18 +19,60 @@ if [[ ! "${PROJECT_ID}" =~ ^[a-z][a-z0-9-]{4,62}$ ]] \
   exit 2
 fi
 
-service_url="$(
+service_json="$(
   gcloud run services describe "${SERVICE_NAME}" \
     --project="${PROJECT_ID}" \
     --region="${REGION}" \
-    --format='value(status.url)'
+    --format=json
 )"
+read -r service_url live_revision < <(
+  SERVICE_JSON="${service_json}" node <<'NODE'
+const service = JSON.parse(process.env.SERVICE_JSON || "{}");
+const live = (service.status?.traffic || []).filter(
+  (entry) => Number(entry.percent || 0) === 100 && entry.revisionName,
+);
+if (live.length !== 1) {
+  throw new Error("Transcript follow-through activation requires exactly one live revision.");
+}
+process.stdout.write(`${String(service.status?.url || "")} ${live[0].revisionName}\n`);
+NODE
+)
 if [[ ! "${service_url}" =~ ^https://[a-z0-9-]+-[a-z0-9]+\.[a-z0-9-]+\.run\.app$ ]]; then
   echo "Could not resolve the immutable Cloud Run service audience." >&2
   exit 2
 fi
+if [[ ! "${live_revision}" =~ ^[a-z][a-z0-9-]{0,62}$ ]]; then
+  echo "Could not resolve the immutable live Cloud Run revision." >&2
+  exit 2
+fi
 target_uri="${service_url}/api/cron/capture-transcript-follow-through"
 service_account_id="${SCHEDULER_SERVICE_ACCOUNT%%@*}"
+
+live_revision_json="$(
+  gcloud run revisions describe "${live_revision}" \
+    --project="${PROJECT_ID}" \
+    --region="${REGION}" \
+    --format=json
+)"
+REVISION_JSON="${live_revision_json}" \
+EXPECTED_AUDIENCE="${service_url}" \
+EXPECTED_SERVICE_ACCOUNT="${SCHEDULER_SERVICE_ACCOUNT}" \
+node <<'NODE'
+const revision = JSON.parse(process.env.REVISION_JSON || "{}");
+const env = Object.fromEntries(
+  (revision.spec?.containers?.[0]?.env || []).map((entry) => [entry.name, entry.value]),
+);
+const failures = [];
+if (env.CAPTURE_TRANSCRIPT_FOLLOW_THROUGH_AUDIENCE !== process.env.EXPECTED_AUDIENCE) {
+  failures.push("live revision audience");
+}
+if (env.CAPTURE_TRANSCRIPT_FOLLOW_THROUGH_SERVICE_ACCOUNT !== process.env.EXPECTED_SERVICE_ACCOUNT) {
+  failures.push("live revision service account");
+}
+if (failures.length) {
+  throw new Error(`Transcript follow-through live revision mismatch: ${failures.join(", ")}`);
+}
+NODE
 
 gcloud services enable cloudscheduler.googleapis.com \
   --project="${PROJECT_ID}" \
@@ -74,6 +116,22 @@ else
   gcloud scheduler jobs create http "${SCHEDULER_JOB}" "${scheduler_args[@]}"
 fi
 
+# Updating a paused Cloud Scheduler job does not reliably resume it. A paused
+# maintenance loop looks correctly configured but leaves completed transcripts
+# waiting until somebody opens Sessions, so activation must restore liveness.
+scheduler_state="$(
+  gcloud scheduler jobs describe "${SCHEDULER_JOB}" \
+    --project="${PROJECT_ID}" \
+    --location="${SCHEDULER_REGION}" \
+    --format='value(state)'
+)"
+if [[ "${scheduler_state}" == "PAUSED" ]]; then
+  gcloud scheduler jobs resume "${SCHEDULER_JOB}" \
+    --project="${PROJECT_ID}" \
+    --location="${SCHEDULER_REGION}" \
+    --quiet
+fi
+
 job_json="$(
   gcloud scheduler jobs describe "${SCHEDULER_JOB}" \
     --project="${PROJECT_ID}" \
@@ -94,6 +152,7 @@ if (job.httpTarget?.httpMethod !== "POST") failures.push("HTTP method");
 if (oidc.audience !== process.env.EXPECTED_AUDIENCE) failures.push("OIDC audience");
 if (oidc.serviceAccountEmail !== process.env.EXPECTED_SERVICE_ACCOUNT) failures.push("OIDC service account");
 if (job.schedule !== process.env.EXPECTED_SCHEDULE) failures.push("schedule");
+if (job.state !== "ENABLED") failures.push("enabled state");
 if (JSON.stringify(job).includes("CAPTURE_TRANSCRIPT_FOLLOW_THROUGH_SECRET")) failures.push("embedded secret");
 if (failures.length) {
   process.stderr.write(`Transcript follow-through scheduler readback failed: ${failures.join(", ")}\n`);
