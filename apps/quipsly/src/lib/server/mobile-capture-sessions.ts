@@ -327,6 +327,36 @@ function mobileSourceTranscriptStatusMessage(job: any) {
   return null;
 }
 
+function mobileSourceTranscriptRouting(job: any) {
+  const provider = (label(job?.provider) || "").trim().toLowerCase();
+  const result = sourceJson(job?.resultJson);
+  const fallback = sourceJson(result.deviceCloudFallback);
+  const claimedExecution = (label(result.recognitionExecution) || "")
+    .trim()
+    .toLowerCase();
+  const recognitionExecution = claimedExecution === "on-device"
+    || provider === "apple-speech-transcriber-on-device"
+    ? "on-device"
+    : claimedExecution === "apple-speech-service"
+      || provider === "apple-speech-recognizer-service"
+      ? "apple-speech-service"
+      : provider && provider !== "pending" && provider !== "processing-hold"
+        ? "quipsly-cloud"
+        : Object.keys(fallback).length > 0
+          ? "quipsly-cloud"
+          : "pending";
+  const status = (label(job?.status) || "").trim().toUpperCase();
+  const quipslyCloudASRRequested = recognitionExecution === "quipsly-cloud";
+  return {
+    recognitionExecution,
+    quipslyCloudASRRequested,
+    quipslyCloudASRCompleted:
+      quipslyCloudASRRequested && status === "COMPLETED",
+    fallbackReasonCode:
+      quipslyCloudASRRequested ? label(fallback.reasonCode) : null,
+  };
+}
+
 export function captureSourceSummaries(
   room: any,
   receipts: any[],
@@ -417,6 +447,9 @@ export function captureSourceSummaries(
         recordedStartedAt: asset.recordedStartedAt,
         startReceipt,
       });
+      const transcriptRouting = transcriptJob
+        ? mobileSourceTranscriptRouting(transcriptJob)
+        : null;
 
       return {
         recordingAssetId: asset.id,
@@ -473,6 +506,7 @@ export function captureSourceSummaries(
               errorMessage: mobileSourceTranscriptStatusMessage(transcriptJob),
               segmentCount: transcriptJob._count?.segments ?? 0,
               wordCount: transcriptJob._count?.words ?? 0,
+              ...transcriptRouting,
               providerReceiptReady: Boolean(
                 transcriptJob.providerRequestId &&
                 transcriptJob.providerResponseObject,

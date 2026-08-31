@@ -641,6 +641,9 @@ for (const needle of [
 for (const needle of [
   "struct MobileCaptureSourceTranscriptSummary",
   "let transcript: MobileCaptureSourceTranscriptSummary?",
+  "let recognitionExecution: String?",
+  "let quipslyCloudASRRequested: Bool?",
+  "var transcriptRoutingSupportLine: String",
   "sessions.flatMap { $0.captureSources ?? [] }",
   "OnDeviceTranscriptManager.shared.reconcileCanonicalTranscriptSources",
 ]) {
@@ -652,6 +655,10 @@ for (const needle of [
 }
 for (const needle of [
   "mobileSourceTranscriptStatusMessage",
+  "mobileSourceTranscriptRouting",
+  'recognitionExecution === "quipsly-cloud"',
+  "quipslyCloudASRRequested",
+  "fallbackReasonCode",
   "The exact recording remains safe and can be tried again.",
   "wordCount: transcriptJob._count?.words ?? 0",
 ]) {
@@ -2965,6 +2972,8 @@ requireIncludes(capturePhoneShellText, "No media moves until you review waveform
 requireIncludes(capturePhoneShellText, "without deleting or changing any original", "shipping Studio handoff preserves immutable sources");
 requireIncludes(capturePhoneShellText, "CaptureSourceEvidenceLink_", "shipping Library exposes source evidence");
 requireIncludes(capturePhoneShellText, "CaptureTranscriptReviewLink_", "shipping Library exposes source-linked transcript review");
+requireIncludes(capturePhoneShellText, 'Text("Transcript processing")', "session technical details expose transcript routing without cluttering the ordinary coaching surface");
+requireIncludes(capturePhoneShellText, 'accessibilityIdentifier("CaptureTranscriptRoutingSummary")', "support can identify device Apple-service and Quipsly-cloud transcript work per Session");
 requireIncludes(localEngineMediaVaultConfigText, "'high-ground-odyssey-media'", "local engine media-vault bucket fallback");
 assert(!localEngineMediaVaultConfigText.includes("'high-ground-raw-footage'"), "Local engine must not fall back to the legacy raw-footage bucket.");
 requireIncludes(localEngineMediaVaultConfigText, "'media-vault'", "local engine media-vault path root");

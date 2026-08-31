@@ -514,6 +514,57 @@ struct MobileCaptureSourceTranscriptSummary: Codable, Hashable {
     let errorMessage: String?
     let segmentCount: Int?
     let wordCount: Int?
+    let recognitionExecution: String?
+    let quipslyCloudASRRequested: Bool?
+    let quipslyCloudASRCompleted: Bool?
+    let fallbackReasonCode: String?
+
+    var routingLabel: String {
+        switch recognitionExecution?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased() {
+        case "on-device":
+            return "On iPhone"
+        case "apple-speech-service":
+            return "Apple Speech service"
+        case "quipsly-cloud":
+            return quipslyCloudASRCompleted == true
+                ? "Quipsly cloud fallback"
+                : "Quipsly cloud fallback queued"
+        default:
+            return "Transcript route pending"
+        }
+    }
+
+    var fallbackReasonLabel: String? {
+        guard quipslyCloudASRRequested == true else { return nil }
+        switch fallbackReasonCode?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased() {
+        case "apple-speech-unavailable":
+            return "Apple Speech was unavailable"
+        case "apple-speech-unsupported-locale":
+            return "language unavailable on this iPhone"
+        case "apple-speech-permission-denied":
+            return "Speech permission was unavailable"
+        case "apple-speech-model-install-failed":
+            return "Apple Speech model could not install"
+        case "apple-speech-no-finalized-text":
+            return "Apple Speech returned no final text"
+        case "apple-speech-processing-failed":
+            return "Apple Speech processing failed"
+        case "local-source-unavailable-after-upload":
+            return "verified source was no longer local"
+        case "local-source-changed-after-upload":
+            return "local source verification changed"
+        case "local-transcript-storage-unavailable":
+            return "device could not preserve its transcript"
+        case .some(let reason) where !reason.isEmpty:
+            return reason.replacingOccurrences(of: "-", with: " ")
+        default:
+            return nil
+        }
+    }
 }
 
 struct MobileCaptureSourceSummary: Codable, Identifiable, Hashable {
@@ -1351,6 +1402,45 @@ struct MobileCaptureSession: Codable, Identifiable, Hashable {
         if status == "HELD" || status == "FAILED" { return "Needs review" }
         if status == "QUEUED" { return "Queued" }
         return transcriptJobCount > 0 ? "Transcript pending" : "No transcript"
+    }
+
+    var transcriptRoutingSources: [MobileCaptureSourceSummary] {
+        (captureSources ?? []).filter { $0.transcript != nil }
+    }
+
+    var onDeviceTranscriptSourceCount: Int {
+        transcriptRoutingSources.filter {
+            $0.transcript?.recognitionExecution == "on-device"
+        }.count
+    }
+
+    var appleSpeechServiceTranscriptSourceCount: Int {
+        transcriptRoutingSources.filter {
+            $0.transcript?.recognitionExecution == "apple-speech-service"
+        }.count
+    }
+
+    var quipslyCloudTranscriptSourceCount: Int {
+        transcriptRoutingSources.filter {
+            $0.transcript?.quipslyCloudASRRequested == true
+        }.count
+    }
+
+    var transcriptRoutingSupportLine: String {
+        let pending = max(
+            0,
+            transcriptRoutingSources.count
+                - onDeviceTranscriptSourceCount
+                - appleSpeechServiceTranscriptSourceCount
+                - quipslyCloudTranscriptSourceCount
+        )
+        var parts = [
+            "(onDeviceTranscriptSourceCount) on iPhone",
+            "(appleSpeechServiceTranscriptSourceCount) Apple service",
+            "(quipslyCloudTranscriptSourceCount) Quipsly cloud",
+        ]
+        if pending > 0 { parts.append("\(pending) pending") }
+        return parts.joined(separator: " · ")
     }
 
     var packetBadgeLabel: String {

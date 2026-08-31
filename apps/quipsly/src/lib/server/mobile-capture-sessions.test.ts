@@ -878,6 +878,10 @@ describe("mobile Session canonical capture sources", () => {
               id: "transcript-coach",
               status: "COMPLETED",
               provider: "apple-speech-transcriber-on-device",
+              resultJson: {
+                recognitionExecution: "on-device",
+                providerNetworkRequestMadeByQuipsly: false,
+              },
               errorMessage: null,
               updatedAt: new Date("2026-08-30T18:00:00Z"),
               _count: { segments: 12, words: 180 },
@@ -895,6 +899,11 @@ describe("mobile Session canonical capture sources", () => {
               id: "transcript-client",
               status: "COMPLETED",
               provider: "deepgram",
+              resultJson: {
+                deviceCloudFallback: {
+                  reasonCode: "apple-speech-unsupported-locale",
+                },
+              },
               errorMessage: null,
               updatedAt: new Date("2026-08-30T18:00:01Z"),
               _count: { segments: 9, words: 140 },
@@ -939,6 +948,10 @@ describe("mobile Session canonical capture sources", () => {
           provider: "apple-speech-transcriber-on-device",
           segmentCount: 12,
           wordCount: 180,
+          recognitionExecution: "on-device",
+          quipslyCloudASRRequested: false,
+          quipslyCloudASRCompleted: false,
+          fallbackReasonCode: null,
         }),
       },
       {
@@ -950,9 +963,65 @@ describe("mobile Session canonical capture sources", () => {
           provider: "deepgram",
           segmentCount: 9,
           wordCount: 140,
+          recognitionExecution: "quipsly-cloud",
+          quipslyCloudASRRequested: true,
+          quipslyCloudASRCompleted: true,
+          fallbackReasonCode: "apple-speech-unsupported-locale",
         }),
       },
     ]));
+  });
+
+  it("shows a queued device fallback as cloud ASR requested without claiming it completed", () => {
+    const [source] = captureSourceSummaries(
+      {
+        id: "room-fallback-pending",
+        stateReceipts: [],
+        recordingAssets: [{
+          id: "recording-fallback-pending",
+          roomId: "room-fallback-pending",
+          kind: "LOCAL_AUDIO",
+          status: "VERIFIED",
+          byteSize: BigInt(1_024),
+          checksum: "e".repeat(64),
+          localManifestJson: { exactBytesVerified: true },
+          transcriptJobs: [{
+            id: "transcript-fallback-pending",
+            status: "QUEUED",
+            provider: "pending",
+            resultJson: {
+              deviceCloudFallback: {
+                reasonCode: "apple-speech-model-install-failed",
+              },
+            },
+            updatedAt: new Date("2026-08-30T18:00:02Z"),
+            _count: { segments: 0, words: 0 },
+          }],
+        }],
+      },
+      [{
+        uploadSessionId: "upload-fallback-pending",
+        captureId: "capture-fallback-pending",
+        roomId: "room-fallback-pending",
+        recordingAssetId: "recording-fallback-pending",
+        processingDisposition: "RELEASED",
+        transcriptDisposition: "RELEASED",
+        metadataJson: {
+          immutableUploadBinding: {
+            sha256: "e".repeat(64),
+            sizeBytes: 1_024,
+          },
+        },
+      }],
+      [],
+    );
+
+    expect(source.transcript).toMatchObject({
+      recognitionExecution: "quipsly-cloud",
+      quipslyCloudASRRequested: true,
+      quipslyCloudASRCompleted: false,
+      fallbackReasonCode: "apple-speech-model-install-failed",
+    });
   });
 
   it("offers only the complete newest capture group to Studio", () => {

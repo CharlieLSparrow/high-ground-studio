@@ -12858,6 +12858,51 @@ private struct CaptureSessionTruthPanel: View {
                                 .fixedSize(horizontal: false, vertical: true)
                         }
 
+                        if !session.transcriptRoutingSources.isEmpty {
+                            Divider()
+                            Text("Transcript processing")
+                                .font(.caption.weight(.bold))
+                            Text(session.transcriptRoutingSupportLine)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .accessibilityIdentifier("CaptureTranscriptRoutingSummary")
+
+                            ForEach(session.transcriptRoutingSources.prefix(4)) { source in
+                                VStack(alignment: .leading, spacing: 2) {
+                                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                                        Text(source.fileName?.nonempty ?? "Recording source")
+                                            .font(.caption.weight(.semibold))
+                                            .lineLimit(1)
+                                        Spacer(minLength: 4)
+                                        Text(source.transcript?.routingLabel ?? "Transcript route pending")
+                                            .font(.caption2.weight(.bold))
+                                            .foregroundStyle(
+                                                source.transcript?.quipslyCloudASRRequested == true
+                                                    ? Color.orange
+                                                    : Color.green
+                                            )
+                                            .multilineTextAlignment(.trailing)
+                                    }
+                                    if let reason = source.transcript?.fallbackReasonLabel {
+                                        Text("Fallback reason: \(reason).")
+                                            .font(.caption2)
+                                            .foregroundStyle(.secondary)
+                                            .fixedSize(horizontal: false, vertical: true)
+                                    }
+                                }
+                                .accessibilityElement(children: .combine)
+                                .accessibilityIdentifier(
+                                    "CaptureTranscriptRoutingSource_\(source.recordingAssetId)"
+                                )
+                            }
+
+                            Text("Only the Quipsly cloud count represents Quipsly ASR provider work. Device and Apple-service transcripts are reused when the joint transcript is assembled.")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+
                         CaptureStatusPill(
                             label: session.hasProviderRecordingReceiptSlot
                                 ? "Receipt \(session.providerReceiptStatusLabel)"
