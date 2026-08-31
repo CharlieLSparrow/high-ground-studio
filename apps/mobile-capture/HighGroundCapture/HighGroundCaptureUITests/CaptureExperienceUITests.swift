@@ -3131,6 +3131,7 @@ final class CaptureExperienceUITests: XCTestCase {
         app.launchArguments = launchArguments
         app.launch()
         XCTAssertTrue(app.navigationBars["Sessions"].waitForExistence(timeout: 12))
+        openLocalRecorderIfNeeded()
         let recoveredProjection = app.staticTexts.matching(
             NSPredicate(format: "label CONTAINS %@", "private task alert scheduled on this iPhone")
         ).firstMatch
@@ -3148,6 +3149,7 @@ final class CaptureExperienceUITests: XCTestCase {
         ]
         app.launch()
         XCTAssertTrue(app.navigationBars["Sessions"].waitForExistence(timeout: 12))
+        openLocalRecorderIfNeeded()
         XCTAssertFalse(app.staticTexts.matching(
             NSPredicate(format: "label CONTAINS %@", "private task alert scheduled on this iPhone")
         ).firstMatch.exists)
