@@ -6,6 +6,7 @@ import UIKit
 
 struct CapturePhoneShell: View {
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @EnvironmentObject private var audioCapture: AudioCaptureController
     @EnvironmentObject private var videoCapture: VideoCaptureController
     @EnvironmentObject private var deepLinkRouter: CaptureDeepLinkRouter
@@ -24,19 +25,11 @@ struct CapturePhoneShell: View {
     var body: some View {
         VStack(spacing: 0) {
             activeCaptureBanner
-            if visibleTab != .account {
-                CaptureWorkLocationBar(
-                    nestName: requestedCoachingEngagement?.projectName.nonempty
-                        ?? visibleContextNest?.name
-                        ?? "My Nest",
-                    nestIsPrivate: visibleContextNest?.isHomeNest ?? true,
-                    spaceName: visibleContextSpaceName,
-                    switchDisabled: model.isSessionContextLocked,
-                    onSwitch: { showsGlobalNestSwitcher = true }
-                )
+            if !usesRegularWorkspaceNavigation,
+               visibleTab != .account {
+                workLocationBar
             }
-            captureTabs
-                .modifier(CaptureBottomNavigationEdgeEffect())
+            adaptiveWorkspaceNavigation
         }
             .environmentObject(subscriptionStore)
             .tint(CapturePalette.accent)
@@ -272,6 +265,100 @@ struct CapturePhoneShell: View {
         )
     }
 
+    private var usesRegularWorkspaceNavigation: Bool {
+        UIDevice.current.userInterfaceIdiom == .pad
+            && horizontalSizeClass == .regular
+    }
+
+    private var workLocationBar: some View {
+        CaptureWorkLocationBar(
+            nestName: requestedCoachingEngagement?.projectName.nonempty
+                ?? visibleContextNest?.name
+                ?? "My Nest",
+            nestIsPrivate: visibleContextNest?.isHomeNest ?? true,
+            spaceName: visibleContextSpaceName,
+            switchDisabled: model.isSessionContextLocked,
+            onSwitch: { showsGlobalNestSwitcher = true }
+        )
+    }
+
+    /// Keep the phone-tab and iPad-split shells behind an explicit runtime
+    /// boundary. Combining both large navigation trees in one opaque SwiftUI
+    /// return type can exhaust the smaller main-thread stack on physical
+    /// devices before either platform has rendered its first frame.
+    private var adaptiveWorkspaceNavigation: AnyView {
+        if usesRegularWorkspaceNavigation {
+            return captureIPadWorkspace
+        } else {
+            return AnyView(
+                captureTabs
+                    .modifier(CaptureBottomNavigationEdgeEffect())
+            )
+        }
+    }
+
+    private var sidebarSelection: Binding<CaptureRootTab?> {
+        Binding(
+            get: { visibleTab },
+            set: { selection in
+                if let selection {
+                    visibleTab = selection
+                }
+            }
+        )
+    }
+
+    private var captureIPadWorkspace: AnyView {
+        AnyView(NavigationSplitView {
+            List(selection: sidebarSelection) {
+                Section("Quipsly") {
+                    ForEach(CaptureRootTab.allCases) { tab in
+                        Label(tab.title, systemImage: tab.systemImage)
+                            .tag(tab)
+                            .accessibilityIdentifier(
+                                "CaptureIPadSidebar_\(tab.rawValue)"
+                            )
+                    }
+                }
+
+                Section("Create") {
+                    Button {
+                        showsNewSession = true
+                    } label: {
+                        Label("New Session", systemImage: "calendar.badge.plus")
+                    }
+                    .keyboardShortcut("n", modifiers: [.command])
+                    .accessibilityIdentifier("CaptureIPadNewSession")
+
+                    Button(action: startVoiceNote) {
+                        Label("Speak to write", systemImage: "waveform.circle.fill")
+                    }
+                    .keyboardShortcut("r", modifiers: [.command, .shift])
+                    .accessibilityIdentifier("CaptureIPadSpeakToWrite")
+
+                    Button(action: startWriting) {
+                        Label("Start writing", systemImage: "square.and.pencil")
+                    }
+                    .keyboardShortcut("n", modifiers: [.command, .shift])
+                    .accessibilityIdentifier("CaptureIPadStartWriting")
+                }
+            }
+            .listStyle(.sidebar)
+            .navigationTitle("Quipsly")
+            .accessibilityIdentifier("CaptureIPadSidebar")
+        } detail: {
+            VStack(spacing: 0) {
+                if visibleTab != .account {
+                    workLocationBar
+                }
+                captureDestination(for: visibleTab)
+            }
+            .background(CaptureCanvas())
+            .accessibilityIdentifier("CaptureIPadWorkspace")
+        }
+        .navigationSplitViewStyle(.balanced))
+    }
+
     private func selectGlobalNest(_ project: MobileCaptureWorkProject) {
         requestedCoachingEngagement = nil
         visibleTab = .work
@@ -303,9 +390,36 @@ struct CapturePhoneShell: View {
         visibleTab = .record
     }
 
-    private var captureTabs: some View {
-        TabView(selection: $visibleTab) {
-            NavigationStack {
+    private var captureTabs: AnyView {
+        AnyView(TabView(selection: $visibleTab) {
+            captureDestination(for: .today)
+            .tabItem { Label(CaptureRootTab.today.title, systemImage: CaptureRootTab.today.systemImage) }
+            .tag(CaptureRootTab.today)
+
+            captureDestination(for: .record)
+            .tabItem { Label(CaptureRootTab.record.title, systemImage: CaptureRootTab.record.systemImage) }
+            .tag(CaptureRootTab.record)
+
+            captureDestination(for: .work)
+            .tabItem { Label(CaptureRootTab.work.title, systemImage: CaptureRootTab.work.systemImage) }
+            .tag(CaptureRootTab.work)
+
+            captureDestination(for: .library)
+            .tabItem { Label(CaptureRootTab.library.title, systemImage: CaptureRootTab.library.systemImage) }
+            .tag(CaptureRootTab.library)
+
+            captureDestination(for: .account)
+            .tabItem { Label(CaptureRootTab.account.title, systemImage: CaptureRootTab.account.systemImage) }
+            .tag(CaptureRootTab.account)
+        })
+    }
+
+    private func captureDestination(
+        for tab: CaptureRootTab
+    ) -> AnyView {
+        switch tab {
+        case .today:
+            return AnyView(NavigationStack {
                 CaptureTodayView(
                     model: model,
                     showsNewSession: $showsNewSession,
@@ -313,11 +427,9 @@ struct CapturePhoneShell: View {
                     onStartVoiceNote: startVoiceNote,
                     onStartWriting: startWriting
                 )
-            }
-            .tabItem { Label(CaptureRootTab.today.title, systemImage: CaptureRootTab.today.systemImage) }
-            .tag(CaptureRootTab.today)
-
-            NavigationStack {
+            })
+        case .record:
+            return AnyView(NavigationStack {
                 CaptureRecorderView(
                     model: model,
                     visibleTab: $visibleTab,
@@ -325,22 +437,18 @@ struct CapturePhoneShell: View {
                     requestedLibrarySection: $requestedLibrarySection
                 )
             }
-            .id(recordNavigationResetID)
-            .tabItem { Label(CaptureRootTab.record.title, systemImage: CaptureRootTab.record.systemImage) }
-            .tag(CaptureRootTab.record)
-
-            NavigationStack {
+            .id(recordNavigationResetID))
+        case .work:
+            return AnyView(NavigationStack {
                 CaptureWorkView(
                     model: model,
                     visibleTab: $visibleTab,
                     requestedWritingDraftID: $requestedWritingDraftID,
                     requestedCoachingEngagement: $requestedCoachingEngagement
                 )
-            }
-            .tabItem { Label(CaptureRootTab.work.title, systemImage: CaptureRootTab.work.systemImage) }
-            .tag(CaptureRootTab.work)
-
-            NavigationStack {
+            })
+        case .library:
+            return AnyView(NavigationStack {
                 CaptureLibraryView(
                     model: model,
                     visibleTab: $visibleTab,
@@ -348,19 +456,15 @@ struct CapturePhoneShell: View {
                     requestedSection: $requestedLibrarySection,
                     onStartVoiceNote: startVoiceNote
                 )
-            }
-            .tabItem { Label(CaptureRootTab.library.title, systemImage: CaptureRootTab.library.systemImage) }
-            .tag(CaptureRootTab.library)
-
-            NavigationStack {
+            })
+        case .account:
+            return AnyView(NavigationStack {
                 CaptureAccountView(
                     model: model,
                     visibleTab: $visibleTab,
                     subscriptionStore: subscriptionStore
                 )
-            }
-            .tabItem { Label(CaptureRootTab.account.title, systemImage: CaptureRootTab.account.systemImage) }
-            .tag(CaptureRootTab.account)
+            })
         }
     }
 
@@ -10755,11 +10859,6 @@ private struct CaptureRecorderView: View {
                     }
                     })
 
-                    // Keep the shared notes, tasks, and conversation at the
-                    // room threshold. They are useful before, during, and after
-                    // a call and should not be buried below recording controls.
-                    sessionCollaborationSurface(session)
-
                     AnyView(Group {
                     if model.providerRoom.isConnected
                         || localOnlyRecordingSessionID == session.id
@@ -11020,6 +11119,15 @@ private struct CaptureRecorderView: View {
                             )
                         }
                     }
+
+                    // Keep the familiar call path contiguous: outer room,
+                    // consent, then the recorder. Notes, quick work, and the
+                    // Session conversation remain in this same workspace, but
+                    // they should never interrupt the action a person came
+                    // here to take. This ordering is especially important on
+                    // iPad, where the larger window otherwise makes the
+                    // collaboration cards look like a prerequisite.
+                    sessionCollaborationSurface(session)
 
                     if !session.isPersonalVoiceNote {
                     CaptureRehearsalReadinessCard(

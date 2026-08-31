@@ -252,6 +252,41 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(app.navigationBars["Account"].waitForExistence(timeout: 5))
     }
 
+    func testRegularWidthIPadUsesANativeWorkspaceSidebar() throws {
+        guard app.frame.width >= 700 else {
+            throw XCTSkip("Native sidebar navigation is an iPad regular-width contract.")
+        }
+
+        let sidebar = app.descendants(matching: .any)["CaptureIPadSidebar"]
+        XCTAssertTrue(
+            sidebar.waitForExistence(timeout: 5),
+            "A regular-width iPad should use a native hideable sidebar instead of stretching the iPhone tab bar."
+        )
+        XCTAssertFalse(
+            app.tabBars.firstMatch.exists,
+            "The full-width iPad workspace should reserve the bottom edge for content and recorder controls."
+        )
+        XCTAssertTrue(app.buttons["CaptureIPadNewSession"].exists)
+        XCTAssertTrue(app.buttons["CaptureIPadSpeakToWrite"].exists)
+        XCTAssertTrue(app.buttons["CaptureIPadStartWriting"].exists)
+
+        let sessions = app.staticTexts["CaptureIPadSidebar_record"].firstMatch
+        XCTAssertTrue(sessions.exists)
+        sessions.tap()
+        XCTAssertTrue(
+            app.navigationBars["Sessions"].waitForExistence(timeout: 5),
+            "Sessions should open in the persistent iPad detail workspace without a modal or phone-style navigation detour."
+        )
+        XCTAssertTrue(
+            app.buttons["CaptureSessionChooser"].waitForExistence(timeout: 5),
+            "The iPad detail workspace should expose the selected Session, not an empty navigation shell."
+        )
+        XCTAssertTrue(
+            app.descendants(matching: .any)["CaptureIPadSidebar"].exists,
+            "The workspace sidebar should remain available while the Session detail changes."
+        )
+    }
+
     func testLibraryOffersPrivateKeyboardWritingBesideVoiceWriting() {
         app.terminate()
         app.launchArguments = [

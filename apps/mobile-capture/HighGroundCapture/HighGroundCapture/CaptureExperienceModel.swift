@@ -881,7 +881,8 @@ final class CaptureExperienceModel: ObservableObject {
     func refreshSelectedSessionEntryReadiness() async {
         guard !usesPreviewData,
               !isRefreshing,
-              AuthManager.shared.networkActionsAllowed else { return }
+              AuthManager.shared.networkActionsAllowed,
+              selectedSession?.isLocalPersonalVoiceNoteDraft != true else { return }
 
         isRefreshing = true
         defer { isRefreshing = false }
@@ -1513,7 +1514,7 @@ final class CaptureExperienceModel: ObservableObject {
         )
         sessionClient.sessions.insert(created, at: 0)
         selectedSessionID = created.id
-        message = "Ready to write. Your recording and words start safely on this iPhone."
+        message = "Ready to write. Your recording and words start safely on this device."
         return created
     }
 

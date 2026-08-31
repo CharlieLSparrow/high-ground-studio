@@ -450,8 +450,14 @@ requireRegex(
 );
 requireRegex(projectText, /PRODUCT_BUNDLE_IDENTIFIER = com\.highgroundodyssey\.HighGroundCapture;/, "production bundle identifier");
 requireRegex(projectText, /IPHONEOS_DEPLOYMENT_TARGET = 17\.0;/, "supported iOS 17 deployment floor");
-requireRegex(projectText, /SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";/, "iPhone-only supported platforms");
-requireRegex(projectText, /TARGETED_DEVICE_FAMILY = 1;/, "iPhone-only target family");
+requireRegex(projectText, /SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";/, "native iOS and iPadOS supported platforms");
+requireRegex(projectText, /TARGETED_DEVICE_FAMILY = "1,2";/, "universal iPhone and iPad target family");
+requireIncludes(capturePhoneShellText, "NavigationSplitView", "regular-width iPad uses native split-view navigation");
+requireIncludes(capturePhoneShellText, "horizontalSizeClass == .regular", "iPad workspace adapts to the current resizable window width");
+requireIncludes(capturePhoneShellText, 'accessibilityIdentifier("CaptureIPadSidebar")', "native iPad sidebar has stable operated-test identity");
+requireIncludes(capturePhoneShellText, 'keyboardShortcut("r", modifiers: [.command, .shift])', "iPad hardware keyboard reaches Speak to Write");
+requireIncludes(appInfoText, "UISupportedInterfaceOrientations~ipad", "native iPad declares a platform-specific orientation policy");
+requireIncludes(appInfoText, "UIInterfaceOrientationPortraitUpsideDown", "native iPad supports every resizable orientation");
 requireRegex(projectText, /SUPPORTS_MACCATALYST = NO;/, "Mac Catalyst is not accidentally advertised");
 requireRegex(projectText, /SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;/, "Designed-for-iPhone Mac compatibility is disabled in source");
 requireRegex(projectText, /SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;/, "Designed-for-iPhone visionOS compatibility is disabled in source");
@@ -1608,6 +1614,14 @@ const personalVoiceEnd = captureExperienceText.indexOf("private func createLocal
 const personalVoiceEntryBody = captureExperienceText.slice(personalVoiceStart, personalVoiceEnd);
 requireIncludes(personalVoiceEntryBody, "return createLocalPersonalVoiceNote(title: title)", "private voice writing opens its protected local source immediately");
 requireExcludes(personalVoiceEntryBody, "sessionClient.createQuickSession", "Home Nest provisioning never gates a new private voice recording");
+const sessionEntryRefreshStart = captureExperienceText.indexOf("func refreshSelectedSessionEntryReadiness()");
+const sessionEntryRefreshEnd = captureExperienceText.indexOf("func saveQuickEntry(", sessionEntryRefreshStart);
+const sessionEntryRefreshBody = captureExperienceText.slice(sessionEntryRefreshStart, sessionEntryRefreshEnd);
+requireIncludes(
+  sessionEntryRefreshBody,
+  "selectedSession?.isLocalPersonalVoiceNoteDraft != true",
+  "local voice writing never asks the canonical Session collection to authorize its private draft",
+);
 for (const needle of [
   "projectID: visibleContextNest?.id",
   "projectName: visibleContextNest?.name",
@@ -2277,7 +2291,7 @@ requireIncludes(bridgeText, "Normal Phone or FaceTime calls are fallback/import 
 requireIncludes(bridgeText, "One-to-one coaching", "native coaching mode");
 requireIncludes(bridgeText, "Podcast capture", "native podcast mode");
 requireIncludes(bridgeText, "Research interview", "native research interview mode");
-// The shipping iPhone recorder is CapturePhoneShell. Keep this contract tied to
+// The shipping universal iPhone and iPad recorder is CapturePhoneShell. Keep this contract tied to
 // controls and copy that are actually reachable from that root instead of
 // accepting strings from disconnected component prototypes.
 requireIncludes(capturePhoneShellText, "CaptureRecordingModePicker(", "shipping recorder exposes explicit audio and video modes");
@@ -3074,7 +3088,7 @@ const report = {
     "capture diagnostics expose upload recovery, server verification, local retention, and transcript repair state",
     "tester support sharing is explicit, redacted, accessible, and excludes identity, source, path, and credential fields",
     "mobile readiness exposes calendar evidence readiness without making Calendar the source of truth",
-    "the iPhone app root exposes Capture and protected offline recovery without shipping facade editor or publisher surfaces",
+    "the universal iPhone and iPad app root exposes Capture and protected offline recovery without shipping facade editor or publisher surfaces",
     "privacy and account deletion routes are visible from app and web",
     "canonical App Store metadata is within field limits and records an explicit screenshot plan and blocker ledger",
     "reviewer readiness docs include native Firebase auth plus visible-session proof",
