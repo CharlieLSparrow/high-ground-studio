@@ -92,6 +92,7 @@ const files = {
   bridgeModels: path.join(sourceRoot, "BridgeModels.swift"),
   mobileCaptureReadinessRoute: path.join(root, "apps/quipsly/src/app/api/mobile/capture/readiness/route.ts"),
   mobileCaptureSessionsRoute: path.join(root, "apps/quipsly/src/app/api/mobile/capture/sessions/route.ts"),
+  mobileCaptureSessionsServer: path.join(root, "apps/quipsly/src/lib/server/mobile-capture-sessions.ts"),
   mobileCaptureProjectsRoute: path.join(root, "apps/quipsly/src/app/api/mobile/capture/projects/route.ts"),
   mobileVoiceWritingRoute: path.join(root, "apps/quipsly/src/app/api/mobile/capture/voice-writing/route.ts"),
   mobileVoiceWritingServer: path.join(root, "apps/quipsly/src/lib/server/mobile-voice-writing.ts"),
@@ -291,6 +292,7 @@ const shippingCaptureUIText = `${capturePhoneShellText}\n${captureRehearsalReadi
 const bridgeText = read(files.bridgeModels);
 const mobileCaptureReadinessRouteText = read(files.mobileCaptureReadinessRoute);
 const mobileCaptureSessionsRouteText = read(files.mobileCaptureSessionsRoute);
+const mobileCaptureSessionsServerText = read(files.mobileCaptureSessionsServer);
 const mobileCaptureProjectsRouteText = read(files.mobileCaptureProjectsRoute);
 const mobileVoiceWritingRouteText = read(files.mobileVoiceWritingRoute);
 const mobileVoiceWritingServerText = read(files.mobileVoiceWritingServer);
@@ -613,6 +615,10 @@ for (const needle of [
   "/api/mobile/capture/transcripts/cloud-fallback",
   "retryFailures: true",
   'reasonCode: "local-source-unavailable-after-upload"',
+  "reconcileCanonicalTranscriptSources",
+  "source.sha256?.lowercased() == expectedSHA256",
+  "source.byteSize == String(expectedSize)",
+  "transcript.id == transcriptJobID",
 ]) {
   requireIncludes(
     onDeviceTranscriptManagerText,
@@ -620,6 +626,46 @@ for (const needle of [
     "on-device transcript evidence remains protected, source-bound, and explicit",
   );
 }
+for (const needle of [
+  "cloudTranscriptFallbackLastCheckedAt",
+  "cloudTranscriptFallbackCompletedAt",
+  "cloudTranscriptFallbackError",
+  "reconcileCloudTranscriptFallback",
+]) {
+  requireIncludes(
+    localRecordingLibraryText,
+    needle,
+    "protected local fallback state records canonical completion and failure without replacing source truth",
+  );
+}
+for (const needle of [
+  "struct MobileCaptureSourceTranscriptSummary",
+  "let transcript: MobileCaptureSourceTranscriptSummary?",
+  "sessions.flatMap { $0.captureSources ?? [] }",
+  "OnDeviceTranscriptManager.shared.reconcileCanonicalTranscriptSources",
+]) {
+  requireIncludes(
+    bridgeText,
+    needle,
+    "authoritative Session refresh reconciles transcript status for each exact capture source",
+  );
+}
+for (const needle of [
+  "mobileSourceTranscriptStatusMessage",
+  "The exact recording remains safe and can be tried again.",
+  "wordCount: transcriptJob._count?.words ?? 0",
+]) {
+  requireIncludes(
+    mobileCaptureSessionsServerText,
+    needle,
+    "Nest returns bounded source-specific transcript completion and failure evidence",
+  );
+}
+requireIncludes(
+  capturePhoneShellText,
+  "transcriptActionRequiresLocalFile",
+  "cloud fallback retry remains usable after the verified local source becomes unavailable",
+);
 requireExcludes(
   onDeviceTranscriptManagerText,
   "recording.transcriptJobId?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty != false",

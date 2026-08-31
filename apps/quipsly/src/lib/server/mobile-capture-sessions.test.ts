@@ -683,10 +683,11 @@ describe("mobile Session canonical capture sources", () => {
             transcriptJobs: [
               {
                 id: "transcript-1",
-                status: "QUEUED",
-                provider: "pending",
+                status: "FAILED",
+                provider: "deepgram",
+                errorMessage: "gs://private-bucket/internal-provider-diagnostic.json",
                 updatedAt: new Date("2026-07-27T18:31:00Z"),
-                _count: { segments: 0 },
+                _count: { segments: 0, words: 0 },
               },
             ],
           },
@@ -782,10 +783,14 @@ describe("mobile Session canonical capture sources", () => {
       },
       transcript: {
         id: "transcript-1",
-        status: "QUEUED",
+        status: "FAILED",
+        provider: "deepgram",
+        errorMessage: "Quipsly could not finish this transcript. The exact recording remains safe and can be tried again.",
         segmentCount: 0,
+        wordCount: 0,
       },
     });
+    expect(JSON.stringify(source)).not.toContain("private-bucket");
   });
 
   it("keeps a released source visible but withholds playback when immutable storage evidence drifts", () => {
@@ -837,6 +842,101 @@ describe("mobile Session canonical capture sources", () => {
       exactBytesVerified: true,
       sessionPlaybackUrl: null,
     });
+  });
+
+  it("keeps completed transcript status bound to each participant source instead of one room-level latest job", () => {
+    const sources = captureSourceSummaries(
+      {
+        id: "room-joint",
+        stateReceipts: [],
+        recordingAssets: [
+          {
+            id: "recording-coach",
+            roomId: "room-joint",
+            kind: "LOCAL_AUDIO",
+            status: "VERIFIED",
+            byteSize: BigInt(2_048),
+            checksum: "c".repeat(64),
+            localManifestJson: { exactBytesVerified: true },
+            transcriptJobs: [{
+              id: "transcript-coach",
+              status: "COMPLETED",
+              provider: "apple-speech-transcriber-on-device",
+              errorMessage: null,
+              updatedAt: new Date("2026-08-30T18:00:00Z"),
+              _count: { segments: 12, words: 180 },
+            }],
+          },
+          {
+            id: "recording-client",
+            roomId: "room-joint",
+            kind: "LOCAL_AUDIO",
+            status: "VERIFIED",
+            byteSize: BigInt(4_096),
+            checksum: "d".repeat(64),
+            localManifestJson: { exactBytesVerified: true },
+            transcriptJobs: [{
+              id: "transcript-client",
+              status: "COMPLETED",
+              provider: "deepgram",
+              errorMessage: null,
+              updatedAt: new Date("2026-08-30T18:00:01Z"),
+              _count: { segments: 9, words: 140 },
+            }],
+          },
+        ],
+      },
+      [
+        {
+          uploadSessionId: "upload-coach",
+          captureId: "capture-coach",
+          roomId: "room-joint",
+          recordingAssetId: "recording-coach",
+          processingDisposition: "RELEASED",
+          transcriptDisposition: "RELEASED",
+          metadataJson: { immutableUploadBinding: { sha256: "c".repeat(64), sizeBytes: 2_048 } },
+        },
+        {
+          uploadSessionId: "upload-client",
+          captureId: "capture-client",
+          roomId: "room-joint",
+          recordingAssetId: "recording-client",
+          processingDisposition: "RELEASED",
+          transcriptDisposition: "RELEASED",
+          metadataJson: { immutableUploadBinding: { sha256: "d".repeat(64), sizeBytes: 4_096 } },
+        },
+      ],
+      [],
+    );
+
+    expect(sources.map((source) => ({
+      recordingAssetId: source.recordingAssetId,
+      sha256: source.sha256,
+      transcript: source.transcript,
+    }))).toEqual(expect.arrayContaining([
+      {
+        recordingAssetId: "recording-coach",
+        sha256: "c".repeat(64),
+        transcript: expect.objectContaining({
+          id: "transcript-coach",
+          status: "COMPLETED",
+          provider: "apple-speech-transcriber-on-device",
+          segmentCount: 12,
+          wordCount: 180,
+        }),
+      },
+      {
+        recordingAssetId: "recording-client",
+        sha256: "d".repeat(64),
+        transcript: expect.objectContaining({
+          id: "transcript-client",
+          status: "COMPLETED",
+          provider: "deepgram",
+          segmentCount: 9,
+          wordCount: 140,
+        }),
+      },
+    ]));
   });
 
   it("offers only the complete newest capture group to Studio", () => {

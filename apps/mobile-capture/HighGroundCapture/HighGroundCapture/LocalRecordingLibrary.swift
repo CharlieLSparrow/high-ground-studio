@@ -316,6 +316,9 @@ struct LocalRecording: Codable, Identifiable, Equatable {
     var cloudTranscriptFallbackAcceptedAt: Date? = nil
     var cloudTranscriptFallbackJobId: String? = nil
     var cloudTranscriptFallbackStatus: String? = nil
+    var cloudTranscriptFallbackLastCheckedAt: Date? = nil
+    var cloudTranscriptFallbackCompletedAt: Date? = nil
+    var cloudTranscriptFallbackError: String? = nil
     var serverVerificationStatus: String?
     var sourceSHA256: String? = nil
     var verifiedCloudSHA256: String? = nil
@@ -1298,7 +1301,9 @@ final class LocalRecordingLibrary: ObservableObject {
         guard let normalizedJobId = nonempty(transcriptJobId) else {
             throw LibraryError.recordingNotFound
         }
-        let normalizedStatus = status.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedStatus = status
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .uppercased()
         guard !normalizedStatus.isEmpty else { throw LibraryError.recordingNotFound }
         try mutate(id, allowInactiveOwner: true) { recording in
             guard recording.cloudTranscriptFallbackRequestId == requestId else {
@@ -1307,7 +1312,42 @@ final class LocalRecordingLibrary: ObservableObject {
             recording.cloudTranscriptFallbackAcceptedAt = acceptedAt
             recording.cloudTranscriptFallbackJobId = normalizedJobId
             recording.cloudTranscriptFallbackStatus = normalizedStatus
+            recording.cloudTranscriptFallbackLastCheckedAt = acceptedAt
+            recording.cloudTranscriptFallbackCompletedAt = normalizedStatus.uppercased() == "COMPLETED"
+                ? acceptedAt
+                : nil
+            recording.cloudTranscriptFallbackError = nil
             recording.transcriptJobId = normalizedJobId
+        }
+    }
+
+    func reconcileCloudTranscriptFallback(
+        _ id: UUID,
+        transcriptJobId: String,
+        status: String,
+        errorMessage: String?,
+        checkedAt: Date = Date()
+    ) throws {
+        guard let normalizedJobId = nonempty(transcriptJobId) else {
+            throw LibraryError.recordingNotFound
+        }
+        let normalizedStatus = status
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .uppercased()
+        guard ["QUEUED", "RUNNING", "HELD", "COMPLETED", "FAILED"].contains(normalizedStatus) else {
+            throw LibraryError.recordingNotFound
+        }
+        try mutate(id, allowInactiveOwner: true) { recording in
+            guard recording.cloudTranscriptFallbackJobId == normalizedJobId,
+                  recording.cloudTranscriptFallbackAcceptedAt != nil else {
+                throw LibraryError.recordingNotFound
+            }
+            recording.cloudTranscriptFallbackStatus = normalizedStatus
+            recording.cloudTranscriptFallbackLastCheckedAt = checkedAt
+            recording.cloudTranscriptFallbackCompletedAt = normalizedStatus == "COMPLETED"
+                ? (recording.cloudTranscriptFallbackCompletedAt ?? checkedAt)
+                : nil
+            recording.cloudTranscriptFallbackError = self.nonempty(errorMessage)
         }
     }
 

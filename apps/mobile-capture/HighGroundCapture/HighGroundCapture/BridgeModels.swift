@@ -507,6 +507,15 @@ enum MobileSessionNoteEditSyncResult {
     case held(code: String?, message: String)
 }
 
+struct MobileCaptureSourceTranscriptSummary: Codable, Hashable {
+    let id: String
+    let status: String?
+    let provider: String?
+    let errorMessage: String?
+    let segmentCount: Int?
+    let wordCount: Int?
+}
+
 struct MobileCaptureSourceSummary: Codable, Identifiable, Hashable {
     let recordingAssetId: String
     let captureGroupId: String?
@@ -525,6 +534,7 @@ struct MobileCaptureSourceSummary: Codable, Identifiable, Hashable {
     let sourceId: String?
     let playbackUrl: String?
     let sessionPlaybackUrl: String?
+    let transcript: MobileCaptureSourceTranscriptSummary?
 
     init(
         recordingAssetId: String,
@@ -543,7 +553,8 @@ struct MobileCaptureSourceSummary: Codable, Identifiable, Hashable {
         sha256: String? = nil,
         durationSeconds: TimeInterval? = nil,
         sourceId: String? = nil,
-        sessionPlaybackUrl: String? = nil
+        sessionPlaybackUrl: String? = nil,
+        transcript: MobileCaptureSourceTranscriptSummary? = nil
     ) {
         self.recordingAssetId = recordingAssetId
         self.captureGroupId = captureGroupId
@@ -562,6 +573,7 @@ struct MobileCaptureSourceSummary: Codable, Identifiable, Hashable {
         self.sourceId = sourceId
         self.playbackUrl = playbackUrl
         self.sessionPlaybackUrl = sessionPlaybackUrl
+        self.transcript = transcript
     }
 
     init(from decoder: Decoder) throws {
@@ -583,6 +595,10 @@ struct MobileCaptureSourceSummary: Codable, Identifiable, Hashable {
         sourceId = try container.decodeIfPresent(String.self, forKey: .sourceId)
         playbackUrl = try container.decodeIfPresent(String.self, forKey: .playbackUrl)
         sessionPlaybackUrl = try container.decodeIfPresent(String.self, forKey: .sessionPlaybackUrl)
+        transcript = try container.decodeIfPresent(
+            MobileCaptureSourceTranscriptSummary.self,
+            forKey: .transcript
+        )
     }
 
     var id: String { recordingAssetId }
@@ -7691,6 +7707,9 @@ final class CaptureSessionClient: ObservableObject {
             }
 
             sessions = payload.sessions ?? []
+            OnDeviceTranscriptManager.shared.reconcileCanonicalTranscriptSources(
+                sessions.flatMap { $0.captureSources ?? [] }
+            )
             clientFollowUpLoadStates = clientFollowUpLoadStates.filter { entry in
                 sessions.contains(where: { $0.id == entry.key })
             }

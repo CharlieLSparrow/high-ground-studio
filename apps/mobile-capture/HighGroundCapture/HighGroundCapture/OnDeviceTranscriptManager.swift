@@ -774,10 +774,75 @@ final class OnDeviceTranscriptManager: ObservableObject {
         if let jobId = recording.cloudTranscriptFallbackJobId,
            let status = recording.cloudTranscriptFallbackStatus,
            recording.cloudTranscriptFallbackAcceptedAt != nil {
-            phases[recording.id] = .cloudFallback(
-                transcriptJobId: jobId,
-                status: status
-            )
+            switch status.uppercased() {
+            case "FAILED", "HELD":
+                phases[recording.id] = .failed(
+                    message: recording.cloudTranscriptFallbackError
+                        ?? "The cloud transcript did not finish. The exact recording remains safe and can be tried again.",
+                    retryable: true
+                )
+            default:
+                phases[recording.id] = .cloudFallback(
+                    transcriptJobId: jobId,
+                    status: status.uppercased()
+                )
+            }
+        }
+    }
+
+    /// Reconciles Nest's per-source transcript projection into the protected
+    /// local ledger. A Session may contain several participant recordings, so
+    /// room-level "latest transcript" state is insufficient: exact asset,
+    /// SHA-256, byte count, and canonical job identity must all agree.
+    func reconcileCanonicalTranscriptSources(_ sources: [MobileCaptureSourceSummary]) {
+        LocalRecordingLibrary.shared.activateOwner(
+            AuthManager.currentStoredOwnerID()
+        )
+        let sourcesByAssetID = Dictionary(
+            sources.map { ($0.recordingAssetId, $0) },
+            uniquingKeysWith: { current, _ in current }
+        )
+        for recording in LocalRecordingLibrary.shared.recordings {
+            guard let recordingAssetID = recording.recordingAssetId,
+                  let transcriptJobID = recording.cloudTranscriptFallbackJobId,
+                  recording.cloudTranscriptFallbackAcceptedAt != nil,
+                  let expectedSHA256 = recording.verifiedCloudSHA256?.lowercased(),
+                  let expectedSize = recording.verifiedCloudSizeBytes,
+                  let source = sourcesByAssetID[recordingAssetID],
+                  source.exactBytesVerified == true,
+                  source.recordingStatus?.uppercased() == "VERIFIED",
+                  source.sha256?.lowercased() == expectedSHA256,
+                  source.byteSize == String(expectedSize),
+                  let transcript = source.transcript,
+                  transcript.id == transcriptJobID,
+                  let status = transcript.status?.uppercased() else {
+                continue
+            }
+            do {
+                try LocalRecordingLibrary.shared.reconcileCloudTranscriptFallback(
+                    recording.id,
+                    transcriptJobId: transcriptJobID,
+                    status: status,
+                    errorMessage: transcript.errorMessage
+                )
+                switch status {
+                case "FAILED", "HELD":
+                    phases[recording.id] = .failed(
+                        message: transcript.errorMessage
+                            ?? "The cloud transcript did not finish. The exact recording remains safe and can be tried again.",
+                        retryable: true
+                    )
+                default:
+                    phases[recording.id] = .cloudFallback(
+                        transcriptJobId: transcriptJobID,
+                        status: status
+                    )
+                }
+            } catch {
+                // A stale or cross-account Session projection must never
+                // replace the protected local source ledger.
+                continue
+            }
         }
     }
 
@@ -1358,7 +1423,7 @@ final class OnDeviceTranscriptManager: ObservableObject {
             )
             phases[recording.id] = .cloudFallback(
                 transcriptJobId: transcriptJobId,
-                status: status
+                status: status.uppercased()
             )
         } catch {
             if Task.isCancelled || error is CancellationError {

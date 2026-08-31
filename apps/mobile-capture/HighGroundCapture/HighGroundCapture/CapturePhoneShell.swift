@@ -8115,7 +8115,11 @@ private struct CapturePersonalVoiceNoteTranscriptCard: View {
                 Button(actionLabel) { performTranscriptAction() }
                     .buttonStyle(.bordered)
                     .frame(minHeight: 44)
-                    .disabled(previewOnly || fileURL == nil || phase.isBusy)
+                    .disabled(
+                        previewOnly
+                        || (transcriptActionRequiresLocalFile && fileURL == nil)
+                        || phase.isBusy
+                    )
                     .accessibilityIdentifier("CaptureVoiceNoteTranscriptAction_\(recording.id)")
             }
 
@@ -8191,6 +8195,17 @@ private struct CapturePersonalVoiceNoteTranscriptCard: View {
         case .checkingSupport, .installingModel, .transcribing, .submitting,
              .attached, .requestingCloudFallback, .cloudFallback:
             nil
+        }
+    }
+
+    private var transcriptActionRequiresLocalFile: Bool {
+        switch phase {
+        case .savedLocally, .waitingForVerifiedUpload:
+            false
+        case .failed where recording.cloudTranscriptFallbackRequestId != nil:
+            false
+        default:
+            true
         }
     }
 
@@ -20442,7 +20457,11 @@ private struct LocalRecordingRow: View {
                         .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                 }
                 .buttonStyle(.bordered)
-                .disabled(previewOnly || fileURL == nil || !recording.status.isPlaybackEligible)
+                .disabled(
+                    previewOnly
+                    || (transcriptActionRequiresLocalFile(phase) && fileURL == nil)
+                    || !recording.status.isPlaybackEligible
+                )
                 .accessibilityIdentifier("CaptureOnDeviceTranscriptAction_\(recording.id)")
             }
         }
@@ -20498,6 +20517,17 @@ private struct LocalRecordingRow: View {
                     : "Try transcript again"
         default:
             return "Create transcript"
+        }
+    }
+
+    private func transcriptActionRequiresLocalFile(_ phase: OnDeviceTranscriptPhase) -> Bool {
+        switch phase {
+        case .savedLocally, .waitingForVerifiedUpload:
+            false
+        case .failed where recording.cloudTranscriptFallbackRequestId != nil:
+            false
+        default:
+            true
         }
     }
 
