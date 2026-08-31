@@ -2521,8 +2521,12 @@ final class CaptureExperienceUITests: XCTestCase {
 
     func testRecordQuickCaptureMakesNoteTaskAndGoalImmediateWithoutFakingPreviewWrites() {
         app.tabBars.buttons["Sessions"].tap()
+        openLocalRecorderIfNeeded()
         let noteButton = app.buttons["CaptureQuickEntry_NOTE_preview-coaching-ready"]
-        reveal(noteButton)
+        // Quick capture follows the familiar lobby and recorder controls.
+        // Search toward later Session content first; a LazyVStack does not
+        // publish this row to accessibility until it approaches the viewport.
+        reveal(noteButton, searchAboveFirst: false)
         XCTAssertTrue(noteButton.isHittable)
         XCTAssertTrue(app.buttons["CaptureQuickEntry_TASK_preview-coaching-ready"].exists)
         XCTAssertTrue(app.buttons["CaptureQuickEntry_GOAL_preview-coaching-ready"].exists)
