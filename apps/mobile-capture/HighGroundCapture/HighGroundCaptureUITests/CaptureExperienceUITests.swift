@@ -1972,7 +1972,7 @@ final class CaptureExperienceUITests: XCTestCase {
         app.tabBars.buttons["Sessions"].tap()
 
         let card = app.descendants(matching: .any)["CaptureEpisodeChatCard"]
-        reveal(card)
+        reveal(card, searchAboveFirst: false)
         XCTAssertTrue(
             card.waitForExistence(timeout: 5),
             "An episode-bound Capture session should expose its canonical collaboration thread beside Manuscript and Watch."
@@ -1984,6 +1984,11 @@ final class CaptureExperienceUITests: XCTestCase {
         )
 
         let open = app.buttons["CaptureEpisodeChatOpenButton"]
+        // The button follows the latest-message preview inside the same lazy
+        // card. Continue downward from the already revealed card. SwiftUI can
+        // briefly report a recycled zero/above frame here, so the generic
+        // bidirectional helper can return to the recorder's top.
+        revealBelow(open, in: app.scrollViews["CaptureRecorderView"])
         XCTAssertTrue(open.isHittable)
         open.tap()
 

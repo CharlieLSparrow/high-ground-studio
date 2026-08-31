@@ -11576,10 +11576,11 @@ private struct CaptureRecorderView: View {
         .background(CaptureCanvas()))
     }
 
-    /// Episode source material belongs beside the recorder, not below the
-    /// entire post-call workspace. Keeping script and shared Watch controls in
-    /// this compact group makes the ordinary record-from-a-script journey
-    /// reachable without searching through transcript and follow-up cards.
+    /// Episode source material and collaboration belong beside the recorder,
+    /// not below the entire post-call workspace. Keeping script, conversation,
+    /// and shared Watch controls in this compact group makes the ordinary
+    /// record-from-a-script journey reachable without searching through
+    /// transcript and follow-up cards.
     @ViewBuilder
     private func episodeRecorderTools(
         _ session: MobileCaptureSession
@@ -11601,6 +11602,43 @@ private struct CaptureRecorderView: View {
                     episodeManuscript.loadPreview(session: session)
                 } else {
                     await episodeManuscript.load(session: session)
+                }
+            }
+
+            MobileEpisodeChatCard(
+                client: episodeChat,
+                session: session,
+                previewOnly: model.usesPreviewData
+            )
+            .task(
+                id:
+                    "chat|\(session.id)|\(session.projectSlug ?? "")|\(session.episodeSlug ?? "")|active=\(visibleTab == .record)"
+            ) {
+                guard visibleTab == .record else {
+                    episodeChat.stopPolling()
+                    return
+                }
+                if model.usesPreviewData {
+                    episodeChat.loadPreview(session: session)
+                } else {
+                    await episodeChat.load(session: session)
+                    episodeChat.startPolling(session: session)
+                }
+            }
+            .onDisappear { episodeChat.stopPolling() }
+            .onChange(of: episodeChat.outboundLiveHint) { _, hint in
+                guard let hint else { return }
+                Task {
+                    await model.providerRoom.publishChatPersistedHint(hint)
+                }
+            }
+            .onChange(of: model.providerRoom.latestChatPersistedHint) { _, hint in
+                guard let hint else { return }
+                Task {
+                    await episodeChat.receiveLiveHint(
+                        hint,
+                        session: session
+                    )
                 }
             }
 
@@ -11692,46 +11730,6 @@ private struct CaptureRecorderView: View {
                     }
                 }
 
-                if !session.isCoachingSession,
-                   session.projectSlug?.nonempty != nil,
-                   session.episodeSlug?.nonempty != nil {
-                    MobileEpisodeChatCard(
-                        client: episodeChat,
-                        session: session,
-                        previewOnly: model.usesPreviewData
-                    )
-                    .task(
-                        id:
-                            "chat|\(session.id)|\(session.projectSlug ?? "")|\(session.episodeSlug ?? "")|active=\(visibleTab == .record)"
-                    ) {
-                        guard visibleTab == .record else {
-                            episodeChat.stopPolling()
-                            return
-                        }
-                        if model.usesPreviewData {
-                            episodeChat.loadPreview(session: session)
-                        } else {
-                            await episodeChat.load(session: session)
-                            episodeChat.startPolling(session: session)
-                        }
-                    }
-                    .onDisappear { episodeChat.stopPolling() }
-                    .onChange(of: episodeChat.outboundLiveHint) { _, hint in
-                        guard let hint else { return }
-                        Task {
-                            await model.providerRoom.publishChatPersistedHint(hint)
-                        }
-                    }
-                    .onChange(of: model.providerRoom.latestChatPersistedHint) { _, hint in
-                        guard let hint else { return }
-                        Task {
-                            await episodeChat.receiveLiveHint(
-                                hint,
-                                session: session
-                            )
-                        }
-                    }
-                }
             }
             .accessibilityElement(children: .contain)
             .accessibilityIdentifier("CaptureSessionCollaborationSurface")
