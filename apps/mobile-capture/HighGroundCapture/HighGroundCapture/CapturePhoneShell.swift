@@ -11145,6 +11145,7 @@ private struct CaptureRecorderView: View {
                     // iPad, where the larger window otherwise makes the
                     // collaboration cards look like a prerequisite.
                     sessionCollaborationSurface(session)
+                    episodeRecorderTools(session)
 
                     if !session.isPersonalVoiceNote {
                     CaptureRehearsalReadinessCard(
@@ -11306,62 +11307,6 @@ private struct CaptureRecorderView: View {
                             Task {
                                 await model.sessionClient.refreshClientFollowUp(
                                     forSessionID: session.id
-                                )
-                            }
-                        }
-                    }
-
-                    if !session.isCoachingSession,
-                       session.projectSlug?.nonempty != nil,
-                       session.episodeSlug?.nonempty != nil {
-                        MobileEpisodeManuscriptCard(
-                            client: episodeManuscript,
-                            session: session,
-                            previewOnly: model.usesPreviewData
-                        )
-                        .task(
-                            id:
-                                "manuscript|\(session.id)|\(session.projectSlug ?? "")|\(session.episodeSlug ?? "")|active=\(visibleTab == .record)"
-                        ) {
-                            guard visibleTab == .record else { return }
-                            if model.usesPreviewData {
-                                episodeManuscript.loadPreview(session: session)
-                            } else {
-                                await episodeManuscript.load(session: session)
-                            }
-                        }
-
-                        MobileEpisodeWatchCard(
-                            client: episodeWatch,
-                            session: session,
-                            captureIsActive: captureIsActive,
-                            previewOnly: model.usesPreviewData
-                        )
-                        .task(
-                            id:
-                                "\(session.id)|\(session.projectSlug ?? "")|\(session.episodeSlug ?? "")|active=\(visibleTab == .record)"
-                        ) {
-                            guard visibleTab == .record else { return }
-                            if model.usesPreviewData {
-                                episodeWatch.loadPreview(session: session)
-                            } else {
-                                await episodeWatch.load(session: session)
-                                await episodeWatch.poll(session: session)
-                            }
-                        }
-                        .onDisappear { episodeWatch.stop() }
-                        .onChange(of: episodeWatch.outboundLiveHint) { _, hint in
-                            guard let hint else { return }
-                            Task {
-                                await model.providerRoom.publishEpisodeWatchHint(hint)
-                            }
-                        }
-                        .onChange(of: model.providerRoom.latestEpisodeWatchHint) { _, hint in
-                            guard let hint else { return }
-                            Task {
-                                await episodeWatch.receiveLiveHint(
-                                    hint,
-                                    session: session
                                 )
                             }
                         }
@@ -11626,6 +11571,71 @@ private struct CaptureRecorderView: View {
             }
         }
         .background(CaptureCanvas()))
+    }
+
+    /// Episode source material belongs beside the recorder, not below the
+    /// entire post-call workspace. Keeping script and shared Watch controls in
+    /// this compact group makes the ordinary record-from-a-script journey
+    /// reachable without searching through transcript and follow-up cards.
+    @ViewBuilder
+    private func episodeRecorderTools(
+        _ session: MobileCaptureSession
+    ) -> some View {
+        if !session.isCoachingSession,
+           session.projectSlug?.nonempty != nil,
+           session.episodeSlug?.nonempty != nil {
+            MobileEpisodeManuscriptCard(
+                client: episodeManuscript,
+                session: session,
+                previewOnly: model.usesPreviewData
+            )
+            .task(
+                id:
+                    "manuscript|\(session.id)|\(session.projectSlug ?? "")|\(session.episodeSlug ?? "")|active=\(visibleTab == .record)"
+            ) {
+                guard visibleTab == .record else { return }
+                if model.usesPreviewData {
+                    episodeManuscript.loadPreview(session: session)
+                } else {
+                    await episodeManuscript.load(session: session)
+                }
+            }
+
+            MobileEpisodeWatchCard(
+                client: episodeWatch,
+                session: session,
+                captureIsActive: captureIsActive,
+                previewOnly: model.usesPreviewData
+            )
+            .task(
+                id:
+                    "\(session.id)|\(session.projectSlug ?? "")|\(session.episodeSlug ?? "")|active=\(visibleTab == .record)"
+            ) {
+                guard visibleTab == .record else { return }
+                if model.usesPreviewData {
+                    episodeWatch.loadPreview(session: session)
+                } else {
+                    await episodeWatch.load(session: session)
+                    await episodeWatch.poll(session: session)
+                }
+            }
+            .onDisappear { episodeWatch.stop() }
+            .onChange(of: episodeWatch.outboundLiveHint) { _, hint in
+                guard let hint else { return }
+                Task {
+                    await model.providerRoom.publishEpisodeWatchHint(hint)
+                }
+            }
+            .onChange(of: model.providerRoom.latestEpisodeWatchHint) { _, hint in
+                guard let hint else { return }
+                Task {
+                    await episodeWatch.receiveLiveHint(
+                        hint,
+                        session: session
+                    )
+                }
+            }
+        }
     }
 
     private func sessionCollaborationSurface(

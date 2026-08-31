@@ -4967,7 +4967,7 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertEqual(email.placeholderValue, "Client email")
         XCTAssertTrue(app.datePickers["CaptureCoachingSessionStart"].exists)
         XCTAssertTrue(
-            app.staticTexts["Quipsly sends a private link. They can join from iPhone, tablet, or desktop."].exists
+            app.staticTexts["Quipsly sends a private link. They can join from phone, tablet, or desktop."].exists
         )
 
         let schedule = app.buttons["NewCaptureSessionScheduleButton"]
