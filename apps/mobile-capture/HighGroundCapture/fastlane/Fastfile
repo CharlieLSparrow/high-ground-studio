@@ -33,6 +33,39 @@ def capture_ui_execution_groups(selectors, default_device:)
   groups
 end
 
+def capture_simulator_destination(device_name)
+  stdout, stderr, status = Open3.capture3(
+    "xcrun",
+    "simctl",
+    "list",
+    "devices",
+    "available",
+    "--json",
+  )
+  UI.user_error!("Could not enumerate available simulators: #{stderr.strip}") unless status.success?
+
+  candidates = JSON.parse(stdout).fetch("devices").flat_map do |runtime, devices|
+    devices.filter_map do |device|
+      next unless device.fetch("name") == device_name && device.fetch("isAvailable", true)
+
+      {
+        runtime: runtime,
+        runtime_version: runtime.scan(/\d+/).map(&:to_i),
+        udid: device.fetch("udid"),
+      }
+    end
+  end
+  UI.user_error!("No available simulator exactly matches '#{device_name}'.") if candidates.empty?
+
+  selected = candidates.max_by { |candidate| candidate.fetch(:runtime_version) }
+  {
+    udid: selected.fetch(:udid),
+    destination: "platform=iOS Simulator,id=#{selected.fetch(:udid)}",
+  }
+rescue JSON::ParserError, KeyError => error
+  UI.user_error!("Available simulator inventory is invalid: #{error.message}")
+end
+
 def capture_ui_test_plan(suite:, shard:, shards:)
   stdout, stderr, status = Open3.capture3(
     "node",
@@ -513,10 +546,9 @@ platform :ios do
           "Capture UI #{suite} shard #{shard_number}/#{shard_count} #{execution.fetch(:slug)}: " \
           "#{execution.fetch(:selectors).length} tests on #{execution.fetch(:device)}",
         )
-        run_tests(
+        run_options = {
           project: PROJECT_PATH,
           scheme: SCHEME,
-          devices: [execution.fetch(:device)],
           only_testing: execution.fetch(:selectors),
           parallel_testing: false,
           # Full qualification runs for close to an hour. Reset each dedicated
@@ -531,7 +563,24 @@ platform :ios do
           buildlog_path: execution_root,
           fail_build: true,
           number_of_retries: retry_limit,
-        )
+        }
+        if execution.fetch(:slug) == "ipad"
+          simulator = capture_simulator_destination(execution.fetch(:device))
+          run_options[:destination] = [simulator.fetch(:destination)]
+          run_options[:skip_detect_devices] = true
+          # Scan 2.236.1 assumes its name-based device inventory exists when
+          # reinstall_app is enabled, even with an explicit destination. The
+          # exact simulator is erased below, and xcodebuild installs the test
+          # host itself, so avoid that broken and redundant pre-uninstall.
+          run_options[:reinstall_app] = false
+          if suite == "full"
+            system("xcrun", "simctl", "shutdown", simulator.fetch(:udid), out: File::NULL, err: File::NULL)
+            sh("xcrun", "simctl", "erase", simulator.fetch(:udid))
+          end
+        else
+          run_options[:devices] = [execution.fetch(:device)]
+        end
+        run_tests(**run_options)
         result_bundles = Dir[File.join(execution_root, "*.xcresult")].select { |path| File.directory?(path) }
         UI.user_error!(
           "Expected exactly one UI result bundle in #{execution_root}; found #{result_bundles.length}.",
