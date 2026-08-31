@@ -2695,7 +2695,7 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(save.isEnabled)
         save.tap()
         XCTAssertTrue(app.staticTexts[
-            "Preview only — no canonical Session note or revision was changed."
+            "Preview only — no shared Session note was changed."
         ].waitForExistence(timeout: 5))
         XCTAssertFalse(
             app.descendants(matching: .any)["CaptureSessionNoteEditState_preview-session-note"].exists,
