@@ -640,6 +640,30 @@ for (const needle of [
     "on-device transcript evidence remains protected, source-bound, and explicit",
   );
 }
+for (const [source, needle, label] of [
+  [
+    onDeviceTranscriptManagerText,
+    "func verifiedUploadDidFinish(recording: LocalRecording)",
+    "transcript delivery has one audio/video verification wake-up",
+  ],
+  [
+    uploadText,
+    "OnDeviceTranscriptManager.shared.verifiedUploadDidFinish",
+    "durable upload evidence wakes transcript delivery directly",
+  ],
+  [
+    uploadText,
+    '"serverVerificationStatus": session.lastServerVerificationStatus',
+    "upload completion publishes per-source verification evidence",
+  ],
+  [
+    audioText,
+    'serverVerificationStatus: userInfo["serverVerificationStatus"] as? String',
+    "recorder recovery does not read mutable global verification state",
+  ],
+]) {
+  requireIncludes(source, needle, label);
+}
 for (const needle of [
   "cloudTranscriptFallbackLastCheckedAt",
   "cloudTranscriptFallbackCompletedAt",
@@ -750,12 +774,12 @@ for (const needle of [
   );
 }
 for (const needle of [
-  "uploaded.cloudTranscriptFallbackRequestId != nil",
-  "uploaded.cloudTranscriptFallbackAcceptedAt == nil",
+  "recording.cloudTranscriptFallbackRequestId != nil",
+  "recording.cloudTranscriptFallbackAcceptedAt == nil",
   "submitPendingCloudFallback(",
 ]) {
   requireIncludes(
-    audioText,
+    onDeviceTranscriptManagerText,
     needle,
     "verified upload automatically resumes a durable device-failure fallback without Library paperwork",
   );

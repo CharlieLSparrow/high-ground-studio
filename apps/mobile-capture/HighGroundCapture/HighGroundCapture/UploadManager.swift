@@ -1792,7 +1792,10 @@ final class UploadManager: NSObject, ObservableObject, URLSessionTaskDelegate, U
             "localRecordingID": session.localRecordingID?.uuidString ?? "",
             "sourceId": session.lastSourceId ?? "",
             "mediaAssetId": session.lastMediaAssetId ?? "",
+            "recordingAssetId": session.lastRecordingAssetId ?? session.recordingAssetId ?? "",
             "transcriptJobId": session.lastTranscriptJobId ?? "",
+            "serverVerificationStatus": session.lastServerVerificationStatus ?? "",
+            "serverVerificationDetail": session.lastServerVerificationDetail ?? "",
             "processingDisposition": session.lastProcessingDisposition ?? "",
             "processingHoldReason": session.lastProcessingHoldReason ?? "",
             "transcriptDisposition": session.lastTranscriptDisposition ?? "",
@@ -1815,6 +1818,14 @@ final class UploadManager: NSObject, ObservableObject, URLSessionTaskDelegate, U
         do {
             try MainActor.assumeIsolated {
                 try persistVerifiedSourceEvidence(session)
+                if let localRecordingID = session.localRecordingID,
+                   let recording = LocalRecordingLibrary.shared.recording(
+                    id: localRecordingID
+                   ) {
+                    OnDeviceTranscriptManager.shared.verifiedUploadDidFinish(
+                        recording: recording
+                    )
+                }
             }
         } catch {
             session.isHeld = true

@@ -948,6 +948,23 @@ final class OnDeviceTranscriptManager: ObservableObject {
         }
     }
 
+    /// Wakes transcript delivery from the exact recording projection that was
+    /// durably updated by UploadManager. Audio and video share this path; it
+    /// does not depend on a particular recorder screen or notification observer
+    /// still being alive when cloud verification completes.
+    func verifiedUploadDidFinish(recording: LocalRecording) {
+        guard recording.status.isVerified,
+              recording.shouldBeginAutomaticOnDeviceTranscript else {
+            return
+        }
+        if (try? OnDeviceTranscriptStore.load(for: recording.id)) != nil {
+            submitSavedTranscript(recording: recording)
+        } else if recording.cloudTranscriptFallbackRequestId != nil,
+                  recording.cloudTranscriptFallbackAcceptedAt == nil {
+            submitPendingCloudFallback(recording: recording)
+        }
+    }
+
     /// Reconciles transcript intent from the durable recording ledger rather
     /// than relying on a person to revisit one particular Library row. Work is
     /// serialized so a launch with several long masters cannot make every

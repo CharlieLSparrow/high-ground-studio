@@ -447,8 +447,9 @@ final class AudioCaptureController: NSObject, ObservableObject {
                         recordingID,
                         sourceId: sourceId,
                         mediaAssetId: userInfo["mediaAssetId"] as? String,
+                        recordingAssetId: userInfo["recordingAssetId"] as? String,
                         transcriptJobId: userInfo["transcriptJobId"] as? String,
-                        serverVerificationStatus: UploadManager.shared.lastServerVerificationStatus,
+                        serverVerificationStatus: userInfo["serverVerificationStatus"] as? String,
                         sourceSHA256: userInfo["sourceSHA256"] as? String,
                         verifiedCloudSHA256: userInfo["verifiedCloudSHA256"] as? String,
                         verifiedCloudSizeBytes: (userInfo["verifiedCloudSizeBytes"] as? NSNumber)?.int64Value,
@@ -458,30 +459,17 @@ final class AudioCaptureController: NSObject, ObservableObject {
                         processingDisposition: userInfo["processingDisposition"] as? String,
                         processingHoldReason: userInfo["processingHoldReason"] as? String,
                         transcriptDisposition: userInfo["transcriptDisposition"] as? String,
-                        detail: UploadManager.shared.lastServerVerificationDetail
+                        detail: userInfo["serverVerificationDetail"] as? String
                     )
                     if let uploaded = localRecordingLibrary.recording(id: recordingID),
                        uploaded.status.isVerified,
                        uploaded.shouldBeginAutomaticOnDeviceTranscript {
-                        if (try? OnDeviceTranscriptStore.load(for: recordingID)) != nil {
-                            // Transcription may finish before a large audio upload.
-                            // Verification is the event that makes the saved
-                            // source-bound transcript eligible for attachment, so
-                            // continue automatically instead of making the person
-                            // find and press a retry button.
-                            OnDeviceTranscriptManager.shared.submitSavedTranscript(
-                                recording: uploaded
-                            )
-                        } else if uploaded.cloudTranscriptFallbackRequestId != nil,
-                                  uploaded.cloudTranscriptFallbackAcceptedAt == nil {
-                            // Apple Speech can also fail before upload verification.
-                            // The durable failure intent must cross that race without
-                            // asking the person to revisit Library or starting a
-                            // speculative cloud job before exact bytes exist.
-                            OnDeviceTranscriptManager.shared.submitPendingCloudFallback(
-                                recording: uploaded
-                            )
-                        }
+                        // This observer is a recovery wake-up. UploadManager
+                        // already performs the authoritative wake immediately
+                        // after its per-source evidence commit.
+                        OnDeviceTranscriptManager.shared.verifiedUploadDidFinish(
+                            recording: uploaded
+                        )
                     }
                 } catch {
                     print("Could not update local upload receipt: \(error.localizedDescription)")
