@@ -22,6 +22,7 @@ isolated_preflight_runner="$capture_root/../../../scripts/release/quipsly-captur
 nest_evidence_contract_test="$capture_root/scripts/test-nest-source-evidence-contract.sh"
 video_quality_policy_test="$capture_root/scripts/test-video-capture-quality-policy.sh"
 attention_presentation_test="$capture_root/scripts/test-capture-attention-presentation.sh"
+transcript_delivery_policy_test="$capture_root/scripts/test-on-device-transcript-delivery-policy.sh"
 developer_dir="${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}"
 
 fail() {
@@ -177,6 +178,8 @@ bash "$video_quality_policy_test"
 pass "Video capture quality policy passes"
 bash "$attention_presentation_test"
 pass "Capture attention presentation policy passes"
+bash "$transcript_delivery_policy_test"
+pass "On-device transcript delivery retry policy passes"
 
 app_settings="$(
   xcodebuild \
@@ -204,10 +207,12 @@ app_build="$(setting_value "$app_settings" CURRENT_PROJECT_VERSION)"
 extension_version="$(setting_value "$extension_settings" MARKETING_VERSION)"
 extension_build="$(setting_value "$extension_settings" CURRENT_PROJECT_VERSION)"
 
-[[ "$(setting_value "$app_settings" TARGETED_DEVICE_FAMILY)" == "1" ]] ||
-  fail "Release app must target only the iPhone device family"
-[[ "$(setting_value "$extension_settings" TARGETED_DEVICE_FAMILY)" == "1" ]] ||
-  fail "Release extension must target only the iPhone device family"
+[[ "$(setting_value "$app_settings" TARGETED_DEVICE_FAMILY)" == "1,2" ]] ||
+  fail "Release app must target the native iPhone and iPad device families"
+pass "Release app targets native iPhone and iPad experiences"
+[[ "$(setting_value "$extension_settings" TARGETED_DEVICE_FAMILY)" == "1,2" ]] ||
+  fail "Release extension must support the iPhone and iPad device families"
+pass "Release extension supports iPhone and iPad"
 [[ "$(setting_value "$app_settings" SUPPORTS_MACCATALYST)" == "NO" ]] ||
   fail "Release app must not advertise Mac Catalyst"
 [[ "$(setting_value "$app_settings" SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD)" == "NO" ]] ||
@@ -218,7 +223,7 @@ extension_build="$(setting_value "$extension_settings" CURRENT_PROJECT_VERSION)"
   fail "Release extension must opt out of Designed-for-iPhone on Mac"
 [[ "$(setting_value "$extension_settings" SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD)" == "NO" ]] ||
   fail "Release extension must opt out of Designed-for-iPhone on Apple Vision Pro"
-pass "Release app and extension are explicitly iPhone-only"
+pass "Release app and extension are native iPhone/iPad products, not compatibility-mode Mac or Vision apps"
 
 [[ -n "$app_version" && -n "$app_build" ]] || fail "Could not resolve the app version from Release build settings"
 [[ "$app_version" == "$extension_version" ]] || fail "App and extension marketing versions differ"

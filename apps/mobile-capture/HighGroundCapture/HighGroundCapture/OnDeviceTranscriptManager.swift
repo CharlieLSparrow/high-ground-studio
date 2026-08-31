@@ -272,7 +272,7 @@ enum OnDeviceTranscriptFailure: LocalizedError {
     case accountChanged
     case localStorageUnavailable
     case verifiedUploadRequired
-    case serverRejected(String)
+    case serverRejected(String, statusCode: Int? = nil)
 
     var errorDescription: String? {
         switch self {
@@ -302,13 +302,23 @@ enum OnDeviceTranscriptFailure: LocalizedError {
             return "Protected Application Support storage is unavailable. Quipsly did not claim the transcript was saved."
         case .verifiedUploadRequired:
             return "The transcript is saved only on this device. Upload and verify the exact recording before attaching it to the Session."
-        case .serverRejected(let message):
+        case .serverRejected(let message, _):
             return message
         }
     }
 }
 
 private extension OnDeviceTranscriptFailure {
+    var isRetryableDeliveryFailure: Bool {
+        guard case .serverRejected(_, let statusCode) = self,
+              let statusCode else {
+            return false
+        }
+        return OnDeviceTranscriptDeliveryPolicy.shouldRetry(
+            httpStatusCode: statusCode
+        )
+    }
+
     var cloudFallbackReasonCode: String? {
         switch self {
         case .unavailable:
@@ -1419,18 +1429,25 @@ final class OnDeviceTranscriptManager: ObservableObject {
                 for: request,
                 expectedOwnerAccountID: ownerAccountId
             )
-            let envelope = try JSONDecoder().decode(
+            let envelope = try? JSONDecoder().decode(
                 OnDeviceTranscriptCloudFallbackResponse.self,
                 from: data
             )
-            guard (200...299).contains(response.statusCode),
+            guard (200...299).contains(response.statusCode) else {
+                throw OnDeviceTranscriptFailure.serverRejected(
+                    envelope?.error
+                        ?? "Quipsly could not start transcript fallback. The original recording and durable fallback intent remain safe.",
+                    statusCode: response.statusCode
+                )
+            }
+            guard let envelope,
                   envelope.ok,
                   let transcriptJobId = envelope.transcriptJobId,
                   !transcriptJobId.isEmpty,
                   let status = envelope.status,
                   !status.isEmpty else {
                 throw OnDeviceTranscriptFailure.serverRejected(
-                    envelope.error
+                    envelope?.error
                         ?? "Quipsly could not start transcript fallback. The original recording and durable fallback intent remain safe."
                 )
             }
@@ -1445,11 +1462,12 @@ final class OnDeviceTranscriptManager: ObservableObject {
                 status: status.uppercased()
             )
         } catch {
-            if Task.isCancelled || error is CancellationError {
-                phases[recording.id] = .failed(
-                    message: "Cloud transcript fallback will resume automatically.",
-                    retryable: true
-                )
+            if Task.isCancelled || error is CancellationError
+                || isRetryableDeliveryError(error) {
+                // The fallback request ID already lives in the protected
+                // recording ledger. Return to idle so launch/background
+                // reconciliation can replay the same idempotent request.
+                phases[recording.id] = .idle
                 OnDeviceTranscriptBackgroundCoordinator.shared.schedule()
             } else {
                 phases[recording.id] = .failed(
@@ -1499,14 +1517,21 @@ final class OnDeviceTranscriptManager: ObservableObject {
                 for: request,
                 expectedOwnerAccountID: stored.sidecar.ownerAccountId
             )
-            let envelope = try JSONDecoder().decode(OnDeviceTranscriptResponse.self, from: data)
-            guard (200...299).contains(response.statusCode),
+            let envelope = try? JSONDecoder().decode(OnDeviceTranscriptResponse.self, from: data)
+            guard (200...299).contains(response.statusCode) else {
+                throw OnDeviceTranscriptFailure.serverRejected(
+                    envelope?.error
+                        ?? "Nest could not attach this transcript yet. The protected local transcript remains available.",
+                    statusCode: response.statusCode
+                )
+            }
+            guard let envelope,
                   envelope.ok,
                   envelope.status == "COMPLETED",
                   let transcriptJobId = envelope.transcriptJobId,
                   !transcriptJobId.isEmpty else {
                 throw OnDeviceTranscriptFailure.serverRejected(
-                    envelope.error ?? "Nest did not accept this transcript. The protected local sidecar remains available for retry."
+                    envelope?.error ?? "Nest did not accept this transcript. The protected local sidecar remains available for retry."
                 )
             }
             let receipt = OnDeviceTranscriptSubmissionReceipt(
@@ -1529,7 +1554,8 @@ final class OnDeviceTranscriptManager: ObservableObject {
                 segmentCount: stored.sidecar.segments.count
             )
         } catch {
-            if Task.isCancelled || error is CancellationError {
+            if Task.isCancelled || error is CancellationError
+                || isRetryableDeliveryError(error) {
                 let segmentCount = (try? OnDeviceTranscriptStore.load(for: recording.id))?
                     .sidecar.segments.count ?? 0
                 phases[recording.id] = recording.status.isVerified
@@ -1540,6 +1566,11 @@ final class OnDeviceTranscriptManager: ObservableObject {
                 phases[recording.id] = .failed(message: error.localizedDescription, retryable: true)
             }
         }
+    }
+
+    private func isRetryableDeliveryError(_ error: Error) -> Bool {
+        OnDeviceTranscriptDeliveryPolicy.shouldRetry(transportError: error)
+            || (error as? OnDeviceTranscriptFailure)?.isRetryableDeliveryFailure == true
     }
 }
 

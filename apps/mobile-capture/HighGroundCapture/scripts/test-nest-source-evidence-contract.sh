@@ -8,6 +8,7 @@ temporary_root="$(mktemp -d "${TMPDIR:-/tmp}/quipsly-nest-evidence-tests.XXXXXX"
 trap 'rm -rf "$temporary_root"' EXIT
 
 xcrun swiftc \
+  "$capture_root/Testing/CaptureDeviceVocabularyHarnessStub.swift" \
   "$capture_root/HighGroundCapture/CaptureNestSourceEvidenceContract.swift" \
   "$capture_root/Testing/CaptureNestSourceEvidenceContractTests.swift" \
   -o "$temporary_root/CaptureNestSourceEvidenceContractTests"
