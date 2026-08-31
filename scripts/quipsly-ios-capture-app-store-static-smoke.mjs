@@ -107,6 +107,8 @@ const files = {
   coachingRunwayRoute: path.join(root, "apps/quipsly/src/app/api/coaching/runway/route.ts"),
   mobileCaptureConsentRoute: path.join(root, "apps/quipsly/src/app/api/mobile/capture/consent/route.ts"),
   onDeviceTranscriptRoute: path.join(root, "apps/quipsly/src/app/api/mobile/capture/transcripts/on-device/route.ts"),
+  cloudTranscriptFallbackRoute: path.join(root, "apps/quipsly/src/app/api/mobile/capture/transcripts/cloud-fallback/route.ts"),
+  mobileCaptureTranscriptDeviceAccess: path.join(root, "apps/quipsly/src/lib/server/mobile-capture-transcript-device-access.ts"),
   mobileQuickEntryRoute: path.join(root, "apps/quipsly/src/app/api/mobile/capture/quick-entry/route.ts"),
   mobileTodayRoute: path.join(root, "apps/quipsly/src/app/api/mobile/capture/today/route.ts"),
   mobileSourceInboxRoute: path.join(root, "apps/quipsly/src/app/api/mobile/capture/inbox/route.ts"),
@@ -303,6 +305,8 @@ const appStoreSubscriptionServerText = read(files.appStoreSubscriptionServer);
 const subscriptionEntitlementsServerText = read(files.subscriptionEntitlementsServer);
 const coachingRunwayRouteText = read(files.coachingRunwayRoute);
 const onDeviceTranscriptRouteText = read(files.onDeviceTranscriptRoute);
+const cloudTranscriptFallbackRouteText = read(files.cloudTranscriptFallbackRoute);
+const mobileCaptureTranscriptDeviceAccessText = read(files.mobileCaptureTranscriptDeviceAccess);
 const mobileQuickEntryRouteText = read(files.mobileQuickEntryRoute);
 const mobileTodayRouteText = read(files.mobileTodayRoute);
 const mobileSourceInboxRouteText = read(files.mobileSourceInboxRoute);
@@ -604,11 +608,45 @@ for (const needle of [
   "beginBackgroundTask(",
   "BGProcessingTaskRequest",
   "maximumRecordings: 1",
+  "cloudTranscriptFallbackRequestId",
+  "submitCloudFallback(recording:",
+  "/api/mobile/capture/transcripts/cloud-fallback",
+  "retryFailures: true",
+  'reasonCode: "local-source-unavailable-after-upload"',
 ]) {
   requireIncludes(
     onDeviceTranscriptManagerText,
     needle,
     "on-device transcript evidence remains protected, source-bound, and explicit",
+  );
+}
+requireExcludes(
+  onDeviceTranscriptManagerText,
+  "recording.transcriptJobId?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty != false",
+  "the upload-created canonical fallback job cannot suppress device-first transcript recovery",
+);
+for (const needle of [
+  "cloudTranscriptFallbackRequestId",
+  "cloudTranscriptFallbackReasonCode",
+  "cloudTranscriptFallbackAcceptedAt",
+  "markCloudTranscriptFallbackNeeded",
+  "markCloudTranscriptFallbackAccepted",
+]) {
+  requireIncludes(
+    localRecordingLibraryText,
+    needle,
+    "device failure and accepted cloud fallback survive relaunch in the account-bound recording ledger",
+  );
+}
+for (const needle of [
+  "uploaded.cloudTranscriptFallbackRequestId != nil",
+  "uploaded.cloudTranscriptFallbackAcceptedAt == nil",
+  "submitPendingCloudFallback(",
+]) {
+  requireIncludes(
+    audioText,
+    needle,
+    "verified upload automatically resumes a durable device-failure fallback without Library paperwork",
   );
 }
 for (const needle of [
@@ -618,6 +656,37 @@ for (const needle of [
     appDelegateText,
     needle,
     "transcript background recovery is registered during application launch",
+  );
+}
+for (const needle of [
+  "mobileCaptureTranscriptAccessibleAssetWhere",
+  "mobileCaptureTranscriptParticipantMismatch",
+  'asset.status !== "VERIFIED"',
+  "CLOUD_FALLBACK_SOURCE_MISMATCH",
+  "CLOUD_FALLBACK_PARTICIPANT_MISMATCH",
+  'status: "COMPLETED"',
+  "providerExecutionRequested: false",
+  "speculative: false",
+  "deviceAttemptFailedFirst: true",
+  "ensureCaptureTranscriptProcessingQueued",
+  'isolationLevel: "Serializable"',
+]) {
+  requireIncludes(
+    cloudTranscriptFallbackRouteText,
+    needle,
+    "cloud ASR starts only after bounded device failure evidence and reuses the exact verified source job",
+  );
+}
+for (const needle of [
+  "mobileCaptureTranscriptAccessibleAssetWhere",
+  "mobileCaptureTranscriptParticipantMismatch",
+  "LOCAL_AUDIO",
+  "input.asset.participant.userId",
+]) {
+  requireIncludes(
+    mobileCaptureTranscriptDeviceAccessText,
+    needle,
+    "device transcript and fallback routes share one participant-owned source boundary",
   );
 }
 for (const needle of [

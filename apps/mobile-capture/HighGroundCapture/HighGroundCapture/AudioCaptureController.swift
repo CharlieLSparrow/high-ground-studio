@@ -462,16 +462,26 @@ final class AudioCaptureController: NSObject, ObservableObject {
                     )
                     if let uploaded = localRecordingLibrary.recording(id: recordingID),
                        uploaded.status.isVerified,
-                       uploaded.shouldBeginAutomaticOnDeviceTranscript,
-                       (try? OnDeviceTranscriptStore.load(for: recordingID)) != nil {
-                        // Transcription may finish before a large audio upload.
-                        // Verification is the event that makes the saved
-                        // source-bound transcript eligible for attachment, so
-                        // continue automatically instead of making the person
-                        // find and press a retry button.
-                        OnDeviceTranscriptManager.shared.submitSavedTranscript(
-                            recording: uploaded
-                        )
+                       uploaded.shouldBeginAutomaticOnDeviceTranscript {
+                        if (try? OnDeviceTranscriptStore.load(for: recordingID)) != nil {
+                            // Transcription may finish before a large audio upload.
+                            // Verification is the event that makes the saved
+                            // source-bound transcript eligible for attachment, so
+                            // continue automatically instead of making the person
+                            // find and press a retry button.
+                            OnDeviceTranscriptManager.shared.submitSavedTranscript(
+                                recording: uploaded
+                            )
+                        } else if uploaded.cloudTranscriptFallbackRequestId != nil,
+                                  uploaded.cloudTranscriptFallbackAcceptedAt == nil {
+                            // Apple Speech can also fail before upload verification.
+                            // The durable failure intent must cross that race without
+                            // asking the person to revisit Library or starting a
+                            // speculative cloud job before exact bytes exist.
+                            OnDeviceTranscriptManager.shared.submitPendingCloudFallback(
+                                recording: uploaded
+                            )
+                        }
                     }
                 } catch {
                     print("Could not update local upload receipt: \(error.localizedDescription)")

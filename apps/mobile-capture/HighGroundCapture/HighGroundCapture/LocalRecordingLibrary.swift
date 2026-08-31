@@ -307,6 +307,15 @@ struct LocalRecording: Codable, Identifiable, Equatable {
     var uploadedSourceId: String?
     var uploadedMediaAssetId: String? = nil
     var transcriptJobId: String? = nil
+    /// Durable intent used only after Apple Speech has actually failed. Upload
+    /// may finish before or after that attempt, so the ledger—not one screen—
+    /// owns the eventual single cloud fallback request.
+    var cloudTranscriptFallbackRequestId: UUID? = nil
+    var cloudTranscriptFallbackReasonCode: String? = nil
+    var cloudTranscriptFallbackIntentCreatedAt: Date? = nil
+    var cloudTranscriptFallbackAcceptedAt: Date? = nil
+    var cloudTranscriptFallbackJobId: String? = nil
+    var cloudTranscriptFallbackStatus: String? = nil
     var serverVerificationStatus: String?
     var sourceSHA256: String? = nil
     var verifiedCloudSHA256: String? = nil
@@ -1252,6 +1261,52 @@ final class LocalRecordingLibrary: ObservableObject {
             throw LibraryError.recordingNotFound
         }
         try mutate(id) { recording in
+            recording.transcriptJobId = normalizedJobId
+        }
+    }
+
+    func markCloudTranscriptFallbackNeeded(
+        _ id: UUID,
+        requestId: UUID,
+        reasonCode: String,
+        createdAt: Date = Date()
+    ) throws {
+        let normalizedReason = reasonCode.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedReason.isEmpty else { throw LibraryError.recordingNotFound }
+        try mutate(id, allowInactiveOwner: true) { recording in
+            guard recording.cloudTranscriptFallbackAcceptedAt == nil else { return }
+            if let existing = recording.cloudTranscriptFallbackRequestId {
+                guard existing == requestId
+                    || recording.cloudTranscriptFallbackReasonCode == normalizedReason else {
+                    throw LibraryError.recordingNotFound
+                }
+                return
+            }
+            recording.cloudTranscriptFallbackRequestId = requestId
+            recording.cloudTranscriptFallbackReasonCode = normalizedReason
+            recording.cloudTranscriptFallbackIntentCreatedAt = createdAt
+        }
+    }
+
+    func markCloudTranscriptFallbackAccepted(
+        _ id: UUID,
+        requestId: UUID,
+        transcriptJobId: String,
+        status: String,
+        acceptedAt: Date = Date()
+    ) throws {
+        guard let normalizedJobId = nonempty(transcriptJobId) else {
+            throw LibraryError.recordingNotFound
+        }
+        let normalizedStatus = status.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedStatus.isEmpty else { throw LibraryError.recordingNotFound }
+        try mutate(id, allowInactiveOwner: true) { recording in
+            guard recording.cloudTranscriptFallbackRequestId == requestId else {
+                throw LibraryError.recordingNotFound
+            }
+            recording.cloudTranscriptFallbackAcceptedAt = acceptedAt
+            recording.cloudTranscriptFallbackJobId = normalizedJobId
+            recording.cloudTranscriptFallbackStatus = normalizedStatus
             recording.transcriptJobId = normalizedJobId
         }
     }

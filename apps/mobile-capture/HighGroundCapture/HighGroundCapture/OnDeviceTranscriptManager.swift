@@ -244,13 +244,15 @@ enum OnDeviceTranscriptPhase: Equatable {
     case waitingForVerifiedUpload(segmentCount: Int)
     case submitting(segmentCount: Int)
     case attached(transcriptJobId: String, segmentCount: Int)
+    case requestingCloudFallback
+    case cloudFallback(transcriptJobId: String, status: String)
     case failed(message: String, retryable: Bool)
 
     var isBusy: Bool {
         switch self {
-        case .checkingSupport, .installingModel, .transcribing, .submitting:
+        case .checkingSupport, .installingModel, .transcribing, .submitting, .requestingCloudFallback:
             return true
-        case .idle, .modelDownloadRequired, .savedLocally, .waitingForVerifiedUpload, .attached, .failed:
+        case .idle, .modelDownloadRequired, .savedLocally, .waitingForVerifiedUpload, .attached, .cloudFallback, .failed:
             return false
         }
     }
@@ -302,6 +304,32 @@ enum OnDeviceTranscriptFailure: LocalizedError {
             return "The transcript is saved only on this iPhone. Upload and verify the exact recording before attaching it to the Session."
         case .serverRejected(let message):
             return message
+        }
+    }
+}
+
+private extension OnDeviceTranscriptFailure {
+    var cloudFallbackReasonCode: String? {
+        switch self {
+        case .unavailable:
+            "apple-speech-unavailable"
+        case .unsupportedLocale:
+            "apple-speech-unsupported-locale"
+        case .speechPermissionDenied:
+            "apple-speech-permission-denied"
+        case .modelInstallFailed:
+            "apple-speech-model-install-failed"
+        case .sourceUnavailable:
+            "local-source-unavailable-after-upload"
+        case .sourceChanged:
+            "local-source-changed-after-upload"
+        case .noFinalizedSpeech:
+            "apple-speech-no-finalized-text"
+        case .localStorageUnavailable:
+            "local-transcript-storage-unavailable"
+        case .modelDownloadRequired, .sourceHasNoAudio, .accountUnavailable,
+             .accountChanged, .verifiedUploadRequired, .serverRejected:
+            nil
         }
     }
 }
@@ -727,19 +755,29 @@ final class OnDeviceTranscriptManager: ObservableObject {
 
     func restoreState(for recording: LocalRecording) {
         guard phases[recording.id] == nil else { return }
-        guard let stored = try? OnDeviceTranscriptStore.load(for: recording.id) else { return }
-        if let receipt = try? OnDeviceTranscriptStore.loadSubmissionReceipt(
-            for: recording.id,
-            clientRequestId: stored.sidecar.clientRequestId
-        ) {
-            phases[recording.id] = .attached(
-                transcriptJobId: receipt.transcriptJobId,
-                segmentCount: stored.sidecar.segments.count
+        if let stored = try? OnDeviceTranscriptStore.load(for: recording.id) {
+            if let receipt = try? OnDeviceTranscriptStore.loadSubmissionReceipt(
+                for: recording.id,
+                clientRequestId: stored.sidecar.clientRequestId
+            ) {
+                phases[recording.id] = .attached(
+                    transcriptJobId: receipt.transcriptJobId,
+                    segmentCount: stored.sidecar.segments.count
+                )
+            } else {
+                phases[recording.id] = recording.status.isVerified
+                    ? .savedLocally(segmentCount: stored.sidecar.segments.count)
+                    : .waitingForVerifiedUpload(segmentCount: stored.sidecar.segments.count)
+            }
+            return
+        }
+        if let jobId = recording.cloudTranscriptFallbackJobId,
+           let status = recording.cloudTranscriptFallbackStatus,
+           recording.cloudTranscriptFallbackAcceptedAt != nil {
+            phases[recording.id] = .cloudFallback(
+                transcriptJobId: jobId,
+                status: status
             )
-        } else {
-            phases[recording.id] = recording.status.isVerified
-                ? .savedLocally(segmentCount: stored.sidecar.segments.count)
-                : .waitingForVerifiedUpload(segmentCount: stored.sidecar.segments.count)
         }
     }
 
@@ -810,6 +848,17 @@ final class OnDeviceTranscriptManager: ObservableObject {
         }
     }
 
+    func submitPendingCloudFallback(recording: LocalRecording) {
+        guard !phase(for: recording.id).isBusy,
+              activeTasks[recording.id] == nil else { return }
+        startProtectedWork(
+            recordingID: recording.id,
+            name: "Request transcript fallback"
+        ) { [weak self] in
+            await self?.submitCloudFallback(recording: recording)
+        }
+    }
+
     /// Reconciles transcript intent from the durable recording ledger rather
     /// than relying on a person to revisit one particular Library row. Work is
     /// serialized so a launch with several long masters cannot make every
@@ -832,6 +881,7 @@ final class OnDeviceTranscriptManager: ObservableObject {
             if currentPhase.isBusy { continue }
             if case .failed = currentPhase { continue }
             if case .attached = currentPhase { continue }
+            if case .cloudFallback = currentPhase { continue }
 
             if let stored = try? OnDeviceTranscriptStore.load(for: recording.id) {
                 if (try? OnDeviceTranscriptStore.loadSubmissionReceipt(
@@ -847,11 +897,43 @@ final class OnDeviceTranscriptManager: ObservableObject {
                 continue
             }
 
+            if recording.cloudTranscriptFallbackRequestId != nil,
+               recording.cloudTranscriptFallbackAcceptedAt == nil {
+                guard recording.status.isVerified else { continue }
+                submitPendingCloudFallback(recording: recording)
+                await waitForActiveTask(recordingID: recording.id)
+                processed += 1
+                continue
+            }
+
             guard recording.shouldBeginAutomaticOnDeviceTranscript,
                   currentPhase == .idle,
                   recording.status.isPlaybackEligible,
-                  recording.transcriptJobId?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty != false,
-                  let fileURL = LocalRecordingLibrary.shared.fileURL(for: recording) else {
+                  recording.cloudTranscriptFallbackAcceptedAt == nil else {
+                continue
+            }
+            guard let fileURL = LocalRecordingLibrary.shared.fileURL(for: recording) else {
+                guard recording.status.isVerified,
+                      recording.serverVerificationStatus?.lowercased() == "verified" else {
+                    continue
+                }
+                do {
+                    try LocalRecordingLibrary.shared.markCloudTranscriptFallbackNeeded(
+                        recording.id,
+                        requestId: recording.cloudTranscriptFallbackRequestId ?? UUID(),
+                        reasonCode: "local-source-unavailable-after-upload"
+                    )
+                    if let current = LocalRecordingLibrary.shared.recording(id: recording.id) {
+                        submitPendingCloudFallback(recording: current)
+                        await waitForActiveTask(recordingID: recording.id)
+                        processed += 1
+                    }
+                } catch {
+                    phases[recording.id] = .failed(
+                        message: error.localizedDescription,
+                        retryable: true
+                    )
+                }
                 continue
             }
             beginAutomaticTranscript(recording: recording, fileURL: fileURL)
@@ -863,13 +945,13 @@ final class OnDeviceTranscriptManager: ObservableObject {
 
     func hasPendingEligibleWork() -> Bool {
         LocalRecordingLibrary.shared.recordings.contains { recording in
-            guard recording.shouldBeginAutomaticOnDeviceTranscript,
-                  recording.transcriptJobId?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty != false else {
+            guard recording.shouldBeginAutomaticOnDeviceTranscript else {
                 return false
             }
             let currentPhase = phase(for: recording.id)
             if case .failed = currentPhase { return false }
             if case .attached = currentPhase { return false }
+            if case .cloudFallback = currentPhase { return false }
             if case .modelDownloadRequired = currentPhase { return false }
             if let stored = try? OnDeviceTranscriptStore.load(for: recording.id) {
                 let receipt = try? OnDeviceTranscriptStore.loadSubmissionReceipt(
@@ -878,8 +960,17 @@ final class OnDeviceTranscriptManager: ObservableObject {
                 )
                 return receipt == nil && recording.status.isVerified
             }
-            return recording.status.isPlaybackEligible
-                && LocalRecordingLibrary.shared.fileURL(for: recording) != nil
+            if recording.cloudTranscriptFallbackRequestId != nil,
+               recording.cloudTranscriptFallbackAcceptedAt == nil {
+                return recording.status.isVerified
+            }
+            if recording.cloudTranscriptFallbackAcceptedAt != nil { return false }
+            guard recording.status.isPlaybackEligible else { return false }
+            if LocalRecordingLibrary.shared.fileURL(for: recording) != nil {
+                return true
+            }
+            return recording.status.isVerified
+                && recording.serverVerificationStatus?.lowercased() == "verified"
         }
     }
 
@@ -1092,7 +1183,43 @@ final class OnDeviceTranscriptManager: ObservableObject {
                 phases[recording.id] = .idle
                 OnDeviceTranscriptBackgroundCoordinator.shared.schedule()
             } else {
-                phases[recording.id] = .failed(message: error.localizedDescription, retryable: true)
+                let fallbackReason: String?
+                if let known = error as? OnDeviceTranscriptFailure {
+                    fallbackReason = known.cloudFallbackReasonCode
+                } else {
+                    fallbackReason = "apple-speech-processing-failed"
+                }
+                guard let fallbackReason else {
+                    phases[recording.id] = .failed(
+                        message: error.localizedDescription,
+                        retryable: true
+                    )
+                    return
+                }
+                let requestId = recording.cloudTranscriptFallbackRequestId ?? UUID()
+                do {
+                    try LocalRecordingLibrary.shared.markCloudTranscriptFallbackNeeded(
+                        recording.id,
+                        requestId: requestId,
+                        reasonCode: fallbackReason
+                    )
+                    let current = LocalRecordingLibrary.shared.recording(id: recording.id)
+                        ?? recording
+                    if current.status.isVerified {
+                        await submitCloudFallback(recording: current)
+                    } else {
+                        phases[recording.id] = .failed(
+                            message: "\(error.localizedDescription) Quipsly will use the verified cloud copy once its backup finishes.",
+                            retryable: true
+                        )
+                        OnDeviceTranscriptBackgroundCoordinator.shared.schedule()
+                    }
+                } catch {
+                    phases[recording.id] = .failed(
+                        message: error.localizedDescription,
+                        retryable: true
+                    )
+                }
             }
         }
     }
@@ -1156,6 +1283,97 @@ final class OnDeviceTranscriptManager: ObservableObject {
                 result.preset,
                 result.recognitionExecution == "on-device" ? "built-in" : "apple-service"
             )
+        }
+    }
+
+    private func submitCloudFallback(recording: LocalRecording) async {
+        do {
+            guard let requestId = recording.cloudTranscriptFallbackRequestId,
+                  let reasonCode = recording.cloudTranscriptFallbackReasonCode?
+                    .trimmingCharacters(in: .whitespacesAndNewlines),
+                  !reasonCode.isEmpty,
+                  recording.status.isVerified,
+                  recording.serverVerificationStatus?.lowercased() == "verified",
+                  let recordingAssetId = recording.recordingAssetId?
+                    .trimmingCharacters(in: .whitespacesAndNewlines),
+                  !recordingAssetId.isEmpty,
+                  let sourceSha256 = recording.verifiedCloudSHA256?.lowercased(),
+                  sourceSha256.range(of: #"^[0-9a-f]{64}$"#, options: .regularExpression) != nil,
+                  let sourceByteCount = recording.verifiedCloudSizeBytes,
+                  sourceByteCount > 0,
+                  let ownerAccountId = recording.ownerAccountID,
+                  AuthManager.currentStoredOwnerID() == ownerAccountId else {
+                phases[recording.id] = .failed(
+                    message: "Cloud transcript fallback is waiting for the verified recording and its owning account.",
+                    retryable: true
+                )
+                OnDeviceTranscriptBackgroundCoordinator.shared.schedule()
+                return
+            }
+            guard let endpoint = URL(
+                string: "\(apiBaseURL)/api/mobile/capture/transcripts/cloud-fallback"
+            ) else {
+                throw OnDeviceTranscriptFailure.serverRejected(
+                    "Quipsly's transcript fallback address is invalid."
+                )
+            }
+            phases[recording.id] = .requestingCloudFallback
+            var request = URLRequest(url: endpoint)
+            request.httpMethod = "POST"
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.setValue("application/json", forHTTPHeaderField: "Accept")
+            request.httpBody = try JSONEncoder.quipslyTranscript.encode(
+                OnDeviceTranscriptCloudFallbackRequest(
+                    clientRequestId: requestId.uuidString.lowercased(),
+                    recordingAssetId: recordingAssetId,
+                    sourceSha256: sourceSha256,
+                    sourceByteCount: String(sourceByteCount),
+                    reasonCode: reasonCode
+                )
+            )
+            let (data, response) = try await AuthManager.shared.authenticatedData(
+                for: request,
+                expectedOwnerAccountID: ownerAccountId
+            )
+            let envelope = try JSONDecoder().decode(
+                OnDeviceTranscriptCloudFallbackResponse.self,
+                from: data
+            )
+            guard (200...299).contains(response.statusCode),
+                  envelope.ok,
+                  let transcriptJobId = envelope.transcriptJobId,
+                  !transcriptJobId.isEmpty,
+                  let status = envelope.status,
+                  !status.isEmpty else {
+                throw OnDeviceTranscriptFailure.serverRejected(
+                    envelope.error
+                        ?? "Quipsly could not start transcript fallback. The original recording and durable fallback intent remain safe."
+                )
+            }
+            try LocalRecordingLibrary.shared.markCloudTranscriptFallbackAccepted(
+                recording.id,
+                requestId: requestId,
+                transcriptJobId: transcriptJobId,
+                status: status
+            )
+            phases[recording.id] = .cloudFallback(
+                transcriptJobId: transcriptJobId,
+                status: status
+            )
+        } catch {
+            if Task.isCancelled || error is CancellationError {
+                phases[recording.id] = .failed(
+                    message: "Cloud transcript fallback will resume automatically.",
+                    retryable: true
+                )
+                OnDeviceTranscriptBackgroundCoordinator.shared.schedule()
+            } else {
+                phases[recording.id] = .failed(
+                    message: error.localizedDescription,
+                    retryable: true
+                )
+                OnDeviceTranscriptBackgroundCoordinator.shared.schedule()
+            }
         }
     }
 
@@ -1295,7 +1513,8 @@ final class OnDeviceTranscriptBackgroundCoordinator {
                 return
             }
             _ = await OnDeviceTranscriptManager.shared.resumeEligibleRecordings(
-                maximumRecordings: 1
+                maximumRecordings: 1,
+                retryFailures: true
             )
             let completed = !Task.isCancelled
             task.setTaskCompleted(success: completed)
@@ -1305,6 +1524,24 @@ final class OnDeviceTranscriptBackgroundCoordinator {
             }
         }
     }
+}
+
+private struct OnDeviceTranscriptCloudFallbackRequest: Encodable {
+    let clientRequestId: String
+    let recordingAssetId: String
+    let sourceSha256: String
+    let sourceByteCount: String
+    let reasonCode: String
+}
+
+private struct OnDeviceTranscriptCloudFallbackResponse: Decodable {
+    let ok: Bool
+    let status: String?
+    let transcriptJobId: String?
+    let providerExecutionRequested: Bool?
+    let idempotentReplay: Bool?
+    let error: String?
+    let errorCode: String?
 }
 
 private struct OnDeviceTranscriptSubmission: Encodable {

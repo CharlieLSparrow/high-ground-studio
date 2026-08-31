@@ -5,6 +5,10 @@ import { NextResponse } from "next/server";
 import { getPrismaClient } from "@/lib/prisma";
 import { captureTranscriptSourceTopology } from "@/lib/server/capture-transcript-processing";
 import { mobileCaptureTranscriptProcessingGate } from "@/lib/server/mobile-capture-processing-gates";
+import {
+  mobileCaptureTranscriptAccessibleAssetWhere,
+  mobileCaptureTranscriptParticipantMismatch,
+} from "@/lib/server/mobile-capture-transcript-device-access";
 import { acquirePrismaAdvisoryTransactionLock } from "@/lib/server/prisma-advisory-lock";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 
@@ -234,18 +238,6 @@ async function readJson(request: Request) {
   }
 }
 
-function accessibleRoomWhere(userId: string, actorEmail: string) {
-  return [
-    { room: { createdByUserId: userId } },
-    { room: { participants: { some: { userId, accessStatus: "ACTIVE" } } } },
-    { room: { booking: { clientUserId: userId } } },
-    { room: { booking: { coachUserId: userId } } },
-    ...(actorEmail
-      ? [{ room: { project: { accessGrants: { some: { email: actorEmail, status: "ACTIVE" } } } } }]
-      : []),
-  ];
-}
-
 export async function POST(request: Request) {
   try {
     const session = await getQuipslySessionFromRequest(request);
@@ -287,9 +279,12 @@ export async function POST(request: Request) {
     const result = await prisma.$transaction(async (transaction: any) => {
       await acquirePrismaAdvisoryTransactionLock(transaction, `on-device-transcript:${recordingAssetId}`);
       const asset = await transaction.recordingAsset.findFirst({
-        where: session.user.isStaff
-          ? { id: recordingAssetId }
-          : { id: recordingAssetId, OR: accessibleRoomWhere(userId, actorEmail) },
+        where: mobileCaptureTranscriptAccessibleAssetWhere({
+          recordingAssetId,
+          userId,
+          actorEmail,
+          isStaff: session.user.isStaff,
+        }),
         include: {
           participant: {
             select: { id: true, userId: true, displayName: true, email: true },
@@ -302,12 +297,11 @@ export async function POST(request: Request) {
       if (isProviderRecordingReceiptSlot(asset)) {
         throw new OnDeviceTranscriptError(409, "ON_DEVICE_TRANSCRIPT_MEDIA_REQUIRED", "Provider receipt slots are not media and cannot be transcribed.");
       }
-      if (
-        ["LOCAL_AUDIO", "LOCAL_VIDEO"].includes(String(asset.kind))
-        && asset.participant?.userId
-        && asset.participant.userId !== userId
-        && !session.user.isStaff
-      ) {
+      if (mobileCaptureTranscriptParticipantMismatch({
+        asset,
+        userId,
+        isStaff: session.user.isStaff,
+      })) {
         throw new OnDeviceTranscriptError(
           403,
           "ON_DEVICE_TRANSCRIPT_PARTICIPANT_MISMATCH",
