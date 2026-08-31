@@ -38,6 +38,11 @@ final class CaptureExperienceUITests: XCTestCase {
             || name.contains("testSpeechAdaptationIsOptionalRememberedAndEasyToReach") {
             app.launchArguments.append("--capture-force-local-voice-note-ui-test")
         }
+        if name.contains("testPrivateVoiceNoteOpensCaptureWithoutMeetingPaperwork") {
+            app.launchArguments.append(
+                "--capture-local-voice-note-refresh-race-ui-test"
+            )
+        }
         if name.contains("testSpeechAdaptationIsOptionalRememberedAndEasyToReach") {
             app.launchArguments.append(
                 "--capture-share-owner-ui-preview=voice-writing-preferences-owner"
@@ -517,7 +522,7 @@ final class CaptureExperienceUITests: XCTestCase {
         )
         XCTAssertTrue(
             app.buttons["CaptureStartButton"].isEnabled,
-            "A private thought must remain recordable without creating an online Session first."
+            "A private thought must remain recordable without creating an online Session first, even when the canonical Session list refreshes to empty."
         )
         XCTAssertTrue(
             app.buttons["CaptureStartButton"].isHittable,
@@ -555,8 +560,9 @@ final class CaptureExperienceUITests: XCTestCase {
             "The optional tips should teach spoken structure at the moment it is useful."
         )
         XCTAssertTrue(
-            app.staticTexts["CaptureSessionStatusMessage"].label.contains("offline"),
-            "The local-first path should explain that recording and writing remain available without Nest."
+            app.staticTexts["CaptureSessionStatusMessage"].label
+                .contains("start safely on this device"),
+            "The local-first path should plainly confirm that the recording and words begin safely on the current device."
         )
         let tipsScreenshot = XCTAttachment(screenshot: app.screenshot())
         tipsScreenshot.name = "private-speak-to-write-tips.png"

@@ -163,6 +163,20 @@ enum CaptureLaunchConfiguration {
         #endif
     }
 
+    /// Deterministically reproduces the physical-device race where a Nest
+    /// Session refresh completed after a local writing shell was created.
+    /// Release and physical-device builds can never enable this path.
+    static var usesLocalVoiceNoteRefreshRaceUITest: Bool {
+        #if DEBUG && targetEnvironment(simulator)
+        forcesLocalVoiceNoteUITest
+            && ProcessInfo.processInfo.arguments.contains(
+                "--capture-local-voice-note-refresh-race-ui-test"
+            )
+        #else
+        false
+        #endif
+    }
+
     /// A DEBUG-only presentation layer for deterministic App Store layout
     /// drafts. It uses the same mutation-free preview model, but removes
     /// engineering boundary labels and substitutes clearly fictional account
@@ -353,7 +367,25 @@ final class CaptureExperienceModel: ObservableObject {
     @Published var newSessionPurpose = "COACHING"
     @Published var newSessionCoachingEngagementID = ""
     @Published var message: String?
-    @Published var errorMessage: String?
+    @Published var errorMessage: String? {
+        didSet {
+            guard let errorMessage = errorMessage?
+                .trimmingCharacters(in: .whitespacesAndNewlines),
+                  !errorMessage.isEmpty,
+                  errorMessage != oldValue else { return }
+            CaptureAttentionDiagnostics.shared.record(
+                message: errorMessage,
+                selectedSessionID: selectedSessionID,
+                selectedSessionIsLocal: selectedSession?.isLocalPersonalVoiceNoteDraft == true,
+                canonicalSessionCount: sessionClient.sessions.count,
+                localDraftSessionCount: localPersonalVoiceNoteSessions.count,
+                isRefreshing: isRefreshing,
+                isCreatingSession: isCreatingSession,
+                isChangingCapture: isChangingCapture,
+                isChangingRoom: isChangingRoom
+            )
+        }
+    }
     @Published private(set) var sessionEntryNotice: CaptureSessionEntryNotice?
     @Published private(set) var workNavigationRequest: CaptureWorkNavigationRequest?
     @Published var preparedRoomJoin: MobileCaptureRoomJoinResponse?
@@ -415,6 +447,12 @@ final class CaptureExperienceModel: ObservableObject {
     private var observedReceiptOwnerAccountID: String?
     private var automaticallyQueuedRecoveredRecordingIDs = Set<UUID>()
     private var isMaterializingPersonalVoiceNotes = false
+    /// Local-first writing is not a server Session projection. Keeping these
+    /// drafts in `CaptureSessionClient.sessions` allowed any ordinary Nest
+    /// refresh to erase the selected recorder between opening it and tapping
+    /// Record. This small overlay remains model-owned until the protected
+    /// source is bound to its canonical actor-owned Session after Stop.
+    @Published private var localPersonalVoiceNoteSessions: [MobileCaptureSession] = []
     private var isChildModelRefreshScheduled = false
     private var suppressesChildModelRefreshesUntilInitialLoadCompletes = true
     private var cancellables = Set<AnyCancellable>()
@@ -536,7 +574,9 @@ final class CaptureExperienceModel: ObservableObject {
     }
 
     var sessions: [MobileCaptureSession] {
-        sessionClient.sessions
+        let localIDs = Set(localPersonalVoiceNoteSessions.map(\.id))
+        return localPersonalVoiceNoteSessions
+            + sessionClient.sessions.filter { !localIDs.contains($0.id) }
     }
 
     /// Appointments and collaborative rooms belong in Today and the Record
@@ -882,7 +922,7 @@ final class CaptureExperienceModel: ObservableObject {
         guard !usesPreviewData,
               !isRefreshing,
               AuthManager.shared.networkActionsAllowed,
-              selectedSession?.isLocalPersonalVoiceNoteDraft != true else { return }
+              !selectedSessionIsLocalPersonalVoiceNote else { return }
 
         isRefreshing = true
         defer { isRefreshing = false }
@@ -1512,10 +1552,29 @@ final class CaptureExperienceModel: ObservableObject {
             scheduledStart: ISO8601DateFormatter().string(from: Date()),
             localPersonalDraft: true
         )
-        sessionClient.sessions.insert(created, at: 0)
+        localPersonalVoiceNoteSessions.removeAll { $0.id == created.id }
+        localPersonalVoiceNoteSessions.insert(created, at: 0)
+        #if DEBUG && targetEnvironment(simulator)
+        if CaptureLaunchConfiguration.usesLocalVoiceNoteRefreshRaceUITest {
+            // Model the successful canonical response observed on Morbo: the
+            // server truth contains no collaborative Sessions, while the
+            // local writing recorder must remain selected and recordable.
+            sessionClient.sessions = []
+            sessionClient.status = "No sessions yet"
+        }
+        #endif
         selectedSessionID = created.id
         message = "Ready to write. Your recording and words start safely on this device."
         return created
+    }
+
+    private var selectedSessionIsLocalPersonalVoiceNote: Bool {
+        guard let selectedSessionID else { return false }
+        return selectedSessionID.hasPrefix("local-voice-note-")
+            || localPersonalVoiceNoteSessions.contains(where: {
+                $0.id == selectedSessionID
+            })
+            || selectedSession?.isLocalPersonalVoiceNoteDraft == true
     }
 
     @discardableResult
@@ -3147,6 +3206,14 @@ final class CaptureExperienceModel: ObservableObject {
                     recordingConsentId: consentID,
                     sessionTitle: created.title
                 )
+                let localDraftRoomID = bound.localDraftCallRoomId
+                localPersonalVoiceNoteSessions.removeAll { localSession in
+                    localSession.id == localDraftRoomID
+                        || localSession.callRoomId == localDraftRoomID
+                }
+                if selectedSessionID == localDraftRoomID {
+                    selectedSessionID = created.id
+                }
                 retryUpload(for: bound, quietly: true)
             } catch {
                 // Never replace the person's successful local-save message
@@ -3382,6 +3449,12 @@ final class CaptureExperienceModel: ObservableObject {
         let ownerAccountID = normalizedOwnerAccountID(ownerAccountID)
         guard ownerAccountID != observedReceiptOwnerAccountID else { return }
         observedReceiptOwnerAccountID = ownerAccountID
+        // An unrecorded local writing shell has no protected media owner yet.
+        // Never carry that navigation authority across an account boundary.
+        localPersonalVoiceNoteSessions = []
+        if selectedSessionID?.hasPrefix("local-voice-note-") == true {
+            selectedSessionID = nil
+        }
         taskReminderScheduler.activateOwner(ownerAccountID)
         sessionNoteEditOutbox.activateOwner(ownerAccountID)
         if usesPreviewData {

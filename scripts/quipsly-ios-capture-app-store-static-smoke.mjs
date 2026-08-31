@@ -1619,9 +1619,20 @@ const sessionEntryRefreshEnd = captureExperienceText.indexOf("func saveQuickEntr
 const sessionEntryRefreshBody = captureExperienceText.slice(sessionEntryRefreshStart, sessionEntryRefreshEnd);
 requireIncludes(
   sessionEntryRefreshBody,
-  "selectedSession?.isLocalPersonalVoiceNoteDraft != true",
+  "!selectedSessionIsLocalPersonalVoiceNote",
   "local voice writing never asks the canonical Session collection to authorize its private draft",
 );
+for (const needle of [
+  "localPersonalVoiceNoteSessions",
+  "return localPersonalVoiceNoteSessions",
+  "sessionClient.sessions.filter",
+]) {
+  requireIncludes(
+    captureExperienceText,
+    needle,
+    "local voice writing remains a model-owned overlay across canonical Session refreshes",
+  );
+}
 for (const needle of [
   "projectID: visibleContextNest?.id",
   "projectName: visibleContextNest?.name",
