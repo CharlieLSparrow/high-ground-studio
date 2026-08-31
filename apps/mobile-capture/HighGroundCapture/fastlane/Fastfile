@@ -18,6 +18,20 @@ APPLE_APP_ID = "6780995957"
 APP_IDENTIFIER = "com.highgroundodyssey.HighGroundCapture"
 UI_TEST_PLANNER = File.join(REPO_ROOT, "scripts", "release", "quipsly-capture-ui-test-plan.mjs")
 DEFAULT_FULL_UI_TEST_SHARDS = 4
+IPAD_UI_TEST_SELECTOR =
+  "HighGroundCaptureUITests/CaptureExperienceUITests/testRegularWidthIPadUsesANativeWorkspaceSidebar"
+
+def capture_ui_execution_groups(selectors, default_device:)
+  ipad_selectors, iphone_selectors = selectors.partition { |selector| selector == IPAD_UI_TEST_SELECTOR }
+  groups = []
+  groups << { slug: "iphone", device: default_device, selectors: iphone_selectors } unless iphone_selectors.empty?
+  groups << {
+    slug: "ipad",
+    device: ENV.fetch("QUIPSLY_CAPTURE_UI_TEST_IPAD_DEVICE", "iPad Air 13-inch (M3)"),
+    selectors: ipad_selectors,
+  } unless ipad_selectors.empty?
+  groups
+end
 
 def capture_ui_test_plan(suite:, shard:, shards:)
   stdout, stderr, status = Open3.capture3(
@@ -142,13 +156,29 @@ def verify_ui_test_evidence_path(path, expected_source_revision: nil, require_fu
     UI.user_error!("UI shard selectors do not match their source-derived partition.") unless
       shard.fetch("selectors").sort == expected_plan.fetch("selectors").sort
     UI.user_error!("Capture UI shard retry policy is inconsistent.") unless shard.fetch("testRetryLimit") == retry_limit
-    result_bundle_path = File.expand_path(shard.fetch("resultBundlePath"), File.dirname(expanded_path))
-    UI.user_error!("UI shard #{shard.fetch("shard")} result bundle is unavailable.") unless
-      File.directory?(result_bundle_path) && File.file?(File.join(result_bundle_path, "Info.plist"))
-    summary = verify_capture_ui_xcresult(result_bundle_path, shard.fetch("selectors").length)
-    recorded_summary = shard.fetch("resultSummary")
-    UI.user_error!("UI shard #{shard.fetch("shard")} recorded result summary changed.") unless
-      recorded_summary == summary.transform_keys(&:to_s)
+    executions = shard["executions"]
+    if executions
+      execution_selectors = executions.flat_map { |execution| execution.fetch("selectors") }
+      UI.user_error!("UI shard #{shard.fetch("shard")} execution coverage is inconsistent.") unless
+        execution_selectors.sort == shard.fetch("selectors").sort &&
+          execution_selectors.uniq.length == execution_selectors.length
+      executions.each do |execution|
+        result_bundle_path = File.expand_path(execution.fetch("resultBundlePath"), File.dirname(expanded_path))
+        UI.user_error!("UI shard #{shard.fetch("shard")} execution result bundle is unavailable.") unless
+          File.directory?(result_bundle_path) && File.file?(File.join(result_bundle_path, "Info.plist"))
+        summary = verify_capture_ui_xcresult(result_bundle_path, execution.fetch("selectors").length)
+        UI.user_error!("UI shard #{shard.fetch("shard")} execution result summary changed.") unless
+          execution.fetch("resultSummary") == summary.transform_keys(&:to_s)
+      end
+    else
+      result_bundle_path = File.expand_path(shard.fetch("resultBundlePath"), File.dirname(expanded_path))
+      UI.user_error!("UI shard #{shard.fetch("shard")} result bundle is unavailable.") unless
+        File.directory?(result_bundle_path) && File.file?(File.join(result_bundle_path, "Info.plist"))
+      summary = verify_capture_ui_xcresult(result_bundle_path, shard.fetch("selectors").length)
+      recorded_summary = shard.fetch("resultSummary")
+      UI.user_error!("UI shard #{shard.fetch("shard")} recorded result summary changed.") unless
+        recorded_summary == summary.transform_keys(&:to_s)
+    end
   end
   expanded_path
 rescue JSON::ParserError, KeyError, ArgumentError, TypeError => error
@@ -472,37 +502,53 @@ platform :ios do
         "Capture UI #{suite} shard #{shard_number}/#{shard_count}: " \
         "#{plan.fetch("selectedTestCount")} tests, estimated weight #{plan.fetch("estimatedWeight")}",
       )
-      run_tests(
-        project: PROJECT_PATH,
-        scheme: SCHEME,
-        devices: [options[:device] || ENV.fetch("QUIPSLY_CAPTURE_UI_TEST_DEVICE", "iPhone 17 Pro")],
-        only_testing: plan.fetch("selectors"),
-        parallel_testing: false,
-        # Full qualification runs for close to an hour. Reset the dedicated
-        # simulator before each shard so CoreSimulator accessibility services,
-        # permissions, and process state cannot leak between otherwise
-        # independent evidence bundles.
-        reset_simulator: suite == "full",
-        reinstall_app: true,
-        app_identifier: APP_IDENTIFIER,
-        result_bundle: true,
-        output_directory: shard_root,
-        derived_data_path: derived_data_path,
-        buildlog_path: shard_root,
-        fail_build: true,
-        number_of_retries: retry_limit,
+      execution_groups = capture_ui_execution_groups(
+        plan.fetch("selectors"),
+        default_device: options[:device] || ENV.fetch("QUIPSLY_CAPTURE_UI_TEST_DEVICE", "iPhone 17 Pro"),
       )
-      result_bundles = Dir[File.join(shard_root, "*.xcresult")].select { |path| File.directory?(path) }
-      UI.user_error!(
-        "Expected exactly one UI result bundle in #{shard_root}; found #{result_bundles.length}.",
-      ) unless result_bundles.length == 1
-      result_bundle_path = File.expand_path(result_bundles.fetch(0))
-      result_summary = verify_capture_ui_xcresult(result_bundle_path, plan.fetch("selectedTestCount"))
+      execution_records = execution_groups.map do |execution|
+        execution_root = File.join(shard_root, execution.fetch(:slug))
+        FileUtils.mkdir_p(execution_root)
+        UI.message(
+          "Capture UI #{suite} shard #{shard_number}/#{shard_count} #{execution.fetch(:slug)}: " \
+          "#{execution.fetch(:selectors).length} tests on #{execution.fetch(:device)}",
+        )
+        run_tests(
+          project: PROJECT_PATH,
+          scheme: SCHEME,
+          devices: [execution.fetch(:device)],
+          only_testing: execution.fetch(:selectors),
+          parallel_testing: false,
+          # Full qualification runs for close to an hour. Reset each dedicated
+          # device before its execution so simulator state cannot leak between
+          # otherwise independent evidence bundles.
+          reset_simulator: suite == "full",
+          reinstall_app: true,
+          app_identifier: APP_IDENTIFIER,
+          result_bundle: true,
+          output_directory: execution_root,
+          derived_data_path: derived_data_path,
+          buildlog_path: execution_root,
+          fail_build: true,
+          number_of_retries: retry_limit,
+        )
+        result_bundles = Dir[File.join(execution_root, "*.xcresult")].select { |path| File.directory?(path) }
+        UI.user_error!(
+          "Expected exactly one UI result bundle in #{execution_root}; found #{result_bundles.length}.",
+        ) unless result_bundles.length == 1
+        result_bundle_path = File.expand_path(result_bundles.fetch(0))
+        result_summary = verify_capture_ui_xcresult(result_bundle_path, execution.fetch(:selectors).length)
+        {
+          device: execution.fetch(:device),
+          selectors: execution.fetch(:selectors),
+          resultBundlePath: result_bundle_path,
+          resultSummary: result_summary.transform_keys(&:to_s),
+        }
+      end
       evidence_shards << {
         shard: shard_number,
         selectors: plan.fetch("selectors"),
-        resultBundlePath: result_bundle_path,
-        resultSummary: result_summary.transform_keys(&:to_s),
+        executions: execution_records,
         testRetryLimit: retry_limit,
       }
     end
