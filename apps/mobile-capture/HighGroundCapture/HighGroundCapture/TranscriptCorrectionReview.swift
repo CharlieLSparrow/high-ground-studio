@@ -6703,7 +6703,8 @@ private struct CaptureTranscriptSegmentCard: View {
                 if impact.canAcknowledge {
                     Button {
                         Task {
-                            guard let transcriptJobID = client.desk?.transcriptJobId else { return }
+                            guard let transcriptJobID = segment.transcriptJobId
+                                ?? client.desk?.transcriptJobId else { return }
                             await client.acknowledgeDownstreamImpact(
                                 roomID: roomID,
                                 transcriptJobID: transcriptJobID,

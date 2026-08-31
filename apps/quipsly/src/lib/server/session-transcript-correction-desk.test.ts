@@ -183,6 +183,167 @@ describe("Session transcript correction desk", () => {
     ]);
   });
 
+  it("prefers the coherent participant masters even when a mixed transcript was created later", async () => {
+    const mixed = {
+      ...desk({
+        participantId: "provider",
+        recordingAssetId: "provider-mix",
+        transcriptJobId: "mixed-job",
+        sha: "c".repeat(64),
+        segmentId: "mixed-turn",
+        startSeconds: 0,
+        text: "A lower-authority mixed transcript.",
+      }),
+      processing: {
+        routing: {
+          sourceTopology: "mixed-room",
+          speakerAuthority: "provider-diarization",
+        },
+      },
+    };
+    const coach = desk({
+      participantId: "coach",
+      recordingAssetId: "coach-source",
+      transcriptJobId: "coach-job",
+      sha: "a".repeat(64),
+      segmentId: "coach-turn",
+      startSeconds: 4,
+      text: "What matters today?",
+    });
+    const client = desk({
+      participantId: "client",
+      recordingAssetId: "client-source",
+      transcriptJobId: "client-job",
+      sha: "b".repeat(64),
+      segmentId: "client-turn",
+      startSeconds: 5,
+      text: "One clear next step.",
+    });
+    jest
+      .mocked(readTranscriptCorrectionDesk)
+      .mockResolvedValueOnce(mixed as any)
+      .mockResolvedValueOnce(coach as any)
+      .mockResolvedValueOnce(client as any);
+    const prisma = {
+      recordingAsset: {
+        findMany: jest.fn(async () => [
+          {
+            id: "coach-source",
+            participantId: "coach",
+            kind: "LOCAL_AUDIO",
+            checksum: "a".repeat(64),
+            recordedStartedAt: new Date("2026-08-24T15:00:00.000Z"),
+            localManifestJson: { captureGroupId: "take-1" },
+            transcriptJobs: [
+              {
+                id: "coach-job",
+                createdAt: new Date("2026-08-24T16:00:00.000Z"),
+              },
+            ],
+          },
+          {
+            id: "client-source",
+            participantId: "client",
+            kind: "LOCAL_AUDIO",
+            checksum: "b".repeat(64),
+            recordedStartedAt: new Date("2026-08-24T15:00:00.250Z"),
+            localManifestJson: { captureGroupId: "take-1" },
+            transcriptJobs: [
+              {
+                id: "client-job",
+                createdAt: new Date("2026-08-24T16:00:01.000Z"),
+              },
+            ],
+          },
+        ]),
+      },
+    };
+
+    const result = (await readSessionTranscriptCorrectionDesk({
+      prisma,
+      roomId: "room-1",
+      actor,
+    })) as any;
+
+    expect(result.transcriptJobId).toBe("coach-job");
+    expect(result.sessionTranscript).toMatchObject({
+      status: "assembled",
+      sourceCount: 2,
+      programClock: { authority: "reported-wall-clock-fallback" },
+    });
+    expect(result.segments.map((segment: any) => segment.id)).toEqual([
+      "coach-turn",
+      "client-turn",
+    ]);
+    expect(
+      result.segments.map((segment: any) => segment.transcriptJobId),
+    ).toEqual(["coach-job", "client-job"]);
+  });
+
+  it("returns the exact participant master when it is the only source-bound transcript", async () => {
+    const mixed = {
+      ...desk({
+        participantId: "provider",
+        recordingAssetId: "provider-mix",
+        transcriptJobId: "mixed-job",
+        sha: "c".repeat(64),
+        segmentId: "mixed-turn",
+        startSeconds: 0,
+        text: "A lower-authority mixed transcript.",
+      }),
+      processing: { routing: { sourceTopology: "mixed-room" } },
+    };
+    const coach = desk({
+      participantId: "coach",
+      recordingAssetId: "coach-source",
+      transcriptJobId: "coach-job",
+      sha: "a".repeat(64),
+      segmentId: "coach-turn",
+      startSeconds: 4,
+      text: "What matters today?",
+    });
+    jest
+      .mocked(readTranscriptCorrectionDesk)
+      .mockResolvedValueOnce(mixed as any)
+      .mockResolvedValueOnce(coach as any);
+    const prisma = {
+      recordingAsset: {
+        findMany: jest.fn(async () => [
+          {
+            id: "coach-source",
+            participantId: "coach",
+            kind: "LOCAL_AUDIO",
+            checksum: "a".repeat(64),
+            recordedStartedAt: new Date("2026-08-24T15:00:00.000Z"),
+            localManifestJson: { captureGroupId: "take-1" },
+            transcriptJobs: [
+              {
+                id: "coach-job",
+                createdAt: new Date("2026-08-24T16:00:00.000Z"),
+              },
+            ],
+          },
+        ]),
+      },
+    };
+
+    const result = (await readSessionTranscriptCorrectionDesk({
+      prisma,
+      roomId: "room-1",
+      actor,
+    })) as any;
+
+    expect(result.transcriptJobId).toBe("coach-job");
+    expect(result.segments).toEqual(coach.segments);
+    expect(result.sessionTranscript).toMatchObject({
+      status: "single-source",
+      sourceCount: 1,
+      sources: [
+        { transcriptJobId: "coach-job", recordingAssetId: "coach-source" },
+      ],
+    });
+  });
+
   it("keeps the exact current source visible when another participant source is held", async () => {
     const coach = desk({
       participantId: "coach",

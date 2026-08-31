@@ -78,11 +78,7 @@ export async function readSessionTranscriptCorrectionDesk(input: {
   recordingAssetId?: string | null;
 }) {
   const anchor = await readTranscriptCorrectionDesk(input);
-  if (
-    input.recordingAssetId ||
-    !isParticipantIsolatedDesk(anchor) ||
-    !anchor.recording?.id
-  ) {
+  if (input.recordingAssetId) {
     return anchor;
   }
 
@@ -114,21 +110,10 @@ export async function readSessionTranscriptCorrectionDesk(input: {
   })) as Candidate[];
   const selected = selectSessionTranscriptSources({
     rows,
-    anchorRecordingAssetId: anchor.recording.id,
+    anchorRecordingAssetId: anchor.recording?.id ?? null,
   }).filter((source): source is Candidate => Boolean(source));
-  if (selected.length < 2) {
-    return {
-      ...anchor,
-      sessionTranscript: {
-        schema: SESSION_TRANSCRIPT_CORRECTION_DESK_SCHEMA,
-        status: "single-source" as const,
-        reason:
-          "Only one participant-owned transcript source is ready in this Session take.",
-        sourceCount: anchor.transcriptJobId ? 1 : 0,
-        programClock: null,
-        sources: [],
-      },
-    };
+  if (!selected.length) {
+    return anchor;
   }
 
   const desks = await Promise.all(
@@ -139,24 +124,44 @@ export async function readSessionTranscriptCorrectionDesk(input: {
       }),
     ),
   );
+  const validDesk = (desk: any, index: number) =>
+    desk.gate?.allowed &&
+    isParticipantIsolatedDesk(desk) &&
+    desk.transcriptJobId === selected[index]!.transcriptJobs[0]!.id &&
+    desk.recording?.participantId === selected[index]!.participantId &&
+    text(desk.sourceSha256).toLowerCase() ===
+      text(selected[index]!.checksum).toLowerCase();
+  const validDesks = desks.filter(validDesk);
+  const visibleDesk = validDesks[0] ?? anchor;
+
+  if (selected.length === 1 && validDesks.length === 1) {
+    return {
+      ...visibleDesk,
+      sessionTranscript: {
+        schema: SESSION_TRANSCRIPT_CORRECTION_DESK_SCHEMA,
+        status: "single-source" as const,
+        reason:
+          "Only one participant-owned transcript source is ready in this Session take.",
+        sourceCount: 1,
+        programClock: null,
+        sources: [sourceSummary(visibleDesk, selected[0]!)],
+      },
+    };
+  }
   const invalidIndex = desks.findIndex(
-    (desk, index) =>
-      !desk.gate?.allowed ||
-      !isParticipantIsolatedDesk(desk) ||
-      desk.transcriptJobId !== selected[index]!.transcriptJobs[0]!.id ||
-      desk.recording?.participantId !== selected[index]!.participantId ||
-      text(desk.sourceSha256).toLowerCase() !==
-        text(selected[index]!.checksum).toLowerCase(),
+    (desk, index) => !validDesk(desk, index),
   );
   if (invalidIndex >= 0) {
     return {
-      ...anchor,
+      ...visibleDesk,
       sessionTranscript: {
         schema: SESSION_TRANSCRIPT_CORRECTION_DESK_SCHEMA,
         status: "incomplete" as const,
         reason:
-          "Another participant source is still held or changed identity. The exact current source remains reviewable.",
-        sourceCount: desks.filter((desk) => desk.gate?.allowed).length,
+          selected.length === 1
+            ? "The participant-owned transcript is still held or changed identity. The current accessible transcript remains reviewable."
+            : "Another participant source is still held or changed identity. The exact current source remains reviewable.",
+        sourceCount: validDesks.length,
         programClock: null,
         sources: desks.map((desk, index) =>
           sourceSummary(desk, selected[index]!),
@@ -217,7 +222,7 @@ export async function readSessionTranscriptCorrectionDesk(input: {
       );
 
     return {
-      ...anchor,
+      ...desks[0],
       segments,
       sessionTranscript: {
         schema: SESSION_TRANSCRIPT_CORRECTION_DESK_SCHEMA,
@@ -235,7 +240,7 @@ export async function readSessionTranscriptCorrectionDesk(input: {
     )
       throw error;
     return {
-      ...anchor,
+      ...visibleDesk,
       sessionTranscript: {
         schema: SESSION_TRANSCRIPT_CORRECTION_DESK_SCHEMA,
         status: "held" as const,
