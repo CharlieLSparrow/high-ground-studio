@@ -4153,9 +4153,14 @@ final class CaptureExperienceUITests: XCTestCase {
         app.buttons["CaptureTranscriptCancelNoteButton"].tap()
 
         let makeTask = app.buttons["CaptureTranscriptMakeTaskButton"]
+        reveal(makeTask)
         XCTAssertTrue(makeTask.isEnabled, "Preview may inspect explicit task capture without creating work.")
+        XCTAssertTrue(makeTask.isHittable, "Task capture should be visible again after dismissing note capture.")
         makeTask.tap()
-        XCTAssertTrue(app.textFields["CaptureTranscriptTaskTitleField"].exists)
+        XCTAssertTrue(
+            app.textFields["CaptureTranscriptTaskTitleField"].waitForExistence(timeout: 5),
+            "Task capture should finish presenting before its preview-only controls are inspected."
+        )
         XCTAssertFalse(app.buttons["CaptureTranscriptCreateTaskButton"].isEnabled)
         app.buttons["Cancel"].tap()
 
@@ -4163,7 +4168,10 @@ final class CaptureExperienceUITests: XCTestCase {
         reveal(makeGoal)
         XCTAssertTrue(makeGoal.isEnabled, "Preview may inspect explicit goal capture without creating work.")
         makeGoal.tap()
-        XCTAssertTrue(app.textFields["CaptureTranscriptGoalTitleField"].exists)
+        XCTAssertTrue(
+            app.textFields["CaptureTranscriptGoalTitleField"].waitForExistence(timeout: 5),
+            "Goal capture should finish presenting before its preview-only controls are inspected."
+        )
         XCTAssertFalse(app.buttons["CaptureTranscriptCreateGoalButton"].isEnabled)
         let goalBoundary = app.staticTexts["CaptureTranscriptGoalBoundary"]
         reveal(goalBoundary)
