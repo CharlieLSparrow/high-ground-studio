@@ -150,7 +150,7 @@ final class QuipslySubscriptionStore: ObservableObject {
             try await submit(verification.jwsRepresentation)
             await transaction.finish()
             entitlement = try await requestEntitlement(method: "GET")
-            message = "Your Quipsly subscription is active on iPhone and the web."
+            message = "Your Quipsly subscription is active on iPhone, iPad, and the web."
         case .unverified:
             throw SubscriptionStoreError.unverifiedTransaction
         }
@@ -416,7 +416,7 @@ struct QuipslySubscriptionView: View {
             return "Your subscription remains active through \(end)."
         }
         if let end = formattedDate(entitlement.currentPeriodEnd) {
-            return "Active through \(end), with access shared across iPhone and the web."
+            return "Active through \(end), with access shared across iPhone, iPad, and the web."
         }
         return entitlement.entitled
             ? "Active across Quipsly Capture and Nest."

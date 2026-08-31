@@ -162,14 +162,14 @@ struct CaptureRehearsalReadinessCard: View {
                         if isRunningCheck {
                             HStack {
                                 ProgressView()
-                                Text("Checking this iPhone…")
+                                Text("Checking \(CaptureDeviceVocabulary.thisDevice)…")
                             }
                             .frame(maxWidth: .infinity)
                         } else {
                             Label(
                                 providerConnected
                                     ? "Refresh script and clip"
-                                    : "Check this iPhone",
+                                    : "Check \(CaptureDeviceVocabulary.thisDevice)",
                                 systemImage: "checkmark.shield"
                             )
                             .frame(maxWidth: .infinity)
@@ -314,7 +314,7 @@ struct CaptureRehearsalReadinessCard: View {
             return item(
                 "microphone",
                 "Microphone and storage",
-                "A physical iPhone must verify its real input route and local capacity.",
+                "A physical iPhone or iPad must verify its real input route and local capacity.",
                 .action
             )
         }
@@ -418,7 +418,7 @@ struct CaptureRehearsalReadinessCard: View {
             return item(
                 "camera",
                 "Camera source",
-                "A physical iPhone must resolve its real camera, codec, framing, and capacity.",
+                "A physical iPhone or iPad must resolve its real camera, codec, framing, and capacity.",
                 .action
             )
         }
@@ -483,7 +483,7 @@ struct CaptureRehearsalReadinessCard: View {
             "watch",
             "First shared clip",
             watch.isPrepared
-                ? "\(clip.title) is downloaded and ready on this iPhone."
+                ? "\(clip.title) is downloaded and ready on \(CaptureDeviceVocabulary.thisDevice)."
                 : "\(clip.title) is selected; download it before the Session.",
             watch.isPrepared ? .ready : .action
         )
@@ -588,7 +588,7 @@ struct CaptureRehearsalReadinessCard: View {
         if previewOnly {
             return "Preview shows the checklist shape only. It never claims physical-device, consent, route, storage, protected-download, or room proof."
         }
-        return "Joining still does not start recording. Run the optional sound check after changing the microphone, room, or headphones; Quipsly keeps that private sample on this iPhone."
+        return "Joining still does not start recording. Run the optional sound check after changing the microphone, room, or headphones; Quipsly keeps that private sample on \(CaptureDeviceVocabulary.thisDevice)."
     }
 
     private var hasEpisodeContext: Bool {
@@ -829,7 +829,7 @@ private struct CaptureAudioSoundCheckControls: View {
                     .accessibilityIdentifier("CaptureSoundCheckMessage")
             }
 
-            Text("Optional. This sample stays on this iPhone, is never uploaded or added to the Session, and is deleted automatically.")
+            Text("Optional. This sample stays on \(CaptureDeviceVocabulary.thisDevice), is never uploaded or added to the Session, and is deleted automatically.")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)

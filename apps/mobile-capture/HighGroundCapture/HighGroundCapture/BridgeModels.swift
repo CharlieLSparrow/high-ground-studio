@@ -524,7 +524,7 @@ struct MobileCaptureSourceTranscriptSummary: Codable, Hashable {
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .lowercased() {
         case "on-device":
-            return "On iPhone"
+            return "On device"
         case "apple-speech-service":
             return "Apple Speech service"
         case "quipsly-cloud":
@@ -544,7 +544,7 @@ struct MobileCaptureSourceTranscriptSummary: Codable, Hashable {
         case "apple-speech-unavailable":
             return "Apple Speech was unavailable"
         case "apple-speech-unsupported-locale":
-            return "language unavailable on this iPhone"
+            return "language unavailable on this device"
         case "apple-speech-permission-denied":
             return "Speech permission was unavailable"
         case "apple-speech-model-install-failed":
@@ -1435,9 +1435,9 @@ struct MobileCaptureSession: Codable, Identifiable, Hashable {
                 - quipslyCloudTranscriptSourceCount
         )
         var parts = [
-            "(onDeviceTranscriptSourceCount) on iPhone",
-            "(appleSpeechServiceTranscriptSourceCount) Apple service",
-            "(quipslyCloudTranscriptSourceCount) Quipsly cloud",
+            "\(onDeviceTranscriptSourceCount) on device",
+            "\(appleSpeechServiceTranscriptSourceCount) Apple service",
+            "\(quipslyCloudTranscriptSourceCount) Quipsly cloud",
         ]
         if pending > 0 { parts.append("\(pending) pending") }
         return parts.joined(separator: " · ")
@@ -3674,7 +3674,7 @@ final class CaptureReviewDigestClient: ObservableObject {
         let previewRecovery = MobileCaptureSourceExitReadiness(
             state: "SERVER_COPY_COMPLETE_DEVICE_CONFIRMATION_REQUIRED",
             label: "Server copy complete · check each recording device",
-            detail: "Every required master is verified and released, but this iPhone's latest durable queue still has local recovery work.",
+            detail: "Every required master is verified and released, but this device's latest durable queue still has local recovery work.",
             requiredSourceCount: 2,
             serverSafeRequiredSourceCount: 2,
             pendingCaptureCount: 0,
@@ -5099,7 +5099,7 @@ final class CaptureTodayClient: ObservableObject {
             )
             publishWeeklyPlanDecisionCounts()
             guard AuthManager.shared.networkActionsAllowed else {
-                errorMessage = "Weekly plan saved on this iPhone and waiting to sync."
+                errorMessage = "Weekly plan saved on this device and waiting to sync."
                 return true
             }
             isMutating = true
@@ -5164,8 +5164,8 @@ final class CaptureTodayClient: ObservableObject {
             }
             guard AuthManager.shared.networkActionsAllowed else {
                 errorMessage = remindAt == nil
-                    ? "Reminder removed on this iPhone and waiting to sync."
-                    : "Reminder saved on this iPhone and waiting to sync. Alerts use iOS notification settings."
+                    ? "Reminder removed on this device and waiting to sync."
+                    : "Reminder saved on this device and waiting to sync. Alerts use iOS notification settings."
                 return true
             }
             isMutating = true
@@ -5229,7 +5229,7 @@ final class CaptureTodayClient: ObservableObject {
             )
             publishWorkTagDecisionCounts()
             guard AuthManager.shared.networkActionsAllowed else {
-                errorMessage = "Tags saved on this iPhone and waiting to sync."
+                errorMessage = "Tags saved on this device and waiting to sync."
                 return true
             }
             isMutating = true
@@ -5516,7 +5516,7 @@ final class CaptureTodayClient: ObservableObject {
             )
             publishFocusDecisionCounts()
             guard AuthManager.shared.networkActionsAllowed else {
-                errorMessage = "Time saved on this iPhone and waiting to sync."
+                errorMessage = "Time saved on this device and waiting to sync."
                 return true
             }
             isMutating = true
@@ -5559,7 +5559,7 @@ final class CaptureTodayClient: ObservableObject {
             )
             publishFocusPlanCounts()
             guard AuthManager.shared.networkActionsAllowed else {
-                errorMessage = "Focus time saved on this iPhone and waiting to sync."
+                errorMessage = "Focus time saved on this device and waiting to sync."
                 return true
             }
             isMutating = true
@@ -5646,7 +5646,7 @@ final class CaptureTodayClient: ObservableObject {
             )
             publishWritingDraftDecisionCounts()
             guard AuthManager.shared.networkActionsAllowed else {
-                errorMessage = "Private writing draft saved on this iPhone and waiting to sync."
+                errorMessage = "Private writing draft saved on this device and waiting to sync."
                 return nil
             }
             isMutating = true
@@ -5821,7 +5821,7 @@ final class CaptureTodayClient: ObservableObject {
                     expectedDocumentID: documentID,
                     expectedResponseBlockID: responseBlockID
                   ) else {
-                let message = "This draft changed in Nest. Your iPhone copy is safe; refresh to compare the latest version."
+                let message = "This draft changed in Nest. Your device copy is safe; refresh to compare the latest version."
                 writingDraftOutbox.markHeld(
                     decision.id,
                     code: "ACKNOWLEDGEMENT_MISMATCH",
@@ -5950,7 +5950,7 @@ final class CaptureTodayClient: ObservableObject {
                   payload.boundaries?.weeklyPlanExternalSideEffects == false,
                   payload.boundaries?.externalCalendarMutated == false,
                   payload.boundaries?.providerMutated == false else {
-                let message = "Your weekly plan changed in Nest. Your iPhone copy is safe; refresh to compare the latest version."
+                let message = "Your weekly plan changed in Nest. Your device copy is safe; refresh to compare the latest version."
                 weeklyPlanOutbox.markHeld(decision.id, code: "ACKNOWLEDGEMENT_MISMATCH", message: message)
                 errorMessage = message
                 publishWeeklyPlanDecisionCounts()
@@ -6034,7 +6034,7 @@ final class CaptureTodayClient: ObservableObject {
                   payload.boundaries?.planningFocusBlockSchedulesReminder == false,
                   payload.boundaries?.externalCalendarMutated == false,
                   payload.boundaries?.providerMutated == false else {
-                let message = "This focus time changed in Nest. Your iPhone copy is safe; refresh to compare the latest version."
+                let message = "This focus time changed in Nest. Your device copy is safe; refresh to compare the latest version."
                 focusPlanOutbox.markHeld(plan.id, code: "ACKNOWLEDGEMENT_MISMATCH", message: message)
                 errorMessage = message
                 publishFocusPlanCounts()
@@ -6117,7 +6117,7 @@ final class CaptureTodayClient: ObservableObject {
                   payload.boundaries?.focusBlockActualTimeExplicitOnly == true,
                   payload.boundaries?.completingFocusBlockMutatesTarget == false,
                   payload.boundaries?.externalCalendarMutated == false else {
-                let message = "This focus update changed in Nest. Your iPhone copy is safe; refresh to compare the latest version."
+                let message = "This focus update changed in Nest. Your device copy is safe; refresh to compare the latest version."
                 focusDecisionOutbox.markHeld(decision.id, code: "ACKNOWLEDGEMENT_MISMATCH", message: message)
                 errorMessage = message
                 publishFocusDecisionCounts()
@@ -6196,7 +6196,7 @@ final class CaptureTodayClient: ObservableObject {
                     ? canonical.status == "CANCELED"
                     : canonical.status == "ACTIVE"
                         && abs(canonical.remindAt.timeIntervalSince(decision.remindAt!)) < 0.5) else {
-                let message = "This reminder changed in Nest. Your iPhone copy is safe; refresh to compare the latest version."
+                let message = "This reminder changed in Nest. Your device copy is safe; refresh to compare the latest version."
                 reminderDecisionOutbox.markHeld(decision.id, code: "ACKNOWLEDGEMENT_MISMATCH", message: message)
                 errorMessage = message
                 publishReminderDecisionCounts()
@@ -6299,7 +6299,7 @@ final class CaptureTodayClient: ObservableObject {
                   acknowledgedFinalTagIDs == expectedFinalTagIDs,
                   documentRevisionMatches,
                   payload.receiptId == "work-tags-\(decision.clientRequestID)" else {
-                let message = "These tags changed in Nest. Your iPhone copy is safe; refresh to compare the latest version."
+                let message = "These tags changed in Nest. Your device copy is safe; refresh to compare the latest version."
                 workTagDecisionOutbox.markHeld(decision.id, code: "ACKNOWLEDGEMENT_MISMATCH", message: message)
                 errorMessage = message
                 publishWorkTagDecisionCounts()
@@ -6939,7 +6939,7 @@ final class CaptureWorkClient: ObservableObject {
                 replacingHeld: replacingHeld
             )
             publishDocumentNoteEditCounts()
-            documentNoteEditMessage = "Note saved on this iPhone and ready to sync."
+            documentNoteEditMessage = "Note saved on this device and ready to sync."
             Task { [weak self] in
                 await self?.syncDocumentNoteEdit(edit, refreshWork: true)
             }
@@ -6965,7 +6965,7 @@ final class CaptureWorkClient: ObservableObject {
     func discardDocumentNoteEdit(noteID: String) async {
         documentNoteEditOutbox.discard(noteID: noteID)
         publishDocumentNoteEditCounts()
-        documentNoteEditMessage = "The iPhone draft was discarded. The Nest note was not changed."
+        documentNoteEditMessage = "The device draft was discarded. The Nest note was not changed."
         await load(projectID: selectedProjectID)
     }
 
@@ -7521,13 +7521,13 @@ final class CaptureWorkClient: ObservableObject {
             return false
         }
         guard AuthManager.shared.networkActionsAllowed else {
-            documentNoteEditMessage = "You're offline. This note is saved on your iPhone and will sync later."
+            documentNoteEditMessage = "You're offline. This note is saved on your device and will sync later."
             return false
         }
         let encodedNoteID = edit.noteID.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed)
             ?? edit.noteID
         guard let url = URL(string: "\(baseURL)/api/mobile/capture/work/notes/\(encodedNoteID)") else {
-            let message = "Quipsly could not reach Nest. This note remains saved on your iPhone."
+            let message = "Quipsly could not reach Nest. This note remains saved on your device."
             documentNoteEditOutbox.markHeld(edit.id, code: "BAD_NEST_URL", message: message)
             documentNoteEditMessage = message
             return false
@@ -7589,7 +7589,7 @@ final class CaptureWorkClient: ObservableObject {
                     options: .regularExpression
                   ) != nil,
                   payload.receiptId == expectedReceipt else {
-                let message = "This note changed in Nest. Your iPhone draft is safe; refresh to compare the latest version."
+                let message = "This note changed in Nest. Your device draft is safe; refresh to compare the latest version."
                 documentNoteEditOutbox.markHeld(
                     edit.id,
                     code: "DOCUMENT_NOTE_EDIT_ACKNOWLEDGEMENT_MISMATCH",
@@ -8441,7 +8441,7 @@ final class CaptureSessionClient: ObservableObject {
             let object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
             let ok = object?["ok"] as? Bool == true
             if response.statusCode < 300, ok { return .acknowledged }
-            let message = object?["error"] as? String ?? "Nest did not acknowledge this iPhone queue snapshot."
+            let message = object?["error"] as? String ?? "Nest did not acknowledge this device's queue snapshot."
             let code = object?["code"] as? String
             if let code, ["SERVER_COPY_INCOMPLETE", "UNKNOWN_ENDPOINT"].contains(code) { return .retry(message) }
             if [400, 403, 409, 422].contains(response.statusCode) { return .held(message) }
@@ -8493,7 +8493,7 @@ final class CaptureSessionClient: ObservableObject {
                 )
             }
             let message = object?["error"] as? String
-                ?? "Nest did not acknowledge this iPhone source plan."
+                ?? "Nest did not acknowledge this device's source plan."
             if [400, 403, 404, 409, 422].contains(response.statusCode) {
                 return .held(message)
             }
@@ -8524,13 +8524,13 @@ final class CaptureSessionClient: ObservableObject {
             request.httpBody = try JSONSerialization.data(withJSONObject: [
                 "callRoomId": session.callRoomId,
                 // A person may intentionally keep the browser call open while
-                // Capture joins from iPhone. The installation-scoped suffix
+                // Capture joins from a mobile device. The installation-scoped suffix
                 // prevents the provider from treating those endpoints as one
                 // replaceable connection; Quipsly still owns one canonical
                 // participant identity on the server.
                 "clientInstanceId": CaptureClientInstallation.id,
                 "clientKind": "ios",
-                "deviceLabel": "Quipsly Capture · iPhone",
+                "deviceLabel": "Quipsly Capture · mobile",
                 "endpointRole": endpointRole == "companion" ? "companion" : "primary",
             ])
 
@@ -8699,7 +8699,7 @@ final class CaptureSessionClient: ObservableObject {
 
     func syncQuickEntry(_ entry: PendingMobileQuickEntry) async -> MobileQuickEntrySyncResult {
         guard let url = URL(string: "\(baseURL.trimmingCharacters(in: .whitespacesAndNewlines))/api/mobile/capture/quick-entry") else {
-            return .held(code: "BAD_NEST_URL", message: "Quipsly could not reach Nest. Your iPhone copy is saved.")
+            return .held(code: "BAD_NEST_URL", message: "Quipsly could not reach Nest. Your device copy is saved.")
         }
 
         do {
@@ -8711,19 +8711,19 @@ final class CaptureSessionClient: ObservableObject {
             let payload = try JSONDecoder().decode(MobileQuickEntrySaveResponse.self, from: data)
 
             if response.statusCode >= 500 || response.statusCode == 408 || response.statusCode == 429 {
-                return .retryable(message: payload.error ?? "Nest is temporarily unavailable. Your iPhone copy will retry.")
+                return .retryable(message: payload.error ?? "Nest is temporarily unavailable. Your device copy will retry.")
             }
             guard response.statusCode < 400, payload.ok, let saved = payload.entry else {
                 return .held(
                     code: payload.code,
-                    message: payload.error ?? "This quick capture needs attention. Your iPhone copy is safe."
+                    message: payload.error ?? "This quick capture needs attention. Your device copy is safe."
                 )
             }
             if let destinationProjectID = entry.destinationProjectID,
                saved.projectId != destinationProjectID {
                 return .held(
                     code: "QUICK_ENTRY_DESTINATION_ACKNOWLEDGEMENT_MISMATCH",
-                    message: "This destination changed in Nest. Your iPhone copy is safe; refresh to choose again."
+                    message: "This destination changed in Nest. Your device copy is safe; refresh to choose again."
                 )
             }
             return .acknowledged(
@@ -8733,7 +8733,7 @@ final class CaptureSessionClient: ObservableObject {
                 reminder: saved.reminder
             )
         } catch {
-            return .retryable(message: "\(error.localizedDescription) Your iPhone copy is saved and will retry.")
+            return .retryable(message: "\(error.localizedDescription) Your device copy is saved and will retry.")
         }
     }
 
@@ -8743,7 +8743,7 @@ final class CaptureSessionClient: ObservableObject {
         guard let url = URL(string: "\(baseURL.trimmingCharacters(in: .whitespacesAndNewlines))/api/notes/\(encodedNoteID)") else {
             return .held(
                 code: "BAD_NEST_URL",
-                message: "Quipsly could not reach Nest. This note remains saved on your iPhone."
+                message: "Quipsly could not reach Nest. This note remains saved on your device."
             )
         }
 
@@ -8779,7 +8779,7 @@ final class CaptureSessionClient: ObservableObject {
                   payload.idempotentReplay == true || intentMatchesCurrent else {
                 return .held(
                     code: "SESSION_NOTE_EDIT_ACKNOWLEDGEMENT_MISMATCH",
-                    message: "This note changed elsewhere. Your iPhone draft is still available for comparison."
+                    message: "This note changed elsewhere. Your device draft is still available for comparison."
                 )
             }
             return .acknowledged(
@@ -9093,7 +9093,7 @@ final class CaptureSessionClient: ObservableObject {
     ) async -> Bool {
         guard AuthManager.shared.networkActionsAllowed else {
             status = "Export receipt pending"
-            errorMessage = "The exact follow-up file can still use the iPhone share sheet, but reconnect to Nest to record its revision-bound export receipt."
+            errorMessage = "The exact follow-up file can still use the system share sheet, but reconnect to Nest to record its revision-bound export receipt."
             return false
         }
         guard let encodedRoomID = session.callRoomId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed),

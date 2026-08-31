@@ -7,7 +7,7 @@ enum CaptureSourcePlanDelivery {
     case held(String)
 }
 
-/// Durable intent for every Nest-backed source armed on this iPhone.
+/// Durable intent for every Nest-backed source armed on this device.
 ///
 /// The local recording ledger remains the capture authority and recording never
 /// waits for this network outbox. The declaration makes absence explicit in the
@@ -91,7 +91,7 @@ final class CaptureSourcePlanOutbox: ObservableObject {
                 ledger = try decoder.decode(Ledger.self, from: data)
             } catch {
                 ledger = Ledger(schemaVersion: 1, entries: [:])
-                statusLine = "The protected source-plan journal could not be read. Local recordings remain preserved, but Nest must not call this iPhone complete."
+                statusLine = "The protected source-plan journal could not be read. Local recordings remain preserved, but Nest must not call \(CaptureDeviceVocabulary.thisDevice) complete."
             }
         } else {
             ledger = Ledger(schemaVersion: 1, entries: [:])
@@ -155,7 +155,7 @@ final class CaptureSourcePlanOutbox: ObservableObject {
             recording: recording,
             ownerAccountID: ownerAccountID
         ) else { return true }
-        statusLine = "Required iPhone \(recording.effectiveMediaKind == .video ? "video" : "audio") master staged locally; waiting for Nest acknowledgement. Recording does not wait on the network."
+        statusLine = "Required \(CaptureDeviceVocabulary.deviceName) \(recording.effectiveMediaKind == .video ? "video" : "audio") master staged locally; waiting for Nest acknowledgement. Recording does not wait on the network."
         return persist()
     }
 
@@ -220,7 +220,7 @@ final class CaptureSourcePlanOutbox: ObservableObject {
                     latest.holdReason = nil
                     self.ledger.entries[key] = latest
                     _ = self.persist()
-                    self.statusLine = "Nest acknowledged this iPhone’s required \(entry.payload.sourceKind.lowercased()) master. Verified upload must still fulfill it."
+                    self.statusLine = "Nest acknowledged \(CaptureDeviceVocabulary.thisDevicePossessive) required \(entry.payload.sourceKind.lowercased()) master. Verified upload must still fulfill it."
                 case .held(let message):
                     latest.disposition = .held
                     latest.holdReason = message
@@ -261,7 +261,7 @@ final class CaptureSourcePlanOutbox: ObservableObject {
             publishCounts()
             return true
         } catch {
-            statusLine = "The protected source-plan journal could not be saved. Local recordings remain preserved, but Nest must not call this iPhone complete."
+            statusLine = "The protected source-plan journal could not be saved. Local recordings remain preserved, but Nest must not call \(CaptureDeviceVocabulary.thisDevice) complete."
             return false
         }
     }

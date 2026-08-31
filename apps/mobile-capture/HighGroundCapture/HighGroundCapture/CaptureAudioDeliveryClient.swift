@@ -337,7 +337,7 @@ final class CaptureAudioDeliveryClient: NSObject, ObservableObject, AVAudioPlaye
             if AuthManager.shared.networkActionsAllowed {
                 await sendPersistedReview(entry, binding: binding)
             } else {
-                notice = "Decision saved securely on this iPhone. Quipsly will retry when Nest is reachable."
+                notice = "Decision saved securely on \(CaptureDeviceVocabulary.thisDevice). Quipsly will retry when Nest is reachable."
             }
         } catch {
             notice = error.localizedDescription
@@ -428,13 +428,13 @@ final class CaptureAudioDeliveryClient: NSObject, ObservableObject, AVAudioPlaye
             refreshSavedDecision(binding: binding)
             notice = acknowledged
                 ? "Nest already has this exact encoded-audio decision."
-                : "Nest already has this decision. This iPhone will confirm its protected outbox on the next refresh."
+                : "Nest already has this decision. \(CaptureDeviceVocabulary.thisDeviceCapitalized) will confirm its protected outbox on the next refresh."
             return
         }
         guard AuthManager.shared.networkActionsAllowed else {
             decisionOutbox.markRetryable(entry.id, message: "Nest is not reachable yet.")
             refreshSavedDecision(binding: binding)
-            notice = "Decision saved securely on this iPhone. Quipsly will retry when Nest is reachable."
+            notice = "Decision saved securely on \(CaptureDeviceVocabulary.thisDevice). Quipsly will retry when Nest is reachable."
             return
         }
 
@@ -504,7 +504,7 @@ final class CaptureAudioDeliveryClient: NSObject, ObservableObject, AVAudioPlaye
                 throw ReviewFailure(
                     retryable: false,
                     code: "audio-delivery-review-local-lineage-changed",
-                    message: "Nest saved the decision, but the active recording changed before this iPhone could confirm it."
+                    message: "Nest saved the decision, but the active recording changed before \(CaptureDeviceVocabulary.thisDevice) could confirm it."
                 )
             }
             snapshot?.review = review
@@ -515,15 +515,15 @@ final class CaptureAudioDeliveryClient: NSObject, ObservableObject, AVAudioPlaye
                     ? "Encoded audio approved as heard. Sharing and publishing have not started."
                     : "Encoded audio rejected as heard. The artifact and history remain available."
             } else {
-                notice = "Nest saved the decision. This iPhone will confirm its protected outbox on the next refresh."
+                notice = "Nest saved the decision. \(CaptureDeviceVocabulary.thisDeviceCapitalized) will confirm its protected outbox on the next refresh."
             }
         } catch is CancellationError {
             refreshSavedDecision(binding: binding)
-            notice = "Decision saved securely on this iPhone. Quipsly will retry after this screen reopens."
+            notice = "Decision saved securely on \(CaptureDeviceVocabulary.thisDevice). Quipsly will retry after this screen reopens."
         } catch let failure as ReviewFailure {
             if failure.retryable {
                 decisionOutbox.markRetryable(entry.id, message: failure.message)
-                notice = "Decision saved securely on this iPhone. \(failure.message)"
+                notice = "Decision saved securely on \(CaptureDeviceVocabulary.thisDevice). \(failure.message)"
             } else {
                 decisionOutbox.markHeld(entry.id, code: failure.code, message: failure.message)
                 notice = failure.message
@@ -532,7 +532,7 @@ final class CaptureAudioDeliveryClient: NSObject, ObservableObject, AVAudioPlaye
         } catch {
             decisionOutbox.markRetryable(entry.id, message: error.localizedDescription)
             refreshSavedDecision(binding: binding)
-            notice = "Decision saved securely on this iPhone. \(error.localizedDescription)"
+            notice = "Decision saved securely on \(CaptureDeviceVocabulary.thisDevice). \(error.localizedDescription)"
         }
     }
 

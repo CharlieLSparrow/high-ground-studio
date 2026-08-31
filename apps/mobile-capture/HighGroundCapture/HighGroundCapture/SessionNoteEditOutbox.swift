@@ -223,7 +223,7 @@ enum SessionNoteEditStoreError: LocalizedError {
         case .invalidEdit:
             "Refresh the Session before saving this note draft."
         case .editAlreadyPending:
-            "This note already has a protected iPhone edit waiting for Nest."
+            "This note already has a protected device edit waiting for Nest."
         case .ledgerUnavailable:
             "The protected Session-note edit outbox is unavailable. Nothing was claimed as changed."
         }

@@ -460,15 +460,15 @@ struct LocalRecording: Codable, Identifiable, Equatable {
     var statusLabel: String {
         switch status {
         case .armed:
-            return "Armed on this iPhone"
+            return "Armed on \(CaptureDeviceVocabulary.thisDevice)"
         case .recording:
             return "Recording"
         case .paused:
             return "Paused"
         case .finalizing:
-            return "Saving on this iPhone"
+            return "Saving on \(CaptureDeviceVocabulary.thisDevice)"
         case .saved:
-            return "Saved on this iPhone"
+            return "Saved on \(CaptureDeviceVocabulary.thisDevice)"
         case .queued:
             return "Upload queued"
         case .uploading:
@@ -518,7 +518,7 @@ struct LocalRecording: Codable, Identifiable, Equatable {
         case .armed:
             return "Quipsly durably journaled this take before opening the \(effectiveMediaKind.sourceNoun) source. No playable media is claimed yet."
         case .recording:
-            return "High-quality \(effectiveMediaKind.sourceNoun) is being written to this iPhone."
+            return "High-quality \(effectiveMediaKind.sourceNoun) is being written to \(CaptureDeviceVocabulary.thisDevice)."
         case .paused:
             return "The local file is open and preserved; recording can resume."
         case .finalizing:
@@ -528,16 +528,16 @@ struct LocalRecording: Codable, Identifiable, Equatable {
         case .queued:
             return "The source file is preserved while its upload waits to start or recover."
         case .uploading:
-            return "The source file remains on this iPhone throughout upload."
+            return "The source file remains on \(CaptureDeviceVocabulary.thisDevice) throughout upload."
         case .awaitingVerification:
             return "The upload finished. Quipsly is checking the backup before using it for transcription or editing."
         case .uploaded:
             if serverProcessingDisposition?.uppercased() == "HELD" {
                 return serverProcessingHoldReason.map {
-                    "The backup is safe, but Quipsly needs help before it can finish the transcript or prepare it for editing: \($0) The original remains on this iPhone."
-                } ?? "The backup is safe, but Quipsly needs help before it can finish the transcript or prepare it for editing. The original remains on this iPhone."
+                    "The backup is safe, but Quipsly needs help before it can finish the transcript or prepare it for editing: \($0) The original remains on \(CaptureDeviceVocabulary.thisDevice)."
+                } ?? "The backup is safe, but Quipsly needs help before it can finish the transcript or prepare it for editing. The original remains on \(CaptureDeviceVocabulary.thisDevice)."
             }
-            return "A safe backup is ready. The original remains on this iPhone."
+            return "A safe backup is ready. The original remains on \(CaptureDeviceVocabulary.thisDevice)."
         case .uploadHeld:
             return "Upload needs attention. The local original is still preserved."
         case .recovered:
@@ -557,7 +557,7 @@ struct LocalRecording: Codable, Identifiable, Equatable {
             let verification = localDeletionCloudVerificationStatus == "verified"
                 ? "A verified Quipsly cloud copy was recorded at deletion time."
                 : "No verified Quipsly cloud copy was recorded at deletion time."
-            return "You explicitly deleted \(deletedSize) from this iPhone. The protected audit row remains. \(verification)"
+            return "You explicitly deleted \(deletedSize) from \(CaptureDeviceVocabulary.thisDevice). The protected audit row remains. \(verification)"
         }
     }
 

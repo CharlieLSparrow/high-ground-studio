@@ -95,7 +95,7 @@ final class AudioCaptureController: NSObject, ObservableObject {
 
     var capturePipelineLabel: String {
         if voiceWritingLiveSource != nil {
-            return "Original audio + live words on this iPhone"
+            return "Original audio + live words on \(CaptureDeviceVocabulary.thisDevice)"
         }
         #if canImport(LiveKit)
         if providerAudioMaster != nil {
@@ -108,7 +108,7 @@ final class AudioCaptureController: NSObject, ObservableObject {
             return "Will use the live-room microphone"
         }
         #endif
-        return "Recorded directly on this iPhone"
+        return "Recorded directly on \(CaptureDeviceVocabulary.thisDevice)"
     }
 
     /// True only while this take is observing LiveKit's already-open local
@@ -993,7 +993,7 @@ final class AudioCaptureController: NSObject, ObservableObject {
 
     private var storageStartFailureMessage: String {
         if storageCapacityProbeFailed {
-            return "Quipsly could not verify available storage, so recording stayed off to protect the local original. Unlock the iPhone or make storage available, then try again."
+            return "Quipsly could not verify available storage, so recording stayed off to protect the local original. Unlock the device or make storage available, then try again."
         }
         let required = ByteCountFormatter.string(
             fromByteCount: projectedSafeCapacityFloorBytes,
@@ -1859,7 +1859,7 @@ final class AudioCaptureController: NSObject, ObservableObject {
         let message: String
         if let availableBytes {
             let availableLabel = ByteCountFormatter.string(fromByteCount: availableBytes, countStyle: .file)
-            message = "Quipsly stopped automatically with \(availableLabel) available so iOS could finalize the local original before storage reached the hard reserve. The take remains on this iPhone."
+            message = "Quipsly stopped automatically with \(availableLabel) available so iOS could finalize the local original before storage reached the hard reserve. The take remains on \(CaptureDeviceVocabulary.thisDevice)."
         } else {
             message = "Quipsly stopped automatically because iOS could no longer verify available storage. The app finalized early rather than risk the local original."
         }
@@ -1949,7 +1949,7 @@ final class AudioCaptureController: NSObject, ObservableObject {
         let resolvedName: String
         switch input.portType {
         case .builtInMic:
-            resolvedName = "iPhone microphone"
+            resolvedName = CaptureDeviceVocabulary.builtInMicrophone
         case .headsetMic:
             resolvedName = systemName == input.portType.rawValue ? "Headset microphone" : systemName
         case .bluetoothHFP, .bluetoothLE:
@@ -2362,7 +2362,7 @@ final class AudioCaptureController: NSObject, ObservableObject {
         if pending == 0 {
             return "Local recordings are preserved until Quipsly verifies upload."
         }
-        return "\(pending) local recording\(pending == 1 ? "" : "s") preserved on this iPhone."
+        return "\(pending) local recording\(pending == 1 ? "" : "s") preserved on \(CaptureDeviceVocabulary.thisDevice)."
     }
 
     // MARK: - Lock Screen Controls

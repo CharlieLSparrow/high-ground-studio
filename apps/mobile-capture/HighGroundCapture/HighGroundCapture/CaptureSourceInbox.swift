@@ -601,7 +601,7 @@ final class CaptureSourceInboxClient: ObservableObject {
             publishCounts()
             lastFiledURL = nil
             if !AuthManager.shared.networkActionsAllowed {
-                statusMessage = "Filing protected on this iPhone. Reconnect to create the canonical Research source in \(destination.name)."
+                statusMessage = "Filing protected on \(CaptureDeviceVocabulary.thisDevice). Reconnect to create the canonical Research source in \(destination.name)."
                 return true
             }
             let synchronized = await sync(decision)

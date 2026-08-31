@@ -101,7 +101,7 @@ enum CaptureSessionGuardianProjector {
                         .watch,
                         "Local capacity",
                         "Audio recording space is getting low",
-                        "\(ByteCountFormatter.string(fromByteCount: available, countStyle: .file)) remains available on this iPhone.",
+                        "\(ByteCountFormatter.string(fromByteCount: available, countStyle: .file)) remains available on \(CaptureDeviceVocabulary.thisDevice).",
                         "Plan to end this take soon. Quipsly will stop before the safe storage reserve is used.",
                         evidence
                     )
@@ -163,7 +163,7 @@ enum CaptureSessionGuardianProjector {
                 return projection(
                     .watch,
                     "Call disconnected",
-                    "This iPhone is still recording",
+                    "\(CaptureDeviceVocabulary.thisDeviceCapitalized) is still recording",
                     "The high-quality recording continues even though the call disconnected.",
                     "Reconnect the call. Stop the recording only if the conversation cannot continue.",
                     evidence
@@ -173,7 +173,7 @@ enum CaptureSessionGuardianProjector {
             return projection(
                 .ready,
                 "Recording",
-                "Recording on this iPhone",
+                "Recording on \(CaptureDeviceVocabulary.thisDevice)",
                 "The high-quality local recording is running separately from the call.",
                 "Keep Quipsly visible and tap Stop when the Session is complete.",
                 evidence
@@ -240,7 +240,7 @@ enum CaptureSessionGuardianProjector {
             .ready,
             "Ready",
             "Ready to record",
-            "The call and this iPhone's recorder are ready.",
+            "The call and \(CaptureDeviceVocabulary.thisDevicePossessive) recorder are ready.",
             "Tap Record when everyone is ready. Sound check is optional.",
             evidence
         )
@@ -423,7 +423,7 @@ struct CaptureSessionGuardianCard: View {
                                     .frame(maxWidth: .infinity, alignment: .leading)
                             }
                         }
-                        Text("Call audio is for conversation. This iPhone's saved recording is the high-quality copy.")
+                        Text("Call audio is for conversation. \(CaptureDeviceVocabulary.thisDevicePossessive) saved recording is the high-quality copy.")
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                     }

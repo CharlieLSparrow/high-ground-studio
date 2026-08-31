@@ -151,8 +151,8 @@ final class CaptureEndpointQueueOutbox: ObservableObject {
                     self.ledger.cursors[key] = cursor
                     _ = self.persist()
                     self.statusLine = payload.queueState == "DRAINED"
-                        ? "Nest confirms this iPhone’s latest local source queue is drained."
-                        : "Nest confirms this iPhone still has local recovery work."
+                        ? "Nest confirms \(CaptureDeviceVocabulary.thisDevicePossessive) latest local source queue is drained."
+                        : "Nest confirms \(CaptureDeviceVocabulary.thisDevice) still has local recovery work."
                 case .held(let message):
                     self.statusLine = "Endpoint queue held: \(message) Local recordings remain preserved."
                 case .retry(let message):
@@ -181,7 +181,7 @@ final class CaptureEndpointQueueOutbox: ObservableObject {
             publishCounts()
             return true
         } catch {
-            statusLine = "The protected endpoint queue journal could not be saved. Quipsly will not claim this iPhone is safe to leave."
+            statusLine = "The protected endpoint queue journal could not be saved. Quipsly will not claim \(CaptureDeviceVocabulary.thisDevice) is safe to leave."
             return false
         }
     }

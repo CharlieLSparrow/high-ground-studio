@@ -2659,7 +2659,7 @@ final class UploadManager: NSObject, ObservableObject, URLSessionTaskDelegate, U
             return "Quipsly could not verify the selected source path inside its protected app storage, so the local original was left untouched."
         }
         guard durableLedgerAvailable, !shouldReloadDurableLedger else {
-            return "The protected upload ledger is unavailable. Unlock this iPhone and try again before deleting the local original."
+            return "The protected upload ledger is unavailable. Unlock this device and try again before deleting the local original."
         }
 
         let matchingSessionIDs = activeUploads.compactMap { sessionId, uploadSession -> String? in
@@ -2788,7 +2788,7 @@ final class UploadManager: NSObject, ObservableObject, URLSessionTaskDelegate, U
         }
         activeUploads[sessionId] = uploadSession
         statusText = "Retrying \(uploadSession.fileName)…"
-        lastRecoveryDetail = "Retry started for the selected local source. The original remains on this iPhone."
+        lastRecoveryDetail = "Retry started for the selected local source. The original remains on this device."
         guard saveActiveUploads() else {
             holdInMemoryForUnavailableLedger(
                 sessionId: sessionId,

@@ -185,7 +185,7 @@ final class ProviderRoomController: NSObject, ObservableObject {
             isConnecting = true
             lastError = nil
             connectionStateLabel = "Checking microphone"
-            statusText = "Allow microphone access to \(action). Quipsly will remember the iPhone setting."
+            statusText = "Allow microphone access to \(action). Quipsly will remember the device setting."
             let allowed = await withCheckedContinuation { continuation in
                 AVAudioApplication.requestRecordPermission { granted in
                     continuation.resume(returning: granted)
@@ -369,7 +369,7 @@ final class ProviderRoomController: NSObject, ObservableObject {
         isConnecting = false
         isReconnecting = false
         #else
-        fail("Calls aren't available in this build. You can still record on this iPhone.", technical: "The LiveKit SDK is not linked into this app build.")
+        fail("Calls aren't available in this build. You can still record on \(CaptureDeviceVocabulary.thisDevice).", technical: "The LiveKit SDK is not linked into this app build.")
         #endif
     }
 
@@ -1005,7 +1005,7 @@ extension ProviderRoomController: CXProviderDelegate {
             self.clearEpisodeWatchBridge()
             self.rejoinableCallRoomID = shouldAllowRejoin ? resetCallRoomID : nil
             self.statusText = shouldAllowRejoin
-                ? "The iPhone call surface restarted. Your local recording remains protected; tap Rejoin call when ready."
+                ? "The call surface restarted. Your local recording remains protected; tap Rejoin call when ready."
                 : "CallKit reset the native call surface. Quipsly recording truth remains separate."
         }
     }
@@ -1053,10 +1053,10 @@ extension ProviderRoomController: CXProviderDelegate {
             self.clearEpisodeWatchBridge()
             self.connectionStateLabel = "Disconnected"
             self.statusText = shouldAllowRejoin
-                ? "The call disconnected. Your recording is still protected on this iPhone. Tap Rejoin call when ready."
+                ? "The call disconnected. Your recording is still protected on \(CaptureDeviceVocabulary.thisDevice). Tap Rejoin call when ready."
                 : localSourceProtected
-                    ? "Native call ended. This iPhone's local source is protected; upload and transcript work can continue."
-                    : "Native call ended. This iPhone is still closing its local source; keep Quipsly open until Library shows the result."
+                    ? "Native call ended. \(CaptureDeviceVocabulary.thisDevicePossessive) local source is protected; upload and transcript work can continue."
+                    : "Native call ended. \(CaptureDeviceVocabulary.thisDeviceCapitalized) is still closing its local source; keep Quipsly open until Library shows the result."
         }
     }
 
@@ -1179,7 +1179,7 @@ extension ProviderRoomController: RoomDelegate {
                     self.rejoinableCallRoomID = nil
                 }
                 self.statusText = reconnectWasExhausted
-                    ? "The call disconnected. Your recording is still protected on this iPhone. Tap Rejoin call when ready."
+                    ? "The call disconnected. Your recording is still protected on \(CaptureDeviceVocabulary.thisDevice). Tap Rejoin call when ready."
                     : "Provider room disconnected. Local recording and preserved uploads remain separate."
             default:
                 self.isConnecting = true

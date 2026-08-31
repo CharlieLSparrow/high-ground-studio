@@ -231,7 +231,7 @@ enum CaptureNestSourceEvidenceContract {
                 generatedAt: generatedAt,
                 now: now,
                 local: local,
-                issues: ["Nest does not yet contain a source bound to this iPhone recording."]
+                issues: ["Nest does not yet contain a source bound to \(CaptureDeviceVocabulary.thisDevice) recording."]
             )
         }
 
@@ -243,7 +243,7 @@ enum CaptureNestSourceEvidenceContract {
         }
         if !localAssetIDs.isEmpty,
            !localAssetIDs.contains(source.recordingAssetId.lowercased()) {
-            drift.append("The canonical RecordingAsset ID does not match the iPhone upload receipt.")
+            drift.append("The canonical RecordingAsset ID does not match the device upload receipt.")
         }
         compareRequired(
             local.computedSHA256,
@@ -383,7 +383,7 @@ enum CaptureNestSourceEvidenceContract {
     ) {
         guard let local else { return }
         guard let nest else {
-            incomplete.append("Nest does not yet have the \(label) stored by this iPhone.")
+            incomplete.append("Nest does not yet have the \(label) stored by \(CaptureDeviceVocabulary.thisDevice).")
             return
         }
         if local != nest {

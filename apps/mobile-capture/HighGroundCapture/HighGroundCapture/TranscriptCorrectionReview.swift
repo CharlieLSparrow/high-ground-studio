@@ -1400,7 +1400,7 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
             )
             publishOutboxCounts()
             errorMessage = nil
-            message = "Correction saved on this iPhone and syncing to Nest."
+            message = "Correction saved on \(CaptureDeviceVocabulary.thisDevice) and syncing to Nest."
             if AuthManager.shared.networkActionsAllowed {
                 _ = await flushReviewDecisions()
                 if reviewDecisionOutbox.decision(roomID: roomID, segmentID: segment.id) == nil {
@@ -1437,7 +1437,7 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
             )
             publishOutboxCounts()
             errorMessage = nil
-            message = "As-heard confirmation protected on this iPhone and waiting for exact Nest acknowledgement."
+            message = "As-heard confirmation protected on \(CaptureDeviceVocabulary.thisDevice) and waiting for exact Nest acknowledgement."
             if AuthManager.shared.networkActionsAllowed {
                 _ = await flushReviewDecisions()
                 if reviewDecisionOutbox.decision(roomID: roomID, segmentID: segment.id) == nil {
@@ -1482,7 +1482,7 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
             )
             publishOutboxCounts()
             errorMessage = nil
-            message = "Voice identity review protected on this iPhone and waiting for exact Nest acknowledgement. No words were marked reviewed."
+            message = "Voice identity review protected on \(CaptureDeviceVocabulary.thisDevice) and waiting for exact Nest acknowledgement. No words were marked reviewed."
             if AuthManager.shared.networkActionsAllowed {
                 _ = await flushSpeakerAttributions()
                 if pendingSpeakerAttribution(
@@ -1525,7 +1525,7 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
             "expectedAcceptedCorrectionId": captureTranscriptJSONNullable(segment.acceptedCorrection?.id),
             "confirmedAgainstPlayback": decision == "accept",
             "reviewNote": decision == "accept"
-                ? "Reviewed against the exact retained iPhone recording asset."
+                ? "Reviewed against the exact retained device recording asset."
                 : "Rejected from Quipsly Capture; proposal preserved in correction history.",
         ]
         if let playbackPosition { body["playbackPositionSeconds"] = playbackPosition }
@@ -2799,7 +2799,7 @@ final class CaptureTranscriptPlaybackController: NSObject, ObservableObject {
               ),
               AuthManager.shared.matchesStableOwnerSnapshot(owner) else {
             errorMessage = protectedController.errorMessage
-                ?? "The exact protected Session source could not be prepared on this iPhone."
+                ?? "The exact protected Session source could not be prepared on \(CaptureDeviceVocabulary.thisDevice)."
             return
         }
         playFile(
@@ -2854,7 +2854,7 @@ final class CaptureTranscriptPlaybackController: NSObject, ObservableObject {
               let fileURL = await protectedController.prepareTranscriptReviewFile(source: source),
               AuthManager.shared.matchesStableOwnerSnapshot(owner) else {
             errorMessage = protectedController.errorMessage
-                ?? "The exact protected Session source could not be prepared on this iPhone."
+                ?? "The exact protected Session source could not be prepared on \(CaptureDeviceVocabulary.thisDevice)."
             return
         }
         playFile(
@@ -2896,11 +2896,11 @@ final class CaptureTranscriptPlaybackController: NSObject, ObservableObject {
               let localAssetID = recording.recordingAssetId?.trimmingCharacters(in: .whitespacesAndNewlines),
               !localAssetID.isEmpty,
               localAssetID == expectedRecordingAssetID else {
-            errorMessage = "This iPhone does not have the exact recording asset behind this transcript. Review it in Nest instead."
+            errorMessage = "\(CaptureDeviceVocabulary.thisDeviceCapitalized) does not have the exact recording asset behind this transcript. Review it in Nest instead."
             return
         }
         guard let fileURL = library.fileURL(for: recording), FileManager.default.fileExists(atPath: fileURL.path) else {
-            errorMessage = "The matching local original is no longer available on this iPhone."
+            errorMessage = "The matching local original is no longer available on \(CaptureDeviceVocabulary.thisDevice)."
             return
         }
 
@@ -3236,7 +3236,7 @@ struct CaptureTranscriptReviewView: View {
                     if client.isUsingProtectedCache {
                         reviewNotice(
                             title: "Available offline",
-                            detail: "You can read the transcript and play the matching recording. Corrections are saved safely on this iPhone and sync when Quipsly reconnects; creating notes, goals, or tasks waits for reconnection.",
+                            detail: "You can read the transcript and play the matching recording. Corrections are saved safely on \(CaptureDeviceVocabulary.thisDevice) and sync when Quipsly reconnects; creating notes, goals, or tasks waits for reconnection.",
                             tint: .gray,
                             icon: "lock.shield.fill"
                         )
@@ -3246,7 +3246,7 @@ struct CaptureTranscriptReviewView: View {
                         reviewNotice(
                             title: client.heldTranscriptDecisionCount > 0
                                 ? "Transcript change needs attention"
-                                : "Transcript changes saved on this iPhone",
+                                : "Transcript changes saved on \(CaptureDeviceVocabulary.thisDevice)",
                             detail: client.heldTranscriptDecisionCount > 0
                                 ? "\(client.heldTranscriptDecisionCount) change\(client.heldTranscriptDecisionCount == 1 ? "" : "s") could not sync. Open the saved-changes button to review."
                                 : "\(client.pendingTranscriptDecisionCount) change\(client.pendingTranscriptDecisionCount == 1 ? " is" : "s are") waiting to sync.",
@@ -3260,7 +3260,7 @@ struct CaptureTranscriptReviewView: View {
                         reviewNotice(
                             title: client.heldSpeakerAttributionCount > 0
                                 ? "Voice label needs attention"
-                                : "Voice labels saved on this iPhone",
+                                : "Voice labels saved on \(CaptureDeviceVocabulary.thisDevice)",
                             detail: client.heldSpeakerAttributionCount > 0
                                 ? "\(client.heldSpeakerAttributionCount) voice label\(client.heldSpeakerAttributionCount == 1 ? "" : "s") could not sync. Open the saved-changes button to review."
                                 : "\(client.pendingSpeakerAttributionCount) voice label\(client.pendingSpeakerAttributionCount == 1 ? " is" : "s are") waiting to sync.",
@@ -3388,7 +3388,7 @@ struct CaptureTranscriptReviewView: View {
                         .accessibilityLabel(
                             "Saved changes, \(totalOutboxCount - totalHeldOutboxCount) waiting to sync, \(totalHeldOutboxCount) need attention"
                         )
-                        .accessibilityHint("Shows transcript and voice-label changes saved on this iPhone.")
+                        .accessibilityHint("Shows transcript and voice-label changes saved on \(CaptureDeviceVocabulary.thisDevice).")
                         .accessibilityIdentifier("CaptureTranscriptReviewOutboxBoundary")
                         .accessibilityValue(
                             totalHeldOutboxCount > 0 ? "Held" : "Queued"
@@ -4557,8 +4557,8 @@ struct CaptureTranscriptReviewView: View {
                 appStorePresentation
                     ? "Play the session, correct any word, or make a basic cut from the words you said."
                     : (exactMatch
-                        ? "Quipsly found the matching recording on this iPhone."
-                        : "This iPhone does not have the matching recording, so playback and source-confirmed corrections remain available in Nest.")
+                        ? "Quipsly found the matching recording on \(CaptureDeviceVocabulary.thisDevice)."
+                        : "\(CaptureDeviceVocabulary.thisDeviceCapitalized) does not have the matching recording, so playback and source-confirmed corrections remain available in Nest.")
             )
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -6415,7 +6415,7 @@ private struct CaptureTranscriptSpeakerGroupCard: View {
                     Label(
                         pendingAttribution.disposition == .held
                             ? "Voice identity held for review"
-                            : "Voice identity queued on this iPhone",
+                            : "Voice identity queued on \(CaptureDeviceVocabulary.thisDevice)",
                         systemImage: pendingAttribution.disposition == .held
                             ? "exclamationmark.shield.fill"
                             : "arrow.triangle.2.circlepath"
@@ -6766,7 +6766,7 @@ private struct CaptureTranscriptSegmentCard: View {
                     Label(
                         pendingDecision.disposition == .held
                             ? "Transcript change needs attention"
-                            : "Transcript change saved on this iPhone",
+                            : "Transcript change saved on \(CaptureDeviceVocabulary.thisDevice)",
                         systemImage: pendingDecision.disposition == .held
                             ? "exclamationmark.shield.fill"
                             : "arrow.triangle.2.circlepath"
@@ -6840,7 +6840,7 @@ private struct CaptureTranscriptSegmentCard: View {
                     .accessibilityIdentifier("CaptureTranscriptConfirmAsIsButton_\(segment.id)")
                     .accessibilityHint(
                         decisionsLocked
-                            ? "Optional. Saves that you checked this passage on this iPhone and syncs when Quipsly reconnects."
+                            ? "Optional. Saves that you checked this passage on \(CaptureDeviceVocabulary.thisDevice) and syncs when Quipsly reconnects."
                             : "Optional. Marks this passage checked after you listen to it."
                     )
                 }

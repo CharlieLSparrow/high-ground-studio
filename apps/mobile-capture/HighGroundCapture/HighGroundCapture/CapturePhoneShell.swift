@@ -1082,7 +1082,7 @@ private struct CaptureHomeContinueSection: View {
                 if uploadManager.recoverableUploadCount > 0 {
                     continueButton(
                         title: "Finish backing up",
-                        detail: "\(uploadManager.recoverableUploadCount) recording\(uploadManager.recoverableUploadCount == 1 ? "" : "s") saved safely on this iPhone",
+                        detail: "\(uploadManager.recoverableUploadCount) recording\(uploadManager.recoverableUploadCount == 1 ? "" : "s") saved safely on \(CaptureDeviceVocabulary.thisDevice)",
                         systemImage: "icloud.and.arrow.up",
                         tint: .orange,
                         action: onOpenLibrary
@@ -2606,7 +2606,7 @@ private struct CaptureWorkView: View {
                 VStack(alignment: .leading, spacing: 3) {
                     Text(client.heldDocumentNoteEditCount > 0
                          ? "This note also changed somewhere else"
-                         : "Note edit saved on this iPhone")
+                         : "Note edit saved on \(CaptureDeviceVocabulary.thisDevice)")
                         .font(.caption.weight(.bold))
                     if let message = client.documentNoteEditMessage {
                         Text(message)
@@ -2742,7 +2742,7 @@ private struct CaptureWorkView: View {
                   $0.callRoomId == roomID || $0.id == roomID
               }) else {
             model.errorMessage = model.sessionClient.errorMessage
-                ?? "That Session exists, but this iPhone could not open it yet. Refresh and try again."
+                ?? "That Session exists, but \(CaptureDeviceVocabulary.thisDevice) could not open it yet. Refresh and try again."
             return
         }
         requestedCoachingEngagement = nil
@@ -3133,7 +3133,7 @@ private struct CaptureWorkView: View {
                         .accessibilityIdentifier("CaptureWorkQuickEntry_\(kind.rawValue)")
                     }
                 }
-                Text("Capture it here; everything stays in sync across iPhone and the web.")
+                Text("Capture it here; everything stays in sync across mobile and the web.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -3652,9 +3652,9 @@ private struct CaptureWorkView: View {
 
     private func workNoteOpenHint(_ note: MobileCaptureWorkNote) -> String {
         if opensInWritingEditor(note) {
-            return "Opens this writing in the full iPhone editor."
+            return "Opens this writing in the full \(CaptureDeviceVocabulary.deviceName) editor."
         }
-        return "Opens this note in the iPhone editor."
+        return "Opens this note in the \(CaptureDeviceVocabulary.deviceName) editor."
     }
 
     @ViewBuilder
@@ -4342,7 +4342,7 @@ struct TodayFollowThroughCard: View {
                             Label(
                                 decision.disposition == .held
                                     ? "Needs attention"
-                                    : "Saved on this iPhone · waiting to sync",
+                                    : "Saved on \(CaptureDeviceVocabulary.thisDevice) · waiting to sync",
                                 systemImage: decision.disposition == .held
                                     ? "exclamationmark.triangle.fill"
                                     : "lock.doc.fill"
@@ -4532,7 +4532,7 @@ struct TodayFollowThroughCard: View {
                                         .font(.caption2.weight(.semibold))
                                         .foregroundStyle(.pink)
                                         .accessibilityIdentifier("CaptureTodayTaskReminder_\(task.id)")
-                                        .accessibilityHint("This reminder is saved in Nest. Alerts use this iPhone’s notification settings.")
+                                        .accessibilityHint("This reminder is saved in Nest. Alerts use \(CaptureDeviceVocabulary.thisDevicePossessive) notification settings.")
                                     }
                                     if task.recurrence == nil, task.status == "OPEN" {
                                         if let pending = client.pendingReminderDecision(for: task.id) {
@@ -5447,7 +5447,7 @@ struct TodayFollowThroughCard: View {
             Label(
                 pending.disposition == .held
                     ? "Phone plan needs review"
-                    : "Saved on this iPhone · waiting to sync",
+                    : "Saved on \(CaptureDeviceVocabulary.thisDevice) · waiting to sync",
                 systemImage: pending.disposition == .held
                     ? "exclamationmark.triangle.fill"
                     : "lock.iphone"
@@ -5779,7 +5779,7 @@ private struct CaptureWeeklyPlanSheet: View {
                         .foregroundStyle(.secondary)
                 }
                 Section("Saving") {
-                    Label("Saved on this iPhone, then synced with Nest", systemImage: "lock.iphone")
+                    Label("Saved on \(CaptureDeviceVocabulary.thisDevice), then synced with Nest", systemImage: "lock.fill")
                         .accessibilityIdentifier("CaptureWeeklyPlanOutboxBoundary")
                 }
             }
@@ -6453,7 +6453,7 @@ private struct CaptureSourceFilingSheet: View {
                     }
                 } else {
                     Section("Annotation") {
-                        Text("Update Nest to add annotations and tags while filing from iPhone.")
+                        Text("Update Nest to add annotations and tags while filing from \(CaptureDeviceVocabulary.deviceName).")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
@@ -6606,7 +6606,7 @@ private struct CaptureDocumentNoteEditSheet: View {
         _workingDraftStatus = State(
             initialValue: workingDraft == nil
                 ? nil
-                : "Recovered your saved iPhone draft."
+                : "Recovered your saved \(CaptureDeviceVocabulary.deviceName) draft."
         )
     }
 
@@ -6634,7 +6634,7 @@ private struct CaptureDocumentNoteEditSheet: View {
             return "Shorten the title to 160 characters. Quipsly will not truncate it."
         }
         if blocks.isEmpty {
-            return "Refresh this note before editing it on this iPhone."
+            return "Refresh this note before editing it on \(CaptureDeviceVocabulary.thisDevice)."
         }
         if Set(blocks.map(\.id)).count != blocks.count
             || Set(blocks.map(\.stableId)).count != blocks.count {
@@ -6644,7 +6644,7 @@ private struct CaptureDocumentNoteEditSheet: View {
             return "Section \(oversized.order) is over 20,000 characters. Quipsly will not truncate it."
         }
         if normalizedBodies.reduce(0, { $0 + $1.count }) > 60_000 {
-            return "This note is too large to save from iPhone right now. Continue it in Nest on the web."
+            return "This note is too large to save from \(CaptureDeviceVocabulary.deviceName) right now. Continue it in Nest on the web."
         }
         if !blocks.contains(where: {
             !$0.body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -6796,7 +6796,7 @@ private struct CaptureDocumentNoteEditSheet: View {
                                 ? "Preview save"
                                 : AuthManager.shared.networkActionsAllowed
                                     ? "Save note"
-                                    : "Save on this iPhone",
+                                    : "Save on \(CaptureDeviceVocabulary.thisDevice)",
                             systemImage: "checkmark.circle"
                         )
                         .frame(maxWidth: .infinity)
@@ -6874,10 +6874,10 @@ private struct CaptureDocumentNoteEditSheet: View {
             baseContentRevision: baseContentRevision
         )
         if !saved {
-            localMessage = "This draft could not be protected on this iPhone yet. Keep this screen open and try again."
+            localMessage = "This draft could not be protected on \(CaptureDeviceVocabulary.thisDevice) yet. Keep this screen open and try again."
         } else {
             localMessage = nil
-            workingDraftStatus = "Saved on this iPhone while you work."
+            workingDraftStatus = "Saved on \(CaptureDeviceVocabulary.thisDevice) while you work."
         }
     }
 }
@@ -6925,7 +6925,7 @@ private struct TodayTaskReminderSheet: View {
                         .foregroundStyle(.secondary)
                 }
                 Section {
-                    Text("Quipsly saves the reminder to Nest and asks for iPhone notification access only when needed.")
+                    Text("Quipsly saves the reminder to Nest and asks for notification access only when needed.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -7319,7 +7319,7 @@ private struct CaptureTaskEditSheet: View {
                         )
                         .environment(\.timeZone, .autoupdatingCurrent)
                         .accessibilityIdentifier("CaptureTaskEditDueDate")
-                        Text("Times use this iPhone’s \(timezoneID) timezone.")
+                        Text("Times use \(CaptureDeviceVocabulary.thisDevicePossessive) \(timezoneID) timezone.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
@@ -7476,7 +7476,7 @@ private struct CaptureGoalEditSheet: View {
                         )
                         .environment(\.timeZone, .autoupdatingCurrent)
                         .accessibilityIdentifier("CaptureGoalEditTargetDate")
-                        Text("Dates use this iPhone’s \(timezoneID) timezone.")
+                        Text("Dates use \(CaptureDeviceVocabulary.thisDevicePossessive) \(timezoneID) timezone.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
@@ -7670,7 +7670,7 @@ private struct CaptureRecurrenceEditSheet: View {
                             .textInputAutocapitalization(.never)
                             .autocorrectionDisabled()
                             .accessibilityIdentifier("CaptureRecurrenceEditTimezone")
-                        Button("Use this iPhone’s timezone") {
+                        Button("Use \(CaptureDeviceVocabulary.thisDevicePossessive) timezone") {
                             timezoneID = TimeZone.autoupdatingCurrent.identifier
                         }
                         .accessibilityIdentifier("CaptureRecurrenceEditUsePhoneTimezone")
@@ -8208,7 +8208,7 @@ private struct CapturePersonalVoiceNoteTranscriptCard: View {
                         ? "Saved privately to \(draft.canonicalProjectName?.nonempty ?? "your Nest")"
                         : writingSync.syncingDraftIDs.contains(draft.id)
                             ? "Saving to \(draft.canonicalProjectName?.nonempty ?? "your Nest")…"
-                            : "Saved on this iPhone; syncing automatically")
+                            : "Saved on \(CaptureDeviceVocabulary.thisDevice); syncing automatically")
                 }
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(draft.isSynced ? .green : .secondary)
@@ -8360,20 +8360,20 @@ private struct CapturePersonalVoiceNoteTranscriptCard: View {
     private var statusDetail: String {
         if let draft {
             return draft.isSynced
-                ? "Edit this like a note on your iPhone or continue on the web. The timed transcript and original audio stay connected."
-                : "Your editable draft is saved on this iPhone. Quipsly will keep syncing it privately to its Nest."
+                ? "Edit this like a note on \(CaptureDeviceVocabulary.yourDevice) or continue on the web. The timed transcript and original audio stay connected."
+                : "Your editable draft is saved on \(CaptureDeviceVocabulary.thisDevice). Quipsly will keep syncing it privately to its Nest."
         }
         switch phase {
         case .idle, .checkingSupport:
             return "Quipsly turns the finished recording into timed, editable text. Your original audio stays unchanged."
         case .modelDownloadRequired(let locale):
-            return "Download Apple's \(locale) speech model once, then future writing can transcribe automatically on this iPhone."
+            return "Download Apple's \(locale) speech model once, then future writing can transcribe automatically on \(CaptureDeviceVocabulary.thisDevice)."
         case .installingModel:
             return "Keep Quipsly open while iOS finishes the one-time model download."
         case .transcribing:
             return "You can leave this screen. Quipsly is preserving timing while it creates editable text."
         case .savedLocally, .waitingForVerifiedUpload:
-            return "The editable text is saved on this iPhone while the original finishes syncing."
+            return "The editable text is saved on \(CaptureDeviceVocabulary.thisDevice) while the original finishes syncing."
         case .submitting:
             return "Your writing is available now; Quipsly is connecting the timed transcript to its Nest."
         case .attached:
@@ -8587,7 +8587,7 @@ private struct CaptureVoiceWritingEditor: View {
                     Label(localSaveError, systemImage: "externaldrive.badge.exclamationmark")
                         .font(.caption)
                         .foregroundStyle(.orange)
-                    Button("Try saving on this iPhone again") {
+                    Button("Try saving on \(CaptureDeviceVocabulary.thisDevice) again") {
                         saveImmediately()
                     }
                     .frame(minHeight: 44)
@@ -8887,7 +8887,7 @@ private struct CaptureVoiceWritingEditor: View {
                         Text(
                             currentDraft?.canonicalProjectName?.nonempty
                                 ?? currentDraft?.preferredProjectName?.nonempty
-                                ?? "On this iPhone"
+                                ?? "On \(CaptureDeviceVocabulary.thisDevice)"
                         )
                             .font(.body.weight(.semibold))
                         Text(currentDraft?.isSharedWithNest == true ? "Nest members" : "Only me")
@@ -9083,7 +9083,7 @@ private struct CaptureVoiceWritingEditor: View {
                     richText = resolved.richText ?? VoiceWritingRichText(text: resolved.body)
                 }
                 .frame(minHeight: 44)
-                Button("Keep this iPhone copy") {
+                Button("Keep this \(CaptureDeviceVocabulary.deviceName) copy") {
                     guard let resolved = writingStore.keepIPhoneVersion(draftID: draftID) else { return }
                     writingSync.schedule(resolved, delay: .zero)
                 }
@@ -9177,7 +9177,7 @@ private struct CaptureVoiceWritingEditor: View {
                     .accessibilityIdentifier("CaptureVoiceWritingTranscriptCorrectionsReady")
                 } else if let error = transcriptCorrections.errorMessage?.nonempty {
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("Your timed transcript is still available on this iPhone. Reconnect when you want corrections to sync with your Nest.")
+                        Text("Your timed transcript is still available on \(CaptureDeviceVocabulary.thisDevice). Reconnect when you want corrections to sync with your Nest.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
@@ -9418,7 +9418,7 @@ private struct CaptureVoiceWritingEditor: View {
             )
                 .foregroundStyle(.green)
         } else {
-            Label("On iPhone", systemImage: "iphone")
+            Label("On \(CaptureDeviceVocabulary.deviceName)", systemImage: CaptureDeviceVocabulary.systemImage)
         }
     }
 
@@ -9867,7 +9867,7 @@ private struct CaptureVoiceWritingEditor: View {
             localSaveError = nil
             writingSync.schedule(draft)
         } catch {
-            localSaveError = "This edit is still open, but iPhone storage has not confirmed it yet. \(error.localizedDescription)"
+            localSaveError = "This edit is still open, but \(CaptureDeviceVocabulary.deviceName) storage has not confirmed it yet. \(error.localizedDescription)"
         }
     }
 
@@ -9879,7 +9879,7 @@ private struct CaptureVoiceWritingEditor: View {
         saveImmediately()
         guard AuthManager.shared.networkActionsAllowed,
               let owner = AuthManager.shared.stableOwnerSnapshot() else {
-            showWordDocumentError("Sign in and connect to the internet before sharing a Word document. Your writing is still safe on this iPhone.")
+            showWordDocumentError("Sign in and connect to the internet before sharing a Word document. Your writing is still safe on \(CaptureDeviceVocabulary.thisDevice).")
             return
         }
         let apiBaseURL = normalizedNestAPIBaseURL(
@@ -10046,7 +10046,7 @@ private struct CaptureVoiceWritingTranscriptCorrectionSheet: View {
                 }
 
                 if recording == nil {
-                    Text("This recording is not stored on this iPhone. You can still correct the words; Quipsly keeps them linked to the same moment in your recording.")
+                    Text("This recording is not stored on \(CaptureDeviceVocabulary.thisDevice). You can still correct the words; Quipsly keeps them linked to the same moment in your recording.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -12072,12 +12072,12 @@ private struct CaptureRecorderView: View {
     private func announceSavedSourceIfStopped() {
         guard !captureIsActive else { return }
         model.message = model.providerRoom.isConnected
-            ? "Recording saved on this iPhone. You can keep talking or leave the call when you are ready."
-            : "Recording saved on this iPhone. Quipsly is verifying the cloud copy and will start the transcript automatically."
+            ? "Recording saved on \(CaptureDeviceVocabulary.thisDevice). You can keep talking or leave the call when you are ready."
+            : "Recording saved on \(CaptureDeviceVocabulary.thisDevice). Quipsly is verifying the cloud copy and will start the transcript automatically."
     }
 
     /// Leaving a conversation is an endpoint action, not a room-wide recording
-    /// command. Protect this iPhone's source first, then disconnect without
+    /// command. Protect this device's source first, then disconnect without
     /// stopping another participant's independently retained master.
     private func leaveRoomSafely(for session: MobileCaptureSession) async {
         guard !isSafelyLeavingRoom else { return }
@@ -12089,7 +12089,7 @@ private struct CaptureRecorderView: View {
             || session.recordingCount > 0
             || hasSelectedSessionRecording
         if protectedLocalSource {
-            model.message = "Stopping and protecting this iPhone's recording before leaving…"
+            model.message = "Stopping and protecting \(CaptureDeviceVocabulary.thisDevicePossessive) recording before leaving…"
             let captureID = videoCapture.activeRecordingID ?? audioCapture.activeLocalRecordingID
             let activeStartDirective = recordingCoordinator.currentDirective.flatMap {
                 $0.action == .start ? $0 : nil
@@ -12111,11 +12111,11 @@ private struct CaptureRecorderView: View {
                             directive: activeStartDirective,
                             state: .stopFailed,
                             captureID: captureID,
-                            detail: "This iPhone kept the call connected because its local source is still active or finalizing."
+                            detail: "\(CaptureDeviceVocabulary.thisDeviceCapitalized) kept the call connected because its local source is still active or finalizing."
                         )
                     }
                 }
-                model.message = "This iPhone is still protecting the recording, so Quipsly kept the call connected. Try Leave again when saving finishes."
+                model.message = "\(CaptureDeviceVocabulary.thisDeviceCapitalized) is still protecting the recording, so Quipsly kept the call connected. Try Leave again when saving finishes."
                 return
             }
 
@@ -12136,7 +12136,7 @@ private struct CaptureRecorderView: View {
         await model.leaveRoom()
         guard !model.providerRoom.isConnected else { return }
         model.message = protectedLocalSource
-            ? "Call ended. Your recording is saved on this iPhone. Keep Quipsly open until this Session says Safe to close."
+            ? "Call ended. Your recording is saved on \(CaptureDeviceVocabulary.thisDevice). Keep Quipsly open until this Session says Safe to close."
             : "You left the call."
         if shouldMonitorRecordingExit {
             model.monitorSourceExitReadiness(roomID: session.callRoomId)
@@ -12156,7 +12156,7 @@ private struct CaptureRecorderView: View {
                 roomID: session.callRoomId,
                 directive: directive,
                 state: .observed,
-                detail: "Ready iPhone endpoint accepted the coordinated START."
+                detail: "Ready \(CaptureDeviceVocabulary.deviceName) endpoint accepted the coordinated START."
             )
             await startLocalRecording()
             let captureID = videoCapture.activeRecordingID ?? audioCapture.activeLocalRecordingID
@@ -12169,7 +12169,7 @@ private struct CaptureRecorderView: View {
                 state: state,
                 captureID: captureID,
                 detail: started
-                    ? "Recording started on this iPhone."
+                    ? "Recording started on \(CaptureDeviceVocabulary.thisDevice)."
                     : "The local recorder did not start; no media success is claimed."
             )
             return
@@ -13221,7 +13221,7 @@ private struct CaptureSessionTranscriptReviewCard: View {
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
                         Text(matchingTranscriptRecording == nil
-                            ? "Transcript ready · local playback source unavailable on this phone"
+                            ? "Transcript ready · local playback source unavailable on \(CaptureDeviceVocabulary.thisDevice)"
                             : "Exact local source ready for playback and editing")
                             .font(.caption2.weight(.semibold))
                             .foregroundStyle(matchingTranscriptRecording == nil ? Color.orange : Color.green)
@@ -13605,7 +13605,7 @@ struct CaptureQuickEntrySyncCard: View {
                                 .lineLimit(entry.sourceURL == nil ? 2 : 3)
                                 .textSelection(.enabled)
                         }
-                        Text(entry.disposition == .held ? "Needs attention" : "Saved on iPhone · waiting to sync")
+                        Text(entry.disposition == .held ? "Needs attention" : "Saved on \(CaptureDeviceVocabulary.thisDevice) · waiting to sync")
                             .font(.caption2)
                             .foregroundStyle(entry.disposition == .held ? Color.orange : Color.secondary)
                     }
@@ -13643,7 +13643,7 @@ private struct CaptureTaskReminderProjection: View {
         if scheduler.activeReminderCount > 0 {
             Divider()
             Label(
-                "\(scheduler.scheduledReminderCount) of \(scheduler.activeReminderCount) private task alert\(scheduler.activeReminderCount == 1 ? "" : "s") scheduled on this iPhone",
+                "\(scheduler.scheduledReminderCount) of \(scheduler.activeReminderCount) private task alert\(scheduler.activeReminderCount == 1 ? "" : "s") scheduled on \(CaptureDeviceVocabulary.thisDevice)",
                 systemImage: scheduler.scheduledReminderCount > 0 ? "bell.badge.fill" : "bell.slash"
             )
             .font(.caption.weight(.semibold))
@@ -14053,7 +14053,7 @@ private struct CaptureSessionNoteEditSheet: View {
         _workingDraftStatus = State(
             initialValue: workingDraft == nil
                 ? nil
-                : "Recovered your saved iPhone draft."
+                : "Recovered your saved \(CaptureDeviceVocabulary.deviceName) draft."
         )
     }
 
@@ -14363,10 +14363,10 @@ private struct CaptureSessionNoteEditSheet: View {
             baseUpdatedAt: baseUpdatedAt
         )
         if !saved {
-            localMessage = "This draft could not be protected on this iPhone yet. Keep this screen open and try again."
+            localMessage = "This draft could not be protected on \(CaptureDeviceVocabulary.thisDevice) yet. Keep this screen open and try again."
         } else {
             localMessage = nil
-            workingDraftStatus = "Saved on this iPhone while you work."
+            workingDraftStatus = "Saved on \(CaptureDeviceVocabulary.thisDevice) while you work."
         }
     }
 }
@@ -14565,7 +14565,7 @@ struct CaptureQuickEntrySheet: View {
                         displayedComponents: [.date, .hourAndMinute]
                     )
                     .accessibilityIdentifier("CaptureQuickEntryReminderDate")
-                    Text("Your iPhone will remind you at this time.")
+                    Text("\(CaptureDeviceVocabulary.thisDeviceCapitalized) will remind you at this time.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .accessibilityIdentifier("CaptureQuickEntryReminderBoundary")
@@ -14990,7 +14990,7 @@ private struct CaptureTimeZonePickerSheet: View {
     var body: some View {
         NavigationStack {
             List {
-                Section("This iPhone") {
+                Section(CaptureDeviceVocabulary.thisDeviceCapitalized) {
                     timeZoneButton(currentIdentifier)
                 }
 
@@ -15280,7 +15280,7 @@ private struct CaptureLibraryView: View {
         )) {
             Button("OK", role: .cancel) {}
         } message: {
-            Text(createWritingError ?? "Try again after unlocking this iPhone.")
+            Text(createWritingError ?? "Try again after unlocking \(CaptureDeviceVocabulary.thisDevice).")
         }
         .onDisappear { playback.stop() }
     }
@@ -15720,7 +15720,7 @@ private struct CaptureLibraryView: View {
                 systemImage: "waveform.badge.mic",
                 title: normalizedSearch.isEmpty ? "Start writing your way" : "No writing found",
                 detail: normalizedSearch.isEmpty
-                    ? "Talk through a paper or type a note. Quipsly keeps it private, editable, and ready on iPhone and the web."
+                    ? "Talk through a paper or type a note. Quipsly keeps it private, editable, and ready on mobile and the web."
                     : "Try a different word or clear the search.",
                 actionTitle: normalizedSearch.isEmpty ? "Speak to write" : "Clear search",
                 action: normalizedSearch.isEmpty ? onStartVoiceNote : { searchText = "" }
@@ -15957,10 +15957,10 @@ private struct CaptureVoiceWritingLibraryRow: View {
                 HStack(spacing: 12) {
                     Label(
                         draft.pendingRemote != nil
-                            ? "Changed on iPhone and web"
+                            ? "Changed on mobile and web"
                             : draft.isSynced
                                 ? draft.canonicalProjectName?.nonempty ?? "Saved"
-                                : "On this iPhone",
+                                : "On \(CaptureDeviceVocabulary.thisDevice)",
                         systemImage: draft.pendingRemote != nil ? "arrow.triangle.branch" : draft.isSynced ? "checkmark.icloud.fill" : "iphone"
                     )
                     if let recording {
@@ -16337,7 +16337,7 @@ private struct CaptureAccountView: View {
                             Text("Storage & uploads")
                                 .font(.headline)
                                 .foregroundStyle(.primary)
-                            Text("Cellular uploads and originals on this iPhone")
+                            Text("Cellular uploads and originals on \(CaptureDeviceVocabulary.thisDevice)")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                                 .fixedSize(horizontal: false, vertical: true)
@@ -16392,7 +16392,7 @@ private struct CaptureAccountView: View {
                         }
                         .buttonStyle(.borderedProminent)
                         .accessibilityHint(
-                            "Opens the iPhone share sheet with redacted app, device, route-type, and local-state diagnostics."
+                            "Opens the system share sheet with redacted app, device, route-type, and local-state diagnostics."
                         )
                         .accessibilityIdentifier(
                             "CaptureShareSupportSnapshot"
@@ -16841,9 +16841,9 @@ private struct CaptureStorageAndUploadSettingsView: View {
                     LabeledContent("Deletion records", value: "\(localDeletionReceiptCount)")
                 }
             } header: {
-                Text("On this iPhone")
+                Text("On \(CaptureDeviceVocabulary.thisDevice)")
             } footer: {
-                Text("Original recordings stay on this iPhone until you choose to remove an eligible copy from Library.")
+                Text("Original recordings stay on \(CaptureDeviceVocabulary.thisDevice) until you choose to remove an eligible copy from Library.")
             }
         }
         .navigationTitle("Storage & uploads")
@@ -17405,7 +17405,7 @@ struct CaptureConsentConfirmationSheet: View {
 
     private var defaultConsentSummary: String {
         let recording = canRecordVideo ? "Camera and audio" : "Audio"
-        return "\(recording) on this iPhone · \(canTranscribe ? "Transcript on" : "Transcript off")"
+        return "\(recording) on \(CaptureDeviceVocabulary.thisDevice) · \(canTranscribe ? "Transcript on" : "Transcript off")"
     }
 }
 
@@ -17512,7 +17512,7 @@ private struct CaptureRecordingCoordinationStatus: View {
 
                 if recordingHealth.attentionParticipantCount > 0 {
                     Text(selfOnly
-                        ? "Keep Quipsly open on this iPhone. It will retry the recording automatically."
+                        ? "Keep Quipsly open on \(CaptureDeviceVocabulary.thisDevice). It will retry the recording automatically."
                         : "Open Quipsly on the affected recording device. It will retry automatically.")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(.orange)
@@ -17577,17 +17577,17 @@ private struct CaptureRecordingCoordinationStatus: View {
     private func healthDetail(_ health: CaptureRecordingHealth) -> String {
         if health.attentionParticipantCount > 0 {
             return selfOnly
-                ? "Keep this Session open so Quipsly can retry on this iPhone."
+                ? "Keep this Session open so Quipsly can retry on \(CaptureDeviceVocabulary.thisDevice)."
                 : "The affected participant has one clear action below."
         }
         if health.allParticipantsRecording {
             return selfOnly
-                ? "This iPhone is recording your local source."
+                ? "\(CaptureDeviceVocabulary.thisDeviceCapitalized) is recording your local source."
                 : "Each expected participant has a local source in progress."
         }
         if health.allParticipantsStoppedSafely {
             return selfOnly
-                ? "This iPhone confirmed that your local recording stopped."
+                ? "\(CaptureDeviceVocabulary.thisDeviceCapitalized) confirmed that your local recording stopped."
                 : "Each expected recorder confirmed its local stop."
         }
         if selfOnly {
@@ -18192,7 +18192,7 @@ private struct VideoRecorderHero: View {
             }
         case .finalizing: "Closing and validating movie…"
         case .paused: "Camera paused safely"
-        case .saved: "Video saved on this iPhone"
+        case .saved: "Video saved on \(CaptureDeviceVocabulary.thisDevice)"
         case .failed: "Camera source needs attention"
         }
     }
@@ -18204,7 +18204,7 @@ private struct VideoRecorderHero: View {
         case .podcastCamera:
             "Records video only while the Quipsly call carries the conversation."
         case .soloVideo:
-            "Records camera and microphone together on this iPhone."
+            "Records camera and microphone together on \(CaptureDeviceVocabulary.thisDevice)."
         case .audio:
             ""
         }
@@ -18276,7 +18276,7 @@ private struct CoordinatedPodcastAudioStatus: View {
 
             HStack(alignment: .center, spacing: 12) {
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(inputRoute.isEmpty ? "iPhone microphone" : inputRoute)
+                    Text(inputRoute.isEmpty ? CaptureDeviceVocabulary.builtInMicrophone : inputRoute)
                         .font(.subheadline.weight(.semibold))
                     Text(capturePipeline)
                         .font(.caption2.weight(.medium))
@@ -18320,7 +18320,7 @@ private struct CoordinatedPodcastAudioStatus: View {
         case .finalizing:
             "Closing the microphone file without changing its bytes."
         case .saved:
-            "Microphone source saved on this iPhone."
+            "Microphone source saved on \(CaptureDeviceVocabulary.thisDevice)."
         case .failed:
             "Microphone source needs Library review."
         case .idle:
@@ -18458,7 +18458,7 @@ private struct RecorderHero: View {
             HStack(spacing: 7) {
                 Image(systemName: "mic.fill")
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(inputRoute.isEmpty ? "iPhone microphone" : inputRoute)
+                    Text(inputRoute.isEmpty ? CaptureDeviceVocabulary.builtInMicrophone : inputRoute)
                     Text(capturePipeline)
                         .font(.caption2)
                 }
@@ -18771,7 +18771,7 @@ private struct RecorderHero: View {
         case .recording: return "Recording locally"
         case .paused: return "Recording paused"
         case .finalizing: return "Saving local source…"
-        case .saved: return "Saved on this iPhone"
+        case .saved: return "Saved on \(CaptureDeviceVocabulary.thisDevice)"
         case .failed: return "Recorder needs attention"
         }
     }
@@ -18781,7 +18781,7 @@ private struct RecorderHero: View {
         case .idle:
             return "Tap Record and speak naturally. Quipsly creates editable writing and keeps the original audio connected."
         case .preparing:
-            return "Quipsly is checking this iPhone's microphone before listening."
+            return "Quipsly is checking \(CaptureDeviceVocabulary.thisDevicePossessive) microphone before listening."
         case .recording:
             return "Keep going. Live words are a preview; your original audio stays safe and editable writing comes next."
         case .paused:
@@ -19021,7 +19021,7 @@ private struct CaptureSystemAudioRoutePicker: UIViewRepresentable {
         picker.activeTintColor = UIColor.systemBlue
         picker.isAccessibilityElement = true
         picker.accessibilityLabel = "Choose call audio device"
-        picker.accessibilityHint = "Opens the standard iPhone audio route menu."
+        picker.accessibilityHint = "Opens the standard \(CaptureDeviceVocabulary.deviceName) audio route menu."
         picker.accessibilityIdentifier = "CaptureCallAudioRoutePicker"
         return picker
     }
@@ -19301,7 +19301,7 @@ private struct ProviderRoomControls: View {
                             set: { callAudioOnAnotherDevice = !$0 }
                         )) {
                             VStack(alignment: .leading, spacing: 2) {
-                                Text("Use this iPhone for call audio")
+                                Text("Use \(CaptureDeviceVocabulary.thisDevice) for call audio")
                                     .font(.subheadline.weight(.semibold))
                                 Text("Turn this off when another device owns the call audio.")
                                     .font(.caption)
@@ -19542,7 +19542,7 @@ private struct ProviderRoomControls: View {
 }
 
 /// Familiar near/far call composition: the other person owns the stage and
-/// this iPhone appears as a movable mental model in the corner. With nobody
+/// this device appears as a movable mental model in the corner. With nobody
 /// else publishing video, the local preview uses the full stage for framing.
 private struct ProviderRoomVideoStage: View {
     @ObservedObject var providerRoom: ProviderRoomController
@@ -20297,7 +20297,7 @@ private struct UploadActivityCard: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             } else {
-                Text("\(model.uploadManager.recoverableUploadCount) recording\(model.uploadManager.recoverableUploadCount == 1 ? "" : "s") still need\(model.uploadManager.recoverableUploadCount == 1 ? "s" : "") to upload. The original\(model.uploadManager.recoverableUploadCount == 1 ? " remains" : "s remain") on this iPhone.")
+                Text("\(model.uploadManager.recoverableUploadCount) recording\(model.uploadManager.recoverableUploadCount == 1 ? "" : "s") still need\(model.uploadManager.recoverableUploadCount == 1 ? "s" : "") to upload. The original\(model.uploadManager.recoverableUploadCount == 1 ? " remains" : "s remain") on \(CaptureDeviceVocabulary.thisDevice).")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 if let statusText = model.uploadManager.statusText?.nonempty {
@@ -20313,7 +20313,7 @@ private struct UploadActivityCard: View {
             if model.uploadManager.recoverableUploadCount > 0 && !model.uploadManager.isUploading {
                 Button("Try upload again") { model.retryUploads() }
                     .buttonStyle(.borderedProminent)
-                    .accessibilityHint("Retries each pending upload. Originals stay on this iPhone until Quipsly verifies them.")
+                    .accessibilityHint("Retries each pending upload. Originals stay on \(CaptureDeviceVocabulary.thisDevice) until Quipsly verifies them.")
             }
         }
         .captureCard()
@@ -20548,7 +20548,7 @@ private struct LocalRecordingRow: View {
                     }
 
                     Button(role: .destructive, action: onDelete) {
-                        Label("Delete from this iPhone", systemImage: "trash")
+                        Label("Delete from \(CaptureDeviceVocabulary.thisDevice)", systemImage: "trash")
                             .frame(minHeight: 44)
                             .fixedSize(horizontal: false, vertical: true)
                     }
@@ -20719,7 +20719,7 @@ private struct LocalRecordingRow: View {
         case .modelDownloadRequired: return "One-time speech download"
         case .installingModel: return "Getting speech tools ready…"
         case .transcribing: return "Creating transcript…"
-        case .savedLocally: return "Transcript ready on this iPhone"
+        case .savedLocally: return "Transcript ready on \(CaptureDeviceVocabulary.thisDevice)"
         case .waitingForVerifiedUpload: return "Transcript ready · waiting for backup"
         case .submitting: return "Saving transcript…"
         case .attached: return "Transcript ready"
@@ -20737,13 +20737,13 @@ private struct LocalRecordingRow: View {
                 ? "After Stop, Quipsly transcribes this exact high-quality recording and syncs its timed text to the Session."
                 : "This recording did not capture transcription permission. Its original audio stays available and no transcript is created."
         case .checkingSupport:
-            return "Checking this iPhone's speech tools."
+            return "Checking \(CaptureDeviceVocabulary.thisDevicePossessive) speech tools."
         case .modelDownloadRequired(let locale):
-            return "This iPhone needs Apple's \(locale) speech tools once. Your recording stays in Quipsly."
+            return "\(CaptureDeviceVocabulary.thisDeviceCapitalized) needs Apple's \(locale) speech tools once. Your recording stays in Quipsly."
         case .installingModel:
             return "Keep Quipsly open while iOS finishes the one-time download."
         case .transcribing:
-            return "Quipsly is turning the retained high-quality recording into timed text on this iPhone when supported."
+            return "Quipsly is turning the retained high-quality recording into timed text on \(CaptureDeviceVocabulary.thisDevice) when supported."
         case .savedLocally(let segmentCount):
             return "\(segmentCount) timed passage\(segmentCount == 1 ? "" : "s") saved from the exact source. Quipsly will sync them automatically.\(transcriptExecutionCostDetail)"
         case .waitingForVerifiedUpload(let segmentCount):
@@ -20810,7 +20810,7 @@ private struct LocalRecordingRow: View {
         case .recording: return "Recording"
         case .paused: return "Paused"
         case .finalizing: return "Saving"
-        case .saved: return "On this iPhone"
+        case .saved: return "On \(CaptureDeviceVocabulary.thisDevice)"
         case .queued: return "Waiting to back up"
         case .uploading:
             if let progress = recording.uploadProgress {
@@ -20827,7 +20827,7 @@ private struct LocalRecordingRow: View {
         case .validatingRecovery: return "Checking recording"
         case .needsRepair, .captureFailed: return "Needs attention"
         case .missingFile: return "Unavailable"
-        case .deletedLocally: return "Removed from iPhone"
+        case .deletedLocally: return "Removed from \(CaptureDeviceVocabulary.deviceName)"
         }
     }
 
@@ -21008,7 +21008,7 @@ private struct LocalRecordingDeletionSheet: View {
                 }
 
                 Section("Share first") {
-                    Text("Deletion is irreversible on this iPhone. Share or export a copy before continuing if you may need these source bytes later.")
+                    Text("Deletion is irreversible on \(CaptureDeviceVocabulary.thisDevice). Share or export a copy before continuing if you may need these source bytes later.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     if let fileURL {
@@ -21022,7 +21022,7 @@ private struct LocalRecordingDeletionSheet: View {
 
                 Section {
                     Toggle(
-                        "I understand this permanently removes only the local original from this iPhone",
+                        "I understand this permanently removes only the local original from \(CaptureDeviceVocabulary.thisDevice)",
                         isOn: $confirmsIrreversibleDeletion
                     )
                     Text("Quipsly keeps a recovery record with the deletion time, original size, and cloud-verification state.")
@@ -21077,9 +21077,9 @@ private struct LocalRecordingDeletionSheet: View {
     private var cloudVerificationDetail: String {
         if cloudCopyIsVerified {
             if recording.serverProcessingDisposition?.uppercased() == "HELD" {
-                return "Quipsly verified and preserved the exact server bytes, but an unusual source or consent mismatch needs support before automatic transcription and editing can continue. This action still deletes only the bytes on this iPhone."
+                return "Quipsly verified and preserved the exact server bytes, but an unusual source or consent mismatch needs support before automatic transcription and editing can continue. This action still deletes only the bytes on \(CaptureDeviceVocabulary.thisDevice)."
             }
-            return "Quipsly recorded a verified server copy. This action still deletes only the bytes on this iPhone."
+            return "Quipsly recorded a verified server copy. This action still deletes only the bytes on \(CaptureDeviceVocabulary.thisDevice)."
         }
         return "Deleting now can leave no recoverable copy. Upload held, received, or pending is not the same as verified."
     }
@@ -21383,7 +21383,7 @@ private struct NewCaptureSessionSheet: View {
                 ShareLink(
                     item: invitationURL,
                     subject: Text("Join my Quipsly coaching session"),
-                    message: Text("Join this private Quipsly Session on iPhone, tablet, or desktop: \(invitationURL.absoluteString)")
+                    message: Text("Join this private Quipsly Session on phone, tablet, or desktop: \(invitationURL.absoluteString)")
                 ) {
                     Label("Share invite", systemImage: "square.and.arrow.up")
                         .frame(maxWidth: .infinity)
@@ -21400,7 +21400,7 @@ private struct NewCaptureSessionSheet: View {
             }
 
             if !outcome.sessionReadyOnDevice {
-                Text("The appointment is safely stored in Quipsly. Return to Home and refresh if it does not appear immediately on this iPhone.")
+                Text("The appointment is safely stored in Quipsly. Return to Home and refresh if it does not appear immediately on \(CaptureDeviceVocabulary.thisDevice).")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -21620,7 +21620,7 @@ private struct LocalSafetySummary: View {
                 .font(.title2)
                 .foregroundStyle(CapturePalette.accent)
             VStack(alignment: .leading, spacing: 3) {
-                Text("Originals on this iPhone")
+                Text("Originals on \(CaptureDeviceVocabulary.thisDevice)")
                     .font(.subheadline.weight(.semibold))
                 Text(recordingCount == 0
                      ? "Your original recordings stay here while Quipsly prepares safe copies."
@@ -21650,11 +21650,11 @@ private struct SourceTruthFootnote: View {
     private var detail: String {
         switch mode {
         case .audio:
-            "This iPhone keeps the original microphone recording. Quipsly verifies the cloud copy automatically before using it for transcription and editing."
+            "\(CaptureDeviceVocabulary.thisDeviceCapitalized) keeps the original microphone recording. Quipsly verifies the cloud copy automatically before using it for transcription and editing."
         case .podcastAV:
             "The local microphone and video-only movie stay as separate originals in one capture group. Quipsly aligns them from capture clocks and keeps sync adjustable in advanced editing."
         case .soloVideo:
-            "This iPhone keeps the original camera-and-microphone movie. Quipsly verifies the cloud copy automatically before using it for editing."
+            "\(CaptureDeviceVocabulary.thisDeviceCapitalized) keeps the original camera-and-microphone movie. Quipsly verifies the cloud copy automatically before using it for editing."
         case .podcastCamera:
             "The local movie stays as the original video-only camera source. Room audio remains independent; Quipsly aligns capture clocks and keeps sync adjustable in advanced editing."
         }

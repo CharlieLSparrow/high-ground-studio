@@ -295,7 +295,7 @@ final class CaptureNestPortabilityClient: ObservableObject {
             }
 
             exportedFileURL = destination
-            statusMessage = "Verified backup saved on this iPhone. Share it to Files or another location you control."
+            statusMessage = "Verified backup saved on \(CaptureDeviceVocabulary.thisDevice). Share it to Files or another location you control."
         } catch {
             errorMessage = portabilityMessage(for: error)
             statusMessage = nil
@@ -336,7 +336,7 @@ final class CaptureNestPortabilityClient: ObservableObject {
             importedBundleData = data
             importedFileName = url.lastPathComponent
             importedByteCount = data.count
-            statusMessage = "Package loaded only on this iPhone. Validate its manifest and destination plan before restoring anything."
+            statusMessage = "Package loaded only on \(CaptureDeviceVocabulary.thisDevice). Validate its manifest and destination plan before restoring anything."
         } catch {
             importedBundleData = nil
             importedFileName = nil
@@ -354,7 +354,7 @@ final class CaptureNestPortabilityClient: ObservableObject {
               let project = selectedProject,
               let importedBundleData else { return }
         guard canUseNetworkActions else {
-            errorMessage = "Reconnect to Nest to validate this package. The loaded file remains unchanged on your iPhone."
+            errorMessage = "Reconnect to Nest to validate this package. The loaded file remains unchanged on \(CaptureDeviceVocabulary.yourDevice)."
             return
         }
 
@@ -721,7 +721,7 @@ struct CaptureNestPortabilityView: View {
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.bordered)
-                .accessibilityHint("Opens the share sheet for the protected JSON package created on this iPhone.")
+                .accessibilityHint("Opens the share sheet for the protected JSON package created on \(CaptureDeviceVocabulary.thisDevice).")
                 .accessibilityIdentifier("CaptureNestShareBackup")
 
                 Text(exportedFileURL.lastPathComponent)

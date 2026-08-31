@@ -338,7 +338,7 @@ final class TaskReminderScheduler: ObservableObject {
             notificationCenter.removePending(identifiers: Array(Set(identifiersToRemove)))
             await reconcileActiveOwner(requestPermissionIfNeeded: false)
         } catch {
-            statusMessage = "Canonical reminders were read, but the protected iPhone projection could not be updated. Existing alerts were not claimed as reconciled."
+            statusMessage = "Canonical reminders were read, but the protected device projection could not be updated. Existing alerts were not claimed as reconciled."
         }
     }
 
@@ -385,7 +385,7 @@ final class TaskReminderScheduler: ObservableObject {
             }
         } else {
             guard let remindAt = decision.remindAt else {
-                return .failed(message: "Refresh Today before canceling a reminder that is not protected on this iPhone.")
+                return .failed(message: "Refresh Today before canceling a reminder that is not protected on \(CaptureDeviceVocabulary.thisDevice).")
             }
             updated.append(ProtectedTaskReminderIntent(
                 id: reminderID,
@@ -411,7 +411,7 @@ final class TaskReminderScheduler: ObservableObject {
             notificationCenter.removePending(identifiers: updated
                 .filter { $0.id == reminderID }
                 .map(Self.notificationRequestID))
-            statusMessage = "Reminder alert removed from this iPhone. Nest cancellation is still pending."
+            statusMessage = "Reminder alert removed from \(CaptureDeviceVocabulary.thisDevice). Nest cancellation is still pending."
             return .canceled
         }
         return await project(intent, requestPermissionIfNeeded: requestPermissionIfNeeded)
@@ -439,7 +439,7 @@ final class TaskReminderScheduler: ObservableObject {
             try commit(updated)
             return true
         } catch {
-            statusMessage = "Nest acknowledged the reminder, but the protected iPhone ledger could not record that acknowledgement. The outbox remains for safe retry."
+            statusMessage = "Nest acknowledged the reminder, but the protected device ledger could not record that acknowledgement. The outbox remains for safe retry."
             return false
         }
     }
@@ -483,7 +483,7 @@ final class TaskReminderScheduler: ObservableObject {
             try commit(updated)
             return .success(intent)
         } catch {
-            return .failure("The reminder could not be protected on this iPhone: \(error.localizedDescription). The task remains in the outbox.")
+            return .failure("The reminder could not be protected on \(CaptureDeviceVocabulary.thisDevice): \(error.localizedDescription). The task remains in the outbox.")
         }
     }
 
@@ -547,7 +547,7 @@ final class TaskReminderScheduler: ObservableObject {
             permissionLabel = "Disabled in Settings"
             notificationCenter.removePending(identifiers: [requestID])
             update(intent.id, state: .permissionDenied, error: nil)
-            statusMessage = "Reminder intent is saved, but iPhone notifications are off for Quipsly. No alert was claimed as scheduled."
+            statusMessage = "Reminder intent is saved, but notifications are off for Quipsly. No alert was claimed as scheduled."
             return .retainedPermissionDenied
         case .authorized:
             permissionLabel = "Allowed"
@@ -566,7 +566,7 @@ final class TaskReminderScheduler: ObservableObject {
                 ]
             )
             update(intent.id, state: .scheduled, error: nil)
-            statusMessage = "Private task alert scheduled on this iPhone. Delivery is controlled by iOS and is never claimed in advance."
+            statusMessage = "Private task alert scheduled on \(CaptureDeviceVocabulary.thisDevice). Delivery is controlled by iOS and is never claimed in advance."
             return .scheduled
         } catch {
             update(intent.id, state: .schedulingFailed, error: error.localizedDescription)

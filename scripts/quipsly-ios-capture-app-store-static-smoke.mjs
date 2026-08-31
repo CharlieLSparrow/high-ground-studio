@@ -1024,7 +1024,7 @@ requireIncludes(nestChatRouteText, "idempotentReplay: true", "episode chat serve
 const authCombined = `${authText}\n${loginText}`;
 requireIncludes(authText, "SecItemUpdate(lookup as CFDictionary, replacement as CFDictionary)", "Keychain rotation updates by stable item identity instead of matching the replacement secret value");
 requireIncludes(authText, "guard updateStatus == errSecItemNotFound else { return false }", "Keychain persistence reports update failures instead of silently claiming the session is durable");
-requireIncludes(authText, "This iPhone could not protect the refreshed Quipsly session in Keychain", "native sign-in exposes a truthful storage failure instead of opening an unrecoverable session");
+requireIncludes(authText, "This device could not protect the refreshed Quipsly session in Keychain", "native sign-in exposes a truthful storage failure instead of opening an unrecoverable session");
 requireIncludes(authText, "Account created. Check your inbox, verify your email, then sign in.", "password sign-up uses a familiar verification handoff");
 requireExcludes(authText, "beta recording or upload access", "retired beta access language is absent from paid account creation");
 for (const needle of [
@@ -1302,7 +1302,7 @@ for (const needle of [
   "CaptureStudioHandoffCard_",
   "CaptureSourceTruthFootnote",
   "CaptureLibraryJournalWarning",
-  "This iPhone keeps the original microphone recording.",
+  "\\(CaptureDeviceVocabulary.thisDeviceCapitalized) keeps the original microphone recording.",
   "Local source stopped; upload recovery remains independent.",
 ]) {
   requireAnyIncludes(shippingCaptureUIText, [needle, needle.replace("\\(", "(")], "reachable capture reviewer UI");
@@ -1347,7 +1347,7 @@ for (const needle of [
   "CaptureConsentTranscriptionToggle",
   "CaptureConsentSaveChoicesButton",
   "CaptureConsentDeclineButton",
-  "This iPhone keeps the original microphone recording.",
+  "\\(CaptureDeviceVocabulary.thisDeviceCapitalized) keeps the original microphone recording.",
   "GlobalCaptureBanner",
   "model.activeCaptureSession?.id == session.id",
   "model.activeVideoCaptureSession?.id == session.id",
@@ -1592,7 +1592,7 @@ for (const needle of [
   "startConsentMonitor(captureID:",
   "activeAudioCapture?.handleCommand(.pause)",
   "captureRequiresNewTake = true",
-  "Saved on this iPhone. Upload can continue in the background.",
+  "Saved on \\(CaptureDeviceVocabulary.thisDevice). Upload can continue in the background.",
   "Recording remains paused. Verify the microphone route",
   "uploadManager.localDeletionBlocker(",
   "library.deleteLocalOriginal(recording.id)",
@@ -1835,7 +1835,7 @@ for (const needle of [
   ".onChange(of: scenePhase)",
   "saveTask?.cancel()",
   "saveImmediately()",
-  "Try saving on this iPhone again",
+  "Try saving on \\(CaptureDeviceVocabulary.thisDevice) again",
 ]) {
   requireIncludes(capturePhoneShellText, needle, "writing flushes its protected local copy at app lifecycle boundaries");
 }
@@ -1864,7 +1864,7 @@ for (const needle of [
   "saveWorkingDraftImmediately()",
   "expectedContentRevisionOverride: baseContentRevision",
   "committedToOutbox = true",
-  "Saved on this iPhone while you work.",
+  "Saved on \\(CaptureDeviceVocabulary.thisDevice) while you work.",
 ]) {
   requireIncludes(capturePhoneShellText, needle, "Nest note editing survives dismissal and iPhone lifecycle changes without bypassing conflict checks");
 }
@@ -1889,7 +1889,7 @@ for (const needle of [
   "saveWorkingDraftImmediately()",
   "expectedUpdatedAtOverride: baseUpdatedAt",
   "committedToOutbox = true",
-  "Saved on this iPhone while you work.",
+  "Saved on \\(CaptureDeviceVocabulary.thisDevice) while you work.",
 ]) {
   requireIncludes(capturePhoneShellText, needle, "Session note editing survives dismissal and iPhone lifecycle changes without bypassing conflict checks");
 }
@@ -1917,8 +1917,8 @@ for (const needle of [
   "mayReplaceEditor = current == canonicalSnapshot",
   ".onChange(of: scenePhase)",
   "saveWorkingDraftImmediately()",
-  "Recovered your saved iPhone draft.",
-  "Saved on this iPhone while you work.",
+  "Recovered your saved \\(CaptureDeviceVocabulary.deviceName) draft.",
+  "Saved on \\(CaptureDeviceVocabulary.thisDevice) while you work.",
   "CaptureSessionPreparationKeyboardDone",
 ]) {
   requireIncludes(

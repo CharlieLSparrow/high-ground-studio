@@ -234,7 +234,7 @@ final class MobileEpisodeChatClient: ObservableObject {
                 authorName: "Homer",
                 body: scope == .episode
                     ? "Ready. I’ll open with the swear jar story, then you cue the clip."
-                    : "iPhone source is framed and consent is current. Call audio is not the retained recording.",
+                    : "Device source is framed and consent is current. Call audio is not the retained recording.",
                 gifUrl: nil,
                 createdAt: now
             ),

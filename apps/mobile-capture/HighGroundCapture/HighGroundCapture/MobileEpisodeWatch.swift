@@ -617,7 +617,7 @@ final class MobileEpisodeWatchClient: ObservableObject {
             return
         }
         guard let owner = AuthManager.shared.stableOwnerSnapshot() else {
-            errorMessage = "Sign in again before protecting this shared clip on the iPhone."
+            errorMessage = "Sign in again before protecting this shared clip on \(CaptureDeviceVocabulary.thisDevice)."
             return
         }
         if restoreCachedClip(clip: clip, owner: owner) {
@@ -743,7 +743,7 @@ final class MobileEpisodeWatchClient: ObservableObject {
                 displayPosition = target
             }
             player.play()
-            statusMessage = "Private iPhone preview · not added to the shared timeline."
+            statusMessage = "Private \(CaptureDeviceVocabulary.deviceName) preview · not added to the shared timeline."
             errorMessage = nil
         } catch {
             errorMessage = error.localizedDescription
@@ -757,7 +757,7 @@ final class MobileEpisodeWatchClient: ObservableObject {
             return
         }
         guard isPrepared else {
-            statusMessage = "This Watch clip is not downloaded on this iPhone."
+            statusMessage = "This Watch clip is not downloaded on \(CaptureDeviceVocabulary.thisDevice)."
             errorMessage = nil
             return
         }
@@ -768,7 +768,7 @@ final class MobileEpisodeWatchClient: ObservableObject {
         stopPlayer()
         removeCachedClip(clip: clip, owner: owner)
         statusMessage =
-            "Downloaded copy removed from this iPhone. The protected Nest source is unchanged."
+            "Downloaded copy removed from \(CaptureDeviceVocabulary.thisDevice). The protected Nest source is unchanged."
         errorMessage = nil
     }
 
@@ -1172,7 +1172,7 @@ final class MobileEpisodeWatchClient: ObservableObject {
         } else if shouldPauseShared {
             statusMessage = pausedForEveryone
                 ? "Shared Watch paused for everyone. The unusable copy was removed; tap Prepare to retry."
-                : "Playback stopped on this iPhone. Ask the other editor to pause, then tap Prepare to retry."
+                : "Playback stopped on \(CaptureDeviceVocabulary.thisDevice). Ask the other editor to pause, then tap Prepare to retry."
         } else {
             statusMessage =
                 "The unusable downloaded copy was removed. Tap Prepare to try again."
@@ -1199,7 +1199,7 @@ final class MobileEpisodeWatchClient: ObservableObject {
             localPreviewActive = false
             errorMessage = message
             statusMessage =
-                "Private preview paused on this iPhone. Shared Watch did not change."
+                "Private preview paused on \(CaptureDeviceVocabulary.thisDevice). Shared Watch did not change."
             return
         }
         errorMessage = message
@@ -1217,7 +1217,7 @@ final class MobileEpisodeWatchClient: ObservableObject {
             self.errorMessage = message
             self.statusMessage = paused
                 ? "Shared Watch paused for everyone. Reconnect headphones before resuming together."
-                : "Shared Watch paused on this iPhone. Reconnect headphones and refresh before resuming together."
+                : "Shared Watch paused on \(CaptureDeviceVocabulary.thisDevice). Reconnect headphones and refresh before resuming together."
         }
     }
 
@@ -1765,7 +1765,7 @@ struct MobileEpisodeWatchCard: View {
                             || client.isMutating
                     )
                     .accessibilityHint(
-                        "Removes only this iPhone's protected cache. The Nest source remains unchanged."
+                        "Removes only \(CaptureDeviceVocabulary.thisDevicePossessive) protected cache. The Nest source remains unchanged."
                     )
                     .accessibilityIdentifier(
                         "CaptureEpisodeWatchRemoveDownloadButton"
@@ -1781,7 +1781,7 @@ struct MobileEpisodeWatchCard: View {
                             Label(
                                 client.localPreviewActive
                                     ? "Pause private preview"
-                                    : "Preview on this iPhone",
+                                    : "Preview on \(CaptureDeviceVocabulary.thisDevice)",
                                 systemImage: client.localPreviewActive
                                     ? "pause.circle"
                                     : "iphone.gen3"
@@ -1814,7 +1814,7 @@ struct MobileEpisodeWatchCard: View {
                                 || !client.sharedConnectionReady
                         )
                         .accessibilityHint(
-                            "Pauses the authoritative shared clock immediately; this iPhone does not need the clip downloaded."
+                            "Pauses the authoritative shared clock immediately; \(CaptureDeviceVocabulary.thisDevice) does not need the clip downloaded."
                         )
                         .accessibilityIdentifier(
                             "CaptureEpisodeWatchUnpreparedPauseButton"

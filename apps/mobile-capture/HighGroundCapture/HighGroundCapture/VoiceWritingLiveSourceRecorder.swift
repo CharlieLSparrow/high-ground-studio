@@ -726,7 +726,7 @@ private enum LivePreviewFailure: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .speechAnalyzerUnavailable:
-            "Apple live transcription is unavailable on this iPhone."
+            "Apple live transcription is unavailable on this device."
         case .unsupportedLocale:
             "The selected spoken language is not available for live transcription."
         case .modelNotInstalled:

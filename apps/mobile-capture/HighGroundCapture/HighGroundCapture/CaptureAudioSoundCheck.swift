@@ -259,8 +259,8 @@ final class CaptureAudioSoundCheckController: NSObject, ObservableObject,
         }
         playbackDecision = decision
         message = decision == .heardClear
-            ? "Your full listen-back decision is ready to share as a receipt. The private audio stays on this iPhone."
-            : "Your concern is ready to share as a needs-adjustment receipt. The private audio stays on this iPhone."
+            ? "Your full listen-back decision is ready to share as a receipt. The private audio stays on \(CaptureDeviceVocabulary.thisDevice)."
+            : "Your concern is ready to share as a needs-adjustment receipt. The private audio stays on \(CaptureDeviceVocabulary.thisDevice)."
     }
 
     #if DEBUG && targetEnvironment(simulator)
@@ -438,7 +438,7 @@ final class CaptureAudioSoundCheckController: NSObject, ObservableObject,
         liveAveragePowerDBFS = -160
         livePeakPowerDBFS = -160
         if resetState {
-            message = "The temporary sound check was deleted from this iPhone."
+            message = "The temporary sound check was deleted from \(CaptureDeviceVocabulary.thisDevice)."
             state = .idle
         }
     }
@@ -479,6 +479,6 @@ final class CaptureAudioSoundCheckController: NSObject, ObservableObject,
                 return name.isEmpty ? output.portType.rawValue : name
             }
             .filter { !$0.isEmpty }
-        return outputs.isEmpty ? "iPhone system output" : outputs.joined(separator: " + ")
+        return outputs.isEmpty ? "\(CaptureDeviceVocabulary.deviceName) system output" : outputs.joined(separator: " + ")
     }
 }

@@ -672,7 +672,7 @@ final class MobileCoachingFormsClient: ObservableObject {
               ["DRAFT", "SUBMITTED"].contains(state),
               !isUsingProtectedCache,
               AuthManager.shared.networkActionsAllowed else {
-            errorMessage = "Connect to Nest to save. Your private answers are still on this iPhone."
+            errorMessage = "Connect to Nest to save. Your private answers are still on \(CaptureDeviceVocabulary.thisDevice)."
             updateLocalDraft(assignment: assignment, answers: answers)
             return false
         }

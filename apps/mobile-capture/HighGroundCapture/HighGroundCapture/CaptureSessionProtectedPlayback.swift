@@ -129,14 +129,14 @@ final class CaptureSessionProtectedPlaybackController: ObservableObject {
             return false
         }
         configurePlayer(fileURL: locations.media, binding: binding)
-        statusMessage = "Protected copy ready on this iPhone"
+        statusMessage = "Protected copy ready on \(CaptureDeviceVocabulary.thisDevice)"
         errorMessage = nil
         return true
     }
 
     func prepare(source: MobileCaptureSourceSummary) async {
         guard let binding = binding(for: source) else {
-            errorMessage = "This verified Session source is not ready for protected iPhone playback."
+            errorMessage = "This verified Session source is not ready for protected playback on \(CaptureDeviceVocabulary.thisDevice)."
             return
         }
         await prepare(binding: binding)
@@ -232,16 +232,16 @@ final class CaptureSessionProtectedPlaybackController: ObservableObject {
               let owner = AuthManager.shared.stableOwnerSnapshot(),
               let playbackURL = playbackURL(binding: binding),
               let locations = cacheLocations(binding: binding, owner: owner) else {
-            errorMessage = "This verified Session source is not ready for protected iPhone playback."
+            errorMessage = "This verified Session source is not ready for protected playback on \(CaptureDeviceVocabulary.thisDevice)."
             return
         }
         if restoreIfAvailable(binding: binding), preparedSourceID == binding.recordingAssetID { return }
         guard AuthManager.shared.networkActionsAllowed else {
-            errorMessage = "Connect to Nest once to prepare this recording on the iPhone."
+            errorMessage = "Connect to Nest once to prepare this recording on \(CaptureDeviceVocabulary.thisDevice)."
             return
         }
         guard hasCapacity(for: binding.byteCount, at: locations.directory) else {
-            errorMessage = "This iPhone needs more free space before it can protect the exact recording."
+            errorMessage = "\(CaptureDeviceVocabulary.thisDeviceCapitalized) needs more free space before it can protect the exact recording."
             return
         }
         isPreparing = true
@@ -378,7 +378,7 @@ final class CaptureSessionProtectedPlaybackController: ObservableObject {
         }
         close()
         try? FileManager.default.removeItem(at: locations.directory)
-        statusMessage = "Protected iPhone copy removed. The retained server source is unchanged."
+        statusMessage = "Protected \(CaptureDeviceVocabulary.deviceName) copy removed. The retained server source is unchanged."
     }
 
     func close() {
@@ -766,7 +766,7 @@ struct CaptureSessionProtectedPlaybackSheet: View {
                         .buttonStyle(.borderedProminent)
                         .accessibilityIdentifier("CaptureSessionProtectedPlaybackToggle")
 
-                        Button("Remove protected copy from this iPhone", role: .destructive) {
+                        Button("Remove protected copy from \(CaptureDeviceVocabulary.thisDevice)", role: .destructive) {
                             controller.remove(source: source)
                         }
                         .font(.caption.weight(.semibold))

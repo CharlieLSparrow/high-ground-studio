@@ -178,11 +178,11 @@ final class CaptureRecordingCoordinator: ObservableObject {
                 if directive?.action == .start, !localRecordingActive {
                     if localRecordingReady {
                         joinConfirmationRequired = false
-                        statusMessage = "Starting this iPhone's recording…"
+                        statusMessage = "Starting \(CaptureDeviceVocabulary.thisDevicePossessive) recording…"
                         return directive
                     }
                     joinConfirmationRequired = true
-                    statusMessage = "Recording is already in progress. Quipsly will start this iPhone after your Session choice and iOS access are ready."
+                    statusMessage = "Recording is already in progress. Quipsly will start \(CaptureDeviceVocabulary.thisDevice) after your Session choice and iOS access are ready."
                     return nil
                 }
                 if directive?.action == .stop, localRecordingActive {
@@ -200,7 +200,7 @@ final class CaptureRecordingCoordinator: ObservableObject {
                 guard localRecordingReady,
                       handledStates[directive.id] == nil else { return nil }
                 joinConfirmationRequired = false
-                statusMessage = "Starting this iPhone's recording…"
+                statusMessage = "Starting \(CaptureDeviceVocabulary.thisDevicePossessive) recording…"
                 return directive
             }
             if directive.action == .stop { joinConfirmationRequired = false }
@@ -253,7 +253,7 @@ final class CaptureRecordingCoordinator: ObservableObject {
         guard joinConfirmationRequired,
               currentDirective?.action == .start else { return nil }
         joinConfirmationRequired = false
-        statusMessage = "Starting this iPhone's recording…"
+        statusMessage = "Starting \(CaptureDeviceVocabulary.thisDevicePossessive) recording…"
         return currentDirective
     }
 
@@ -320,7 +320,7 @@ final class CaptureRecordingCoordinator: ObservableObject {
         guard !isFlushingReceipts else { return }
         guard AuthManager.shared.networkActionsAllowed else {
             if receiptOutbox.pendingCount > 0 {
-                statusMessage = "Recording is safe locally; room status is waiting securely on this iPhone."
+                statusMessage = "Recording is safe locally; room status is waiting securely on \(CaptureDeviceVocabulary.thisDevice)."
             }
             return
         }
@@ -335,7 +335,7 @@ final class CaptureRecordingCoordinator: ObservableObject {
             case .acknowledged:
                 receiptOutbox.markAcknowledged(receipt.id)
             case .retry(let message):
-                statusMessage = "Recording is safe locally; room status is waiting securely on this iPhone. \(message)"
+                statusMessage = "Recording is safe locally; room status is waiting securely on \(CaptureDeviceVocabulary.thisDevice). \(message)"
                 scheduleRetry()
                 return
             case .rejected(let message):
@@ -456,7 +456,7 @@ final class CaptureRecordingCoordinator: ObservableObject {
 
     private var deviceLabel: String {
         let name = UIDevice.current.name.trimmingCharacters(in: .whitespacesAndNewlines)
-        return name.isEmpty ? "Quipsly Capture · iPhone" : "Quipsly Capture · \(name)"
+        return name.isEmpty ? "Quipsly Capture · \(CaptureDeviceVocabulary.deviceName)" : "Quipsly Capture · \(name)"
     }
 
     private func normalizedDetail(_ value: String?) -> String? {
@@ -469,17 +469,17 @@ final class CaptureRecordingCoordinator: ObservableObject {
     ) -> String {
         switch state {
         case .observed:
-            "Starting this iPhone's recording…"
+            "Starting \(CaptureDeviceVocabulary.thisDevicePossessive) recording…"
         case .started:
-            "Recording on this iPhone"
+            "Recording on \(CaptureDeviceVocabulary.thisDevice)"
         case .startFailed:
-            "Recording couldn’t start on this iPhone. Your call is still connected; try again."
+            "Recording couldn’t start on \(CaptureDeviceVocabulary.thisDevice). Your call is still connected; try again."
         case .stopping:
-            "Saving this iPhone's recording…"
+            "Saving \(CaptureDeviceVocabulary.thisDevicePossessive) recording…"
         case .stopped:
-            "Recording stopped · source stays protected on this iPhone"
+            "Recording stopped · source stays protected on \(CaptureDeviceVocabulary.thisDevice)"
         case .stopFailed:
-            "This iPhone is still protecting its recording. Keep Quipsly open and try again."
+            "\(CaptureDeviceVocabulary.thisDeviceCapitalized) is still protecting its recording. Keep Quipsly open and try again."
         }
     }
 }

@@ -420,7 +420,7 @@ final class CaptureSessionPreflightClient: ObservableObject {
                 payload: payload,
                 createdAt: summary.createdAt
             )
-            status = "Setup receipt saved on this iPhone"
+            status = "Setup receipt saved on \(CaptureDeviceVocabulary.thisDevice)"
             errorMessage = nil
         } catch {
             errorMessage = error.localizedDescription
@@ -433,7 +433,7 @@ final class CaptureSessionPreflightClient: ObservableObject {
         guard !isSyncing else { return }
         guard AuthManager.shared.networkActionsAllowed else {
             if !store.pendingReceipts.isEmpty {
-                status = "Setup receipt waiting safely on this iPhone"
+                status = "Setup receipt waiting safely on \(CaptureDeviceVocabulary.thisDevice)"
             }
             return
         }
@@ -453,11 +453,11 @@ final class CaptureSessionPreflightClient: ObservableObject {
                     expiresAt: Self.isoDate(packet.expiresAt)
                 )
                 status = packet.status == "READY"
-                    ? "Nest verified this iPhone setup"
+                    ? "Nest verified \(CaptureDeviceVocabulary.thisDevice) setup"
                     : "Nest saved the setup concerns"
                 errorMessage = nil
             case .retry(let message):
-                status = "Setup receipt waiting safely on this iPhone"
+                status = "Setup receipt waiting safely on \(CaptureDeviceVocabulary.thisDevice)"
                 errorMessage = message
                 return
             case .rejected(let message):

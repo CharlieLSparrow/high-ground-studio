@@ -588,7 +588,7 @@ struct MobileCoachingSessionPreparationCard: View {
         _workingDraftStatus = State(
             initialValue: draft == nil
                 ? nil
-                : "Recovered your saved iPhone draft."
+                : "Recovered your saved \(CaptureDeviceVocabulary.deviceName) draft."
         )
         _workingDraftError = State(initialValue: nil)
         _workingDraftSaveTask = State(initialValue: nil)
@@ -963,10 +963,10 @@ struct MobileCoachingSessionPreparationCard: View {
         )
         if saved {
             workingDraftWasRestored = true
-            workingDraftStatus = "Saved on this iPhone while you work."
+            workingDraftStatus = "Saved on \(CaptureDeviceVocabulary.thisDevice) while you work."
             workingDraftError = nil
         } else if ["client", "coach"].contains(snapshot.role) {
-            workingDraftError = "This draft could not be protected on this iPhone yet. Keep this Session open and try again."
+            workingDraftError = "This draft could not be protected on \(CaptureDeviceVocabulary.thisDevice) yet. Keep this Session open and try again."
         }
     }
 

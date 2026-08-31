@@ -366,7 +366,7 @@ enum CaptureSourceEvidenceExporter {
             case .accountMismatch:
                 "The source belongs to a different account. Quipsly did not expose its evidence."
             case .localSourceUnavailable:
-                "The immutable local source bytes are not available on this iPhone."
+                "The immutable local source bytes are not available on this device."
             case .accountOrSourceChanged:
                 "The active account or source identity changed while evidence was being prepared."
             case .localSourceChanged:

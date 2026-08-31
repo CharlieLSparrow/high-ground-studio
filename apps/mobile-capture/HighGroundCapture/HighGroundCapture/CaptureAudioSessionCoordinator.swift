@@ -10,7 +10,7 @@ import Combine
 /// Local recording, CallKit, and the provider SDK all share one system audio
 /// session. Keeping their leases here prevents a local-capture stop from
 /// deactivating a connected room and makes the recorded scope explicit: the
-/// local file contains this iPhone's selected microphone, not provider egress.
+/// local file contains this device's selected microphone, not provider egress.
 @MainActor
 final class CaptureAudioSessionCoordinator: ObservableObject {
     static let shared = CaptureAudioSessionCoordinator()
@@ -24,7 +24,7 @@ final class CaptureAudioSessionCoordinator: ObservableObject {
     @Published private(set) var sharedWatchRouteFailureMessage: String?
     @Published private(set) var privateListeningRouteAvailable = false
     @Published private(set) var currentInputRouteName = "No microphone active"
-    @Published private(set) var currentOutputRouteName = "iPhone audio"
+    @Published private(set) var currentOutputRouteName = CaptureDeviceVocabulary.audioRoute
     @Published private(set) var isBuiltInSpeakerActive = false
 
     private let audioSession = AVAudioSession.sharedInstance()
@@ -308,12 +308,12 @@ final class CaptureAudioSessionCoordinator: ObservableObject {
         currentInputRouteName = routeNames(
             audioSession.currentRoute.inputs,
             fallback: "No microphone active",
-            builtInFallback: "iPhone microphone"
+            builtInFallback: CaptureDeviceVocabulary.builtInMicrophone
         )
         currentOutputRouteName = routeNames(
             audioSession.currentRoute.outputs,
-            fallback: "iPhone audio",
-            builtInFallback: "iPhone speaker"
+            fallback: CaptureDeviceVocabulary.audioRoute,
+            builtInFallback: "\(CaptureDeviceVocabulary.deviceName) speaker"
         )
     }
 
@@ -362,7 +362,7 @@ final class CaptureAudioSessionCoordinator: ObservableObject {
             throw NSError(
                 domain: "CaptureAudioSession",
                 code: 3,
-                userInfo: [NSLocalizedDescriptionKey: "Join the call before changing the iPhone speaker."]
+                userInfo: [NSLocalizedDescriptionKey: "Join the call before changing the device speaker."]
             )
         }
         try audioSession.overrideOutputAudioPort(

@@ -1080,8 +1080,8 @@ final class MobileCoachingRunwayClient: ObservableObject {
             let payload = try await performAction([
                 "action": action,
                 "holdId": hold.id,
-                "notes": "Confirmed from Quipsly Capture on iPhone.",
-                "reason": "Declined from Quipsly Capture on iPhone.",
+                "notes": "Confirmed from Quipsly Capture on \(CaptureDeviceVocabulary.deviceName).",
+                "reason": "Declined from Quipsly Capture on \(CaptureDeviceVocabulary.deviceName).",
             ])
             guard payload.ok else {
                 throw coachingClientError(payload.error ?? "That time request could not be updated.")
@@ -1257,7 +1257,7 @@ final class MobileCoachingRunwayClient: ObservableObject {
                 "scheduledStart": ISO8601DateFormatter().string(from: scheduledStart),
                 "durationMinutes": max(15, durationMinutes),
                 "timezone": TimeZone.current.identifier,
-                "reason": "Rescheduled from Quipsly Capture on iPhone.",
+                "reason": "Rescheduled from Quipsly Capture on \(CaptureDeviceVocabulary.deviceName).",
             ])
             guard payload.ok, payload.result?.bookingId == booking.id else {
                 throw coachingClientError(payload.error ?? "This Session could not be rescheduled.")
@@ -1326,7 +1326,7 @@ final class MobileCoachingRunwayClient: ObservableObject {
             let payload = try await performAction([
                 "action": "cancel-booking",
                 "bookingId": booking.id,
-                "reason": "Canceled from Quipsly Capture on iPhone.",
+                "reason": "Canceled from Quipsly Capture on \(CaptureDeviceVocabulary.deviceName).",
             ])
             guard payload.ok, payload.result?.bookingId == booking.id else {
                 throw coachingClientError(payload.error ?? "This Session could not be canceled.")
@@ -1713,7 +1713,7 @@ struct CaptureCoachingHomeCard: View {
             return "Your next coaching Session is ready"
         }
         if !isCoach { return "Set up coaching and invite your first client" }
-        if upcomingCount == 0 { return "Schedule a client from this iPhone" }
+        if upcomingCount == 0 { return "Schedule a client from \(CaptureDeviceVocabulary.thisDevice)" }
         return "\(upcomingCount) upcoming appointment\(upcomingCount == 1 ? "" : "s")"
     }
 }
@@ -2656,7 +2656,7 @@ struct CaptureCoachingHomeView: View {
                 subject: Text(title),
                 message: Text(
                     nativeURL.map {
-                        "Join this private Quipsly Session. Open the link on your phone, tablet, or desktop, then sign in as \(invitedIdentity). Continue in your browser or choose Quipsly Capture on iPhone: \($0.absoluteString)"
+                        "Join this private Quipsly Session. Open the link on your phone, tablet, or desktop, then sign in as \(invitedIdentity). Continue in your browser or choose Quipsly Capture: \($0.absoluteString)"
                     } ?? "Join this private Quipsly Session. Open the link on your phone, tablet, or desktop, then sign in as \(invitedIdentity)."
                 )
             ) {
@@ -2683,7 +2683,7 @@ struct CaptureCoachingHomeView: View {
         guard outcome == .loaded,
               let session = model.sessions.first(where: { $0.callRoomId == roomID || $0.id == roomID }) else {
             model.errorMessage = model.sessionClient.errorMessage
-                ?? "The appointment exists, but this iPhone could not verify the exact Session yet. Pull to refresh and try again."
+                ?? "The appointment exists, but \(CaptureDeviceVocabulary.thisDevice) could not verify the exact Session yet. Pull to refresh and try again."
             return
         }
         model.select(session)
@@ -3912,7 +3912,7 @@ struct MobileCoachingAppointmentFields: View {
                 .autocorrectionDisabled()
                 .focused($focusedField, equals: .email)
                 .accessibilityIdentifier("CaptureCoachingClientEmail")
-            Text("Quipsly sends a private link. They can join from iPhone, tablet, or desktop.")
+            Text("Quipsly sends a private link. They can join from phone, tablet, or desktop.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }

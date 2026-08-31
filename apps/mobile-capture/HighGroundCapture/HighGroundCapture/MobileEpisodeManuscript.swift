@@ -160,7 +160,7 @@ final class MobileEpisodeManuscriptClient: ObservableObject {
         canEdit = true
         isUsingProtectedCache = false
         protectedCacheSavedAt = nil
-        statusMessage = "The 34-block rehearsal script is available on this iPhone."
+        statusMessage = "The 34-block rehearsal script is available on \(CaptureDeviceVocabulary.thisDevice)."
         errorMessage = nil
     }
 
@@ -293,7 +293,7 @@ final class MobileEpisodeManuscriptClient: ObservableObject {
             errorMessage = nil
             statusMessage = nextWriting.truncated
                 ? "Showing \(nextBlocks.count) of \(nextWriting.blockCount) blocks."
-                : "\(nextWriting.blockCount) blocks · protected on this iPhone"
+                : "\(nextWriting.blockCount) blocks · protected on \(CaptureDeviceVocabulary.thisDevice)"
             persist(context: context)
         } catch {
             if Task.isCancelled || error is CancellationError {
@@ -637,7 +637,7 @@ struct MobileEpisodeManuscriptCard: View {
         if client.writing?.truncated == true {
             return "\(client.blocks.count) of \(count) blocks available · source stays unchanged"
         }
-        return "\(count) \(count == 1 ? "block" : "blocks") · read-only on iPhone"
+        return "\(count) \(count == 1 ? "block" : "blocks") · read-only on \(CaptureDeviceVocabulary.deviceName)"
     }
 }
 

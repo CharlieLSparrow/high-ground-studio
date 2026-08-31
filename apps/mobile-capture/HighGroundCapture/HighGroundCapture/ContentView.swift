@@ -170,7 +170,7 @@ private struct ProtectedOfflineLibraryShell: View {
                     .accessibilityElement(children: .combine)
                     .accessibilityIdentifier("CaptureOfflineAccessBanner")
 
-                    Text("Your saved recordings, transcripts, notes, tasks, goals, and sources remain available on this iPhone. Reconnect to join calls, record, or sync changes.")
+                    Text("Your saved recordings, transcripts, notes, tasks, goals, and sources remain available on \(CaptureDeviceVocabulary.thisDevice). Reconnect to join calls, record, or sync changes.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -180,7 +180,7 @@ private struct ProtectedOfflineLibraryShell: View {
                         ContentUnavailableView(
                             "No local recordings",
                             systemImage: "waveform",
-                            description: Text("Nothing has been saved in this iPhone's protected recording library yet.")
+                            description: Text("Nothing has been saved in \(CaptureDeviceVocabulary.thisDevicePossessive) protected recording library yet.")
                         )
                     } else {
                         ForEach(library.recordings) { recording in
@@ -206,7 +206,7 @@ private struct ProtectedOfflineLibraryShell: View {
                             VStack(alignment: .leading, spacing: 3) {
                                 Text("No transcript is available offline")
                                     .font(.subheadline.weight(.semibold))
-                                Text("Open transcript review once while online to protect a 30-day snapshot on this iPhone.")
+                                Text("Open transcript review once while online to protect a 30-day snapshot on \(CaptureDeviceVocabulary.thisDevice).")
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                             }
@@ -285,7 +285,7 @@ private struct ProtectedOfflineLibraryShell: View {
 
                     CaptureQuickEntrySyncStatus(model: captureModel)
 
-                    Text("Saving here writes only to this account's file-protected iPhone outbox. Nothing is sent until Nest is reachable and re-verifies the account; retry keeps the same canonical ID.")
+                    Text("Saving here writes only to this account's file-protected device outbox. Nothing is sent until Nest is reachable and re-verifies the account; retry keeps the same canonical ID.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .accessibilityIdentifier("CaptureOfflineQuickEntryBoundary")

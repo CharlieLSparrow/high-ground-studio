@@ -277,9 +277,9 @@ enum OnDeviceTranscriptFailure: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .unavailable:
-            return "Apple Speech recognition is not available on this iPhone right now. The original recording is unchanged."
+            return "Apple Speech recognition is not available on this device right now. The original recording is unchanged."
         case .unsupportedLocale:
-            return "Apple Speech recognition does not support the selected language on this iPhone."
+            return "Apple Speech recognition does not support the selected language on this device."
         case .speechPermissionDenied:
             return "Allow Speech Recognition in Settings so Quipsly can turn recordings into editable writing. Your original audio is unchanged."
         case .modelDownloadRequired(let locale):
@@ -301,7 +301,7 @@ enum OnDeviceTranscriptFailure: LocalizedError {
         case .localStorageUnavailable:
             return "Protected Application Support storage is unavailable. Quipsly did not claim the transcript was saved."
         case .verifiedUploadRequired:
-            return "The transcript is saved only on this iPhone. Upload and verify the exact recording before attaching it to the Session."
+            return "The transcript is saved only on this device. Upload and verify the exact recording before attaching it to the Session."
         case .serverRejected(let message):
             return message
         }

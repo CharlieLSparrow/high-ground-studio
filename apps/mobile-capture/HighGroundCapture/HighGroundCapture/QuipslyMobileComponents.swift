@@ -673,7 +673,7 @@ private struct MobileClientFollowUpExportControl: View {
                 .buttonStyle(.bordered)
                 .disabled(isSavingReceipt)
                 .accessibilityIdentifier("CaptureClientFollowUpShareFile_\(followUp.id)")
-                .accessibilityHint("Opens the standard iPhone share sheet for this exact client-safe revision. Quipsly does not choose or claim a recipient.")
+                .accessibilityHint("Opens the standard system share sheet for this exact client-safe revision. Quipsly does not choose or claim a recipient.")
                 .sheet(isPresented: $isPresentingShare) {
                     MobileClientFollowUpShareSheet(
                         fileURL: fileURL,

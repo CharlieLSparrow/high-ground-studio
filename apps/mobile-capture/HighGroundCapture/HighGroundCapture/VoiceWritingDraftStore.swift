@@ -118,7 +118,7 @@ enum VoiceWritingDraftStoreError: LocalizedError {
         case .accountIdentityUnavailable:
             "Sign in to open this private writing draft."
         case .draftUnavailable:
-            "This writing draft is no longer available on this iPhone."
+            "This writing draft is no longer available on this device."
         case .protectedStorageUnavailable:
             "Protected writing storage is unavailable. Quipsly did not claim the draft was saved."
         }
@@ -1349,7 +1349,7 @@ final class VoiceWritingDraftSyncClient: ObservableObject {
                 throw NSError(
                     domain: "QuipslyVoiceWriting",
                     code: response.statusCode,
-                    userInfo: [NSLocalizedDescriptionKey: payload.error ?? "Writing could not sync yet. Your iPhone draft is safe."]
+                    userInfo: [NSLocalizedDescriptionKey: payload.error ?? "Writing could not sync yet. Your device draft is safe."]
                 )
             }
             VoiceWritingDraftStore.shared.markSynced(

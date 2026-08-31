@@ -217,7 +217,7 @@ enum DocumentNoteEditStoreError: LocalizedError {
         case .invalidEdit:
             "Refresh this project note before protecting an edit."
         case .editAlreadyPending:
-            "This note already has a protected iPhone edit waiting for Nest."
+            "This note already has a protected device edit waiting for Nest."
         case .ledgerUnavailable:
             "The protected project-note edit outbox is unavailable. Nothing was claimed as changed."
         }

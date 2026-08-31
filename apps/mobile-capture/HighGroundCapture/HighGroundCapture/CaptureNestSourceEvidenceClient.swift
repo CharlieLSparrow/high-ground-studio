@@ -193,7 +193,7 @@ enum CaptureNestSourceEvidenceClient {
             case .accountMismatch:
                 "The source belongs to a different account. Quipsly did not request its private Nest evidence."
             case .localSourceUnavailable:
-                "The immutable local source bytes are not available on this iPhone."
+                "The immutable local source bytes are not available on this device."
             case .accountOrSourceChanged:
                 "The active account or source identity changed during comparison."
             case .invalidRoomIdentity:

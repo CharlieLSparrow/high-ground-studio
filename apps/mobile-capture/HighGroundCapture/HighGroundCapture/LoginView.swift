@@ -140,7 +140,7 @@ struct LoginView: View {
                             }
                             .buttonStyle(.bordered)
                             .accessibilityHint(
-                                "Opens the iPhone share sheet with redacted build, device, system, and Nest-host diagnostics."
+                                "Opens the system share sheet with redacted build, device, system, and Nest-host diagnostics."
                             )
                             .accessibilityIdentifier(
                                 "QuipslyCaptureShareSignInSupport"

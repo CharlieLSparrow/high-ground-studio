@@ -995,7 +995,7 @@ struct CaptureSourceEvidenceView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     Label(
                         saved.disposition == .pending
-                            ? "Decision saved on this iPhone"
+                            ? "Decision saved on \(CaptureDeviceVocabulary.thisDevice)"
                             : "Saved decision needs review",
                         systemImage: saved.disposition == .pending
                             ? "arrow.triangle.2.circlepath.icloud.fill"

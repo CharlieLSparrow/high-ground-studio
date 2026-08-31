@@ -987,17 +987,17 @@ final class CaptureExperienceModel: ObservableObject {
             if usesPreviewData {
                 quickEntrySyncMessage = nil
             } else if kind == .source {
-                quickEntrySyncMessage = "Source saved on this iPhone. Nest sync will place the same private ID in Inbox."
+                quickEntrySyncMessage = "Source saved on \(CaptureDeviceVocabulary.thisDevice). Nest sync will place the same private ID in Inbox."
             } else if let destinationProjectName {
-                quickEntrySyncMessage = "\(kind.title) saved on this iPhone for \(destinationProjectName). Nest sync will keep that exact project and retry-safe ID."
+                quickEntrySyncMessage = "\(kind.title) saved on \(CaptureDeviceVocabulary.thisDevice) for \(destinationProjectName). Nest sync will keep that exact project and retry-safe ID."
             } else if session == nil {
-                quickEntrySyncMessage = "\(kind.title) saved on this iPhone. Quipsly will add it to My Nest when you reconnect."
+                quickEntrySyncMessage = "\(kind.title) saved on \(CaptureDeviceVocabulary.thisDevice). Quipsly will add it to My Nest when you reconnect."
             } else if kind == .note, let noteVisibility {
-                quickEntrySyncMessage = "\(noteKind?.title ?? "Session note") saved on this iPhone as \(noteVisibility.title.lowercased()). \(noteVisibility.boundary) Nest sync keeps the same retry-safe ID."
+                quickEntrySyncMessage = "\(noteKind?.title ?? "Session note") saved on \(CaptureDeviceVocabulary.thisDevice) as \(noteVisibility.title.lowercased()). \(noteVisibility.boundary) Nest sync keeps the same retry-safe ID."
             } else if !newTagLabels.isEmpty {
-                quickEntrySyncMessage = "\(kind.title) and \(newTagLabels.count) new tag name\(newTagLabels.count == 1 ? "" : "s") saved on this iPhone. Nest will create or reuse the same private vocabulary on sync."
+                quickEntrySyncMessage = "\(kind.title) and \(newTagLabels.count) new tag name\(newTagLabels.count == 1 ? "" : "s") saved on \(CaptureDeviceVocabulary.thisDevice). Nest will create or reuse the same private vocabulary on sync."
             } else {
-                quickEntrySyncMessage = "\(kind.title) saved on this iPhone. Nest sync uses the same retry-safe ID."
+                quickEntrySyncMessage = "\(kind.title) saved on \(CaptureDeviceVocabulary.thisDevice). Nest sync uses the same retry-safe ID."
             }
             Task { [weak self] in
                 if let reminderDraft = entry.taskReminderDraft {
@@ -1152,7 +1152,7 @@ final class CaptureExperienceModel: ObservableObject {
                 expectedUpdatedAt: expectedUpdatedAt,
                 replacingHeld: replacingHeld
             )
-            sessionNoteEditMessage = "The complete note edit is protected on this iPhone. Nest will recheck authorship, Session access, audience, tags, and revision before applying it."
+            sessionNoteEditMessage = "The complete note edit is protected on \(CaptureDeviceVocabulary.thisDevice). Nest will recheck authorship, Session access, audience, tags, and revision before applying it."
             sessionNoteEditMessageRoomID = roomID
             Task { [weak self] in
                 await self?.syncSessionNoteEdit(edit)
@@ -1188,7 +1188,7 @@ final class CaptureExperienceModel: ObservableObject {
     func discardSessionNoteEdit(noteID: String) async {
         let roomID = sessionNoteEditOutbox.edit(for: noteID)?.roomID
         sessionNoteEditOutbox.discard(noteID: noteID)
-        sessionNoteEditMessage = "The protected iPhone draft was discarded. The canonical Nest note was not changed."
+        sessionNoteEditMessage = "The protected device draft was discarded. The canonical Nest note was not changed."
         sessionNoteEditMessageRoomID = roomID
         _ = await sessionClient.load()
     }
@@ -1199,7 +1199,7 @@ final class CaptureExperienceModel: ObservableObject {
     ) async {
         guard sessionNoteEditOutbox.entries.contains(where: { $0.id == edit.id }) else { return }
         guard AuthManager.shared.networkActionsAllowed else {
-            sessionNoteEditMessage = "You're offline. Your changes are saved on this iPhone and will sync when you reconnect."
+            sessionNoteEditMessage = "You're offline. Your changes are saved on \(CaptureDeviceVocabulary.thisDevice) and will sync when you reconnect."
             sessionNoteEditMessageRoomID = edit.roomID
             return
         }
@@ -1593,7 +1593,7 @@ final class CaptureExperienceModel: ObservableObject {
             return false
         }
         guard activeCaptureSession == nil, activeVideoCaptureSession == nil else {
-            errorMessage = "Consent cannot change while this iPhone is recording. Stop and save the take first."
+            errorMessage = "Consent cannot change while \(CaptureDeviceVocabulary.thisDevice) is recording. Stop and save the take first."
             return false
         }
         guard canRecordAudio || canRecordVideo else {
@@ -1692,7 +1692,7 @@ final class CaptureExperienceModel: ObservableObject {
             return false
         }
         guard activeCaptureSession == nil, activeVideoCaptureSession == nil else {
-            errorMessage = "The recording choice cannot change while this iPhone is recording. Stop and save the take first."
+            errorMessage = "The recording choice cannot change while \(CaptureDeviceVocabulary.thisDevice) is recording. Stop and save the take first."
             return false
         }
         let ownerSnapshot = usesPreviewData ? nil : AuthManager.shared.stableOwnerSnapshot()
@@ -1900,7 +1900,7 @@ final class CaptureExperienceModel: ObservableObject {
     ) async {
         guard mode.recordsVideo else { return }
         guard !usesPreviewData else {
-            errorMessage = "The camera journey requires a physical iPhone. Preview mode never invents camera permissions, formats, or source bytes."
+            errorMessage = "The camera journey requires a physical iPhone or iPad. Preview mode never invents camera permissions, formats, or source bytes."
             return
         }
         guard selectedSession != nil else {
@@ -2193,7 +2193,7 @@ final class CaptureExperienceModel: ObservableObject {
         activeCoordinatedCaptureGroupID = nil
         if failures.isEmpty {
             errorMessage = nil
-            message = "Both local podcast masters are saved on this iPhone. Their independent uploads can continue without changing either original."
+            message = "Both local podcast masters are saved on \(CaptureDeviceVocabulary.thisDevice). Their independent uploads can continue without changing either original."
         } else {
             message = nil
             errorMessage = "The coordinated take stopped with preserved source evidence. \(failures.joined(separator: " "))"
@@ -2379,7 +2379,7 @@ final class CaptureExperienceModel: ObservableObject {
         case .saved:
             finishActiveVideoCaptureContext()
             message = videoCapture.safetyMessage
-                ?? "Video saved on this iPhone. Upload can continue without changing the local original."
+                ?? "Video saved on \(CaptureDeviceVocabulary.thisDevice). Upload can continue without changing the local original."
         case .failed:
             let failure = videoCapture.lastErrorMessage
                 ?? "The video source needs review in Library before Quipsly can call it saved."
@@ -2616,19 +2616,19 @@ final class CaptureExperienceModel: ObservableObject {
         clearSessionEntryNotice(for: session.id)
 
         if usesPreviewData {
-            message = "Recording this iPhone's microphone. Preview mode does not contact Nest."
+            message = "Recording \(CaptureDeviceVocabulary.thisDevicePossessive) microphone. Preview mode does not contact Nest."
             return
         }
 
         if usesLocalPersonalVoiceNoteAuthority {
-            message = "Recording this iPhone's microphone. Your private voice note is safe locally and will sync when Nest reconnects."
+            message = "Recording \(CaptureDeviceVocabulary.thisDevicePossessive) microphone. Your private voice note is safe locally and will sync when Nest reconnects."
             return
         }
 
         if let persistenceError = receiptStore.persistenceError {
             captureReceiptNotice = persistenceError
         }
-        message = "Recording this iPhone's microphone. Nest receipt sync runs separately."
+        message = "Recording \(CaptureDeviceVocabulary.thisDevicePossessive) microphone. Nest receipt sync runs separately."
         scheduleReceiptFlush()
         startConsentMonitor(captureID: captureID, audioCapture: audioCapture)
     }
@@ -2642,7 +2642,7 @@ final class CaptureExperienceModel: ObservableObject {
         let stoppedAt = Date()
         let savedLocally = await audioCapture.stopAndFinalize()
         if savedLocally {
-            message = "Saved on this iPhone. Upload can continue in the background."
+            message = "Saved on \(CaptureDeviceVocabulary.thisDevice). Upload can continue in the background."
         } else {
             errorMessage = audioCapture.lastErrorMessage ?? "The local take needs review before Quipsly can call it saved."
         }
@@ -2702,7 +2702,7 @@ final class CaptureExperienceModel: ObservableObject {
         let videoPartner = activeVideoCapture
         if state == .saved {
             message = activeAudioCapture?.automaticStopReason
-                ?? "Saved on this iPhone. Upload can continue in the background."
+                ?? "Saved on \(CaptureDeviceVocabulary.thisDevice). Upload can continue in the background."
         } else if state == .failed,
                   let recorderError = activeAudioCapture?.lastErrorMessage {
             errorMessage = recorderError
@@ -2912,7 +2912,7 @@ final class CaptureExperienceModel: ObservableObject {
         let sourceWasActive = localSourceIsActive
         guard sourceWasActive else { return true }
 
-        message = "The call ended. Protecting this iPhone's recording…"
+        message = "The call ended. Protecting \(CaptureDeviceVocabulary.thisDevicePossessive) recording…"
         let session = activeRoomSession ?? selectedSession
         let captureID = activeVideoCapture?.activeRecordingID
             ?? activeAudioCapture?.activeLocalRecordingID
@@ -2957,18 +2957,18 @@ final class CaptureExperienceModel: ObservableObject {
                     state: state,
                     captureID: captureID,
                     detail: protected
-                        ? "The native system call ended; this iPhone stopped and protected its retained source."
-                        : "The native system call ended while this iPhone's retained source was still closing."
+                        ? "The native system call ended; \(CaptureDeviceVocabulary.thisDevice) stopped and protected its retained source."
+                        : "The native system call ended while \(CaptureDeviceVocabulary.thisDevicePossessive) retained source was still closing."
                 )
             }
         }
         if protected {
-            message = "Call ended. Your recording is protected on this iPhone. Keep Quipsly open until this Session says Safe to close."
+            message = "Call ended. Your recording is protected on \(CaptureDeviceVocabulary.thisDevice). Keep Quipsly open until this Session says Safe to close."
             if let roomID = session?.callRoomId {
                 monitorSourceExitReadiness(roomID: roomID)
             }
         } else {
-            errorMessage = "The call ended while this iPhone was still closing its recording. Keep Quipsly open until Library shows the protected source."
+            errorMessage = "The call ended while \(CaptureDeviceVocabulary.thisDevice) was still closing its recording. Keep Quipsly open until Library shows the protected source."
         }
         return protected
     }
@@ -3012,7 +3012,7 @@ final class CaptureExperienceModel: ObservableObject {
                 message = speakerIsActive ? "Speaker on." : "Speaker off."
             }
         } catch {
-            errorMessage = "The iPhone audio route couldn't change. Use Audio to choose another device, then try again."
+            errorMessage = "The \(CaptureDeviceVocabulary.deviceName) audio route couldn't change. Use Audio to choose another device, then try again."
         }
     }
 
@@ -3272,7 +3272,7 @@ final class CaptureExperienceModel: ObservableObject {
             if recording.status == .validatingRecovery {
                 errorMessage = "Quipsly is still validating this preserved source through its end. Upload will unlock only after that check is durably saved."
             } else if recording.status == .needsRepair {
-                errorMessage = "This source needs repair before Quipsly can upload it. The original bytes remain on this iPhone."
+                errorMessage = "This source needs repair before Quipsly can upload it. The original bytes remain on \(CaptureDeviceVocabulary.thisDevice)."
             } else if let holdReason = recording.sourceIntegrityHoldReason {
                 errorMessage = holdReason
             } else {
@@ -3288,7 +3288,7 @@ final class CaptureExperienceModel: ObservableObject {
         }
         if uploadManager.retryUpload(localRecordingID: recording.id) {
             if !quietly {
-                message = "Retrying this recording. The local original remains on this iPhone."
+                message = "Retrying this recording. The local original remains on \(CaptureDeviceVocabulary.thisDevice)."
             }
             return
         }
@@ -3338,7 +3338,7 @@ final class CaptureExperienceModel: ObservableObject {
             ownerAccountID: recording.ownerAccountID
         )
         if !quietly {
-            message = "Upload queued for this recording. The local original remains on this iPhone."
+            message = "Upload queued for this recording. The local original remains on \(CaptureDeviceVocabulary.thisDevice)."
         }
     }
 
@@ -3378,9 +3378,9 @@ final class CaptureExperienceModel: ObservableObject {
             ownerAccountID: ownerAccountID,
             fileURL: fileURL
         ) {
-            message = "Local original deleted from this iPhone. Quipsly retained its protected audit row and left server/account evidence untouched. \(cleanupWarning)"
+            message = "Local original deleted from \(CaptureDeviceVocabulary.thisDevice). Quipsly retained its protected audit row and left server/account evidence untouched. \(cleanupWarning)"
         } else {
-            message = "Local original deleted from this iPhone. Quipsly retained its protected audit row and left server/account evidence untouched."
+            message = "Local original deleted from \(CaptureDeviceVocabulary.thisDevice). Quipsly retained its protected audit row and left server/account evidence untouched."
         }
         return tombstone
     }
@@ -4005,7 +4005,7 @@ extension MobileCaptureSession {
             safeToRecordLocally: audioConsentGranted,
             providerCanJoin: true,
             detail: audioConsentGranted
-                ? "Local source recording is ready on this iPhone."
+                ? "Local source recording is ready on \(CaptureDeviceVocabulary.thisDevice)."
                 : "Confirm audio consent and attest that everyone who may be heard was told and agreed.",
             nextAction: audioConsentGranted
                 ? "Open the recorder when everyone is ready."
@@ -4020,7 +4020,7 @@ extension MobileCaptureSession {
             safeToRecordLocally: videoConsentGranted,
             providerCanJoin: true,
             detail: videoConsentGranted
-                ? "Local video source recording is ready on this iPhone."
+                ? "Local video source recording is ready on \(CaptureDeviceVocabulary.thisDevice)."
                 : "Confirm video consent for everyone who may be captured.",
             nextAction: videoConsentGranted
                 ? "Prepare the camera when everyone is ready."

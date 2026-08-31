@@ -65,9 +65,9 @@ enum VideoCaptureControllerError: LocalizedError {
         case .insufficientStorage(let available, let required):
             "Video did not start. \(Self.bytes(available)) is available; this profile requires at least \(Self.bytes(required)) of safe working space."
         case .thermalStateUnsafe:
-            "Video did not start because the iPhone is too warm for a reliable high-quality source."
+            "Video did not start because the device is too warm for a reliable high-quality source."
         case .captureSystemPressureUnsafe(let level):
-            "Video did not start because the camera reported \(level.displayName.lowercased()) system pressure. Cool the iPhone and try again."
+            "Video did not start because the camera reported \(level.displayName.lowercased()) system pressure. Cool the device and try again."
         case .sourceIdentityMismatch:
             "The movie callback did not match the protected source identity. Quipsly stopped without reassigning any bytes."
         }
@@ -131,7 +131,7 @@ final class VideoCaptureController: ObservableObject {
             case .storagePressure:
                 "Quipsly safely closed the source before storage reached the protected reserve."
             case .thermalPressure:
-                "Quipsly safely closed the source because the iPhone reached critical thermal pressure."
+                "Quipsly safely closed the source because the device reached critical thermal pressure."
             case .captureSystemPressure:
                 "Quipsly safely closed the source because the camera reached critical system pressure. The requested quality was never silently changed."
             case .captureSessionInterrupted:
@@ -777,8 +777,8 @@ final class VideoCaptureController: ObservableObject {
                     countStyle: .file
                 )
                 let message = finishedCapture.context.longSourceUploadEnabled
-                    ? "The complete video is safe on this iPhone. Its \(ByteCountFormatter.string(fromByteCount: finalized.byteCount, countStyle: .file)) size exceeds Nest's advertised \(limit) protected-video limit; no partial or falsely verified copy was queued."
-                    : "The complete video is safe on this iPhone. Nest did not advertise its long-source verification worker, so this \(ByteCountFormatter.string(fromByteCount: finalized.byteCount, countStyle: .file)) source remains held; no partial or falsely verified copy was queued."
+                    ? "The complete video is safe on \(CaptureDeviceVocabulary.thisDevice). Its \(ByteCountFormatter.string(fromByteCount: finalized.byteCount, countStyle: .file)) size exceeds Nest's advertised \(limit) protected-video limit; no partial or falsely verified copy was queued."
+                    : "The complete video is safe on \(CaptureDeviceVocabulary.thisDevice). Nest did not advertise its long-source verification worker, so this \(ByteCountFormatter.string(fromByteCount: finalized.byteCount, countStyle: .file)) source remains held; no partial or falsely verified copy was queued."
                 do {
                     try library.markUploadHeld(finalized.id, message: message)
                 } catch {
@@ -970,7 +970,7 @@ final class VideoCaptureController: ObservableObject {
                     self.captureSystemPressure = systemPressure
                     switch systemPressure {
                     case .serious:
-                        self.safetyMessage = "Camera pressure is serious. Cool the iPhone; Quipsly will close this source before iOS shuts the camera down."
+                        self.safetyMessage = "Camera pressure is serious. Cool the device; Quipsly will close this source before iOS shuts the camera down."
                     case .fair:
                         self.safetyMessage = "Camera pressure is fair. The requested profile remains unchanged and visible."
                     case .nominal:
@@ -1025,9 +1025,9 @@ final class VideoCaptureController: ObservableObject {
                 safetyMessage = "Thermal state is nominal. The resolved profile remains unchanged."
             }
         case .fair:
-            safetyMessage = "The iPhone is warm. Quipsly is monitoring the current source without changing quality."
+            safetyMessage = "The device is warm. Quipsly is monitoring the current source without changing quality."
         case .serious:
-            safetyMessage = "Thermal pressure is serious. Cool the iPhone; Quipsly will close the source if pressure becomes critical."
+            safetyMessage = "Thermal pressure is serious. Cool the device; Quipsly will close the source if pressure becomes critical."
         case .critical:
             if state.isActive {
                 await stopIfActive(reason: .thermalPressure)

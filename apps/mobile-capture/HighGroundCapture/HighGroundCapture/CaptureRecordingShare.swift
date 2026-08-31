@@ -326,7 +326,7 @@ final class CaptureRecordingShareClient: NSObject, ObservableObject, AVAudioPlay
                 isPlaying = true
             } catch {
                 clearPlayback()
-                notice = "The verified audio copy could not be opened on this iPhone: \(error.localizedDescription)"
+                notice = "The verified audio copy could not be opened on \(CaptureDeviceVocabulary.thisDevice): \(error.localizedDescription)"
             }
         }
     }
@@ -1217,7 +1217,7 @@ struct CaptureRecordingShareEditor: View {
                 .buttonStyle(.bordered)
                 .disabled(client.busyAction != nil)
                 .accessibilityIdentifier("CaptureRecordingShareExport")
-                .accessibilityHint("Verifies the exact edited bytes, then opens the standard iPhone share sheet. Quipsly does not choose or claim a recipient.")
+                .accessibilityHint("Verifies the exact edited bytes, then opens the standard system share sheet. Quipsly does not choose or claim a recipient.")
 
                 if let exportNotice {
                     Text(exportNotice)
@@ -1326,7 +1326,7 @@ struct CaptureRecordingShareEditor: View {
         await sourcePlayback.prepareTranscriptAudition(source: source.mobileProtectedSource)
         guard sourcePlayback.preparedSourceID == source.id else {
             auditionNotice = sourcePlayback.errorMessage
-                ?? "The exact retained participant source could not be prepared on this iPhone."
+                ?? "The exact retained participant source could not be prepared on \(CaptureDeviceVocabulary.thisDevice)."
             return
         }
         let programStart = segment.cutStartSeconds ?? segment.startSeconds

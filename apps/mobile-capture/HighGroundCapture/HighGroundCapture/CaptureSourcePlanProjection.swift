@@ -30,18 +30,18 @@ enum CaptureSourcePlanProjection {
         if let normalizedDevice, !normalizedDevice.isEmpty {
             deviceLabel = "Quipsly Capture · \(normalizedDevice)"
         } else {
-            deviceLabel = "Quipsly Capture · iPhone"
+            deviceLabel = "Quipsly Capture · mobile"
         }
         return CaptureSourcePlanPayload(
             requestId: deterministicRequestID(captureID: captureID),
             participantId: participantID,
-            label: "iPhone \(normalizedKind.lowercased()) master · \(shortID)",
+            label: "Mobile \(normalizedKind.lowercased()) master · \(shortID)",
             sourceKind: normalizedKind,
             retentionRole: "REQUIRED_MASTER",
             expectedClientKind: "ios",
             expectedDeviceLabel: deviceLabel,
             captureId: captureID,
-            reason: "Declared from the protected iPhone source ledger before server byte verification."
+            reason: "Declared from the protected mobile source ledger before server byte verification."
         )
     }
 

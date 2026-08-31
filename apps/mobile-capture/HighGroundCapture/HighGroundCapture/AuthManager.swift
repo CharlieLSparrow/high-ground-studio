@@ -1658,7 +1658,7 @@ final class AuthManager: ObservableObject {
         NSError(
             domain: "QuipslyCredentialStorage",
             code: 1,
-            userInfo: [NSLocalizedDescriptionKey: "This iPhone could not protect the refreshed Quipsly session in Keychain. Sign in again after device storage is available."]
+            userInfo: [NSLocalizedDescriptionKey: "This device could not protect the refreshed Quipsly session in Keychain. Sign in again after device storage is available."]
         )
     }
 
@@ -1708,7 +1708,7 @@ final class AuthManager: ObservableObject {
             return
         }
 
-        let offlineMessage = "You're offline. Your saved work is still available on this iPhone."
+        let offlineMessage = "You're offline. Your saved work is still available on \(CaptureDeviceVocabulary.thisDevice)."
         let nextSnapshot = AuthAccessSnapshot(
             isAuthenticated: false,
             mode: .offlineCachedIdentity,

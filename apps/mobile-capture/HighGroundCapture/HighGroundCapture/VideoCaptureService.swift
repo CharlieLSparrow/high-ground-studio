@@ -139,7 +139,7 @@ enum VideoCaptureServiceError: LocalizedError {
         case .microphoneInputUnavailable(let detail):
             "The selected microphone could not be attached: \(detail)"
         case .movieOutputUnavailable:
-            "The iPhone could not attach a fragmented movie output."
+            "The device could not attach a fragmented movie output."
         case .captureRotationUnavailable(let angle):
             "The camera reported an unsupported \(Int(angle.rounded()))° capture rotation. Quipsly did not arm a possibly sideways source."
         case .notPrepared:
