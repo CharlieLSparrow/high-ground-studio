@@ -1057,7 +1057,9 @@ final class OnDeviceTranscriptManager: ObservableObject {
                 createdAt: Date(),
                 recognitionExecution: recognitionExecution,
                 speakerDiarization: "unavailable",
-                humanPlaybackReviewRequired: true,
+                // This is editable draft text linked to immutable source time,
+                // not paperwork the user must approve before Quipsly can use it.
+                humanPlaybackReviewRequired: false,
                 engine: .init(
                     framework: "Speech",
                     transcriber: transcriber,

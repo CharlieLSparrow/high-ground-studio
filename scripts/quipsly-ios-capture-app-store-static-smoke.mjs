@@ -599,7 +599,7 @@ for (const needle of [
   "verifiedCloudSHA256",
   "verifiedCloudSizeBytes",
   'speakerDiarization: "unavailable"',
-  "humanPlaybackReviewRequired: true",
+  "humanPlaybackReviewRequired: false",
   "func resumeEligibleRecordings(",
   "beginBackgroundTask(",
   "BGProcessingTaskRequest",
@@ -642,7 +642,11 @@ for (const needle of [
   "ON_DEVICE_TRANSCRIPT_SOURCE_MISMATCH",
   "ON_DEVICE_TRANSCRIPT_IDEMPOTENCY_CONFLICT",
   'speakerDiarization: "unavailable"',
-  "humanPlaybackReviewRequired: true",
+  "humanPlaybackReviewRequired: false",
+  'directlyEditable: true',
+  "speakerLabel: sourceBoundSpeaker?.label ?? null",
+  "speakerUserId: sourceBoundSpeaker?.userId ?? null",
+  "ON_DEVICE_TRANSCRIPT_PARTICIPANT_MISMATCH",
   'isolationLevel: "Serializable"',
 ]) {
   requireIncludes(

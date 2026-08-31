@@ -118,7 +118,8 @@ describe("on-device transcript ingestion", () => {
       segmentCount: 2,
       wordCount: 0,
       speakerDiarization: "unavailable",
-      humanPlaybackReviewRequired: true,
+      humanPlaybackReviewRequired: false,
+      directlyEditable: true,
       idempotentReplay: false,
     });
     expect(acquirePrismaAdvisoryTransactionLock).toHaveBeenCalledWith(transaction, "on-device-transcript:asset-1");
@@ -161,7 +162,8 @@ describe("on-device transcript ingestion", () => {
           recognitionExecution: "on-device",
           providerNetworkRequestMadeByQuipsly: false,
           speakerDiarization: "unavailable",
-          humanPlaybackReviewRequired: true,
+          humanPlaybackReviewRequired: false,
+          directlyEditable: true,
           segmentCount: 2,
           processingControl: {
             version: 1,
@@ -187,8 +189,8 @@ describe("on-device transcript ingestion", () => {
         }),
         segments: {
           create: [
-            expect.objectContaining({ speakerLabel: null, speakerUserId: null, confidence: null, metadataJson: expect.objectContaining({ finalizedResult: true, speakerAttribution: "source-binding" }) }),
-            expect.objectContaining({ speakerLabel: null, speakerUserId: null, confidence: null, metadataJson: expect.objectContaining({ finalizedResult: true, speakerAttribution: "source-binding" }) }),
+            expect.objectContaining({ speakerLabel: "Coach Homer", speakerUserId: "user-1", confidence: null, metadataJson: expect.objectContaining({ finalizedResult: true, speakerAttribution: "source-binding", sourceBoundParticipantId: "participant-1", sourceBoundUserId: "user-1", humanPlaybackReviewRequired: false, directlyEditable: true, timingAuthority: "source-media-time" }) }),
+            expect.objectContaining({ speakerLabel: "Coach Homer", speakerUserId: "user-1", confidence: null, metadataJson: expect.objectContaining({ finalizedResult: true, speakerAttribution: "source-binding", sourceBoundParticipantId: "participant-1", sourceBoundUserId: "user-1", humanPlaybackReviewRequired: false, directlyEditable: true, timingAuthority: "source-media-time" }) }),
           ],
         },
       }),
@@ -231,6 +233,32 @@ describe("on-device transcript ingestion", () => {
         },
       }),
     }));
+  });
+
+  it("rejects device text for another participant's isolated source", async () => {
+    jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({
+      user: { id: "user-coach", primaryEmail: "coach@example.test", isStaff: false },
+    } as any);
+    const { create } = installPrisma({
+      asset: asset({
+        participant: {
+          id: "participant-1",
+          userId: "user-client",
+          displayName: "Practice Client",
+          email: "client@example.test",
+        },
+      }),
+    });
+
+    const response = await post(body());
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: false,
+      errorCode: "ON_DEVICE_TRANSCRIPT_PARTICIPANT_MISMATCH",
+    });
+    expect(create).not.toHaveBeenCalled();
+    expect(mobileCaptureTranscriptProcessingGate).not.toHaveBeenCalled();
   });
 
   it("preserves Apple speech-service execution without calling it on-device or Quipsly cloud ASR", async () => {

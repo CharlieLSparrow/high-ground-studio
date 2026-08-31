@@ -302,6 +302,18 @@ export async function POST(request: Request) {
       if (isProviderRecordingReceiptSlot(asset)) {
         throw new OnDeviceTranscriptError(409, "ON_DEVICE_TRANSCRIPT_MEDIA_REQUIRED", "Provider receipt slots are not media and cannot be transcribed.");
       }
+      if (
+        ["LOCAL_AUDIO", "LOCAL_VIDEO"].includes(String(asset.kind))
+        && asset.participant?.userId
+        && asset.participant.userId !== userId
+        && !session.user.isStaff
+      ) {
+        throw new OnDeviceTranscriptError(
+          403,
+          "ON_DEVICE_TRANSCRIPT_PARTICIPANT_MISMATCH",
+          "Submit an on-device transcript only from the participant account that owns this isolated recording.",
+        );
+      }
       if (asset.status !== "VERIFIED" || !asset.verifiedAt || !asset.storageBucket || !asset.storageObjectPath) {
         throw new OnDeviceTranscriptError(409, "ON_DEVICE_TRANSCRIPT_VERIFIED_SOURCE_REQUIRED", "Finish immutable cloud verification before attaching an on-device transcript.");
       }
@@ -360,6 +372,13 @@ export async function POST(request: Request) {
         language,
         provider,
       });
+      const sourceBoundSpeaker = routing.speakerAuthority === "source-binding"
+        ? {
+            participantId: asset.participantId as string,
+            userId: text(asset.participant?.userId, 240) || null,
+            label: routing.participantLabel,
+          }
+        : null;
 
       const immutableInput = {
         schemaVersion: 1,
@@ -420,7 +439,8 @@ export async function POST(request: Request) {
             recognitionExecution,
             providerNetworkRequestMadeByQuipsly: false,
             speakerDiarization: "unavailable",
-            humanPlaybackReviewRequired: true,
+            humanPlaybackReviewRequired: false,
+            directlyEditable: true,
             uploadConsentRecheckedAt: now.toISOString(),
             submittedByUserId: userId,
             processingControl: {
@@ -439,8 +459,8 @@ export async function POST(request: Request) {
               startSeconds: segment.startSeconds,
               endSeconds: segment.endSeconds,
               text: segment.text,
-              speakerLabel: null,
-              speakerUserId: null,
+              speakerLabel: sourceBoundSpeaker?.label ?? null,
+              speakerUserId: sourceBoundSpeaker?.userId ?? null,
               confidence: null,
               metadataJson: {
                 schemaVersion: 1,
@@ -448,7 +468,11 @@ export async function POST(request: Request) {
                 providerSegmentIndex: index,
                 finalizedResult: true,
                 speakerAttribution: routing.speakerAuthority,
-                humanPlaybackReviewRequired: true,
+                sourceBoundParticipantId: sourceBoundSpeaker?.participantId ?? null,
+                sourceBoundUserId: sourceBoundSpeaker?.userId ?? null,
+                humanPlaybackReviewRequired: false,
+                directlyEditable: true,
+                timingAuthority: "source-media-time",
                 sidecarSha256,
               },
             })),
@@ -465,7 +489,8 @@ export async function POST(request: Request) {
       provider: result.provider,
       wordCount: 0,
       speakerDiarization: "unavailable",
-      humanPlaybackReviewRequired: true,
+      humanPlaybackReviewRequired: false,
+      directlyEditable: true,
       ...result,
     }, { status: result.idempotentReplay ? 200 : 201 });
   } catch (error) {
