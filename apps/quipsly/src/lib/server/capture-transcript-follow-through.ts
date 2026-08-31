@@ -2,7 +2,6 @@ import "server-only";
 
 import {
   buildCoachingPacketFromTranscriptJob,
-  packetCreatesOrdinarySessionWork,
 } from "@/lib/server/coaching-packets";
 import { reconcileCaptureTranscriptJob } from "@/lib/server/capture-transcript-reconciliation";
 import { acquirePrismaAdvisoryTransactionLock } from "@/lib/server/prisma-advisory-lock";
@@ -50,14 +49,9 @@ export async function reconcileCaptureTranscriptFollowThrough(input: {
   for (let attempt = 1; attempt <= 3; attempt += 1) {
     try {
       return await input.prisma.$transaction(async (tx: any) => {
-        await acquirePrismaAdvisoryTransactionLock(
-          tx,
-          `capture-transcript-follow-through:${input.transcriptJobId}`,
-        );
         return prepareSessionFollowThrough({
           prisma: tx,
           transcriptJobId: input.transcriptJobId,
-          refreshExistingPacket: input.refreshExistingPacket,
         });
       }, { maxWait: 5_000, timeout: 30_000, isolationLevel: "Serializable" });
     } catch (error) {
@@ -74,7 +68,6 @@ function isSerializableWriteConflict(error: unknown) {
 async function prepareSessionFollowThrough(input: {
   prisma: any;
   transcriptJobId: string;
-  refreshExistingPacket?: boolean;
 }): Promise<CaptureTranscriptFollowThroughResult> {
   const authority = await input.prisma.transcriptJob.findUnique({
     where: { id: input.transcriptJobId },
@@ -90,6 +83,12 @@ async function prepareSessionFollowThrough(input: {
       resultJson: true,
     },
   });
+  await acquirePrismaAdvisoryTransactionLock(
+    input.prisma,
+    authority?.roomId
+      ? `capture-transcript-follow-through-room:${authority.roomId}`
+      : `capture-transcript-follow-through:${input.transcriptJobId}`,
+  );
   // A booked coaching Session belongs to the assigned coach even when the
   // client's phone uploaded or queued the source first. Canonical Session and
   // booking access determines who can see the generated work.
@@ -103,44 +102,6 @@ async function prepareSessionFollowThrough(input: {
       packetBuildId: null,
       reusedExistingPacket: false,
     };
-  }
-
-  if (input.refreshExistingPacket !== true) {
-    const existing = await input.prisma.coachingNote.findFirst({
-      where: {
-        roomId: authority.roomId,
-        authorUserId,
-        kind: "SUMMARY",
-        sourceJson: {
-          path: ["transcriptJobId"],
-          equals: input.transcriptJobId,
-        },
-      },
-      orderBy: { createdAt: "desc" },
-      select: { id: true, sourceJson: true },
-    });
-    if (existing && packetCreatesOrdinarySessionWork(existing.sourceJson)) {
-      const source = typeof existing.sourceJson === "object"
-        && existing.sourceJson !== null
-        && !Array.isArray(existing.sourceJson)
-        ? existing.sourceJson as Record<string, unknown>
-        : {};
-      const packetBuildId = typeof source.packetBuildId === "string" ? source.packetBuildId : null;
-      await recordReadyFollowThrough(input.prisma, {
-        transcriptJobId: input.transcriptJobId,
-        resultJson: authority.resultJson,
-        packetBuildId,
-        summaryNoteId: existing.id,
-        reusedExistingPacket: true,
-      });
-      return {
-        transcriptJobId: input.transcriptJobId,
-        transcriptStatus: "completed",
-        packetStatus: "ready",
-        packetBuildId,
-        reusedExistingPacket: true,
-      };
-    }
   }
 
   const packet = await buildCoachingPacketFromTranscriptJob({

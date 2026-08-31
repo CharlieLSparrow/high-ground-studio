@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import {
   TRANSCRIPT_ACTION_CANDIDATE_KIND,
   TRANSCRIPT_PACKET_SOURCE,
+  TRANSCRIPT_PACKET_SOURCES,
   SESSION_PACKET_TEMPLATE_VERSION,
   buildTranscriptPacketBrief,
   createTranscriptActionCandidate,
@@ -1535,7 +1536,9 @@ export async function buildCoachingPacketFromTranscriptJob(
       roomId: job.roomId,
       authorUserId: args.authorUserId || null,
       kind: "SUMMARY",
-      sourceJson: { path: ["transcriptJobId"], equals: job.id },
+      OR: TRANSCRIPT_PACKET_SOURCES.map((source) => ({
+        sourceJson: { path: ["source"], equals: source },
+      })),
     },
     include: { actionItems: true },
     orderBy: { createdAt: "desc" },

@@ -93,6 +93,8 @@ const files = {
   mobileCaptureReadinessRoute: path.join(root, "apps/quipsly/src/app/api/mobile/capture/readiness/route.ts"),
   mobileCaptureSessionsRoute: path.join(root, "apps/quipsly/src/app/api/mobile/capture/sessions/route.ts"),
   mobileCaptureSessionsServer: path.join(root, "apps/quipsly/src/lib/server/mobile-capture-sessions.ts"),
+  coachingPackets: path.join(root, "apps/quipsly/src/lib/server/coaching-packets.ts"),
+  captureTranscriptFollowThrough: path.join(root, "apps/quipsly/src/lib/server/capture-transcript-follow-through.ts"),
   mobileCaptureProjectsRoute: path.join(root, "apps/quipsly/src/app/api/mobile/capture/projects/route.ts"),
   mobileVoiceWritingRoute: path.join(root, "apps/quipsly/src/app/api/mobile/capture/voice-writing/route.ts"),
   mobileVoiceWritingServer: path.join(root, "apps/quipsly/src/lib/server/mobile-voice-writing.ts"),
@@ -293,6 +295,8 @@ const bridgeText = read(files.bridgeModels);
 const mobileCaptureReadinessRouteText = read(files.mobileCaptureReadinessRoute);
 const mobileCaptureSessionsRouteText = read(files.mobileCaptureSessionsRoute);
 const mobileCaptureSessionsServerText = read(files.mobileCaptureSessionsServer);
+const coachingPacketsText = read(files.coachingPackets);
+const captureTranscriptFollowThroughText = read(files.captureTranscriptFollowThrough);
 const mobileCaptureProjectsRouteText = read(files.mobileCaptureProjectsRoute);
 const mobileVoiceWritingRouteText = read(files.mobileVoiceWritingRoute);
 const mobileVoiceWritingServerText = read(files.mobileVoiceWritingServer);
@@ -666,6 +670,28 @@ for (const needle of [
     mobileCaptureSessionsServerText,
     needle,
     "Nest returns bounded source-specific transcript completion and failure evidence",
+  );
+}
+for (const needle of [
+  "TRANSCRIPT_PACKET_SOURCES.map",
+  'sourceJson: { path: ["source"], equals: source }',
+  "packetSnapshotMatchesResolvedSession",
+]) {
+  requireIncludes(
+    coachingPacketsText,
+    needle,
+    "joint follow-through reuses one canonical Session packet across participant transcript anchors only when its source snapshot still matches",
+  );
+}
+for (const needle of [
+  "capture-transcript-follow-through-room:",
+  "buildCoachingPacketFromTranscriptJob",
+  "force: false",
+]) {
+  requireIncludes(
+    captureTranscriptFollowThroughText,
+    needle,
+    "participant transcript completions serialize and converge through one Session-level follow-through build",
   );
 }
 requireIncludes(

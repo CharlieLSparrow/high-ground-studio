@@ -136,10 +136,20 @@ describe("transcript coaching follow-through", () => {
           roomId: "room-1",
           authorUserId: "coach-1",
           kind: "SUMMARY",
-          sourceJson: {
-            path: ["transcriptJobId"],
-            equals: "transcript-1",
-          },
+          OR: [
+            {
+              sourceJson: {
+                path: ["source"],
+                equals: "transcript-packet-builder",
+              },
+            },
+            {
+              sourceJson: {
+                path: ["source"],
+                equals: "web-transcript-packet-builder",
+              },
+            },
+          ],
         }),
       }),
     );
@@ -1180,6 +1190,12 @@ describe("transcript coaching follow-through", () => {
       room,
       asset: { ...coachSource, transcriptJobs: undefined },
     };
+    const clientAnchor = {
+      ...clientJob,
+      roomId: "room-1",
+      room,
+      asset: { ...clientSource, transcriptJobs: undefined },
+    };
     const summaries: any[] = [];
     let latestSummary: any = null;
     const coachingNoteCreate = jest.fn(async ({ data }: any) => {
@@ -1200,12 +1216,31 @@ describe("transcript coaching follow-through", () => {
     });
     const work = automaticWorkStores();
     const prisma = {
-      transcriptJob: { findUnique: jest.fn(async () => anchor) },
+      transcriptJob: {
+        findUnique: jest.fn(async ({ where }: any) =>
+          where.id === clientJob.id ? clientAnchor : anchor),
+      },
       recordingAsset: {
         findMany: jest.fn(async () => [clientSource, coachSource]),
       },
       coachingNote: {
-        findFirst: jest.fn(async () => latestSummary),
+        findFirst: jest.fn(async ({ where }: any) => {
+          if (!latestSummary) return null;
+          const packetSource = latestSummary.sourceJson?.source;
+          const matchesCanonicalSessionPacket = Array.isArray(where.OR)
+            && where.OR.some(
+              (candidate: any) =>
+                candidate?.sourceJson?.path?.[0] === "source"
+                && candidate.sourceJson.equals === packetSource,
+            );
+          const matchesLegacyAnchor =
+            where.sourceJson?.path?.[0] === "transcriptJobId"
+            && where.sourceJson.equals
+              === latestSummary.sourceJson?.transcriptJobId;
+          return matchesCanonicalSessionPacket || matchesLegacyAnchor
+            ? latestSummary
+            : null;
+        }),
         create: coachingNoteCreate,
       },
       ...work,
@@ -1229,6 +1264,16 @@ describe("transcript coaching follow-through", () => {
       goalCount: 1,
     });
     expect(replay).toMatchObject({
+      reusedExistingPacket: true,
+      packetBuildId: first.packetBuildId,
+      transcriptSourceCount: 2,
+    });
+    const otherParticipantReplay = (await buildCoachingPacketFromTranscriptJob({
+      prisma,
+      transcriptJobId: clientJob.id,
+      authorUserId: "coach-1",
+    })) as any;
+    expect(otherParticipantReplay).toMatchObject({
       reusedExistingPacket: true,
       packetBuildId: first.packetBuildId,
       transcriptSourceCount: 2,

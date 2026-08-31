@@ -118,7 +118,13 @@ describe("automatic transcript follow-through", () => {
     expect(buildCoachingPacketFromTranscriptJob).not.toHaveBeenCalled();
   });
 
-  it("uses a cheap existing-packet read during Session-list sweeps", async () => {
+  it("rechecks the current Session snapshot before reusing existing follow-through", async () => {
+    jest.mocked(buildCoachingPacketFromTranscriptJob).mockResolvedValue({
+      ok: true,
+      packetBuildId: "packet-existing",
+      summaryNoteId: "summary-existing",
+      reusedExistingPacket: true,
+    } as any);
     const prisma = transactionalPrisma({
       coachingNote: {
         findFirst: jest.fn().mockResolvedValue({
@@ -146,19 +152,11 @@ describe("automatic transcript follow-through", () => {
       packetBuildId: "packet-existing",
       reusedExistingPacket: true,
     });
-    expect(buildCoachingPacketFromTranscriptJob).not.toHaveBeenCalled();
-    expect(prisma.coachingNote.findFirst).toHaveBeenCalledWith({
-      where: {
-        roomId: "room-1",
-        authorUserId: "recording-owner",
-        kind: "SUMMARY",
-        sourceJson: {
-          path: ["transcriptJobId"],
-          equals: "job-1",
-        },
-      },
-      orderBy: { createdAt: "desc" },
-      select: { id: true, sourceJson: true },
+    expect(buildCoachingPacketFromTranscriptJob).toHaveBeenCalledWith({
+      prisma,
+      transcriptJobId: "job-1",
+      authorUserId: "recording-owner",
+      force: false,
     });
     expect(prisma.transcriptJob.update).toHaveBeenCalledWith(expect.objectContaining({
       where: { id: "job-1" },
@@ -243,9 +241,6 @@ describe("automatic transcript follow-through", () => {
       prisma,
       transcriptJobId: "job-1",
     });
-    expect(prisma.coachingNote.findFirst).toHaveBeenCalledWith(expect.objectContaining({
-      where: expect.objectContaining({ authorUserId: "recording-owner" }),
-    }));
     expect(buildCoachingPacketFromTranscriptJob).toHaveBeenCalledWith(expect.objectContaining({
       authorUserId: "recording-owner",
     }));
@@ -280,7 +275,7 @@ describe("automatic transcript follow-through", () => {
     });
     expect(acquirePrismaAdvisoryTransactionLock).toHaveBeenCalledWith(
       prisma,
-      "capture-transcript-follow-through:job-1",
+      "capture-transcript-follow-through-room:room-1",
     );
     expect(prisma.transcriptJob.update).toHaveBeenCalledWith(expect.objectContaining({
       data: { resultJson: expect.objectContaining({
@@ -298,6 +293,58 @@ describe("automatic transcript follow-through", () => {
         }),
       }) },
     }));
+  });
+
+  it("serializes different participant transcript jobs through the same Session lock", async () => {
+    const prisma = transactionalPrisma({
+      coachingNote: { findFirst: jest.fn().mockResolvedValue(null) },
+      transcriptJob: {
+        findUnique: jest.fn(async ({ where }: any) => ({
+          roomId: "room-joint",
+          requestedBy: where.id === "job-coach" ? "coach-owner" : "client-owner",
+          resultJson: {},
+          room: {
+            createdByUserId: "coach-owner",
+            booking: { coachUserId: "coach-owner" },
+          },
+        })),
+        update: jest.fn().mockResolvedValue({ id: "job" }),
+      },
+    });
+
+    await reconcileCaptureTranscriptFollowThrough({
+      prisma,
+      transcriptJobId: "job-coach",
+    });
+    await reconcileCaptureTranscriptFollowThrough({
+      prisma,
+      transcriptJobId: "job-client",
+    });
+
+    expect(acquirePrismaAdvisoryTransactionLock).toHaveBeenNthCalledWith(
+      1,
+      prisma,
+      "capture-transcript-follow-through-room:room-joint",
+    );
+    expect(acquirePrismaAdvisoryTransactionLock).toHaveBeenNthCalledWith(
+      2,
+      prisma,
+      "capture-transcript-follow-through-room:room-joint",
+    );
+    expect(buildCoachingPacketFromTranscriptJob).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        transcriptJobId: "job-coach",
+        authorUserId: "coach-owner",
+      }),
+    );
+    expect(buildCoachingPacketFromTranscriptJob).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        transcriptJobId: "job-client",
+        authorUserId: "coach-owner",
+      }),
+    );
   });
 
   it("retries the complete locked transaction after a serializable write conflict", async () => {
