@@ -37,7 +37,7 @@ test("defaults internal assignment to the canonical current release build", () =
   const parsed = parseAssignmentArguments([]);
   assert.equal(parsed.appId, "6780995957");
   assert.equal(parsed.marketingVersion, "1.0");
-  assert.equal(parsed.buildNumber, "38");
+  assert.equal(parsed.buildNumber, "59");
   assert.equal(parsed.groupName, "Quipsly Capture Internal");
 });
 

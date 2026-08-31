@@ -1098,7 +1098,6 @@ for (const needle of [
   "QuipslyCapturePasswordField",
   "QuipslyCaptureSignInButton",
   "QuipslyCaptureCreateAccountModeButton",
-  "QuipslyCapturePasswordConfirmationField",
   "QuipslyCaptureCreateAccountButton",
   "QuipslyCapturePasswordResetButton",
   "QuipslyCaptureGoogleSignInButton",
@@ -1108,6 +1107,11 @@ for (const needle of [
 ]) {
   requireIncludes(authCombined, needle, "native reviewer auth");
 }
+requireExcludes(
+  loginText,
+  "QuipslyCapturePasswordConfirmationField",
+  "account creation does not make people repeat an Apple-generated password",
+);
 requireIncludes(
   projectText,
   'repositoryURL = "https://github.com/google/GoogleSignIn-iOS.git";',

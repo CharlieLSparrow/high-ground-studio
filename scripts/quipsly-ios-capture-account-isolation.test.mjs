@@ -62,7 +62,6 @@ test("native auth proves a verified mailbox before Nest or Keychain and keeps re
 
   for (const identifier of [
     "QuipslyCaptureCreateAccountModeButton",
-    "QuipslyCapturePasswordConfirmationField",
     "QuipslyCapturePasswordResetButton",
     "QuipslyCaptureGoogleSignInButton",
     "QuipslyCaptureGoogleIdentityContinuityHint",
@@ -70,6 +69,10 @@ test("native auth proves a verified mailbox before Nest or Keychain and keeps re
   ]) {
     assert.ok(captureShell.includes(identifier) || read("LoginView.swift").includes(identifier));
   }
+  assert.doesNotMatch(
+    read("LoginView.swift"),
+    /QuipslyCapturePasswordConfirmationField/,
+  );
 });
 
 test("ordinary authenticated mutations inherit a fail-closed owner binding through 401 replay", () => {

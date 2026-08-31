@@ -1,6 +1,6 @@
 # High Ground Odyssey TestFlight Rehearsal
 
-Last verified: 2026-08-30
+Last verified: 2026-08-31
 
 This is the operator runbook for the first Charlie-and-Homer Quipsly Capture
 rehearsal. It distinguishes what is ready now from what the rehearsal still
@@ -8,10 +8,10 @@ needs to prove.
 
 ## Current release state
 
-- App: **Quipsly Capture 1.0 (58)**
+- App: **Quipsly Capture 1.0 (59)**
 - Exact native source:
-  `1e3d8f6e1befb67679ff3df4fff959008a0b1367`
-- App Store Connect build ID: `97819668-03dd-4bb8-b711-972acbcb25e5`
+  `5ae9c74d898ee4672855b737c36d15b74b65de00`
+- App Store Connect build ID: `eb9271bb-542c-4330-8596-3104022fbd8e`
 - External TestFlight group: **Quipsly Capture Rehearsal**
 - TestFlight Apple Account: `shomers@icloud.com`
 - Quipsly Google identity: `shomers@gmail.com`
@@ -22,19 +22,20 @@ needs to prove.
 - Automatic tester notification: enabled
 - Installation mode: public-link-only; neither a named-tester email nor a
   redemption code is required
-- Build 58 is the current approved public beta identified by the canonical
-  release ledger and Apple readback. It supersedes Build 55, whose Sessions and
-  Speak to Write entries could exhaust the physical iPhone main-thread stack
-  while SwiftUI constructed one oversized recorder view. Build 58 preserves the
-  same features but places the recorder behind bounded view-type sections.
-  All four deterministic UI shards passed all 106 journeys with zero failures,
-  including both affected entries, recording, consent, voice writing, maximum
-  accessibility text, post-call editing, and Share. The exact signed archive
-  and IPA passed packaged metadata, entitlement, provisioning, privacy-manifest,
-  and nested-signature inspection before upload. App Store Connect independently
-  reports `VALID`, `IN_BETA_TESTING`, `APPROVED`, and inclusion in the external
-  rehearsal group; Apple's public installation page and TestFlight handoff are
-  open. A physical Build 58 install remains the final crash-fix acceptance proof.
+- Build 59 is the current approved public beta identified by the canonical
+  release ledger and Apple readback. It adds recording-start recovery, episode
+  script and conversation access beside the recorder, shared Watch controls,
+  simpler scheduling and account creation, durable Session note drafts,
+  searchable Sessions, clearer call recovery, native iPad workspace behavior,
+  and automatic delivery of on-device transcripts after reconnect. All four
+  iPhone qualification shards passed 114/114 journeys and the dedicated native
+  iPad qualification passed 1/1, with zero failures or skips. The exact signed
+  archive and IPA passed packaged metadata, entitlement, provisioning,
+  privacy-manifest, and nested-signature inspection before upload. App Store
+  Connect independently reports `VALID`, `IN_BETA_TESTING`, `APPROVED`, and
+  inclusion in both the internal and public-link rehearsal groups; Apple's
+  public installation page and TestFlight handoff are open. A physical Build 59
+  install remains the final experience and hardware acceptance proof.
 - Build 28 passed all 63 serialized iPhone and Share Extension journeys,
   exact-source preflight, signed archive/export inspection, Apple processing,
   external beta review, external-group readback, and an anonymous HTTP 200 read
