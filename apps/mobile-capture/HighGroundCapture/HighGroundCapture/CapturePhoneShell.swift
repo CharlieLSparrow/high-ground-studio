@@ -11743,6 +11743,29 @@ private struct CaptureRecorderView: View {
             model.selectedSession?.isPersonalVoiceNote == true ? .hidden : .visible,
             for: .tabBar
         )
+        .toolbar {
+            if let session = model.selectedSession,
+               !session.isPersonalVoiceNote {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Menu {
+                        ForEach(MobileQuickEntryKind.allCases) { kind in
+                            Button {
+                                quickEntryKind = kind
+                            } label: {
+                                Label(kind.title, systemImage: kind.systemImage)
+                            }
+                            .accessibilityIdentifier(
+                                "CaptureSessionQuickAdd_\(kind.rawValue)_\(session.id)"
+                            )
+                        }
+                    } label: {
+                        Label("Add", systemImage: "plus")
+                    }
+                    .accessibilityHint("Adds a note, task, goal, or source to this Session or another Nest you choose.")
+                    .accessibilityIdentifier("CaptureSessionQuickAdd")
+                }
+            }
+        }
         .sheet(isPresented: $showsSessionPicker) {
             SessionPickerSheet(model: model, isPresented: $showsSessionPicker)
                 .presentationDetents([.medium, .large])

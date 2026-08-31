@@ -2836,9 +2836,14 @@ final class CaptureExperienceUITests: XCTestCase {
 
     func testQuickTaskCanExplicitlyTargetPrivateHomeNestEvenWhenASessionIsSelected() {
         app.tabBars.buttons["Sessions"].tap()
-        let taskButton = app.buttons["CaptureQuickEntry_TASK_preview-coaching-ready"]
-        reveal(taskButton, searchAboveFirst: false)
-        XCTAssertTrue(taskButton.isHittable)
+        let add = app.buttons["CaptureSessionQuickAdd"]
+        XCTAssertTrue(add.waitForExistence(timeout: 5))
+        XCTAssertTrue(add.isHittable)
+        add.tap()
+        let taskButton = app.buttons[
+            "CaptureSessionQuickAdd_TASK_preview-coaching-ready"
+        ]
+        XCTAssertTrue(taskButton.waitForExistence(timeout: 3))
         taskButton.tap()
 
         XCTAssertTrue(app.descendants(matching: .any)["CaptureQuickEntrySheet_TASK"].waitForExistence(timeout: 5))
