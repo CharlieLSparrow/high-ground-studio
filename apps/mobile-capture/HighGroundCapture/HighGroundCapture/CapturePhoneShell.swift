@@ -11138,45 +11138,47 @@ private struct CaptureRecorderView: View {
                         }
                     }
 
-                    // Keep the familiar call path contiguous: outer room,
-                    // consent, then the recorder. Notes, quick work, and the
-                    // Session conversation remain in this same workspace, but
-                    // they should never interrupt the action a person came
-                    // here to take. This ordering is especially important on
-                    // iPad, where the larger window otherwise makes the
-                    // collaboration cards look like a prerequisite.
-                    sessionCollaborationSurface(session)
-                    episodeRecorderTools(session)
-
                     if !session.isPersonalVoiceNote {
-                    CaptureRehearsalReadinessCard(
-                        audioCapture: audioCapture,
-                        soundCheck: soundCheck,
-                        videoCapture: videoCapture,
-                        manuscript: episodeManuscript,
-                        watch: episodeWatch,
-                        preflight: sessionPreflight,
-                        session: session,
-                        mode: recordingMode,
-                        providerConnected: model.providerRoom.isConnected,
-                        previewOnly: model.usesPreviewData,
-                        isRunningCheck: isRunningRehearsalCheck,
-                        isCaptureActive: captureIsActive,
-                        onRunCheck: {
-                            Task {
-                                await runRehearsalCheck(for: session)
+                        // Keep the familiar pre-record order contiguous: outer
+                        // room, consent, recorder, then the optional device and
+                        // sound check. At accessibility text sizes this compact
+                        // control must not sit below the much larger collaboration,
+                        // manuscript, and Watch stack.
+                        CaptureRehearsalReadinessCard(
+                            audioCapture: audioCapture,
+                            soundCheck: soundCheck,
+                            videoCapture: videoCapture,
+                            manuscript: episodeManuscript,
+                            watch: episodeWatch,
+                            preflight: sessionPreflight,
+                            session: session,
+                            mode: recordingMode,
+                            providerConnected: model.providerRoom.isConnected,
+                            previewOnly: model.usesPreviewData,
+                            isRunningCheck: isRunningRehearsalCheck,
+                            isCaptureActive: captureIsActive,
+                            onRunCheck: {
+                                Task {
+                                    await runRehearsalCheck(for: session)
+                                }
                             }
+                        )
+                        .task(id: "rehearsal-preview|\(session.id)") {
+                            // Preview/reviewer evidence must not depend on a later
+                            // lazy card entering the viewport. Production sources
+                            // remain explicitly prepared by the device check.
+                            guard model.usesPreviewData else { return }
+                            episodeManuscript.loadPreview(session: session)
+                            episodeWatch.loadPreview(session: session)
                         }
-                    )
-                    .task(id: "rehearsal-preview|\(session.id)") {
-                        // Preview/reviewer evidence must not depend on a later
-                        // lazy card entering the viewport. Production sources
-                        // remain explicitly prepared by the device check.
-                        guard model.usesPreviewData else { return }
-                        episodeManuscript.loadPreview(session: session)
-                        episodeWatch.loadPreview(session: session)
                     }
-                    }
+
+                    // Episode aids belong beside the recorder and before the
+                    // taller notes/chat stack. This keeps Manuscript and Watch
+                    // reachable at accessibility text sizes while collaboration
+                    // remains available below without becoming a prerequisite.
+                    episodeRecorderTools(session)
+                    sessionCollaborationSurface(session)
                     })
                         }
                     }

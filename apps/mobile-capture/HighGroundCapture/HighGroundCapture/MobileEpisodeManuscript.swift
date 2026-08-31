@@ -592,7 +592,7 @@ struct MobileEpisodeManuscriptCard: View {
                     client.hasReadableCopy ? "Read episode script" : "Load episode script",
                     systemImage: "doc.text.magnifyingglass"
                 )
-                .frame(maxWidth: .infinity)
+                .frame(maxWidth: .infinity, minHeight: 44)
             }
             .buttonStyle(.borderedProminent)
             .disabled(!client.hasReadableCopy && client.isLoading)

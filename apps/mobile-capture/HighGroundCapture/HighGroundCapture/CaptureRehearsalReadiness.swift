@@ -89,6 +89,8 @@ struct CaptureRehearsalReadinessCard: View {
                 }
             }
             .buttonStyle(.plain)
+            .frame(minHeight: 44)
+            .contentShape(Rectangle())
             .accessibilityLabel(
                 "Device and sound check, \(summaryLabel)"
             )

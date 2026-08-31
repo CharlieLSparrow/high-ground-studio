@@ -1826,13 +1826,13 @@ struct MobileEpisodeWatchCard: View {
                     } label: {
                         if client.isPreparingClip || client.isCheckingPlayback {
                             ProgressView()
-                                .frame(maxWidth: .infinity)
+                                .frame(maxWidth: .infinity, minHeight: 44)
                         } else {
                             Label(
                                 "Prepare \(clip.title)",
                                 systemImage: "arrow.down.circle.fill"
                             )
-                            .frame(maxWidth: .infinity)
+                            .frame(maxWidth: .infinity, minHeight: 44)
                         }
                     }
                     .buttonStyle(.borderedProminent)
