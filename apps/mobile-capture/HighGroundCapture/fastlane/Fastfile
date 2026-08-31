@@ -359,7 +359,7 @@ end
 def seal_candidate_receipt(receipt_path, evidence_path)
   UI.user_error!("Set receipt_path to an unqualified Capture release receipt.") if receipt_path.to_s.empty?
   UI.user_error!("Set evidence_path to the exact full UI evidence manifest.") if evidence_path.to_s.empty?
-  expanded_receipt_path = File.expand_path(receipt_path)
+  expanded_receipt_path = File.realpath(File.expand_path(receipt_path))
   UI.user_error!("Release receipt is not a regular file: #{expanded_receipt_path}") unless File.file?(expanded_receipt_path)
   UI.user_error!("Release receipt must not be group- or world-readable.") unless
     (File.stat(expanded_receipt_path).mode & 0o077).zero?
@@ -423,7 +423,7 @@ end
 
 def qualified_release_paths(receipt_path)
   UI.user_error!("Set receipt_path to a qualified Capture release receipt.") if receipt_path.to_s.empty?
-  expanded_receipt_path = File.expand_path(receipt_path)
+  expanded_receipt_path = File.realpath(File.expand_path(receipt_path))
   UI.user_error!("Qualified receipt is not a regular file: #{expanded_receipt_path}") unless File.file?(expanded_receipt_path)
   UI.user_error!("Qualified receipt must not be group- or world-readable.") unless (File.stat(expanded_receipt_path).mode & 0o077).zero?
 

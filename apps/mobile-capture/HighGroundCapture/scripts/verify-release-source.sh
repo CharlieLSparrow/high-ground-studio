@@ -140,6 +140,7 @@ require_text "$fastfile" 'lane :seal_candidate do |options|' "Capture can seal i
 require_text "$fastfile" 'lane :recover_candidate do |options|' "Capture can recover a missing receipt after a verifier-only failure without rebuilding"
 require_text "$fastfile" 'Refusing to replace an existing release receipt' "Candidate recovery cannot overwrite prior release state"
 require_text "$fastfile" 'File.basename(File.dirname(output_directory)) == source_revision[0, 12]' "Candidate recovery requires a source-scoped artifact directory"
+require_text "$fastfile" 'expanded_receipt_path = File.realpath(File.expand_path(receipt_path))' "Receipt verification canonicalizes macOS filesystem aliases"
 require_text "$fastfile" 'verified_evidence_path = verify_ui_test_evidence_path(' "Candidate sealing independently re-verifies complete UI evidence"
 require_text "$fastfile" 'sh(ARTIFACT_VERIFIER, paths[:archive_path], paths[:ipa_path])' "Candidate sealing independently re-verifies signed archive and IPA"
 require_text "$fastfile" 'A receipt with any upload attempt cannot be sealed.' "Candidate sealing rejects attempted uploads"
