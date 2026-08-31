@@ -696,6 +696,20 @@ for (const needle of [
   );
 }
 for (const needle of [
+  "private enum OnDeviceTranscriptAttemptStage",
+  "case recognizingSpeech",
+  "case preservingDeviceResult",
+  "attemptStage = .recognizingSpeech",
+  "attemptStage = .preservingDeviceResult",
+  "else if attemptStage.allowsUnknownCloudFallback",
+]) {
+  requireIncludes(
+    onDeviceTranscriptManagerText,
+    needle,
+    "only unexpected failures inside Apple speech recognition may purchase generic cloud ASR fallback",
+  );
+}
+for (const needle of [
   "OnDeviceTranscriptBackgroundCoordinator.shared.register()",
 ]) {
   requireIncludes(

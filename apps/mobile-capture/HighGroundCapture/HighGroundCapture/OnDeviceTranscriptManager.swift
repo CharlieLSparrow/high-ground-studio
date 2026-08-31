@@ -334,6 +334,20 @@ private extension OnDeviceTranscriptFailure {
     }
 }
 
+/// Cloud ASR is an accuracy/reliability fallback for speech recognition, not a
+/// generic recovery mechanism for every operation that happens after Stop.
+/// Keep this stage explicit so an unexpected local persistence or attachment
+/// error cannot silently turn into paid provider work.
+private enum OnDeviceTranscriptAttemptStage {
+    case preparingSource
+    case recognizingSpeech
+    case preservingDeviceResult
+
+    var allowsUnknownCloudFallback: Bool {
+        self == .recognizingSpeech
+    }
+}
+
 private extension Digest {
     nonisolated var hexString: String { map { String(format: "%02x", $0) }.joined() }
 }
@@ -1090,6 +1104,7 @@ final class OnDeviceTranscriptManager: ObservableObject {
         allowModelDownload: Bool,
         locale: Locale
     ) async {
+        var attemptStage = OnDeviceTranscriptAttemptStage.preparingSource
         if #available(iOS 26.0, *) {
             phases[recording.id] = allowModelDownload
                 ? .installingModel(progress: nil)
@@ -1131,6 +1146,7 @@ final class OnDeviceTranscriptManager: ObservableObject {
             let transcriber: String
             let preset: String
             let modelAssetStatus: String
+            attemptStage = .recognizingSpeech
             if #available(iOS 26.0, *) {
                 if recognitionProfile == .speechAdaptation {
                     do {
@@ -1194,6 +1210,7 @@ final class OnDeviceTranscriptManager: ObservableObject {
                     ? "built-in"
                     : "apple-service"
             }
+            attemptStage = .preservingDeviceResult
             try Task.checkCancellation()
             let after = try await Task.detached(priority: .utility) {
                 try OnDeviceTranscriptSource.fingerprint(fileURL)
@@ -1251,8 +1268,10 @@ final class OnDeviceTranscriptManager: ObservableObject {
                 let fallbackReason: String?
                 if let known = error as? OnDeviceTranscriptFailure {
                     fallbackReason = known.cloudFallbackReasonCode
-                } else {
+                } else if attemptStage.allowsUnknownCloudFallback {
                     fallbackReason = "apple-speech-processing-failed"
+                } else {
+                    fallbackReason = nil
                 }
                 guard let fallbackReason else {
                     phases[recording.id] = .failed(
