@@ -20,12 +20,16 @@ import {
   isUnreviewedTranscriptActionItem,
   mergePacketActionCandidates,
   packetCreatesOrdinarySessionWork,
+  packetSnapshotMatchesResolvedSession,
   packetSnapshotMatchesTranscriptJob,
   packetTemplateMatches,
   projectTranscriptJobSegmentsForPacket,
   resolvePacketEvidenceSpan,
+  SessionTranscriptPacketSourceError,
   selectLatestCorrelatedPacketNotes,
   TRANSCRIPT_PACKET_SEGMENT_ORDER_BY,
+  resolveSessionPacketTranscript,
+  transcriptPacketSnapshotFromProjected,
   transcriptJobPacketSnapshot,
 } from "@/lib/server/coaching-packets";
 import { buildTranscriptSourceAnchorFields } from "@/lib/server/transcript-source-span";
@@ -100,12 +104,16 @@ export function packetUsesAutomaticFollowThrough(value: unknown) {
 
 export function isAutomaticTranscriptWorkForJob(
   value: unknown,
-  transcriptJobId: string | null | undefined,
+  transcriptJobId: string | string[] | null | undefined,
 ) {
   const source = sourceJson(value);
+  const transcriptJobIds = new Set(
+    (Array.isArray(transcriptJobId) ? transcriptJobId : [transcriptJobId])
+      .map(text)
+      .filter(Boolean),
+  );
   return Boolean(
-    transcriptJobId &&
-    text(source.transcriptJobId) === transcriptJobId &&
+    transcriptJobIds.has(text(source.transcriptJobId)) &&
     source.schema === "quipsly-transcript-follow-through-v1" &&
     source.origin === "quipsly-session-follow-through",
   );
@@ -122,6 +130,30 @@ function sharedTranscriptResultSource(value: unknown) {
       typeof source.startSeconds === "number" ? source.startSeconds : null,
     endSeconds:
       typeof source.endSeconds === "number" ? source.endSeconds : null,
+    sourceStartSeconds:
+      typeof source.sourceStartSeconds === "number"
+        ? source.sourceStartSeconds
+        : typeof source.startSeconds === "number"
+          ? source.startSeconds
+          : null,
+    sourceEndSeconds:
+      typeof source.sourceEndSeconds === "number"
+        ? source.sourceEndSeconds
+        : typeof source.endSeconds === "number"
+          ? source.endSeconds
+          : null,
+    programStartSeconds:
+      typeof source.programStartSeconds === "number"
+        ? source.programStartSeconds
+        : typeof source.startSeconds === "number"
+          ? source.startSeconds
+          : null,
+    programEndSeconds:
+      typeof source.programEndSeconds === "number"
+        ? source.programEndSeconds
+        : typeof source.endSeconds === "number"
+          ? source.endSeconds
+          : null,
     speakerLabel: text(source.speakerLabel) || null,
   };
 }
@@ -633,8 +665,8 @@ function packetSafeActions(input: {
         input.transcriptProcessingAllowed && packetReady && !input.packetStale,
       risk: "low",
       why: input.packetStale
-          ? "These results are pinned to an older transcript snapshot and are being refreshed."
-          : packetReady
+        ? "These results are pinned to an older transcript snapshot and are being refreshed."
+        : packetReady
           ? `Session results include ${input.highlights.length} highlight note(s) and ${input.actionItems.length} task(s).`
           : "Results appear when the completed transcript is ready.",
       boundary:
@@ -1075,6 +1107,46 @@ export async function GET(request: Request) {
         error: "Transcript processing requires bound recording asset evidence.",
       };
   const transcriptProcessingAllowed = transcriptGate.allowed;
+  let resolvedSessionTranscript: Awaited<
+    ReturnType<typeof resolveSessionPacketTranscript>
+  > | null = null;
+  let sessionTranscriptSourceError: string | null = null;
+  let sessionTranscriptSourceErrorCode: string | null = null;
+  if (
+    latestTranscriptJob?.status === "COMPLETED" &&
+    transcriptProcessingAllowed
+  ) {
+    try {
+      resolvedSessionTranscript = await resolveSessionPacketTranscript({
+        prisma,
+        anchorJob: latestTranscriptJob,
+      });
+    } catch (error) {
+      sessionTranscriptSourceErrorCode =
+        error instanceof SessionTranscriptPacketSourceError
+          ? error.errorCode
+          : "SESSION_TRANSCRIPT_ASSEMBLY_FAILED";
+      sessionTranscriptSourceError =
+        error instanceof Error
+          ? error.message
+          : "The complete Session transcript is still preparing.";
+    }
+  } else if (latestTranscriptJob && transcriptProcessingAllowed) {
+    sessionTranscriptSourceErrorCode = "SESSION_TRANSCRIPT_PREPARING";
+    sessionTranscriptSourceError =
+      "The complete Session transcript is still preparing.";
+  }
+  const packetTranscriptJobIds = [
+    ...new Set(
+      [
+        latestTranscriptJob?.id,
+        ...(resolvedSessionTranscript?.sources.map(
+          (source) => source.transcriptJobId,
+        ) ?? []),
+      ].filter((value): value is string => Boolean(value)),
+    ),
+  ];
+  const packetTranscriptJobIdSet = new Set(packetTranscriptJobIds);
   const transcriptConfidence = buildSessionTranscriptConfidence({
     job: latestTranscriptJob,
     asset: selectedTranscriptAsset,
@@ -1087,29 +1159,31 @@ export async function GET(request: Request) {
   const canReviewPrivatePacket = Boolean(
     packetAuthorUserId && packetAuthorUserId === actor.id,
   );
-  const packetNotes =
-    transcriptProcessingAllowed
-      ? notes.filter((note: any) => {
-          const source = sourceJson(note.sourceJson);
-          return (
-            source.source === "transcript-packet-builder" &&
-            text(source.transcriptJobId) === latestTranscriptJob?.id
-          );
-        })
-      : [];
+  const packetNotes = transcriptProcessingAllowed
+    ? notes.filter((note: any) => {
+        const source = sourceJson(note.sourceJson);
+        return (
+          source.source === "transcript-packet-builder" &&
+          packetTranscriptJobIdSet.has(text(source.transcriptJobId))
+        );
+      })
+    : [];
   const selectedPacketBuild = selectLatestCorrelatedPacketNotes(packetNotes);
   const summary = selectedPacketBuild.summary;
   const highlights = selectedPacketBuild.highlights;
-  const currentTranscriptSnapshot = latestTranscriptJob
-    ? transcriptJobPacketSnapshot(latestTranscriptJob)
-    : null;
+  const currentTranscriptSnapshot = resolvedSessionTranscript
+    ? transcriptPacketSnapshotFromProjected(resolvedSessionTranscript.projected)
+    : latestTranscriptJob
+      ? transcriptJobPacketSnapshot(latestTranscriptJob)
+      : null;
   const packetStale = Boolean(
     summary &&
     latestTranscriptJob &&
     (!packetTemplateMatches(summary.sourceJson) ||
-      !packetSnapshotMatchesTranscriptJob(
+      !resolvedSessionTranscript ||
+      !packetSnapshotMatchesResolvedSession(
         summary.sourceJson,
-        latestTranscriptJob,
+        resolvedSessionTranscript,
       )),
   );
   const allPacketActionItems =
@@ -1118,10 +1192,10 @@ export async function GET(request: Request) {
           const source = sourceJson(item.sourceJson);
           return (
             (source.source === "transcript-packet-builder" &&
-              text(source.transcriptJobId) === latestTranscriptJob?.id) ||
+              packetTranscriptJobIdSet.has(text(source.transcriptJobId))) ||
             isAutomaticTranscriptWorkForJob(
               item.sourceJson,
-              latestTranscriptJob?.id,
+              packetTranscriptJobIds,
             )
           );
         })
@@ -1133,9 +1207,10 @@ export async function GET(request: Request) {
           legacyActionItems: allPacketActionItems,
         })
       : [];
-  const actionCandidates = summary && packetUsesAutomaticFollowThrough(summary.sourceJson)
-    ? []
-    : storedActionCandidates;
+  const actionCandidates =
+    summary && packetUsesAutomaticFollowThrough(summary.sourceJson)
+      ? []
+      : storedActionCandidates;
   const packetActionItems = allPacketActionItems.filter(
     (item: any) => !isUnreviewedTranscriptActionItem(item),
   );
@@ -1159,6 +1234,7 @@ export async function GET(request: Request) {
   const transcriptResults = sessionTranscriptResults({
     roomId,
     transcriptJobId: latestTranscriptJob?.id,
+    transcriptJobIds: packetTranscriptJobIds,
     summary,
     highlights,
     actionItems,
@@ -1347,6 +1423,31 @@ export async function GET(request: Request) {
             : null,
         }
       : null,
+    transcriptAssembly: resolvedSessionTranscript
+      ? {
+          schema: resolvedSessionTranscript.schema,
+          status: resolvedSessionTranscript.multiSource
+            ? "ASSEMBLED"
+            : "SINGLE_SOURCE",
+          multiSource: resolvedSessionTranscript.multiSource,
+          sourceCount: resolvedSessionTranscript.sources.length,
+          sources: resolvedSessionTranscript.sources,
+          programClock: resolvedSessionTranscript.programClock,
+          errorCode: null,
+          error: null,
+        }
+      : latestTranscriptJob
+        ? {
+            schema: null,
+            status: sessionTranscriptSourceError ? "PREPARING" : "HELD",
+            multiSource: false,
+            sourceCount: 0,
+            sources: [],
+            programClock: null,
+            errorCode: sessionTranscriptSourceErrorCode,
+            error: sessionTranscriptSourceError,
+          }
+        : null,
     selectedRecordingAsset: selectedTranscriptAsset
       ? {
           id: selectedTranscriptAsset.id,
@@ -1421,45 +1522,52 @@ export async function GET(request: Request) {
       taskMergeTargets,
       goalCandidates,
       goalMergeTargets,
-      goalCandidateReview: goalCandidates.length ? {
-        endpoint: "/api/mobile/capture/transcripts/packet/goals",
-        method: "POST",
-        allowedDecisions: ["ACCEPT", "EDIT", "MERGE", "REJECT", "DEFER"],
-        boundary:
-          "ACCEPT creates one actor-owned ACTIVE Goal. MERGE appends reviewed source evidence to one explicitly selected existing actor-owned goal in this Nest without changing its definition, status, target, tags, tasks, or project. Ignoring, editing, rejecting, or deferring creates no goal or external side effect.",
-      } : null,
-      actionCandidateReview: actionCandidates.length ? {
-        endpoint: "/api/mobile/capture/transcripts/packet/actions",
-        method: "POST",
-        allowedDecisions: ["ACCEPT", "EDIT", "MERGE", "REJECT", "DEFER"],
-        requiredEvidence: [
-          "roomId",
-          "transcriptJobId",
-          "recordingAssetId",
-          "summaryNoteId",
-          "packetBuildId",
-          "actionCandidateId",
-        ],
-        boundary:
-          "ACCEPT can materialize one canonical Quipsly ActionItem after the reviewer inspects owner, due date, and active same-project tags. MERGE appends reviewed source evidence to one explicitly selected existing actor-owned task in this Nest without changing task state. EDIT, REJECT, and DEFER preserve packet review state without creating open work or external side effects.",
-      } : null,
-      taskMaterialization: actionCandidates.length || goalCandidates.length ? {
-        project: room?.project
-          ? { id: room.project.id, name: room.project.name }
+      goalCandidateReview: goalCandidates.length
+        ? {
+            endpoint: "/api/mobile/capture/transcripts/packet/goals",
+            method: "POST",
+            allowedDecisions: ["ACCEPT", "EDIT", "MERGE", "REJECT", "DEFER"],
+            boundary:
+              "ACCEPT creates one actor-owned ACTIVE Goal. MERGE appends reviewed source evidence to one explicitly selected existing actor-owned goal in this Nest without changing its definition, status, target, tags, tasks, or project. Ignoring, editing, rejecting, or deferring creates no goal or external side effect.",
+          }
+        : null,
+      actionCandidateReview: actionCandidates.length
+        ? {
+            endpoint: "/api/mobile/capture/transcripts/packet/actions",
+            method: "POST",
+            allowedDecisions: ["ACCEPT", "EDIT", "MERGE", "REJECT", "DEFER"],
+            requiredEvidence: [
+              "roomId",
+              "transcriptJobId",
+              "recordingAssetId",
+              "summaryNoteId",
+              "packetBuildId",
+              "actionCandidateId",
+            ],
+            boundary:
+              "ACCEPT can materialize one canonical Quipsly ActionItem after the reviewer inspects owner, due date, and active same-project tags. MERGE appends reviewed source evidence to one explicitly selected existing actor-owned task in this Nest without changing task state. EDIT, REJECT, and DEFER preserve packet review state without creating open work or external side effects.",
+          }
+        : null,
+      taskMaterialization:
+        actionCandidates.length || goalCandidates.length
+          ? {
+              project: room?.project
+                ? { id: room.project.id, name: room.project.name }
+                : null,
+              tags: (room?.project?.tags ?? []).map((tag: any) => ({
+                id: tag.id,
+                label: tag.label,
+                slug: tag.slug,
+                selectedForSession: (room?.tagLinks ?? []).some(
+                  (link: any) => link.tagId === tag.id,
+                ),
+              })),
+              ownerChoices: ["ACTOR", "UNASSIGNED"],
+              defaultOwner: "ACTOR",
+              boundary:
+                "Compatibility controls for older candidate-only packets. Current Session results are already ordinary editable work.",
+            }
           : null,
-        tags: (room?.project?.tags ?? []).map((tag: any) => ({
-          id: tag.id,
-          label: tag.label,
-          slug: tag.slug,
-          selectedForSession: (room?.tagLinks ?? []).some(
-            (link: any) => link.tagId === tag.id,
-          ),
-        })),
-        ownerChoices: ["ACTOR", "UNASSIGNED"],
-        defaultOwner: "ACTOR",
-        boundary:
-          "Compatibility controls for older candidate-only packets. Current Session results are already ordinary editable work.",
-      } : null,
       actionItems: packetActionItems.map((item: any) => ({
         id: item.id,
         title: item.title,

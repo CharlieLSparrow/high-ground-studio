@@ -11,22 +11,48 @@ function sourceJson(value: unknown): Record<string, unknown> {
 function transcriptResultSource(
   value: unknown,
   roomId: string,
-  transcriptJobId: string,
+  transcriptJobIds: Set<string>,
 ) {
   const source = sourceJson(value);
   if (
     source.origin !== "quipsly-session-follow-through" ||
     label(source.roomId) !== roomId ||
-    label(source.transcriptJobId) !== transcriptJobId
+    !transcriptJobIds.has(label(source.transcriptJobId) || "")
   ) {
     return null;
   }
   return {
+    transcriptJobId: label(source.transcriptJobId),
+    recordingAssetId: label(source.recordingAssetId),
     segmentId: label(source.segmentId),
     startSeconds:
       typeof source.startSeconds === "number" ? source.startSeconds : null,
     endSeconds:
       typeof source.endSeconds === "number" ? source.endSeconds : null,
+    sourceStartSeconds:
+      typeof source.sourceStartSeconds === "number"
+        ? source.sourceStartSeconds
+        : typeof source.startSeconds === "number"
+          ? source.startSeconds
+          : null,
+    sourceEndSeconds:
+      typeof source.sourceEndSeconds === "number"
+        ? source.sourceEndSeconds
+        : typeof source.endSeconds === "number"
+          ? source.endSeconds
+          : null,
+    programStartSeconds:
+      typeof source.programStartSeconds === "number"
+        ? source.programStartSeconds
+        : typeof source.startSeconds === "number"
+          ? source.startSeconds
+          : null,
+    programEndSeconds:
+      typeof source.programEndSeconds === "number"
+        ? source.programEndSeconds
+        : typeof source.endSeconds === "number"
+          ? source.endSeconds
+          : null,
     speakerLabel: label(source.speakerLabel),
   };
 }
@@ -39,6 +65,7 @@ function transcriptResultSource(
 export function sessionTranscriptResults(input: {
   roomId: string;
   transcriptJobId?: string | null;
+  transcriptJobIds?: string[];
   summary?: any;
   highlights?: any[];
   actionItems?: any[];
@@ -46,6 +73,11 @@ export function sessionTranscriptResults(input: {
 }) {
   const transcriptJobId = label(input.transcriptJobId);
   if (!transcriptJobId || !input.summary) return null;
+  const transcriptJobIds = new Set(
+    [transcriptJobId, ...(input.transcriptJobIds || [])]
+      .map(label)
+      .filter((value): value is string => Boolean(value)),
+  );
 
   const notes = (input.highlights || []).map((note: any) => {
     const source = sourceJson(note.sourceJson);
@@ -54,11 +86,37 @@ export function sessionTranscriptResults(input: {
       title: note.title,
       body: note.body,
       source: {
+        transcriptJobId: label(source.transcriptJobId),
+        recordingAssetId: label(source.recordingAssetId),
         segmentId: label(source.segmentId),
         startSeconds:
           typeof source.startSeconds === "number" ? source.startSeconds : null,
         endSeconds:
           typeof source.endSeconds === "number" ? source.endSeconds : null,
+        sourceStartSeconds:
+          typeof source.sourceStartSeconds === "number"
+            ? source.sourceStartSeconds
+            : typeof source.startSeconds === "number"
+              ? source.startSeconds
+              : null,
+        sourceEndSeconds:
+          typeof source.sourceEndSeconds === "number"
+            ? source.sourceEndSeconds
+            : typeof source.endSeconds === "number"
+              ? source.endSeconds
+              : null,
+        programStartSeconds:
+          typeof source.programStartSeconds === "number"
+            ? source.programStartSeconds
+            : typeof source.startSeconds === "number"
+              ? source.startSeconds
+              : null,
+        programEndSeconds:
+          typeof source.programEndSeconds === "number"
+            ? source.programEndSeconds
+            : typeof source.endSeconds === "number"
+              ? source.endSeconds
+              : null,
         speakerLabel: label(source.speakerLabel),
       },
     };
@@ -67,38 +125,42 @@ export function sessionTranscriptResults(input: {
     const source = transcriptResultSource(
       item.sourceJson,
       input.roomId,
-      transcriptJobId,
+      transcriptJobIds,
     );
     return source
-      ? [{
-          id: item.id,
-          title: item.title,
-          detail: item.detail,
-          status: item.status,
-          assignedUserId: item.assignedUserId,
-          dueAt: item.dueAt?.toISOString?.() ?? null,
-          completedAt: item.completedAt?.toISOString?.() ?? null,
-          source,
-        }]
+      ? [
+          {
+            id: item.id,
+            title: item.title,
+            detail: item.detail,
+            status: item.status,
+            assignedUserId: item.assignedUserId,
+            dueAt: item.dueAt?.toISOString?.() ?? null,
+            completedAt: item.completedAt?.toISOString?.() ?? null,
+            source,
+          },
+        ]
       : [];
   });
   const goals = (input.goals || []).flatMap((goal: any) => {
     const source = transcriptResultSource(
       goal.sourceJson,
       input.roomId,
-      transcriptJobId,
+      transcriptJobIds,
     );
     return source
-      ? [{
-          id: goal.id,
-          title: goal.title,
-          description: goal.description,
-          status: goal.status,
-          ownerUserId: goal.ownerUserId,
-          targetAt: goal.targetAt?.toISOString?.() ?? null,
-          achievedAt: goal.achievedAt?.toISOString?.() ?? null,
-          source,
-        }]
+      ? [
+          {
+            id: goal.id,
+            title: goal.title,
+            description: goal.description,
+            status: goal.status,
+            ownerUserId: goal.ownerUserId,
+            targetAt: goal.targetAt?.toISOString?.() ?? null,
+            achievedAt: goal.achievedAt?.toISOString?.() ?? null,
+            source,
+          },
+        ]
       : [];
   });
 

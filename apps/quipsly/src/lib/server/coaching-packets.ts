@@ -13,6 +13,18 @@ import {
 
 import { mobileCaptureTranscriptProcessingGate } from "@/lib/server/mobile-capture-processing-gates";
 import { buildTranscriptSourceAnchorFields } from "@/lib/server/transcript-source-span";
+import {
+  assembleSessionTranscriptProgramClock,
+  SessionTranscriptAssemblyError,
+} from "@/lib/server/session-transcript-assembly";
+import {
+  readSessionReviewedSourcePlacements,
+  SessionReviewedSourcePlacementError,
+} from "@/lib/server/session-reviewed-source-placement";
+import {
+  selectSessionTranscriptSources,
+  type SessionTranscriptSourceCandidate,
+} from "@/lib/server/session-transcript-source-selection";
 
 type BuildCoachingPacketArgs = {
   prisma: any;
@@ -53,10 +65,11 @@ export function packetCreatesOrdinarySessionWork(value: unknown) {
     !Array.isArray(source.packetBrief)
       ? (source.packetBrief as Record<string, unknown>)
       : {};
-  return source.reviewRequired === false || (
-    packetBrief.kind === "quipsly-transcript-packet-brief-v1" &&
-    packetBrief.candidateOnly === false &&
-    packetBrief.humanApprovalRequired === false
+  return (
+    source.reviewRequired === false ||
+    (packetBrief.kind === "quipsly-transcript-packet-brief-v1" &&
+      packetBrief.candidateOnly === false &&
+      packetBrief.humanApprovalRequired === false)
   );
 }
 
@@ -102,7 +115,13 @@ const REVIEW_LANE_DEFINITIONS = [
     meaning: "Commitments Quipsly turns into editable tasks or coaching goals.",
     pattern:
       /\b(goal|task|todo|to-do|commit|commitment|before next|for next|need to|should|will|finish|prepare)\b/i,
-    purposes: ["COACHING", "PODCAST", "RESEARCH_INTERVIEW", "INTERNAL_MEETING", "PERSONAL_NOTE"],
+    purposes: [
+      "COACHING",
+      "PODCAST",
+      "RESEARCH_INTERVIEW",
+      "INTERNAL_MEETING",
+      "PERSONAL_NOTE",
+    ],
   },
   {
     id: "next-session-prep",
@@ -111,7 +130,13 @@ const REVIEW_LANE_DEFINITIONS = [
       "Material that helps prepare the next coaching, podcast, or research session.",
     pattern:
       /\b(next session|next time|before we meet|bring back|follow up|prep|prepare|homework|review)\b/i,
-    purposes: ["COACHING", "PODCAST", "RESEARCH_INTERVIEW", "INTERNAL_MEETING", "PERSONAL_NOTE"],
+    purposes: [
+      "COACHING",
+      "PODCAST",
+      "RESEARCH_INTERVIEW",
+      "INTERNAL_MEETING",
+      "PERSONAL_NOTE",
+    ],
   },
   {
     id: "podcast-production",
@@ -233,6 +258,11 @@ export type PacketTranscriptSegment = {
     | "provider"
     | "unresolved";
   sourceBoundParticipantId: string | null;
+  transcriptJobId?: string;
+  recordingAssetId?: string;
+  sourceStartSeconds?: number;
+  sourceEndSeconds?: number;
+  programOffsetSeconds?: number;
 };
 
 export type PacketTranscriptEvidenceSpan = PacketTranscriptSegment & {
@@ -444,6 +474,250 @@ export function projectTranscriptJobSegmentsForPacket(
   );
 }
 
+export const SESSION_TRANSCRIPT_PACKET_SOURCE_SCHEMA =
+  "quipsly-session-transcript-packet-source-v1" as const;
+
+type PacketSourceCandidate = SessionTranscriptSourceCandidate & {
+  checksum: string | null;
+  localManifestJson: unknown;
+  transcriptJobs: any[];
+};
+
+export class SessionTranscriptPacketSourceError extends Error {
+  constructor(
+    message: string,
+    readonly errorCode: string,
+  ) {
+    super(message);
+    this.name = "SessionTranscriptPacketSourceError";
+  }
+}
+
+export type ResolvedSessionPacketTranscript = {
+  schema: typeof SESSION_TRANSCRIPT_PACKET_SOURCE_SCHEMA;
+  anchorTranscriptJobId: string;
+  multiSource: boolean;
+  sources: Array<{
+    transcriptJobId: string;
+    recordingAssetId: string;
+    participantId: string | null;
+    sourceSha256: string | null;
+    programOffsetSeconds: number;
+    timingAuthority: string;
+    timingUncertaintyMilliseconds: number | null;
+    timingReviewRequired: boolean;
+  }>;
+  programClock: ReturnType<typeof assembleSessionTranscriptProgramClock> | null;
+  projected: PacketTranscriptSegment[];
+};
+
+function packetObject(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function singleSourcePacketTranscript(
+  job: any,
+): ResolvedSessionPacketTranscript {
+  return {
+    schema: SESSION_TRANSCRIPT_PACKET_SOURCE_SCHEMA,
+    anchorTranscriptJobId: cleanText(job.id),
+    multiSource: false,
+    sources: [
+      {
+        transcriptJobId: cleanText(job.id),
+        recordingAssetId: cleanText(job.assetId || job.asset?.id),
+        participantId: cleanText(job.asset?.participantId) || null,
+        sourceSha256: cleanText(job.sourceSha256).toLowerCase() || null,
+        programOffsetSeconds: 0,
+        timingAuthority: "single-source-origin",
+        timingUncertaintyMilliseconds: null,
+        timingReviewRequired: false,
+      },
+    ],
+    programClock: null,
+    projected: projectTranscriptJobSegmentsForPacket(job),
+  };
+}
+
+/**
+ * Resolves the current coherent participant-owned take for packet generation.
+ * The packet stays a projection: every passage retains its own transcript job,
+ * recording master, source time, and reversible Session placement.
+ */
+export async function resolveSessionPacketTranscript(input: {
+  prisma: any;
+  anchorJob: any;
+}): Promise<ResolvedSessionPacketTranscript> {
+  const anchor = input.anchorJob;
+  const single = singleSourcePacketTranscript(anchor);
+  if (
+    !anchor?.roomId ||
+    typeof input.prisma?.recordingAsset?.findMany !== "function"
+  ) {
+    return single;
+  }
+
+  const rows = (await input.prisma.recordingAsset.findMany({
+    where: {
+      roomId: anchor.roomId,
+      status: "VERIFIED",
+      kind: { in: ["LOCAL_AUDIO", "LOCAL_VIDEO"] },
+      participantId: { not: null },
+      checksum: { not: null },
+      recordedStartedAt: { not: null },
+      transcriptJobs: { some: { status: "COMPLETED" } },
+    },
+    orderBy: [{ recordedStartedAt: "asc" }, { id: "asc" }],
+    include: {
+      transcriptJobs: {
+        where: { status: "COMPLETED" },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        take: 1,
+        include: {
+          speakerAttributions: {
+            where: { status: "active" },
+            orderBy: { updatedAt: "desc" },
+          },
+          segments: {
+            orderBy: TRANSCRIPT_PACKET_SEGMENT_ORDER_BY,
+            include: {
+              corrections: {
+                where: { status: "accepted" },
+                orderBy: { updatedAt: "desc" },
+              },
+              verifications: { orderBy: { createdAt: "desc" } },
+            },
+          },
+        },
+      },
+    },
+  })) as PacketSourceCandidate[];
+  const selected = selectSessionTranscriptSources({
+    rows,
+    anchorRecordingAssetId: cleanText(anchor.assetId || anchor.asset?.id),
+  }).filter((source): source is PacketSourceCandidate => Boolean(source));
+  if (selected.length < 2) return single;
+
+  const jobs = selected.map((source) => {
+    const job = source.transcriptJobs[0];
+    if (
+      !job ||
+      job.status !== "COMPLETED" ||
+      cleanText(job.assetId) !== cleanText(source.id) ||
+      cleanText(job.sourceSha256).toLowerCase() !==
+        cleanText(source.checksum).toLowerCase() ||
+      !sourceBoundTranscriptRouting(job) ||
+      cleanText(source.participantId) === ""
+    ) {
+      throw new SessionTranscriptPacketSourceError(
+        "A participant transcript no longer matches its verified source recording.",
+        "SESSION_TRANSCRIPT_SOURCE_CHANGED",
+      );
+    }
+    return { ...job, asset: source };
+  });
+  const gates = await Promise.all(
+    selected.map((source) =>
+      mobileCaptureTranscriptProcessingGate({
+        prisma: input.prisma,
+        recordingAsset: source,
+      }),
+    ),
+  );
+  const held = gates.find((gate) => !gate.allowed);
+  if (held && !held.allowed) {
+    throw new SessionTranscriptPacketSourceError(
+      held.error ||
+        "A participant transcript is not released for follow-through.",
+      held.errorCode || "SESSION_TRANSCRIPT_SOURCE_HELD",
+    );
+  }
+
+  let reviewedPlacements = [] as Awaited<
+    ReturnType<typeof readSessionReviewedSourcePlacements>
+  >;
+  if (typeof input.prisma?.sessionAudioAlignmentJob?.findMany === "function") {
+    try {
+      reviewedPlacements = await readSessionReviewedSourcePlacements({
+        prisma: input.prisma,
+        roomId: anchor.roomId,
+        recordingAssetIds: selected.map((source) => source.id),
+      });
+    } catch (error) {
+      if (error instanceof SessionReviewedSourcePlacementError) {
+        throw new SessionTranscriptPacketSourceError(error.message, error.code);
+      }
+      throw error;
+    }
+  }
+  let programClock: ReturnType<typeof assembleSessionTranscriptProgramClock>;
+  try {
+    programClock = assembleSessionTranscriptProgramClock(
+      selected.map((source) => {
+        const manifest = packetObject(source.localManifestJson);
+        return {
+          recordingAssetId: source.id,
+          transcriptJobId: source.transcriptJobs[0]!.id,
+          captureGroupId: cleanText(manifest.captureGroupId) || null,
+          recordedStartedAt: source.recordedStartedAt,
+          alignment: manifest.alignment,
+        };
+      }),
+      { reviewedPlacements },
+    );
+  } catch (error) {
+    if (error instanceof SessionTranscriptAssemblyError) {
+      throw new SessionTranscriptPacketSourceError(error.message, error.code);
+    }
+    throw error;
+  }
+  const timingByRecordingId = new Map(
+    programClock.sources.map((source) => [source.recordingAssetId, source]),
+  );
+  const sources = selected.map((source, index) => {
+    const timing = timingByRecordingId.get(source.id)!;
+    return {
+      transcriptJobId: jobs[index]!.id,
+      recordingAssetId: source.id,
+      participantId: source.participantId,
+      sourceSha256: cleanText(jobs[index]!.sourceSha256).toLowerCase() || null,
+      programOffsetSeconds: timing.programOffsetSeconds,
+      timingAuthority: timing.timingAuthority,
+      timingUncertaintyMilliseconds: timing.timingUncertaintyMilliseconds,
+      timingReviewRequired: timing.timingReviewRequired,
+    };
+  });
+  const projected = jobs
+    .flatMap((job, index) => {
+      const source = sources[index]!;
+      return projectTranscriptJobSegmentsForPacket(job).map((segment) => ({
+        ...segment,
+        transcriptJobId: source.transcriptJobId,
+        recordingAssetId: source.recordingAssetId,
+        sourceStartSeconds: segment.startSeconds,
+        sourceEndSeconds: segment.endSeconds,
+        programOffsetSeconds: source.programOffsetSeconds,
+        startSeconds: source.programOffsetSeconds + segment.startSeconds,
+        endSeconds: source.programOffsetSeconds + segment.endSeconds,
+      }));
+    })
+    .sort(
+      (left, right) =>
+        left.startSeconds - right.startSeconds ||
+        left.id.localeCompare(right.id),
+    );
+  return {
+    schema: SESSION_TRANSCRIPT_PACKET_SOURCE_SCHEMA,
+    anchorTranscriptJobId: cleanText(anchor.id),
+    multiSource: true,
+    sources,
+    programClock,
+    projected,
+  };
+}
+
 const MAX_PACKET_SPAN_SEGMENTS = 6;
 const MAX_PACKET_SPAN_DURATION_SECONDS = 45;
 const MAX_PACKET_SPAN_TEXT_LENGTH = 1_600;
@@ -455,6 +729,12 @@ function shouldContinuePacketSpan(
 ) {
   const last = current.at(-1);
   if (!last || current.length >= MAX_PACKET_SPAN_SEGMENTS) return false;
+  if (
+    (last.transcriptJobId || next.transcriptJobId) &&
+    (last.transcriptJobId !== next.transcriptJobId ||
+      last.recordingAssetId !== next.recordingAssetId)
+  )
+    return false;
   const currentSpeaker = cleanText(last.speakerLabel);
   const nextSpeaker = cleanText(next.speakerLabel);
   if (currentSpeaker && nextSpeaker && currentSpeaker !== nextSpeaker)
@@ -505,6 +785,12 @@ function packetEvidenceSpan(
     evidenceSegments: segments,
     speakerLabel: speakerLabels.length === 1 ? speakerLabels[0]! : null,
     endSeconds: last.endSeconds,
+    ...(typeof first.sourceStartSeconds === "number"
+      ? {
+          sourceStartSeconds: first.sourceStartSeconds,
+          sourceEndSeconds: last.sourceEndSeconds ?? last.endSeconds,
+        }
+      : {}),
     text,
     confidence: confidences.length
       ? confidences.reduce((sum, value) => sum + value, 0) / confidences.length
@@ -603,8 +889,20 @@ export function transcriptPacketSnapshot(
     sourceBoundSpeakerLabel,
     sourceBoundParticipantId,
   );
+  return transcriptPacketSnapshotFromProjected(projected);
+}
+
+export function transcriptPacketSnapshotFromProjected(
+  projected: PacketTranscriptSegment[],
+) {
   const segmentReviews = projected.map((segment) => ({
     segmentId: segment.id,
+    ...(segment.transcriptJobId
+      ? { transcriptJobId: segment.transcriptJobId }
+      : {}),
+    ...(segment.recordingAssetId
+      ? { recordingAssetId: segment.recordingAssetId }
+      : {}),
     providerTextSha256: segment.providerTextSha256,
     resolvedTextSha256: packetSha256(segment.text),
     resolvedSpeakerLabel: segment.speakerLabel,
@@ -616,6 +914,12 @@ export function transcriptPacketSnapshot(
     reviewStatus: segment.reviewStatus,
     startSeconds: segment.startSeconds,
     endSeconds: segment.endSeconds,
+    ...(typeof segment.sourceStartSeconds === "number"
+      ? {
+          sourceStartSeconds: segment.sourceStartSeconds,
+          sourceEndSeconds: segment.sourceEndSeconds,
+        }
+      : {}),
   }));
   const sha256 = packetSha256(JSON.stringify(segmentReviews));
   return {
@@ -683,6 +987,19 @@ export function packetSnapshotMatchesTranscriptJob(
     job?.speakerAttributions,
     sourceBoundTranscriptSpeakerLabel(job),
     sourceBoundTranscriptParticipantId(job),
+  );
+}
+
+export function packetSnapshotMatchesResolvedSession(
+  sourceJson: unknown,
+  resolved: ResolvedSessionPacketTranscript,
+) {
+  const source = packetObject(sourceJson);
+  const snapshot = packetObject(source.transcriptSnapshot);
+  const current = transcriptPacketSnapshotFromProjected(resolved.projected);
+  return (
+    snapshot.schema === TRANSCRIPT_PACKET_SNAPSHOT_SCHEMA &&
+    snapshot.sha256 === current.sha256
   );
 }
 
@@ -792,6 +1109,23 @@ function actionTitle(segment: any) {
     : clipped || "Review this follow-up";
 }
 
+function sourceClockSegments(segment: any) {
+  const evidenceSegments = Array.isArray(segment.evidenceSegments)
+    ? segment.evidenceSegments
+    : [segment];
+  return evidenceSegments.map((evidence: any) => ({
+    ...evidence,
+    startSeconds:
+      typeof evidence.sourceStartSeconds === "number"
+        ? evidence.sourceStartSeconds
+        : evidence.startSeconds,
+    endSeconds:
+      typeof evidence.sourceEndSeconds === "number"
+        ? evidence.sourceEndSeconds
+        : evidence.endSeconds,
+  }));
+}
+
 function transcriptActionCandidate(input: {
   segment: any;
   transcriptJobId: string;
@@ -802,9 +1136,7 @@ function transcriptActionCandidate(input: {
 }): TranscriptActionCandidate {
   const segmentId = String(input.segment.id);
   const sourceAnchor = buildTranscriptSourceAnchorFields(
-    Array.isArray(input.segment.evidenceSegments)
-      ? input.segment.evidenceSegments
-      : [input.segment],
+    sourceClockSegments(input.segment),
   );
   return createTranscriptActionCandidate({
     id: `${TRANSCRIPT_ACTION_CANDIDATE_KIND}:${input.transcriptJobId}:${segmentId}`,
@@ -829,8 +1161,14 @@ function transcriptActionCandidate(input: {
         : "provider",
     speakerLabel: cleanText(input.segment.speakerLabel) || null,
     speakerAuthority: input.segment.speakerAuthority,
-    startSeconds: Number(input.segment.startSeconds) || 0,
-    endSeconds: Number(input.segment.endSeconds) || 0,
+    startSeconds:
+      typeof input.segment.sourceStartSeconds === "number"
+        ? input.segment.sourceStartSeconds
+        : Number(input.segment.startSeconds) || 0,
+    endSeconds:
+      typeof input.segment.sourceEndSeconds === "number"
+        ? input.segment.sourceEndSeconds
+        : Number(input.segment.endSeconds) || 0,
     committedActionItemId: input.committedActionItemId,
   });
 }
@@ -1055,11 +1393,12 @@ function summarizeSegments(
   const populatedSections = brief.sections.filter(
     (section) => section.items.length > 0,
   );
-  const introduction = purpose === "PODCAST"
-    ? "Here are the production notes and follow-through Quipsly found in this episode."
-    : purpose === "COACHING"
-      ? "Here are the key moments and follow-through Quipsly found in this coaching session."
-      : "Here are the key moments and follow-through Quipsly found in this session.";
+  const introduction =
+    purpose === "PODCAST"
+      ? "Here are the production notes and follow-through Quipsly found in this episode."
+      : purpose === "COACHING"
+        ? "Here are the key moments and follow-through Quipsly found in this coaching session."
+        : "Here are the key moments and follow-through Quipsly found in this session.";
 
   return [
     introduction,
@@ -1155,7 +1494,26 @@ export async function buildCoachingPacketFromTranscriptJob(
     };
   }
 
-  if (!job.segments.length) {
+  let resolvedTranscript: ResolvedSessionPacketTranscript;
+  try {
+    resolvedTranscript = await resolveSessionPacketTranscript({
+      prisma: args.prisma,
+      anchorJob: job,
+    });
+  } catch (error) {
+    if (error instanceof SessionTranscriptPacketSourceError) {
+      return {
+        ok: false,
+        status: 409,
+        errorCode: error.errorCode,
+        error: error.message,
+        explicitReleaseRequired: true,
+      };
+    }
+    throw error;
+  }
+
+  if (!resolvedTranscript.projected.length) {
     return {
       ok: false,
       status: 409,
@@ -1163,8 +1521,10 @@ export async function buildCoachingPacketFromTranscriptJob(
     };
   }
 
-  const transcriptSnapshot = transcriptJobPacketSnapshot(job);
-  const packetSegments = transcriptSnapshot.projected;
+  const transcriptSnapshot = transcriptPacketSnapshotFromProjected(
+    resolvedTranscript.projected,
+  );
+  const packetSegments = resolvedTranscript.projected;
   const { projected: _projected, ...transcriptSnapshotEvidence } =
     transcriptSnapshot;
 
@@ -1186,7 +1546,10 @@ export async function buildCoachingPacketFromTranscriptJob(
     !args.force &&
     packetCreatesOrdinarySessionWork(existing.sourceJson) &&
     packetTemplateMatches(existing.sourceJson) &&
-    packetSnapshotMatchesTranscriptJob(existing.sourceJson, job)
+    packetSnapshotMatchesResolvedSession(
+      existing.sourceJson,
+      resolvedTranscript,
+    )
   ) {
     const existingSource =
       typeof existing.sourceJson === "object" && existing.sourceJson !== null
@@ -1223,6 +1586,7 @@ export async function buildCoachingPacketFromTranscriptJob(
       transcriptSnapshotSha256: transcriptSnapshot.sha256,
       humanReviewedSegmentCount: transcriptSnapshot.humanReviewedSegmentCount,
       providerOnlySegmentCount: transcriptSnapshot.providerOnlySegmentCount,
+      transcriptSourceCount: resolvedTranscript.sources.length,
     };
   }
 
@@ -1246,7 +1610,16 @@ export async function buildCoachingPacketFromTranscriptJob(
     transcriptJobId: job.id,
     recordingAssetId: job.assetId,
     roomId: job.roomId,
-    provider: job.provider,
+    provider: resolvedTranscript.multiSource
+      ? "session-source-projection"
+      : job.provider,
+    transcriptSources: resolvedTranscript.sources,
+    transcriptAssembly: {
+      schema: resolvedTranscript.schema,
+      multiSource: resolvedTranscript.multiSource,
+      sourceCount: resolvedTranscript.sources.length,
+      programClock: resolvedTranscript.programClock,
+    },
     packetPurpose: purpose,
     packetTemplateVersion: SESSION_PACKET_TEMPLATE_VERSION,
     generatedAt: new Date().toISOString(),
@@ -1279,21 +1652,35 @@ export async function buildCoachingPacketFromTranscriptJob(
     (segment: any) => !GOAL_PATTERN.test(cleanText(segment.text)),
   );
   const actionCandidates: TranscriptActionCandidate[] = taskSegments.map(
-    (segment: any) =>
-      transcriptActionCandidate({
+    (segment: any) => {
+      const sourceTranscriptJobId =
+        cleanText(segment.transcriptJobId) || job.id;
+      const sourceRecordingAssetId =
+        cleanText(segment.recordingAssetId) || job.assetId;
+      return transcriptActionCandidate({
         segment,
-        transcriptJobId: job.id,
-        recordingAssetId: job.assetId,
+        transcriptJobId: sourceTranscriptJobId,
+        recordingAssetId: sourceRecordingAssetId,
         roomId: job.roomId,
         packetBuildId,
-        committedActionItemId: packetWorkId("task", job.id, String(segment.id)),
-      }),
+        committedActionItemId: packetWorkId(
+          "task",
+          sourceTranscriptJobId,
+          String(segment.id),
+        ),
+      });
+    },
   );
-  const goalOutputs = goalSegments.map((segment: any) => ({
-    id: packetWorkId("goal", job.id, String(segment.id)),
-    segment,
-    title: actionTitle(segment),
-  }));
+  const goalOutputs = goalSegments.map((segment: any) => {
+    const sourceTranscriptJobId = cleanText(segment.transcriptJobId) || job.id;
+    return {
+      id: packetWorkId("goal", sourceTranscriptJobId, String(segment.id)),
+      segment,
+      transcriptJobId: sourceTranscriptJobId,
+      recordingAssetId: cleanText(segment.recordingAssetId) || job.assetId,
+      title: actionTitle(segment),
+    };
+  });
 
   const summaryNote = await args.prisma.coachingNote.create({
     data: {
@@ -1320,6 +1707,8 @@ export async function buildCoachingPacketFromTranscriptJob(
           "Quipsly created editable follow-through in the Session. Source timing remains visible and every item can be changed or removed.",
         goalOutputs: goalOutputs.map((goal) => ({
           id: goal.id,
+          transcriptJobId: goal.transcriptJobId,
+          recordingAssetId: goal.recordingAssetId,
           segmentId: String(goal.segment.id),
           title: goal.title,
         })),
@@ -1334,6 +1723,12 @@ export async function buildCoachingPacketFromTranscriptJob(
     null;
   const actionItems = [];
   for (const candidate of actionCandidates) {
+    const programSegment = packetSegments.find(
+      (segment) =>
+        segment.id === candidate.segmentId &&
+        (cleanText(segment.transcriptJobId) || job.id) ===
+          candidate.transcriptJobId,
+    );
     const sourceJson = {
       schema: "quipsly-transcript-follow-through-v1",
       origin: "quipsly-session-follow-through",
@@ -1341,8 +1736,8 @@ export async function buildCoachingPacketFromTranscriptJob(
       editableAfterCreation: true,
       removableInProduct: true,
       sourceProvenanceVisible: true,
-      transcriptJobId: job.id,
-      recordingAssetId: job.assetId,
+      transcriptJobId: candidate.transcriptJobId,
+      recordingAssetId: candidate.recordingAssetId,
       roomId: job.roomId,
       packetBuildId,
       packetSummaryNoteId: summaryNote.id,
@@ -1353,6 +1748,11 @@ export async function buildCoachingPacketFromTranscriptJob(
       sourceSpan: candidate.sourceSpan,
       startSeconds: candidate.startSeconds,
       endSeconds: candidate.endSeconds,
+      sourceStartSeconds: candidate.startSeconds,
+      sourceEndSeconds: candidate.endSeconds,
+      programStartSeconds:
+        programSegment?.startSeconds ?? candidate.startSeconds,
+      programEndSeconds: programSegment?.endSeconds ?? candidate.endSeconds,
       speakerLabel: candidate.speakerLabel,
       visibility: "engagement-shared",
       externalSideEffects: false,
@@ -1384,9 +1784,7 @@ export async function buildCoachingPacketFromTranscriptJob(
   if (defaultOwnerUserId) {
     for (const output of goalOutputs) {
       const sourceAnchor = buildTranscriptSourceAnchorFields(
-        Array.isArray(output.segment.evidenceSegments)
-          ? output.segment.evidenceSegments
-          : [output.segment],
+        sourceClockSegments(output.segment),
       );
       const existing = await args.prisma.goal.findUnique({
         where: { id: output.id },
@@ -1411,8 +1809,8 @@ export async function buildCoachingPacketFromTranscriptJob(
               editableAfterCreation: true,
               removableInProduct: true,
               sourceProvenanceVisible: true,
-              transcriptJobId: job.id,
-              recordingAssetId: job.assetId,
+              transcriptJobId: output.transcriptJobId,
+              recordingAssetId: output.recordingAssetId,
               roomId: job.roomId,
               packetBuildId,
               packetSummaryNoteId: summaryNote.id,
@@ -1420,8 +1818,18 @@ export async function buildCoachingPacketFromTranscriptJob(
               segmentIds: output.segment.segmentIds,
               sourceTextSha256: output.segment.sourceTextSha256,
               sourceSpan: sourceAnchor?.sourceSpan ?? null,
-              startSeconds: output.segment.startSeconds,
-              endSeconds: output.segment.endSeconds,
+              startSeconds:
+                output.segment.sourceStartSeconds ??
+                output.segment.startSeconds,
+              endSeconds:
+                output.segment.sourceEndSeconds ?? output.segment.endSeconds,
+              sourceStartSeconds:
+                output.segment.sourceStartSeconds ??
+                output.segment.startSeconds,
+              sourceEndSeconds:
+                output.segment.sourceEndSeconds ?? output.segment.endSeconds,
+              programStartSeconds: output.segment.startSeconds,
+              programEndSeconds: output.segment.endSeconds,
               speakerLabel: output.segment.speakerLabel,
               visibility: "engagement-shared",
               externalSideEffects: false,
@@ -1446,6 +1854,8 @@ export async function buildCoachingPacketFromTranscriptJob(
         body: segmentLine(segment),
         sourceJson: {
           ...sourceJson,
+          transcriptJobId: cleanText(segment.transcriptJobId) || job.id,
+          recordingAssetId: cleanText(segment.recordingAssetId) || job.assetId,
           segmentId: segment.id,
           segmentIds: Array.isArray(segment.segmentIds)
             ? segment.segmentIds
@@ -1453,8 +1863,13 @@ export async function buildCoachingPacketFromTranscriptJob(
           sourceTextSha256:
             cleanText(segment.sourceTextSha256) ||
             packetSha256(cleanText(segment.text)),
-          startSeconds: segment.startSeconds,
-          endSeconds: segment.endSeconds,
+          startSeconds: segment.sourceStartSeconds ?? segment.startSeconds,
+          endSeconds: segment.sourceEndSeconds ?? segment.endSeconds,
+          sourceStartSeconds:
+            segment.sourceStartSeconds ?? segment.startSeconds,
+          sourceEndSeconds: segment.sourceEndSeconds ?? segment.endSeconds,
+          programStartSeconds: segment.startSeconds,
+          programEndSeconds: segment.endSeconds,
           speakerLabel: segment.speakerLabel,
         },
       },
@@ -1487,5 +1902,6 @@ export async function buildCoachingPacketFromTranscriptJob(
     transcriptSnapshotSha256: transcriptSnapshot.sha256,
     humanReviewedSegmentCount: transcriptSnapshot.humanReviewedSegmentCount,
     providerOnlySegmentCount: transcriptSnapshot.providerOnlySegmentCount,
+    transcriptSourceCount: resolvedTranscript.sources.length,
   };
 }

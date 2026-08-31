@@ -398,6 +398,44 @@ describe("transcript coaching follow-through", () => {
     });
   });
 
+  it("keeps a joined thought's complete protected-source span separate from its Session clock", () => {
+    const sourceProjected = projectTranscriptSegmentsForPacket([
+      {
+        id: "source-segment-1",
+        speakerLabel: "Client",
+        startSeconds: 2,
+        endSeconds: 4,
+        text: "My goal is to pause and",
+      },
+      {
+        id: "source-segment-2",
+        speakerLabel: "Client",
+        startSeconds: 4,
+        endSeconds: 7,
+        text: "breathe before answering.",
+      },
+    ]).map((segment) => ({
+      ...segment,
+      transcriptJobId: "transcript-client",
+      recordingAssetId: "asset-client",
+      sourceStartSeconds: segment.startSeconds,
+      sourceEndSeconds: segment.endSeconds,
+      programOffsetSeconds: 0.75,
+      startSeconds: segment.startSeconds + 0.75,
+      endSeconds: segment.endSeconds + 0.75,
+    }));
+
+    expect(buildTranscriptEvidenceSpans(sourceProjected)).toEqual([
+      expect.objectContaining({
+        segmentIds: ["source-segment-1", "source-segment-2"],
+        startSeconds: 2.75,
+        endSeconds: 7.75,
+        sourceStartSeconds: 2,
+        sourceEndSeconds: 7,
+      }),
+    ]);
+  });
+
   it("keeps coaching and podcast review lanes purpose-specific", () => {
     const coaching = reviewLaneDefinitionsForPurpose("COACHING").map(
       (lane) => lane.id,
@@ -934,7 +972,9 @@ describe("transcript coaching follow-through", () => {
       transcriptJobId: job.id,
       authorUserId: "coach-1",
     })) as any;
-    expect(packetCreatesOrdinarySessionWork(latestSummary.sourceJson)).toBe(true);
+    expect(packetCreatesOrdinarySessionWork(latestSummary.sourceJson)).toBe(
+      true,
+    );
 
     latestSummary.sourceJson = {
       ...latestSummary.sourceJson,
@@ -945,7 +985,9 @@ describe("transcript coaching follow-through", () => {
         humanApprovalRequired: true,
       },
     };
-    expect(packetCreatesOrdinarySessionWork(latestSummary.sourceJson)).toBe(false);
+    expect(packetCreatesOrdinarySessionWork(latestSummary.sourceJson)).toBe(
+      false,
+    );
 
     const upgraded = (await buildCoachingPacketFromTranscriptJob({
       prisma,
@@ -958,7 +1000,9 @@ describe("transcript coaching follow-through", () => {
     });
     expect(upgraded.packetBuildId).not.toBe(first.packetBuildId);
     expect(summaries).toHaveLength(2);
-    expect(packetCreatesOrdinarySessionWork(summaries[1].sourceJson)).toBe(true);
+    expect(packetCreatesOrdinarySessionWork(summaries[1].sourceJson)).toBe(
+      true,
+    );
   });
 
   it("reuses an identical snapshot but automatically versions the packet after transcript review changes", async () => {
@@ -1033,6 +1077,265 @@ describe("transcript coaching follow-through", () => {
     expect(summaries[1].sourceJson.transcriptReviewCoverage).toMatchObject({
       humanReviewedSegmentCount: 1,
       providerOnlySegmentCount: 1,
+    });
+  });
+
+  it("builds one editable follow-through packet from both participant-owned masters and rebuilds after either transcript changes", async () => {
+    const coachJob = {
+      id: "transcript-coach",
+      assetId: "asset-coach",
+      sourceSha256: "a".repeat(64),
+      provider: "ios-device-speech",
+      status: "COMPLETED",
+      createdAt: new Date("2026-08-30T14:02:00.000Z"),
+      resultJson: {
+        processingControl: {
+          routing: {
+            schema: "quipsly-transcript-routing-summary-v1",
+            sourceTopology: "participant-isolated",
+            participantLabel: "Coach",
+            speakerAuthority: "source-binding",
+          },
+        },
+      },
+      speakerAttributions: [],
+      segments: [
+        {
+          id: "segment-coach-task",
+          speakerLabel: null,
+          startSeconds: 0,
+          endSeconds: 4,
+          text: "I will send the reflection prompt this afternoon.",
+          confidence: 0.97,
+          corrections: [],
+          verifications: [],
+        },
+      ],
+    };
+    const clientJob = {
+      id: "transcript-client",
+      assetId: "asset-client",
+      sourceSha256: "b".repeat(64),
+      provider: "ios-device-speech",
+      status: "COMPLETED",
+      createdAt: new Date("2026-08-30T14:02:01.000Z"),
+      resultJson: {
+        processingControl: {
+          routing: {
+            schema: "quipsly-transcript-routing-summary-v1",
+            sourceTopology: "participant-isolated",
+            participantLabel: "Client",
+            speakerAuthority: "source-binding",
+          },
+        },
+      },
+      speakerAttributions: [],
+      segments: [
+        {
+          id: "segment-client-goal",
+          speakerLabel: null,
+          startSeconds: 1,
+          endSeconds: 5,
+          text: "My goal is to pause before answering one difficult question.",
+          confidence: 0.95,
+          corrections: [],
+          verifications: [],
+        },
+      ],
+    };
+    const clientSource = {
+      id: "asset-client",
+      roomId: "room-1",
+      participantId: "participant-client",
+      kind: "LOCAL_AUDIO",
+      status: "VERIFIED",
+      checksum: "b".repeat(64),
+      recordedStartedAt: new Date("2026-08-30T14:00:00.250Z"),
+      localManifestJson: { captureGroupId: "capture-group-1" },
+      transcriptJobs: [clientJob],
+    };
+    const coachSource = {
+      id: "asset-coach",
+      roomId: "room-1",
+      participantId: "participant-coach",
+      kind: "LOCAL_AUDIO",
+      status: "VERIFIED",
+      checksum: "a".repeat(64),
+      recordedStartedAt: new Date("2026-08-30T14:00:01.000Z"),
+      localManifestJson: { captureGroupId: "capture-group-1" },
+      transcriptJobs: [coachJob],
+    };
+    const room = {
+      title: "Weekly coaching Session",
+      bookingId: "booking-1",
+      purpose: "COACHING",
+      booking: { id: "booking-1" },
+      projectId: "project-1",
+      coachingEngagementId: "engagement-1",
+      coachingEngagement: { primaryClientUserId: "client-1" },
+    };
+    const anchor = {
+      ...coachJob,
+      roomId: "room-1",
+      room,
+      asset: { ...coachSource, transcriptJobs: undefined },
+    };
+    const summaries: any[] = [];
+    let latestSummary: any = null;
+    const coachingNoteCreate = jest.fn(async ({ data }: any) => {
+      const note = {
+        id:
+          data.kind === "SUMMARY"
+            ? `summary-${summaries.length + 1}`
+            : `highlight-${summaries.length + 1}-${data.sourceJson.segmentId}`,
+        ...data,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+      if (data.kind === "SUMMARY") {
+        latestSummary = { ...note, actionItems: [] };
+        summaries.push(latestSummary);
+      }
+      return note;
+    });
+    const work = automaticWorkStores();
+    const prisma = {
+      transcriptJob: { findUnique: jest.fn(async () => anchor) },
+      recordingAsset: {
+        findMany: jest.fn(async () => [clientSource, coachSource]),
+      },
+      coachingNote: {
+        findFirst: jest.fn(async () => latestSummary),
+        create: coachingNoteCreate,
+      },
+      ...work,
+    };
+
+    const first = (await buildCoachingPacketFromTranscriptJob({
+      prisma,
+      transcriptJobId: coachJob.id,
+      authorUserId: "coach-1",
+    })) as any;
+    const replay = (await buildCoachingPacketFromTranscriptJob({
+      prisma,
+      transcriptJobId: coachJob.id,
+      authorUserId: "coach-1",
+    })) as any;
+
+    expect(first).toMatchObject({
+      ok: true,
+      transcriptSourceCount: 2,
+      actionItemCount: 1,
+      goalCount: 1,
+    });
+    expect(replay).toMatchObject({
+      reusedExistingPacket: true,
+      packetBuildId: first.packetBuildId,
+      transcriptSourceCount: 2,
+    });
+    expect(summaries).toHaveLength(1);
+    expect(summaries[0].body).toContain("Coach");
+    expect(summaries[0].body).toContain("Client");
+    expect(summaries[0].sourceJson).toMatchObject({
+      provider: "session-source-projection",
+      transcriptAssembly: {
+        multiSource: true,
+        sourceCount: 2,
+        programClock: {
+          authority: "reported-wall-clock-fallback",
+          waveformReviewRequired: true,
+        },
+      },
+      transcriptSources: expect.arrayContaining([
+        expect.objectContaining({
+          transcriptJobId: "transcript-coach",
+          recordingAssetId: "asset-coach",
+          programOffsetSeconds: 0.75,
+        }),
+        expect.objectContaining({
+          transcriptJobId: "transcript-client",
+          recordingAssetId: "asset-client",
+          programOffsetSeconds: 0,
+        }),
+      ]),
+      transcriptSnapshot: {
+        segmentReviews: expect.arrayContaining([
+          expect.objectContaining({
+            transcriptJobId: "transcript-coach",
+            recordingAssetId: "asset-coach",
+            sourceStartSeconds: 0,
+            startSeconds: 0.75,
+          }),
+          expect.objectContaining({
+            transcriptJobId: "transcript-client",
+            recordingAssetId: "asset-client",
+            sourceStartSeconds: 1,
+            startSeconds: 1,
+          }),
+        ]),
+      },
+    });
+    expect(work.actionItem.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        sourceJson: expect.objectContaining({
+          transcriptJobId: "transcript-coach",
+          recordingAssetId: "asset-coach",
+          startSeconds: 0,
+          sourceStartSeconds: 0,
+          programStartSeconds: 0.75,
+        }),
+      }),
+    });
+    expect(work.goal.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        sourceJson: expect.objectContaining({
+          transcriptJobId: "transcript-client",
+          recordingAssetId: "asset-client",
+          startSeconds: 1,
+          sourceStartSeconds: 1,
+          programStartSeconds: 1,
+        }),
+      }),
+    });
+
+    const provider = clientJob.segments[0];
+    (provider as any).corrections = [
+      {
+        id: "client-correction-1",
+        status: "accepted",
+        baseTextSha256: createHash("sha256")
+          .update(provider.text)
+          .digest("hex"),
+        expectedSpeakerLabel: provider.speakerLabel,
+        correctedText:
+          "My goal is to pause and breathe before answering one difficult question.",
+        correctedSpeakerLabel: null,
+        updatedAt: new Date("2026-08-30T14:10:00.000Z"),
+      },
+    ];
+    const rebuilt = (await buildCoachingPacketFromTranscriptJob({
+      prisma,
+      transcriptJobId: coachJob.id,
+      authorUserId: "coach-1",
+    })) as any;
+
+    expect(rebuilt).toMatchObject({
+      reusedExistingPacket: false,
+      rebuiltForTranscriptReviewChange: true,
+      transcriptSourceCount: 2,
+    });
+    expect(rebuilt.packetBuildId).not.toBe(first.packetBuildId);
+    expect(summaries).toHaveLength(2);
+    expect(summaries[1].body).toContain(
+      "My goal is to pause and breathe before answering one difficult question.",
+    );
+    expect(
+      summaries[1].sourceJson.transcriptSnapshot.segmentReviews.find(
+        (segment: any) => segment.transcriptJobId === "transcript-client",
+      ),
+    ).toMatchObject({
+      acceptedCorrectionId: "client-correction-1",
+      reviewStatus: "human-reviewed",
     });
   });
 });

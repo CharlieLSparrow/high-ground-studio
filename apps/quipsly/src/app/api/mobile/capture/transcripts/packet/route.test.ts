@@ -95,6 +95,7 @@ describe("automatic packet projections", () => {
       transcriptJobId: "job-1",
     };
     expect(isAutomaticTranscriptWorkForJob(source, "job-1")).toBe(true);
+    expect(isAutomaticTranscriptWorkForJob(source, ["job-anchor", "job-1"])).toBe(true);
     expect(isAutomaticTranscriptWorkForJob(source, "job-2")).toBe(false);
     expect(isAutomaticTranscriptWorkForJob({ ...source, origin: "other" }, "job-1")).toBe(false);
   });
