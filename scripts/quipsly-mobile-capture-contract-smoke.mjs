@@ -761,11 +761,15 @@ function checkMeetingSpineContractSources() {
     "nativeCoachingEngagementContinuity",
     "Native Capture decodes writable Coaching Engagements, binds new coaching Sessions to the exact engagement and Nest, attaches the active relationship participants with requested consent receipts, preserves the identity offline, and exposes the private collaboration space.",
   );
+  const collaborationSurfaceIndex = captureRecorderViewText.indexOf(
+    "sessionCollaborationSurface(session)",
+  );
   expect(
     captureRecorderViewText.indexOf("ProviderRoomControls(") >= 0
-      && captureRecorderViewText.indexOf("CaptureQuickEntryBar(") > captureRecorderViewText.indexOf("ProviderRoomControls(")
-      && captureRecorderViewText.indexOf("MobileSessionConversationCard(") > captureRecorderViewText.indexOf("CaptureQuickEntryBar(")
-      && captureRecorderViewText.indexOf("ConsentStrip(") > captureRecorderViewText.indexOf("MobileSessionConversationCard(")
+      && collaborationSurfaceIndex > captureRecorderViewText.indexOf("ProviderRoomControls(")
+      && collaborationSurfaceIndex < captureRecorderViewText.indexOf("ConsentStrip(")
+      && captureRecorderViewText.includes("CaptureQuickEntryBar(")
+      && captureRecorderViewText.includes("MobileSessionConversationCard(")
       && captureRecorderViewText.indexOf("RecorderHero(") > captureRecorderViewText.indexOf("ConsentStrip(")
       && captureRecorderViewText.indexOf("CaptureSessionTranscriptReviewCard(") > captureRecorderViewText.indexOf("RecorderHero(")
       && captureRecorderViewText.indexOf("CaptureSessionResultsCard(") > captureRecorderViewText.indexOf("CaptureSessionTranscriptReviewCard("),
@@ -1611,7 +1615,8 @@ function checkTranscriptCorrectionContractSources() {
       && nativeText.includes("Adds this source to the selected note. Its previous version stays recoverable.")
       && !nativeText.includes("CapturePacketNoteDeferButton_")
       && captureUITestText.includes("testOptionalTranscriptIdeaCanBeAddedOrAdjustedWithoutPaperwork")
-      && captureUITestText.includes("CapturePacketNoteDecisionBoundary")
+      && captureUITestText.includes("CapturePacketNoteBoundary")
+      && captureUITestText.includes("CapturePacketNoteSourceButton_")
       && runtimeUITestText.includes("expectedPacketNoteLaneID"),
     "nativePacketNoteOptionalIdeaFlow",
     "Capture keeps exact-source transcript ideas optional and offers ordinary add, adjust, merge, or dismiss actions while preserving recoverable note revisions and retry receipts.",
@@ -2534,7 +2539,7 @@ function checkUnifiedNestOperatingShellSources() {
       && libraryModelText.includes("promotedCaptureMediaDeduplicated: true")
       && libraryModelText.includes("localPhoneRecordingsRemainDeviceOwned: true")
       && libraryPageText.includes("Start with your voice on iPhone, keep writing here")
-      && libraryPageText.includes("Private to you in")
+      && libraryPageText.includes("continue the same private writing on either device")
       && libraryPageText.includes("OR: [{ visibility: \"project\" }, { createdByUserId: userId }]")
       && researchPageText.includes("snapshot.sources.some((source) => source.id === requestedSourceId)")
       && !calendarPageText.includes("Real rooms, grouped by current status"),

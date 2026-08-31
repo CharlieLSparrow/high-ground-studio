@@ -2689,10 +2689,27 @@ struct MobileCapturePacketLaneHumanReview: Codable, Hashable {
 }
 
 struct MobileCaptureTranscriptResultSource: Codable, Hashable {
+    let transcriptJobId: String?
+    let recordingAssetId: String?
     let segmentId: String?
     let startSeconds: Double?
     let endSeconds: Double?
+    let sourceStartSeconds: Double?
+    let sourceEndSeconds: Double?
+    let programStartSeconds: Double?
+    let programEndSeconds: Double?
     let speakerLabel: String?
+
+    var effectiveSourceStartSeconds: Double? { sourceStartSeconds ?? startSeconds }
+    var effectiveSourceEndSeconds: Double? { sourceEndSeconds ?? endSeconds }
+    var effectiveProgramStartSeconds: Double? { programStartSeconds ?? startSeconds }
+    var effectiveProgramEndSeconds: Double? { programEndSeconds ?? endSeconds }
+
+    var hasDistinctProgramPlacement: Bool {
+        guard let sourceStart = effectiveSourceStartSeconds,
+              let programStart = effectiveProgramStartSeconds else { return false }
+        return abs(sourceStart - programStart) >= 0.01
+    }
 }
 
 struct MobileCaptureTranscriptResultSummary: Codable, Hashable, Identifiable {

@@ -3825,6 +3825,41 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(assembly.label.contains("Provisional sync"))
     }
 
+    func testTranscriptReviewShowsOrdinaryFollowUpAndReturnsToExactParticipantSource() {
+        app.tabBars.buttons["Library"].tap()
+        XCTAssertTrue(app.scrollViews["CaptureLibraryView"].waitForExistence(timeout: 5))
+
+        let reviewLink = app.buttons["CaptureTranscriptReviewPreviewLink"]
+        XCTAssertTrue(reviewLink.waitForExistence(timeout: 5))
+        reviewLink.tap()
+        let transcriptScroll = app.scrollViews["CaptureTranscriptReviewView"].firstMatch
+        XCTAssertTrue(transcriptScroll.waitForExistence(timeout: 5))
+
+        let results = app.descendants(matching: .any)["CaptureTranscriptFollowUpResults"].firstMatch
+        revealBelow(results, in: transcriptScroll)
+        XCTAssertTrue(results.waitForExistence(timeout: 5))
+        XCTAssertTrue(results.staticTexts["Follow-up ready"].exists)
+        XCTAssertTrue(results.staticTexts["1 notes · 1 tasks · 1 goals"].exists)
+        XCTAssertTrue(
+            results.staticTexts.matching(
+                NSPredicate(format: "label CONTAINS %@", "ordinary editable Session work")
+            ).firstMatch.exists
+        )
+
+        let source = app.buttons["CaptureTranscriptFollowUpSource_preview-segment"].firstMatch
+        reveal(source, searchAboveFirst: false)
+        XCTAssertTrue(source.waitForExistence(timeout: 5))
+        source.tap()
+        let exactTimelineEditor = app.buttons["CaptureTranscriptCorrectButton_preview-segment"].firstMatch
+        if !exactTimelineEditor.waitForExistence(timeout: 5) {
+            reveal(exactTimelineEditor)
+        }
+        XCTAssertTrue(
+            exactTimelineEditor.waitForExistence(timeout: 5),
+            "A generated note, task, or goal must return to the exact participant-owned recording and segment."
+        )
+    }
+
     func testTranscriptReviewPresentsPlainFollowUpSuggestions() throws {
         app.tabBars.buttons["Library"].tap()
         XCTAssertTrue(app.scrollViews["CaptureLibraryView"].waitForExistence(timeout: 5))

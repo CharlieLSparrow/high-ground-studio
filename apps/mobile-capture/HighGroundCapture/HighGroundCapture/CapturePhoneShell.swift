@@ -10755,6 +10755,11 @@ private struct CaptureRecorderView: View {
                     }
                     })
 
+                    // Keep the shared notes, tasks, and conversation at the
+                    // room threshold. They are useful before, during, and after
+                    // a call and should not be buried below recording controls.
+                    sessionCollaborationSurface(session)
+
                     AnyView(Group {
                     if model.providerRoom.isConnected
                         || localOnlyRecordingSessionID == session.id
@@ -11049,8 +11054,6 @@ private struct CaptureRecorderView: View {
                         }
                     }
                     })
-
-                    sessionCollaborationSurface(session)
 
                     AnyView(Group {
                     if !session.isPersonalVoiceNote {
@@ -12682,10 +12685,22 @@ private struct CaptureSessionResultsCard: View {
 
     @ViewBuilder
     private func sourceLabel(_ source: MobileCaptureTranscriptResultSource?) -> some View {
-        if let start = source?.startSeconds, let end = source?.endSeconds {
-            Text("\(source?.speakerLabel?.nonempty.map { "\($0) · " } ?? "")\(start.captureDurationLabel)–\(end.captureDurationLabel)")
-                .font(.caption2.weight(.semibold))
-                .foregroundStyle(.blue)
+        if let start = source?.effectiveProgramStartSeconds,
+           let end = source?.effectiveProgramEndSeconds {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("\(source?.speakerLabel?.nonempty.map { "\($0) · " } ?? "")Timeline \(start.captureDurationLabel)–\(end.captureDurationLabel)")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.blue)
+                if source?.hasDistinctProgramPlacement == true,
+                   let sourceStart = source?.effectiveSourceStartSeconds,
+                   let sourceEnd = source?.effectiveSourceEndSeconds {
+                    Text("Source recording \(sourceStart.captureDurationLabel)–\(sourceEnd.captureDurationLabel)")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilityIdentifier("CaptureSessionResultSourceTime")
         }
     }
 }

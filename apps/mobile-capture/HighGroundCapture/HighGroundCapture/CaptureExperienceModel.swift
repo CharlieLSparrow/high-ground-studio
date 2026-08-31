@@ -4093,9 +4093,15 @@ extension MobileCaptureSession {
 
     private static var capturePreviewTranscriptResults: MobileCaptureTranscriptResults {
         let source = MobileCaptureTranscriptResultSource(
+            transcriptJobId: "preview-transcript-job",
+            recordingAssetId: "preview-recording-asset",
             segmentId: "preview-segment",
             startSeconds: 3.66,
             endSeconds: 4.84,
+            sourceStartSeconds: 3.66,
+            sourceEndSeconds: 4.84,
+            programStartSeconds: 4.16,
+            programEndSeconds: 5.34,
             speakerLabel: "Charlie"
         )
         return MobileCaptureTranscriptResults(

@@ -22,6 +22,7 @@ import {
   canonicalMobileSessionProductionId,
   canonicalMobileSessionProject,
   mobilePacketReviewLanes,
+  mobilePacketTranscriptJobIds,
   mobileSessionCanControlRecording,
   mobileTranscriptResults,
   releasedClientFollowUpForUser,
@@ -34,6 +35,21 @@ import {
 } from "./mobile-capture-consent-readiness.js";
 
 describe("mobile transcript result projection", () => {
+  it("keeps every participant master represented by a reconciled packet", () => {
+    expect(
+      mobilePacketTranscriptJobIds({
+        sourceJson: {
+          transcriptJobId: "job-client",
+          transcriptSources: [
+            { transcriptJobId: "job-coach", recordingAssetId: "asset-coach" },
+            { transcriptJobId: "job-client", recordingAssetId: "asset-client" },
+            { transcriptJobId: "job-coach", recordingAssetId: "asset-coach" },
+          ],
+        },
+      }),
+    ).toEqual(["job-client", "job-coach"]);
+  });
+
   it("returns the ordinary notes, tasks, and goals already created for this transcript", () => {
     const result = mobileTranscriptResults({
       roomId: "room-1",

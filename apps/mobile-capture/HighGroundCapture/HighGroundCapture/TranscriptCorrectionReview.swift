@@ -968,6 +968,7 @@ private struct CapturePacketGoalReviewEnvelope: Codable {
         let goalCandidates: [CapturePacketGoalCandidate]?
         let goalMergeTargets: [CapturePacketGoalMergeTarget]?
         let taskMaterialization: TaskMaterialization?
+        let results: MobileCaptureTranscriptResults?
     }
     let ok: Bool
     let error: String?
@@ -992,6 +993,7 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
     @Published private(set) var packetTaskMergeTargets: [CapturePacketTaskMergeTarget] = []
     @Published private(set) var packetTaskTags: [CapturePacketTaskTag] = []
     @Published private(set) var packetTaskProjectName: String?
+    @Published private(set) var packetResults: MobileCaptureTranscriptResults?
     @Published private(set) var packetReviewError: String?
     @Published private(set) var packetStatus: String?
     @Published private(set) var canReviewPrivatePacket = true
@@ -1023,6 +1025,63 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
     private let baseURL = normalizedNestBaseURL(
         Bundle.main.object(forInfoDictionaryKey: "QUIPSLY_API_BASE_URL") as? String ?? "https://nest.quipsly.com"
     )
+
+    private static var previewResults: MobileCaptureTranscriptResults {
+        let source = MobileCaptureTranscriptResultSource(
+            transcriptJobId: "preview-transcript-job",
+            recordingAssetId: "preview-recording-asset",
+            segmentId: "preview-segment",
+            startSeconds: 3.66,
+            endSeconds: 4.84,
+            sourceStartSeconds: 3.66,
+            sourceEndSeconds: 4.84,
+            programStartSeconds: 4.16,
+            programEndSeconds: 5.34,
+            speakerLabel: "Charlie"
+        )
+        return MobileCaptureTranscriptResults(
+            automaticallyCreated: true,
+            editable: true,
+            removable: true,
+            summary: .init(
+                id: "preview-summary",
+                title: "Session recap",
+                body: "The client chose one clear next move and named the support that will make it easier to follow through."
+            ),
+            notes: [
+                .init(
+                    id: "preview-note",
+                    title: "What matters now",
+                    body: "Protect time for the first concrete step before the next Session.",
+                    source: source
+                ),
+            ],
+            tasks: [
+                .init(
+                    id: "preview-task",
+                    title: "Block 30 minutes for the first step",
+                    detail: "Put the first attempt on the calendar this week.",
+                    status: "OPEN",
+                    assignedUserId: "preview-client",
+                    dueAt: nil,
+                    completedAt: nil,
+                    source: source
+                ),
+            ],
+            goals: [
+                .init(
+                    id: "preview-goal",
+                    title: "Build a repeatable weekly practice",
+                    description: "Start small enough to keep the commitment consistently.",
+                    status: "ACTIVE",
+                    ownerUserId: "preview-client",
+                    targetAt: nil,
+                    achievedAt: nil,
+                    source: source
+                ),
+            ]
+        )
+    }
 
     private struct ProtectedCache: Codable {
         let schemaVersion: Int
@@ -1130,6 +1189,7 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
                 .init(id: "preview-coaching", label: "Coaching", slug: "coaching", selectedForSession: true),
             ]
             packetTaskProjectName = appStorePresentation ? "My coaching practice" : "High Ground Odyssey"
+            packetResults = Self.previewResults
             packetGoalReviewContext = .init(summaryNoteId: "preview-summary", packetBuildId: "preview-build")
             packetReviewError = nil
             packetStatus = "RESULTS_READY"
@@ -1156,6 +1216,7 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
             packetTaskMergeTargets = []
             packetTaskTags = []
             packetTaskProjectName = nil
+            packetResults = nil
             packetGoalReviewContext = nil
             packetStatus = nil
             canReviewPrivatePacket = true
@@ -1218,6 +1279,7 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
             packetTaskMergeTargets = []
             packetTaskTags = []
             packetTaskProjectName = nil
+            packetResults = nil
             packetGoalReviewContext = nil
             packetStatus = nil
             resetPacketReviewState()
@@ -1240,6 +1302,7 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
         packetTaskMergeTargets = []
         packetTaskTags = []
         packetTaskProjectName = nil
+        packetResults = nil
         packetGoalReviewContext = nil
         packetReviewError = nil
         packetStatus = nil
@@ -1958,6 +2021,7 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
             packetTaskMergeTargets = []
             packetTaskTags = []
             packetTaskProjectName = nil
+            packetResults = nil
             packetGoalReviewContext = nil
             packetStatus = nil
             resetPacketReviewState()
@@ -1983,6 +2047,7 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
             packetTaskMergeTargets = payload.packet?.taskMergeTargets ?? []
             packetTaskTags = payload.packet?.taskMaterialization?.tags ?? []
             packetTaskProjectName = payload.packet?.taskMaterialization?.project?.name
+            packetResults = payload.packet?.results
             packetStatus = payload.packet?.status
             canReviewPrivatePacket = payload.packet?.reviewAccess?.canReviewPrivatePacket
                 ?? (payload.packet?.status?.trimmingCharacters(in: .whitespacesAndNewlines).uppercased() != "PRIVATE_REVIEWER_ONLY")
@@ -2014,6 +2079,7 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
             packetTaskMergeTargets = []
             packetTaskTags = []
             packetTaskProjectName = nil
+            packetResults = nil
             packetGoalReviewContext = nil
             packetStatus = nil
             canReviewPrivatePacket = true
@@ -3226,6 +3292,14 @@ struct CaptureTranscriptReviewView: View {
                     } else if let desk = client.desk {
                         sessionTranscriptAssemblyStatus(desk)
                         transcriptSegments(desk, scrollProxy: scrollProxy)
+                        if let results = client.packetResults {
+                            sessionFollowUpResults(
+                                results,
+                                desk: desk,
+                                scrollProxy: scrollProxy
+                            )
+                            .id("session-follow-up")
+                        }
                         sourceTruth(desk)
                             .id("source-truth")
                         if !client.canReviewPrivatePacket {
@@ -3377,6 +3451,17 @@ struct CaptureTranscriptReviewView: View {
                                 Label("Tasks", systemImage: "checklist")
                             }
                             .accessibilityIdentifier("CaptureTranscriptJumpToTasks")
+                        }
+                        if client.packetResults != nil {
+                            Button {
+                                withAnimation(reduceMotion ? nil : .easeOut(duration: 0.3)) {
+                                    scrollTargetSegmentID = "session-follow-up"
+                                    scrollProxy.scrollTo("session-follow-up", anchor: .top)
+                                }
+                            } label: {
+                                Label("Follow-up", systemImage: "sparkles")
+                            }
+                            .accessibilityIdentifier("CaptureTranscriptJumpToFollowUp")
                         }
                         if previewOnly || packetCandidateCount > 0 {
                             Button {
@@ -3794,6 +3879,214 @@ struct CaptureTranscriptReviewView: View {
                 }
             }
             .id(transcriptPresentationMode)
+        }
+    }
+
+    private func sessionFollowUpResults(
+        _ results: MobileCaptureTranscriptResults,
+        desk: CaptureTranscriptCorrectionDesk,
+        scrollProxy: ScrollViewProxy
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: "sparkles")
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(.teal)
+                    .frame(width: 38, height: 38)
+                    .background(Color.teal.opacity(0.1), in: Circle())
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Follow-up ready")
+                        .font(.headline)
+                    Text("\(results.notes.count) notes · \(results.tasks.count) tasks · \(results.goals.count) goals")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            Text(results.summary.body)
+                .font(.subheadline)
+                .foregroundStyle(.primary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            if !results.notes.isEmpty {
+                followUpResultSection(title: "Notes", systemImage: "note.text", tint: .teal) {
+                    ForEach(Array(results.notes.prefix(3))) { note in
+                        followUpResultRow(
+                            title: captureTranscriptNonempty(note.title) ?? "Session note",
+                            detail: note.body,
+                            source: note.source,
+                            desk: desk,
+                            scrollProxy: scrollProxy
+                        )
+                    }
+                }
+            }
+            if !results.tasks.isEmpty {
+                followUpResultSection(title: "Tasks", systemImage: "checklist", tint: .orange) {
+                    ForEach(Array(results.tasks.prefix(3))) { task in
+                        followUpResultRow(
+                            title: task.title,
+                            detail: task.detail,
+                            source: task.source,
+                            desk: desk,
+                            scrollProxy: scrollProxy
+                        )
+                    }
+                }
+            }
+            if !results.goals.isEmpty {
+                followUpResultSection(title: "Goals", systemImage: "target", tint: .purple) {
+                    ForEach(Array(results.goals.prefix(3))) { goal in
+                        followUpResultRow(
+                            title: goal.title,
+                            detail: goal.description,
+                            source: goal.source,
+                            desk: desk,
+                            scrollProxy: scrollProxy
+                        )
+                    }
+                }
+            }
+
+            Text("These are ordinary editable Session work. Open Session or Work to adjust or remove them; tap a source here to return to the exact participant recording.")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .reviewCard()
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("CaptureTranscriptFollowUpResults")
+    }
+
+    private func followUpResultSection<Content: View>(
+        title: String,
+        systemImage: String,
+        tint: Color,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label(title, systemImage: systemImage)
+                .font(.caption.weight(.bold))
+                .foregroundStyle(tint)
+            content()
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(tint.opacity(0.06), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+
+    @ViewBuilder
+    private func followUpResultRow(
+        title: String,
+        detail: String?,
+        source: MobileCaptureTranscriptResultSource?,
+        desk: CaptureTranscriptCorrectionDesk,
+        scrollProxy: ScrollViewProxy
+    ) -> some View {
+        if let source,
+           let segment = transcriptSegment(for: source, in: desk) {
+            Button {
+                openFollowUpSource(
+                    segment,
+                    scrollProxy: scrollProxy
+                )
+            } label: {
+                followUpResultLabel(title: title, detail: detail, source: source)
+            }
+            .buttonStyle(.plain)
+            .accessibilityHint("Opens the exact participant recording and transcript segment.")
+            .accessibilityIdentifier("CaptureTranscriptFollowUpSource_\(source.segmentId ?? segment.id)")
+        } else {
+            followUpResultLabel(title: title, detail: detail, source: source)
+        }
+    }
+
+    private func followUpResultLabel(
+        title: String,
+        detail: String?,
+        source: MobileCaptureTranscriptResultSource?
+    ) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title)
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(.primary)
+                    .fixedSize(horizontal: false, vertical: true)
+                if let detail = captureTranscriptNonempty(detail) {
+                    Text(detail)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(3)
+                }
+                if let sourceDetail = followUpSourceDetail(source) {
+                    Text(sourceDetail)
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.blue)
+                }
+            }
+            Spacer(minLength: 4)
+            if captureTranscriptNonempty(source?.segmentId) != nil {
+                Image(systemName: "waveform.and.magnifyingglass")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(.blue)
+                    .accessibilityHidden(true)
+            }
+        }
+        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+        .contentShape(Rectangle())
+    }
+
+    private func followUpSourceDetail(
+        _ source: MobileCaptureTranscriptResultSource?
+    ) -> String? {
+        guard let source else { return nil }
+        var parts: [String] = []
+        if let speaker = captureTranscriptNonempty(source.speakerLabel) {
+            parts.append(speaker)
+        }
+        if let start = source.effectiveProgramStartSeconds,
+           let end = source.effectiveProgramEndSeconds {
+            parts.append("timeline \(start.captureTranscriptTimestamp)–\(end.captureTranscriptTimestamp)")
+        }
+        if source.hasDistinctProgramPlacement,
+           let start = source.effectiveSourceStartSeconds,
+           let end = source.effectiveSourceEndSeconds {
+            parts.append("source \(start.captureTranscriptTimestamp)–\(end.captureTranscriptTimestamp)")
+        }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
+    }
+
+    private func transcriptSegment(
+        for source: MobileCaptureTranscriptResultSource,
+        in desk: CaptureTranscriptCorrectionDesk
+    ) -> CaptureTranscriptSegment? {
+        guard let segmentID = captureTranscriptNonempty(source.segmentId) else { return nil }
+        if let transcriptJobID = captureTranscriptNonempty(source.transcriptJobId),
+           let exact = desk.segments.first(where: {
+               $0.id == segmentID && $0.transcriptJobId == transcriptJobID
+           }) {
+            return exact
+        }
+        return desk.segments.first(where: { $0.id == segmentID })
+    }
+
+    private func openFollowUpSource(
+        _ segment: CaptureTranscriptSegment,
+        scrollProxy: ScrollViewProxy
+    ) {
+        transcriptPresentationMode = .timeline
+        UserDefaults.standard.set(
+            CaptureTranscriptPresentationMode.timeline.rawValue,
+            forKey: Self.transcriptPresentationModeKey
+        )
+        Task { @MainActor in
+            await Task.yield()
+            withAnimation(reduceMotion ? nil : .easeOut(duration: 0.3)) {
+                scrollTargetSegmentID = segment.id
+                scrollProxy.scrollTo(segment.id, anchor: .center)
+            }
+            accessibilityFocusedSegmentID = segment.id
         }
     }
 

@@ -2147,7 +2147,22 @@ requireIncludes(bridgeText, "struct MobileCaptureTranscriptResults: Codable", "n
 requireIncludes(bridgeText, "let automaticallyCreated: Bool", "native transcript results preserve their automatic origin");
 requireIncludes(bridgeText, "let editable: Bool", "native transcript results expose ordinary editability");
 requireIncludes(bridgeText, "let removable: Bool", "native transcript results expose ordinary removability");
+for (const needle of [
+  "let transcriptJobId: String?",
+  "let recordingAssetId: String?",
+  "let sourceStartSeconds: Double?",
+  "let programStartSeconds: Double?",
+]) {
+  requireIncludes(
+    bridgeText,
+    needle,
+    "native transcript results retain participant-master identity plus source and Session clocks",
+  );
+}
 requireIncludes(bridgeText, "var coachingTranscriptResults: MobileCaptureTranscriptResults?", "native Session decodes transcript-derived work");
+requireIncludes(transcriptReviewText, "let results: MobileCaptureTranscriptResults?", "native transcript review decodes ordinary Session work instead of relying on legacy candidates");
+requireIncludes(transcriptReviewText, 'accessibilityIdentifier("CaptureTranscriptFollowUpResults")', "native transcript review presents generated follow-up beside its source transcript");
+requireIncludes(transcriptReviewText, "openFollowUpSource", "generated follow-up can return to the exact participant-owned transcript source");
 requireIncludes(bridgeText, "latestPacketBuildResponse", "native latest packet build response readback");
 requireIncludes(bridgeText, "let actionPacket: MobileCaptureActionPacket?", "native session decodes action packet");
 requireIncludes(bridgeText, "let actionPackets: [MobileCaptureActionPacket]?", "native review digest decodes action packet list");

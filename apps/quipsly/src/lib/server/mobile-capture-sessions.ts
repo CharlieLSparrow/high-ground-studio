@@ -221,6 +221,28 @@ function sourceJson(value: unknown): Record<string, unknown> {
 
 export const mobileTranscriptResults = sessionTranscriptResults;
 
+/**
+ * A reconciled Session packet is anchored to the transcript job that caused
+ * the latest build, but its ordinary notes, tasks, and goals may come from any
+ * participant-owned master selected into that build. Keep that source set in
+ * the mobile read model so a second participant's work does not disappear just
+ * because their transcript job is not the packet anchor.
+ */
+export function mobilePacketTranscriptJobIds(summary: any) {
+  const source = sourceJson(summary?.sourceJson);
+  const sources = Array.isArray(source.transcriptSources)
+    ? source.transcriptSources
+    : [];
+  return Array.from(
+    new Set(
+      [
+        label(source.transcriptJobId),
+        ...sources.map((item) => label(sourceJson(item).transcriptJobId)),
+      ].filter((value): value is string => Boolean(value)),
+    ),
+  );
+}
+
 export function mobilePacketReviewLanes(summary: any) {
   const saved = sourceJson(summary?.sourceJson).reviewLanes;
   if (!Array.isArray(saved)) return [];
@@ -1160,6 +1182,12 @@ export function mapMobileCaptureSessionsForUser(input: {
       packetNotesForLatestTranscript.find(
         (note: any) => note.kind === "SUMMARY",
       ) || null;
+    const packetTranscriptJobIds = mobilePacketTranscriptJobIds(packetSummary);
+    const packetTranscriptJobIdSet = new Set(
+      [latestTranscriptJob?.id, ...packetTranscriptJobIds].filter(
+        (value): value is string => Boolean(value),
+      ),
+    );
     const packetHighlights = packetNotesForLatestTranscript.filter(
       (note: any) => note.kind === "HIGHLIGHT",
     );
@@ -1242,7 +1270,7 @@ export function mapMobileCaptureSessionsForUser(input: {
             const source = sourceJson(item.sourceJson);
             return (
               isTranscriptPacketSource(source.source) &&
-              source.transcriptJobId === latestTranscriptJob.id &&
+              packetTranscriptJobIdSet.has(label(source.transcriptJobId) || "") &&
               !isUnreviewedTranscriptActionItemSource(source)
             );
           })
@@ -1252,6 +1280,7 @@ export function mapMobileCaptureSessionsForUser(input: {
     const transcriptResults = mobileTranscriptResults({
       roomId: room.id,
       transcriptJobId: latestTranscriptJob?.id,
+      transcriptJobIds: packetTranscriptJobIds,
       summary: packetSummary,
       highlights: packetHighlights,
       actionItems: room.actionItems,
