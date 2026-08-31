@@ -2480,6 +2480,19 @@ for (const title of [
 ]) {
   requireIncludes(captureAttentionDiagnosticsText, title, "Capture attention uses specific standard recovery language");
 }
+for (const forbidden of [
+  "consent attestation",
+  "verify authority",
+  "authority blocker",
+  "Nest receipt",
+  "room receipt",
+  "recording start boundary",
+]) {
+  requireExcludes(captureExperienceModelText, forbidden, "internal recording architecture language stays out of user-facing Capture messages");
+}
+requireIncludes(captureExperienceModelText, "Confirm that everyone agreed to be recorded before you tap Record.", "Record explains the missing consent action in ordinary language");
+requireIncludes(captureExperienceModelText, "Quipsly syncs the Session in the background.", "active recording status hides internal receipt machinery");
+requireIncludes(captureExperienceModelText, "Your local recording is safe, and Quipsly will retry automatically.", "background Session-sync recovery stays calm and actionable");
 requireIncludes(providerRoomText, "self.intentionalProviderDisconnect = !shouldAllowRejoin", "provider-exhausted cleanup remains distinct from a deliberate person-owned hang-up");
 requireIncludes(providerRoomText, "didSubscribeTrack publication: RemoteTrackPublication", "native call refreshes its remote-video surface when a participant publishes video");
 requireIncludes(providerRoomText, "didUnsubscribeTrack publication: RemoteTrackPublication", "native call removes stale remote video when a participant stops video");

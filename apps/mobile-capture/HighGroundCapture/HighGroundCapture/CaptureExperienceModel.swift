@@ -869,7 +869,7 @@ final class CaptureExperienceModel: ObservableObject {
             didReconcileReceiptOutbox = true
         }
         if let rejection = receiptStore.latestTerminalRejectionMessage {
-            captureReceiptNotice = "Nest preserved a capture receipt but held the room-state change: \(rejection)"
+            captureReceiptNotice = "Your local recording is safe, but the Session status could not update: \(rejection) Quipsly will retry automatically."
         }
         scheduleReceiptFlush()
         let importedSharedSources = quickEntryOutbox.importShareExtensionCaptures()
@@ -1076,7 +1076,7 @@ final class CaptureExperienceModel: ObservableObject {
             // destination). Preserve that message so reconnect does not turn a
             // specific success into a vague batch receipt.
             if acknowledged > 1 {
-                quickEntrySyncMessage = "Synced \(acknowledged) quick captures to canonical Nest records."
+                quickEntrySyncMessage = "Synced \(acknowledged) quick captures to Nest."
             }
         }
     }
@@ -1150,13 +1150,13 @@ final class CaptureExperienceModel: ObservableObject {
         expectedUpdatedAtOverride: String? = nil
     ) -> Bool {
         if usesPreviewData {
-            sessionNoteEditMessage = "Preview only — no canonical Session note or revision was changed."
+            sessionNoteEditMessage = "Preview only — no shared Session note was changed."
             sessionNoteEditMessageRoomID = roomID
             return true
         }
         guard let expectedUpdatedAt = expectedUpdatedAtOverride ?? note.updatedAt,
               !expectedUpdatedAt.isEmpty else {
-            errorMessage = "Refresh this Session before editing its canonical note."
+            errorMessage = "Refresh this Session before editing the shared note."
             return false
         }
         do {
@@ -1207,7 +1207,7 @@ final class CaptureExperienceModel: ObservableObject {
     func discardSessionNoteEdit(noteID: String) async {
         let roomID = sessionNoteEditOutbox.edit(for: noteID)?.roomID
         sessionNoteEditOutbox.discard(noteID: noteID)
-        sessionNoteEditMessage = "The protected device draft was discarded. The canonical Nest note was not changed."
+        sessionNoteEditMessage = "The protected device draft was discarded. The shared Nest note was not changed."
         sessionNoteEditMessageRoomID = roomID
         _ = await sessionClient.load()
     }
@@ -1852,8 +1852,8 @@ final class CaptureExperienceModel: ObservableObject {
         selectedSessionID = session.id
         let sourceCount = session.studioHandoffSources.count
         let feedback = sourceCount > 1
-            ? "Studio handoff complete for all \(sourceCount) capture-group sources. Every immutable original and server receipt remains preserved."
-            : "Studio media ready. The immutable local source and server recording evidence remain preserved."
+            ? "Studio has all \(sourceCount) recording sources. Every original and verified cloud copy remains preserved."
+            : "Studio media is ready. The local original and verified cloud copy remain preserved."
         message = feedback
         studioHandoffFeedback = .init(sessionID: session.id, message: feedback, isError: false)
     }
@@ -2036,7 +2036,7 @@ final class CaptureExperienceModel: ObservableObject {
         guard let recordingConsentID = refreshed.recordingConsentId?.trimmingCharacters(in: .whitespacesAndNewlines),
               !recordingConsentID.isEmpty else {
             isChangingCapture = false
-            errorMessage = "Nest did not return the exact recording-consent receipt. Nothing was recorded."
+            errorMessage = "Quipsly couldn't confirm that everyone still agrees to recording. Nothing was recorded; refresh the Session and try again."
             return
         }
 
@@ -2242,7 +2242,7 @@ final class CaptureExperienceModel: ObservableObject {
             guard audioCapture.captureState == .paused,
                   videoCapture.state == .paused else {
                 errorMessage = videoCapture.lastErrorMessage
-                    ?? "The movie boundary did not validate as paused. Quipsly will preserve both sources for Library review."
+                    ?? "The camera did not confirm that it paused. Quipsly will preserve both sources for Library review."
                 return
             }
             message = "Both local masters are paused. The microphone file retains its pause gap; the movie was safely closed."
@@ -2458,7 +2458,7 @@ final class CaptureExperienceModel: ObservableObject {
         }
         let usesLocalPersonalVoiceNoteAuthority = session.isLocalPersonalVoiceNoteDraft
         guard session.recordingConsentGranted else {
-            errorMessage = "Save the recorder consent attestation before recording starts."
+            errorMessage = "Confirm that everyone agreed to be recorded before you tap Record."
             return
         }
         guard usesPreviewData || session.canRecordNow else {
@@ -2524,7 +2524,7 @@ final class CaptureExperienceModel: ObservableObject {
                 selectedSessionID = refreshed.id
                 errorMessage = refreshed.recordingConsentGranted
                     ? refreshed.captureReadinessNextAction
-                    : "Save the recorder consent attestation before recording starts."
+                    : "Confirm that everyone agreed to be recorded before you tap Record."
                 return
             }
             session = refreshed
@@ -2580,7 +2580,7 @@ final class CaptureExperienceModel: ObservableObject {
                   activeVideoCapture?.state == .recording else {
                 audioCapture.abortArmedCaptureBeforeRecording()
                 isChangingCapture = false
-                errorMessage = "The camera source ended while the microphone boundary was being armed. Quipsly closed the durable audio START without opening microphone bytes."
+                errorMessage = "The camera ended while the microphone was starting. Quipsly stopped and preserved the audio start; no microphone recording continued."
                 if !usesPreviewData && !usesLocalPersonalVoiceNoteAuthority { scheduleReceiptFlush() }
                 return
             }
@@ -2623,7 +2623,7 @@ final class CaptureExperienceModel: ObservableObject {
         guard audioCapture.activeLocalRecordingID == captureID else {
             _ = await audioCapture.stopAndFinalize()
             isChangingCapture = false
-            errorMessage = "The take was saved locally, but Quipsly could not bind its source ID to the room receipt. Review it in Library before retrying."
+            errorMessage = "The take was saved locally, but Quipsly could not connect the file to this Session. Review it in Library before retrying."
             return
         }
         activeCaptureID = captureID
@@ -2647,7 +2647,7 @@ final class CaptureExperienceModel: ObservableObject {
         if let persistenceError = receiptStore.persistenceError {
             captureReceiptNotice = persistenceError
         }
-        message = "Recording \(CaptureDeviceVocabulary.thisDevicePossessive) microphone. Nest receipt sync runs separately."
+        message = "Recording \(CaptureDeviceVocabulary.thisDevicePossessive) microphone. Quipsly syncs the Session in the background."
         scheduleReceiptFlush()
         startConsentMonitor(captureID: captureID, audioCapture: audioCapture)
     }
@@ -2693,11 +2693,11 @@ final class CaptureExperienceModel: ObservableObject {
                 self.isCoordinatingPodcastCapture = false
                 if videoPartner.state == .paused {
                     self.message = nil
-                    self.errorMessage = "The microphone source paused unexpectedly, so Quipsly safely closed the current movie boundary too. Verify the route and consent before resuming both sources."
+                    self.errorMessage = "The microphone paused unexpectedly, so Quipsly safely closed the current camera file too. Check the microphone and consent before resuming both sources."
                 } else {
                     self.message = nil
                     self.errorMessage = videoPartner.lastErrorMessage
-                        ?? "The microphone paused, but the camera boundary still needs Library review. Stop and preserve the coordinated group."
+                        ?? "The microphone paused, but the camera file still needs Library review. Stop and preserve both sources."
                 }
             }
             return
@@ -2769,7 +2769,7 @@ final class CaptureExperienceModel: ObservableObject {
                 return
             }
             if captureRequiresNewTake {
-                errorMessage = "Nest rejected the start boundary. Stop and save this local take, resolve the session blocker, then start a new take so Quipsly can create a fresh receipt."
+                errorMessage = "Nest no longer allows this recording to start. Stop and save the local take, resolve the Session message, then start a new take."
                 return
             }
             if captureSafetyNotice != nil, let sessionID = activeCaptureSession?.id {
@@ -2777,7 +2777,7 @@ final class CaptureExperienceModel: ObservableObject {
                 guard AuthManager.shared.matchesStableOwnerSnapshot(ownerSnapshot),
                       audioCapture.captureOwnerIsCurrent else {
                     captureRequiresNewTake = true
-                    errorMessage = "The Quipsly account changed while resume authority was being checked. Recording remains paused and preserved."
+                    errorMessage = "The Quipsly account changed while Session access was being checked. Recording remains paused and preserved."
                     return
                 }
                 guard loadOutcome == .loaded,
@@ -3170,7 +3170,7 @@ final class CaptureExperienceModel: ObservableObject {
                     ?? "The other camera couldn't start."
             }
         case .idle, .preparing, .arming, .finalizing, .paused, .saved, .failed:
-            errorMessage = "Wait for the current camera change or recording boundary to finish, then switch cameras."
+            errorMessage = "Wait for the current camera change or recording save to finish, then switch cameras."
         }
     }
 
@@ -3301,7 +3301,7 @@ final class CaptureExperienceModel: ObservableObject {
         }
         guard !recording.status.isVerified else {
             if !quietly {
-                message = "This recording already has a verified Quipsly receipt. The local original remains available."
+                message = "This recording already has a verified cloud copy. The local original remains available."
             }
             return
         }
@@ -3555,7 +3555,7 @@ final class CaptureExperienceModel: ObservableObject {
                       audioCapture.captureOwnerIsCurrent else {
                     self.captureRequiresNewTake = true
                     self.pauseCaptureForAuthorityLoss(
-                        "The Quipsly account changed while capture authority was being checked.",
+                        "The Quipsly account changed while recording access was being checked.",
                         audioCapture: audioCapture
                     )
                     return
@@ -3611,7 +3611,7 @@ final class CaptureExperienceModel: ObservableObject {
                 )
                 guard self.activeVideoCapture === videoCapture else { return }
                 guard AuthManager.shared.matchesStableOwnerSnapshot(ownerSnapshot) else {
-                    self.captureSafetyNotice = "The Quipsly account changed while video authority was being checked. The protected camera source is closing under its original owner."
+                    self.captureSafetyNotice = "The Quipsly account changed while video access was being checked. The protected camera source is closing under its original owner."
                     await videoCapture.pause()
                     return
                 }
@@ -3635,7 +3635,7 @@ final class CaptureExperienceModel: ObservableObject {
                         && (refreshed.canRecordAudioNow ?? refreshed.canRecordNow)
                     )
                 guard videoAllowed, audioAllowed else {
-                    self.captureSafetyNotice = "Consent or session readiness changed in Nest. Quipsly is closing this movie; the source remains preserved and resume requires a fresh authority check."
+                    self.captureSafetyNotice = "Consent or Session readiness changed in Nest. Quipsly is closing this movie; the source remains preserved and Quipsly will recheck before another take."
                     await videoCapture.pause()
                     return
                 }
@@ -3687,7 +3687,7 @@ final class CaptureExperienceModel: ObservableObject {
         if audioCapture.captureState == .recording {
             audioCapture.handleCommand(.pause)
         }
-        captureSafetyNotice = "\(reason) Recording is paused and preserved; verify authority and everyone's consent before resuming, or stop and save the take."
+        captureSafetyNotice = "\(reason) Recording is paused and preserved; confirm Session access and everyone's consent before resuming, or stop and save the take."
     }
 
     private func captureStartVerificationMessage(for outcome: CaptureSessionLoadOutcome) -> String {
@@ -3695,7 +3695,7 @@ final class CaptureExperienceModel: ObservableObject {
         case .loaded:
             return "Quipsly could not find the verified session after refresh. Nothing was recorded."
         case .transportUnavailable:
-            return "Nest is temporarily unreachable, so Quipsly could not verify current session and consent authority. Nothing was recorded; reconnect and try again."
+            return "Nest is temporarily unreachable, so Quipsly could not confirm the current Session and consent. Nothing was recorded; reconnect and try again."
         case let .forbidden(message),
              let .authoritativeAbsent(message),
              let .invalidResponse(message):
@@ -3726,10 +3726,10 @@ final class CaptureExperienceModel: ObservableObject {
         for session: MobileCaptureSession?
     ) -> String {
         guard let session else {
-            return "Nest did not return the selected session while video authority was being refreshed. No new movie source was started."
+            return "Nest did not return the selected Session while video access was being checked. No new movie was started."
         }
         if session.recordingConsentCanRecordVideo != true {
-            return "Video is not included in your current consent receipt. Open Consent choices, turn on Record video, and save again."
+            return "Video is not included in the current consent choices. Open Consent choices, turn on Record video, and save again."
         }
         if session.recordingConsentVideoGranted != true {
             return "Nest could not validate current-policy video consent for this participant. Review and resave the consent choices."
@@ -3756,11 +3756,11 @@ final class CaptureExperienceModel: ObservableObject {
         case .loaded:
             return "Recording remains paused because Nest has not confirmed current session readiness and consent. You can always stop and save the local take."
         case .transportUnavailable:
-            return "Recording remains paused while Nest is unreachable. Reconnect to verify authority before resuming, or stop and save the local take."
+            return "Recording remains paused while Nest is unreachable. Reconnect so Quipsly can recheck the Session before resuming, or stop and save the local take."
         case let .forbidden(message),
              let .authoritativeAbsent(message),
              let .invalidResponse(message):
-            return "\(message) Recording remains paused and preserved; stop and save the take or resolve the authority blocker."
+            return "\(message) Recording remains paused and preserved; stop and save the take or resolve the Session message."
         }
     }
 
@@ -3791,7 +3791,7 @@ final class CaptureExperienceModel: ObservableObject {
                 // advance. Defer this capture for the rest of the pass so one
                 // outage cannot head-of-line block unrelated safety closures.
                 deferredCaptureIDs.insert(receipt.captureID)
-                captureReceiptNotice = "Nest receipt waiting: \(message) Local recording remains authoritative and the outbox will retry."
+                captureReceiptNotice = "Session sync is waiting: \(message) Your local recording is safe, and Quipsly will retry automatically."
                 continue
             case let .terminallyRejected(message, errorCode):
                 receiptStore.markRejectedByNest(
@@ -3807,17 +3807,17 @@ final class CaptureExperienceModel: ObservableObject {
                     consentMonitorTask?.cancel()
                     consentMonitorTask = nil
                     captureRequiresNewTake = true
-                    captureSafetyNotice = "Nest rejected the recording start boundary: \(message) The local take is paused and preserved. Stop and save it, resolve the blocker, then start a new take."
+                    captureSafetyNotice = "Nest no longer allows this recording to continue: \(message) The local take is paused and preserved. Stop and save it, resolve the Session message, then start a new take."
                 }
                 if receipt.action == .start,
                    receipt.captureID == activeVideoCapture?.activeRecordingID,
                    let activeVideoCapture {
                     videoConsentMonitorTask?.cancel()
                     videoConsentMonitorTask = nil
-                    captureSafetyNotice = "Nest rejected the video start boundary: \(message) Quipsly is closing and preserving the movie. Resolve the blocker before resuming or starting another source."
+                    captureSafetyNotice = "Nest no longer allows this video to continue: \(message) Quipsly is closing and preserving the movie. Resolve the Session message before starting another source."
                     await activeVideoCapture.pause()
                 }
-                terminalRejectionNotice = "Nest preserved the receipt but held the room-state change: \(message)"
+                terminalRejectionNotice = "The local recording is safe, but Nest held the Session status update: \(message)"
             case .acknowledged:
                 if receipt.action == .start {
                     // Keep an acknowledged START until its STOP is acknowledged.
@@ -3834,9 +3834,9 @@ final class CaptureExperienceModel: ObservableObject {
             captureReceiptNotice = receiptStore.persistenceError
                 ?? terminalRejectionNotice
                 ?? receiptStore.latestTerminalRejectionMessage.map {
-                    "Nest preserved a capture receipt but held the room-state change: \($0)"
+                    "The local recording is safe, but Nest held the Session status update: \($0)"
                 }
-                ?? "Nest recording receipts synchronized."
+                ?? "Recording status synced with Nest."
         }
     }
 
