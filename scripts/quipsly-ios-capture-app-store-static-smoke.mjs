@@ -80,6 +80,7 @@ const files = {
   mobileCoachingSessionPreparation: path.join(sourceRoot, "MobileCoachingSessionPreparation.swift"),
   captureCalendarEventEditor: path.join(sourceRoot, "CaptureCalendarEventEditor.swift"),
   captureSupportSnapshot: path.join(sourceRoot, "CaptureSupportSnapshot.swift"),
+  captureAttentionDiagnostics: path.join(sourceRoot, "CaptureAttentionDiagnostics.swift"),
   captureRecordingShare: path.join(sourceRoot, "CaptureRecordingShare.swift"),
   transcriptReview: path.join(sourceRoot, "TranscriptCorrectionReview.swift"),
   sessionProtectedPlayback: path.join(sourceRoot, "CaptureSessionProtectedPlayback.swift"),
@@ -281,6 +282,7 @@ const captureRehearsalReadinessText = read(files.captureRehearsalReadiness);
 const captureSessionGuardianText = read(files.captureSessionGuardian);
 const captureCalendarEventEditorText = read(files.captureCalendarEventEditor);
 const captureSupportSnapshotText = read(files.captureSupportSnapshot);
+const captureAttentionDiagnosticsText = read(files.captureAttentionDiagnostics);
 const captureRecordingShareText = read(files.captureRecordingShare);
 const transcriptReviewText = read(files.transcriptReview);
 const sessionProtectedPlaybackText = read(files.sessionProtectedPlayback);
@@ -1444,6 +1446,7 @@ for (const needle of [
   "CaptureSupportDisclosure",
   "CaptureShareSupportSnapshot",
   "CaptureSupportPrivacyBoundary",
+  "CaptureSupportAttentionSummary",
   "CaptureVersionBuild",
 ]) {
   requireIncludes(capturePhoneShellText, needle, "privacy-bounded Capture support UX");
@@ -1455,9 +1458,38 @@ for (const needle of [
   "Audio route type:",
   "Local originals:",
   "Recoverable uploads:",
+  "Capture attention events:",
+  "Latest capture transition:",
   "Preview mode:",
 ]) {
   requireIncludes(captureSupportSnapshotText, needle, "redacted Capture support contract");
+}
+for (const needle of [
+  "CaptureAttentionSupportSummary",
+  "var supportSummary: CaptureAttentionSupportSummary",
+  "latestCategory: Self.supportCategory(for: latest.message)",
+  "latestSelectedSessionWasLocal",
+  "latestCanonicalSessionCount",
+  "latestLocalDraftSessionCount",
+]) {
+  requireIncludes(
+    captureAttentionDiagnosticsText,
+    needle,
+    "protected attention diagnostics expose only coarse state to the user-controlled support snapshot",
+  );
+}
+for (const forbidden of [
+  "selectedSessionID: latest.selectedSessionID",
+  "message: latest.message",
+]) {
+  requireExcludes(
+    captureAttentionDiagnosticsText.slice(
+      captureAttentionDiagnosticsText.indexOf("var supportSummary:"),
+      captureAttentionDiagnosticsText.indexOf("private func persist"),
+    ),
+    forbidden,
+    "shareable attention support state excludes exact Session identifiers and alert text",
+  );
 }
 const supportSnapshotFields = captureSupportSnapshotText.slice(
   captureSupportSnapshotText.indexOf("let generatedAt:"),

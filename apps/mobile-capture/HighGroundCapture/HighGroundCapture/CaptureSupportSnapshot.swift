@@ -21,7 +21,22 @@ struct CaptureSupportSnapshot {
     let audioRoutePortType: String?
     let localOriginalCount: Int?
     let recoverableUploadCount: Int?
+    let captureAttentionCount: Int?
+    let latestCaptureAttentionAt: Date?
+    let latestCaptureAttentionCategory: String?
+    let latestCaptureTransitionState: String?
+    let latestCaptureSelectedSessionWasLocal: Bool?
+    let latestCaptureCanonicalSessionCount: Int?
+    let latestCaptureLocalDraftSessionCount: Int?
     let previewMode: Bool
+
+    var captureAttentionLine: String {
+        guard let captureAttentionCount else { return "not inspected" }
+        guard captureAttentionCount > 0 else { return "none recorded" }
+        let category = Self.clean(latestCaptureAttentionCategory ?? "unknown")
+        let timestamp = latestCaptureAttentionAt.map(Self.timestamp) ?? "unknown time"
+        return "\(captureAttentionCount) recorded · latest \(category) · \(timestamp)"
+    }
 
     var shareText: String {
         [
@@ -39,6 +54,11 @@ struct CaptureSupportSnapshot {
             "Audio route type: \(Self.clean(audioRoutePortType ?? "none"))",
             "Local originals: \(Self.count(localOriginalCount))",
             "Recoverable uploads: \(Self.count(recoverableUploadCount))",
+            "Capture attention events: \(captureAttentionLine)",
+            "Latest capture transition: \(Self.clean(latestCaptureTransitionState ?? "not inspected"))",
+            "Latest selected Session was local: \(Self.boolean(latestCaptureSelectedSessionWasLocal))",
+            "Canonical Sessions at latest attention: \(Self.count(latestCaptureCanonicalSessionCount))",
+            "Local drafts at latest attention: \(Self.count(latestCaptureLocalDraftSessionCount))",
             "Preview mode: \(previewMode ? "yes" : "no")",
             "",
             Self.privacyBoundary,
@@ -49,7 +69,7 @@ struct CaptureSupportSnapshot {
     static let privacyBoundary =
         "Privacy boundary: no email, account ID, session or recording ID, source text, filename, file path, credential, access token, or refresh token is included."
 
-    private static func clean(_ value: String) -> String {
+    nonisolated private static func clean(_ value: String) -> String {
         let collapsed = value
             .components(separatedBy: .whitespacesAndNewlines)
             .filter { !$0.isEmpty }
@@ -59,14 +79,19 @@ struct CaptureSupportSnapshot {
             : String(collapsed.prefix(256))
     }
 
-    private static func count(_ value: Int?) -> String {
+    nonisolated private static func count(_ value: Int?) -> String {
         guard let value else {
             return "not inspected"
         }
         return String(max(0, value))
     }
 
-    private static func timestamp(_ date: Date) -> String {
+    nonisolated private static func boolean(_ value: Bool?) -> String {
+        guard let value else { return "not inspected" }
+        return value ? "yes" : "no"
+    }
+
+    nonisolated private static func timestamp(_ date: Date) -> String {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [
             .withInternetDateTime,

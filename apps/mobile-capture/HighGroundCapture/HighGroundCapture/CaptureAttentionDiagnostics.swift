@@ -14,6 +14,16 @@ struct CaptureAttentionDiagnosticEvent: Codable, Identifiable, Equatable {
     let isChangingRoom: Bool
 }
 
+struct CaptureAttentionSupportSummary: Equatable {
+    let eventCount: Int
+    let latestOccurredAt: Date?
+    let latestCategory: String?
+    let latestTransitionState: String?
+    let latestSelectedSessionWasLocal: Bool?
+    let latestCanonicalSessionCount: Int?
+    let latestLocalDraftSessionCount: Int?
+}
+
 /// A small, device-local support ledger for the alert that people actually
 /// see. It contains no transcript or media content and is excluded from backup.
 /// Pulling this file from a development device makes the exact failure and
@@ -90,6 +100,68 @@ final class CaptureAttentionDiagnostics {
         )
         events = Array(events.suffix(Self.maximumEventCount))
         persist()
+    }
+
+    /// Coarse, privacy-safe state for the user-controlled support snapshot.
+    /// Session identifiers and exact alert text remain only in the protected
+    /// development ledger; this summary can be shared without exposing work.
+    var supportSummary: CaptureAttentionSupportSummary {
+        guard let latest = events.last else {
+            return CaptureAttentionSupportSummary(
+                eventCount: 0,
+                latestOccurredAt: nil,
+                latestCategory: nil,
+                latestTransitionState: nil,
+                latestSelectedSessionWasLocal: nil,
+                latestCanonicalSessionCount: nil,
+                latestLocalDraftSessionCount: nil
+            )
+        }
+
+        let activeTransitions = [
+            latest.isRefreshing ? "refreshing" : nil,
+            latest.isCreatingSession ? "creating-session" : nil,
+            latest.isChangingCapture ? "changing-capture" : nil,
+            latest.isChangingRoom ? "changing-room" : nil,
+        ].compactMap { $0 }
+
+        return CaptureAttentionSupportSummary(
+            eventCount: events.count,
+            latestOccurredAt: latest.occurredAt,
+            latestCategory: Self.supportCategory(for: latest.message),
+            latestTransitionState: activeTransitions.isEmpty
+                ? "idle"
+                : activeTransitions.joined(separator: ","),
+            latestSelectedSessionWasLocal: latest.selectedSessionIsLocal,
+            latestCanonicalSessionCount: max(0, latest.canonicalSessionCount),
+            latestLocalDraftSessionCount: max(0, latest.localDraftSessionCount)
+        )
+    }
+
+    private static func supportCategory(for message: String) -> String {
+        let normalized = message.lowercased()
+        if normalized.contains("microphone") || normalized.contains("audio route") {
+            return "microphone-or-audio-route"
+        }
+        if normalized.contains("permission") || normalized.contains("allow ") {
+            return "system-permission"
+        }
+        if normalized.contains("storage") || normalized.contains("space") {
+            return "device-storage"
+        }
+        if normalized.contains("upload") {
+            return "upload-or-verification"
+        }
+        if normalized.contains("network") || normalized.contains("offline") || normalized.contains("reach nest") {
+            return "connection"
+        }
+        if normalized.contains("session") || normalized.contains("nest") || normalized.contains("workspace") {
+            return "session-or-workspace"
+        }
+        if normalized.contains("record") || normalized.contains("capture") {
+            return "recording"
+        }
+        return "capture-attention"
     }
 
     private func persist() {

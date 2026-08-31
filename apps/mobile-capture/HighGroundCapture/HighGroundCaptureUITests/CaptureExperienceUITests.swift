@@ -5198,6 +5198,13 @@ final class CaptureExperienceUITests: XCTestCase {
                 "CaptureVersionBuild"
             ].exists
         )
+        let attentionSummary = app.descendants(matching: .any)[
+            "CaptureSupportAttentionSummary"
+        ]
+        XCTAssertTrue(
+            attentionSummary.exists,
+            "The support snapshot should summarize recent Capture attention state without exposing a Session identifier or source content."
+        )
 
         try app.performAccessibilityAudit(for: [
             .hitRegion,

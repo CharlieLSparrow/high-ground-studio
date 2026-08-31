@@ -16374,6 +16374,13 @@ private struct CaptureAccountView: View {
                             "Nest",
                             value: supportNestHost
                         )
+                        LabeledContent(
+                            "Recent capture issues",
+                            value: supportSnapshot.captureAttentionLine
+                        )
+                        .accessibilityIdentifier(
+                            "CaptureSupportAttentionSummary"
+                        )
 
                         ShareLink(
                             item: supportSnapshot.shareText,
@@ -16655,6 +16662,7 @@ private struct CaptureAccountView: View {
 
     private var supportSnapshot: CaptureSupportSnapshot {
         let runtime = CaptureRuntimeEvidence.current()
+        let attention = CaptureAttentionDiagnostics.shared.supportSummary
         return CaptureSupportSnapshot(
             generatedAt: Date(),
             surface: "Account",
@@ -16681,6 +16689,16 @@ private struct CaptureAccountView: View {
             localOriginalCount: localOriginalCount,
             recoverableUploadCount:
                 model.uploadManager.recoverableUploadCount,
+            captureAttentionCount: attention.eventCount,
+            latestCaptureAttentionAt: attention.latestOccurredAt,
+            latestCaptureAttentionCategory: attention.latestCategory,
+            latestCaptureTransitionState: attention.latestTransitionState,
+            latestCaptureSelectedSessionWasLocal:
+                attention.latestSelectedSessionWasLocal,
+            latestCaptureCanonicalSessionCount:
+                attention.latestCanonicalSessionCount,
+            latestCaptureLocalDraftSessionCount:
+                attention.latestLocalDraftSessionCount,
             previewMode: model.usesPreviewData
         )
     }

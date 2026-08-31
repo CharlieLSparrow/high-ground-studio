@@ -547,6 +547,13 @@ struct LoginView: View {
             audioRoutePortType: nil,
             localOriginalCount: nil,
             recoverableUploadCount: nil,
+            captureAttentionCount: nil,
+            latestCaptureAttentionAt: nil,
+            latestCaptureAttentionCategory: nil,
+            latestCaptureTransitionState: nil,
+            latestCaptureSelectedSessionWasLocal: nil,
+            latestCaptureCanonicalSessionCount: nil,
+            latestCaptureLocalDraftSessionCount: nil,
             previewMode:
                 CaptureLaunchConfiguration
                     .usesLoginPreview
