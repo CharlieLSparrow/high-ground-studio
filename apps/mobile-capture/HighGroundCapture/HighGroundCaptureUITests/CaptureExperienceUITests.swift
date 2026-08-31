@@ -5318,16 +5318,25 @@ final class CaptureExperienceUITests: XCTestCase {
         app.tabBars.buttons["Sessions"].tap()
 
         func chooseSession(_ id: String) {
+            let titles = [
+                "preview-studio-group-ready": "Studio group ready",
+                "preview-studio-group-partial": "Studio group retry",
+                "preview-studio-group-complete": "Studio group complete",
+            ]
             let chooser = app.buttons["CaptureSessionChooser"]
             reveal(chooser)
             XCTAssertTrue(chooser.waitForExistence(timeout: 5))
             chooser.tap()
 
+            let search = app.searchFields.firstMatch
+            XCTAssertTrue(search.waitForExistence(timeout: 5))
+            search.tap()
+            search.typeText(titles[id] ?? id)
             let row = app.buttons["CaptureSessionPicker_\(id)"]
-            for _ in 0..<8 where !row.exists || !row.isHittable {
-                app.swipeUp()
-            }
-            XCTAssertTrue(row.exists, "The deterministic capture-group fixture must be reachable in the real session picker.")
+            XCTAssertTrue(
+                row.waitForExistence(timeout: 5),
+                "The deterministic capture-group fixture must be searchable in the real session picker."
+            )
             XCTAssertTrue(row.isHittable)
             row.tap()
             openLocalRecorderIfNeeded()
@@ -5416,11 +5425,12 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(chooser.waitForExistence(timeout: 5))
         chooser.tap()
 
+        let search = app.searchFields.firstMatch
+        XCTAssertTrue(search.waitForExistence(timeout: 5))
+        search.tap()
+        search.typeText("Studio group ready")
         let completedSession = app.buttons["CaptureSessionPicker_preview-studio-group-ready"]
-        for _ in 0..<8 where !completedSession.exists || !completedSession.isHittable {
-            app.swipeUp()
-        }
-        XCTAssertTrue(completedSession.exists)
+        XCTAssertTrue(completedSession.waitForExistence(timeout: 5))
         completedSession.tap()
 
         let edit = app.descendants(matching: .any)[

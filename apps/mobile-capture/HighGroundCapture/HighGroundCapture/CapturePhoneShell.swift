@@ -21207,6 +21207,17 @@ private struct SessionPickerSheet: View {
     @EnvironmentObject private var subscriptionStore: QuipslySubscriptionStore
     @Binding var isPresented: Bool
     @State private var showsNewSession = false
+    @State private var searchText = ""
+
+    private var filteredSessions: [MobileCaptureSession] {
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return model.scheduledSessions }
+        return model.scheduledSessions.filter { session in
+            session.displayTitle.localizedCaseInsensitiveContains(query)
+                || session.coachingEngagementTitle?.localizedCaseInsensitiveContains(query) == true
+                || session.captureScheduleLabel.localizedCaseInsensitiveContains(query)
+        }
+    }
 
     var body: some View {
         NavigationStack {
@@ -21227,9 +21238,13 @@ private struct SessionPickerSheet: View {
                 } else if model.scheduledSessions.isEmpty {
                     ContentUnavailableView("No sessions", systemImage: "calendar", description: Text("Create a session to keep consent and recordings together."))
                         .accessibilityIdentifier("CaptureSessionPickerEmpty")
+                } else if filteredSessions.isEmpty {
+                    ContentUnavailableView.search(text: searchText)
+                        .accessibilityIdentifier("CaptureSessionPickerNoResults")
                 } else {
-                    ForEach(model.scheduledSessions) { session in
+                    ForEach(filteredSessions) { session in
                         Button {
+                            searchText = ""
                             model.select(session)
                             isPresented = false
                         } label: {
@@ -21260,7 +21275,14 @@ private struct SessionPickerSheet: View {
                     }
                 }
             }
+            .accessibilityIdentifier("CaptureSessionPickerList")
             .navigationTitle("Choose session")
+            .searchable(
+                text: $searchText,
+                placement: .navigationBarDrawer(displayMode: .always),
+                prompt: "Search sessions"
+            )
+            .onAppear { searchText = "" }
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Close") { isPresented = false }
