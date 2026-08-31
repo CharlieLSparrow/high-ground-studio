@@ -647,6 +647,9 @@ for (const needle of [
   "speakerLabel: sourceBoundSpeaker?.label ?? null",
   "speakerUserId: sourceBoundSpeaker?.userId ?? null",
   "ON_DEVICE_TRANSCRIPT_PARTICIPANT_MISMATCH",
+  "const canonicalFallback = await transaction.transcriptJob.findFirst",
+  "segments: { none: {} }",
+  "await transaction.transcriptJob.update",
   'isolationLevel: "Serializable"',
 ]) {
   requireIncludes(

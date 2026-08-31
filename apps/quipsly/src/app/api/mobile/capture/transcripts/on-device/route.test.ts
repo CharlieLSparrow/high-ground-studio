@@ -80,18 +80,23 @@ function asset(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function installPrisma(args: { asset?: any; prior?: any } = {}) {
+function installPrisma(args: { asset?: any; prior?: any; fallback?: any } = {}) {
   const create = jest.fn().mockResolvedValue({ id: "job-device-1" });
+  const update = jest.fn().mockResolvedValue({ id: args.fallback?.id ?? "job-device-1" });
+  const findFirst = jest.fn()
+    .mockResolvedValueOnce(args.prior ?? null)
+    .mockResolvedValueOnce(args.fallback ?? null);
   const transaction = {
     recordingAsset: { findFirst: jest.fn().mockResolvedValue(args.asset ?? asset()) },
     transcriptJob: {
-      findFirst: jest.fn().mockResolvedValue(args.prior ?? null),
+      findFirst,
       create,
+      update,
     },
   };
   const $transaction = jest.fn(async (operation: (transaction: any) => Promise<any>) => operation(transaction));
   jest.mocked(getPrismaClient).mockReturnValue({ $transaction } as any);
-  return { transaction, create, $transaction };
+  return { transaction, create, update, findFirst, $transaction };
 }
 
 describe("on-device transcript ingestion", () => {
@@ -233,6 +238,45 @@ describe("on-device transcript ingestion", () => {
         },
       }),
     }));
+  });
+
+  it("completes the untouched canonical fallback job instead of leaving duplicate paid-ASR work", async () => {
+    const { create, update, findFirst } = installPrisma({
+      fallback: { id: "canonical-fallback-job" },
+    });
+
+    const response = await post(body());
+    const payload = await response.json();
+
+    expect(response.status).toBe(201);
+    expect(payload).toMatchObject({
+      ok: true,
+      transcriptJobId: "canonical-fallback-job",
+      provider: "apple-speech-transcriber-on-device",
+    });
+    expect(findFirst).toHaveBeenNthCalledWith(2, {
+      where: {
+        assetId: "asset-1",
+        status: "QUEUED",
+        provider: "pending",
+        providerRequestId: null,
+        segments: { none: {} },
+        words: { none: {} },
+      },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      select: { id: true },
+    });
+    expect(update).toHaveBeenCalledWith({
+      where: { id: "canonical-fallback-job" },
+      data: expect.objectContaining({
+        status: "COMPLETED",
+        provider: "apple-speech-transcriber-on-device",
+        providerRequestId: `apple-speech:${requestId}`,
+        segments: { create: expect.any(Array) },
+      }),
+      select: { id: true },
+    });
+    expect(create).not.toHaveBeenCalled();
   });
 
   it("rejects device text for another participant's isolated source", async () => {

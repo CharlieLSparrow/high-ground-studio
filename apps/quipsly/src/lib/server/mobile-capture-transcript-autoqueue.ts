@@ -70,8 +70,9 @@ export async function ensureMobileCaptureTranscriptAutoqueued(input: {
   }
   if (manifest.onDeviceTranscriptExpected === true) {
     // The canonical job remains the source-bound fallback handle. The device
-    // sidecar endpoint completes that same job after verifying the uploaded
-    // bytes, so provider ASR is not purchased speculatively.
+    // sidecar endpoint completes that untouched job in place after verifying
+    // the uploaded bytes, so provider ASR is not purchased speculatively and
+    // no redundant pending job survives a successful device transcript.
     return skipped("device-transcript-expected", transcriptJobId);
   }
   if (

@@ -414,8 +414,7 @@ export async function POST(request: Request) {
       }
 
       const now = new Date();
-      const created = await transaction.transcriptJob.create({
-        data: {
+      const transcriptData = {
           roomId: asset.roomId,
           assetId: asset.id,
           status: "COMPLETED",
@@ -477,10 +476,30 @@ export async function POST(request: Request) {
               },
             })),
           },
+        };
+      const canonicalFallback = await transaction.transcriptJob.findFirst({
+        where: {
+          assetId: recordingAssetId,
+          status: "QUEUED",
+          provider: "pending",
+          providerRequestId: null,
+          segments: { none: {} },
+          words: { none: {} },
         },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
         select: { id: true },
       });
-      return { transcriptJobId: created.id, segmentCount: segments.length, idempotentReplay: false, provider };
+      const completed = canonicalFallback
+        ? await transaction.transcriptJob.update({
+            where: { id: canonicalFallback.id },
+            data: transcriptData,
+            select: { id: true },
+          })
+        : await transaction.transcriptJob.create({
+            data: transcriptData,
+            select: { id: true },
+          });
+      return { transcriptJobId: completed.id, segmentCount: segments.length, idempotentReplay: false, provider };
     }, { isolationLevel: "Serializable", maxWait: 10_000, timeout: 30_000 });
 
     return NextResponse.json({
