@@ -24,6 +24,11 @@ struct CaptureAttentionSupportSummary: Equatable {
     let latestLocalDraftSessionCount: Int?
 }
 
+struct CaptureAttentionPresentation: Equatable {
+    let title: String
+    let offersSettingsRecovery: Bool
+}
+
 /// A small, device-local support ledger for the alert that people actually
 /// see. It contains no transcript or media content and is excluded from backup.
 /// Pulling this file from a development device makes the exact failure and
@@ -138,24 +143,92 @@ final class CaptureAttentionDiagnostics {
         )
     }
 
-    private static func supportCategory(for message: String) -> String {
+    nonisolated static func presentation(for message: String?) -> CaptureAttentionPresentation {
+        let normalized = message?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased() ?? ""
+        let settingsCanHelp = (
+            normalized.contains("permission")
+                || normalized.contains("allow ")
+                || normalized.contains("enable ")
+        ) && (
+            normalized.contains("microphone")
+                || normalized.contains("camera")
+                || normalized.contains("speech recognition")
+        )
+
+        if settingsCanHelp, normalized.contains("microphone") {
+            return CaptureAttentionPresentation(
+                title: "Microphone access is off",
+                offersSettingsRecovery: true
+            )
+        }
+        if settingsCanHelp, normalized.contains("camera") {
+            return CaptureAttentionPresentation(
+                title: "Camera access is off",
+                offersSettingsRecovery: true
+            )
+        }
+        if settingsCanHelp {
+            return CaptureAttentionPresentation(
+                title: "Permission needed",
+                offersSettingsRecovery: true
+            )
+        }
+
+        let title = switch supportCategory(for: normalized) {
+        case "microphone-or-audio-route": "Check your microphone"
+        case "camera": "Check your camera"
+        case "device-storage": "More storage is needed"
+        case "upload-or-verification": "Upload needs attention"
+        case "call": "Call couldn't connect"
+        case "connection": "Connection interrupted"
+        case "account": "Check your account"
+        case "session-or-workspace": "Check this Session"
+        case "recording": "Recording couldn't finish"
+        default: "Quipsly couldn't finish that"
+        }
+        return CaptureAttentionPresentation(
+            title: title,
+            offersSettingsRecovery: false
+        )
+    }
+
+    nonisolated private static func supportCategory(for message: String) -> String {
         let normalized = message.lowercased()
         if normalized.contains("microphone") || normalized.contains("audio route") {
             return "microphone-or-audio-route"
         }
+        if normalized.contains("camera") {
+            return "camera"
+        }
         if normalized.contains("permission") || normalized.contains("allow ") {
             return "system-permission"
         }
-        if normalized.contains("storage") || normalized.contains("space") {
+        if normalized.contains("storage")
+            || normalized.contains("disk")
+            || normalized.contains("free space") {
             return "device-storage"
         }
         if normalized.contains("upload") {
             return "upload-or-verification"
         }
+        if normalized.contains("live room")
+            || normalized.contains("call")
+            || normalized.contains("join the room") {
+            return "call"
+        }
         if normalized.contains("network") || normalized.contains("offline") || normalized.contains("reach nest") {
             return "connection"
         }
-        if normalized.contains("session") || normalized.contains("nest") || normalized.contains("workspace") {
+        if normalized.contains("account") || normalized.contains("sign in") {
+            return "account"
+        }
+        if normalized.contains("session")
+            || normalized.contains("nest")
+            || normalized.contains("workspace")
+            || normalized.contains("that space")
+            || normalized.contains("selected space") {
             return "session-or-workspace"
         }
         if normalized.contains("record") || normalized.contains("capture") {

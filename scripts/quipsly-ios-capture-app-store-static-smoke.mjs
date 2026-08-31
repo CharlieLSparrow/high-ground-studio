@@ -2465,6 +2465,21 @@ requireIncludes(capturePhoneShellText, '"Your local recording is still protected
 requireIncludes(capturePhoneShellText, 'accessibilityIdentifier("CaptureCallRejoinRecoveryStatus")', "dropped-call source protection has a stable automation and accessibility identity");
 requireIncludes(deterministicUITestsText, "func testDisconnectedCallOffersOneTapRejoinWhileKeepingRecordingSafe", "deterministic native UI acceptance covers dropped-call recovery without touching real services");
 requireIncludes(deterministicUITestPlanText, "CaptureExperienceUITests/testDisconnectedCallOffersOneTapRejoinWhileKeepingRecordingSafe", "the guarded critical UI lane cannot omit dropped-call recovery");
+requireExcludes(capturePhoneShellText, '.alert("Capture needs attention"', "generic global capture alert title cannot hide the actual recovery category");
+requireIncludes(capturePhoneShellText, ".alert(attentionPresentation.title", "global Capture errors use a contextual plain-language title");
+requireIncludes(capturePhoneShellText, 'Button("Open Settings")', "a system permission failure offers the conventional Settings recovery action");
+requireIncludes(capturePhoneShellText, "attentionPresentation.offersSettingsRecovery", "Settings appears only when it can actually repair the failure");
+for (const title of [
+  "Microphone access is off",
+  "Check your microphone",
+  "Check your camera",
+  "More storage is needed",
+  "Call couldn't connect",
+  "Connection interrupted",
+  "Check this Session",
+]) {
+  requireIncludes(captureAttentionDiagnosticsText, title, "Capture attention uses specific standard recovery language");
+}
 requireIncludes(providerRoomText, "self.intentionalProviderDisconnect = !shouldAllowRejoin", "provider-exhausted cleanup remains distinct from a deliberate person-owned hang-up");
 requireIncludes(providerRoomText, "didSubscribeTrack publication: RemoteTrackPublication", "native call refreshes its remote-video surface when a participant publishes video");
 requireIncludes(providerRoomText, "didUnsubscribeTrack publication: RemoteTrackPublication", "native call removes stale remote video when a participant stops video");

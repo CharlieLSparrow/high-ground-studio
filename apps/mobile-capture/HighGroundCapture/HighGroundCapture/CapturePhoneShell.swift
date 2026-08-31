@@ -55,8 +55,21 @@ struct CapturePhoneShell: View {
                 onSelectSpace: selectGlobalSpace
             )
         }
-        .alert("Capture needs attention", isPresented: errorIsPresented) {
-            Button("OK") { model.errorMessage = nil }
+        .alert(attentionPresentation.title, isPresented: errorIsPresented) {
+            if attentionPresentation.offersSettingsRecovery {
+                Button("Open Settings") {
+                    model.errorMessage = nil
+                    guard let url = URL(
+                        string: UIApplication.openSettingsURLString
+                    ) else { return }
+                    UIApplication.shared.open(url)
+                }
+                Button("Not now", role: .cancel) {
+                    model.errorMessage = nil
+                }
+            } else {
+                Button("OK") { model.errorMessage = nil }
+            }
         } message: {
             Text(model.errorMessage ?? "Try again.")
         }
@@ -617,6 +630,10 @@ struct CapturePhoneShell: View {
             get: { model.errorMessage != nil },
             set: { if !$0 { model.errorMessage = nil } }
         )
+    }
+
+    private var attentionPresentation: CaptureAttentionPresentation {
+        CaptureAttentionDiagnostics.presentation(for: model.errorMessage)
     }
 }
 
