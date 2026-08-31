@@ -4990,7 +4990,7 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(tabBar.waitForExistence(timeout: 12))
         let destinations: [(tab: String, root: XCUIElement)] = [
             ("Home", app.scrollViews["CaptureTodayView"]),
-            ("Nests", app.scrollViews["CaptureWorkView"]),
+            ("Work", app.scrollViews["CaptureWorkView"]),
             ("Library", app.scrollViews["CaptureLibraryView"]),
             ("Account", app.navigationBars["Account"]),
         ]

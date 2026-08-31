@@ -3042,6 +3042,8 @@ private struct CaptureWorkView: View {
                     Spacer(minLength: 8)
                     Button("All") { showsNestSwitcher = true }
                         .font(.caption.weight(.bold))
+                        .frame(minWidth: 44, minHeight: 44)
+                        .contentShape(Rectangle())
                         .accessibilityLabel("Show all Nests and Spaces")
                 }
 
