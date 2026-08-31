@@ -2134,6 +2134,7 @@ struct CaptureSourceEvidencePreviewView: View {
                         VStack(alignment: .leading, spacing: 8) {
                             EvidenceRow(label: "Decoded coverage", value: "100% of preview frames")
                             EvidenceRow(label: "RMS", value: "−18.4 dBFS · not LUFS")
+                                .accessibilityIdentifier("CaptureAudioTechnicalRMS")
                             EvidenceRow(label: "Sample peak", value: "−1.2 dBFS · 0 clipped frames")
                             EvidenceRow(label: "Near silent", value: "4.2% of decoded frames")
                         }

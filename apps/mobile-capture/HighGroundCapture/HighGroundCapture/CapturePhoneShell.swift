@@ -10262,7 +10262,6 @@ private struct CaptureRichWritingBody: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.vertical, 2)
-            .accessibilityIdentifier("CaptureVoiceWritingEditorBar")
 
             TextEditor(text: $text, selection: $selection)
                 .font(.body)

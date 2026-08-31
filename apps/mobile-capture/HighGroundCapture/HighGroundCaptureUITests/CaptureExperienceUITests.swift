@@ -830,7 +830,11 @@ final class CaptureExperienceUITests: XCTestCase {
 
         let writing = app.descendants(matching: .any)["CaptureVoiceWritingBody"]
         XCTAssertTrue(writing.waitForExistence(timeout: 5))
-        let bullets = app.buttons["Bullets"]
+        let bullets = app.buttons["CaptureVoiceWritingStructure_Bullets"]
+        let editor = app.descendants(matching: .any)["CaptureVoiceWritingEditor"]
+        for _ in 0..<4 where !bullets.isHittable {
+            editor.swipeDown()
+        }
         XCTAssertTrue(bullets.isHittable)
         bullets.tap()
         XCTAssertTrue(
@@ -1823,6 +1827,7 @@ final class CaptureExperienceUITests: XCTestCase {
             "The Watch scenario must explicitly enter an episode rather than inheriting the default coaching session."
         )
         episodeSession.tap()
+        openLocalRecorderIfNeeded()
 
         let card = app.descendants(matching: .any)["CaptureEpisodeWatchCard"]
         reveal(card, searchAboveFirst: false)
@@ -4429,12 +4434,20 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["3840×2160 · 24 fps · HEVC · P3-D65"].exists)
         XCTAssertTrue(app.staticTexts["Camera pressure at Start"].exists)
         XCTAssertTrue(app.staticTexts["Nominal"].exists)
-        let technicalAudio = app.descendants(matching: .any)["CaptureAudioTechnicalDetails"].firstMatch
+        let technicalAudio = app.buttons["CaptureAudioTechnicalDetails"].firstMatch
         reveal(technicalAudio, searchAboveFirst: false)
         XCTAssertTrue(technicalAudio.isHittable)
         technicalAudio.tap()
-        XCTAssertTrue(app.staticTexts["RMS"].waitForExistence(timeout: 3))
-        XCTAssertTrue(app.staticTexts["−18.4 dBFS · not LUFS"].exists)
+        XCTAssertTrue(
+            app.images["expanded"].waitForExistence(timeout: 2),
+            "Opening technical audio details must use the ordinary expanded disclosure state."
+        )
+        let rms = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "−18.4 dBFS")
+        ).firstMatch
+        reveal(rms, searchAboveFirst: false)
+        XCTAssertTrue(rms.waitForExistence(timeout: 3))
+        XCTAssertTrue(rms.label.contains("−18.4 dBFS"))
         XCTAssertTrue(
             app.staticTexts["00:08 · Possible dropout · listen before classifying"].exists
         )
@@ -5545,13 +5558,18 @@ final class CaptureExperienceUITests: XCTestCase {
         searchAboveFirst: Bool = true
     ) {
         let sourceFilingForm = app.descendants(matching: .any)["CaptureSourceFilingForm"].firstMatch
+        let navigationBar = app.navigationBars.firstMatch
+        let visibleTop = max(
+            app.frame.minY + 72,
+            navigationBar.exists ? navigationBar.frame.maxY + 4 : app.frame.minY + 72
+        )
         let visibleBottom = app.frame.maxY - (sourceFilingForm.exists ? 12 : 96)
         if sourceFilingForm.exists, element.exists, element.isHittable {
             return
         }
         if element.exists,
            element.isHittable,
-           element.frame.minY >= app.frame.minY + 72,
+           element.frame.minY >= visibleTop,
            element.frame.maxY <= visibleBottom {
             return
         }
@@ -5582,7 +5600,7 @@ final class CaptureExperienceUITests: XCTestCase {
         for searchAbove in searchDirections {
             for _ in 0..<16 {
                 let shouldMoveContentDown = element.exists
-                    ? element.frame.maxY <= app.frame.minY + 72
+                    ? element.frame.minY < visibleTop
                     : searchAbove
                 if sourceFilingForm.exists {
                     if shouldMoveContentDown {
@@ -5620,7 +5638,7 @@ final class CaptureExperienceUITests: XCTestCase {
                     }
                 } else if element.exists,
                           element.isHittable,
-                          element.frame.minY >= app.frame.minY + 72,
+                          element.frame.minY >= visibleTop,
                           element.frame.maxY <= visibleBottom {
                     return
                 }
@@ -6219,7 +6237,9 @@ final class ShareCaptureExtensionUITests: XCTestCase {
             return
         }
 
-        let scrollSurface = captureApp.scrollViews["CaptureRecorderView"].firstMatch
+        let recorder = captureApp.scrollViews["CaptureRecorderView"].firstMatch
+        let work = captureApp.scrollViews["CaptureWorkView"].firstMatch
+        let scrollSurface = recorder.exists ? recorder : work
         for searchAbove in [true, false] {
             for _ in 0..<16 {
                 let shouldMoveContentDown = element.exists
@@ -6416,7 +6436,7 @@ final class ShareCaptureExtensionUITests: XCTestCase {
         XCTAssertTrue(captureApp.staticTexts.matching(
             NSPredicate(format: "label CONTAINS[c] %@", "iana.org")
         ).firstMatch.exists, "The exact Safari URL should remain visible in the protected source outbox.")
-        XCTAssertTrue(captureApp.staticTexts["Saved on iPhone · waiting to sync"].exists)
+        XCTAssertTrue(captureApp.staticTexts["Saved on this iPhone · waiting to sync"].exists)
 
         // Process death must not turn a local-save receipt into wishful sync.
         // Relaunch the exact bundle with network actions still disabled and
@@ -6431,7 +6451,7 @@ final class ShareCaptureExtensionUITests: XCTestCase {
         XCTAssertTrue(captureApp.staticTexts.matching(
             NSPredicate(format: "label CONTAINS[c] %@", "iana.org")
         ).firstMatch.exists, "The same URL must recover after terminating and relaunching Capture.")
-        XCTAssertTrue(captureApp.staticTexts["Saved on iPhone · waiting to sync"].exists)
+        XCTAssertTrue(captureApp.staticTexts["Saved on this iPhone · waiting to sync"].exists)
         let retry = captureApp.buttons["CaptureQuickEntryRetry"]
         XCTAssertTrue(retry.exists, "Recovered pending evidence should keep its Sync now action with the visible queue status.")
         XCTAssertTrue(retry.isHittable)
@@ -6453,7 +6473,7 @@ final class ShareCaptureExtensionUITests: XCTestCase {
         XCTAssertFalse(captureApp.staticTexts.matching(
             NSPredicate(format: "label CONTAINS[c] %@", "iana.org")
         ).firstMatch.exists, "A different verified owner must not see the first owner's protected URL.")
-        XCTAssertFalse(captureApp.staticTexts["Saved on iPhone · waiting to sync"].exists)
+        XCTAssertFalse(captureApp.staticTexts["Saved on this iPhone · waiting to sync"].exists)
         XCTAssertFalse(captureApp.buttons["CaptureQuickEntryRetry"].exists)
 
         // Returning to the original verified owner reveals the same pending
@@ -6468,7 +6488,7 @@ final class ShareCaptureExtensionUITests: XCTestCase {
         XCTAssertTrue(captureApp.staticTexts.matching(
             NSPredicate(format: "label CONTAINS[c] %@", "iana.org")
         ).firstMatch.exists)
-        XCTAssertTrue(captureApp.staticTexts["Saved on iPhone · waiting to sync"].exists)
+        XCTAssertTrue(captureApp.staticTexts["Saved on this iPhone · waiting to sync"].exists)
     }
 
     func testSignedInSimulatorSelectedPassageStagesTextWithWebpageProvenance() {
@@ -6513,9 +6533,9 @@ final class ShareCaptureExtensionUITests: XCTestCase {
         XCTAssertTrue(post.isEnabled)
         post.tap()
 
-        captureApp.launchArguments = ["--capture-ui-preview", ownerArgument, "--capture-ui-preview-tab=record"]
+        captureApp.launchArguments = ["--capture-ui-preview", ownerArgument, "--capture-ui-preview-tab=work"]
         captureApp.launch()
-        XCTAssertTrue(captureApp.navigationBars["Sessions"].waitForExistence(timeout: 12))
+        XCTAssertTrue(captureApp.scrollViews["CaptureWorkView"].waitForExistence(timeout: 12))
         let syncCard = captureApp.staticTexts["1 quick capture waiting"]
         revealCapture(syncCard)
         XCTAssertTrue(syncCard.waitForExistence(timeout: 10))
@@ -6528,6 +6548,6 @@ final class ShareCaptureExtensionUITests: XCTestCase {
         XCTAssertTrue(captureApp.staticTexts.matching(
             NSPredicate(format: "label CONTAINS[c] %@", "example.com")
         ).firstMatch.exists, "The selected passage must keep its source webpage URL.")
-        XCTAssertTrue(captureApp.staticTexts["Saved on iPhone · waiting to sync"].exists)
+        XCTAssertTrue(captureApp.staticTexts["Saved on this iPhone · waiting to sync"].exists)
     }
 }
