@@ -276,6 +276,86 @@ def update_release_receipt(paths)
   receipt_path
 end
 
+def write_unqualified_release_receipt(paths, source_revision:, source_isolation:, release_run_id:, built_at: Time.now.utc.iso8601)
+  receipt_path = release_receipt_path(paths)
+  write_release_receipt(
+    receipt_path,
+    {
+      schema: "quipsly-capture-release-receipt-v1",
+      builtAt: built_at,
+      sourceRevision: source_revision,
+      sourceIsolation: source_isolation,
+      releaseRunID: release_run_id,
+      version: paths[:version],
+      build: paths[:build],
+      archivePath: paths[:archive_path],
+      ipaPath: paths[:ipa_path],
+      ipaBytes: File.size(paths[:ipa_path]),
+      ipaSHA256: Digest::SHA256.file(paths[:ipa_path]).hexdigest,
+      candidateQualified: false,
+      deterministicUITestPerformed: false,
+      uiTestEvidencePath: nil,
+      uploadAttempted: false,
+      uploadPerformed: false,
+      uploadOutcome: "not-attempted",
+      buildProcessingWaitReturned: false,
+      testerAssignmentPerformed: false,
+      physicalTestFlightInstallReadbackPerformed: false,
+    },
+  )
+  receipt_path
+end
+
+def recover_candidate_receipt(archive_path, ipa_path, source_revision)
+  UI.user_error!("Set archive_path to an existing Capture xcarchive.") if archive_path.to_s.empty?
+  UI.user_error!("Set ipa_path to its existing Capture IPA.") if ipa_path.to_s.empty?
+  UI.user_error!("Set candidate_revision to the exact archived source commit.") if source_revision.to_s.empty?
+  UI.user_error!("Candidate source revision is invalid.") unless source_revision.match?(/\A[0-9a-f]{40}\z/)
+  UI.user_error!("Candidate source commit is unavailable in this repository.") unless
+    system("git", "-C", REPO_ROOT, "cat-file", "-e", "#{source_revision}^{commit}", out: File::NULL, err: File::NULL)
+  UI.user_error!("Recovery tooling must descend from the candidate source commit.") unless
+    system("git", "-C", REPO_ROOT, "merge-base", "--is-ancestor", source_revision, "HEAD", out: File::NULL, err: File::NULL)
+
+  expanded_archive_path = File.realpath(File.expand_path(archive_path))
+  expanded_ipa_path = File.realpath(File.expand_path(ipa_path))
+  output_directory = File.dirname(expanded_archive_path)
+  UI.user_error!("Recovered archive and IPA must be colocated.") unless File.dirname(expanded_ipa_path) == output_directory
+  UI.user_error!("Recovered artifact directory is not scoped to the candidate source.") unless
+    File.basename(File.dirname(output_directory)) == source_revision[0, 12]
+
+  archive_match = File.basename(expanded_archive_path).match(
+    /\AQuipslyCapture-(\d+(?:\.\d+){1,2})\.(\d+)\.xcarchive\z/,
+  )
+  UI.user_error!("Recovered archive name does not encode a valid version and build.") if archive_match.nil?
+  version = archive_match[1]
+  build = archive_match[2]
+  stem = "QuipslyCapture-#{version}.#{build}"
+  UI.user_error!("Recovered IPA name does not match its archive.") unless File.basename(expanded_ipa_path) == "#{stem}.ipa"
+
+  paths = {
+    version: version,
+    build: build,
+    output_directory: output_directory,
+    archive_path: expanded_archive_path,
+    ipa_path: expanded_ipa_path,
+  }
+  receipt_path = release_receipt_path(paths)
+  UI.user_error!("Refusing to replace an existing release receipt: #{receipt_path}") if File.exist?(receipt_path)
+  sh(ARTIFACT_VERIFIER, paths[:archive_path], paths[:ipa_path])
+  write_unqualified_release_receipt(
+    paths,
+    source_revision: source_revision,
+    source_isolation: "detached-worktree",
+    release_run_id: File.basename(output_directory),
+    built_at: File.mtime(expanded_archive_path).utc.iso8601,
+  )
+  UI.success("Recovered a verified, unqualified receipt without rebuilding the candidate.")
+  UI.success("Release receipt: #{receipt_path}")
+  receipt_path
+rescue Errno::ENOENT => error
+  UI.user_error!("Recovered artifact is unavailable: #{error.message}")
+end
+
 def seal_candidate_receipt(receipt_path, evidence_path)
   UI.user_error!("Set receipt_path to an unqualified Capture release receipt.") if receipt_path.to_s.empty?
   UI.user_error!("Set evidence_path to the exact full UI evidence manifest.") if evidence_path.to_s.empty?
@@ -694,33 +774,13 @@ platform :ios do
     UI.user_error!("Xcode export did not produce an IPA in #{paths[:export_directory]}") if exported_ipa.to_s.empty?
     FileUtils.mv(exported_ipa, paths[:ipa_path])
 
-    sh(ARTIFACT_VERIFIER, paths[:archive_path], paths[:ipa_path])
-    receipt_path = release_receipt_path(paths)
-    write_release_receipt(
-      receipt_path,
-      {
-        schema: "quipsly-capture-release-receipt-v1",
-        builtAt: Time.now.utc.iso8601,
-        sourceRevision: source_revision,
-        sourceIsolation: ENV["QUIPSLY_CAPTURE_RELEASE_ISOLATED"] == "1" ? "detached-worktree" : "current-worktree",
-        releaseRunID: ENV["QUIPSLY_CAPTURE_RELEASE_RUN_ID"],
-        version: paths[:version],
-        build: paths[:build],
-        archivePath: paths[:archive_path],
-        ipaPath: paths[:ipa_path],
-        ipaBytes: File.size(paths[:ipa_path]),
-        ipaSHA256: Digest::SHA256.file(paths[:ipa_path]).hexdigest,
-        candidateQualified: false,
-        deterministicUITestPerformed: false,
-        uiTestEvidencePath: nil,
-        uploadAttempted: false,
-        uploadPerformed: false,
-        uploadOutcome: "not-attempted",
-        buildProcessingWaitReturned: false,
-        testerAssignmentPerformed: false,
-        physicalTestFlightInstallReadbackPerformed: false,
-      },
+    receipt_path = write_unqualified_release_receipt(
+      paths,
+      source_revision: source_revision,
+      source_isolation: ENV["QUIPSLY_CAPTURE_RELEASE_ISOLATED"] == "1" ? "detached-worktree" : "current-worktree",
+      release_run_id: ENV["QUIPSLY_CAPTURE_RELEASE_RUN_ID"],
     )
+    sh(ARTIFACT_VERIFIER, paths[:archive_path], paths[:ipa_path])
     UI.success("Verified Quipsly Capture #{paths[:version]} (#{paths[:build]}) at #{paths[:ipa_path]}")
     UI.success("Release receipt: #{receipt_path}")
   end
@@ -764,6 +824,19 @@ platform :ios do
     receipt_path = options[:receipt_path] || ENV["QUIPSLY_CAPTURE_RELEASE_RECEIPT"]
     evidence_path = options[:evidence_path] || ENV["QUIPSLY_CAPTURE_UI_TEST_EVIDENCE"]
     seal_candidate_receipt(receipt_path, evidence_path)
+  end
+
+  desc "Recover an unqualified receipt for intact exact-source artifacts after a verifier-only failure"
+  lane :recover_candidate do |options|
+    unless ENV["QUIPSLY_CAPTURE_RELEASE_ISOLATED"] == "1"
+      UI.user_error!(
+        "Candidate recovery must use scripts/release/quipsly-capture-release-from-commit.sh from an exact committed tooling revision.",
+      )
+    end
+    archive_path = options[:archive_path] || ENV["QUIPSLY_CAPTURE_RELEASE_ARCHIVE"]
+    ipa_path = options[:ipa_path] || ENV["QUIPSLY_CAPTURE_RELEASE_IPA"]
+    source_revision = options[:candidate_revision] || ENV["QUIPSLY_CAPTURE_CANDIDATE_REVISION"]
+    recover_candidate_receipt(archive_path, ipa_path, source_revision)
   end
 
   desc "Reverify and upload a sealed qualified candidate without rebuilding it"

@@ -5,7 +5,8 @@ set -euo pipefail
 usage() {
   cat <<'USAGE'
 Usage:
-  scripts/release/quipsly-capture-release-from-commit.sh <candidate|release|beta|seal_candidate|upload_qualified> [--revision <commit-ish>] [fastlane options...]
+  scripts/release/quipsly-capture-release-from-commit.sh <candidate|release|beta|recover_candidate|seal_candidate|upload_qualified> [--revision <commit-ish>] [fastlane options...]
+  scripts/release/quipsly-capture-release-from-commit.sh recover_candidate --revision <tooling-commit-ish> --candidate-revision <archived-commit> --archive <archive.xcarchive> --ipa <app.ipa>
   scripts/release/quipsly-capture-release-from-commit.sh seal_candidate --revision <tooling-commit-ish> --receipt <release-receipt.json> --evidence <ui-evidence.json>
   scripts/release/quipsly-capture-release-from-commit.sh upload_qualified --revision <commit-ish> --receipt <release-receipt.json> --api-key-path <api-key.json>
 
@@ -19,6 +20,9 @@ App Store Connect processing. `upload_qualified` re-verifies and uploads an
 existing sealed candidate receipt without repeating qualification or rebuild.
 `seal_candidate` combines independently completed exact-source UI and signed
 artifact proof after re-verifying both, without repeating either expensive lane.
+`recover_candidate` creates the missing unqualified receipt for intact artifacts
+after a verifier-only failure; it re-verifies the artifact and binds it to the
+explicit archived source before `seal_candidate` can qualify it.
 The named upload flags are translated to Fastlane options so paths containing
 spaces remain one argument. APP_STORE_CONNECT_API_KEY_PATH may replace
 --api-key-path.
@@ -32,14 +36,14 @@ fail() {
 
 lane="${1:-}"
 case "$lane" in
-  candidate | release | beta | seal_candidate | upload_qualified) ;;
+  candidate | release | beta | recover_candidate | seal_candidate | upload_qualified) ;;
   -h | --help)
     usage
     exit 0
     ;;
   *)
     usage >&2
-    fail "First argument must be candidate, release, beta, seal_candidate, or upload_qualified."
+    fail "First argument must be candidate, release, beta, recover_candidate, seal_candidate, or upload_qualified."
     ;;
 esac
 shift
@@ -67,6 +71,39 @@ while [[ $# -gt 0 ]]; do
       receipt_path="${1#--receipt=}"
       [[ -n "$receipt_path" ]] || fail "--receipt requires a release-receipt.json path."
       fastlane_args+=("receipt_path:${receipt_path}")
+      shift
+      ;;
+    --candidate-revision)
+      [[ $# -ge 2 && -n "$2" ]] || fail "--candidate-revision requires the archived source commit."
+      fastlane_args+=("candidate_revision:$2")
+      shift 2
+      ;;
+    --candidate-revision=*)
+      candidate_revision="${1#--candidate-revision=}"
+      [[ -n "$candidate_revision" ]] || fail "--candidate-revision requires the archived source commit."
+      fastlane_args+=("candidate_revision:${candidate_revision}")
+      shift
+      ;;
+    --archive)
+      [[ $# -ge 2 && -n "$2" ]] || fail "--archive requires an xcarchive path."
+      fastlane_args+=("archive_path:$2")
+      shift 2
+      ;;
+    --archive=*)
+      archive_path="${1#--archive=}"
+      [[ -n "$archive_path" ]] || fail "--archive requires an xcarchive path."
+      fastlane_args+=("archive_path:${archive_path}")
+      shift
+      ;;
+    --ipa)
+      [[ $# -ge 2 && -n "$2" ]] || fail "--ipa requires an IPA path."
+      fastlane_args+=("ipa_path:$2")
+      shift 2
+      ;;
+    --ipa=*)
+      ipa_path="${1#--ipa=}"
+      [[ -n "$ipa_path" ]] || fail "--ipa requires an IPA path."
+      fastlane_args+=("ipa_path:${ipa_path}")
       shift
       ;;
     --evidence)
@@ -135,7 +172,7 @@ require_free_space() {
     fail "${label} requires at least ${minimum_free_gib} GiB free at ${path}; only $((available_kib / 1024 / 1024)) GiB is available. Remove disposable Xcode/release evidence or set the output directory to a larger volume."
 }
 
-if [[ "$lane" != "upload_qualified" && "$lane" != "seal_candidate" ]]; then
+if [[ "$lane" != "upload_qualified" && "$lane" != "seal_candidate" && "$lane" != "recover_candidate" ]]; then
   require_free_space "$release_root" "Capture release qualification"
 fi
 

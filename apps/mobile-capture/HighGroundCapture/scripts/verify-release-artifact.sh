@@ -65,7 +65,7 @@ verify_capture_app() {
   local microphone_purpose
 
   verify_bundle "$capture_app" "com.highgroundodyssey.HighGroundCapture"
-  require_plist_json "$info_plist" "UIDeviceFamily" '[1]'
+  require_plist_json "$info_plist" "UIDeviceFamily" '[1,2]'
   require_plist_json "$info_plist" "CFBundleSupportedPlatforms" '["iPhoneOS"]'
   require_path "$capture_app/PrivacyInfo.xcprivacy"
   plutil -lint "$capture_app/PrivacyInfo.xcprivacy" >/dev/null
