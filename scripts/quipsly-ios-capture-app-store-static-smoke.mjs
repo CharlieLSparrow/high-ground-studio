@@ -664,6 +664,28 @@ for (const needle of [
   );
 }
 for (const needle of [
+  "\\(onDeviceTranscriptSourceCount) on device",
+  "\\(appleSpeechServiceTranscriptSourceCount) Apple service",
+  "\\(quipslyCloudTranscriptSourceCount) Quipsly cloud",
+]) {
+  requireIncludes(
+    bridgeText,
+    needle,
+    "joint transcript routing renders numeric source counts instead of placeholder property names",
+  );
+}
+for (const placeholder of [
+  '"(onDeviceTranscriptSourceCount) on device"',
+  '"(appleSpeechServiceTranscriptSourceCount) Apple service"',
+  '"(quipslyCloudTranscriptSourceCount) Quipsly cloud"',
+]) {
+  requireExcludes(
+    bridgeText,
+    placeholder,
+    "joint transcript routing never exposes an uninterpolated implementation placeholder",
+  );
+}
+for (const needle of [
   "mobileSourceTranscriptStatusMessage",
   "mobileSourceTranscriptRouting",
   'recognitionExecution === "quipsly-cloud"',
