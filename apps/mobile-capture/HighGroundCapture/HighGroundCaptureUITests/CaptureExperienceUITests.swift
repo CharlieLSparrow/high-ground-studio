@@ -2557,10 +2557,7 @@ final class CaptureExperienceUITests: XCTestCase {
 
     func testQuickNoteCanExplicitlyTargetPrivateHomeNestEvenWhenASessionIsSelected() {
         app.tabBars.buttons["Sessions"].tap()
-        let noteButton = app.buttons["CaptureQuickEntry_NOTE_preview-coaching-ready"]
-        reveal(noteButton)
-        XCTAssertTrue(noteButton.isHittable)
-        noteButton.tap()
+        openSessionQuickEntry("NOTE")
 
         XCTAssertTrue(app.descendants(matching: .any)["CaptureQuickEntrySheet_NOTE"].waitForExistence(timeout: 5))
         let destination = app.descendants(matching: .any)["CaptureQuickEntryNoteDestination"].firstMatch
@@ -2579,9 +2576,7 @@ final class CaptureExperienceUITests: XCTestCase {
 
     func testSessionQuickNoteMakesDecisionAndClientSafeAudienceObviousWithoutClaimingDelivery() {
         app.tabBars.buttons["Sessions"].tap()
-        let noteButton = app.buttons["CaptureQuickEntry_NOTE_preview-coaching-ready"]
-        reveal(noteButton)
-        noteButton.tap()
+        openSessionQuickEntry("NOTE")
         XCTAssertTrue(app.descendants(matching: .any)["CaptureQuickEntrySheet_NOTE"].waitForExistence(timeout: 5))
 
         let noteDetails = app.buttons["CaptureQuickEntryNoteDetails"].firstMatch
@@ -2877,10 +2872,7 @@ final class CaptureExperienceUITests: XCTestCase {
 
     func testQuickTaskCanTargetAWritableProjectAndReuseItsCanonicalTagsWithoutASession() {
         app.tabBars.buttons["Sessions"].tap()
-        let taskButton = app.buttons["CaptureQuickEntry_TASK_preview-coaching-ready"]
-        reveal(taskButton)
-        XCTAssertTrue(taskButton.isHittable)
-        taskButton.tap()
+        openSessionQuickEntry("TASK")
 
         XCTAssertTrue(app.descendants(matching: .any)["CaptureQuickEntrySheet_TASK"].waitForExistence(timeout: 5))
         let destination = app.descendants(matching: .any)["CaptureQuickEntryDestination"].firstMatch
@@ -2904,10 +2896,7 @@ final class CaptureExperienceUITests: XCTestCase {
 
     func testRecordSourceCaptureTargetsPrivateInboxBeforeAnyResearchNest() {
         app.tabBars.buttons["Sessions"].tap()
-        let sourceButton = app.buttons["CaptureQuickEntry_SOURCE_preview-coaching-ready"]
-        reveal(sourceButton)
-        XCTAssertTrue(sourceButton.isHittable)
-        sourceButton.tap()
+        openSessionQuickEntry("SOURCE")
 
         XCTAssertTrue(app.descendants(matching: .any)["CaptureQuickEntrySheet_SOURCE"].waitForExistence(timeout: 5))
         let destination = app.descendants(matching: .any)["CaptureQuickEntryDestination"].firstMatch
@@ -2931,10 +2920,7 @@ final class CaptureExperienceUITests: XCTestCase {
 
     func testQuickCaptureChoosesExistingCanonicalNestTags() {
         app.tabBars.buttons["Sessions"].tap()
-        let taskButton = app.buttons["CaptureQuickEntry_TASK_preview-coaching-ready"]
-        reveal(taskButton)
-        XCTAssertTrue(taskButton.isHittable)
-        taskButton.tap()
+        openSessionQuickEntry("TASK")
 
         XCTAssertTrue(app.descendants(matching: .any)["CaptureQuickEntrySheet_TASK"].waitForExistence(timeout: 5))
         let productionTag = app.buttons["CaptureQuickEntryTag_preview-production"].firstMatch
@@ -2963,10 +2949,7 @@ final class CaptureExperienceUITests: XCTestCase {
 
     func testTaskQuickCaptureAuthorsAnExplicitRecurrenceWithoutImplyingAReminder() {
         app.tabBars.buttons["Sessions"].tap()
-        let taskButton = app.buttons["CaptureQuickEntry_TASK_preview-coaching-ready"]
-        reveal(taskButton, searchAboveFirst: false)
-        XCTAssertTrue(taskButton.isHittable)
-        taskButton.tap()
+        openSessionQuickEntry("TASK")
 
         XCTAssertTrue(app.descendants(matching: .any)["CaptureQuickEntrySheet_TASK"].waitForExistence(timeout: 5))
         let title = app.textFields["CaptureQuickEntryTitle"]
@@ -3027,10 +3010,7 @@ final class CaptureExperienceUITests: XCTestCase {
 
     func testTaskQuickCaptureAddsACanonicalDueDateWithoutInventingAReminder() {
         app.tabBars.buttons["Sessions"].tap()
-        let taskButton = app.buttons["CaptureQuickEntry_TASK_preview-coaching-ready"]
-        reveal(taskButton)
-        XCTAssertTrue(taskButton.isHittable)
-        taskButton.tap()
+        openSessionQuickEntry("TASK")
 
         XCTAssertTrue(app.descendants(matching: .any)["CaptureQuickEntrySheet_TASK"].waitForExistence(timeout: 5))
         let title = app.textFields["CaptureQuickEntryTitle"]
@@ -3057,10 +3037,7 @@ final class CaptureExperienceUITests: XCTestCase {
 
     func testTaskQuickCaptureUsesOrdinaryReminderLanguage() {
         app.tabBars.buttons["Sessions"].tap()
-        let taskButton = app.buttons["CaptureQuickEntry_TASK_preview-coaching-ready"]
-        reveal(taskButton)
-        XCTAssertTrue(taskButton.isHittable)
-        taskButton.tap()
+        openSessionQuickEntry("TASK")
 
         XCTAssertTrue(app.descendants(matching: .any)["CaptureQuickEntrySheet_TASK"].waitForExistence(timeout: 5))
         let title = app.textFields["CaptureQuickEntryTitle"]
@@ -3101,10 +3078,7 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(app.navigationBars["Sessions"].waitForExistence(timeout: 12))
         openLocalRecorderIfNeeded()
 
-        let taskButton = app.buttons["CaptureQuickEntry_TASK_preview-coaching-ready"]
-        reveal(taskButton)
-        XCTAssertTrue(taskButton.isHittable)
-        taskButton.tap()
+        openSessionQuickEntry("TASK")
         XCTAssertTrue(app.descendants(matching: .any)["CaptureQuickEntrySheet_TASK"].waitForExistence(timeout: 5))
 
         let title = app.textFields["CaptureQuickEntryTitle"]
@@ -5758,6 +5732,20 @@ final class CaptureExperienceUITests: XCTestCase {
                 .waitForExistence(timeout: 5),
             "The explicit local-only escape hatch should reveal the recording workspace without joining or recording."
         )
+    }
+
+    private func openSessionQuickEntry(_ kind: String) {
+        let add = app.buttons["CaptureSessionQuickAdd"]
+        XCTAssertTrue(
+            add.waitForExistence(timeout: 5) && add.isHittable,
+            "Session Add should remain reachable without traversing the recorder stack."
+        )
+        add.tap()
+        let action = app.buttons[
+            "CaptureSessionQuickAdd_\(kind)_preview-coaching-ready"
+        ]
+        XCTAssertTrue(action.waitForExistence(timeout: 3))
+        action.tap()
     }
 
     private func dismissQuickEntryKeyboard() {
