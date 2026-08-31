@@ -21,6 +21,7 @@ const files = {
   runtimeUISmokeRunner: path.join(iosRoot, "scripts/run-capture-runtime-ui-smoke.sh"),
   runtimeUISmokeTests: path.join(iosRoot, "HighGroundCaptureUITests/CaptureRoomRuntimeSmokeTests.swift"),
   deterministicUITests: path.join(iosRoot, "HighGroundCaptureUITests/CaptureExperienceUITests.swift"),
+  deterministicUITestPlan: path.join(root, "scripts/release/quipsly-capture-ui-test-plan.mjs"),
   appStoreDraftRunner: path.join(iosRoot, "scripts/capture-app-store-draft-screenshots.sh"),
   appStoreDraftMaterializer: path.join(iosRoot, "scripts/app-store-draft-screenshots.mjs"),
   appStoreCommittedDraftRunner: path.join(root, "scripts/release/quipsly-capture-screenshots-from-commit.sh"),
@@ -216,6 +217,7 @@ const liveKitProviderRoomValidatorText = read(files.liveKitProviderRoomValidator
 const runtimeUISmokeRunnerText = read(files.runtimeUISmokeRunner);
 const runtimeUISmokeTestsText = read(files.runtimeUISmokeTests);
 const deterministicUITestsText = read(files.deterministicUITests);
+const deterministicUITestPlanText = read(files.deterministicUITestPlan);
 const captureExperienceModelText = read(files.captureExperienceModel);
 const appStoreDraftRunnerText = read(files.appStoreDraftRunner);
 const appStoreDraftMaterializerText = read(files.appStoreDraftMaterializer);
@@ -2458,6 +2460,11 @@ requireIncludes(providerRoomText, "let resetCallRoomID = self.activeCallRoomID",
 requireIncludes(providerRoomText, "self.intentionalProviderDisconnect = true", "CallKit reset owns one deterministic recovery result rather than racing room-delegate inference");
 requireIncludes(captureExperienceModelText, "providerRoom.canRejoin(callRoomID: session.callRoomId)", "room preparation bypasses route locks only for the selected disconnected Session");
 requireIncludes(capturePhoneShellText, "model.providerRoom.canRejoin(callRoomID: session.callRoomId)", "the visible Rejoin affordance is scoped to the displayed Session");
+requireIncludes(capturePhoneShellText, 'accessibilityIdentifier("CaptureProviderRoomState")', "native call status has a stable automation and accessibility identity");
+requireIncludes(capturePhoneShellText, '"Your local recording is still protected. Rejoin when you\'re ready."', "dropped-call recovery visibly distinguishes the protected local source from call transport");
+requireIncludes(capturePhoneShellText, 'accessibilityIdentifier("CaptureCallRejoinRecoveryStatus")', "dropped-call source protection has a stable automation and accessibility identity");
+requireIncludes(deterministicUITestsText, "func testDisconnectedCallOffersOneTapRejoinWhileKeepingRecordingSafe", "deterministic native UI acceptance covers dropped-call recovery without touching real services");
+requireIncludes(deterministicUITestPlanText, "CaptureExperienceUITests/testDisconnectedCallOffersOneTapRejoinWhileKeepingRecordingSafe", "the guarded critical UI lane cannot omit dropped-call recovery");
 requireIncludes(providerRoomText, "self.intentionalProviderDisconnect = !shouldAllowRejoin", "provider-exhausted cleanup remains distinct from a deliberate person-owned hang-up");
 requireIncludes(providerRoomText, "didSubscribeTrack publication: RemoteTrackPublication", "native call refreshes its remote-video surface when a participant publishes video");
 requireIncludes(providerRoomText, "didUnsubscribeTrack publication: RemoteTrackPublication", "native call removes stale remote video when a participant stops video");

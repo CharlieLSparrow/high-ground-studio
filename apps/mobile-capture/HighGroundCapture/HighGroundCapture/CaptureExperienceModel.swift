@@ -204,6 +204,17 @@ enum CaptureLaunchConfiguration {
         #endif
     }
 
+    static var usesCallRejoinPreview: Bool {
+        #if DEBUG && targetEnvironment(simulator)
+        usesPreviewData
+            && ProcessInfo.processInfo.arguments.contains(
+                "--capture-call-rejoin-preview"
+            )
+        #else
+        false
+        #endif
+    }
+
     static var usesCoachingPreparationWorkingDraftPreview: Bool {
         #if DEBUG && targetEnvironment(simulator)
         usesPreviewData
@@ -834,6 +845,14 @@ final class CaptureExperienceModel: ObservableObject {
             selectedSessionID = selectedSessionID
                 ?? requestedPreviewSessionID
                 ?? sessionClient.sessions.first?.id
+            #if DEBUG && targetEnvironment(simulator)
+            if CaptureLaunchConfiguration.usesCallRejoinPreview,
+               let selectedSession {
+                providerRoom.loadRejoinPreview(
+                    callRoomID: selectedSession.callRoomId
+                )
+            }
+            #endif
             hasCompletedInitialSessionAuthorityLoad = true
             // Task-reminder projection is useful preview evidence, but it is
             // not a prerequisite for mounting Sessions, Library, or recording

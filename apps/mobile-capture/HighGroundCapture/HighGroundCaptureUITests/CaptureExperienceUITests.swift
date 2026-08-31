@@ -33,6 +33,13 @@ final class CaptureExperienceUITests: XCTestCase {
                 "--capture-consent-needed-next-preview"
             )
         }
+        if name.contains("testDisconnectedCallOffersOneTapRejoinWhileKeepingRecordingSafe") {
+            app.launchArguments += [
+                "--capture-ui-preview-tab=record",
+                "--capture-ui-preview-session=preview-coaching-ready",
+                "--capture-call-rejoin-preview",
+            ]
+        }
         if name.contains("testPrivateVoiceNoteOpensCaptureWithoutMeetingPaperwork")
             || name.contains("testVoiceWritingRecordsAndStopsThroughTheSourceFirstPath")
             || name.contains("testSpeechAdaptationIsOptionalRememberedAndEasyToReach") {
@@ -167,7 +174,15 @@ final class CaptureExperienceUITests: XCTestCase {
             launchesRecorderPreview = false
         }
         app.launch()
-        if launchesRecorderPreview {
+        if name.contains(
+            "testDisconnectedCallOffersOneTapRejoinWhileKeepingRecordingSafe"
+        ) {
+            XCTAssertTrue(
+                app.descendants(matching: .any)["CaptureProviderRoomState"]
+                    .waitForExistence(timeout: 12),
+                "The deterministic call-recovery preview should launch directly in the Session lobby without credentials or network access."
+            )
+        } else if launchesRecorderPreview {
             openLocalRecorderIfNeeded()
             XCTAssertTrue(
                 app.otherElements["CaptureRecorderHero"]
@@ -1728,6 +1743,31 @@ final class CaptureExperienceUITests: XCTestCase {
             "Consent and Record must stay contiguous with the call path instead of being interrupted by collaboration tools."
         )
         XCTAssertTrue(app.state == .runningForeground)
+    }
+
+    func testDisconnectedCallOffersOneTapRejoinWhileKeepingRecordingSafe() {
+        let state = app.descendants(matching: .any)["CaptureProviderRoomState"]
+        XCTAssertTrue(state.waitForExistence(timeout: 5))
+        XCTAssertTrue(state.label.contains("Call disconnected"))
+
+        let recovery = app.descendants(matching: .any)[
+            "CaptureCallRejoinRecoveryStatus"
+        ]
+        reveal(recovery)
+        XCTAssertTrue(recovery.waitForExistence(timeout: 5))
+        XCTAssertTrue(recovery.label.contains("recording is still protected"))
+
+        let rejoin = app.buttons["ProviderJoinRoomButton"]
+        reveal(rejoin)
+        XCTAssertTrue(rejoin.waitForExistence(timeout: 5))
+        XCTAssertEqual(rejoin.label, "Rejoin call")
+        XCTAssertTrue(rejoin.isHittable)
+
+        let recordWithoutCall = app.buttons["CaptureRecordWithoutJoiningButton"]
+        reveal(recordWithoutCall)
+        XCTAssertTrue(recordWithoutCall.waitForExistence(timeout: 5))
+        XCTAssertTrue(recordWithoutCall.isHittable)
+        XCTAssertFalse(app.alerts.firstMatch.exists)
     }
 
     func testCallLobbyRemembersSafeDeviceChoicesAcrossRelaunch() {

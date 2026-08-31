@@ -12931,6 +12931,19 @@ private struct CaptureSessionTruthPanel: View {
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
 
+                if model.providerRoom.canRejoin(
+                    callRoomID: session.callRoomId
+                ) {
+                    Label(
+                        "Your local recording is still protected. Rejoin when you're ready.",
+                        systemImage: "checkmark.shield.fill"
+                    )
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.green)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("CaptureCallRejoinRecoveryStatus")
+                }
+
                 DisclosureGroup("Technical details", isExpanded: $showsTechnicalDetails) {
                     VStack(alignment: .leading, spacing: 8) {
                         Text(model.providerRoom.nativeCallPresentationLabel)
@@ -19084,6 +19097,7 @@ private struct ProviderRoomControls: View {
                         : "person.2.wave.2"
                 )
                     .font(.headline)
+                    .accessibilityIdentifier("CaptureProviderRoomState")
                 Spacer()
                 Text("Call")
                     .font(.caption.weight(.semibold))

@@ -105,6 +105,23 @@ final class ProviderRoomController: NSObject, ObservableObject {
         statusText = "This Session is closed. Your local recording remains separate and protected."
     }
 
+    #if DEBUG && targetEnvironment(simulator)
+    func loadRejoinPreview(callRoomID: String) {
+        activeCallRoomID = callRoomID
+        rejoinableCallRoomID = callRoomID
+        permanentlyClosedCallRoomID = nil
+        isConnecting = false
+        isConnected = false
+        isReconnecting = false
+        isMuted = true
+        usesCallAudio = false
+        connectionStateLabel = "Disconnected"
+        statusText = "The call disconnected. Your recording is still protected on \(CaptureDeviceVocabulary.thisDevice). Tap Rejoin call when ready."
+        lastError = nil
+        lastTechnicalError = nil
+    }
+    #endif
+
     private let callKitProvider: CXProvider
     private let callController = CXCallController()
     private let audioSessionCoordinator = CaptureAudioSessionCoordinator.shared
