@@ -14380,6 +14380,7 @@ private struct CaptureSessionNoteEditSheet: View {
                 }
             }
             .accessibilityIdentifier("CaptureSessionNoteEditSheet")
+            .onAppear { restoreWorkingDraftIfCanonical() }
             .onChange(of: title) { _, _ in scheduleWorkingDraftSave() }
             .onChange(of: noteBody) { _, _ in scheduleWorkingDraftSave() }
             .onChange(of: noteKind) { _, _ in scheduleWorkingDraftSave() }
@@ -14398,6 +14399,25 @@ private struct CaptureSessionNoteEditSheet: View {
 
     var body: some View {
         bodyView
+    }
+
+    private func restoreWorkingDraftIfCanonical() {
+        // NavigationStack can retain the destination's State after it is
+        // popped. If the same note is opened again, prefer the newer protected
+        // draft whenever the retained destination has fallen back to the
+        // canonical values. Never overwrite active edits or a protected
+        // outbox resolution.
+        guard protectedEdit == nil,
+              !hasChanges,
+              let workingDraft = workingDraftStore.draft(for: note.id) else {
+            return
+        }
+        title = workingDraft.title
+        noteBody = workingDraft.body
+        noteKind = workingDraft.noteKind
+        noteVisibility = workingDraft.noteVisibility
+        selectedTagIDs = Set(workingDraft.tagIDs)
+        workingDraftStatus = "Recovered your saved \(CaptureDeviceVocabulary.deviceName) draft."
     }
 
     private func scheduleWorkingDraftSave() {

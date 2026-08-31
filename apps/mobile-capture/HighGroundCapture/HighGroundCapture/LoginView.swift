@@ -41,7 +41,6 @@ struct LoginView: View {
     @Environment(\.colorScheme) private var colorScheme
     @State private var email = ""
     @State private var password = ""
-    @State private var passwordConfirmation = ""
     @State private var passwordMode: PasswordMode = .signIn
     @State private var showsEmailAccess = CaptureLaunchConfiguration.usesRuntimeSmoke
     @State private var didApplyRuntimeSmokeCredentials = false
@@ -55,7 +54,6 @@ struct LoginView: View {
     private enum Field {
         case email
         case password
-        case passwordConfirmation
     }
 
     var body: some View {
@@ -213,7 +211,6 @@ struct LoginView: View {
             passwordMode = .signIn
             email = createdEmail
             password = ""
-            passwordConfirmation = ""
             focusedField = .password
         }
         .accessibilityIdentifier("QuipslyCaptureLoginView")
@@ -283,43 +280,19 @@ struct LoginView: View {
                         ? .newPassword
                         : .password
                 )
-                .submitLabel(passwordMode == .createAccount ? .next : .go)
+                .submitLabel(.go)
                 .focused($focusedField, equals: .password)
-                .onSubmit {
-                    if passwordMode == .createAccount {
-                        focusedField = .passwordConfirmation
-                    } else {
-                        submitPasswordAuthIfReady()
-                    }
-                }
+                .onSubmit { submitPasswordAuthIfReady() }
                 .captureLoginField()
                 .accessibilityIdentifier("QuipslyCapturePasswordField")
 
                 if passwordMode == .createAccount {
-                    SecureField("Confirm password", text: $passwordConfirmation)
-                        .textContentType(
-                            CaptureLaunchConfiguration.usesLoginPreview
-                                ? .password
-                                : .newPassword
-                        )
-                        .submitLabel(.go)
-                        .focused($focusedField, equals: .passwordConfirmation)
-                        .onSubmit { submitPasswordAuthIfReady() }
-                        .captureLoginField()
-                        .accessibilityIdentifier("QuipslyCapturePasswordConfirmationField")
-
                     if !password.isEmpty, password.count < 8 {
                         authValidationLabel(
                             "Use at least 8 characters. A short phrase is easier to remember.",
                             systemImage: "character.cursor.ibeam"
                         )
                         .accessibilityIdentifier("QuipslyCapturePasswordLengthHint")
-                    } else if !passwordConfirmation.isEmpty, password != passwordConfirmation {
-                        authValidationLabel(
-                            "Those passwords do not match yet.",
-                            systemImage: "equal.circle"
-                        )
-                        .accessibilityIdentifier("QuipslyCapturePasswordMismatchHint")
                     }
                 }
 
@@ -438,7 +411,6 @@ struct LoginView: View {
             guard !authManager.isAuthenticating else { return }
             passwordMode = mode
             password = ""
-            passwordConfirmation = ""
             authManager.clearAuthFeedback()
             focusedField = email.isEmpty ? .email : .password
         } label: {
@@ -567,7 +539,7 @@ struct LoginView: View {
             return false
         }
         if passwordMode == .createAccount {
-            return password.count >= 8 && password == passwordConfirmation
+            return password.count >= 8
         }
         return true
     }

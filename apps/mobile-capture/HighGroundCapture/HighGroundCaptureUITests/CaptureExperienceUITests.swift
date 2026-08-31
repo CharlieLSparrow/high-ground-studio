@@ -2754,7 +2754,9 @@ final class CaptureExperienceUITests: XCTestCase {
         )
 
         openPreviewSessionNote()
-        XCTAssertTrue((body.value as? String)?.contains(retainedWords) == true)
+        let reopenedBody = app.textFields["CaptureSessionNoteEditBody"].firstMatch
+        XCTAssertTrue(reopenedBody.waitForExistence(timeout: 3))
+        XCTAssertTrue((reopenedBody.value as? String)?.contains(retainedWords) == true)
         XCTAssertTrue(
             app.descendants(matching: .any)["CaptureSessionNoteWorkingDraftStatus"]
                 .waitForExistence(timeout: 3)
@@ -6126,7 +6128,7 @@ final class CaptureLoginExperienceUITests: XCTestCase {
         )
     }
 
-    func testCreateAccountRequiresMatchingEightCharacterPassword() {
+    func testCreateAccountRequiresEightCharacterPassword() {
         openEmailAccess()
         let createMode = app.buttons["QuipslyCaptureCreateAccountModeButton"]
         reveal(createMode, swipingDownFirst: true)
@@ -6134,28 +6136,44 @@ final class CaptureLoginExperienceUITests: XCTestCase {
         createMode.tap()
 
         let email = app.textFields["QuipslyCaptureEmailField"]
-        let password = app.secureTextFields["QuipslyCapturePasswordField"]
-        let confirmation = app.secureTextFields["QuipslyCapturePasswordConfirmationField"]
-        XCTAssertTrue(confirmation.waitForExistence(timeout: 5))
+        XCTAssertFalse(
+            app.secureTextFields["QuipslyCapturePasswordConfirmationField"].exists,
+            "Account creation should not make people repeat a password that Apple Passwords can already generate and save."
+        )
 
         reveal(email, swipingDownFirst: true)
         email.tap()
-        email.typeText("capture.tester@example.com")
-        password.tap()
+        email.typeText("capture.tester@example.com\n")
+        // Follow the keyboard's familiar Next flow. At the largest text size,
+        // the fields are intentionally below the fold while the keyboard is
+        // present; direct coordinate taps would test a hidden point instead
+        // of the form's real focus order.
+        let focusedPassword = app.secureTextFields[
+            "QuipslyCapturePasswordField"
+        ].firstMatch
+        expectation(
+            for: NSPredicate(format: "hasKeyboardFocus == true"),
+            evaluatedWith: focusedPassword
+        )
+        waitForExpectations(timeout: 4)
+        focusedPassword.typeText("correct horse")
+
+        // Passwords may offer its standard generated credential. Accepting it
+        // is a first-class path; custom 8+ character passwords remain valid.
         let fillStrongPassword = app.buttons["Fill Strong Password"]
         if fillStrongPassword.waitForExistence(timeout: 1) {
-            let close = app.buttons["Close"]
-            XCTAssertTrue(close.waitForExistence(timeout: 2))
-            close.tap()
-            password.tap()
+            fillStrongPassword.tap()
         }
-        password.typeText("correct horse")
-        confirmation.tap()
-        confirmation.typeText("correct horse")
 
-        let createAccount = app.buttons["QuipslyCaptureCreateAccountButton"]
+        let createAccount = app.buttons[
+            "QuipslyCaptureCreateAccountButton"
+        ].firstMatch
         reveal(createAccount)
-        XCTAssertTrue(createAccount.isEnabled, "Creation should become available only after the email and matching 8+ character passwords are present.")
+        expectation(
+            for: NSPredicate(format: "isEnabled == true"),
+            evaluatedWith: createAccount
+        )
+        waitForExpectations(timeout: 4)
     }
 
     private func openEmailAccess() {
