@@ -4634,7 +4634,13 @@ final class CaptureExperienceUITests: XCTestCase {
         let chooser = app.buttons["CaptureSessionChooser"]
         XCTAssertTrue(chooser.waitForExistence(timeout: 5))
         chooser.tap()
-        let completeSession = app.staticTexts["Studio group complete"]
+        let search = app.searchFields.firstMatch
+        XCTAssertTrue(search.waitForExistence(timeout: 5))
+        search.tap()
+        search.typeText("Studio group complete")
+        let completeSession = app.buttons[
+            "CaptureSessionPicker_preview-studio-group-complete"
+        ]
         XCTAssertTrue(completeSession.waitForExistence(timeout: 5))
         completeSession.tap()
         openLocalRecorderIfNeeded()
