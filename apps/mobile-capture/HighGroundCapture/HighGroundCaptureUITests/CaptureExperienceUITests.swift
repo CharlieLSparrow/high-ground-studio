@@ -187,7 +187,7 @@ final class CaptureExperienceUITests: XCTestCase {
         let tabBar = app.tabBars.firstMatch
         XCTAssertTrue(tabBar.waitForExistence(timeout: 5))
 
-        for tab in ["Home", "Sessions", "Nests", "Library", "Account"] {
+        for tab in ["Home", "Sessions", "Work", "Library", "Account"] {
             XCTAssertTrue(tabBar.buttons[tab].exists, "Expected the \(tab) capture destination.")
         }
 
