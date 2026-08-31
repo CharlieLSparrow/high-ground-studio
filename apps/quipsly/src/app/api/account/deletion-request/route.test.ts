@@ -121,7 +121,8 @@ describe("account deletion request route", () => {
         completedAt: "2026-07-10T12:00:00.000Z",
       },
     });
-    expect(payload.nextAction).toContain("completion confirmation");
+    expect(payload.nextAction).toContain("Deletion is complete");
+    expect(payload.nextAction).toContain("confirmation");
   });
 
   it("reuses an open request and preserves its original target date", async () => {
