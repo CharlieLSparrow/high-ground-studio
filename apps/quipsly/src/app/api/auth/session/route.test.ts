@@ -63,8 +63,10 @@ describe("Quipsly session creation error boundaries", () => {
 
     expect(response.status).toBe(503);
     await expect(response.json()).resolves.toEqual({
-      error: "Quipsly database unavailable",
+      error: "Quipsly is reconnecting. Try signing in again in a moment.",
+      code: "SESSION_STORAGE_UNAVAILABLE",
     });
+    expect(response.headers.get("retry-after")).toBe("2");
     expect(adminAuth.createSessionCookie).not.toHaveBeenCalled();
   });
 

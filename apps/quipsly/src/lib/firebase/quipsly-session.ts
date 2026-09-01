@@ -1,10 +1,6 @@
 "use client";
 
-import {
-  sendEmailVerification,
-  signOut,
-  type User,
-} from "firebase/auth";
+import { sendEmailVerification, signOut, type User } from "firebase/auth";
 
 import { auth } from "@/lib/firebase/firebase";
 import {
@@ -20,6 +16,11 @@ export {
 } from "@/lib/firebase/quipsly-auth-input";
 
 const RETRYABLE_SESSION_STATUSES = new Set([408, 425, 429, 500, 502, 503, 504]);
+const SESSION_RETRY_DELAYS_MS = [350, 900] as const;
+
+function waitForSessionRetry(delayMs: number) {
+  return new Promise<void>((resolve) => window.setTimeout(resolve, delayMs));
+}
 
 async function createQuipslyServerSession({
   idToken,
@@ -31,7 +32,8 @@ async function createQuipslyServerSession({
   fetcher: typeof fetch;
 }) {
   let lastError = "Quipsly could not create a server session.";
-  for (let attempt = 0; attempt < 2; attempt += 1) {
+  const attemptCount = SESSION_RETRY_DELAYS_MS.length + 1;
+  for (let attempt = 0; attempt < attemptCount; attempt += 1) {
     let response: Response;
     try {
       response = await fetcher("/api/auth/session", {
@@ -41,18 +43,21 @@ async function createQuipslyServerSession({
       });
     } catch (error) {
       lastError = error instanceof Error ? error.message : lastError;
-      if (attempt === 1) throw new Error(lastError);
+      if (attempt === attemptCount - 1) throw new Error(lastError);
+      await waitForSessionRetry(SESSION_RETRY_DELAYS_MS[attempt]);
       continue;
     }
-    const payload = await response.json().catch(() => ({})) as {
+    const payload = (await response.json().catch(() => ({}))) as {
       error?: string;
       code?: string;
     };
     if (response.ok) return;
     lastError = String(payload.error || lastError);
-    const retryable = RETRYABLE_SESSION_STATUSES.has(response.status)
-      || payload.code === "INVALID_SESSION_REQUEST";
-    if (!retryable || attempt === 1) throw new Error(lastError);
+    const retryable =
+      RETRYABLE_SESSION_STATUSES.has(response.status) ||
+      payload.code === "INVALID_SESSION_REQUEST";
+    if (!retryable || attempt === attemptCount - 1) throw new Error(lastError);
+    await waitForSessionRetry(SESSION_RETRY_DELAYS_MS[attempt]);
   }
 }
 

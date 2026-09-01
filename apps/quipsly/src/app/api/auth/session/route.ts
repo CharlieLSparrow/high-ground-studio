@@ -1,19 +1,22 @@
-import { NextResponse } from 'next/server';
-import { adminAuth } from '@/lib/firebase/firebase-admin';
-import { cookies } from 'next/headers';
-import { consumeInviteLoginTokenForEmail } from '@/lib/server/invite-login-token';
-import { ensureQuipslyStarterStateForUser } from '@/lib/server/quipsly-onboarding';
-import { ensureStudioUserFromFirebaseIdentity } from '@/lib/server/studio-user-identity';
-import { getQuipslySession, QUIPSLY_SESSION_COOKIE_NAME } from '@/lib/server/quipsly-session';
-import { quipslySessionCookieOptions } from '@/lib/server/quipsly-session-cookie';
+import { NextResponse } from "next/server";
+import { adminAuth } from "@/lib/firebase/firebase-admin";
+import { cookies } from "next/headers";
+import { consumeInviteLoginTokenForEmail } from "@/lib/server/invite-login-token";
+import { ensureQuipslyStarterStateForUser } from "@/lib/server/quipsly-onboarding";
+import { ensureStudioUserFromFirebaseIdentity } from "@/lib/server/studio-user-identity";
+import {
+  getQuipslySession,
+  QUIPSLY_SESSION_COOKIE_NAME,
+} from "@/lib/server/quipsly-session";
+import { quipslySessionCookieOptions } from "@/lib/server/quipsly-session-cookie";
 import {
   isDatabaseSchemaUnavailableError,
   isDatabaseUnavailableError,
-} from '@/lib/server/service-availability';
+} from "@/lib/server/service-availability";
 import {
   recordQuipslyProductOutcomeForUser,
   recordQuipslyProductOutcomeOnce,
-} from '@/lib/server/product-event';
+} from "@/lib/server/product-event";
 
 const LEGACY_AUTH_COOKIE_NAMES = [
   "authjs.session-token",
@@ -30,7 +33,9 @@ const LEGACY_AUTH_COOKIE_NAMES = [
   "__Host-next-auth.csrf-token",
 ];
 
-function clearLegacyAuthCookies(cookieStore: Awaited<ReturnType<typeof cookies>>) {
+function clearLegacyAuthCookies(
+  cookieStore: Awaited<ReturnType<typeof cookies>>,
+) {
   for (const name of LEGACY_AUTH_COOKIE_NAMES) {
     cookieStore.delete(name);
   }
@@ -41,8 +46,13 @@ function isFirebaseAdminCredentialUnavailable(error: unknown): boolean {
   const record = error as Record<string, unknown>;
   if (record.code === "app/invalid-credential") return true;
   if (record.error_subtype === "invalid_rapt") return true;
-  if (record.error_description && String(record.error_description).includes("invalid_rapt")) return true;
-  if (record.message && String(record.message).includes("invalid_rapt")) return true;
+  if (
+    record.error_description &&
+    String(record.error_description).includes("invalid_rapt")
+  )
+    return true;
+  if (record.message && String(record.message).includes("invalid_rapt"))
+    return true;
 
   const cause = record.cause;
   return Boolean(cause && isFirebaseAdminCredentialUnavailable(cause));
@@ -54,19 +64,32 @@ export async function GET() {
     session = await getQuipslySession();
   } catch (error) {
     if (isDatabaseUnavailableError(error)) {
-      console.error("Session read failed because the Quipsly database is unavailable", error);
+      console.error(
+        "Session read failed because the Quipsly database is unavailable",
+        error,
+      );
       return NextResponse.json(
-        { error: "Quipsly database unavailable", authenticated: false, user: null },
+        {
+          error: "Quipsly database unavailable",
+          authenticated: false,
+          user: null,
+        },
         { status: 503 },
       );
     }
 
     console.error("Session read failed", error);
-    return NextResponse.json({ error: "Session read failed", authenticated: false, user: null }, { status: 500 });
+    return NextResponse.json(
+      { error: "Session read failed", authenticated: false, user: null },
+      { status: 500 },
+    );
   }
 
   if (!session) {
-    return NextResponse.json({ authenticated: false, user: null }, { status: 401 });
+    return NextResponse.json(
+      { authenticated: false, user: null },
+      { status: 401 },
+    );
   }
 
   return NextResponse.json({
@@ -88,8 +111,8 @@ export async function POST(req: Request) {
   } catch {
     return NextResponse.json(
       {
-        error: 'Quipsly could not read the secure sign-in request. Try again.',
-        code: 'INVALID_SESSION_REQUEST',
+        error: "Quipsly could not read the secure sign-in request. Try again.",
+        code: "INVALID_SESSION_REQUEST",
       },
       { status: 400 },
     );
@@ -98,15 +121,18 @@ export async function POST(req: Request) {
   try {
     const { idToken, inviteToken } = input;
 
-    if (typeof idToken !== 'string' || !idToken) {
-      return NextResponse.json({ error: 'Missing ID token' }, { status: 400 });
+    if (typeof idToken !== "string" || !idToken) {
+      return NextResponse.json({ error: "Missing ID token" }, { status: 400 });
     }
 
     const decodedToken = await adminAuth.verifyIdToken(idToken);
     const email = decodedToken.email;
 
     if (!email) {
-      return NextResponse.json({ error: 'Firebase identity has no email' }, { status: 400 });
+      return NextResponse.json(
+        { error: "Firebase identity has no email" },
+        { status: 400 },
+      );
     }
     if (decodedToken.email_verified !== true) {
       // This check must happen before identity resolution, onboarding, invite
@@ -114,8 +140,9 @@ export async function POST(req: Request) {
       // pre-invited email address.
       return NextResponse.json(
         {
-          error: 'Verify this email with Firebase before signing in to Quipsly.',
-          code: 'EMAIL_VERIFICATION_REQUIRED',
+          error:
+            "Verify this email with Firebase before signing in to Quipsly.",
+          code: "EMAIL_VERIFICATION_REQUIRED",
         },
         { status: 403 },
       );
@@ -143,7 +170,9 @@ export async function POST(req: Request) {
 
     // Set session expiration to 5 days
     const expiresIn = 60 * 60 * 24 * 5 * 1000;
-    const sessionCookie = await adminAuth.createSessionCookie(idToken, { expiresIn });
+    const sessionCookie = await adminAuth.createSessionCookie(idToken, {
+      expiresIn,
+    });
 
     const cookieStore = await cookies();
     // Remove a pre-migration host-only cookie before writing the intentional
@@ -158,13 +187,14 @@ export async function POST(req: Request) {
     );
 
     const provider = decodedToken.firebase?.sign_in_provider || "";
-    const method = provider === "google.com"
-      ? "google"
-      : provider === "password"
-        ? "email"
-        : provider === "apple.com"
-          ? "apple"
-          : "unknown";
+    const method =
+      provider === "google.com"
+        ? "google"
+        : provider === "password"
+          ? "email"
+          : provider === "apple.com"
+            ? "apple"
+            : "unknown";
     await recordQuipslyProductOutcomeOnce({
       userId: identity.id,
       eventName: "sign_up",
@@ -199,17 +229,37 @@ export async function POST(req: Request) {
         : null,
     });
   } catch (error) {
-    console.error('Session creation failed', error);
+    console.error("Session creation failed", error);
     if (isDatabaseUnavailableError(error)) {
-      return NextResponse.json({ error: 'Quipsly database unavailable' }, { status: 503 });
+      return NextResponse.json(
+        {
+          error: "Quipsly is reconnecting. Try signing in again in a moment.",
+          code: "SESSION_STORAGE_UNAVAILABLE",
+        },
+        { status: 503, headers: { "retry-after": "2" } },
+      );
     }
     if (isDatabaseSchemaUnavailableError(error)) {
-      return NextResponse.json({ error: 'Quipsly database schema unavailable' }, { status: 503 });
+      return NextResponse.json(
+        {
+          error:
+            "Quipsly is temporarily unavailable. Try signing in again shortly.",
+          code: "SESSION_SCHEMA_UNAVAILABLE",
+        },
+        { status: 503, headers: { "retry-after": "10" } },
+      );
     }
     if (isFirebaseAdminCredentialUnavailable(error)) {
-      return NextResponse.json({ error: 'Firebase Admin credential unavailable' }, { status: 503 });
+      return NextResponse.json(
+        {
+          error:
+            "Secure sign-in is temporarily unavailable. Try again shortly.",
+          code: "SESSION_IDENTITY_SERVICE_UNAVAILABLE",
+        },
+        { status: 503, headers: { "retry-after": "10" } },
+      );
     }
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 }
 
