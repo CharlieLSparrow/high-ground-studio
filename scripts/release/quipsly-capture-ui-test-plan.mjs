@@ -28,6 +28,7 @@ export const CRITICAL_TESTS = Object.freeze([
   "CaptureExperienceUITests/testVoiceWritingRecordsAndStopsThroughTheSourceFirstPath",
   "CaptureExperienceUITests/testVoiceWritingRecordsAndStopsThroughTheSourceFirstPathOnRegularWidthIPad",
   "CaptureExperienceUITests/testAudioInterruptionPausesAndRequiresExplicitResume",
+  "CaptureExperienceUITests/testAudioInterruptionPausesAndRequiresExplicitResumeOnRegularWidthIPad",
   "CaptureExperienceUITests/testConsentNeededNextEpisodeOpensRecorderWithoutCrashing",
   "CaptureExperienceUITests/testConsentNeededNextEpisodeOpensRecorderWithoutCrashingOnRegularWidthIPad",
   "CaptureExperienceUITests/testClientCoachingFormDraftSurvivesRelaunchOnRegularWidthIPad",

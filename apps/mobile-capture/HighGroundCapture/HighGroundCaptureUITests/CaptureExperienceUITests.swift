@@ -865,7 +865,19 @@ final class CaptureExperienceUITests: XCTestCase {
     }
 
     func testAudioInterruptionPausesAndRequiresExplicitResume() {
-        app.buttons["CaptureStartVoiceNote"].tap()
+        exerciseAudioInterruptionPauseAndResume()
+    }
+
+    func testAudioInterruptionPausesAndRequiresExplicitResumeOnRegularWidthIPad() {
+        exerciseAudioInterruptionPauseAndResume()
+    }
+
+    private func exerciseAudioInterruptionPauseAndResume() {
+        let speakToWrite = app.frame.width >= 700
+            ? app.buttons["CaptureIPadSpeakToWrite"]
+            : app.buttons["CaptureStartVoiceNote"]
+        XCTAssertTrue(speakToWrite.waitForExistence(timeout: 5))
+        speakToWrite.tap()
         XCTAssertTrue(
             app.otherElements["CaptureRecorderHero"].waitForExistence(timeout: 8)
         )

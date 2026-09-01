@@ -25,6 +25,7 @@ IPAD_UI_TEST_SELECTORS = [
   "HighGroundCaptureUITests/CaptureExperienceUITests/testClientCoachingFormDraftSurvivesRelaunchOnRegularWidthIPad",
   "HighGroundCaptureUITests/CaptureExperienceUITests/testRecorderLeadsWithAStandardCallGreenRoomOnRegularWidthIPad",
   "HighGroundCaptureUITests/CaptureExperienceUITests/testVoiceWritingRecordsAndStopsThroughTheSourceFirstPathOnRegularWidthIPad",
+  "HighGroundCaptureUITests/CaptureExperienceUITests/testAudioInterruptionPausesAndRequiresExplicitResumeOnRegularWidthIPad",
 ].freeze
 
 def capture_ui_execution_groups(selectors, default_device:)
