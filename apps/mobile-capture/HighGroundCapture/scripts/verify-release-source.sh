@@ -109,7 +109,7 @@ require_text "$fastfile" "UI_TEST_PLANNER" "Capture UI selection comes from the 
 require_text "$fastfile" 'only_testing: execution.fetch(:selectors)' "Capture UI runs each platform execution with exact test-method selectors instead of a monolithic class suite"
 require_text "$fastfile" 'IPAD_UI_TEST_SELECTOR' "Capture UI identifies the regular-width iPad contract as a dedicated platform execution"
 require_text "$fastfile" 'capture_simulator_destination(execution.fetch(:device))' "Capture UI resolves the iPad simulator to an exact available device"
-require_text "$fastfile" 'run_options[:destination] = [simulator.fetch(:destination)]' "Capture UI pins iPad qualification to an exact simulator destination"
+require_text "$fastfile" 'run_options[:destination] = simulator.fetch(:destination)' "Capture UI pins iPad qualification to the exact simulator destination string accepted by scan"
 require_text "$fastfile" 'number_of_retries: retry_limit' "Capture UI permits one recorded Xcode retry iteration for simulator contention"
 require_text "$fastfile" 'testRetryLimit: retry_limit' "Capture UI evidence records the bounded retry policy"
 require_text "$fastfile" 'ui_test(device: options[:device], suite: "full")' "Candidate qualification runs every deterministic UI shard"
