@@ -132,7 +132,38 @@ struct CaptureRecordingShareSnapshot: Codable, Equatable {
     }
 
     struct Available: Codable, Equatable {
+        struct Timeline: Codable, Equatable {
+            struct Source: Codable, Equatable {
+                let recordingAssetId: String
+                let programOffsetSeconds: TimeInterval
+                let timingUncertaintyMilliseconds: TimeInterval?
+            }
+
+            let authority: String
+            let precision: String
+            let reason: String
+            let sources: [Source]
+
+            var maximumUncertaintyMilliseconds: TimeInterval? {
+                sources.compactMap(\.timingUncertaintyMilliseconds).max()
+            }
+
+            var title: String {
+                switch authority {
+                case "capture-clock-proposal":
+                    "Synced automatically from device clocks"
+                case "reported-wall-clock-fallback":
+                    "Placed automatically from recording start times"
+                case "reviewed-waveform-placement":
+                    "Synced from measured audio"
+                default:
+                    "Recording timeline ready"
+                }
+            }
+        }
+
         let programDurationSeconds: TimeInterval
+        let timeline: Timeline?
         let sources: [CaptureRecordingShareSource]
         let transcriptSegments: [CaptureRecordingShareTranscriptSegment]
     }
@@ -750,6 +781,27 @@ struct CaptureRecordingShareEditor: View {
                     .padding(12)
                     .background(Color.orange.opacity(0.08), in: RoundedRectangle(cornerRadius: 14))
                     .accessibilityIdentifier("CaptureRecordingShareMissingSources")
+                }
+
+                if let timeline = available?.timeline,
+                   timeline.precision != "unavailable" {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Label {
+                            Text(timeline.maximumUncertaintyMilliseconds.map {
+                                "\(timeline.title) · estimated within ±\(Int($0.rounded())) ms"
+                            } ?? timeline.title)
+                        } icon: {
+                            Image(systemName: "waveform.path.ecg")
+                        }
+                        .font(.caption.weight(.bold))
+                        Text(timeline.reason)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color.green.opacity(0.08), in: RoundedRectangle(cornerRadius: 14))
+                    .accessibilityIdentifier("CaptureRecordingShareTimelineStatus")
                 }
 
                 VStack(alignment: .leading, spacing: 12) {
