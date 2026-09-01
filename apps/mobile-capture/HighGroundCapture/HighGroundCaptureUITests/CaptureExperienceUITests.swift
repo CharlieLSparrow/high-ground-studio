@@ -1777,7 +1777,7 @@ final class CaptureExperienceUITests: XCTestCase {
     }
 
     func testRecorderLeadsWithAStandardCallGreenRoom() {
-        app.tabBars.buttons["Sessions"].tap()
+        openSessionsWorkspace()
 
         let call = app.descendants(matching: .any)["CaptureProviderRoomControls"]
         let join = app.buttons["ProviderJoinRoomButton"]
@@ -1880,7 +1880,7 @@ final class CaptureExperienceUITests: XCTestCase {
     }
 
     func testCallLobbyRemembersSafeDeviceChoicesAcrossRelaunch() {
-        app.tabBars.buttons["Sessions"].tap()
+        openSessionsWorkspace()
 
         let deviceOptions = app.buttons["Using another device?"]
         XCTAssertTrue(deviceOptions.waitForExistence(timeout: 5))
