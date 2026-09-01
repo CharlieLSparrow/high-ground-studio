@@ -25,6 +25,18 @@ struct CapturePhoneShell: View {
     var body: some View {
         VStack(spacing: 0) {
             activeCaptureBanner
+            if let message = inlineAttentionMessage {
+                CaptureAttentionCard(
+                    systemImage: "exclamationmark.triangle.fill",
+                    title: attentionPresentation.title,
+                    detail: message,
+                    buttonTitle: "Dismiss",
+                    action: { model.errorMessage = nil }
+                )
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .accessibilityIdentifier("CaptureInlineAttention")
+            }
             if !usesRegularWorkspaceNavigation,
                visibleTab != .account {
                 workLocationBar
@@ -627,9 +639,21 @@ struct CapturePhoneShell: View {
 
     private var errorIsPresented: Binding<Bool> {
         Binding(
-            get: { model.errorMessage != nil },
+            get: {
+                model.errorMessage != nil
+                    && attentionPresentation.offersSettingsRecovery
+            },
             set: { if !$0 { model.errorMessage = nil } }
         )
+    }
+
+    /// Permission denial is the one Capture error that conventionally needs a
+    /// system-level decision, so it keeps an alert with a direct Settings
+    /// action. Connection, workspace, and recorder recovery remain visible
+    /// inline without blocking navigation or forcing an acknowledgement.
+    private var inlineAttentionMessage: String? {
+        guard !attentionPresentation.offersSettingsRecovery else { return nil }
+        return model.errorMessage?.trimmingCharacters(in: .whitespacesAndNewlines).nonempty
     }
 
     private var attentionPresentation: CaptureAttentionPresentation {
