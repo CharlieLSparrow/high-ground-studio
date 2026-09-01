@@ -6,6 +6,8 @@ import {
   buildCoachingPacketFromTranscriptJob,
   buildTranscriptEvidenceSpans,
   buildTranscriptPacketBrief,
+  generatedPacketHighlightCanRemove,
+  generatedPacketNoteCanRefresh,
   isUnreviewedTranscriptActionItem,
   mergePacketActionCandidates,
   packetCreatesOrdinarySessionWork,
@@ -891,6 +893,56 @@ describe("transcript coaching follow-through", () => {
     ]);
   });
 
+  it("prunes only untouched generated highlights that no longer qualify", () => {
+    const generated = {
+      id: "highlight-generated",
+      kind: "HIGHLIGHT",
+      title: "A useful moment",
+      body: "- 00:12 Client: I will finish the reflection.",
+      sourceJson: {
+        origin: "quipsly-session-follow-through",
+        automaticallyCreated: true,
+        transcriptJobId: "transcript-1",
+        generatedNoteSnapshot: {
+          schema: "quipsly-generated-packet-note-snapshot-v1",
+          title: "A useful moment",
+          body: "- 00:12 Client: I will finish the reflection.",
+          packetBuildId: "packet-1",
+          sourceTextSha256: "a".repeat(64),
+        },
+      },
+    };
+    expect(generatedPacketNoteCanRefresh(generated)).toBe(true);
+    expect(
+      generatedPacketHighlightCanRemove({
+        existing: generated,
+        retainedNoteIds: new Set(),
+        transcriptJobIds: new Set(["transcript-1"]),
+      }),
+    ).toBe(true);
+    expect(
+      generatedPacketHighlightCanRemove({
+        existing: generated,
+        retainedNoteIds: new Set([generated.id]),
+        transcriptJobIds: new Set(["transcript-1"]),
+      }),
+    ).toBe(false);
+    expect(
+      generatedPacketHighlightCanRemove({
+        existing: { ...generated, body: "My own note about this moment." },
+        retainedNoteIds: new Set(),
+        transcriptJobIds: new Set(["transcript-1"]),
+      }),
+    ).toBe(false);
+    expect(
+      generatedPacketHighlightCanRemove({
+        existing: generated,
+        retainedNoteIds: new Set(),
+        transcriptJobIds: new Set(["different-transcript"]),
+      }),
+    ).toBe(false);
+  });
+
   it("correlates force rebuild summaries and highlights and reads only the newest build", async () => {
     const createdNotes: any[] = [];
     let latestSummary: any = null;
@@ -1074,6 +1126,11 @@ describe("transcript coaching follow-through", () => {
       if (note.kind === "SUMMARY") latestSummary = note;
       return note;
     });
+    const coachingNoteDelete = jest.fn(async ({ where }: any) => {
+      const note = notes.get(where.id) || null;
+      notes.delete(where.id);
+      return note;
+    });
     const prisma = {
       transcriptJob: { findUnique: jest.fn(async () => job) },
       coachingNote: {
@@ -1099,8 +1156,14 @@ describe("transcript coaching follow-through", () => {
               ) || null
           );
         }),
+        findMany: jest.fn(async () =>
+          Array.from(notes.values()).filter(
+            (note) => note.kind === "HIGHLIGHT",
+          ),
+        ),
         create: coachingNoteCreate,
         update: coachingNoteUpdate,
+        delete: coachingNoteDelete,
       },
       ...work,
     };
@@ -1184,6 +1247,24 @@ describe("transcript coaching follow-through", () => {
     const editedSummaryID = latestSummary.id;
     latestSummary.title = "My own recap title";
     notes.set(editedSummaryID, latestSummary);
+    notes.set("stale-generated-highlight", {
+      id: "stale-generated-highlight",
+      kind: "HIGHLIGHT",
+      title: "Old generated highlight",
+      body: "- 00:31 Client: This no longer qualifies as a key moment.",
+      sourceJson: {
+        origin: "quipsly-session-follow-through",
+        automaticallyCreated: true,
+        transcriptJobId: job.id,
+        generatedNoteSnapshot: {
+          schema: "quipsly-generated-packet-note-snapshot-v1",
+          title: "Old generated highlight",
+          body: "- 00:31 Client: This no longer qualifies as a key moment.",
+          packetBuildId: rebuilt.packetBuildId,
+          sourceTextSha256: "b".repeat(64),
+        },
+      },
+    });
     (provider as any).corrections = [
       {
         ...(provider as any).corrections[0],
@@ -1198,8 +1279,12 @@ describe("transcript coaching follow-through", () => {
       authorUserId: "coach-1",
     })) as any;
     expect(secondRebuild.summaryRefreshedInPlace).toBe(false);
+    expect(secondRebuild.removedHighlightNoteIds).toEqual([
+      "stale-generated-highlight",
+    ]);
     expect(secondRebuild.summaryNoteId).not.toBe(editedSummaryID);
     expect(notes.get(editedSummaryID).title).toBe("My own recap title");
+    expect(notes.has("stale-generated-highlight")).toBe(false);
     expect(summaries).toHaveLength(2);
     expect(
       coachingNoteCreate.mock.calls.filter(

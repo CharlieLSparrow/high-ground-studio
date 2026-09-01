@@ -332,6 +332,25 @@ export function generatedPacketNoteCanRefresh(existing: any) {
   );
 }
 
+export function generatedPacketHighlightCanRemove(input: {
+  existing: any;
+  retainedNoteIds: Set<string>;
+  transcriptJobIds: Set<string>;
+}) {
+  const source =
+    typeof input.existing?.sourceJson === "object" &&
+    input.existing.sourceJson !== null &&
+    !Array.isArray(input.existing.sourceJson)
+      ? (input.existing.sourceJson as Record<string, unknown>)
+      : {};
+  return (
+    input.existing?.kind === "HIGHLIGHT" &&
+    !input.retainedNoteIds.has(cleanText(input.existing.id)) &&
+    input.transcriptJobIds.has(cleanText(source.transcriptJobId)) &&
+    generatedPacketNoteCanRefresh(input.existing)
+  );
+}
+
 function reviewTime(value: unknown) {
   if (value instanceof Date) return value.getTime();
   if (typeof value !== "string" && typeof value !== "number") return 0;
@@ -2167,6 +2186,38 @@ export async function buildCoachingPacketFromTranscriptJob(
         });
     highlightNotes.push(note);
   }
+  const retainedHighlightNoteIds = new Set(
+    highlightNotes.map((note: any) => cleanText(note.id)),
+  );
+  const previouslyGeneratedHighlights =
+    typeof args.prisma.coachingNote.findMany === "function"
+      ? await args.prisma.coachingNote.findMany({
+          where: {
+            roomId: job.roomId,
+            authorUserId: args.authorUserId || null,
+            kind: "HIGHLIGHT",
+            sourceJson: {
+              path: ["origin"],
+              equals: "quipsly-session-follow-through",
+            },
+          },
+        })
+      : [];
+  const removableHighlightNotes = previouslyGeneratedHighlights.filter(
+    (note: any) =>
+      generatedPacketHighlightCanRemove({
+        existing: note,
+        retainedNoteIds: retainedHighlightNoteIds,
+        transcriptJobIds,
+      }),
+  );
+  if (typeof args.prisma.coachingNote.delete === "function") {
+    await Promise.all(
+      removableHighlightNotes.map((note: any) =>
+        args.prisma.coachingNote.delete({ where: { id: note.id } }),
+      ),
+    );
+  }
 
   return {
     ok: true,
@@ -2181,6 +2232,9 @@ export async function buildCoachingPacketFromTranscriptJob(
     goalIds: goals.map((goal: any) => goal.id),
     removedActionItemIds: removableActionItems.map((item: any) => item.id),
     removedGoalIds: removableGoals.map((goal: any) => goal.id),
+    removedHighlightNoteIds: removableHighlightNotes.map(
+      (note: any) => note.id,
+    ),
     highlightCount: highlightNotes.length,
     actionCandidateCount: actionCandidates.length,
     actionItemCount: actionItems.length,
