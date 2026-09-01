@@ -3,6 +3,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { chooseQuipslyCoachingClientPriority } from "@high-ground/quipsly-domain/coaching-client-priority";
 
 import {
+  MOBILE_CAPTURE_CONSENT_EVIDENCE_VERSION,
   MOBILE_CAPTURE_CONSENT_POLICY_VERSION,
   MOBILE_CAPTURE_CONSENT_TEXT,
   MOBILE_CAPTURE_CONSENT_TEXT_SHA256,
@@ -958,7 +959,21 @@ export async function POST(request: Request) {
             independentParticipantReceiptsRequiredForProviderEgress: purpose !== "PERSONAL_NOTE",
             selfCaptureOnly: purpose === "PERSONAL_NOTE",
             consentTextHash: MOBILE_CAPTURE_CONSENT_TEXT_SHA256,
-            consentEvidenceVersion: 2,
+            consentEvidenceVersion: MOBILE_CAPTURE_CONSENT_EVIDENCE_VERSION,
+            recordingChoiceExplicit: purpose === "PERSONAL_NOTE",
+            transcriptionChoiceExplicit: purpose === "PERSONAL_NOTE",
+            allAudibleParticipantsNotifiedAndAgreed: purpose === "PERSONAL_NOTE",
+            presentationEvidence: purpose === "PERSONAL_NOTE"
+              ? {
+                  version: 1,
+                  surface: "quipsly-personal-self-capture-v1",
+                  presentedAt: now.toISOString(),
+                  serverConfirmedAt: now.toISOString(),
+                  recordingChoicePresented: true,
+                  transcriptionChoicePresented: true,
+                  audibleParticipantAttestationPresented: true,
+                }
+              : null,
             requestedAt: now.toISOString(),
           },
         })),

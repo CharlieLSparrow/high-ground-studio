@@ -9,6 +9,11 @@ jest.mock("@high-ground/quipsly-domain/coaching-lifecycle", () => ({
   })),
 }), { virtual: true });
 jest.mock("@high-ground/quipsly-domain/coaching-packet", () => ({
+  TRANSCRIPT_PACKET_SOURCE: "transcript-packet-builder",
+  TRANSCRIPT_PACKET_SOURCES: [
+    "transcript-packet-builder",
+    "web-transcript-packet-builder",
+  ],
   isTranscriptPacketSource: jest.fn(() => false),
   isUnreviewedTranscriptActionItemSource: jest.fn(() => false),
 }), { virtual: true });
@@ -322,7 +327,7 @@ runLocalDatabaseSmoke("iPhone Session note privacy projection", () => {
     expect(payload.session).toMatchObject({
       purpose: "PERSONAL_NOTE",
       title: "Dissertation thought",
-      consentGranted: true,
+      recordingConsentGranted: true,
       projectId,
     });
     expect(payload.boundaries).toMatchObject({

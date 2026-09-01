@@ -21,6 +21,7 @@ describe("mobile capture consent presentation evidence", () => {
   test.each([
     "quipsly-capture-consent-v2",
     "quipsly-session-workspace-consent-v1",
+    "quipsly-personal-self-capture-v1",
   ])("accepts current explicit consent from %s", (surface) => {
     expect(
       mobileCaptureConsentHasCurrentPolicyEvidence(currentConsent(surface)),

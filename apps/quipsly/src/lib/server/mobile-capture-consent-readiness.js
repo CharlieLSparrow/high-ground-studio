@@ -16,6 +16,7 @@ export {
 export const MOBILE_CAPTURE_CONSENT_PRESENTATION_SURFACES = Object.freeze([
   "quipsly-capture-consent-v2",
   "quipsly-session-workspace-consent-v1",
+  "quipsly-personal-self-capture-v1",
 ]);
 
 export function isSupportedMobileCaptureConsentPresentationSurface(value) {
