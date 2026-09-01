@@ -3,6 +3,7 @@ import "server-only";
 import { runExpiredDeviceTranscriptFallbackMaintenance } from "@/lib/server/capture-device-transcript-fallback-worker";
 import { reconcileCaptureTranscriptFollowThrough } from "@/lib/server/capture-transcript-follow-through";
 import { authorizeGoogleOidcWorker } from "@/lib/server/google-oidc-worker-auth";
+import { runHeldMobileCaptureReleaseMaintenance } from "@/lib/server/mobile-capture-held-release-worker";
 
 const DEFAULT_LIMIT = 8;
 const MAX_LIMIT = 20;
@@ -33,6 +34,20 @@ export async function runCaptureTranscriptFollowThroughMaintenance(input: {
     throw new Error(`Capture transcript follow-through limit must be between 1 and ${MAX_LIMIT}.`);
   }
 
+  const heldCaptureRelease = await runHeldMobileCaptureReleaseMaintenance({
+    prisma: input.prisma,
+    limit,
+  }).catch(() => ({
+    schema: "quipsly-mobile-capture-held-release-maintenance-v1",
+    scanned: 0,
+    attempted: 0,
+    releasedMedia: 0,
+    releasedTranscripts: 0,
+    waiting: 0,
+    failed: 1,
+    results: [],
+    maintenanceRetryable: true,
+  }));
   const deviceTranscriptFallback = await runExpiredDeviceTranscriptFallbackMaintenance({
     prisma: input.prisma,
     limit,
@@ -101,6 +116,7 @@ export async function runCaptureTranscriptFollowThroughMaintenance(input: {
       });
   return {
     schema: "quipsly-capture-transcript-follow-through-maintenance-v1",
+    heldCaptureRelease,
     deviceTranscriptFallback,
     scanned: candidates.length,
     ready: results.filter((result) => result.packetStatus === "ready").length,

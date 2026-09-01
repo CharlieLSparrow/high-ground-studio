@@ -2,6 +2,7 @@
 
 import { reconcileCaptureTranscriptFollowThrough } from "./capture-transcript-follow-through";
 import { runExpiredDeviceTranscriptFallbackMaintenance } from "./capture-device-transcript-fallback-worker";
+import { runHeldMobileCaptureReleaseMaintenance } from "./mobile-capture-held-release-worker";
 import {
   authorizeCaptureTranscriptFollowThroughWorker,
   runCaptureTranscriptFollowThroughMaintenance,
@@ -13,6 +14,9 @@ jest.mock("./capture-transcript-follow-through", () => ({
 }));
 jest.mock("./capture-device-transcript-fallback-worker", () => ({
   runExpiredDeviceTranscriptFallbackMaintenance: jest.fn(),
+}));
+jest.mock("./mobile-capture-held-release-worker", () => ({
+  runHeldMobileCaptureReleaseMaintenance: jest.fn(),
 }));
 
 describe("capture transcript follow-through worker", () => {
@@ -27,6 +31,16 @@ describe("capture transcript follow-through worker", () => {
       queued: 0,
       completed: 0,
       held: 0,
+      failed: 0,
+      results: [],
+    });
+    jest.mocked(runHeldMobileCaptureReleaseMaintenance).mockResolvedValue({
+      schema: "quipsly-mobile-capture-held-release-maintenance-v1",
+      scanned: 0,
+      attempted: 0,
+      releasedMedia: 0,
+      releasedTranscripts: 0,
+      waiting: 0,
       failed: 0,
       results: [],
     });
@@ -70,6 +84,7 @@ describe("capture transcript follow-through worker", () => {
 
     await expect(runCaptureTranscriptFollowThroughMaintenance({ prisma, limit: 3 })).resolves.toMatchObject({
       scanned: 3,
+      heldCaptureRelease: { releasedMedia: 0, releasedTranscripts: 0 },
       deviceTranscriptFallback: { expired: 0, queued: 0 },
       ready: 2,
       waiting: 1,
@@ -93,6 +108,10 @@ describe("capture transcript follow-through worker", () => {
     expect(jest.mocked(reconcileCaptureTranscriptFollowThrough).mock.calls.map((call) => call[0].transcriptJobId))
       .toEqual(["job-running", "job-completed", "job-held"]);
     expect(runExpiredDeviceTranscriptFallbackMaintenance).toHaveBeenCalledWith({
+      prisma,
+      limit: 3,
+    });
+    expect(runHeldMobileCaptureReleaseMaintenance).toHaveBeenCalledWith({
       prisma,
       limit: 3,
     });
