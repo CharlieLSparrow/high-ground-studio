@@ -327,7 +327,30 @@ final class VideoCaptureController: ObservableObject {
     /// microphone, or a preview session. Only a stale permission failure is
     /// dismissed; storage, consent, ownership, thermal, and source-integrity
     /// failures remain visible until their underlying condition is handled.
-    func refreshPermissionReadinessSnapshot() {
+    func refreshPermissionReadinessSnapshot() async {
+        let cameraStatus = AVCaptureDevice.authorizationStatus(for: .video)
+        let microphoneStatus = AVCaptureDevice.authorizationStatus(for: .audio)
+
+        // A previously prepared profile is no longer truthful after access is
+        // revoked in Settings. Close the preview and require a fresh explicit
+        // prepare instead of leaving a stale Start button enabled.
+        if state == .ready {
+            if cameraStatus == .denied || cameraStatus == .restricted {
+                await shutdownPreviewAndClearProfile()
+                fail(VideoCaptureServiceError.cameraPermissionDenied)
+                return
+            }
+            if resolvedProfile?.includesAudio == true,
+               (
+                   microphoneStatus == .denied
+                       || microphoneStatus == .restricted
+               ) {
+                await shutdownPreviewAndClearProfile()
+                fail(VideoCaptureServiceError.microphonePermissionDenied)
+                return
+            }
+        }
+
         guard state == .failed,
               activeCapture == nil,
               pausedCapture == nil,
@@ -338,11 +361,9 @@ final class VideoCaptureController: ObservableObject {
         let recovered: Bool
         switch permissionFailure {
         case .camera:
-            recovered = AVCaptureDevice.authorizationStatus(for: .video)
-                == .authorized
+            recovered = cameraStatus == .authorized
         case .microphone:
-            recovered = AVCaptureDevice.authorizationStatus(for: .audio)
-                == .authorized
+            recovered = microphoneStatus == .authorized
         }
         guard recovered else { return }
 
