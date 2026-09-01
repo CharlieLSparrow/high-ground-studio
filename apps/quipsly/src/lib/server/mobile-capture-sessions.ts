@@ -666,31 +666,32 @@ function calendarReceiptExists(booking: any) {
   );
 }
 
-function afterCaptureNextAction(input: {
+export function afterCaptureNextAction(input: {
   recordingCount: number;
   latestTranscriptStatus?: string | null;
   packetSummaryNoteId?: string | null;
   transcriptProcessingAllowed: boolean;
 }) {
+  const transcriptStatus =
+    label(input.latestTranscriptStatus)?.trim().toUpperCase() || null;
   if (!input.transcriptProcessingAllowed && input.recordingCount > 0) {
-    return "Capture evidence is preserved. Await reviewed transcript release before running transcription or using packet projections.";
+    return "Your recording is safe. Quipsly will continue when this Session's transcription permission allows it.";
   }
   if (input.packetSummaryNoteId)
-    return "Coaching packet exists. Review summary, highlights, and action items in Quipsly.";
-  if (input.latestTranscriptStatus === "COMPLETED")
-    return "Transcript is complete. Build a coaching packet when you are ready.";
-  if (input.latestTranscriptStatus === "RUNNING")
-    return "Transcript job is running. Refresh before building the packet.";
-  if (
-    input.latestTranscriptStatus === "QUEUED" ||
-    input.latestTranscriptStatus === "HELD" ||
-    input.latestTranscriptStatus === "FAILED"
-  ) {
-    return "Recording is uploaded. Run or retry transcription before packet review.";
-  }
+    return "Session results are ready. Open the editable recap, notes, tasks, and goals whenever they are useful.";
+  if (transcriptStatus === "COMPLETED")
+    return "Transcript ready. Quipsly is preparing editable Session results in the background.";
+  if (transcriptStatus === "RUNNING")
+    return "Quipsly is transcribing the protected recording in the background. You can leave this screen.";
+  if (transcriptStatus === "QUEUED")
+    return "Your recording is safe and transcription is queued. You can leave this screen.";
+  if (transcriptStatus === "HELD")
+    return "Your recording is safe. Quipsly will continue when this Session's transcription permission allows it.";
+  if (transcriptStatus === "FAILED")
+    return "Your recording is safe, but transcription needs attention. Open the transcript to retry without recording again.";
   if (input.recordingCount > 0)
-    return "Recording exists. Run transcription; Quipsly will create or repair the transcript job if needed.";
-  return "Record with consent first. Quipsly will keep the local capture, upload it, transcribe it, then build a review packet.";
+    return "Your recording is safe. Quipsly is preparing transcription and editable Session results.";
+  return "Record when you are ready. Quipsly will preserve the source, transcribe it, and create editable Session results automatically.";
 }
 
 function captureReadinessForMobileSession(input: {
@@ -750,12 +751,12 @@ function captureReadinessForMobileSession(input: {
   if (input.packetSummaryNoteId) {
     return {
       status: "review-ready",
-      label: "Packet ready",
+      label: "Results ready",
       tone: "complete",
       safeToRecordLocally: false,
       providerCanJoin: false,
       detail:
-        "Recording, transcript, and coaching packet evidence are ready for review.",
+        "Recording, transcript, editable notes, tasks, and goals are ready in this Session.",
       nextAction: input.afterCaptureNextAction,
       blockers,
       evidence,
@@ -774,7 +775,7 @@ function captureReadinessForMobileSession(input: {
       safeToRecordLocally: false,
       providerCanJoin: false,
       detail:
-        "The room is ended. Continue with transcript repair or packet building instead of recording.",
+        "The Session has ended. Quipsly will finish the transcript and editable results in the background.",
       nextAction: input.afterCaptureNextAction,
       blockers,
       evidence,

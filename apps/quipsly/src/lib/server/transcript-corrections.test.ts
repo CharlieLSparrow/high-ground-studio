@@ -156,6 +156,19 @@ function mutationHarness(options: { promoted?: boolean; active?: { id: string } 
   const revisionCreate = jest.fn(async ({ data }: any) => ({ id: `revision-${data.revision}`, ...data, createdAt: new Date() }));
   const tx = {
     $queryRaw: jest.fn(async () => [{ lock: null }]),
+    transcriptJob: {
+      findUnique: jest.fn(async () => ({
+        resultJson: {
+          providerEvidence: true,
+          followThrough: {
+            packetStatus: "ready",
+            packetBuildId: "packet-1",
+            summaryNoteId: "summary-1",
+          },
+        },
+      })),
+      update: jest.fn(async ({ where, data }: any) => ({ id: where.id, ...data })),
+    },
     transcriptCorrection: {
       findFirst: jest.fn(async () => options.active ?? null),
       create: jest.fn(async ({ data }: any) => {
@@ -202,6 +215,17 @@ function speakerMutationHarness(options: { active?: any | null; replay?: any | n
     $queryRaw: jest.fn(async () => [{ lock: null }]),
     transcriptJob: {
       findFirst: jest.fn(async () => ({ id: "job-1", asset: recordingAsset(), segments: currentSegments })),
+      findUnique: jest.fn(async () => ({
+        resultJson: {
+          providerEvidence: true,
+          followThrough: {
+            packetStatus: "ready",
+            packetBuildId: "packet-1",
+            summaryNoteId: "summary-1",
+          },
+        },
+      })),
+      update: jest.fn(async ({ where, data }: any) => ({ id: where.id, ...data })),
     },
     callRoom: {
       findUnique: jest.fn(async () => ({ id: "room-1", participants: [], recordingConsents: [] })),
@@ -836,7 +860,7 @@ describe("transcript correction desk", () => {
         attributedLabel: "Charlie",
       },
     });
-    expect(tx.$queryRaw).toHaveBeenCalledTimes(2);
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(3);
     expect(tx.mobileCaptureFinalizationReceipt.findMany).toHaveBeenCalledWith(expect.objectContaining({
       where: { recordingAssetId: "asset-1" },
     }));
@@ -859,6 +883,20 @@ describe("transcript correction desk", () => {
         providerTextSha256: sha256(providerText),
       })],
     }) });
+    expect(tx.transcriptJob.update).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: "job-1" },
+      data: { resultJson: expect.objectContaining({
+        providerEvidence: true,
+        followThrough: expect.objectContaining({
+          packetStatus: "stale",
+          packetBuildId: "packet-1",
+          stale: expect.objectContaining({
+            reason: "accepted-speaker-attribution",
+            durableWorkerRebuildRequired: true,
+          }),
+        }),
+      }) },
+    }));
   });
 
   it("reuses only an exact persisted request replay without entering another transaction", async () => {
@@ -1142,7 +1180,7 @@ describe("transcript correction desk", () => {
         }),
       }),
     }));
-    expect(tx.$queryRaw).toHaveBeenCalledTimes(2);
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(3);
     expect(tx.transcriptCorrection.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({
       status: "accepted",
       baseTextSha256: sha256(providerText),
@@ -1191,6 +1229,14 @@ describe("transcript correction desk", () => {
     expect(revisionCreate).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({
       operation: "created-and-accepted-direct-edit",
     }) }));
+    expect(tx.transcriptJob.update).toHaveBeenCalledWith(expect.objectContaining({
+      data: { resultJson: expect.objectContaining({
+        followThrough: expect.objectContaining({
+          packetStatus: "stale",
+          stale: expect.objectContaining({ reason: "accepted-transcript-correction" }),
+        }),
+      }) },
+    }));
   });
 
   it("records a reviewed-as-is receipt only after protected playback at the segment time", async () => {
@@ -1213,7 +1259,7 @@ describe("transcript correction desk", () => {
       idempotentReplay: false,
       verification: { id: "verification-1", reviewKind: "confirmed-as-is" },
     });
-    expect(tx.$queryRaw).toHaveBeenCalledTimes(2);
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(3);
     expect(tx.transcriptSegmentVerification.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({
       roomId: "room-1",
       transcriptJobId: "job-1",
@@ -1226,6 +1272,14 @@ describe("transcript correction desk", () => {
       playbackPositionSeconds: 13.5,
     }) }));
     expect(tx.transcriptCorrection.create).not.toHaveBeenCalled();
+    expect(tx.transcriptJob.update).toHaveBeenCalledWith(expect.objectContaining({
+      data: { resultJson: expect.objectContaining({
+        followThrough: expect.objectContaining({
+          packetStatus: "stale",
+          stale: expect.objectContaining({ reason: "confirmed-transcript-segment" }),
+        }),
+      }) },
+    }));
   });
 
   it("refuses to confirm provider text as-is when a reviewed correction is active", async () => {
@@ -1267,7 +1321,7 @@ describe("transcript correction desk", () => {
       playbackPositionSeconds: 13.5,
     });
 
-    expect(tx.$queryRaw).toHaveBeenCalledTimes(2);
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(3);
     expect(result).toMatchObject({
       ok: true,
       idempotentReplay: true,
@@ -1316,6 +1370,7 @@ describe("transcript correction desk", () => {
       reviewedByUserId: null,
       reviewedAt: null,
     }) }));
+    expect(tx.transcriptJob.update).not.toHaveBeenCalled();
   });
 
   it("fails closed rather than replacing a correction the reviewer did not see", async () => {

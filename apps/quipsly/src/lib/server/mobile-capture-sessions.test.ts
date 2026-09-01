@@ -16,6 +16,7 @@ jest.mock(
 
 import { recordingContentReadiness } from "./mobile-capture-content-readiness";
 import {
+  afterCaptureNextAction,
   captureGroupStudioHandoff,
   captureSourceSummaries,
   canonicalMobileSessionEpisodeSlug,
@@ -116,6 +117,47 @@ describe("mobile transcript result projection", () => {
 
   it("does not invent results before a transcript-backed summary exists", () => {
     expect(mobileTranscriptResults({ roomId: "room-1", transcriptJobId: "job-1" })).toBeNull();
+  });
+});
+
+describe("mobile after-capture guidance", () => {
+  it("describes automatic background work instead of sending a coach through packet administration", () => {
+    expect(afterCaptureNextAction({
+      recordingCount: 1,
+      latestTranscriptStatus: "COMPLETED",
+      packetSummaryNoteId: null,
+      transcriptProcessingAllowed: true,
+    })).toBe("Transcript ready. Quipsly is preparing editable Session results in the background.");
+    expect(afterCaptureNextAction({
+      recordingCount: 1,
+      latestTranscriptStatus: "queued",
+      packetSummaryNoteId: null,
+      transcriptProcessingAllowed: true,
+    })).toBe("Your recording is safe and transcription is queued. You can leave this screen.");
+  });
+
+  it("leads with ordinary editable results after automatic follow-through materializes", () => {
+    expect(afterCaptureNextAction({
+      recordingCount: 1,
+      latestTranscriptStatus: "COMPLETED",
+      packetSummaryNoteId: "summary-1",
+      transcriptProcessingAllowed: true,
+    })).toBe("Session results are ready. Open the editable recap, notes, tasks, and goals whenever they are useful.");
+  });
+
+  it("keeps held or failed transcription separate from the protected recording", () => {
+    expect(afterCaptureNextAction({
+      recordingCount: 1,
+      latestTranscriptStatus: "HELD",
+      packetSummaryNoteId: null,
+      transcriptProcessingAllowed: false,
+    })).toBe("Your recording is safe. Quipsly will continue when this Session's transcription permission allows it.");
+    expect(afterCaptureNextAction({
+      recordingCount: 1,
+      latestTranscriptStatus: "FAILED",
+      packetSummaryNoteId: null,
+      transcriptProcessingAllowed: true,
+    })).toBe("Your recording is safe, but transcription needs attention. Open the transcript to retry without recording again.");
   });
 });
 

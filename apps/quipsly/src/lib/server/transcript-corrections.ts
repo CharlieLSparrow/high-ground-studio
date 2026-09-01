@@ -5,6 +5,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { mobileCaptureProcessingGateFromEvidence } from "./mobile-capture-processing-policy.js";
 import { acquirePrismaAdvisoryTransactionLock } from "./prisma-advisory-lock.js";
 import { reconcileCaptureTranscriptJob } from "@/lib/server/capture-transcript-reconciliation";
+import { markCaptureTranscriptFollowThroughStale } from "@/lib/server/capture-transcript-follow-through-state";
 import {
   buildAudioTranscriptEvidence,
   type AudioTranscriptEvidenceSegment,
@@ -64,6 +65,19 @@ function nullableLabel(value: unknown) {
 
 function sha256(value: string) {
   return createHash("sha256").update(value, "utf8").digest("hex");
+}
+
+async function acquireTranscriptFollowThroughMutationLocks(
+  prisma: any,
+  roomId: string,
+  transcriptJobId: string,
+) {
+  // Follow-through materialization is Session-wide because one shared result
+  // can draw from multiple participant recordings. Take the same room lock as
+  // the worker before the narrower source lock so transcript edits and result
+  // rebuilds cannot race or acquire their locks in opposite orders.
+  await acquirePrismaAdvisoryTransactionLock(prisma, `capture-transcript-follow-through-room:${roomId}`);
+  await acquirePrismaAdvisoryTransactionLock(prisma, `transcript-job-packet-source:${transcriptJobId}`);
 }
 
 function speakerProviderSnapshot(segments: any[], providerSpeakerLabel: string) {
@@ -1769,7 +1783,7 @@ export async function attributeTranscriptSpeaker(input: {
   const reviewedAt = new Date();
   try {
     const saved = await input.prisma.$transaction(async (tx: any) => {
-      await acquirePrismaAdvisoryTransactionLock(tx, `transcript-job-packet-source:${evidence.job.id}`);
+      await acquireTranscriptFollowThroughMutationLocks(tx, roomId, evidence.job.id);
       await acquirePrismaAdvisoryTransactionLock(tx, `transcript-speaker-attribution:${evidence.job.id}:${providerSpeakerLabel}`);
       const currentJob = await tx.transcriptJob.findFirst({
         where: { id: evidence.job.id, roomId },
@@ -1845,6 +1859,12 @@ export async function attributeTranscriptSpeaker(input: {
           reviewNote: text(input.reviewNote) || "Reviewer identified this provider diarization cluster from protected playback samples.",
           reviewedAt,
         },
+      });
+      await markCaptureTranscriptFollowThroughStale({
+        prisma: tx,
+        transcriptJobId: evidence.job.id,
+        reason: "accepted-speaker-attribution",
+        changedAt: reviewedAt,
       });
       return attribution;
     }, { isolationLevel: "Serializable" });
@@ -1957,7 +1977,7 @@ export async function confirmTranscriptSegmentAsIs(input: {
   });
 
   const saved = await input.prisma.$transaction(async (tx: any) => {
-    await acquirePrismaAdvisoryTransactionLock(tx, `transcript-job-packet-source:${evidence.job.id}`);
+    await acquireTranscriptFollowThroughMutationLocks(tx, roomId, evidence.job.id);
     await acquirePrismaAdvisoryTransactionLock(tx, `transcript-segment-review:${segmentId}`);
     const transactionActive = await tx.transcriptCorrection.findFirst({
       where: { segmentId, status: "accepted" },
@@ -1996,6 +2016,14 @@ export async function confirmTranscriptSegmentAsIs(input: {
         playbackPositionSeconds,
         reviewNote: text(input.reviewNote) || "Reviewer confirmed the provider segment as-is against protected playback.",
       },
+    });
+    await markCaptureTranscriptFollowThroughStale({
+      prisma: tx,
+      transcriptJobId: evidence.job.id,
+      reason: "confirmed-transcript-segment",
+      changedAt: verification.createdAt instanceof Date
+        ? verification.createdAt
+        : new Date(),
     });
     return { verification, idempotentReplay: false };
   });
@@ -2372,7 +2400,7 @@ export async function createTranscriptCorrection(input: {
 
   const correction = await input.prisma.$transaction(async (tx: any) => {
     if (accepted) {
-      await acquirePrismaAdvisoryTransactionLock(tx, `transcript-job-packet-source:${evidence.job.id}`);
+      await acquireTranscriptFollowThroughMutationLocks(tx, roomId, evidence.job.id);
       await acquirePrismaAdvisoryTransactionLock(tx, `transcript-segment-review:${segmentId}`);
     }
     const transactionActive = accepted
@@ -2442,6 +2470,14 @@ export async function createTranscriptCorrection(input: {
         snapshotJson: correctionSnapshot(created),
       },
     });
+    if (accepted) {
+      await markCaptureTranscriptFollowThroughStale({
+        prisma: tx,
+        transcriptJobId: evidence.job.id,
+        reason: "accepted-transcript-correction",
+        changedAt: now,
+      });
+    }
     return tx.transcriptCorrection.findUnique({
       where: { id: created.id },
       include: { revisions: { orderBy: { revision: "asc" } } },
@@ -2513,7 +2549,7 @@ export async function reviewTranscriptCorrectionProposal(input: {
   const now = new Date();
   const reviewed = await input.prisma.$transaction(async (tx: any) => {
     if (input.decision === "accept") {
-      await acquirePrismaAdvisoryTransactionLock(tx, `transcript-job-packet-source:${evidence.job.id}`);
+      await acquireTranscriptFollowThroughMutationLocks(tx, correction.roomId, evidence.job.id);
       await acquirePrismaAdvisoryTransactionLock(tx, `transcript-segment-review:${correction.segmentId}`);
     }
     const transactionActive = input.decision === "accept"
@@ -2568,6 +2604,14 @@ export async function reviewTranscriptCorrectionProposal(input: {
         snapshotJson: correctionSnapshot(updated),
       },
     });
+    if (input.decision === "accept") {
+      await markCaptureTranscriptFollowThroughStale({
+        prisma: tx,
+        transcriptJobId: evidence.job.id,
+        reason: "accepted-transcript-correction",
+        changedAt: now,
+      });
+    }
     return tx.transcriptCorrection.findUnique({
       where: { id: correction.id },
       include: { revisions: { orderBy: { revision: "asc" } } },
