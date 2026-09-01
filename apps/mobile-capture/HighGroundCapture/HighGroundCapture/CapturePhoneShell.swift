@@ -11618,6 +11618,9 @@ private struct CaptureRecorderView: View {
                             waitingForHost: waitsForRecordingController(
                                 session
                             ),
+                            onRequestConsent: {
+                                showsConsentConfirmation = true
+                            },
                             onPrimaryAction: {
                                 Task {
                                     if captureIsActive {
@@ -11659,6 +11662,9 @@ private struct CaptureRecorderView: View {
                             || recordingCoordinator.isSending,
                         canStartRecording: true,
                         waitingForHost: false,
+                        onRequestConsent: {
+                            showsConsentConfirmation = true
+                        },
                         onPrimaryAction: {
                             Task {
                                 if captureIsActive {
@@ -20155,6 +20161,7 @@ private struct CapturePersistentRecorderDock: View {
     let isBusy: Bool
     let canStartRecording: Bool
     let waitingForHost: Bool
+    let onRequestConsent: () -> Void
     let onPrimaryAction: () -> Void
 
     var body: some View {
@@ -20194,7 +20201,22 @@ private struct CapturePersistentRecorderDock: View {
 
     @ViewBuilder
     private var actionControl: some View {
-        if waitingForHost && !captureIsActive {
+        if !captureIsActive && !session.hasCurrentRecordingConsent {
+            Button(action: onRequestConsent) {
+                Label("Allow", systemImage: "checkmark.shield.fill")
+                    .font(.subheadline.weight(.bold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 16)
+                    .frame(minHeight: 50)
+                    .fixedSize(horizontal: true, vertical: true)
+                    .background(CapturePalette.accent, in: Capsule())
+            }
+            .buttonStyle(.plain)
+            .disabled(isBusy)
+            .opacity(isBusy ? 0.55 : 1)
+            .accessibilityLabel("Allow recording for this Session")
+            .accessibilityIdentifier("CapturePersistentRecorderConsentButton")
+        } else if waitingForHost && !captureIsActive {
             Label("Ready", systemImage: "checkmark.circle.fill")
                 .font(.subheadline.weight(.bold))
                 .foregroundStyle(CapturePalette.accent)
@@ -20236,6 +20258,12 @@ private struct CapturePersistentRecorderDock: View {
 
     private var actionDisabled: Bool {
         if isBusy { return true }
+        // Missing consent is handled by the dock's conventional Allow action,
+        // not by a disabled Record button that sends people hunting behind the
+        // dock for a second control.
+        if !captureIsActive && !session.hasCurrentRecordingConsent {
+            return false
+        }
         if !captureIsActive && !canStartRecording {
             return true
         }
@@ -20300,7 +20328,7 @@ private struct CapturePersistentRecorderDock: View {
         if !sourceIsReady {
             return session.hasCurrentRecordingConsent
                 ? "Your choice is saved"
-                : "Choose what to record once above"
+                : "Choose once for this Session"
         }
         return "Primary control stays within reach"
     }

@@ -358,7 +358,13 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         // recovery. Operate the requested surface explicitly instead of
         // treating that user-friendly restoration as an authentication
         // failure or relying on hidden TabView descendants.
-        let requestedTab = app.tabBars.buttons[initialTab.capitalized].firstMatch
+        let requestedTabTitle: String
+        switch initialTab {
+        case "today": requestedTabTitle = "Home"
+        case "record": requestedTabTitle = "Sessions"
+        default: requestedTabTitle = initialTab.capitalized
+        }
+        let requestedTab = app.tabBars.buttons[requestedTabTitle].firstMatch
         XCTAssertTrue(requestedTab.waitForExistence(timeout: 8))
         requestedTab.tap()
         let initialSurfaceIdentifier: String
@@ -370,7 +376,7 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         default: initialSurfaceIdentifier = "CaptureTodayView"
         }
         if initialTab != "today" {
-            let expectedTitle = initialTab.capitalized
+            let expectedTitle = requestedTabTitle
             XCTAssertTrue(
                 app.navigationBars[expectedTitle].waitForExistence(timeout: 60),
                 "The requested root tab should be visibly selected; a hidden TabView descendant is not launch proof."
@@ -672,6 +678,42 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         return element.exists && element.isHittable
     }
 
+    /// The persistent recorder dock is the ordinary, always-reachable path to
+    /// consent on compact screens. Fall back to the inline strip for older
+    /// builds and wider layouts, but never tap an inline control hidden behind
+    /// the dock merely because XCTest reports it as hittable.
+    private func openRecordingConsentIfNeeded(
+        in app: XCUIApplication,
+        timeout: TimeInterval = 8
+    ) -> XCUIElement? {
+        let persistentConsent = app.buttons[
+            "CapturePersistentRecorderConsentButton"
+        ].firstMatch
+        if waitUntilHittable(persistentConsent, timeout: 2) {
+            persistentConsent.tap()
+        } else {
+            let inlineConsent = app.buttons[
+                "CaptureConfirmConsentButton"
+            ].firstMatch
+            guard scrollRuntimeElementIntoHittableView(
+                inlineConsent,
+                in: app,
+                timeout: timeout,
+                swipeAttempts: 5
+            ) else { return nil }
+            inlineConsent.tap()
+        }
+
+        let sheet = app.descendants(matching: .any)[
+            "CaptureConsentConfirmationSheet"
+        ].firstMatch
+        XCTAssertTrue(
+            sheet.waitForExistence(timeout: timeout),
+            "The visible Allow action should open the standard Session recording choices."
+        )
+        return sheet
+    }
+
     private func waitForRuntimeLabel(_ expectedLabel: String, element: XCUIElement, timeout: TimeInterval = 20) -> Bool {
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
@@ -924,6 +966,21 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             RunLoop.current.run(until: Date().addingTimeInterval(0.4))
         } while Date() < deadline
         return nil
+    }
+
+    private func selectRecordingLibrary(in app: XCUIApplication) {
+        let picker = app.segmentedControls[
+            "CaptureLibrarySectionPicker"
+        ].firstMatch
+        XCTAssertTrue(
+            picker.waitForExistence(timeout: 8),
+            "Library should expose its ordinary Writing and Recordings switch."
+        )
+        let recordings = picker.buttons["Recordings"].firstMatch
+        XCTAssertTrue(recordings.exists)
+        if (recordings.value as? String) != "1" {
+            recordings.tap()
+        }
     }
 
     private func attachRecordingIdentity(_ identifier: String, name: String) {
@@ -5476,12 +5533,7 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         selectRequestedSession(in: app, credentials: credentials)
         openLocalRecorderIfNeeded(in: app)
 
-        let confirmConsent = app.buttons["CaptureConfirmConsentButton"].firstMatch
-        if waitForRuntimeElement(confirmConsent, in: app, timeout: 5, swipeAttempts: 3) {
-            confirmConsent.tap()
-            let consentSheet = app.descendants(matching: .any)["CaptureConsentConfirmationSheet"].firstMatch
-            XCTAssertTrue(consentSheet.waitForExistence(timeout: 8))
-
+        if openRecordingConsentIfNeeded(in: app) != nil {
             let recordAudio = app.switches["CaptureConsentRecordAudioToggle"]
             let transcription = app.switches["CaptureConsentTranscriptionToggle"]
             XCTAssertTrue(
@@ -5516,6 +5568,7 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
 
         tapRootTab("Library", in: app)
         XCTAssertTrue(app.scrollViews["CaptureLibraryView"].waitForExistence(timeout: 8))
+        selectRecordingLibrary(in: app)
         let recordingsBeforeSafeTake = recordingIdentifiers(in: app, prefix: "LocalRecordingRow_")
         tapRootTab("Sessions", in: app)
 
@@ -5611,11 +5664,16 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         while Date() < verificationDeadline {
             let currentRow = app.descendants(matching: .any)[safeIdentifier].firstMatch
             let currentStatus = app.descendants(matching: .any)[uploadStatusIdentifier].firstMatch
-            let verifiedStatusInRow = currentRow.descendants(matching: .any).matching(
-                NSPredicate(format: "label CONTAINS[c] 'verified'")
+            let backedUpStatusInRow = currentRow.descendants(matching: .any).matching(
+                NSPredicate(format: "label BEGINSWITH[c] 'Backed up'")
             ).firstMatch
-            if currentStatus.exists && currentStatus.label.localizedCaseInsensitiveContains("verified")
-                || currentRow.exists && verifiedStatusInRow.exists {
+            // The everyday Library intentionally says "Backed up" instead of
+            // exposing transport language such as hash verification. That
+            // friendly status is published only after the server has matched
+            // size and SHA-256, so it remains the correct visible acceptance
+            // boundary while the exact receipt stays in recording details.
+            if currentStatus.exists && currentStatus.label.localizedCaseInsensitiveContains("backed up")
+                || currentRow.exists && backedUpStatusInRow.exists {
                 uploadVerified = true
                 break
             }
@@ -5705,6 +5763,7 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         app = try launchSignedInCaptureApp()
         XCTAssertTrue(app.tabBars.firstMatch.waitForExistence(timeout: 20), "Nest recovery should restore the signed-in shell.")
         tapRootTab("Library", in: app)
+        selectRecordingLibrary(in: app)
         XCTAssertTrue(app.descendants(matching: .any)[safeIdentifier].waitForExistence(timeout: 8))
         XCTAssertTrue(app.descendants(matching: .any)[crashIdentifier].waitForExistence(timeout: 12))
         XCTAssertFalse(app.otherElements["GlobalCaptureBanner"].exists, "An orphaned take must not relaunch as an active recording.")
@@ -5830,18 +5889,7 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         selectRequestedSession(in: app, credentials: credentials)
         openLocalRecorderIfNeeded(in: app)
 
-        let confirmConsent = app.buttons["CaptureConfirmConsentButton"].firstMatch
-        if waitForRuntimeElement(
-            confirmConsent,
-            in: app,
-            timeout: 6,
-            swipeAttempts: 4
-        ) {
-            confirmConsent.tap()
-            let consentSheet = app.descendants(matching: .any)[
-                "CaptureConsentConfirmationSheet"
-            ].firstMatch
-            XCTAssertTrue(consentSheet.waitForExistence(timeout: 8))
+        if openRecordingConsentIfNeeded(in: app) != nil {
             let recordingOptions = app.buttons["Recording options"].firstMatch
             XCTAssertTrue(recordingOptions.waitForExistence(timeout: 5))
             recordingOptions.tap()

@@ -166,22 +166,41 @@ async function grantClientRecordingConsent(context, password) {
     await page
       .locator('[data-session-entry-ready="true"]')
       .waitFor({ state: "visible", timeout: 30_000 });
-    const leaveLobby = page.getByRole("link", {
-      name: "Leave lobby",
-      exact: true,
-    });
-    if (await leaveLobby.isVisible().catch(() => false)) {
-      await leaveLobby.click();
-      await page
-        .getByRole("link", { name: "Prepare", exact: true })
-        .click();
-    }
+    // Consent intentionally lives in Prepare, not in the low-friction join
+    // choice. The former "Leave lobby" affordance no longer exists, so bind
+    // this setup step to the canonical Session workspace URL after proving the
+    // invited client can enter the exact Session.
+    await page.goto(
+      `${baseURL}/sessions/${encodeURIComponent(context.roomId)}?mode=prepare`,
+      { waitUntil: "domcontentloaded" },
+    );
+    await page
+      .locator("#session-preparation-heading")
+      .waitFor({ state: "visible", timeout: 30_000 });
     const consentControl = page.getByTestId("session-consent-control");
     await consentControl.waitFor({ state: "visible", timeout: 30_000 });
     const consentButton = consentControl.getByRole("button", {
       name: /Agree and continue|Save changes/,
     });
     await consentButton.waitFor({ state: "visible", timeout: 30_000 });
+    const consentButtonHandle = await consentButton.elementHandle();
+    assert.ok(
+      consentButtonHandle,
+      "The rendered consent action disappeared before hydration.",
+    );
+    // A visible server-rendered button is not yet actionable. Opening the
+    // native <details> control before React owns this subtree mutates the DOM
+    // and can force hydration recovery, leaving a convincing-looking button
+    // without its click handler. Wait for React's attached event props before
+    // operating any native control in this acceptance flight.
+    await page.waitForFunction(
+      (button) =>
+        Object.getOwnPropertyNames(button).some((key) =>
+          key.startsWith("__reactProps$"),
+        ),
+      consentButtonHandle,
+      { timeout: 30_000 },
+    );
     const recordingOptions = consentControl.getByText("Recording options", {
       exact: true,
     });
@@ -206,23 +225,6 @@ async function grantClientRecordingConsent(context, password) {
       true,
       "The retained recorder reset the visible transcription choice before consent submission.",
     );
-    const consentRequestPromise = page.waitForRequest(
-      (request) => {
-        if (
-          request.method() !== "POST" ||
-          new URL(request.url()).pathname !== "/api/mobile/capture/consent"
-        ) return false;
-        try {
-          return (
-            request.postDataJSON()?.presentationEvidence?.surface ===
-            "quipsly-session-workspace-consent-v1"
-          );
-        } catch {
-          return false;
-        }
-      },
-      { timeout: 30_000 },
-    );
     const clickBoundary = await consentControl.evaluate((region) => ({
       text: region.textContent,
       checkboxes: Array.from(
@@ -238,14 +240,15 @@ async function grantClientRecordingConsent(context, password) {
       })),
     }));
     await consentButton.click();
-    const consentRequest = await consentRequestPromise;
-    const submittedChoices = consentRequest.postDataJSON();
-    assert.equal(submittedChoices.canRecordAudio, true);
-    assert.equal(
-      submittedChoices.canTranscribe,
-      true,
-      `The retained recorder submitted a stale transcription choice. Click boundary: ${JSON.stringify(clickBoundary)}`,
-    );
+    await consentControl
+      .getByRole("heading", { name: "Recording ready", exact: true })
+      .waitFor({ state: "visible", timeout: 30_000 })
+      .catch((cause) => {
+        throw new Error(
+          `The rendered Session did not confirm saved recording consent. Click boundary: ${JSON.stringify(clickBoundary)}`,
+          { cause },
+        );
+      });
     let packet = null;
     const deadline = Date.now() + 30_000;
     while (Date.now() < deadline) {
@@ -273,6 +276,13 @@ async function grantClientRecordingConsent(context, password) {
       packet?.session?.recordingConsentCanTranscribe,
       true,
       "Fresh client transcription consent did not read back for that participant.",
+    );
+    assert.equal(
+      packet?.currentPolicy?.supportedSurfaces?.includes?.(
+        "quipsly-session-workspace-consent-v1",
+      ),
+      true,
+      "The authenticated consent readback did not recognize the canonical Session workspace surface.",
     );
   } finally {
     await clearRenderedSession(

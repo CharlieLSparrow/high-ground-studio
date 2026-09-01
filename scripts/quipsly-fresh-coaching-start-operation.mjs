@@ -431,17 +431,41 @@ try {
     `aside[aria-label="${sessionTitle} live call dock"]`,
   );
   await liveCallDock.waitFor({ state: "visible", timeout: 30_000 });
-  await liveCallDock
-    .getByRole("button", { name: "Close live call", exact: true })
-    .click();
-  const leaveAndClose = liveCallDock.getByRole("button", {
-    name: "Leave & close",
+  // The fresh-start flight only enters the ordinary device lobby; it does not
+  // join media. Preserve the product's defining persistent-call behavior by
+  // minimizing this workspace before continuing through Coaching instead of
+  // manufacturing a leave ceremony for a call that never started.
+  const minimizeLiveCall = liveCallDock.getByRole("button", {
+    name: "Minimize live call",
     exact: true,
   });
-  if (await leaveAndClose.isVisible().catch(() => false)) {
-    await leaveAndClose.click();
-  }
-  await liveCallDock.waitFor({ state: "detached", timeout: 20_000 });
+  const minimizeLiveCallHandle = await minimizeLiveCall.elementHandle();
+  assert.ok(
+    minimizeLiveCallHandle,
+    "The rendered live-call minimize action disappeared before hydration.",
+  );
+  await clientPage.waitForFunction(
+    (button) =>
+      Object.getOwnPropertyNames(button).some((key) =>
+        key.startsWith("__reactProps$"),
+      ),
+    minimizeLiveCallHandle,
+    { timeout: 30_000 },
+  );
+  await minimizeLiveCall.click();
+  const liveCallDockHandle = await liveCallDock.elementHandle();
+  assert.ok(
+    liveCallDockHandle,
+    "The live-call workspace disappeared without exposing its minimized control.",
+  );
+  await clientPage.waitForFunction(
+    (dock) => dock.getAttribute("aria-hidden") === "true",
+    liveCallDockHandle,
+    { timeout: 20_000 },
+  );
+  await clientPage
+    .getByLabel("Minimized live call", { exact: true })
+    .waitFor({ state: "visible", timeout: 20_000 });
   evidence.clientBrowserChoiceOpenedDeviceSetup = true;
   await assertNoHorizontalOverflow(
     clientPage.locator("main").last(),

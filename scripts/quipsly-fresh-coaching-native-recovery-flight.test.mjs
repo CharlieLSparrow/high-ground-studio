@@ -14,6 +14,13 @@ test("fresh native flight keeps credentials private while operating client entry
   assert.match(source, /QUIPSLY_CAPTURE_UI_TEST_MODE: "session-deep-link"/);
   assert.match(source, /QUIPSLY_CAPTURE_UI_TEST_MODE: "room-join"/);
   assert.match(source, /QUIPSLY_CAPTURE_UI_TEST_MODE: "capture-recovery"/);
+  assert.match(source, /\?mode=prepare/);
+  assert.match(source, /#session-preparation-heading/);
+  assert.match(source, /__reactProps\$/);
+  assert.match(source, /getByRole\("heading", \{ name: "Recording ready"/);
+  assert.match(source, /recordingConsentCanRecordAudio/);
+  assert.match(source, /recordingConsentCanTranscribe/);
+  assert.match(source, /quipsly-session-workspace-consent-v1/);
   assert.match(source, /passwordsWrittenToArtifact: false/);
   assert.match(source, /keychainReadRequiredForAutomatedFlight: false/);
 });
