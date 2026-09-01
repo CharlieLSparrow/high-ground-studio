@@ -134,6 +134,53 @@ describe("SessionRecordingShareCard", () => {
     }));
   });
 
+  it("selects both sequential participant masters after a browser reconnect", async () => {
+    const recoveredSources = [
+      {
+        ...snapshot.available.sources[0],
+        id: "coach_before_crash",
+        stoppedAt: "2026-08-22T12:10:00.000Z",
+      },
+      {
+        ...snapshot.available.sources[0],
+        id: "client_continuous",
+        participantId: "participant_client_0001",
+        participantLabel: "Client",
+        startedAt: "2026-08-22T12:00:01.000Z",
+        stoppedAt: "2026-08-22T12:30:01.000Z",
+      },
+      {
+        ...snapshot.available.sources[0],
+        id: "coach_after_reconnect",
+        startedAt: "2026-08-22T12:10:08.000Z",
+        stoppedAt: "2026-08-22T12:30:00.000Z",
+      },
+    ];
+    const recoveredSnapshot = {
+      ...snapshot,
+      available: {
+        ...snapshot.available,
+        programDurationSeconds: 1_801,
+        sources: recoveredSources,
+        transcriptSegments: [],
+      },
+    };
+    const requests: Array<Record<string, unknown>> = [];
+    global.fetch = jest.fn(async (_url, init) => {
+      if (init?.method === "POST") requests.push(JSON.parse(String(init.body)));
+      return response(recoveredSnapshot);
+    }) as jest.MockedFunction<typeof fetch>;
+
+    render(<SessionRecordingShareCard roomId="session_room_0001" />);
+    await userEvent.click(await screen.findByRole("button", { name: "Create private preview" }));
+
+    await waitFor(() => expect(requests).toHaveLength(1));
+    expect(requests[0]).toEqual(expect.objectContaining({
+      action: "PREPARE",
+      sourceIds: ["coach_before_crash", "coach_after_reconnect", "client_continuous"],
+    }));
+  });
+
   it("searches long transcripts without changing retained cuts", async () => {
     const retainedSegment = {
       ...transcriptSegment,

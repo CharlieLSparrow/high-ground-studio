@@ -828,7 +828,7 @@ struct CaptureRecordingShareEditor: View {
                         TextField("Recording title", text: $title)
                             .textFieldStyle(.roundedBorder)
                             .accessibilityIdentifier("CaptureRecordingShareTitle")
-                        Text("Quipsly already chose one high-quality track for each person. Change this only when you need a different recording.")
+                        Text("Quipsly already chose one high-quality track for each person and keeps reconnect segments together. Change this only when you need a different recording.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                         ForEach(sources) { source in
@@ -1482,14 +1482,59 @@ struct CaptureRecordingShareEditor: View {
             return Set(requestedIDs.filter { availableIDs.contains($0) })
         }
 
-        var preferred: [String: CaptureRecordingShareSource] = [:]
-        for source in available {
-            let current = preferred[source.participantId]
-            if current == nil || (source.kind == "LOCAL_AUDIO" && current?.kind != "LOCAL_AUDIO") {
-                preferred[source.participantId] = source
+        return defaultSourceIDs(available)
+    }
+
+    private func defaultSourceIDs(
+        _ available: [CaptureRecordingShareSource]
+    ) -> Set<String> {
+        var selected = Set<String>()
+        for participantSources in Dictionary(grouping: available, by: \.participantId).values {
+            let audio = participantSources.filter {
+                $0.kind == "LOCAL_AUDIO" || ($0.contentType ?? "").hasPrefix("audio/")
+            }
+            let candidates = audio.isEmpty ? participantSources : audio
+            let timed = candidates.allSatisfy {
+                guard let startedAt = recordingShareDate($0.startedAt),
+                      let stoppedAt = recordingShareDate($0.stoppedAt) else { return false }
+                return stoppedAt > startedAt
+            }
+            guard timed else {
+                if let first = candidates.first { selected.insert(first.id) }
+                continue
+            }
+
+            var overlapGroups: [[CaptureRecordingShareSource]] = []
+            let ordered = candidates.sorted {
+                let left = recordingShareDate($0.startedAt) ?? .distantPast
+                let right = recordingShareDate($1.startedAt) ?? .distantPast
+                return left == right ? $0.id < $1.id : left < right
+            }
+            for source in ordered {
+                let latestEnd = overlapGroups.last?
+                    .compactMap { recordingShareDate($0.stoppedAt) }
+                    .max() ?? .distantPast
+                let startedAt = recordingShareDate(source.startedAt) ?? .distantPast
+                if overlapGroups.isEmpty || startedAt >= latestEnd {
+                    overlapGroups.append([source])
+                } else {
+                    overlapGroups[overlapGroups.count - 1].append(source)
+                }
+            }
+            for group in overlapGroups {
+                if let first = group.first { selected.insert(first.id) }
             }
         }
-        return Set(preferred.values.map(\.id))
+        return selected
+    }
+
+    private func recordingShareDate(_ value: String) -> Date? {
+        let fractional = ISO8601DateFormatter()
+        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let date = fractional.date(from: value) { return date }
+        let standard = ISO8601DateFormatter()
+        standard.formatOptions = [.withInternetDateTime]
+        return standard.date(from: value)
     }
 
     private func missingOutputSourceCount(

@@ -9,6 +9,7 @@ import {
   newestCoherentRecordingTake,
   recordSessionRecordingSharePlaybackReview,
   sessionRecordingShareAudioMixSourceIds,
+  recordingShareSourcesForTake,
   sessionRecordingSharePlaybackPlan,
   stableJson,
   transitionSessionRecordingShare,
@@ -46,6 +47,47 @@ describe("Session recording share take selection", () => {
       { id: "client-camera", participantId: "client", kind: "LOCAL_VIDEO", contentType: "video/mp4" },
     ], "coach-camera");
     expect([...chosen].sort()).toEqual(["client-camera", "coach-mic"]);
+  });
+
+  it("keeps every sequential microphone segment after a participant reconnects", () => {
+    const chosen = sessionRecordingShareAudioMixSourceIds([
+      { id: "coach-before-crash", participantId: "coach", kind: "LOCAL_AUDIO", recordedStartedAt: new Date("2026-08-31T12:00:00Z"), recordedStoppedAt: new Date("2026-08-31T12:20:00Z") },
+      { id: "coach-after-reconnect", participantId: "coach", kind: "LOCAL_AUDIO", recordedStartedAt: new Date("2026-08-31T12:20:08Z"), recordedStoppedAt: new Date("2026-08-31T12:50:00Z") },
+      { id: "client-continuous", participantId: "client", kind: "LOCAL_AUDIO", recordedStartedAt: new Date("2026-08-31T12:00:01Z"), recordedStoppedAt: new Date("2026-08-31T12:50:01Z") },
+    ]);
+    expect([...chosen].sort()).toEqual([
+      "client-continuous",
+      "coach-after-reconnect",
+      "coach-before-crash",
+    ]);
+  });
+
+  it("does not double-mix concurrent microphones from the same participant", () => {
+    const chosen = sessionRecordingShareAudioMixSourceIds([
+      { id: "coach-browser", participantId: "coach", kind: "LOCAL_AUDIO", recordedStartedAt: new Date("2026-08-31T12:00:00Z"), recordedStoppedAt: new Date("2026-08-31T12:50:00Z") },
+      { id: "coach-phone", participantId: "coach", kind: "LOCAL_AUDIO", recordedStartedAt: new Date("2026-08-31T12:00:02Z"), recordedStoppedAt: new Date("2026-08-31T12:49:58Z") },
+    ]);
+    expect([...chosen]).toEqual(["coach-browser"]);
+  });
+
+  it("keeps all reconnect segments in the current capture group", () => {
+    const source = (id: string, group: string, startedAt: string) => ({
+      id,
+      recordedStartedAt: new Date(startedAt),
+      localManifestJson: { captureGroupId: group },
+    });
+    const chosen = recordingShareSourcesForTake([
+      source("old-coach", "old-take", "2026-08-31T10:00:00Z"),
+      source("old-client", "old-take", "2026-08-31T10:00:01Z"),
+      source("coach-before-crash", "current-take", "2026-08-31T12:00:00Z"),
+      source("client-continuous", "current-take", "2026-08-31T12:00:01Z"),
+      source("coach-after-reconnect", "current-take", "2026-08-31T12:20:08Z"),
+    ], "current-take");
+    expect(chosen.map((row) => row.id)).toEqual([
+      "coach-before-crash",
+      "client-continuous",
+      "coach-after-reconnect",
+    ]);
   });
 });
 

@@ -131,6 +131,48 @@ test("FFmpeg renders a verified aligned Session share without mutating sources",
   }
 });
 
+test("FFmpeg keeps a participant's resumed recording audible at its program offset", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "quipsly-session-resumed-share-"));
+  try {
+    const beforeCrash = path.join(root, "before-crash.wav");
+    const afterReconnect = path.join(root, "after-reconnect.wav");
+    const output = path.join(root, "resumed-share.m4a");
+    await run("ffmpeg", ["-hide_banner", "-nostdin", "-v", "error", "-f", "lavfi", "-i", "sine=frequency=440:duration=1", "-ar", "48000", "-ac", "1", beforeCrash]);
+    await run("ffmpeg", ["-hide_banner", "-nostdin", "-v", "error", "-f", "lavfi", "-i", "sine=frequency=880:duration=1", "-ar", "48000", "-ac", "1", afterReconnect]);
+    const [beforeStat, afterStat, beforeSha, afterSha] = await Promise.all([
+      stat(beforeCrash), stat(afterReconnect), sha256File(beforeCrash), sha256File(afterReconnect),
+    ]);
+    const base = { provider: "local" as const, bucketName: "local", generation: "1", contentType: "audio/wav", participantId: "participant_resumed_0001", participantLabel: "Coach", includeInAudioMix: true };
+    const job = newSessionRecordingShareJob({
+      jobId: "share_resumed_job_0001",
+      roomId: "share_resumed_room_0001",
+      outputId: "share_resumed_output_0001",
+      outputRevision: 1,
+      requestedAt: "2026-08-31T23:45:00.000Z",
+      sourceSetSha256: "e".repeat(64),
+      edit: { startSeconds: 0, endSeconds: 2.25, keptRanges: [{ id: "share_resumed_range_0001", startSeconds: 0, endSeconds: 2.25 }], transcriptExclusions: [], joinCrossfadeSeconds: 0 },
+      sources: [
+        { ...base, recordingAssetId: "share_before_crash_0001", objectName: "before-crash.wav", locator: beforeCrash, sha256: beforeSha, sizeBytes: beforeStat.size, programOffsetSeconds: 0 },
+        { ...base, recordingAssetId: "share_after_reconnect_0001", objectName: "after-reconnect.wav", locator: afterReconnect, sha256: afterSha, sizeBytes: afterStat.size, programOffsetSeconds: 1.25 },
+      ],
+      target: { provider: "local", bucketName: "local", objectName: "resumed-share.m4a", locator: output, contentType: "audio/mp4", codec: "aac-lc", sampleRateHz: 48_000, channels: 2 },
+    });
+
+    const graph = buildSessionRecordingShareFilterGraph(job);
+    assert.match(graph, /adelay=1250:all=1/);
+    assert.match(graph, /amix=inputs=2/);
+    const rendered = await new FfmpegSessionRecordingShareRenderer().render(job, output);
+    assert.ok(Math.abs(rendered.technical.durationSeconds - 2.25) <= 0.25);
+    const tail = await run("ffmpeg", ["-hide_banner", "-nostdin", "-ss", "1.4", "-i", output, "-t", "0.5", "-af", "volumedetect", "-f", "null", "-"]);
+    const meanVolume = Number(/mean_volume:\s*(-?[0-9.]+) dB/.exec(tail.stderr)?.[1]);
+    assert.ok(Number.isFinite(meanVolume) && meanVolume > -30, `Expected resumed source in output tail, got ${meanVolume} dB`);
+    assert.equal(await sha256File(beforeCrash), beforeSha);
+    assert.equal(await sha256File(afterReconnect), afterSha);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("FFmpeg renders a verified 24 fps video share from one exact camera and one audio source", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "quipsly-session-video-share-"));
   try {

@@ -108,14 +108,41 @@ function megabytes(value: number | null | undefined) {
 }
 
 function defaultParticipantSources(sources: Source[]) {
-  const selected = new Map<string, Source>();
+  const byParticipant = new Map<string, Source[]>();
   for (const source of sources) {
-    const existing = selected.get(source.participantId);
-    if (!existing || (source.kind === "LOCAL_AUDIO" && existing.kind !== "LOCAL_AUDIO")) {
-      selected.set(source.participantId, source);
-    }
+    const participantSources = byParticipant.get(source.participantId) || [];
+    participantSources.push(source);
+    byParticipant.set(source.participantId, participantSources);
   }
-  return [...selected.values()].map((source) => source.id);
+  const selected: Source[] = [];
+  for (const participantSources of byParticipant.values()) {
+    const audio = participantSources.filter((source) =>
+      source.kind === "LOCAL_AUDIO" || source.contentType?.startsWith("audio/"),
+    );
+    const candidates = audio.length ? audio : participantSources;
+    const timed = candidates.every((source) => {
+      const startedAt = Date.parse(source.startedAt);
+      const stoppedAt = Date.parse(source.stoppedAt);
+      return Number.isFinite(startedAt) && Number.isFinite(stoppedAt) && stoppedAt > startedAt;
+    });
+    if (!timed) {
+      if (candidates[0]) selected.push(candidates[0]);
+      continue;
+    }
+    const groups: Source[][] = [];
+    for (const source of [...candidates].sort((left, right) =>
+      Date.parse(left.startedAt) - Date.parse(right.startedAt) || left.id.localeCompare(right.id),
+    )) {
+      const latest = groups.at(-1);
+      const latestEnd = latest
+        ? Math.max(...latest.map((item) => Date.parse(item.stoppedAt)))
+        : Number.NEGATIVE_INFINITY;
+      if (!latest || Date.parse(source.startedAt) >= latestEnd) groups.push([source]);
+      else latest.push(source);
+    }
+    for (const group of groups) if (group[0]) selected.push(group[0]);
+  }
+  return selected.map((source) => source.id);
 }
 
 function transcriptExclusionKeys(output: Output | null | undefined) {

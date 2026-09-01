@@ -309,6 +309,7 @@ async function loadRoom(
     select: {
       id: true,
       title: true,
+      captureGroupId: true,
       booking: {
         select: {
           coachUserId: true,
@@ -339,7 +340,14 @@ function participantLabel(source: any, index: number) {
 }
 
 export function sessionRecordingShareAudioMixSourceIds(
-  sources: Array<{ id: string; participantId: string; kind?: string | null; contentType?: string | null }>,
+  sources: Array<{
+    id: string;
+    participantId: string;
+    kind?: string | null;
+    contentType?: string | null;
+    recordedStartedAt?: Date | null;
+    recordedStoppedAt?: Date | null;
+  }>,
   primaryVideoSourceId?: string | null,
 ) {
   const selected = new Set<string>();
@@ -350,12 +358,71 @@ export function sessionRecordingShareAudioMixSourceIds(
     byParticipant.set(source.participantId, participantSources);
   }
   for (const participantSources of byParticipant.values()) {
-    const preferred = participantSources.find((source) =>
+    const dedicatedAudio = participantSources.filter((source) =>
       source.kind === "LOCAL_AUDIO" || clean(source.contentType, 120).startsWith("audio/"),
-    ) || participantSources.find((source) => source.id === primaryVideoSourceId) || participantSources[0];
-    if (preferred) selected.add(preferred.id);
+    );
+    const candidates = dedicatedAudio.length ? dedicatedAudio : participantSources;
+    const timed = candidates.every((source) =>
+      source.recordedStartedAt instanceof Date &&
+      source.recordedStoppedAt instanceof Date &&
+      source.recordedStoppedAt > source.recordedStartedAt,
+    );
+    if (!timed) {
+      const preferred = candidates.find((source) => source.id === primaryVideoSourceId) || candidates[0];
+      if (preferred) selected.add(preferred.id);
+      continue;
+    }
+
+    // A crash/reconnect creates another immutable master for the same person.
+    // Keep every sequential interval, while concurrent device alternatives
+    // remain one default lane so their microphones are never double-mixed.
+    const overlapGroups: typeof candidates[] = [];
+    for (const source of [...candidates].sort((left, right) =>
+      left.recordedStartedAt!.getTime() - right.recordedStartedAt!.getTime() || left.id.localeCompare(right.id),
+    )) {
+      const latest = overlapGroups.at(-1);
+      const latestEnd = latest
+        ? Math.max(...latest.map((item) => item.recordedStoppedAt!.getTime()))
+        : Number.NEGATIVE_INFINITY;
+      if (!latest || source.recordedStartedAt!.getTime() >= latestEnd) overlapGroups.push([source]);
+      else latest.push(source);
+    }
+    for (const group of overlapGroups) {
+      const preferred = group.find((source) => source.id === primaryVideoSourceId) || group[0];
+      if (preferred) selected.add(preferred.id);
+    }
   }
   return selected;
+}
+
+function recordingShareCaptureGroupId(value: unknown) {
+  return clean(object(value).captureGroupId, 240);
+}
+
+export function recordingShareSourcesForTake<
+  T extends { recordedStartedAt: Date; localManifestJson?: unknown },
+>(rows: T[], preferredCaptureGroupId?: string | null) {
+  const ordered = [...rows].sort((left, right) =>
+    left.recordedStartedAt.getTime() - right.recordedStartedAt.getTime(),
+  );
+  const preferred = clean(preferredCaptureGroupId, 240);
+  if (preferred) {
+    const exact = ordered.filter(
+      (row) => recordingShareCaptureGroupId(row.localManifestJson) === preferred,
+    );
+    if (exact.length) return exact;
+  }
+  const anchor = ordered.at(-1);
+  if (!anchor) return [];
+  const anchorGroupId = recordingShareCaptureGroupId(anchor.localManifestJson);
+  if (anchorGroupId) {
+    return ordered.filter(
+      (row) => recordingShareCaptureGroupId(row.localManifestJson) === anchorGroupId,
+    );
+  }
+  return newestCoherentRecordingTake(
+    ordered.filter((row) => !recordingShareCaptureGroupId(row.localManifestJson)),
+  );
 }
 
 export function newestCoherentRecordingTake<
@@ -379,7 +446,11 @@ export function newestCoherentRecordingTake<
   return clusters.at(-1) || [];
 }
 
-async function loadSources(client: RestoreClient, roomId: string) {
+async function loadSources(
+  client: RestoreClient,
+  roomId: string,
+  preferredCaptureGroupId?: string | null,
+) {
   const rows = await client.recordingAsset.findMany({
     where: {
       roomId,
@@ -431,12 +502,10 @@ async function loadSources(client: RestoreClient, roomId: string) {
       row.recordedStoppedAt > row.recordedStartedAt
     );
   });
-  // captureGroupId identifies the durable Session capture boundary and can be
-  // reused across reconnects or repeated takes. A shareable take is the newest
-  // time-coherent cluster of participant masters, not every source ever
-  // recorded in that room. Thirty seconds tolerates normal endpoint startup
-  // skew without merging separate rehearsals or calls.
-  return newestCoherentRecordingTake(verified);
+  // A capture group is the durable call/take boundary. Unlike a start-time
+  // cluster it deliberately survives long calls and crash/reconnect segments.
+  // The bounded clock fallback exists only for legacy sources without groups.
+  return recordingShareSourcesForTake(verified, preferredCaptureGroupId);
 }
 
 async function exactCloudBindings(
@@ -1127,7 +1196,9 @@ export async function readSessionRecordingShare(
   });
   if (canPrepare && output?.status === "DRAFT")
     output = await reconcileRender(client, output);
-  const sourceRows = canPrepare ? await loadSources(client, room.id) : [];
+  const sourceRows = canPrepare
+    ? await loadSources(client, room.id, room.captureGroupId)
+    : [];
   const transcriptSegments = canPrepare
     ? await loadTranscriptEditSegments(client, room.id, sourceRows)
     : [];
@@ -1197,7 +1268,11 @@ export async function prepareSessionRecordingShare(
   },
 ) {
   const room = await loadRoom(client, input.roomId, input.actor, "release");
-  const allSources: any[] = await loadSources(client, room.id);
+  const allSources: any[] = await loadSources(
+    client,
+    room.id,
+    room.captureGroupId,
+  );
   const requested = [
     ...new Set(input.sourceIds.map((id) => clean(id, 240)).filter(Boolean)),
   ];
