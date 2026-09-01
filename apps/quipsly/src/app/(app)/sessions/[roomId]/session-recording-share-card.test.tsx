@@ -157,6 +157,7 @@ describe("SessionRecordingShareCard", () => {
         ...snapshot.available.sources[0],
         id: "coach_before_crash",
         stoppedAt: "2026-08-22T12:10:00.000Z",
+        programOffsetSeconds: 0,
       },
       {
         ...snapshot.available.sources[0],
@@ -165,12 +166,14 @@ describe("SessionRecordingShareCard", () => {
         participantLabel: "Client",
         startedAt: "2026-08-22T12:00:01.000Z",
         stoppedAt: "2026-08-22T12:30:01.000Z",
+        programOffsetSeconds: 1,
       },
       {
         ...snapshot.available.sources[0],
         id: "coach_after_reconnect",
         startedAt: "2026-08-22T12:10:08.000Z",
         stoppedAt: "2026-08-22T12:30:00.000Z",
+        programOffsetSeconds: 608,
       },
     ];
     const recoveredSnapshot = {
@@ -206,9 +209,9 @@ describe("SessionRecordingShareCard", () => {
         programDurationSeconds: 1_801,
         transcriptSegments: [],
         sources: [
-          { ...snapshot.available.sources[0], id: "browser_before_crash", stoppedAt: "2026-08-22T12:10:00.000Z" },
-          { ...snapshot.available.sources[0], id: "phone_continuous", startedAt: "2026-08-22T12:00:02.000Z", stoppedAt: "2026-08-22T12:30:00.000Z" },
-          { ...snapshot.available.sources[0], id: "browser_after_reconnect", startedAt: "2026-08-22T12:10:08.000Z", stoppedAt: "2026-08-22T12:29:58.000Z" },
+          { ...snapshot.available.sources[0], id: "browser_before_crash", stoppedAt: "2026-08-22T12:10:00.000Z", programOffsetSeconds: 0 },
+          { ...snapshot.available.sources[0], id: "phone_continuous", startedAt: "2026-08-22T13:00:02.000Z", stoppedAt: "2026-08-22T13:30:00.000Z", programOffsetSeconds: 2 },
+          { ...snapshot.available.sources[0], id: "browser_after_reconnect", startedAt: "2026-08-22T12:10:08.000Z", stoppedAt: "2026-08-22T12:29:58.000Z", programOffsetSeconds: 608 },
         ],
       },
     };

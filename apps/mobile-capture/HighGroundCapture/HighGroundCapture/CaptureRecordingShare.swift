@@ -1546,11 +1546,15 @@ struct CaptureRecordingShareEditor: View {
                 $0.kind == "LOCAL_AUDIO" || ($0.contentType ?? "").hasPrefix("audio/")
             }
             let candidates = audio.isEmpty ? participantSources : audio
-            let timed = candidates.allSatisfy {
-                guard let startedAt = recordingShareDate($0.startedAt),
-                      let stoppedAt = recordingShareDate($0.stoppedAt) else { return false }
-                return stoppedAt > startedAt
+            let interval: (CaptureRecordingShareSource) -> (start: TimeInterval, end: TimeInterval)? = { source in
+                let duration = recordingShareDuration(source)
+                guard source.programOffsetSeconds.isFinite, duration > 0 else { return nil }
+                return (
+                    start: source.programOffsetSeconds,
+                    end: source.programOffsetSeconds + duration
+                )
             }
+            let timed = candidates.allSatisfy { interval($0) != nil }
             guard timed else {
                 if let first = candidates.first { selected.insert(first.id) }
                 continue
@@ -1558,15 +1562,15 @@ struct CaptureRecordingShareEditor: View {
 
             var overlapGroups: [[CaptureRecordingShareSource]] = []
             let ordered = candidates.sorted {
-                let left = recordingShareDate($0.startedAt) ?? .distantPast
-                let right = recordingShareDate($1.startedAt) ?? .distantPast
+                let left = interval($0)?.start ?? -.infinity
+                let right = interval($1)?.start ?? -.infinity
                 return left == right ? $0.id < $1.id : left < right
             }
             for source in ordered {
                 let latestEnd = overlapGroups.last?
-                    .compactMap { recordingShareDate($0.stoppedAt) }
-                    .max() ?? .distantPast
-                let startedAt = recordingShareDate(source.startedAt) ?? .distantPast
+                    .compactMap { interval($0)?.end }
+                    .max() ?? -.infinity
+                let startedAt = interval(source)?.start ?? -.infinity
                 if overlapGroups.isEmpty || startedAt >= latestEnd {
                     overlapGroups.append([source])
                 } else {

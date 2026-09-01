@@ -98,6 +98,19 @@ describe("Session recording share take selection", () => {
     expect([...chosen]).toEqual(["phone-continuous"]);
   });
 
+  it("uses the shared program clock instead of misleading device wall times", () => {
+    const chosen = sessionRecordingShareAudioMixSourceIds([
+      { id: "browser-before-crash", participantId: "coach", kind: "LOCAL_AUDIO", recordedStartedAt: new Date("2026-08-31T12:00:00Z"), recordedStoppedAt: new Date("2026-08-31T12:20:00Z") },
+      { id: "phone-continuous", participantId: "coach", kind: "LOCAL_AUDIO", recordedStartedAt: new Date("2026-08-31T13:00:00Z"), recordedStoppedAt: new Date("2026-08-31T13:50:00Z") },
+      { id: "browser-after-reconnect", participantId: "coach", kind: "LOCAL_AUDIO", recordedStartedAt: new Date("2026-08-31T12:20:08Z"), recordedStoppedAt: new Date("2026-08-31T12:49:58Z") },
+    ], null, new Map([
+      ["browser-before-crash", 0],
+      ["phone-continuous", 2],
+      ["browser-after-reconnect", 1_208],
+    ]));
+    expect([...chosen]).toEqual(["phone-continuous"]);
+  });
+
   it("keeps all reconnect segments in the current capture group", () => {
     const source = (id: string, group: string, startedAt: string) => ({
       id,

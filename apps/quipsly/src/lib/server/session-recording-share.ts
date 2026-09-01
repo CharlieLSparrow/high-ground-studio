@@ -350,6 +350,7 @@ export function sessionRecordingShareAudioMixSourceIds(
     recordedStoppedAt?: Date | null;
   }>,
   primaryVideoSourceId?: string | null,
+  programOffsets?: ReadonlyMap<string, number>,
 ) {
   const selected = new Set<string>();
   const byParticipant = new Map<string, typeof sources>();
@@ -363,10 +364,25 @@ export function sessionRecordingShareAudioMixSourceIds(
       source.kind === "LOCAL_AUDIO" || clean(source.contentType, 120).startsWith("audio/"),
     );
     const candidates = dedicatedAudio.length ? dedicatedAudio : participantSources;
+    const interval = (source: (typeof candidates)[number]) => {
+      if (
+        !(source.recordedStartedAt instanceof Date) ||
+        !(source.recordedStoppedAt instanceof Date) ||
+        source.recordedStoppedAt <= source.recordedStartedAt
+      ) return null;
+      const programOffset = programOffsets?.get(source.id);
+      const startSeconds = Number.isFinite(programOffset)
+        ? Number(programOffset)
+        : source.recordedStartedAt.getTime() / 1_000;
+      return {
+        startSeconds,
+        endSeconds:
+          startSeconds +
+          (source.recordedStoppedAt.getTime() - source.recordedStartedAt.getTime()) / 1_000,
+      };
+    };
     const timed = candidates.every((source) =>
-      source.recordedStartedAt instanceof Date &&
-      source.recordedStoppedAt instanceof Date &&
-      source.recordedStoppedAt > source.recordedStartedAt,
+      interval(source) !== null,
     );
     if (!timed) {
       const preferred = candidates.find((source) => source.id === primaryVideoSourceId) || candidates[0];
@@ -379,13 +395,13 @@ export function sessionRecordingShareAudioMixSourceIds(
     // remain one default lane so their microphones are never double-mixed.
     const overlapGroups: typeof candidates[] = [];
     for (const source of [...candidates].sort((left, right) =>
-      left.recordedStartedAt!.getTime() - right.recordedStartedAt!.getTime() || left.id.localeCompare(right.id),
+      interval(left)!.startSeconds - interval(right)!.startSeconds || left.id.localeCompare(right.id),
     )) {
       const latest = overlapGroups.at(-1);
       const latestEnd = latest
-        ? Math.max(...latest.map((item) => item.recordedStoppedAt!.getTime()))
+        ? Math.max(...latest.map((item) => interval(item)!.endSeconds))
         : Number.NEGATIVE_INFINITY;
-      if (!latest || source.recordedStartedAt!.getTime() >= latestEnd) overlapGroups.push([source]);
+      if (!latest || interval(source)!.startSeconds >= latestEnd) overlapGroups.push([source]);
       else latest.push(source);
     }
     for (const group of overlapGroups) {
@@ -1396,8 +1412,15 @@ export async function prepareSessionRecordingShare(
       "Choose one exact verified camera recording for the private video preview.",
     );
   }
-  const audioMixSourceIds = sessionRecordingShareAudioMixSourceIds(selected, primaryVideo?.id);
   const summary = sourceSummary(selected);
+  const audioMixSourceIds = sessionRecordingShareAudioMixSourceIds(
+    selected,
+    primaryVideo?.id,
+    new Map(summary.timeline.sources.map((source) => [
+      source.recordingAssetId,
+      source.programOffsetSeconds,
+    ])),
+  );
   if (
     !Number.isFinite(input.startSeconds) ||
     !Number.isFinite(input.endSeconds) ||
@@ -1517,6 +1540,7 @@ export async function prepareSessionRecordingShare(
     schema: SESSION_RECORDING_SHARE_MANIFEST_SCHEMA,
     roomId: room.id,
     recipientUserId: room.booking.clientUserId,
+    timeline: summary.timeline,
     sources: sources.map((source: (typeof sources)[number]) => {
       const { locator: _locator, ...safeSource } = source;
       return safeSource;

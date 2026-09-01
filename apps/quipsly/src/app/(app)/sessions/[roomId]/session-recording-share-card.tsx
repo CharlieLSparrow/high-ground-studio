@@ -130,24 +130,29 @@ function defaultParticipantSources(sources: Source[]) {
       source.kind === "LOCAL_AUDIO" || source.contentType?.startsWith("audio/"),
     );
     const candidates = audio.length ? audio : participantSources;
-    const timed = candidates.every((source) => {
+    const interval = (source: Source) => {
       const startedAt = Date.parse(source.startedAt);
       const stoppedAt = Date.parse(source.stoppedAt);
-      return Number.isFinite(startedAt) && Number.isFinite(stoppedAt) && stoppedAt > startedAt;
-    });
+      if (!Number.isFinite(startedAt) || !Number.isFinite(stoppedAt) || stoppedAt <= startedAt) return null;
+      return {
+        startSeconds: source.programOffsetSeconds,
+        endSeconds: source.programOffsetSeconds + (stoppedAt - startedAt) / 1_000,
+      };
+    };
+    const timed = candidates.every((source) => interval(source) !== null);
     if (!timed) {
       if (candidates[0]) selected.push(candidates[0]);
       continue;
     }
     const groups: Source[][] = [];
     for (const source of [...candidates].sort((left, right) =>
-      Date.parse(left.startedAt) - Date.parse(right.startedAt) || left.id.localeCompare(right.id),
+      interval(left)!.startSeconds - interval(right)!.startSeconds || left.id.localeCompare(right.id),
     )) {
       const latest = groups.at(-1);
       const latestEnd = latest
-        ? Math.max(...latest.map((item) => Date.parse(item.stoppedAt)))
+        ? Math.max(...latest.map((item) => interval(item)!.endSeconds))
         : Number.NEGATIVE_INFINITY;
-      if (!latest || Date.parse(source.startedAt) >= latestEnd) groups.push([source]);
+      if (!latest || interval(source)!.startSeconds >= latestEnd) groups.push([source]);
       else latest.push(source);
     }
     for (const group of groups) {
