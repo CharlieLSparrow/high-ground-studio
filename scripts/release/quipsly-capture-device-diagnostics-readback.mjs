@@ -28,7 +28,12 @@ function takeValue(argv, index, flag) {
 }
 
 export function parseArguments(argv) {
-  const options = { device: "", outputPath: "", help: false };
+  const options = {
+    device: "",
+    outputPath: "",
+    candidateReceiptPath: "",
+    help: false,
+  };
   for (let index = 0; index < argv.length; index += 1) {
     const flag = argv[index];
     if (flag === "--") continue;
@@ -39,6 +44,8 @@ export function parseArguments(argv) {
     const value = takeValue(argv, index, flag);
     if (flag === "--device") options.device = value;
     else if (flag === "--output") options.outputPath = value;
+    else if (flag === "--candidate-receipt")
+      options.candidateReceiptPath = value;
     else fail(`Unknown argument: ${flag}`);
     index += 1;
   }
@@ -50,10 +57,14 @@ function usage() {
   return `Usage:
   node scripts/release/quipsly-capture-device-diagnostics-readback.mjs \\
     --device <paired-device-name-or-id> \\
+    [--candidate-receipt <qualified-release-receipt.json>] \\
     [--output <owner-only-receipt.json>]
 
 Reads the installed Quipsly Capture version and its protected local attention
-ledger from a paired development iPhone or iPad. The receipt contains only a
+ledger from a paired development iPhone or iPad. By default, it verifies the
+public TestFlight target. --candidate-receipt instead binds the readback to an
+already-qualified local candidate without changing the public release target.
+The receipt contains only a
 coarse failure category and transition state. It never includes the original
 message, account, Session, source, filename, path, credential, or device ID.
 `;
@@ -72,6 +83,64 @@ function array(value) {
 function nonnegativeInteger(value) {
   const parsed = Number(value);
   return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : null;
+}
+
+function publicReleaseReadbackTarget() {
+  return {
+    appName: QUIPSLY_CAPTURE_RELEASE_TARGET.appName,
+    bundleId: QUIPSLY_CAPTURE_RELEASE_TARGET.bundleId,
+    marketingVersion: QUIPSLY_CAPTURE_RELEASE_TARGET.marketingVersion,
+    buildNumber: QUIPSLY_CAPTURE_RELEASE_TARGET.buildNumber,
+    buildId: QUIPSLY_CAPTURE_RELEASE_TARGET.buildId,
+    sourceRevision: QUIPSLY_CAPTURE_RELEASE_TARGET.sourceRevision,
+    ipaSHA256: null,
+    ipaBytes: null,
+    channel: "public-testflight",
+  };
+}
+
+export function targetFromQualifiedCandidateReceipt(value) {
+  const receipt = object(value);
+  if (receipt.schema !== "quipsly-capture-release-receipt-v1") {
+    fail("Candidate receipt has an unsupported schema.");
+  }
+  if (
+    receipt.candidateQualified !== true ||
+    receipt.deterministicUITestPerformed !== true
+  ) {
+    fail(
+      "Candidate receipt must prove signed artifact and complete deterministic UI qualification.",
+    );
+  }
+  if (receipt.sourceIsolation !== "detached-worktree") {
+    fail("Candidate receipt must prove detached-worktree source isolation.");
+  }
+  const version = clean(receipt.version);
+  const build = clean(receipt.build);
+  const sourceRevision = clean(receipt.sourceRevision).toLowerCase();
+  const ipaSHA256 = clean(receipt.ipaSHA256).toLowerCase();
+  const ipaBytes = Number(receipt.ipaBytes);
+  if (!/^\d+\.\d+(?:\.\d+)?$/.test(version))
+    fail("Candidate receipt has an invalid version.");
+  if (!/^[1-9]\d*$/.test(build))
+    fail("Candidate receipt has an invalid build number.");
+  if (!/^[0-9a-f]{40}$/.test(sourceRevision))
+    fail("Candidate receipt must contain a full source revision.");
+  if (!/^[0-9a-f]{64}$/.test(ipaSHA256))
+    fail("Candidate receipt must contain an IPA SHA-256 digest.");
+  if (!Number.isSafeInteger(ipaBytes) || ipaBytes <= 0)
+    fail("Candidate receipt must contain a positive IPA byte count.");
+  return {
+    appName: QUIPSLY_CAPTURE_RELEASE_TARGET.appName,
+    bundleId: QUIPSLY_CAPTURE_RELEASE_TARGET.bundleId,
+    marketingVersion: version,
+    buildNumber: build,
+    buildId: null,
+    sourceRevision,
+    ipaSHA256,
+    ipaBytes,
+    channel: "qualified-candidate",
+  };
 }
 
 export function supportCategory(message) {
@@ -170,12 +239,11 @@ export function inspectDeviceReadback({
   appsPayload,
   attentionLedger = null,
   checkedAt = new Date(),
+  target = publicReleaseReadbackTarget(),
 }) {
   const apps = array(object(object(appsPayload).result).apps);
   const installed = apps.find(
-    (candidate) =>
-      object(candidate).bundleIdentifier ===
-      QUIPSLY_CAPTURE_RELEASE_TARGET.bundleId,
+    (candidate) => object(candidate).bundleIdentifier === target.bundleId,
   );
   if (!installed)
     fail("Quipsly Capture is not installed on that paired device.");
@@ -195,27 +263,34 @@ export function inspectDeviceReadback({
           latestLocalDraftSessionCount: null,
         }
       : summarizeAttentionLedger(attentionLedger);
+  const exactTarget =
+    version === target.marketingVersion && build === target.buildNumber;
   const exactRelease =
     version === QUIPSLY_CAPTURE_RELEASE_TARGET.marketingVersion &&
     build === QUIPSLY_CAPTURE_RELEASE_TARGET.buildNumber;
   return {
-    schema: "quipsly-capture-device-diagnostics-readback-v1",
+    schema: "quipsly-capture-device-diagnostics-readback-v2",
     checkedAt: new Date(checkedAt).toISOString(),
-    ok: exactRelease,
+    ok: exactTarget,
     target: {
-      appName: QUIPSLY_CAPTURE_RELEASE_TARGET.appName,
-      bundleId: QUIPSLY_CAPTURE_RELEASE_TARGET.bundleId,
-      version: QUIPSLY_CAPTURE_RELEASE_TARGET.marketingVersion,
-      build: QUIPSLY_CAPTURE_RELEASE_TARGET.buildNumber,
-      buildId: QUIPSLY_CAPTURE_RELEASE_TARGET.buildId,
+      appName: target.appName,
+      bundleId: target.bundleId,
+      version: target.marketingVersion,
+      build: target.buildNumber,
+      buildId: target.buildId,
+      sourceRevision: target.sourceRevision,
+      ipaSHA256: target.ipaSHA256,
+      ipaBytes: target.ipaBytes,
+      channel: target.channel,
     },
     installed: {
-      appName: clean(app.name) || QUIPSLY_CAPTURE_RELEASE_TARGET.appName,
+      appName: clean(app.name) || target.appName,
       version,
       build,
     },
     checks: {
       appInstalled: true,
+      exactTarget,
       exactRelease,
       diagnosticLedgerReadable: attentionLedger !== null,
     },
@@ -239,6 +314,11 @@ async function main() {
     process.stdout.write(usage());
     return;
   }
+  const target = options.candidateReceiptPath
+    ? targetFromQualifiedCandidateReceipt(
+        JSON.parse(await readFile(options.candidateReceiptPath, "utf8")),
+      )
+    : publicReleaseReadbackTarget();
   const temporaryDirectory = await mkdtemp(
     path.join(os.tmpdir(), "quipsly-capture-device-readback-"),
   );
@@ -269,7 +349,7 @@ async function main() {
         "--domain-type",
         "appDataContainer",
         "--domain-identifier",
-        QUIPSLY_CAPTURE_RELEASE_TARGET.bundleId,
+        target.bundleId,
         "--source",
         DIAGNOSTIC_SOURCE,
         "--destination",
@@ -280,7 +360,11 @@ async function main() {
       // A current install with no attention events may not have created the
       // ledger yet. The installed-version readback remains useful and honest.
     }
-    const receipt = inspectDeviceReadback({ appsPayload, attentionLedger });
+    const receipt = inspectDeviceReadback({
+      appsPayload,
+      attentionLedger,
+      target,
+    });
     if (options.outputPath) {
       await writeFile(
         options.outputPath,

@@ -6,6 +6,7 @@ import {
   parseArguments,
   summarizeAttentionLedger,
   supportCategory,
+  targetFromQualifiedCandidateReceipt,
 } from "./quipsly-capture-device-diagnostics-readback.mjs";
 import { QUIPSLY_CAPTURE_RELEASE_TARGET } from "./quipsly-capture-release-target.mjs";
 
@@ -30,9 +31,27 @@ test("requires an explicit paired device and accepts the pnpm separator", () => 
   assert.deepEqual(parseArguments(["--", "--device", "Morbo"]), {
     device: "Morbo",
     outputPath: "",
+    candidateReceiptPath: "",
     help: false,
   });
   assert.throws(() => parseArguments([]), /--device is required/);
+});
+
+test("accepts an explicitly qualified candidate receipt path", () => {
+  assert.deepEqual(
+    parseArguments([
+      "--device",
+      "Morbo",
+      "--candidate-receipt",
+      "/private/tmp/candidate.json",
+    ]),
+    {
+      device: "Morbo",
+      outputPath: "",
+      candidateReceiptPath: "/private/tmp/candidate.json",
+      help: false,
+    },
+  );
 });
 
 test("matches the native privacy-safe attention categories", () => {
@@ -95,12 +114,67 @@ test("proves the exact release while omitting devicectl paths and device identit
     checkedAt: new Date("2026-08-31T23:05:00Z"),
   });
   assert.equal(receipt.ok, true);
+  assert.equal(receipt.schema, "quipsly-capture-device-diagnostics-readback-v2");
+  assert.equal(receipt.target.channel, "public-testflight");
+  assert.equal(receipt.checks.exactTarget, true);
+  assert.equal(receipt.checks.exactRelease, true);
   assert.equal(receipt.checks.diagnosticLedgerReadable, true);
   assert.equal(receipt.diagnostics.eventCount, 0);
   assert.equal(receipt.rawAttentionMessageRetained, false);
   assert.doesNotMatch(
     JSON.stringify(receipt),
     /private-device-id|private\/app\/path/,
+  );
+});
+
+test("proves an exact qualified candidate without calling it the public release", () => {
+  const target = targetFromQualifiedCandidateReceipt({
+    schema: "quipsly-capture-release-receipt-v1",
+    candidateQualified: true,
+    deterministicUITestPerformed: true,
+    sourceIsolation: "detached-worktree",
+    version: "1.0",
+    build: "61",
+    sourceRevision: "d".repeat(40),
+    ipaSHA256: "a".repeat(64),
+    ipaBytes: 35_193_306,
+  });
+  const receipt = inspectDeviceReadback({
+    appsPayload: appsPayload({ build: "61" }),
+    target,
+    checkedAt: new Date("2026-09-01T13:05:00Z"),
+  });
+  assert.equal(receipt.ok, true);
+  assert.equal(receipt.target.channel, "qualified-candidate");
+  assert.equal(receipt.target.sourceRevision, "d".repeat(40));
+  assert.equal(receipt.target.ipaSHA256, "a".repeat(64));
+  assert.equal(receipt.target.ipaBytes, 35_193_306);
+  assert.equal(receipt.checks.exactTarget, true);
+  assert.equal(receipt.checks.exactRelease, false);
+});
+
+test("rejects receipts that have not completed candidate qualification", () => {
+  assert.throws(
+    () =>
+      targetFromQualifiedCandidateReceipt({
+        schema: "quipsly-capture-release-receipt-v1",
+        candidateQualified: false,
+        deterministicUITestPerformed: true,
+      }),
+    /must prove signed artifact/,
+  );
+});
+
+test("rejects a qualified receipt without isolated candidate source", () => {
+  assert.throws(
+    () =>
+      targetFromQualifiedCandidateReceipt({
+        schema: "quipsly-capture-release-receipt-v1",
+        candidateQualified: true,
+        deterministicUITestPerformed: true,
+        sourceIsolation: "dirty-worktree",
+      }),
+    /detached-worktree source isolation/,
   );
 });
 
@@ -111,6 +185,7 @@ test("reports an old installed build without inventing unavailable diagnostics",
   });
   assert.equal(receipt.ok, false);
   assert.equal(receipt.installed.build, "58");
+  assert.equal(receipt.checks.exactTarget, false);
   assert.equal(receipt.checks.exactRelease, false);
   assert.equal(receipt.checks.diagnosticLedgerReadable, false);
   assert.equal(receipt.diagnostics.schemaSupported, null);
