@@ -85,10 +85,23 @@ describe("Session transcript source selection", () => {
     const selected = selectSessionTranscriptSources({
       rows: [
         source({ id: "coach-browser", participantId: "coach", startedAt: "2026-08-24T15:00:00.000Z", stoppedAt: "2026-08-24T15:50:00.000Z", captureGroupId: "take-a", jobCreatedAt: "2026-08-24T16:00:00.000Z" }),
-        source({ id: "coach-phone", participantId: "coach", startedAt: "2026-08-24T15:00:02.000Z", stoppedAt: "2026-08-24T15:49:58.000Z", captureGroupId: "take-a", jobCreatedAt: "2026-08-24T16:01:00.000Z" }),
+        source({ id: "coach-phone", participantId: "coach", startedAt: "2026-08-24T15:00:02.000Z", stoppedAt: "2026-08-24T15:50:02.000Z", captureGroupId: "take-a", jobCreatedAt: "2026-08-24T16:01:00.000Z" }),
       ],
     });
 
     expect(selected.map((row) => row?.id)).toEqual(["coach-phone"]);
+  });
+
+  it("prefers a continuous participant transcript over overlapping crash segments", () => {
+    const selected = selectSessionTranscriptSources({
+      rows: [
+        source({ id: "browser-before-crash", participantId: "coach", startedAt: "2026-08-24T15:00:00.000Z", stoppedAt: "2026-08-24T15:20:00.000Z", captureGroupId: "take-a" }),
+        source({ id: "phone-continuous", participantId: "coach", startedAt: "2026-08-24T15:00:02.000Z", stoppedAt: "2026-08-24T15:50:00.000Z", captureGroupId: "take-a" }),
+        source({ id: "browser-after-reconnect", participantId: "coach", startedAt: "2026-08-24T15:20:08.000Z", stoppedAt: "2026-08-24T15:49:58.000Z", captureGroupId: "take-a" }),
+      ],
+      anchorRecordingAssetId: "browser-before-crash",
+    });
+
+    expect(selected.map((row) => row?.id)).toEqual(["phone-continuous"]);
   });
 });

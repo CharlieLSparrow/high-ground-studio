@@ -388,7 +388,12 @@ export function sessionRecordingShareAudioMixSourceIds(
       else latest.push(source);
     }
     for (const group of overlapGroups) {
-      const preferred = group.find((source) => source.id === primaryVideoSourceId) || group[0];
+      const preferred = group.find((source) => source.id === primaryVideoSourceId) || [...group].sort(
+        (left, right) =>
+          (right.recordedStoppedAt!.getTime() - right.recordedStartedAt!.getTime()) -
+            (left.recordedStoppedAt!.getTime() - left.recordedStartedAt!.getTime()) ||
+          left.id.localeCompare(right.id),
+      )[0];
       if (preferred) selected.add(preferred.id);
     }
   }

@@ -181,6 +181,36 @@ describe("SessionRecordingShareCard", () => {
     }));
   });
 
+  it("prefers one complete device master over overlapping crash segments", async () => {
+    const completeSourceSnapshot = {
+      ...snapshot,
+      available: {
+        ...snapshot.available,
+        programDurationSeconds: 1_801,
+        transcriptSegments: [],
+        sources: [
+          { ...snapshot.available.sources[0], id: "browser_before_crash", stoppedAt: "2026-08-22T12:10:00.000Z" },
+          { ...snapshot.available.sources[0], id: "phone_continuous", startedAt: "2026-08-22T12:00:02.000Z", stoppedAt: "2026-08-22T12:30:00.000Z" },
+          { ...snapshot.available.sources[0], id: "browser_after_reconnect", startedAt: "2026-08-22T12:10:08.000Z", stoppedAt: "2026-08-22T12:29:58.000Z" },
+        ],
+      },
+    };
+    const requests: Array<Record<string, unknown>> = [];
+    global.fetch = jest.fn(async (_url, init) => {
+      if (init?.method === "POST") requests.push(JSON.parse(String(init.body)));
+      return response(completeSourceSnapshot);
+    }) as jest.MockedFunction<typeof fetch>;
+
+    render(<SessionRecordingShareCard roomId="session_room_0001" />);
+    await userEvent.click(await screen.findByRole("button", { name: "Create private preview" }));
+
+    await waitFor(() => expect(requests).toHaveLength(1));
+    expect(requests[0]).toEqual(expect.objectContaining({
+      action: "PREPARE",
+      sourceIds: ["phone_continuous"],
+    }));
+  });
+
   it("searches long transcripts without changing retained cuts", async () => {
     const retainedSegment = {
       ...transcriptSegment,

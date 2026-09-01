@@ -1522,10 +1522,23 @@ struct CaptureRecordingShareEditor: View {
                 }
             }
             for group in overlapGroups {
-                if let first = group.first { selected.insert(first.id) }
+                let preferred = group.sorted {
+                    let left = recordingShareDuration($0)
+                    let right = recordingShareDuration($1)
+                    return left == right ? $0.id < $1.id : left > right
+                }.first
+                if let preferred { selected.insert(preferred.id) }
             }
         }
         return selected
+    }
+
+    private func recordingShareDuration(
+        _ source: CaptureRecordingShareSource
+    ) -> TimeInterval {
+        guard let startedAt = recordingShareDate(source.startedAt),
+              let stoppedAt = recordingShareDate(source.stoppedAt) else { return 0 }
+        return max(0, stoppedAt.timeIntervalSince(startedAt))
     }
 
     private func recordingShareDate(_ value: String) -> Date? {

@@ -140,7 +140,14 @@ function defaultParticipantSources(sources: Source[]) {
       if (!latest || Date.parse(source.startedAt) >= latestEnd) groups.push([source]);
       else latest.push(source);
     }
-    for (const group of groups) if (group[0]) selected.push(group[0]);
+    for (const group of groups) {
+      const preferred = [...group].sort((left, right) =>
+        (Date.parse(right.stoppedAt) - Date.parse(right.startedAt)) -
+          (Date.parse(left.stoppedAt) - Date.parse(left.startedAt)) ||
+        left.id.localeCompare(right.id),
+      )[0];
+      if (preferred) selected.push(preferred);
+    }
   }
   return selected.map((source) => source.id);
 }

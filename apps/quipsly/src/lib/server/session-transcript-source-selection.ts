@@ -60,9 +60,15 @@ export function selectSessionTranscriptSources<T extends SessionTranscriptSource
       }
     }
     return groups.map((group) => group.sort((left, right) => {
-      if (left.id === input.anchorRecordingAssetId) return -1;
-      if (right.id === input.anchorRecordingAssetId) return 1;
-      return kindPriority(left.kind) - kindPriority(right.kind)
+      const leftDuration = left.recordedStoppedAt instanceof Date
+        ? left.recordedStoppedAt.getTime() - left.recordedStartedAt.getTime()
+        : 0;
+      const rightDuration = right.recordedStoppedAt instanceof Date
+        ? right.recordedStoppedAt.getTime() - right.recordedStartedAt.getTime()
+        : 0;
+      return rightDuration - leftDuration
+        || (left.id === input.anchorRecordingAssetId ? -1 : right.id === input.anchorRecordingAssetId ? 1 : 0)
+        || kindPriority(left.kind) - kindPriority(right.kind)
         || right.transcriptJobs[0]!.createdAt.getTime() - left.transcriptJobs[0]!.createdAt.getTime()
         || left.id.localeCompare(right.id);
     })[0]!);

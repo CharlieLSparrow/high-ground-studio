@@ -70,6 +70,15 @@ describe("Session recording share take selection", () => {
     expect([...chosen]).toEqual(["coach-browser"]);
   });
 
+  it("prefers the longest complete master when concurrent devices overlap", () => {
+    const chosen = sessionRecordingShareAudioMixSourceIds([
+      { id: "browser-before-crash", participantId: "coach", kind: "LOCAL_AUDIO", recordedStartedAt: new Date("2026-08-31T12:00:00Z"), recordedStoppedAt: new Date("2026-08-31T12:20:00Z") },
+      { id: "phone-continuous", participantId: "coach", kind: "LOCAL_AUDIO", recordedStartedAt: new Date("2026-08-31T12:00:02Z"), recordedStoppedAt: new Date("2026-08-31T12:50:00Z") },
+      { id: "browser-after-reconnect", participantId: "coach", kind: "LOCAL_AUDIO", recordedStartedAt: new Date("2026-08-31T12:20:08Z"), recordedStoppedAt: new Date("2026-08-31T12:49:58Z") },
+    ]);
+    expect([...chosen]).toEqual(["phone-continuous"]);
+  });
+
   it("keeps all reconnect segments in the current capture group", () => {
     const source = (id: string, group: string, startedAt: string) => ({
       id,
