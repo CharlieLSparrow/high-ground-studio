@@ -4574,7 +4574,7 @@ final class CaptureExperienceUITests: XCTestCase {
         )
         waitForExpectations(timeout: 5)
         XCTAssertTrue(readyStart.isEnabled, "The local recorder should become available once the visible Session consent action is saved.")
-        XCTAssertEqual(app.staticTexts["CaptureRecorderStateLabel"].label, "Consent ready · mic checks on tap")
+        XCTAssertEqual(app.staticTexts["CaptureRecorderStateLabel"].label, "Ready to record")
     }
 
     func testParticipantCanDeclineRecordingWithoutBlockingTheCall() {

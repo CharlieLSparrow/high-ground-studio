@@ -17216,9 +17216,9 @@ private struct ConsentStrip: View {
     }
 
     private var consentTitle: String {
-        if session.hasCurrentRecordingConsent { return "Your consent is saved" }
+        if session.hasCurrentRecordingConsent { return "Recording allowed" }
         if session.hasDeclinedRecordingConsent { return "You won't be recorded" }
-        return "Recording consent"
+        return "Recording is off"
     }
 
     private var consentDetail: String {
@@ -17232,25 +17232,19 @@ private struct ConsentStrip: View {
             let waitingOnTranscription = session.recordingConsentCanTranscribe == true
                 && (transcriptionGranted.map { $0 < required } ?? false)
             if waitingOnAudio || waitingOnVideo || waitingOnTranscription {
-                let transcriptionCount = session.recordingConsentCanTranscribe == true
-                    ? transcriptionGranted.map { "transcript \($0)/\(required)" }
-                    : nil
-                let counts = [
-                    session.recordingConsentCanRecordAudio == true ? "audio \(audioGranted)/\(required)" : nil,
-                    session.recordingConsentCanRecordVideo == true ? "video \(videoGranted)/\(required)" : nil,
-                    transcriptionCount,
-                ].compactMap { $0 }.joined(separator: " · ")
                 if waitingOnAudio || waitingOnVideo {
-                    return "\(counts). Your choice is saved; waiting for the other participant before recording."
+                    return required == 2
+                        ? "Your choice is saved. Waiting for the other participant to allow recording."
+                        : "Your choice is saved. Recording starts after everyone allows it."
                 }
-                return "\(counts). Recording is ready; the transcript waits for everyone to enable it."
+                return "Recording is ready. The transcript starts after everyone allows it."
             }
         }
         guard session.hasCurrentRecordingConsent else {
             if session.hasDeclinedRecordingConsent {
                 return "Your choice is saved for this Session. You can still join the call, or allow recording here later."
             }
-            return "Choose once for this Session. Recording starts only when the coach or host presses Record."
+            return "Allow once for this Session. Nothing starts until the coach or host presses Record."
         }
         let sources = [
             session.recordingConsentCanRecordAudio == true ? "audio" : nil,
@@ -17261,7 +17255,7 @@ private struct ConsentStrip: View {
                 ? " Transcript is ready."
                 : " Transcript is enabled."
             : " Transcript is off."
-        return "Your \(sources) choice is saved for this Session.\(transcriptState)"
+        return "\(sources.capitalized) allowed for this Session.\(transcriptState)"
     }
 }
 
@@ -17321,7 +17315,7 @@ struct CaptureConsentConfirmationSheet: View {
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
-                        Label("Record this Session?", systemImage: "checkmark.shield.fill")
+                        Label("Allow recording?", systemImage: "checkmark.shield.fill")
                             .font(.title3.weight(.semibold))
                         Text(defaultConsentSummary)
                             .font(.subheadline.weight(.semibold))
@@ -17378,7 +17372,7 @@ struct CaptureConsentConfirmationSheet: View {
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 consentActionBar
             }
-            .navigationTitle("Recording consent")
+            .navigationTitle("Recording")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(Color(uiColor: .systemGroupedBackground), for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
@@ -18853,9 +18847,9 @@ private struct RecorderHero: View {
         }
         switch captureState {
         case .idle:
-            if waitingForHost { return "Ready · waiting for host" }
-            if session.canRecordNow { return "Consent ready · mic checks on tap" }
-            return session.recordingConsentGranted ? "Waiting for participant consent" : "Waiting for consent"
+            if waitingForHost { return "Ready for the host" }
+            if session.canRecordNow { return "Ready to record" }
+            return session.recordingConsentGranted ? "Waiting for everyone else" : "Allow recording to continue"
         case .preparing: return "Preparing microphone…"
         case .recording: return "Recording locally"
         case .paused: return "Recording paused"
