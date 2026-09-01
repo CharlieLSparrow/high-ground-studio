@@ -55,6 +55,24 @@ describe("SessionSourceAlignmentCard", () => {
     jest.resetAllMocks();
   });
 
+  async function openSyncDetails() {
+    fireEvent.click(await screen.findByRole("button", { name: /open sync details/i }));
+  }
+
+  it("keeps sync automatic and puts diagnostics behind an optional detail", async () => {
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ ok: true, alignments: [], suggestion: null }),
+    }) as jest.Mock;
+
+    render(<SessionSourceAlignmentCard roomId="room-1" evidence={evidence} canManage />);
+
+    expect(await screen.findByText("Recording timeline ready")).toBeInTheDocument();
+    expect(screen.getByText(/places participant recordings automatically/i)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /compare exact-source waveforms/i })).toBeNull();
+    expect(screen.getByRole("button", { name: /open sync details/i })).toBeInTheDocument();
+  });
+
   it("shows exact-source measurements and a separate reversible placement action", async () => {
     global.fetch = jest.fn().mockResolvedValue({
       ok: true,
@@ -101,6 +119,7 @@ describe("SessionSourceAlignmentCard", () => {
         canManage
       />,
     );
+    await openSyncDetails();
     expect(
       await screen.findByText(/distinct peaks ready for protected review/i),
     ).toBeInTheDocument();
@@ -175,6 +194,7 @@ describe("SessionSourceAlignmentCard", () => {
         canManage
       />,
     );
+    await openSyncDetails();
     expect(
       await screen.findByText(/waveform match needs more evidence/i),
     ).toBeInTheDocument();
@@ -218,6 +238,7 @@ describe("SessionSourceAlignmentCard", () => {
       />,
     );
     await waitFor(() => expect(global.fetch).toHaveBeenCalledTimes(1));
+    await openSyncDetails();
     fireEvent.click(
       screen.getByRole("button", { name: /compare exact-source waveforms/i }),
     );
@@ -263,6 +284,7 @@ describe("SessionSourceAlignmentCard", () => {
         canManage
       />,
     );
+    await openSyncDetails();
     expect(
       await screen.findByRole("region", {
         name: /automatic capture clock suggestion/i,
@@ -370,6 +392,7 @@ describe("SessionSourceAlignmentCard", () => {
         canManage
       />,
     );
+    await openSyncDetails();
     expect(
       await screen.findByRole("region", {
         name: /shared room sync reference/i,

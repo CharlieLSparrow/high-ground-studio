@@ -389,6 +389,7 @@ export function SessionSourceAlignmentCard({
   const [message, setMessage] = useState("");
   const [revokeReason, setRevokeReason] = useState("");
   const [showRevoke, setShowRevoke] = useState(false);
+  const [showAdvanced, setShowAdvanced] = useState(false);
 
   async function load() {
     const response = await fetch(
@@ -671,6 +672,49 @@ export function SessionSourceAlignmentCard({
       </section>
     );
 
+  if (!showAdvanced) {
+    const activeMeasuredPlacement = alignments.some(
+      (alignment) => alignment.decision?.status === "approved",
+    );
+    const qualifiedMeasurement = alignments.some(
+      (alignment) =>
+        alignment.status === "completed" &&
+        alignment.evidence?.qualification.qualifiedForAuthorizedAgentReview,
+    );
+    return (
+      <section
+        className="rounded-3xl border border-emerald-200 bg-emerald-50 p-5 shadow-sm"
+        aria-labelledby="session-alignment-heading"
+      >
+        <p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.18em] text-emerald-800">
+          <AudioWaveform size={16} aria-hidden="true" />
+          Audio sync
+        </p>
+        <h2 id="session-alignment-heading" className="mt-1 font-serif text-2xl font-black text-emerald-950">
+          {activeMeasuredPlacement
+            ? "Measured sync is active"
+            : pendingAlignment
+              ? "Improving sync in the background"
+              : qualifiedMeasurement
+                ? "Measured sync is ready"
+                : "Recording timeline ready"}
+        </h2>
+        <p className="mt-2 max-w-3xl text-sm font-semibold leading-6 text-emerald-900">
+          Quipsly places participant recordings automatically and keeps the originals unchanged. Advanced waveform evidence is available when you need to inspect or fine-tune an unusual recording.
+        </p>
+        <button
+          type="button"
+          onClick={() => setShowAdvanced(true)}
+          className="mt-3 inline-flex min-h-10 items-center gap-2 rounded-full border border-emerald-300 bg-white px-4 text-[11px] font-black text-emerald-950"
+        >
+          <AudioWaveform size={15} aria-hidden="true" />
+          Open sync details
+        </button>
+        {message ? <p className="mt-3 text-xs font-bold text-amber-900" role="status">{message}</p> : null}
+      </section>
+    );
+  }
+
   return (
     <section
       className="rounded-3xl border border-cyan-200 bg-gradient-to-br from-slate-950 via-slate-900 to-cyan-950 p-5 text-white shadow-sm sm:p-6"
@@ -699,6 +743,7 @@ export function SessionSourceAlignmentCard({
           Originals remain truth
         </span>
       </div>
+      <button type="button" onClick={() => setShowAdvanced(false)} className="mt-4 min-h-9 rounded-full border border-slate-700 px-3 text-[10px] font-black text-slate-200">Hide sync details</button>
       <div className="mt-5 grid gap-3 md:grid-cols-2">
         <label className="text-[10px] font-black uppercase tracking-wide text-cyan-100">
           Timeline spine
