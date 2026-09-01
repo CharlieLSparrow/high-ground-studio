@@ -1024,6 +1024,67 @@ describe("mobile Session canonical capture sources", () => {
     });
   });
 
+  it("shows the automatic recovery promise while a verified source waits for its device transcript", () => {
+    const [source] = captureSourceSummaries(
+      {
+        id: "room-device-expected",
+        stateReceipts: [],
+        recordingAssets: [{
+          id: "recording-device-expected",
+          roomId: "room-device-expected",
+          kind: "LOCAL_AUDIO",
+          status: "VERIFIED",
+          byteSize: BigInt(1_024),
+          checksum: "f".repeat(64),
+          localManifestJson: { exactBytesVerified: true },
+          transcriptJobs: [{
+            id: "transcript-device-expected",
+            status: "QUEUED",
+            provider: "pending",
+            resultJson: {
+              deviceTranscriptExpectation: {
+                schema: "quipsly-capture-device-transcript-expectation-v1",
+                expected: true,
+                state: "awaiting-device",
+                actorUserId: "coach-1",
+                actorEmail: "coach@example.test",
+                expectedAt: "2026-09-01T12:00:00.000Z",
+                fallbackAfter: "2026-09-01T12:30:00.000Z",
+                graceSeconds: 1_800,
+                recordingDurationSeconds: 300,
+              },
+            },
+            updatedAt: new Date("2026-09-01T12:00:00Z"),
+            _count: { segments: 0, words: 0 },
+          }],
+        }],
+      },
+      [{
+        uploadSessionId: "upload-device-expected",
+        captureId: "capture-device-expected",
+        roomId: "room-device-expected",
+        recordingAssetId: "recording-device-expected",
+        processingDisposition: "RELEASED",
+        transcriptDisposition: "RELEASED",
+        metadataJson: {
+          immutableUploadBinding: {
+            sha256: "f".repeat(64),
+            sizeBytes: 1_024,
+          },
+        },
+      }],
+      [],
+    );
+
+    expect(source.transcript).toMatchObject({
+      recognitionExecution: "pending",
+      deviceTranscriptExpected: true,
+      automaticCloudFallbackAt: "2026-09-01T12:30:00.000Z",
+      quipslyCloudASRRequested: false,
+      quipslyCloudASRCompleted: false,
+    });
+  });
+
   it("offers only the complete newest capture group to Studio", () => {
     const handoff = captureGroupStudioHandoff([
       {

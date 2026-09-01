@@ -515,6 +515,8 @@ struct MobileCaptureSourceTranscriptSummary: Codable, Hashable {
     let segmentCount: Int?
     let wordCount: Int?
     let recognitionExecution: String?
+    let deviceTranscriptExpected: Bool?
+    let automaticCloudFallbackAt: String?
     let quipslyCloudASRRequested: Bool?
     let quipslyCloudASRCompleted: Bool?
     let fallbackReasonCode: String?
@@ -532,8 +534,15 @@ struct MobileCaptureSourceTranscriptSummary: Codable, Hashable {
                 ? "Quipsly cloud fallback"
                 : "Quipsly cloud fallback queued"
         default:
-            return "Transcript route pending"
+            return deviceTranscriptExpected == true
+                ? "Waiting for device transcript"
+                : "Transcript route pending"
         }
+    }
+
+    var routingDetail: String? {
+        guard deviceTranscriptExpected == true else { return nil }
+        return "Quipsly will start its verified cloud fallback automatically if the device transcript does not arrive."
     }
 
     var fallbackReasonLabel: String? {

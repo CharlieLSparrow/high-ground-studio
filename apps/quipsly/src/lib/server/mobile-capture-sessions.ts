@@ -16,6 +16,7 @@ import {
   mobileCaptureConsentHasCurrentPolicyEvidence,
 } from "./mobile-capture-consent-readiness.js";
 import { mobileCaptureProcessingGateFromEvidence } from "./mobile-capture-processing-policy.js";
+import { parseCaptureDeviceTranscriptExpectation } from "./capture-device-transcript-expectation";
 import { recordingContentReadiness } from "./mobile-capture-content-readiness";
 import {
   addCaptureGroupAlignmentOffsets,
@@ -331,6 +332,7 @@ function mobileSourceTranscriptRouting(job: any) {
   const provider = (label(job?.provider) || "").trim().toLowerCase();
   const result = sourceJson(job?.resultJson);
   const fallback = sourceJson(result.deviceCloudFallback);
+  const deviceExpectation = parseCaptureDeviceTranscriptExpectation(result);
   const claimedExecution = (label(result.recognitionExecution) || "")
     .trim()
     .toLowerCase();
@@ -347,8 +349,16 @@ function mobileSourceTranscriptRouting(job: any) {
           : "pending";
   const status = (label(job?.status) || "").trim().toUpperCase();
   const quipslyCloudASRRequested = recognitionExecution === "quipsly-cloud";
+  const deviceTranscriptExpected =
+    recognitionExecution === "pending"
+    && status === "QUEUED"
+    && deviceExpectation !== null;
   return {
     recognitionExecution,
+    deviceTranscriptExpected,
+    automaticCloudFallbackAt: deviceTranscriptExpected
+      ? deviceExpectation.fallbackAfter
+      : null,
     quipslyCloudASRRequested,
     quipslyCloudASRCompleted:
       quipslyCloudASRRequested && status === "COMPLETED",

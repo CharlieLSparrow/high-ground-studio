@@ -13049,6 +13049,12 @@ private struct CaptureSessionTruthPanel: View {
                                             .foregroundStyle(.secondary)
                                             .fixedSize(horizontal: false, vertical: true)
                                     }
+                                    if let detail = source.transcript?.routingDetail {
+                                        Text(detail)
+                                            .font(.caption2)
+                                            .foregroundStyle(.secondary)
+                                            .fixedSize(horizontal: false, vertical: true)
+                                    }
                                 }
                                 .accessibilityElement(children: .combine)
                                 .accessibilityIdentifier(
