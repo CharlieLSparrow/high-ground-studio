@@ -30,8 +30,8 @@ struct CapturePhoneShell: View {
                     systemImage: "exclamationmark.triangle.fill",
                     title: attentionPresentation.title,
                     detail: message,
-                    buttonTitle: "Dismiss",
-                    action: { model.errorMessage = nil }
+                    buttonTitle: attentionPresentation.actionTitle,
+                    action: recoverFromInlineAttention
                 )
                 .padding(.horizontal, 12)
                 .padding(.vertical, 8)
@@ -658,6 +658,32 @@ struct CapturePhoneShell: View {
 
     private var attentionPresentation: CaptureAttentionPresentation {
         CaptureAttentionDiagnostics.presentation(for: model.errorMessage)
+    }
+
+    /// A recoverable error should lead to the ordinary place that can repair
+    /// it instead of asking someone to acknowledge a warning and hunt for the
+    /// same control. The error is cleared before routing; a failed refresh can
+    /// publish a fresh, current message through the normal model path.
+    private func recoverFromInlineAttention() {
+        let recovery = attentionPresentation.recovery
+        model.errorMessage = nil
+        switch recovery {
+        case .openSettings:
+            guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
+            UIApplication.shared.open(url)
+        case .refresh:
+            Task { await model.load() }
+        case .openSessions:
+            recordNavigationResetID = UUID()
+            visibleTab = .record
+        case .openLibrary:
+            requestedLibrarySection = .recordings
+            visibleTab = .library
+        case .openAccount:
+            visibleTab = .account
+        case .dismiss:
+            break
+        }
     }
 }
 

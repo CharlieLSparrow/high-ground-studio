@@ -27,6 +27,17 @@ struct CaptureAttentionSupportSummary: Equatable {
 struct CaptureAttentionPresentation: Equatable {
     let title: String
     let offersSettingsRecovery: Bool
+    let actionTitle: String
+    let recovery: CaptureAttentionRecovery
+}
+
+enum CaptureAttentionRecovery: Equatable {
+    case openSettings
+    case refresh
+    case openSessions
+    case openLibrary
+    case openAccount
+    case dismiss
 }
 
 /// A small, device-local support ledger for the alert that people actually
@@ -160,23 +171,30 @@ final class CaptureAttentionDiagnostics {
         if settingsCanHelp, normalized.contains("microphone") {
             return CaptureAttentionPresentation(
                 title: "Microphone access is off",
-                offersSettingsRecovery: true
+                offersSettingsRecovery: true,
+                actionTitle: "Open Settings",
+                recovery: .openSettings
             )
         }
         if settingsCanHelp, normalized.contains("camera") {
             return CaptureAttentionPresentation(
                 title: "Camera access is off",
-                offersSettingsRecovery: true
+                offersSettingsRecovery: true,
+                actionTitle: "Open Settings",
+                recovery: .openSettings
             )
         }
         if settingsCanHelp {
             return CaptureAttentionPresentation(
                 title: "Permission needed",
-                offersSettingsRecovery: true
+                offersSettingsRecovery: true,
+                actionTitle: "Open Settings",
+                recovery: .openSettings
             )
         }
 
-        let title = switch supportCategory(for: normalized) {
+        let category = supportCategory(for: normalized)
+        let title = switch category {
         case "microphone-or-audio-route": "Check your microphone"
         case "camera": "Check your camera"
         case "device-storage": "More storage is needed"
@@ -188,9 +206,20 @@ final class CaptureAttentionDiagnostics {
         case "recording": "Recording couldn't finish"
         default: "Quipsly couldn't finish that"
         }
+        let action = switch category {
+        case "connection": ("Try again", CaptureAttentionRecovery.refresh)
+        case "account": ("Open Account", CaptureAttentionRecovery.openAccount)
+        case "device-storage", "upload-or-verification", "recording":
+            ("Open Library", CaptureAttentionRecovery.openLibrary)
+        case "microphone-or-audio-route", "camera", "call", "session-or-workspace":
+            ("Open Sessions", CaptureAttentionRecovery.openSessions)
+        default: ("Dismiss", CaptureAttentionRecovery.dismiss)
+        }
         return CaptureAttentionPresentation(
             title: title,
-            offersSettingsRecovery: false
+            offersSettingsRecovery: false,
+            actionTitle: action.0,
+            recovery: action.1
         )
     }
 

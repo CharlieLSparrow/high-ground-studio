@@ -2534,6 +2534,13 @@ requireExcludes(capturePhoneShellText, '.alert("Capture needs attention"', "gene
 requireIncludes(capturePhoneShellText, ".alert(attentionPresentation.title", "global Capture errors use a contextual plain-language title");
 requireIncludes(capturePhoneShellText, 'Button("Open Settings")', "a system permission failure offers the conventional Settings recovery action");
 requireIncludes(capturePhoneShellText, "attentionPresentation.offersSettingsRecovery", "Settings appears only when it can actually repair the failure");
+requireIncludes(capturePhoneShellText, "action: recoverFromInlineAttention", "recoverable Capture errors lead to their conventional repair surface instead of a dead-end acknowledgement");
+requireIncludes(captureAttentionDiagnosticsText, '("Try again", CaptureAttentionRecovery.refresh)', "connection recovery offers one ordinary retry action");
+requireIncludes(captureAttentionDiagnosticsText, '("Open Library", CaptureAttentionRecovery.openLibrary)', "source and storage recovery lead to the protected Library");
+requireIncludes(captureAttentionDiagnosticsText, '("Open Sessions", CaptureAttentionRecovery.openSessions)', "call, camera, and Session recovery return to the ordinary Sessions surface");
+requireIncludes(captureAttentionDiagnosticsText, '("Open Account", CaptureAttentionRecovery.openAccount)', "identity recovery leads directly to Account");
+requireIncludes(deterministicUITestsText, "func testUploadAttentionOpensTheProtectedRecordingLibrary", "operated native acceptance covers recovery from upload attention to the retained source Library");
+requireIncludes(deterministicUITestsText, "func testAccountAttentionOpensAccount", "operated native acceptance covers recovery from identity attention to Account");
 for (const title of [
   "Microphone access is off",
   "Check your microphone",

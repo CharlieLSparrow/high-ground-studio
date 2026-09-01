@@ -38,6 +38,16 @@ final class CaptureExperienceUITests: XCTestCase {
                 "--capture-ui-preview-attention=Quipsly is offline and cannot reach Nest."
             )
         }
+        if name.contains("testUploadAttentionOpensTheProtectedRecordingLibrary") {
+            app.launchArguments.append(
+                "--capture-ui-preview-attention=The recording upload could not finish."
+            )
+        }
+        if name.contains("testAccountAttentionOpensAccount") {
+            app.launchArguments.append(
+                "--capture-ui-preview-attention=Sign in to continue with this account."
+            )
+        }
         if name.contains("testDisconnectedCallOffersOneTapRejoinWhileKeepingRecordingSafe") {
             app.launchArguments += [
                 "--capture-ui-preview-tab=record",
@@ -229,11 +239,35 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(app.scrollViews["CaptureWorkView"].waitForExistence(timeout: 8))
         XCTAssertTrue(inlineTitle.exists)
 
-        let dismiss = app.buttons["Dismiss"]
-        XCTAssertTrue(dismiss.exists)
-        XCTAssertTrue(dismiss.isHittable)
-        dismiss.tap()
-        XCTAssertFalse(inlineTitle.waitForExistence(timeout: 1))
+        let retry = app.buttons["Try again"]
+        XCTAssertTrue(retry.exists)
+        XCTAssertTrue(retry.isHittable)
+        retry.tap()
+        XCTAssertTrue(
+            inlineTitle.waitForExistence(timeout: 5),
+            "A failed retry should publish the current connection state again instead of silently dismissing it."
+        )
+    }
+
+    func testUploadAttentionOpensTheProtectedRecordingLibrary() {
+        let openLibrary = app.buttons["Open Library"]
+        XCTAssertTrue(openLibrary.waitForExistence(timeout: 12))
+        XCTAssertTrue(openLibrary.isHittable)
+        openLibrary.tap()
+
+        XCTAssertTrue(app.scrollViews["CaptureLibraryView"].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.staticTexts["Your recordings"].exists)
+        XCTAssertFalse(app.staticTexts["Upload needs attention"].exists)
+    }
+
+    func testAccountAttentionOpensAccount() {
+        let openAccount = app.buttons["Open Account"]
+        XCTAssertTrue(openAccount.waitForExistence(timeout: 12))
+        XCTAssertTrue(openAccount.isHittable)
+        openAccount.tap()
+
+        XCTAssertTrue(app.scrollViews["CaptureAccountView"].waitForExistence(timeout: 8))
+        XCTAssertFalse(app.staticTexts["Check your account"].exists)
     }
 
     func testCaptureFirstNavigationKeepsFiveFocusedDestinations() {
