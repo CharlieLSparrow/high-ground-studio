@@ -23,6 +23,7 @@ IPAD_UI_TEST_SELECTORS = [
   "HighGroundCaptureUITests/CaptureExperienceUITests/testPrivateVoiceNoteOpensCaptureWithoutMeetingPaperworkOnRegularWidthIPad",
   "HighGroundCaptureUITests/CaptureExperienceUITests/testConsentNeededNextEpisodeOpensRecorderWithoutCrashingOnRegularWidthIPad",
   "HighGroundCaptureUITests/CaptureExperienceUITests/testClientCoachingFormDraftSurvivesRelaunchOnRegularWidthIPad",
+  "HighGroundCaptureUITests/CaptureExperienceUITests/testRecorderLeadsWithAStandardCallGreenRoomOnRegularWidthIPad",
 ].freeze
 
 def capture_ui_execution_groups(selectors, default_device:)
@@ -650,7 +651,7 @@ platform :ios do
         }
         if execution.fetch(:slug) == "ipad"
           simulator = capture_simulator_destination(execution.fetch(:device))
-          run_options[:destination] = [simulator.fetch(:destination)]
+          run_options[:destination] = simulator.fetch(:destination)
           run_options[:skip_detect_devices] = true
           # Scan 2.236.1 assumes its name-based device inventory exists when
           # reinstall_app is enabled, even with an explicit destination. The

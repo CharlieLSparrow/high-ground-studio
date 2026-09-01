@@ -1905,6 +1905,14 @@ final class CaptureExperienceUITests: XCTestCase {
     }
 
     func testRecorderLeadsWithAStandardCallGreenRoom() {
+        exerciseStandardCallGreenRoom()
+    }
+
+    func testRecorderLeadsWithAStandardCallGreenRoomOnRegularWidthIPad() {
+        exerciseStandardCallGreenRoom()
+    }
+
+    private func exerciseStandardCallGreenRoom() {
         openSessionsWorkspace()
 
         let call = app.descendants(matching: .any)["CaptureProviderRoomControls"]
