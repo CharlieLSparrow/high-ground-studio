@@ -67,6 +67,17 @@ export function browserRecordingDirectiveShouldAutoStart(input: {
   );
 }
 
+export function browserRecordingDirectiveShouldDeferStart(input: {
+  action: "START" | "STOP";
+  activeCaptureOperation: boolean;
+  automaticUploadRecoveryInFlight: boolean;
+}) {
+  return (
+    input.action === "START" &&
+    (input.activeCaptureOperation || input.automaticUploadRecoveryInFlight)
+  );
+}
+
 export function browserRecordingDirectiveCanRetry(input: {
   action: "START" | "STOP";
   status: string;
@@ -87,8 +98,9 @@ export function projectBrowserRecordingHealth(
   const health = directive.recordingHealth;
   const attentionCount = health.attentionParticipantCount;
   const waitingCount = health.waitingParticipantCount;
-  const selfOnly = directive.participantStatuses.length === 1
-    && directive.participantStatuses[0]?.participantLabel === "You";
+  const selfOnly =
+    directive.participantStatuses.length === 1 &&
+    directive.participantStatuses[0]?.participantLabel === "You";
   let title = "Recording status";
   let detail = "Quipsly is checking each participant's recording.";
   let tone: "ready" | "waiting" | "attention" = "waiting";
@@ -111,7 +123,9 @@ export function projectBrowserRecordingHealth(
     directive.action === "STOP" &&
     health.allParticipantsStoppedSafely
   ) {
-    title = selfOnly ? "Your recording is saved locally" : "Everyone’s recording is saved locally";
+    title = selfOnly
+      ? "Your recording is saved locally"
+      : "Everyone’s recording is saved locally";
     detail = selfOnly
       ? "This browser confirmed that your protected local source stopped."
       : "Each expected recorder confirmed its local stop.";
@@ -122,14 +136,13 @@ export function projectBrowserRecordingHealth(
         ? "Starting your recording"
         : "Saving your recording"
       : directive.action === "START"
-          ? `Waiting for ${waitingCount} ${waitingCount === 1 ? "person" : "people"}`
-          : `Finishing ${waitingCount} ${waitingCount === 1 ? "recording" : "recordings"}`;
-    detail =
-      selfOnly
-        ? directive.action === "START"
-          ? "Keep this Session open while your recorder gets ready."
-          : "Keep this Session open while your recording finishes saving."
-        : directive.action === "START"
+        ? `Waiting for ${waitingCount} ${waitingCount === 1 ? "person" : "people"}`
+        : `Finishing ${waitingCount} ${waitingCount === 1 ? "recording" : "recordings"}`;
+    detail = selfOnly
+      ? directive.action === "START"
+        ? "Keep this Session open while your recorder gets ready."
+        : "Keep this Session open while your recording finishes saving."
+      : directive.action === "START"
         ? "The call can continue while Quipsly gets their recorder ready."
         : "Keep this Session open while the recordings finish saving.";
   }
@@ -169,9 +182,8 @@ function receiptId(
   if (existing) return existing;
   const legacyKey = `quipsly-recording-directive-receipt:${roomId}:${directiveId}:${state}`;
   const legacy = window.localStorage.getItem(legacyKey);
-  const created = legacy && /^[0-9a-f-]{36}$/i.test(legacy)
-    ? legacy
-    : crypto.randomUUID();
+  const created =
+    legacy && /^[0-9a-f-]{36}$/i.test(legacy) ? legacy : crypto.randomUUID();
   window.localStorage.setItem(key, created);
   return created;
 }

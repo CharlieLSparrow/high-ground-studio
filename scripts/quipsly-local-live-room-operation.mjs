@@ -2,8 +2,11 @@
 
 import { readRetainedQAPassword } from "./lib/retained-qa-keychain.mjs";
 import { loadFreshCoachingAcceptanceContext } from "./lib/coaching-acceptance-context.mjs";
+import { createHash, randomUUID } from "node:crypto";
+import { execFile } from "node:child_process";
 import { chmod, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { promisify } from "node:util";
 import {
   clearRenderedSession,
   loadPlaywright,
@@ -44,6 +47,18 @@ function safeJson(value) {
     : {};
 }
 
+function isInterruptedRecoverySource(source) {
+  const profile = safeJson(
+    safeJson(source?.localManifestJson).reportedSourceProfile,
+  );
+  const recovery = safeJson(profile.interruptionRecovery);
+  return (
+    recovery.contractKind ===
+      "quipsly-browser-source-interruption-recovery-v1" &&
+    recovery.mediaTailMayBeIncomplete === true
+  );
+}
+
 assert(
   enabled,
   "Set QUIPSLY_LOCAL_LIVE_ROOM_OPERATION=1 to authorize retained local call and chat artifacts.",
@@ -66,8 +81,7 @@ const interruptCoachUpload =
   process.env.QUIPSLY_LOCAL_LIVE_ROOM_INTERRUPT_COACH_UPLOAD === "1";
 const crashCoachRecorder =
   process.env.QUIPSLY_LOCAL_LIVE_ROOM_CRASH_COACH_RECORDER === "1";
-const operateTwoPartyVideo =
-  process.env.QUIPSLY_LOCAL_LIVE_ROOM_VIDEO === "1";
+const operateTwoPartyVideo = process.env.QUIPSLY_LOCAL_LIVE_ROOM_VIDEO === "1";
 assert(
   !(interruptCoachUpload && crashCoachRecorder),
   "Choose either upload interruption or recorder crash recovery per operation.",
@@ -119,6 +133,42 @@ async function loadSyntheticSpeechSources() {
 }
 
 const syntheticSpeechSources = await loadSyntheticSpeechSources();
+const execFileAsync = promisify(execFile);
+
+async function operateLocalInterruptionRepair(recordingAssetId) {
+  const repositoryRoot = path.resolve(import.meta.dirname, "..");
+  const { stdout } = await execFileAsync(
+    process.execPath,
+    [
+      "--import",
+      "tsx",
+      "--import",
+      path.join(repositoryRoot, "scripts/register-ts-extension-loader.mjs"),
+      path.join(
+        repositoryRoot,
+        "scripts/quipsly-local-interruption-repair-operation.mjs",
+      ),
+    ],
+    {
+      cwd: repositoryRoot,
+      env: {
+        ...process.env,
+        QUIPSLY_LOCAL_INTERRUPTION_REPAIR_OPERATION: "1",
+        QUIPSLY_LOCAL_INTERRUPTION_REPAIR_RECORDING_ASSET_ID: recordingAssetId,
+      },
+      maxBuffer: 4 * 1024 * 1024,
+    },
+  );
+  const receipt = JSON.parse(stdout);
+  assert(
+    receipt?.ok === true &&
+      receipt.recordingAssetId === recordingAssetId &&
+      receipt.repairStatus === "verified" &&
+      receipt.originalRemainsSourceTruth === true,
+    "The local interrupted-source repair did not return verified promotion evidence.",
+  );
+  return receipt;
+}
 
 // Firebase emulator accounts are intentionally ephemeral. Restore the same
 // reserved .test identities from macOS Keychain on every operated rehearsal so
@@ -269,12 +319,60 @@ if (freshContext) {
 
 const canonicalRoom = await prisma.callRoom.findUnique({
   where: { id: ROOM_ID },
-  select: { id: true, projectId: true },
+  select: {
+    id: true,
+    projectId: true,
+    captureGroupId: true,
+    participants: {
+      where: { accessStatus: "ACTIVE" },
+      orderBy: { createdAt: "asc" },
+      select: { id: true, userId: true, role: true },
+    },
+  },
 });
 assert(
-  canonicalRoom?.projectId,
+  canonicalRoom?.projectId && canonicalRoom.captureGroupId,
   "The operated Session must retain a canonical project binding.",
 );
+
+// A failed prior invocation can leave an append-only START directive as the
+// latest coordination intent. Preserve that history, but close it with a STOP
+// before beginning a new independent rehearsal. Otherwise a newly opened
+// browser correctly joins the old active recording and the harness mistakes
+// that recovery behavior for its new run.
+const previousDirective = await prisma.callRecordingDirective.findFirst({
+  where: { roomId: ROOM_ID },
+  orderBy: { sequence: "desc" },
+  select: { action: true },
+});
+if (previousDirective?.action === "START") {
+  const controller =
+    canonicalRoom.participants.find((participant) =>
+      ["COACH", "HOST", "PRODUCER"].includes(participant.role),
+    ) ?? canonicalRoom.participants[0];
+  assert(controller, "The operated Session has no recording controller.");
+  const requestId = randomUUID();
+  await prisma.callRecordingDirective.create({
+    data: {
+      requestId,
+      roomId: ROOM_ID,
+      captureGroupId: canonicalRoom.captureGroupId,
+      actorUserId: controller.userId,
+      actorParticipantId: controller.id,
+      action: "STOP",
+      allPartyConsentVersion: null,
+      requestSha256: createHash("sha256")
+        .update(`${ROOM_ID}:${requestId}:STOP`)
+        .digest("hex"),
+      issuedAt: new Date(),
+      metadataJson: {
+        schema: "quipsly-local-live-room-rehearsal-boundary-v1",
+        closesInterruptedPriorInvocation: true,
+        commandIsNotCaptureProof: true,
+      },
+    },
+  });
+}
 
 const { chromium } = await loadPlaywright();
 const browsers = [];
@@ -293,6 +391,7 @@ const journeys = [];
 let audioFirstCameraDefaultObserved = true;
 let twoPartyVideoStageProven = false;
 let cameraTogglePreservedCall = false;
+const localInterruptionRepairEvidence = new Map();
 
 const saveRenderedConsent = async (journey) => {
   const consentAction = journey.page.getByRole("button", {
@@ -388,7 +487,7 @@ try {
       .locator('[data-session-entry-ready="true"]')
       .waitFor({ state: "visible", timeout: 20_000 });
     const browserChoice = page.getByRole("button", {
-      name: /Join call|Join in browser|Open call lobby|This browser/i,
+      name: /Join call|Join in browser|Continue in this browser|Open call lobby|This browser/i,
     });
     await browserChoice.waitFor({ timeout: 20_000 });
     await browserChoice.click();
@@ -458,7 +557,9 @@ try {
     }
     if (!(await join.isEnabled())) {
       if (
-        !(await deviceSettings.evaluate((element) => element.hasAttribute("open")))
+        !(await deviceSettings.evaluate((element) =>
+          element.hasAttribute("open"),
+        ))
       ) {
         await deviceSettings.locator(":scope > summary").click();
       }
@@ -622,7 +723,8 @@ try {
       .click();
     await coachJourney.page.waitForFunction(
       (element) =>
-        (element?.querySelectorAll("video[data-livekit-track-sid]").length ?? 0) >= 1,
+        (element?.querySelectorAll("video[data-livekit-track-sid]").length ??
+          0) >= 1,
       await coachRemoteMedia.elementHandle(),
       { timeout: 20_000 },
     );
@@ -740,12 +842,16 @@ try {
     await recoveryPage.goto(`${baseURL}/sessions/${ROOM_ID}?mode=live`, {
       waitUntil: "domcontentloaded",
     });
-    await recoveryPage
-      .locator('[data-session-entry-ready="true"]')
-      .waitFor({ state: "visible", timeout: 20_000 });
+    const recoveryChoice = recoveryPage.locator(
+      '[data-session-entry-ready="true"]',
+    );
     const recoveryDock = recoveryPage.locator(
       'aside[aria-label$=" live call dock"]',
     );
+    await Promise.any([
+      recoveryChoice.waitFor({ state: "visible", timeout: 20_000 }),
+      recoveryDock.waitFor({ state: "visible", timeout: 20_000 }),
+    ]);
     const recoveryJoin = recoveryDock.getByRole("button", {
       name: "Join call",
       exact: true,
@@ -755,7 +861,7 @@ try {
       .catch(async () => {
         await recoveryPage
           .getByRole("button", {
-            name: /Join call|Join in browser|Open call lobby|This browser/i,
+            name: /Join call|Join in browser|Continue in this browser|Open call lobby|This browser/i,
           })
           .first()
           .click();
@@ -771,7 +877,7 @@ try {
   }
   if (interruptCoachUpload) {
     await coachJourney.page
-      .getByText("Safe on this device", { exact: true })
+      .getByText("Saved on this device", { exact: true })
       .first()
       .waitFor({ state: "visible", timeout: 90_000 });
     await coachJourney.page
@@ -786,12 +892,16 @@ try {
       coachJourney.interruptLocalUpload,
     );
     await coachJourney.page.reload({ waitUntil: "domcontentloaded" });
-    await coachJourney.page
-      .locator('[data-session-entry-ready="true"]')
-      .waitFor({ state: "visible", timeout: 20_000 });
+    const recoveryChoice = coachJourney.page.locator(
+      '[data-session-entry-ready="true"]',
+    );
     const recoveryDock = coachJourney.page.locator(
       'aside[aria-label$=" live call dock"]',
     );
+    await Promise.any([
+      recoveryChoice.waitFor({ state: "visible", timeout: 20_000 }),
+      recoveryDock.waitFor({ state: "visible", timeout: 20_000 }),
+    ]);
     const recoveryJoin = recoveryDock.getByRole("button", {
       name: "Join call",
       exact: true,
@@ -801,7 +911,7 @@ try {
       .catch(async () => {
         await coachJourney.page
           .getByRole("button", {
-            name: /Join call|Join in browser|Open call lobby|This browser/i,
+            name: /Join call|Join in browser|Continue in this browser|Open call lobby|This browser/i,
           })
           .first()
           .click();
@@ -813,37 +923,90 @@ try {
       .getByRole("button", { name: "Leave", exact: true })
       .waitFor({ timeout: 20_000 });
   }
-  await Promise.all(
-    journeys.map(async (journey) => {
-      try {
-        await journey.page
-          .getByText(
-            /^(?:Recording saved and verified in Quipsly\.|Recording saved\. Quipsly is preparing it for reliable playback\.|Exact bytes verified\. The local source remains protected and the editor evidence is ready\.|Recovered bytes verified\. The interrupted ending is marked for repair before final editing\.)$/,
-          )
-          .waitFor({ timeout: 90_000 });
-      } catch (error) {
-        const recorder = journey.page.locator(
-          `[aria-labelledby="browser-source-${ROOM_ID}"]`,
-        );
-        const statusMessages = await recorder
-          .getByRole("status")
-          .allTextContents()
-          .catch(() => []);
-        throw new Error(
-          `${journey.identity.role} source did not reach protected server status. ` +
-            `Recorder messages: ${JSON.stringify(statusMessages)}. ` +
-            `${error instanceof Error ? error.message : ""}`,
-        );
-      }
-    }),
-  );
+  const waitForProtectedServerStatus = async (journey) => {
+    try {
+      await journey.page
+        .getByText(
+          /^(?:Recording saved and verified in Quipsly\.|Recording saved\. Quipsly is preparing it for reliable playback\.|Recording saved and its Session status is current\.|Exact bytes verified\. The local source remains protected and the editor evidence is ready\.|Recovered bytes verified\. The interrupted ending is marked for repair before final editing\.)$/,
+        )
+        .waitFor({ timeout: 90_000 });
+    } catch (error) {
+      const recorder = journey.page.locator(
+        `[aria-labelledby="browser-source-${ROOM_ID}"]`,
+      );
+      const statusMessages = await recorder
+        .getByRole("status")
+        .allTextContents()
+        .catch(() => []);
+      throw new Error(
+        `${journey.identity.role} source did not reach protected server status. ` +
+          `Recorder messages: ${JSON.stringify(statusMessages)}. ` +
+          `${error instanceof Error ? error.message : ""}`,
+      );
+    }
+  };
   if (crashCoachRecorder) {
+    const coachParticipant = await prisma.callParticipant.findFirst({
+      where: {
+        roomId: ROOM_ID,
+        userId: userByUid.get(coachJourney.identity.uid),
+      },
+      select: { id: true },
+    });
+    assert(
+      coachParticipant,
+      "The crashed coach participant is unavailable for recovery proof.",
+    );
+    let recoveredSource = null;
+    const recoveryDeadline = Date.now() + 90_000;
+    while (!recoveredSource && Date.now() < recoveryDeadline) {
+      const candidates = await prisma.recordingAsset.findMany({
+        where: {
+          roomId: ROOM_ID,
+          participantId: coachParticipant.id,
+          kind: "LOCAL_AUDIO",
+          status: "VERIFIED",
+          createdAt: { gte: recordingWindowStartedAt },
+        },
+        select: { id: true, localManifestJson: true },
+      });
+      recoveredSource =
+        candidates.find((candidate) =>
+          isInterruptedRecoverySource(candidate),
+        ) ?? null;
+      if (!recoveredSource)
+        await new Promise((resolve) => setTimeout(resolve, 1_000));
+    }
+    assert(
+      recoveredSource,
+      "The crashed coach source never reached verified interrupted-recovery status.",
+    );
+    localInterruptionRepairEvidence.set(
+      recoveredSource.id,
+      await operateLocalInterruptionRepair(recoveredSource.id),
+    );
+    await waitForProtectedServerStatus(journeys[1]);
+    await coachJourney.page
+      .getByText("Recording on this device. Your call continues normally.", {
+        exact: true,
+      })
+      .waitFor({ timeout: 30_000 });
+    // The resumed segment must contain real media rather than a zero-length
+    // boundary created only to satisfy the coordination command.
+    await new Promise((resolve) => setTimeout(resolve, 3_000));
     await coachJourney.page
       .getByRole("button", { name: "Stop recording", exact: true })
       .click();
+    await waitForProtectedServerStatus(coachJourney);
     await coachJourney.page
       .getByRole("button", { name: "Record", exact: true })
       .waitFor({ state: "visible", timeout: 20_000 });
+  } else {
+    await Promise.all(
+      journeys.map(async (journey) => {
+        await waitForProtectedServerStatus(journey);
+      }),
+    );
   }
 
   const participantIds = await prisma.callParticipant.findMany({
@@ -914,8 +1077,8 @@ try {
     },
   });
   assert(
-    verifiedSources.length === 2,
-    `Expected two verified browser masters, observed ${verifiedSources.length}.`,
+    verifiedSources.length === (crashCoachRecorder ? 3 : 2),
+    `Expected ${crashCoachRecorder ? "one client source plus interrupted and resumed coach sources" : "two verified browser masters"}, observed ${verifiedSources.length}.`,
   );
   assert(
     new Set(verifiedSources.map((source) => source.participantId)).size === 2,
@@ -933,31 +1096,9 @@ try {
       `Verified browser source ${source.id} is missing immutable-byte or timing evidence.`,
     );
   }
-  const recoveredSources = verifiedSources.filter((source) => {
-    const manifest =
-      source.localManifestJson &&
-      typeof source.localManifestJson === "object" &&
-      !Array.isArray(source.localManifestJson)
-        ? source.localManifestJson
-        : {};
-    const profile =
-      manifest.reportedSourceProfile &&
-      typeof manifest.reportedSourceProfile === "object" &&
-      !Array.isArray(manifest.reportedSourceProfile)
-        ? manifest.reportedSourceProfile
-        : {};
-    const recovery =
-      profile.interruptionRecovery &&
-      typeof profile.interruptionRecovery === "object" &&
-      !Array.isArray(profile.interruptionRecovery)
-        ? profile.interruptionRecovery
-        : {};
-    return (
-      recovery.contractKind ===
-        "quipsly-browser-source-interruption-recovery-v1" &&
-      recovery.mediaTailMayBeIncomplete === true
-    );
-  });
+  const recoveredSources = verifiedSources.filter((source) =>
+    isInterruptedRecoverySource(source),
+  );
   if (crashCoachRecorder) {
     const coachParticipantId = participantIds.find(
       (participant) =>
@@ -969,18 +1110,27 @@ try {
       "The crashed coach source did not retain its explicit interruption-recovery evidence.",
     );
   }
-  const overlapStartedAt = new Date(
-    Math.max(
-      ...verifiedSources.map((source) => source.recordedStartedAt.getTime()),
-    ),
+  const overlapMilliseconds = verifiedSources.reduce(
+    (bestOverlap, source, index) =>
+      Math.max(
+        bestOverlap,
+        ...verifiedSources
+          .slice(index + 1)
+          .map((candidate) =>
+            candidate.participantId === source.participantId
+              ? Number.NEGATIVE_INFINITY
+              : Math.min(
+                  source.recordedStoppedAt.getTime(),
+                  candidate.recordedStoppedAt.getTime(),
+                ) -
+                Math.max(
+                  source.recordedStartedAt.getTime(),
+                  candidate.recordedStartedAt.getTime(),
+                ),
+          ),
+      ),
+    Number.NEGATIVE_INFINITY,
   );
-  const overlapStoppedAt = new Date(
-    Math.min(
-      ...verifiedSources.map((source) => source.recordedStoppedAt.getTime()),
-    ),
-  );
-  const overlapMilliseconds =
-    overlapStoppedAt.getTime() - overlapStartedAt.getTime();
   assert(
     overlapMilliseconds >= 2_000,
     `Independent browser masters overlapped by only ${overlapMilliseconds} ms.`,
@@ -1007,7 +1157,10 @@ try {
     `Expected ${verifiedSources.length} canonical finalizations, observed ${finalizations.length}.`,
   );
   const finalizationByRecordingId = new Map(
-    finalizations.map((finalization) => [finalization.recordingAssetId, finalization]),
+    finalizations.map((finalization) => [
+      finalization.recordingAssetId,
+      finalization,
+    ]),
   );
   const twoEndpointMaterializationEvidence = [];
   for (const source of verifiedSources) {
@@ -1039,10 +1192,14 @@ try {
     const projectAttachment = studioAttachments.find(
       (attachment) => attachment.projectId === canonicalRoom.projectId,
     );
+    const interruptionRepair = localInterruptionRepairEvidence.get(source.id);
+    const expectedStudioSize = interruptionRepair
+      ? BigInt(interruptionRepair.derivativeSizeBytes)
+      : source.byteSize;
     assert(
       studioSource?.provider === "capture-recording" &&
         studioAsset?.rawAssetId === studioSource.id &&
-        studioAsset.sizeBytes === source.byteSize &&
+        studioAsset.sizeBytes === expectedStudioSize &&
         projectAttachment?.source === "mobile-capture-finalization",
       `Recording ${source.id} was not materialized into the operated Session project.`,
     );
@@ -1128,13 +1285,15 @@ try {
       recordingAssetId: source.id,
       participantId: source.participantId,
       durationSeconds: source.durationSeconds,
-      durationEvidence: safeJson(source.localManifestJson).durationEvidence || null,
+      durationEvidence:
+        safeJson(source.localManifestJson).durationEvidence || null,
       uploadSessionId: finalization.uploadSessionId,
       sourceId: studioSource.id,
       mediaAssetId: studioAsset.id,
       projectAttachment,
       playbackEvidence,
       transcript,
+      interruptionRepair: interruptionRepair ?? null,
     });
   }
 
@@ -1213,7 +1372,8 @@ try {
   assert(
     exactSourceAlignment.status === "completed" &&
       exactSourceAlignment.evidence?.boundaries?.sourceBytesMutated === false &&
-      exactSourceAlignment.evidence?.boundaries?.timelinePlacementApplied === false,
+      exactSourceAlignment.evidence?.boundaries?.timelinePlacementApplied ===
+        false,
     `Exact-source acoustic alignment did not complete safely: ${JSON.stringify(exactSourceAlignment)}.`,
   );
 
@@ -1238,7 +1398,7 @@ try {
       .catch(async () => {
         await journey.page
           .getByRole("button", {
-            name: /Join call|Join in browser|Open call lobby|This browser/i,
+            name: /Join call|Join in browser|Continue in this browser|Open call lobby|This browser/i,
           })
           .first()
           .click();
@@ -1307,7 +1467,7 @@ try {
     savedConsentRestoredAfterReentry: true,
     postCallRecordingRecoveryStayedMounted: true,
     verifiedRecordingSafeToCloseRendered: true,
-    independentBrowserSourcesVerified: 2,
+    independentBrowserSourcesVerified: verifiedSources.length,
     independentParticipantSourcesVerified: new Set(
       verifiedSources.map((source) => source.participantId),
     ).size,

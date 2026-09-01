@@ -400,19 +400,21 @@ export async function suggestSessionSourceAlignment(input: {
     ["GUEST", 3],
     ["CLIENT", 4],
   ]);
-  const distinctParticipants = [] as any[];
-  const participantIds = new Set<string>();
-  for (const candidate of playable) {
-    const participantId = text(candidate.participantId);
-    if (!participantId || participantIds.has(participantId)) continue;
-    participantIds.add(participantId);
-    distinctParticipants.push(candidate);
-  }
-  distinctParticipants.sort((left: any, right: any) => {
+  const orderedPlayable = [...playable].sort((left: any, right: any) => {
     const leftPriority = rolePriority.get(text(left.participant?.role)) ?? 99;
     const rightPriority = rolePriority.get(text(right.participant?.role)) ?? 99;
-    return leftPriority - rightPriority || left.id.localeCompare(right.id);
+    return (
+      leftPriority - rightPriority ||
+      (dateMilliseconds(right.createdAt) ?? 0) -
+        (dateMilliseconds(left.createdAt) ?? 0) ||
+      left.id.localeCompare(right.id)
+    );
   });
+  const participantIds = new Set(
+    orderedPlayable
+      .map((candidate: any) => text(candidate.participantId))
+      .filter(Boolean),
+  );
   const sharedReferenceBinding =
     providerAssets
       .map((asset: any) => ({
@@ -424,7 +426,7 @@ export async function suggestSessionSourceAlignment(input: {
         }),
       }))
       .find((candidate: any) => candidate.binding)?.binding ?? null;
-  if (distinctParticipants.length < 2) {
+  if (participantIds.size < 2) {
     return {
       status: "waiting",
       generatedAutomatically: true,
@@ -435,16 +437,78 @@ export async function suggestSessionSourceAlignment(input: {
     };
   }
   try {
-    const plan = buildSessionSourceAlignmentPlan({
-      captureGroupId: input.room.captureGroupId,
-      spine: distinctParticipants[0],
-      target: distinctParticipants[1],
+    const viablePlans = [] as Array<{
+      plan: SessionSourceAlignmentPlan;
+      recency: number;
+    }>;
+    let firstPlanError: SessionSourceAlignmentError | null = null;
+    for (
+      let leftIndex = 0;
+      leftIndex < orderedPlayable.length;
+      leftIndex += 1
+    ) {
+      for (
+        let rightIndex = leftIndex + 1;
+        rightIndex < orderedPlayable.length;
+        rightIndex += 1
+      ) {
+        const left = orderedPlayable[leftIndex];
+        const right = orderedPlayable[rightIndex];
+        if (
+          text(left.participantId) === text(right.participantId) ||
+          !text(left.participantId) ||
+          !text(right.participantId)
+        )
+          continue;
+        const ordered = [left, right].sort((a: any, b: any) => {
+          const aPriority = rolePriority.get(text(a.participant?.role)) ?? 99;
+          const bPriority = rolePriority.get(text(b.participant?.role)) ?? 99;
+          return aPriority - bPriority || a.id.localeCompare(b.id);
+        });
+        try {
+          viablePlans.push({
+            plan: buildSessionSourceAlignmentPlan({
+              captureGroupId: input.room.captureGroupId,
+              spine: ordered[0],
+              target: ordered[1],
+            }),
+            // Prefer a coherent recent pair, not a new segment accidentally
+            // paired with an old participant take. The older member is the
+            // limiting recency for a two-source take.
+            recency: Math.min(
+              dateMilliseconds(left.createdAt) ?? 0,
+              dateMilliseconds(right.createdAt) ?? 0,
+            ),
+          });
+        } catch (error) {
+          if (error instanceof SessionSourceAlignmentError && !firstPlanError)
+            firstPlanError = error;
+          else if (!(error instanceof SessionSourceAlignmentError)) throw error;
+        }
+      }
+    }
+    viablePlans.sort((left, right) => {
+      const leftOverlap =
+        left.plan.overlapEndSeconds - left.plan.overlapStartSeconds;
+      const rightOverlap =
+        right.plan.overlapEndSeconds - right.plan.overlapStartSeconds;
+      return right.recency - left.recency || rightOverlap - leftOverlap;
     });
+    const plan = viablePlans[0]?.plan;
+    if (!plan)
+      throw (
+        firstPlanError ??
+        new SessionSourceAlignmentError(
+          409,
+          "ALIGNMENT_TWO_PARTICIPANTS_REQUIRED",
+          "Two participant recordings with shared verified time are needed before Quipsly can estimate their shared clock.",
+        )
+      );
     const sharedReference = sharedReferenceBinding
       ? buildSharedReferenceSuggestion(
           input.room.captureGroupId,
           sharedReferenceBinding,
-          distinctParticipants,
+          orderedPlayable,
         )
       : null;
     return {
@@ -1147,7 +1211,9 @@ export function buildSessionReviewedPlacement(
   };
 }
 
-function sourceBinding(candidate: Candidate) {
+export function sessionSourceAlignmentProcessorBinding(
+  candidate: Candidate,
+): AudioMasterySourceBinding {
   if (candidate.processorBinding) return candidate.processorBinding;
   const binding = candidate.playback;
   if (!binding) {
@@ -1157,8 +1223,65 @@ function sourceBinding(candidate: Candidate) {
       "The exact Session source is not available to an authorized media processor.",
     );
   }
-  const promotion = object(object(candidate.localManifestJson).promotion);
+  const manifest = object(candidate.localManifestJson);
+  const promotion = object(manifest.promotion);
   const localPath = text(promotion.providerSourceId);
+  const repair = object(manifest.interruptionRepair);
+  const repaired = object(repair.derivative);
+  if (text(repair.status).toLowerCase() === "verified") {
+    const repairedSha256 = text(repaired.sha256).toLowerCase();
+    const repairedGeneration = text(repaired.generation);
+    const repairedSizeBytes = positive(repaired.sizeBytes);
+    const repairedBucketName = text(repaired.bucketName);
+    const repairedObjectName = text(repaired.objectName);
+    const repairedContentType = text(repaired.contentType).toLowerCase();
+    if (
+      repair.originalRemainsSourceTruth !== true ||
+      !/^[0-9a-f]{64}$/.test(repairedSha256) ||
+      !/^[1-9][0-9]*$/.test(repairedGeneration) ||
+      repairedSizeBytes === null ||
+      !Number.isSafeInteger(repairedSizeBytes) ||
+      !repairedBucketName ||
+      !repairedObjectName ||
+      !/^(audio|video)\/[a-z0-9.+-]+$/.test(repairedContentType)
+    ) {
+      throw new SessionSourceAlignmentError(
+        409,
+        "ALIGNMENT_REPAIR_BINDING_INVALID",
+        "The repaired recording is missing exact derivative-byte evidence.",
+      );
+    }
+    if (
+      repairedBucketName === MOBILE_CAPTURE_LOCAL_VAULT_BUCKET &&
+      path.isAbsolute(localPath)
+    ) {
+      return {
+        assetId: binding.recordingAssetId,
+        provider: "local" as const,
+        locator: localPath,
+        generation: repairedGeneration,
+        sha256: repairedSha256,
+        sizeBytes: repairedSizeBytes,
+        contentType: repairedContentType,
+      };
+    }
+    if (repairedBucketName === MOBILE_CAPTURE_LOCAL_VAULT_BUCKET) {
+      throw new SessionSourceAlignmentError(
+        409,
+        "ALIGNMENT_LOCAL_SOURCE_UNAVAILABLE",
+        "The repaired local Session source is missing its private processor binding.",
+      );
+    }
+    return {
+      assetId: binding.recordingAssetId,
+      provider: "gcs" as const,
+      locator: `gcs://${repairedBucketName}/${repairedObjectName}?generation=${repairedGeneration}`,
+      generation: repairedGeneration,
+      sha256: repairedSha256,
+      sizeBytes: repairedSizeBytes,
+      contentType: repairedContentType,
+    };
+  }
   if (
     binding.bucketName === MOBILE_CAPTURE_LOCAL_VAULT_BUCKET &&
     path.isAbsolute(localPath)
@@ -1190,6 +1313,8 @@ function sourceBinding(candidate: Candidate) {
     contentType: binding.contentType,
   };
 }
+
+const sourceBinding = sessionSourceAlignmentProcessorBinding;
 
 function isLocalJob(job: SessionAudioAlignmentJob) {
   return job.spine.provider === "local" && job.target.provider === "local";

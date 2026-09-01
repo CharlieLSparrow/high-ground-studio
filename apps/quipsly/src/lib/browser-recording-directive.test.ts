@@ -4,6 +4,7 @@ import {
   acknowledgeBrowserRecordingDirective,
   browserRecordingDirectiveCanRetry,
   browserRecordingDirectiveShouldAutoStart,
+  browserRecordingDirectiveShouldDeferStart,
   issueBrowserRecordingDirective,
   projectBrowserRecordingHealth,
   readBrowserRecordingDirective,
@@ -55,6 +56,30 @@ describe("browser recording directive client", () => {
         status: "ready",
         retainedReady: true,
         terminalState: "JOIN_REQUIRED",
+      }),
+    ).toBe(false);
+  });
+
+  it("defers an active start command while protected local recovery finishes", () => {
+    expect(
+      browserRecordingDirectiveShouldDeferStart({
+        action: "START",
+        activeCaptureOperation: false,
+        automaticUploadRecoveryInFlight: true,
+      }),
+    ).toBe(true);
+    expect(
+      browserRecordingDirectiveShouldDeferStart({
+        action: "START",
+        activeCaptureOperation: true,
+        automaticUploadRecoveryInFlight: false,
+      }),
+    ).toBe(true);
+    expect(
+      browserRecordingDirectiveShouldDeferStart({
+        action: "STOP",
+        activeCaptureOperation: true,
+        automaticUploadRecoveryInFlight: true,
       }),
     ).toBe(false);
   });
@@ -272,7 +297,8 @@ describe("browser recording directive client", () => {
   });
 
   it("retries the exact durable endpoint receipt identity", async () => {
-    global.fetch = jest.fn()
+    global.fetch = jest
+      .fn()
       .mockRejectedValueOnce(new Error("response lost after commit"))
       .mockResolvedValueOnce({
         ok: true,
@@ -286,7 +312,9 @@ describe("browser recording directive client", () => {
       state: "STARTED" as const,
       captureId: "f83e23ee-c1a1-47e8-9d13-e66366c874e7",
     };
-    await expect(acknowledgeBrowserRecordingDirective(input)).resolves.toMatchObject({
+    await expect(
+      acknowledgeBrowserRecordingDirective(input),
+    ).resolves.toMatchObject({
       pendingCount: 1,
       latestError: "response lost after commit",
     });

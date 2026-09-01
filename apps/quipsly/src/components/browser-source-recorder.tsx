@@ -96,6 +96,7 @@ import {
   acknowledgeBrowserRecordingDirective,
   browserRecordingDirectiveCanRetry,
   browserRecordingDirectiveShouldAutoStart,
+  browserRecordingDirectiveShouldDeferStart,
   issueBrowserRecordingDirective,
   projectBrowserRecordingHealth,
   readBrowserRecordingDirective,
@@ -321,7 +322,8 @@ export function BrowserSourceRecorder({
   const [myAudioConsent, setMyAudioConsent] = useState(false);
   const [myVideoConsent, setMyVideoConsent] = useState(false);
   const [transcriptionAllowed, setTranscriptionAllowed] = useState(true);
-  const [transcriptionChoiceDirty, setTranscriptionChoiceDirty] = useState(false);
+  const [transcriptionChoiceDirty, setTranscriptionChoiceDirty] =
+    useState(false);
   const transcriptionAllowedRef = useRef(true);
   const transcriptionChoiceDirtyRef = useRef(false);
   const transcriptionChoiceInputRef = useRef<HTMLInputElement>(null);
@@ -329,11 +331,14 @@ export function BrowserSourceRecorder({
     transcriptionAllowedRef.current = allowed;
     setTranscriptionAllowed(allowed);
   }, []);
-  const chooseTranscriptionChoice = useCallback((allowed: boolean) => {
-    transcriptionChoiceDirtyRef.current = true;
-    setTranscriptionChoiceDirty(true);
-    setTranscriptionChoice(allowed);
-  }, [setTranscriptionChoice]);
+  const chooseTranscriptionChoice = useCallback(
+    (allowed: boolean) => {
+      transcriptionChoiceDirtyRef.current = true;
+      setTranscriptionChoiceDirty(true);
+      setTranscriptionChoice(allowed);
+    },
+    [setTranscriptionChoice],
+  );
   const chooseSourceType = useCallback(
     (next: BrowserSourceKind) => {
       setSourceType(next);
@@ -354,7 +359,8 @@ export function BrowserSourceRecorder({
   const [participantId, setParticipantId] = useState<string | null>(null);
   const [allPartyAudioReady, setAllPartyAudioReady] = useState(false);
   const [allPartyVideoReady, setAllPartyVideoReady] = useState(false);
-  const [allPartyTranscriptionReady, setAllPartyTranscriptionReady] = useState(false);
+  const [allPartyTranscriptionReady, setAllPartyTranscriptionReady] =
+    useState(false);
   const [roomStatus, setRoomStatus] = useState<string | null>(null);
   const [canControlRoom, setCanControlRoom] = useState(false);
   const [vaultAvailable, setVaultAvailable] = useState(false);
@@ -435,11 +441,13 @@ export function BrowserSourceRecorder({
   const handledStopRequestVersionRef = useRef(0);
   const callTransportGapStartedAtRef = useRef<string | null>(null);
   const callTransportGapWriteRef = useRef<Promise<void>>(Promise.resolve());
-  const callTransportGapsRef = useRef<Array<{
-    startedAt: string;
-    stoppedAt: string;
-    detail: string;
-  }>>([]);
+  const callTransportGapsRef = useRef<
+    Array<{
+      startedAt: string;
+      stoppedAt: string;
+      detail: string;
+    }>
+  >([]);
 
   const flushPendingMedia = useCallback(() => {
     const recorder = recorderRef.current;
@@ -503,9 +511,11 @@ export function BrowserSourceRecorder({
       window.clearTimeout(endpointQueueTimerRef.current);
     endpointQueueTimerRef.current = window.setTimeout(() => {
       endpointQueueTimerRef.current = null;
-      void publishBrowserEndpointQueue({ callRoomId, captureGroupId, participantId }).catch(
-        () => undefined,
-      );
+      void publishBrowserEndpointQueue({
+        callRoomId,
+        captureGroupId,
+        participantId,
+      }).catch(() => undefined);
     }, 350);
   }, [callRoomId, captureGroupId, participantId]);
 
@@ -611,7 +621,9 @@ export function BrowserSourceRecorder({
         setMyAudioConsent(session.recordingConsentCanRecordAudio === true);
         setMyVideoConsent(session.recordingConsentCanRecordVideo === true);
         if (!transcriptionChoiceDirtyRef.current) {
-          setTranscriptionChoice(session.recordingConsentCanTranscribe === true);
+          setTranscriptionChoice(
+            session.recordingConsentCanTranscribe === true,
+          );
         }
         setAllPartyAudioReady(
           session.allRegisteredParticipantConsentGranted === true,
@@ -649,10 +661,7 @@ export function BrowserSourceRecorder({
             )
             .then((response) => response.json())
         : Promise.resolve({ currentPolicy: null });
-    void Promise.all([
-      browserSourceVaultReadiness(),
-      policyRequest,
-    ])
+    void Promise.all([browserSourceVaultReadiness(), policyRequest])
       .then(async ([vault, consentPacket]) => {
         const currentParticipantId =
           typeof consentPacket?.session?.participantId === "string"
@@ -679,17 +688,21 @@ export function BrowserSourceRecorder({
         setConsentId(consentPacket?.session?.recordingConsentId ?? null);
         setMyAudioConsent(savedAudioConsent);
         setMyVideoConsent(savedVideoConsent);
-        setSourceType(browserSourceTypeAfterConsentReadback({
-          sessionKind,
-          preferences: readBrowserSourcePreferences(),
-          consentStatus: consentPacket?.session?.recordingConsentStatus,
-          canRecordVideo: savedVideoConsent,
-        }));
-        setTranscriptionChoice(browserTranscriptionChoiceAfterConsentReadback({
-          consentStatus: consentPacket?.session?.recordingConsentStatus,
-          canTranscribe:
-            consentPacket?.session?.recordingConsentCanTranscribe === true,
-        }));
+        setSourceType(
+          browserSourceTypeAfterConsentReadback({
+            sessionKind,
+            preferences: readBrowserSourcePreferences(),
+            consentStatus: consentPacket?.session?.recordingConsentStatus,
+            canRecordVideo: savedVideoConsent,
+          }),
+        );
+        setTranscriptionChoice(
+          browserTranscriptionChoiceAfterConsentReadback({
+            consentStatus: consentPacket?.session?.recordingConsentStatus,
+            canTranscribe:
+              consentPacket?.session?.recordingConsentCanTranscribe === true,
+          }),
+        );
         setParticipantId(currentParticipantId || null);
         setAllPartyAudioReady(
           consentPacket?.session?.allRegisteredParticipantConsentGranted ===
@@ -1017,10 +1030,7 @@ export function BrowserSourceRecorder({
         stoppedAt,
         detail: `Call transport unavailable for ${durationSeconds.toFixed(2)} seconds. ${resolution}`,
       };
-      callTransportGapsRef.current = [
-        ...callTransportGapsRef.current,
-        gap,
-      ];
+      callTransportGapsRef.current = [...callTransportGapsRef.current, gap];
       const next = {
         ...current,
         callTransportGaps: callTransportGapsRef.current,
@@ -1427,7 +1437,8 @@ export function BrowserSourceRecorder({
         throw new Error(
           finalized?.error || "Source verification needs a retry.",
         );
-      const finalizationProjection = projectBrowserSourceFinalization(finalized);
+      const finalizationProjection =
+        projectBrowserSourceFinalization(finalized);
       current = {
         ...current,
         state: finalizationProjection.state,
@@ -1674,10 +1685,11 @@ export function BrowserSourceRecorder({
         }
         await resumeBrowserSourceUploads({
           attemptedCaptureIds: automaticUploadRecoveryAttemptedRef.current,
-          list: () => listBrowserSourceLedgersForParticipant({
-            callRoomId,
-            participantId,
-          }).catch(() => []),
+          list: () =>
+            listBrowserSourceLedgersForParticipant({
+              callRoomId,
+              participantId,
+            }).catch(() => []),
           resume: async (ledger) => {
             setMessage("Finishing a recording already saved on this device…");
             await retryUploadLedger(ledger);
@@ -2221,9 +2233,10 @@ export function BrowserSourceRecorder({
             lastDurableChunkAtRef.current = Date.now();
           })
           .catch((error) => {
-            const detail = error instanceof Error
-              ? error.message
-              : "A local source chunk could not be persisted.";
+            const detail =
+              error instanceof Error
+                ? error.message
+                : "A local source chunk could not be persisted.";
             setOperationalIssue({ kind: "encoder-stalled", detail });
             if (recorder.state !== "inactive") {
               stop(
@@ -2338,7 +2351,9 @@ export function BrowserSourceRecorder({
                 ...current,
                 state: "held",
                 failureReason:
-                  error instanceof Error ? error.message : "Finalization failed.",
+                  error instanceof Error
+                    ? error.message
+                    : "Finalization failed.",
                 updatedAt: new Date().toISOString(),
               });
             setStatus("held");
@@ -2599,6 +2614,19 @@ export function BrowserSourceRecorder({
           ["STOPPED", "STOP_FAILED"].includes(terminal || "")
         )
           return;
+        if (
+          browserRecordingDirectiveShouldDeferStart({
+            action: directive.action,
+            activeCaptureOperation: activeCaptureOperationRef.current,
+            automaticUploadRecoveryInFlight:
+              automaticUploadRecoveryInFlightRef.current,
+          })
+        ) {
+          setMessage(
+            "Finishing the protected recording already on this device before joining the active recording…",
+          );
+          return;
+        }
         if (directiveInFlightRef.current.has(directive.id)) return;
         directiveInFlightRef.current.add(directive.id);
         try {
@@ -2775,7 +2803,9 @@ export function BrowserSourceRecorder({
         <span
           className={`rounded-full px-3 py-1.5 text-[10px] font-black uppercase tracking-wide ${status === "recording" ? "bg-rose-700 text-white" : status === "error" || status === "held" ? "bg-amber-100 text-amber-950" : "bg-emerald-100 text-emerald-950"}`}
         >
-          {conversationEnded ? exitSafety.label : retainedRecorderStatusLabel(status, elapsedSeconds)}
+          {conversationEnded
+            ? exitSafety.label
+            : retainedRecorderStatusLabel(status, elapsedSeconds)}
         </span>
       </div>
 
@@ -2792,8 +2822,8 @@ export function BrowserSourceRecorder({
                 {transcriptionAllowed ? "Transcript on" : "Transcript off"}
               </p>
               <p className="mt-1 text-[10px] font-semibold leading-4">
-                Quipsly remembers your choice for this Session. Recording
-                starts only when the coach or host presses Record.
+                Quipsly remembers your choice for this Session. Recording starts
+                only when the coach or host presses Record.
               </p>
             </div>
             <button
@@ -2808,133 +2838,139 @@ export function BrowserSourceRecorder({
         </section>
       ) : null}
 
-      {!conversationEnded ? <details className="mt-4 rounded-xl border border-[#e5d8c0] bg-[#fffaf0] p-3">
-        <summary className="cursor-pointer text-xs font-black uppercase tracking-wide text-[#5b472f]">
-          Recording settings · {myConsentCoversSource ? "Saved" : "Review"}
-        </summary>
-        <div className="mt-3 grid gap-3 lg:grid-cols-2">
-          <div className="rounded-xl border border-[#e5d8c0] bg-[#fffaf0] p-3">
-            <div className="flex items-center justify-between gap-2">
-              <strong className="text-xs uppercase tracking-wide text-[#5b472f]">
-                Source
-              </strong>
-              <span className="text-[10px] font-bold text-[#8a7354]">
-                {microphoneLabel || "Choose a mic above"}
-              </span>
+      {!conversationEnded ? (
+        <details className="mt-4 rounded-xl border border-[#e5d8c0] bg-[#fffaf0] p-3">
+          <summary className="cursor-pointer text-xs font-black uppercase tracking-wide text-[#5b472f]">
+            Recording settings · {myConsentCoversSource ? "Saved" : "Review"}
+          </summary>
+          <div className="mt-3 grid gap-3 lg:grid-cols-2">
+            <div className="rounded-xl border border-[#e5d8c0] bg-[#fffaf0] p-3">
+              <div className="flex items-center justify-between gap-2">
+                <strong className="text-xs uppercase tracking-wide text-[#5b472f]">
+                  Source
+                </strong>
+                <span className="text-[10px] font-bold text-[#8a7354]">
+                  {microphoneLabel || "Choose a mic above"}
+                </span>
+              </div>
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  disabled={status === "recording"}
+                  onClick={() => chooseSourceType("audio")}
+                  className={`min-h-11 rounded-xl text-xs font-black ${sourceType === "audio" ? "bg-violet-800 text-white" : "border bg-white text-[#5b472f]"}`}
+                >
+                  <Mic2 size={15} className="mr-1 inline" /> Studio audio
+                </button>
+                <button
+                  type="button"
+                  disabled={status === "recording"}
+                  onClick={() => chooseSourceType("video")}
+                  className={`min-h-11 rounded-xl text-xs font-black ${sourceType === "video" ? "bg-violet-800 text-white" : "border bg-white text-[#5b472f]"}`}
+                >
+                  <Video size={15} className="mr-1 inline" /> Camera + audio
+                </button>
+              </div>
+              {sourceType === "video" ? (
+                <p className="mt-2 text-[10px] font-bold text-[#8a7354]">
+                  Camera: {cameraLabel || "Choose a camera above"}. USB webcam
+                  output may be lower quality than the camera's internal
+                  recording; Quipsly preserves the measured profile instead of
+                  calling it 4K.
+                </p>
+              ) : null}
+              <label className="mt-3 flex items-start gap-2 text-xs font-bold leading-5 text-[#5b472f]">
+                <input
+                  type="checkbox"
+                  checked={headphonesAttested}
+                  onChange={(event) =>
+                    chooseHeadphonesAttestation(event.target.checked)
+                  }
+                  className="mt-1 accent-violet-800"
+                />{" "}
+                I’m using headphones (recommended).
+              </label>
+              {!headphonesAttested ? (
+                <p className="mt-1 text-[10px] font-semibold text-[#8a7354]">
+                  You can still record without headphones. This choice is
+                  remembered on this device.
+                </p>
+              ) : (
+                <p className="mt-1 text-[10px] font-semibold text-[#8a7354]">
+                  Remembered on this device.
+                </p>
+              )}
             </div>
-            <div className="mt-3 grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                disabled={status === "recording"}
-                onClick={() => chooseSourceType("audio")}
-                className={`min-h-11 rounded-xl text-xs font-black ${sourceType === "audio" ? "bg-violet-800 text-white" : "border bg-white text-[#5b472f]"}`}
-              >
-                <Mic2 size={15} className="mr-1 inline" /> Studio audio
-              </button>
-              <button
-                type="button"
-                disabled={status === "recording"}
-                onClick={() => chooseSourceType("video")}
-                className={`min-h-11 rounded-xl text-xs font-black ${sourceType === "video" ? "bg-violet-800 text-white" : "border bg-white text-[#5b472f]"}`}
-              >
-                <Video size={15} className="mr-1 inline" /> Camera + audio
-              </button>
-            </div>
-            {sourceType === "video" ? (
-              <p className="mt-2 text-[10px] font-bold text-[#8a7354]">
-                Camera: {cameraLabel || "Choose a camera above"}. USB webcam
-                output may be lower quality than the camera's internal
-                recording; Quipsly preserves the measured profile instead of
-                calling it 4K.
-              </p>
-            ) : null}
-            <label className="mt-3 flex items-start gap-2 text-xs font-bold leading-5 text-[#5b472f]">
-              <input
-                type="checkbox"
-                checked={headphonesAttested}
-                onChange={(event) =>
-                  chooseHeadphonesAttestation(event.target.checked)
-                }
-                className="mt-1 accent-violet-800"
-              />{" "}
-              I’m using headphones (recommended).
-            </label>
-            {!headphonesAttested ? (
-              <p className="mt-1 text-[10px] font-semibold text-[#8a7354]">
-                You can still record without headphones. This choice is
-                remembered on this device.
-              </p>
-            ) : (
-              <p className="mt-1 text-[10px] font-semibold text-[#8a7354]">
-                Remembered on this device.
-              </p>
-            )}
-          </div>
 
-          <div className="rounded-xl border border-[#e5d8c0] bg-[#fffaf0] p-3">
-            <strong className="text-xs uppercase tracking-wide text-[#5b472f]">
-              Transcript
-            </strong>
-            <p className="mt-2 text-xs font-semibold leading-5 text-[#765f40]">
-              Quipsly remembers this Session’s saved choice. Change it only when
-              you want a different source or transcript setting.
-            </p>
-            <label className="mt-2 flex items-start gap-2 text-xs font-bold leading-5 text-[#5b472f]">
-              <input
-                ref={transcriptionChoiceInputRef}
-                type="checkbox"
-                checked={transcriptionAllowed}
-                disabled={
-                  !policy || status === "checking" || status === "recording"
-                }
-                onChange={(event) =>
-                  chooseTranscriptionChoice(event.target.checked)
-                }
-                className="mt-1 accent-violet-800"
-              />{" "}
-              Create a transcript and suggested notes/tasks
-            </label>
-            <p className="mt-2 text-[10px] font-semibold leading-4 text-[#8a7354]">
-              Everyone chooses for themselves. If anyone else is nearby, let
-              them know before recording.
-            </p>
-            {myConsentCoversSource ? (
-              <button
-                type="button"
-                onClick={() => void grantConsent()}
-                disabled={!policy || status === "recording"}
-                className="mt-3 min-h-10 rounded-full border border-emerald-300 bg-emerald-50 px-4 text-[10px] font-black uppercase tracking-wide text-emerald-950 disabled:opacity-50"
-              >
-                <ShieldCheck size={14} className="mr-1 inline" /> Update choices
-              </button>
-            ) : null}
-            <p className="mt-2 text-[10px] font-bold text-[#8a7354]">
-              {consentReady
-                ? "Everyone is ready to record."
-                : consentId
-                  ? "Your choice is saved. Waiting for the other participant."
-                  : "Not agreed yet."}
-            </p>
-            {transcriptionAllowed ? (
-              <p className={`mt-1 text-[10px] font-bold leading-4 ${transcriptionChoiceDirty ? "text-amber-800" : allPartyTranscriptionReady ? "text-emerald-800" : "text-[#8a7354]"}`} data-testid="transcription-readiness-message">
-                {transcriptionChoiceDirty
-                  ? "Choose Update choices to save this transcript setting."
-                  : allPartyTranscriptionReady
-                    ? "Everyone enabled the transcript and suggested follow-up."
-                    : consentId
-                      ? "Your choice is saved. The transcript starts after everyone allows it."
-                      : "The transcript will be enabled when you allow recording."}
+            <div className="rounded-xl border border-[#e5d8c0] bg-[#fffaf0] p-3">
+              <strong className="text-xs uppercase tracking-wide text-[#5b472f]">
+                Transcript
+              </strong>
+              <p className="mt-2 text-xs font-semibold leading-5 text-[#765f40]">
+                Quipsly remembers this Session’s saved choice. Change it only
+                when you want a different source or transcript setting.
               </p>
-            ) : null}
-            <details className="mt-2 text-[10px] font-semibold leading-4 text-[#8a7354]">
-              <summary className="cursor-pointer">
-                Recording and privacy details
-              </summary>
-              <p className="mt-2">{policy?.text || "Loading details…"}</p>
-            </details>
+              <label className="mt-2 flex items-start gap-2 text-xs font-bold leading-5 text-[#5b472f]">
+                <input
+                  ref={transcriptionChoiceInputRef}
+                  type="checkbox"
+                  checked={transcriptionAllowed}
+                  disabled={
+                    !policy || status === "checking" || status === "recording"
+                  }
+                  onChange={(event) =>
+                    chooseTranscriptionChoice(event.target.checked)
+                  }
+                  className="mt-1 accent-violet-800"
+                />{" "}
+                Create a transcript and suggested notes/tasks
+              </label>
+              <p className="mt-2 text-[10px] font-semibold leading-4 text-[#8a7354]">
+                Everyone chooses for themselves. If anyone else is nearby, let
+                them know before recording.
+              </p>
+              {myConsentCoversSource ? (
+                <button
+                  type="button"
+                  onClick={() => void grantConsent()}
+                  disabled={!policy || status === "recording"}
+                  className="mt-3 min-h-10 rounded-full border border-emerald-300 bg-emerald-50 px-4 text-[10px] font-black uppercase tracking-wide text-emerald-950 disabled:opacity-50"
+                >
+                  <ShieldCheck size={14} className="mr-1 inline" /> Update
+                  choices
+                </button>
+              ) : null}
+              <p className="mt-2 text-[10px] font-bold text-[#8a7354]">
+                {consentReady
+                  ? "Everyone is ready to record."
+                  : consentId
+                    ? "Your choice is saved. Waiting for the other participant."
+                    : "Not agreed yet."}
+              </p>
+              {transcriptionAllowed ? (
+                <p
+                  className={`mt-1 text-[10px] font-bold leading-4 ${transcriptionChoiceDirty ? "text-amber-800" : allPartyTranscriptionReady ? "text-emerald-800" : "text-[#8a7354]"}`}
+                  data-testid="transcription-readiness-message"
+                >
+                  {transcriptionChoiceDirty
+                    ? "Choose Update choices to save this transcript setting."
+                    : allPartyTranscriptionReady
+                      ? "Everyone enabled the transcript and suggested follow-up."
+                      : consentId
+                        ? "Your choice is saved. The transcript starts after everyone allows it."
+                        : "The transcript will be enabled when you allow recording."}
+                </p>
+              ) : null}
+              <details className="mt-2 text-[10px] font-semibold leading-4 text-[#8a7354]">
+                <summary className="cursor-pointer">
+                  Recording and privacy details
+                </summary>
+                <p className="mt-2">{policy?.text || "Loading details…"}</p>
+              </details>
+            </div>
           </div>
-        </div>
-      </details> : null}
+        </details>
+      ) : null}
 
       {!conversationConnected ? (
         conversationEnded ? (
@@ -2944,10 +2980,22 @@ export function BrowserSourceRecorder({
             aria-live="polite"
           >
             <p className="flex items-center gap-2 text-sm font-black">
-              {exitSafety.state === "safe" || exitSafety.state === "idle" ? <CheckCircle2 size={18} aria-hidden="true" /> : exitSafety.state === "attention" ? <AlertTriangle size={18} aria-hidden="true" /> : <LoaderCircle size={18} className="animate-spin" aria-hidden="true" />}
+              {exitSafety.state === "safe" || exitSafety.state === "idle" ? (
+                <CheckCircle2 size={18} aria-hidden="true" />
+              ) : exitSafety.state === "attention" ? (
+                <AlertTriangle size={18} aria-hidden="true" />
+              ) : (
+                <LoaderCircle
+                  size={18}
+                  className="animate-spin"
+                  aria-hidden="true"
+                />
+              )}
               {exitSafety.label}
             </p>
-            <p className="mt-2 text-xs font-semibold leading-5">{exitSafety.detail}</p>
+            <p className="mt-2 text-xs font-semibold leading-5">
+              {exitSafety.detail}
+            </p>
           </section>
         ) : (
           <p className="mt-3 rounded-xl border border-violet-200 bg-violet-50 px-3 py-2 text-xs font-bold leading-5 text-violet-950">
@@ -3005,7 +3053,9 @@ export function BrowserSourceRecorder({
                   action: recordingDirective.action,
                   status,
                   retainedReady: retainedReadiness.ok,
-                  terminalState: directiveHandlingRef.current.get(recordingDirective.id),
+                  terminalState: directiveHandlingRef.current.get(
+                    recordingDirective.id,
+                  ),
                 })) ? (
                 <button
                   type="button"
@@ -3014,7 +3064,9 @@ export function BrowserSourceRecorder({
                   className="inline-flex min-h-12 items-center gap-2 rounded-full border border-rose-300 bg-white px-5 text-xs font-black uppercase tracking-wide text-rose-950 disabled:opacity-40"
                 >
                   <span className="h-3 w-3 rounded-full bg-rose-700" />{" "}
-                  {status === "error" ? "Try recording again" : "Start my recording"}
+                  {status === "error"
+                    ? "Try recording again"
+                    : "Start my recording"}
                 </button>
               ) : null}
             </>
@@ -3047,7 +3099,9 @@ export function BrowserSourceRecorder({
                 action: recordingDirective.action,
                 status,
                 retainedReady: retainedReadiness.ok,
-                terminalState: directiveHandlingRef.current.get(recordingDirective.id),
+                terminalState: directiveHandlingRef.current.get(
+                  recordingDirective.id,
+                ),
               })) ? (
             <button
               type="button"
@@ -3056,7 +3110,9 @@ export function BrowserSourceRecorder({
               className="inline-flex min-h-12 items-center gap-2 rounded-full bg-rose-800 px-5 text-xs font-black uppercase tracking-wide text-white disabled:opacity-40"
             >
               <span className="h-3 w-3 rounded-full bg-white" />{" "}
-              {status === "error" ? "Try recording again" : "Start my recording"}
+              {status === "error"
+                ? "Try recording again"
+                : "Start my recording"}
             </button>
           ) : (
             <span className="rounded-xl border border-violet-200 bg-violet-50 px-4 py-3 text-xs font-bold text-violet-950">
@@ -3082,8 +3138,8 @@ export function BrowserSourceRecorder({
             className="mt-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-bold leading-5 text-amber-950"
           >
             Room status is saved on this device and will retry automatically
-            when the Session connection is ready. Any recording already
-            captured remains protected separately.
+            when the Session connection is ready. Any recording already captured
+            remains protected separately.
           </p>
         ) : null}
         {recordingDirective &&
@@ -3128,8 +3184,8 @@ export function BrowserSourceRecorder({
             </ul>
             {recordingHealthProjection.tone === "attention" ? (
               <p className="mt-2 rounded-lg bg-white px-3 py-2 text-[11px] font-bold leading-4 text-amber-950">
-                Open Quipsly on the affected recording device. It will retry
-                the protected recording automatically.
+                Open Quipsly on the affected recording device. It will retry the
+                protected recording automatically.
               </p>
             ) : null}
             <details className="mt-2 text-[10px] font-bold leading-4 text-[#725d43]">
@@ -3182,7 +3238,10 @@ export function BrowserSourceRecorder({
             · {formatBytes(usageBytes)} / {formatBytes(quotaBytes)}
           </p>
           {operationalIssue?.technicalDetail ? (
-            <p className="mt-2 break-words font-mono font-medium" data-testid="recording-technical-detail">
+            <p
+              className="mt-2 break-words font-mono font-medium"
+              data-testid="recording-technical-detail"
+            >
               Technical detail: {operationalIssue.technicalDetail}
             </p>
           ) : null}
@@ -3230,7 +3289,8 @@ export function BrowserSourceRecorder({
                   {latestRecordingReceipt.detail}
                 </p>
                 <p className="mt-1 truncate font-mono text-[10px] font-bold opacity-75">
-                  {activeLedger.fileName} · {formatBytes(activeLedger.sizeBytes)}
+                  {activeLedger.fileName} ·{" "}
+                  {formatBytes(activeLedger.sizeBytes)}
                 </p>
                 {latestRecordingExit?.detail ? (
                   <p className="mt-1 text-[10px] font-bold leading-4">
@@ -3404,8 +3464,8 @@ export function BrowserSourceRecorder({
                               )
                             ? "Recover recording"
                             : ledger.state === "verifying"
-                            ? "Check verification"
-                          : "Retry upload"}
+                              ? "Check verification"
+                              : "Retry upload"}
                       </button>
                     ) : null}
                     {ledger.state === "verified" ? (

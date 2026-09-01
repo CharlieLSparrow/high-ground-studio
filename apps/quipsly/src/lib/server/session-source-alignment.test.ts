@@ -10,6 +10,7 @@ import {
   buildSessionSourceAlignmentPlan,
   decideSessionSourceAlignment,
   queueSessionSourceAlignment,
+  sessionSourceAlignmentProcessorBinding,
   suggestSessionSourceAlignment,
   SessionSourceAlignmentError,
 } from "./session-source-alignment";
@@ -154,6 +155,53 @@ describe("Session exact-source audio alignment planning", () => {
     expect(plan.proposal.searchRadiusSeconds).toBeGreaterThanOrEqual(1);
   });
 
+  it("binds repaired interrupted media to the verified lossless derivative", () => {
+    expect(
+      sessionSourceAlignmentProcessorBinding({
+        id: "recording_interrupted_123",
+        roomId: "room_session_12345678",
+        durationSeconds: 6,
+        recordedStartedAt: new Date("2026-08-24T20:00:00.000Z"),
+        playback: {
+          schema: "quipsly-session-protected-playback-v1",
+          roomId: "room_session_12345678",
+          recordingAssetId: "recording_interrupted_123",
+          url: "/raw",
+          sha256: "a".repeat(64),
+          byteSize: 10_000,
+          bucketName: "quipsly-local-development-vault",
+          objectName: "media-vault/original.webm",
+          generation: "123",
+          contentType: "audio/webm",
+          kind: "audio",
+        },
+        localManifestJson: {
+          promotion: { providerSourceId: "/vault/repaired.webm" },
+          interruptionRepair: {
+            status: "verified",
+            originalRemainsSourceTruth: true,
+            derivative: {
+              sha256: "b".repeat(64),
+              sizeBytes: 10_321,
+              bucketName: "quipsly-local-development-vault",
+              objectName: "media-vault/repair/repaired.webm",
+              generation: "124",
+              contentType: "audio/webm",
+            },
+          },
+        },
+      }),
+    ).toMatchObject({
+      assetId: "recording_interrupted_123",
+      provider: "local",
+      locator: "/vault/repaired.webm",
+      generation: "124",
+      sha256: "b".repeat(64),
+      sizeBytes: 10_321,
+      contentType: "audio/webm",
+    });
+  });
+
   it("derives a free automatic suggestion from two released participant masters", async () => {
     const room = { id: "room_session_12345678", captureGroupId };
     const exactAsset = (input: {
@@ -162,12 +210,13 @@ describe("Session exact-source audio alignment planning", () => {
       role: string;
       startedAt: string;
       hash: string;
+      duration?: number;
     }) => ({
       id: input.id,
       roomId: room.id,
       participantId: input.participantId,
       participant: { role: input.role },
-      durationSeconds: 120,
+      durationSeconds: input.duration ?? 120,
       recordedStartedAt: new Date(input.startedAt),
       localManifestJson: {
         exactBytesVerified: true,
@@ -192,6 +241,14 @@ describe("Session exact-source audio alignment planning", () => {
       verifiedAt: new Date("2026-08-24T20:02:00.000Z"),
     });
     const assets = [
+      exactAsset({
+        id: "recording_coach_resumed",
+        participantId: "participant_coach_1",
+        role: "COACH",
+        startedAt: "2026-08-24T20:02:00.000Z",
+        duration: 4,
+        hash: "d",
+      }),
       exactAsset({
         id: "recording_client_1234",
         participantId: "participant_client_1",

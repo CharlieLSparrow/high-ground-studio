@@ -49,7 +49,7 @@ describe("browser retained-source consent", () => {
     );
     expect(source).not.toContain("Everyone agrees once");
     expect(source).toMatch(
-      /Recording\s+starts only when the coach or host presses/,
+      /Recording\s+starts\s+only when the coach or host presses/,
     );
     expect(source).toContain("If anyone else is nearby, let");
     expect(source).toContain("Create a transcript and suggested notes/tasks");
