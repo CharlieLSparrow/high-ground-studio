@@ -486,7 +486,6 @@ final class CaptureExperienceModel: ObservableObject {
     private var videoConsentMonitorTask: Task<Void, Never>?
     private var isStoppingCoordinatedCapture = false
     private var didReconcileReceiptOutbox = false
-    private var initialSessionAuthorityVerifiedAt: Date?
     private var observedReceiptOwnerAccountID: String?
     private var automaticallyQueuedRecoveredRecordingIDs = Set<UUID>()
     private var isMaterializingPersonalVoiceNotes = false
@@ -984,10 +983,6 @@ final class CaptureExperienceModel: ObservableObject {
     /// independently without holding the requested room behind a dashboard.
     private func loadInitialSessionAuthority() async -> CaptureSessionLoadOutcome {
         let outcome = await sessionClient.load()
-        initialSessionAuthorityVerifiedAt = outcome == .loaded
-            && !sessionClient.sessionsAreStale
-            ? Date()
-            : nil
         hasCompletedInitialSessionAuthorityLoad = true
         return outcome
     }
@@ -1346,7 +1341,7 @@ final class CaptureExperienceModel: ObservableObject {
             return .retryWhenOnline
         }
 
-        let initialAuthorityIsFresh = initialSessionAuthorityVerifiedAt.map {
+        let initialAuthorityIsFresh = sessionClient.lastAuthoritativeLoadAt.map {
             Date().timeIntervalSince($0) <= 15
         } == true
         let initialAuthorityIncludesRoom = initialAuthorityIsFresh
@@ -2062,14 +2057,36 @@ final class CaptureExperienceModel: ObservableObject {
         captureReceiptNotice = nil
         captureSafetyNotice = nil
 
+        var captureAuthorityBasis = CaptureRecordingAuthorityBasis.authoritativeRefresh
+
         let loadOutcome = await sessionClient.load(authoritativeSessionID: session.id)
         guard AuthManager.shared.matchesStableOwnerSnapshot(ownerSnapshot) else {
             isChangingCapture = false
             errorMessage = captureOwnerChangedBeforeStartMessage
             return
         }
-        guard loadOutcome == .loaded,
-              let refreshed = sessionClient.sessions.first(where: { $0.id == session.id }) else {
+        let refreshed: MobileCaptureSession
+        switch loadOutcome {
+        case .loaded:
+            guard let authoritativeSession = sessionClient.sessions.first(where: { $0.id == session.id }) else {
+                isChangingCapture = false
+                errorMessage = captureStartVerificationMessage(for: loadOutcome)
+                return
+            }
+            refreshed = authoritativeSession
+        case .transportUnavailable:
+            guard let retainedSession = sessionClient.sessions.first(where: { $0.id == session.id }),
+                  recentOfflineRecordingAuthority(
+                    for: retainedSession,
+                    recordingIsReady: videoAuthorityIsCurrent(for: retainedSession, mode: mode)
+                  ) == .allow(.recentDeviceConsent) else {
+                isChangingCapture = false
+                errorMessage = captureStartVerificationMessage(for: loadOutcome)
+                return
+            }
+            refreshed = retainedSession
+            captureAuthorityBasis = .recentDeviceConsent
+        case .forbidden, .authoritativeAbsent, .invalidResponse:
             isChangingCapture = false
             errorMessage = captureStartVerificationMessage(for: loadOutcome)
             return
@@ -2112,6 +2129,7 @@ final class CaptureExperienceModel: ObservableObject {
             recordingConsentID: recordingConsentID,
             recordingAssetID: nil,
             capturePurpose: "\(refreshed.purpose ?? "capture")-\(mode.rawValue)",
+            captureAuthorityBasis: captureAuthorityBasis,
             displayTitle: "\(refreshed.displayTitle) · \(mode.title)",
             consentAllowsVideo: true,
             consentAllowsAudio: refreshed.recordingConsentCanRecordAudio == true,
@@ -2139,15 +2157,19 @@ final class CaptureExperienceModel: ObservableObject {
         activeVideoCaptureOwnerSnapshot = ownerSnapshot
         isChangingCapture = false
         clearSessionEntryNotice(for: refreshed.id)
-        switch mode {
-        case .podcastCamera:
-            message = "Recording a video-only camera master. The live room remains the conversation path; Quipsly will align their clocks after upload."
-        case .podcastAV:
-            message = "Camera master is armed video-only. Quipsly is preparing the separate microphone master in the same capture group."
-        case .soloVideo:
-            message = "Recording camera and microphone locally as one protected movie source."
-        case .audio:
-            message = nil
+        if captureAuthorityBasis == .recentDeviceConsent {
+            message = "Recording safely on \(CaptureDeviceVocabulary.thisDevice) while Nest reconnects. Upload and sharing will resume after Quipsly revalidates this Session."
+        } else {
+            switch mode {
+            case .podcastCamera:
+                message = "Recording a video-only camera master. The live room remains the conversation path; Quipsly will align their clocks after upload."
+            case .podcastAV:
+                message = "Camera master is armed video-only. Quipsly is preparing the separate microphone master in the same capture group."
+            case .soloVideo:
+                message = "Recording camera and microphone locally as one protected movie source."
+            case .audio:
+                message = nil
+            }
         }
         scheduleReceiptFlush()
         startVideoConsentMonitor(videoCapture: videoCapture)
@@ -2564,9 +2586,15 @@ final class CaptureExperienceModel: ObservableObject {
         captureSafetyNotice = nil
         captureRequiresNewTake = false
 
-        // Starting a new capture is an online-authority action. Refresh
-        // immediately before opening AVAudioRecorder so cached consent or
-        // readiness can never be mistaken for current permission to record.
+        var captureAuthorityBasis: CaptureRecordingAuthorityBasis = usesPreviewData
+            ? .preview
+            : usesLocalPersonalVoiceNoteAuthority
+                ? .localDraft
+                : .authoritativeRefresh
+
+        // Prefer an immediate authoritative refresh. During a brief transport
+        // outage, a recent in-memory consent decision may open only a protected
+        // local source; Nest still revalidates every downstream mutation.
         if !usesPreviewData && !usesLocalPersonalVoiceNoteAuthority {
             let loadOutcome = await sessionClient.load(authoritativeSessionID: session.id)
             guard AuthManager.shared.matchesStableOwnerSnapshot(ownerSnapshot) else {
@@ -2574,8 +2602,28 @@ final class CaptureExperienceModel: ObservableObject {
                 errorMessage = captureOwnerChangedBeforeStartMessage
                 return
             }
-            guard loadOutcome == .loaded,
-                  let refreshed = sessionClient.sessions.first(where: { $0.id == session.id }) else {
+            let refreshed: MobileCaptureSession
+            switch loadOutcome {
+            case .loaded:
+                guard let authoritativeSession = sessionClient.sessions.first(where: { $0.id == session.id }) else {
+                    isChangingCapture = false
+                    errorMessage = captureStartVerificationMessage(for: loadOutcome)
+                    return
+                }
+                refreshed = authoritativeSession
+            case .transportUnavailable:
+                guard let retainedSession = sessionClient.sessions.first(where: { $0.id == session.id }),
+                      recentOfflineRecordingAuthority(
+                        for: retainedSession,
+                        recordingIsReady: retainedSession.recordingConsentGranted && retainedSession.canRecordNow
+                      ) == .allow(.recentDeviceConsent) else {
+                    isChangingCapture = false
+                    errorMessage = captureStartVerificationMessage(for: loadOutcome)
+                    return
+                }
+                refreshed = retainedSession
+                captureAuthorityBasis = .recentDeviceConsent
+            case .forbidden, .authoritativeAbsent, .invalidResponse:
                 isChangingCapture = false
                 errorMessage = captureStartVerificationMessage(for: loadOutcome)
                 return
@@ -2607,7 +2655,9 @@ final class CaptureExperienceModel: ObservableObject {
         let contextSlugs = MobileContextManager.shared.getTargetSlugs()
         let captureID = UUID()
         let resolvedCaptureGroupID = captureGroupID ?? session.captureGroupId ?? captureID
-        let clockSamples = usesPreviewData || usesLocalPersonalVoiceNoteAuthority
+        let clockSamples = usesPreviewData
+            || usesLocalPersonalVoiceNoteAuthority
+            || captureAuthorityBasis == .recentDeviceConsent
             ? []
             : await CaptureClockClient.shared.measureBurst(
                 callRoomID: session.callRoomId,
@@ -2667,7 +2717,8 @@ final class CaptureExperienceModel: ObservableObject {
             recordingConsentGranted: true,
             transcriptionConsentGranted: usesLocalPersonalVoiceNoteAuthority
                 || session.allRegisteredParticipantTranscriptionConsentGranted == true,
-            capturePurpose: session.purpose ?? "capture"
+            capturePurpose: session.purpose ?? "capture",
+            captureAuthorityBasis: captureAuthorityBasis
         )
         audioCapture.handleCommand(command)
 
@@ -2708,7 +2759,11 @@ final class CaptureExperienceModel: ObservableObject {
         if let persistenceError = receiptStore.persistenceError {
             captureReceiptNotice = persistenceError
         }
-        message = "Recording \(CaptureDeviceVocabulary.thisDevicePossessive) microphone. Quipsly syncs the Session in the background."
+        if captureAuthorityBasis == .recentDeviceConsent {
+            message = "Recording safely on \(CaptureDeviceVocabulary.thisDevice) while Nest reconnects. Upload and sharing will resume after Quipsly revalidates this Session."
+        } else {
+            message = "Recording \(CaptureDeviceVocabulary.thisDevicePossessive) microphone. Quipsly syncs the Session in the background."
+        }
         scheduleReceiptFlush()
         startConsentMonitor(captureID: captureID, audioCapture: audioCapture)
     }
@@ -3762,6 +3817,23 @@ final class CaptureExperienceModel: ObservableObject {
              let .invalidResponse(message):
             return "\(message) Nothing was recorded."
         }
+    }
+
+    private func recentOfflineRecordingAuthority(
+        for session: MobileCaptureSession,
+        recordingIsReady: Bool
+    ) -> CaptureOfflineRecordingAuthorityDecision {
+        let consentID = session.recordingConsentId?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return CaptureOfflineRecordingAuthorityPolicy.decide(
+            CaptureOfflineRecordingAuthorityInput(
+                lastAuthoritativeRefreshAt: sessionClient.lastAuthoritativeLoadAt,
+                evaluatedAt: Date(),
+                sessionsAreFromProtectedCache: sessionClient.sessionsAreStale,
+                recordingIsReady: recordingIsReady,
+                hasRecordingConsentID: consentID?.isEmpty == false
+            )
+        )
     }
 
     private var captureOwnerChangedBeforeStartMessage: String {

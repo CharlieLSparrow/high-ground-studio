@@ -28,6 +28,7 @@ struct VideoCaptureContext: Equatable {
     let recordingConsentID: String
     let recordingAssetID: String?
     let capturePurpose: String
+    let captureAuthorityBasis: CaptureRecordingAuthorityBasis
     let displayTitle: String
     let consentAllowsVideo: Bool
     let consentAllowsAudio: Bool
@@ -439,11 +440,13 @@ final class VideoCaptureController: ObservableObject {
             state = .arming
             let recordingID = UUID()
             let groupID = captureGroupID ?? UUID()
-            let clockSamples = await CaptureClockClient.shared.measureBurst(
-                callRoomID: context.callRoomID,
-                captureGroupID: groupID,
-                expectedOwnerAccountID: ownerSnapshot.ownerAccountID
-            )
+            let clockSamples = context.captureAuthorityBasis == .recentDeviceConsent
+                ? []
+                : await CaptureClockClient.shared.measureBurst(
+                    callRoomID: context.callRoomID,
+                    captureGroupID: groupID,
+                    expectedOwnerAccountID: ownerSnapshot.ownerAccountID
+                )
             guard AuthManager.shared.matchesStableOwnerSnapshot(ownerSnapshot) else {
                 throw VideoCaptureControllerError.ownerChanged
             }
@@ -500,6 +503,7 @@ final class VideoCaptureController: ObservableObject {
                 audioChannelCount: profile.audioChannelCount,
                 captureAppVersion: runtimeEvidence.appVersion,
                 captureAppBuild: runtimeEvidence.appBuild,
+                captureAuthorityBasis: context.captureAuthorityBasis.rawValue,
                 deviceModelIdentifier: runtimeEvidence.deviceModelIdentifier,
                 deviceSystemName: runtimeEvidence.systemName,
                 deviceSystemVersion: runtimeEvidence.systemVersion,

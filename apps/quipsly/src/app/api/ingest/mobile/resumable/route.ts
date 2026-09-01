@@ -48,6 +48,7 @@ import {
   longSourceVerifierEnabled,
 } from "@/lib/server/mobile-capture-long-verification";
 import { audibleEventDetectorReceiptMatchesSource } from "@/lib/audio/audible-event-analysis";
+import { mobileCaptureRequiresFreshRoomAuthorization } from "@/lib/server/mobile-capture-source-authority";
 
 export const runtime = "nodejs";
 
@@ -723,6 +724,23 @@ export async function POST(request: Request) {
             consentVersion: roomReadiness.startConsentVersion,
           }
         : null;
+
+    // A source opened during a brief Nest outage may be preserved locally, but
+    // it must not receive a cloud upload capability until the queued START
+    // receipt and current room consent have both been revalidated. Returning a
+    // retryable response lets the protected iOS outbox recover automatically.
+    if (
+      !externalAuthorization?.ok
+      && mobileCaptureRequiresFreshRoomAuthorization(parsedSourceProfile)
+      && !processingAuthorization
+    ) {
+      return jsonNoStore({
+        ok: false,
+        code: "CAPTURE_ROOM_REVALIDATION_PENDING",
+        error: "The local source is safe. Nest is waiting to revalidate this Session and its recording consent before upload.",
+        retryAfterSeconds: 5,
+      }, 425, { "Retry-After": "5" });
+    }
 
     const objectName = buildMobileRecordingObjectName({
       callRoomId: binding.callRoomId,

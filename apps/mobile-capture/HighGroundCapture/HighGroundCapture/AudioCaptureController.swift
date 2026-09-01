@@ -159,6 +159,7 @@ final class AudioCaptureController: NSObject, ObservableObject {
     private var activeRecordingConsentId: String?
     private var activeRecordingAssetId: String?
     private var activeCapturePurpose: String?
+    private var activeCaptureAuthorityBasis: CaptureRecordingAuthorityBasis?
 
     private var isPersonalVoiceWritingPurpose: Bool {
         let value = activeCapturePurpose?
@@ -660,6 +661,7 @@ final class AudioCaptureController: NSObject, ObservableObject {
         activeRecordingConsentId = normalized(command.recordingConsentId)
         activeRecordingAssetId = normalized(command.recordingAssetId)
         activeCapturePurpose = normalized(command.capturePurpose)
+        activeCaptureAuthorityBasis = command.captureAuthorityBasis
         recordingConsentGranted = command.recordingConsentGranted == true
         transcriptionConsentGranted = command.transcriptionConsentGranted == true
 
@@ -1151,6 +1153,7 @@ final class AudioCaptureController: NSObject, ObservableObject {
                         : "recorder-native-pause",
                 captureAppVersion: runtimeEvidence.appVersion,
                 captureAppBuild: runtimeEvidence.appBuild,
+                captureAuthorityBasis: activeCaptureAuthorityBasis?.rawValue,
                 deviceModelIdentifier: runtimeEvidence.deviceModelIdentifier,
                 deviceSystemName: runtimeEvidence.systemName,
                 deviceSystemVersion: runtimeEvidence.systemVersion,

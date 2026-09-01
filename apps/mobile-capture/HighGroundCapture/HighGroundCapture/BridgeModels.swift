@@ -44,6 +44,7 @@ struct RecorderCommand: Codable {
     /// safely choose whether local speech work should begin after finalization.
     let transcriptionConsentGranted: Bool?
     let capturePurpose: String?
+    let captureAuthorityBasis: CaptureRecordingAuthorityBasis?
 
     init(
         action: ActionType,
@@ -55,7 +56,8 @@ struct RecorderCommand: Codable {
         recordingAssetId: String? = nil,
         recordingConsentGranted: Bool? = nil,
         transcriptionConsentGranted: Bool? = nil,
-        capturePurpose: String? = nil
+        capturePurpose: String? = nil,
+        captureAuthorityBasis: CaptureRecordingAuthorityBasis? = nil
     ) {
         self.action = action
         self.projectSlug = projectSlug
@@ -67,6 +69,7 @@ struct RecorderCommand: Codable {
         self.recordingConsentGranted = recordingConsentGranted
         self.transcriptionConsentGranted = transcriptionConsentGranted
         self.capturePurpose = capturePurpose
+        self.captureAuthorityBasis = captureAuthorityBasis
     }
 
     static let stop = RecorderCommand(action: .stop)
@@ -7741,6 +7744,7 @@ final class CaptureSessionClient: ObservableObject {
     @Published private(set) var roomJoinFailureCode: String?
     @Published private(set) var isUsingCachedSessions = false
     @Published private(set) var cachedSessionsSavedAt: Date?
+    @Published private(set) var lastAuthoritativeLoadAt: Date?
     @Published var latestRoomStateResponse: MobileCaptureRoomStateResponse?
     @Published var latestTranscriptRunResponse: MobileCaptureTranscriptRunResponse?
     @Published var latestPacketBuildResponse: MobileCapturePacketBuildResponse?
@@ -7846,6 +7850,7 @@ final class CaptureSessionClient: ObservableObject {
             coachingEngagements = payload.coachingEngagements ?? []
             isUsingCachedSessions = false
             cachedSessionsSavedAt = Date()
+            lastAuthoritativeLoadAt = Date()
             let authoritativeSession = authoritativeSessionID.flatMap { identifier in
                 sessions.first(where: {
                     $0.id == identifier || $0.callRoomId == identifier
@@ -7910,6 +7915,7 @@ final class CaptureSessionClient: ObservableObject {
         clientFollowUpLoadStates = [:]
         isUsingCachedSessions = false
         cachedSessionsSavedAt = nil
+        lastAuthoritativeLoadAt = nil
     }
 
     private func isTransportUnavailable(_ error: Error) -> Bool {

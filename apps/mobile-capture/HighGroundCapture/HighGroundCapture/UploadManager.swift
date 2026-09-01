@@ -1596,11 +1596,11 @@ final class UploadManager: NSObject, ObservableObject, URLSessionTaskDelegate, U
             ?? envelope.error
             ?? envelope.message
             ?? "Server returned HTTP \(response.statusCode)"
-        let retryable = envelope.failure?.retryable == true
-            || response.statusCode == 408
-            || response.statusCode == 429
-            || response.statusCode >= 500
-            || (retryOnConflict && response.statusCode == 409)
+        let retryable = CaptureCanonicalControlRetryPolicy.isRetryable(
+            statusCode: response.statusCode,
+            serverMarkedRetryable: envelope.failure?.retryable == true,
+            retryOnConflict: retryOnConflict
+        )
 
         if retryable {
             scheduleRetry(

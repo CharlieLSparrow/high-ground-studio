@@ -46,6 +46,7 @@ struct LocalRecordingSourceProfile: Codable, Equatable, Sendable {
     var pauseTimelinePolicy: String?
     var captureAppVersion: String?
     var captureAppBuild: String?
+    var captureAuthorityBasis: String?
     var deviceModelIdentifier: String?
     var deviceSystemName: String?
     var deviceSystemVersion: String?
@@ -83,6 +84,7 @@ struct LocalRecordingSourceProfile: Codable, Equatable, Sendable {
         pauseTimelinePolicy: String? = nil,
         captureAppVersion: String? = nil,
         captureAppBuild: String? = nil,
+        captureAuthorityBasis: String? = nil,
         deviceModelIdentifier: String? = nil,
         deviceSystemName: String? = nil,
         deviceSystemVersion: String? = nil,
@@ -119,6 +121,7 @@ struct LocalRecordingSourceProfile: Codable, Equatable, Sendable {
         self.pauseTimelinePolicy = pauseTimelinePolicy
         self.captureAppVersion = captureAppVersion
         self.captureAppBuild = captureAppBuild
+        self.captureAuthorityBasis = captureAuthorityBasis
         self.deviceModelIdentifier = deviceModelIdentifier
         self.deviceSystemName = deviceSystemName
         self.deviceSystemVersion = deviceSystemVersion
