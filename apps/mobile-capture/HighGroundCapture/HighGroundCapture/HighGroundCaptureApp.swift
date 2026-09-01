@@ -47,6 +47,7 @@ struct HighGroundCaptureApp: App {
                         // on return so the recorder immediately leaves its
                         // stale denied state without another setup ritual.
                         audioCapture.refreshReadinessSnapshot()
+                        videoCapture.refreshPermissionReadinessSnapshot()
                         Task {
                             await OnDeviceTranscriptManager.shared.resumeEligibleRecordings(
                                 retryFailures: true

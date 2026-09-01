@@ -142,6 +142,11 @@ final class VideoCaptureController: ObservableObject {
         }
     }
 
+    private enum PermissionFailure {
+        case camera
+        case microphone
+    }
+
     private struct ActiveCapture {
         let recordingID: UUID
         let captureGroupID: UUID
@@ -175,6 +180,7 @@ final class VideoCaptureController: ObservableObject {
     private var stopRequestedWhileArming: StopReason?
     private var pausedCapture: PausedCapture?
     private var pendingSwitchPosition: VideoCaptureCameraPosition?
+    private var permissionFailure: PermissionFailure?
     private var observers: [NSObjectProtocol] = []
     private var backgroundFinalizationTaskID: UIBackgroundTaskIdentifier = .invalid
 
@@ -315,6 +321,35 @@ final class VideoCaptureController: ObservableObject {
         } catch {
             fail(error)
         }
+    }
+
+    /// Re-reads permission changed in Settings without opening the camera,
+    /// microphone, or a preview session. Only a stale permission failure is
+    /// dismissed; storage, consent, ownership, thermal, and source-integrity
+    /// failures remain visible until their underlying condition is handled.
+    func refreshPermissionReadinessSnapshot() {
+        guard state == .failed,
+              activeCapture == nil,
+              pausedCapture == nil,
+              let permissionFailure else {
+            return
+        }
+
+        let recovered: Bool
+        switch permissionFailure {
+        case .camera:
+            recovered = AVCaptureDevice.authorizationStatus(for: .video)
+                == .authorized
+        case .microphone:
+            recovered = AVCaptureDevice.authorizationStatus(for: .audio)
+                == .authorized
+        }
+        guard recovered else { return }
+
+        self.permissionFailure = nil
+        state = .idle
+        lastErrorMessage = nil
+        safetyMessage = "Access is ready. Tap Prepare when you want to open the camera."
     }
 
     func start(
@@ -1174,6 +1209,18 @@ final class VideoCaptureController: ObservableObject {
     private func fail(_ error: Error) {
         captureClockSamplingTask?.cancel()
         captureClockSamplingTask = nil
+        if let serviceError = error as? VideoCaptureServiceError {
+            switch serviceError {
+            case .cameraPermissionDenied:
+                permissionFailure = .camera
+            case .microphonePermissionDenied:
+                permissionFailure = .microphone
+            default:
+                permissionFailure = nil
+            }
+        } else {
+            permissionFailure = nil
+        }
         state = .failed
         lastErrorMessage = error.localizedDescription
         safetyMessage = "No unverified success is claimed. Any local bytes and durable receipts remain preserved."
