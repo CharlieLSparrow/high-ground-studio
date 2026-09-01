@@ -1,6 +1,9 @@
+import { captureDeviceTranscriptExpectation } from "@/lib/server/capture-device-transcript-expectation";
+
 type MobileCaptureRecordInput = {
   prisma: any;
   actorUserId?: string;
+  actorEmail?: string;
   actorIsStaff?: boolean;
   sessionId: string;
   fileName: string;
@@ -36,6 +39,7 @@ type MobileCaptureRecordInput = {
   transcriptionDisposition: "RELEASED" | "HELD";
   transcriptionHoldReasonCode?: string | null;
   transcriptionHoldReason?: string | null;
+  onDeviceTranscriptExpected?: boolean;
 };
 
 type MobileCaptureReferenceInput = Omit<
@@ -453,12 +457,23 @@ async function findOrQueueTranscriptJob(
     orderBy: { createdAt: "desc" },
   });
 
+  const deviceTranscriptExpectation = input.onDeviceTranscriptExpected === true
+    ? captureDeviceTranscriptExpectation({
+        actorUserId: input.actorUserId,
+        actorEmail: input.actorEmail,
+        startedAt: input.startedAt,
+        stoppedAt: input.stoppedAt,
+        priorResultJson: existing?.resultJson,
+      })
+    : null;
+
   const resultJson = {
     source: "mobile-capture-ingest",
     mediaAssetId: input.mediaAssetId || null,
     sourceId: input.sourceId || null,
     lastMobileCaptureIngestedAt: new Date().toISOString(),
     recordingConsentGranted: consentAllowsTranscription,
+    ...(deviceTranscriptExpectation ? { deviceTranscriptExpectation } : {}),
   };
 
   if (!consentAllowsTranscription || processingHold) {

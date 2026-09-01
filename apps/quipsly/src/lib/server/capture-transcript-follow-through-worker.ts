@@ -1,5 +1,6 @@
 import "server-only";
 
+import { runExpiredDeviceTranscriptFallbackMaintenance } from "@/lib/server/capture-device-transcript-fallback-worker";
 import { reconcileCaptureTranscriptFollowThrough } from "@/lib/server/capture-transcript-follow-through";
 import { authorizeGoogleOidcWorker } from "@/lib/server/google-oidc-worker-auth";
 
@@ -31,6 +32,23 @@ export async function runCaptureTranscriptFollowThroughMaintenance(input: {
   if (!Number.isInteger(limit) || limit < 1 || limit > MAX_LIMIT) {
     throw new Error(`Capture transcript follow-through limit must be between 1 and ${MAX_LIMIT}.`);
   }
+
+  const deviceTranscriptFallback = await runExpiredDeviceTranscriptFallbackMaintenance({
+    prisma: input.prisma,
+    limit,
+  }).catch(() => ({
+    schema: "quipsly-capture-device-transcript-fallback-maintenance-v1",
+    scanned: 0,
+    deferred: 0,
+    expired: 0,
+    attempted: 0,
+    queued: 0,
+    completed: 0,
+    held: 0,
+    failed: 1,
+    results: [],
+    maintenanceRetryable: true,
+  }));
 
   const [progressing, held, interruptedCompleted] = await Promise.all([
     input.prisma.transcriptJob.findMany({
@@ -83,6 +101,7 @@ export async function runCaptureTranscriptFollowThroughMaintenance(input: {
       });
   return {
     schema: "quipsly-capture-transcript-follow-through-maintenance-v1",
+    deviceTranscriptFallback,
     scanned: candidates.length,
     ready: results.filter((result) => result.packetStatus === "ready").length,
     waiting: results.filter((result) => result.packetStatus === "waiting").length,

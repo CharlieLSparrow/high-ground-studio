@@ -885,6 +885,7 @@ function captureRecordInput(args: {
   return {
     prisma: transaction,
     actorUserId: manifest.actorUserId,
+    actorEmail: manifest.actorEmail,
     actorIsStaff: args.actorIsStaff,
     sessionId: manifest.uploadSessionId,
     fileName: manifest.fileName,
@@ -919,6 +920,7 @@ function captureRecordInput(args: {
     transcriptionDisposition: processingDecision.transcriptDisposition,
     transcriptionHoldReasonCode: processingDecision.transcriptReasonCode,
     transcriptionHoldReason: processingDecision.transcriptReason,
+    onDeviceTranscriptExpected: manifest.onDeviceTranscriptExpected === true,
   } as const;
 }
 

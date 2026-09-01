@@ -1,6 +1,7 @@
 /** @jest-environment node */
 
 import { reconcileCaptureTranscriptFollowThrough } from "./capture-transcript-follow-through";
+import { runExpiredDeviceTranscriptFallbackMaintenance } from "./capture-device-transcript-fallback-worker";
 import {
   authorizeCaptureTranscriptFollowThroughWorker,
   runCaptureTranscriptFollowThroughMaintenance,
@@ -10,9 +11,26 @@ jest.mock("server-only", () => ({}));
 jest.mock("./capture-transcript-follow-through", () => ({
   reconcileCaptureTranscriptFollowThrough: jest.fn(),
 }));
+jest.mock("./capture-device-transcript-fallback-worker", () => ({
+  runExpiredDeviceTranscriptFallbackMaintenance: jest.fn(),
+}));
 
 describe("capture transcript follow-through worker", () => {
-  beforeEach(() => jest.clearAllMocks());
+  beforeEach(() => {
+    jest.clearAllMocks();
+    jest.mocked(runExpiredDeviceTranscriptFallbackMaintenance).mockResolvedValue({
+      schema: "quipsly-capture-device-transcript-fallback-maintenance-v1",
+      scanned: 0,
+      deferred: 0,
+      expired: 0,
+      attempted: 0,
+      queued: 0,
+      completed: 0,
+      held: 0,
+      failed: 0,
+      results: [],
+    });
+  });
 
   it("requires the exact scheduler identity and immutable Cloud Run audience", async () => {
     const verifyIdToken = jest.fn().mockResolvedValue({
@@ -52,6 +70,7 @@ describe("capture transcript follow-through worker", () => {
 
     await expect(runCaptureTranscriptFollowThroughMaintenance({ prisma, limit: 3 })).resolves.toMatchObject({
       scanned: 3,
+      deviceTranscriptFallback: { expired: 0, queued: 0 },
       ready: 2,
       waiting: 1,
       held: 0,
@@ -73,6 +92,10 @@ describe("capture transcript follow-through worker", () => {
     });
     expect(jest.mocked(reconcileCaptureTranscriptFollowThrough).mock.calls.map((call) => call[0].transcriptJobId))
       .toEqual(["job-running", "job-completed", "job-held"]);
+    expect(runExpiredDeviceTranscriptFallbackMaintenance).toHaveBeenCalledWith({
+      prisma,
+      limit: 3,
+    });
   });
 
   it("reports one retryable failure without losing other work", async () => {
@@ -83,6 +106,29 @@ describe("capture transcript follow-through worker", () => {
       failed: 1,
       held: 1,
       results: [{ transcriptJobId: "job-1", retryable: true }],
+    });
+  });
+
+  it("continues ordinary follow-through when fallback maintenance is temporarily unavailable", async () => {
+    const prisma = { transcriptJob: { findMany: jest.fn().mockResolvedValueOnce([{ id: "job-1" }]).mockResolvedValueOnce([]).mockResolvedValueOnce([]) } };
+    jest.mocked(runExpiredDeviceTranscriptFallbackMaintenance).mockRejectedValueOnce(
+      new Error("temporary database timeout"),
+    );
+    jest.mocked(reconcileCaptureTranscriptFollowThrough).mockResolvedValueOnce({
+      transcriptJobId: "job-1",
+      transcriptStatus: "completed",
+      packetStatus: "ready",
+      packetBuildId: "packet-1",
+      reusedExistingPacket: false,
+    });
+
+    await expect(runCaptureTranscriptFollowThroughMaintenance({ prisma })).resolves.toMatchObject({
+      ready: 1,
+      failed: 0,
+      deviceTranscriptFallback: {
+        failed: 1,
+        maintenanceRetryable: true,
+      },
     });
   });
 });
