@@ -1020,7 +1020,7 @@ final class LocalRecordingLibrary: ObservableObject {
             recording.status = .paused
             recording.durationSeconds = max(0, durationSeconds)
             recording.statusMessage = interruption
-                ? "An audio interruption paused capture. Quipsly will resume only when iOS says the route is ready."
+                ? "An audio interruption paused this recording safely. Return to Quipsly, check the microphone, and tap Resume when you are ready."
                 : nil
         }
     }

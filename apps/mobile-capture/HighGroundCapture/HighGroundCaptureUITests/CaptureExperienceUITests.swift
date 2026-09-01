@@ -64,6 +64,13 @@ final class CaptureExperienceUITests: XCTestCase {
                 "--capture-share-owner-ui-preview=voice-writing-source-owner"
             )
         }
+        if name.contains("testAudioInterruptionPausesAndRequiresExplicitResume") {
+            app.launchArguments += [
+                "--capture-force-local-voice-note-ui-test",
+                "--capture-audio-interruption-ui-test",
+                "--capture-share-owner-ui-preview=audio-interruption-owner",
+            ]
+        }
         if name.contains("testWritingFlushesToProtectedStorageWhenTheAppLeavesForeground") {
             app.launchArguments.append(
                 "--capture-share-owner-ui-preview=writing-lifecycle-owner"
@@ -755,6 +762,56 @@ final class CaptureExperienceUITests: XCTestCase {
         // Finalization immediately begins the requested speech-to-writing
         // outcome. Service a first-run Speech Recognition prompt so it cannot
         // leak into the next UI flight after this process exits.
+        allowSystemPermissionIfPresented()
+    }
+
+    func testAudioInterruptionPausesAndRequiresExplicitResume() {
+        app.buttons["CaptureStartVoiceNote"].tap()
+        XCTAssertTrue(
+            app.otherElements["CaptureRecorderHero"].waitForExistence(timeout: 8)
+        )
+
+        app.buttons["CaptureStartButton"].tap()
+        allowSystemPermissionIfPresented()
+
+        let resume = app.buttons["CaptureVoiceWritingPauseResumeButton"]
+        XCTAssertTrue(
+            resume.waitForExistence(timeout: 15),
+            "The retained source should expose an ordinary pause/resume control after capture starts."
+        )
+        expectation(
+            for: NSPredicate(format: "label == %@", "Resume"),
+            evaluatedWith: resume
+        )
+        waitForExpectations(timeout: 8)
+        XCTAssertEqual(
+            app.staticTexts["CaptureRecorderStateLabel"].label,
+            "Listening paused",
+            "A system audio interruption must pause visibly instead of silently continuing or discarding the source."
+        )
+
+        // The simulated system end notification carries shouldResume, but
+        // Quipsly deliberately waits for this visible person-owned action.
+        sleep(1)
+        XCTAssertEqual(resume.label, "Resume")
+        resume.tap()
+        expectation(
+            for: NSPredicate(format: "label == %@", "Pause"),
+            evaluatedWith: resume
+        )
+        waitForExpectations(timeout: 8)
+        XCTAssertEqual(
+            app.staticTexts["CaptureRecorderStateLabel"].label,
+            "Listening…"
+        )
+
+        let stop = app.buttons["CaptureStopButton"]
+        XCTAssertTrue(stop.exists)
+        stop.tap()
+        XCTAssertTrue(
+            stop.waitForNonExistence(timeout: 12),
+            "The resumed source must still close through the ordinary validated stop path."
+        )
         allowSystemPermissionIfPresented()
     }
 

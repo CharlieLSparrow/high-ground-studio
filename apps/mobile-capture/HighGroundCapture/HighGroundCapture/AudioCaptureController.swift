@@ -92,6 +92,9 @@ final class AudioCaptureController: NSObject, ObservableObject {
     private var pendingFinalizationMessage: String?
     private var pendingProviderSegmentStart: Date?
     private var providerCallTransportGapStartedAt: Date?
+    #if DEBUG && targetEnvironment(simulator)
+    private var deterministicAudioInterruptionDelivered = false
+    #endif
 
     var capturePipelineLabel: String {
         if voiceWritingLiveSource != nil {
@@ -1172,6 +1175,9 @@ final class AudioCaptureController: NSObject, ObservableObject {
         pausedByInterruption = false
         pendingProviderSegmentStart = nil
         providerCallTransportGapStartedAt = nil
+        #if DEBUG && targetEnvironment(simulator)
+        deterministicAudioInterruptionDelivered = false
+        #endif
 
         guard AuthManager.shared.matchesStableOwnerSnapshot(captureIntent.ownerSnapshot),
               !captureOwnerAuthorityLost else {
@@ -1987,7 +1993,45 @@ final class AudioCaptureController: NSObject, ObservableObject {
         // and interruption safety can be revalidated before capture restarts.
         commandCenter.playCommand.isEnabled = false
         broadcastState()
+        #if DEBUG && targetEnvironment(simulator)
+        if newState == .recording {
+            scheduleDeterministicAudioInterruptionIfRequested()
+        }
+        #endif
     }
+
+    #if DEBUG && targetEnvironment(simulator)
+    private func scheduleDeterministicAudioInterruptionIfRequested() {
+        guard CaptureLaunchConfiguration.usesAudioInterruptionDeterministicUITest,
+              !deterministicAudioInterruptionDelivered else { return }
+        deterministicAudioInterruptionDelivered = true
+
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 650_000_000)
+            guard let self, self.captureState == .recording else { return }
+            NotificationCenter.default.post(
+                name: AVAudioSession.interruptionNotification,
+                object: self.audioSession,
+                userInfo: [
+                    AVAudioSessionInterruptionTypeKey:
+                        AVAudioSession.InterruptionType.began.rawValue,
+                ]
+            )
+            try? await Task.sleep(nanoseconds: 250_000_000)
+            guard self.captureState == .paused else { return }
+            NotificationCenter.default.post(
+                name: AVAudioSession.interruptionNotification,
+                object: self.audioSession,
+                userInfo: [
+                    AVAudioSessionInterruptionTypeKey:
+                        AVAudioSession.InterruptionType.ended.rawValue,
+                    AVAudioSessionInterruptionOptionKey:
+                        AVAudioSession.InterruptionOptions.shouldResume.rawValue,
+                ]
+            )
+        }
+    }
+    #endif
 
     private func bridgeState(for state: AudioCaptureState) -> RecorderState {
         switch state {

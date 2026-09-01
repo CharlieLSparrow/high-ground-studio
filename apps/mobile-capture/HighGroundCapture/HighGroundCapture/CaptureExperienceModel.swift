@@ -177,6 +177,20 @@ enum CaptureLaunchConfiguration {
         #endif
     }
 
+    /// Exercises the real recorder interruption observer and explicit-resume
+    /// policy without requiring XCTest to manufacture a system phone call.
+    /// Release and physical-device builds can never enable this path.
+    static var usesAudioInterruptionDeterministicUITest: Bool {
+        #if DEBUG && targetEnvironment(simulator)
+        forcesLocalVoiceNoteUITest
+            && ProcessInfo.processInfo.arguments.contains(
+                "--capture-audio-interruption-ui-test"
+            )
+        #else
+        false
+        #endif
+    }
+
     /// A DEBUG-only presentation layer for deterministic App Store layout
     /// drafts. It uses the same mutation-free preview model, but removes
     /// engineering boundary labels and substitutes clearly fictional account
