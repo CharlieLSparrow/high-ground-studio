@@ -27,7 +27,7 @@ const snapshot = {
   room: { id: "session_room_0001", title: "First coaching session", coach: { id: "coach_user_0001", label: "Coach" }, client: { id: "client_user_0001", label: "Client" } },
   available: {
     programDurationSeconds: 30,
-    sources: [{ id: "recording_asset_0001", participantLabel: "Coach", kind: "LOCAL_AUDIO", fileName: "coach.webm", sizeBytes: 4_000, startedAt: "2026-08-22T12:00:00.000Z", stoppedAt: "2026-08-22T12:00:30.000Z", programOffsetSeconds: 0, playbackUrl: "/api/sessions/session_room_0001/recordings/recording_asset_0001/media" }],
+    sources: [{ id: "recording_asset_0001", participantId: "participant_coach_0001", participantLabel: "Coach", kind: "LOCAL_AUDIO", fileName: "coach.webm", sizeBytes: 4_000, startedAt: "2026-08-22T12:00:00.000Z", stoppedAt: "2026-08-22T12:00:30.000Z", programOffsetSeconds: 0, playbackUrl: "/api/sessions/session_room_0001/recordings/recording_asset_0001/media" }],
     transcriptSegments: [transcriptSegment],
   },
   output: null,
@@ -72,6 +72,65 @@ describe("SessionRecordingShareCard", () => {
         providerTextSha256: transcriptSegment.providerTextSha256,
         timingFingerprint: transcriptSegment.timingFingerprint,
       }],
+    }));
+  });
+
+  it("keeps one high-quality master for each participant when display names match", async () => {
+    const sameNameSources = [
+      {
+        ...snapshot.available.sources[0],
+        id: "coach_audio",
+        participantId: "participant_coach",
+        participantLabel: "Scott Sparrow",
+        fileName: "coach.m4a",
+      },
+      {
+        ...snapshot.available.sources[0],
+        id: "coach_camera",
+        participantId: "participant_coach",
+        participantLabel: "Scott Sparrow",
+        kind: "LOCAL_VIDEO",
+        contentType: "video/mp4",
+        fileName: "coach.mp4",
+      },
+      {
+        ...snapshot.available.sources[0],
+        id: "client_audio",
+        participantId: "participant_client",
+        participantLabel: "Scott Sparrow",
+        fileName: "client.m4a",
+      },
+      {
+        ...snapshot.available.sources[0],
+        id: "client_camera",
+        participantId: "participant_client",
+        participantLabel: "Scott Sparrow",
+        kind: "LOCAL_VIDEO",
+        contentType: "video/mp4",
+        fileName: "client.mp4",
+      },
+    ];
+    const sameNameSnapshot = {
+      ...snapshot,
+      available: {
+        ...snapshot.available,
+        sources: sameNameSources,
+        transcriptSegments: [],
+      },
+    };
+    const requests: Array<Record<string, unknown>> = [];
+    global.fetch = jest.fn(async (_url, init) => {
+      if (init?.method === "POST") requests.push(JSON.parse(String(init.body)));
+      return response(sameNameSnapshot);
+    }) as jest.MockedFunction<typeof fetch>;
+
+    render(<SessionRecordingShareCard roomId="session_room_0001" />);
+    await userEvent.click(await screen.findByRole("button", { name: "Create private preview" }));
+
+    await waitFor(() => expect(requests).toHaveLength(1));
+    expect(requests[0]).toEqual(expect.objectContaining({
+      action: "PREPARE",
+      sourceIds: ["coach_audio", "client_audio"],
     }));
   });
 

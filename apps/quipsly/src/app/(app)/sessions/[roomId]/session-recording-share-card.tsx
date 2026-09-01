@@ -5,6 +5,7 @@ import { Download, FileAudio, FileText, Headphones, LockKeyhole, Play, RefreshCw
 
 type Source = {
   id: string;
+  participantId: string;
   participantLabel: string;
   kind: string;
   fileName: string | null;
@@ -109,9 +110,9 @@ function megabytes(value: number | null | undefined) {
 function defaultParticipantSources(sources: Source[]) {
   const selected = new Map<string, Source>();
   for (const source of sources) {
-    const existing = selected.get(source.participantLabel);
+    const existing = selected.get(source.participantId);
     if (!existing || (source.kind === "LOCAL_AUDIO" && existing.kind !== "LOCAL_AUDIO")) {
-      selected.set(source.participantLabel, source);
+      selected.set(source.participantId, source);
     }
   }
   return [...selected.values()].map((source) => source.id);

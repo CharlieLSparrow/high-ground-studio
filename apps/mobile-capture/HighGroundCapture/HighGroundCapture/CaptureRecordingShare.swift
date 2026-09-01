@@ -7,6 +7,7 @@ import SwiftUI
 
 struct CaptureRecordingShareSource: Codable, Identifiable, Equatable {
     let id: String
+    let participantId: String
     let participantLabel: String
     let kind: String
     let fileName: String?
@@ -1483,9 +1484,9 @@ struct CaptureRecordingShareEditor: View {
 
         var preferred: [String: CaptureRecordingShareSource] = [:]
         for source in available {
-            let current = preferred[source.participantLabel]
+            let current = preferred[source.participantId]
             if current == nil || (source.kind == "LOCAL_AUDIO" && current?.kind != "LOCAL_AUDIO") {
-                preferred[source.participantLabel] = source
+                preferred[source.participantId] = source
             }
         }
         return Set(preferred.values.map(\.id))

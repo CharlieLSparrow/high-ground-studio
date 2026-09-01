@@ -1468,6 +1468,8 @@ for (const needle of [
   "Title and sources (",
   "sourceManifest",
   "restoreEditorFromCurrentOutput",
+  "let participantId: String",
+  "preferred[source.participantId]",
   'accessibilityIdentifier("CaptureRecordingShareMissingSources")',
   "Listen to exact passage",
   "Listening does not change your edit.",
