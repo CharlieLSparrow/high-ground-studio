@@ -27,6 +27,12 @@ const snapshot = {
   room: { id: "session_room_0001", title: "First coaching session", coach: { id: "coach_user_0001", label: "Coach" }, client: { id: "client_user_0001", label: "Client" } },
   available: {
     programDurationSeconds: 30,
+    timeline: {
+      authority: "capture-clock-proposal",
+      precision: "provisional",
+      reason: "Device clock evidence placed the participant masters automatically. Waveform analysis can refine this provisional placement without changing the originals.",
+      sources: [{ recordingAssetId: "recording_asset_0001", programOffsetSeconds: 0, timingUncertaintyMilliseconds: 18 }],
+    },
     sources: [{ id: "recording_asset_0001", participantId: "participant_coach_0001", participantLabel: "Coach", kind: "LOCAL_AUDIO", fileName: "coach.webm", sizeBytes: 4_000, startedAt: "2026-08-22T12:00:00.000Z", stoppedAt: "2026-08-22T12:00:30.000Z", programOffsetSeconds: 0, playbackUrl: "/api/sessions/session_room_0001/recordings/recording_asset_0001/media" }],
     transcriptSegments: [transcriptSegment],
   },
@@ -42,6 +48,17 @@ describe("SessionRecordingShareCard", () => {
   beforeEach(() => {
     jest.restoreAllMocks();
     Reflect.deleteProperty(global, "fetch");
+  });
+
+  it("shows automatic sync quality without making it another required workflow", async () => {
+    global.fetch = jest.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => response(snapshot)) as jest.MockedFunction<typeof fetch>;
+
+    render(<SessionRecordingShareCard roomId="session_room_0001" />);
+
+    const status = await screen.findByTestId("recording-timeline-status");
+    expect(status).toHaveTextContent("Synced automatically from device clocks · estimated within ±18 ms");
+    expect(status).toHaveTextContent("Waveform analysis can refine this provisional placement");
+    expect(status.querySelector("button")).toBeNull();
   });
 
   it("prepares a source-bound text edit without treating transcript correction as media mutation", async () => {

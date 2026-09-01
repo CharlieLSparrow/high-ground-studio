@@ -69,7 +69,17 @@ type Snapshot = {
   error?: string;
   role?: "COACH" | "CLIENT" | "COLLABORATOR";
   room?: { id: string; title: string; client: { id: string; label: string }; coach: { id: string; label: string } | null };
-  available?: { programDurationSeconds: number; sources: Source[]; transcriptSegments: TranscriptSegment[] };
+  available?: {
+    programDurationSeconds: number;
+    timeline?: {
+      authority: "single-source-origin" | "reviewed-waveform-placement" | "capture-clock-proposal" | "reported-wall-clock-fallback";
+      precision: "unavailable" | "provisional" | "measured";
+      reason: string;
+      sources: Array<{ recordingAssetId: string; programOffsetSeconds: number; timingUncertaintyMilliseconds: number | null }>;
+    };
+    sources: Source[];
+    transcriptSegments: TranscriptSegment[];
+  };
   output?: Output | null;
   readiness?: { canPrepare: boolean; hasVerifiedParticipantSources: boolean; localRendererAvailable: boolean; cloudRendererAvailable: boolean };
 };
@@ -268,6 +278,11 @@ export function SessionRecordingShareCard({
   }, [load, snapshot?.output]);
 
   const duration = snapshot?.available?.programDurationSeconds || 0;
+  const timeline = snapshot?.available?.timeline;
+  const maximumTimingUncertainty = Math.max(
+    0,
+    ...(timeline?.sources.map((source) => source.timingUncertaintyMilliseconds || 0) || []),
+  );
   const reviewOutput = snapshot?.output ?? null;
   const requiredPreviewSecondBins = reviewOutput?.playbackReview?.requiredSecondBins ?? [];
   const observedPreviewSecondBins = requiredPreviewSecondBins.filter((second) => previewListenedSecondBins.has(second));
@@ -520,6 +535,7 @@ export function SessionRecordingShareCard({
           {output && editing ? <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-sky-200 bg-white p-3"><p className="text-xs font-bold leading-5 text-sky-900">Editing starts from revision {output.revision}. Your current {output.status === "RELEASED" ? "shared recording stays available" : "private preview stays unchanged"} until a new preview finishes.</p><button type="button" onClick={() => { setSelected(new Set(outputSourceIds(output, snapshot.available?.sources || []))); setTitle(output.title); setStartSeconds(Number(output.body.edit?.startSeconds) || 0); setEndSeconds(Number(output.body.edit?.endSeconds) || duration); setExcludedTranscriptKeys(transcriptExclusionKeys(output)); setOutputMediaKind(output.render.mediaKind === "video" ? "video" : "audio"); setPrimaryVideoSourceId(output.render.primaryVideoSourceId || ""); setEditing(false); }} disabled={Boolean(busy)} className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-[11px] font-black text-sky-900 disabled:opacity-50">Cancel changes</button></div> : null}
           {output && editing && missingCurrentSources ? <p className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm font-bold leading-6 text-amber-950">{missingCurrentSources} source{missingCurrentSources === 1 ? " is" : "s are"} no longer in the verified Session take. Quipsly kept the remaining exact source selection and will not substitute another track. Restore or deliberately replace the missing source before creating a new preview.</p> : null}
           {!snapshot.readiness?.hasVerifiedParticipantSources ? <p className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm font-bold text-amber-950">No complete, verified participant masters are ready yet. Finish the Session recording upload first.</p> : null}
+          {timeline && timeline.precision !== "unavailable" ? <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3" data-testid="recording-timeline-status"><p className="text-xs font-black text-emerald-950">{timeline.authority === "capture-clock-proposal" ? "Synced automatically from device clocks" : timeline.authority === "reported-wall-clock-fallback" ? "Placed automatically from recording start times" : timeline.authority === "reviewed-waveform-placement" ? "Synced from measured audio" : "Recording timeline ready"}{maximumTimingUncertainty > 0 ? ` · estimated within ±${maximumTimingUncertainty.toFixed(0)} ms` : ""}</p><p className="mt-1 text-[11px] font-semibold leading-5 text-emerald-900">{timeline.reason}</p></div> : null}
           <div className="rounded-2xl border border-sky-200 bg-white p-4 sm:p-5" aria-label="Trim recording">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div><h3 className="text-sm font-black text-sky-950">Trim the beginning and end</h3><p className="mt-1 text-xs font-semibold text-sky-800">Quipsly already selected one high-quality track for each person.</p></div>
