@@ -56,6 +56,8 @@ const manifest = {
     generation: "42",
     verifiedSizeBytes: 48_000,
     computedSha256: "a".repeat(64),
+    crc32c: null,
+    md5Hash: null,
   },
   sha256: "a".repeat(64),
   bucketName: "quipsly-media",
@@ -71,6 +73,9 @@ const manifest = {
 const objectEvidence = {
   generation: "42",
   sizeBytes: 48_000,
+  crc32c: null,
+  md5Hash: null,
+  storageBackend: "gcs",
 };
 
 function prisma() {
@@ -180,6 +185,31 @@ describe("automatic held Capture release", () => {
         },
       },
     });
+  });
+
+  it("uses immutable GCS generation and CRC32C evidence without redownloading a current source", async () => {
+    jest.mocked(loadMobileCaptureResumableManifest).mockResolvedValueOnce({
+      manifest: {
+        ...manifest,
+        verification: {
+          ...manifest.verification,
+          crc32c: "ImIEBA==",
+        },
+      } as never,
+      generation: "7",
+    });
+    jest.mocked(getMobileCaptureObjectEvidence).mockResolvedValueOnce({
+      ...objectEvidence,
+      crc32c: "ImIEBA==",
+    } as never);
+
+    await expect(reconcileHeldMobileCaptureRelease({
+      prisma: prisma(),
+      receipt,
+      now,
+    })).resolves.toMatchObject({ status: "released" });
+    expect(computeMobileCaptureObjectSha256).not.toHaveBeenCalled();
+    expect(finalizeMobileCaptureDatabaseEvidence).toHaveBeenCalledTimes(1);
   });
 
   it("never releases when the retained object no longer matches its immutable receipt", async () => {

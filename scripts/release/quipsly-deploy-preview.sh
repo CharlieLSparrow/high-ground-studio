@@ -826,6 +826,7 @@ gcloud run deploy "${SERVICE_NAME}" \
   --min-instances="${MIN_INSTANCES}" \
   --max-instances="${MAX_INSTANCES}" \
   --concurrency="${CONCURRENCY}" \
+  --timeout=900 \
   --no-traffic \
   --tag="${PREVIEW_TAG}" \
   --remove-secrets="NEXTAUTH_SECRET,PATREON_WEBHOOK_SECRET,PATREON_RECONCILE_SECRET" \

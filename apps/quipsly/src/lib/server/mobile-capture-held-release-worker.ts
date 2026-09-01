@@ -185,21 +185,38 @@ export async function reconcileHeldMobileCaptureRelease(input: {
     !object
     || object.generation !== manifest.verification.generation
     || object.sizeBytes !== manifest.verification.verifiedSizeBytes
+    || (
+      manifest.verification.crc32c !== null
+      && object.crc32c !== null
+      && object.crc32c !== manifest.verification.crc32c
+    )
+    || (
+      manifest.verification.md5Hash !== null
+      && object.md5Hash !== null
+      && object.md5Hash !== manifest.verification.md5Hash
+    )
   ) {
     return { status: "source-evidence-mismatch" as const, releasedMedia: false, releasedTranscript: false };
   }
-  const hashed = await computeMobileCaptureObjectSha256(object);
-  if (
-    hashed.streamedBytes !== manifest.verification.verifiedSizeBytes
-    || hashed.sha256 !== manifest.verification.computedSha256
-    || hashed.sha256 !== manifest.sha256
-  ) {
-    return { status: "source-integrity-failed" as const, releasedMedia: false, releasedTranscript: false };
+  const hasImmutableGcsChecksumEvidence =
+    object.storageBackend === "gcs"
+    && manifest.verification.crc32c !== null
+    && object.crc32c === manifest.verification.crc32c;
+  if (!hasImmutableGcsChecksumEvidence) {
+    // Legacy receipts and local-development sources do not always retain a
+    // provider checksum. Preserve the full SHA-256 fallback for those cases.
+    const hashed = await computeMobileCaptureObjectSha256(object);
+    if (
+      hashed.streamedBytes !== manifest.verification.verifiedSizeBytes
+      || hashed.sha256 !== manifest.verification.computedSha256
+      || hashed.sha256 !== manifest.sha256
+    ) {
+      return { status: "source-integrity-failed" as const, releasedMedia: false, releasedTranscript: false };
+    }
   }
 
-  // Hashing a long local master can take meaningful time. Recheck consent at
-  // the release boundary so a participant revocation during byte validation
-  // prevents new processing instead of relying on the earlier scan decision.
+  // Legacy hashing can take meaningful time, and even metadata checks race
+  // consent changes. Recheck at the release boundary so revocation always wins.
   const releaseReadiness = await evaluateMobileCaptureRoomReadiness({
     prisma: input.prisma,
     roomId: manifest.callRoomId,
