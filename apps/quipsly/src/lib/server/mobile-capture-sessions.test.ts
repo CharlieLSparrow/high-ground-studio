@@ -22,6 +22,7 @@ import {
   canonicalMobileSessionEpisodeSlug,
   canonicalMobileSessionProductionId,
   canonicalMobileSessionProject,
+  mobileCoachingResultsStatus,
   mobilePacketReviewLanes,
   mobilePacketTranscriptJobIds,
   mobileSessionCanControlRecording,
@@ -158,6 +159,50 @@ describe("mobile after-capture guidance", () => {
       packetSummaryNoteId: null,
       transcriptProcessingAllowed: true,
     })).toBe("Your recording is safe, but transcription needs attention. Open the transcript to retry without recording again.");
+  });
+
+  it("describes a durable results rebuild without hiding the saved transcript change", () => {
+    expect(afterCaptureNextAction({
+      recordingCount: 1,
+      latestTranscriptStatus: "COMPLETED",
+      packetSummaryNoteId: "summary-1",
+      transcriptProcessingAllowed: true,
+      resultsRefreshing: true,
+    })).toBe("Your transcript changes are saved. Quipsly is refreshing the editable Session results in the background.");
+  });
+});
+
+describe("mobile automatic results status", () => {
+  it("projects a durable stale marker ahead of an older materialized summary", () => {
+    expect(mobileCoachingResultsStatus({
+      transcriptProcessingAllowed: true,
+      latestTranscriptStatus: "COMPLETED",
+      latestTranscriptResultJson: {
+        followThrough: {
+          packetStatus: "stale",
+          packetBuildId: "packet-1",
+          summaryNoteId: "summary-1",
+        },
+      },
+      packetSummaryNoteId: "summary-1",
+    })).toBe("RESULTS_REFRESHING");
+  });
+
+  it("distinguishes ready, preparing, and held results", () => {
+    expect(mobileCoachingResultsStatus({
+      transcriptProcessingAllowed: true,
+      latestTranscriptStatus: "COMPLETED",
+      packetSummaryNoteId: "summary-1",
+    })).toBe("RESULTS_READY");
+    expect(mobileCoachingResultsStatus({
+      transcriptProcessingAllowed: true,
+      latestTranscriptStatus: "COMPLETED",
+    })).toBe("PACKET_READY_TO_BUILD");
+    expect(mobileCoachingResultsStatus({
+      transcriptProcessingAllowed: false,
+      latestTranscriptStatus: "COMPLETED",
+      packetSummaryNoteId: "summary-1",
+    })).toBe("TRANSCRIPT_HELD");
   });
 });
 

@@ -671,12 +671,15 @@ export function afterCaptureNextAction(input: {
   latestTranscriptStatus?: string | null;
   packetSummaryNoteId?: string | null;
   transcriptProcessingAllowed: boolean;
+  resultsRefreshing?: boolean;
 }) {
   const transcriptStatus =
     label(input.latestTranscriptStatus)?.trim().toUpperCase() || null;
   if (!input.transcriptProcessingAllowed && input.recordingCount > 0) {
     return "Your recording is safe. Quipsly will continue when this Session's transcription permission allows it.";
   }
+  if (input.resultsRefreshing)
+    return "Your transcript changes are saved. Quipsly is refreshing the editable Session results in the background.";
   if (input.packetSummaryNoteId)
     return "Session results are ready. Open the editable recap, notes, tasks, and goals whenever they are useful.";
   if (transcriptStatus === "COMPLETED")
@@ -692,6 +695,24 @@ export function afterCaptureNextAction(input: {
   if (input.recordingCount > 0)
     return "Your recording is safe. Quipsly is preparing transcription and editable Session results.";
   return "Record when you are ready. Quipsly will preserve the source, transcribe it, and create editable Session results automatically.";
+}
+
+export function mobileCoachingResultsStatus(input: {
+  transcriptProcessingAllowed: boolean;
+  latestTranscriptStatus?: string | null;
+  latestTranscriptResultJson?: unknown;
+  packetSummaryNoteId?: string | null;
+}) {
+  if (!input.transcriptProcessingAllowed) return "TRANSCRIPT_HELD";
+  const resultJson = sourceJson(input.latestTranscriptResultJson);
+  const followThrough = sourceJson(resultJson.followThrough);
+  if (label(followThrough.packetStatus)?.trim().toLowerCase() === "stale") {
+    return "RESULTS_REFRESHING";
+  }
+  if (input.packetSummaryNoteId) return "RESULTS_READY";
+  return label(input.latestTranscriptStatus)?.trim().toUpperCase() === "COMPLETED"
+    ? "PACKET_READY_TO_BUILD"
+    : "NOT_READY";
 }
 
 function captureReadinessForMobileSession(input: {
@@ -1331,11 +1352,18 @@ export function mapMobileCaptureSessionsForUser(input: {
       actionItems: room.actionItems,
       goals: room.goals,
     });
+    const coachingPacketStatus = mobileCoachingResultsStatus({
+      transcriptProcessingAllowed: transcriptProcessingGate.allowed,
+      latestTranscriptStatus,
+      latestTranscriptResultJson: latestTranscriptJob?.resultJson,
+      packetSummaryNoteId,
+    });
     const afterCaptureLine = afterCaptureNextAction({
       recordingCount,
       latestTranscriptStatus,
       packetSummaryNoteId,
       transcriptProcessingAllowed: transcriptProcessingGate.allowed,
+      resultsRefreshing: coachingPacketStatus === "RESULTS_REFRESHING",
     });
     const actorConsentVersion = participant
       ? buildMobileCaptureConsentVersions({
@@ -1636,13 +1664,7 @@ export function mapMobileCaptureSessionsForUser(input: {
       captureTranscriptHoldReasonCode: transcriptProcessingGate.allowed
         ? null
         : transcriptProcessingGate.errorCode,
-      coachingPacketStatus: !transcriptProcessingGate.allowed
-        ? "TRANSCRIPT_HELD"
-        : packetSummaryNoteId
-          ? "RESULTS_READY"
-          : latestTranscriptStatus === "COMPLETED"
-            ? "PACKET_READY_TO_BUILD"
-            : "NOT_READY",
+      coachingPacketStatus,
       coachingPacketReviewLanes: packetReviewLanes,
       coachingTranscriptResults: transcriptResults,
       clientFollowUp: clientFollowUp

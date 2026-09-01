@@ -1457,10 +1457,18 @@ struct MobileCaptureSession: Codable, Identifiable, Hashable {
     }
 
     var packetBadgeLabel: String {
-        if coachingPacketSummaryNoteId != nil { return "Follow-up ready" }
         let status = coachingPacketStatus?.trimmingCharacters(in: .whitespacesAndNewlines).uppercased() ?? ""
-        if status == "PACKET_READY_TO_BUILD" { return "Preparing follow-up" }
-        return "No follow-up yet"
+        if status == "RESULTS_REFRESHING" { return "Refreshing results" }
+        if coachingTranscriptResults != nil || coachingPacketSummaryNoteId != nil {
+            return "Results ready"
+        }
+        let transcriptStatus = latestTranscriptStatus?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .uppercased() ?? ""
+        if status == "PACKET_READY_TO_BUILD" || transcriptStatus == "COMPLETED" {
+            return "Preparing results"
+        }
+        return "Results will appear here"
     }
 
     var canRunTranscript: Bool {

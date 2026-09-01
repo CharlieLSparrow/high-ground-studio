@@ -13369,6 +13369,9 @@ private struct CaptureSessionTranscriptReviewCard: View {
             .captureCard()
             .accessibilityHint("Opens the transcript, exact-source playback, corrections, and text-based recording editing. Playback does not start automatically.")
             .accessibilityIdentifier("CaptureSessionTranscriptReviewLink_\(session.callRoomId)")
+            .task(id: transcriptResultsMonitorID) {
+                await monitorTranscriptResults()
+            }
         } else if transcriptLifecycleVisible {
             VStack(alignment: .leading, spacing: 10) {
                 HStack(alignment: .center, spacing: 12) {
@@ -13542,6 +13545,23 @@ private struct CaptureSessionTranscriptReviewCard: View {
         ].joined(separator: "|")
     }
 
+    private var transcriptResultsMonitorID: String {
+        [
+            session.id,
+            normalizedTranscriptStatus,
+            session.coachingPacketStatus ?? "no-results-status",
+            session.coachingPacketSummaryNoteId ?? "no-results",
+            "preview=\(previewOnly)",
+            "stale=\(sessionClient.sessionsAreStale)",
+        ].joined(separator: "|")
+    }
+
+    private var transcriptResultsNeedRefresh: Bool {
+        session.coachingPacketStatus?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .uppercased() == "RESULTS_REFRESHING"
+    }
+
     /// A queued transcript should become a review surface without requiring a
     /// person to discover and repeatedly operate Refresh. Poll only the exact
     /// authoritative Session, back off quickly, and stop on every terminal or
@@ -13579,6 +13599,59 @@ private struct CaptureSessionTranscriptReviewCard: View {
                 guard ["QUEUED", "RUNNING"].contains(refreshedStatus) else {
                     return
                 }
+                delaySeconds = min(delaySeconds * 1.7, 30)
+            case .transportUnavailable:
+                delaySeconds = min(delaySeconds * 2, 60)
+            case .forbidden, .authoritativeAbsent, .invalidResponse:
+                return
+            }
+        }
+    }
+
+    /// A completed transcript and the ordinary work it creates are one user
+    /// journey. Keep the Session moving from timed text to editable notes,
+    /// tasks, and goals without requiring a person to discover Refresh.
+    @MainActor
+    private func monitorTranscriptResults() async {
+        guard normalizedTranscriptStatus == "COMPLETED",
+              transcriptResultsNeedRefresh
+                || (session.coachingTranscriptResults == nil
+                    && session.coachingPacketSummaryNoteId == nil),
+              !previewOnly,
+              !sessionClient.sessionsAreStale,
+              AuthManager.shared.networkActionsAllowed else { return }
+
+        var delaySeconds = 2.0
+        let expiresAt = Date().addingTimeInterval(20 * 60)
+        while !Task.isCancelled, Date() < expiresAt {
+            do {
+                try await Task.sleep(for: .seconds(delaySeconds))
+            } catch {
+                return
+            }
+            guard !Task.isCancelled else { return }
+
+            let outcome = await sessionClient.load(
+                authoritativeSessionID: session.id
+            )
+            guard !Task.isCancelled else { return }
+            switch outcome {
+            case .loaded:
+                guard let refreshed = sessionClient.sessions.first(where: {
+                    $0.id == session.id || $0.callRoomId == session.callRoomId
+                }) else { return }
+                let refreshedResultsStatus = refreshed.coachingPacketStatus?
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                    .uppercased() ?? ""
+                if refreshedResultsStatus != "RESULTS_REFRESHING"
+                    && (refreshed.coachingTranscriptResults != nil
+                        || refreshed.coachingPacketSummaryNoteId != nil) {
+                    return
+                }
+                let refreshedTranscriptStatus = refreshed.latestTranscriptStatus?
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                    .uppercased() ?? ""
+                guard refreshedTranscriptStatus == "COMPLETED" else { return }
                 delaySeconds = min(delaySeconds * 1.7, 30)
             case .transportUnavailable:
                 delaySeconds = min(delaySeconds * 2, 60)
