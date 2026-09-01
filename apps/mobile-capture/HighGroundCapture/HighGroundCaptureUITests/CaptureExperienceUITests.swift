@@ -5393,6 +5393,16 @@ final class CaptureExperienceUITests: XCTestCase {
             attentionSummary.exists,
             "The support snapshot should summarize recent Capture attention state without exposing a Session identifier or source content."
         )
+        for identifier in [
+            "CaptureSupportMicrophoneAccess",
+            "CaptureSupportCameraAccess",
+            "CaptureSupportSpeechRecognitionAccess",
+        ] {
+            XCTAssertTrue(
+                app.descendants(matching: .any)[identifier].exists,
+                "Help and diagnostics should show the coarse system-access state for \(identifier)."
+            )
+        }
 
         try app.performAccessibilityAudit(for: [
             .hitRegion,

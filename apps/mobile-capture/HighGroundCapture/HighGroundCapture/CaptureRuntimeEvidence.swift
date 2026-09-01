@@ -1,5 +1,6 @@
 import AVFoundation
 import Foundation
+import Speech
 import UIKit
 
 /// A capture-time snapshot of the app and physical runtime that opened a
@@ -16,6 +17,9 @@ struct CaptureRuntimeEvidence {
     let audioInputDataSourceName: String?
     let audioHardwareSampleRate: Double?
     let audioHardwareInputChannelCount: Int?
+    let microphonePermissionState: String
+    let cameraPermissionState: String
+    let speechRecognitionPermissionState: String
 
     static func current(
         audioSession: AVAudioSession = .sharedInstance()
@@ -43,8 +47,41 @@ struct CaptureRuntimeEvidence {
                 : nil,
             audioHardwareInputChannelCount: inputChannels > 0
                 ? inputChannels
-                : nil
+                : nil,
+            microphonePermissionState: microphonePermissionState(),
+            cameraPermissionState: cameraPermissionState(),
+            speechRecognitionPermissionState:
+                speechRecognitionPermissionState()
         )
+    }
+
+    private static func microphonePermissionState() -> String {
+        switch AVAudioApplication.shared.recordPermission {
+        case .granted: "granted"
+        case .denied: "denied"
+        case .undetermined: "not requested"
+        @unknown default: "unknown"
+        }
+    }
+
+    private static func cameraPermissionState() -> String {
+        switch AVCaptureDevice.authorizationStatus(for: .video) {
+        case .authorized: "granted"
+        case .denied: "denied"
+        case .restricted: "restricted"
+        case .notDetermined: "not requested"
+        @unknown default: "unknown"
+        }
+    }
+
+    private static func speechRecognitionPermissionState() -> String {
+        switch SFSpeechRecognizer.authorizationStatus() {
+        case .authorized: "granted"
+        case .denied: "denied"
+        case .restricted: "restricted"
+        case .notDetermined: "not requested"
+        @unknown default: "unknown"
+        }
     }
 
     private static func bundleValue(_ key: String) -> String? {

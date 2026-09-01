@@ -31,10 +31,20 @@ private struct CaptureSupportSnapshotHarness {
             nestHost: "nest.quipsly.com",
             audioCaptureState: "recording",
             videoCaptureState: "ready",
+            microphonePermissionState: "granted",
+            cameraPermissionState: "denied",
+            speechRecognitionPermissionState: "not requested",
             roomState: "connected",
             audioRoutePortType: "USBAudio",
             localOriginalCount: -1,
             recoverableUploadCount: 2,
+            captureAttentionCount: 1,
+            latestCaptureAttentionAt: generatedAt,
+            latestCaptureAttentionCategory: "microphone-or-audio-route",
+            latestCaptureTransitionState: "idle",
+            latestCaptureSelectedSessionWasLocal: false,
+            latestCaptureCanonicalSessionCount: 2,
+            latestCaptureLocalDraftSessionCount: 0,
             previewMode: false
         )
         let text = snapshot.shareText
@@ -50,6 +60,12 @@ private struct CaptureSupportSnapshotHarness {
         try require(
             text.contains("Audio route type: USBAudio"),
             "The snapshot must include only the coarse route type."
+        )
+        try require(
+            text.contains("Microphone access: granted")
+                && text.contains("Camera access: denied")
+                && text.contains("Speech recognition access: not requested"),
+            "The snapshot must distinguish coarse system access from recorder state."
         )
         try require(
             text.contains("Local originals: 0"),
@@ -77,10 +93,20 @@ private struct CaptureSupportSnapshotHarness {
             nestHost: "nest.quipsly.com",
             audioCaptureState: "idle",
             videoCaptureState: "idle",
+            microphonePermissionState: "not requested",
+            cameraPermissionState: "not requested",
+            speechRecognitionPermissionState: "not requested",
             roomState: "not connected",
             audioRoutePortType: nil,
             localOriginalCount: nil,
             recoverableUploadCount: nil,
+            captureAttentionCount: nil,
+            latestCaptureAttentionAt: nil,
+            latestCaptureAttentionCategory: nil,
+            latestCaptureTransitionState: nil,
+            latestCaptureSelectedSessionWasLocal: nil,
+            latestCaptureCanonicalSessionCount: nil,
+            latestCaptureLocalDraftSessionCount: nil,
             previewMode: true
         ).shareText
 

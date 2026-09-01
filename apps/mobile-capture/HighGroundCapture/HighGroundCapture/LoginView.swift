@@ -515,6 +515,12 @@ struct LoginView: View {
             nestHost: supportNestHost,
             audioCaptureState: "not started",
             videoCaptureState: "not started",
+            microphonePermissionState:
+                runtime.microphonePermissionState,
+            cameraPermissionState:
+                runtime.cameraPermissionState,
+            speechRecognitionPermissionState:
+                runtime.speechRecognitionPermissionState,
             roomState: "not connected",
             audioRoutePortType: nil,
             localOriginalCount: nil,

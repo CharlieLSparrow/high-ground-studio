@@ -17,6 +17,9 @@ struct CaptureSupportSnapshot {
     let nestHost: String
     let audioCaptureState: String
     let videoCaptureState: String
+    let microphonePermissionState: String
+    let cameraPermissionState: String
+    let speechRecognitionPermissionState: String
     let roomState: String
     let audioRoutePortType: String?
     let localOriginalCount: Int?
@@ -50,6 +53,9 @@ struct CaptureSupportSnapshot {
             "Nest host: \(Self.clean(nestHost))",
             "Audio capture: \(Self.clean(audioCaptureState))",
             "Video capture: \(Self.clean(videoCaptureState))",
+            "Microphone access: \(Self.clean(microphonePermissionState))",
+            "Camera access: \(Self.clean(cameraPermissionState))",
+            "Speech recognition access: \(Self.clean(speechRecognitionPermissionState))",
             "Live room: \(Self.clean(roomState))",
             "Audio route type: \(Self.clean(audioRoutePortType ?? "none"))",
             "Local originals: \(Self.count(localOriginalCount))",

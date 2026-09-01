@@ -183,6 +183,11 @@ export function inspectPhysicalInstallSnapshot({
       nestHost,
       audioCaptureState: clean(fields.get("Audio capture")) || "unknown",
       videoCaptureState: clean(fields.get("Video capture")) || "unknown",
+      microphonePermissionState:
+        clean(fields.get("Microphone access")) || "unknown",
+      cameraPermissionState: clean(fields.get("Camera access")) || "unknown",
+      speechRecognitionPermissionState:
+        clean(fields.get("Speech recognition access")) || "unknown",
       roomState: clean(fields.get("Live room")) || "unknown",
       audioRoutePortType: clean(fields.get("Audio route type")) || "unknown",
       localOriginalCount: clean(fields.get("Local originals")) || "unknown",

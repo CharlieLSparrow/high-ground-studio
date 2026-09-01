@@ -16511,6 +16511,27 @@ private struct CaptureAccountView: View {
                         .accessibilityIdentifier(
                             "CaptureSupportAttentionSummary"
                         )
+                        LabeledContent(
+                            "Microphone",
+                            value: supportSnapshot.microphonePermissionState
+                        )
+                        .accessibilityIdentifier(
+                            "CaptureSupportMicrophoneAccess"
+                        )
+                        LabeledContent(
+                            "Camera",
+                            value: supportSnapshot.cameraPermissionState
+                        )
+                        .accessibilityIdentifier(
+                            "CaptureSupportCameraAccess"
+                        )
+                        LabeledContent(
+                            "Speech recognition",
+                            value: supportSnapshot.speechRecognitionPermissionState
+                        )
+                        .accessibilityIdentifier(
+                            "CaptureSupportSpeechRecognitionAccess"
+                        )
 
                         ShareLink(
                             item: supportSnapshot.shareText,
@@ -16808,6 +16829,12 @@ private struct CaptureAccountView: View {
                 audioCapture.captureState.rawValue,
             videoCaptureState:
                 videoCapture.state.rawValue,
+            microphonePermissionState:
+                runtime.microphonePermissionState,
+            cameraPermissionState:
+                runtime.cameraPermissionState,
+            speechRecognitionPermissionState:
+                runtime.speechRecognitionPermissionState,
             roomState:
                 model.providerRoom.isConnected
                     ? "connected"

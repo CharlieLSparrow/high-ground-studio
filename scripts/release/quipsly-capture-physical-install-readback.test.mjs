@@ -26,6 +26,9 @@ function snapshot(overrides = {}) {
     "Nest host": "nest.quipsly.com",
     "Audio capture": "saved",
     "Video capture": "saved",
+    "Microphone access": "granted",
+    "Camera access": "granted",
+    "Speech recognition access": "granted",
     "Live room": "not connected",
     "Audio route type": "BuiltInMic",
     "Local originals": "2",
@@ -68,6 +71,9 @@ test("proves the canonical build on a physical authenticated iPhone without inve
   assert.equal(receipt.snapshot.deviceModel, "iPhone17,3");
   assert.equal(receipt.snapshot.appBuild, QUIPSLY_CAPTURE_RELEASE_TARGET.buildNumber);
   assert.equal(receipt.snapshot.accountAccessMode, "online");
+  assert.equal(receipt.snapshot.microphonePermissionState, "granted");
+  assert.equal(receipt.snapshot.cameraPermissionState, "granted");
+  assert.equal(receipt.snapshot.speechRecognitionPermissionState, "granted");
   assert.equal(receipt.rawSnapshotRetainedInReceipt, false);
   assert.equal(receipt.claimsNotMade.length, 6);
 });
