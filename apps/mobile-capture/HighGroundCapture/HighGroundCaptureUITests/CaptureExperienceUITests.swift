@@ -598,13 +598,14 @@ final class CaptureExperienceUITests: XCTestCase {
         add(tipsScreenshot)
 
         app.buttons["CaptureVoiceNoteOpenLibrary"].tap()
+        let libraryWritingAction = app.buttons["CaptureLibrarySpeakToWrite"]
         XCTAssertTrue(
-            app.scrollViews["CaptureLibraryView"].waitForExistence(timeout: 5),
+            libraryWritingAction.waitForExistence(timeout: 5),
             "All writing should leave the focused recorder without routing through the Sessions workspace."
         )
         XCTAssertTrue(
-            app.buttons["CaptureLibrarySpeakToWrite"].exists,
-            "All writing should open the Library's writing section, not recordings or Sessions."
+            app.navigationBars["Library"].exists,
+            "All writing should open the Library destination, not recordings or Sessions."
         )
     }
 
