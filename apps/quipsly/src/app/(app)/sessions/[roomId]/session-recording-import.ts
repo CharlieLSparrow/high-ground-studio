@@ -46,6 +46,28 @@ export const SESSION_RECORDING_EXTERNAL_SOURCE_PROFILE = Object.freeze({
 
 export const SESSION_RECORDING_EXTERNAL_ATTESTATION = true;
 
+export function suggestSessionRecordingRange(input: {
+  durationSeconds: number;
+  lastModifiedMs: number;
+  nowMs: number;
+}) {
+  if (
+    !Number.isFinite(input.durationSeconds)
+    || input.durationSeconds <= 0
+    || !Number.isFinite(input.lastModifiedMs)
+    || input.lastModifiedMs <= 0
+    || !Number.isFinite(input.nowMs)
+  ) return null;
+  const stoppedAtMs = Math.min(input.lastModifiedMs, input.nowMs);
+  const startedAtMs = stoppedAtMs - input.durationSeconds * 1_000;
+  if (!Number.isFinite(startedAtMs) || startedAtMs < 0) return null;
+  return {
+    startedAt: new Date(startedAtMs).toISOString(),
+    stoppedAt: new Date(stoppedAtMs).toISOString(),
+    durationSeconds: input.durationSeconds,
+  };
+}
+
 type UploadContract = {
   ok?: boolean;
   error?: string;

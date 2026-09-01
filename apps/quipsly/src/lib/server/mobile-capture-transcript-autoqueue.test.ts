@@ -59,6 +59,23 @@ describe("automatic Capture transcription handoff", () => {
     });
   });
 
+  it("starts cloud transcription for an authorized browser recorder import", async () => {
+    await expect(ensureMobileCaptureTranscriptAutoqueued({
+      prisma: { name: "canonical-prisma" },
+      manifest: manifest({
+        sourceProfileJson: JSON.stringify({
+          kind: "quipsly-nest-external-recording-import-v1",
+          clientKind: "web",
+          originalPreserved: true,
+        }),
+        onDeviceTranscriptExpected: false,
+      }),
+      finalization: finalization(),
+    })).resolves.toMatchObject({ status: "queued", executionRequested: true });
+
+    expect(ensureCaptureTranscriptProcessingQueued).toHaveBeenCalledTimes(1);
+  });
+
   it("retains the canonical fallback job without purchasing duplicate ASR when the device sidecar is expected", async () => {
     await expect(ensureMobileCaptureTranscriptAutoqueued({
       prisma: { name: "canonical-prisma" },

@@ -50,6 +50,32 @@ export function isExternalSourceImportProfile(value: string | null | undefined) 
     && profile.clientKind === "web";
 }
 
+export function mobileCaptureHoldRecoveryPolicy(input: {
+  processingAuthorization: MobileCaptureProcessingAuthorization | null;
+  processingHeld: boolean;
+  transcriptHeld: boolean;
+}) {
+  const externalImportCanRecoverAutomatically =
+    input.processingAuthorization?.kind === "source-import";
+  const processingExplicitReleaseRequired = input.processingHeld
+    && !externalImportCanRecoverAutomatically;
+  const transcriptExplicitReleaseRequired = input.transcriptHeld
+    && input.processingHeld
+    && !externalImportCanRecoverAutomatically;
+  return {
+    processing: {
+      explicitReleaseRequired: processingExplicitReleaseRequired,
+      automaticRecovery: input.processingHeld
+        && !processingExplicitReleaseRequired,
+    },
+    transcript: {
+      explicitReleaseRequired: transcriptExplicitReleaseRequired,
+      automaticRecovery: input.transcriptHeld
+        && !transcriptExplicitReleaseRequired,
+    },
+  };
+}
+
 function authorizationMatchesBinding(
   authorization: any,
   binding: ExternalImportBinding,

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { CheckCircle2, CircleAlert, FileUp, LoaderCircle, ShieldCheck, XCircle } from "lucide-react";
 
@@ -8,6 +8,7 @@ import type { SessionPreparation } from "./session-preparation-model";
 import {
   importSessionRecording,
   sessionRecordingFileType,
+  suggestSessionRecordingRange,
   type SessionRecordingImportResult,
 } from "./session-recording-import";
 
@@ -52,6 +53,34 @@ function progressLabel(stage: ImportStage, hashProgress: number, uploadProgress:
   return null;
 }
 
+function mediaDuration(file: File, sourceType: "audio" | "video") {
+  if (typeof URL.createObjectURL !== "function") return Promise.resolve(null);
+  return new Promise<number | null>((resolve) => {
+    const element = document.createElement(sourceType);
+    const objectUrl = URL.createObjectURL(file);
+    let settled = false;
+    const finish = (duration: number | null) => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(timeout);
+      element.removeAttribute("src");
+      element.load();
+      URL.revokeObjectURL(objectUrl);
+      resolve(duration);
+    };
+    const timeout = window.setTimeout(() => finish(null), 10_000);
+    element.preload = "metadata";
+    element.onloadedmetadata = () => finish(
+      Number.isFinite(element.duration) && element.duration > 0
+        ? element.duration
+        : null,
+    );
+    element.onerror = () => finish(null);
+    element.src = objectUrl;
+    element.load();
+  });
+}
+
 export function SessionRecordingImportCard({ roomId, preparation }: {
   roomId: string;
   preparation: SessionPreparation | null;
@@ -60,11 +89,32 @@ export function SessionRecordingImportCard({ roomId, preparation }: {
   const actor = preparation?.participants.find((participant) => participant.isCurrentActor) ?? null;
   const actorConsent = actor?.consent ?? null;
   const now = useMemo(() => new Date(), []);
-  const initialEnd = useMemo(() => localDateTimeValue(preparation?.scheduledEnd ?? null, now), [now, preparation?.scheduledEnd]);
-  const initialStart = useMemo(() => localDateTimeValue(preparation?.scheduledStart ?? null, new Date(now.getTime() - 30 * 60_000)), [now, preparation?.scheduledStart]);
+  const initialRange = useMemo(() => {
+    const scheduledEnd = preparation?.scheduledEnd
+      ? new Date(preparation.scheduledEnd)
+      : null;
+    const end = scheduledEnd
+      && Number.isFinite(scheduledEnd.getTime())
+      && scheduledEnd <= now
+      ? scheduledEnd
+      : now;
+    const scheduledStart = preparation?.scheduledStart
+      ? new Date(preparation.scheduledStart)
+      : null;
+    const start = scheduledStart
+      && Number.isFinite(scheduledStart.getTime())
+      && scheduledStart <= end
+      ? scheduledStart
+      : new Date(end.getTime() - 30 * 60_000);
+    return {
+      startedAt: localDateTimeValue(start.toISOString(), start),
+      stoppedAt: localDateTimeValue(end.toISOString(), end),
+    };
+  }, [now, preparation?.scheduledEnd, preparation?.scheduledStart]);
   const [file, setFile] = useState<File | null>(null);
-  const [startedAt, setStartedAt] = useState(initialStart);
-  const [stoppedAt, setStoppedAt] = useState(initialEnd);
+  const [startedAt, setStartedAt] = useState(initialRange.startedAt);
+  const [stoppedAt, setStoppedAt] = useState(initialRange.stoppedAt);
+  const [rangeSource, setRangeSource] = useState<"scheduled" | "file" | "manual">("scheduled");
   const [stage, setStage] = useState<ImportStage>("idle");
   const [hashProgress, setHashProgress] = useState(0);
   const [uploadProgress, setUploadProgress] = useState(0);
@@ -72,6 +122,8 @@ export function SessionRecordingImportCard({ roomId, preparation }: {
   const [result, setResult] = useState<SessionRecordingImportResult | null>(null);
   const identity = useRef(newImportIdentity(preparation?.captureGroupId || ""));
   const controller = useRef<AbortController | null>(null);
+  const selectionVersion = useRef(0);
+  const timeEdited = useRef(false);
   const busy = stage === "hashing" || stage === "reserving" || stage === "uploading" || stage === "verifying";
 
   let fileType: ReturnType<typeof sessionRecordingFileType> | null = null;
@@ -94,15 +146,47 @@ export function SessionRecordingImportCard({ roomId, preparation }: {
   const canImport = Boolean(file && fileType && actor && actorConsent?.id && actorCanRecord && validRange && preparation?.captureGroupId && !busy);
   const activeProgress = progressLabel(stage, hashProgress, uploadProgress);
 
+  useEffect(() => () => {
+    selectionVersion.current += 1;
+    controller.current?.abort();
+  }, []);
+
   function chooseFile(nextFile: File | null) {
     if (busy) return;
+    const version = selectionVersion.current + 1;
+    selectionVersion.current = version;
+    timeEdited.current = false;
     setFile(nextFile);
     setResult(null);
     setNotice(null);
     setHashProgress(0);
     setUploadProgress(0);
     setStage("idle");
+    setRangeSource("scheduled");
     identity.current = newImportIdentity(preparation?.captureGroupId || "");
+    if (!nextFile) return;
+    let selectedType: ReturnType<typeof sessionRecordingFileType>;
+    try {
+      selectedType = sessionRecordingFileType(nextFile);
+    } catch {
+      return;
+    }
+    void mediaDuration(nextFile, selectedType.sourceType).then((durationSeconds) => {
+      if (
+        durationSeconds == null
+        || selectionVersion.current !== version
+        || timeEdited.current
+      ) return;
+      const suggestion = suggestSessionRecordingRange({
+        durationSeconds,
+        lastModifiedMs: nextFile.lastModified,
+        nowMs: Date.now(),
+      });
+      if (!suggestion) return;
+      setStartedAt(localDateTimeValue(suggestion.startedAt, now));
+      setStoppedAt(localDateTimeValue(suggestion.stoppedAt, now));
+      setRangeSource("file");
+    });
   }
 
   async function runImport() {
@@ -172,8 +256,9 @@ export function SessionRecordingImportCard({ roomId, preparation }: {
       <div className="rounded-xl border border-violet-100 bg-white p-4">
         <h3 className="text-sm font-black text-[#3d3122]">Place it on the session timeline</h3>
         <p className="mt-1 text-xs font-semibold leading-5 text-[#765f40]">Use the time the external recorder actually started and stopped so Quipsly can align it with the Session.</p>
-        <label className="mt-4 block text-[10px] font-black uppercase tracking-wide text-[#8a7354]">Recording started<input type="datetime-local" value={startedAt} disabled={busy} onChange={(event) => setStartedAt(event.target.value)} className="mt-1 block min-h-11 w-full rounded-lg border border-[#d8c7a7] px-3 py-2 text-sm font-bold normal-case tracking-normal text-[#3d3122]" /></label>
-        <label className="mt-3 block text-[10px] font-black uppercase tracking-wide text-[#8a7354]">Recording stopped<input type="datetime-local" value={stoppedAt} disabled={busy} onChange={(event) => setStoppedAt(event.target.value)} className="mt-1 block min-h-11 w-full rounded-lg border border-[#d8c7a7] px-3 py-2 text-sm font-bold normal-case tracking-normal text-[#3d3122]" /></label>
+        <p className="mt-3 text-[10px] font-black uppercase tracking-wide text-violet-700">{rangeSource === "file" ? "Suggested from file metadata · editable" : rangeSource === "manual" ? "Adjusted by you" : "Session time · editable"}</p>
+        <label className="mt-3 block text-[10px] font-black uppercase tracking-wide text-[#8a7354]">Recording started<input type="datetime-local" value={startedAt} disabled={busy} onChange={(event) => { timeEdited.current = true; setRangeSource("manual"); setStartedAt(event.target.value); }} className="mt-1 block min-h-11 w-full rounded-lg border border-[#d8c7a7] px-3 py-2 text-sm font-bold normal-case tracking-normal text-[#3d3122]" /></label>
+        <label className="mt-3 block text-[10px] font-black uppercase tracking-wide text-[#8a7354]">Recording stopped<input type="datetime-local" value={stoppedAt} disabled={busy} onChange={(event) => { timeEdited.current = true; setRangeSource("manual"); setStoppedAt(event.target.value); }} className="mt-1 block min-h-11 w-full rounded-lg border border-[#d8c7a7] px-3 py-2 text-sm font-bold normal-case tracking-normal text-[#3d3122]" /></label>
         {!validRange ? <p className="mt-2 text-xs font-black text-rose-800">Stop time must be at or after start time.</p> : null}
       </div>
     </div>

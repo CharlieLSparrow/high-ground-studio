@@ -6,6 +6,7 @@ import {
   evaluateMobileCaptureProcessingAuthorization,
   EXTERNAL_SOURCE_IMPORT_ATTESTATION_VERSION,
   isExternalSourceImportProfile,
+  mobileCaptureHoldRecoveryPolicy,
 } from "./mobile-capture-processing-authorization";
 
 jest.mock("server-only", () => ({}));
@@ -93,6 +94,34 @@ describe("Capture processing authorization", () => {
       kind: "quipsly-nest-external-recording-import-v1",
     }))).toBe(false);
     expect(isExternalSourceImportProfile("not-json")).toBe(false);
+  });
+
+  it("describes automatic recovery without inventing a review step", () => {
+    expect(mobileCaptureHoldRecoveryPolicy({
+      processingAuthorization: {
+        kind: "source-import",
+        authorizationId: authorizationRecord.id,
+        consentVersion: authorizationRecord.consentVersion,
+        attestationVersion: EXTERNAL_SOURCE_IMPORT_ATTESTATION_VERSION,
+      },
+      processingHeld: true,
+      transcriptHeld: true,
+    })).toEqual({
+      processing: { explicitReleaseRequired: false, automaticRecovery: true },
+      transcript: { explicitReleaseRequired: false, automaticRecovery: true },
+    });
+    expect(mobileCaptureHoldRecoveryPolicy({
+      processingAuthorization: {
+        kind: "capture-start",
+        authorizationId: "a997b05a-bcc5-4329-ab2f-5561277d660c",
+        consentVersion: "start-consent-version",
+      },
+      processingHeld: false,
+      transcriptHeld: true,
+    }).transcript).toEqual({
+      explicitReleaseRequired: false,
+      automaticRecovery: true,
+    });
   });
 
   it("requires the import button's explicit source-time attestation", async () => {

@@ -6,6 +6,7 @@ import {
   SESSION_RECORDING_EXTERNAL_ATTESTATION,
   SESSION_RECORDING_EXTERNAL_SOURCE_PROFILE,
   sessionRecordingFileType,
+  suggestSessionRecordingRange,
 } from "./session-recording-import";
 
 describe("Session recording import", () => {
@@ -28,6 +29,28 @@ describe("Session recording import", () => {
       contentType: "audio/wav",
       sourceType: "audio",
     });
+  });
+
+  it("suggests an editable wall-clock range from file time and media duration", () => {
+    expect(suggestSessionRecordingRange({
+      durationSeconds: 90,
+      lastModifiedMs: Date.parse("2026-09-01T14:00:00.000Z"),
+      nowMs: Date.parse("2026-09-01T15:00:00.000Z"),
+    })).toEqual({
+      startedAt: "2026-09-01T13:58:30.000Z",
+      stoppedAt: "2026-09-01T14:00:00.000Z",
+      durationSeconds: 90,
+    });
+    expect(suggestSessionRecordingRange({
+      durationSeconds: 60,
+      lastModifiedMs: Date.parse("2026-09-01T16:00:00.000Z"),
+      nowMs: Date.parse("2026-09-01T15:00:00.000Z"),
+    })?.stoppedAt).toBe("2026-09-01T15:00:00.000Z");
+    expect(suggestSessionRecordingRange({
+      durationSeconds: Number.NaN,
+      lastModifiedMs: 1,
+      nowMs: 2,
+    })).toBeNull();
   });
 
   it("rejects empty and unrecognized files before reserving private storage", () => {

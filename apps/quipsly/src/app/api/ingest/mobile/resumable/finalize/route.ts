@@ -9,7 +9,10 @@ import {
   MobileCaptureReferenceError,
 } from "@/lib/server/mobile-capture-records";
 import { finalizeMobileCaptureDatabaseEvidence } from "@/lib/server/mobile-capture-resumable-finalization";
-import { evaluateMobileCaptureProcessingAuthorization } from "@/lib/server/mobile-capture-processing-authorization";
+import {
+  evaluateMobileCaptureProcessingAuthorization,
+  mobileCaptureHoldRecoveryPolicy,
+} from "@/lib/server/mobile-capture-processing-authorization";
 import {
   completeMediaVaultUploadReservation,
   MOBILE_CAPTURE_RESUMABLE_RESERVATION_TTL_MS,
@@ -147,6 +150,13 @@ async function ensureUploadReservation(prisma: any, manifest: MobileCaptureResum
 }
 
 function verifiedResponse(manifest: MobileCaptureResumableManifest, idempotent: boolean) {
+  const mediaHeld = manifest.finalization?.processingDisposition === "HELD";
+  const transcriptHeld = manifest.finalization?.transcriptDisposition === "HELD";
+  const recoveryPolicy = mobileCaptureHoldRecoveryPolicy({
+    processingAuthorization: manifest.processingAuthorization,
+    processingHeld: mediaHeld,
+    transcriptHeld,
+  });
   return jsonNoStore({
     ok: true,
     canonical: true,
@@ -171,19 +181,19 @@ function verifiedResponse(manifest: MobileCaptureResumableManifest, idempotent: 
     finalization: manifest.finalization ?? null,
     captureRecords: manifest.finalization ?? null,
     processingDisposition: manifest.finalization?.processingDisposition ?? "HELD",
-    processingHold: manifest.finalization?.processingDisposition === "HELD"
+    processingHold: mediaHeld
       ? {
-          reasonCode: manifest.finalization.holdReasonCode,
-          reason: manifest.finalization.holdReason,
-          explicitReleaseRequired: true,
+          reasonCode: manifest.finalization?.holdReasonCode ?? null,
+          reason: manifest.finalization?.holdReason ?? null,
+          ...recoveryPolicy.processing,
         }
       : null,
     transcriptDisposition: manifest.finalization?.transcriptDisposition ?? "HELD",
-    transcriptHold: manifest.finalization?.transcriptDisposition === "HELD"
+    transcriptHold: transcriptHeld
       ? {
-          reasonCode: manifest.finalization.transcriptHoldReasonCode,
-          reason: manifest.finalization.transcriptHoldReason,
-          explicitReleaseRequired: true,
+          reasonCode: manifest.finalization?.transcriptHoldReasonCode ?? null,
+          reason: manifest.finalization?.transcriptHoldReason ?? null,
+          ...recoveryPolicy.transcript,
         }
       : null,
     roomReadinessBindingVersion: manifest.roomReadinessBindingVersion,
