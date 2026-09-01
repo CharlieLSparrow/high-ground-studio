@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 
 import { getPrismaClient } from "@/lib/prisma";
 import { captureTranscriptSourceTopology } from "@/lib/server/capture-transcript-processing";
+import { dispatchCaptureTranscriptFollowThrough } from "@/lib/server/capture-transcript-follow-through-dispatch";
 import { mobileCaptureTranscriptProcessingGate } from "@/lib/server/mobile-capture-processing-gates";
 import {
   mobileCaptureTranscriptAccessibleAssetWhere,
@@ -495,6 +496,14 @@ export async function POST(request: Request) {
           });
       return { transcriptJobId: completed.id, segmentCount: segments.length, idempotentReplay: false, provider };
     }, { isolationLevel: "Serializable", maxWait: 10_000, timeout: 30_000 });
+
+    // Return the durable transcript immediately. Notes, goals, and tasks begin
+    // after the response and are also healed by the scheduled worker if this
+    // process stops, so Capture never waits on packet generation.
+    dispatchCaptureTranscriptFollowThrough({
+      prisma,
+      transcriptJobId: result.transcriptJobId,
+    });
 
     return NextResponse.json({
       ok: true,

@@ -1,6 +1,7 @@
 /** @jest-environment node */
 
 import { getPrismaClient } from "@/lib/prisma";
+import { dispatchCaptureTranscriptFollowThrough } from "@/lib/server/capture-transcript-follow-through-dispatch";
 import { mobileCaptureTranscriptProcessingGate } from "@/lib/server/mobile-capture-processing-gates";
 import { acquirePrismaAdvisoryTransactionLock } from "@/lib/server/prisma-advisory-lock";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
@@ -8,6 +9,7 @@ import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 import { POST } from "./route";
 
 jest.mock("@/lib/prisma", () => ({ getPrismaClient: jest.fn() }));
+jest.mock("@/lib/server/capture-transcript-follow-through-dispatch", () => ({ dispatchCaptureTranscriptFollowThrough: jest.fn() }));
 jest.mock("@/lib/server/mobile-capture-processing-gates", () => ({ mobileCaptureTranscriptProcessingGate: jest.fn() }));
 jest.mock("@/lib/server/prisma-advisory-lock", () => ({ acquirePrismaAdvisoryTransactionLock: jest.fn() }));
 jest.mock("@/lib/server/quipsly-session", () => ({ getQuipslySessionFromRequest: jest.fn() }));
@@ -128,6 +130,10 @@ describe("on-device transcript ingestion", () => {
       idempotentReplay: false,
     });
     expect(acquirePrismaAdvisoryTransactionLock).toHaveBeenCalledWith(transaction, "on-device-transcript:asset-1");
+    expect(dispatchCaptureTranscriptFollowThrough).toHaveBeenCalledWith({
+      prisma: expect.objectContaining({ $transaction: expect.any(Function) }),
+      transcriptJobId: "job-device-1",
+    });
     expect(mobileCaptureTranscriptProcessingGate).toHaveBeenCalledWith({ prisma: transaction, recordingAsset: expect.objectContaining({ id: "asset-1" }) });
     expect($transaction).toHaveBeenCalledWith(expect.any(Function), {
       isolationLevel: "Serializable",
@@ -277,6 +283,10 @@ describe("on-device transcript ingestion", () => {
       select: { id: true },
     });
     expect(create).not.toHaveBeenCalled();
+    expect(dispatchCaptureTranscriptFollowThrough).toHaveBeenCalledWith({
+      prisma: expect.objectContaining({ $transaction: expect.any(Function) }),
+      transcriptJobId: "canonical-fallback-job",
+    });
   });
 
   it("rejects device text for another participant's isolated source", async () => {
