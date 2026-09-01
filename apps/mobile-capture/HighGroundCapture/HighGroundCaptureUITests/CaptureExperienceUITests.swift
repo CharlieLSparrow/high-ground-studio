@@ -4618,7 +4618,7 @@ final class CaptureExperienceUITests: XCTestCase {
     }
 
     func testConsentIsExplicitAndGatesStartRecording() {
-        app.tabBars.buttons["Sessions"].tap()
+        openSessionsWorkspace()
         let chooser = app.buttons["CaptureSessionChooser"]
         XCTAssertTrue(chooser.waitForExistence(timeout: 5))
         chooser.tap()
@@ -4683,7 +4683,7 @@ final class CaptureExperienceUITests: XCTestCase {
     }
 
     func testParticipantCanDeclineRecordingWithoutBlockingTheCall() {
-        app.tabBars.buttons["Sessions"].tap()
+        openSessionsWorkspace()
         let chooser = app.buttons["CaptureSessionChooser"]
         XCTAssertTrue(chooser.waitForExistence(timeout: 5))
         chooser.tap()
@@ -4722,7 +4722,7 @@ final class CaptureExperienceUITests: XCTestCase {
     }
 
     func testReadyParticipantSeesWaitingStatusInsteadOfDisabledRecord() {
-        app.tabBars.buttons["Sessions"].tap()
+        openSessionsWorkspace()
         openLocalRecorderIfNeeded()
 
         let ready = app.descendants(matching: .any)[
@@ -4740,7 +4740,7 @@ final class CaptureExperienceUITests: XCTestCase {
     }
 
     func testCallCheckUsesStandardLanguageAndHidesProviderDetails() {
-        app.tabBars.buttons["Sessions"].tap()
+        openSessionsWorkspace()
         openLocalRecorderIfNeeded()
 
         let check = app.buttons["CaptureSessionTruthDisclosure"]
@@ -4887,7 +4887,7 @@ final class CaptureExperienceUITests: XCTestCase {
     }
 
     func testVideoModesExplainAndExposeTheExactLocalSourceBeforeCameraPermission() {
-        app.tabBars.buttons["Sessions"].tap()
+        openSessionsWorkspace()
         openLocalRecorderIfNeeded()
 
         let modePicker = app.segmentedControls["CaptureRecordingModePicker"]
@@ -4949,9 +4949,9 @@ final class CaptureExperienceUITests: XCTestCase {
         modePicker.buttons["Solo"].tap()
         XCTAssertTrue(
             app.staticTexts.matching(
-                NSPredicate(format: "label BEGINSWITH %@", "Records camera and microphone together on this iPhone.")
+                NSPredicate(format: "label BEGINSWITH %@", "Records camera and microphone together on this ")
             ).firstMatch.exists,
-            "Solo video must state its ordinary local camera and microphone behavior."
+            "Solo video must state its ordinary local camera and microphone behavior using the current device name."
         )
 
         modePicker.buttons["Audio"].tap()
@@ -5889,18 +5889,21 @@ final class CaptureExperienceUITests: XCTestCase {
     }
 
     private func openSessionsWorkspace() {
-        let phoneDestination = app.tabBars.buttons["Sessions"].firstMatch
-        if phoneDestination.waitForExistence(timeout: 1) {
+        if app.frame.width >= 700 {
+            let tabletDestination = app.staticTexts["CaptureIPadSidebar_record"].firstMatch
+            XCTAssertTrue(
+                tabletDestination.waitForExistence(timeout: 5),
+                "Sessions must remain reachable from the iPad workspace sidebar."
+            )
+            tabletDestination.tap()
+        } else {
+            let phoneDestination = app.tabBars.buttons["Sessions"].firstMatch
+            XCTAssertTrue(
+                phoneDestination.waitForExistence(timeout: 5),
+                "Sessions must remain reachable from the iPhone tab bar."
+            )
             phoneDestination.tap()
-            return
         }
-
-        let tabletDestination = app.staticTexts["CaptureIPadSidebar_record"].firstMatch
-        XCTAssertTrue(
-            tabletDestination.waitForExistence(timeout: 5),
-            "Sessions must remain reachable from either the iPhone tab bar or the iPad workspace sidebar."
-        )
-        tabletDestination.tap()
     }
 
     private func openSessionQuickEntry(_ kind: String) {
