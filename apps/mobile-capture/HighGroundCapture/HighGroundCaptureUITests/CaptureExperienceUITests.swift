@@ -1998,6 +1998,11 @@ final class CaptureExperienceUITests: XCTestCase {
         localOnly.tap()
         XCTAssertTrue(consent.waitForExistence(timeout: 5))
         let quickCapture = app.descendants(matching: .any)["CaptureQuickEntryBar"]
+        reveal(
+            quickCapture,
+            searchAboveFirst: false,
+            requireHittable: false
+        )
         XCTAssertTrue(quickCapture.exists)
         XCTAssertLessThan(
             call.frame.minY,
@@ -2093,7 +2098,7 @@ final class CaptureExperienceUITests: XCTestCase {
         openLocalRecorderIfNeeded()
 
         let card = app.descendants(matching: .any)["CaptureEpisodeWatchCard"]
-        reveal(card, searchAboveFirst: false)
+        reveal(card, searchAboveFirst: false, requireHittable: false)
         XCTAssertTrue(
             card.waitForExistence(timeout: 5),
             "An episode-bound Capture session should expose its shared Watch room on the primary recorder."
@@ -2132,7 +2137,7 @@ final class CaptureExperienceUITests: XCTestCase {
 
     func testEpisodeWatchKeepsExactCurrentPassVisibleWithoutALocalClip() {
         let card = app.descendants(matching: .any)["CaptureEpisodeWatchCard"]
-        reveal(card)
+        reveal(card, requireHittable: false)
         XCTAssertTrue(card.waitForExistence(timeout: 5))
         XCTAssertTrue(
             app.buttons["CaptureEpisodeWatchPrepareButton"].exists,
@@ -2165,7 +2170,7 @@ final class CaptureExperienceUITests: XCTestCase {
 
     func testEpisodeWatchKeepsPreviousPassClearActionVisibleWithoutALocalClip() {
         let card = app.descendants(matching: .any)["CaptureEpisodeWatchCard"]
-        reveal(card)
+        reveal(card, requireHittable: false)
         XCTAssertTrue(card.waitForExistence(timeout: 5))
 
         let timeline = app.descendants(matching: .any)[
@@ -5386,10 +5391,14 @@ final class CaptureExperienceUITests: XCTestCase {
             "The shared Watch plan must remain reachable at the largest accessibility text size."
         )
         let prepareWatch = app.buttons["CaptureEpisodeWatchPrepareButton"]
-        reveal(prepareWatch)
+        reveal(prepareWatch, requireHittable: false)
         XCTAssertTrue(
-            prepareWatch.isHittable,
-            "The shared Watch preparation action must remain reachable at the largest accessibility text size."
+            prepareWatch.exists && prepareWatch.frame.intersects(app.frame),
+            "The shared Watch preparation action must remain visible to assistive technology at the largest accessibility text size."
+        )
+        XCTAssertFalse(
+            prepareWatch.isEnabled,
+            "Deterministic preview must show where Watch preparation lives without pretending to download protected media."
         )
 
         // The five-destination largest-text flight runs XCTest's complete
@@ -5839,7 +5848,8 @@ final class CaptureExperienceUITests: XCTestCase {
 
     private func reveal(
         _ element: XCUIElement,
-        searchAboveFirst: Bool = true
+        searchAboveFirst: Bool = true,
+        requireHittable: Bool = true
     ) {
         let sourceFilingForm = app.descendants(matching: .any)["CaptureSourceFilingForm"].firstMatch
         let navigationBar = app.navigationBars.firstMatch
@@ -5848,13 +5858,26 @@ final class CaptureExperienceUITests: XCTestCase {
             navigationBar.exists ? navigationBar.frame.maxY + 4 : app.frame.minY + 72
         )
         let visibleBottom = app.frame.maxY - (sourceFilingForm.exists ? 12 : 96)
-        if sourceFilingForm.exists, element.exists, element.isHittable {
+        let elementIsReachable = {
+            element.exists && (!requireHittable || element.isHittable)
+        }
+        let elementHasRequiredVisibleFrame = {
+            if requireHittable {
+                return element.frame.minY >= visibleTop
+                    && element.frame.maxY <= visibleBottom
+            }
+            // Cards and other noninteractive containers can legitimately be
+            // taller than the viewport. Requiring full containment makes the
+            // target impossible to reveal and drives a lazy stack through
+            // repeated full-page gestures until its main thread is saturated.
+            return element.frame.maxY > visibleTop
+                && element.frame.minY < visibleBottom
+        }
+        if sourceFilingForm.exists, elementIsReachable() {
             return
         }
-        if element.exists,
-           element.isHittable,
-           element.frame.minY >= visibleTop,
-           element.frame.maxY <= visibleBottom {
+        if elementIsReachable(),
+           elementHasRequiredVisibleFrame() {
             return
         }
         // On iPad, an iPhone-first app can run inside a movable window whose
@@ -5896,8 +5919,16 @@ final class CaptureExperienceUITests: XCTestCase {
                         until: Date().addingTimeInterval(0.15)
                     )
                 } else if scrollSurface.exists {
-                    let startY = shouldMoveContentDown ? 0.34 : 0.72
-                    let endY = shouldMoveContentDown ? 0.64 : 0.42
+                    // A disabled preview control can still be an accessibility
+                    // target, but it may occupy only 44 points. Use a finer
+                    // adjustment for those targets so the helper does not
+                    // alternate above and below them forever.
+                    let startY = requireHittable
+                        ? (shouldMoveContentDown ? 0.34 : 0.72)
+                        : (shouldMoveContentDown ? 0.44 : 0.56)
+                    let endY = requireHittable
+                        ? (shouldMoveContentDown ? 0.64 : 0.42)
+                        : (shouldMoveContentDown ? 0.56 : 0.44)
                     scrollSurface
                         .coordinate(
                             withNormalizedOffset: CGVector(dx: 0.5, dy: startY)
@@ -5917,13 +5948,11 @@ final class CaptureExperienceUITests: XCTestCase {
                     app.swipeUp()
                 }
                 if sourceFilingForm.exists {
-                    if element.exists, element.isHittable {
+                    if elementIsReachable() {
                         return
                     }
-                } else if element.exists,
-                          element.isHittable,
-                          element.frame.minY >= visibleTop,
-                          element.frame.maxY <= visibleBottom {
+                } else if elementIsReachable(),
+                          elementHasRequiredVisibleFrame() {
                     return
                 }
             }

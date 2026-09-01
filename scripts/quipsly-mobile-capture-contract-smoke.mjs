@@ -761,17 +761,21 @@ function checkMeetingSpineContractSources() {
     "nativeCoachingEngagementContinuity",
     "Native Capture decodes writable Coaching Engagements, binds new coaching Sessions to the exact engagement and Nest, attaches the active relationship participants with requested consent receipts, preserves the identity offline, and exposes the private collaboration space.",
   );
-  const collaborationSurfaceIndex = captureRecorderViewText.indexOf(
-    "sessionCollaborationSurface(session)",
+  const quickEntrySurfaceIndex = captureRecorderViewText.indexOf(
+    "sessionQuickEntrySurface(session)",
+  );
+  const conversationSurfaceIndex = captureRecorderViewText.indexOf(
+    "sessionConversationSurface(session)",
   );
   expect(
     captureRecorderViewText.indexOf("ProviderRoomControls(") >= 0
       && captureRecorderViewText.indexOf("ConsentStrip(") > captureRecorderViewText.indexOf("ProviderRoomControls(")
       && captureRecorderViewText.indexOf("RecorderHero(") > captureRecorderViewText.indexOf("ConsentStrip(")
-      && collaborationSurfaceIndex > captureRecorderViewText.indexOf("RecorderHero(")
+      && quickEntrySurfaceIndex > captureRecorderViewText.indexOf("RecorderHero(")
+      && conversationSurfaceIndex > quickEntrySurfaceIndex
       && captureRecorderViewText.includes("CaptureQuickEntryBar(")
       && captureRecorderViewText.includes("MobileSessionConversationCard(")
-      && captureRecorderViewText.indexOf("CaptureSessionTranscriptReviewCard(") > collaborationSurfaceIndex
+      && captureRecorderViewText.indexOf("CaptureSessionTranscriptReviewCard(") > conversationSurfaceIndex
       && captureRecorderViewText.indexOf("CaptureSessionResultsCard(") > captureRecorderViewText.indexOf("CaptureSessionTranscriptReviewCard("),
     "nativeRecordHierarchyKeepsCapturePrimary",
     "The shipping Record hierarchy leads with the room, keeps quick work and conversation close to the call, reveals consent and recording only after entry, and continues into transcript plus editable results.",

@@ -10840,18 +10840,13 @@ private struct CaptureRecorderView: View {
     /// the smaller main-thread stack on physical iPhones before SwiftUI could
     /// render either Sessions or Speak to write.
     private var recorderScrollableSurface: AnyView {
-        AnyView(ScrollViewReader { proxy in
-            ScrollView {
+        AnyView(ScrollView {
             // This surface can project a full Episode workspace. Lazy layout
             // is a correctness boundary on physical devices: eagerly laying
             // out every transcript, notes, follow-through, chat, Watch, and
             // capture card can overflow SwiftUI's AttributeGraph stack before
             // the person reaches the consent controls.
             LazyVStack(spacing: 16) {
-                Color.clear
-                    .frame(height: 0)
-                    .id("CaptureRecorderTop")
-                    .accessibilityHidden(true)
                 AnyView(Group {
                 if model.selectedSession?.isPersonalVoiceNote != true {
                     SessionChooserButton(session: model.selectedSession) {
@@ -11237,16 +11232,25 @@ private struct CaptureRecorderView: View {
                         }
                     }
 
-                    // Episode aids belong beside the recorder and before the
-                    // taller notes/chat stack. This keeps Manuscript and Watch
-                    // reachable at accessibility text sizes while collaboration
-                    // remains available below without becoming a prerequisite.
-                    episodeRecorderTools(session)
-                    sessionCollaborationSurface(session)
                     })
                         }
                     }
                     })
+
+                    if model.providerRoom.isConnected
+                        || localRecordingWorkspaceIsOpen(for: session) {
+                        // These are separate LazyVStack children, not one giant
+                        // recorder row. At accessibility text sizes SwiftUI can
+                        // otherwise spend minutes repeatedly measuring the
+                        // recorder, Manuscript, Watch, and collaboration stack
+                        // as one changing placement and stop servicing taps.
+                        // The tools remain in the same familiar vertical order.
+                        AnyView(episodeManuscriptTool(session))
+                        AnyView(episodeChatTool(session))
+                        AnyView(episodeWatchTool(session))
+                        sessionQuickEntrySurface(session)
+                        sessionConversationSurface(session)
+                    }
 
                     AnyView(Group {
                     if !session.isPersonalVoiceNote {
@@ -11637,24 +11641,21 @@ private struct CaptureRecorderView: View {
                 }
             }
         }
-            .onChange(of: model.selectedSession?.id) { oldID, newID in
-                guard oldID != newID else { return }
-                // A Session is a new workspace, not another row in the previous
-                // one. Return to its entry point so Join, completed-session edit,
-                // and the ordinary next action are visible immediately.
-                proxy.scrollTo("CaptureRecorderTop", anchor: .top)
-            }
-            .background(CaptureCanvas())
-        })
+        // Rebuild the scroll container when the selected Session changes. This
+        // naturally starts the new workspace at its entry point without asking
+        // ScrollViewReader to resolve a target through the entire lazy Session
+        // surface. The proxy-driven version could trap SwiftUI's AttributeGraph
+        // in repeated placement work at accessibility text sizes.
+        .id("CaptureRecorderWorkspace|\(model.selectedSession?.id ?? "none")")
+        .background(CaptureCanvas()))
     }
 
-    /// Episode source material and collaboration belong beside the recorder,
-    /// not below the entire post-call workspace. Keeping script, conversation,
-    /// and shared Watch controls in this compact group makes the ordinary
-    /// record-from-a-script journey reachable without searching through
-    /// transcript and follow-up cards.
+    /// Episode source material belongs beside the recorder, but each tool must
+    /// remain an independent lazy row. A single helper that returned all three
+    /// cards caused SwiftUI to repeatedly resolve one enormous row while the
+    /// person scrolled at accessibility text sizes.
     @ViewBuilder
-    private func episodeRecorderTools(
+    private func episodeManuscriptTool(
         _ session: MobileCaptureSession
     ) -> some View {
         if !session.isCoachingSession,
@@ -11676,7 +11677,16 @@ private struct CaptureRecorderView: View {
                     await episodeManuscript.load(session: session)
                 }
             }
+        }
+    }
 
+    @ViewBuilder
+    private func episodeChatTool(
+        _ session: MobileCaptureSession
+    ) -> some View {
+        if !session.isCoachingSession,
+           session.projectSlug?.nonempty != nil,
+           session.episodeSlug?.nonempty != nil {
             MobileEpisodeChatCard(
                 client: episodeChat,
                 session: session,
@@ -11713,7 +11723,16 @@ private struct CaptureRecorderView: View {
                     )
                 }
             }
+        }
+    }
 
+    @ViewBuilder
+    private func episodeWatchTool(
+        _ session: MobileCaptureSession
+    ) -> some View {
+        if !session.isCoachingSession,
+           session.projectSlug?.nonempty != nil,
+           session.episodeSlug?.nonempty != nil {
             MobileEpisodeWatchCard(
                 client: episodeWatch,
                 session: session,
@@ -11751,11 +11770,11 @@ private struct CaptureRecorderView: View {
         }
     }
 
-    private func sessionCollaborationSurface(
+    private func sessionQuickEntrySurface(
         _ session: MobileCaptureSession
     ) -> AnyView {
         AnyView(
-            VStack(spacing: 16) {
+            VStack(spacing: 12) {
                 // Joining and recording stay contiguous above. Collaboration
                 // remains immediately available without interrupting the
                 // familiar lobby -> consent -> Record path.
@@ -11764,47 +11783,50 @@ private struct CaptureRecorderView: View {
                 }
 
                 CaptureQuickEntrySyncStatus(model: model)
-
-                MobileSessionConversationCard(
-                    client: sessionConversation,
-                    session: session,
-                    previewOnly: model.usesPreviewData
-                )
-                .task(
-                    id:
-                        "session-conversation|\(session.id)|\(session.callRoomId)|active=\(visibleTab == .record)"
-                ) {
-                    guard visibleTab == .record else {
-                        sessionConversation.stopPolling()
-                        return
-                    }
-                    if model.usesPreviewData {
-                        sessionConversation.loadPreview(session: session)
-                    } else {
-                        await sessionConversation.load(session: session)
-                        sessionConversation.startPolling(session: session)
-                    }
-                }
-                .onDisappear { sessionConversation.stopPolling() }
-                .onChange(of: sessionConversation.outboundLiveHint) { _, hint in
-                    guard let hint else { return }
-                    Task {
-                        await model.providerRoom.publishChatPersistedHint(hint)
-                    }
-                }
-                .onChange(of: model.providerRoom.latestChatPersistedHint) { _, hint in
-                    guard let hint else { return }
-                    Task {
-                        await sessionConversation.receiveLiveHint(
-                            hint,
-                            session: session
-                        )
-                    }
-                }
-
             }
-            .accessibilityElement(children: .contain)
-            .accessibilityIdentifier("CaptureSessionCollaborationSurface")
+        )
+    }
+
+    private func sessionConversationSurface(
+        _ session: MobileCaptureSession
+    ) -> AnyView {
+        AnyView(
+            MobileSessionConversationCard(
+                client: sessionConversation,
+                session: session,
+                previewOnly: model.usesPreviewData
+            )
+            .task(
+                id:
+                    "session-conversation|\(session.id)|\(session.callRoomId)|active=\(visibleTab == .record)"
+            ) {
+                guard visibleTab == .record else {
+                    sessionConversation.stopPolling()
+                    return
+                }
+                if model.usesPreviewData {
+                    sessionConversation.loadPreview(session: session)
+                } else {
+                    await sessionConversation.load(session: session)
+                    sessionConversation.startPolling(session: session)
+                }
+            }
+            .onDisappear { sessionConversation.stopPolling() }
+            .onChange(of: sessionConversation.outboundLiveHint) { _, hint in
+                guard let hint else { return }
+                Task {
+                    await model.providerRoom.publishChatPersistedHint(hint)
+                }
+            }
+            .onChange(of: model.providerRoom.latestChatPersistedHint) { _, hint in
+                guard let hint else { return }
+                Task {
+                    await sessionConversation.receiveLiveHint(
+                        hint,
+                        session: session
+                    )
+                }
+            }
         )
     }
 
