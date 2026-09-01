@@ -139,6 +139,7 @@ final class ProviderRoomController: NSObject, ObservableObject {
     private var activeOwnerSnapshot: AuthManager.StableOwnerSnapshot?
     private var accountObserver: NSObjectProtocol?
     private var activeCallRoomID: String?
+    private var lastFailureWasMicrophonePermission = false
     private var lastPublishedEpisodeWatchReceiptID: String?
     private var lastPublishedChatMessageID: String?
     private var activeChatThreadKeys: Set<String> = []
@@ -191,11 +192,14 @@ final class ProviderRoomController: NSObject, ObservableObject {
     private func prepareMicrophonePermission(action: String) async -> Bool {
         switch AVAudioApplication.shared.recordPermission {
         case .granted:
+            lastFailureWasMicrophonePermission = false
             lastError = nil
             lastTechnicalError = nil
             return true
         case .denied:
-            fail("Allow microphone access in Settings to \(action).")
+            failMicrophonePermission(
+                "Allow microphone access in Settings to \(action)."
+            )
             return false
         case .undetermined:
             let wasConnected = isConnected
@@ -210,21 +214,61 @@ final class ProviderRoomController: NSObject, ObservableObject {
             }
             isConnecting = false
             if allowed {
+                lastFailureWasMicrophonePermission = false
                 connectionStateLabel = wasConnected ? "Connected" : "Ready"
                 statusText = wasConnected ? "Microphone ready to unmute." : "Microphone ready."
                 lastTechnicalError = nil
                 return true
             }
-            fail("Allow microphone access in Settings to \(action).")
+            failMicrophonePermission(
+                "Allow microphone access in Settings to \(action)."
+            )
             return false
         @unknown default:
-            fail("Microphone access is unavailable. Check Quipsly in Settings, then try again.")
+            failMicrophonePermission(
+                "Microphone access is unavailable. Check Quipsly in Settings, then try again."
+            )
             return false
         }
     }
 
     func prepareMicrophonePermissionForJoin() async -> Bool {
         await prepareMicrophonePermission(action: "join with your microphone on")
+    }
+
+    /// Reconciles the call's visible microphone truth after iOS Settings
+    /// changes without joining, leaving, or touching a retained local source.
+    /// Only a permission-specific error is cleared after recovery.
+    func refreshPermissionReadinessSnapshot() async {
+        switch AVAudioApplication.shared.recordPermission {
+        case .granted:
+            guard lastFailureWasMicrophonePermission else { return }
+            lastFailureWasMicrophonePermission = false
+            lastError = nil
+            lastTechnicalError = nil
+            if isConnected {
+                connectionStateLabel = isReconnecting ? "Reconnecting" : "Connected"
+                statusText = isMuted
+                    ? "Microphone ready. Tap Unmute when you want to speak."
+                    : "Call microphone live. Recording still starts separately."
+            } else if !isConnecting {
+                connectionStateLabel = "Ready"
+                statusText = "Microphone ready."
+            }
+        case .denied:
+            guard isConnected, usesCallAudio, !isMuted else { return }
+            #if canImport(LiveKit)
+            try? await room.localParticipant.setMicrophone(enabled: false)
+            #endif
+            isMuted = true
+            refreshCallAudioMeterLifecycle()
+            connectionStateLabel = isReconnecting ? "Reconnecting" : "Connected"
+            statusText = "Microphone off. You are still in the call."
+        case .undetermined:
+            break
+        @unknown default:
+            break
+        }
     }
 
     func connect(
@@ -665,6 +709,7 @@ final class ProviderRoomController: NSObject, ObservableObject {
     }
 
     private func fail(_ message: String, technical: String? = nil) {
+        lastFailureWasMicrophonePermission = false
         isConnecting = false
         if !isConnected {
             stopCallAudioMeter()
@@ -679,6 +724,11 @@ final class ProviderRoomController: NSObject, ObservableObject {
         lastTechnicalError = technical
         statusText = message
         connectionStateLabel = isConnected ? "Connected" : "Needs attention"
+    }
+
+    private func failMicrophonePermission(_ message: String) {
+        fail(message)
+        lastFailureWasMicrophonePermission = true
     }
 
     private func startNativeCallPresentation(session: MobileCaptureSession, join: MobileCaptureRoomJoinResponse) async -> Bool {

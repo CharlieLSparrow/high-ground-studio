@@ -48,6 +48,8 @@ struct HighGroundCaptureApp: App {
                         // stale denied state without another setup ritual.
                         audioCapture.refreshReadinessSnapshot()
                         Task {
+                            await ProviderRoomController.shared
+                                .refreshPermissionReadinessSnapshot()
                             await videoCapture.refreshPermissionReadinessSnapshot()
                             await OnDeviceTranscriptManager.shared.resumeEligibleRecordings(
                                 retryFailures: true

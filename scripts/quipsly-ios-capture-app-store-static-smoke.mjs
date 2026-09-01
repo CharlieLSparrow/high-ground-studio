@@ -1327,7 +1327,7 @@ for (const needle of [
   "localRetention",
   "processingDisposition",
   "processingHoldReason",
-  "Cloud bytes verified. Editor attachment and transcript processing are held for review.",
+  "Cloud bytes verified and protected. Quipsly will not use this source because its recording-start permission boundary was incomplete. Local original preserved.",
   "Upload verified. Local original preserved until retention policy allows cleanup.",
   "Authorization",
   "Bearer",
@@ -2283,7 +2283,10 @@ for (const needle of [
   "FileProtectionType.completeUnlessOpen",
   "FileProtectionType.completeUntilFirstUserAuthentication",
   "Finishing backup",
-  "Backed up · needs attention",
+  "Backed up · permission incomplete",
+  "Backed up · permission changed",
+  "Backed up · start not verified",
+  "Backed up · protected",
   "serverProcessingDisposition",
   "serverTranscriptDisposition",
   "case deletedLocally",
@@ -2505,6 +2508,10 @@ requireIncludes(captureExperienceModelText, "joinMuted: effectiveJoinMuted", "th
 requireIncludes(providerRoomText, "ConnectOptions(autoSubscribe: useCallAudio)", "native companion mode does not subscribe to remote call media");
 requireIncludes(providerRoomText, "enabled: useCallAudio && !joinMuted", "native primary endpoints can subscribe to the conversation while joining with microphone publication off");
 requireIncludes(providerRoomText, 'prepareMicrophonePermission(action: "speak in the call")', "the first explicit Unmute action becomes the deferred microphone permission boundary");
+requireIncludes(providerRoomText, "func refreshPermissionReadinessSnapshot() async", "the shared call controller reconciles remembered microphone access whenever Quipsly returns from Settings");
+requireIncludes(providerRoomText, "guard lastFailureWasMicrophonePermission else { return }", "return-from-Settings clears only a permission-specific call failure");
+requireIncludes(providerRoomText, "try? await room.localParticipant.setMicrophone(enabled: false)", "revoked microphone access reconciles a formerly live provider microphone to muted without leaving the call");
+requireIncludes(captureAppText, "ProviderRoomController.shared", "the app lifecycle refreshes the one process-wide call controller after Settings changes");
 requireIncludes(providerRoomText, "enum PendingCallKitEndDisposition", "native CallKit cleanup uses one coherent person-ended, programmatic, or reconnect-exhausted policy");
 requireIncludes(providerRoomText, "case reconnectExhausted", "native CallKit cleanup represents exhausted provider reconnect explicitly");
 requireIncludes(providerRoomText, "var protectsLocalSource: Bool", "native CallKit end policy keeps source protection separate from rejoin eligibility");
