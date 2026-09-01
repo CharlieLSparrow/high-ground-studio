@@ -29,6 +29,7 @@ export const CRITICAL_TESTS = Object.freeze([
   "CaptureExperienceUITests/testAudioInterruptionPausesAndRequiresExplicitResume",
   "CaptureExperienceUITests/testConsentNeededNextEpisodeOpensRecorderWithoutCrashing",
   "CaptureExperienceUITests/testConsentNeededNextEpisodeOpensRecorderWithoutCrashingOnRegularWidthIPad",
+  "CaptureExperienceUITests/testClientCoachingFormDraftSurvivesRelaunchOnRegularWidthIPad",
   "CaptureExperienceUITests/testRecorderLeadsWithAStandardCallGreenRoom",
   "CaptureExperienceUITests/testDisconnectedCallOffersOneTapRejoinWhileKeepingRecordingSafe",
   "CaptureExperienceUITests/testRecorderUsesAFamiliarMicrophoneLevelInsteadOfAnOpaquePercentage",
@@ -107,6 +108,74 @@ export function buildFullShards(tests, shardCount = 4) {
     })[0];
     shard.tests.push(test);
     shard.estimatedWeight += estimatedWeight(test);
+  }
+
+  // Greedy placement is fast and usually exact, but a single heavy journey can
+  // leave two shards needlessly farther apart. A deterministic pair swap keeps
+  // the complete lane balanced as regression coverage grows.
+  while (true) {
+    const currentSpread = Math.max(...shards.map((entry) => entry.estimatedWeight))
+      - Math.min(...shards.map((entry) => entry.estimatedWeight));
+    if (currentSpread <= 1) break;
+
+    let bestSwap;
+    for (let leftIndex = 0; leftIndex < shards.length; leftIndex += 1) {
+      for (let rightIndex = leftIndex + 1; rightIndex < shards.length; rightIndex += 1) {
+        const left = shards[leftIndex];
+        const right = shards[rightIndex];
+        for (const leftTest of left.tests) {
+          for (const rightTest of right.tests) {
+            const leftWeight = estimatedWeight(leftTest);
+            const rightWeight = estimatedWeight(rightTest);
+            if (leftWeight === rightWeight) continue;
+            const weights = shards.map((entry, index) => {
+              if (index === leftIndex) {
+                return entry.estimatedWeight - leftWeight + rightWeight;
+              }
+              if (index === rightIndex) {
+                return entry.estimatedWeight - rightWeight + leftWeight;
+              }
+              return entry.estimatedWeight;
+            });
+            const spread = Math.max(...weights) - Math.min(...weights);
+            const key = `${leftTest}\n${rightTest}`;
+            if (
+              spread < currentSpread
+              && (
+                !bestSwap
+                || spread < bestSwap.spread
+                || (spread === bestSwap.spread && key < bestSwap.key)
+              )
+            ) {
+              bestSwap = {
+                key,
+                spread,
+                left,
+                right,
+                leftTest,
+                rightTest,
+                leftWeight,
+                rightWeight,
+              };
+            }
+          }
+        }
+      }
+    }
+    if (!bestSwap) break;
+
+    bestSwap.left.tests.splice(
+      bestSwap.left.tests.indexOf(bestSwap.leftTest),
+      1,
+      bestSwap.rightTest,
+    );
+    bestSwap.right.tests.splice(
+      bestSwap.right.tests.indexOf(bestSwap.rightTest),
+      1,
+      bestSwap.leftTest,
+    );
+    bestSwap.left.estimatedWeight += bestSwap.rightWeight - bestSwap.leftWeight;
+    bestSwap.right.estimatedWeight += bestSwap.leftWeight - bestSwap.rightWeight;
   }
 
   for (const shard of shards) shard.tests.sort();

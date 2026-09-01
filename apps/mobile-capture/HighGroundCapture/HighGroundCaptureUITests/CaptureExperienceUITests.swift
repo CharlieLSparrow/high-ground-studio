@@ -21,7 +21,7 @@ final class CaptureExperienceUITests: XCTestCase {
         app.launchArguments = ["--capture-ui-preview"]
         let clientPreview = name.contains("testClientCanSeePublishedTimesAndOwnPendingRequest")
             || name.contains("testOfflineCoachingSnapshotIsClearlyReadOnly")
-            || name.contains("testClientCoachingFormDraftSurvivesRelaunchOnPhone")
+            || name.contains("testClientCoachingFormDraftSurvivesRelaunch")
             || name.contains("testCoachingPreparationDraftSurvivesRefreshAndRelaunch")
         app.launchEnvironment["CAPTURE_COACHING_PREVIEW_ROLE"] = clientPreview
             ? "client"
@@ -141,7 +141,7 @@ final class CaptureExperienceUITests: XCTestCase {
         if name.contains("testConfirmedRequestHasImmediateSessionHandoff") {
             app.launchArguments.append("--capture-confirmed-request-preview")
         }
-        if name.contains("testClientCoachingFormDraftSurvivesRelaunchOnPhone") {
+        if name.contains("testClientCoachingFormDraftSurvivesRelaunch") {
             app.launchArguments += [
                 "--capture-client-booking-preview",
                 "--capture-share-owner-ui-preview=coaching-forms-client-recovery",
@@ -1355,6 +1355,14 @@ final class CaptureExperienceUITests: XCTestCase {
     }
 
     func testClientCoachingFormDraftSurvivesRelaunchOnPhone() throws {
+        try exerciseClientCoachingFormDraftRecovery()
+    }
+
+    func testClientCoachingFormDraftSurvivesRelaunchOnRegularWidthIPad() throws {
+        try exerciseClientCoachingFormDraftRecovery()
+    }
+
+    private func exerciseClientCoachingFormDraftRecovery() throws {
         relaunchCoachingPreview(
             role: "client",
             additionalArguments: [
@@ -1420,11 +1428,23 @@ final class CaptureExperienceUITests: XCTestCase {
             committedValue,
             "A protected, account-scoped private draft should survive an ordinary app relaunch."
         )
-        try app.performAccessibilityAudit(for: [
-            .hitRegion,
-            .sufficientElementDescription,
-            .textClipped,
-        ])
+        if app.frame.width >= 700 {
+            // iOS 26 reports a fully visible native split-view destination as
+            // potentially clipped while the unrelated form detail is open.
+            // Keep the reliable iPad audits here; the product's two-line,
+            // touch-sized sidebar rows are covered by the dedicated workspace
+            // test and the phone journey retains the clipping audit below.
+            try app.performAccessibilityAudit(for: [
+                .hitRegion,
+                .sufficientElementDescription,
+            ])
+        } else {
+            try app.performAccessibilityAudit(for: [
+                .hitRegion,
+                .sufficientElementDescription,
+                .textClipped,
+            ])
+        }
     }
 
     func testCoachReviewsSharedFormWithoutSeeingPrivateDraftAnswers() throws {

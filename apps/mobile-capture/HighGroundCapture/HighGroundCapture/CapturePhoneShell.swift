@@ -339,6 +339,10 @@ struct CapturePhoneShell: View {
                 Section("Quipsly") {
                     ForEach(CaptureRootTab.allCases) { tab in
                         Label(tab.title, systemImage: tab.systemImage)
+                            .lineLimit(2)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .frame(minHeight: 44, alignment: .leading)
+                            .padding(.vertical, 2)
                             .tag(tab)
                             .accessibilityIdentifier(
                                 "CaptureIPadSidebar_\(tab.rawValue)"
@@ -369,6 +373,11 @@ struct CapturePhoneShell: View {
                 }
             }
             .listStyle(.sidebar)
+            .navigationSplitViewColumnWidth(
+                min: 260,
+                ideal: 300,
+                max: 360
+            )
             .navigationTitle("Quipsly")
             .accessibilityIdentifier("CaptureIPadSidebar")
         } detail: {
