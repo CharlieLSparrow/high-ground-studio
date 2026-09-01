@@ -54,6 +54,17 @@ require_absent_text() {
   pass "$label"
 }
 
+require_count() {
+  local file="$1"
+  local expected="$2"
+  local count="$3"
+  local label="$4"
+  local actual
+  actual="$( { grep -Fo "$expected" "$file" || true; } | wc -l | tr -d ' ')"
+  [[ "$actual" == "$count" ]] || fail "$label (expected $count, found $actual)"
+  pass "$label"
+}
+
 require_regex() {
   local file="$1"
   local expected="$2"
@@ -142,6 +153,8 @@ require_text "$fastfile" 'lane :recover_candidate do |options|' "Capture can rec
 require_text "$fastfile" 'Refusing to replace an existing release receipt' "Candidate recovery cannot overwrite prior release state"
 require_text "$fastfile" 'File.basename(File.dirname(output_directory)) == source_revision[0, 12]' "Candidate recovery requires a source-scoped artifact directory"
 require_text "$fastfile" 'expanded_receipt_path = File.realpath(File.expand_path(receipt_path))' "Receipt verification canonicalizes macOS filesystem aliases"
+require_count "$fastfile" 'archive_path: File.realpath(File.expand_path(receipt["archivePath"].to_s))' 2 "Candidate sealing and upload canonicalize archive filesystem aliases"
+require_count "$fastfile" 'ipa_path: File.realpath(File.expand_path(receipt["ipaPath"].to_s))' 2 "Candidate sealing and upload canonicalize IPA filesystem aliases"
 require_text "$fastfile" 'verified_evidence_path = verify_ui_test_evidence_path(' "Candidate sealing independently re-verifies complete UI evidence"
 require_text "$fastfile" 'sh(ARTIFACT_VERIFIER, paths[:archive_path], paths[:ipa_path])' "Candidate sealing independently re-verifies signed archive and IPA"
 require_text "$fastfile" 'A receipt with any upload attempt cannot be sealed.' "Candidate sealing rejects attempted uploads"

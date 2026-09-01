@@ -396,8 +396,8 @@ def seal_candidate_receipt(receipt_path, evidence_path)
     version: version,
     build: build,
     output_directory: output_directory,
-    archive_path: File.expand_path(receipt["archivePath"].to_s),
-    ipa_path: File.expand_path(receipt["ipaPath"].to_s),
+    archive_path: File.realpath(File.expand_path(receipt["archivePath"].to_s)),
+    ipa_path: File.realpath(File.expand_path(receipt["ipaPath"].to_s)),
   }
   UI.user_error!("Release receipt is not colocated with its archive and IPA.") unless
     File.dirname(paths[:archive_path]) == output_directory && File.dirname(paths[:ipa_path]) == output_directory
@@ -459,8 +459,8 @@ def qualified_release_paths(receipt_path)
     version: version,
     build: build,
     output_directory: output_directory,
-    archive_path: File.expand_path(receipt["archivePath"].to_s),
-    ipa_path: File.expand_path(receipt["ipaPath"].to_s),
+    archive_path: File.realpath(File.expand_path(receipt["archivePath"].to_s)),
+    ipa_path: File.realpath(File.expand_path(receipt["ipaPath"].to_s)),
   }
   UI.user_error!("Qualified receipt is not colocated with its archive and IPA.") unless
     File.dirname(paths[:archive_path]) == output_directory && File.dirname(paths[:ipa_path]) == output_directory
