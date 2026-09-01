@@ -12,7 +12,7 @@ import {
 import { evaluateMobileCaptureRoomReadiness } from "@/lib/server/mobile-capture-room-readiness";
 
 export const AUTOMATIC_CAPTURE_RELEASE_REASON =
-  "Automatically released after canonical room readiness and participant consent converged.";
+  "Automatically released after the canonical immutable START binding and current participant consent converged.";
 
 const MAX_SCAN = 200;
 
@@ -138,13 +138,32 @@ export async function reconcileHeldMobileCaptureRelease(input: {
     recordingConsentId: manifest.recordingConsentId,
     sourceType: manifest.sourceType as "audio" | "video",
   });
-  if (!readiness.allPartiesCurrentlyReady || readiness.actorConsentId !== manifest.recordingConsentId) {
-    return { status: "waiting-for-consent" as const, releasedMedia: false, releasedTranscript: false };
-  }
-
   const mediaNeedsRelease = input.receipt.processingDisposition !== "RELEASED";
   const transcriptNeedsRelease = input.receipt.transcriptDisposition !== "RELEASED"
     && readiness.allPartiesCurrentlyAllowTranscription;
+  const currentRecordingConsentReady =
+    readiness.allPartiesCurrentlyReady
+    && readiness.actorConsentId === manifest.recordingConsentId;
+  const immutableStartBindingMatches =
+    manifest.processingDisposition === "eligible"
+    && manifest.startReceiptId === readiness.startReceiptId
+    && manifest.consentVersion === readiness.startConsentVersion;
+  const mediaCanRelease =
+    readiness.eligibleForProcessing
+    && currentRecordingConsentReady
+    && immutableStartBindingMatches;
+  if (mediaNeedsRelease && !mediaCanRelease) {
+    return {
+      status: currentRecordingConsentReady
+        ? "recording-boundary-held" as const
+        : "waiting-for-consent" as const,
+      releasedMedia: false,
+      releasedTranscript: false,
+    };
+  }
+  if (!mediaNeedsRelease && !currentRecordingConsentReady) {
+    return { status: "waiting-for-consent" as const, releasedMedia: false, releasedTranscript: false };
+  }
   const manifestAlreadySynchronized =
     manifest.finalization?.processingDisposition === "RELEASED"
     && manifest.finalization?.transcriptDisposition === input.receipt.transcriptDisposition;
@@ -230,6 +249,19 @@ export async function reconcileHeldMobileCaptureRelease(input: {
     || releaseReadiness.actorConsentId !== manifest.recordingConsentId
   ) {
     return { status: "waiting-for-consent" as const, releasedMedia: false, releasedTranscript: false };
+  }
+  const releaseStartBindingMatches =
+    manifest.processingDisposition === "eligible"
+    && manifest.startReceiptId === releaseReadiness.startReceiptId
+    && manifest.consentVersion === releaseReadiness.startConsentVersion;
+  if (
+    mediaNeedsRelease
+    && (
+      !releaseReadiness.eligibleForProcessing
+      || !releaseStartBindingMatches
+    )
+  ) {
+    return { status: "recording-boundary-held" as const, releasedMedia: false, releasedTranscript: false };
   }
   const releaseTranscriptNeedsRelease = input.receipt.transcriptDisposition !== "RELEASED"
     && releaseReadiness.allPartiesCurrentlyAllowTranscription;

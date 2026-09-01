@@ -460,8 +460,10 @@ final class AudioCaptureController: NSObject, ObservableObject {
                         verifiedCloudAt: userInfo["verifiedCloudAt"] as? Date,
                         canonicalObjectPath: userInfo["canonicalObjectPath"] as? String,
                         processingDisposition: userInfo["processingDisposition"] as? String,
+                        processingHoldReasonCode: userInfo["processingHoldReasonCode"] as? String,
                         processingHoldReason: userInfo["processingHoldReason"] as? String,
                         transcriptDisposition: userInfo["transcriptDisposition"] as? String,
+                        transcriptHoldReasonCode: userInfo["transcriptHoldReasonCode"] as? String,
                         detail: userInfo["serverVerificationDetail"] as? String
                     )
                     if let uploaded = localRecordingLibrary.recording(id: recordingID),

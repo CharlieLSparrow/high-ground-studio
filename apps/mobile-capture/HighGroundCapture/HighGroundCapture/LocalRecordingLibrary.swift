@@ -327,8 +327,10 @@ struct LocalRecording: Codable, Identifiable, Equatable {
     var verifiedCloudAt: Date? = nil
     var canonicalObjectPath: String? = nil
     var serverProcessingDisposition: String? = nil
+    var serverProcessingHoldReasonCode: String? = nil
     var serverProcessingHoldReason: String? = nil
     var serverTranscriptDisposition: String? = nil
+    var serverTranscriptHoldReasonCode: String? = nil
     var statusMessage: String?
     var localBytesDeletedAt: Date? = nil
     var localBytesDeletedByteCount: Int64? = nil
@@ -479,8 +481,20 @@ struct LocalRecording: Codable, Identifiable, Equatable {
         case .awaitingVerification:
             return "Finishing backup"
         case .uploaded:
-            return serverProcessingDisposition?.uppercased() == "HELD"
-                ? "Backed up · needs attention"
+            if serverProcessingDisposition?.uppercased() == "HELD" {
+                switch serverProcessingHoldReasonCode?.uppercased() {
+                case "ALL_PARTY_CONSENT_REQUIRED":
+                    return "Backed up · permission incomplete"
+                case "CONSENT_VERSION_CHANGED":
+                    return "Backed up · permission changed"
+                case "APPLIED_START_REQUIRED", "START_OWNER_MISMATCH", "START_CONSENT_SNAPSHOT_MISSING":
+                    return "Backed up · start not verified"
+                default:
+                    return "Backed up · protected"
+                }
+            }
+            return serverTranscriptDisposition?.uppercased() == "HELD"
+                ? "Backed up · transcript waiting"
                 : "Backed up"
         case .uploadHeld:
             return "Backup needs attention"
@@ -533,9 +547,10 @@ struct LocalRecording: Codable, Identifiable, Equatable {
             return "The upload finished. Quipsly is checking the backup before using it for transcription or editing."
         case .uploaded:
             if serverProcessingDisposition?.uppercased() == "HELD" {
-                return serverProcessingHoldReason.map {
-                    "The backup is safe, but Quipsly needs help before it can finish the transcript or prepare it for editing: \($0) The original remains on \(CaptureDeviceVocabulary.thisDevice)."
-                } ?? "The backup is safe, but Quipsly needs help before it can finish the transcript or prepare it for editing. The original remains on \(CaptureDeviceVocabulary.thisDevice)."
+                return "The backup is safe, but Quipsly will not transcribe or edit a recording whose start-time permission boundary was incomplete. Start a new recording after everyone allows it. The original remains on \(CaptureDeviceVocabulary.thisDevice)."
+            }
+            if serverTranscriptDisposition?.uppercased() == "HELD" {
+                return "The verified recording is ready. Its transcript will start automatically after everyone allows transcription. The original remains on \(CaptureDeviceVocabulary.thisDevice)."
             }
             return "A safe backup is ready. The original remains on \(CaptureDeviceVocabulary.thisDevice)."
         case .uploadHeld:
@@ -1218,8 +1233,10 @@ final class LocalRecordingLibrary: ObservableObject {
         verifiedCloudAt: Date? = nil,
         canonicalObjectPath: String? = nil,
         processingDisposition: String? = nil,
+        processingHoldReasonCode: String? = nil,
         processingHoldReason: String? = nil,
         transcriptDisposition: String? = nil,
+        transcriptHoldReasonCode: String? = nil,
         detail: String?
     ) throws {
         try mutate(id) { recording in
@@ -1245,8 +1262,10 @@ final class LocalRecordingLibrary: ObservableObject {
             recording.verifiedCloudAt = verifiedCloudAt
             recording.canonicalObjectPath = self.nonempty(canonicalObjectPath)
             recording.serverProcessingDisposition = self.nonempty(processingDisposition)
+            recording.serverProcessingHoldReasonCode = self.nonempty(processingHoldReasonCode)
             recording.serverProcessingHoldReason = self.nonempty(processingHoldReason)
             recording.serverTranscriptDisposition = self.nonempty(transcriptDisposition)
+            recording.serverTranscriptHoldReasonCode = self.nonempty(transcriptHoldReasonCode)
             recording.status = verification == "verified" ? .uploaded : .awaitingVerification
             recording.statusMessage = self.nonempty(detail)
         }
@@ -1300,8 +1319,12 @@ final class LocalRecordingLibrary: ObservableObject {
             recording.uploadedSourceId = update.sourceID ?? recording.uploadedSourceId
             recording.uploadedMediaAssetId = update.mediaAssetID ?? recording.uploadedMediaAssetId
             if update.processingDisposition == "RELEASED" {
+                recording.serverProcessingHoldReasonCode = nil
                 recording.serverProcessingHoldReason = nil
                 recording.statusMessage = desiredStatusMessage
+            }
+            if update.transcriptDisposition == "RELEASED" {
+                recording.serverTranscriptHoldReasonCode = nil
             }
         }
         return true

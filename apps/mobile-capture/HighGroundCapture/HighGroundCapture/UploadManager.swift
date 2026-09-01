@@ -29,8 +29,10 @@ final class UploadManager: NSObject, ObservableObject, URLSessionTaskDelegate, U
     @Published var lastServerVerificationStatus: String? = nil
     @Published var lastServerVerificationDetail: String? = nil
     @Published var lastProcessingDisposition: String? = nil
+    @Published var lastProcessingHoldReasonCode: String? = nil
     @Published var lastProcessingHoldReason: String? = nil
     @Published var lastTranscriptDisposition: String? = nil
+    @Published var lastTranscriptHoldReasonCode: String? = nil
     @Published var lastLocalRetentionReason: String? = nil
 
     // WebRTC Adaptive State Hooks
@@ -111,8 +113,10 @@ final class UploadManager: NSObject, ObservableObject, URLSessionTaskDelegate, U
         var lastServerVerificationStatus: String? = nil
         var lastServerVerificationDetail: String? = nil
         var lastProcessingDisposition: String? = nil
+        var lastProcessingHoldReasonCode: String? = nil
         var lastProcessingHoldReason: String? = nil
         var lastTranscriptDisposition: String? = nil
+        var lastTranscriptHoldReasonCode: String? = nil
         var lastLocalRetentionReason: String? = nil
         var retryCount: Int?
         var nextAttemptAt: Date?
@@ -390,8 +394,10 @@ final class UploadManager: NSObject, ObservableObject, URLSessionTaskDelegate, U
         lastServerVerificationStatus = nil
         lastServerVerificationDetail = nil
         lastProcessingDisposition = nil
+        lastProcessingHoldReasonCode = nil
         lastProcessingHoldReason = nil
         lastTranscriptDisposition = nil
+        lastTranscriptHoldReasonCode = nil
         lastLocalRetentionReason = nil
         lastRecoveryDetail = nil
 
@@ -557,8 +563,10 @@ final class UploadManager: NSObject, ObservableObject, URLSessionTaskDelegate, U
             lastServerVerificationStatus = nil
             lastServerVerificationDetail = nil
             lastProcessingDisposition = nil
+            lastProcessingHoldReasonCode = nil
             lastProcessingHoldReason = nil
             lastTranscriptDisposition = nil
+            lastTranscriptHoldReasonCode = nil
             lastLocalRetentionReason = nil
             lastRecoveryDetail = nil
 
@@ -777,8 +785,10 @@ final class UploadManager: NSObject, ObservableObject, URLSessionTaskDelegate, U
             let transcriptJobId: String?
             let transcriptJobStatus: String?
             let processingDisposition: String?
+            let holdReasonCode: String?
             let holdReason: String?
             let transcriptDisposition: String?
+            let transcriptHoldReasonCode: String?
             let transcriptHoldReason: String?
         }
 
@@ -1426,11 +1436,17 @@ final class UploadManager: NSObject, ObservableObject, URLSessionTaskDelegate, U
             let processingDisposition = nonempty(
                 captureRecords?.processingDisposition ?? envelope.processingDisposition
             )?.uppercased()
+            let processingHoldReasonCode = nonempty(
+                captureRecords?.holdReasonCode ?? envelope.processingHold?.reasonCode
+            )?.uppercased()
             let processingHoldReason = nonempty(
                 captureRecords?.holdReason ?? envelope.processingHold?.reason
             )
             let transcriptDisposition = nonempty(
                 captureRecords?.transcriptDisposition ?? envelope.transcriptDisposition
+            )?.uppercased()
+            let transcriptHoldReasonCode = nonempty(
+                captureRecords?.transcriptHoldReasonCode ?? envelope.transcriptHold?.reasonCode
             )?.uppercased()
             uploadSession.protocolPhase = "verified"
             uploadSession.currentChunk = uploadSession.totalChunks
@@ -1442,10 +1458,12 @@ final class UploadManager: NSObject, ObservableObject, URLSessionTaskDelegate, U
                 receipt.verifiedAt ?? envelope.serverVerification?.verifiedAt
             )
             uploadSession.lastProcessingDisposition = processingDisposition
+            uploadSession.lastProcessingHoldReasonCode = processingHoldReasonCode
             uploadSession.lastProcessingHoldReason = processingHoldReason
             uploadSession.lastTranscriptDisposition = transcriptDisposition
+            uploadSession.lastTranscriptHoldReasonCode = transcriptHoldReasonCode
             uploadSession.lastServerVerificationDetail = processingDisposition == "HELD"
-                ? "Server verified \(expectedSizeBytes) bytes and SHA-256 \(expectedSHA256). Downstream processing is held for review\(processingHoldReason.map { ": \($0)" } ?? ".")"
+                ? "Server verified \(expectedSizeBytes) bytes and SHA-256 \(expectedSHA256). The protected source will not be used because its recording-start permission boundary was incomplete\(processingHoldReason.map { ": \($0)" } ?? ".")"
                 : "Server verified \(expectedSizeBytes) bytes and SHA-256 \(expectedSHA256)."
             uploadSession.lastSourceId = captureRecords?.sourceId
             uploadSession.lastMediaAssetId = captureRecords?.mediaAssetId
@@ -1723,8 +1741,10 @@ final class UploadManager: NSObject, ObservableObject, URLSessionTaskDelegate, U
         lastServerVerificationStatus = session.lastServerVerificationStatus
         lastServerVerificationDetail = session.lastServerVerificationDetail
         lastProcessingDisposition = session.lastProcessingDisposition
+        lastProcessingHoldReasonCode = session.lastProcessingHoldReasonCode
         lastProcessingHoldReason = session.lastProcessingHoldReason
         lastTranscriptDisposition = session.lastTranscriptDisposition
+        lastTranscriptHoldReasonCode = session.lastTranscriptHoldReasonCode
         lastLocalRetentionReason = session.lastLocalRetentionReason
 
         let normalizedVerificationStatus = session.lastServerVerificationStatus?
@@ -1776,7 +1796,7 @@ final class UploadManager: NSObject, ObservableObject, URLSessionTaskDelegate, U
         lastUploadedSourceId = session.lastMediaAssetId ?? session.lastSourceId
         lastRecoveryDetail = nil
         if session.lastProcessingDisposition?.uppercased() == "HELD" {
-            statusText = "Cloud bytes verified. Editor attachment and transcript processing are held for review. Local original preserved."
+            statusText = "Cloud bytes verified and protected. Quipsly will not use this source because its recording-start permission boundary was incomplete. Local original preserved."
         } else if session.lastTranscriptDisposition?.uppercased() == "HELD"
                     || session.lastTranscriptJobStatus?.uppercased() == "HELD" {
             statusText = "Upload verified. Transcript held until consent is confirmed. Local original preserved."
@@ -1797,8 +1817,10 @@ final class UploadManager: NSObject, ObservableObject, URLSessionTaskDelegate, U
             "serverVerificationStatus": session.lastServerVerificationStatus ?? "",
             "serverVerificationDetail": session.lastServerVerificationDetail ?? "",
             "processingDisposition": session.lastProcessingDisposition ?? "",
+            "processingHoldReasonCode": session.lastProcessingHoldReasonCode ?? "",
             "processingHoldReason": session.lastProcessingHoldReason ?? "",
             "transcriptDisposition": session.lastTranscriptDisposition ?? "",
+            "transcriptHoldReasonCode": session.lastTranscriptHoldReasonCode ?? "",
             "sourceSHA256": session.expectedSHA256 ?? "",
             "verifiedCloudSHA256": session.verifiedCloudSHA256 ?? "",
             "verifiedCloudGeneration": session.verifiedCloudGeneration ?? "",
@@ -1909,8 +1931,10 @@ final class UploadManager: NSObject, ObservableObject, URLSessionTaskDelegate, U
             verifiedCloudAt: session.verifiedCloudAt,
             canonicalObjectPath: session.canonicalObjectPath,
             processingDisposition: session.lastProcessingDisposition,
+            processingHoldReasonCode: session.lastProcessingHoldReasonCode,
             processingHoldReason: session.lastProcessingHoldReason,
             transcriptDisposition: session.lastTranscriptDisposition,
+            transcriptHoldReasonCode: session.lastTranscriptHoldReasonCode,
             detail: session.lastServerVerificationDetail
         )
     }

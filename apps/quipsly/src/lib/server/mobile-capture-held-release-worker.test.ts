@@ -51,6 +51,7 @@ const manifest = {
   actorUserId: receipt.actorUserId,
   recordingConsentId: "consent-1",
   sourceType: "audio",
+  processingDisposition: "eligible",
   status: "verified",
   verification: {
     generation: "42",
@@ -96,9 +97,12 @@ describe("automatic held Capture release", () => {
       generation: "7",
     });
     jest.mocked(evaluateMobileCaptureRoomReadiness).mockResolvedValue({
+      eligibleForProcessing: true,
       allPartiesCurrentlyReady: true,
       allPartiesCurrentlyAllowTranscription: true,
       actorConsentId: "consent-1",
+      startReceiptId: null,
+      startConsentVersion: null,
     } as never);
     jest.mocked(getMobileCaptureObjectEvidence).mockResolvedValue(objectEvidence as never);
     jest.mocked(computeMobileCaptureObjectSha256).mockResolvedValue({
@@ -134,6 +138,63 @@ describe("automatic held Capture release", () => {
     });
     expect(getMobileCaptureObjectEvidence).not.toHaveBeenCalled();
     expect(finalizeMobileCaptureDatabaseEvidence).not.toHaveBeenCalled();
+  });
+
+  it("does not turn current consent into authority for media that lacked a canonical START boundary", async () => {
+    jest.mocked(evaluateMobileCaptureRoomReadiness).mockResolvedValueOnce({
+      eligibleForProcessing: false,
+      reasonCode: "APPLIED_START_REQUIRED",
+      allPartiesCurrentlyReady: true,
+      allPartiesCurrentlyAllowTranscription: true,
+      actorConsentId: "consent-1",
+      startReceiptId: null,
+      startConsentVersion: null,
+    } as never);
+
+    await expect(reconcileHeldMobileCaptureRelease({
+      prisma: prisma(),
+      receipt,
+      now,
+    })).resolves.toEqual({
+      status: "recording-boundary-held",
+      releasedMedia: false,
+      releasedTranscript: false,
+    });
+    expect(getMobileCaptureObjectEvidence).not.toHaveBeenCalled();
+    expect(finalizeMobileCaptureDatabaseEvidence).not.toHaveBeenCalled();
+  });
+
+  it("can release transcription after an already-authorized recording gains current transcript consent", async () => {
+    const transcriptOnlyReceipt = {
+      ...receipt,
+      processingDisposition: "RELEASED",
+    };
+    jest.mocked(evaluateMobileCaptureRoomReadiness).mockResolvedValue({
+      eligibleForProcessing: false,
+      reasonCode: "CONSENT_VERSION_CHANGED",
+      allPartiesCurrentlyReady: true,
+      allPartiesCurrentlyAllowTranscription: true,
+      actorConsentId: "consent-1",
+      startReceiptId: null,
+      startConsentVersion: "later-transcript-consent-version",
+    } as never);
+
+    await expect(reconcileHeldMobileCaptureRelease({
+      prisma: prisma(),
+      receipt: transcriptOnlyReceipt,
+      now,
+    })).resolves.toEqual({
+      status: "released",
+      releasedMedia: false,
+      releasedTranscript: true,
+    });
+    expect(finalizeMobileCaptureDatabaseEvidence).toHaveBeenCalledWith(expect.objectContaining({
+      processingDecision: expect.objectContaining({
+        disposition: "RELEASED",
+        releaseAudit: null,
+        transcriptDisposition: "RELEASED",
+      }),
+    }));
   });
 
   it("releases media and transcription automatically after consent converges and exact bytes reverify", async () => {
@@ -236,6 +297,9 @@ describe("automatic held Capture release", () => {
         allPartiesCurrentlyReady: true,
         allPartiesCurrentlyAllowTranscription: true,
         actorConsentId: "consent-1",
+        eligibleForProcessing: true,
+        startReceiptId: null,
+        startConsentVersion: null,
       } as never)
       .mockResolvedValueOnce({
         allPartiesCurrentlyReady: false,

@@ -20938,9 +20938,7 @@ private struct LocalRecordingRow: View {
             return "Backing up"
         case .awaitingVerification: return "Finishing backup"
         case .uploaded:
-            return recording.serverProcessingDisposition?.uppercased() == "HELD"
-                ? "Backed up · needs attention"
-                : "Backed up"
+            return recording.statusLabel
         case .uploadHeld: return "Backup needs attention"
         case .recovered: return "Recovered"
         case .validatingRecovery: return "Checking recording"
