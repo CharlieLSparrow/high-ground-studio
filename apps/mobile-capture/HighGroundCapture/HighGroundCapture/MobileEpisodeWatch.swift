@@ -288,6 +288,9 @@ final class MobileEpisodeWatchClient: ObservableObject {
 
     func loadPreview(session: MobileCaptureSession) {
         let previewState = Self.previewState
+        let previewContextKey =
+            "preview|\(session.id)|\(previewState.rawValue)"
+        guard currentContextKey != previewContextKey else { return }
         let currentPassID = "preview-watch-pass-current"
         let currentSegmentID = "preview-watch-segment-current"
         let previousSegmentID = "preview-watch-segment-previous"
@@ -357,7 +360,7 @@ final class MobileEpisodeWatchClient: ObservableObject {
         }
 
         currentSession = session
-        currentContextKey = "preview|\(session.id)"
+        currentContextKey = previewContextKey
         canEdit = true
         sharedConnectionReady = true
         room = MobileEpisodeWatchRoom(

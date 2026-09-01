@@ -167,6 +167,14 @@ final class CaptureExperienceUITests: XCTestCase {
                 "--capture-ui-preview-session=preview-studio-group-ready",
             ]
         }
+        if name.contains(
+            "testRehearsalReadinessMakesEveryPhysicalBoundaryVisibleBeforeRecord"
+        ) {
+            app.launchArguments += [
+                "--capture-ui-preview-tab=record",
+                "--capture-ui-preview-session=preview-studio-group-ready",
+            ]
+        }
         if name.contains("testRecordingReceiptOutboxSurvivesRelaunchAndStaysAccountPartitioned") {
             app.launchArguments += [
                 "--capture-share-owner-ui-preview=recording-receipt-owner",
@@ -178,6 +186,8 @@ final class CaptureExperienceUITests: XCTestCase {
             "testEpisodeThreadKeepsCollaborationBesideTheRecorderWithoutStartingCapture"
         ) || name.contains(
             "testEpisodeManuscriptIsReadableBesideTheRecorderWithoutCreatingAnEditableCopy"
+        ) || name.contains(
+            "testRehearsalReadinessMakesEveryPhysicalBoundaryVisibleBeforeRecord"
         ) {
             launchesRecorderPreview = true
         } else if name.contains(
@@ -2096,6 +2106,7 @@ final class CaptureExperienceUITests: XCTestCase {
         )
         episodeSession.tap()
         openLocalRecorderIfNeeded()
+        openEpisodeWatchIfNeeded()
 
         let card = app.descendants(matching: .any)["CaptureEpisodeWatchCard"]
         reveal(card, searchAboveFirst: false, requireHittable: false)
@@ -2136,6 +2147,7 @@ final class CaptureExperienceUITests: XCTestCase {
     }
 
     func testEpisodeWatchKeepsExactCurrentPassVisibleWithoutALocalClip() {
+        openEpisodeWatchIfNeeded()
         let card = app.descendants(matching: .any)["CaptureEpisodeWatchCard"]
         reveal(card, requireHittable: false)
         XCTAssertTrue(card.waitForExistence(timeout: 5))
@@ -2169,6 +2181,7 @@ final class CaptureExperienceUITests: XCTestCase {
     }
 
     func testEpisodeWatchKeepsPreviousPassClearActionVisibleWithoutALocalClip() {
+        openEpisodeWatchIfNeeded()
         let card = app.descendants(matching: .any)["CaptureEpisodeWatchCard"]
         reveal(card, requireHittable: false)
         XCTAssertTrue(card.waitForExistence(timeout: 5))
@@ -2331,6 +2344,7 @@ final class CaptureExperienceUITests: XCTestCase {
     func testRehearsalReadinessMakesEveryPhysicalBoundaryVisibleBeforeRecord() {
         app.tabBars.buttons["Sessions"].tap()
         openLocalRecorderIfNeeded()
+        openDeviceSoundCheckIfNeeded()
 
         let card = app.descendants(matching: .any)[
             "CaptureRehearsalReadinessCard"
@@ -4520,6 +4534,7 @@ final class CaptureExperienceUITests: XCTestCase {
         app.launch()
         XCTAssertTrue(app.navigationBars["Sessions"].waitForExistence(timeout: 12))
         openLocalRecorderIfNeeded()
+        openDeviceSoundCheckIfNeeded()
         let disclosure = app.buttons["CaptureRehearsalReadinessDisclosure"]
         XCTAssertTrue(disclosure.waitForExistence(timeout: 8))
         disclosure.tap()
@@ -4540,6 +4555,7 @@ final class CaptureExperienceUITests: XCTestCase {
         app.launch()
         XCTAssertTrue(app.navigationBars["Sessions"].waitForExistence(timeout: 12))
         openLocalRecorderIfNeeded()
+        openDeviceSoundCheckIfNeeded()
         app.buttons["CaptureRehearsalReadinessDisclosure"].tap()
         let recoveredIdentity = app.staticTexts["CaptureSessionPreflightOutboxReceiptID"]
         XCTAssertTrue(recoveredIdentity.waitForExistence(timeout: 8))
@@ -4559,6 +4575,7 @@ final class CaptureExperienceUITests: XCTestCase {
         app.launch()
         XCTAssertTrue(app.navigationBars["Sessions"].waitForExistence(timeout: 12))
         openLocalRecorderIfNeeded()
+        openDeviceSoundCheckIfNeeded()
         app.buttons["CaptureRehearsalReadinessDisclosure"].tap()
         let otherIdentity = app.staticTexts["CaptureSessionPreflightOutboxReceiptID"]
         XCTAssertTrue(otherIdentity.waitForExistence(timeout: 8))
@@ -4573,6 +4590,7 @@ final class CaptureExperienceUITests: XCTestCase {
         app.launch()
         XCTAssertTrue(app.navigationBars["Sessions"].waitForExistence(timeout: 12))
         openLocalRecorderIfNeeded()
+        openDeviceSoundCheckIfNeeded()
         app.buttons["CaptureRehearsalReadinessDisclosure"].tap()
         XCTAssertEqual(
             app.staticTexts["CaptureSessionPreflightOutboxReceiptID"].label,
@@ -5349,7 +5367,12 @@ final class CaptureExperienceUITests: XCTestCase {
             start.isHittable,
             "The primary recording action must remain reachable at the largest accessibility text size."
         )
+        assertAccessibleTapTarget(
+            start,
+            "The primary recording action"
+        )
 
+        openDeviceSoundCheckIfNeeded()
         let readiness = app.descendants(matching: .any)[
             "CaptureRehearsalReadinessCard"
         ]
@@ -5360,6 +5383,10 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(
             disclosure.isHittable,
             "The pre-record physical-boundary checklist must remain reachable at the largest accessibility text size."
+        )
+        assertAccessibleTapTarget(
+            disclosure,
+            "The pre-record physical-boundary checklist"
         )
         disclosure.tap()
         XCTAssertTrue(
@@ -5372,6 +5399,7 @@ final class CaptureExperienceUITests: XCTestCase {
                 .waitForNonExistence(timeout: 5),
             "Collapse the already-verified checklist before auditing the later current screen."
         )
+        closeDeviceSoundCheckIfNeeded()
 
         let manuscript = app.descendants(matching: .any)[
             "CaptureEpisodeManuscriptCard"
@@ -5384,7 +5412,12 @@ final class CaptureExperienceUITests: XCTestCase {
             openManuscript.isHittable,
             "The canonical episode manuscript must remain reachable at the largest accessibility text size."
         )
+        assertAccessibleTapTarget(
+            openManuscript,
+            "The canonical episode manuscript"
+        )
 
+        openEpisodeWatchIfNeeded()
         let watch = app.descendants(matching: .any)["CaptureEpisodeWatchCard"]
         XCTAssertTrue(
             watch.waitForExistence(timeout: 5),
@@ -5400,23 +5433,18 @@ final class CaptureExperienceUITests: XCTestCase {
             prepareWatch.isEnabled,
             "Deterministic preview must show where Watch preparation lives without pretending to download protected media."
         )
+        assertAccessibleTapTarget(
+            prepareWatch,
+            "The shared Watch preparation action"
+        )
 
         // The five-destination largest-text flight runs XCTest's complete
         // accessibility audit. Repeating that unbounded whole-app traversal
         // after this long LazyVStack route consistently times out without an
-        // issue. Keep this test precise: these are the four controls whose
-        // reachability the rehearsal contract owns.
-        for control in [start, disclosure, openManuscript, prepareWatch] {
-            XCTAssertGreaterThanOrEqual(
-                control.frame.height,
-                44,
-                "\(control.label) must expose at least a 44-point tap target."
-            )
-            XCTAssertFalse(
-                control.label.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-                "Every rehearsal control needs a useful accessibility label."
-            )
-        }
+        // issue. Each control is checked above while its own focused workspace
+        // is visible; retaining an XCUIElement across a dismissed sheet makes
+        // XCTest re-query a control that is correctly absent from the current
+        // hierarchy and can turn a passing product path into a false failure.
     }
 
     func testSessionPlanIsAvailableOnThePrimaryIPhoneRecorder() {
@@ -6082,6 +6110,73 @@ final class CaptureExperienceUITests: XCTestCase {
             app.descendants(matching: .any)["CaptureConsentStrip"]
                 .waitForExistence(timeout: 5),
             "The explicit local-only escape hatch should reveal the recording workspace without joining or recording."
+        )
+    }
+
+    private func openEpisodeWatchIfNeeded() {
+        let card = app.descendants(matching: .any)["CaptureEpisodeWatchCard"]
+        guard !card.exists else { return }
+        let open = app.buttons["CaptureEpisodeWatchOpen"].firstMatch
+        reveal(open, searchAboveFirst: false)
+        XCTAssertTrue(
+            open.waitForExistence(timeout: 5),
+            "An episode Session should keep its focused Watch workspace directly reachable beside the recorder."
+        )
+        XCTAssertTrue(open.isHittable)
+        open.tap()
+        XCTAssertTrue(
+            card.waitForExistence(timeout: 5),
+            "Opening Watch together should present the shared clip and its playback controls without traversing the rest of the Session."
+        )
+    }
+
+    private func openDeviceSoundCheckIfNeeded() {
+        let card = app.descendants(matching: .any)[
+            "CaptureRehearsalReadinessCard"
+        ]
+        guard !card.exists else { return }
+        let open = app.buttons["CaptureDeviceSoundCheckOpen"].firstMatch
+        reveal(open)
+        XCTAssertTrue(
+            open.waitForExistence(timeout: 5),
+            "The familiar pre-record device and sound check should remain directly reachable from the recorder."
+        )
+        XCTAssertTrue(open.isHittable)
+        open.tap()
+        XCTAssertTrue(
+            card.waitForExistence(timeout: 5),
+            "The focused device and sound check should open without expanding the entire Session workspace."
+        )
+    }
+
+    private func closeDeviceSoundCheckIfNeeded() {
+        let done = app.buttons["CaptureDeviceSoundCheckDone"].firstMatch
+        guard done.exists else { return }
+        done.tap()
+        XCTAssertTrue(
+            done.waitForNonExistence(timeout: 5),
+            "Done should return to the same recorder workspace."
+        )
+    }
+
+    private func assertAccessibleTapTarget(
+        _ control: XCUIElement,
+        _ context: String,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        XCTAssertGreaterThanOrEqual(
+            control.frame.height,
+            44,
+            "\(context) must expose at least a 44-point tap target.",
+            file: file,
+            line: line
+        )
+        XCTAssertFalse(
+            control.label.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+            "\(context) needs a useful accessibility label.",
+            file: file,
+            line: line
         )
     }
 

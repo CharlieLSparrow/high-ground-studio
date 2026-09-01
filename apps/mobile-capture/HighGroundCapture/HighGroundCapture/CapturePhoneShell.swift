@@ -10806,6 +10806,13 @@ private struct CaptureStructuredWritingBody: View {
     }
 }
 
+private enum CaptureRecorderFocusedTool: String, Identifiable {
+    case deviceSoundCheck
+    case episodeWatch
+
+    var id: String { rawValue }
+}
+
 private struct CaptureRecorderView: View {
     @ObservedObject var model: CaptureExperienceModel
     @Binding var visibleTab: CaptureRootTab
@@ -10819,6 +10826,7 @@ private struct CaptureRecorderView: View {
     @State private var showsSessionContext = false
     @State private var showsSessionReadiness = false
     @State private var showsConsentConfirmation = false
+    @State private var focusedTool: CaptureRecorderFocusedTool?
     @State private var quickEntryKind: MobileQuickEntryKind?
     @State private var sessionNotesSession: MobileCaptureSession?
     @State private var recordingMode: CaptureRecordingMode = CaptureCallPreferences.recordingMode(for: nil)
@@ -11214,24 +11222,35 @@ private struct CaptureRecorderView: View {
                         // sound check. At accessibility text sizes this compact
                         // control must not sit below the much larger collaboration,
                         // manuscript, and Watch stack.
-                        CaptureRehearsalReadinessCard(
-                            audioCapture: audioCapture,
-                            soundCheck: soundCheck,
-                            videoCapture: videoCapture,
-                            manuscript: episodeManuscript,
-                            watch: episodeWatch,
-                            preflight: sessionPreflight,
-                            session: session,
-                            mode: recordingMode,
-                            providerConnected: model.providerRoom.isConnected,
-                            previewOnly: model.usesPreviewData,
-                            isRunningCheck: isRunningRehearsalCheck,
-                            isCaptureActive: captureIsActive,
-                            onRunCheck: {
-                                Task {
-                                    await runRehearsalCheck(for: session)
+                        Button {
+                            focusedTool = .deviceSoundCheck
+                        } label: {
+                            HStack(spacing: 12) {
+                                Image(systemName: "waveform.badge.magnifyingglass")
+                                    .font(.title3.weight(.semibold))
+                                    .foregroundStyle(CapturePalette.accent)
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text("Device & sound check")
+                                        .font(.headline)
+                                        .foregroundStyle(.primary)
+                                    Text("Microphone, camera, consent, script and clips")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                        .multilineTextAlignment(.leading)
                                 }
+                                Spacer()
+                                Image(systemName: "chevron.right")
+                                    .font(.caption.weight(.bold))
+                                    .foregroundStyle(.tertiary)
+                                    .accessibilityHidden(true)
                             }
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .captureCard()
+                        .accessibilityIdentifier("CaptureDeviceSoundCheckOpen")
+                        .accessibilityHint(
+                            "Opens the optional pre-record device, sound, consent, script, and clip checks."
                         )
                         .task(id: "rehearsal-preview|\(session.id)") {
                             // Preview/reviewer evidence must not depend on a later
@@ -11825,11 +11844,42 @@ private struct CaptureRecorderView: View {
         if !session.isCoachingSession,
            session.projectSlug?.nonempty != nil,
            session.episodeSlug?.nonempty != nil {
-            MobileEpisodeWatchCard(
-                client: episodeWatch,
-                session: session,
-                captureIsActive: captureIsActive,
-                previewOnly: model.usesPreviewData
+            Button {
+                focusedTool = .episodeWatch
+            } label: {
+                HStack(spacing: 12) {
+                    Image(systemName: "play.rectangle.on.rectangle")
+                        .font(.title3.weight(.semibold))
+                        .foregroundStyle(CapturePalette.accent)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("Watch together")
+                            .font(.headline)
+                            .foregroundStyle(.primary)
+                        Text(
+                            episodeWatch.selectedClip?.title.nonempty
+                                ?? "Choose and control the episode clip"
+                        )
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                    }
+                    Spacer()
+                    Text(episodeWatch.statusLabel)
+                        .font(.caption2.weight(.bold))
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.trailing)
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(.tertiary)
+                        .accessibilityHidden(true)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .captureCard()
+            .accessibilityIdentifier("CaptureEpisodeWatchOpen")
+            .accessibilityHint(
+                "Opens the shared episode clip and its familiar play, pause, and seek controls."
             )
             .task(
                 id:
@@ -11987,6 +12037,11 @@ private struct CaptureRecorderView: View {
                 onDismiss: { sessionNotesSession = nil }
             )
             .presentationDetents([.large])
+        }
+        .sheet(item: $focusedTool) { tool in
+            if let session = model.selectedSession {
+                focusedRecorderTool(tool, session: session)
+            }
         }
         .navigationDestination(for: CaptureTranscriptSourceDestination.self) { destination in
             CaptureTranscriptReviewView(
@@ -12147,6 +12202,68 @@ private struct CaptureRecorderView: View {
                   videoCapture.state != .paused,
                   !model.providerRoom.isLocalVideoPublished else { return }
             Task { await videoCapture.shutdownPreview() }
+        }
+    }
+
+    @ViewBuilder
+    private func focusedRecorderTool(
+        _ tool: CaptureRecorderFocusedTool,
+        session: MobileCaptureSession
+    ) -> some View {
+        NavigationStack {
+            ScrollView {
+                Group {
+                    switch tool {
+                    case .deviceSoundCheck:
+                        CaptureRehearsalReadinessCard(
+                            audioCapture: audioCapture,
+                            soundCheck: soundCheck,
+                            videoCapture: videoCapture,
+                            manuscript: episodeManuscript,
+                            watch: episodeWatch,
+                            preflight: sessionPreflight,
+                            session: session,
+                            mode: recordingMode,
+                            providerConnected: model.providerRoom.isConnected,
+                            previewOnly: model.usesPreviewData,
+                            isRunningCheck: isRunningRehearsalCheck,
+                            isCaptureActive: captureIsActive,
+                            onRunCheck: {
+                                Task {
+                                    await runRehearsalCheck(for: session)
+                                }
+                            }
+                        )
+                    case .episodeWatch:
+                        MobileEpisodeWatchCard(
+                            client: episodeWatch,
+                            session: session,
+                            captureIsActive: captureIsActive,
+                            previewOnly: model.usesPreviewData
+                        )
+                    }
+                }
+                .padding(18)
+            }
+            .background(CaptureCanvas())
+            .navigationTitle(
+                tool == .deviceSoundCheck
+                    ? "Device & sound check"
+                    : "Watch together"
+            )
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") {
+                        focusedTool = nil
+                    }
+                    .accessibilityIdentifier(
+                        tool == .deviceSoundCheck
+                            ? "CaptureDeviceSoundCheckDone"
+                            : "CaptureEpisodeWatchDone"
+                    )
+                }
+            }
         }
     }
 
