@@ -620,13 +620,6 @@ export async function decideSessionSourceAlignment(input: {
     );
   }
   const reason = text(input.reason).slice(0, 2_000) || null;
-  if (input.operation === "REVOKE" && !reason) {
-    throw new SessionSourceAlignmentError(
-      400,
-      "ALIGNMENT_REVOKE_REASON_REQUIRED",
-      "Briefly say why this placement should no longer be used.",
-    );
-  }
   const requestSha256 = hashJson({
     roomId: input.roomId,
     alignmentJobId: input.jobId,

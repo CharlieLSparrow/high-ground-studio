@@ -481,6 +481,24 @@ describe("Session exact-source audio alignment planning", () => {
     ).rejects.toMatchObject({ status: 409, code: "ALIGNMENT_DECISION_STALE" });
   });
 
+  it("lets an active measured placement return to automatic sync without a reason", async () => {
+    const prisma = {
+      $transaction: jest.fn().mockRejectedValue({ code: "P2034" }),
+    };
+    await expect(
+      decideSessionSourceAlignment({
+        prisma,
+        roomId: "room_session_12345678",
+        jobId: "session_alignment_12345678",
+        requestId: "c78fd857-b13e-4c8b-b440-13cfcf6c704c",
+        expectedRevision: 1,
+        operation: "REVOKE",
+        actor: { id: "user_session_12345678", email: "coach@example.test" },
+      }),
+    ).rejects.toMatchObject({ status: 409, code: "ALIGNMENT_DECISION_STALE" });
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+  });
+
   it("queues only released exact-byte sources from the same canonical take", async () => {
     const room = { id: "room_session_12345678", captureGroupId };
     const asset = (id: string) => ({

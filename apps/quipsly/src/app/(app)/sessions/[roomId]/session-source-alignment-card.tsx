@@ -387,8 +387,6 @@ export function SessionSourceAlignmentCard({
   );
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
-  const [revokeReason, setRevokeReason] = useState("");
-  const [showRevoke, setShowRevoke] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
 
   async function load() {
@@ -613,7 +611,7 @@ export function SessionSourceAlignmentCard({
             jobId: current.jobId,
             requestId: crypto.randomUUID(),
             expectedRevision: current.decision?.revision ?? 0,
-            reason: operation === "REVOKE" ? revokeReason.trim() : "",
+            reason: "",
           }),
         },
       );
@@ -630,8 +628,6 @@ export function SessionSourceAlignmentCard({
         payload.alignment!,
         ...existing.filter((item) => item.jobId !== payload.alignment!.jobId),
       ]);
-      setShowRevoke(false);
-      setRevokeReason("");
       setMessage(
         operation === "APPROVE"
           ? "Measured placement is now the Session conversation clock. The decision is reversible and no source bytes changed."
@@ -1062,48 +1058,13 @@ export function SessionSourceAlignmentCard({
               <button
                 type="button"
                 disabled={!canManage || busy}
-                onClick={() => setShowRevoke(true)}
+                onClick={() => void decide("REVOKE")}
                 className="inline-flex min-h-10 items-center rounded-full border border-rose-700 px-4 text-[10px] font-black text-rose-200 disabled:opacity-50"
               >
-                Revoke placement
+                Use automatic sync instead
               </button>
             ) : null}
           </div>
-          {showRevoke && current.decision?.status === "approved" ? (
-            <div className="mt-3 rounded-xl border border-rose-800 bg-rose-950/40 p-3">
-              <label className="text-[10px] font-black uppercase tracking-wide text-rose-100">
-                Why should this placement stop being used?
-                <textarea
-                  value={revokeReason}
-                  onChange={(event) =>
-                    setRevokeReason(event.currentTarget.value)
-                  }
-                  maxLength={2_000}
-                  className="mt-1 min-h-20 w-full rounded-lg border border-rose-800 bg-slate-950 p-3 text-xs font-semibold normal-case tracking-normal text-white"
-                />
-              </label>
-              <div className="mt-2 flex gap-2">
-                <button
-                  type="button"
-                  disabled={busy || !revokeReason.trim()}
-                  onClick={() => void decide("REVOKE")}
-                  className="min-h-10 rounded-full bg-rose-300 px-4 text-[10px] font-black text-rose-950 disabled:opacity-50"
-                >
-                  Confirm revoke
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowRevoke(false);
-                    setRevokeReason("");
-                  }}
-                  className="min-h-10 rounded-full border border-slate-600 px-4 text-[10px] font-black"
-                >
-                  Keep placement
-                </button>
-              </div>
-            </div>
-          ) : null}
         </div>
       ) : current ? (
         <div className="mt-5 flex items-center gap-3 rounded-2xl border border-amber-700 bg-amber-950/40 p-4 text-sm font-bold text-amber-100">

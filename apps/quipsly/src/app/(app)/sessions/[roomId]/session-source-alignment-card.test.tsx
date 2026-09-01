@@ -136,6 +136,87 @@ describe("SessionSourceAlignmentCard", () => {
     ).toBeInTheDocument();
   });
 
+  it("returns to automatic sync in one step without demanding a justification", async () => {
+    const alignment = {
+      jobId: "session_alignment_12345678",
+      status: "completed",
+      spineRecordingAssetId: "recording-coach",
+      targetRecordingAssetId: "recording-client",
+      clockAuthority: "capture-clock-proposal",
+      evidence: {
+        opening: {
+          measuredOffsetSeconds: 0.351,
+          normalizedCorrelation: 0.97,
+          peakMargin: 0.77,
+        },
+        later: {
+          measuredOffsetSeconds: 0.352,
+          normalizedCorrelation: 0.96,
+          peakMargin: 0.78,
+        },
+        drift: {
+          residualDriftMilliseconds: 1,
+          observedPartsPerMillion: 16.6667,
+        },
+        qualification: {
+          minimumCorrelation: 0.78,
+          minimumPeakMargin: 0.04,
+          qualifiedForAuthorizedAgentReview: true,
+          reason: "Two distinct exact-source peaks qualify for review.",
+        },
+      },
+      decision: {
+        revision: 1,
+        status: "approved",
+        signedOffsetSeconds: 0.351,
+        targetTimelineStartSeconds: 0.351,
+        targetSourceTrimSeconds: 0,
+        residualDriftMilliseconds: 1,
+        resultSha256: "b".repeat(64),
+        reason: null,
+        decidedAt: "2026-08-24T20:10:00.000Z",
+      },
+      error: null,
+    };
+    global.fetch = jest
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ ok: true, alignments: [alignment], suggestion: null }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          ok: true,
+          alignment: {
+            ...alignment,
+            decision: { ...alignment.decision, revision: 2, status: "revoked" },
+          },
+        }),
+      });
+
+    render(<SessionSourceAlignmentCard roomId="room-1" evidence={evidence} canManage />);
+    await openSyncDetails();
+    expect(screen.queryByRole("textbox")).toBeNull();
+    fireEvent.click(
+      await screen.findByRole("button", { name: /use automatic sync instead/i }),
+    );
+
+    await waitFor(() => expect(global.fetch).toHaveBeenCalledTimes(2));
+    expect(global.fetch).toHaveBeenNthCalledWith(
+      2,
+      "/api/sessions/room-1/source-alignment",
+      expect.objectContaining({
+        method: "POST",
+        body: expect.stringContaining('"action":"REVOKE"'),
+      }),
+    );
+    const request = JSON.parse(
+      ((global.fetch as jest.Mock).mock.calls[1]?.[1] as RequestInit).body as string,
+    );
+    expect(request).toMatchObject({ action: "REVOKE", expectedRevision: 1, reason: "" });
+  });
+
   it("explains ambiguous peaks and keeps the capture-clock estimate visibly safe", async () => {
     global.fetch = jest.fn().mockResolvedValue({
       ok: true,
