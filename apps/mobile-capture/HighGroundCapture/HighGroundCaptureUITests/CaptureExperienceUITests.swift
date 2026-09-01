@@ -788,7 +788,17 @@ final class CaptureExperienceUITests: XCTestCase {
     }
 
     func testVoiceWritingRecordsAndStopsThroughTheSourceFirstPath() {
-        let speakToWrite = app.buttons["CaptureStartVoiceNote"]
+        exerciseSourceFirstVoiceWritingRecordAndStop()
+    }
+
+    func testVoiceWritingRecordsAndStopsThroughTheSourceFirstPathOnRegularWidthIPad() {
+        exerciseSourceFirstVoiceWritingRecordAndStop()
+    }
+
+    private func exerciseSourceFirstVoiceWritingRecordAndStop() {
+        let speakToWrite = app.frame.width >= 700
+            ? app.buttons["CaptureIPadSpeakToWrite"]
+            : app.buttons["CaptureStartVoiceNote"]
         XCTAssertTrue(
             speakToWrite.exists && speakToWrite.isHittable,
             "Home should present speech-to-writing as an obvious primary action."
