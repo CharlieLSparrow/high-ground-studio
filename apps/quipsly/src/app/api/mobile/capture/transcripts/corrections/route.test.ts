@@ -2,7 +2,8 @@
 
 import { getPrismaClient } from "@/lib/prisma";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
-import { acknowledgeTranscriptCorrectionImpact } from "@/lib/server/transcript-corrections";
+import { acknowledgeTranscriptCorrectionImpact, createTranscriptCorrection } from "@/lib/server/transcript-corrections";
+import { dispatchCaptureTranscriptFollowThrough } from "@/lib/server/capture-transcript-follow-through-dispatch";
 import { readSessionTranscriptCorrectionDesk } from "@/lib/server/session-transcript-correction-desk";
 import { approveTranscriptEvaluationWindow, readTranscriptEvaluationReadiness } from "@/lib/server/transcript-evaluation-windows";
 import { readTranscriptEvaluationCandidates } from "@/lib/server/transcript-evaluation-candidates";
@@ -36,6 +37,7 @@ jest.mock("@/lib/server/transcript-evaluation-windows", () => {
   };
 });
 jest.mock("@/lib/server/transcript-evaluation-candidates", () => ({ readTranscriptEvaluationCandidates: jest.fn() }));
+jest.mock("@/lib/server/capture-transcript-follow-through-dispatch", () => ({ dispatchCaptureTranscriptFollowThrough: jest.fn() }));
 
 const session = { user: { id: "user-1", primaryEmail: "producer@example.com", isStaff: false } };
 
@@ -139,5 +141,34 @@ describe("transcript correction and accuracy-corpus route", () => {
       expectedEffectiveText: "Publish on Thursday.",
       confirmedContentStillValid: true,
     }));
+  });
+
+  it("refreshes ordinary follow-through after a direct transcript edit", async () => {
+    jest.mocked(getQuipslySessionFromRequest).mockResolvedValue(session as any);
+    jest.mocked(createTranscriptCorrection).mockResolvedValue({
+      ok: true,
+      idempotentReplay: false,
+      transcriptJobId: "job-1",
+      correction: { id: "correction-1" },
+    } as any);
+
+    const response = await POST(new Request("http://localhost/api/mobile/capture/transcripts/corrections", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        operation: "accept-human-correction",
+        roomId: "room-1",
+        segmentId: "segment-1",
+        clientRequestId: "direct-edit-1",
+        expectedText: "I will send it Thursday.",
+        correctedText: "I will send it Friday.",
+      }),
+    }));
+
+    expect(response.status).toBe(200);
+    expect(dispatchCaptureTranscriptFollowThrough).toHaveBeenCalledWith({
+      prisma: { marker: "prisma" },
+      transcriptJobId: "job-1",
+    });
   });
 });

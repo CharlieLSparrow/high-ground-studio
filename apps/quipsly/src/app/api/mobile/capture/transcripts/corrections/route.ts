@@ -17,6 +17,7 @@ import {
   TranscriptEvaluationWindowError,
 } from "@/lib/server/transcript-evaluation-windows";
 import { readTranscriptEvaluationCandidates } from "@/lib/server/transcript-evaluation-candidates";
+import { dispatchCaptureTranscriptFollowThrough } from "@/lib/server/capture-transcript-follow-through-dispatch";
 
 export const dynamic = "force-dynamic";
 
@@ -249,6 +250,12 @@ export async function POST(request: Request) {
         confirmedAgainstPlayback: input.confirmedAgainstPlayback === true,
         playbackPositionSeconds: number(input.playbackPositionSeconds),
       });
+      if (text(result.transcriptJobId)) {
+        dispatchCaptureTranscriptFollowThrough({
+          prisma,
+          transcriptJobId: text(result.transcriptJobId),
+        });
+      }
       return NextResponse.json(result, { headers: { "Cache-Control": "private, no-store" } });
     }
     if (operation === "review-ai-proposal") {

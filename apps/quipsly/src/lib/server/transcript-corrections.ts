@@ -2284,7 +2284,13 @@ export async function createTranscriptCorrection(input: {
     if (replay.roomId !== roomId || replay.segmentId !== segmentId) {
       throw new TranscriptCorrectionError("That request id is already bound to different evidence.", 409, "IDEMPOTENCY_CONFLICT");
     }
-    return { ok: true, idempotentReplay: true, correction: publicCorrection(replay), boundaries: transcriptCorrectionBoundaries() };
+    return {
+      ok: true,
+      idempotentReplay: true,
+      transcriptJobId: evidence.job.id,
+      correction: publicCorrection(replay),
+      boundaries: transcriptCorrectionBoundaries(),
+    };
   }
   const expectedSpeakerLabel = nullableLabel(input.expectedSpeakerLabel);
   if (input.expectedText !== evidence.segment.text || expectedSpeakerLabel !== (evidence.segment.speakerLabel ?? null)) {
@@ -2426,7 +2432,13 @@ export async function createTranscriptCorrection(input: {
     });
   });
 
-  return { ok: true, idempotentReplay: false, correction: publicCorrection(correction), boundaries: transcriptCorrectionBoundaries() };
+  return {
+    ok: true,
+    idempotentReplay: false,
+    transcriptJobId: evidence.job.id,
+    correction: publicCorrection(correction),
+    boundaries: transcriptCorrectionBoundaries(),
+  };
 }
 
 export async function reviewTranscriptCorrectionProposal(input: {
