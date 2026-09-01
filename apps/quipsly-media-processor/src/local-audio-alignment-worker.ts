@@ -15,6 +15,7 @@ import { FfmpegAudioAlignmentAnalyzer } from "./audio-alignment-ffmpeg.js";
 
 const { Pool } = pg;
 const JOB_TYPE = "audio-alignment";
+const MAXIMUM_RETRY_ATTEMPTS = 5;
 
 export type LocalAudioAlignmentClaim = {
   id: string;
@@ -43,8 +44,8 @@ export type LocalAudioAlignmentWorkerResult =
   | { disposition: "idle" }
   | { disposition: "completed"; jobId: string; qualified: boolean }
   | { disposition: "claim-lost"; jobId: string }
-  | { disposition: "retry"; jobId: string; code: string }
-  | { disposition: "failed"; jobId: string; code: string };
+  | { disposition: "retry"; jobId: string; code: string; message: string }
+  | { disposition: "failed"; jobId: string; code: string; message: string };
 
 class TerminalAudioAlignmentError extends Error {
   readonly code: string;
@@ -67,17 +68,19 @@ export async function runOneLocalAudioAlignmentJob(
   try {
     job = parseAudioAlignmentWorkItem(claim.inputJson, claim.id);
   } catch (error) {
-    await store.fail({ claim, code: "audio-alignment-job-invalid", message: message(error), now: options.now() });
-    return { disposition: "failed", jobId: claim.id, code: "audio-alignment-job-invalid" };
+    const detail = message(error);
+    await store.fail({ claim, code: "audio-alignment-job-invalid", message: detail, now: options.now() });
+    return { disposition: "failed", jobId: claim.id, code: "audio-alignment-job-invalid", message: detail };
   }
   if (job.spine.provider !== "local" || job.target.provider !== "local") {
+    const detail = "The local alignment worker accepts two local sources only.";
     await store.fail({
       claim,
       code: "audio-alignment-provider-unsupported",
-      message: "The local alignment worker accepts two local sources only.",
+      message: detail,
       now: options.now(),
     });
-    return { disposition: "failed", jobId: job.jobId, code: "audio-alignment-provider-unsupported" };
+    return { disposition: "failed", jobId: job.jobId, code: "audio-alignment-provider-unsupported", message: detail };
   }
   try {
     const root = await authorizedRoot(options.localMediaRoot);
@@ -112,10 +115,16 @@ export async function runOneLocalAudioAlignmentJob(
     const terminal = classifyTerminal(error);
     if (terminal) {
       await store.fail({ claim, code: terminal.code, message: terminal.message, now: options.now() });
-      return { disposition: "failed", jobId: job.jobId, code: terminal.code };
+      return { disposition: "failed", jobId: job.jobId, code: terminal.code, message: terminal.message };
     }
-    await store.retry({ claim, code: "audio-alignment-worker-retry", message: message(error), now: options.now() });
-    return { disposition: "retry", jobId: job.jobId, code: "audio-alignment-worker-retry" };
+    const detail = message(error);
+    if (claim.attempt >= MAXIMUM_RETRY_ATTEMPTS) {
+      const code = "audio-alignment-retry-exhausted";
+      await store.fail({ claim, code, message: detail, now: options.now() });
+      return { disposition: "failed", jobId: job.jobId, code, message: detail };
+    }
+    await store.retry({ claim, code: "audio-alignment-worker-retry", message: detail, now: options.now() });
+    return { disposition: "retry", jobId: job.jobId, code: "audio-alignment-worker-retry", message: detail };
   }
 }
 
@@ -320,7 +329,7 @@ function inside(root: string, candidate: string) {
 function classifyTerminal(error: unknown) {
   if (error instanceof TerminalAudioAlignmentError) return error;
   const detail = message(error);
-  if (/exceeds|effectively silent|does not match|requires|invalid|non-empty|no complete float|must be|outside/i.test(detail)) {
+  if (/exceeds|effectively silent|does not match|(?:does|do) not share enough|requires|invalid|non-empty|no complete float|must be|outside/i.test(detail)) {
     return new TerminalAudioAlignmentError("audio-alignment-evidence-unavailable", detail);
   }
   return null;

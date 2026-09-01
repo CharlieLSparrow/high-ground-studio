@@ -1015,7 +1015,7 @@ async function main() {
         );
       }
       if (once) break;
-      if (result.disposition === "idle") {
+      if (result.disposition === "idle" || result.disposition === "retry") {
         await new Promise((resolve) =>
           setTimeout(
             resolve,

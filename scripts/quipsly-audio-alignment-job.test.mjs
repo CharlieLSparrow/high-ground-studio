@@ -306,3 +306,98 @@ test("local worker executes a Session-scoped work item without inventing Studio 
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test("local worker fails short exact sources once instead of hot-looping retries", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "quipsly-short-alignment-worker-test-"));
+  try {
+    const spinePath = path.join(root, "spine.wav");
+    const targetPath = path.join(root, "target.wav");
+    await writeFile(spinePath, "spine");
+    await writeFile(targetPath, "target");
+    const job = newSessionAudioAlignmentJob({
+      jobId: "session_alignment_short123",
+      roomId: "room_session_short123",
+      captureGroupId: "ff62f116-7e28-46c2-957c-b18e94da2b36",
+      requestedByUserId: "user_session_short123",
+      requestedByEmail: "coach@example.test",
+      queuedAt: "2026-08-31T12:00:00.000Z",
+      spine: source("recording_spine_short", spinePath, "spine"),
+      target: source("recording_target_short", targetPath, "target"),
+      proposal,
+    });
+    let failure = null;
+    let retryCount = 0;
+    const store = {
+      claim: async ({ executionId }) => ({ id: job.jobId, inputJson: job, attempt: 1, executionId }),
+      complete: async () => { throw new Error("unexpected completion"); },
+      retry: async () => { retryCount += 1; return true; },
+      fail: async (input) => { failure = input; return true; },
+    };
+    const result = await runOneLocalAudioAlignmentJob(
+      store,
+      { analyze: async () => { throw new Error("The exact decoded sources do not share enough duration for two separated alignment windows."); } },
+      {
+        executionId: "execution_session_short123",
+        buildId: "test-build",
+        imageDigest: null,
+        leaseMs: 60_000,
+        localMediaRoot: root,
+        now: () => new Date("2026-08-31T12:00:02.000Z"),
+      },
+    );
+    assert.equal(result.disposition, "failed");
+    assert.equal(result.code, "audio-alignment-evidence-unavailable");
+    assert.match(result.message, /do not share enough duration/);
+    assert.equal(failure.code, "audio-alignment-evidence-unavailable");
+    assert.equal(retryCount, 0);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("local worker bounds repeated transient alignment failures", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "quipsly-transient-alignment-worker-test-"));
+  try {
+    const spinePath = path.join(root, "spine.wav");
+    const targetPath = path.join(root, "target.wav");
+    await writeFile(spinePath, "spine");
+    await writeFile(targetPath, "target");
+    const job = newSessionAudioAlignmentJob({
+      jobId: "session_alignment_retry123",
+      roomId: "room_session_retry123",
+      captureGroupId: "3d9a6327-42ae-4314-a367-683308344a90",
+      requestedByUserId: "user_session_retry123",
+      requestedByEmail: "coach@example.test",
+      queuedAt: "2026-08-31T12:00:00.000Z",
+      spine: source("recording_spine_retry", spinePath, "spine"),
+      target: source("recording_target_retry", targetPath, "target"),
+      proposal,
+    });
+    let failure = null;
+    let retryCount = 0;
+    const store = {
+      claim: async ({ executionId }) => ({ id: job.jobId, inputJson: job, attempt: 5, executionId }),
+      complete: async () => { throw new Error("unexpected completion"); },
+      retry: async () => { retryCount += 1; return true; },
+      fail: async (input) => { failure = input; return true; },
+    };
+    const result = await runOneLocalAudioAlignmentJob(
+      store,
+      { analyze: async () => { throw new Error("temporary FFmpeg process launch failure"); } },
+      {
+        executionId: "execution_session_retry123",
+        buildId: "test-build",
+        imageDigest: null,
+        leaseMs: 60_000,
+        localMediaRoot: root,
+        now: () => new Date("2026-08-31T12:00:02.000Z"),
+      },
+    );
+    assert.equal(result.disposition, "failed");
+    assert.equal(result.code, "audio-alignment-retry-exhausted");
+    assert.equal(failure.code, "audio-alignment-retry-exhausted");
+    assert.equal(retryCount, 0);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});

@@ -73,7 +73,7 @@ assert(
   "Choose either upload interruption or recorder crash recovery per operation.",
 );
 const requestedRecordingMilliseconds = Number.parseInt(
-  process.env.QUIPSLY_LOCAL_LIVE_ROOM_RECORDING_MS || "3000",
+  process.env.QUIPSLY_LOCAL_LIVE_ROOM_RECORDING_MS || "7000",
   10,
 );
 assert(

@@ -176,7 +176,7 @@ describe("Work Queue model", () => {
     expect(snapshot.tasks.find((item) => item.id === "canceled")?.reminderAt).toBeNull();
   });
 
-  it("allows an assigned owner or verified coaching collaborator to edit an open one-time task", () => {
+  it("allows an assigned owner or verified coaching collaborator to update one-time task state", () => {
     const snapshot = buildWorkSnapshot({
       now,
       actorUserId: "user-1",
@@ -213,7 +213,7 @@ describe("Work Queue model", () => {
       "shared-coaching": true,
       "other-owner": false,
       recurring: false,
-      closed: false,
+      closed: true,
     });
   });
 

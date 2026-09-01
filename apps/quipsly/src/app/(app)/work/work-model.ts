@@ -487,7 +487,6 @@ export function buildWorkSnapshot(input: {
         tags: (task.tagLinks ?? []).map((link) => link.tag),
         canEdit: Boolean(input.actorUserId)
           && (task.assignedUserId === input.actorUserId || task.canEditByActor === true)
-          && task.status === "OPEN"
           && !recurrence
           && !historicalLocked,
         canManageTags: Boolean(input.actorUserId) && task.assignedUserId === input.actorUserId,

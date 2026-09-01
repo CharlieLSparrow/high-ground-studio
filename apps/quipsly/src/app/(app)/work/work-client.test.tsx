@@ -1022,6 +1022,25 @@ describe("Work Queue interactions", () => {
     expect(await screen.findByText("No open tasks are in your scoped queue.")).toBeInTheDocument();
   });
 
+  it("lets an owner reopen a completed one-time task", async () => {
+    jest.mocked(updateWorkTaskStatus).mockResolvedValue({ ok: true, taskId: "task-1", status: "OPEN", updatedAt: "2026-07-18T19:00:00.000Z", receiptId: "receipt-reopen" });
+    const user = userEvent.setup();
+    const completedSnapshot: WorkSnapshot = {
+      ...snapshot,
+      counts: { ...snapshot.counts, openTasks: 0, completedTasks: 1 },
+      tasks: [{
+        ...snapshot.tasks[0],
+        status: "DONE",
+        completedAt: "2026-07-18T18:30:00.000Z",
+        canEdit: true,
+      }],
+    };
+    render(<WorkClient initialSnapshot={completedSnapshot} focusTaskId="task-1" />);
+    await user.click(screen.getByRole("button", { name: "Reopen" }));
+    expect(updateWorkTaskStatus).toHaveBeenCalledWith({ taskId: "task-1", nextStatus: "OPEN", expectedUpdatedAt: "2026-07-18T18:00:00.000Z" });
+    expect(await screen.findByRole("button", { name: "Mark done" })).toBeInTheDocument();
+  });
+
   it("explicitly preserves an overdue recurring occurrence as missed instead of silently canceling it", async () => {
     const confirm = jest.spyOn(window, "confirm").mockReturnValue(true);
     jest.mocked(updateWorkTaskStatus).mockResolvedValue({ ok: true, taskId: "task-1", status: "CANCELED", updatedAt: "2026-07-18T19:00:00.000Z", receiptId: "missed-receipt", nextOccurrenceTaskId: "task-next" });

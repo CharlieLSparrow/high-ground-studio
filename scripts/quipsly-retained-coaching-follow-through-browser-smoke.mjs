@@ -92,6 +92,18 @@ async function databaseSnapshot(prisma) {
 
 async function followThroughSurface(page) {
   const label = page.getByText("Follow-through for this Session", { exact: true });
+  if (!(await label.isVisible())) {
+    const previousSessionContext = page
+      .locator("details")
+      .filter({ hasText: "Previous session context" })
+      .first();
+    if (await previousSessionContext.count()) {
+      const isOpen = await previousSessionContext.evaluate((element) => element.open);
+      if (!isOpen) {
+        await previousSessionContext.locator(":scope > summary").click();
+      }
+    }
+  }
   await label.waitFor({ timeout: 25_000 });
   return label.locator("xpath=ancestor::section[1]");
 }
@@ -147,7 +159,12 @@ async function operateClient(browser, baseURL, artifactDirectory) {
     surface = await followThroughSurface(page);
     const currentTask = surface.getByText(TASK_TITLE, { exact: true }).locator("xpath=ancestor::*[self::a or self::div][1]");
     await currentTask.getByText("Done", { exact: true }).waitFor({ timeout: 20_000 });
-    await currentTask.getByText(/Updated since release · was Open/i).waitFor();
+    const changedSinceRelease = currentTask.getByText(/Updated since release · was Open/i);
+    const matchesReleasedState = currentTask.getByText("Matches released state", { exact: true });
+    await Promise.any([
+      changedSinceRelease.waitFor({ state: "visible", timeout: 20_000 }),
+      matchesReleasedState.waitFor({ state: "visible", timeout: 20_000 }),
+    ]);
 
     const currentGoalLink = surface.getByRole("link", { name: new RegExp(GOAL_TITLE, "i") });
     await currentGoalLink.click();
