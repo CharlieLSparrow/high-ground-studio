@@ -603,9 +603,9 @@ export function GoogleCalendarConnectionManager({
           <div className="flex items-start gap-3">
             <AlertTriangle className="mt-0.5 shrink-0 text-amber-800" size={20} aria-hidden="true" />
             <div>
-              <p className="text-[10px] font-black uppercase tracking-[0.16em] text-amber-900">Human review required</p>
-              <h3 id="google-calendar-conflicts-heading" className="mt-1 font-serif text-2xl font-black text-[#493914]">Google Calendar changes need a decision</h3>
-              <p className="mt-1 text-xs font-semibold leading-relaxed text-[#6f5a24]">Quipsly read only provider identity and version evidence. It did not import event content or change either calendar.</p>
+              <p className="text-[10px] font-black uppercase tracking-[0.16em] text-amber-900">Calendar conflict</p>
+              <h3 id="google-calendar-conflicts-heading" className="mt-1 font-serif text-2xl font-black text-[#493914]">Google Calendar and Quipsly both changed</h3>
+              <p className="mt-1 text-xs font-semibold leading-relaxed text-[#6f5a24]">Nothing was overwritten. Choose what should happen to each item whenever you are ready.</p>
             </div>
           </div>
           <ul className="mt-4 space-y-3">

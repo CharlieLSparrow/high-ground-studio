@@ -83,15 +83,15 @@ describe("Google Calendar conflict review UX", () => {
 
     render(<GoogleCalendarConnectionManager projects={[]} sessions={[]} milestones={[]} />);
 
-    expect(await screen.findByRole("heading", { name: "Google Calendar changes need a decision" })).toBeInTheDocument();
-    expect(screen.getByText(/did not import event content or change either calendar/i)).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Google Calendar and Quipsly both changed" })).toBeInTheDocument();
+    expect(screen.getByText(/Nothing was overwritten\. Choose what should happen to each item whenever you are ready\./i)).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Prepare Quipsly preview" }));
 
     await waitFor(() => {
       expect(screen.getByText(/Google is unchanged\. Preview the current Quipsly source below/i)).toBeInTheDocument();
     });
-    expect(screen.queryByRole("heading", { name: "Google Calendar changes need a decision" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Google Calendar and Quipsly both changed" })).not.toBeInTheDocument();
     expect(screen.getByLabelText("Quipsly source")).toHaveValue("SESSION:older-session-1");
     expect(screen.getByRole("option", { name: /QA Retained · Older episode recording/ })).toBeInTheDocument();
     expect(screen.getByLabelText("Verified calendar selection")).toHaveValue("collection-1");
