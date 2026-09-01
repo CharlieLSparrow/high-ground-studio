@@ -1733,9 +1733,13 @@ final class CaptureExperienceUITests: XCTestCase {
 
         next.tap()
 
+        let compactRecorderOpened = app.scrollViews["CaptureRecorderView"]
+            .waitForExistence(timeout: 8)
+        let regularWidthRecorderOpened =
+            app.scrollViews["CaptureIPadWorkspace"].exists
+            && app.otherElements["CaptureProviderRoomControls"].exists
         XCTAssertTrue(
-            app.scrollViews["CaptureRecorderView"]
-                .waitForExistence(timeout: 8),
+            compactRecorderOpened || regularWidthRecorderOpened,
             "Opening a full Episode projection must not overflow SwiftUI's layout stack."
         )
         XCTAssertTrue(
