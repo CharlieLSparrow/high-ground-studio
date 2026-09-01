@@ -273,6 +273,26 @@ function generatedFollowThroughCanRefresh(input: {
   );
 }
 
+function generatedFollowThroughCanRemove(input: {
+  existing: any;
+  detailField: "detail" | "description";
+  activeStatus: "OPEN" | "ACTIVE";
+  transcriptJobIds: Set<string>;
+}) {
+  const source =
+    typeof input.existing?.sourceJson === "object" &&
+    input.existing.sourceJson !== null &&
+    !Array.isArray(input.existing.sourceJson)
+      ? (input.existing.sourceJson as Record<string, unknown>)
+      : {};
+  return (
+    source.origin === "quipsly-session-follow-through" &&
+    input.transcriptJobIds.has(cleanText(source.transcriptJobId)) &&
+    input.existing.status === input.activeStatus &&
+    generatedFollowThroughCanRefresh(input)
+  );
+}
+
 function reviewTime(value: unknown) {
   if (value instanceof Date) return value.getTime();
   if (typeof value !== "string" && typeof value !== "number") return 0;
@@ -1815,7 +1835,8 @@ export async function buildCoachingPacketFromTranscriptJob(
       where: { id: candidate.committedActionItemId },
     });
     const item =
-      existing && generatedFollowThroughCanRefresh({ existing, detailField: "detail" })
+      existing &&
+      generatedFollowThroughCanRefresh({ existing, detailField: "detail" })
         ? await args.prisma.actionItem.update({
             where: { id: existing.id },
             data: {
@@ -1923,6 +1944,53 @@ export async function buildCoachingPacketFromTranscriptJob(
     }
   }
 
+  const transcriptJobIds = new Set(
+    packetSegments.map(
+      (segment) => cleanText(segment.transcriptJobId) || job.id,
+    ),
+  );
+  const retainedActionItemIds = new Set(
+    actionItems.map((item: any) => cleanText(item.id)),
+  );
+  const retainedGoalIds = new Set(goals.map((goal: any) => cleanText(goal.id)));
+  const [previouslyGeneratedActionItems, previouslyGeneratedGoals] =
+    await Promise.all([
+      args.prisma.actionItem.findMany({
+        where: { roomId: job.roomId },
+      }),
+      args.prisma.goal.findMany({
+        where: { roomId: job.roomId },
+      }),
+    ]);
+  const removableActionItems = previouslyGeneratedActionItems.filter(
+    (item: any) =>
+      !retainedActionItemIds.has(cleanText(item.id)) &&
+      generatedFollowThroughCanRemove({
+        existing: item,
+        detailField: "detail",
+        activeStatus: "OPEN",
+        transcriptJobIds,
+      }),
+  );
+  const removableGoals = previouslyGeneratedGoals.filter(
+    (goal: any) =>
+      !retainedGoalIds.has(cleanText(goal.id)) &&
+      generatedFollowThroughCanRemove({
+        existing: goal,
+        detailField: "description",
+        activeStatus: "ACTIVE",
+        transcriptJobIds,
+      }),
+  );
+  await Promise.all([
+    ...removableActionItems.map((item: any) =>
+      args.prisma.actionItem.delete({ where: { id: item.id } }),
+    ),
+    ...removableGoals.map((goal: any) =>
+      args.prisma.goal.delete({ where: { id: goal.id } }),
+    ),
+  ]);
+
   const highlightNotes = [];
   for (const segment of highlights) {
     const note = await args.prisma.coachingNote.create({
@@ -1971,6 +2039,8 @@ export async function buildCoachingPacketFromTranscriptJob(
     actionCandidateIds: actionCandidates.map((candidate) => candidate.id),
     actionItemIds: actionItems.map((item: any) => item.id),
     goalIds: goals.map((goal: any) => goal.id),
+    removedActionItemIds: removableActionItems.map((item: any) => item.id),
+    removedGoalIds: removableGoals.map((goal: any) => goal.id),
     highlightCount: highlightNotes.length,
     actionCandidateCount: actionCandidates.length,
     actionItemCount: actionItems.length,

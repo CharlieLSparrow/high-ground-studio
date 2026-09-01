@@ -77,14 +77,24 @@ function automaticWorkStores() {
       findUnique: jest.fn(
         async ({ where }: any) => actionItems.get(where.id) || null,
       ),
+      findMany: jest.fn(async () => Array.from(actionItems.values())),
       create: jest.fn(async ({ data }: any) => {
         const row = { ...data, createdAt: new Date(), updatedAt: new Date() };
         actionItems.set(data.id, row);
         return row;
       }),
       update: jest.fn(async ({ where, data }: any) => {
-        const row = { ...actionItems.get(where.id), ...data, updatedAt: new Date() };
+        const row = {
+          ...actionItems.get(where.id),
+          ...data,
+          updatedAt: new Date(),
+        };
         actionItems.set(where.id, row);
+        return row;
+      }),
+      delete: jest.fn(async ({ where }: any) => {
+        const row = actionItems.get(where.id) || null;
+        actionItems.delete(where.id);
         return row;
       }),
     },
@@ -92,6 +102,7 @@ function automaticWorkStores() {
       findUnique: jest.fn(
         async ({ where }: any) => goals.get(where.id) || null,
       ),
+      findMany: jest.fn(async () => Array.from(goals.values())),
       create: jest.fn(async ({ data }: any) => {
         const row = { ...data, createdAt: new Date(), updatedAt: new Date() };
         goals.set(data.id, row);
@@ -100,6 +111,11 @@ function automaticWorkStores() {
       update: jest.fn(async ({ where, data }: any) => {
         const row = { ...goals.get(where.id), ...data, updatedAt: new Date() };
         goals.set(where.id, row);
+        return row;
+      }),
+      delete: jest.fn(async ({ where }: any) => {
+        const row = goals.get(where.id) || null;
+        goals.delete(where.id);
         return row;
       }),
     },
@@ -1144,6 +1160,204 @@ describe("transcript coaching follow-through", () => {
     ).toBe("My own follow-up wording");
   });
 
+  it("removes untouched generated follow-through when a correction removes the commitment", async () => {
+    const job = completedTranscriptJob();
+    const work = automaticWorkStores();
+    let latestSummary: any = null;
+    const prisma = {
+      transcriptJob: { findUnique: jest.fn(async () => job) },
+      coachingNote: {
+        findFirst: jest.fn(async () => latestSummary),
+        create: jest.fn(async ({ data }: any) => {
+          const note = { id: `note-${Date.now()}`, ...data };
+          if (data.kind === "SUMMARY") {
+            latestSummary = { ...note, actionItems: [] };
+          }
+          return note;
+        }),
+      },
+      ...work,
+    };
+
+    const first = (await buildCoachingPacketFromTranscriptJob({
+      prisma,
+      transcriptJobId: job.id,
+      authorUserId: "coach-1",
+    })) as any;
+    expect(first.actionItemIds).toHaveLength(1);
+
+    const provider = job.segments[0];
+    (provider as any).corrections = [
+      {
+        id: "correction-no-commitment",
+        status: "accepted",
+        baseTextSha256: createHash("sha256")
+          .update(provider.text)
+          .digest("hex"),
+        expectedSpeakerLabel: provider.speakerLabel,
+        correctedText: "The outline now has a clear shape.",
+        correctedSpeakerLabel: provider.speakerLabel,
+        updatedAt: new Date("2026-08-02T01:00:00.000Z"),
+      },
+    ];
+
+    const rebuilt = (await buildCoachingPacketFromTranscriptJob({
+      prisma,
+      transcriptJobId: job.id,
+      authorUserId: "coach-1",
+    })) as any;
+    expect(rebuilt.actionItemIds).toEqual([]);
+    expect(rebuilt.removedActionItemIds).toEqual(first.actionItemIds);
+    expect(work.actionItem.delete).toHaveBeenCalledWith({
+      where: { id: first.actionItemIds[0] },
+    });
+    expect(
+      await work.actionItem.findUnique({
+        where: { id: first.actionItemIds[0] },
+      }),
+    ).toBeNull();
+  });
+
+  it("keeps completed or edited generated work when a correction removes the original commitment", async () => {
+    const job = completedTranscriptJob();
+    job.segments[1].text = "I will send the research links tomorrow.";
+    const work = automaticWorkStores();
+    let latestSummary: any = null;
+    const prisma = {
+      transcriptJob: { findUnique: jest.fn(async () => job) },
+      coachingNote: {
+        findFirst: jest.fn(async () => latestSummary),
+        create: jest.fn(async ({ data }: any) => {
+          const note = { id: `note-${Date.now()}`, ...data };
+          if (data.kind === "SUMMARY") {
+            latestSummary = { ...note, actionItems: [] };
+          }
+          return note;
+        }),
+      },
+      ...work,
+    };
+
+    const first = (await buildCoachingPacketFromTranscriptJob({
+      prisma,
+      transcriptJobId: job.id,
+      authorUserId: "coach-1",
+    })) as any;
+    const completedTask = await work.actionItem.findUnique({
+      where: { id: first.actionItemIds[0] },
+    });
+    completedTask.status = "DONE";
+    const editedTask = await work.actionItem.findUnique({
+      where: { id: first.actionItemIds[1] },
+    });
+    editedTask.title = "Share the sources we actually discussed";
+
+    const provider = job.segments[0];
+    (provider as any).corrections = [
+      {
+        id: "correction-after-completion",
+        status: "accepted",
+        baseTextSha256: createHash("sha256")
+          .update(provider.text)
+          .digest("hex"),
+        expectedSpeakerLabel: provider.speakerLabel,
+        correctedText: "The outline now has a clear shape.",
+        correctedSpeakerLabel: provider.speakerLabel,
+        updatedAt: new Date("2026-08-02T01:10:00.000Z"),
+      },
+    ];
+    const secondProvider = job.segments[1];
+    (secondProvider as any).corrections = [
+      {
+        id: "correction-after-edit",
+        status: "accepted",
+        baseTextSha256: createHash("sha256")
+          .update(secondProvider.text)
+          .digest("hex"),
+        expectedSpeakerLabel: secondProvider.speakerLabel,
+        correctedText: "The research links clarified the discussion.",
+        correctedSpeakerLabel: secondProvider.speakerLabel,
+        updatedAt: new Date("2026-08-02T01:11:00.000Z"),
+      },
+    ];
+
+    const rebuilt = (await buildCoachingPacketFromTranscriptJob({
+      prisma,
+      transcriptJobId: job.id,
+      authorUserId: "coach-1",
+    })) as any;
+    expect(rebuilt.removedActionItemIds).toEqual([]);
+    expect(work.actionItem.delete).not.toHaveBeenCalled();
+    expect(
+      (
+        await work.actionItem.findUnique({
+          where: { id: first.actionItemIds[0] },
+        })
+      ).status,
+    ).toBe("DONE");
+    expect(
+      (
+        await work.actionItem.findUnique({
+          where: { id: first.actionItemIds[1] },
+        })
+      ).title,
+    ).toBe("Share the sources we actually discussed");
+  });
+
+  it("removes an untouched generated goal when the corrected transcript no longer contains it", async () => {
+    const job = completedTranscriptJob();
+    job.segments[0].text = "My goal is to publish the final outline.";
+    const work = automaticWorkStores();
+    let latestSummary: any = null;
+    const prisma = {
+      transcriptJob: { findUnique: jest.fn(async () => job) },
+      coachingNote: {
+        findFirst: jest.fn(async () => latestSummary),
+        create: jest.fn(async ({ data }: any) => {
+          const note = { id: `note-${Date.now()}`, ...data };
+          if (data.kind === "SUMMARY") {
+            latestSummary = { ...note, actionItems: [] };
+          }
+          return note;
+        }),
+      },
+      ...work,
+    };
+
+    const first = (await buildCoachingPacketFromTranscriptJob({
+      prisma,
+      transcriptJobId: job.id,
+      authorUserId: "coach-1",
+    })) as any;
+    expect(first.goalIds).toHaveLength(1);
+
+    const provider = job.segments[0];
+    (provider as any).corrections = [
+      {
+        id: "correction-no-goal",
+        status: "accepted",
+        baseTextSha256: createHash("sha256")
+          .update(provider.text)
+          .digest("hex"),
+        expectedSpeakerLabel: provider.speakerLabel,
+        correctedText: "The final outline is ready for discussion.",
+        correctedSpeakerLabel: provider.speakerLabel,
+        updatedAt: new Date("2026-08-02T01:20:00.000Z"),
+      },
+    ];
+
+    const rebuilt = (await buildCoachingPacketFromTranscriptJob({
+      prisma,
+      transcriptJobId: job.id,
+      authorUserId: "coach-1",
+    })) as any;
+    expect(rebuilt.goalIds).toEqual([]);
+    expect(rebuilt.removedGoalIds).toEqual(first.goalIds);
+    expect(work.goal.delete).toHaveBeenCalledWith({
+      where: { id: first.goalIds[0] },
+    });
+  });
+
   it("builds one editable follow-through packet from both participant-owned masters and rebuilds after either transcript changes", async () => {
     const coachJob = {
       id: "transcript-coach",
@@ -1272,7 +1486,8 @@ describe("transcript coaching follow-through", () => {
     const prisma = {
       transcriptJob: {
         findUnique: jest.fn(async ({ where }: any) =>
-          where.id === clientJob.id ? clientAnchor : anchor),
+          where.id === clientJob.id ? clientAnchor : anchor,
+        ),
       },
       recordingAsset: {
         findMany: jest.fn(async () => [clientSource, coachSource]),
@@ -1281,16 +1496,17 @@ describe("transcript coaching follow-through", () => {
         findFirst: jest.fn(async ({ where }: any) => {
           if (!latestSummary) return null;
           const packetSource = latestSummary.sourceJson?.source;
-          const matchesCanonicalSessionPacket = Array.isArray(where.OR)
-            && where.OR.some(
+          const matchesCanonicalSessionPacket =
+            Array.isArray(where.OR) &&
+            where.OR.some(
               (candidate: any) =>
-                candidate?.sourceJson?.path?.[0] === "source"
-                && candidate.sourceJson.equals === packetSource,
+                candidate?.sourceJson?.path?.[0] === "source" &&
+                candidate.sourceJson.equals === packetSource,
             );
           const matchesLegacyAnchor =
-            where.sourceJson?.path?.[0] === "transcriptJobId"
-            && where.sourceJson.equals
-              === latestSummary.sourceJson?.transcriptJobId;
+            where.sourceJson?.path?.[0] === "transcriptJobId" &&
+            where.sourceJson.equals ===
+              latestSummary.sourceJson?.transcriptJobId;
           return matchesCanonicalSessionPacket || matchesLegacyAnchor
             ? latestSummary
             : null;
