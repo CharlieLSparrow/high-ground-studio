@@ -10805,13 +10805,18 @@ private struct CaptureRecorderView: View {
     /// the smaller main-thread stack on physical iPhones before SwiftUI could
     /// render either Sessions or Speak to write.
     private var recorderScrollableSurface: AnyView {
-        AnyView(ScrollView {
+        AnyView(ScrollViewReader { proxy in
+            ScrollView {
             // This surface can project a full Episode workspace. Lazy layout
             // is a correctness boundary on physical devices: eagerly laying
             // out every transcript, notes, follow-through, chat, Watch, and
             // capture card can overflow SwiftUI's AttributeGraph stack before
             // the person reaches the consent controls.
             LazyVStack(spacing: 16) {
+                Color.clear
+                    .frame(height: 0)
+                    .id("CaptureRecorderTop")
+                    .accessibilityHidden(true)
                 AnyView(Group {
                 if model.selectedSession?.isPersonalVoiceNote != true {
                     SessionChooserButton(session: model.selectedSession) {
@@ -11597,7 +11602,15 @@ private struct CaptureRecorderView: View {
                 }
             }
         }
-        .background(CaptureCanvas()))
+            .onChange(of: model.selectedSession?.id) { oldID, newID in
+                guard oldID != newID else { return }
+                // A Session is a new workspace, not another row in the previous
+                // one. Return to its entry point so Join, completed-session edit,
+                // and the ordinary next action are visible immediately.
+                proxy.scrollTo("CaptureRecorderTop", anchor: .top)
+            }
+            .background(CaptureCanvas())
+        })
     }
 
     /// Episode source material and collaboration belong beside the recorder,
