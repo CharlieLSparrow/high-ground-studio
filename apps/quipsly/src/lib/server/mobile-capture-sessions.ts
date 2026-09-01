@@ -520,7 +520,7 @@ export function captureSourceSummaries(
           : null,
       };
     });
-  return addCaptureGroupAlignmentOffsets(sources).sort(
+  return addCaptureGroupAlignmentOffsets<(typeof sources)[number]>(sources).sort(
     (left: any, right: any) =>
       String(right.recordedStartedAt || "").localeCompare(
         String(left.recordedStartedAt || ""),
