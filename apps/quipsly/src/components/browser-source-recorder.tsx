@@ -355,8 +355,6 @@ export function BrowserSourceRecorder({
   const [allPartyAudioReady, setAllPartyAudioReady] = useState(false);
   const [allPartyVideoReady, setAllPartyVideoReady] = useState(false);
   const [allPartyTranscriptionReady, setAllPartyTranscriptionReady] = useState(false);
-  const [transcriptionConsentGrantedCount, setTranscriptionConsentGrantedCount] = useState(0);
-  const [consentRequiredCount, setConsentRequiredCount] = useState(0);
   const [roomStatus, setRoomStatus] = useState<string | null>(null);
   const [canControlRoom, setCanControlRoom] = useState(false);
   const [vaultAvailable, setVaultAvailable] = useState(false);
@@ -624,12 +622,6 @@ export function BrowserSourceRecorder({
         setAllPartyTranscriptionReady(
           session.allRegisteredParticipantTranscriptionConsentGranted === true,
         );
-        setTranscriptionConsentGrantedCount(
-          Number(session.transcriptionConsentGrantedParticipantCount) || 0,
-        );
-        setConsentRequiredCount(
-          Number(session.consentRequiredParticipantCount) || 0,
-        );
       } catch {
         // The explicit consent action and recording preflight remain
         // fail-closed. A transient background refresh must not interrupt the
@@ -710,12 +702,6 @@ export function BrowserSourceRecorder({
         setAllPartyTranscriptionReady(
           consentPacket?.session
             ?.allRegisteredParticipantTranscriptionConsentGranted === true,
-        );
-        setTranscriptionConsentGrantedCount(
-          Number(consentPacket?.session?.transcriptionConsentGrantedParticipantCount) || 0,
-        );
-        setConsentRequiredCount(
-          Number(consentPacket?.session?.consentRequiredParticipantCount) || 0,
         );
         setRoomStatus(consentPacket?.session?.roomStatus ?? null);
         setCanControlRoom(consentPacket?.session?.canControlRoom === true);
@@ -885,12 +871,6 @@ export function BrowserSourceRecorder({
       );
       setAllPartyTranscriptionReady(
         session.allRegisteredParticipantTranscriptionConsentGranted === true,
-      );
-      setTranscriptionConsentGrantedCount(
-        Number(session.transcriptionConsentGrantedParticipantCount) || 0,
-      );
-      setConsentRequiredCount(
-        Number(session.consentRequiredParticipantCount) || 0,
       );
       setRoomStatus(session.roomStatus ?? roomStatus);
       setCanControlRoom(session.canControlRoom === true || canControlRoom);
@@ -2942,7 +2922,7 @@ export function BrowserSourceRecorder({
                   : allPartyTranscriptionReady
                     ? "Everyone enabled the transcript and suggested follow-up."
                     : consentId
-                      ? `Transcript ${transcriptionConsentGrantedCount}/${consentRequiredCount || "—"}. Recording can proceed when its source consent is ready; transcription waits for everyone to enable it.`
+                      ? "Your choice is saved. The transcript starts after everyone allows it."
                       : "The transcript will be enabled when you allow recording."}
               </p>
             ) : null}
