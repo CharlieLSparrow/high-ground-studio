@@ -82,6 +82,11 @@ function automaticWorkStores() {
         actionItems.set(data.id, row);
         return row;
       }),
+      update: jest.fn(async ({ where, data }: any) => {
+        const row = { ...actionItems.get(where.id), ...data, updatedAt: new Date() };
+        actionItems.set(where.id, row);
+        return row;
+      }),
     },
     goal: {
       findUnique: jest.fn(
@@ -90,6 +95,11 @@ function automaticWorkStores() {
       create: jest.fn(async ({ data }: any) => {
         const row = { ...data, createdAt: new Date(), updatedAt: new Date() };
         goals.set(data.id, row);
+        return row;
+      }),
+      update: jest.fn(async ({ where, data }: any) => {
+        const row = { ...goals.get(where.id), ...data, updatedAt: new Date() };
+        goals.set(where.id, row);
         return row;
       }),
     },
@@ -1017,6 +1027,7 @@ describe("transcript coaching follow-through", () => {
 
   it("reuses an identical snapshot but automatically versions the packet after transcript review changes", async () => {
     const job = completedTranscriptJob();
+    const work = automaticWorkStores();
     const summaries: any[] = [];
     let latestSummary: any = null;
     const coachingNoteCreate = jest.fn(async ({ data }: any) => {
@@ -1038,7 +1049,7 @@ describe("transcript coaching follow-through", () => {
         findFirst: jest.fn(async () => latestSummary),
         create: coachingNoteCreate,
       },
-      ...automaticWorkStores(),
+      ...work,
     };
 
     const first = (await buildCoachingPacketFromTranscriptJob({
@@ -1088,6 +1099,49 @@ describe("transcript coaching follow-through", () => {
       humanReviewedSegmentCount: 1,
       providerOnlySegmentCount: 1,
     });
+    expect(work.actionItem.update).toHaveBeenCalledWith({
+      where: { id: first.actionItemIds[0] },
+      data: expect.objectContaining({
+        title: expect.stringMatching(/send the finished outline/i),
+        detail: expect.stringContaining(
+          "I will send the finished outline before next time.",
+        ),
+        sourceJson: expect.objectContaining({
+          packetBuildId: rebuilt.packetBuildId,
+          generatedSnapshot: expect.objectContaining({
+            sourceTextSha256: createHash("sha256")
+              .update("I will send the finished outline before next time.")
+              .digest("hex"),
+          }),
+        }),
+      }),
+    });
+
+    const editedTask = await work.actionItem.findUnique({
+      where: { id: first.actionItemIds[0] },
+    });
+    editedTask.title = "My own follow-up wording";
+    (provider as any).corrections = [
+      {
+        ...(provider as any).corrections[0],
+        id: "correction-newer",
+        correctedText: "I will send the final outline and references tomorrow.",
+        updatedAt: new Date("2026-08-02T00:10:00.000Z"),
+      },
+    ];
+    await buildCoachingPacketFromTranscriptJob({
+      prisma,
+      transcriptJobId: job.id,
+      authorUserId: "coach-1",
+    });
+    expect(work.actionItem.update).toHaveBeenCalledTimes(1);
+    expect(
+      (
+        await work.actionItem.findUnique({
+          where: { id: first.actionItemIds[0] },
+        })
+      ).title,
+    ).toBe("My own follow-up wording");
   });
 
   it("builds one editable follow-through packet from both participant-owned masters and rebuilds after either transcript changes", async () => {

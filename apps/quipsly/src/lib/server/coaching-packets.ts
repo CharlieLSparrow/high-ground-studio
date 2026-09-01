@@ -231,6 +231,48 @@ function packetWorkId(
   return `transcript-${kind}-${digest}`;
 }
 
+const GENERATED_FOLLOW_THROUGH_SNAPSHOT_SCHEMA =
+  "quipsly-generated-follow-through-snapshot-v1";
+
+function generatedFollowThroughSnapshot(input: {
+  title: string;
+  detail: string | null;
+  sourceTextSha256: string;
+  packetBuildId: string;
+}) {
+  return {
+    schema: GENERATED_FOLLOW_THROUGH_SNAPSHOT_SCHEMA,
+    title: input.title,
+    detail: input.detail,
+    sourceTextSha256: input.sourceTextSha256,
+    packetBuildId: input.packetBuildId,
+  };
+}
+
+function generatedFollowThroughCanRefresh(input: {
+  existing: any;
+  detailField: "detail" | "description";
+}) {
+  const source =
+    typeof input.existing?.sourceJson === "object" &&
+    input.existing.sourceJson !== null &&
+    !Array.isArray(input.existing.sourceJson)
+      ? (input.existing.sourceJson as Record<string, any>)
+      : {};
+  const generated =
+    typeof source.generatedSnapshot === "object" &&
+    source.generatedSnapshot !== null &&
+    !Array.isArray(source.generatedSnapshot)
+      ? (source.generatedSnapshot as Record<string, unknown>)
+      : {};
+  return (
+    source.automaticallyCreated === true &&
+    generated.schema === GENERATED_FOLLOW_THROUGH_SNAPSHOT_SCHEMA &&
+    input.existing.title === generated.title &&
+    (input.existing[input.detailField] ?? null) === (generated.detail ?? null)
+  );
+}
+
 function reviewTime(value: unknown) {
   if (value instanceof Date) return value.getTime();
   if (typeof value !== "string" && typeof value !== "number") return 0;
@@ -1760,27 +1802,45 @@ export async function buildCoachingPacketFromTranscriptJob(
       speakerLabel: candidate.speakerLabel,
       visibility: "engagement-shared",
       externalSideEffects: false,
+      generatedSnapshot: generatedFollowThroughSnapshot({
+        title: candidate.title,
+        detail: candidate.detail || null,
+        sourceTextSha256:
+          cleanText(candidate.sourceTextSha256) ||
+          packetSha256(candidate.detail || candidate.title),
+        packetBuildId,
+      }),
     };
     const existing = await args.prisma.actionItem.findUnique({
       where: { id: candidate.committedActionItemId },
     });
     const item =
-      existing ||
-      (await args.prisma.actionItem.create({
-        data: {
-          id: candidate.committedActionItemId,
-          roomId: job.roomId,
-          bookingId: job.room?.bookingId ?? null,
-          projectId: job.room?.projectId ?? null,
-          engagementId: job.room?.coachingEngagementId ?? null,
-          noteId: summaryNote.id,
-          assignedUserId: defaultOwnerUserId,
-          title: candidate.title,
-          detail: candidate.detail || null,
-          status: "OPEN",
-          sourceJson,
-        },
-      }));
+      existing && generatedFollowThroughCanRefresh({ existing, detailField: "detail" })
+        ? await args.prisma.actionItem.update({
+            where: { id: existing.id },
+            data: {
+              noteId: summaryNote.id,
+              title: candidate.title,
+              detail: candidate.detail || null,
+              sourceJson,
+            },
+          })
+        : existing ||
+          (await args.prisma.actionItem.create({
+            data: {
+              id: candidate.committedActionItemId,
+              roomId: job.roomId,
+              bookingId: job.room?.bookingId ?? null,
+              projectId: job.room?.projectId ?? null,
+              engagementId: job.room?.coachingEngagementId ?? null,
+              noteId: summaryNote.id,
+              assignedUserId: defaultOwnerUserId,
+              title: candidate.title,
+              detail: candidate.detail || null,
+              status: "OPEN",
+              sourceJson,
+            },
+          }));
     actionItems.push(item);
   }
 
@@ -1790,56 +1850,75 @@ export async function buildCoachingPacketFromTranscriptJob(
       const sourceAnchor = buildTranscriptSourceAnchorFields(
         sourceClockSegments(output.segment),
       );
+      const goalDescription = segmentLine(output.segment);
+      const sourceJson = {
+        schema: "quipsly-transcript-follow-through-v1",
+        origin: "quipsly-session-follow-through",
+        automaticallyCreated: true,
+        editableAfterCreation: true,
+        removableInProduct: true,
+        sourceProvenanceVisible: true,
+        transcriptJobId: output.transcriptJobId,
+        recordingAssetId: output.recordingAssetId,
+        roomId: job.roomId,
+        packetBuildId,
+        packetSummaryNoteId: summaryNote.id,
+        segmentId: String(output.segment.id),
+        segmentIds: output.segment.segmentIds,
+        sourceTextSha256: output.segment.sourceTextSha256,
+        sourceSpan: sourceAnchor?.sourceSpan ?? null,
+        startSeconds:
+          output.segment.sourceStartSeconds ?? output.segment.startSeconds,
+        endSeconds:
+          output.segment.sourceEndSeconds ?? output.segment.endSeconds,
+        sourceStartSeconds:
+          output.segment.sourceStartSeconds ?? output.segment.startSeconds,
+        sourceEndSeconds:
+          output.segment.sourceEndSeconds ?? output.segment.endSeconds,
+        programStartSeconds: output.segment.startSeconds,
+        programEndSeconds: output.segment.endSeconds,
+        speakerLabel: output.segment.speakerLabel,
+        visibility: "engagement-shared",
+        externalSideEffects: false,
+        generatedSnapshot: generatedFollowThroughSnapshot({
+          title: output.title,
+          detail: goalDescription,
+          sourceTextSha256: output.segment.sourceTextSha256,
+          packetBuildId,
+        }),
+      };
       const existing = await args.prisma.goal.findUnique({
         where: { id: output.id },
       });
       const goal =
-        existing ||
-        (await args.prisma.goal.create({
-          data: {
-            id: output.id,
-            ownerUserId: defaultOwnerUserId,
-            roomId: job.roomId,
-            bookingId: job.room?.bookingId ?? null,
-            projectId: job.room?.projectId ?? null,
-            engagementId: job.room?.coachingEngagementId ?? null,
-            title: output.title,
-            description: segmentLine(output.segment),
-            status: "ACTIVE",
-            sourceJson: {
-              schema: "quipsly-transcript-follow-through-v1",
-              origin: "quipsly-session-follow-through",
-              automaticallyCreated: true,
-              editableAfterCreation: true,
-              removableInProduct: true,
-              sourceProvenanceVisible: true,
-              transcriptJobId: output.transcriptJobId,
-              recordingAssetId: output.recordingAssetId,
-              roomId: job.roomId,
-              packetBuildId,
-              packetSummaryNoteId: summaryNote.id,
-              segmentId: String(output.segment.id),
-              segmentIds: output.segment.segmentIds,
-              sourceTextSha256: output.segment.sourceTextSha256,
-              sourceSpan: sourceAnchor?.sourceSpan ?? null,
-              startSeconds:
-                output.segment.sourceStartSeconds ??
-                output.segment.startSeconds,
-              endSeconds:
-                output.segment.sourceEndSeconds ?? output.segment.endSeconds,
-              sourceStartSeconds:
-                output.segment.sourceStartSeconds ??
-                output.segment.startSeconds,
-              sourceEndSeconds:
-                output.segment.sourceEndSeconds ?? output.segment.endSeconds,
-              programStartSeconds: output.segment.startSeconds,
-              programEndSeconds: output.segment.endSeconds,
-              speakerLabel: output.segment.speakerLabel,
-              visibility: "engagement-shared",
-              externalSideEffects: false,
-            },
-          },
-        }));
+        existing &&
+        generatedFollowThroughCanRefresh({
+          existing,
+          detailField: "description",
+        })
+          ? await args.prisma.goal.update({
+              where: { id: existing.id },
+              data: {
+                title: output.title,
+                description: goalDescription,
+                sourceJson,
+              },
+            })
+          : existing ||
+            (await args.prisma.goal.create({
+              data: {
+                id: output.id,
+                ownerUserId: defaultOwnerUserId,
+                roomId: job.roomId,
+                bookingId: job.room?.bookingId ?? null,
+                projectId: job.room?.projectId ?? null,
+                engagementId: job.room?.coachingEngagementId ?? null,
+                title: output.title,
+                description: goalDescription,
+                status: "ACTIVE",
+                sourceJson,
+              },
+            }));
       goals.push(goal);
     }
   }
