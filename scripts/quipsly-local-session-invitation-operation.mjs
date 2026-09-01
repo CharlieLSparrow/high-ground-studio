@@ -317,9 +317,7 @@ try {
       exact: true,
     })
     .waitFor({ timeout: 20_000 });
-  await guestPage
-    .getByText(guest.email, { exact: true })
-    .waitFor();
+  await guestPage.getByText(guest.email, { exact: true }).waitFor();
   const acceptInvitationButton = guestPage.getByRole("button", {
     name: "Continue to Session",
     exact: true,
@@ -341,15 +339,14 @@ try {
   await replayPage.goto(operatedInviteURL.toString(), {
     waitUntil: "domcontentloaded",
   });
-  await replayPage
-    .getByRole("button", { name: "Continue to Session", exact: true })
-    .waitFor({ timeout: 20_000 });
-  await replayPage
-    .getByRole("button", { name: "Continue to Session", exact: true })
-    .click();
-  await replayPage.waitForURL(
-    new RegExp(`/sessions/${ROOM_ID}\\?mode=live&joined=1$`),
-    { timeout: 20_000 },
+  await replayPage.waitForURL(new RegExp(`/sessions/${ROOM_ID}\\?mode=live$`), {
+    timeout: 20_000,
+  });
+  assert(
+    (await replayPage
+      .getByRole("button", { name: "Continue to Session", exact: true })
+      .count()) === 0,
+    "Accepted-link re-entry added a redundant second acceptance step.",
   );
   await replayPage.close();
 
@@ -362,7 +359,7 @@ try {
       .locator('[data-session-entry-ready="true"]')
       .waitFor({ state: "visible", timeout: 20_000 });
     const continueInBrowser = journey.page.getByRole("button", {
-      name: /^This browser\b/,
+      name: /Join call|Join in browser|Continue in this browser|Open call lobby|This browser/i,
     });
     assert(
       (await continueInBrowser.count()) === 1,
@@ -370,7 +367,9 @@ try {
     );
     await continueInBrowser.click();
     await journey.page
-      .locator(`aside[aria-label="Retained email-bound Session invitation rehearsal live call dock"]`)
+      .locator(
+        `aside[aria-label="Retained email-bound Session invitation rehearsal live call dock"]`,
+      )
       .waitFor({ state: "visible", timeout: 20_000 });
     const join = journey.page.getByRole("button", {
       name: "Join call",
@@ -388,7 +387,10 @@ try {
       `${journey.identity.role} green room did not become join-ready.`,
     );
     await join.click();
-    const leave = journey.page.getByRole("button", { name: "Leave", exact: true });
+    const leave = journey.page.getByRole("button", {
+      name: "Leave",
+      exact: true,
+    });
     try {
       await leave.waitFor({ timeout: 20_000 });
     } catch (error) {
@@ -403,6 +405,9 @@ try {
     }
   }
   for (const journey of journeys) {
+    await journey.page
+      .getByText("More call and recording options", { exact: true })
+      .click();
     await journey.page
       .getByText("In this room · 2", { exact: true })
       .waitFor({ timeout: 20_000 });
@@ -472,7 +477,11 @@ try {
   for (let attempt = 0; attempt < 40; attempt += 1) {
     providerReadbackText = await providerReadbackPanel.innerText();
     const normalizedReadback = providerReadbackText.toLowerCase();
-    if (normalizedReadback.includes("connected devices") && normalizedReadback.includes("canonical people")) break;
+    if (
+      normalizedReadback.includes("connected devices") &&
+      normalizedReadback.includes("canonical people")
+    )
+      break;
     await hostManagerPage.waitForTimeout(250);
   }
   const normalizedProviderReadback = providerReadbackText.toLowerCase();
@@ -531,7 +540,9 @@ try {
     .getByText("Live provider readback", { exact: true })
     .waitFor({ timeout: 20_000 });
   await hostManagerPage
-    .getByText(/Refreshes every 10 seconds only while this access and device view is open/i)
+    .getByText(
+      /Refreshes every 10 seconds only while this access and device view is open/i,
+    )
     .waitFor({ timeout: 20_000 });
   const guestInvitation = hostManagerPage
     .locator("article")
@@ -564,7 +575,8 @@ try {
     if (
       removedPresencePacket?.presence?.connectedDeviceCount === 1 &&
       removedPresencePacket?.presence?.connectedParticipantCount === 1
-    ) break;
+    )
+      break;
     await hostManagerPage.waitForTimeout(250);
   }
   assert(
@@ -594,10 +606,7 @@ try {
     "Provider presence did not read back the host-only room after guest removal.",
   );
   const guestDisconnectSignalObserved = await guestPage
-    .getByText(
-      "The call ended.",
-      { exact: true },
-    )
+    .getByText("The call ended.", { exact: true })
     .waitFor({ timeout: 5_000 })
     .then(() => true)
     .catch(() => false);
@@ -763,12 +772,15 @@ try {
   await restoredReentryPage.goto(operatedInviteURL.toString(), {
     waitUntil: "domcontentloaded",
   });
-  await restoredReentryPage
-    .getByRole("button", { name: "Continue to Session", exact: true })
-    .click();
   await restoredReentryPage.waitForURL(
-    new RegExp(`/sessions/${ROOM_ID}\\?mode=live&joined=1$`),
+    new RegExp(`/sessions/${ROOM_ID}\\?mode=live$`),
     { timeout: 20_000 },
+  );
+  assert(
+    (await restoredReentryPage
+      .getByRole("button", { name: "Continue to Session", exact: true })
+      .count()) === 0,
+    "Restored accepted-link re-entry added a redundant second acceptance step.",
   );
   await restoredReentryPage.close();
 
@@ -835,9 +847,16 @@ try {
     exact: true,
   });
   if (!(await accessActivity.isVisible())) {
-    await hostManagerPage
-      .getByText("Access and device history", { exact: true })
-      .click();
+    const accessHistory = hostManagerPage.getByText(
+      "Access and device history",
+      { exact: true },
+    );
+    if (!(await accessHistory.isVisible())) {
+      await hostManagerPage
+        .getByText("Invite someone to this Session", { exact: true })
+        .click();
+    }
+    await accessHistory.click();
   }
   await accessActivity.waitFor({ timeout: 20_000 });
   await hostManagerPage
