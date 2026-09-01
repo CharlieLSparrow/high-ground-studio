@@ -72,17 +72,21 @@ describe("automatic transcript follow-through", () => {
   });
 
   it("uses the transcript requester and then room creator for non-booked or legacy jobs", async () => {
-    const findUnique = jest.fn()
-      .mockResolvedValueOnce({
+    const requesterAuthority = {
         roomId: "room-1",
         requestedBy: "recording-owner",
         room: { createdByUserId: "room-owner", booking: null },
-      })
-      .mockResolvedValueOnce({
+      };
+    const creatorAuthority = {
         roomId: "room-1",
         requestedBy: null,
         room: { createdByUserId: "room-owner", booking: null },
-      });
+      };
+    const findUnique = jest.fn()
+      .mockResolvedValueOnce(requesterAuthority)
+      .mockResolvedValueOnce(requesterAuthority)
+      .mockResolvedValueOnce(creatorAuthority)
+      .mockResolvedValueOnce(creatorAuthority);
     const prisma = transactionalPrisma({
       coachingNote: { findFirst: jest.fn().mockResolvedValue(null) },
       transcriptJob: { findUnique },
@@ -271,9 +275,15 @@ describe("automatic transcript follow-through", () => {
     expect(prisma.$transaction).toHaveBeenCalledWith(expect.any(Function), {
       maxWait: 5_000,
       timeout: 30_000,
-      isolationLevel: "Serializable",
+      isolationLevel: "ReadCommitted",
     });
-    expect(acquirePrismaAdvisoryTransactionLock).toHaveBeenCalledWith(
+    expect(acquirePrismaAdvisoryTransactionLock).toHaveBeenNthCalledWith(
+      1,
+      prisma,
+      "capture-transcript-follow-through-job:job-1",
+    );
+    expect(acquirePrismaAdvisoryTransactionLock).toHaveBeenNthCalledWith(
+      2,
       prisma,
       "capture-transcript-follow-through-room:room-1",
     );
@@ -324,10 +334,20 @@ describe("automatic transcript follow-through", () => {
     expect(acquirePrismaAdvisoryTransactionLock).toHaveBeenNthCalledWith(
       1,
       prisma,
-      "capture-transcript-follow-through-room:room-joint",
+      "capture-transcript-follow-through-job:job-coach",
     );
     expect(acquirePrismaAdvisoryTransactionLock).toHaveBeenNthCalledWith(
       2,
+      prisma,
+      "capture-transcript-follow-through-room:room-joint",
+    );
+    expect(acquirePrismaAdvisoryTransactionLock).toHaveBeenNthCalledWith(
+      3,
+      prisma,
+      "capture-transcript-follow-through-job:job-client",
+    );
+    expect(acquirePrismaAdvisoryTransactionLock).toHaveBeenNthCalledWith(
+      4,
       prisma,
       "capture-transcript-follow-through-room:room-joint",
     );
@@ -347,7 +367,44 @@ describe("automatic transcript follow-through", () => {
     );
   });
 
-  it("retries the complete locked transaction after a serializable write conflict", async () => {
+  it("returns durable ordinary follow-through without rebuilding or rewriting it", async () => {
+    const ready = {
+      packetStatus: "ready",
+      packetBuildId: "packet-ready",
+      ordinarySessionWorkCreated: true,
+      candidateOnly: false,
+      canonicalAccessApplied: true,
+      automaticAssignment: true,
+    };
+    const prisma = transactionalPrisma({
+      transcriptJob: {
+        findUnique: jest.fn()
+          .mockResolvedValueOnce({ roomId: "room-1" })
+          .mockResolvedValueOnce({
+            roomId: "room-1",
+            requestedBy: "recording-owner",
+            room: { createdByUserId: "room-owner", booking: null },
+            resultJson: { followThrough: ready },
+          }),
+        update: jest.fn().mockResolvedValue({ id: "job-1" }),
+      },
+    });
+
+    await expect(reconcileCaptureTranscriptFollowThrough({
+      prisma,
+      transcriptJobId: "job-1",
+    })).resolves.toEqual({
+      transcriptJobId: "job-1",
+      transcriptStatus: "completed",
+      packetStatus: "ready",
+      packetBuildId: "packet-ready",
+      reusedExistingPacket: true,
+    });
+    expect(buildCoachingPacketFromTranscriptJob).not.toHaveBeenCalled();
+    expect(prisma.transcriptJob.update).not.toHaveBeenCalled();
+  });
+
+  it("retries the complete locked transaction after a database write conflict", async () => {
     const prisma = transactionalPrisma({
       coachingNote: { findFirst: jest.fn().mockResolvedValue({ id: "summary-1", sourceJson: { packetBuildId: "packet-1", reviewRequired: false } }) },
       transcriptJob: {

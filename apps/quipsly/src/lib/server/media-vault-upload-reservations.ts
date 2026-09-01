@@ -105,7 +105,7 @@ export function mediaVaultTransactionRetryDelayMs(
   return 75 * 2 ** Math.max(0, attempt);
 }
 
-async function serializable<T>(
+async function quotaTransaction<T>(
   prisma: any,
   operation: (transaction: any) => Promise<T>,
 ) {
@@ -113,7 +113,12 @@ async function serializable<T>(
   for (let attempt = 0; attempt < 4; attempt += 1) {
     try {
       return await prisma.$transaction(operation, {
-        isolationLevel: "Serializable",
+        // The actor and Nest advisory locks below are the authority for quota
+        // serialization. READ COMMITTED lets a participant waiting on the
+        // shared Nest lock see the reservation that just committed; a
+        // serializable snapshot instead turns ordinary two-participant starts
+        // into a P2034 that succeeds only after a noisy retry.
+        isolationLevel: "ReadCommitted",
         // Participant uploads for one Session deliberately contend on the
         // same Nest quota lock. Give the preceding reservation time to commit
         // instead of turning normal two-party finalization into a 503.
@@ -331,7 +336,7 @@ export async function reserveMediaVaultUploadCapacity(
     requestId: input.requestId.trim().toLowerCase(),
     actorEmail: input.actorEmail.trim().toLowerCase(),
   };
-  return serializable(input.prisma, async (transaction) => {
+  return quotaTransaction(input.prisma, async (transaction) => {
     await acquireQuotaLocks(
       transaction,
       normalized.actorUserId,
@@ -500,7 +505,7 @@ export async function completeMediaVaultUploadReservation(input: {
       },
     );
   }
-  return serializable(input.prisma, async (transaction) => {
+  return quotaTransaction(input.prisma, async (transaction) => {
     let reservation = await transaction.mediaVaultUploadReservation.findFirst({
       where: { bucketName: input.bucketName, objectPath: input.objectPath },
     });

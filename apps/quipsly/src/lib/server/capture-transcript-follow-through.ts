@@ -53,12 +53,12 @@ export async function reconcileCaptureTranscriptFollowThrough(input: {
           prisma: tx,
           transcriptJobId: input.transcriptJobId,
         });
-      }, { maxWait: 5_000, timeout: 30_000, isolationLevel: "Serializable" });
+      }, { maxWait: 5_000, timeout: 30_000, isolationLevel: "ReadCommitted" });
     } catch (error) {
       if (attempt >= 3 || !isSerializableWriteConflict(error)) throw error;
     }
   }
-  throw new Error("Capture transcript follow-through exhausted its serializable retry boundary.");
+  throw new Error("Capture transcript follow-through exhausted its transaction retry boundary.");
 }
 
 function isSerializableWriteConflict(error: unknown) {
@@ -69,6 +69,27 @@ async function prepareSessionFollowThrough(input: {
   prisma: any;
   transcriptJobId: string;
 }): Promise<CaptureTranscriptFollowThroughResult> {
+  // Same-job calls can arrive from immediate dispatch, scheduled recovery,
+  // and two connected clients refreshing the same Session. Take the narrow
+  // job lock before discovering the shared room, then the room lock before
+  // reading the authoritative result. Under READ COMMITTED, a waiter sees the
+  // winner's durable follow-through instead of retaining a stale serializable
+  // snapshot and manufacturing a P2034 conflict for ordinary polling.
+  await acquirePrismaAdvisoryTransactionLock(
+    input.prisma,
+    `capture-transcript-follow-through-job:${input.transcriptJobId}`,
+  );
+  const lockScope = await input.prisma.transcriptJob.findUnique({
+    where: { id: input.transcriptJobId },
+    select: { roomId: true },
+  });
+  if (lockScope?.roomId) {
+    await acquirePrismaAdvisoryTransactionLock(
+      input.prisma,
+      `capture-transcript-follow-through-room:${lockScope.roomId}`,
+    );
+  }
+
   const authority = await input.prisma.transcriptJob.findUnique({
     where: { id: input.transcriptJobId },
     select: {
@@ -83,12 +104,16 @@ async function prepareSessionFollowThrough(input: {
       resultJson: true,
     },
   });
-  await acquirePrismaAdvisoryTransactionLock(
-    input.prisma,
-    authority?.roomId
-      ? `capture-transcript-follow-through-room:${authority.roomId}`
-      : `capture-transcript-follow-through:${input.transcriptJobId}`,
-  );
+  const durableReady = durableReadyFollowThrough(authority?.resultJson);
+  if (durableReady) {
+    return {
+      transcriptJobId: input.transcriptJobId,
+      transcriptStatus: "completed",
+      packetStatus: "ready",
+      packetBuildId: durableReady.packetBuildId,
+      reusedExistingPacket: true,
+    };
+  }
   // A booked coaching Session belongs to the assigned coach even when the
   // client's phone uploaded or queued the source first. Canonical Session and
   // booking access determines who can see the generated work.
@@ -134,6 +159,31 @@ async function prepareSessionFollowThrough(input: {
     packetStatus: "ready",
     packetBuildId: packet.packetBuildId || null,
     reusedExistingPacket: packet.reusedExistingPacket === true,
+  };
+}
+
+function durableReadyFollowThrough(value: unknown): {
+  packetBuildId: string | null;
+} | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const followThrough = (value as Record<string, unknown>).followThrough;
+  if (!followThrough || typeof followThrough !== "object" || Array.isArray(followThrough)) {
+    return null;
+  }
+  const ready = followThrough as Record<string, unknown>;
+  if (
+    ready.packetStatus !== "ready"
+    || ready.ordinarySessionWorkCreated !== true
+    || ready.candidateOnly !== false
+    || ready.canonicalAccessApplied !== true
+    || ready.automaticAssignment !== true
+  ) {
+    return null;
+  }
+  return {
+    packetBuildId: typeof ready.packetBuildId === "string"
+      ? ready.packetBuildId
+      : null,
   };
 }
 

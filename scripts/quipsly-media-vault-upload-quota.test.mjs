@@ -85,7 +85,8 @@ test("exact request ID binding rejects mutation but permits byte-identical retry
 
 test("server reservation implementation is serialized, persistent, renewable, and completion-bound", () => {
   const source = read("apps/quipsly/src/lib/server/media-vault-upload-reservations.ts");
-  assert.match(source, /isolationLevel: "Serializable"/);
+  assert.match(source, /isolationLevel: "ReadCommitted"/);
+  assert.doesNotMatch(source, /\bserializable\(/);
   assert.match(source, /pg_advisory_xact_lock/);
   assert.match(source, /quipsly-upload-actor:/);
   assert.match(source, /quipsly-upload-nest:/);

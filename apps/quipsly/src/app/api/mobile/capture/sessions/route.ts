@@ -410,7 +410,18 @@ export async function GET(request: Request) {
     const transcriptCandidates = await prisma.transcriptJob.findMany({
       where: {
         roomId: { in: roomIds },
-        status: { in: ["QUEUED", "RUNNING", "HELD", "COMPLETED"] },
+        OR: [
+          { status: { in: ["QUEUED", "RUNNING", "HELD"] } },
+          {
+            status: "COMPLETED",
+            NOT: {
+              resultJson: {
+                path: ["followThrough", "packetStatus"],
+                equals: "ready",
+              },
+            },
+          },
+        ],
       },
       distinct: ["roomId"],
       orderBy: { updatedAt: "desc" },
