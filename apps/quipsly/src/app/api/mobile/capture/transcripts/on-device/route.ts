@@ -23,6 +23,9 @@ const MAXIMUM_TRANSCRIPT_CHARACTERS = 1_000_000;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const SHA256_PATTERN = /^[0-9a-f]{64}$/;
 
+export const runtime = "nodejs";
+export const maxDuration = 60;
+
 type JsonObject = Record<string, unknown>;
 
 type NormalizedSegment = {

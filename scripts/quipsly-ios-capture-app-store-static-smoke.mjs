@@ -881,6 +881,8 @@ for (const needle of [
 for (const needle of [
   "dispatchCaptureTranscriptFollowThrough",
   "transcriptJobId: result.transcriptJobId",
+  'export const runtime = "nodejs"',
+  "export const maxDuration = 60",
 ]) {
   requireIncludes(
     onDeviceTranscriptRouteText,
