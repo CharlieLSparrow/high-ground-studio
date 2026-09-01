@@ -28,6 +28,7 @@ import {
   buildSessionTranscriptReadiness,
   type SessionTranscriptReadiness,
 } from "@/lib/session-transcript-readiness";
+import { assembleSessionTranscriptProgramClock } from "./session-transcript-assembly";
 
 export const SESSION_RECORDING_SHARE_SCHEMA =
   "quipsly-session-recording-share-v3";
@@ -551,14 +552,87 @@ async function exactCloudBindings(
   );
 }
 
-function sourceSummary(rows: any[]) {
-  if (!rows.length) return { programDurationSeconds: 0, sources: [] as any[] };
-  const originMs = Math.min(
-    ...rows.map((row) => row.recordedStartedAt.getTime()),
+export function sessionRecordingShareProgramClock(rows: any[]) {
+  if (!rows.length)
+    return {
+      authority: "single-source-origin" as const,
+      reason: "No verified participant source is available yet.",
+      precision: "unavailable" as const,
+      sources: [] as Array<{
+        recordingAssetId: string;
+        programOffsetSeconds: number;
+        timingUncertaintyMilliseconds: number | null;
+      }>,
+    };
+  const clock = assembleSessionTranscriptProgramClock(
+    rows.map((row) => {
+      const manifest = object(row.localManifestJson);
+      const recordingSync = object(manifest.recordingSync);
+      return {
+        recordingAssetId: row.id,
+        // The clock assembler requires a unique source-bound identity. No
+        // transcript is implied or created by this deterministic projection.
+        transcriptJobId: `recording-share-clock:${row.id}`,
+        captureGroupId:
+          clean(manifest.captureGroupId, 240) ||
+          clean(recordingSync.captureGroupId, 240) ||
+          null,
+        recordedStartedAt: row.recordedStartedAt,
+        alignment:
+          Object.keys(object(manifest.alignment)).length > 0
+            ? manifest.alignment
+            : recordingSync.alignment,
+      };
+    }),
   );
-  const endMs = Math.max(...rows.map((row) => row.recordedStoppedAt.getTime()));
+  const reason =
+    clock.authority === "capture-clock-proposal"
+      ? "Device clock evidence placed the participant masters automatically. Waveform analysis can refine this provisional placement without changing the originals."
+      : clock.authority === "reported-wall-clock-fallback"
+        ? "Reported source times placed the participant masters automatically because complete device clock evidence was unavailable. The placement remains adjustable."
+        : "This source defines the recording timeline directly.";
   return {
-    programDurationSeconds: Math.max(0, (endMs - originMs) / 1_000),
+    authority: clock.authority,
+    reason,
+    // Capture-clock placement is useful automatically and remains adjustable.
+    // "Provisional" is a precision statement, never a workflow gate.
+    precision: clock.waveformReviewRequired
+      ? ("provisional" as const)
+      : ("measured" as const),
+    sources: clock.sources.map((source) => ({
+      recordingAssetId: source.recordingAssetId,
+      programOffsetSeconds: source.programOffsetSeconds,
+      timingUncertaintyMilliseconds: source.timingUncertaintyMilliseconds,
+    })),
+  };
+}
+
+function sourceSummary(rows: any[]) {
+  if (!rows.length)
+    return {
+      programDurationSeconds: 0,
+      timeline: sessionRecordingShareProgramClock(rows),
+      sources: [] as any[],
+    };
+  const timeline = sessionRecordingShareProgramClock(rows);
+  const timingBySourceId = new Map(
+    timeline.sources.map((source) => [source.recordingAssetId, source]),
+  );
+  const programDurationSeconds = Math.max(
+    0,
+    ...rows.map((row) => {
+      const offset = timingBySourceId.get(row.id)?.programOffsetSeconds ?? 0;
+      const duration = Math.max(
+        0,
+        (row.recordedStoppedAt.getTime() - row.recordedStartedAt.getTime()) /
+          1_000,
+      );
+      return offset + duration;
+    }),
+  );
+  return {
+    programDurationSeconds,
+    timeline,
     sources: rows.map((row, index) => ({
       id: row.id,
       participantId: row.participantId,
@@ -571,7 +645,9 @@ function sourceSummary(rows: any[]) {
       startedAt: row.recordedStartedAt.toISOString(),
       stoppedAt: row.recordedStoppedAt.toISOString(),
       programOffsetSeconds:
-        (row.recordedStartedAt.getTime() - originMs) / 1_000,
+        timingBySourceId.get(row.id)?.programOffsetSeconds ?? 0,
+      timingUncertaintyMilliseconds:
+        timingBySourceId.get(row.id)?.timingUncertaintyMilliseconds ?? null,
       playbackUrl: `/api/sessions/${encodeURIComponent(row.roomId)}/recordings/${encodeURIComponent(row.id)}/media`,
     })),
   };
@@ -653,6 +729,7 @@ async function loadTranscriptEditSegments(
   client: RestoreClient,
   roomId: string,
   sources: any[],
+  programClock = sessionRecordingShareProgramClock(sources),
 ): Promise<RecordingShareTranscriptSegment[]> {
   if (!sources.length) return [];
   const sourceById = new Map(
@@ -661,8 +738,11 @@ async function loadTranscriptEditSegments(
       { source, label: participantLabel(source, index) },
     ]),
   );
-  const originMs = Math.min(
-    ...sources.map((source: any) => source.recordedStartedAt.getTime()),
+  const timingBySourceId = new Map(
+    programClock.sources.map((source) => [
+      source.recordingAssetId,
+      source.programOffsetSeconds,
+    ]),
   );
   const jobs = await client.transcriptJob.findMany({
     where: {
@@ -752,8 +832,7 @@ async function loadTranscriptEditSegments(
     if (!readiness.sourceBinding.exactSourceBound || readiness.state === "HELD")
       continue;
     chosenAssets.add(job.assetId);
-    const offsetSeconds =
-      (binding.source.recordedStartedAt.getTime() - originMs) / 1_000;
+    const offsetSeconds = timingBySourceId.get(binding.source.id) ?? 0;
     for (const segment of job.segments) {
       const providerTextSha256 = sha256(segment.text);
       const correction =
@@ -1204,8 +1283,14 @@ export async function readSessionRecordingShare(
   const sourceRows = canPrepare
     ? await loadSources(client, room.id, room.captureGroupId)
     : [];
+  const available = sourceSummary(sourceRows);
   const transcriptSegments = canPrepare
-    ? await loadTranscriptEditSegments(client, room.id, sourceRows)
+    ? await loadTranscriptEditSegments(
+        client,
+        room.id,
+        sourceRows,
+        available.timeline,
+      )
     : [];
   return {
     role: canPrepare
@@ -1233,7 +1318,7 @@ export async function readSessionRecordingShare(
           "Client",
       },
     },
-    available: { ...sourceSummary(sourceRows), transcriptSegments },
+    available: { ...available, transcriptSegments },
     output: serializeOutput(output),
     readiness: {
       canPrepare,
@@ -1330,6 +1415,7 @@ export async function prepareSessionRecordingShare(
     client,
     room.id,
     selected,
+    summary.timeline,
   );
   const edit = buildSessionRecordingShareEdit({
     startSeconds: input.startSeconds,
@@ -1385,8 +1471,11 @@ export async function prepareSessionRecordingShare(
       "RECORDING_RENDERER_UNAVAILABLE",
       "The local recording renderer is unavailable.",
     );
-  const originMs = Math.min(
-    ...selected.map((row: any) => row.recordedStartedAt.getTime()),
+  const timingBySourceId = new Map(
+    summary.timeline.sources.map((source) => [
+      source.recordingAssetId,
+      source.programOffsetSeconds,
+    ]),
   );
   const sources = selected.map((row: any, index: number) => {
     const manifest = object(row.localManifestJson);
@@ -1420,8 +1509,7 @@ export async function prepareSessionRecordingShare(
       contentType:
         row.contentType ||
         (row.kind === "LOCAL_VIDEO" ? "video/mp4" : "audio/webm"),
-      programOffsetSeconds:
-        (row.recordedStartedAt.getTime() - originMs) / 1_000,
+      programOffsetSeconds: timingBySourceId.get(row.id) ?? 0,
       includeInAudioMix: audioMixSourceIds.has(row.id),
     };
   });

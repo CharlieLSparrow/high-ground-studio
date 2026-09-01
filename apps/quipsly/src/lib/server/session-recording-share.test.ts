@@ -9,6 +9,7 @@ import {
   newestCoherentRecordingTake,
   recordSessionRecordingSharePlaybackReview,
   sessionRecordingShareAudioMixSourceIds,
+  sessionRecordingShareProgramClock,
   recordingShareSourcesForTake,
   sessionRecordingSharePlaybackPlan,
   stableJson,
@@ -17,6 +18,24 @@ import {
 import { buildSessionTranscriptReadiness } from "@/lib/session-transcript-readiness";
 
 describe("Session recording share take selection", () => {
+  const alignment = (
+    captureGroupId: string,
+    estimatedServerStartedAt: string,
+  ) => ({
+    schema: "quipsly-capture-alignment-proposal-v1",
+    status: "proposal-ready",
+    captureGroupId,
+    estimatedServerStartedAt,
+    uncertaintyMilliseconds: 18,
+    sampleAccurateClaimed: false,
+    reviewRequired: true,
+    reviewGate: {
+      waveformCorrelationRequired: true,
+      driftReviewRequired: true,
+      humanApprovalRequired: true,
+    },
+  });
+
   it("keeps repeated calls in one room out of the newest take", () => {
     const at = (id: string, seconds: number) => ({ id, recordedStartedAt: new Date(1_787_180_000_000 + seconds * 1_000), captureGroupId: "same-room-group" });
     const newest = newestCoherentRecordingTake([
@@ -97,6 +116,68 @@ describe("Session recording share take selection", () => {
       "client-continuous",
       "coach-after-reconnect",
     ]);
+  });
+
+  it("places playable masters on the same automatic capture clock as their transcripts", () => {
+    const clock = sessionRecordingShareProgramClock([
+      {
+        id: "coach",
+        recordedStartedAt: new Date("2026-08-31T12:00:05Z"),
+        recordedStoppedAt: new Date("2026-08-31T12:10:05Z"),
+        localManifestJson: {
+          captureGroupId: "take-1",
+          alignment: alignment("take-1", "2026-08-31T12:00:00.125Z"),
+        },
+      },
+      {
+        id: "client",
+        // Deliberately misleading wall time proves it is not the authority.
+        recordedStartedAt: new Date("2026-08-31T12:00:01Z"),
+        recordedStoppedAt: new Date("2026-08-31T12:10:01Z"),
+        localManifestJson: {
+          captureGroupId: "take-1",
+          alignment: alignment("take-1", "2026-08-31T12:00:00.625Z"),
+        },
+      },
+    ]);
+
+    expect(clock).toMatchObject({
+      authority: "capture-clock-proposal",
+      precision: "provisional",
+      sources: [
+        { recordingAssetId: "coach", programOffsetSeconds: 0 },
+        { recordingAssetId: "client", programOffsetSeconds: 0.5 },
+      ],
+    });
+  });
+
+  it("falls back visibly to reported time when capture-clock evidence is incomplete", () => {
+    const clock = sessionRecordingShareProgramClock([
+      {
+        id: "coach",
+        recordedStartedAt: new Date("2026-08-31T12:00:00Z"),
+        recordedStoppedAt: new Date("2026-08-31T12:10:00Z"),
+        localManifestJson: { captureGroupId: "take-1" },
+      },
+      {
+        id: "client",
+        recordedStartedAt: new Date("2026-08-31T12:00:02Z"),
+        recordedStoppedAt: new Date("2026-08-31T12:10:02Z"),
+        localManifestJson: {
+          captureGroupId: "take-1",
+          alignment: alignment("take-1", "2026-08-31T12:00:00.500Z"),
+        },
+      },
+    ]);
+
+    expect(clock).toMatchObject({
+      authority: "reported-wall-clock-fallback",
+      precision: "provisional",
+      sources: [
+        { recordingAssetId: "coach", programOffsetSeconds: 0 },
+        { recordingAssetId: "client", programOffsetSeconds: 2 },
+      ],
+    });
   });
 });
 
