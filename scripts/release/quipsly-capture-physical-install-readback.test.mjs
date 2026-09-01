@@ -72,6 +72,18 @@ test("proves the canonical build on a physical authenticated iPhone without inve
   assert.equal(receipt.claimsNotMade.length, 6);
 });
 
+test("accepts the universal release on a physical iPad", () => {
+  const receipt = inspectPhysicalInstallSnapshot({
+    text: snapshot({ Device: "iPad13,11" }),
+    auditedAt: new Date("2026-08-05T20:10:00Z"),
+  });
+  assert.equal(receipt.ok, true);
+  assert.equal(receipt.schema, "quipsly-capture-physical-install-readback-v2");
+  assert.equal(receipt.checks.physicalIOSDevice, true);
+  assert.equal(receipt.snapshot.deviceModel, "iPad13,11");
+  assert.equal(receipt.physicalInstallAndAuthenticationProven, true);
+});
+
 test("accepts a fresh verified offline account session", () => {
   const receipt = inspectPhysicalInstallSnapshot({
     text: snapshot({ "Account access": "offlineCachedIdentity" }),
@@ -95,7 +107,7 @@ test("fails closed for a simulator, wrong build, preview, sign-in surface, or st
   assert.equal(receipt.ok, false);
   assert.deepEqual(receipt.blockers, [
     "exactRelease",
-    "physicalIPhone",
+    "physicalIOSDevice",
     "accountSurface",
     "authenticatedAccess",
     "productionMode",

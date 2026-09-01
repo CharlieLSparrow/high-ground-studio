@@ -59,9 +59,9 @@ function usage() {
     [--output <owner-only-receipt.json>] \\
     [--max-age-hours 24]
 
-The input is the text Homer shares from Quipsly Capture > Account > Help &
+The input is the text a tester shares from Quipsly Capture > Account > Help &
 diagnostics. This read-only check proves the exact public release is running on
-a physical iPhone with a verified Quipsly session. It deliberately does not
+a physical iPhone or iPad with a verified Quipsly session. It deliberately does not
 claim recording, consent, camera switching, recovery, upload, or playback.
 `;
 }
@@ -144,7 +144,7 @@ export function inspectPhysicalInstallSnapshot({
     exactRelease:
       version === QUIPSLY_CAPTURE_RELEASE_TARGET.marketingVersion
       && build === QUIPSLY_CAPTURE_RELEASE_TARGET.buildNumber,
-    physicalIPhone: /^iPhone[0-9]+,[0-9]+$/.test(deviceModel),
+    physicalIOSDevice: /^(?:iPhone|iPad)[0-9]+,[0-9]+$/.test(deviceModel),
     iosRuntime: Boolean(systemMatch),
     accountSurface: surface === "Account",
     authenticatedAccess: ["online", "offlineCachedIdentity"].includes(accountAccessMode),
@@ -159,7 +159,7 @@ export function inspectPhysicalInstallSnapshot({
     .map(([name]) => name);
 
   return {
-    schema: "quipsly-capture-physical-install-readback-v1",
+    schema: "quipsly-capture-physical-install-readback-v2",
     checkedAt: auditedDate.toISOString(),
     ok,
     target: {
