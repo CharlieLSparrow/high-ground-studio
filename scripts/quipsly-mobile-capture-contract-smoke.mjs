@@ -766,12 +766,12 @@ function checkMeetingSpineContractSources() {
   );
   expect(
     captureRecorderViewText.indexOf("ProviderRoomControls(") >= 0
-      && collaborationSurfaceIndex > captureRecorderViewText.indexOf("ProviderRoomControls(")
-      && collaborationSurfaceIndex < captureRecorderViewText.indexOf("ConsentStrip(")
+      && captureRecorderViewText.indexOf("ConsentStrip(") > captureRecorderViewText.indexOf("ProviderRoomControls(")
+      && captureRecorderViewText.indexOf("RecorderHero(") > captureRecorderViewText.indexOf("ConsentStrip(")
+      && collaborationSurfaceIndex > captureRecorderViewText.indexOf("RecorderHero(")
       && captureRecorderViewText.includes("CaptureQuickEntryBar(")
       && captureRecorderViewText.includes("MobileSessionConversationCard(")
-      && captureRecorderViewText.indexOf("RecorderHero(") > captureRecorderViewText.indexOf("ConsentStrip(")
-      && captureRecorderViewText.indexOf("CaptureSessionTranscriptReviewCard(") > captureRecorderViewText.indexOf("RecorderHero(")
+      && captureRecorderViewText.indexOf("CaptureSessionTranscriptReviewCard(") > collaborationSurfaceIndex
       && captureRecorderViewText.indexOf("CaptureSessionResultsCard(") > captureRecorderViewText.indexOf("CaptureSessionTranscriptReviewCard("),
     "nativeRecordHierarchyKeepsCapturePrimary",
     "The shipping Record hierarchy leads with the room, keeps quick work and conversation close to the call, reveals consent and recording only after entry, and continues into transcript plus editable results.",
@@ -1238,7 +1238,7 @@ function checkReviewDigestContractSources() {
       && capturePhoneShellText.includes("CaptureRootTab.account")
       && captureExperienceModelText.includes('case .today: "Home"')
       && captureExperienceModelText.includes('case .work: "Work"')
-      && capturePhoneShellText.includes("Original recordings stay on this iPhone until you choose to remove an eligible copy from Library."),
+      && capturePhoneShellText.includes("Original recordings stay on \\(CaptureDeviceVocabulary.thisDevice) until you choose to remove an eligible copy from Library."),
     "nativeReviewDigestOnSessionSurfaces",
     "The production iPhone root keeps Today, Record, Work, Library, and Account focused, preserves active capture across auth expiry, and retains protected offline recovery.",
   );
@@ -1483,7 +1483,7 @@ function checkTranscriptCorrectionContractSources() {
       && serviceText.includes("correctionOverlayVersioned: true")
       && serviceText.includes("acceptedHumanCorrectionRequiresPlaybackConfirmation: false")
       && serviceText.includes("directHumanCorrectionPreservesSourceAnchors: true")
-      && serviceText.includes("aiOutputRequiresHumanReview: true")
+      && serviceText.includes("aiSuggestionRequiresAcceptanceToChangeTranscript: true")
       && serviceText.includes("PLAYBACK_POSITION_MISMATCH")
       && serviceText.includes("STALE_CORRECTION_OVERLAY")
       && serviceText.includes("noExternalDelivery: true")
@@ -1803,7 +1803,7 @@ function checkTranscriptCorrectionContractSources() {
       && shellText.includes('TextField("Find a tag"')
       && shellText.includes('LabeledContent("Save to", value: "Personal Inbox")')
       && shellText.includes("CaptureQuickEntryPending_")
-      && shellText.includes("Saved on iPhone · waiting to sync")
+      && shellText.includes("Saved on \\(CaptureDeviceVocabulary.thisDevice) · waiting to sync")
       && inboxText.includes('where: { userId, collectionId: null, researchFilings: { none: {} } }')
       && inboxText.includes("Open capture")
       && collectionsText.includes("snapshot.items.some((item) => item.id === requestedCaptureId)")
@@ -2059,7 +2059,7 @@ function checkTranscriptCorrectionContractSources() {
       && nativeRecordingShareText.includes("sourcePlayback.playRange")
       && nativeRecordingShareText.includes("source.mobileProtectedSource")
       && bridgeText.includes("transcriptionConsentGrantedParticipantCount")
-      && shellText.includes("the transcript waits for everyone to enable it")
+      && shellText.includes("The transcript starts after everyone allows it")
       && nativeText.includes('Label("Edit recording here"')
       && nativeText.includes("transcriptJobID: transcriptJobID")
       && nativeText.includes("segmentID: segment.id")
@@ -2371,7 +2371,7 @@ function checkTranscriptCorrectionContractSources() {
       && weeklyPlanOutboxText.includes("ownerAccountID")
       && shellText.includes("CaptureWeeklyPlanSheet")
       && shellText.includes("CaptureWeeklyPlanOutboxBoundary")
-      && shellText.includes("Saved on this iPhone, then synced with Nest")
+      && shellText.includes("Saved on \\(CaptureDeviceVocabulary.thisDevice), then synced with Nest")
       && todayRouteText.includes("weeklyPlanExternalSideEffects: false")
       && todayRouteText.includes("externalCalendarMutated: false")
       && todayRouteText.includes("providerMutated: false")
@@ -2614,7 +2614,7 @@ function checkNativeSessionSchedulingSources() {
       && modelText.includes("coachingRunwayClient.sendInvitationEmail(")
       && modelText.includes("sessionClient.load(authoritativeSessionID: roomID)")
       && coachingText.includes('TextField("Client email", text: $draft.clientEmail)')
-      && coachingText.includes("They can join from iPhone, tablet, or desktop.")
+      && coachingText.includes("They can join from phone, tablet, or desktop.")
       && uiTestText.includes("testNewCoachingSessionDefaultsToSimpleSchedulingAndInvitation")
       && uiTestText.includes("without setup paperwork"),
     "nativeSessionSchedulingAndInvitation",

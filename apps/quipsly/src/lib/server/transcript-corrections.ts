@@ -1349,7 +1349,7 @@ export function transcriptCorrectionBoundaries() {
     acceptedHumanCorrectionRequiresPlaybackConfirmation: false,
     directHumanCorrectionPreservesSourceAnchors: true,
     confirmedAsIsRequiresPlaybackConfirmation: true,
-    aiOutputRequiresHumanReview: true,
+    aiSuggestionRequiresAcceptanceToChangeTranscript: true,
     mediaTimeAnchorsPreserved: true,
     providerWordTimeAnchorsImmutable: true,
     speakerIdentitySeparateFromWordReview: true,

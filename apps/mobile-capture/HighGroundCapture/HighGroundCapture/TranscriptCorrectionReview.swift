@@ -506,7 +506,7 @@ struct CaptureTranscriptCorrectionDesk: Codable, Equatable {
                 "correctionOverlayVersioned": true,
                 "acceptedHumanCorrectionRequiresPlaybackConfirmation": false,
                 "directHumanCorrectionPreservesSourceAnchors": true,
-                "aiOutputRequiresHumanReview": true,
+                "aiSuggestionRequiresAcceptanceToChangeTranscript": true,
                 "mediaTimeAnchorsPreserved": true,
                 "speakerIdentitySeparateFromWordReview": true,
                 "noTaskCreated": true,
