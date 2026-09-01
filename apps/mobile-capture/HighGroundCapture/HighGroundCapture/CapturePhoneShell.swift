@@ -10841,12 +10841,23 @@ private struct CaptureRecorderView: View {
     /// render either Sessions or Speak to write.
     private var recorderScrollableSurface: AnyView {
         AnyView(ScrollView {
-            // This surface can project a full Episode workspace. Lazy layout
-            // is a correctness boundary on physical devices: eagerly laying
-            // out every transcript, notes, follow-through, chat, Watch, and
-            // capture card can overflow SwiftUI's AttributeGraph stack before
-            // the person reaches the consent controls.
-            LazyVStack(spacing: 16) {
+            Group {
+                if let session = model.selectedSession,
+                   session.isPersonalVoiceNote {
+                    // Speak to write is deliberately a small, eager workspace.
+                    // Keeping it inside the full Session LazyVStack made the
+                    // recording -> saved transition repeatedly place every
+                    // conditional row after an interruption resume, pinning
+                    // SwiftUI's AttributeGraph at 100% CPU. Personal writing
+                    // needs only its source, transcript, and recorder controls.
+                    personalVoiceWritingWorkspace(session)
+                } else {
+                    // This surface can project a full Episode workspace. Lazy
+                    // layout remains a correctness boundary for collaborative
+                    // Sessions: eagerly laying out every transcript, notes,
+                    // follow-through, chat, Watch, and capture card can overflow
+                    // the smaller main-thread stack on physical iPhones.
+                    LazyVStack(spacing: 16) {
                 AnyView(Group {
                 if model.selectedSession?.isPersonalVoiceNote != true {
                     SessionChooserButton(session: model.selectedSession) {
@@ -11528,6 +11539,8 @@ private struct CaptureRecorderView: View {
                         action: { showsSessionPicker = true }
                     )
                 }
+                    }
+                }
             }
             .padding(.horizontal, 18)
             .padding(.top, 14)
@@ -11648,6 +11661,85 @@ private struct CaptureRecorderView: View {
         // in repeated placement work at accessibility text sizes.
         .id("CaptureRecorderWorkspace|\(model.selectedSession?.id ?? "none")")
         .background(CaptureCanvas()))
+    }
+
+    @ViewBuilder
+    private func personalVoiceWritingWorkspace(
+        _ session: MobileCaptureSession
+    ) -> some View {
+        VStack(spacing: 16) {
+            if let message = model.message {
+                CaptureInlineMessage(text: message)
+                    .accessibilityIdentifier("CaptureSessionStatusMessage")
+            }
+
+            if let notice = model.sessionEntryNotice,
+               notice.sessionID == session.id {
+                CaptureInlineMessage(text: notice.message)
+                    .accessibilityIdentifier("CaptureSessionEntryNotice")
+            }
+
+            CapturePersonalVoiceNoteHeader(
+                onOpenLibrary: {
+                    requestedLibrarySection = .writing
+                    visibleTab = .library
+                }
+            )
+
+            if let recording = latestPersonalVoiceRecording(for: session) {
+                CapturePersonalVoiceNoteTranscriptCard(
+                    recording: recording,
+                    fileURL: library.fileURL(for: recording),
+                    previewOnly: model.usesPreviewData,
+                    tagClient: model.todayClient,
+                    onContinueByVoice: continueVoiceWriting
+                )
+            }
+
+            RecorderHero(
+                session: session,
+                captureState: audioCapture.captureState,
+                duration: audioCapture.currentDuration,
+                averagePowerDB: audioCapture.inputLevelDB,
+                peakPowerDB: audioCapture.peakInputLevelDB,
+                inputRoute: audioCapture.inputRouteName,
+                capturePipeline: audioCapture.capturePipelineLabel,
+                liveWritingFinalText: audioCapture.liveWritingFinalText,
+                liveWritingVolatileText: audioCapture.liveWritingVolatileText,
+                liveWritingPreviewMessage: audioCapture.liveWritingPreviewMessage,
+                liveTranscriptPreviewIsAvailable: audioCapture.liveTranscriptPreviewIsAvailable,
+                userMarkOffsets: audioCapture.userMarkOffsets,
+                isBusy: model.isChangingCapture,
+                canStartRecording: true,
+                waitingForHost: false,
+                onPrimaryAction: {
+                    Task {
+                        if audioCaptureIsActive {
+                            await requestCoordinatedStop(for: session)
+                        } else {
+                            await requestCoordinatedStart(for: session)
+                        }
+                    }
+                },
+                onPauseResume: {
+                    Task { await model.togglePause(using: audioCapture) }
+                },
+                onMark: { model.markMoment(using: audioCapture) }
+            )
+
+            if audioCapture.microphonePreflightState == .denied {
+                CapturePermissionRecoveryButton(
+                    title: "Allow microphone in Settings",
+                    detail: "Microphone access is off. Turn it on once, then return to Quipsly."
+                )
+            }
+
+            if audioCapture.captureState == .paused,
+               let recorderMessage = audioCapture.lastErrorMessage,
+               !recorderMessage.isEmpty {
+                CaptureInlineWarning(text: recorderMessage)
+            }
+        }
     }
 
     /// Episode source material belongs beside the recorder, but each tool must
