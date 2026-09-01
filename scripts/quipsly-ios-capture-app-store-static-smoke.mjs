@@ -462,6 +462,11 @@ requireIncludes(capturePhoneShellText, "NavigationSplitView", "regular-width iPa
 requireIncludes(capturePhoneShellText, "horizontalSizeClass == .regular", "iPad workspace adapts to the current resizable window width");
 requireIncludes(capturePhoneShellText, 'accessibilityIdentifier("CaptureIPadSidebar")', "native iPad sidebar has stable operated-test identity");
 requireIncludes(capturePhoneShellText, 'keyboardShortcut("r", modifiers: [.command, .shift])', "iPad hardware keyboard reaches Speak to Write");
+requireIncludes(deterministicUITestsText, "func testPrivateVoiceNoteOpensCaptureWithoutMeetingPaperworkOnRegularWidthIPad", "operated native acceptance covers iPad Speak to Write through the platform create rail");
+requireIncludes(deterministicUITestsText, "func testConsentNeededNextEpisodeOpensRecorderWithoutCrashingOnRegularWidthIPad", "operated native acceptance covers the full iPad Session detail against the physical stack-overflow regression");
+requireIncludes(deterministicUITestPlanText, "CaptureExperienceUITests/testRegularWidthIPadUsesANativeWorkspaceSidebar", "the guarded critical lane cannot omit native iPad navigation");
+requireIncludes(deterministicUITestPlanText, "CaptureExperienceUITests/testPrivateVoiceNoteOpensCaptureWithoutMeetingPaperworkOnRegularWidthIPad", "the guarded critical lane cannot omit iPad Speak to Write");
+requireIncludes(deterministicUITestPlanText, "CaptureExperienceUITests/testConsentNeededNextEpisodeOpensRecorderWithoutCrashingOnRegularWidthIPad", "the guarded critical lane cannot omit the iPad Session stack-overflow regression");
 requireIncludes(appInfoText, "UISupportedInterfaceOrientations~ipad", "native iPad declares a platform-specific orientation policy");
 requireIncludes(appInfoText, "UIInterfaceOrientationPortraitUpsideDown", "native iPad supports every resizable orientation");
 requireRegex(projectText, /SUPPORTS_MACCATALYST = NO;/, "Mac Catalyst is not accidentally advertised");

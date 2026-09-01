@@ -20,7 +20,10 @@ export const DETERMINISTIC_CLASSES = Object.freeze([
 
 export const CRITICAL_TESTS = Object.freeze([
   "CaptureExperienceUITests/testCaptureFirstNavigationKeepsFiveFocusedDestinations",
+  "CaptureExperienceUITests/testRegularWidthIPadUsesANativeWorkspaceSidebar",
+  "CaptureExperienceUITests/testPrivateVoiceNoteOpensCaptureWithoutMeetingPaperworkOnRegularWidthIPad",
   "CaptureExperienceUITests/testConsentNeededNextEpisodeOpensRecorderWithoutCrashing",
+  "CaptureExperienceUITests/testConsentNeededNextEpisodeOpensRecorderWithoutCrashingOnRegularWidthIPad",
   "CaptureExperienceUITests/testRecorderLeadsWithAStandardCallGreenRoom",
   "CaptureExperienceUITests/testDisconnectedCallOffersOneTapRejoinWhileKeepingRecordingSafe",
   "CaptureExperienceUITests/testRecorderUsesAFamiliarMicrophoneLevelInsteadOfAnOpaquePercentage",

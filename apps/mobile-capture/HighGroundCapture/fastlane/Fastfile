@@ -18,11 +18,14 @@ APPLE_APP_ID = "6780995957"
 APP_IDENTIFIER = "com.highgroundodyssey.HighGroundCapture"
 UI_TEST_PLANNER = File.join(REPO_ROOT, "scripts", "release", "quipsly-capture-ui-test-plan.mjs")
 DEFAULT_FULL_UI_TEST_SHARDS = 4
-IPAD_UI_TEST_SELECTOR =
-  "HighGroundCaptureUITests/CaptureExperienceUITests/testRegularWidthIPadUsesANativeWorkspaceSidebar"
+IPAD_UI_TEST_SELECTORS = [
+  "HighGroundCaptureUITests/CaptureExperienceUITests/testRegularWidthIPadUsesANativeWorkspaceSidebar",
+  "HighGroundCaptureUITests/CaptureExperienceUITests/testPrivateVoiceNoteOpensCaptureWithoutMeetingPaperworkOnRegularWidthIPad",
+  "HighGroundCaptureUITests/CaptureExperienceUITests/testConsentNeededNextEpisodeOpensRecorderWithoutCrashingOnRegularWidthIPad",
+].freeze
 
 def capture_ui_execution_groups(selectors, default_device:)
-  ipad_selectors, iphone_selectors = selectors.partition { |selector| selector == IPAD_UI_TEST_SELECTOR }
+  ipad_selectors, iphone_selectors = selectors.partition { |selector| IPAD_UI_TEST_SELECTORS.include?(selector) }
   groups = []
   groups << { slug: "iphone", device: default_device, selectors: iphone_selectors } unless iphone_selectors.empty?
   groups << {

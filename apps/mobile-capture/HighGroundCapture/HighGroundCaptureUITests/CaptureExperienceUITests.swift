@@ -379,6 +379,29 @@ final class CaptureExperienceUITests: XCTestCase {
         )
     }
 
+    func testPrivateVoiceNoteOpensCaptureWithoutMeetingPaperworkOnRegularWidthIPad() throws {
+        guard app.frame.width >= 700 else {
+            throw XCTSkip("Native Speak to Write acceptance requires an iPad regular-width workspace.")
+        }
+
+        let speakToWrite = app.buttons["CaptureIPadSpeakToWrite"]
+        XCTAssertTrue(speakToWrite.waitForExistence(timeout: 5))
+        XCTAssertTrue(speakToWrite.isHittable)
+        speakToWrite.tap()
+
+        XCTAssertTrue(
+            app.otherElements["CapturePersonalVoiceNoteHeader"].waitForExistence(timeout: 8),
+            "The iPad create rail should open the focused private writing recorder directly."
+        )
+        XCTAssertTrue(app.navigationBars["Speak to write"].exists)
+        XCTAssertTrue(app.otherElements["CaptureRecorderHero"].exists)
+        XCTAssertFalse(app.otherElements["CaptureProviderRoomControls"].exists)
+        XCTAssertFalse(app.otherElements["CaptureConsentStrip"].exists)
+        XCTAssertTrue(app.buttons["CaptureStartButton"].isEnabled)
+        XCTAssertTrue(app.buttons["CaptureStartButton"].isHittable)
+        XCTAssertTrue(app.state == .runningForeground)
+    }
+
     func testLibraryOffersPrivateKeyboardWritingBesideVoiceWriting() {
         app.terminate()
         app.launchArguments = [
@@ -1813,6 +1836,31 @@ final class CaptureExperienceUITests: XCTestCase {
                 .waitForExistence(timeout: 5),
             "Consent-needed Sessions must open the in-recorder consent action."
         )
+        XCTAssertTrue(app.state == .runningForeground)
+    }
+
+    func testConsentNeededNextEpisodeOpensRecorderWithoutCrashingOnRegularWidthIPad() throws {
+        guard app.frame.width >= 700 else {
+            throw XCTSkip("Native Session-detail acceptance requires an iPad regular-width workspace.")
+        }
+
+        let next = app.buttons["CaptureOpenNextSessionButton"]
+        XCTAssertTrue(next.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["High Ground pre-show"].exists)
+        next.tap()
+
+        XCTAssertTrue(
+            app.descendants(matching: .any)["CaptureIPadSidebar"].waitForExistence(timeout: 8),
+            "Opening a full Session must retain the native iPad workspace."
+        )
+        XCTAssertTrue(
+            app.otherElements["CaptureProviderRoomControls"].waitForExistence(timeout: 8),
+            "The selected Session should render in the persistent iPad detail column without overflowing SwiftUI's stack."
+        )
+        XCTAssertTrue(app.buttons["ProviderJoinRoomButton"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["CaptureConfirmConsentButton"].exists)
+        openLocalRecorderIfNeeded()
+        XCTAssertTrue(app.buttons["CaptureConfirmConsentButton"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.state == .runningForeground)
     }
 
