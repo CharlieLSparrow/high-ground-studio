@@ -97,6 +97,7 @@ const files = {
   mobileCaptureSessionsServer: path.join(root, "apps/quipsly/src/lib/server/mobile-capture-sessions.ts"),
   coachingPackets: path.join(root, "apps/quipsly/src/lib/server/coaching-packets.ts"),
   captureTranscriptFollowThrough: path.join(root, "apps/quipsly/src/lib/server/capture-transcript-follow-through.ts"),
+  captureTranscriptFollowThroughDispatch: path.join(root, "apps/quipsly/src/lib/server/capture-transcript-follow-through-dispatch.ts"),
   mobileCaptureProjectsRoute: path.join(root, "apps/quipsly/src/app/api/mobile/capture/projects/route.ts"),
   mobileVoiceWritingRoute: path.join(root, "apps/quipsly/src/app/api/mobile/capture/voice-writing/route.ts"),
   mobileVoiceWritingServer: path.join(root, "apps/quipsly/src/lib/server/mobile-voice-writing.ts"),
@@ -301,6 +302,7 @@ const mobileCaptureSessionsRouteText = read(files.mobileCaptureSessionsRoute);
 const mobileCaptureSessionsServerText = read(files.mobileCaptureSessionsServer);
 const coachingPacketsText = read(files.coachingPackets);
 const captureTranscriptFollowThroughText = read(files.captureTranscriptFollowThrough);
+const captureTranscriptFollowThroughDispatchText = read(files.captureTranscriptFollowThroughDispatch);
 const mobileCaptureProjectsRouteText = read(files.mobileCaptureProjectsRoute);
 const mobileVoiceWritingRouteText = read(files.mobileVoiceWritingRoute);
 const mobileVoiceWritingServerText = read(files.mobileVoiceWritingServer);
@@ -874,6 +876,27 @@ for (const needle of [
     onDeviceTranscriptRouteText,
     needle,
     "Nest ingests on-device text only through the immutable consent and source boundary",
+  );
+}
+for (const needle of [
+  "dispatchCaptureTranscriptFollowThrough",
+  "transcriptJobId: result.transcriptJobId",
+]) {
+  requireIncludes(
+    onDeviceTranscriptRouteText,
+    needle,
+    "a completed device transcript dispatches ordinary Session work without delaying its response",
+  );
+}
+for (const needle of [
+  "after(async () =>",
+  "reconcileCaptureTranscriptFollowThrough(input)",
+  "Immediate dispatch remains retryable",
+]) {
+  requireIncludes(
+    captureTranscriptFollowThroughDispatchText,
+    needle,
+    "post-response follow-through is low-latency while scheduled reconciliation remains the durable recovery path",
   );
 }
 requireIncludes(uploadText, "lastRecordingAssetId", "Capture preserves canonical RecordingAsset identity separately from Studio MediaAsset identity");
