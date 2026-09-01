@@ -1045,25 +1045,62 @@ describe("transcript coaching follow-through", () => {
     const job = completedTranscriptJob();
     const work = automaticWorkStores();
     const summaries: any[] = [];
+    const notes = new Map<string, any>();
     let latestSummary: any = null;
+    let noteSequence = 0;
     const coachingNoteCreate = jest.fn(async ({ data }: any) => {
+      noteSequence += 1;
       const note = {
-        id: `note-${summaries.length + 1}`,
+        id: data.id || `note-${noteSequence}`,
         ...data,
         createdAt: new Date(),
         updatedAt: new Date(),
       };
+      notes.set(note.id, note);
       if (data.kind === "SUMMARY") {
         latestSummary = { ...note, actionItems: [] };
+        notes.set(note.id, latestSummary);
         summaries.push(latestSummary);
       }
+      return note;
+    });
+    const coachingNoteUpdate = jest.fn(async ({ where, data }: any) => {
+      const note = {
+        ...notes.get(where.id),
+        ...data,
+        updatedAt: new Date(),
+      };
+      notes.set(note.id, note);
+      if (note.kind === "SUMMARY") latestSummary = note;
       return note;
     });
     const prisma = {
       transcriptJob: { findUnique: jest.fn(async () => job) },
       coachingNote: {
-        findFirst: jest.fn(async () => latestSummary),
+        findFirst: jest.fn(async ({ where }: any) => {
+          if (where.kind === "SUMMARY") return latestSummary;
+          if (where.kind !== "HIGHLIGHT") return null;
+          const expected = Object.fromEntries(
+            (where.AND || []).map((entry: any) => [
+              entry.sourceJson.path[0],
+              entry.sourceJson.equals,
+            ]),
+          );
+          return (
+            Array.from(notes.values())
+              .reverse()
+              .find(
+                (note) =>
+                  note.kind === "HIGHLIGHT" &&
+                  note.sourceJson.origin === expected.origin &&
+                  note.sourceJson.transcriptJobId ===
+                    expected.transcriptJobId &&
+                  note.sourceJson.segmentId === expected.segmentId,
+              ) || null
+          );
+        }),
         create: coachingNoteCreate,
+        update: coachingNoteUpdate,
       },
       ...work,
     };
@@ -1105,16 +1142,23 @@ describe("transcript coaching follow-through", () => {
     expect(rebuilt).toMatchObject({
       reusedExistingPacket: false,
       rebuiltForTranscriptReviewChange: true,
+      summaryRefreshedInPlace: true,
+      summaryNoteId: first.summaryNoteId,
     });
     expect(rebuilt.packetBuildId).not.toBe(first.packetBuildId);
-    expect(summaries).toHaveLength(2);
-    expect(summaries[1].body).toContain(
+    expect(summaries).toHaveLength(1);
+    expect(latestSummary.body).toContain(
       "I will send the finished outline before next time.",
     );
-    expect(summaries[1].sourceJson.transcriptReviewCoverage).toMatchObject({
+    expect(latestSummary.sourceJson.transcriptReviewCoverage).toMatchObject({
       humanReviewedSegmentCount: 1,
       providerOnlySegmentCount: 1,
     });
+    expect(
+      coachingNoteCreate.mock.calls.filter(
+        ([{ data }]: any[]) => data.kind === "HIGHLIGHT",
+      ),
+    ).toHaveLength(2);
     expect(work.actionItem.update).toHaveBeenCalledWith({
       where: { id: first.actionItemIds[0] },
       data: expect.objectContaining({
@@ -1137,6 +1181,9 @@ describe("transcript coaching follow-through", () => {
       where: { id: first.actionItemIds[0] },
     });
     editedTask.title = "My own follow-up wording";
+    const editedSummaryID = latestSummary.id;
+    latestSummary.title = "My own recap title";
+    notes.set(editedSummaryID, latestSummary);
     (provider as any).corrections = [
       {
         ...(provider as any).corrections[0],
@@ -1145,11 +1192,20 @@ describe("transcript coaching follow-through", () => {
         updatedAt: new Date("2026-08-02T00:10:00.000Z"),
       },
     ];
-    await buildCoachingPacketFromTranscriptJob({
+    const secondRebuild = (await buildCoachingPacketFromTranscriptJob({
       prisma,
       transcriptJobId: job.id,
       authorUserId: "coach-1",
-    });
+    })) as any;
+    expect(secondRebuild.summaryRefreshedInPlace).toBe(false);
+    expect(secondRebuild.summaryNoteId).not.toBe(editedSummaryID);
+    expect(notes.get(editedSummaryID).title).toBe("My own recap title");
+    expect(summaries).toHaveLength(2);
+    expect(
+      coachingNoteCreate.mock.calls.filter(
+        ([{ data }]: any[]) => data.kind === "HIGHLIGHT",
+      ),
+    ).toHaveLength(2);
     expect(work.actionItem.update).toHaveBeenCalledTimes(1);
     expect(
       (

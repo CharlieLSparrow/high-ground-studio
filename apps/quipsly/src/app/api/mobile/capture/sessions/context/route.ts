@@ -266,7 +266,7 @@ export async function POST(request: Request) {
       projectionStats: result.projectionStats,
       nextAction: result.unchanged
         ? "Nest already has this exact session context revision; no duplicate notes, goals, or tasks were created."
-        : "Nest saved one revision and projected explicit notes, goals, and tasks into durable session records. Transcript inference remains a separate review boundary.",
+        : "Nest saved one revision and projected explicit notes, goals, and tasks into durable Session records. Transcript follow-through is created automatically when recording results arrive and stays editable.",
     }));
   } catch (error: any) {
     if (error instanceof ConcurrentSessionContextWrite || error?.code === "P2034") {

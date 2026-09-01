@@ -233,6 +233,8 @@ function packetWorkId(
 
 const GENERATED_FOLLOW_THROUGH_SNAPSHOT_SCHEMA =
   "quipsly-generated-follow-through-snapshot-v1";
+const GENERATED_PACKET_NOTE_SNAPSHOT_SCHEMA =
+  "quipsly-generated-packet-note-snapshot-v1";
 
 function generatedFollowThroughSnapshot(input: {
   title: string;
@@ -290,6 +292,43 @@ function generatedFollowThroughCanRemove(input: {
     input.transcriptJobIds.has(cleanText(source.transcriptJobId)) &&
     input.existing.status === input.activeStatus &&
     generatedFollowThroughCanRefresh(input)
+  );
+}
+
+function generatedPacketNoteSnapshot(input: {
+  title: string;
+  body: string;
+  packetBuildId: string;
+  sourceTextSha256: string;
+}) {
+  return {
+    schema: GENERATED_PACKET_NOTE_SNAPSHOT_SCHEMA,
+    title: input.title,
+    body: input.body,
+    packetBuildId: input.packetBuildId,
+    sourceTextSha256: input.sourceTextSha256,
+  };
+}
+
+export function generatedPacketNoteCanRefresh(existing: any) {
+  const source =
+    typeof existing?.sourceJson === "object" &&
+    existing.sourceJson !== null &&
+    !Array.isArray(existing.sourceJson)
+      ? (existing.sourceJson as Record<string, any>)
+      : {};
+  const generated =
+    typeof source.generatedNoteSnapshot === "object" &&
+    source.generatedNoteSnapshot !== null &&
+    !Array.isArray(source.generatedNoteSnapshot)
+      ? (source.generatedNoteSnapshot as Record<string, unknown>)
+      : {};
+  return (
+    source.origin === "quipsly-session-follow-through" &&
+    source.automaticallyCreated === true &&
+    generated.schema === GENERATED_PACKET_NOTE_SNAPSHOT_SCHEMA &&
+    existing.title === generated.title &&
+    existing.body === generated.body
   );
 }
 
@@ -1748,39 +1787,67 @@ export async function buildCoachingPacketFromTranscriptJob(
     };
   });
 
-  const summaryNote = await args.prisma.coachingNote.create({
-    data: {
-      roomId: job.roomId,
-      bookingId: job.room?.bookingId ?? null,
-      engagementId: job.room?.coachingEngagementId ?? null,
-      authorUserId: args.authorUserId || null,
-      kind: "SUMMARY",
-      visibility: "SESSION_SHARED",
+  const summaryBody = summarizeSegments(purpose, packetSegments, packetBrief);
+  const summarySourceJson = {
+    ...sourceJson,
+    origin: "quipsly-session-follow-through",
+    automaticallyCreated: true,
+    editableAfterCreation: true,
+    removableInProduct: true,
+    sourceProvenanceVisible: true,
+    generatedNoteSnapshot: generatedPacketNoteSnapshot({
       title: packetTitle,
-      body: summarizeSegments(purpose, packetSegments, packetBrief),
-      sourceJson: {
-        ...sourceJson,
-        packetBrief,
-        reviewLanes,
-        reviewLaneCount: reviewLanes.length,
-        reviewLaneReadyCount: reviewLanes.filter(
-          (lane) => lane.status === "READY_FOR_HUMAN_REVIEW",
-        ).length,
-        actionCandidateKind: TRANSCRIPT_ACTION_CANDIDATE_KIND,
-        actionCandidates,
-        actionCandidateCount: actionCandidates.length,
-        outcomeBehavior:
-          "Quipsly created editable follow-through in the Session. Source timing remains visible and every item can be changed or removed.",
-        goalOutputs: goalOutputs.map((goal) => ({
-          id: goal.id,
-          transcriptJobId: goal.transcriptJobId,
-          recordingAssetId: goal.recordingAssetId,
-          segmentId: String(goal.segment.id),
-          title: goal.title,
-        })),
-      },
-    },
-  });
+      body: summaryBody,
+      packetBuildId,
+      sourceTextSha256: transcriptSnapshot.sha256,
+    }),
+    packetBrief,
+    reviewLanes,
+    reviewLaneCount: reviewLanes.length,
+    reviewLaneReadyCount: reviewLanes.filter(
+      (lane) => lane.status === "READY_FOR_HUMAN_REVIEW",
+    ).length,
+    actionCandidateKind: TRANSCRIPT_ACTION_CANDIDATE_KIND,
+    actionCandidates,
+    actionCandidateCount: actionCandidates.length,
+    outcomeBehavior:
+      "Quipsly created editable follow-through in the Session. Source timing remains visible and every item can be changed or removed.",
+    goalOutputs: goalOutputs.map((goal) => ({
+      id: goal.id,
+      transcriptJobId: goal.transcriptJobId,
+      recordingAssetId: goal.recordingAssetId,
+      segmentId: String(goal.segment.id),
+      title: goal.title,
+    })),
+  };
+  const summaryRefreshedInPlace = Boolean(
+    !args.force &&
+    existing &&
+    generatedPacketNoteCanRefresh(existing) &&
+    typeof args.prisma.coachingNote.update === "function",
+  );
+  const summaryNote = summaryRefreshedInPlace
+    ? await args.prisma.coachingNote.update({
+        where: { id: existing.id },
+        data: {
+          title: packetTitle,
+          body: summaryBody,
+          sourceJson: summarySourceJson,
+        },
+      })
+    : await args.prisma.coachingNote.create({
+        data: {
+          roomId: job.roomId,
+          bookingId: job.room?.bookingId ?? null,
+          engagementId: job.room?.coachingEngagementId ?? null,
+          authorUserId: args.authorUserId || null,
+          kind: "SUMMARY",
+          visibility: "SESSION_SHARED",
+          title: packetTitle,
+          body: summaryBody,
+          sourceJson: summarySourceJson,
+        },
+      });
 
   const defaultOwnerUserId =
     job.room?.coachingEngagement?.primaryClientUserId ||
@@ -1993,38 +2060,111 @@ export async function buildCoachingPacketFromTranscriptJob(
 
   const highlightNotes = [];
   for (const segment of highlights) {
-    const note = await args.prisma.coachingNote.create({
-      data: {
-        roomId: job.roomId,
-        bookingId: job.room?.bookingId ?? null,
-        engagementId: job.room?.coachingEngagementId ?? null,
-        authorUserId: args.authorUserId || null,
-        kind: "HIGHLIGHT",
-        visibility: "SESSION_SHARED",
-        title: titleFromSegment(segment),
-        body: segmentLine(segment),
-        sourceJson: {
-          ...sourceJson,
-          transcriptJobId: cleanText(segment.transcriptJobId) || job.id,
-          recordingAssetId: cleanText(segment.recordingAssetId) || job.assetId,
-          segmentId: segment.id,
-          segmentIds: Array.isArray(segment.segmentIds)
-            ? segment.segmentIds
-            : [segment.id],
-          sourceTextSha256:
-            cleanText(segment.sourceTextSha256) ||
-            packetSha256(cleanText(segment.text)),
-          startSeconds: segment.sourceStartSeconds ?? segment.startSeconds,
-          endSeconds: segment.sourceEndSeconds ?? segment.endSeconds,
-          sourceStartSeconds:
-            segment.sourceStartSeconds ?? segment.startSeconds,
-          sourceEndSeconds: segment.sourceEndSeconds ?? segment.endSeconds,
-          programStartSeconds: segment.startSeconds,
-          programEndSeconds: segment.endSeconds,
-          speakerLabel: segment.speakerLabel,
-        },
-      },
-    });
+    const sourceTranscriptJobId = cleanText(segment.transcriptJobId) || job.id;
+    const segmentID = String(segment.id);
+    const title = titleFromSegment(segment);
+    const body = segmentLine(segment);
+    const sourceTextSha256 =
+      cleanText(segment.sourceTextSha256) ||
+      packetSha256(cleanText(segment.text));
+    const highlightSourceJson = {
+      ...sourceJson,
+      origin: "quipsly-session-follow-through",
+      automaticallyCreated: true,
+      editableAfterCreation: true,
+      removableInProduct: true,
+      sourceProvenanceVisible: true,
+      generatedNoteSnapshot: generatedPacketNoteSnapshot({
+        title,
+        body,
+        packetBuildId,
+        sourceTextSha256,
+      }),
+      transcriptJobId: sourceTranscriptJobId,
+      recordingAssetId: cleanText(segment.recordingAssetId) || job.assetId,
+      segmentId: segmentID,
+      segmentIds: Array.isArray(segment.segmentIds)
+        ? segment.segmentIds
+        : [segment.id],
+      sourceTextSha256,
+      startSeconds: segment.sourceStartSeconds ?? segment.startSeconds,
+      endSeconds: segment.sourceEndSeconds ?? segment.endSeconds,
+      sourceStartSeconds: segment.sourceStartSeconds ?? segment.startSeconds,
+      sourceEndSeconds: segment.sourceEndSeconds ?? segment.endSeconds,
+      programStartSeconds: segment.startSeconds,
+      programEndSeconds: segment.endSeconds,
+      speakerLabel: segment.speakerLabel,
+    };
+    const existingHighlightCandidate =
+      typeof args.prisma.coachingNote.findFirst === "function"
+        ? await args.prisma.coachingNote.findFirst({
+            where: {
+              roomId: job.roomId,
+              authorUserId: args.authorUserId || null,
+              kind: "HIGHLIGHT",
+              AND: [
+                {
+                  sourceJson: {
+                    path: ["origin"],
+                    equals: "quipsly-session-follow-through",
+                  },
+                },
+                {
+                  sourceJson: {
+                    path: ["transcriptJobId"],
+                    equals: sourceTranscriptJobId,
+                  },
+                },
+                {
+                  sourceJson: { path: ["segmentId"], equals: segmentID },
+                },
+              ],
+            },
+            orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+          })
+        : null;
+    const existingHighlightSource =
+      typeof existingHighlightCandidate?.sourceJson === "object" &&
+      existingHighlightCandidate.sourceJson !== null &&
+      !Array.isArray(existingHighlightCandidate.sourceJson)
+        ? (existingHighlightCandidate.sourceJson as Record<string, unknown>)
+        : {};
+    const existingHighlight =
+      existingHighlightCandidate?.kind === "HIGHLIGHT" &&
+      cleanText(existingHighlightSource.origin) ===
+        "quipsly-session-follow-through" &&
+      cleanText(existingHighlightSource.transcriptJobId) ===
+        sourceTranscriptJobId &&
+      cleanText(existingHighlightSource.segmentId) === segmentID
+        ? existingHighlightCandidate
+        : null;
+    const refreshHighlight = Boolean(
+      existingHighlight &&
+      generatedPacketNoteCanRefresh(existingHighlight) &&
+      typeof args.prisma.coachingNote.update === "function",
+    );
+    const note = refreshHighlight
+      ? await args.prisma.coachingNote.update({
+          where: { id: existingHighlight.id },
+          data: {
+            title,
+            body,
+            sourceJson: highlightSourceJson,
+          },
+        })
+      : await args.prisma.coachingNote.create({
+          data: {
+            roomId: job.roomId,
+            bookingId: job.room?.bookingId ?? null,
+            engagementId: job.room?.coachingEngagementId ?? null,
+            authorUserId: args.authorUserId || null,
+            kind: "HIGHLIGHT",
+            visibility: "SESSION_SHARED",
+            title,
+            body,
+            sourceJson: highlightSourceJson,
+          },
+        });
     highlightNotes.push(note);
   }
 
@@ -2051,6 +2191,7 @@ export async function buildCoachingPacketFromTranscriptJob(
       (lane) => lane.status === "READY_FOR_HUMAN_REVIEW",
     ).length,
     reusedExistingPacket: false,
+    summaryRefreshedInPlace,
     rebuiltForTranscriptReviewChange: Boolean(existing && !args.force),
     transcriptSnapshotSha256: transcriptSnapshot.sha256,
     humanReviewedSegmentCount: transcriptSnapshot.humanReviewedSegmentCount,
