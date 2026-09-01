@@ -26,8 +26,15 @@ test("fresh Session audio polish operation protects source truth and acceptance 
   assert.match(subject, /completedStateRecognizedAtEntry: initialState === "completed"/);
   assert.match(subject, /name: "Recording \+ transcript"/);
   assert.match(subject, /recordingAndTranscriptRenderedSideBySide: true/);
+  assert.match(subject, /Cut the recording by transcript/);
+  assert.match(subject, /excludedTranscriptSegments\?\.length === 1/);
+  assert.match(subject, /Restore to recording:/);
+  assert.match(subject, /transcriptBasedCutSavedAndDecoded: true/);
   assert.match(subject, /correctionAvailableWithoutPlaybackGate: true/);
   assert.match(subject, /repeatedPlaybackAttestationAbsent: true/);
+  assert.match(subject, /name: "Save transcript correction"/);
+  assert.match(subject, /correctionPacket\?\.correction\?\.segmentId === correctedSegmentId/);
+  assert.match(subject, /transcriptCorrectionSavedAndReadBack: true/);
   assert.match(subject, /humanAcceptanceSatisfied: false/);
   assert.match(subject, /physicalDeviceProven: false/);
   assert.match(subject, /humanListeningProven: false/);

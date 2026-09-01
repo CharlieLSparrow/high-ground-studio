@@ -73,6 +73,41 @@ describe("SessionSourceAlignmentCard", () => {
     expect(screen.getByRole("button", { name: /open sync details/i })).toBeInTheDocument();
   });
 
+  it("presents missing shared acoustic evidence as a healthy clock-sync fallback", async () => {
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        ok: true,
+        suggestion: null,
+        alignments: [
+          {
+            jobId: "session_alignment_silent123",
+            status: "clock-synced",
+            spineRecordingAssetId: "recording-coach",
+            targetRecordingAssetId: "recording-client",
+            clockAuthority: "capture-clock-proposal",
+            evidence: null,
+            notice:
+              "Capture-clock sync remains active. These isolated recordings did not contain enough shared sound or duration for waveform refinement. The originals and their clock placement remain unchanged.",
+            error: null,
+            decision: null,
+          },
+        ],
+      }),
+    }) as jest.Mock;
+
+    render(<SessionSourceAlignmentCard roomId="room-1" evidence={evidence} canManage />);
+    expect(await screen.findByText("Recording timeline ready")).toBeInTheDocument();
+    await openSyncDetails();
+    expect(
+      await screen.findByText(/capture-clock sync remains active/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /try waveform refinement again/i }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/analysis is failed/i)).toBeNull();
+  });
+
   it("shows exact-source measurements and a separate reversible placement action", async () => {
     global.fetch = jest.fn().mockResolvedValue({
       ok: true,

@@ -1369,6 +1369,7 @@ try {
   const alignmentDeadline = Date.now() + 120_000;
   while (
     exactSourceAlignment.status !== "completed" &&
+    exactSourceAlignment.status !== "clock-synced" &&
     exactSourceAlignment.status !== "failed" &&
     Date.now() < alignmentDeadline
   ) {
@@ -1389,11 +1390,23 @@ try {
     );
     exactSourceAlignment = reconcilePayload.alignment;
   }
-  assert(
+  const measuredAlignmentCompleted =
     exactSourceAlignment.status === "completed" &&
-      exactSourceAlignment.evidence?.boundaries?.sourceBytesMutated === false &&
-      exactSourceAlignment.evidence?.boundaries?.timelinePlacementApplied ===
-        false,
+    exactSourceAlignment.evidence?.boundaries?.sourceBytesMutated === false &&
+    exactSourceAlignment.evidence?.boundaries?.timelinePlacementApplied ===
+      false;
+  const captureClockFallbackRetained =
+    exactSourceAlignment.status === "clock-synced" &&
+    exactSourceAlignment.clockAuthority === "capture-clock-proposal" &&
+    exactSourceAlignment.evidence === null &&
+    exactSourceAlignment.error === null &&
+    exactSourceAlignment.boundaries?.sourceBytesImmutable === true &&
+    exactSourceAlignment.boundaries?.sourceTimesMutated === false &&
+    exactSourceAlignment.boundaries?.analyzerPlacementApplied === false &&
+    exactSourceAlignment.boundaries?.reviewedPlacementActive === false &&
+    exactSourceAlignment.boundaries?.sampleAccurateClaimed === false;
+  assert(
+    measuredAlignmentCompleted || captureClockFallbackRetained,
     `Exact-source acoustic alignment did not complete safely: ${JSON.stringify(exactSourceAlignment)}.`,
   );
 
@@ -1505,12 +1518,13 @@ try {
       status: exactSourceAlignment.status,
       jobId: exactSourceAlignment.jobId,
       qualifiedForAuthorizedAgentReview:
-        exactSourceAlignment.evidence.qualification
-          .qualifiedForAuthorizedAgentReview,
+        exactSourceAlignment.evidence?.qualification
+          ?.qualifiedForAuthorizedAgentReview ?? false,
       measuredOpeningOffsetSeconds:
-        exactSourceAlignment.evidence.opening.measuredOffsetSeconds,
+        exactSourceAlignment.evidence?.opening?.measuredOffsetSeconds ?? null,
       residualDriftMilliseconds:
-        exactSourceAlignment.evidence.drift.residualDriftMilliseconds,
+        exactSourceAlignment.evidence?.drift?.residualDriftMilliseconds ?? null,
+      captureClockFallbackRetained,
       placementApplied: false,
     },
     browserSourceOverlapMilliseconds: overlapMilliseconds,

@@ -10,6 +10,7 @@ import {
   buildSessionSourceAlignmentPlan,
   decideSessionSourceAlignment,
   queueSessionSourceAlignment,
+  readSessionSourceAlignments,
   sessionSourceAlignmentProcessorBinding,
   suggestSessionSourceAlignment,
   SessionSourceAlignmentError,
@@ -134,6 +135,93 @@ describe("Session exact-source audio alignment planning", () => {
       sampleAccurateClaimed: false,
       resultIsReviewEvidenceOnly: true,
     });
+  });
+
+  it("surfaces unavailable acoustic evidence as retained clock sync instead of a failed recording", async () => {
+    const binding = (assetId: string, hash: string) => ({
+      assetId,
+      provider: "local" as const,
+      locator: `/tmp/quipsly-local-media/${assetId}.m4a`,
+      generation: "local-test",
+      sha256: hash.repeat(64),
+      sizeBytes: 10_000,
+      contentType: "audio/mp4",
+    });
+    const job = newSessionAudioAlignmentJob({
+      jobId: "session_alignment_silent123",
+      roomId: "room_session_12345678",
+      captureGroupId,
+      requestedByUserId: "user_session_12345678",
+      requestedByEmail: "coach@example.test",
+      queuedAt: "2026-08-24T20:05:00.000Z",
+      spine: binding("recording_spine_1234", "a"),
+      target: binding("recording_target_123", "b"),
+      proposal: {
+        initialOffsetSeconds: 0.35,
+        openingTargetSeconds: 1,
+        laterTargetSeconds: 20,
+        windowSeconds: 6,
+        searchRadiusSeconds: 1,
+        sampleRate: 12_000,
+        minimumCorrelation: 0.78,
+        minimumPeakMargin: 0.04,
+      },
+    });
+    const row = {
+      id: job.jobId,
+      roomId: job.roomId,
+      spineRecordingAssetId: job.spine.assetId,
+      targetRecordingAssetId: job.target.assetId,
+      status: "failed",
+      inputJson: {
+        ...job,
+        sessionPlan: { clockAuthority: "capture-clock-proposal" },
+      },
+      resultJson: {
+        state: "failed",
+        failure: {
+          code: "audio-alignment-evidence-unavailable",
+          message: "Audio correlation reference is effectively silent.",
+        },
+      },
+      error:
+        "audio-alignment-evidence-unavailable: Audio correlation reference is effectively silent.",
+      updatedAt: new Date("2026-08-24T20:06:00.000Z"),
+      decisions: [],
+    };
+    const result = await readSessionSourceAlignments({
+      prisma: {
+        callRoom: {
+          findFirst: jest.fn().mockResolvedValue({
+            id: job.roomId,
+            captureGroupId,
+          }),
+        },
+        sessionAudioAlignmentJob: {
+          findMany: jest.fn().mockResolvedValue([row]),
+        },
+        recordingAsset: { findMany: jest.fn().mockResolvedValue([]) },
+        mobileCaptureFinalizationReceipt: {
+          findMany: jest.fn().mockResolvedValue([]),
+        },
+      },
+      roomId: job.roomId,
+      actor: { id: "user_session_12345678", email: "coach@example.test" },
+    });
+    expect(result.alignments[0]).toMatchObject({
+      status: "clock-synced",
+      clockAuthority: "capture-clock-proposal",
+      evidence: null,
+      error: null,
+      boundaries: {
+        sourceBytesImmutable: true,
+        sourceTimesMutated: false,
+        analyzerPlacementApplied: false,
+        reviewedPlacementActive: false,
+        sampleAccurateClaimed: false,
+      },
+    });
+    expect(result.alignments[0]?.notice).toMatch(/capture-clock sync remains active/i);
   });
 
   it("keeps wall-clock fallback visible instead of pretending it is capture evidence", () => {

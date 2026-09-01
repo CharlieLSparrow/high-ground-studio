@@ -109,12 +109,14 @@ export type PublicSessionSourceAlignment = {
     | "processing"
     | "output-ready"
     | "completed"
+    | "clock-synced"
     | "blocked"
     | "failed";
   spineRecordingAssetId: string;
   targetRecordingAssetId: string;
   clockAuthority: SessionSourceAlignmentPlan["clockAuthority"] | null;
   evidence: AudioAlignmentEvidence | null;
+  notice: string | null;
   error: string | null;
   updatedAt: string | null;
   decision: null | {
@@ -1121,6 +1123,9 @@ function publicStatus(row: any, blocked = false): PublicSessionSourceAlignment {
     /* fail closed */
   }
   const declared = STATUS.includes(row.status) ? row.status : "failed";
+  const acousticRefinementUnavailable =
+    declared === "failed" &&
+    text(row.error).startsWith("audio-alignment-evidence-unavailable:");
   const integrityFailure =
     !job ||
     ((declared === "output-ready" || declared === "completed") && !result);
@@ -1133,7 +1138,13 @@ function publicStatus(row: any, blocked = false): PublicSessionSourceAlignment {
     latestDecision?.operation === "APPROVE" && validPublicPlacement(placement);
   return {
     jobId: text(row.id),
-    status: integrityFailure ? "failed" : blocked ? "blocked" : declared,
+    status: integrityFailure
+      ? "failed"
+      : blocked
+        ? "blocked"
+        : acousticRefinementUnavailable
+          ? "clock-synced"
+          : declared,
     spineRecordingAssetId:
       job?.spine.assetId ?? text(row.spineRecordingAssetId),
     targetRecordingAssetId:
@@ -1144,11 +1155,16 @@ function publicStatus(row: any, blocked = false): PublicSessionSourceAlignment {
         ? plan.clockAuthority
         : null,
     evidence: result?.evidence ?? null,
+    notice: acousticRefinementUnavailable
+      ? "Capture-clock sync remains active. These isolated recordings did not contain enough shared sound or duration for waveform refinement. The originals and their clock placement remain unchanged."
+      : null,
     error: integrityFailure
       ? "Session audio alignment evidence failed integrity validation."
       : blocked
         ? "Exact-source alignment is retained, but the media processor execution control is not configured."
-        : text(row.error) || null,
+        : acousticRefinementUnavailable
+          ? null
+          : text(row.error) || null,
     updatedAt: row.updatedAt?.toISOString?.() ?? null,
     decision:
       latestDecision && validPublicPlacement(placement)

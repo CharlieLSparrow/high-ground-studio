@@ -19,6 +19,7 @@ type Alignment = {
     | "processing"
     | "output-ready"
     | "completed"
+    | "clock-synced"
     | "blocked"
     | "failed";
   spineRecordingAssetId: string;
@@ -49,6 +50,7 @@ type Alignment = {
       reason: string;
     };
   };
+  notice?: string | null;
   error: string | null;
   decision: null | {
     revision: number;
@@ -1067,18 +1069,24 @@ export function SessionSourceAlignmentCard({
           </div>
         </div>
       ) : current ? (
-        <div className="mt-5 flex items-center gap-3 rounded-2xl border border-amber-700 bg-amber-950/40 p-4 text-sm font-bold text-amber-100">
+        <div
+          className={`mt-5 flex items-center gap-3 rounded-2xl border p-4 text-sm font-bold ${current.status === "clock-synced" ? "border-emerald-700 bg-emerald-950/40 text-emerald-100" : "border-amber-700 bg-amber-950/40 text-amber-100"}`}
+        >
           {["queued", "processing", "output-ready"].includes(current.status) ? (
             <LoaderCircle
               size={18}
               className="animate-spin"
               aria-hidden="true"
             />
+          ) : current.status === "clock-synced" ? (
+            <CheckCircle2 size={18} aria-hidden="true" />
           ) : (
             <RefreshCw size={18} aria-hidden="true" />
           )}
           <span>
-            {current.error || `Exact-source analysis is ${current.status}.`}
+            {current.notice ||
+              current.error ||
+              `Exact-source analysis is ${current.status}.`}
           </span>
         </div>
       ) : null}
@@ -1111,6 +1119,8 @@ export function SessionSourceAlignmentCard({
           )}
           {current?.evidence
             ? "Analyze these exact sources again"
+            : current?.status === "clock-synced"
+              ? "Try waveform refinement again"
             : "Compare exact-source waveforms"}
         </button>
         <p className="text-[10px] font-semibold leading-4 text-slate-400">

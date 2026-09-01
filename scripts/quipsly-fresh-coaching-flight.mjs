@@ -137,6 +137,11 @@ if (controlledSpeechFlight) {
       "My goal is to complete the certification practice review by Friday. Please create a task to send the recording to my instructor tomorrow, and note that I want accountability without daily reminders.",
   };
   const voices = { coach: "Daniel", client: "Samantha" };
+  // Model an ordinary turn-taking conversation instead of playing both
+  // speakers over one another. This gives the transcript editor at least one
+  // genuine non-overlapping passage it may remove while still proving that
+  // overlapping speech stays protected whenever it occurs.
+  const leadInMilliseconds = { coach: 500, client: 14_000 };
   const files = {};
   for (const role of ["coach", "client"]) {
     const intermediatePath = path.join(
@@ -162,7 +167,9 @@ if (controlledSpeechFlight) {
         "-i",
         intermediatePath,
         "-af",
-        "apad=pad_dur=3",
+        `adelay=${leadInMilliseconds[role]},apad`,
+        "-t",
+        "32",
         "-ar",
         "48000",
         "-ac",
@@ -186,7 +193,7 @@ if (controlledSpeechFlight) {
   };
   continuationEnv.QUIPSLY_LOCAL_LIVE_ROOM_AUDIO_FILES_JSON =
     JSON.stringify(files);
-  continuationEnv.QUIPSLY_LOCAL_LIVE_ROOM_RECORDING_MS = "22000";
+  continuationEnv.QUIPSLY_LOCAL_LIVE_ROOM_RECORDING_MS = "30000";
   continuationEnv.QUIPSLY_LOCAL_TRANSCRIPT_EXPECTED_TERMS_JSON = JSON.stringify(
     controlledSpeech.expectedTerms,
   );
@@ -354,6 +361,11 @@ if (controlledSpeechFlight) {
     "Basic recording edits left the transcript workflow instead of opening inline.",
   );
   assert.equal(
+    audioPolish?.transcriptBasedCutSavedAndDecoded,
+    true,
+    "The transcript-based recording cut was not saved and decoded as a private preview.",
+  );
+  assert.equal(
     audioPolish?.transcriptViewModesOperated,
     true,
     "The transcript did not expose both familiar linear and recording-plus-transcript workspaces.",
@@ -372,6 +384,11 @@ if (controlledSpeechFlight) {
     audioPolish?.repeatedPlaybackAttestationAbsent,
     true,
     "Transcript correction still required a repeated manual playback attestation.",
+  );
+  assert.equal(
+    audioPolish?.transcriptCorrectionSavedAndReadBack,
+    true,
+    "The ordinary transcript correction was not saved and read back through the rendered Session.",
   );
   assert(
     ["improved-listening-copy", "already-balanced"].includes(
@@ -522,6 +539,9 @@ const result = {
           audioPolish.transcriptAppearedBeforePacketAdministration,
         recordingEditorOpenedInline:
           audioPolish.recordingEditorOpenedInline,
+        transcriptBasedCutSavedAndDecoded:
+          audioPolish.transcriptBasedCutSavedAndDecoded,
+        textBasedCutOutputId: audioPolish.textBasedCutOutputId,
         transcriptViewModesOperated:
           audioPolish.transcriptViewModesOperated,
         recordingAndTranscriptRenderedSideBySide:
@@ -530,6 +550,10 @@ const result = {
           audioPolish.correctionAvailableWithoutPlaybackGate,
         repeatedPlaybackAttestationAbsent:
           audioPolish.repeatedPlaybackAttestationAbsent,
+        transcriptCorrectionSavedAndReadBack:
+          audioPolish.transcriptCorrectionSavedAndReadBack,
+        correctedSegmentId: audioPolish.correctedSegmentId,
+        correctionId: audioPolish.correctionId,
       }
     : null,
   interactionSurfaceEvidence: {
@@ -595,10 +619,12 @@ const result = {
         controlledSpeechFlight &&
         audioPolish?.transcriptAppearedBeforePacketAdministration === true &&
         audioPolish?.recordingEditorOpenedInline === true &&
+        audioPolish?.transcriptBasedCutSavedAndDecoded === true &&
         audioPolish?.transcriptViewModesOperated === true &&
         audioPolish?.recordingAndTranscriptRenderedSideBySide === true &&
         audioPolish?.correctionAvailableWithoutPlaybackGate === true &&
-        audioPolish?.repeatedPlaybackAttestationAbsent === true,
+        audioPolish?.repeatedPlaybackAttestationAbsent === true &&
+        audioPolish?.transcriptCorrectionSavedAndReadBack === true,
       mentorTranscriptReport:
         transcript.mentorReport?.downloadedThroughRenderedUi === true &&
         transcript.mentorReport?.sourceCount === 2,

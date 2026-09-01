@@ -247,6 +247,8 @@ async function operateRenderedSession({ baseURL, context, password }) {
   });
   const page = await browserContext.newPage();
   const browserErrors = [];
+  let textBasedCutSegmentLabel = null;
+  let textBasedCutOutputId = null;
   page.on("pageerror", (error) => browserErrors.push(error.message));
 
   try {
@@ -429,6 +431,89 @@ async function operateRenderedSession({ baseURL, context, password }) {
     await inlineEditor
       .getByRole("heading", { name: "Trim and share", exact: true })
       .waitFor({ timeout: 30_000 });
+    const beginEdit = inlineEditor.getByRole("button", {
+      name: /^(?:Edit private preview|Create new private edit|Review trim and try again)$/,
+    });
+    if (await beginEdit.isVisible().catch(() => false)) await beginEdit.click();
+    await inlineEditor
+      .getByText("Cut the recording by transcript", { exact: true })
+      .waitFor({ state: "visible", timeout: 30_000 });
+    const safePassage = inlineEditor
+      .locator('input[aria-label^="Keep in recording:"]:not([disabled])')
+      .first();
+    await safePassage.waitFor({ state: "visible", timeout: 30_000 });
+    textBasedCutSegmentLabel = await safePassage.getAttribute("aria-label");
+    assert(
+      textBasedCutSegmentLabel?.startsWith("Keep in recording:"),
+      "The inline editor exposed no source-bound transcript passage that was safe to cut.",
+    );
+    // After the click, React intentionally changes this input's accessible name
+    // to "Restore to recording". Follow that stable passage text instead of a
+    // live "first Keep" selector, which would retarget the next included row.
+    const restoredPassageLabel = textBasedCutSegmentLabel.replace(
+      /^Keep in recording:/,
+      "Restore to recording:",
+    );
+    await safePassage.click();
+    const safePassageToggle = inlineEditor.getByLabel(restoredPassageLabel, {
+      exact: true,
+    });
+    await safePassageToggle.waitFor({ state: "visible", timeout: 15_000 });
+    assert(
+      !(await safePassageToggle.isChecked()),
+      "The transcript passage remained included after the cut action.",
+    );
+    await inlineEditor
+      .getByText(/1 passage removed/i)
+      .waitFor({ state: "visible", timeout: 15_000 });
+    const [cutResponse] = await Promise.all([
+      page.waitForResponse(
+        (response) => response.request().method() === "POST"
+          && new URL(response.url()).pathname
+            === `/api/sessions/${encodeURIComponent(context.roomId)}/recording-share`,
+        { timeout: 30_000 },
+      ),
+      inlineEditor
+        .getByRole("button", { name: "Create private preview", exact: true })
+        .click(),
+    ]);
+    const cutRequest = cutResponse.request().postDataJSON();
+    const cutPacket = await cutResponse.json().catch(() => null);
+    assert(
+      cutResponse.ok()
+        && cutPacket?.ok === true
+        && cutRequest?.action === "PREPARE"
+        && cutRequest?.excludedTranscriptSegments?.length === 1,
+      `Transcript-based private preview failed: ${JSON.stringify(cutPacket)}`,
+    );
+    textBasedCutOutputId = cutPacket.output?.id ?? cutPacket.outputId ?? null;
+    assert(textBasedCutOutputId, "Transcript-based private preview returned no durable output id.");
+    await inlineEditor
+      .getByText("VERIFIED", { exact: true })
+      .waitFor({ state: "visible", timeout: 120_000 });
+    const cutPreview = inlineEditor.getByLabel("Private recording preview");
+    await cutPreview.waitFor({ state: "visible", timeout: 30_000 });
+    const cutPreviewReadyState = await cutPreview.evaluate(async (element) => {
+      if (element.readyState < 1) {
+        await new Promise((resolve, reject) => {
+          const timeout = setTimeout(
+            () => reject(new Error("transcript-cut-preview-metadata-timeout")),
+            20_000,
+          );
+          element.addEventListener("loadedmetadata", () => {
+            clearTimeout(timeout);
+            resolve();
+          }, { once: true });
+          element.addEventListener("error", () => {
+            clearTimeout(timeout);
+            reject(new Error("transcript-cut-preview-decode-error"));
+          }, { once: true });
+          element.load();
+        });
+      }
+      return element.readyState;
+    });
+    assert(cutPreviewReadyState >= 1, "Transcript-based private preview did not decode.");
     assert(
       new URL(page.url()).searchParams.get("mode") === "transcript",
       "Opening the basic recording editor navigated away from the transcript workflow.",
@@ -467,12 +552,22 @@ async function operateRenderedSession({ baseURL, context, password }) {
     await page.setViewportSize({ width: 390, height: 844 });
     await assertNoHorizontalOverflow(transcriptDesk, "Responsive recording-plus-transcript review");
 
-    const firstPassage = transcriptDesk
-      .locator('[id^="transcript-segment-"]')
-      .first();
-    await firstPassage
+    const correctionButton = transcriptDesk
       .getByRole("button", { name: "Edit transcript", exact: true })
-      .click();
+      .first();
+    await correctionButton.waitFor({ state: "visible", timeout: 15_000 });
+    const passageId = await correctionButton
+      .locator("xpath=ancestor::li[1]")
+      .getAttribute("id");
+    assert(
+      passageId?.startsWith("transcript-segment-"),
+      "The operated transcript correction was not bound to a canonical segment.",
+    );
+    const correctedSegmentId = decodeURIComponent(
+      passageId.slice("transcript-segment-".length),
+    );
+    const firstPassage = transcriptDesk.locator(`[id="${passageId}"]`);
+    await correctionButton.click();
     await firstPassage
       .getByText(/Save directly, or play the passage first when the audio will help/i)
       .waitFor({ timeout: 15_000 });
@@ -480,9 +575,41 @@ async function operateRenderedSession({ baseURL, context, password }) {
       await firstPassage.getByRole("checkbox", { name: /listened/i }).count() === 0,
       "Transcript correction still required a repeated manual playback attestation.",
     );
+    const correctionInput = firstPassage.getByLabel("Correct transcript words");
+    const providerText = (await correctionInput.inputValue()).trim();
+    assert(providerText.length > 0, "The operated transcript passage had no provider text.");
+    const correctedText = `${providerText.replace(/\s+\[operated correction\]$/, "")} [operated correction]`;
+    await correctionInput.fill(correctedText);
     await firstPassage
-      .getByRole("button", { name: "Cancel", exact: true })
-      .click();
+      .getByLabel(/Why this changed/i)
+      .fill("Operated local acceptance correction");
+    const [correctionResponse] = await Promise.all([
+      page.waitForResponse(
+        (response) => response.request().method() === "POST"
+          && new URL(response.url()).pathname === "/api/mobile/capture/transcripts/corrections",
+        { timeout: 30_000 },
+      ),
+      firstPassage
+        .getByRole("button", { name: "Save transcript correction", exact: true })
+        .click(),
+    ]);
+    const correctionPacket = await correctionResponse.json().catch(() => null);
+    assert(
+      correctionResponse.ok()
+        && correctionPacket?.ok === true
+        && correctionPacket?.correction?.segmentId === correctedSegmentId,
+      `Transcript correction save failed: ${JSON.stringify(correctionPacket)}`,
+    );
+    const correctedPassage = transcriptDesk.locator(
+      `[id="transcript-segment-${correctedSegmentId}"]`,
+    );
+    await correctedPassage
+      .getByText(correctedText, { exact: true })
+      .first()
+      .waitFor({ state: "visible", timeout: 30_000 });
+    await correctedPassage
+      .getByText(/Transcript correction · revision 1/i)
+      .waitFor({ state: "visible", timeout: 30_000 });
 
     assert(browserErrors.length === 0, `Session audio polish raised browser exceptions: ${browserErrors.join(" | ")}`);
     await clearRenderedSession(page, baseURL, "fresh-coach");
@@ -510,6 +637,13 @@ async function operateRenderedSession({ baseURL, context, password }) {
       recordingAndTranscriptRenderedSideBySide: true,
       correctionAvailableWithoutPlaybackGate: true,
       repeatedPlaybackAttestationAbsent: true,
+      transcriptBasedCutSavedAndDecoded: true,
+      textBasedCutSegmentLabel,
+      textBasedCutOutputId,
+      transcriptCorrectionSavedAndReadBack: true,
+      correctedSegmentId,
+      correctionId: correctionPacket.correction.id,
+      correctedText,
     };
   } finally {
     await browserContext.close();

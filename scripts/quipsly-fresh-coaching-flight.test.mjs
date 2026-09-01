@@ -35,6 +35,8 @@ test("fresh coaching flight retains a private receipt without claiming human acc
   assert.match(source, /localInvitationDeliveryBoundaryUsed:/);
   assert.match(source, /combinedReceiptIsNotPureUIAutomation: true/);
   assert.match(source, /quipsly-fresh-session-audio-polish-operation\.mjs/);
+  assert.match(source, /leadInMilliseconds = \{ coach: 500, client: 14_000 \}/);
+  assert.match(source, /`adelay=\$\{leadInMilliseconds\[role\]\},apad`/);
   assert.match(source, /automaticPostCallAudioReadinessOperated:/);
   assert.match(source, /automaticPostCallAudioResult:/);
   assert.match(source, /mentorTranscriptReportOperated:/);
