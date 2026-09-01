@@ -1,6 +1,7 @@
 /** @jest-environment node */
 
 import {
+  formatSessionInvitationSchedule,
   sendSessionInvitationEmail,
   sessionInvitationEmailReadiness,
   sessionInvitationJoinUrl,
@@ -78,6 +79,21 @@ describe("Session invitation email", () => {
     ).toEqual({ available: false, status: "EMAIL_NOT_CONFIGURED" });
   });
 
+  it("formats the Session instant in its canonical scheduling timezone", () => {
+    expect(
+      formatSessionInvitationSchedule(
+        new Date("2026-08-20T18:00:00.000Z"),
+        "America/Denver",
+      ),
+    ).toBe("Thursday, August 20, 2026 at 12:00 PM MDT · America/Denver");
+    expect(
+      formatSessionInvitationSchedule(
+        new Date("2026-08-20T18:00:00.000Z"),
+        "Not/A_Timezone",
+      ),
+    ).toBe("Thursday, August 20, 2026 at 6:00 PM UTC · UTC");
+  });
+
   it("makes the isolated local receipt adapter actionable without provider credentials", () => {
     delete process.env.QUIPSLY_SESSION_INVITATION_RESEND_API_KEY;
     delete process.env.QUIPSLY_SESSION_INVITATION_EMAIL_FROM;
@@ -110,6 +126,7 @@ describe("Session invitation email", () => {
         hostName: "Coach",
         roomTitle: "Values Session",
         scheduledStart: new Date("2026-08-20T18:00:00.000Z"),
+        timezone: "America/Denver",
         joinUrl:
           "https://nest.quipsly.com/sessions/join?token=qsinv_abcdefghijklmnopqrstuvwxyzABCDEFGH123456",
         idempotencyKey: "session-invitation/receipt-1",
@@ -131,6 +148,11 @@ describe("Session invitation email", () => {
     expect(body.bcc).toBeUndefined();
     expect(body.text).toContain("phone, tablet, or desktop");
     expect(body.text).toContain("Quipsly Capture on iPhone");
+    expect(body.text).toContain(
+      "Thursday, August 20, 2026 at 12:00 PM MDT · America/Denver",
+    );
+    expect(body.html).toContain("America/Denver");
+    expect(body.text).not.toContain("verifies the invited email");
     expect(body.text).not.toContain("laptop");
     expect(body.text).toContain("never starts recording");
   });

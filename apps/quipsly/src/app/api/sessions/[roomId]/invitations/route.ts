@@ -93,7 +93,8 @@ function invitationRow(row: any) {
           status: String(row.deliveries[0].status),
           requestedAt: row.deliveries[0].requestedAt.toISOString(),
           completedAt: row.deliveries[0].completedAt?.toISOString() ?? null,
-          providerStatusAt: row.deliveries[0].providerStatusAt?.toISOString() ?? null,
+          providerStatusAt:
+            row.deliveries[0].providerStatusAt?.toISOString() ?? null,
           errorCode: row.deliveries[0].errorCode || null,
           errorMessage: row.deliveries[0].errorMessage || null,
         }
@@ -136,6 +137,7 @@ async function authorizedRoom(request: Request, roomId: string) {
       purpose: true,
       status: true,
       scheduledStart: true,
+      booking: { select: { timezone: true } },
       createdByUser: { select: { name: true } },
     },
   });
@@ -395,30 +397,34 @@ export async function POST(
           requestedByUserId: access.actor.id,
         },
       });
-    const recipientDeliveryState = await access.prisma.emailRecipientDeliveryState.findUnique({
-      where: { recipientEmail: email },
-      select: { status: true },
-    });
-    const deliveryResult = recipientDeliveryState && recipientDeliveryState.status !== "DELIVERABLE"
-      ? {
-          ok: false as const,
-          provider: "resend" as const,
-          code: "RECIPIENT_SUPPRESSED" as const,
-          message: "Email delivery is paused for this address after a bounce or spam complaint. Confirm the address, then share the private link while support resolves delivery.",
-          retryAfterSeconds: null,
-        }
-      : await sendSessionInvitationEmail({
-          recipientEmail: email,
-          recipientName: displayName,
-          hostName: access.room.createdByUser?.name || access.actor.name,
-          roomTitle: access.room.title || "Quipsly Session",
-          scheduledStart: access.room.scheduledStart,
-          joinUrl: sessionInvitationJoinUrl({
-            requestUrl: request.url,
-            invitePath,
-          }),
-          idempotencyKey: `session-invitation/${deliveryReceipt.id}`,
-        });
+    const recipientDeliveryState =
+      await access.prisma.emailRecipientDeliveryState.findUnique({
+        where: { recipientEmail: email },
+        select: { status: true },
+      });
+    const deliveryResult =
+      recipientDeliveryState && recipientDeliveryState.status !== "DELIVERABLE"
+        ? {
+            ok: false as const,
+            provider: "resend" as const,
+            code: "RECIPIENT_SUPPRESSED" as const,
+            message:
+              "Email delivery is paused for this address after a bounce or spam complaint. Confirm the address, then share the private link while support resolves delivery.",
+            retryAfterSeconds: null,
+          }
+        : await sendSessionInvitationEmail({
+            recipientEmail: email,
+            recipientName: displayName,
+            hostName: access.room.createdByUser?.name || access.actor.name,
+            roomTitle: access.room.title || "Quipsly Session",
+            scheduledStart: access.room.scheduledStart,
+            timezone: access.room.booking?.timezone || "UTC",
+            joinUrl: sessionInvitationJoinUrl({
+              requestUrl: request.url,
+              invitePath,
+            }),
+            idempotencyKey: `session-invitation/${deliveryReceipt.id}`,
+          });
     const providerStatusAt = new Date();
     deliveryReceipt =
       await access.prisma.callRoomInvitationDeliveryReceipt.update({
@@ -448,11 +454,12 @@ export async function POST(
       eventName: "invitation_sent",
       parameters: {
         surface: "session_workspace",
-        workflow: String(access.room.purpose).toUpperCase() === "COACHING"
-          ? "coaching"
-          : String(access.room.purpose).toUpperCase() === "PODCAST"
-            ? "podcast"
-            : "unknown",
+        workflow:
+          String(access.room.purpose).toUpperCase() === "COACHING"
+            ? "coaching"
+            : String(access.room.purpose).toUpperCase() === "PODCAST"
+              ? "podcast"
+              : "unknown",
         method: "email",
         result: "success",
       },

@@ -151,12 +151,44 @@ function retryAfter(response: Response) {
   return Number.isFinite(value) && value >= 0 ? Math.ceil(value) : null;
 }
 
+function supportedTimezone(value: unknown) {
+  const candidate = compact(value, 120) || "UTC";
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: candidate }).format(0);
+    return candidate;
+  } catch {
+    return "UTC";
+  }
+}
+
+export function formatSessionInvitationSchedule(
+  scheduledStart?: Date | null,
+  timezone?: string | null,
+) {
+  if (!scheduledStart || Number.isNaN(scheduledStart.getTime())) {
+    return "Open Quipsly to review the scheduled time.";
+  }
+  const timeZone = supportedTimezone(timezone);
+  const local = new Intl.DateTimeFormat("en-US", {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    timeZone,
+    timeZoneName: "short",
+  }).format(scheduledStart);
+  return `${local} · ${timeZone}`;
+}
+
 export async function sendSessionInvitationEmail(input: {
   recipientEmail: string;
   recipientName?: string | null;
   hostName?: string | null;
   roomTitle: string;
   scheduledStart?: Date | null;
+  timezone?: string | null;
   joinUrl: string | null;
   idempotencyKey: string;
 }): Promise<SessionInvitationEmailResult> {
@@ -184,10 +216,7 @@ export async function sendSessionInvitationEmail(input: {
       retryAfterSeconds: null,
     };
   }
-  if (
-    input.joinUrl &&
-    localReceiptDeliveryEnabled(input.joinUrl)
-  ) {
+  if (input.joinUrl && localReceiptDeliveryEnabled(input.joinUrl)) {
     return {
       ok: false,
       provider: "resend",
@@ -248,13 +277,10 @@ export async function sendSessionInvitationEmail(input: {
   const recipient = compact(input.recipientName, 120) || "there";
   const host = compact(input.hostName, 120) || "Your coach";
   const title = compact(input.roomTitle, 180) || "Coaching Session";
-  const scheduled = input.scheduledStart
-    ? input.scheduledStart.toLocaleString("en-US", {
-        dateStyle: "full",
-        timeStyle: "short",
-        timeZone: "UTC",
-      }) + " UTC"
-    : "Open Quipsly to review the scheduled time.";
+  const scheduled = formatSessionInvitationSchedule(
+    input.scheduledStart,
+    input.timezone,
+  );
   const subject = `${host} invited you to ${title}`;
   const text = [
     `Hi ${recipient},`,
@@ -265,13 +291,13 @@ export async function sendSessionInvitationEmail(input: {
     "Open your private Session:",
     joinUrl.toString(),
     "",
-    "Use a browser on your phone, tablet, or desktop. After Quipsly verifies the invited email, choose whether to continue in the browser or use Quipsly Capture on iPhone.",
+    "Open the link on any phone, tablet, or desktop. Sign in with the invited email, then continue in your browser or Quipsly Capture on iPhone.",
     "",
     `For your privacy, sign in with ${recipientEmail}. The link grants access only to this Session and never starts recording.`,
     "",
     "If you were not expecting this invitation, you can ignore this email.",
   ].join("\n");
-  const html = `<p>Hi ${escapeHtml(recipient)},</p><p>${escapeHtml(host)} invited you to a private Quipsly coaching Session: <strong>${escapeHtml(title)}</strong>.</p><p><strong>Scheduled:</strong> ${escapeHtml(scheduled)}</p><p><a href="${escapeHtml(joinUrl.toString())}">Open your private Session</a></p><p>Use a browser on your phone, tablet, or desktop. After Quipsly verifies the invited email, choose whether to continue in the browser or use Quipsly Capture on iPhone.</p><p>For your privacy, sign in with <strong>${escapeHtml(recipientEmail)}</strong>. The link grants access only to this Session and never starts recording.</p><p>If you were not expecting this invitation, you can ignore this email.</p>`;
+  const html = `<p>Hi ${escapeHtml(recipient)},</p><p>${escapeHtml(host)} invited you to a private Quipsly coaching Session: <strong>${escapeHtml(title)}</strong>.</p><p><strong>Scheduled:</strong> ${escapeHtml(scheduled)}</p><p><a href="${escapeHtml(joinUrl.toString())}">Open your private Session</a></p><p>Open the link on any phone, tablet, or desktop. Sign in with the invited email, then continue in your browser or Quipsly Capture on iPhone.</p><p>For your privacy, sign in with <strong>${escapeHtml(recipientEmail)}</strong>. The link grants access only to this Session and never starts recording.</p><p>If you were not expecting this invitation, you can ignore this email.</p>`;
 
   try {
     const response = await fetch("https://api.resend.com/emails", {

@@ -41,6 +41,7 @@ const prisma = {
     update: jest.fn(),
   },
   emailRecipientDeliveryState: { findUnique: jest.fn() },
+  userEvent: { create: jest.fn() },
   callParticipantAccessReceipt: { findMany: jest.fn() },
   callParticipantProviderGrantReceipt: { findMany: jest.fn() },
 };
@@ -74,6 +75,8 @@ describe("Session invitation API", () => {
       title: "Episode recording",
       purpose: "PODCAST",
       status: "OPEN",
+      scheduledStart: new Date("2026-08-20T18:00:00.000Z"),
+      booking: { timezone: "America/Denver" },
     });
     prisma.callParticipant.findFirst.mockResolvedValue(null);
     prisma.callRoomInvitation.findMany.mockResolvedValue([]);
@@ -329,13 +332,17 @@ describe("Session invitation API", () => {
     expect(sendSessionInvitationEmail).toHaveBeenCalledWith(
       expect.objectContaining({
         recipientEmail: "client@example.test",
+        scheduledStart: new Date("2026-08-20T18:00:00.000Z"),
+        timezone: "America/Denver",
         idempotencyKey: "session-invitation/delivery-1",
       }),
     );
   });
 
   it("keeps the private link usable without repeatedly mailing a suppressed recipient", async () => {
-    prisma.emailRecipientDeliveryState.findUnique.mockResolvedValue({ status: "COMPLAINED" });
+    prisma.emailRecipientDeliveryState.findUnique.mockResolvedValue({
+      status: "COMPLAINED",
+    });
     const response = await POST(
       request("POST", {
         email: "client@example.test",
