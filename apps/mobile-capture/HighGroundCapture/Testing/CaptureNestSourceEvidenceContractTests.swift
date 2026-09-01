@@ -13,7 +13,9 @@ enum CaptureNestSourceEvidenceContractTests {
         try testMalformedHashFailsClosed()
         try testUnknownStatusFailsClosed()
         try testInconsistentCountsFailClosed()
-        print("PASS 10 Capture Nest source-evidence contract tests")
+        try testServerDispositionRefreshRequiresExactCloudBinding()
+        try testServerDispositionRefreshRejectsChangedBytes()
+        print("PASS 12 Capture Nest source-evidence contract tests")
     }
 
     private static func testVerifiedMatch() throws {
@@ -133,6 +135,49 @@ enum CaptureNestSourceEvidenceContractTests {
                 expectedRoomID: "room-1"
             )
         }
+    }
+
+    private static func testServerDispositionRefreshRequiresExactCloudBinding() throws {
+        let update = CaptureNestSourceEvidenceContract.serverDispositionUpdate(
+            localRecordingAssetID: "asset-1",
+            localServerVerificationStatus: "verified",
+            localVerifiedCloudSHA256: String(repeating: "a", count: 64),
+            localVerifiedCloudSizeBytes: 4096,
+            serverRecordingAssetID: "asset-1",
+            serverRecordingStatus: "VERIFIED",
+            serverExactBytesVerified: true,
+            serverSHA256: String(repeating: "a", count: 64),
+            serverByteSize: "4096",
+            serverProcessingDisposition: "RELEASED",
+            serverTranscriptDisposition: "RELEASED",
+            serverSourceID: "source-1",
+            serverMediaAssetID: "media-1"
+        )
+        expect(update == CaptureServerDispositionUpdate(
+            processingDisposition: "RELEASED",
+            transcriptDisposition: "RELEASED",
+            sourceID: "source-1",
+            mediaAssetID: "media-1"
+        ), "an exact verified server projection should clear a stale hold")
+    }
+
+    private static func testServerDispositionRefreshRejectsChangedBytes() throws {
+        let update = CaptureNestSourceEvidenceContract.serverDispositionUpdate(
+            localRecordingAssetID: "asset-1",
+            localServerVerificationStatus: "verified",
+            localVerifiedCloudSHA256: String(repeating: "a", count: 64),
+            localVerifiedCloudSizeBytes: 4096,
+            serverRecordingAssetID: "asset-1",
+            serverRecordingStatus: "VERIFIED",
+            serverExactBytesVerified: true,
+            serverSHA256: String(repeating: "b", count: 64),
+            serverByteSize: "4096",
+            serverProcessingDisposition: "RELEASED",
+            serverTranscriptDisposition: "RELEASED",
+            serverSourceID: "source-1",
+            serverMediaAssetID: "media-1"
+        )
+        expect(update == nil, "a changed server hash must not rewrite local release state")
     }
 
     private static func decode(

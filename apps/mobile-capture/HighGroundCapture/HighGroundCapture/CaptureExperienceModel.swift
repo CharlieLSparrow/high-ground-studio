@@ -489,6 +489,31 @@ final class CaptureExperienceModel: ObservableObject {
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in self?.scheduleChildModelRefresh() }
             .store(in: &cancellables)
+        sessionClient.$sessions
+            .dropFirst()
+            .debounce(for: .milliseconds(150), scheduler: RunLoop.main)
+            .sink { sessions in
+                let library = LocalRecordingLibrary.shared
+                var sourcesByRoom = [String: [MobileCaptureSourceSummary]]()
+                for session in sessions {
+                    sourcesByRoom[session.callRoomId, default: []]
+                        .append(contentsOf: session.captureSources ?? [])
+                }
+                for recording in library.recordings {
+                    guard let roomID = recording.callRoomId,
+                          let recordingAssetID = recording.recordingAssetId,
+                          let source = sourcesByRoom[roomID]?.first(where: {
+                            $0.recordingAssetId == recordingAssetID
+                          }) else {
+                        continue
+                    }
+                    _ = try? library.reconcileServerDisposition(
+                        recording.id,
+                        source: source
+                    )
+                }
+            }
+            .store(in: &cancellables)
         todayClient.objectWillChange
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in self?.scheduleChildModelRefresh() }

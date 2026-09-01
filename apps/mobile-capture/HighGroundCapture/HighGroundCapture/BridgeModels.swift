@@ -579,6 +579,7 @@ struct MobileCaptureSourceSummary: Codable, Identifiable, Hashable {
     let recordingStatus: String?
     let exactBytesVerified: Bool?
     let processingDisposition: String?
+    let transcriptDisposition: String?
     let recordedStartedAt: String?
     let recordedStoppedAt: String?
     let mediaAssetId: String?
@@ -596,6 +597,7 @@ struct MobileCaptureSourceSummary: Codable, Identifiable, Hashable {
         recordingStatus: String?,
         exactBytesVerified: Bool?,
         processingDisposition: String?,
+        transcriptDisposition: String? = nil,
         recordedStartedAt: String?,
         recordedStoppedAt: String?,
         mediaAssetId: String?,
@@ -618,6 +620,7 @@ struct MobileCaptureSourceSummary: Codable, Identifiable, Hashable {
         self.recordingStatus = recordingStatus
         self.exactBytesVerified = exactBytesVerified
         self.processingDisposition = processingDisposition
+        self.transcriptDisposition = transcriptDisposition
         self.recordedStartedAt = recordedStartedAt
         self.recordedStoppedAt = recordedStoppedAt
         self.mediaAssetId = mediaAssetId
@@ -640,6 +643,7 @@ struct MobileCaptureSourceSummary: Codable, Identifiable, Hashable {
         recordingStatus = try container.decodeIfPresent(String.self, forKey: .recordingStatus)
         exactBytesVerified = try container.decodeIfPresent(Bool.self, forKey: .exactBytesVerified)
         processingDisposition = try container.decodeIfPresent(String.self, forKey: .processingDisposition)
+        transcriptDisposition = try container.decodeIfPresent(String.self, forKey: .transcriptDisposition)
         recordedStartedAt = try container.decodeIfPresent(String.self, forKey: .recordedStartedAt)
         recordedStoppedAt = try container.decodeIfPresent(String.self, forKey: .recordedStoppedAt)
         mediaAssetId = try container.decodeIfPresent(String.self, forKey: .mediaAssetId)

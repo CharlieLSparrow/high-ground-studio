@@ -1259,6 +1259,54 @@ final class LocalRecordingLibrary: ObservableObject {
         }
     }
 
+    @discardableResult
+    func reconcileServerDisposition(
+        _ id: UUID,
+        source: MobileCaptureSourceSummary
+    ) throws -> Bool {
+        guard let existing = recording(id: id),
+              let update = CaptureNestSourceEvidenceContract.serverDispositionUpdate(
+                localRecordingAssetID: existing.recordingAssetId,
+                localServerVerificationStatus: existing.serverVerificationStatus,
+                localVerifiedCloudSHA256: existing.verifiedCloudSHA256,
+                localVerifiedCloudSizeBytes: existing.verifiedCloudSizeBytes,
+                serverRecordingAssetID: source.recordingAssetId,
+                serverRecordingStatus: source.recordingStatus,
+                serverExactBytesVerified: source.exactBytesVerified,
+                serverSHA256: source.sha256,
+                serverByteSize: source.byteSize,
+                serverProcessingDisposition: source.processingDisposition,
+                serverTranscriptDisposition: source.transcriptDisposition,
+                serverSourceID: source.sourceId,
+                serverMediaAssetID: source.mediaAssetId
+              ) else {
+            return false
+        }
+        let desiredStatusMessage = update.processingDisposition == "RELEASED"
+            ? update.transcriptDisposition == "RELEASED"
+                ? "The backup is verified and ready for editing and transcription."
+                : "The backup is verified and ready for editing. Transcription will begin after everyone allows it."
+            : existing.statusMessage
+        guard existing.serverProcessingDisposition != update.processingDisposition
+                || existing.serverTranscriptDisposition != update.transcriptDisposition
+                || (update.sourceID != nil && existing.uploadedSourceId != update.sourceID)
+                || (update.mediaAssetID != nil && existing.uploadedMediaAssetId != update.mediaAssetID)
+                || existing.statusMessage != desiredStatusMessage else {
+            return false
+        }
+        try mutate(id) { recording in
+            recording.serverProcessingDisposition = update.processingDisposition
+            recording.serverTranscriptDisposition = update.transcriptDisposition
+            recording.uploadedSourceId = update.sourceID ?? recording.uploadedSourceId
+            recording.uploadedMediaAssetId = update.mediaAssetID ?? recording.uploadedMediaAssetId
+            if update.processingDisposition == "RELEASED" {
+                recording.serverProcessingHoldReason = nil
+                recording.statusMessage = desiredStatusMessage
+            }
+        }
+        return true
+    }
+
     func markOnDeviceTranscriptAttached(_ id: UUID, transcriptJobId: String) throws {
         guard let normalizedJobId = nonempty(transcriptJobId) else {
             throw LibraryError.recordingNotFound

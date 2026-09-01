@@ -93,10 +93,60 @@ struct CaptureNestEvidenceComparison: Sendable, Equatable {
     let issues: [String]
 }
 
+struct CaptureServerDispositionUpdate: Sendable, Equatable {
+    let processingDisposition: String
+    let transcriptDisposition: String
+    let sourceID: String?
+    let mediaAssetID: String?
+}
+
 enum CaptureNestSourceEvidenceContract {
     static let maximumReceiptBytes = 2 * 1_024 * 1_024
     static let maximumSources = 500
     static let maximumIssuesPerSource = 100
+
+    /// Accepts a lightweight Session refresh only when its canonical identity,
+    /// exact-byte receipt, and previously stored cloud fingerprint all agree.
+    /// This lets an automatic Nest release clear a stale local hold badge
+    /// without treating an ordinary server projection as new source authority.
+    static func serverDispositionUpdate(
+        localRecordingAssetID: String?,
+        localServerVerificationStatus: String?,
+        localVerifiedCloudSHA256: String?,
+        localVerifiedCloudSizeBytes: Int64?,
+        serverRecordingAssetID: String,
+        serverRecordingStatus: String?,
+        serverExactBytesVerified: Bool?,
+        serverSHA256: String?,
+        serverByteSize: String?,
+        serverProcessingDisposition: String?,
+        serverTranscriptDisposition: String?,
+        serverSourceID: String?,
+        serverMediaAssetID: String?
+    ) -> CaptureServerDispositionUpdate? {
+        guard normalizedText(localRecordingAssetID)?.lowercased()
+                == normalizedText(serverRecordingAssetID)?.lowercased(),
+              normalizedText(localServerVerificationStatus)?.uppercased() == "VERIFIED",
+              normalizedText(serverRecordingStatus)?.uppercased() == "VERIFIED",
+              serverExactBytesVerified == true,
+              let localSHA256 = normalizedSHA256(localVerifiedCloudSHA256),
+              localSHA256 == normalizedSHA256(serverSHA256),
+              let localByteSize = localVerifiedCloudSizeBytes,
+              localByteSize > 0,
+              localByteSize == serverByteSize.flatMap(positiveByteCount),
+              let processingDisposition = normalizedText(serverProcessingDisposition)?.uppercased(),
+              ["HELD", "RELEASED"].contains(processingDisposition),
+              let transcriptDisposition = normalizedText(serverTranscriptDisposition)?.uppercased(),
+              ["HELD", "RELEASED"].contains(transcriptDisposition) else {
+            return nil
+        }
+        return CaptureServerDispositionUpdate(
+            processingDisposition: processingDisposition,
+            transcriptDisposition: transcriptDisposition,
+            sourceID: normalizedText(serverSourceID),
+            mediaAssetID: normalizedText(serverMediaAssetID)
+        )
+    }
 
     static func decode(
         _ data: Data,
