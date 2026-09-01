@@ -5585,8 +5585,20 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         waitForExpectations(timeout: 8)
         start.tap()
         let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
-        if springboard.alerts.firstMatch.waitForExistence(timeout: 5) {
-            let allow = springboard.alerts.firstMatch.buttons["Allow"]
+        let microphonePrompt = springboard.alerts.firstMatch
+        let expectsFirstInstallMicrophonePrompt =
+            ProcessInfo.processInfo.environment[
+                "QUIPSLY_CAPTURE_UI_TEST_EXPECT_MICROPHONE_PROMPT"
+            ] == "1"
+        let microphonePromptAppeared = microphonePrompt.waitForExistence(timeout: 5)
+        if expectsFirstInstallMicrophonePrompt {
+            XCTAssertTrue(
+                microphonePromptAppeared,
+                "A reset first-install run should show the ordinary iOS microphone prompt after Record, never during browsing or consent."
+            )
+        }
+        if microphonePromptAppeared {
+            let allow = microphonePrompt.buttons["Allow"]
             XCTAssertTrue(allow.exists, "The first-install microphone prompt should expose an explicit Allow choice.")
             allow.tap()
         }
@@ -5614,8 +5626,21 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             return
         }
         RunLoop.current.run(until: Date().addingTimeInterval(2.0))
-        let mark = app.buttons["CaptureMarkMomentButton"].firstMatch
-        XCTAssertTrue(mark.exists)
+        // SwiftUI may briefly reclassify this control across the first-install
+        // permission shell rebuild. Its explicit identifier and hittable frame
+        // are the stable product contract, not a transient Button/Link AX type.
+        let mark = app.descendants(matching: .any)[
+            "CaptureMarkMomentButton"
+        ].firstMatch
+        XCTAssertTrue(
+            scrollRuntimeElementIntoHittableView(
+                mark,
+                in: app,
+                timeout: 8,
+                swipeAttempts: 4
+            ),
+            "The active recorder should keep Mark visibly operable after first-install permission transitions."
+        )
         mark.tap()
         XCTAssertTrue(app.descendants(matching: .any)["CaptureLatestMomentMark"].firstMatch.waitForExistence(timeout: 4))
         stop.tap()
@@ -5642,6 +5667,11 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             tapRootTab("Library", in: app)
         }
         XCTAssertTrue(app.scrollViews["CaptureLibraryView"].waitForExistence(timeout: 8))
+        // First-install microphone or speech permission can rebuild the root
+        // shell and restore Library's ordinary Writing default. Select the
+        // recording surface explicitly before proving the source; persistence
+        // must not depend on a transient picker selection surviving iOS UI.
+        selectRecordingLibrary(in: app)
         guard let safeRow = waitForNewRecordingRow(in: app, excluding: recordingsBeforeSafeTake) else {
             XCTFail("The completed take should appear as a new immutable local source.")
             return

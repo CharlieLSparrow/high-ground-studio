@@ -14,6 +14,8 @@ test("fresh native flight keeps credentials private while operating client entry
   assert.match(source, /QUIPSLY_CAPTURE_UI_TEST_MODE: "session-deep-link"/);
   assert.match(source, /QUIPSLY_CAPTURE_UI_TEST_MODE: "room-join"/);
   assert.match(source, /QUIPSLY_CAPTURE_UI_TEST_MODE: "capture-recovery"/);
+  assert.match(source, /QUIPSLY_CAPTURE_UI_TEST_MICROPHONE_PERMISSION_MODE: "reset"/);
+  assert.match(source, /QUIPSLY_CAPTURE_UI_TEST_EXPECT_MICROPHONE_PROMPT: "1"/);
   assert.match(source, /\?mode=prepare/);
   assert.match(source, /#session-preparation-heading/);
   assert.match(source, /__reactProps\$/);
