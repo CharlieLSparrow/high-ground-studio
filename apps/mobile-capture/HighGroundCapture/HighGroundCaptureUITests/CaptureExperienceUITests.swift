@@ -2726,7 +2726,7 @@ final class CaptureExperienceUITests: XCTestCase {
     }
 
     func testTranscriptFollowThroughAppearsAsOrdinaryEditableSessionWork() {
-        app.tabBars.buttons["Sessions"].tap()
+        openSessionsWorkspace()
         let results = app.descendants(matching: .any)["CaptureSessionResults"].firstMatch
         reveal(results)
         XCTAssertTrue(results.waitForExistence(timeout: 5))
@@ -5553,7 +5553,7 @@ final class CaptureExperienceUITests: XCTestCase {
     }
 
     func testCompletedSessionKeepsEditAndShareAvailableWithoutReopeningRecorder() {
-        app.tabBars.buttons["Sessions"].tap()
+        openSessionsWorkspace()
 
         let chooser = app.buttons["CaptureSessionChooser"]
         reveal(chooser)
@@ -5886,6 +5886,21 @@ final class CaptureExperienceUITests: XCTestCase {
                 .waitForExistence(timeout: 5),
             "The explicit local-only escape hatch should reveal the recording workspace without joining or recording."
         )
+    }
+
+    private func openSessionsWorkspace() {
+        let phoneDestination = app.tabBars.buttons["Sessions"].firstMatch
+        if phoneDestination.waitForExistence(timeout: 1) {
+            phoneDestination.tap()
+            return
+        }
+
+        let tabletDestination = app.staticTexts["CaptureIPadSidebar_record"].firstMatch
+        XCTAssertTrue(
+            tabletDestination.waitForExistence(timeout: 5),
+            "Sessions must remain reachable from either the iPhone tab bar or the iPad workspace sidebar."
+        )
+        tabletDestination.tap()
     }
 
     private func openSessionQuickEntry(_ kind: String) {
