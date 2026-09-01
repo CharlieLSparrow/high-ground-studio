@@ -258,7 +258,7 @@ final class ProviderRoomController: NSObject, ObservableObject {
         case .denied:
             guard isConnected, usesCallAudio, !isMuted else { return }
             #if canImport(LiveKit)
-            try? await room.localParticipant.setMicrophone(enabled: false)
+            _ = try? await room.localParticipant.setMicrophone(enabled: false)
             #endif
             isMuted = true
             refreshCallAudioMeterLifecycle()
