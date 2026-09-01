@@ -13244,6 +13244,7 @@ private struct CaptureSessionTranscriptReviewCard: View {
     let session: MobileCaptureSession
     @ObservedObject var sessionClient: CaptureSessionClient
     let previewOnly: Bool
+    @ObservedObject private var transcriptManager = OnDeviceTranscriptManager.shared
     @StateObject private var library = LocalRecordingLibrary.shared
     @State private var isRunningTranscript = false
     @State private var actionMessage: String?
@@ -13353,7 +13354,22 @@ private struct CaptureSessionTranscriptReviewCard: View {
             .task(id: transcriptLifecycleMonitorID) {
                 await monitorTranscriptLifecycle()
             }
+            .onChange(of: matchingTranscriptPhase) { _, phase in
+                guard let phase, case .attached = phase,
+                      !previewOnly,
+                      !sessionClient.sessionsAreStale else { return }
+                Task {
+                    _ = await sessionClient.load(
+                        authoritativeSessionID: session.id
+                    )
+                }
+            }
         }
+    }
+
+    private var matchingTranscriptPhase: OnDeviceTranscriptPhase? {
+        guard let recording = matchingTranscriptRecording else { return nil }
+        return transcriptManager.phase(for: recording.id)
     }
 
     private var transcriptReviewAvailable: Bool {

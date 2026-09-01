@@ -583,6 +583,8 @@ assert(
 );
 requireIncludes(capturePhoneShellText, "session.coachingTranscriptResults", "Capture renders canonical transcript-derived work without a second approval queue");
 requireIncludes(capturePhoneShellText, "Adjust or remove them like any other work", "Capture explains that generated Session work is ordinary editable work");
+requireIncludes(capturePhoneShellText, ".onChange(of: matchingTranscriptPhase)", "Capture refreshes the exact open Session when its device transcript attaches");
+requireIncludes(capturePhoneShellText, "authoritativeSessionID: session.id", "device transcript attachment cannot refresh an unrelated Session");
 requireExcludes(capturePhoneShellText, "private struct CapturePacketReviewLanesCard", "retired transcript suggestion approval queue");
 assert(
   capturePhoneShellText.indexOf("CaptureSessionResultsCard(")
