@@ -82,6 +82,12 @@ function actorFromSession(session: NonNullable<Awaited<ReturnType<typeof getQuip
   };
 }
 
+function refreshFollowThrough(prisma: any, result: { transcriptJobId?: string | null }) {
+  const transcriptJobId = text(result.transcriptJobId);
+  if (!transcriptJobId) return;
+  dispatchCaptureTranscriptFollowThrough({ prisma, transcriptJobId });
+}
+
 export async function GET(request: Request) {
   const session = await getQuipslySessionFromRequest(request);
   if (!session?.user) {
@@ -215,6 +221,7 @@ export async function POST(request: Request) {
         confirmedAgainstPlayback: input.confirmedAgainstPlayback === true,
         reviewNote: nullableText(input.reviewNote),
       });
+      refreshFollowThrough(prisma, result);
       return NextResponse.json(result, { headers: { "Cache-Control": "private, no-store" } });
     }
     if (operation === "confirm-segment-as-is") {
@@ -231,6 +238,7 @@ export async function POST(request: Request) {
         playbackPositionSeconds: number(input.playbackPositionSeconds),
         reviewNote: nullableText(input.reviewNote),
       });
+      refreshFollowThrough(prisma, result);
       return NextResponse.json(result, { headers: { "Cache-Control": "private, no-store" } });
     }
     if (operation === "accept-human-correction") {
@@ -250,12 +258,7 @@ export async function POST(request: Request) {
         confirmedAgainstPlayback: input.confirmedAgainstPlayback === true,
         playbackPositionSeconds: number(input.playbackPositionSeconds),
       });
-      if (text(result.transcriptJobId)) {
-        dispatchCaptureTranscriptFollowThrough({
-          prisma,
-          transcriptJobId: text(result.transcriptJobId),
-        });
-      }
+      refreshFollowThrough(prisma, result);
       return NextResponse.json(result, { headers: { "Cache-Control": "private, no-store" } });
     }
     if (operation === "review-ai-proposal") {
@@ -277,6 +280,7 @@ export async function POST(request: Request) {
         playbackPositionSeconds: number(input.playbackPositionSeconds),
         reviewNote: nullableText(input.reviewNote),
       });
+      if (decision === "accept") refreshFollowThrough(prisma, result);
       return NextResponse.json(result, { headers: { "Cache-Control": "private, no-store" } });
     }
     return NextResponse.json(

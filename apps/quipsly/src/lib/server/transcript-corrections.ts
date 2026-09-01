@@ -1760,6 +1760,7 @@ export async function attributeTranscriptSpeaker(input: {
     return {
       ok: true,
       idempotentReplay: true,
+      transcriptJobId: evidence.job.id,
       attribution: publicSpeakerAttribution(replay),
       boundaries: transcriptCorrectionBoundaries(),
     };
@@ -1850,6 +1851,7 @@ export async function attributeTranscriptSpeaker(input: {
     return {
       ok: true,
       idempotentReplay: false,
+      transcriptJobId: evidence.job.id,
       attribution: publicSpeakerAttribution(saved),
       boundaries: transcriptCorrectionBoundaries(),
     };
@@ -1871,6 +1873,7 @@ export async function attributeTranscriptSpeaker(input: {
       return {
         ok: true,
         idempotentReplay: true,
+        transcriptJobId: evidence.job.id,
         attribution: publicSpeakerAttribution(racedReplay),
         boundaries: transcriptCorrectionBoundaries(),
       };
@@ -1885,6 +1888,7 @@ export async function attributeTranscriptSpeaker(input: {
     return {
       ok: true,
       idempotentReplay: true,
+      transcriptJobId: evidence.job.id,
       attribution: publicSpeakerAttribution(winner),
       boundaries: transcriptCorrectionBoundaries(),
     };
@@ -1919,7 +1923,13 @@ export async function confirmTranscriptSegmentAsIs(input: {
     if (replay.roomId !== roomId || replay.segmentId !== segmentId) {
       throw new TranscriptCorrectionError("That request id is already bound to different evidence.", 409, "IDEMPOTENCY_CONFLICT");
     }
-    return { ok: true, idempotentReplay: true, verification: publicVerification(replay), boundaries: transcriptCorrectionBoundaries() };
+    return {
+      ok: true,
+      idempotentReplay: true,
+      transcriptJobId: evidence.job.id,
+      verification: publicVerification(replay),
+      boundaries: transcriptCorrectionBoundaries(),
+    };
   }
 
   const expectedSpeakerLabel = nullableLabel(input.expectedSpeakerLabel);
@@ -1990,7 +2000,13 @@ export async function confirmTranscriptSegmentAsIs(input: {
     return { verification, idempotentReplay: false };
   });
 
-  return { ok: true, idempotentReplay: saved.idempotentReplay, verification: publicVerification(saved.verification), boundaries: transcriptCorrectionBoundaries() };
+  return {
+    ok: true,
+    idempotentReplay: saved.idempotentReplay,
+    transcriptJobId: evidence.job.id,
+    verification: publicVerification(saved.verification),
+    boundaries: transcriptCorrectionBoundaries(),
+  };
 }
 
 export async function acknowledgeTranscriptCorrectionImpact(input: {
@@ -2557,5 +2573,10 @@ export async function reviewTranscriptCorrectionProposal(input: {
       include: { revisions: { orderBy: { revision: "asc" } } },
     });
   });
-  return { ok: true, correction: publicCorrection(reviewed), boundaries: transcriptCorrectionBoundaries() };
+  return {
+    ok: true,
+    transcriptJobId: evidence.job.id,
+    correction: publicCorrection(reviewed),
+    boundaries: transcriptCorrectionBoundaries(),
+  };
 }

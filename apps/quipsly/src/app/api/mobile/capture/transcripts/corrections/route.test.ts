@@ -2,7 +2,7 @@
 
 import { getPrismaClient } from "@/lib/prisma";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
-import { acknowledgeTranscriptCorrectionImpact, createTranscriptCorrection } from "@/lib/server/transcript-corrections";
+import { acknowledgeTranscriptCorrectionImpact, attributeTranscriptSpeaker, createTranscriptCorrection } from "@/lib/server/transcript-corrections";
 import { dispatchCaptureTranscriptFollowThrough } from "@/lib/server/capture-transcript-follow-through-dispatch";
 import { readSessionTranscriptCorrectionDesk } from "@/lib/server/session-transcript-correction-desk";
 import { approveTranscriptEvaluationWindow, readTranscriptEvaluationReadiness } from "@/lib/server/transcript-evaluation-windows";
@@ -169,6 +169,37 @@ describe("transcript correction and accuracy-corpus route", () => {
     expect(dispatchCaptureTranscriptFollowThrough).toHaveBeenCalledWith({
       prisma: { marker: "prisma" },
       transcriptJobId: "job-1",
+    });
+  });
+
+  it("refreshes speaker labels in follow-through after naming a provider voice", async () => {
+    jest.mocked(getQuipslySessionFromRequest).mockResolvedValue(session as any);
+    jest.mocked(attributeTranscriptSpeaker).mockResolvedValue({
+      ok: true,
+      idempotentReplay: false,
+      transcriptJobId: "job-voice",
+      attribution: { id: "attribution-1" },
+    } as any);
+
+    const response = await POST(new Request("http://localhost/api/mobile/capture/transcripts/corrections", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        operation: "attribute-provider-speaker",
+        roomId: "room-1",
+        providerSpeakerLabel: "Speaker 1",
+        participantId: "participant-1",
+        clientRequestId: "voice-attribution-1",
+        expectedProviderSnapshotSha256: "a".repeat(64),
+        samples: [{ segmentId: "segment-1", playbackPositionSeconds: 3 }],
+        confirmedAgainstPlayback: true,
+      }),
+    }));
+
+    expect(response.status).toBe(200);
+    expect(dispatchCaptureTranscriptFollowThrough).toHaveBeenCalledWith({
+      prisma: { marker: "prisma" },
+      transcriptJobId: "job-voice",
     });
   });
 });
