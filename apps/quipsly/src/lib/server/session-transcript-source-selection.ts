@@ -5,14 +5,16 @@ export type SessionTranscriptSourceCandidate = {
   participantId: string | null;
   kind: string;
   recordedStartedAt: Date;
+  recordedStoppedAt?: Date | null;
   localManifestJson?: unknown;
   transcriptJobs: Array<{ id: string; createdAt: Date }>;
 };
 
 /**
- * Chooses one current participant-owned transcript source per participant.
- * A declared capture group outranks wall-clock clustering. Legacy sources with
- * no group retain the bounded coherent-take fallback.
+ * Chooses the current participant-owned transcript lanes. A declared capture
+ * group outranks wall-clock clustering. Sequential crash/reconnect segments
+ * remain separate lanes; simultaneous device alternatives remain one lane.
+ * Legacy sources with no group retain the bounded coherent-take fallback.
  */
 export function selectSessionTranscriptSources<T extends SessionTranscriptSourceCandidate>(input: {
   rows: T[];
@@ -33,15 +35,38 @@ export function selectSessionTranscriptSources<T extends SessionTranscriptSource
     ? [...new Set(input.participantIds.filter(Boolean))]
     : [...new Set(take.map((row) => row.participantId).filter((value): value is string => Boolean(value)))];
 
-  return participantIds.map((participantId) => take
-    .filter((row) => row.participantId === participantId)
-    .sort((left, right) => {
+  return participantIds.flatMap((participantId) => {
+    const participantSources = take.filter((row) => row.participantId === participantId);
+    if (!participantSources.length) return [null];
+    const anchorSource = participantSources.find((row) => row.id === input.anchorRecordingAssetId);
+    const audioSources = participantSources.filter((row) => row.kind === "LOCAL_AUDIO");
+    const candidates = anchorSource
+      ? participantSources.filter((row) => row.kind === anchorSource.kind)
+      : audioSources.length ? audioSources : participantSources;
+    const groups: T[][] = [];
+    for (const source of [...candidates].sort((left, right) =>
+      left.recordedStartedAt.getTime() - right.recordedStartedAt.getTime() || left.id.localeCompare(right.id),
+    )) {
+      const latest = groups.at(-1);
+      const latestEnd = latest?.every((item) =>
+        item.recordedStoppedAt instanceof Date && item.recordedStoppedAt > item.recordedStartedAt,
+      )
+        ? Math.max(...latest.map((item) => item.recordedStoppedAt!.getTime()))
+        : (latest?.at(-1)?.recordedStartedAt.getTime() ?? Number.NEGATIVE_INFINITY) + 30_000;
+      if (!latest || source.recordedStartedAt.getTime() >= (latestEnd ?? Number.NEGATIVE_INFINITY)) {
+        groups.push([source]);
+      } else {
+        latest.push(source);
+      }
+    }
+    return groups.map((group) => group.sort((left, right) => {
       if (left.id === input.anchorRecordingAssetId) return -1;
       if (right.id === input.anchorRecordingAssetId) return 1;
       return kindPriority(left.kind) - kindPriority(right.kind)
         || right.transcriptJobs[0]!.createdAt.getTime() - left.transcriptJobs[0]!.createdAt.getTime()
         || left.id.localeCompare(right.id);
-    })[0] ?? null);
+    })[0]!);
+  });
 }
 
 export function transcriptSourceCaptureGroupId(value: unknown) {

@@ -90,6 +90,7 @@ export async function readSessionTranscriptCorrectionDesk(input: {
       participantId: { not: null },
       checksum: { not: null },
       recordedStartedAt: { not: null },
+      recordedStoppedAt: { not: null },
       transcriptJobs: { some: { status: "COMPLETED" } },
     },
     orderBy: [{ recordedStartedAt: "asc" }, { id: "asc" }],
@@ -99,6 +100,7 @@ export async function readSessionTranscriptCorrectionDesk(input: {
       kind: true,
       checksum: true,
       recordedStartedAt: true,
+      recordedStoppedAt: true,
       localManifestJson: true,
       transcriptJobs: {
         where: { status: "COMPLETED" },

@@ -55,6 +55,7 @@ type TranscriptSourceCandidate = SessionTranscriptSourceCandidate & {
   kind: string;
   checksum: string | null;
   recordedStartedAt: Date;
+  recordedStoppedAt: Date | null;
   localManifestJson: unknown;
   transcriptJobs: Array<{ id: string; createdAt: Date }>;
 };
@@ -135,6 +136,7 @@ async function readCompleteCoachingTranscript(input: {
       participantId: { in: participantIds },
       checksum: { not: null },
       recordedStartedAt: { not: null },
+      recordedStoppedAt: { not: null },
       transcriptJobs: { some: { status: "COMPLETED" } },
     },
     orderBy: [{ recordedStartedAt: "asc" }, { id: "asc" }],
@@ -144,6 +146,7 @@ async function readCompleteCoachingTranscript(input: {
       kind: true,
       checksum: true,
       recordedStartedAt: true,
+      recordedStoppedAt: true,
       localManifestJson: true,
       transcriptJobs: {
         where: { status: "COMPLETED" },
