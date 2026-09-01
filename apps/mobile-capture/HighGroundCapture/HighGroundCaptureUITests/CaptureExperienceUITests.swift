@@ -71,6 +71,12 @@ final class CaptureExperienceUITests: XCTestCase {
                 "--capture-share-owner-ui-preview=audio-interruption-owner",
             ]
         }
+        if name.contains("testAudioRecordingContinuesAcrossBackground") {
+            app.launchArguments += [
+                "--capture-force-local-voice-note-ui-test",
+                "--capture-share-owner-ui-preview=audio-background-owner",
+            ]
+        }
         if name.contains("testWritingFlushesToProtectedStorageWhenTheAppLeavesForeground") {
             app.launchArguments.append(
                 "--capture-share-owner-ui-preview=writing-lifecycle-owner"
@@ -812,6 +818,44 @@ final class CaptureExperienceUITests: XCTestCase {
             stop.waitForNonExistence(timeout: 12),
             "The resumed source must still close through the ordinary validated stop path."
         )
+        allowSystemPermissionIfPresented()
+    }
+
+    func testAudioRecordingContinuesAcrossBackground() {
+        app.buttons["CaptureStartVoiceNote"].tap()
+        XCTAssertTrue(
+            app.otherElements["CaptureRecorderHero"].waitForExistence(timeout: 8)
+        )
+        app.buttons["CaptureStartButton"].tap()
+        allowSystemPermissionIfPresented()
+
+        let stop = app.buttons["CaptureStopButton"]
+        XCTAssertTrue(stop.waitForExistence(timeout: 15))
+        XCTAssertEqual(
+            app.staticTexts["CaptureRecorderStateLabel"].label,
+            "Listening…"
+        )
+
+        XCUIDevice.shared.press(.home)
+        sleep(2)
+        app.activate()
+
+        XCTAssertTrue(
+            stop.waitForExistence(timeout: 10),
+            "Returning to Quipsly must restore the same active recorder instead of replacing its source or navigation."
+        )
+        XCTAssertEqual(
+            app.staticTexts["CaptureRecorderStateLabel"].label,
+            "Listening…",
+            "Audio capture should continue under the declared background-audio policy until the person pauses or stops it."
+        )
+        XCTAssertEqual(
+            app.buttons["CaptureVoiceWritingPauseResumeButton"].label,
+            "Pause"
+        )
+
+        stop.tap()
+        XCTAssertTrue(stop.waitForNonExistence(timeout: 12))
         allowSystemPermissionIfPresented()
     }
 
