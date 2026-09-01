@@ -19,9 +19,14 @@ export const DETERMINISTIC_CLASSES = Object.freeze([
 ]);
 
 export const CRITICAL_TESTS = Object.freeze([
+  "CaptureExperienceUITests/testRecoverableProblemStaysInlineAndDoesNotBlockNavigation",
+  "CaptureExperienceUITests/testUploadAttentionOpensTheProtectedRecordingLibrary",
+  "CaptureExperienceUITests/testAccountAttentionOpensAccount",
   "CaptureExperienceUITests/testCaptureFirstNavigationKeepsFiveFocusedDestinations",
   "CaptureExperienceUITests/testRegularWidthIPadUsesANativeWorkspaceSidebar",
   "CaptureExperienceUITests/testPrivateVoiceNoteOpensCaptureWithoutMeetingPaperworkOnRegularWidthIPad",
+  "CaptureExperienceUITests/testVoiceWritingRecordsAndStopsThroughTheSourceFirstPath",
+  "CaptureExperienceUITests/testAudioInterruptionPausesAndRequiresExplicitResume",
   "CaptureExperienceUITests/testConsentNeededNextEpisodeOpensRecorderWithoutCrashing",
   "CaptureExperienceUITests/testConsentNeededNextEpisodeOpensRecorderWithoutCrashingOnRegularWidthIPad",
   "CaptureExperienceUITests/testRecorderLeadsWithAStandardCallGreenRoom",
