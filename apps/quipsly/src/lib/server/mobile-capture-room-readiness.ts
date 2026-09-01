@@ -145,7 +145,7 @@ function evaluation(args: Omit<MobileCaptureRoomReadinessEvaluation, "version" |
  *
  * It deliberately separates byte preservation from downstream processing.
  * A missing/rejected/stale START never causes uploaded bytes to be deleted; it
- * causes the resulting receipt to be held until an explicit audited release.
+ * causes the resulting receipt to remain protected instead of being processed.
  */
 export async function evaluateMobileCaptureRoomReadiness(args: {
   prisma: any;
@@ -302,7 +302,7 @@ export async function evaluateMobileCaptureRoomReadiness(args: {
       eligibleForProcessing: false,
       disposition: "preservation-only",
       reasonCode: "CONSENT_VERSION_CHANGED",
-      reason: "Participant consent changed after START; processing requires an explicit reviewed release.",
+      reason: "Participant permission changed after recording started, so this source remains protected.",
     });
   }
 

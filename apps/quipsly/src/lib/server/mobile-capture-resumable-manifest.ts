@@ -137,6 +137,19 @@ export function normalizeMobileCaptureResumableManifestForRead(
     roomReadinessBindingVersion: hasHardenedRoomBinding ? 1 : 0,
     startReceiptId: hasHardenedRoomBinding ? value.startReceiptId ?? null : null,
     consentVersion: hasHardenedRoomBinding ? value.consentVersion ?? null : null,
+    processingAuthorization: hasHardenedRoomBinding
+      ? value.processingAuthorization ?? (
+          value.processingDisposition === "eligible"
+          && value.startReceiptId
+          && value.consentVersion
+            ? {
+                kind: "capture-start" as const,
+                authorizationId: value.startReceiptId,
+                consentVersion: value.consentVersion,
+              }
+            : null
+        )
+      : null,
     processingDisposition: hasHardenedRoomBinding
       ? value.processingDisposition as "eligible" | "preservation-only"
       : "preservation-only",

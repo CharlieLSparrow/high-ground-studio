@@ -195,8 +195,8 @@ export function mobileCaptureProcessingGateFromEvidence({
         ? heldReceipt.transcriptHoldReasonCode || "CAPTURE_TRANSCRIPT_EXPLICIT_RELEASE_REQUIRED"
         : heldReceipt.holdReasonCode || "CAPTURE_MEDIA_EXPLICIT_RELEASE_REQUIRED",
       error: transcript && heldReceipt.transcriptDisposition !== "RELEASED"
-        ? heldReceipt.transcriptHoldReason || "Transcript processing awaits reviewed release."
-        : heldReceipt.holdReason || "Capture media awaits reviewed release.",
+        ? heldReceipt.transcriptHoldReason || "Transcription is paused until the recording has valid permission."
+        : heldReceipt.holdReason || "This recording is protected because its recording authorization is incomplete.",
     };
   }
   if (normalizedReceipts.length > 0) {

@@ -8,7 +8,7 @@ import {
   loadMobileCaptureResumableManifest,
   saveMobileCaptureResumableManifest,
 } from "./mobile-capture-resumable-store";
-import { evaluateMobileCaptureRoomReadiness } from "./mobile-capture-room-readiness";
+import { evaluateMobileCaptureProcessingAuthorization } from "./mobile-capture-processing-authorization";
 import {
   AUTOMATIC_CAPTURE_RELEASE_REASON,
   reconcileHeldMobileCaptureRelease,
@@ -28,8 +28,8 @@ jest.mock("./mobile-capture-resumable-store", () => ({
   loadMobileCaptureResumableManifest: jest.fn(),
   saveMobileCaptureResumableManifest: jest.fn(),
 }));
-jest.mock("./mobile-capture-room-readiness", () => ({
-  evaluateMobileCaptureRoomReadiness: jest.fn(),
+jest.mock("./mobile-capture-processing-authorization", () => ({
+  evaluateMobileCaptureProcessingAuthorization: jest.fn(),
 }));
 
 const now = new Date("2026-09-01T12:00:00.000Z");
@@ -96,13 +96,19 @@ describe("automatic held Capture release", () => {
       manifest: manifest as never,
       generation: "7",
     });
-    jest.mocked(evaluateMobileCaptureRoomReadiness).mockResolvedValue({
-      eligibleForProcessing: true,
-      allPartiesCurrentlyReady: true,
-      allPartiesCurrentlyAllowTranscription: true,
-      actorConsentId: "consent-1",
-      startReceiptId: null,
-      startConsentVersion: null,
+    jest.mocked(evaluateMobileCaptureProcessingAuthorization).mockResolvedValue({
+      authorized: true,
+      reasonCode: "READY",
+      reason: "Ready",
+      authorization: null,
+      readiness: {
+        eligibleForProcessing: true,
+        allPartiesCurrentlyReady: true,
+        allPartiesCurrentlyAllowTranscription: true,
+        actorConsentId: "consent-1",
+        startReceiptId: null,
+        startConsentVersion: null,
+      },
     } as never);
     jest.mocked(getMobileCaptureObjectEvidence).mockResolvedValue(objectEvidence as never);
     jest.mocked(computeMobileCaptureObjectSha256).mockResolvedValue({
@@ -121,10 +127,16 @@ describe("automatic held Capture release", () => {
   });
 
   it("waits silently while any participant has not granted ordinary in-app consent", async () => {
-    jest.mocked(evaluateMobileCaptureRoomReadiness).mockResolvedValueOnce({
-      allPartiesCurrentlyReady: false,
-      allPartiesCurrentlyAllowTranscription: false,
-      actorConsentId: "consent-1",
+    jest.mocked(evaluateMobileCaptureProcessingAuthorization).mockResolvedValueOnce({
+      authorized: false,
+      reasonCode: "ALL_PARTY_CONSENT_REQUIRED",
+      reason: "Waiting",
+      authorization: null,
+      readiness: {
+        allPartiesCurrentlyReady: false,
+        allPartiesCurrentlyAllowTranscription: false,
+        actorConsentId: "consent-1",
+      },
     } as never);
 
     await expect(reconcileHeldMobileCaptureRelease({
@@ -141,14 +153,19 @@ describe("automatic held Capture release", () => {
   });
 
   it("does not turn current consent into authority for media that lacked a canonical START boundary", async () => {
-    jest.mocked(evaluateMobileCaptureRoomReadiness).mockResolvedValueOnce({
-      eligibleForProcessing: false,
-      reasonCode: "APPLIED_START_REQUIRED",
-      allPartiesCurrentlyReady: true,
-      allPartiesCurrentlyAllowTranscription: true,
-      actorConsentId: "consent-1",
-      startReceiptId: null,
-      startConsentVersion: null,
+    jest.mocked(evaluateMobileCaptureProcessingAuthorization).mockResolvedValueOnce({
+      authorized: false,
+      reasonCode: "IMMUTABLE_START_BINDING_REQUIRED",
+      reason: "No START",
+      authorization: null,
+      readiness: {
+        eligibleForProcessing: false,
+        allPartiesCurrentlyReady: true,
+        allPartiesCurrentlyAllowTranscription: true,
+        actorConsentId: "consent-1",
+        startReceiptId: null,
+        startConsentVersion: null,
+      },
     } as never);
 
     await expect(reconcileHeldMobileCaptureRelease({
@@ -169,14 +186,19 @@ describe("automatic held Capture release", () => {
       ...receipt,
       processingDisposition: "RELEASED",
     };
-    jest.mocked(evaluateMobileCaptureRoomReadiness).mockResolvedValue({
-      eligibleForProcessing: false,
-      reasonCode: "CONSENT_VERSION_CHANGED",
-      allPartiesCurrentlyReady: true,
-      allPartiesCurrentlyAllowTranscription: true,
-      actorConsentId: "consent-1",
-      startReceiptId: null,
-      startConsentVersion: "later-transcript-consent-version",
+    jest.mocked(evaluateMobileCaptureProcessingAuthorization).mockResolvedValue({
+      authorized: false,
+      reasonCode: "IMMUTABLE_START_BINDING_REQUIRED",
+      reason: "Consent changed",
+      authorization: null,
+      readiness: {
+        eligibleForProcessing: false,
+        allPartiesCurrentlyReady: true,
+        allPartiesCurrentlyAllowTranscription: true,
+        actorConsentId: "consent-1",
+        startReceiptId: null,
+        startConsentVersion: "later-transcript-consent-version",
+      },
     } as never);
 
     await expect(reconcileHeldMobileCaptureRelease({
@@ -292,19 +314,31 @@ describe("automatic held Capture release", () => {
   });
 
   it("honors a consent revocation that arrives while a long source is being rehashed", async () => {
-    jest.mocked(evaluateMobileCaptureRoomReadiness)
+    jest.mocked(evaluateMobileCaptureProcessingAuthorization)
       .mockResolvedValueOnce({
-        allPartiesCurrentlyReady: true,
-        allPartiesCurrentlyAllowTranscription: true,
-        actorConsentId: "consent-1",
-        eligibleForProcessing: true,
-        startReceiptId: null,
-        startConsentVersion: null,
+        authorized: true,
+        reasonCode: "READY",
+        reason: "Ready",
+        authorization: null,
+        readiness: {
+          allPartiesCurrentlyReady: true,
+          allPartiesCurrentlyAllowTranscription: true,
+          actorConsentId: "consent-1",
+          eligibleForProcessing: true,
+          startReceiptId: null,
+          startConsentVersion: null,
+        },
       } as never)
       .mockResolvedValueOnce({
-        allPartiesCurrentlyReady: false,
-        allPartiesCurrentlyAllowTranscription: false,
-        actorConsentId: "consent-1",
+        authorized: false,
+        reasonCode: "ALL_PARTY_CONSENT_REQUIRED",
+        reason: "Revoked",
+        authorization: null,
+        readiness: {
+          allPartiesCurrentlyReady: false,
+          allPartiesCurrentlyAllowTranscription: false,
+          actorConsentId: "consent-1",
+        },
       } as never);
 
     await expect(reconcileHeldMobileCaptureRelease({
@@ -341,10 +375,16 @@ describe("automatic held Capture release", () => {
 
   it("rotates consent-waiting receipts so one old Session cannot starve newer recoveries", async () => {
     const client = prisma();
-    jest.mocked(evaluateMobileCaptureRoomReadiness).mockResolvedValueOnce({
-      allPartiesCurrentlyReady: false,
-      allPartiesCurrentlyAllowTranscription: false,
-      actorConsentId: "consent-1",
+    jest.mocked(evaluateMobileCaptureProcessingAuthorization).mockResolvedValueOnce({
+      authorized: false,
+      reasonCode: "ALL_PARTY_CONSENT_REQUIRED",
+      reason: "Waiting",
+      authorization: null,
+      readiness: {
+        allPartiesCurrentlyReady: false,
+        allPartiesCurrentlyAllowTranscription: false,
+        actorConsentId: "consent-1",
+      },
     } as never);
 
     await expect(runHeldMobileCaptureReleaseMaintenance({

@@ -129,8 +129,8 @@ export function SessionRecordingImportCard({ roomId, preparation }: {
       setResult(imported);
       setStage("complete");
       setNotice(imported.processingDisposition === "RELEASED"
-        ? "The exact original is verified and eligible for the next processing step."
-        : "The exact original is verified and preserved. Processing stays held until Quipsly has the required room evidence and an explicit release.");
+        ? "Recording verified and added to this Session."
+        : "The original is verified and safe. Processing is paused because the Session’s recording permission changed during import.");
       router.refresh();
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") {
@@ -151,13 +151,13 @@ export function SessionRecordingImportCard({ roomId, preparation }: {
         <div>
           <p className="text-[10px] font-black uppercase tracking-[0.18em] text-violet-800">Computer, camera, or recorder</p>
           <h2 id="session-recording-import-heading" className="mt-1 font-serif text-2xl font-black text-[#3d3122]">Import an existing session recording</h2>
-          <p className="mt-1 max-w-3xl text-xs font-semibold leading-5 text-[#765f40]">Choose the original Canon, Shure, browser, phone, or recorder file. Quipsly reads it in chunks, preserves it privately, then independently matches its exact byte count and SHA-256. It joins this Session’s recording take for clock and waveform review; it does not alter, transcribe, share, or publish the source.</p>
+          <p className="mt-1 max-w-3xl text-xs font-semibold leading-5 text-[#765f40]">Choose the original Canon, Shure, browser, phone, or recorder file. Quipsly preserves the original privately, verifies it, and places it in this Session for playback, transcription, and editing according to everyone’s choices.</p>
         </div>
       </div>
       <span className="inline-flex items-center gap-2 rounded-full border border-violet-200 bg-white px-3 py-2 text-[10px] font-black uppercase tracking-wide text-violet-900"><ShieldCheck size={14} aria-hidden="true" />Original-preserving</span>
     </div>
 
-    {!actor ? <div className="mt-5 flex gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-xs font-black leading-5 text-amber-950"><CircleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" /><p>Your signed-in account is not attached as a participant in this Session. Join the room before importing evidence.</p></div> : !actorConsent?.recordingReady ? <div className="mt-5 flex gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-xs font-black leading-5 text-amber-950"><CircleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" /><p>{actor.label} does not have current, versioned recording consent for this Session. Grant or refresh consent in room setup before preserving a recording under this identity.</p></div> : null}
+    {!actor ? <div className="mt-5 flex gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-xs font-black leading-5 text-amber-950"><CircleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" /><p>Join this Session before importing a recording.</p></div> : !actorConsent?.recordingReady ? <div className="mt-5 flex gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-xs font-black leading-5 text-amber-950"><CircleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" /><p>Allow recording in this Session before importing a file.</p></div> : null}
 
     <div className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,1.4fr)_minmax(280px,0.8fr)]">
       <div className="space-y-4">
@@ -171,7 +171,7 @@ export function SessionRecordingImportCard({ roomId, preparation }: {
 
       <div className="rounded-xl border border-violet-100 bg-white p-4">
         <h3 className="text-sm font-black text-[#3d3122]">Place it on the session timeline</h3>
-        <p className="mt-1 text-xs font-semibold leading-5 text-[#765f40]">Use when the recording actually started and stopped. Quipsly preserves these as source metadata; it does not pretend they prove phone START/STOP receipts.</p>
+        <p className="mt-1 text-xs font-semibold leading-5 text-[#765f40]">Use the time the external recorder actually started and stopped so Quipsly can align it with the Session.</p>
         <label className="mt-4 block text-[10px] font-black uppercase tracking-wide text-[#8a7354]">Recording started<input type="datetime-local" value={startedAt} disabled={busy} onChange={(event) => setStartedAt(event.target.value)} className="mt-1 block min-h-11 w-full rounded-lg border border-[#d8c7a7] px-3 py-2 text-sm font-bold normal-case tracking-normal text-[#3d3122]" /></label>
         <label className="mt-3 block text-[10px] font-black uppercase tracking-wide text-[#8a7354]">Recording stopped<input type="datetime-local" value={stoppedAt} disabled={busy} onChange={(event) => setStoppedAt(event.target.value)} className="mt-1 block min-h-11 w-full rounded-lg border border-[#d8c7a7] px-3 py-2 text-sm font-bold normal-case tracking-normal text-[#3d3122]" /></label>
         {!validRange ? <p className="mt-2 text-xs font-black text-rose-800">Stop time must be at or after start time.</p> : null}
@@ -183,9 +183,9 @@ export function SessionRecordingImportCard({ roomId, preparation }: {
     {notice ? <div className={`mt-5 flex gap-3 rounded-xl border p-4 text-xs font-black leading-5 ${stage === "complete" ? "border-emerald-200 bg-emerald-50 text-emerald-950" : "border-rose-200 bg-rose-50 text-rose-950"}`} role="status">{stage === "complete" ? <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" /> : <XCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />}<div><p>{notice}</p>{result ? <dl className="mt-3 grid gap-1 font-mono text-[10px]"><div><dt className="inline font-sans uppercase">SHA-256 </dt><dd className="inline break-all">{result.sha256}</dd></div><div><dt className="inline font-sans uppercase">Verified bytes </dt><dd className="inline">{result.verifiedSizeBytes.toLocaleString()}</dd></div><div><dt className="inline font-sans uppercase">Processing </dt><dd className="inline">{result.processingDisposition}</dd></div><div><dt className="inline font-sans uppercase">Transcript </dt><dd className="inline">{result.transcriptDisposition}</dd></div></dl> : null}</div></div> : null}
 
     <div className="mt-5 flex flex-wrap items-center gap-3">
-      <button type="button" disabled={!canImport} onClick={() => void runImport()} className="inline-flex min-h-11 items-center gap-2 rounded-full bg-violet-800 px-5 py-2.5 text-xs font-black uppercase tracking-wide text-white disabled:cursor-not-allowed disabled:opacity-45"><FileUp size={15} aria-hidden="true" />Hash, preserve, and verify</button>
+      <button type="button" disabled={!canImport} onClick={() => void runImport()} className="inline-flex min-h-11 items-center gap-2 rounded-full bg-violet-800 px-5 py-2.5 text-xs font-black uppercase tracking-wide text-white disabled:cursor-not-allowed disabled:opacity-45"><FileUp size={15} aria-hidden="true" />Import recording</button>
       {busy ? <button type="button" onClick={() => controller.current?.abort()} className="inline-flex min-h-11 items-center rounded-full border border-rose-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-rose-900">Stop safely</button> : null}
-      <p className="max-w-2xl text-xs font-semibold leading-5 text-[#765f40]">Keep your camera or recorder original until this card and the source-evidence ledger both show verification. A held source is preserved, not cleared for transcription or sharing.</p>
+      <p className="max-w-2xl text-xs font-semibold leading-5 text-[#765f40]">By importing, you confirm everyone heard or shown agreed to be recorded when it was made. Keep the camera or recorder original until Quipsly shows verification.</p>
     </div>
   </section>;
 }

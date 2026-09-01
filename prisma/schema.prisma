@@ -2543,6 +2543,7 @@ model CallRoom {
   episodeBindingReceipts         CallRoomEpisodeBindingReceipt[]
   recordingConsents              RecordingConsent[]
   stateReceipts                  CaptureRoomStateReceipt[]
+  sourceImportAuthorizations     CaptureSourceImportAuthorization[]
   recordingDirectives            CallRecordingDirective[]
   recordingDirectiveReceipts     CallRecordingEndpointReceipt[]
   providerRecordingCommands      ProviderRecordingCommand[]
@@ -2696,6 +2697,36 @@ model CaptureRoomStateReceipt {
   @@index([actorUserId, receivedAt])
   @@index([roomId, captureId, captureOwnerUserId])
   @@index([outcome, receivedAt])
+}
+
+// A browser import is not a live-device START. This append-only authorization
+// records the actor's explicit source-time attestation and binds it to the
+// exact original before Quipsly accepts bytes for processing.
+model CaptureSourceImportAuthorization {
+  id                 String   @id @default(uuid()) @db.Uuid
+  uploadSessionId    String   @unique @db.Uuid
+  captureId          String   @db.Uuid
+  captureGroupId     String   @db.Uuid
+  roomId             String
+  actorUserId        String
+  participantId      String
+  recordingConsentId String
+  consentVersion     String
+  sourceType         String
+  sha256             String
+  sizeBytes          BigInt
+  fileName           String
+  attestationVersion String
+  attestedAt         DateTime
+  metadataJson       Json     @default("{}")
+  createdAt          DateTime @default(now())
+
+  room CallRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
+
+  @@unique([roomId, captureId])
+  @@index([actorUserId, createdAt])
+  @@index([recordingConsentId, createdAt])
+  @@index([captureGroupId, createdAt])
 }
 
 // A controller's START/STOP request is coordination intent, not proof that any

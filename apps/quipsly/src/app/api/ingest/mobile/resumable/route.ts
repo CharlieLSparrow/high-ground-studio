@@ -20,6 +20,10 @@ import {
 } from "@/lib/server/mobile-capture-resumable-store";
 import { evaluateMobileCaptureRoomReadiness } from "@/lib/server/mobile-capture-room-readiness";
 import {
+  authorizeExternalSourceImport,
+  isExternalSourceImportProfile,
+} from "@/lib/server/mobile-capture-processing-authorization";
+import {
   MOBILE_CAPTURE_RESUMABLE_RESERVATION_TTL_MS,
   MediaVaultUploadReservationError,
   reserveMediaVaultUploadCapacity,
@@ -74,6 +78,7 @@ type CreatePayload = {
   stoppedAt: string;
   recordingSegmentsJson: string | null;
   onDeviceTranscriptExpected: boolean;
+  externalRecordingAttestation: boolean;
   restartUploadSession: boolean;
 };
 
@@ -207,6 +212,7 @@ function parseCreatePayload(value: unknown):
   const hasSegments = body.recordingSegmentsJson != null || body.recordingSegments != null;
   const normalizedSegments = segmentsJson(body.recordingSegmentsJson ?? body.recordingSegments);
   const onDeviceTranscriptExpected = body.onDeviceTranscriptExpected === true;
+  const externalRecordingAttestation = body.externalRecordingAttestation === true;
   const restartUploadSession = body.restartUploadSession === true;
 
   if (!isSafeMobileCaptureUploadSessionId(uploadSessionId)) {
@@ -307,6 +313,7 @@ function parseCreatePayload(value: unknown):
       stoppedAt,
       recordingSegmentsJson: normalizedSegments,
       onDeviceTranscriptExpected,
+      externalRecordingAttestation,
       restartUploadSession,
     },
   };
@@ -565,9 +572,15 @@ export async function POST(request: Request) {
     const parsedSourceProfile = payload.sourceProfileJson
       ? JSON.parse(payload.sourceProfileJson) as { clientKind?: unknown }
       : null;
+    const externalSourceImport = isExternalSourceImportProfile(
+      payload.sourceProfileJson,
+    );
     const uploadOrigin = browserUploadOrigin(request, payload.sourceProfileJson);
     if (parsedSourceProfile?.clientKind === "web" && !uploadOrigin) {
       return jsonNoStore({ ok: false, error: "Browser source uploads require an exact HTTP Origin binding." }, 400);
+    }
+    if (payload.externalRecordingAttestation && !externalSourceImport) {
+      return jsonNoStore({ ok: false, error: "Source import attestation is only valid for an external browser recording import." }, 400);
     }
     developmentStage = "validate-canonical-references";
     const references = await assertMobileCaptureUploadReferences({
@@ -641,6 +654,15 @@ export async function POST(request: Request) {
     if (existing) {
       const mismatch = mobileCaptureResumableBindingMismatch(existing.manifest, binding);
       if (mismatch) return jsonNoStore({ ok: false, error: mismatch }, 409);
+      if (
+        externalSourceImport
+        && existing.manifest.processingAuthorization?.kind !== "source-import"
+      ) {
+        return jsonNoStore({
+          ok: false,
+          error: "This older import was preserved without source authorization. Choose the file again to start a new authorized import.",
+        }, 409);
+      }
       const reservation = await reserveForManifest(prisma, existing.manifest, {
         refreshExpired: payload.restartUploadSession || mobileCaptureUploadUriIsExpired(existing.manifest),
       });
@@ -656,15 +678,51 @@ export async function POST(request: Request) {
       return jsonNoStore(responseFor(recovered, false, objectExists, reservation));
     }
 
-    developmentStage = "evaluate-room-readiness";
-    const roomReadiness = await evaluateMobileCaptureRoomReadiness({
-      prisma,
-      roomId: payload.callRoomId,
-      captureId: binding.captureId,
-      actorUserId: session.user.id,
-      recordingConsentId: references.consent.id,
-      sourceType: payload.sourceType,
-    });
+    developmentStage = "evaluate-processing-authorization";
+    const externalAuthorization = externalSourceImport
+      ? await authorizeExternalSourceImport({
+          prisma,
+          binding: {
+            uploadSessionId: binding.uploadSessionId,
+            captureId: binding.captureId,
+            captureGroupId: binding.captureGroupId,
+            callRoomId: binding.callRoomId,
+            actorUserId: binding.actorUserId,
+            participantId: references.participant.id,
+            recordingConsentId: binding.recordingConsentId,
+            sourceType: binding.sourceType as "audio" | "video",
+            sha256: binding.sha256,
+            expectedSizeBytes: binding.expectedSizeBytes,
+            fileName: binding.fileName,
+          },
+          explicitlyAttested: payload.externalRecordingAttestation,
+          uploadOrigin: uploadOrigin!,
+        })
+      : null;
+    if (externalAuthorization && !externalAuthorization.ok) {
+      return jsonNoStore({ ok: false, error: externalAuthorization.error }, externalAuthorization.status);
+    }
+    const roomReadiness = externalAuthorization?.ok
+      ? externalAuthorization.readiness
+      : await evaluateMobileCaptureRoomReadiness({
+          prisma,
+          roomId: payload.callRoomId,
+          captureId: binding.captureId,
+          actorUserId: session.user.id,
+          recordingConsentId: references.consent.id,
+          sourceType: payload.sourceType,
+        });
+    const processingAuthorization = externalAuthorization?.ok
+      ? externalAuthorization.authorization
+      : roomReadiness.eligibleForProcessing
+        && roomReadiness.startReceiptId
+        && roomReadiness.startConsentVersion
+        ? {
+            kind: "capture-start" as const,
+            authorizationId: roomReadiness.startReceiptId,
+            consentVersion: roomReadiness.startConsentVersion,
+          }
+        : null;
 
     const objectName = buildMobileRecordingObjectName({
       callRoomId: binding.callRoomId,
@@ -725,8 +783,11 @@ export async function POST(request: Request) {
       initialRoomReadiness: roomReadiness,
       roomReadinessBindingVersion: 1,
       startReceiptId: roomReadiness.startReceiptId,
-      consentVersion: roomReadiness.startConsentVersion,
-      processingDisposition: roomReadiness.eligibleForProcessing
+      consentVersion: externalAuthorization?.ok
+        ? externalAuthorization.authorization.consentVersion
+        : roomReadiness.startConsentVersion,
+      processingAuthorization,
+      processingDisposition: processingAuthorization
         ? "eligible"
         : "preservation-only",
       uploadOrigin,

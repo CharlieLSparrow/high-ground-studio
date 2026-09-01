@@ -9,7 +9,7 @@ import {
   MobileCaptureReferenceError,
 } from "@/lib/server/mobile-capture-records";
 import { finalizeMobileCaptureDatabaseEvidence } from "@/lib/server/mobile-capture-resumable-finalization";
-import { evaluateMobileCaptureRoomReadiness } from "@/lib/server/mobile-capture-room-readiness";
+import { evaluateMobileCaptureProcessingAuthorization } from "@/lib/server/mobile-capture-processing-authorization";
 import {
   completeMediaVaultUploadReservation,
   MOBILE_CAPTURE_RESUMABLE_RESERVATION_TTL_MS,
@@ -334,6 +334,13 @@ function objectBindingMismatch(manifest: MobileCaptureResumableManifest, object:
       quipslyRoomReadinessBindingVersion: "1",
     });
   }
+  if (manifest.processingAuthorization?.kind === "source-import") {
+    Object.assign(expectedMetadata, {
+      quipslyProcessingAuthorizationKind: "source-import",
+      quipslyProcessingAuthorizationId:
+        manifest.processingAuthorization.authorizationId,
+    });
+  }
   for (const [key, expected] of Object.entries(expectedMetadata)) {
     if (customMetadataValue(object, key) !== expected) {
       return `The completed storage object has invalid ${key} binding metadata.`;
@@ -559,27 +566,19 @@ export async function POST(request: Request) {
       return failureResponse(stored.manifest);
     }
 
-    const roomReadiness = await evaluateMobileCaptureRoomReadiness({
+    const processingAuthorization = await evaluateMobileCaptureProcessingAuthorization({
       prisma,
-      roomId: stored.manifest.callRoomId,
-      captureId: stored.manifest.captureId,
-      actorUserId: stored.manifest.actorUserId,
-      recordingConsentId: stored.manifest.recordingConsentId,
-      sourceType: stored.manifest.sourceType as "audio" | "video",
+      manifest: stored.manifest,
     });
-    const immutableReadinessBindingMatches =
-      stored.manifest.processingDisposition === "eligible"
-      && stored.manifest.startReceiptId === roomReadiness.startReceiptId
-      && stored.manifest.consentVersion === roomReadiness.startConsentVersion;
-    const releaseAutomatically = roomReadiness.eligibleForProcessing
-      && immutableReadinessBindingMatches;
+    const roomReadiness = processingAuthorization.readiness;
+    const releaseAutomatically = processingAuthorization.authorized;
     const processingDecision = releaseAutomatically
       ? {
           disposition: "RELEASED" as const,
           reasonCode: null,
           reason: null,
-          startReceiptId: roomReadiness.startReceiptId,
-          consentVersion: roomReadiness.startConsentVersion,
+          startReceiptId: stored.manifest.startReceiptId,
+          consentVersion: stored.manifest.consentVersion,
           releaseAudit: null,
           transcriptDisposition: roomReadiness.allPartiesCurrentlyAllowTranscription
             ? "RELEASED" as const
@@ -594,19 +593,14 @@ export async function POST(request: Request) {
         }
       : {
           disposition: "HELD" as const,
-          reasonCode: immutableReadinessBindingMatches
-            ? roomReadiness.reasonCode
-            : stored.manifest.initialRoomReadiness?.reasonCode || "IMMUTABLE_START_BINDING_REQUIRED",
-          reason: immutableReadinessBindingMatches
-            ? roomReadiness.reason
-            : stored.manifest.initialRoomReadiness?.reason
-              || "This upload was created as preservation-only and requires an explicit reviewed release.",
+          reasonCode: processingAuthorization.reasonCode,
+          reason: processingAuthorization.reason,
           startReceiptId: stored.manifest.startReceiptId,
           consentVersion: stored.manifest.consentVersion,
           releaseAudit: null,
           transcriptDisposition: "HELD" as const,
           transcriptReasonCode: "MEDIA_PROCESSING_HELD",
-          transcriptReason: "Transcript held while this preservation-only recording awaits explicit release.",
+          transcriptReason: "Transcript waits until the recording has a valid processing authorization.",
           transcriptReleaseAudit: null,
         };
 

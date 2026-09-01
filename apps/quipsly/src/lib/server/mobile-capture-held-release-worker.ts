@@ -9,10 +9,10 @@ import {
   saveMobileCaptureResumableManifest,
   type MobileCaptureResumableManifest,
 } from "@/lib/server/mobile-capture-resumable-store";
-import { evaluateMobileCaptureRoomReadiness } from "@/lib/server/mobile-capture-room-readiness";
+import { evaluateMobileCaptureProcessingAuthorization } from "@/lib/server/mobile-capture-processing-authorization";
 
 export const AUTOMATIC_CAPTURE_RELEASE_REASON =
-  "Automatically released after the canonical immutable START binding and current participant consent converged.";
+  "Automatically released after immutable recording authorization and current participant consent converged.";
 
 const MAX_SCAN = 200;
 
@@ -130,28 +130,19 @@ export async function reconcileHeldMobileCaptureRelease(input: {
     return { status: "binding-mismatch" as const, releasedMedia: false, releasedTranscript: false };
   }
 
-  const readiness = await evaluateMobileCaptureRoomReadiness({
+  const processingAuthorization = await evaluateMobileCaptureProcessingAuthorization({
     prisma: input.prisma,
-    roomId: manifest.callRoomId,
-    captureId: manifest.captureId,
-    actorUserId: manifest.actorUserId,
-    recordingConsentId: manifest.recordingConsentId,
-    sourceType: manifest.sourceType as "audio" | "video",
+    manifest,
   });
+  const readiness = processingAuthorization.readiness;
   const mediaNeedsRelease = input.receipt.processingDisposition !== "RELEASED";
   const transcriptNeedsRelease = input.receipt.transcriptDisposition !== "RELEASED"
     && readiness.allPartiesCurrentlyAllowTranscription;
   const currentRecordingConsentReady =
     readiness.allPartiesCurrentlyReady
     && readiness.actorConsentId === manifest.recordingConsentId;
-  const immutableStartBindingMatches =
-    manifest.processingDisposition === "eligible"
-    && manifest.startReceiptId === readiness.startReceiptId
-    && manifest.consentVersion === readiness.startConsentVersion;
-  const mediaCanRelease =
-    readiness.eligibleForProcessing
-    && currentRecordingConsentReady
-    && immutableStartBindingMatches;
+  const mediaCanRelease = processingAuthorization.authorized
+    && currentRecordingConsentReady;
   if (mediaNeedsRelease && !mediaCanRelease) {
     return {
       status: currentRecordingConsentReady
@@ -236,30 +227,20 @@ export async function reconcileHeldMobileCaptureRelease(input: {
 
   // Legacy hashing can take meaningful time, and even metadata checks race
   // consent changes. Recheck at the release boundary so revocation always wins.
-  const releaseReadiness = await evaluateMobileCaptureRoomReadiness({
+  const releaseAuthorization = await evaluateMobileCaptureProcessingAuthorization({
     prisma: input.prisma,
-    roomId: manifest.callRoomId,
-    captureId: manifest.captureId,
-    actorUserId: manifest.actorUserId,
-    recordingConsentId: manifest.recordingConsentId,
-    sourceType: manifest.sourceType as "audio" | "video",
+    manifest,
   });
+  const releaseReadiness = releaseAuthorization.readiness;
   if (
     !releaseReadiness.allPartiesCurrentlyReady
     || releaseReadiness.actorConsentId !== manifest.recordingConsentId
   ) {
     return { status: "waiting-for-consent" as const, releasedMedia: false, releasedTranscript: false };
   }
-  const releaseStartBindingMatches =
-    manifest.processingDisposition === "eligible"
-    && manifest.startReceiptId === releaseReadiness.startReceiptId
-    && manifest.consentVersion === releaseReadiness.startConsentVersion;
   if (
     mediaNeedsRelease
-    && (
-      !releaseReadiness.eligibleForProcessing
-      || !releaseStartBindingMatches
-    )
+    && !releaseAuthorization.authorized
   ) {
     return { status: "recording-boundary-held" as const, releasedMedia: false, releasedTranscript: false };
   }

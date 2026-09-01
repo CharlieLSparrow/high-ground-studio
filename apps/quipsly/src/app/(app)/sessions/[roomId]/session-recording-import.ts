@@ -37,6 +37,15 @@ export type SessionRecordingImportResult = {
   transcriptHoldReason: string | null;
 };
 
+export const SESSION_RECORDING_EXTERNAL_SOURCE_PROFILE = Object.freeze({
+  kind: "quipsly-nest-external-recording-import-v1",
+  clientKind: "web",
+  source: "nest-session-recordings",
+  originalPreserved: true,
+});
+
+export const SESSION_RECORDING_EXTERNAL_ATTESTATION = true;
+
 type UploadContract = {
   ok?: boolean;
   error?: string;
@@ -231,11 +240,10 @@ export async function importSessionRecording(input: {
       startedAt: input.startedAt,
       stoppedAt: input.stoppedAt,
       sourceProfile: {
-        kind: "quipsly-nest-external-recording-import-v1",
-        source: "nest-session-recordings",
-        originalPreserved: true,
+        ...SESSION_RECORDING_EXTERNAL_SOURCE_PROFILE,
         browserUserAgent: navigator.userAgent,
       },
+      externalRecordingAttestation: SESSION_RECORDING_EXTERNAL_ATTESTATION,
     }),
     cache: "no-store",
     signal: input.signal,

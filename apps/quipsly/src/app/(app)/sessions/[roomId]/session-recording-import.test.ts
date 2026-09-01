@@ -3,10 +3,22 @@ import { Blob as NodeBlob } from "node:buffer";
 
 import {
   hashSessionRecordingFile,
+  SESSION_RECORDING_EXTERNAL_ATTESTATION,
+  SESSION_RECORDING_EXTERNAL_SOURCE_PROFILE,
   sessionRecordingFileType,
 } from "./session-recording-import";
 
 describe("Session recording import", () => {
+  it("binds browser imports to the canonical external-source authorization lane", () => {
+    expect(SESSION_RECORDING_EXTERNAL_SOURCE_PROFILE).toEqual({
+      kind: "quipsly-nest-external-recording-import-v1",
+      clientKind: "web",
+      source: "nest-session-recordings",
+      originalPreserved: true,
+    });
+    expect(SESSION_RECORDING_EXTERNAL_ATTESTATION).toBe(true);
+  });
+
   it("infers camera and recorder media types without trusting an absent browser MIME", () => {
     expect(sessionRecordingFileType({ name: "CANON_R8_0001.MOV", type: "", size: 4096 })).toEqual({
       contentType: "video/quicktime",

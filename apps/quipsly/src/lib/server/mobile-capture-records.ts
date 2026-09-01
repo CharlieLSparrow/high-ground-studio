@@ -569,7 +569,7 @@ export async function recordMobileCaptureIngestion(input: MobileCaptureRecordInp
   const processingHold = processingDisposition === "HELD"
     ? {
         code: input.processingHoldReasonCode || "capture-room-readiness-required",
-        reason: input.processingHoldReason || "Processing held until an explicit reviewed release.",
+        reason: input.processingHoldReason || "This recording is protected because its recording authorization is incomplete.",
       }
     : null;
   const transcriptionHold = processingHold || transcriptionDisposition === "HELD"

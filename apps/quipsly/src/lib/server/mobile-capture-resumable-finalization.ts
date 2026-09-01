@@ -109,6 +109,7 @@ function finalizationReceiptMetadata(args: {
           roomId: args.manifest.callRoomId,
           startReceiptId: args.processingDecision.startReceiptId,
           consentVersion: args.processingDecision.consentVersion,
+          processingAuthorization: args.manifest.processingAuthorization,
           sha256: args.manifest.sha256,
           bucketName: args.object.bucketName,
           objectName: args.object.objectName,

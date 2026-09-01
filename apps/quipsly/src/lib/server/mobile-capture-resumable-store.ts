@@ -96,6 +96,7 @@ export type MobileCaptureResumableManifest =
     roomReadinessBindingVersion: 0 | 1;
     startReceiptId: string | null;
     consentVersion: string | null;
+    processingAuthorization: MobileCaptureProcessingAuthorization | null;
     processingDisposition: "eligible" | "preservation-only";
     uploadOrigin?: string | null;
     uploadUri: string;
@@ -147,6 +148,19 @@ export type MobileCaptureObjectEvidence = {
   storageBackend: "gcs" | "local-development";
   localFilePath: string | null;
 };
+
+export type MobileCaptureProcessingAuthorization =
+  | {
+      kind: "capture-start";
+      authorizationId: string;
+      consentVersion: string;
+    }
+  | {
+      kind: "source-import";
+      authorizationId: string;
+      consentVersion: string;
+      attestationVersion: string;
+    };
 
 export class MobileCaptureResumableStoreError extends Error {
   readonly code: "not-found" | "conflict" | "invalid-manifest";
@@ -305,6 +319,7 @@ async function createUploadUri(manifest: {
   captureId: string;
   startReceiptId: string | null;
   consentVersion: string | null;
+  processingAuthorization: MobileCaptureProcessingAuthorization | null;
   processingDisposition: "eligible" | "preservation-only";
   roomReadinessBindingVersion: 0 | 1;
   uploadOrigin?: string | null;
@@ -348,6 +363,7 @@ export function mobileCaptureObjectCustomMetadata(manifest: {
   captureId: string;
   startReceiptId: string | null;
   consentVersion: string | null;
+  processingAuthorization: MobileCaptureProcessingAuthorization | null;
   processingDisposition: "eligible" | "preservation-only";
   roomReadinessBindingVersion: 0 | 1;
   expectedSizeBytes: number;
@@ -364,6 +380,10 @@ export function mobileCaptureObjectCustomMetadata(manifest: {
     quipslyCaptureId: manifest.captureId,
     quipslyStartReceiptId: manifest.startReceiptId || "none",
     quipslyConsentVersion: manifest.consentVersion || "none",
+    quipslyProcessingAuthorizationKind:
+      manifest.processingAuthorization?.kind || "none",
+    quipslyProcessingAuthorizationId:
+      manifest.processingAuthorization?.authorizationId || "none",
     quipslyProcessingDisposition: manifest.processingDisposition,
     quipslyRoomReadinessBindingVersion: String(manifest.roomReadinessBindingVersion),
     quipslyExpectedSizeBytes: String(manifest.expectedSizeBytes),
