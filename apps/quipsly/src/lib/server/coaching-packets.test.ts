@@ -1436,5 +1436,22 @@ describe("transcript coaching follow-through", () => {
       acceptedCorrectionId: "client-correction-1",
       reviewStatus: "human-reviewed",
     });
+    expect(work.goal.update).toHaveBeenCalledWith({
+      where: { id: first.goalIds[0] },
+      data: expect.objectContaining({
+        title: expect.stringMatching(/pause and breathe/i),
+        description: expect.stringContaining(
+          "My goal is to pause and breathe before answering one difficult question.",
+        ),
+        sourceJson: expect.objectContaining({
+          packetBuildId: rebuilt.packetBuildId,
+          generatedSnapshot: expect.objectContaining({
+            detail: expect.stringContaining(
+              "Client: My goal is to pause and breathe before answering one difficult question.",
+            ),
+          }),
+        }),
+      }),
+    });
   });
 });
