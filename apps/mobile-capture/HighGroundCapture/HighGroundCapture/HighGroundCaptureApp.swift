@@ -42,6 +42,11 @@ struct HighGroundCaptureApp: App {
                 .onChange(of: scenePhase) { _, phase in
                     switch phase {
                     case .active:
+                        // iOS remembers permission choices in Settings while
+                        // Quipsly is backgrounded. Refresh the live controller
+                        // on return so the recorder immediately leaves its
+                        // stale denied state without another setup ritual.
+                        audioCapture.refreshReadinessSnapshot()
                         Task {
                             await OnDeviceTranscriptManager.shared.resumeEligibleRecordings(
                                 retryFailures: true

@@ -22,6 +22,9 @@ enum MicrophonePreflightState: String, Codable {
 
 @MainActor
 final class AudioCaptureController: NSObject, ObservableObject {
+    private static let microphonePermissionDeniedMessage =
+        "Microphone permission denied. Enable microphone access in Settings to record."
+
     @Published private(set) var captureState: AudioCaptureState = .idle
     @Published private(set) var microphonePreflightState: MicrophonePreflightState = .undetermined
     @Published private(set) var currentDuration: TimeInterval = 0
@@ -284,7 +287,7 @@ final class AudioCaptureController: NSObject, ObservableObject {
             return false
         }
         guard permissionGranted else {
-            failCapture("Microphone permission denied. Enable microphone access in Settings to record.")
+            failCapture(Self.microphonePermissionDeniedMessage)
             return false
         }
 
@@ -316,6 +319,15 @@ final class AudioCaptureController: NSObject, ObservableObject {
         switch AVAudioApplication.shared.recordPermission {
         case .granted:
             microphonePreflightState = .granted
+            // A user may have followed Quipsly's one-tap Settings recovery
+            // while this controller stayed alive. Clear only the exact stale
+            // permission failure; any storage, ownership, receipt, or source
+            // failure must remain visible until it is actually resolved.
+            if captureState == .failed,
+               failureMessage == Self.microphonePermissionDeniedMessage,
+               lastErrorMessage == Self.microphonePermissionDeniedMessage {
+                resetToIdle()
+            }
         case .denied:
             microphonePreflightState = .denied
         case .undetermined:
@@ -731,7 +743,7 @@ final class AudioCaptureController: NSObject, ObservableObject {
             return
         }
         guard permissionGranted else {
-            let baseMessage = "Microphone permission denied. Enable microphone access in Settings to record."
+            let baseMessage = Self.microphonePermissionDeniedMessage
             failCapture(combining(baseMessage, with: closeStartBoundaryAfterFailedArm()))
             return
         }
