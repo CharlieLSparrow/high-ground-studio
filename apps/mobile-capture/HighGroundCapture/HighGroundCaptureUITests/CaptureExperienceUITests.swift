@@ -33,6 +33,11 @@ final class CaptureExperienceUITests: XCTestCase {
                 "--capture-consent-needed-next-preview"
             )
         }
+        if name.contains("testRecoverableProblemStaysInlineAndDoesNotBlockNavigation") {
+            app.launchArguments.append(
+                "--capture-ui-preview-attention=Quipsly is offline and cannot reach Nest."
+            )
+        }
         if name.contains("testDisconnectedCallOffersOneTapRejoinWhileKeepingRecordingSafe") {
             app.launchArguments += [
                 "--capture-ui-preview-tab=record",
@@ -209,6 +214,26 @@ final class CaptureExperienceUITests: XCTestCase {
                 "The deterministic capture preview should launch without credentials or network access."
             )
         }
+    }
+
+    func testRecoverableProblemStaysInlineAndDoesNotBlockNavigation() {
+        let inlineTitle = app.staticTexts["Connection interrupted"]
+        XCTAssertTrue(inlineTitle.waitForExistence(timeout: 12))
+        XCTAssertTrue(app.staticTexts["Quipsly is offline and cannot reach Nest."].exists)
+        XCTAssertFalse(app.alerts["Connection interrupted"].exists)
+
+        let work = app.tabBars.buttons["Work"]
+        XCTAssertTrue(work.waitForExistence(timeout: 5))
+        XCTAssertTrue(work.isHittable)
+        work.tap()
+        XCTAssertTrue(app.scrollViews["CaptureWorkView"].waitForExistence(timeout: 8))
+        XCTAssertTrue(inlineTitle.exists)
+
+        let dismiss = app.buttons["Dismiss"]
+        XCTAssertTrue(dismiss.exists)
+        XCTAssertTrue(dismiss.isHittable)
+        dismiss.tap()
+        XCTAssertFalse(inlineTitle.waitForExistence(timeout: 1))
     }
 
     func testCaptureFirstNavigationKeepsFiveFocusedDestinations() {

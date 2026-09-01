@@ -121,6 +121,7 @@ enum CaptureRecordingMode: String, CaseIterable, Identifiable {
 enum CaptureLaunchConfiguration {
     nonisolated private static let shareOwnerPreviewPrefix = "--capture-share-owner-ui-preview="
     nonisolated private static let previewSessionPrefix = "--capture-ui-preview-session="
+    nonisolated private static let previewAttentionPrefix = "--capture-ui-preview-attention="
 
     static var usesLoginPreview: Bool {
         #if DEBUG
@@ -337,6 +338,23 @@ enum CaptureLaunchConfiguration {
                   where: { $0.hasPrefix(previewSessionPrefix) }
               ) else { return nil }
         let value = String(argument.dropFirst(previewSessionPrefix.count))
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return value.isEmpty ? nil : value
+        #else
+        return nil
+        #endif
+    }
+
+    /// Injects one deterministic, non-sensitive recovery message so XCTest can
+    /// prove that ordinary failures remain inline and navigable. The release
+    /// build and physical devices can never enable this path.
+    static var previewAttentionMessage: String? {
+        #if DEBUG && targetEnvironment(simulator)
+        guard usesPreviewData,
+              let argument = ProcessInfo.processInfo.arguments.first(
+                  where: { $0.hasPrefix(previewAttentionPrefix) }
+              ) else { return nil }
+        let value = String(argument.dropFirst(previewAttentionPrefix.count))
             .trimmingCharacters(in: .whitespacesAndNewlines)
         return value.isEmpty ? nil : value
         #else
@@ -900,6 +918,10 @@ final class CaptureExperienceModel: ObservableObject {
             await taskReminderScheduler.reconcile(
                 drafts: quickEntryOutbox.entries.compactMap(\.taskReminderDraft)
             )
+            if let previewAttentionMessage = CaptureLaunchConfiguration
+                .previewAttentionMessage {
+                errorMessage = previewAttentionMessage
+            }
             return
         }
 
