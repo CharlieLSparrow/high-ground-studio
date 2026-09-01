@@ -9,7 +9,7 @@ const source = await readFile(
 
 test("fresh Session preparation operation proves UX, privacy, retry, and side-effect boundaries", () => {
   for (const required of [
-    "Plan this Session",
+    "Plan this session",
     "Private coach prep",
     "PREPARATION_REQUEST_COLLISION",
     "neighboringCoachDirectRouteDenied",
@@ -17,7 +17,7 @@ test("fresh Session preparation operation proves UX, privacy, retry, and side-ef
     "exactRetryConverged",
     "unrelatedSideEffectsAbsent",
     "assertNoHorizontalOverflow",
-    "trackedWorktreeCleanAtStart: true",
+    "runtimeSourceCurrent: true",
   ]) {
     assert.match(source, new RegExp(required));
   }

@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
 import { chmod, mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import { loadFreshCoachingAcceptanceContext } from "./lib/coaching-acceptance-context.mjs";
+import { requireCurrentLocalNestSource } from "./lib/local-nest-source-boundary.mjs";
 
 assert.equal(
   process.env.QUIPSLY_FRESH_TRANSCRIPT_FOLLOW_THROUGH_OPERATION,
@@ -14,21 +14,12 @@ assert.equal(
 );
 
 const repositoryRoot = path.resolve(import.meta.dirname, "..");
-const trackedStatus = execFileSync("git", ["status", "--short", "--untracked-files=no"], {
-  cwd: repositoryRoot,
-  encoding: "utf8",
-}).trim();
-assert.equal(trackedStatus, "", "Fresh automatic follow-through requires a clean tracked worktree.");
-const sourceSha = execFileSync("git", ["rev-parse", "HEAD"], {
-  cwd: repositoryRoot,
-  encoding: "utf8",
-}).trim();
-
 const baseURL = new URL(process.env.QUIPSLY_LOCAL_BASE_URL || "http://127.0.0.1:3012");
 assert(
   ["127.0.0.1", "localhost", "[::1]"].includes(baseURL.hostname),
   "Fresh automatic follow-through refuses a non-loopback Nest origin.",
 );
+const { sourceSha } = await requireCurrentLocalNestSource({ repositoryRoot, baseURL: baseURL.origin });
 const freshContext = await loadFreshCoachingAcceptanceContext({ baseURL: baseURL.origin });
 assert(freshContext, "Fresh automatic follow-through requires an exact private context.");
 const runToken = path.basename(path.dirname(freshContext.contextPath));
@@ -133,7 +124,7 @@ try {
     ok: true,
     localOnly: true,
     sourceSha,
-    trackedWorktreeCleanAtStart: true,
+    runtimeSourceCurrent: true,
     roomId: room.id,
     transcriptJobId: transcript.id,
     authorUserId: room.booking.coachUserId,

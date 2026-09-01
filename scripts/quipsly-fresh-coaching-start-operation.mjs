@@ -434,6 +434,13 @@ try {
   await liveCallDock
     .getByRole("button", { name: "Close live call", exact: true })
     .click();
+  const leaveAndClose = liveCallDock.getByRole("button", {
+    name: "Leave & close",
+    exact: true,
+  });
+  if (await leaveAndClose.isVisible().catch(() => false)) {
+    await leaveAndClose.click();
+  }
   await liveCallDock.waitFor({ state: "detached", timeout: 20_000 });
   evidence.clientBrowserChoiceOpenedDeviceSetup = true;
   await assertNoHorizontalOverflow(

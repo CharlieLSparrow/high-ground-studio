@@ -1,11 +1,12 @@
 #!/usr/bin/env node
 
 import assert from "node:assert/strict";
-import { execFileSync, spawn } from "node:child_process";
+import { spawn } from "node:child_process";
 import { chmod, mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import { loadFreshCoachingAcceptanceContext } from "./lib/coaching-acceptance-context.mjs";
+import { requireCurrentLocalNestSource } from "./lib/local-nest-source-boundary.mjs";
 import { readRetainedQAPassword } from "./lib/retained-qa-keychain.mjs";
 import {
   clearRenderedSession,
@@ -29,15 +30,7 @@ const baseURL = requireLoopbackOrigin(
 const target = await loadFreshCoachingAcceptanceContext({ baseURL });
 assert(target, "Fresh native Session conversation requires an exact private coaching context.");
 const runToken = path.basename(path.dirname(target.contextPath));
-const sourceSha = execFileSync("git", ["rev-parse", "HEAD"], {
-  cwd: repositoryRoot,
-  encoding: "utf8",
-}).trim();
-const trackedStatus = execFileSync("git", ["status", "--short", "--untracked-files=no"], {
-  cwd: repositoryRoot,
-  encoding: "utf8",
-}).trim();
-assert.equal(trackedStatus, "", "Fresh native Session conversation requires a clean tracked worktree.");
+const { sourceSha } = await requireCurrentLocalNestSource({ repositoryRoot, baseURL });
 
 const databaseURL = new URL(
   process.env.DATABASE_URL || "postgresql://postgres:postgres@127.0.0.1:5432/high_ground_studio",
@@ -176,7 +169,7 @@ try {
     ok: true,
     localOnly: true,
     sourceSha,
-    trackedWorktreeCleanAtStart: true,
+    runtimeSourceCurrent: true,
     roomId: target.roomId,
     coachUserId: target.identities.coach.userId,
     clientUserId: target.identities.client.userId,

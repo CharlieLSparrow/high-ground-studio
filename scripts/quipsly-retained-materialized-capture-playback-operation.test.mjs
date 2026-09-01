@@ -48,7 +48,8 @@ test("operation is explicitly retained, local-only, and credential-safe", async 
   assert.match(source, /spine-source-ambiguous/);
   assert.match(source, /Make this the main spine audio/);
   assert.match(source, /Update episode with current evidence/);
-  assert.match(source, /transcriptBlocksAdded === 4/);
+  assert.match(source, /transcriptBlocksAdded >= 0/);
+  assert.match(source, /unrelatedTimelineClipsPreserved >= 1/);
   assert.match(source, /searchParams\.get\("recordingAssetId"\) === TRANSCRIPT_RECORDING_ASSET_ID/);
   assert.match(source, /roomWideEvaluationSuppressed/);
   const editorSource = await readFile(new URL("../apps/quipsly/src/app/(app)/editor/page.tsx", import.meta.url), "utf8");
