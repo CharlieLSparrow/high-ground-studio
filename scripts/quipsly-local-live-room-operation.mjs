@@ -393,7 +393,10 @@ let twoPartyVideoStageProven = false;
 let cameraTogglePreservedCall = false;
 const localInterruptionRepairEvidence = new Map();
 
-const saveRenderedConsent = async (journey) => {
+const saveRenderedConsent = async (
+  journey,
+  { expectedCanTranscribe = null } = {},
+) => {
   const consentAction = journey.page.getByRole("button", {
     name: /Allow recording|Update choices/,
   });
@@ -412,10 +415,22 @@ const saveRenderedConsent = async (journey) => {
     consentAction.click(),
   ]);
   const packet = await response.json().catch(() => null);
+  const submitted = JSON.parse(response.request().postData() || "{}");
   assert(
     response.ok() && packet?.ok === true,
     `${journey.identity.role} consent receipt was rejected.`,
   );
+  if (typeof expectedCanTranscribe === "boolean") {
+    assert(
+      submitted.canTranscribe === expectedCanTranscribe,
+      `${journey.identity.role} rendered transcript choice was ${expectedCanTranscribe}, but the consent request submitted ${String(submitted.canTranscribe)}.`,
+    );
+    assert(
+      packet?.session?.recordingConsentCanTranscribe ===
+        expectedCanTranscribe,
+      `${journey.identity.role} consent request submitted canTranscribe=${expectedCanTranscribe}, but the canonical response retained ${String(packet?.session?.recordingConsentCanTranscribe)}.`,
+    );
+  }
   return packet;
 };
 
@@ -757,7 +772,12 @@ try {
     await transcriptionConsent.waitFor({ timeout: 20_000 });
     if (!(await transcriptionConsent.isChecked()))
       await transcriptionConsent.check();
-    await saveRenderedConsent(journey);
+    await journey.page.waitForFunction(
+      (element) => element instanceof HTMLInputElement && element.checked,
+      await transcriptionConsent.elementHandle(),
+      { timeout: 20_000 },
+    );
+    await saveRenderedConsent(journey, { expectedCanTranscribe: true });
   }
   // Each participant agrees exactly once. The product must refresh all-party
   // readiness itself; the acceptance flight must not teach or depend on a
@@ -1172,7 +1192,7 @@ try {
         finalization.sourceId &&
         finalization.mediaAssetId &&
         finalization.transcriptJobId,
-      `Recording ${source.id} did not retain a complete released finalization.`,
+      `Recording ${source.id} did not retain a complete released finalization (processing=${String(finalization?.processingDisposition)}, transcript=${String(finalization?.transcriptDisposition)}, source=${String(Boolean(finalization?.sourceId))}, media=${String(Boolean(finalization?.mediaAssetId))}, transcriptJob=${String(Boolean(finalization?.transcriptJobId))}).`,
     );
 
     const [studioSource, studioAsset, studioAttachments] = await Promise.all([
