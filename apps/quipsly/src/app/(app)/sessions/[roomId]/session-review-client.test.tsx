@@ -1589,6 +1589,10 @@ describe("Session review goal candidates", () => {
               samplePeakDbfs: -0.2,
               clippedFrameCount: 15,
               nearSilentFrameFraction: 0.01,
+              loudness: {
+                integratedLoudnessLufs: -20.6,
+                maximumMomentaryLoudnessLufs: -14.8,
+              },
               observations: [{
                 kind: "sample-clipping",
                 severity: "attention",
@@ -1656,6 +1660,8 @@ describe("Session review goal candidates", () => {
     expect(screen.getByText(/every participant recording reached private storage intact/i)).toBeInTheDocument();
     expect(screen.getByText("Safely stored")).toBeInTheDocument();
     expect(screen.getByText("1 moment worth checking")).toBeInTheDocument();
+    expect(screen.getByText(/programme loudness -20.6 LUFS · loudest 400 ms -14.8 LUFS/i)).toBeInTheDocument();
+    expect(screen.getByText(/sample peak is not true peak/i)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Check this audio moment" })).toHaveAttribute("href", "#transcript-audio-review");
     expect(screen.getByText("Technical recording details")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Download technical receipt" })).toHaveAttribute(

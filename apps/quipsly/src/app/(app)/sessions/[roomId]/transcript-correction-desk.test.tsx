@@ -996,6 +996,7 @@ describe("TranscriptCorrectionDesk", () => {
     expect(screen.getByText(/decoded signal scan/i)).toBeInTheDocument();
     expect(screen.getByText(/Programme loudness is measured across the complete decoded source using ITU-R BS.1770-5/i)).toBeInTheDocument();
     expect(screen.getByText("-21.8 LUFS")).toBeInTheDocument();
+    expect(screen.getByText("-16.4 LUFS")).toBeInTheDocument();
     expect(screen.getByText(/sample peak is not true peak/i)).toBeInTheDocument();
     expect(screen.getByText(/measurable signal continues after the last timed transcript word/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /audio level evidence map/i })).toBeInTheDocument();

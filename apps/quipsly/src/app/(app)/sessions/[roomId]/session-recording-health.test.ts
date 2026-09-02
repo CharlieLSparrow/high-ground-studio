@@ -130,6 +130,7 @@ function sourceEvidence(overrides: Partial<SessionSourceEvidence["sources"][numb
             rightRmsDbfs: null,
             stereoBalanceDb: null,
             rmsIsNotLufs: true,
+            loudness: null,
             thresholds: {
               clippingAmplitude: 0.999,
               nearSilenceDbfs: -72,
@@ -171,6 +172,36 @@ describe("Session recording health", () => {
       ["processing", "READY"],
       ["transcription", "READY"],
     ]);
+  });
+
+  it("uses source-bound programme loudness when the complete decode measured it", () => {
+    const evidence = sourceEvidence();
+    evidence.sources[0]!.captureRuntime.audioFormat!.signal!.loudness = {
+      schemaVersion: 1,
+      algorithm: "itu-r-bs.1770-5-integrated-v1",
+      standard: "ITU-R BS.1770-5",
+      status: "measured",
+      sampleRateHz: 48_000,
+      channelCount: 1,
+      analyzedFrameCount: 126_000,
+      measurementBlockDurationSeconds: 0.4,
+      measurementBlockStepSeconds: 0.1,
+      measurementBlockCount: 23,
+      absoluteGatedBlockCount: 23,
+      relativeGatedBlockCount: 22,
+      absoluteGateLufs: -70,
+      relativeGateLufs: -30.6,
+      integratedLoudnessLufs: -20.6,
+      maximumMomentaryLoudnessLufs: -16.2,
+      truePeakMeasured: false,
+      masteringTargetInferred: false,
+    };
+
+    const health = buildSessionRecordingHealth({ topology: topology(), sourceEvidence: evidence });
+
+    expect(health.sources[0]?.gates).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: "signal", state: "READY", detail: expect.stringContaining("programme loudness -20.6 LUFS") }),
+    ]));
   });
 
   it("blocks a required audio master whose complete decode is near digital silence", () => {

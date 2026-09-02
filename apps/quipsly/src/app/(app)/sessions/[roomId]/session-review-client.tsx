@@ -1944,7 +1944,7 @@ function SessionSourceEvidenceCard({
               <p className="mt-1">
                 {visibleSignal.loudness?.integratedLoudnessLufs !== null
                   && visibleSignal.loudness?.integratedLoudnessLufs !== undefined
-                  ? <>programme loudness {visibleSignal.loudness.integratedLoudnessLufs.toFixed(1)} LUFS · </>
+                  ? <>programme loudness {visibleSignal.loudness.integratedLoudnessLufs.toFixed(1)} LUFS · loudest 400 ms {visibleSignal.loudness.maximumMomentaryLoudnessLufs?.toFixed(1) ?? "—"} LUFS · </>
                   : <>RMS {visibleSignal.rmsDbfs.toFixed(1)} dBFS · </>}
                 sample peak{" "}
                 {visibleSignal.samplePeakDbfs.toFixed(1)} dBFS ·{" "}

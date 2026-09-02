@@ -214,7 +214,9 @@ function signalGate(evidence: EvidenceSource | null, sourceKind: string, require
     id: "signal",
     label: "Useful signal",
     state: "READY",
-    detail: `Signal is present across the complete decode · RMS ${signal.rmsDbfs.toFixed(1)} dBFS · peak ${signal.samplePeakDbfs.toFixed(1)} dBFS.`,
+    detail: signal.loudness?.integratedLoudnessLufs !== null && signal.loudness?.integratedLoudnessLufs !== undefined
+      ? `Signal is present across the complete decode · programme loudness ${signal.loudness.integratedLoudnessLufs.toFixed(1)} LUFS · sample peak ${signal.samplePeakDbfs.toFixed(1)} dBFS.`
+      : `Signal is present across the complete decode · RMS ${signal.rmsDbfs.toFixed(1)} dBFS · sample peak ${signal.samplePeakDbfs.toFixed(1)} dBFS.`,
   };
   if (signal.status === "near-digital-silence") return {
     id: "signal",
