@@ -188,8 +188,8 @@ assert.equal(noNativeProvider.recordingConsentGranted, true);
 assert.equal(noNativeProvider.captureReadiness.status, "review-ready");
 assert.equal(noNativeProvider.captureReadiness.safeToRecordLocally, false);
 assert.equal(noNativeProvider.captureReadiness.providerCanJoin, false);
-assert.equal(noNativeProvider.captureReadiness.label, "Packet ready");
-assert.match(noNativeProvider.captureReadiness.detail, /coaching packet evidence/i);
+assert.equal(noNativeProvider.captureReadiness.label, "Results ready");
+assert.match(noNativeProvider.captureReadiness.detail, /editable notes, tasks, and goals/i);
 assert.equal(noNativeProvider.recordingCount, 1);
 assert.equal(noNativeProvider.latestRecordingAssetStatus, "VERIFIED");
 assert.equal(noNativeProvider.latestTranscriptStatus, "COMPLETED");
@@ -199,8 +199,8 @@ assert.equal(noNativeProvider.coachingPacketHighlightCount, 1);
 assert.equal(noNativeProvider.coachingPacketActionItemCount, 2);
 assert.equal(noNativeProvider.coachingPacketFirstOpenActionItemId, "action_item_1");
 assert.match(noNativeProvider.coachingPacketPreview, /reviewer practiced/i);
-assert.equal(noNativeProvider.afterCaptureNextAction, "Coaching packet exists. Review summary, highlights, and action items in Quipsly.");
-assert.match(noNativeProvider.nextAction, /Coaching packet exists/i);
+assert.equal(noNativeProvider.afterCaptureNextAction, "Session results are ready. Open the editable recap, notes, tasks, and goals whenever they are useful.");
+assert.match(noNativeProvider.nextAction, /Session results are ready/i);
 
 const liveKitServerReady = providerReadinessForMobileCaptureSession(room, {
   LIVEKIT_URL: "wss://example.livekit.cloud",
@@ -238,7 +238,7 @@ const transcriptCompleteNoPacket = mapOne({
 });
 
 assert.equal(transcriptCompleteNoPacket.coachingPacketStatus, "PACKET_READY_TO_BUILD");
-assert.equal(transcriptCompleteNoPacket.afterCaptureNextAction, "Transcript is complete. Build a coaching packet when you are ready.");
+assert.equal(transcriptCompleteNoPacket.afterCaptureNextAction, "Transcript ready. Quipsly is preparing editable Session results in the background.");
 
 const uploadedNoTranscript = mapOne({
       ...room,
@@ -250,7 +250,7 @@ const uploadedNoTranscript = mapOne({
 assert.equal(uploadedNoTranscript.coachingPacketStatus, "NOT_READY");
 assert.equal(
   uploadedNoTranscript.afterCaptureNextAction,
-  "Recording exists. Run transcription; Quipsly will create or repair the transcript job if needed.",
+  "Your recording is safe. Quipsly is preparing transcription and editable Session results.",
 );
 
 const consentNeeded = mapOne({
@@ -327,7 +327,7 @@ const endedReadyForPacket = mapOne({
 
 assert.equal(endedReadyForPacket.captureReadiness.status, "post-capture");
 assert.equal(endedReadyForPacket.captureReadiness.safeToRecordLocally, false);
-assert.match(endedReadyForPacket.captureReadiness.nextAction, /Build a coaching packet/i);
+assert.match(endedReadyForPacket.captureReadiness.nextAction, /preparing editable Session results/i);
 
 const heldReceipt = {
   ...finalizationReceipts[0],
@@ -359,6 +359,6 @@ assert.equal(heldSession.actionPacket.capabilities.canBuildPacket, false);
 assert.equal(heldSession.actionPacket.capabilities.canReviewPacket, false);
 assert.equal(heldSession.coachingPacketSummaryNoteId, null,
   "historical packet projections must be quarantined while their source transcript is held");
-assert.match(heldSession.afterCaptureNextAction, /await reviewed transcript release/i);
+assert.match(heldSession.afterCaptureNextAction, /continue when this Session's transcription permission allows it/i);
 
 console.log("PASS: mobile capture sessions expose recording, transcript, packet, provider, consent, and next-action evidence.");
