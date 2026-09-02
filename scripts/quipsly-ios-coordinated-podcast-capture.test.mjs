@@ -138,11 +138,23 @@ check(
     && coordinatedStart.includes("await videoCapture.waitUntilTerminal()")
     && coordinatedStart.includes("Every partial source was closed and preserved"),
 );
+const audioStartBoundary = model.slice(
+  model.indexOf("func startCapture("),
+  model.indexOf("func stopCapture(using audioCapture:"),
+);
+const audioArm = audioStartBoundary.indexOf("try audioCapture.armNextCapture(");
+const coordinatedCameraRecheck = audioStartBoundary.indexOf(
+  "activeVideoCapture?.state == .recording",
+  audioArm,
+);
+const microphoneStart = audioStartBoundary.indexOf("audioCapture.handleCommand(command)");
 check(
   "camera is rechecked after audio START journaling and before microphone bytes",
-  model.includes("The camera source ended while the microphone boundary was being armed.")
-    && model.includes("audioCapture.abortArmedCaptureBeforeRecording()")
-    && model.includes("activeVideoCapture?.state == .recording"),
+  audioArm >= 0
+    && audioArm < coordinatedCameraRecheck
+    && coordinatedCameraRecheck < microphoneStart
+    && audioStartBoundary.includes("if permitActiveCoordinatedVideo")
+    && audioStartBoundary.includes("audioCapture.abortArmedCaptureBeforeRecording()"),
 );
 
 const coordinatedStop = model.slice(
@@ -193,8 +205,9 @@ check(
   "unexpected microphone pause closes the current camera boundary",
   model.includes("state == .paused")
     && model.includes("await videoPartner.pause()")
-    && model.includes("microphone source paused unexpectedly")
-    && model.includes("safely closed the current movie boundary too"),
+    && model.includes("await videoPartner.waitUntilPausedOrTerminal()")
+    && model.includes("The microphone paused unexpectedly")
+    && model.includes("safely closed the current camera file too"),
 );
 check(
   "provider controls remain locked for the audio-bearing group",
@@ -210,7 +223,7 @@ check(
     && phoneShell.includes("capturePipeline: audioCapture.capturePipelineLabel")
     && audio.includes('"Same microphone as the live room"')
     && audio.includes('"Will use the live-room microphone"')
-    && audio.includes('"Recorded directly on this iPhone"'),
+    && audio.includes('"Recorded directly on \\(CaptureDeviceVocabulary.thisDevice)"'),
 );
 check(
   "the global banner does not claim two-source recording during startup",
