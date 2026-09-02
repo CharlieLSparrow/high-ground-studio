@@ -680,6 +680,20 @@ struct CapturePhoneShell: View {
         case .openSettings:
             guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
             UIApplication.shared.open(url)
+        case .retryMicrophone:
+            recordNavigationResetID = UUID()
+            visibleTab = .record
+            model.message = nil
+            Task { @MainActor in
+                audioCapture.resetToIdle()
+                if await audioCapture.prepareForRecording() {
+                    model.message = "Microphone ready. Tap Record when you are ready."
+                } else {
+                    model.errorMessage = audioCapture.lastErrorMessage
+                        ?? audioCapture.failureMessage
+                        ?? "Quipsly could not prepare the microphone. Check the selected input and try again."
+                }
+            }
         case .refresh:
             Task { await model.load() }
         case .openSessions:

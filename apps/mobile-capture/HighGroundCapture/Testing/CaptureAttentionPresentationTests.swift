@@ -10,7 +10,9 @@ enum CaptureAttentionPresentationTests {
         )
         expect(
             "No microphone is available after activating the audio session.",
-            title: "Check your microphone"
+            title: "Check your microphone",
+            actionTitle: "Try again",
+            recovery: .retryMicrophone
         )
         expect(
             "Camera permission denied. Allow camera access in Settings.",
@@ -59,7 +61,9 @@ enum CaptureAttentionPresentationTests {
     private static func expect(
         _ message: String,
         title: String,
-        opensSettings: Bool = false
+        opensSettings: Bool = false,
+        actionTitle: String? = nil,
+        recovery: CaptureAttentionRecovery? = nil
     ) {
         let presentation = CaptureAttentionDiagnostics.presentation(for: message)
         guard presentation.title == title else {
@@ -67,6 +71,14 @@ enum CaptureAttentionPresentationTests {
         }
         guard presentation.offersSettingsRecovery == opensSettings else {
             fail("Unexpected Settings recovery for \"\(message)\".")
+        }
+        if let actionTitle,
+           presentation.actionTitle != actionTitle {
+            fail("Expected action \"\(actionTitle)\" for \"\(message)\", got \"\(presentation.actionTitle)\".")
+        }
+        if let recovery,
+           presentation.recovery != recovery {
+            fail("Unexpected recovery for \"\(message)\".")
         }
     }
 
