@@ -163,7 +163,7 @@ for (const needle of [
   "stableOwnerSnapshot",
   "matchesStableOwnerSnapshot",
   "sessionClient.promoteRecordingToStudioMedia",
-  "Every immutable original and server receipt remains preserved.",
+  "Every original and verified cloud copy remains preserved.",
 ]) {
   assertIncludes("native experience model", text.experienceModel, needle, "Studio promotion must stop active capture, preserve account authority, and keep immutable source evidence");
 }
