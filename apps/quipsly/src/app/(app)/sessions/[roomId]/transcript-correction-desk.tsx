@@ -1666,6 +1666,7 @@ export function TranscriptCorrectionDesk({
   roomId,
   sessionTitle = "Quipsly Session",
   recordingAssetId = null,
+  initialPlaybackSeconds = null,
   canUseProjectTeamNotes = false,
   canEditRecording = false,
   recordingEditor = null,
@@ -1674,6 +1675,7 @@ export function TranscriptCorrectionDesk({
   roomId: string;
   sessionTitle?: string;
   recordingAssetId?: string | null;
+  initialPlaybackSeconds?: number | null;
   canUseProjectTeamNotes?: boolean;
   canEditRecording?: boolean;
   recordingEditor?: ReactNode | ((focus: RecordingEditorFocus | null) => ReactNode);
@@ -1692,7 +1694,10 @@ export function TranscriptCorrectionDesk({
   const [listenedSecondBins, setListenedSecondBins] = useState<Set<number>>(() => new Set());
   const [sourceReviewedSecondBins, setSourceReviewedSecondBins] = useState<Set<string>>(() => new Set());
   const [activePlayback, setActivePlayback] = useState<TranscriptPlayback | null>(null);
-  const [playbackSeconds, setPlaybackSeconds] = useState(0);
+  const normalizedInitialPlaybackSeconds = typeof initialPlaybackSeconds === "number" && Number.isFinite(initialPlaybackSeconds)
+    ? Math.max(0, Math.min(86_400, initialPlaybackSeconds))
+    : 0;
+  const [playbackSeconds, setPlaybackSeconds] = useState(normalizedInitialPlaybackSeconds);
   const [playbackState, setPlaybackState] = useState<"absent" | "loading" | "ready" | "error">("absent");
   const [showQualityDetails, setShowQualityDetails] = useState(false);
   const [showSpeakerIdentity, setShowSpeakerIdentity] = useState(false);
@@ -1702,6 +1707,7 @@ export function TranscriptCorrectionDesk({
   const mediaRef = useRef<HTMLMediaElement | null>(null);
   const lastPlaybackTimeRef = useRef<number | null>(null);
   const pendingSourcePlaybackRef = useRef<{ sourceId: string; seconds: number } | null>(null);
+  const pendingInitialSeekRef = useRef<number | null>(normalizedInitialPlaybackSeconds > 0 ? normalizedInitialPlaybackSeconds : null);
   const automaticPlaybackPreparationRef = useRef<string | null>(null);
   const speakerNamingPromptedRef = useRef(false);
   const currentPlayback = activePlayback ?? desk?.playback ?? null;
@@ -1752,12 +1758,13 @@ export function TranscriptCorrectionDesk({
   useEffect(() => {
     setListenedSecondBins(new Set());
     setSourceReviewedSecondBins(new Set());
-    setPlaybackSeconds(0);
+    setPlaybackSeconds(normalizedInitialPlaybackSeconds);
     lastPlaybackTimeRef.current = null;
     pendingSourcePlaybackRef.current = null;
+    pendingInitialSeekRef.current = normalizedInitialPlaybackSeconds > 0 ? normalizedInitialPlaybackSeconds : null;
     setActivePlayback(desk?.playback ?? null);
     setPlaybackState(desk?.playback ? ((mediaRef.current?.readyState ?? 0) >= 1 ? "ready" : "loading") : "absent");
-  }, [desk?.playback?.sourceId]);
+  }, [desk?.playback?.sourceId, normalizedInitialPlaybackSeconds]);
 
   useEffect(() => {
     if (!["QUEUED", "RUNNING"].includes(desk?.transcriptStatus || "")) return;
@@ -1939,7 +1946,17 @@ export function TranscriptCorrectionDesk({
     setPlaybackState("ready");
     const pending = pendingSourcePlaybackRef.current;
     const media = mediaRef.current;
-    if (!pending || !media || pending.sourceId !== currentPlayback?.sourceId || !currentPlayback) return;
+    if (!media || !currentPlayback) return;
+    if (!pending) {
+      const initialSeek = pendingInitialSeekRef.current;
+      if (initialSeek === null) return;
+      pendingInitialSeekRef.current = null;
+      const bounded = Math.min(initialSeek, Math.max(0, currentPlayback.durationSeconds - 0.001));
+      media.currentTime = bounded;
+      setPlaybackSeconds(bounded);
+      return;
+    }
+    if (pending.sourceId !== currentPlayback.sourceId) return;
     pendingSourcePlaybackRef.current = null;
     media.currentTime = pending.seconds;
     setPlaybackSeconds(pending.seconds);

@@ -173,6 +173,17 @@ describe("TranscriptCorrectionDesk", () => {
     expect(document.getElementById("transcript-audio-review")).toBeInTheDocument();
   });
 
+  it("seeks the selected source to a deep-linked audio moment without autoplay", async () => {
+    window.history.replaceState(null, "", "#transcript-audio-review");
+    global.fetch = jest.fn(async () => ({ ok: true, json: async () => desk(true) })) as unknown as typeof fetch;
+
+    render(<TranscriptCorrectionDesk roomId="room-1" recordingAssetId="asset-1" initialPlaybackSeconds={18} />);
+
+    const media = await markProtectedPlaybackReady();
+    expect(media.currentTime).toBe(18);
+    expect(HTMLMediaElement.prototype.play).not.toHaveBeenCalled();
+  });
+
   it("saves a source-anchored transcript edit without forcing playback first", async () => {
     const directEditDesk = desk(false);
     directEditDesk.recording.eligibleForProtectedPlaybackPreparation = false;

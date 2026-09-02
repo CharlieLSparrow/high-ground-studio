@@ -1674,7 +1674,7 @@ describe("Session review goal candidates", () => {
     expect(screen.getByText(/flagged at 00:18/i)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Check this audio moment" })).toHaveAttribute(
       "href",
-      "/sessions/room-1?mode=transcript&source=asset-1#transcript-audio-review",
+      "/sessions/room-1?mode=transcript&source=asset-1&at=18#transcript-audio-review",
     );
     expect(screen.getByText("Technical recording details")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Download technical receipt" })).toHaveAttribute(

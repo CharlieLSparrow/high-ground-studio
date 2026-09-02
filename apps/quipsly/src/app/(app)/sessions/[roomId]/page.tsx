@@ -61,7 +61,7 @@ export default async function SessionReviewPage({
   searchParams,
 }: {
   params: Promise<{ roomId: string }>;
-  searchParams: Promise<{ mode?: string | string[]; view?: string | string[]; joined?: string | string[]; open?: string | string[]; attention?: string | string[]; source?: string | string[] }>;
+  searchParams: Promise<{ mode?: string | string[]; view?: string | string[]; joined?: string | string[]; open?: string | string[]; attention?: string | string[]; source?: string | string[]; at?: string | string[] }>;
 }) {
   const [{ roomId }, query] = await Promise.all([params, searchParams]);
   const workspaceMode = parseSessionWorkspaceMode(query.mode);
@@ -70,6 +70,11 @@ export default async function SessionReviewPage({
   const captureOpenFallback = (Array.isArray(query.open) ? query.open[0] : query.open) === "capture";
   const focusedAttentionId = cleanText(Array.isArray(query.attention) ? query.attention[0] : query.attention).slice(0, 240) || null;
   const focusedRecordingAssetId = cleanText(Array.isArray(query.source) ? query.source[0] : query.source).slice(0, 240) || null;
+  const requestedPlaybackText = cleanText(Array.isArray(query.at) ? query.at[0] : query.at);
+  const requestedPlaybackSeconds = requestedPlaybackText ? Number(requestedPlaybackText) : Number.NaN;
+  const focusedPlaybackSeconds = Number.isFinite(requestedPlaybackSeconds) && requestedPlaybackSeconds >= 0 && requestedPlaybackSeconds <= 86_400
+    ? requestedPlaybackSeconds
+    : null;
   const session = await getQuipslySession();
   if (!session?.user) {
     return <main className="min-h-full px-6 py-10 lg:px-10"><section className="mx-auto max-w-3xl rounded-3xl border border-[#ead8b4] bg-[#fffaf0] p-8" role="status"><LockKeyhole className="text-amber-700" aria-hidden="true" /><h1 className="mt-4 font-serif text-3xl font-black text-[#3d3122]">This session review is private.</h1><p className="mt-2 font-semibold text-[#765f40]">Sign in before reading consent, transcript evidence, candidates, or committed tasks.</p><Link href={`/login?callbackUrl=${encodeURIComponent(`/sessions/${roomId}`)}`} className="mt-5 inline-flex rounded-full bg-[#3e2f21] px-5 py-2.5 text-xs font-black uppercase tracking-wide text-white">Sign in</Link></section></main>;
@@ -876,7 +881,7 @@ export default async function SessionReviewPage({
         publicationEligible: versionedOutputGraph.currentPacket?.publicationEligible ?? false,
       } : undefined,
     };
-    return <main className={`min-h-full bg-transparent ${workspaceMode === "live" ? "px-3 py-3 sm:px-6 sm:py-8 lg:px-10" : "px-6 py-5 sm:py-8 lg:px-10"}`}><div className="mx-auto max-w-[1240px]">{workspaceMode === "live" ? null : <nav aria-label="Session navigation" className="mb-6 hidden text-sm font-bold text-[#765f40] sm:block"><Link href="/schedule" className="hover:underline">Calendar</Link><span aria-hidden="true"> / </span><span>Session workspace</span></nav>}<SessionReviewClient roomId={room.id} sessionTitle={room.title || "Capture session"} mode={workspaceMode} notesView={sessionNoteView} joinedFromInvitation={joinedFromInvitation} captureOpenFallback={captureOpenFallback} preparation={sessionPreparation} consentSnapshot={consentSnapshot} contentReadiness={contentReadiness} sourceEvidence={sourceEvidence} audibleEventSources={audibleEventSources} readinessTopology={sessionReadinessTopology} canManageSourcePlan={canManageSourcePlan} canViewEntryChoiceMetrics={canViewEntryChoiceMetrics} canReleaseHeldMedia={session.user.isStaff} sessionTaxonomy={sessionTaxonomy} studioHandoff={studioHandoff} finishingEvidence={finishingEvidence} versionedOutputGraph={versionedOutputGraph} sourceClockAttention={sourceClockAttention} focusedAttentionId={focusedAttentionId} focusedRecordingAssetId={focusedRecordingAssetId} sessionNotes={sessionNotes} canUseProjectTeamNotes={canViewProjectTeamNotes} sessionQuickEntries={sessionQuickEntries} captureReceipts={captureReceipts} sessionContinuity={sessionContinuity} collaborationContext={collaborationContext} /></div></main>;
+    return <main className={`min-h-full bg-transparent ${workspaceMode === "live" ? "px-3 py-3 sm:px-6 sm:py-8 lg:px-10" : "px-6 py-5 sm:py-8 lg:px-10"}`}><div className="mx-auto max-w-[1240px]">{workspaceMode === "live" ? null : <nav aria-label="Session navigation" className="mb-6 hidden text-sm font-bold text-[#765f40] sm:block"><Link href="/schedule" className="hover:underline">Calendar</Link><span aria-hidden="true"> / </span><span>Session workspace</span></nav>}<SessionReviewClient roomId={room.id} sessionTitle={room.title || "Capture session"} mode={workspaceMode} notesView={sessionNoteView} joinedFromInvitation={joinedFromInvitation} captureOpenFallback={captureOpenFallback} preparation={sessionPreparation} consentSnapshot={consentSnapshot} contentReadiness={contentReadiness} sourceEvidence={sourceEvidence} audibleEventSources={audibleEventSources} readinessTopology={sessionReadinessTopology} canManageSourcePlan={canManageSourcePlan} canViewEntryChoiceMetrics={canViewEntryChoiceMetrics} canReleaseHeldMedia={session.user.isStaff} sessionTaxonomy={sessionTaxonomy} studioHandoff={studioHandoff} finishingEvidence={finishingEvidence} versionedOutputGraph={versionedOutputGraph} sourceClockAttention={sourceClockAttention} focusedAttentionId={focusedAttentionId} focusedRecordingAssetId={focusedRecordingAssetId} focusedPlaybackSeconds={focusedPlaybackSeconds} sessionNotes={sessionNotes} canUseProjectTeamNotes={canViewProjectTeamNotes} sessionQuickEntries={sessionQuickEntries} captureReceipts={captureReceipts} sessionContinuity={sessionContinuity} collaborationContext={collaborationContext} /></div></main>;
   } catch (error) {
     unstable_rethrow(error);
     console.error("[session-review] failed to load scoped session", error);

@@ -1715,7 +1715,8 @@ function SessionSourceEvidenceCard({
       : audio.signal;
     const signalObservations = visibleSignal?.observations ?? [];
     const signalObservationCount = signalObservations.length;
-    const transcriptReviewHref = `/sessions/${encodeURIComponent(roomId)}?mode=transcript&source=${encodeURIComponent(source.recordingAssetId)}#transcript-audio-review`;
+    const firstObservationSeconds = signalObservations[0]?.startSeconds ?? null;
+    const transcriptReviewHref = `/sessions/${encodeURIComponent(roomId)}?mode=transcript&source=${encodeURIComponent(source.recordingAssetId)}${firstObservationSeconds === null ? "" : `&at=${encodeURIComponent(String(firstObservationSeconds))}`}#transcript-audio-review`;
     const waveform = visibleSignal?.waveform ?? [];
     const compactWaveform = waveform.length <= 96
       ? waveform
@@ -3757,6 +3758,7 @@ export function SessionReviewClient({
   sourceClockAttention = null,
   focusedAttentionId = null,
   focusedRecordingAssetId = null,
+  focusedPlaybackSeconds = null,
   sessionNotes = [],
   canUseProjectTeamNotes = false,
   sessionQuickEntries = [],
@@ -3802,6 +3804,7 @@ export function SessionReviewClient({
   sourceClockAttention?: SessionSourceClockAttention | null;
   focusedAttentionId?: string | null;
   focusedRecordingAssetId?: string | null;
+  focusedPlaybackSeconds?: number | null;
   sessionNotes?: SessionWorkspaceNote[];
   canUseProjectTeamNotes?: boolean;
   sessionQuickEntries?: SessionQuickEntry[];
@@ -4470,6 +4473,7 @@ export function SessionReviewClient({
               roomId={roomId}
               sessionTitle={sessionTitle}
               recordingAssetId={focusedRecordingAssetId}
+              initialPlaybackSeconds={focusedPlaybackSeconds}
               canUseProjectTeamNotes={canUseProjectTeamNotes}
               canEditRecording={purpose === "COACHING"}
               recordingEditor={
