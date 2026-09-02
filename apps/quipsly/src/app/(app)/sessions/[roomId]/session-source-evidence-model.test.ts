@@ -295,6 +295,24 @@ function completedAudioSignalJob(sourceSha256 = sha256) {
       windows: [{ startSeconds: 0, durationSeconds: 1, bandRmsDbfs: [-20] }],
       boundaries: { broadBandsAreNotARepairSpectrogram: true as const, measurementsAreNotEqDecisions: true as const, stereoIsDownmixedForFrequencyOverview: true as const },
     },
+    loudness: {
+      schemaVersion: 1 as const,
+      algorithm: "itu-r-bs.1770-5-integrated-v1" as const,
+      standard: "ITU-R BS.1770-5" as const,
+      status: "measured" as const,
+      sampleRate: 48_000,
+      channelCount: 1,
+      analyzedFrameCount: 48_000,
+      measurementBlockDurationSeconds: 0.4 as const,
+      measurementBlockStepSeconds: 0.1 as const,
+      measurementBlockCount: 7,
+      absoluteGatedBlockCount: 7,
+      relativeGatedBlockCount: 7,
+      absoluteGateLufs: -70 as const,
+      relativeGateLufs: -28.5,
+      integratedLoudnessLufs: -18.5,
+      maximumMomentaryLoudnessLufs: -17.9,
+    },
     observations: [],
   };
   return {
@@ -694,7 +712,16 @@ describe("Session source evidence", () => {
         completeDecode: true,
         completedAt: "2026-08-02T20:02:00.000Z",
         media: { container: "wav", codec: "pcm_s24le", sampleRateHz: 48_000, channelCount: 1, durationSeconds: 1 },
-        signal: expect.objectContaining({ status: "signal-present", rmsDbfs: -18, samplePeakDbfs: -3 }),
+        signal: expect.objectContaining({
+          status: "signal-present",
+          rmsDbfs: -18,
+          samplePeakDbfs: -3,
+          loudness: expect.objectContaining({
+            integratedLoudnessLufs: -18.5,
+            maximumMomentaryLoudnessLufs: -17.9,
+            truePeakMeasured: false,
+          }),
+        }),
         error: null,
       },
     });
