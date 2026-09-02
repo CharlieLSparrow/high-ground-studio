@@ -21,7 +21,9 @@ enum CaptureAttentionPresentationTests {
         )
         expect(
             "The selected camera could not start.",
-            title: "Check your camera"
+            title: "Check your camera",
+            actionTitle: "Try again",
+            recovery: .retryCamera
         )
         expect(
             "That Space is not available on this device yet.",

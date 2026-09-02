@@ -34,6 +34,7 @@ struct CaptureAttentionPresentation: Equatable {
 enum CaptureAttentionRecovery: Equatable {
     case openSettings
     case retryMicrophone
+    case retryCamera
     case refresh
     case openSessions
     case openLibrary
@@ -214,7 +215,9 @@ final class CaptureAttentionDiagnostics {
             ("Open Library", CaptureAttentionRecovery.openLibrary)
         case "microphone-or-audio-route":
             ("Try again", CaptureAttentionRecovery.retryMicrophone)
-        case "camera", "call", "session-or-workspace":
+        case "camera":
+            ("Try again", CaptureAttentionRecovery.retryCamera)
+        case "call", "session-or-workspace":
             ("Open Sessions", CaptureAttentionRecovery.openSessions)
         default: ("Dismiss", CaptureAttentionRecovery.dismiss)
         }

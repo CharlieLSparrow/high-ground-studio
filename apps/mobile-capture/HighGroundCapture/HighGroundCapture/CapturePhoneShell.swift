@@ -708,6 +708,20 @@ struct CapturePhoneShell: View {
                         ?? "Quipsly could not prepare the microphone. Check the selected input and try again."
                 }
             }
+        case .retryCamera:
+            recordNavigationResetID = UUID()
+            visibleTab = .record
+            model.message = nil
+            Task { @MainActor in
+                await model.prepareVideoCapture(
+                    using: videoCapture,
+                    mode: CaptureCallPreferences.recordingMode(
+                        for: model.selectedSession?.purpose
+                    ),
+                    position: CaptureCallPreferences.cameraPosition,
+                    qualityIntent: CaptureCallPreferences.videoQualityIntent
+                )
+            }
         case .refresh:
             Task { await model.load() }
         case .openSessions:
