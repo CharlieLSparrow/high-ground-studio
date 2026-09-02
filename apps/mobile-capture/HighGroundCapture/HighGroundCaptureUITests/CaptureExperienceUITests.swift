@@ -4742,6 +4742,11 @@ final class CaptureExperienceUITests: XCTestCase {
         let audioSummary = app.descendants(matching: .any)["CaptureAudioQualitySummary"].firstMatch
         XCTAssertTrue(audioSummary.exists)
         XCTAssertTrue(audioSummary.label.contains("1 moment worth checking"))
+        let loudnessSummary = app.descendants(matching: .any)[
+            "CaptureAudioLoudnessSummary"
+        ]
+        XCTAssertTrue(loudnessSummary.exists)
+        XCTAssertTrue(loudnessSummary.label.contains("ITU-R BS.1770-5"))
         XCTAssertTrue(app.descendants(matching: .any)["CaptureAudioReviewTimeline"].exists)
         let playheadStatus = app.descendants(matching: .any)["CaptureAudioReviewPlayheadStatus"]
         XCTAssertTrue(playheadStatus.exists)

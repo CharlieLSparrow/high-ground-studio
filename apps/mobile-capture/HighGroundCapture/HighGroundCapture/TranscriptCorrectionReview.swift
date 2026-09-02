@@ -6191,10 +6191,17 @@ private struct CaptureTranscriptAudioQualityCard: View {
 
             if let signal = recording.sourceProfile?.audioSignal {
                 HStack(spacing: 8) {
-                    signalMetric(
-                        value: String(format: "%.1f", signal.rmsDbfs),
-                        label: "RMS dBFS"
-                    )
+                    if let integrated = signal.loudness?.integratedLoudnessLufs {
+                        signalMetric(
+                            value: String(format: "%.1f", integrated),
+                            label: "LUFS"
+                        )
+                    } else {
+                        signalMetric(
+                            value: String(format: "%.1f", signal.rmsDbfs),
+                            label: "RMS dBFS"
+                        )
+                    }
                     signalMetric(
                         value: String(format: "%.1f", signal.samplePeakDbfs),
                         label: "peak dBFS"
@@ -6204,7 +6211,9 @@ private struct CaptureTranscriptAudioQualityCard: View {
                         label: "listen points"
                     )
                 }
-                Text("Measured across the decoded source. RMS is not LUFS, and listen points are review candidates—not confirmed defects.")
+                Text(signal.loudness?.integratedLoudnessLufs == nil
+                    ? "Measured across the decoded source. RMS is not LUFS, and listen points are review candidates—not confirmed defects."
+                    : "Programme loudness uses the complete decoded source and ITU-R BS.1770-5. Listen points remain review candidates—not confirmed defects.")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)

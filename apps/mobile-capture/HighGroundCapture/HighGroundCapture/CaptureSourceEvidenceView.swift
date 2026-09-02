@@ -195,6 +195,30 @@ struct CaptureSourceEvidenceView: View {
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
 
+                    if let loudness = signal.loudness,
+                       loudness.status == "measured",
+                       let integrated = loudness.integratedLoudnessLufs {
+                        HStack(alignment: .top, spacing: 14) {
+                            signalMetric(
+                                "Programme loudness",
+                                value: String(format: "%.1f LUFS", integrated),
+                                detail: "Integrated"
+                            )
+                            signalMetric(
+                                "Loudest moment",
+                                value: loudness.maximumMomentaryLoudnessLufs.map {
+                                    String(format: "%.1f LUFS", $0)
+                                } ?? "Unavailable",
+                                detail: "400 ms maximum"
+                            )
+                        }
+                        .accessibilityIdentifier("CaptureAudioLoudnessSummary")
+                        Text("Measured from the complete decoded source using ITU-R BS.1770-5. This is a consistent level reference—not a quality verdict or an automatic mastering target.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+
                     let signalMarkers = signal.observations.map {
                         CaptureAudioReviewMarker(
                             seconds: $0.startSeconds,
@@ -275,6 +299,13 @@ struct CaptureSourceEvidenceView: View {
                             HStack(alignment: .top, spacing: 14) {
                                 signalMetric("Near silent", value: String(format: "%.1f%%", signal.nearSilentFrameFraction * 100), detail: "Decoded frames")
                                 signalMetric("Coverage", value: durationLabel(signal.durationSeconds), detail: "\(signal.analyzedFrameCount) frames")
+                            }
+                            if let loudness = signal.loudness {
+                                EvidenceRow(label: "Loudness method", value: "\(loudness.standard) · \(loudness.status)")
+                                EvidenceRow(
+                                    label: "Loudness blocks",
+                                    value: "\(loudness.relativeGatedBlockCount) used · \(loudness.measurementBlockCount) measured"
+                                )
                             }
                             Text("Complete-frame RMS and sample-peak observations. A possible dropout is only a listening candidate, never a claim that audio was lost.")
                                 .font(.caption)
@@ -2101,6 +2132,11 @@ struct CaptureSourceEvidencePreviewView: View {
                     Text("Tap a marked moment to hear it in the original. Quipsly never removes or repairs audio without your review.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                    EvidenceRow(
+                        label: "Programme loudness",
+                        value: "−18.0 LUFS · ITU-R BS.1770-5 preview"
+                    )
+                    .accessibilityIdentifier("CaptureAudioLoudnessSummary")
                     CaptureAudioReviewTimeline(
                         points: [
                             0.24, 0.48, 0.38, 0.64, 0.52, 0.73, 0.42, 0.28,

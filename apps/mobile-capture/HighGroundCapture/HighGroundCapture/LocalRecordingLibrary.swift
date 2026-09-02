@@ -178,6 +178,7 @@ struct LocalRecordingAudioSignalProfile: Codable, Equatable, Sendable {
     let thresholds: LocalRecordingAudioSignalThresholds
     let waveform: [LocalRecordingAudioSignalWindow]
     let observations: [LocalRecordingAudioSignalObservation]
+    var loudness: LocalRecordingLoudnessProfile?
 }
 
 struct LocalRecordingAudioSignalThresholds: Codable, Equatable, Sendable {
@@ -2203,6 +2204,10 @@ final class LocalRecordingLibrary: ObservableObject {
         var clippedFrames: Int64 = 0
         var nearSilentFrames: Int64 = 0
         var channelSumSquares = [Double](repeating: 0, count: channelCount)
+        var loudnessAnalyzer = LocalBS1770LoudnessAnalyzer(
+            sampleRate: sampleRate,
+            channelCount: channelCount
+        )
         var windows: [LocalRecordingAudioSignalWindow] = []
         windows.reserveCapacity(Int(min(boundedPointCount, Int64.max)))
         var accumulator = WindowAccumulator()
@@ -2233,6 +2238,10 @@ final class LocalRecordingLibrary: ObservableObject {
             )
             guard buffer.frameLength > 0,
                   let channels = buffer.floatChannelData else { break }
+            loudnessAnalyzer?.consume(
+                planarFloatChannels: channels,
+                frameCount: Int(buffer.frameLength)
+            )
             for frameIndex in 0..<Int(buffer.frameLength) {
                 var channelEnergy = 0.0
                 var framePeak = 0.0
@@ -2309,7 +2318,8 @@ final class LocalRecordingLibrary: ObservableObject {
             signalStatus: signalStatus,
             thresholds: thresholds,
             waveform: windows,
-            observations: observations
+            observations: observations,
+            loudness: loudnessAnalyzer?.result()
         )
     }
 
