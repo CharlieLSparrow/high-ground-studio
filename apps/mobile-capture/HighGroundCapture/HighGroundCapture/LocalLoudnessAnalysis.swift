@@ -24,8 +24,8 @@ struct LocalRecordingLoudnessProfile: Codable, Equatable, Sendable {
 /// specified overlapping 400 ms, two-stage gated integration. This is not a
 /// true-peak meter and deliberately does not infer a mastering target.
 struct LocalBS1770LoudnessAnalyzer {
-    static let algorithm = "itu-r-bs.1770-5-integrated-v1"
-    static let standard = "ITU-R BS.1770-5"
+    nonisolated static let algorithm = "itu-r-bs.1770-5-integrated-v1"
+    nonisolated static let standard = "ITU-R BS.1770-5"
 
     private let sampleRate: Double
     private let channelCount: Int
@@ -39,6 +39,8 @@ struct LocalBS1770LoudnessAnalyzer {
         var v2 = 0.0
         var v3 = 0.0
         var v4 = 0.0
+
+        nonisolated init() {}
     }
 
     private var filterHistory: [FilterHistory]
@@ -252,5 +254,5 @@ struct LocalBS1770LoudnessAnalyzer {
 }
 
 private extension Double {
-    var squared: Double { self * self }
+    nonisolated var squared: Double { self * self }
 }
