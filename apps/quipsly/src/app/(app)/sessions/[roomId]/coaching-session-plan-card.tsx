@@ -42,6 +42,7 @@ export function CoachingSessionPlanCard({ roomId }: { roomId: string }) {
   const [saving, setSaving] = useState<"client" | "coach" | null>(null);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const loadSequence = useRef(0);
   const pendingSave = useRef<null | {
     lane: "client" | "coach";
     fingerprint: string;
@@ -49,6 +50,7 @@ export function CoachingSessionPlanCard({ roomId }: { roomId: string }) {
   }>(null);
 
   const load = useCallback(async () => {
+    const sequence = ++loadSequence.current;
     setLoading(true);
     setError("");
     try {
@@ -57,6 +59,7 @@ export function CoachingSessionPlanCard({ roomId }: { roomId: string }) {
         { cache: "no-store" },
       );
       const payload = await response.json().catch(() => null);
+      if (sequence !== loadSequence.current) return;
       if (response.status === 404) {
         setUnavailable(true);
         return;
@@ -69,13 +72,14 @@ export function CoachingSessionPlanCard({ roomId }: { roomId: string }) {
       setClientDraft(next.client);
       setCoachDraft(next.coachPrivate?.note || "");
     } catch (cause) {
+      if (sequence !== loadSequence.current) return;
       setError(
         cause instanceof Error
           ? cause.message
           : "Preparation could not be loaded.",
       );
     } finally {
-      setLoading(false);
+      if (sequence === loadSequence.current) setLoading(false);
     }
   }, [roomId]);
 

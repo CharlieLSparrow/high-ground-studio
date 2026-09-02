@@ -1,4 +1,5 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { StrictMode } from "react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import {
@@ -125,7 +126,43 @@ describe("Coaching Session plan card", () => {
     const body = JSON.parse(String((request?.[1] as RequestInit).body));
     expect(body).toMatchObject({ operation: "SAVE_COACH", note: visibleNote });
   });
+
+  it("does not reveal a form that an older overlapping load can later erase", async () => {
+    const first = deferred<Response>();
+    const latest = deferred<Response>();
+    const fetchMock = (global.fetch as jest.MockedFunction<typeof fetch>)
+      .mockReturnValueOnce(first.promise)
+      .mockReturnValueOnce(latest.promise);
+
+    render(
+      <StrictMode>
+        <CoachingSessionPlanCard roomId={ROOM_ID} />
+      </StrictMode>,
+    );
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+
+    await act(async () => {
+      first.resolve(json({ ok: true, preparation: preparation("coach") }));
+      await first.promise;
+    });
+    expect(screen.queryByLabelText("Private coach prep")).not.toBeInTheDocument();
+    expect(screen.getByText("Loading your Session plan…")).toBeInTheDocument();
+
+    await act(async () => {
+      latest.resolve(json({ ok: true, preparation: preparation("coach") }));
+      await latest.promise;
+    });
+    expect(await screen.findByLabelText("Private coach prep")).toBeInTheDocument();
+  });
 });
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((next) => {
+    resolve = next;
+  });
+  return { promise, resolve };
+}
 
 function preparation(role: "client" | "coach"): Preparation {
   return {

@@ -173,10 +173,29 @@ try {
   await openSessionPlan(pages.coach);
   await pages.coach.getByText(focus, { exact: true }).waitFor({ timeout: 20_000 });
   await pages.coach.getByText(desiredOutcome, { exact: true }).waitFor();
-  await pages.coach.getByLabel("Private coach prep").fill(privateNote);
+  const privatePrep = pages.coach.getByLabel("Private coach prep");
+  await privatePrep.fill(privateNote);
+  assert.equal(
+    await privatePrep.inputValue(),
+    privateNote,
+    "The visible coach preparation changed before save.",
+  );
+  const coachSaveRequest = pages.coach.waitForRequest(
+    (request) =>
+      request.method() === "PUT"
+      && new URL(request.url()).pathname
+        === `/api/sessions/${encodeURIComponent(target.roomId)}/preparation`
+      && request.postDataJSON()?.operation === "SAVE_COACH",
+    { timeout: 20_000 },
+  );
   await pages.coach
     .getByRole("button", { name: "Save private prep", exact: true })
     .click();
+  assert.equal(
+    (await coachSaveRequest).postDataJSON()?.note,
+    privateNote,
+    "The coach preparation request did not contain the text visible at save time.",
+  );
   await pages.coach
     .getByText("Private coach prep saved.", { exact: true })
     .waitFor({ timeout: 20_000 });
