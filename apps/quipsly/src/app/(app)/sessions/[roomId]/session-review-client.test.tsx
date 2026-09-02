@@ -1592,6 +1592,11 @@ describe("Session review goal candidates", () => {
               samplePeakDbfs: -0.2,
               clippedFrameCount: 15,
               nearSilentFrameFraction: 0.01,
+              durationSeconds: 240,
+              waveform: [
+                { startSeconds: 0, durationSeconds: 120, rmsDbfs: -28, samplePeakDbfs: -8, clippedFrameCount: 0 },
+                { startSeconds: 120, durationSeconds: 120, rmsDbfs: -18, samplePeakDbfs: -0.2, clippedFrameCount: 15 },
+              ],
               loudness: {
                 integratedLoudnessLufs: -20.6,
                 maximumMomentaryLoudnessLufs: -14.8,
@@ -1665,7 +1670,12 @@ describe("Session review goal candidates", () => {
     expect(screen.getByText("1 moment worth checking")).toBeInTheDocument();
     expect(screen.getByText(/programme loudness -20.6 LUFS · loudest 400 ms -14.8 LUFS/i)).toBeInTheDocument();
     expect(screen.getByText(/sample peak is not true peak/i)).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Check this audio moment" })).toHaveAttribute("href", "#transcript-audio-review");
+    expect(screen.getByRole("img", { name: "Decoded waveform overview for homer-camera.mov with 1 flagged moment" })).toBeInTheDocument();
+    expect(screen.getByText(/flagged at 00:18/i)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Check this audio moment" })).toHaveAttribute(
+      "href",
+      "/sessions/room-1?mode=transcript&source=asset-1#transcript-audio-review",
+    );
     expect(screen.getByText("Technical recording details")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Download technical receipt" })).toHaveAttribute(
       "href",

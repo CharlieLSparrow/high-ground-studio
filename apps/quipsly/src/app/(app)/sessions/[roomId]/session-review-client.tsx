@@ -1713,7 +1713,25 @@ function SessionSourceEvidenceCard({
     const visibleSignal = source.analysis?.completeDecode
       ? source.analysis.signal
       : audio.signal;
-    const signalObservationCount = visibleSignal?.observations.length ?? 0;
+    const signalObservations = visibleSignal?.observations ?? [];
+    const signalObservationCount = signalObservations.length;
+    const transcriptReviewHref = `/sessions/${encodeURIComponent(roomId)}?mode=transcript&source=${encodeURIComponent(source.recordingAssetId)}#transcript-audio-review`;
+    const waveform = visibleSignal?.waveform ?? [];
+    const compactWaveform = waveform.length <= 96
+      ? waveform
+      : Array.from({ length: 96 }, (_, index) => {
+          const startIndex = Math.floor((index * waveform.length) / 96);
+          const endIndex = Math.max(startIndex + 1, Math.floor(((index + 1) * waveform.length) / 96));
+          return waveform
+            .slice(startIndex, endIndex)
+            .reduce((loudest, point) => point.samplePeakDbfs > loudest.samplePeakDbfs ? point : loudest);
+        });
+    const waveformHeight = (dbfs: number) =>
+      Math.max(4, Math.min(100, ((Math.max(-72, Math.min(0, dbfs)) + 72) / 72) * 100));
+    const waveformDuration = Math.max(
+      visibleSignal?.durationSeconds ?? 0,
+      ...waveform.map((point) => point.startSeconds + point.durationSeconds),
+    );
     const recordingSafetyLabel = verified
       ? "Safely stored"
       : drift
@@ -1816,15 +1834,63 @@ function SessionSourceEvidenceCard({
           >
             {audioHealthLabel}
           </p>
+          {compactWaveform.length > 0 ? (
+            <div className="mt-3 rounded-lg border border-sky-200 bg-slate-950 p-3">
+              <div
+                className="relative flex h-16 items-end gap-px overflow-hidden rounded bg-slate-900 px-1 pt-2"
+                role="img"
+                aria-label={`Decoded waveform overview for ${source.fileName}${signalObservationCount > 0 ? ` with ${signalObservationCount} flagged ${signalObservationCount === 1 ? "moment" : "moments"}` : ""}`}
+              >
+                {compactWaveform.map((point, index) => (
+                  <span
+                    key={`${point.startSeconds}-${index}`}
+                    className={`min-w-px flex-1 rounded-t-sm ${point.clippedFrameCount > 0 ? "bg-rose-300" : "bg-cyan-300/80"}`}
+                    style={{ height: `${waveformHeight(point.rmsDbfs)}%` }}
+                    aria-hidden="true"
+                  />
+                ))}
+                {waveformDuration > 0
+                  ? signalObservations.map((observation, index) => (
+                      <span
+                        key={`${observation.kind}-${observation.startSeconds}-${index}`}
+                        className="absolute inset-y-0 w-0.5 bg-amber-300"
+                        style={{ left: `${Math.max(0, Math.min(100, (observation.startSeconds / waveformDuration) * 100))}%` }}
+                        aria-hidden="true"
+                      />
+                    ))
+                  : null}
+              </div>
+              <div className="mt-1 flex justify-between font-mono text-[9px] font-bold text-slate-300">
+                <span>0:00</span>
+                <span>{timestampForSeconds(waveformDuration)}</span>
+              </div>
+              {signalObservationCount > 0 ? (
+                <p className="mt-2 text-[10px] font-bold leading-4 text-amber-100">
+                  Flagged at {signalObservations.map((observation) => timestampForSeconds(observation.startSeconds)).join(", ")}. These are measured pointers for listening, not automatic quality judgments.
+                </p>
+              ) : (
+                <p className="mt-2 text-[10px] font-bold leading-4 text-cyan-100">
+                  Complete-source decoded overview. No configured threshold flagged a range; listening remains the quality check.
+                </p>
+              )}
+            </div>
+          ) : null}
           {signalObservationCount > 0 ? (
-            <a
-              href="#transcript-audio-review"
+            <Link
+              href={transcriptReviewHref}
               className="mt-3 inline-flex min-h-11 items-center rounded-full border border-amber-300 bg-white px-3 py-2 text-xs font-black text-amber-950"
             >
               {signalObservationCount === 1
                 ? "Check this audio moment"
                 : `Check ${signalObservationCount} audio moments`}
-            </a>
+            </Link>
+          ) : compactWaveform.length > 0 ? (
+            <Link
+              href={transcriptReviewHref}
+              className="mt-3 inline-flex min-h-11 items-center rounded-full border border-sky-300 bg-white px-3 py-2 text-xs font-black text-sky-950"
+            >
+              Open this source in Transcript
+            </Link>
           ) : null}
         </div>
 
