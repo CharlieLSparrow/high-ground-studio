@@ -121,7 +121,7 @@ describe("SessionRecordingHealthListeningNavigator", () => {
   });
 
   it("starts on the ready master and exposes protected native playback plus a source clock", () => {
-    render(<SessionRecordingHealthListeningNavigator health={health()} evidence={evidence()} />);
+    render(<SessionRecordingHealthListeningNavigator roomId="room-1" health={health()} evidence={evidence()} />);
 
     expect(screen.getByRole("heading", { name: "Open the actual master" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /MV7i master.wav/ })).toHaveAttribute("aria-pressed", "true");
@@ -129,10 +129,14 @@ describe("SessionRecordingHealthListeningNavigator", () => {
     expect(screen.getByRole("slider", { name: "Selected source time" })).toHaveAttribute("max", "20");
     expect(screen.getByRole("img", { name: "Complete-decode waveform overview" })).toBeInTheDocument();
     expect(screen.getByText(/No configured complete-decode threshold flagged a range/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Open in Transcript at 00:00" })).toHaveAttribute(
+      "href",
+      "/sessions/room-1?mode=transcript&source=master&at=0#transcript-audio-review",
+    );
   });
 
   it("switches source identity and plays exact-time observations without claiming playback review", async () => {
-    render(<SessionRecordingHealthListeningNavigator health={health()} evidence={evidence()} />);
+    render(<SessionRecordingHealthListeningNavigator roomId="room-1" health={health()} evidence={evidence()} />);
 
     fireEvent.click(screen.getByRole("button", { name: /Historical browser.wav/ }));
 
@@ -140,6 +144,10 @@ describe("SessionRecordingHealthListeningNavigator", () => {
     expect(screen.getByLabelText("Protected source Historical browser.wav")).toHaveAttribute("src", "/api/ingest/media/source-historical");
     fireEvent.click(screen.getByRole("button", { name: /0:04 · possible dropout/i }));
     await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent(/source check from 00:04/i));
+    expect(screen.getByRole("link", { name: "Open in Transcript at 00:04" })).toHaveAttribute(
+      "href",
+      "/sessions/room-1?mode=transcript&source=historical&at=4#transcript-audio-review",
+    );
     expect(screen.getByText(/no heard\/approved claim is written/i)).toBeInTheDocument();
   });
 
@@ -147,7 +155,7 @@ describe("SessionRecordingHealthListeningNavigator", () => {
     const withoutPlayback = evidence();
     for (const source of withoutPlayback.sources) source.protectedPlayback = null;
 
-    render(<SessionRecordingHealthListeningNavigator health={health()} evidence={withoutPlayback} />);
+    render(<SessionRecordingHealthListeningNavigator roomId="room-1" health={health()} evidence={withoutPlayback} />);
 
     expect(screen.getByRole("heading", { name: "Protected playback is not attached" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Check up to 10 seconds/ })).not.toBeInTheDocument();

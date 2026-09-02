@@ -1,6 +1,7 @@
 "use client";
 
 import { AudioLines, CircleAlert, Clock3, Pause, Play, ShieldCheck } from "lucide-react";
+import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { timestampForSeconds } from "./session-review-model";
@@ -52,9 +53,11 @@ function waveformHeight(dbfs: number) {
 }
 
 export function SessionRecordingHealthListeningNavigator({
+  roomId,
   health,
   evidence,
 }: {
+  roomId: string;
   health: SessionRecordingHealth;
   evidence: SessionSourceEvidence;
 }) {
@@ -95,6 +98,9 @@ export function SessionRecordingHealthListeningNavigator({
   const stopAtRef = useRef<number | null>(null);
   const selected = sources.find((source) => source.recordingAssetId === selectedId) ?? sources[0] ?? null;
   const waveform = useMemo(() => compactWaveform(selected?.signal ?? null), [selected?.signal]);
+  const transcriptHref = selected
+    ? `/sessions/${encodeURIComponent(roomId)}?mode=transcript&source=${encodeURIComponent(selected.recordingAssetId)}&at=${encodeURIComponent(String(Number(selectedSeconds.toFixed(3))))}#transcript-audio-review`
+    : null;
 
   useEffect(() => {
     if (!selected && selectedId !== null) setSelectedId(null);
@@ -196,6 +202,7 @@ export function SessionRecordingHealthListeningNavigator({
           <button type="button" onClick={() => void play(null)} disabled={playbackState === "error"} className="inline-flex min-h-11 items-center gap-2 rounded-full bg-cyan-200 px-4 text-xs font-black text-slate-950 disabled:opacity-50"><Play size={14} fill="currentColor" aria-hidden="true" />Play from selected time</button>
           <button type="button" onClick={() => void play(10)} disabled={playbackState === "error"} data-flight-deck-ten-second-check className="inline-flex min-h-11 items-center gap-2 rounded-full border border-cyan-300 bg-slate-900 px-4 text-xs font-black text-cyan-100 disabled:opacity-50"><Clock3 size={14} aria-hidden="true" />Check up to 10 seconds</button>
           <button type="button" onClick={() => { mediaRef.current?.pause(); stopAtRef.current = null; setPlaybackState("paused"); }} disabled={playbackState !== "playing"} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-slate-600 bg-slate-900 px-4 text-xs font-black text-slate-200 disabled:opacity-50"><Pause size={14} aria-hidden="true" />Pause</button>
+          {transcriptHref ? <Link href={transcriptHref} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-violet-300 bg-violet-100 px-4 text-xs font-black text-violet-950">Open in Transcript at {timestampForSeconds(selectedSeconds)}</Link> : null}
         </div>
         {message ? <p role="status" className="mt-3 rounded-lg border border-slate-700 bg-slate-900 p-3 text-xs font-bold text-cyan-100">{message}</p> : null}
         <p className="mt-3 text-[9px] font-black uppercase tracking-wide text-slate-500">Client playback is navigation only · no heard/approved claim is written</p>

@@ -90,7 +90,7 @@ export function SessionRecordingHealthCard({ roomId, topology, sourceEvidence }:
     </ol> : <p className="mt-5 rounded-2xl border border-dashed border-slate-300 bg-white/80 p-4 text-sm font-bold text-slate-700">No active planned or retained source is available. Declare the intended microphone, camera, sync, and backup sources before recording so a device that never starts cannot disappear from review.</p>}
 
     <div className="mt-5">
-      <SessionRecordingHealthListeningNavigator health={health} evidence={sourceEvidence} />
+      <SessionRecordingHealthListeningNavigator roomId={roomId} health={health} evidence={sourceEvidence} />
     </div>
   </section>;
 }
