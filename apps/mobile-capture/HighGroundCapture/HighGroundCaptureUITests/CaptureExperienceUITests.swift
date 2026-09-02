@@ -48,6 +48,11 @@ final class CaptureExperienceUITests: XCTestCase {
                 "--capture-ui-preview-attention=Sign in to continue with this account."
             )
         }
+        if name.contains("testMicrophoneAttentionRetriesPreflightInPlace") {
+            app.launchArguments.append(
+                "--capture-ui-preview-attention=No microphone is available after activating the audio session."
+            )
+        }
         if name.contains("testDisconnectedCallOffersOneTapRejoinWhileKeepingRecordingSafe") {
             app.launchArguments += [
                 "--capture-ui-preview-tab=record",
@@ -278,6 +283,25 @@ final class CaptureExperienceUITests: XCTestCase {
 
         XCTAssertTrue(app.scrollViews["CaptureAccountView"].waitForExistence(timeout: 8))
         XCTAssertFalse(app.staticTexts["Check your account"].exists)
+    }
+
+    func testMicrophoneAttentionRetriesPreflightInPlace() {
+        let title = app.staticTexts["Check your microphone"]
+        XCTAssertTrue(title.waitForExistence(timeout: 12))
+        XCTAssertFalse(app.alerts["Check your microphone"].exists)
+
+        let retry = app.buttons["Try again"]
+        XCTAssertTrue(retry.exists)
+        XCTAssertTrue(retry.isHittable)
+        retry.tap()
+        allowSystemPermissionIfPresented()
+
+        XCTAssertTrue(app.navigationBars["Sessions"].waitForExistence(timeout: 8))
+        XCTAssertTrue(
+            app.staticTexts["Microphone ready. Tap Record when you are ready."]
+                .waitForExistence(timeout: 8)
+        )
+        XCTAssertFalse(title.exists)
     }
 
     func testCaptureFirstNavigationKeepsFiveFocusedDestinations() {
