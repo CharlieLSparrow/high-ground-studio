@@ -87,6 +87,22 @@ except subprocess.TimeoutExpired:
 PY
 }
 
+quarantine_incomplete_package_cache() {
+  local checkout_root="$PACKAGE_CACHE/checkouts"
+  local incomplete_checkout=""
+  [[ -d "$checkout_root" ]] || return 0
+  incomplete_checkout="$({
+    find "$checkout_root" -mindepth 1 -maxdepth 1 -type d \
+      ! -exec test -f '{}/Package.swift' \; -print -quit
+  } 2>/dev/null || true)"
+  [[ -n "$incomplete_checkout" ]] || return 0
+
+  local quarantine_path="${PACKAGE_CACHE}.incomplete.$(date -u +%Y%m%dT%H%M%SZ).$$"
+  echo "WARN: Swift package cache has an incomplete checkout: $incomplete_checkout" >&2
+  echo "WARN: Moving the recoverable cache aside before dependency resolution: $quarantine_path" >&2
+  mv "$PACKAGE_CACHE" "$quarantine_path"
+}
+
 if [[ ! -d "$DEVELOPER_DIR_VALUE" ]]; then
   echo "ERROR: Full Xcode developer directory not found: $DEVELOPER_DIR_VALUE" >&2
   echo "Install Xcode or set DEVELOPER_DIR to the full Xcode developer directory." >&2
@@ -112,6 +128,8 @@ if ! grep -q "version = ${LIVEKIT_SWIFT_VERSION};" "$PROJECT/project.pbxproj"; t
   echo "ERROR: HighGroundCapture is not pinned to reviewed LiveKit ${LIVEKIT_SWIFT_VERSION}." >&2
   exit 1
 fi
+
+quarantine_incomplete_package_cache
 
 echo "Validating HighGroundCapture LiveKit provider-room linkage"
 echo "Project: $PROJECT"
