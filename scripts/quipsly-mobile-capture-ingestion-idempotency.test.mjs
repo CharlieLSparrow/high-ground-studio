@@ -458,7 +458,7 @@ assert.equal(held.transcriptJobStatus, "HELD", "transcript should not queue with
 assert.equal(heldAsset?.status, "HELD", "stored recording asset should be held without consent");
 assert.equal(heldJob?.status, "HELD", "stored transcript job should be held without consent");
 assert.equal(heldJob?.provider, "processing-hold");
-assert.match(heldJob?.errorMessage || "", /explicit reviewed release/i);
+assert.match(heldJob?.errorMessage || "", /recording authorization is incomplete/i);
 assert.equal(db.consents.length, 1, "no-consent upload must not create another consent row");
 assert.equal(heldRoom?.status, "OPEN", "a legacy room created during upload stays open rather than silently ending");
 
