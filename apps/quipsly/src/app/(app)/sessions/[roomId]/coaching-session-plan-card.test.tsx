@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import {
@@ -87,6 +87,43 @@ describe("Coaching Session plan card", () => {
       "Remember the client's stated values.",
     );
     expect(screen.getByText(/Only the assigned coach can read this/i)).toBeInTheDocument();
+  });
+
+  it("submits the visible private note even before controlled state catches up", async () => {
+    const coach = preparation("coach");
+    const saved = {
+      ...coach,
+      revision: 1,
+      coachPrivate: {
+        note: "Keep the client's own evidence of progress in view.",
+        preparedAt: "2026-08-26T12:01:00.000Z",
+      },
+    };
+    const fetchMock = (global.fetch as jest.MockedFunction<typeof fetch>)
+      .mockResolvedValueOnce(json({ ok: true, preparation: coach }))
+      .mockResolvedValueOnce(
+        json({
+          ok: true,
+          preparation: saved,
+          savedRevision: 1,
+          idempotentReplay: false,
+        }),
+      );
+
+    render(<CoachingSessionPlanCard roomId={ROOM_ID} />);
+
+    const note = await screen.findByLabelText("Private coach prep");
+    const visibleNote = "Keep the client's own evidence of progress in view.";
+    Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set?.call(
+      note,
+      visibleNote,
+    );
+    fireEvent.submit(note.closest("form")!);
+
+    await screen.findByText("Private coach prep saved.");
+    const request = fetchMock.mock.calls[1];
+    const body = JSON.parse(String((request?.[1] as RequestInit).body));
+    expect(body).toMatchObject({ operation: "SAVE_COACH", note: visibleNote });
   });
 });
 

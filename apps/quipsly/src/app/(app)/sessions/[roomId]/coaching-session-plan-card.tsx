@@ -83,20 +83,20 @@ export function CoachingSessionPlanCard({ roomId }: { roomId: string }) {
     void load();
   }, [load]);
 
-  async function saveClient() {
+  async function saveClient(draft: ClientDraft) {
     const body = {
       operation: "SAVE_CLIENT",
-      focus: clientDraft.focus,
-      desiredOutcome: clientDraft.desiredOutcome,
-      successMeasure: clientDraft.successMeasure,
-      progressScore: clientDraft.progressScore,
-      update: clientDraft.update,
+      focus: draft.focus,
+      desiredOutcome: draft.desiredOutcome,
+      successMeasure: draft.successMeasure,
+      progressScore: draft.progressScore,
+      update: draft.update,
     };
     await save("client", body);
   }
 
-  async function saveCoach() {
-    await save("coach", { operation: "SAVE_COACH", note: coachDraft });
+  async function saveCoach(note: string) {
+    await save("coach", { operation: "SAVE_COACH", note });
   }
 
   async function save(
@@ -179,7 +179,7 @@ export function CoachingSessionPlanCard({ roomId }: { roomId: string }) {
             draft={clientDraft}
             disabled={saving !== null}
             onChange={setClientDraft}
-            onSave={() => void saveClient()}
+            onSave={(draft) => void saveClient(draft)}
           />
         ) : preparation?.role === "coach" ? (
           <CoachPlanForm
@@ -187,7 +187,7 @@ export function CoachingSessionPlanCard({ roomId }: { roomId: string }) {
             note={coachDraft}
             disabled={saving !== null}
             onNoteChange={setCoachDraft}
-            onSave={() => void saveCoach()}
+            onSave={(note) => void saveCoach(note)}
           />
         ) : null}
 
@@ -228,15 +228,31 @@ function ClientPlanForm({
   draft: ClientDraft;
   disabled: boolean;
   onChange: (next: ClientDraft) => void;
-  onSave: () => void;
+  onSave: (draft: ClientDraft) => void;
 }) {
   const field = <Key extends keyof ClientDraft>(key: Key, value: ClientDraft[Key]) =>
     onChange({ ...draft, [key]: value });
   return (
-    <div className="mt-5 grid gap-4">
+    <form
+      className="mt-5 grid gap-4"
+      onSubmit={(event) => {
+        event.preventDefault();
+        const form = new FormData(event.currentTarget);
+        const progress = String(form.get("progressScore") || "");
+        onSave({
+          ...draft,
+          focus: String(form.get("focus") || ""),
+          desiredOutcome: String(form.get("desiredOutcome") || ""),
+          successMeasure: String(form.get("successMeasure") || ""),
+          update: String(form.get("update") || ""),
+          progressScore: progress === "" ? null : Number(progress),
+        });
+      }}
+    >
       <label className="grid gap-2 text-sm font-black text-[#3d3122]">
         What would make this Session useful?
         <textarea
+          name="focus"
           value={draft.focus}
           onChange={(event) => field("focus", event.target.value)}
           maxLength={2_000}
@@ -249,6 +265,7 @@ function ClientPlanForm({
         <label className="grid gap-2 text-sm font-black text-[#3d3122]">
           What would you like to leave with?
           <textarea
+            name="desiredOutcome"
             value={draft.desiredOutcome}
             onChange={(event) => field("desiredOutcome", event.target.value)}
             maxLength={2_000}
@@ -260,6 +277,7 @@ function ClientPlanForm({
         <label className="grid gap-2 text-sm font-black text-[#3d3122]">
           How will you know the Session helped?
           <textarea
+            name="successMeasure"
             value={draft.successMeasure}
             onChange={(event) => field("successMeasure", event.target.value)}
             maxLength={2_000}
@@ -273,6 +291,7 @@ function ClientPlanForm({
         <label className="grid gap-2 text-sm font-black text-[#3d3122]">
           What has changed since last time?
           <textarea
+            name="update"
             value={draft.update}
             onChange={(event) => field("update", event.target.value)}
             maxLength={4_000}
@@ -284,6 +303,7 @@ function ClientPlanForm({
         <label className="grid content-start gap-2 text-sm font-black text-[#3d3122]">
           Progress (optional)
           <select
+            name="progressScore"
             value={draft.progressScore ?? ""}
             onChange={(event) =>
               field(
@@ -304,9 +324,8 @@ function ClientPlanForm({
       </div>
       <div className="flex flex-wrap items-center gap-3">
         <button
-          type="button"
+          type="submit"
           disabled={disabled}
-          onClick={onSave}
           className="min-h-12 rounded-full bg-violet-700 px-5 py-3 text-sm font-black text-white shadow-sm transition hover:bg-violet-800 disabled:cursor-wait disabled:opacity-60"
         >
           {disabled ? "Saving…" : "Save Session plan"}
@@ -315,7 +334,7 @@ function ClientPlanForm({
           Shared only with your assigned coach · editable anytime
         </p>
       </div>
-    </div>
+    </form>
   );
 }
 
@@ -330,7 +349,7 @@ function CoachPlanForm({
   note: string;
   disabled: boolean;
   onNoteChange: (value: string) => void;
-  onSave: () => void;
+  onSave: (note: string) => void;
 }) {
   const hasClientPlan = Boolean(
     client.submittedAt ||
@@ -366,13 +385,21 @@ function CoachPlanForm({
           </p>
         )}
       </section>
-      <div className="grid content-start gap-2 rounded-xl border border-stone-200 bg-stone-50 p-4 text-sm font-black text-[#3d3122]">
+      <form
+        className="grid content-start gap-2 rounded-xl border border-stone-200 bg-stone-50 p-4 text-sm font-black text-[#3d3122]"
+        onSubmit={(event) => {
+          event.preventDefault();
+          const form = new FormData(event.currentTarget);
+          onSave(String(form.get("note") || ""));
+        }}
+      >
         <label htmlFor="private-coach-preparation" className="flex items-center gap-2">
           <LockKeyhole className="h-4 w-4 text-stone-600" aria-hidden="true" />
           Private coach prep
         </label>
         <textarea
           id="private-coach-preparation"
+          name="note"
           value={note}
           onChange={(event) => onNoteChange(event.target.value)}
           maxLength={8_000}
@@ -384,14 +411,13 @@ function CoachPlanForm({
           Only the assigned coach can read this.
         </span>
         <button
-          type="button"
+          type="submit"
           disabled={disabled}
-          onClick={onSave}
           className="mt-1 min-h-12 justify-self-start rounded-full bg-[#3d3122] px-5 py-3 text-sm font-black text-white transition hover:bg-black disabled:cursor-wait disabled:opacity-60"
         >
           {disabled ? "Saving…" : "Save private prep"}
         </button>
-      </div>
+      </form>
     </div>
   );
 }
