@@ -33,6 +33,7 @@ const signal: NonNullable<AudioTranscriptEvidence["audio"]["signal"]> = {
   rightRmsDbfs: null,
   stereoBalanceDb: null,
   rmsIsNotLufs: true,
+  loudness: null,
   thresholds: {
     clippingAmplitude: 0.999,
     nearSilenceDbfs: -72,

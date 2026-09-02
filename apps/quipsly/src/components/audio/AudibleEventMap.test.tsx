@@ -30,6 +30,7 @@ const signal: NonNullable<AudioTranscriptEvidence["audio"]["signal"]> = {
   rightRmsDbfs: null,
   stereoBalanceDb: null,
   rmsIsNotLufs: true,
+  loudness: null,
   thresholds: { clippingAmplitude: 0.999, nearSilenceDbfs: -72, possibleDropoutMinimumSeconds: 0.25, surroundingSignalDbfs: -45, stereoImbalanceDb: 12 },
   waveform: [
     { startSeconds: 0, durationSeconds: 25, rmsDbfs: -20, samplePeakDbfs: -2, clippedFrameCount: 0 },

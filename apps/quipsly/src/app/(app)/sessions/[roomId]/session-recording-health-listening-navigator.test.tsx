@@ -23,6 +23,7 @@ function signal(observations: Array<{ kind: "possible-dropout"; severity: "atten
     rightRmsDbfs: null,
     stereoBalanceDb: null,
     rmsIsNotLufs: true as const,
+    loudness: null,
     thresholds: { clippingAmplitude: 0.999, nearSilenceDbfs: -72, possibleDropoutMinimumSeconds: 0.25, surroundingSignalDbfs: -45, stereoImbalanceDb: 12 },
     waveform: [
       { startSeconds: 0, durationSeconds: 10, rmsDbfs: -18, samplePeakDbfs: -3, clippedFrameCount: 0 },
