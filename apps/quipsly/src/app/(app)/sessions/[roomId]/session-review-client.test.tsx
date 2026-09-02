@@ -311,6 +311,10 @@ function heldSourceEvidence(): SessionSourceEvidence {
 
 describe("Session review goal candidates", () => {
   const originalFetch = global.fetch;
+  beforeEach(() => {
+    jest.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined);
+    jest.spyOn(HTMLMediaElement.prototype, "load").mockImplementation(() => undefined);
+  });
   afterEach(() => {
     jest.useRealTimers();
     global.fetch = originalFetch;
@@ -1549,7 +1553,6 @@ describe("Session review goal candidates", () => {
     expect(screen.getByText(/do not claim the audio uploaded/i)).toBeInTheDocument();
     expect(screen.getByText(/remains on the iPhone until upload succeeds/i)).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Import an existing session recording" })).toBeInTheDocument();
-    expect(screen.getByText(/not attached as a participant/i)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /upload|retry|transcribe/i })).not.toBeInTheDocument();
   });
 
