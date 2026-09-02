@@ -1942,7 +1942,11 @@ function SessionSourceEvidenceCard({
                 Complete decoded signal scan · {humanize(visibleSignal.status)}
               </p>
               <p className="mt-1">
-                RMS {visibleSignal.rmsDbfs.toFixed(1)} dBFS · peak{" "}
+                {visibleSignal.loudness?.integratedLoudnessLufs !== null
+                  && visibleSignal.loudness?.integratedLoudnessLufs !== undefined
+                  ? <>programme loudness {visibleSignal.loudness.integratedLoudnessLufs.toFixed(1)} LUFS · </>
+                  : <>RMS {visibleSignal.rmsDbfs.toFixed(1)} dBFS · </>}
+                sample peak{" "}
                 {visibleSignal.samplePeakDbfs.toFixed(1)} dBFS ·{" "}
                 {visibleSignal.clippedFrameCount.toLocaleString()} clipped
                 frames ·{" "}
@@ -1950,7 +1954,11 @@ function SessionSourceEvidenceCard({
                 near-silent frames
               </p>
               <p className="mt-1 text-[10px] text-sky-800">
-                RMS is not LUFS. {visibleSignal.observations.length} exact-time
+                {visibleSignal.loudness?.integratedLoudnessLufs !== null
+                  && visibleSignal.loudness?.integratedLoudnessLufs !== undefined
+                  ? "Programme loudness is measured over the complete decoded source using ITU-R BS.1770-5; sample peak is not true peak. "
+                  : "RMS is not LUFS. "}
+                {visibleSignal.observations.length} exact-time
                 signal observation
                 {visibleSignal.observations.length === 1 ? "" : "s"} require
                 {visibleSignal.observations.length === 1 ? "s" : ""} listening

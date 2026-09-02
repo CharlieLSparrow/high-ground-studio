@@ -57,6 +57,26 @@ export type AudioTranscriptEvidence = {
       rightRmsDbfs: number | null;
       stereoBalanceDb: number | null;
       rmsIsNotLufs: true;
+      loudness: null | {
+        schemaVersion: 1;
+        algorithm: string;
+        standard: "ITU-R BS.1770-5";
+        status: "measured" | "insufficient-duration" | "below-absolute-gate" | "below-relative-gate";
+        sampleRateHz: number;
+        channelCount: number;
+        analyzedFrameCount: number;
+        measurementBlockDurationSeconds: number;
+        measurementBlockStepSeconds: number;
+        measurementBlockCount: number;
+        absoluteGatedBlockCount: number;
+        relativeGatedBlockCount: number;
+        absoluteGateLufs: number;
+        relativeGateLufs: number | null;
+        integratedLoudnessLufs: number | null;
+        maximumMomentaryLoudnessLufs: number | null;
+        truePeakMeasured: false;
+        masteringTargetInferred: false;
+      };
       thresholds: {
         clippingAmplitude: number;
         nearSilenceDbfs: number;
@@ -521,6 +541,7 @@ export function parseAudioSignalEvidence(
     rightRmsDbfs: signedFinite(row.rightRmsDbfs),
     stereoBalanceDb: signedFinite(row.stereoBalanceDb),
     rmsIsNotLufs: true,
+    loudness: parseAudioLoudnessEvidence(row.loudness),
     thresholds: {
       clippingAmplitude,
       nearSilenceDbfs,
@@ -534,6 +555,83 @@ export function parseAudioSignalEvidence(
     ),
     frequencyProfile,
     observations,
+  };
+}
+
+function parseAudioLoudnessEvidence(
+  value: unknown,
+): NonNullable<AudioTranscriptEvidence["audio"]["signal"]>["loudness"] {
+  const row = object(value);
+  if (integer(row.schemaVersion) !== 1) return null;
+  const algorithm = text(row.algorithm);
+  const standard = text(row.standard);
+  const status = text(row.status);
+  const sampleRateHz = finite(row.sampleRate);
+  const channelCount = integer(row.channelCount);
+  const analyzedFrameCount = integer(row.analyzedFrameCount);
+  const measurementBlockDurationSeconds = finite(row.measurementBlockDurationSeconds);
+  const measurementBlockStepSeconds = finite(row.measurementBlockStepSeconds);
+  const measurementBlockCount = integer(row.measurementBlockCount);
+  const absoluteGatedBlockCount = integer(row.absoluteGatedBlockCount);
+  const relativeGatedBlockCount = integer(row.relativeGatedBlockCount);
+  const absoluteGateLufs = signedFinite(row.absoluteGateLufs);
+  const relativeGateLufs = row.relativeGateLufs === null || row.relativeGateLufs === undefined
+    ? null
+    : signedFinite(row.relativeGateLufs);
+  const integratedLoudnessLufs = row.integratedLoudnessLufs === null || row.integratedLoudnessLufs === undefined
+    ? null
+    : signedFinite(row.integratedLoudnessLufs);
+  const maximumMomentaryLoudnessLufs = row.maximumMomentaryLoudnessLufs === null || row.maximumMomentaryLoudnessLufs === undefined
+    ? null
+    : signedFinite(row.maximumMomentaryLoudnessLufs);
+  const validStatus = ["measured", "insufficient-duration", "below-absolute-gate", "below-relative-gate"].includes(status ?? "");
+  const measured = status === "measured";
+  if (
+    !algorithm
+    || standard !== "ITU-R BS.1770-5"
+    || !validStatus
+    || sampleRateHz === null
+    || sampleRateHz <= 0
+    || channelCount === null
+    || ![1, 2].includes(channelCount)
+    || analyzedFrameCount === null
+    || analyzedFrameCount < 1
+    || measurementBlockDurationSeconds === null
+    || Math.abs(measurementBlockDurationSeconds - 0.4) > 0.001
+    || measurementBlockStepSeconds === null
+    || Math.abs(measurementBlockStepSeconds - 0.1) > 0.001
+    || measurementBlockCount === null
+    || absoluteGatedBlockCount === null
+    || relativeGatedBlockCount === null
+    || absoluteGatedBlockCount > measurementBlockCount
+    || relativeGatedBlockCount > absoluteGatedBlockCount
+    || absoluteGateLufs === null
+    || Math.abs(absoluteGateLufs - -70) > 0.001
+    || (row.relativeGateLufs !== null && row.relativeGateLufs !== undefined && relativeGateLufs === null)
+    || (row.integratedLoudnessLufs !== null && row.integratedLoudnessLufs !== undefined && integratedLoudnessLufs === null)
+    || (row.maximumMomentaryLoudnessLufs !== null && row.maximumMomentaryLoudnessLufs !== undefined && maximumMomentaryLoudnessLufs === null)
+    || (measured && (integratedLoudnessLufs === null || maximumMomentaryLoudnessLufs === null || relativeGatedBlockCount < 1))
+    || (!measured && integratedLoudnessLufs !== null)
+  ) return null;
+  return {
+    schemaVersion: 1,
+    algorithm,
+    standard: "ITU-R BS.1770-5",
+    status: status as "measured" | "insufficient-duration" | "below-absolute-gate" | "below-relative-gate",
+    sampleRateHz,
+    channelCount,
+    analyzedFrameCount,
+    measurementBlockDurationSeconds,
+    measurementBlockStepSeconds,
+    measurementBlockCount,
+    absoluteGatedBlockCount,
+    relativeGatedBlockCount,
+    absoluteGateLufs,
+    relativeGateLufs,
+    integratedLoudnessLufs,
+    maximumMomentaryLoudnessLufs,
+    truePeakMeasured: false,
+    masteringTargetInferred: false,
   };
 }
 

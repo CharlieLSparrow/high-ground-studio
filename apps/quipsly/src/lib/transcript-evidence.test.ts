@@ -36,11 +36,45 @@ describe("audio and transcript evidence", () => {
         stereoImbalanceDb: 12,
       },
       waveform,
+      loudness: {
+        schemaVersion: 1,
+        algorithm: "itu-r-bs.1770-5-integrated-v1",
+        standard: "ITU-R BS.1770-5",
+        status: "measured",
+        sampleRate: 48_000,
+        channelCount: 1,
+        analyzedFrameCount: 576_000,
+        measurementBlockDurationSeconds: 0.4,
+        measurementBlockStepSeconds: 0.1,
+        measurementBlockCount: 117,
+        absoluteGatedBlockCount: 117,
+        relativeGatedBlockCount: 115,
+        absoluteGateLufs: -70,
+        relativeGateLufs: -33.1,
+        integratedLoudnessLufs: -23.1,
+        maximumMomentaryLoudnessLufs: -20.4,
+      },
       observations: [],
     };
 
     expect(parseAudioSignalEvidence(profile)?.waveform.length).toBeLessThanOrEqual(180);
     expect(parseAudioSignalEvidence(profile, { maximumWaveformPoints: 1_200 })?.waveform).toHaveLength(240);
+    expect(parseAudioSignalEvidence(profile)?.loudness).toEqual(expect.objectContaining({
+      standard: "ITU-R BS.1770-5",
+      status: "measured",
+      integratedLoudnessLufs: -23.1,
+      maximumMomentaryLoudnessLufs: -20.4,
+      truePeakMeasured: false,
+      masteringTargetInferred: false,
+    }));
+
+    expect(parseAudioSignalEvidence({
+      ...profile,
+      loudness: { ...profile.loudness, standard: "unverified-meter" },
+    })).toEqual(expect.objectContaining({
+      rmsDbfs: -30,
+      loudness: null,
+    }));
   });
 
   it("measures reviewed WER separately from provider confidence and review coverage", () => {
@@ -120,6 +154,24 @@ describe("audio and transcript evidence", () => {
               stereoIsDownmixedForFrequencyOverview: true,
             },
           },
+          loudness: {
+            schemaVersion: 1,
+            algorithm: "itu-r-bs.1770-5-integrated-v1",
+            standard: "ITU-R BS.1770-5",
+            status: "measured",
+            sampleRate: 48_000,
+            channelCount: 1,
+            analyzedFrameCount: 576_000,
+            measurementBlockDurationSeconds: 0.4,
+            measurementBlockStepSeconds: 0.1,
+            measurementBlockCount: 117,
+            absoluteGatedBlockCount: 117,
+            relativeGatedBlockCount: 115,
+            absoluteGateLufs: -70,
+            relativeGateLufs: -31.7,
+            integratedLoudnessLufs: -21.7,
+            maximumMomentaryLoudnessLufs: -16.2,
+          },
           observations: [{
             kind: "possible-dropout",
             severity: "attention",
@@ -183,6 +235,14 @@ describe("audio and transcript evidence", () => {
         samplePeakDbfs: -0.4,
         clippedFrameCount: 2,
         rmsIsNotLufs: true,
+        loudness: {
+          standard: "ITU-R BS.1770-5",
+          status: "measured",
+          integratedLoudnessLufs: -21.7,
+          maximumMomentaryLoudnessLufs: -16.2,
+          truePeakMeasured: false,
+          masteringTargetInferred: false,
+        },
       },
       timelineEvents: [{
         kind: "interruption",

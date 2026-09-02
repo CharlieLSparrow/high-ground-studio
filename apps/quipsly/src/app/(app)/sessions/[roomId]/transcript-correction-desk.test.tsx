@@ -915,6 +915,24 @@ describe("TranscriptCorrectionDesk", () => {
             { startSeconds: 10, durationSeconds: 10, rmsDbfs: -80, samplePeakDbfs: -76, clippedFrameCount: 0 },
             { startSeconds: 20, durationSeconds: 40, rmsDbfs: -22, samplePeakDbfs: -3, clippedFrameCount: 0 },
           ],
+          loudness: {
+            schemaVersion: 1,
+            algorithm: "itu-r-bs.1770-5-integrated-v1",
+            standard: "ITU-R BS.1770-5",
+            status: "measured",
+            sampleRate: 48_000,
+            channelCount: 1,
+            analyzedFrameCount: 2_880_000,
+            measurementBlockDurationSeconds: 0.4,
+            measurementBlockStepSeconds: 0.1,
+            measurementBlockCount: 597,
+            absoluteGatedBlockCount: 560,
+            relativeGatedBlockCount: 530,
+            absoluteGateLufs: -70,
+            relativeGateLufs: -31.8,
+            integratedLoudnessLufs: -21.8,
+            maximumMomentaryLoudnessLufs: -16.4,
+          },
           observations: [{
             kind: "possible-dropout",
             severity: "attention",
@@ -976,7 +994,9 @@ describe("TranscriptCorrectionDesk", () => {
     expect(screen.getByText(/1 corrected · 0 confirmed · 0 unchecked/i)).toBeInTheDocument();
     expect(screen.getAllByText(/shure mv7i/i)).not.toHaveLength(0);
     expect(screen.getByText(/decoded signal scan/i)).toBeInTheDocument();
-    expect(screen.getByText(/RMS dBFS is not perceptual LUFS/i)).toBeInTheDocument();
+    expect(screen.getByText(/Programme loudness is measured across the complete decoded source using ITU-R BS.1770-5/i)).toBeInTheDocument();
+    expect(screen.getByText("-21.8 LUFS")).toBeInTheDocument();
+    expect(screen.getByText(/sample peak is not true peak/i)).toBeInTheDocument();
     expect(screen.getByText(/measurable signal continues after the last timed transcript word/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /audio level evidence map/i })).toBeInTheDocument();
     expect(screen.getByRole("slider", { name: /selected time/i })).toBeInTheDocument();
