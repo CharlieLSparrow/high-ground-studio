@@ -11621,6 +11621,12 @@ private struct CaptureRecorderView: View {
                             onRequestConsent: {
                                 showsConsentConfirmation = true
                             },
+                            onPauseResume: {
+                                Task { await togglePersistentCapturePause() }
+                            },
+                            onMark: {
+                                model.markMoment(using: audioCapture)
+                            },
                             onPrimaryAction: {
                                 Task {
                                     if captureIsActive {
@@ -11664,6 +11670,12 @@ private struct CaptureRecorderView: View {
                         waitingForHost: false,
                         onRequestConsent: {
                             showsConsentConfirmation = true
+                        },
+                        onPauseResume: {
+                            Task { await togglePersistentCapturePause() }
+                        },
+                        onMark: {
+                            model.markMoment(using: audioCapture)
                         },
                         onPrimaryAction: {
                             Task {
@@ -12424,6 +12436,22 @@ private struct CaptureRecorderView: View {
         }
         await stopLocalRecording()
         announceSavedSourceIfStopped()
+    }
+
+    /// Pause and resume belong beside Stop while a take is active. Keeping
+    /// this action in the persistent dock means an iPad user never has to
+    /// scroll a continuously updating waveform just to control the source.
+    private func togglePersistentCapturePause() async {
+        if recordingMode == .audio {
+            await model.togglePause(using: audioCapture)
+        } else if recordingMode.isCoordinatedPodcastCapture {
+            await model.toggleCoordinatedPodcastPause(
+                using: audioCapture,
+                videoCapture: videoCapture
+            )
+        } else {
+            await model.toggleVideoPause(using: videoCapture)
+        }
     }
 
     /// Stop protects this participant's source without ending or navigating
@@ -20162,6 +20190,8 @@ private struct CapturePersistentRecorderDock: View {
     let canStartRecording: Bool
     let waitingForHost: Bool
     let onRequestConsent: () -> Void
+    let onPauseResume: () -> Void
+    let onMark: () -> Void
     let onPrimaryAction: () -> Void
 
     var body: some View {
@@ -20229,22 +20259,63 @@ private struct CapturePersistentRecorderDock: View {
                 )
                 .accessibilityLabel("Ready and waiting for the coach or host")
                 .accessibilityIdentifier("CapturePersistentRecorderWaitingForHostStatus")
-        } else {
-            Button(action: onPrimaryAction) {
-                Label(actionTitle, systemImage: actionSystemImage)
-                    .font(.subheadline.weight(.bold))
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 16)
-                    .frame(minHeight: 50)
-                    .fixedSize(horizontal: true, vertical: true)
-                    .background(actionTint, in: Capsule())
+        } else if captureIsActive {
+            HStack(spacing: 8) {
+                Button(action: onPauseResume) {
+                    Image(systemName: captureIsPaused ? "play.fill" : "pause.fill")
+                        .font(.headline.weight(.bold))
+                        .foregroundStyle(CapturePalette.accent)
+                        .frame(width: 50, height: 50)
+                        .background(
+                            CapturePalette.accent.opacity(0.12),
+                            in: Circle()
+                        )
                 }
-            .buttonStyle(.plain)
-            .disabled(actionDisabled)
-            .opacity(actionDisabled ? 0.55 : 1)
-            .accessibilityLabel(actionAccessibilityLabel)
-            .accessibilityIdentifier(actionIdentifier)
+                .buttonStyle(.plain)
+                .disabled(isBusy)
+                .accessibilityLabel(captureIsPaused ? "Resume recording" : "Pause recording")
+                .accessibilityIdentifier("CapturePersistentRecorderPauseResumeButton")
+
+                if supportsSourceMarks {
+                    Button(action: onMark) {
+                        Image(systemName: "bookmark.fill")
+                            .font(.headline.weight(.bold))
+                            .foregroundStyle(CapturePalette.accent)
+                            .frame(width: 50, height: 50)
+                            .background(
+                                CapturePalette.accent.opacity(0.12),
+                                in: Circle()
+                            )
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(!canMarkSource || isBusy)
+                    .accessibilityLabel("Mark this moment")
+                    .accessibilityHint("Adds a source-timeline marker without pausing or changing the recording.")
+                    .accessibilityIdentifier("CapturePersistentRecorderMarkButton")
+                }
+
+                primaryActionButton
+            }
+        } else {
+            primaryActionButton
         }
+    }
+
+    private var primaryActionButton: some View {
+        Button(action: onPrimaryAction) {
+            Label(actionTitle, systemImage: actionSystemImage)
+                .font(.subheadline.weight(.bold))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 16)
+                .frame(minHeight: 50)
+                .fixedSize(horizontal: true, vertical: true)
+                .background(actionTint, in: Capsule())
+        }
+        .buttonStyle(.plain)
+        .disabled(actionDisabled)
+        .opacity(actionDisabled ? 0.55 : 1)
+        .accessibilityLabel(actionAccessibilityLabel)
+        .accessibilityIdentifier(actionIdentifier)
     }
 
     private var captureIsActive: Bool {
@@ -20254,6 +20325,21 @@ private struct CapturePersistentRecorderDock: View {
         default:
             return videoState.isActive || videoState == .paused
         }
+    }
+
+    private var captureIsPaused: Bool {
+        if mode == .audio || mode.isCoordinatedPodcastCapture {
+            return audioState == .paused
+        }
+        return videoState == .paused
+    }
+
+    private var supportsSourceMarks: Bool {
+        mode == .audio || mode.isCoordinatedPodcastCapture
+    }
+
+    private var canMarkSource: Bool {
+        audioState == .recording
     }
 
     private var actionDisabled: Bool {

@@ -364,16 +364,23 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         case "record": requestedTabTitle = "Sessions"
         default: requestedTabTitle = initialTab.capitalized
         }
-        let requestedTab = app.tabBars.buttons[requestedTabTitle].firstMatch
+        let requestedTab = rootNavigationControl(requestedTabTitle, in: app)
         XCTAssertTrue(requestedTab.waitForExistence(timeout: 8))
         requestedTab.tap()
         let initialSurfaceIdentifier: String
         switch initialTab {
-        case "record": initialSurfaceIdentifier = "CaptureRecorderView"
+        case "record": initialSurfaceIdentifier = "CaptureSessionChooser"
         case "work": initialSurfaceIdentifier = "CaptureWorkView"
-        case "library": initialSurfaceIdentifier = "CaptureLibraryView"
+        case "library": initialSurfaceIdentifier = "CaptureLibrarySectionPicker"
         case "account": initialSurfaceIdentifier = "CaptureAccountView"
-        default: initialSurfaceIdentifier = "CaptureTodayView"
+        default:
+            // NavigationSplitView owns the regular-width workspace's
+            // accessibility container, so the nested compact Today scroll
+            // view is intentionally flattened on iPad. Prove the operated
+            // Home destination through its visible content instead.
+            initialSurfaceIdentifier = app.collectionViews["CaptureIPadSidebar"].exists
+                ? "CaptureTodayCreateHeading"
+                : "CaptureTodayView"
         }
         if initialTab != "today" {
             let expectedTitle = requestedTabTitle
@@ -439,7 +446,7 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             // login form while XCTest is resolving it. Only type into a form
             // that remains present after that startup transition settles.
             RunLoop.current.run(until: Date().addingTimeInterval(1))
-            if app.tabBars.firstMatch.waitForExistence(timeout: 3) { return }
+            if signedInRootNavigationExists(in: app, timeout: 3) { return }
             guard emailField.exists else { return }
             emailField.tap()
             emailField.typeKey("a", modifierFlags: .command)
@@ -449,12 +456,12 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             let passwordField = app.secureTextFields["QuipslyCapturePasswordField"]
             if !passwordField.waitForExistence(timeout: 4) {
                 XCTAssertTrue(
-                    app.tabBars.firstMatch.exists,
+                    signedInRootNavigationExists(in: app, timeout: 1),
                     "The restored session should reach Capture if its transient password field disappears."
                 )
                 return
             }
-            if app.tabBars.firstMatch.exists { return }
+            if signedInRootNavigationExists(in: app, timeout: 1) { return }
             let currentPassword = passwordField.value as? String
             if currentPassword == nil || currentPassword?.isEmpty == true || currentPassword == "Password" {
                 passwordField.tap()
@@ -462,17 +469,57 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             }
 
             let signInButton = app.buttons["QuipslyCaptureSignInButton"]
-            if app.tabBars.firstMatch.exists { return }
+            if signedInRootNavigationExists(in: app, timeout: 1) { return }
             if !signInButton.waitForExistence(timeout: 4) {
                 XCTAssertTrue(
-                    app.tabBars.firstMatch.exists,
+                    signedInRootNavigationExists(in: app, timeout: 1),
                     "The restored session should reach Capture if its transient sign-in surface disappears."
                 )
                 return
             }
-            if app.tabBars.firstMatch.exists { return }
+            if signedInRootNavigationExists(in: app, timeout: 1) { return }
             signInButton.tap()
         }
+    }
+
+    /// iPhone uses a conventional tab bar while iPad uses a persistent
+    /// NavigationSplitView sidebar. Acceptance should operate the platform's
+    /// real control instead of forcing iPad through an enlarged-phone shell.
+    private func signedInRootNavigationExists(
+        in app: XCUIApplication,
+        timeout: TimeInterval
+    ) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        let tabBar = app.tabBars.firstMatch
+        let sidebar = app.collectionViews["CaptureIPadSidebar"].firstMatch
+        while Date() < deadline {
+            if tabBar.exists || sidebar.exists { return true }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.2))
+        }
+        return tabBar.exists || sidebar.exists
+    }
+
+    private func rootNavigationControl(
+        _ title: String,
+        in app: XCUIApplication
+    ) -> XCUIElement {
+        let normalizedTitle = title == "Today" ? "Home" : title
+        let tabBar = app.tabBars.firstMatch
+        if tabBar.exists {
+            return tabBar.buttons[normalizedTitle].firstMatch
+        }
+        let sidebarKey: String
+        switch normalizedTitle {
+        case "Home": sidebarKey = "today"
+        case "Sessions": sidebarKey = "record"
+        case "Work": sidebarKey = "work"
+        case "Library": sidebarKey = "library"
+        case "Account": sidebarKey = "account"
+        default: sidebarKey = normalizedTitle.lowercased()
+        }
+        return app.staticTexts.matching(
+            identifier: "CaptureIPadSidebar_\(sidebarKey)"
+        ).firstMatch
     }
 
     private func ensureExactSignedInAccount(
@@ -481,14 +528,13 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         password: String,
         restoringTab: String
     ) {
-        let tabBar = app.tabBars.firstMatch
         XCTAssertTrue(
-            tabBar.waitForExistence(timeout: 60),
+            signedInRootNavigationExists(in: app, timeout: 60),
             "Capture should expose its signed-in shell before account identity is trusted."
         )
 
         func openAccount() -> XCUIElement {
-            let accountTab = tabBar.buttons["Account"].firstMatch
+            let accountTab = rootNavigationControl("Account", in: app)
             XCTAssertTrue(accountTab.waitForExistence(timeout: 8))
             accountTab.tap()
             let account = app.descendants(matching: .any)["CaptureSignedInAccount"].firstMatch
@@ -523,7 +569,7 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
                 signInIfNeeded(app, email: email, password: password)
             }
             XCTAssertTrue(
-                tabBar.waitForExistence(timeout: 60),
+                signedInRootNavigationExists(in: app, timeout: 60),
                 "The requested runtime actor should reach the signed-in shell after account switching."
             )
             account = openAccount()
@@ -537,8 +583,13 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
                 "Runtime proof refuses a restored Firebase session belonging to a different account."
             )
 
-            let restoredTitle = restoringTab.capitalized
-            let restoredButton = tabBar.buttons[restoredTitle].firstMatch
+            let restoredTitle: String
+            switch restoringTab {
+            case "today": restoredTitle = "Home"
+            case "record": restoredTitle = "Sessions"
+            default: restoredTitle = restoringTab.capitalized
+            }
+            let restoredButton = rootNavigationControl(restoredTitle, in: app)
             XCTAssertTrue(restoredButton.waitForExistence(timeout: 8))
             restoredButton.tap()
             shellAccount = app.descendants(matching: .any)["CaptureSignedInShellAccount"].firstMatch
@@ -561,7 +612,7 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         while Date() < deadline {
             if element.exists { return true }
             if attempts < swipeAttempts {
-                let namedRecorderSurface = app.scrollViews["CaptureRecorderView"].firstMatch
+                let namedRecorderSurface = recorderScrollSurface(in: app)
                 let recorderSurface = namedRecorderSurface.exists
                     ? namedRecorderSurface
                     : app.scrollViews.firstMatch
@@ -591,7 +642,7 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         while Date() < deadline {
             if element.exists { return true }
             if attempts < swipeAttempts {
-                let namedRecorderSurface = app.scrollViews["CaptureRecorderView"].firstMatch
+                let namedRecorderSurface = recorderScrollSurface(in: app)
                 let recorderSurface = namedRecorderSurface.exists
                     ? namedRecorderSurface
                     : app.scrollViews.firstMatch
@@ -633,6 +684,25 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         ]
     }
 
+    private func recordingMarkActions(in app: XCUIApplication) -> [XCUIElement] {
+        [
+            app.buttons["CapturePersistentRecorderMarkButton"].firstMatch,
+            app.descendants(matching: .any)["CaptureMarkMomentButton"].firstMatch,
+        ]
+    }
+
+    private func recorderScrollSurface(in app: XCUIApplication) -> XCUIElement {
+        let compact = app.scrollViews["CaptureRecorderView"].firstMatch
+        if compact.exists { return compact }
+        return app.scrollViews["CaptureIPadWorkspace"].firstMatch
+    }
+
+    private func librarySurface(in app: XCUIApplication) -> XCUIElement {
+        let compact = app.scrollViews["CaptureLibraryView"].firstMatch
+        if compact.exists { return compact }
+        return app.segmentedControls["CaptureLibrarySectionPicker"].firstMatch
+    }
+
     private func waitUntilHittable(
         _ element: XCUIElement,
         timeout: TimeInterval
@@ -665,7 +735,7 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         while Date() < deadline {
             if element.exists && element.isHittable { return true }
             if attempts < swipeAttempts {
-                let recorderSurface = app.scrollViews["CaptureRecorderView"].firstMatch
+                let recorderSurface = recorderScrollSurface(in: app)
                 if recorderSurface.exists && recorderSurface.isHittable {
                     recorderSurface.swipeUp()
                 } else {
@@ -724,20 +794,26 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
     }
 
     private func tapRootTab(_ title: String, in app: XCUIApplication) {
-        let tabBar = app.tabBars.firstMatch
-        XCTAssertTrue(tabBar.waitForExistence(timeout: 20), "Signed-in Capture should expose its root tab bar.")
-        let button = tabBar.buttons[title].firstMatch
-        XCTAssertTrue(button.waitForExistence(timeout: 8), "Capture should expose the \(title) root tab.")
+        XCTAssertTrue(
+            signedInRootNavigationExists(in: app, timeout: 20),
+            "Signed-in Capture should expose its platform root navigation."
+        )
+        let button = rootNavigationControl(title, in: app)
+        XCTAssertTrue(button.waitForExistence(timeout: 8), "Capture should expose the \(title) root destination.")
         let destination: XCUIElement
         switch title {
         case "Today":
-            destination = app.descendants(matching: .any)["CaptureTodayView"].firstMatch
+            destination = app.descendants(matching: .any)[
+                app.collectionViews["CaptureIPadSidebar"].exists
+                    ? "CaptureTodayCreateHeading"
+                    : "CaptureTodayView"
+            ].firstMatch
         case "Sessions":
-            destination = app.scrollViews["CaptureRecorderView"].firstMatch
+            destination = app.buttons["CaptureSessionChooser"].firstMatch
         case "Work":
             destination = app.descendants(matching: .any)["CaptureWorkView"].firstMatch
         case "Library":
-            destination = app.scrollViews["CaptureLibraryView"].firstMatch
+            destination = app.segmentedControls["CaptureLibrarySectionPicker"].firstMatch
         case "Account":
             destination = app.descendants(matching: .any)["CaptureAccountView"].firstMatch
         default:
@@ -754,7 +830,7 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             // leave XCTest holding an element whose synthesized hit point is
             // {-1,-1}. Reacquire the same visible control and operate its
             // center; do not bypass navigation or mutate selected-tab state.
-            let currentButton = app.tabBars.firstMatch.buttons[title].firstMatch
+            let currentButton = rootNavigationControl(title, in: app)
             XCTAssertTrue(
                 waitUntilHittable(currentButton, timeout: 8),
                 "The \(title) root tab should remain visibly retryable after a transient layout pass."
@@ -1699,12 +1775,7 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             app.staticTexts[defaultSessionTitle].firstMatch.waitForExistence(timeout: 20),
             "The iPhone must enter the exact Session it just scheduled, not a fixture or generic room."
         )
-        let todayTab = app.tabBars.firstMatch.buttons["Today"].firstMatch
-        XCTAssertTrue(
-            todayTab.waitForExistence(timeout: 8),
-            "Record should retain the ordinary app navigation after exact Session entry."
-        )
-        todayTab.tap()
+        tapRootTab("Today", in: app)
         let returnedCoachingHome = app.scrollViews["CaptureCoachingHome"].firstMatch
         let reopenCoaching = app.buttons["CaptureOpenCoachingHome"].firstMatch
         if !returnedCoachingHome.waitForExistence(timeout: 3) {
@@ -4683,8 +4754,8 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         let credentials = try runtimeSmokeCredentials()
         let app = try launchSignedInCaptureApp()
 
-        let recordTab = app.tabBars.buttons["Sessions"].firstMatch
-        XCTAssertTrue(recordTab.waitForExistence(timeout: 20), "Signed-in Capture app should expose the Record tab.")
+        let recordTab = rootNavigationControl("Sessions", in: app)
+        XCTAssertTrue(recordTab.waitForExistence(timeout: 20), "Signed-in Capture app should expose Sessions in its platform navigation.")
         recordTab.tap()
 
         selectRequestedSession(in: app, credentials: credentials)
@@ -4756,8 +4827,8 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         XCTAssertTrue(waitForRuntimeElement(app.buttons["ProviderJoinRoomButton"].firstMatch, in: app, timeout: 8, swipeAttempts: 2), "Joining a call must remain a distinct action from starting local recording.")
         XCTAssertTrue(waitForRuntimeElement(app.descendants(matching: .any)["CaptureSourceTruthFootnote"].firstMatch, in: app), "The selected-microphone source boundary should remain visible in the runtime path.")
 
-        XCTAssertTrue(app.tabBars.buttons["Library"].firstMatch.exists)
-        XCTAssertTrue(app.tabBars.buttons["Account"].firstMatch.exists)
+        XCTAssertTrue(rootNavigationControl("Library", in: app).exists)
+        XCTAssertTrue(rootNavigationControl("Account", in: app).exists)
         XCTAssertFalse(app.otherElements["GlobalCaptureBanner"].firstMatch.exists, "A recording-in-progress banner must not appear before a take starts.")
     }
 
@@ -5567,7 +5638,7 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         defer { removeUIInterruptionMonitor(microphoneAlertHandler) }
 
         tapRootTab("Library", in: app)
-        XCTAssertTrue(app.scrollViews["CaptureLibraryView"].waitForExistence(timeout: 8))
+        XCTAssertTrue(librarySurface(in: app).waitForExistence(timeout: 8))
         selectRecordingLibrary(in: app)
         let recordingsBeforeSafeTake = recordingIdentifiers(in: app, prefix: "LocalRecordingRow_")
         tapRootTab("Sessions", in: app)
@@ -5626,27 +5697,50 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             return
         }
         RunLoop.current.run(until: Date().addingTimeInterval(2.0))
-        // SwiftUI may briefly reclassify this control across the first-install
-        // permission shell rebuild. Its explicit identifier and hittable frame
-        // are the stable product contract, not a transient Button/Link AX type.
-        let mark = app.descendants(matching: .any)[
-            "CaptureMarkMomentButton"
+        let persistentPause = app.buttons[
+            "CapturePersistentRecorderPauseResumeButton"
         ].firstMatch
         XCTAssertTrue(
-            scrollRuntimeElementIntoHittableView(
-                mark,
-                in: app,
-                timeout: 8,
-                swipeAttempts: 4
+            waitUntilHittable(persistentPause, timeout: 8),
+            "An active collaborative take should keep Pause persistently reachable without scrolling."
+        )
+        persistentPause.tap()
+        XCTAssertTrue(
+            waitForRuntimeLabel(
+                "Resume recording",
+                element: persistentPause,
+                timeout: 8
             ),
+            "The same persistent control should become Resume after pausing the source."
+        )
+        persistentPause.tap()
+        XCTAssertTrue(
+            waitForRuntimeLabel(
+                "Pause recording",
+                element: persistentPause,
+                timeout: 8
+            ),
+            "Resuming should restore the conventional Pause action without leaving the Session."
+        )
+
+        // The persistent action is the ordinary iPad and scrolled-iPhone path;
+        // the full recorder remains a supported fallback for compact layouts.
+        let markActions = recordingMarkActions(in: app)
+        XCTAssertTrue(
+            waitForAnyRuntimeElement(markActions, timeout: 8),
             "The active recorder should keep Mark visibly operable after first-install permission transitions."
         )
+        guard let mark = markActions.first(where: { $0.exists }) else {
+            XCTFail("The visible Mark action disappeared while the take was active.")
+            return
+        }
+        XCTAssertTrue(waitUntilHittable(mark, timeout: 8))
         mark.tap()
         XCTAssertTrue(app.descendants(matching: .any)["CaptureLatestMomentMark"].firstMatch.waitForExistence(timeout: 4))
         stop.tap()
         let recorderReady = recordingStartActions(in: app)
         let protectedLibrary = app.descendants(matching: .any)["CaptureOfflineAccessBanner"].firstMatch
-        let onlineLibrary = app.scrollViews["CaptureLibraryView"].firstMatch
+        let onlineLibrary = librarySurface(in: app)
         XCTAssertTrue(
             waitForAnyRuntimeElement(recorderReady + [protectedLibrary, onlineLibrary], timeout: 15),
             "The first take should finish on Recorder or the visible protected/online Library recovery surface."
@@ -5658,7 +5752,8 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
                 "A network transition must explain that the saved source is protected locally."
             )
             XCTAssertTrue(
-                waitForAnyRuntimeElement([onlineLibrary, app.tabBars.firstMatch], timeout: 20),
+                onlineLibrary.waitForExistence(timeout: 20)
+                    || signedInRootNavigationExists(in: app, timeout: 20),
                 "Re-verifying the same identity should restore the full shell without losing the saved-source journey."
             )
         }
@@ -5666,7 +5761,7 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         if !onlineLibrary.exists {
             tapRootTab("Library", in: app)
         }
-        XCTAssertTrue(app.scrollViews["CaptureLibraryView"].waitForExistence(timeout: 8))
+        XCTAssertTrue(librarySurface(in: app).waitForExistence(timeout: 8))
         // First-install microphone or speech permission can rebuild the root
         // shell and restore Library's ordinary Writing default. Select the
         // recording surface explicitly before proving the source; persistence
@@ -5726,7 +5821,7 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             // the recorder while TabView preserves the prior offset. Search
             // back toward the primary controls without weakening their
             // existence or enabled-state requirements.
-            let recorder = app.scrollViews["CaptureRecorderView"].firstMatch
+            let recorder = recorderScrollSurface(in: app)
             for _ in 0..<8 where !secondStartVisible {
                 guard recorder.exists else { break }
                 recorder.swipeDown()
@@ -5750,6 +5845,10 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         )
         RunLoop.current.run(until: Date().addingTimeInterval(2.0))
         tapRootTab("Library", in: app)
+        // Regular-width iPad deliberately remembers each workspace's own
+        // last Library section. Select the visible recording section before
+        // requiring the crash-open source row, just as a person would.
+        selectRecordingLibrary(in: app)
         guard let crashRow = waitForNewRecordingRow(in: app, excluding: recordingsBeforeCrashTake) else {
             XCTFail("The in-progress take should be journaled before process death.")
             return
@@ -5791,7 +5890,10 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
 
         app.terminate()
         app = try launchSignedInCaptureApp()
-        XCTAssertTrue(app.tabBars.firstMatch.waitForExistence(timeout: 20), "Nest recovery should restore the signed-in shell.")
+        XCTAssertTrue(
+            signedInRootNavigationExists(in: app, timeout: 20),
+            "Nest recovery should restore the signed-in shell."
+        )
         tapRootTab("Library", in: app)
         selectRecordingLibrary(in: app)
         XCTAssertTrue(app.descendants(matching: .any)[safeIdentifier].waitForExistence(timeout: 8))
