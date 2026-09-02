@@ -220,7 +220,7 @@ check(
 );
 check(
   "private preview is explicitly outside shared state",
-  watch.includes("Private iPhone preview · not added to the shared timeline.")
+  watch.includes("Private \\(CaptureDeviceVocabulary.deviceName) preview · not added to the shared timeline.")
     && watch.includes("Shared Watch did not change.")
     && watch.includes("Use Preview to check the clip without changing the room."),
 );
@@ -383,7 +383,7 @@ check(
 check(
   "unsafe-route recovery preserves private preview as a local-only action",
   watch.includes("if localPreviewActive")
-    && watch.includes("Private preview paused on this iPhone. Shared Watch did not change.")
+    && watch.includes("Private preview paused on \\(CaptureDeviceVocabulary.thisDevice). Shared Watch did not change.")
     && watch.indexOf("if localPreviewActive")
       < watch.indexOf("positionSeconds: heldPosition"),
 );
