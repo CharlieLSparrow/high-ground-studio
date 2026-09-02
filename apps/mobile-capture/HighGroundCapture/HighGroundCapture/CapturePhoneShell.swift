@@ -713,14 +713,29 @@ struct CapturePhoneShell: View {
             visibleTab = .record
             model.message = nil
             Task { @MainActor in
-                await model.prepareVideoCapture(
-                    using: videoCapture,
-                    mode: CaptureCallPreferences.recordingMode(
+                if model.providerRoom.isConnected {
+                    await model.restoreRoomCameraAfterJoin(
+                        using: videoCapture,
+                        position: CaptureCallPreferences.cameraPosition,
+                        qualityIntent: CaptureCallPreferences.videoQualityIntent
+                    )
+                } else {
+                    let rememberedMode = CaptureCallPreferences.recordingMode(
                         for: model.selectedSession?.purpose
-                    ),
-                    position: CaptureCallPreferences.cameraPosition,
-                    qualityIntent: CaptureCallPreferences.videoQualityIntent
-                )
+                    )
+                    // A camera error cannot be repaired through the ordinary
+                    // audio-only coaching default. Fall back to the video-only
+                    // companion source without changing the saved preference;
+                    // this prepares framing but never starts a recording.
+                    await model.prepareVideoCapture(
+                        using: videoCapture,
+                        mode: rememberedMode.recordsVideo
+                            ? rememberedMode
+                            : .podcastCamera,
+                        position: CaptureCallPreferences.cameraPosition,
+                        qualityIntent: CaptureCallPreferences.videoQualityIntent
+                    )
+                }
             }
         case .refresh:
             Task { await model.load() }

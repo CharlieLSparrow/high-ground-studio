@@ -53,6 +53,11 @@ final class CaptureExperienceUITests: XCTestCase {
                 "--capture-ui-preview-attention=No microphone is available after activating the audio session."
             )
         }
+        if name.contains("testCameraAttentionRetriesPreflightWithoutStartingCapture") {
+            app.launchArguments.append(
+                "--capture-ui-preview-attention=The selected camera could not be prepared."
+            )
+        }
         if name.contains("testDisconnectedCallOffersOneTapRejoinWhileKeepingRecordingSafe") {
             app.launchArguments += [
                 "--capture-ui-preview-tab=record",
@@ -302,6 +307,35 @@ final class CaptureExperienceUITests: XCTestCase {
                 .waitForExistence(timeout: 8)
         )
         XCTAssertFalse(title.exists)
+    }
+
+    func testCameraAttentionRetriesPreflightWithoutStartingCapture() {
+        let title = app.staticTexts["Check your camera"]
+        let originalFailure = app.staticTexts["The selected camera could not be prepared."]
+        XCTAssertTrue(title.waitForExistence(timeout: 12))
+        XCTAssertTrue(originalFailure.exists)
+        XCTAssertFalse(app.alerts["Check your camera"].exists)
+
+        let retry = app.buttons["Try again"]
+        XCTAssertTrue(retry.exists)
+        XCTAssertTrue(retry.isHittable)
+        retry.tap()
+
+        XCTAssertTrue(app.navigationBars["Sessions"].waitForExistence(timeout: 8))
+        XCTAssertFalse(
+            originalFailure.waitForExistence(timeout: 2),
+            "Retry should replace stale camera diagnostics with the result of a fresh preflight."
+        )
+        XCTAssertFalse(
+            app.staticTexts["Recording video"].exists,
+            "Camera recovery may prepare a source, but it must never start recording for the user."
+        )
+        XCTAssertTrue(
+            app.staticTexts[
+                "The camera journey requires a physical iPhone or iPad. Preview mode never invents camera permissions, formats, or source bytes."
+            ].waitForExistence(timeout: 8),
+            "The deterministic preview must prove the retry reached a fresh camera preflight without claiming simulated hardware evidence."
+        )
     }
 
     func testCaptureFirstNavigationKeepsFiveFocusedDestinations() {
