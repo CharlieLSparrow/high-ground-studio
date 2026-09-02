@@ -184,13 +184,19 @@ struct LocalBS1770LoudnessAnalyzer {
     }
 
     nonisolated private mutating func append(frameEnergy: Double) {
+        // Hardware and decoder buffers should contain finite PCM, but optional
+        // source analysis must never make an otherwise playable recording
+        // impossible to persist. Treat malformed or negative energy as silence.
+        let safeFrameEnergy = frameEnergy.isFinite && frameEnergy > 0
+            ? frameEnergy
+            : 0
         if energyRingCount == blockFrameCount {
             energyRingSum -= energyRing[energyRingIndex]
         } else {
             energyRingCount += 1
         }
-        energyRing[energyRingIndex] = frameEnergy
-        energyRingSum += frameEnergy
+        energyRing[energyRingIndex] = safeFrameEnergy
+        energyRingSum += safeFrameEnergy
         energyRingIndex = (energyRingIndex + 1) % blockFrameCount
         analyzedFrameCount += 1
 
@@ -224,9 +230,18 @@ struct LocalBS1770LoudnessAnalyzer {
             relativeGateLufs: relativeGateLufs.map(Self.rounded),
             integratedLoudnessLufs: integratedLoudnessLufs.map(Self.rounded),
             maximumMomentaryLoudnessLufs: blockEnergies.max()
-                .map(Self.energyToLoudness)
-                .map(Self.rounded)
+                .flatMap(Self.measurableLoudness)
         )
+    }
+
+    /// A zero-energy block is valid silence, not a numeric loudness
+    /// measurement. Represent it as absent so the profile remains both
+    /// semantically accurate and JSON encodable.
+    nonisolated private static func measurableLoudness(_ energy: Double) -> Double? {
+        guard energy.isFinite, energy > 0 else { return nil }
+        let loudness = energyToLoudness(energy)
+        guard loudness.isFinite else { return nil }
+        return rounded(loudness)
     }
 
     nonisolated private static func energyToLoudness(_ energy: Double) -> Double {

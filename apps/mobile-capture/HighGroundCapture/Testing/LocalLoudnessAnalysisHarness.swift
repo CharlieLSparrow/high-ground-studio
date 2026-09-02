@@ -137,6 +137,23 @@ struct LocalLoudnessAnalysisHarness {
         require(tooShort.status == "insufficient-duration", "partial 400 ms blocks must be discarded")
         require(tooShort.integratedLoudnessLufs == nil, "insufficient audio must not invent programme loudness")
 
+        let digitalSilence = analyzeStereoTone(
+            sampleRate: 48_000,
+            segments: [.init(durationSeconds: 13, peakDbfs: nil)]
+        )
+        require(digitalSilence.status == "below-absolute-gate", "complete silent blocks should be retained below the absolute gate")
+        require(digitalSilence.integratedLoudnessLufs == nil, "digital silence must not invent integrated loudness")
+        require(digitalSilence.maximumMomentaryLoudnessLufs == nil, "digital silence has no finite momentary loudness measurement")
+        let encodedSilence = try JSONEncoder().encode(digitalSilence)
+        let decodedSilence = try JSONDecoder().decode(
+            LocalRecordingLoudnessProfile.self,
+            from: encodedSilence
+        )
+        require(
+            decodedSilence == digitalSilence,
+            "a silent source profile must survive the recording-ledger JSON boundary"
+        )
+
         let encoded = try JSONEncoder().encode(calibration)
         let decoded = try JSONDecoder().decode(
             LocalRecordingLoudnessProfile.self,
