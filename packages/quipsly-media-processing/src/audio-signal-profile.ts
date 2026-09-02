@@ -5,6 +5,7 @@ export const AUDIO_SIGNAL_PROFILE_JOB_KIND = "quipsly-audio-signal-profile-job-v
 export const AUDIO_SIGNAL_PROFILE_RESULT_KIND = "quipsly-audio-signal-profile-result-v1" as const;
 export const AUDIO_SIGNAL_PROFILE_ALGORITHM = "quipsly-audio-signal-window-v1" as const;
 export const AUDIO_FREQUENCY_PROFILE_ALGORITHM = "quipsly-audio-broad-band-rms-v1" as const;
+export const AUDIO_LOUDNESS_PROFILE_ALGORITHM = "itu-r-bs.1770-5-integrated-v1" as const;
 export const AUDIO_SIGNAL_PROFILE_CLOUD_MANIFEST_KIND = "quipsly-audio-signal-profile-cloud-manifest-v1" as const;
 export const AUDIO_SIGNAL_PROFILE_CLOUD_QUEUE_KIND = "quipsly-audio-signal-profile-cloud-queue-v1" as const;
 export const AUDIO_SIGNAL_PROFILE_CLOUD_CONTROL_PREFIX = "media-vault/control/audio-signal-profile" as const;
@@ -56,6 +57,25 @@ export type AudioSignalProfileObservation = {
   detail: string;
 };
 
+export type AudioLoudnessProfile = {
+  schemaVersion: 1;
+  algorithm: typeof AUDIO_LOUDNESS_PROFILE_ALGORITHM;
+  standard: "ITU-R BS.1770-5";
+  status: "measured" | "insufficient-duration" | "below-absolute-gate" | "below-relative-gate" | "unsupported-channel-layout";
+  sampleRate: number;
+  channelCount: number;
+  analyzedFrameCount: number;
+  measurementBlockDurationSeconds: 0.4;
+  measurementBlockStepSeconds: 0.1;
+  measurementBlockCount: number;
+  absoluteGatedBlockCount: number;
+  relativeGatedBlockCount: number;
+  absoluteGateLufs: -70;
+  relativeGateLufs: number | null;
+  integratedLoudnessLufs: number | null;
+  maximumMomentaryLoudnessLufs: number | null;
+};
+
 export type AudioSignalProfile = {
   schemaVersion: 1;
   algorithm: typeof AUDIO_SIGNAL_PROFILE_ALGORITHM;
@@ -82,6 +102,7 @@ export type AudioSignalProfile = {
   };
   waveform: AudioSignalProfileWindow[];
   frequencyProfile: AudioFrequencyProfile | null;
+  loudness: AudioLoudnessProfile | null;
   observations: AudioSignalProfileObservation[];
 };
 
@@ -412,6 +433,9 @@ export function parseAudioSignalProfile(value: unknown): AudioSignalProfile {
   const frequencyProfile = row.frequencyProfile == null
     ? null
     : parseAudioFrequencyProfile(row.frequencyProfile, { sampleRate, analyzedFrameCount, durationSeconds });
+  const loudness = row.loudness == null
+    ? null
+    : parseAudioLoudnessProfile(row.loudness, { sampleRate, channelCount: positiveInteger(row.channelCount, "channelCount"), analyzedFrameCount });
   return {
     schemaVersion: 1,
     algorithm: AUDIO_SIGNAL_PROFILE_ALGORITHM,
@@ -438,7 +462,57 @@ export function parseAudioSignalProfile(value: unknown): AudioSignalProfile {
     },
     waveform,
     frequencyProfile,
+    loudness,
     observations,
+  };
+}
+
+export function parseAudioLoudnessProfile(
+  value: unknown,
+  expected?: { sampleRate: number; channelCount: number; analyzedFrameCount: number },
+): AudioLoudnessProfile {
+  const row = record(value);
+  const status = requiredText(row.status, "loudness.status") as AudioLoudnessProfile["status"];
+  const sampleRate = positiveInteger(row.sampleRate, "loudness.sampleRate");
+  const channelCount = positiveInteger(row.channelCount, "loudness.channelCount");
+  const analyzedFrameCount = positiveInteger(row.analyzedFrameCount, "loudness.analyzedFrameCount");
+  const measurementBlockCount = nonNegativeInteger(row.measurementBlockCount, "loudness.measurementBlockCount");
+  const absoluteGatedBlockCount = nonNegativeInteger(row.absoluteGatedBlockCount, "loudness.absoluteGatedBlockCount");
+  const relativeGatedBlockCount = nonNegativeInteger(row.relativeGatedBlockCount, "loudness.relativeGatedBlockCount");
+  const relativeGateLufs = row.relativeGateLufs == null ? null : finiteNumber(row.relativeGateLufs, "loudness.relativeGateLufs");
+  const integratedLoudnessLufs = row.integratedLoudnessLufs == null ? null : finiteNumber(row.integratedLoudnessLufs, "loudness.integratedLoudnessLufs");
+  const maximumMomentaryLoudnessLufs = row.maximumMomentaryLoudnessLufs == null ? null : finiteNumber(row.maximumMomentaryLoudnessLufs, "loudness.maximumMomentaryLoudnessLufs");
+  if (
+    row.schemaVersion !== 1
+    || row.algorithm !== AUDIO_LOUDNESS_PROFILE_ALGORITHM
+    || row.standard !== "ITU-R BS.1770-5"
+    || !["measured", "insufficient-duration", "below-absolute-gate", "below-relative-gate", "unsupported-channel-layout"].includes(status)
+    || row.measurementBlockDurationSeconds !== 0.4
+    || row.measurementBlockStepSeconds !== 0.1
+    || row.absoluteGateLufs !== -70
+    || absoluteGatedBlockCount > measurementBlockCount
+    || relativeGatedBlockCount > absoluteGatedBlockCount
+    || (status === "measured" && (integratedLoudnessLufs === null || maximumMomentaryLoudnessLufs === null || relativeGatedBlockCount < 1))
+    || (status !== "measured" && integratedLoudnessLufs !== null)
+    || (expected && (sampleRate !== expected.sampleRate || channelCount !== expected.channelCount || analyzedFrameCount !== expected.analyzedFrameCount))
+  ) throw new Error("Audio loudness profile is invalid or does not match the decoded source.");
+  return {
+    schemaVersion: 1,
+    algorithm: AUDIO_LOUDNESS_PROFILE_ALGORITHM,
+    standard: "ITU-R BS.1770-5",
+    status,
+    sampleRate,
+    channelCount,
+    analyzedFrameCount,
+    measurementBlockDurationSeconds: 0.4,
+    measurementBlockStepSeconds: 0.1,
+    measurementBlockCount,
+    absoluteGatedBlockCount,
+    relativeGatedBlockCount,
+    absoluteGateLufs: -70,
+    relativeGateLufs,
+    integratedLoudnessLufs,
+    maximumMomentaryLoudnessLufs,
   };
 }
 

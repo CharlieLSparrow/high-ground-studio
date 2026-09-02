@@ -10,6 +10,7 @@ import {
   type AudioFrequencyProfile,
   type AudioSignalProfile,
 } from "@high-ground/quipsly-media-processing";
+import { Bs1770LoudnessAnalyzer } from "./bs1770-loudness.js";
 
 const execFile = promisify(execFileCallback);
 const THRESHOLDS = Object.freeze({
@@ -69,6 +70,7 @@ export class FfmpegAudioSignalProfiler {
       throw new AudioSignalProfileDecodeError("audio-signal-source-unavailable", "Audio signal source must be a non-empty file.");
     }
     const [probe, ffmpegVersion] = await Promise.all([this.probe(resolvedPath), this.version()]);
+    const loudnessAnalyzer = new Bs1770LoudnessAnalyzer(probe.sampleRate, probe.channelCount);
     const minimumWindowFrames = Math.max(Math.round(probe.sampleRate * 0.1), 1);
     let framesPerWindow = probe.durationSeconds === null
       ? minimumWindowFrames
@@ -143,6 +145,7 @@ export class FfmpegAudioSignalProfiler {
       try {
         const data = remainder.length ? Buffer.concat([remainder, chunk]) : chunk;
         const completeBytes = data.length - (data.length % frameBytes);
+        loudnessAnalyzer.consumeInterleavedFloat32(data, completeBytes);
         for (let offset = 0; offset < completeBytes; offset += frameBytes) {
           let channelEnergy = 0;
           let framePeak = 0;
@@ -233,6 +236,7 @@ export class FfmpegAudioSignalProfiler {
       thresholds: THRESHOLDS,
       waveform: windows,
       frequencyProfile,
+      loudness: loudnessAnalyzer.result(),
       observations,
     });
     return {

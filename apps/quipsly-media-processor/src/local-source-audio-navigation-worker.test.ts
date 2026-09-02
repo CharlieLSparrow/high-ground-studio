@@ -92,6 +92,7 @@ function analyzedProfile() {
           stereoIsDownmixedForFrequencyOverview: true as const,
         },
       },
+      loudness: null,
       observations: [],
     },
     ffmpegVersion: "7.1",
