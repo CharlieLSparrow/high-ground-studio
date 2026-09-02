@@ -43,7 +43,7 @@ enum CaptureSourcePlanProjectionTests {
         expect(payload.sourceKind == "AUDIO", "source kind must normalize to Nest enum")
         expect(payload.retentionRole == "REQUIRED_MASTER", "phone source must be required")
         expect(payload.expectedClientKind == "ios", "client kind must be iOS")
-        expect(payload.expectedDeviceLabel == "Quipsly Capture · iPhone", "blank model must fail to a stable label")
+        expect(payload.expectedDeviceLabel == "Quipsly Capture · mobile", "blank model must fall back to a stable platform-neutral label")
     }
 
     private static func transportJSONMatchesNestContract() throws {
