@@ -643,6 +643,20 @@ struct CapturePhoneShell: View {
             && videoCapture.state == .recording {
             return "Recording audio + video"
         }
+        if audioCapture.captureState == .recording
+            && videoCapture.state == .paused {
+            return "Recording audio · camera paused"
+        }
+        if audioCapture.captureState == .paused
+            && videoCapture.state == .recording {
+            return "Audio paused · recording video"
+        }
+        if audioCapture.captureState == .recording {
+            return "Recording audio · preparing camera"
+        }
+        if videoCapture.state == .recording {
+            return "Preparing audio · recording video"
+        }
         return "Preparing podcast sources"
     }
 
