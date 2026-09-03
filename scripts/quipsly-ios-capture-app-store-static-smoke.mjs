@@ -512,6 +512,9 @@ requireIncludes(physicalVoiceWritingReceiptText, 'static let schema = "quipsly-p
 requireIncludes(physicalVoiceWritingReceiptText, ".completeFileProtectionUntilFirstUserAuthentication", "physical acceptance receipt bytes use iOS file protection");
 requireIncludes(physicalVoiceWritingReceiptText, ".posixPermissions: 0o600", "physical acceptance receipts remain owner-readable only");
 requireIncludes(physicalVoiceWritingReceiptText, "isExcludedFromBackup = true", "physical acceptance receipts do not enter device backups");
+requireIncludes(physicalVoiceWritingReceiptText, "transcriptClientRequestID", "physical acceptance identifies the protected source-bound transcript sidecar without logging its text");
+requireIncludes(capturePhoneShellText, "waitForPhysicalVoiceWritingTranscript", "physical acceptance follows the saved source into automatic device transcription");
+requireIncludes(capturePhoneShellText, "OnDeviceTranscriptManager.shared.storedTranscript", "physical acceptance reads the ordinary protected transcript store");
 requireRegex(
   deterministicUITestsText,
   /#if !targetEnvironment\(simulator\)[\s\S]*func testPhysicalDeviceVoiceWritingCreatesOneSavedSource\(\)[\s\S]*XCUIApplication\(bundleIdentifier: "com\.apple\.springboard"\)[\s\S]*buttons\["Allow"\][\s\S]*CaptureStopButton[\s\S]*waitForNonExistence[\s\S]*CaptureStartButton[\s\S]*#endif/,

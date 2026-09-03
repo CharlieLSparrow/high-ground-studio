@@ -12190,6 +12190,73 @@ private struct CaptureRecorderView: View {
         print(
             "QUIPSLY_PHYSICAL_VOICE_WRITING_ACCEPTANCE finished saved=\(saved) state=\(audioCapture.captureState.rawValue) id=\(recordingIDLabel) duration=\(savedRecording?.durationSeconds ?? audioCapture.currentDuration) status=\(savedRecording?.status.rawValue ?? "missing") detail=\(audioCapture.lastErrorMessage ?? "none")"
         )
+
+        guard saved,
+              let recordingID,
+              let savedRecording else { return }
+        let transcript = await waitForPhysicalVoiceWritingTranscript(
+            recordingID: recordingID,
+            timeoutSeconds: 120
+        )
+        let transcriptState = physicalVoiceWritingTranscriptState(recordingID: recordingID)
+        PhysicalVoiceWritingAcceptanceReceiptStore.write(
+            attemptID: acceptanceAttemptID,
+            phase: .finished,
+            sessionID: session.id,
+            recordingID: recordingID,
+            captureState: audioCapture.captureState.rawValue,
+            durationSeconds: savedRecording.durationSeconds,
+            localStatus: savedRecording.status.rawValue,
+            sourceFileName: savedRecording.fileName,
+            sourceByteCount: savedRecording.byteCount,
+            transcriptState: transcriptState,
+            transcriptClientRequestID: transcript?.clientRequestId,
+            transcriptSegmentCount: transcript?.segments.count,
+            transcriptSourceSHA256: transcript?.sourceSha256,
+            transcriptSourceByteCount: transcript?.sourceByteCount,
+            transcriptRecognitionExecution: transcript?.recognitionExecution,
+            saved: true,
+            detail: audioCapture.lastErrorMessage
+        )
+        print(
+            "QUIPSLY_PHYSICAL_VOICE_WRITING_ACCEPTANCE transcript state=\(transcriptState) segments=\(transcript?.segments.count ?? 0) execution=\(transcript?.recognitionExecution ?? "none")"
+        )
+    }
+
+    private func waitForPhysicalVoiceWritingTranscript(
+        recordingID: UUID,
+        timeoutSeconds: Int
+    ) async -> OnDeviceTranscriptSidecar? {
+        for _ in 0..<max(1, timeoutSeconds) {
+            if let transcript = OnDeviceTranscriptManager.shared.storedTranscript(
+                for: recordingID
+            ) {
+                return transcript
+            }
+            do {
+                try await Task.sleep(for: .seconds(1))
+            } catch {
+                return nil
+            }
+        }
+        return OnDeviceTranscriptManager.shared.storedTranscript(for: recordingID)
+    }
+
+    private func physicalVoiceWritingTranscriptState(recordingID: UUID) -> String {
+        switch OnDeviceTranscriptManager.shared.phase(for: recordingID) {
+        case .idle: "idle"
+        case .checkingSupport: "checking-support"
+        case .modelDownloadRequired: "model-download-required"
+        case .installingModel: "installing-model"
+        case .transcribing: "transcribing"
+        case .savedLocally: "saved-locally"
+        case .waitingForVerifiedUpload: "waiting-for-verified-upload"
+        case .submitting: "submitting"
+        case .attached: "attached"
+        case .requestingCloudFallback: "requesting-cloud-fallback"
+        case .cloudFallback: "cloud-fallback"
+        case .failed: "failed"
+        }
     }
     #endif
 

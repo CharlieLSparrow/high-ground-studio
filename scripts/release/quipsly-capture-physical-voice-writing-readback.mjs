@@ -14,8 +14,25 @@ const APP_BUNDLE_ID = "com.highgroundodyssey.HighGroundCapture";
 const DEVICE_RECEIPT_PATH =
   "Library/Application Support/QuipslyCapture/PhysicalVoiceWritingAcceptance/latest.json";
 const DEVICE_RECORDINGS_PATH = "Documents/Recordings";
+const DEVICE_TRANSCRIPTS_PATH =
+  "Library/Application Support/QuipslyCapture/OnDeviceTranscripts";
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const SHA256_PATTERN = /^[0-9a-f]{64}$/i;
 const AUDIO_FILE_NAME_PATTERN = /^[a-z0-9][a-z0-9._-]{0,239}\.(m4a|aac|caf|wav)$/i;
+const TRANSCRIPT_STATES = new Set([
+  "idle",
+  "checking-support",
+  "model-download-required",
+  "installing-model",
+  "transcribing",
+  "saved-locally",
+  "waiting-for-verified-upload",
+  "submitting",
+  "attached",
+  "requesting-cloud-fallback",
+  "cloud-fallback",
+  "failed",
+]);
 const TERMINAL_PHASES = new Set(["start-failed", "cancelled", "finished"]);
 const PLAYABLE_LOCAL_STATUSES = new Set([
   "saved",
@@ -88,9 +105,10 @@ Options:
   --output <path>          Write an owner-only normalized receipt.
   --max-age-minutes <n>   Reject stale device evidence (default 30).
 
-The device form reads only the Debug physical-acceptance receipt from Quipsly
-Capture's own app data container. It does not read audio or transcript content,
-and it cannot run against an App Store build because that build contains no
+The device form reads the Debug physical-acceptance receipt and, once ready,
+independently pulls and decodes the named audio source plus its protected
+source-bound transcript sidecar. Spoken text is validated but never printed.
+This cannot run against an App Store build because shipping builds contain no
 acceptance harness.
 `;
 }
@@ -141,6 +159,43 @@ export function inspectPhysicalVoiceWritingReceipt(value, {
   if (sourceByteCount !== null && sourceByteCount <= 0) {
     fail("The physical acceptance source byte count is invalid.");
   }
+  const transcriptState = clean(value.transcriptState) || null;
+  const transcriptClientRequestID = clean(value.transcriptClientRequestID) || null;
+  const transcriptSegmentCount = Number.isSafeInteger(value.transcriptSegmentCount)
+    ? value.transcriptSegmentCount
+    : null;
+  const transcriptSourceSHA256 = clean(value.transcriptSourceSHA256).toLowerCase() || null;
+  const transcriptSourceByteCount = Number.isSafeInteger(value.transcriptSourceByteCount)
+    ? value.transcriptSourceByteCount
+    : null;
+  const transcriptRecognitionExecution = clean(value.transcriptRecognitionExecution) || null;
+  if (transcriptState && !TRANSCRIPT_STATES.has(transcriptState)) {
+    fail("The physical acceptance transcript state is invalid.");
+  }
+  if (transcriptClientRequestID && !UUID_PATTERN.test(transcriptClientRequestID)) {
+    fail("The physical acceptance transcript request ID is invalid.");
+  }
+  const transcriptMetadataPresent = [
+    transcriptClientRequestID,
+    transcriptSegmentCount,
+    transcriptSourceSHA256,
+    transcriptSourceByteCount,
+    transcriptRecognitionExecution,
+  ].some((entry) => entry !== null);
+  const transcriptMetadataValid = !transcriptMetadataPresent || (
+    Boolean(transcriptClientRequestID)
+    && transcriptSegmentCount !== null
+    && transcriptSegmentCount > 0
+    && Boolean(transcriptSourceSHA256)
+    && SHA256_PATTERN.test(transcriptSourceSHA256)
+    && transcriptSourceByteCount !== null
+    && transcriptSourceByteCount > 0
+    && Boolean(transcriptRecognitionExecution)
+    && ["saved-locally", "waiting-for-verified-upload", "submitting", "attached"].includes(transcriptState)
+  );
+  if (!transcriptMetadataValid) {
+    fail("The physical acceptance transcript metadata is incomplete or contradictory.");
+  }
   const saved = value.saved === true;
   const phaseContractValid = phase === "requested"
     ? !recordingID && saved === false
@@ -164,6 +219,7 @@ export function inspectPhysicalVoiceWritingReceipt(value, {
   }
 
   const captureAcceptanceProven = phase === "finished" && phaseContractValid;
+  const transcriptAcceptanceReady = captureAcceptanceProven && transcriptMetadataPresent;
   return {
     schema: "quipsly-capture-physical-voice-writing-readback-v1",
     checkedAt: auditDate.toISOString(),
@@ -179,6 +235,12 @@ export function inspectPhysicalVoiceWritingReceipt(value, {
     localStatus,
     sourceFileName,
     sourceByteCount,
+    transcriptState,
+    transcriptClientRequestID,
+    transcriptSegmentCount,
+    transcriptSourceSHA256,
+    transcriptSourceByteCount,
+    transcriptRecognitionExecution,
     saved,
     detail: clean(value.detail) || null,
     ageSeconds: Math.max(0, Math.floor(ageMilliseconds / 1_000)),
@@ -194,8 +256,96 @@ export function inspectPhysicalVoiceWritingReceipt(value, {
     sourceAudioCodec: null,
     sourceAudioSampleRate: null,
     sourceAudioChannels: null,
+    transcriptAcceptanceReady,
     transcriptContentRead: false,
+    sourceBoundTranscriptProven: false,
+    transcriptSidecarSHA256: null,
+    transcriptCharacterCount: null,
+    transcriptionRanOnDevice: false,
     externalMutation: false,
+  };
+}
+
+export function inspectTranscriptSidecar(value, receipt, sourceEvidence) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    fail("The protected transcript sidecar must be a JSON object.");
+  }
+  if (value.schemaVersion !== 1) fail("The protected transcript sidecar schema is not supported.");
+  if (clean(value.localRecordingId).toLowerCase() !== receipt.recordingID.toLowerCase()) {
+    fail("The transcript sidecar belongs to a different recording.");
+  }
+  if (clean(value.clientRequestId).toLowerCase() !== receipt.transcriptClientRequestID.toLowerCase()) {
+    fail("The transcript sidecar request identity does not match its receipt.");
+  }
+  const sourceSHA256 = clean(value.sourceSha256).toLowerCase();
+  if (!SHA256_PATTERN.test(sourceSHA256)
+      || sourceSHA256 !== receipt.transcriptSourceSHA256
+      || sourceSHA256 !== sourceEvidence.sourceAudioSHA256) {
+    fail("The transcript sidecar is not bound to the independently read source bytes.");
+  }
+  if (value.sourceByteCount !== receipt.transcriptSourceByteCount
+      || value.sourceByteCount !== sourceEvidence.sourceAudioByteCount) {
+    fail("The transcript sidecar source byte count does not match the independently read source.");
+  }
+  const segments = Array.isArray(value.segments) ? value.segments : [];
+  if (segments.length !== receipt.transcriptSegmentCount || segments.length === 0) {
+    fail("The transcript sidecar segment count does not match its receipt.");
+  }
+  let previousStart = -1;
+  let characterCount = 0;
+  for (const segment of segments) {
+    const start = Number(segment?.startSeconds);
+    const end = Number(segment?.endSeconds);
+    const segmentText = clean(segment?.text);
+    if (!Number.isFinite(start) || !Number.isFinite(end) || start < 0 || end <= start) {
+      fail("The transcript sidecar contains an invalid timed segment.");
+    }
+    if (start < previousStart || end > sourceEvidence.sourceAudioDurationSeconds + 1) {
+      fail("The transcript sidecar timing falls outside the independently decoded source.");
+    }
+    if (!segmentText) fail("The transcript sidecar contains an empty segment.");
+    previousStart = start;
+    characterCount += segmentText.length;
+  }
+  const recognitionExecution = clean(value.recognitionExecution);
+  if (recognitionExecution !== receipt.transcriptRecognitionExecution) {
+    fail("The transcript recognition execution does not match its receipt.");
+  }
+  return {
+    transcriptContentRead: true,
+    sourceBoundTranscriptProven: true,
+    transcriptCharacterCount: characterCount,
+    transcriptRecognitionExecution: recognitionExecution,
+    transcriptionRanOnDevice: recognitionExecution === "on-device",
+  };
+}
+
+async function pullAndInspectTranscript(device, receipt, sourceEvidence, destination) {
+  const transcriptFileName = [
+    receipt.recordingID.toLowerCase(),
+    receipt.transcriptClientRequestID.toLowerCase(),
+  ].join("-") + ".transcript.json";
+  await execFileAsync("xcrun", [
+    "devicectl",
+    "device",
+    "copy",
+    "from",
+    "--device",
+    device,
+    "--domain-type",
+    "appDataContainer",
+    "--domain-identifier",
+    APP_BUNDLE_ID,
+    "--source",
+    `${DEVICE_TRANSCRIPTS_PATH}/${transcriptFileName}`,
+    "--destination",
+    destination,
+  ], { maxBuffer: 1024 * 1024, timeout: 30_000 });
+  const bytes = await readFile(destination);
+  const sidecar = JSON.parse(bytes.toString("utf8"));
+  return {
+    ...inspectTranscriptSidecar(sidecar, receipt, sourceEvidence),
+    transcriptSidecarSHA256: createHash("sha256").update(bytes).digest("hex"),
   };
 }
 
@@ -294,10 +444,23 @@ async function main() {
     });
     if (options.device && receipt.captureAcceptanceProven) {
       const sourcePath = path.join(temporaryDirectory, receipt.sourceFileName);
+      const sourceEvidence = await pullAndInspectSource(options.device, receipt, sourcePath);
       receipt = {
         ...receipt,
-        ...await pullAndInspectSource(options.device, receipt, sourcePath),
+        ...sourceEvidence,
       };
+      if (receipt.transcriptAcceptanceReady) {
+        const transcriptPath = path.join(temporaryDirectory, "transcript.json");
+        receipt = {
+          ...receipt,
+          ...await pullAndInspectTranscript(
+            options.device,
+            receipt,
+            { ...sourceEvidence, sourceAudioByteCount: receipt.sourceByteCount },
+            transcriptPath,
+          ),
+        };
+      }
     }
     if (options.outputPath) {
       await writeFile(options.outputPath, `${JSON.stringify(receipt, null, 2)}\n`, { mode: 0o600 });

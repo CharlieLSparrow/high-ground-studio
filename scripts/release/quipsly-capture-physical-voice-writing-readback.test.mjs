@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  inspectTranscriptSidecar,
   inspectPhysicalVoiceWritingReceipt,
   parseArguments,
 } from "./quipsly-capture-physical-voice-writing-readback.mjs";
@@ -9,6 +10,8 @@ import {
 const now = new Date("2026-09-03T18:40:00Z");
 const attemptID = "8C3D7ABE-B8BC-4B13-949A-F52D8ED5D517";
 const recordingID = "B9C77BE4-30CF-4CF2-A2B8-C135A3B30EBE";
+const transcriptRequestID = "F8076CB6-2A38-4EC4-B5A9-C32180285C52";
+const sourceSHA256 = "a".repeat(64);
 
 function receipt(overrides = {}) {
   return {
@@ -74,6 +77,53 @@ test("proves a finished playable local source with exact identifiers", () => {
   assert.equal(result.durationSeconds, 7.14);
   assert.equal(result.sourceFileName, "20260903-123456-b9c77be4.m4a");
   assert.equal(result.sourceByteCount, 123_456);
+  assert.equal(result.transcriptAcceptanceReady, false);
+});
+
+test("proves non-disclosing source-bound transcript metadata against independently read audio", () => {
+  const result = inspectPhysicalVoiceWritingReceipt(receipt({
+    phase: "finished",
+    captureState: "saved",
+    recordingID,
+    durationSeconds: 7.14,
+    localStatus: "saved",
+    sourceFileName: "20260903-123456-b9c77be4.m4a",
+    sourceByteCount: 123_456,
+    transcriptState: "saved-locally",
+    transcriptClientRequestID: transcriptRequestID,
+    transcriptSegmentCount: 2,
+    transcriptSourceSHA256: sourceSHA256,
+    transcriptSourceByteCount: 123_456,
+    transcriptRecognitionExecution: "on-device",
+    saved: true,
+  }), { auditedAt: now, expectedBuild: "69" });
+  assert.equal(result.transcriptAcceptanceReady, true);
+
+  const evidence = inspectTranscriptSidecar({
+    schemaVersion: 1,
+    clientRequestId: transcriptRequestID,
+    localRecordingId: recordingID,
+    ownerAccountId: "private-owner-not-returned",
+    sourceSha256: sourceSHA256,
+    sourceByteCount: 123_456,
+    recognitionExecution: "on-device",
+    segments: [
+      { startSeconds: 0.2, endSeconds: 2.4, text: "private first phrase" },
+      { startSeconds: 3.1, endSeconds: 6.9, text: "private second phrase" },
+    ],
+  }, result, {
+    sourceAudioSHA256: sourceSHA256,
+    sourceAudioByteCount: 123_456,
+    sourceAudioDurationSeconds: 7.14,
+  });
+  assert.deepEqual(evidence, {
+    transcriptContentRead: true,
+    sourceBoundTranscriptProven: true,
+    transcriptCharacterCount: 41,
+    transcriptRecognitionExecution: "on-device",
+    transcriptionRanOnDevice: true,
+  });
+  assert.equal(JSON.stringify(evidence).includes("private"), false);
 });
 
 test("rejects stale, wrong-build, malformed, and contradictory evidence", () => {
@@ -127,5 +177,24 @@ test("rejects stale, wrong-build, malformed, and contradictory evidence", () => 
       saved: true,
     }), { auditedAt: now }),
     /source file name is invalid/,
+  );
+  assert.throws(
+    () => inspectPhysicalVoiceWritingReceipt(receipt({
+      phase: "finished",
+      captureState: "saved",
+      recordingID,
+      durationSeconds: 7,
+      localStatus: "saved",
+      sourceFileName: "valid.m4a",
+      sourceByteCount: 123_456,
+      transcriptState: "saved-locally",
+      transcriptClientRequestID: transcriptRequestID,
+      transcriptSegmentCount: 0,
+      transcriptSourceSHA256: sourceSHA256,
+      transcriptSourceByteCount: 123_456,
+      transcriptRecognitionExecution: "on-device",
+      saved: true,
+    }), { auditedAt: now }),
+    /transcript metadata is incomplete or contradictory/,
   );
 });

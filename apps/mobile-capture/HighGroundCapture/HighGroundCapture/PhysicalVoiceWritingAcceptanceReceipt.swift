@@ -31,6 +31,12 @@ struct PhysicalVoiceWritingAcceptanceReceipt: Codable {
     let localStatus: String?
     let sourceFileName: String?
     let sourceByteCount: Int64?
+    let transcriptState: String?
+    let transcriptClientRequestID: UUID?
+    let transcriptSegmentCount: Int?
+    let transcriptSourceSHA256: String?
+    let transcriptSourceByteCount: Int64?
+    let transcriptRecognitionExecution: String?
     let saved: Bool
     let detail: String?
 }
@@ -49,6 +55,12 @@ enum PhysicalVoiceWritingAcceptanceReceiptStore {
         localStatus: String? = nil,
         sourceFileName: String? = nil,
         sourceByteCount: Int64? = nil,
+        transcriptState: String? = nil,
+        transcriptClientRequestID: UUID? = nil,
+        transcriptSegmentCount: Int? = nil,
+        transcriptSourceSHA256: String? = nil,
+        transcriptSourceByteCount: Int64? = nil,
+        transcriptRecognitionExecution: String? = nil,
         saved: Bool = false,
         detail: String? = nil,
         fileManager: FileManager = .default
@@ -67,6 +79,12 @@ enum PhysicalVoiceWritingAcceptanceReceiptStore {
                 localStatus: localStatus,
                 sourceFileName: cleaned(sourceFileName),
                 sourceByteCount: sourceByteCount,
+                transcriptState: cleaned(transcriptState),
+                transcriptClientRequestID: transcriptClientRequestID,
+                transcriptSegmentCount: transcriptSegmentCount,
+                transcriptSourceSHA256: cleaned(transcriptSourceSHA256),
+                transcriptSourceByteCount: transcriptSourceByteCount,
+                transcriptRecognitionExecution: cleaned(transcriptRecognitionExecution),
                 saved: saved,
                 detail: cleaned(detail)
             )
