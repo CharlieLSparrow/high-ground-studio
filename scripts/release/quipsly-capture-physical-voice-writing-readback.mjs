@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { execFile } from "node:child_process";
+import { createHash } from "node:crypto";
 import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -12,7 +13,9 @@ const SCHEMA = "quipsly-physical-voice-writing-acceptance-v1";
 const APP_BUNDLE_ID = "com.highgroundodyssey.HighGroundCapture";
 const DEVICE_RECEIPT_PATH =
   "Library/Application Support/QuipslyCapture/PhysicalVoiceWritingAcceptance/latest.json";
+const DEVICE_RECORDINGS_PATH = "Documents/Recordings";
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const AUDIO_FILE_NAME_PATTERN = /^[a-z0-9][a-z0-9._-]{0,239}\.(m4a|aac|caf|wav)$/i;
 const TERMINAL_PHASES = new Set(["start-failed", "cancelled", "finished"]);
 const PLAYABLE_LOCAL_STATUSES = new Set([
   "saved",
@@ -130,6 +133,14 @@ export function inspectPhysicalVoiceWritingReceipt(value, {
 
   const durationSeconds = Number.isFinite(value.durationSeconds) ? value.durationSeconds : null;
   const localStatus = clean(value.localStatus) || null;
+  const sourceFileName = clean(value.sourceFileName) || null;
+  const sourceByteCount = Number.isSafeInteger(value.sourceByteCount) ? value.sourceByteCount : null;
+  if (sourceFileName && (!AUDIO_FILE_NAME_PATTERN.test(sourceFileName) || sourceFileName.includes(".."))) {
+    fail("The physical acceptance source file name is invalid.");
+  }
+  if (sourceByteCount !== null && sourceByteCount <= 0) {
+    fail("The physical acceptance source byte count is invalid.");
+  }
   const saved = value.saved === true;
   const phaseContractValid = phase === "requested"
     ? !recordingID && saved === false
@@ -142,6 +153,11 @@ export function inspectPhysicalVoiceWritingReceipt(value, {
       && durationSeconds !== null
       && durationSeconds >= 1
       && PLAYABLE_LOCAL_STATUSES.has(localStatus)
+      && Boolean(sourceFileName)
+      && AUDIO_FILE_NAME_PATTERN.test(sourceFileName)
+      && !sourceFileName.includes("..")
+      && sourceByteCount !== null
+      && sourceByteCount > 0
     );
   if (!phaseContractValid) {
     fail(`The ${phase} receipt contradicts its recording evidence.`);
@@ -161,6 +177,8 @@ export function inspectPhysicalVoiceWritingReceipt(value, {
     captureState,
     durationSeconds,
     localStatus,
+    sourceFileName,
+    sourceByteCount,
     saved,
     detail: clean(value.detail) || null,
     ageSeconds: Math.max(0, Math.floor(ageMilliseconds / 1_000)),
@@ -170,8 +188,68 @@ export function inspectPhysicalVoiceWritingReceipt(value, {
     terminalPhaseObserved: TERMINAL_PHASES.has(phase),
     captureAcceptanceProven,
     sourceAudioRead: false,
+    sourceAudioPlayable: false,
+    sourceAudioSHA256: null,
+    sourceAudioDurationSeconds: null,
+    sourceAudioCodec: null,
+    sourceAudioSampleRate: null,
+    sourceAudioChannels: null,
     transcriptContentRead: false,
     externalMutation: false,
+  };
+}
+
+async function pullAndInspectSource(device, receipt, destination) {
+  if (!receipt.sourceFileName || !receipt.sourceByteCount) {
+    fail("Finished device evidence does not identify a source file.");
+  }
+  await execFileAsync("xcrun", [
+    "devicectl",
+    "device",
+    "copy",
+    "from",
+    "--device",
+    device,
+    "--domain-type",
+    "appDataContainer",
+    "--domain-identifier",
+    APP_BUNDLE_ID,
+    "--source",
+    `${DEVICE_RECORDINGS_PATH}/${receipt.sourceFileName}`,
+    "--destination",
+    destination,
+  ], { maxBuffer: 1024 * 1024, timeout: 30_000 });
+
+  const bytes = await readFile(destination);
+  if (bytes.byteLength !== receipt.sourceByteCount) {
+    fail(`Pulled source byte count ${bytes.byteLength} does not match receipt ${receipt.sourceByteCount}.`);
+  }
+  const { stdout } = await execFileAsync("ffprobe", [
+    "-v", "error",
+    "-show_entries", "format=duration,size:stream=codec_type,codec_name,sample_rate,channels",
+    "-of", "json",
+    destination,
+  ], { maxBuffer: 1024 * 1024, timeout: 30_000 });
+  const probe = JSON.parse(stdout);
+  const audioStream = Array.isArray(probe.streams)
+    ? probe.streams.find((stream) => stream?.codec_type === "audio")
+    : null;
+  const decodedDurationSeconds = Number(probe.format?.duration);
+  const decodedSize = Number(probe.format?.size);
+  if (!audioStream || !Number.isFinite(decodedDurationSeconds) || decodedDurationSeconds < 1) {
+    fail("The pulled source does not contain a decodable audio stream of at least one second.");
+  }
+  if (!Number.isSafeInteger(decodedSize) || decodedSize !== bytes.byteLength) {
+    fail("The decoded source size does not match the pulled source bytes.");
+  }
+  return {
+    sourceAudioRead: true,
+    sourceAudioPlayable: true,
+    sourceAudioSHA256: createHash("sha256").update(bytes).digest("hex"),
+    sourceAudioDurationSeconds: decodedDurationSeconds,
+    sourceAudioCodec: clean(audioStream.codec_name) || null,
+    sourceAudioSampleRate: Number(audioStream.sample_rate) || null,
+    sourceAudioChannels: Number(audioStream.channels) || null,
   };
 }
 
@@ -210,10 +288,17 @@ async function main() {
       await pullReceipt(options.device, receiptPath);
     }
     const source = JSON.parse(await readFile(receiptPath, "utf8"));
-    const receipt = inspectPhysicalVoiceWritingReceipt(source, {
+    let receipt = inspectPhysicalVoiceWritingReceipt(source, {
       expectedBuild: options.expectedBuild,
       maxAgeMinutes: options.maxAgeMinutes,
     });
+    if (options.device && receipt.captureAcceptanceProven) {
+      const sourcePath = path.join(temporaryDirectory, receipt.sourceFileName);
+      receipt = {
+        ...receipt,
+        ...await pullAndInspectSource(options.device, receipt, sourcePath),
+      };
+    }
     if (options.outputPath) {
       await writeFile(options.outputPath, `${JSON.stringify(receipt, null, 2)}\n`, { mode: 0o600 });
       await chmod(options.outputPath, 0o600);

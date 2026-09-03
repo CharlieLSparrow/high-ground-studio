@@ -48,6 +48,8 @@ test("reports a fresh requested permission boundary without inventing capture pr
   assert.equal(result.terminal, false);
   assert.equal(result.captureAcceptanceProven, false);
   assert.equal(result.sourceAudioRead, false);
+  assert.equal(result.sourceAudioPlayable, false);
+  assert.equal(result.sourceAudioSHA256, null);
   assert.equal(result.transcriptContentRead, false);
 });
 
@@ -58,6 +60,8 @@ test("proves a finished playable local source with exact identifiers", () => {
     recordingID,
     durationSeconds: 7.14,
     localStatus: "saved",
+    sourceFileName: "20260903-123456-b9c77be4.m4a",
+    sourceByteCount: 123_456,
     saved: true,
   }), { auditedAt: now, expectedBuild: "69" });
   assert.equal(result.captureAcceptanceProven, true);
@@ -68,6 +72,8 @@ test("proves a finished playable local source with exact identifiers", () => {
   assert.equal(result.terminal, true);
   assert.equal(result.recordingID, recordingID);
   assert.equal(result.durationSeconds, 7.14);
+  assert.equal(result.sourceFileName, "20260903-123456-b9c77be4.m4a");
+  assert.equal(result.sourceByteCount, 123_456);
 });
 
 test("rejects stale, wrong-build, malformed, and contradictory evidence", () => {
@@ -90,6 +96,8 @@ test("rejects stale, wrong-build, malformed, and contradictory evidence", () => 
       recordingID,
       durationSeconds: 0,
       localStatus: "saved",
+      sourceFileName: "20260903-123456-b9c77be4.m4a",
+      sourceByteCount: 123_456,
       saved: true,
     }), { auditedAt: now }),
     /contradicts its recording evidence/,
@@ -101,8 +109,23 @@ test("rejects stale, wrong-build, malformed, and contradictory evidence", () => 
       recordingID,
       durationSeconds: 7,
       localStatus: "captureFailed",
+      sourceFileName: "20260903-123456-b9c77be4.m4a",
+      sourceByteCount: 123_456,
       saved: true,
     }), { auditedAt: now }),
     /contradicts its recording evidence/,
+  );
+  assert.throws(
+    () => inspectPhysicalVoiceWritingReceipt(receipt({
+      phase: "finished",
+      captureState: "saved",
+      recordingID,
+      durationSeconds: 7,
+      localStatus: "saved",
+      sourceFileName: "../escaped.m4a",
+      sourceByteCount: 123_456,
+      saved: true,
+    }), { auditedAt: now }),
+    /source file name is invalid/,
   );
 });

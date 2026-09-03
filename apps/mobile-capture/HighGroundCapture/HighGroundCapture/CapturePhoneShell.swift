@@ -12182,6 +12182,8 @@ private struct CaptureRecorderView: View {
             captureState: audioCapture.captureState.rawValue,
             durationSeconds: savedRecording?.durationSeconds ?? audioCapture.currentDuration,
             localStatus: savedRecording?.status.rawValue,
+            sourceFileName: savedRecording?.fileName,
+            sourceByteCount: savedRecording?.byteCount,
             saved: saved,
             detail: audioCapture.lastErrorMessage
         )

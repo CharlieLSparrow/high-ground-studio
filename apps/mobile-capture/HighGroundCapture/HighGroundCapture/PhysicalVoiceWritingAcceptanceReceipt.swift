@@ -29,6 +29,8 @@ struct PhysicalVoiceWritingAcceptanceReceipt: Codable {
     let captureState: String
     let durationSeconds: Double?
     let localStatus: String?
+    let sourceFileName: String?
+    let sourceByteCount: Int64?
     let saved: Bool
     let detail: String?
 }
@@ -45,6 +47,8 @@ enum PhysicalVoiceWritingAcceptanceReceiptStore {
         captureState: String,
         durationSeconds: Double? = nil,
         localStatus: String? = nil,
+        sourceFileName: String? = nil,
+        sourceByteCount: Int64? = nil,
         saved: Bool = false,
         detail: String? = nil,
         fileManager: FileManager = .default
@@ -61,6 +65,8 @@ enum PhysicalVoiceWritingAcceptanceReceiptStore {
                 captureState: captureState,
                 durationSeconds: durationSeconds,
                 localStatus: localStatus,
+                sourceFileName: cleaned(sourceFileName),
+                sourceByteCount: sourceByteCount,
                 saved: saved,
                 detail: cleaned(detail)
             )
