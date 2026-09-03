@@ -20,6 +20,7 @@ Important environment controls:
   ENABLE_STRIPE_SAAS
   ENABLE_GOOGLE_CALENDAR_OAUTH, ENABLE_GOOGLE_DRIVE_OAUTH
   ENABLE_LIVEKIT_PROVIDER, CONFIGURE_LIVEKIT_EGRESS, ENABLE_LIVEKIT_EGRESS
+  PRESERVE_LIVE_CAPABILITIES (default 1; explicit feature flags still win)
   QUIPSLY_GA_MEASUREMENT_ID
 
 The preview receives no production traffic. Use quipsly-smoke-preview.sh and
@@ -67,6 +68,16 @@ RELEASE_SMOKE_SECRET_NAME="${RELEASE_SMOKE_SECRET_NAME:-quipsly-release-smoke-se
 RELEASE_SMOKE_SECRET_VERSION="${RELEASE_SMOKE_SECRET_VERSION:-latest}"
 IMAGE_PROXY_TOKEN_SECRET_NAME="${IMAGE_PROXY_TOKEN_SECRET_NAME:-reefball-image-proxy-token}"
 IMAGE_PROXY_TOKEN_SECRET_VERSION="${IMAGE_PROXY_TOKEN_SECRET_VERSION:-latest}"
+PRESERVE_LIVE_CAPABILITIES="${PRESERVE_LIVE_CAPABILITIES:-1}"
+ENABLE_GOOGLE_CALENDAR_OAUTH_EXPLICIT="${ENABLE_GOOGLE_CALENDAR_OAUTH+x}"
+ENABLE_GOOGLE_DRIVE_OAUTH_EXPLICIT="${ENABLE_GOOGLE_DRIVE_OAUTH+x}"
+ENABLE_TRANSCRIPT_WORKER_EXPLICIT="${ENABLE_TRANSCRIPT_WORKER+x}"
+ENABLE_ACCOUNT_DELETION_WORKER_EXPLICIT="${ENABLE_ACCOUNT_DELETION_WORKER+x}"
+ENABLE_SESSION_INVITATION_EMAIL_EXPLICIT="${ENABLE_SESSION_INVITATION_EMAIL+x}"
+ENABLE_STRIPE_SAAS_EXPLICIT="${ENABLE_STRIPE_SAAS+x}"
+ENABLE_LIVEKIT_PROVIDER_EXPLICIT="${ENABLE_LIVEKIT_PROVIDER+x}"
+CONFIGURE_LIVEKIT_EGRESS_EXPLICIT="${CONFIGURE_LIVEKIT_EGRESS+x}"
+ENABLE_LIVEKIT_EGRESS_EXPLICIT="${ENABLE_LIVEKIT_EGRESS+x}"
 ENABLE_GOOGLE_CALENDAR_OAUTH="${ENABLE_GOOGLE_CALENDAR_OAUTH:-0}"
 ENABLE_GOOGLE_DRIVE_OAUTH="${ENABLE_GOOGLE_DRIVE_OAUTH:-0}"
 ENABLE_TRANSCRIPT_WORKER="${ENABLE_TRANSCRIPT_WORKER:-0}"
@@ -123,6 +134,74 @@ QUIPSLY_GA_PROPERTY_ID="${QUIPSLY_GA_PROPERTY_ID:-503353241}"
 if [[ -z "${PROJECT_ID}" ]]; then
   echo "PROJECT_ID is required or gcloud must have a default project." >&2
   exit 2
+fi
+
+if [[ "${PRESERVE_LIVE_CAPABILITIES}" != "0" && "${PRESERVE_LIVE_CAPABILITIES}" != "1" ]]; then
+  echo "PRESERVE_LIVE_CAPABILITIES must be 0 or 1." >&2
+  exit 2
+fi
+
+if [[ "${PRESERVE_LIVE_CAPABILITIES}" == "1" ]]; then
+  needs_live_capability_readback=0
+  for explicit_marker in \
+    "${ENABLE_GOOGLE_CALENDAR_OAUTH_EXPLICIT}" \
+    "${ENABLE_GOOGLE_DRIVE_OAUTH_EXPLICIT}" \
+    "${ENABLE_TRANSCRIPT_WORKER_EXPLICIT}" \
+    "${ENABLE_ACCOUNT_DELETION_WORKER_EXPLICIT}" \
+    "${ENABLE_SESSION_INVITATION_EMAIL_EXPLICIT}" \
+    "${ENABLE_STRIPE_SAAS_EXPLICIT}" \
+    "${ENABLE_LIVEKIT_PROVIDER_EXPLICIT}" \
+    "${CONFIGURE_LIVEKIT_EGRESS_EXPLICIT}" \
+    "${ENABLE_LIVEKIT_EGRESS_EXPLICIT}"; do
+    if [[ -z "${explicit_marker}" ]]; then
+      needs_live_capability_readback=1
+      break
+    fi
+  done
+
+  if [[ "${needs_live_capability_readback}" == "1" ]]; then
+    live_service_document="$(
+      gcloud run services describe "${SERVICE_NAME}" \
+        --project="${PROJECT_ID}" \
+        --region="${REGION}" \
+        --format=json
+    )"
+    inherited_feature_lines="$(
+      printf '%s' "${live_service_document}" \
+        | node "$(git rev-parse --show-toplevel)/scripts/release/quipsly-release-feature-inheritance.mjs"
+    )"
+    while IFS='=' read -r inherited_name inherited_value; do
+      [[ -n "${inherited_name}" ]] || continue
+      case "${inherited_name}" in
+        ENABLE_GOOGLE_CALENDAR_OAUTH)
+          [[ -n "${ENABLE_GOOGLE_CALENDAR_OAUTH_EXPLICIT}" ]] || ENABLE_GOOGLE_CALENDAR_OAUTH="${inherited_value}" ;;
+        ENABLE_GOOGLE_DRIVE_OAUTH)
+          [[ -n "${ENABLE_GOOGLE_DRIVE_OAUTH_EXPLICIT}" ]] || ENABLE_GOOGLE_DRIVE_OAUTH="${inherited_value}" ;;
+        ENABLE_TRANSCRIPT_WORKER)
+          [[ -n "${ENABLE_TRANSCRIPT_WORKER_EXPLICIT}" ]] || ENABLE_TRANSCRIPT_WORKER="${inherited_value}" ;;
+        ENABLE_ACCOUNT_DELETION_WORKER)
+          [[ -n "${ENABLE_ACCOUNT_DELETION_WORKER_EXPLICIT}" ]] || ENABLE_ACCOUNT_DELETION_WORKER="${inherited_value}" ;;
+        ENABLE_SESSION_INVITATION_EMAIL)
+          [[ -n "${ENABLE_SESSION_INVITATION_EMAIL_EXPLICIT}" ]] || ENABLE_SESSION_INVITATION_EMAIL="${inherited_value}" ;;
+        ENABLE_STRIPE_SAAS)
+          [[ -n "${ENABLE_STRIPE_SAAS_EXPLICIT}" ]] || ENABLE_STRIPE_SAAS="${inherited_value}" ;;
+        ENABLE_LIVEKIT_PROVIDER)
+          [[ -n "${ENABLE_LIVEKIT_PROVIDER_EXPLICIT}" ]] || ENABLE_LIVEKIT_PROVIDER="${inherited_value}" ;;
+        CONFIGURE_LIVEKIT_EGRESS)
+          [[ -n "${CONFIGURE_LIVEKIT_EGRESS_EXPLICIT}" ]] || CONFIGURE_LIVEKIT_EGRESS="${inherited_value}" ;;
+        ENABLE_LIVEKIT_EGRESS)
+          [[ -n "${ENABLE_LIVEKIT_EGRESS_EXPLICIT}" ]] || ENABLE_LIVEKIT_EGRESS="${inherited_value}" ;;
+        *)
+          echo "Unexpected inherited release feature: ${inherited_name}" >&2
+          exit 2 ;;
+      esac
+      if [[ "${inherited_value}" != "0" && "${inherited_value}" != "1" ]]; then
+        echo "Invalid inherited release value for ${inherited_name}." >&2
+        exit 2
+      fi
+    done <<< "${inherited_feature_lines}"
+    echo "Unspecified release capabilities inherited from the current live ${SERVICE_NAME} service."
+  fi
 fi
 
 if [[ ! "${QUIPSLY_GA_MEASUREMENT_ID}" =~ ^G-[A-Z0-9]+$ ]]; then

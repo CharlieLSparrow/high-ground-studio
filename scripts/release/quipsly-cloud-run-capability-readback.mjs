@@ -24,6 +24,12 @@ const hasSecret = (environment, name) => Boolean(secretReference(environment[nam
 const hasPlain = (environment, name) => presentValue(environment[name]);
 
 const all = (values) => values.every(Boolean);
+const any = (values) => values.some(Boolean);
+
+const capabilityState = (checks) => ({
+  configured: any(checks),
+  ready: all(checks),
+});
 
 function environmentMap(serviceDocument) {
   const container = serviceDocument?.spec?.template?.spec?.containers?.[0]
@@ -85,7 +91,7 @@ export function summarizeCloudRunCapabilities(
   const sourceSha = environment.QUIPSLY_SOURCE_SHA?.value ?? "";
   const releaseChannel = environment.QUIPSLY_RELEASE_CHANNEL?.value ?? "";
 
-  const liveConversation = all([
+  const liveConversation = capabilityState([
     hasSecret(environment, "LIVEKIT_URL"),
     hasSecret(environment, "LIVEKIT_API_KEY"),
     hasSecret(environment, "LIVEKIT_API_SECRET"),
@@ -94,7 +100,7 @@ export function summarizeCloudRunCapabilities(
     hasSecret(environment, "LIVEKIT_EGRESS_GCP_CREDENTIALS_JSON"),
     hasSecret(environment, "LIVEKIT_EGRESS_GCS_BUCKET"),
   ]);
-  const calendar = all([
+  const calendar = capabilityState([
     hasSecret(environment, "GOOGLE_CALENDAR_OAUTH_CLIENT_ID"),
     hasSecret(environment, "GOOGLE_CALENDAR_OAUTH_CLIENT_SECRET"),
     hasSecret(environment, "GOOGLE_CALENDAR_OAUTH_STATE_SECRET"),
@@ -102,7 +108,7 @@ export function summarizeCloudRunCapabilities(
     hasPlain(environment, "GOOGLE_CALENDAR_PUSH_WORKER_SERVICE_ACCOUNT"),
     hasPlain(environment, "GOOGLE_CALENDAR_PUSH_WORKER_AUDIENCE"),
   ]);
-  const drive = all([
+  const drive = capabilityState([
     hasSecret(environment, "GOOGLE_DRIVE_OAUTH_CLIENT_ID"),
     hasSecret(environment, "GOOGLE_DRIVE_OAUTH_CLIENT_SECRET"),
     hasSecret(environment, "GOOGLE_DRIVE_OAUTH_STATE_SECRET"),
@@ -110,51 +116,75 @@ export function summarizeCloudRunCapabilities(
     hasSecret(environment, "GOOGLE_DRIVE_PICKER_API_KEY"),
     hasSecret(environment, "GOOGLE_DRIVE_PICKER_APP_ID"),
   ]);
-  const invitationEmail = all([
+  const invitationEmail = capabilityState([
     hasSecret(environment, "QUIPSLY_SESSION_INVITATION_RESEND_API_KEY"),
     hasSecret(environment, "QUIPSLY_RESEND_WEBHOOK_SECRET"),
     hasPlain(environment, "QUIPSLY_SESSION_INVITATION_EMAIL_FROM"),
   ]);
-  const transcriptDispatch = all([
+  const transcriptDispatch = capabilityState([
     booleanValue(environment.QUIPSLY_TRANSCRIPT_WORKER_ENABLED),
     hasPlain(environment, "QUIPSLY_TRANSCRIPT_WORKER_PROJECT_ID"),
     hasPlain(environment, "QUIPSLY_TRANSCRIPT_WORKER_REGION"),
     hasPlain(environment, "QUIPSLY_TRANSCRIPT_WORKER_JOB"),
     hasPlain(environment, "QUIPSLY_TRANSCRIPT_PROVIDER"),
   ]);
-  const accountDeletion = all([
+  const accountDeletion = capabilityState([
     booleanValue(environment.QUIPSLY_ACCOUNT_DELETION_WORKER_ENABLED),
     hasPlain(environment, "QUIPSLY_ACCOUNT_DELETION_WORKER_URL"),
     hasSecret(environment, "QUIPSLY_ACCOUNT_DELETION_WORKER_SHARED_SECRET"),
   ]);
-  const subscriptions = all([
+  const subscriptions = capabilityState([
     booleanValue(environment.QUIPSLY_ALLOW_LIVE_STRIPE_SAAS),
     booleanValue(environment.QUIPSLY_SAAS_ENTITLEMENT_ENFORCEMENT),
     hasSecret(environment, "STRIPE_SECRET_KEY"),
     hasSecret(environment, "QUIPSLY_STRIPE_COACH_MONTHLY_PRICE_ID"),
     hasSecret(environment, "QUIPSLY_STRIPE_COACH_ANNUAL_PRICE_ID"),
   ]);
-  const analytics = /^G-[A-Z0-9]+$/.test(
-    environment.QUIPSLY_GA_MEASUREMENT_ID?.value ?? "",
-  ) && /^[0-9]{6,20}$/.test(
-    environment.QUIPSLY_GA_PROPERTY_ID?.value ?? "",
+  const analytics = capabilityState([
+    /^G-[A-Z0-9]+$/.test(environment.QUIPSLY_GA_MEASUREMENT_ID?.value ?? ""),
+    /^[0-9]{6,20}$/.test(environment.QUIPSLY_GA_PROPERTY_ID?.value ?? ""),
+  ]);
+  const appStoreReceiptChecks = capabilityState([
+    hasPlain(environment, "APP_STORE_BUNDLE_ID"),
+    hasPlain(environment, "APP_STORE_APP_APPLE_ID"),
+    booleanValue(environment.APP_STORE_ENABLE_ONLINE_CHECKS),
+  ]);
+  const committedSourceIdentity = /^[0-9a-f]{40}$/.test(sourceSha);
+  const immutableImageIdentity = /@sha256:[0-9a-f]{64}$/.test(runtime.image);
+  const readyRevisionIdentified = Boolean(
+    serviceDocument?.status?.latestReadyRevisionName,
   );
-  const releaseIdentity = /^[0-9a-f]{40}$/.test(sourceSha)
-    && Boolean(runtime.image)
-    && Boolean(serviceDocument?.status?.latestReadyRevisionName);
+  const releaseIdentity = committedSourceIdentity
+    && immutableImageIdentity
+    && readyRevisionIdentified;
 
   const warnings = [];
   if (production.length !== 1 || production[0]?.percent !== 100) {
     warnings.push("Production traffic is not pinned 100% to one untagged revision.");
   }
   if (!releaseIdentity) {
-    warnings.push("The ready revision is missing an exact committed source identity or image.");
+    warnings.push("The ready revision is missing a committed source SHA, immutable image digest, or ready-revision identity.");
   }
   if (runtime.maxInstances < 2) {
     warnings.push("The service cannot scale to two instances during replacement or load.");
   }
   if (booleanValue(environment.LIVEKIT_EGRESS_ENABLED) && !egressConfigured) {
     warnings.push("LiveKit egress is enabled without both protected destination bindings.");
+  }
+  for (const [label, state] of [
+    ["LiveKit conversation", liveConversation],
+    ["Google Calendar", calendar],
+    ["Google Drive", drive],
+    ["invitation email", invitationEmail],
+    ["transcript dispatch", transcriptDispatch],
+    ["account deletion", accountDeletion],
+    ["subscriptions", subscriptions],
+    ["analytics", analytics],
+    ["App Store receipt checks", appStoreReceiptChecks],
+  ]) {
+    if (state.configured && !state.ready) {
+      warnings.push(`${label} is only partially configured.`);
+    }
   }
 
   return {
@@ -168,6 +198,9 @@ export function summarizeCloudRunCapabilities(
     },
     release: {
       exactSourceIdentity: releaseIdentity,
+      committedSourceIdentity,
+      immutableImageIdentity,
+      readyRevisionIdentified,
       sourceSha,
       releaseChannel,
       image: runtime.image,
@@ -180,25 +213,19 @@ export function summarizeCloudRunCapabilities(
       timeoutSeconds: runtime.timeoutSeconds,
     },
     capabilities: {
-      liveConversation: { ready: liveConversation },
+      liveConversation,
       providerEgress: {
         configured: egressConfigured,
         enabled: booleanValue(environment.LIVEKIT_EGRESS_ENABLED),
       },
-      googleCalendar: { ready: calendar },
-      googleDrive: { ready: drive },
-      invitationEmail: { ready: invitationEmail },
-      transcriptDispatch: { ready: transcriptDispatch },
-      accountDeletion: { ready: accountDeletion },
-      subscriptions: { ready: subscriptions },
-      analytics: { ready: analytics },
-      appStoreReceiptChecks: {
-        ready: all([
-          hasPlain(environment, "APP_STORE_BUNDLE_ID"),
-          hasPlain(environment, "APP_STORE_APP_APPLE_ID"),
-          booleanValue(environment.APP_STORE_ENABLE_ONLINE_CHECKS),
-        ]),
-      },
+      googleCalendar: calendar,
+      googleDrive: drive,
+      invitationEmail,
+      transcriptDispatch,
+      accountDeletion,
+      subscriptions,
+      analytics,
+      appStoreReceiptChecks,
     },
     warnings,
   };

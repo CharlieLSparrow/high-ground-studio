@@ -250,7 +250,13 @@ case "${MODE}" in
     ;;
 esac
 
-for command_name in gcloud curl node python3; do
+require_command node
+if [[ "${MODE}" == "smoke" ]]; then
+  BASE_URL="$(validate_base_url "${BASE_URL}")" \
+    || fail "Generated reviewer target is outside the trusted runtime boundary."
+fi
+
+for command_name in gcloud curl python3; do
   require_command "${command_name}"
 done
 
@@ -258,12 +264,12 @@ cd "${ROOT_DIR}"
 
 if [[ "${MODE}" == "promote-preview" ]]; then
   BASE_URL="$(resolve_preview_url)"
+  BASE_URL="$(validate_base_url "${BASE_URL}")" \
+    || fail "Generated reviewer target is outside the trusted runtime boundary."
   printf "Mode: immutable preview smoke and promotion.\n"
 else
   printf "Mode: generated production reviewer smoke; traffic mutation is disabled.\n"
 fi
-BASE_URL="$(validate_base_url "${BASE_URL}")" \
-  || fail "Generated reviewer target is outside the trusted runtime boundary."
 
 database_url="$(
   gcloud secrets versions access "${DATABASE_SECRET_VERSION}" \

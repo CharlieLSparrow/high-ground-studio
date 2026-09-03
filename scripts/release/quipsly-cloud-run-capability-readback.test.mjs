@@ -82,6 +82,9 @@ test("summarizes a fully configured runtime without exposing secret references",
   });
   assert.equal(report.schema, CAPABILITY_READBACK_SCHEMA);
   assert.equal(report.release.exactSourceIdentity, true);
+  assert.equal(report.release.committedSourceIdentity, true);
+  assert.equal(report.release.immutableImageIdentity, true);
+  assert.equal(report.release.readyRevisionIdentified, true);
   assert.equal(report.runtime.maxInstances, 2);
   assert.deepEqual(report.warnings, []);
   for (const capability of Object.values(report.capabilities)) {
@@ -111,6 +114,35 @@ test("reports missing integrations and unsafe traffic without leaking unknown en
   assert.equal(report.capabilities.providerEgress.configured, false);
   assert.equal(report.warnings.length, 4);
   assert.doesNotMatch(JSON.stringify(report), /must-not-appear|PRIVATE_UNKNOWN_VALUE/);
+});
+
+test("does not call a mutable image tag an exact release identity", () => {
+  const service = fixture();
+  service.spec.template.spec.containers[0].image =
+    "us-central1-docker.pkg.dev/project/repo/studio:source-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+  const report = summarizeCloudRunCapabilities(service);
+  assert.equal(report.release.committedSourceIdentity, true);
+  assert.equal(report.release.immutableImageIdentity, false);
+  assert.equal(report.release.exactSourceIdentity, false);
+  assert.match(report.warnings.join("\n"), /immutable image digest/);
+});
+
+test("distinguishes absent capabilities from dangerous partial configuration", () => {
+  const service = fixture();
+  service.spec.template.spec.containers[0].env = [
+    plain("QUIPSLY_SOURCE_SHA", "a".repeat(40)),
+    secret("GOOGLE_DRIVE_OAUTH_CLIENT_ID"),
+  ];
+  const report = summarizeCloudRunCapabilities(service);
+  assert.deepEqual(report.capabilities.googleCalendar, {
+    configured: false,
+    ready: false,
+  });
+  assert.deepEqual(report.capabilities.googleDrive, {
+    configured: true,
+    ready: false,
+  });
+  assert.match(report.warnings.join("\n"), /Google Drive is only partially configured/);
 });
 
 test("parses only the bounded readback arguments", () => {

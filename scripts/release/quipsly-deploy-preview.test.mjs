@@ -21,6 +21,18 @@ test("preview deploy help is read-only and available without cloud authenticatio
 
   assert.match(help, /Deploy the exact SOURCE_REF/);
   assert.match(help, /preview receives no production traffic/);
+  assert.match(help, /PRESERVE_LIVE_CAPABILITIES/);
+});
+
+test("preview deploy inherits live capabilities unless an operator explicitly overrides them", () => {
+  const source = readFileSync(deployScript, "utf8");
+
+  assert.match(source, /PRESERVE_LIVE_CAPABILITIES="\$\{PRESERVE_LIVE_CAPABILITIES:-1\}"/);
+  assert.match(source, /ENABLE_ACCOUNT_DELETION_WORKER_EXPLICIT="\$\{ENABLE_ACCOUNT_DELETION_WORKER\+x\}"/);
+  assert.match(source, /ENABLE_LIVEKIT_EGRESS_EXPLICIT="\$\{ENABLE_LIVEKIT_EGRESS\+x\}"/);
+  assert.match(source, /quipsly-release-feature-inheritance\.mjs/);
+  assert.match(source, /Unspecified release capabilities inherited from the current live/);
+  assert.match(source, /Unexpected inherited release feature/);
 });
 
 test("Nest release lanes preserve zero idle instances but allow one replacement instance", () => {

@@ -40,9 +40,18 @@ Preview deploy:
 ```bash
 PROJECT_ID=high-ground-odyssey \
 SOURCE_REF=<committed-sha> \
-IMAGE_TAG=preview-<short-sha>-<date> \
 bash scripts/release/quipsly-deploy-preview.sh
 ```
+
+The deploy derives the immutable registry tag from the committed source SHA.
+It also reads the current Cloud Run service and inherits every unspecified,
+fully configured production capability. Explicit `ENABLE_*` values still win.
+This prevents a routine release from silently disabling invitations,
+transcription, account deletion, subscriptions, Calendar, Drive, or LiveKit
+egress. A partially configured live integration stops the release with a
+specific error instead of being guessed on or turned off. Set
+`PRESERVE_LIVE_CAPABILITIES=0` only for a deliberate first-service bootstrap in
+which every required capability flag is supplied explicitly.
 
 The deploy requires an enabled Secret Manager version named
 `quipsly-release-smoke-secret` by default. Cloud Run receives it as
