@@ -54,11 +54,11 @@
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 	<key>NSCameraUsageDescription</key>
-	<string>Quipsly may use the camera only after you explicitly choose video in a Quipsly session. Audio recording does not use the camera.</string>
+	<string>Use your camera for video calls and video recordings you start.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Quipsly uses the microphone when you join a call or explicitly start recording a coaching session, podcast, interview, or field note.</string>
+	<string>Use your microphone for calls and audio recordings you start.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
-	<string>Quipsly uses Apple Speech to transcribe your voice notes and chosen recordings so you can search, correct, and write from them. Recognition stays on-device when Apple supports it; otherwise Apple may use its speech service.</string>
+	<string>Turn your recordings into editable transcripts.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

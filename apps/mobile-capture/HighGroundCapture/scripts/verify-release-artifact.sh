@@ -63,6 +63,7 @@ verify_capture_app() {
   local info_plist="$capture_app/Info.plist"
   local camera_purpose
   local microphone_purpose
+  local speech_purpose
 
   verify_bundle "$capture_app" "com.highgroundodyssey.HighGroundCapture"
   require_plist_json "$info_plist" "UIDeviceFamily" '[1,2]'
@@ -72,13 +73,16 @@ verify_capture_app() {
   pass "App privacy manifest is packaged and valid"
 
   camera_purpose="$(/usr/libexec/PlistBuddy -c "Print :NSCameraUsageDescription" "$info_plist" 2>/dev/null || true)"
-  [[ "$camera_purpose" == *"explicitly choose video"* ]] || fail "Packaged camera purpose string is missing the explicit-choice boundary"
-  [[ "$camera_purpose" == *"Audio recording does not use the camera"* ]] || fail "Packaged camera purpose string is missing the audio boundary"
-  pass "Packaged NSCameraUsageDescription is present and bounded"
+  [[ "$camera_purpose" == "Use your camera for video calls and video recordings you start." ]] || fail "Packaged camera purpose string is not the concise user-started-video contract"
+  pass "Packaged NSCameraUsageDescription is concise and scoped"
 
   microphone_purpose="$(/usr/libexec/PlistBuddy -c "Print :NSMicrophoneUsageDescription" "$info_plist" 2>/dev/null || true)"
-  [[ "$microphone_purpose" == *"explicitly start recording"* ]] || fail "Packaged microphone purpose string is missing the explicit-start boundary"
-  pass "Packaged NSMicrophoneUsageDescription is present and bounded"
+  [[ "$microphone_purpose" == "Use your microphone for calls and audio recordings you start." ]] || fail "Packaged microphone purpose string is not the concise user-started-audio contract"
+  pass "Packaged NSMicrophoneUsageDescription is concise and scoped"
+
+  speech_purpose="$(/usr/libexec/PlistBuddy -c "Print :NSSpeechRecognitionUsageDescription" "$info_plist" 2>/dev/null || true)"
+  [[ "$speech_purpose" == "Turn your recordings into editable transcripts." ]] || fail "Packaged speech purpose string is not the concise transcript contract"
+  pass "Packaged NSSpeechRecognitionUsageDescription is concise and outcome-oriented"
 
   require_plist_value "$info_plist" "ITSAppUsesNonExemptEncryption" "false"
 
