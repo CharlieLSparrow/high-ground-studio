@@ -102,6 +102,13 @@ final class CaptureExperienceUITests: XCTestCase {
                 "--capture-share-owner-ui-preview=audio-background-owner",
             ]
         }
+        if name.contains("testDerivedAudioAnalysisFailureKeepsSourcePlayable") {
+            app.launchArguments += [
+                "--capture-force-local-voice-note-ui-test",
+                "--capture-derived-analysis-persistence-failure-ui-test",
+                "--capture-share-owner-ui-preview=derived-analysis-failure-owner",
+            ]
+        }
         if name.contains("testWritingFlushesToProtectedStorageWhenTheAppLeavesForeground") {
             app.launchArguments.append(
                 "--capture-share-owner-ui-preview=writing-lifecycle-owner"
@@ -1030,6 +1037,73 @@ final class CaptureExperienceUITests: XCTestCase {
         stop.tap()
         XCTAssertTrue(stop.waitForNonExistence(timeout: 12))
         allowSystemPermissionIfPresented()
+    }
+
+    func testDerivedAudioAnalysisFailureKeepsSourcePlayable() {
+        let speakToWrite = app.frame.width >= 700
+            ? app.buttons["CaptureIPadSpeakToWrite"]
+            : app.buttons["CaptureStartVoiceNote"]
+        XCTAssertTrue(speakToWrite.waitForExistence(timeout: 5))
+        speakToWrite.tap()
+        XCTAssertTrue(
+            app.otherElements["CaptureRecorderHero"].waitForExistence(timeout: 8)
+        )
+
+        addUIInterruptionMonitor(withDescription: "Microphone permission") { alert in
+            for label in ["Allow", "Allow While Using App"] where alert.buttons[label].exists {
+                alert.buttons[label].tap()
+                return true
+            }
+            return false
+        }
+
+        let start = app.buttons["CaptureStartButton"]
+        XCTAssertTrue(start.waitForExistence(timeout: 5))
+        start.tap()
+        allowSystemPermissionIfPresented()
+        let stop = app.buttons["CaptureStopButton"]
+        XCTAssertTrue(stop.waitForExistence(timeout: 15))
+        RunLoop.current.run(until: Date().addingTimeInterval(1.5))
+        stop.tap()
+        XCTAssertTrue(
+            stop.waitForNonExistence(timeout: 12),
+            "Optional analysis failure must not leave source finalization stuck."
+        )
+        allowSystemPermissionIfPresented()
+
+        let allWriting = app.buttons["CaptureVoiceNoteOpenLibrary"]
+        XCTAssertTrue(allWriting.waitForExistence(timeout: 5))
+        allWriting.tap()
+        XCTAssertTrue(app.navigationBars["Library"].waitForExistence(timeout: 8))
+        let recordings = app.segmentedControls["CaptureLibrarySectionPicker"]
+            .buttons["Recordings"]
+        XCTAssertTrue(recordings.waitForExistence(timeout: 5))
+        recordings.tap()
+
+        let savedRow = app.descendants(matching: .any).matching(
+            NSPredicate(format: "identifier BEGINSWITH %@", "LocalRecordingRow_")
+        ).firstMatch
+        XCTAssertTrue(
+            savedRow.waitForExistence(timeout: 12),
+            "The decoded source must remain in Library after derived analysis rejects its payload."
+        )
+        let play = savedRow.buttons["Play"].firstMatch
+        XCTAssertTrue(play.exists && play.isEnabled)
+        let warning = app.descendants(matching: .any)[
+            "CaptureLibraryAnalysisWarning"
+        ].firstMatch
+        XCTAssertTrue(
+            warning.waitForExistence(timeout: 5),
+            "The app should explain the scoped analysis issue without calling the recording failed."
+        )
+        XCTAssertTrue(
+            warning.label.localizedCaseInsensitiveContains(
+                "recording is saved and playable"
+            )
+        )
+        XCTAssertFalse(
+            savedRow.label.localizedCaseInsensitiveContains("capture failed")
+        )
     }
 
     func testVoiceWritingOffersStructureAndSourceWithoutLeavingCapture() {

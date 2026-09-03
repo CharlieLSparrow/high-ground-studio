@@ -192,6 +192,20 @@ enum CaptureLaunchConfiguration {
         #endif
     }
 
+    /// Proves that optional post-capture analysis cannot rewrite a decoded
+    /// source as a failed recording. Release and physical-device builds can
+    /// never inject this persistence failure.
+    static var usesDerivedAnalysisPersistenceFailureUITest: Bool {
+        #if DEBUG && targetEnvironment(simulator)
+        forcesLocalVoiceNoteUITest
+            && ProcessInfo.processInfo.arguments.contains(
+                "--capture-derived-analysis-persistence-failure-ui-test"
+            )
+        #else
+        false
+        #endif
+    }
+
     /// A DEBUG-only presentation layer for deterministic App Store layout
     /// drafts. It uses the same mutation-free preview model, but removes
     /// engineering boundary labels and substitutes clearly fictional account

@@ -628,7 +628,12 @@ final class LocalRecordingLibrary: ObservableObject {
     }
     var mostRecentRecording: LocalRecording? { recordings.first }
     @Published private(set) var persistenceError: String?
+    @Published private(set) var derivedAnalysisNotices: [UUID: String] = [:]
     @Published private(set) var quarantinedLedgerFileName: String?
+
+    var latestDerivedAnalysisNotice: String? {
+        recordings.lazy.compactMap { self.derivedAnalysisNotices[$0.id] }.first
+    }
 
     let recordingsDirectoryURL: URL
 
@@ -766,6 +771,7 @@ final class LocalRecordingLibrary: ObservableObject {
         let normalizedOwnerAccountID = normalizedOwnerID(ownerAccountID)
         guard normalizedOwnerAccountID != activeOwnerAccountID else { return }
         activeOwnerAccountID = normalizedOwnerAccountID
+        derivedAnalysisNotices = [:]
         sortAndPublish()
     }
 
@@ -1169,28 +1175,21 @@ final class LocalRecordingLibrary: ObservableObject {
 
         try mutate(id, allowInactiveOwner: true) { recording in
             guard recording.status == .validatingRecovery else { return }
-            recording.byteCount = self.fileByteCount(at: fileURL)
-            if let durationSeconds = validation.durationSeconds {
-                recording.durationSeconds = durationSeconds
-            }
-            if let recordedMedia = validation.recordedMedia,
-               var sourceProfile = recording.sourceProfile {
-                sourceProfile.recordedMedia = recordedMedia
-                sourceProfile.audioSignal = validation.audioSignal
-                sourceProfile.audibleEventAnalysis = validation.audibleEventAnalysis
-                recording.sourceProfile = sourceProfile
-            }
-            recording.sourceIntegrityHoldReason =
-                validation.sourceIntegrityHoldReason
-            if validation.isPlayable {
-                recording.status = .saved
-                recording.statusMessage = validation.sourceIntegrityHoldReason
-                    ?? preservedMessage
-            } else {
-                recording.status = .needsRepair
-                recording.statusMessage = validation.failureMessage
-            }
+            self.applyValidatedSourceTruth(
+                validation,
+                fileURL: fileURL,
+                playableStatus: .saved,
+                playableMessage: preservedMessage,
+                to: &recording
+            )
         }
+
+        // The complete decoded source and its playable status are the durable
+        // capture result. Waveform, loudness, and sound-event observations are
+        // valuable derived projections, but a malformed or future analysis
+        // payload must never turn already-proven source bytes into a failed
+        // recording. Attach them only after source truth has committed.
+        attachDerivedAnalysisIfPossible(validation, to: id)
 
         guard let recording = storedRecordings.first(where: { $0.id == id }) else {
             throw LibraryError.recordingNotFound
@@ -1998,34 +1997,81 @@ final class LocalRecordingLibrary: ObservableObject {
                     do {
                         try self.mutate(candidate.recordingID, allowInactiveOwner: true) { recording in
                             guard recording.status == .validatingRecovery else { return }
-                            if let recordedMedia = validation.recordedMedia,
-                               var sourceProfile = recording.sourceProfile {
-                                sourceProfile.recordedMedia = recordedMedia
-                                sourceProfile.audioSignal = validation.audioSignal
-                                sourceProfile.audibleEventAnalysis = validation.audibleEventAnalysis
-                                recording.sourceProfile = sourceProfile
-                            }
-                            recording.sourceIntegrityHoldReason =
-                                validation.sourceIntegrityHoldReason
-                            if validation.isPlayable {
-                                recording.status = .recovered
-                                recording.statusMessage =
-                                    validation.sourceIntegrityHoldReason
-                                    ?? candidate.playableMessage
-                                if let durationSeconds = validation.durationSeconds {
-                                    recording.durationSeconds = durationSeconds
-                                }
-                            } else {
-                                recording.status = .needsRepair
-                                recording.statusMessage = validation.failureMessage
-                            }
+                            self.applyValidatedSourceTruth(
+                                validation,
+                                fileURL: candidate.fileURL,
+                                playableStatus: .recovered,
+                                playableMessage: candidate.playableMessage,
+                                to: &recording
+                            )
                         }
+                        self.attachDerivedAnalysisIfPossible(
+                            validation,
+                            to: candidate.recordingID
+                        )
                     } catch {
                         self.persistenceError = "Recovery validation finished, but its protected result could not be committed: \(error.localizedDescription)"
                     }
                     continuation.resume()
                 }
             }
+        }
+    }
+
+    private func applyValidatedSourceTruth(
+        _ validation: SourceValidation,
+        fileURL: URL,
+        playableStatus: LocalRecording.Status,
+        playableMessage: String?,
+        to recording: inout LocalRecording
+    ) {
+        recording.byteCount = fileByteCount(at: fileURL)
+        if let durationSeconds = validation.durationSeconds {
+            recording.durationSeconds = durationSeconds
+        }
+        if let recordedMedia = validation.recordedMedia,
+           var sourceProfile = recording.sourceProfile {
+            sourceProfile.recordedMedia = recordedMedia
+            recording.sourceProfile = sourceProfile
+        }
+        recording.sourceIntegrityHoldReason = validation.sourceIntegrityHoldReason
+        if validation.isPlayable {
+            recording.status = playableStatus
+            recording.statusMessage = validation.sourceIntegrityHoldReason
+                ?? playableMessage
+        } else {
+            recording.status = .needsRepair
+            recording.statusMessage = validation.failureMessage
+        }
+    }
+
+    /// Derived analysis is recomputable and must remain downstream of the
+    /// immutable-source commit. If encoding or persistence rejects analysis,
+    /// keep the proven source usable and expose a scoped diagnostic instead of
+    /// rewriting the recording as `captureFailed`.
+    private func attachDerivedAnalysisIfPossible(
+        _ validation: SourceValidation,
+        to recordingID: UUID
+    ) {
+        guard validation.isPlayable,
+              (validation.audioSignal != nil
+                || validation.audibleEventAnalysis != nil) else { return }
+        #if DEBUG && targetEnvironment(simulator)
+        if CaptureLaunchConfiguration.usesDerivedAnalysisPersistenceFailureUITest {
+            derivedAnalysisNotices[recordingID] = "The recording is saved and playable. Its quality scan did not finish, so waveform and loudness details are not available yet."
+            return
+        }
+        #endif
+        do {
+            try mutate(recordingID, allowInactiveOwner: true) { recording in
+                guard var sourceProfile = recording.sourceProfile else { return }
+                sourceProfile.audioSignal = validation.audioSignal
+                sourceProfile.audibleEventAnalysis = validation.audibleEventAnalysis
+                recording.sourceProfile = sourceProfile
+            }
+            derivedAnalysisNotices.removeValue(forKey: recordingID)
+        } catch {
+            derivedAnalysisNotices[recordingID] = "The recording is saved and playable. Its quality scan did not finish, so waveform and loudness details are not available yet."
         }
     }
 

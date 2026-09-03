@@ -31,6 +31,7 @@ struct CaptureSourceEvidenceView: View {
     @State private var showsTechnicalAudioDetails = false
     @State private var showsTechnicalSoundDetails = false
     @State private var showsRecordingDetails = false
+    @State private var isRetryingQualityScan = false
 
     var body: some View {
         ScrollView {
@@ -370,11 +371,44 @@ struct CaptureSourceEvidenceView: View {
                             .foregroundStyle(.orange)
                     }
                 } else {
-                    Text("This source does not yet have a complete decoded signal scan. Quipsly will not infer loudness, clipping, silence, or dropout from transcript confidence.")
+                    Label("Quality scan needs another try", systemImage: "arrow.clockwise.circle")
+                        .font(.subheadline.weight(.bold))
+                        .foregroundStyle(.orange)
+                    Text(
+                        library.derivedAnalysisNotices[recording.id]
+                            ?? "The original recording is safe and playable. Run the quality scan again to create waveform, loudness, and listening markers."
+                    )
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Button {
+                        Task { await retryQualityScan(recording) }
+                    } label: {
+                        if isRetryingQualityScan {
+                            ProgressView()
+                                .frame(maxWidth: .infinity, minHeight: 44)
+                        } else {
+                            Label("Run quality scan", systemImage: "waveform.badge.magnifyingglass")
+                                .frame(maxWidth: .infinity, minHeight: 44)
+                        }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(isRetryingQualityScan)
+                    .accessibilityIdentifier("CaptureRetryQualityScan")
                 }
             }
+        }
+    }
+
+    @MainActor
+    private func retryQualityScan(_ recording: LocalRecording) async {
+        guard !isRetryingQualityScan else { return }
+        isRetryingQualityScan = true
+        defer { isRetryingQualityScan = false }
+        do {
+            _ = try await library.validateFinalizedSource(recording.id)
+        } catch {
+            errorMessage = "The recording is still safe, but its quality scan could not finish: \(error.localizedDescription)"
         }
     }
 

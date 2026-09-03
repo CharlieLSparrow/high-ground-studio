@@ -16337,6 +16337,11 @@ private struct CaptureLibraryView: View {
                 .accessibilityIdentifier("CaptureLibraryJournalWarning")
         }
 
+        if let analysisNotice = library.latestDerivedAnalysisNotice {
+            CaptureInlineWarning(text: analysisNotice)
+                .accessibilityIdentifier("CaptureLibraryAnalysisWarning")
+        }
+
         if model.usesPreviewData {
             CaptureLibraryPreviewSourceCard()
             NavigationLink {
@@ -22413,6 +22418,8 @@ private struct CaptureInlineWarning: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(12)
             .background(.orange.opacity(0.09), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(text)
             .accessibilityIdentifier("CapturePausedReason")
     }
 }
