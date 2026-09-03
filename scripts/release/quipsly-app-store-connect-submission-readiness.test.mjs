@@ -148,18 +148,20 @@ function completeFixture() {
       ],
     },
     reviewSubmissionsDocument: { data: [] },
-    screenshotSetDocuments: [{
-      data: {
-        type: "appScreenshotSets",
-        id: "screenshots-1",
-        attributes: { screenshotDisplayType: "APP_IPHONE_67" },
-      },
-      included: Array.from({ length: metadata.screenshots.planned.length }, (_, index) => ({
-        type: "appScreenshots",
-        id: `screenshot-${index + 1}`,
-        attributes: { assetDeliveryState: { state: "COMPLETE" } },
-      })),
-    }],
+    screenshotSetDocuments: metadata.screenshots.requiredDisplayTypes.map(
+      (displayType, setIndex) => ({
+        data: {
+          type: "appScreenshotSets",
+          id: `screenshots-${setIndex + 1}`,
+          attributes: { screenshotDisplayType: displayType },
+        },
+        included: Array.from({ length: metadata.screenshots.planned.length }, (_, index) => ({
+          type: "appScreenshots",
+          id: `screenshot-${setIndex + 1}-${index + 1}`,
+          attributes: { assetDeliveryState: { state: "COMPLETE" } },
+        })),
+      }),
+    ),
     auditedAt: "2026-08-01T23:00:00.000Z",
   };
 }
@@ -174,7 +176,11 @@ test("complete provider state still preserves manual legal and physical gates", 
   const receipt = summarizeSubmissionReadiness(completeFixture());
   assert.equal(receipt.providerChecksPassed, true);
   assert.equal(receipt.submissionReady, false);
-  assert.equal(receipt.screenshots.providerCount, metadata.screenshots.planned.length);
+  assert.equal(
+    receipt.screenshots.providerCount,
+    metadata.screenshots.planned.length * metadata.screenshots.requiredDisplayTypes.length,
+  );
+  assert.deepEqual(receipt.compatibility.desiredDeviceFamilies, ["iPhone", "iPad"]);
   assert.equal(receipt.pricing.complete, true);
   assert.equal(receipt.availability.complete, true);
   assert.equal(receipt.compatibility.iosBuildMacAppStoreCompatible, true);
@@ -310,6 +316,27 @@ test("missing provider declarations produce exact fail-closed blockers", () => {
   assert.equal(receipt.ageRating.answeredQuestionCount, 0);
   assert.equal(receipt.screenshots.providerCount, 0);
   assert.equal(receipt.providerChecksPassed, false);
+});
+
+test("requires the 13-inch iPad screenshot set for the universal binary", () => {
+  const fixture = completeFixture();
+  fixture.screenshotSetDocuments = fixture.screenshotSetDocuments.filter(
+    (document) => document.data.attributes.screenshotDisplayType === "APP_IPHONE_67",
+  );
+
+  const receipt = summarizeSubmissionReadiness(fixture);
+
+  assert.equal(receipt.checks.screenshotsComplete, false);
+  assert.equal(
+    receipt.screenshots.requirements.find(
+      (requirement) => requirement.displayType === "APP_IPAD_PRO_3GEN_129",
+    ).providerCount,
+    0,
+  );
+  assert.equal(
+    receipt.blockers.some(({ code }) => code === "screenshots-incomplete"),
+    true,
+  );
 });
 
 test("fails closed when Apple omits computed build compatibility metadata", () => {

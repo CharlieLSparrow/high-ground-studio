@@ -386,6 +386,7 @@ export function validateAppStoreMetadata(
     : {};
   if (
     compatibility.iphone !== true
+    || compatibility.ipad !== true
     || compatibility.appleSiliconMac !== false
     || compatibility.appleVisionPro !== false
     || compatibility.status !== "complete"
@@ -401,7 +402,7 @@ export function validateAppStoreMetadata(
     || typeof compatibilityReadback.evidenceSha256 !== "string"
     || !/^[a-f0-9]{64}$/.test(compatibilityReadback.evidenceSha256)
   ) {
-    errors.push("compliance.compatibility must prove the saved-and-reloaded iPhone-only App Store provider state with exact visual evidence.");
+    errors.push("compliance.compatibility must declare the universal iPhone and iPad target and prove the saved-and-reloaded Mac and Vision availability opt-outs with exact visual evidence.");
   }
 
   if (screenshots.deviceClass !== "iPhone 6.9-inch") {
@@ -409,6 +410,12 @@ export function validateAppStoreMetadata(
   }
   if (screenshots.orientation !== "portrait") {
     errors.push("screenshots.orientation must be portrait.");
+  }
+  if (
+    JSON.stringify(screenshots.requiredDisplayTypes)
+      !== JSON.stringify(["APP_IPHONE_67", "APP_IPAD_PRO_3GEN_129"])
+  ) {
+    errors.push("screenshots.requiredDisplayTypes must require the largest iPhone and 13-inch iPad App Store sets.");
   }
   if (!safeRepositoryPath(screenshots.assetsDirectory)) {
     errors.push("screenshots.assetsDirectory must be a safe repository-relative path.");

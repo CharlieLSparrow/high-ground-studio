@@ -102,6 +102,7 @@
     },
     "compatibility": {
       "iphone": true,
+      "ipad": true,
       "appleSiliconMac": false,
       "appleVisionPro": false,
       "status": "complete",
@@ -118,6 +119,10 @@
   },
   "screenshots": {
     "deviceClass": "iPhone 6.9-inch",
+    "requiredDisplayTypes": [
+      "APP_IPHONE_67",
+      "APP_IPAD_PRO_3GEN_129"
+    ],
     "orientation": "portrait",
     "assetsDirectory": "release/app-store/quipsly-capture/screenshots/en-US",
     "planned": [

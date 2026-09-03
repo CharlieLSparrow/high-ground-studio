@@ -187,8 +187,15 @@ function expectedDisplayTypes(metadata) {
   if (metadata.screenshots.deviceClass !== "iPhone 6.9-inch") {
     fail(`Unsupported screenshot device class: ${metadata.screenshots.deviceClass}`);
   }
-  // Apple still uses APP_IPHONE_67 for the current largest-iPhone set.
-  return ["APP_IPHONE_67"];
+  const displayTypes = metadata.screenshots.requiredDisplayTypes;
+  if (
+    !Array.isArray(displayTypes)
+    || JSON.stringify(displayTypes)
+      !== JSON.stringify(["APP_IPHONE_67", "APP_IPAD_PRO_3GEN_129"])
+  ) {
+    fail("Universal Quipsly Capture releases require the largest iPhone and 13-inch iPad screenshot sets.");
+  }
+  return displayTypes;
 }
 
 function requiredAgeFields(isMadeForKids) {
@@ -295,10 +302,34 @@ export function summarizeSubmissionReadiness({
       deliveryStates: [...new Set(screenshots.map(screenshotState).filter(Boolean))].sort(),
     };
   });
-  const wantedSets = screenshotSets.filter((set) => wantedDisplayTypes.includes(set.displayType));
-  const screenshotCount = wantedSets.reduce((sum, set) => sum + set.count, 0);
-  const screenshotsDelivered = wantedSets.every((set) =>
-    set.deliveryStates.every((state) => state === "COMPLETE"));
+  const screenshotRequirements = wantedDisplayTypes.map((displayType) => {
+    const matchingSets = screenshotSets.filter((set) => set.displayType === displayType);
+    const count = matchingSets.reduce((sum, set) => sum + set.count, 0);
+    const deliveryStates = [
+      ...new Set(matchingSets.flatMap((set) => set.deliveryStates)),
+    ].sort();
+    return {
+      displayType,
+      expectedCount: metadata.screenshots.planned.length,
+      providerCount: count,
+      deliveryStates,
+      complete: matchingSets.length === 1
+        && count >= metadata.screenshots.planned.length
+        && deliveryStates.length > 0
+        && deliveryStates.every((state) => state === "COMPLETE"),
+    };
+  });
+  const expectedScreenshotCount = screenshotRequirements.reduce(
+    (sum, requirement) => sum + requirement.expectedCount,
+    0,
+  );
+  const screenshotCount = screenshotRequirements.reduce(
+    (sum, requirement) => sum + requirement.providerCount,
+    0,
+  );
+  const screenshotsDelivered = screenshotRequirements.every(
+    (requirement) => requirement.complete,
+  );
 
   const priceSelections = activePriceSelections(manualPricesDocument);
   const freePriceConfigured = priceSelections.some(
@@ -338,8 +369,7 @@ export function summarizeSubmissionReadiness({
       && Boolean(ageRating)
       && missingAgeRatingFields.length === 0,
     idfaDeclared: typeof version.attributes?.usesIdfa === "boolean",
-    screenshotsComplete: screenshotCount >= metadata.screenshots.planned.length
-      && screenshotsDelivered,
+    screenshotsComplete: screenshotsDelivered,
     priceConfigured: Boolean(priceScheduleDocument?.data) && priceSelections.length > 0,
     expectedFreePriceConfigured: freePriceConfigured,
     availabilityConfigured: Boolean(availabilityDocument?.data),
@@ -365,7 +395,17 @@ export function summarizeSubmissionReadiness({
   if (!checks.contentRightsDeclared) addBlocker(blockers, "content-rights-missing", "The App Store content-rights declaration is unset.", "legal");
   if (!checks.ageRatingComplete) addBlocker(blockers, "age-rating-incomplete", `The current age-rating questionnaire has ${missingAgeRatingFields.length} unanswered field(s).`, "legal");
   if (!checks.idfaDeclared) addBlocker(blockers, "idfa-declaration-missing", "The App Store version has no explicit IDFA declaration.", "legal");
-  if (!checks.screenshotsComplete) addBlocker(blockers, "screenshots-incomplete", `Expected ${metadata.screenshots.planned.length} approved ${metadata.screenshots.deviceClass} screenshots; Apple reports ${screenshotCount}.`, "creative");
+  if (!checks.screenshotsComplete) {
+    const detail = screenshotRequirements
+      .map((requirement) => `${requirement.displayType} ${requirement.providerCount}/${requirement.expectedCount}`)
+      .join(", ");
+    addBlocker(
+      blockers,
+      "screenshots-incomplete",
+      `The universal iPhone and iPad listing is incomplete: ${detail}.`,
+      "creative",
+    );
+  }
   if (!checks.priceConfigured || !checks.expectedFreePriceConfigured) addBlocker(blockers, "price-not-configured", "The app has no active Free price selection.", "legal");
   if (!checks.availabilityConfigured) addBlocker(blockers, "availability-not-configured", "No App Availability resource exists; release territories are not configured.", "legal");
   else {
@@ -408,7 +448,7 @@ export function summarizeSubmissionReadiness({
       "manual",
     );
   }
-  addBlocker(blockers, `physical-build${options.build}-acceptance`, `Install Build ${options.build} from TestFlight on a physical iPhone and prove capture, recovery, upload, playback, alignment, and cross-device readback.`, "manual");
+  addBlocker(blockers, `physical-build${options.build}-acceptance`, `Install Build ${options.build} from TestFlight on a physical iPhone and iPad, then prove capture, recovery, upload, playback, alignment, and cross-device readback.`, "manual");
   addBlocker(blockers, "production-account-deletion-proof", "Prove account deletion against a disposable production account with independent readback.", "manual");
   if (metadata.compliance.compatibility.status !== "complete") {
     const macDetail = providerMacCompatibility === true
@@ -446,7 +486,7 @@ export function summarizeSubmissionReadiness({
       isOrEverWasMadeForKids: app.attributes?.isOrEverWasMadeForKids === true,
     },
     compatibility: {
-      desiredDeviceFamily: "iPhone",
+      desiredDeviceFamilies: ["iPhone", "iPad"],
       appBundleId: buildBundle?.attributes?.bundleId || null,
       appBundleType: buildBundle?.attributes?.bundleType || null,
       supportedArchitectures:
@@ -488,8 +528,9 @@ export function summarizeSubmissionReadiness({
       locale: metadata.locale,
       expectedDeviceClass: metadata.screenshots.deviceClass,
       expectedDisplayTypes: wantedDisplayTypes,
-      expectedCount: metadata.screenshots.planned.length,
+      expectedCount: expectedScreenshotCount,
       providerCount: screenshotCount,
+      requirements: screenshotRequirements,
       sets: screenshotSets,
       complete: checks.screenshotsComplete,
     },

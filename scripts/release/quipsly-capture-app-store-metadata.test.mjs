@@ -74,7 +74,7 @@ test("provider-complete status fails closed without exact readback evidence", ()
   assert.match(result.errors.join("\n"), /prove Free pricing/);
 });
 
-test("iPhone-only compatibility completion fails closed without saved provider evidence", () => {
+test("universal compatibility completion fails closed without saved provider evidence", () => {
   const metadata = canonicalMetadata();
   metadata.compliance.compatibility.providerReadback.appleVisionProAvailable = true;
   metadata.compliance.compatibility.providerReadback.evidenceSha256 = "not-a-hash";
@@ -86,7 +86,7 @@ test("iPhone-only compatibility completion fails closed without saved provider e
   assert.equal(result.ok, false);
   assert.match(
     result.errors.join("\n"),
-    /saved-and-reloaded iPhone-only App Store provider state/,
+    /universal iPhone and iPad target.*saved-and-reloaded Mac and Vision availability opt-outs/,
   );
 });
 
