@@ -2,14 +2,18 @@
 
 import { createHash } from "node:crypto";
 import { chmod, writeFile } from "node:fs/promises";
+import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
 
-import {
+const requireFromNest = createRequire(
+  new URL("../apps/quipsly/package.json", import.meta.url),
+);
+const {
   applicationDefault,
   deleteApp,
   initializeApp,
-} from "firebase-admin/app";
-import { getAuth } from "firebase-admin/auth";
+} = requireFromNest("firebase-admin/app");
+const { getAuth } = requireFromNest("firebase-admin/auth");
 
 const FIREBASE_PROJECT_ID = "quipsly-reef";
 const FIREBASE_SIGNER_SERVICE_ACCOUNT =

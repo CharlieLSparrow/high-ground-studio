@@ -57,14 +57,19 @@ const collaborationDogfood = readFileSync(
 
 assert.match(packetBuilder, /mobileCaptureTranscriptProcessingGate/);
 assert.match(packetBuilder, /actionCandidates/);
-assert.match(packetBuilder, /actionCandidateReviewBoundary/);
+assert.match(packetBuilder, /packetCreatesOrdinarySessionWork/);
+assert.match(packetBuilder, /reviewRequired: false/);
+assert.match(packetBuilder, /automaticallyCreated: true/);
+assert.match(packetBuilder, /editableAfterCreation: true/);
+assert.match(packetBuilder, /removableInProduct: true/);
+assert.match(packetBuilder, /externalSideEffects: false/);
+assert.match(packetBuilder, /prisma\.actionItem\.create/);
+assert.match(packetBuilder, /prisma\.goal\.create/);
+assert.match(packetBuilder, /generatedFollowThroughCanRefresh/);
+assert.match(packetBuilder, /generatedFollowThroughCanRemove/);
+assert.doesNotMatch(packetBuilder, /actionCandidateReviewBoundary/);
 assert.match(packetBuilder, /packetBuildId = randomUUID\(\)/);
 assert.match(packetBuilder, /selectLatestCorrelatedPacketNotes/);
-assert.doesNotMatch(
-  packetBuilder,
-  /prisma\.actionItem\.create/,
-  "packet generation must not materialize inferred transcript text as an OPEN ActionItem before human acceptance",
-);
 assert.ok(
   packetBuilder.indexOf(
     "const transcriptGate = await mobileCaptureTranscriptProcessingGate",
@@ -76,9 +81,13 @@ assert.match(packetRoute, /Await reviewed transcript release/);
 assert.match(packetRoute, /explicitReleaseRequired: true/);
 assert.match(
   packetRoute,
-  /text\(source\.transcriptJobId\) === latestTranscriptJob\?\.id/,
+  /packetTranscriptJobIdSet\.has\(text\(source\.transcriptJobId\)\)/,
 );
-assert.match(packetRoute, /allPacketActionItems = transcriptProcessingAllowed/);
+assert.match(
+  packetRoute,
+  /isAutomaticTranscriptWorkForJob\(\s*item\.sourceJson,\s*packetTranscriptJobIds,?\s*\)/,
+);
+assert.match(packetRoute, /allPacketActionItems\s*=\s*transcriptProcessingAllowed/);
 assert.match(packetRoute, /isUnreviewedTranscriptActionItem/);
 assert.match(packetRoute, /legacyCandidateCompatibility/);
 assert.match(packetRoute, /selectLatestCorrelatedPacketNotes\(packetNotes\)/);
