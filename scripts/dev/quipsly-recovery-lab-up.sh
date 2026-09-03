@@ -559,6 +559,7 @@ wait_for_http \
 
 printf "%s\n" "${repo_root}" >"${state_dir}/repo-root"
 printf "%s\n" "${current_revision}" >"${state_dir}/source-revision"
+printf "%s\n" "git-head" >"${state_dir}/source-revision-kind"
 
 echo
 echo "Quipsly recovery lab is ready: ${nest_url}"

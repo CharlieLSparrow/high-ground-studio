@@ -121,6 +121,7 @@ else
 fi
 
 recorded_revision="$(sed -n '1p' "${state_dir}/source-revision" 2>/dev/null || true)"
+recorded_revision_kind="$(sed -n '1p' "${state_dir}/source-revision-kind" 2>/dev/null || true)"
 current_revision="$(git rev-parse HEAD)"
 if [[ "${recorded_revision}" == "${current_revision}" ]]; then
   printf "PASS  %-26s %s\n" "Exact source revision" "${current_revision}"
@@ -129,6 +130,14 @@ else
     "Exact source revision" \
     "${recorded_revision:-unknown}" \
     "${current_revision}"
+  failed=1
+fi
+if [[ "${recorded_revision_kind}" == "git-head" ]]; then
+  printf "PASS  %-26s clean commit identity\n" "Source revision contract"
+else
+  printf "FAIL  %-26s expected git-head, found %s\n" \
+    "Source revision contract" \
+    "${recorded_revision_kind:-none}"
   failed=1
 fi
 

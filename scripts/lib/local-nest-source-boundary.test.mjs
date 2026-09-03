@@ -6,14 +6,24 @@ import test from "node:test";
 
 import { requireCurrentLocalNestSource } from "./local-nest-source-boundary.mjs";
 
-async function fixture({ recordedRoot = null, recordedRevision = "source-1" } = {}) {
+async function fixture({
+  recordedRoot = null,
+  recordedRevision = "source-1",
+  revisionKind = null,
+  includeEnvironmentPath = true,
+} = {}) {
   const root = await mkdtemp(path.join(os.tmpdir(), "quipsly-source-boundary-"));
   const state = path.join(root, "state");
   await mkdir(state);
   await Promise.all([
     writeFile(path.join(state, "repo-root"), `${recordedRoot || root}\n`),
     writeFile(path.join(state, "source-revision"), `${recordedRevision}\n`),
-    writeFile(path.join(state, "nest-env-path"), `${path.join(root, ".env.local")}\n`),
+    ...(includeEnvironmentPath
+      ? [writeFile(path.join(state, "nest-env-path"), `${path.join(root, ".env.local")}\n`)]
+      : []),
+    ...(revisionKind
+      ? [writeFile(path.join(state, "source-revision-kind"), `${revisionKind}\n`)]
+      : []),
   ]);
   return { root, state };
 }
@@ -28,6 +38,23 @@ test("accepts dirty source when the running Nest is bound to the exact current c
     fetchImpl: async () => ({ ok: true, status: 200 }),
   });
   assert.equal(result.sourceSha, "source-1");
+});
+
+test("accepts a clean commit-bound recovery runtime without a Nest environment file", async () => {
+  const subject = await fixture({
+    recordedRevision: "commit-1",
+    revisionKind: "git-head",
+    includeEnvironmentPath: false,
+  });
+  const result = await requireCurrentLocalNestSource({
+    repositoryRoot: subject.root,
+    baseURL: "http://127.0.0.1:3022",
+    stateDirectory: subject.state,
+    currentSourceRevision: "commit-1",
+    fetchImpl: async () => ({ ok: true, status: 200 }),
+  });
+  assert.equal(result.sourceSha, "commit-1");
+  assert.equal(result.sourceRevisionKind, "git-head");
 });
 
 test("rejects a stale runtime without requiring an unrelated clean worktree", async () => {

@@ -75,6 +75,9 @@ test("acceptance defaults to a clean exact committed revision", () => {
     up,
     /printf "%s\\n" "\$\{current_revision\}" >"\$\{state_dir\}\/source-revision"/,
   );
+  assert.match(up, /printf "%s\\n" "git-head" >"\$\{state_dir\}\/source-revision-kind"/);
+  assert.match(doctor, /Source revision contract/);
+  assert.match(down, /source-revision-kind/);
   assert.match(doctor, /Exact source revision/);
   assert.match(up, /source_revision_changed/);
   assert.match(up, /restart_owned_macos_job "nest"/);

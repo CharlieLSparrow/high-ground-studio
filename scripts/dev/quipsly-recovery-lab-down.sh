@@ -131,7 +131,8 @@ fi
 rm -f \
   "${state_dir}/auth-secret" \
   "${state_dir}/repo-root" \
-  "${state_dir}/source-revision"
+  "${state_dir}/source-revision" \
+  "${state_dir}/source-revision-kind"
 
 retained_media_suffix="$(date -u +%Y%m%dT%H%M%SZ)-$$"
 if [[ -d "${media_state_dir}" ]]; then
