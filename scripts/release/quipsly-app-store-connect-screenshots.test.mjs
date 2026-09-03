@@ -37,6 +37,13 @@ function fixture() {
   const metadata = {
     screenshots: {
       deviceClass: "iPhone 6.9-inch",
+      displaySets: [{
+        displayType: "APP_IPHONE_67", deviceClass: "iPhone 6.9-inch",
+        width: 1320, height: 2868, assetsSubdirectory: "iphone-6.9",
+      }, {
+        displayType: "APP_IPAD_PRO_3GEN_129", deviceClass: "iPad 13-inch",
+        width: 2048, height: 2732, assetsSubdirectory: "ipad-13",
+      }],
       planned: [{ order: 1, filename: "01.png", width: 1320, height: 2868 }],
     },
   };
@@ -46,6 +53,8 @@ function fixture() {
     sourceRevision: "a".repeat(40),
     sourceIsolation: "detached-worktree",
     locale: "en-US",
+    displayType: "APP_IPHONE_67",
+    deviceClass: "iPhone 6.9-inch",
     candidate: { version: "1.0", build: "35" },
     screenshots: [{
       order: 1, filename: "01.png", path: imagePath, width: 1320, height: 2868, bytes: 10,
@@ -135,6 +144,25 @@ test("accepts exact candidate-bound screenshot bytes", () => {
     });
     assert.equal(screenshots.length, 1);
     assert.equal(screenshots[0].bytesBuffer.toString(), "0123456789");
+  } finally {
+    fs.rmSync(values.directory, { recursive: true, force: true });
+  }
+});
+
+test("accepts a canonical 13-inch iPad submission receipt", () => {
+  const values = fixture();
+  try {
+    values.receipt.displayType = "APP_IPAD_PRO_3GEN_129";
+    values.receipt.deviceClass = "iPad 13-inch";
+    values.receipt.screenshots[0].width = 2048;
+    values.receipt.screenshots[0].height = 2732;
+    const screenshots = validateSubmissionReceipt(values.receipt, {
+      metadata: values.metadata,
+      version: "1.0",
+      locale: "en-US",
+      displayType: "APP_IPAD_PRO_3GEN_129",
+    });
+    assert.equal(screenshots.length, 1);
   } finally {
     fs.rmSync(values.directory, { recursive: true, force: true });
   }

@@ -123,6 +123,22 @@
       "APP_IPHONE_67",
       "APP_IPAD_PRO_3GEN_129"
     ],
+    "displaySets": [
+      {
+        "displayType": "APP_IPHONE_67",
+        "deviceClass": "iPhone 6.9-inch",
+        "width": 1320,
+        "height": 2868,
+        "assetsSubdirectory": "iphone-6.9"
+      },
+      {
+        "displayType": "APP_IPAD_PRO_3GEN_129",
+        "deviceClass": "iPad 13-inch",
+        "width": 2048,
+        "height": 2732,
+        "assetsSubdirectory": "ipad-13"
+      }
+    ],
     "orientation": "portrait",
     "assetsDirectory": "release/app-store/quipsly-capture/screenshots/en-US",
     "planned": [

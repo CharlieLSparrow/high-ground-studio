@@ -6,6 +6,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
+  appStoreScreenshotDisplaySet,
   readAppStoreMetadata,
   validateAppStoreMetadata,
 } from "../../../../scripts/release/quipsly-capture-app-store-metadata.mjs";
@@ -146,6 +147,7 @@ export function materializeDraftScreenshots({
   resultBundlePath,
   deviceName,
   deviceId,
+  displayType = "APP_IPHONE_67",
   capturedAt = new Date().toISOString(),
 }) {
   const metadata = readAppStoreMetadata(metadataPath);
@@ -162,6 +164,7 @@ export function materializeDraftScreenshots({
       `Canonical App Store metadata failed before draft capture:\n${validation.errors.join("\n")}`,
     );
   }
+  const displaySet = appStoreScreenshotDisplaySet(metadata, displayType);
 
   const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
   const attachments = flattenAttachments(manifest);
@@ -190,12 +193,12 @@ export function materializeDraftScreenshots({
     const bytes = fs.readFileSync(sourcePath);
     const dimensions = imageDimensions(bytes, planned.filename);
     if (
-      dimensions.width !== planned.width
-      || dimensions.height !== planned.height
+      dimensions.width !== displaySet.width
+      || dimensions.height !== displaySet.height
     ) {
       throw new Error(
         `${planned.filename} is ${dimensions.width}x${dimensions.height}; `
-        + `expected ${planned.width}x${planned.height}.`,
+        + `expected ${displaySet.width}x${displaySet.height} for ${displayType}.`,
       );
     }
 
@@ -266,7 +269,8 @@ export function materializeDraftScreenshots({
     sourceDirty: Boolean(sourceDirty),
     sourceIsolation,
     device: {
-      class: metadata.screenshots.deviceClass,
+      displayType,
+      class: displaySet.deviceClass,
       name: deviceName,
       id: deviceId,
       orientation: metadata.screenshots.orientation,
@@ -302,6 +306,7 @@ export function runDraftScreenshotCli(argv = process.argv.slice(2)) {
       resultBundlePath: path.resolve(requiredOption(options, "result_bundle")),
       deviceName: requiredOption(options, "device_name"),
       deviceId: requiredOption(options, "device_id"),
+      displayType: options.display_type ?? "APP_IPHONE_67",
     });
     console.log(
       `PASS Materialized ${result.receipt.screenshots.length} draft App Store screenshots.`,

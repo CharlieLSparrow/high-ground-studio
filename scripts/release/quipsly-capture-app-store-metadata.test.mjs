@@ -103,7 +103,7 @@ test("submission mode requires approved assets and zero blockers", () => {
     result.errors.join("\n"),
     /submission\.readiness must be ready for --submission/,
   );
-  assert.match(result.errors.join("\n"), /missing its approved screenshot/);
+  assert.match(result.errors.join("\n"), /missing its approved iPhone 6\.9-inch screenshot/);
   assert.match(result.errors.join("\n"), /status must be approved for submission/);
 });
 
@@ -128,7 +128,8 @@ test("submission mode reads PNG dimensions instead of trusting metadata", () => 
     ];
     metadata.submission = { readiness: "ready", blockers: [] };
     fs.writeFileSync(path.join(temporaryRoot, "review-notes.md"), "review");
-    fs.mkdirSync(path.join(temporaryRoot, "screenshots"));
+    fs.mkdirSync(path.join(temporaryRoot, "screenshots/iphone-6.9"), { recursive: true });
+    fs.mkdirSync(path.join(temporaryRoot, "screenshots/ipad-13"), { recursive: true });
 
     const pngHeader = Buffer.alloc(24);
     Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).copy(
@@ -136,7 +137,12 @@ test("submission mode reads PNG dimensions instead of trusting metadata", () => 
     );
     pngHeader.writeUInt32BE(1200, 16);
     pngHeader.writeUInt32BE(2400, 20);
-    fs.writeFileSync(path.join(temporaryRoot, "screenshots/proof.png"), pngHeader);
+    fs.writeFileSync(path.join(temporaryRoot, "screenshots/iphone-6.9/proof.png"), pngHeader);
+
+    const ipadPngHeader = Buffer.from(pngHeader);
+    ipadPngHeader.writeUInt32BE(2048, 16);
+    ipadPngHeader.writeUInt32BE(2732, 20);
+    fs.writeFileSync(path.join(temporaryRoot, "screenshots/ipad-13/proof.png"), ipadPngHeader);
 
     const result = validateAppStoreMetadata(metadata, {
       root: temporaryRoot,
@@ -144,7 +150,10 @@ test("submission mode reads PNG dimensions instead of trusting metadata", () => 
     });
 
     assert.equal(result.ok, false);
-    assert.match(result.errors.join("\n"), /is 1200x2400; expected 1320x2868/);
+    assert.match(
+      result.errors.join("\n"),
+      /iPhone 6\.9-inch asset is 1200x2400; expected 1320x2868/,
+    );
   } finally {
     fs.rmSync(temporaryRoot, { recursive: true, force: true });
   }

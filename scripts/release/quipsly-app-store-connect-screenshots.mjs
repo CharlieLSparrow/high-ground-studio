@@ -6,6 +6,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
+  appStoreScreenshotDisplaySet,
   readAppStoreMetadata,
   validateAppStoreMetadata,
 } from "./quipsly-capture-app-store-metadata.mjs";
@@ -102,8 +103,9 @@ export function validateSubmissionReceipt(receipt, { metadata, version, locale, 
   if (receipt.sourceIsolation !== "detached-worktree") fail("Screenshot receipt source was not isolated.");
   if (receipt.candidate?.version !== version) fail(`Screenshot candidate version must be ${version}.`);
   if (receipt.locale !== locale) fail(`Screenshot receipt locale must be ${locale}.`);
-  if (metadata.screenshots.deviceClass !== "iPhone 6.9-inch" || displayType !== "APP_IPHONE_67") {
-    fail("Canonical 6.9-inch iPhone screenshots must use APP_IPHONE_67.");
+  const displaySet = appStoreScreenshotDisplaySet(metadata, displayType);
+  if (receipt.displayType !== displayType || receipt.deviceClass !== displaySet.deviceClass) {
+    fail(`Screenshot receipt must target canonical ${displayType} assets.`);
   }
   const planned = [...metadata.screenshots.planned].sort((left, right) => left.order - right.order);
   if (!Array.isArray(receipt.screenshots) || receipt.screenshots.length !== planned.length) {
@@ -114,8 +116,8 @@ export function validateSubmissionReceipt(receipt, { metadata, version, locale, 
     if (
       actual.order !== expected.order
       || actual.filename !== expected.filename
-      || actual.width !== expected.width
-      || actual.height !== expected.height
+      || actual.width !== displaySet.width
+      || actual.height !== displaySet.height
       || !/^[0-9a-f]{64}$/.test(actual.sha256 || "")
       || !/^[0-9a-f]{32}$/.test(actual.md5 || "")
     ) fail(`Screenshot ${index + 1} does not match canonical metadata or digests.`);

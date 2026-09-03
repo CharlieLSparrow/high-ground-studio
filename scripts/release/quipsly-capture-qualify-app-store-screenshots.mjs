@@ -6,6 +6,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
+  appStoreScreenshotDisplaySet,
   readAppStoreMetadata,
   validateAppStoreMetadata,
 } from "./quipsly-capture-app-store-metadata.mjs";
@@ -146,6 +147,14 @@ export function qualifyScreenshots({
   ) {
     fail("Draft screenshots must come from the exact clean detached candidate source.");
   }
+  const displayType = draft.device?.displayType;
+  if (typeof displayType !== "string") {
+    fail("Draft screenshot receipt must identify its App Store display type.");
+  }
+  const displaySet = appStoreScreenshotDisplaySet(metadata, displayType);
+  if (draft.device?.class !== displaySet.deviceClass) {
+    fail("Draft screenshot device class does not match canonical metadata.");
+  }
   if (committed.schema !== "quipsly-capture-committed-screenshot-evidence-v1") {
     fail("Committed-source receipt has an unsupported schema.");
   }
@@ -174,8 +183,8 @@ export function qualifyScreenshots({
     if (
       actual.order !== expected.order
       || actual.filename !== expected.filename
-      || actual.width !== expected.width
-      || actual.height !== expected.height
+      || actual.width !== displaySet.width
+      || actual.height !== displaySet.height
     ) {
       fail(`Screenshot ${index + 1} does not match canonical order, filename, or dimensions.`);
     }
@@ -218,7 +227,8 @@ export function qualifyScreenshots({
       visualInspectionPath: path.resolve(visualInspectionPath),
     },
     locale: "en-US",
-    deviceClass: metadata.screenshots.deviceClass,
+    displayType,
+    deviceClass: displaySet.deviceClass,
     orientation: metadata.screenshots.orientation,
     screenshots,
   };

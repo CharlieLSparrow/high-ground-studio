@@ -22,6 +22,23 @@ const acceptedPortraitSizes = new Set([
   "1320x2868",
 ]);
 
+const canonicalDisplaySets = [
+  {
+    displayType: "APP_IPHONE_67",
+    deviceClass: "iPhone 6.9-inch",
+    width: 1320,
+    height: 2868,
+    assetsSubdirectory: "iphone-6.9",
+  },
+  {
+    displayType: "APP_IPAD_PRO_3GEN_129",
+    deviceClass: "iPad 13-inch",
+    width: 2048,
+    height: 2732,
+    assetsSubdirectory: "ipad-13",
+  },
+];
+
 function isRecord(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
@@ -47,6 +64,17 @@ function safeRepositoryPath(value) {
     && !value.split("/").includes("..")
     && !/[\0\r\n\t*?[\]{}]/.test(value)
   );
+}
+
+export function appStoreScreenshotDisplaySet(metadata, displayType) {
+  const displaySets = Array.isArray(metadata?.screenshots?.displaySets)
+    ? metadata.screenshots.displaySets
+    : [];
+  const matches = displaySets.filter((entry) => entry?.displayType === displayType);
+  if (matches.length !== 1) {
+    throw new Error(`Expected exactly one screenshot display set for ${displayType}.`);
+  }
+  return matches[0];
 }
 
 function requireText(errors, value, label, { minimum = 1, maximum } = {}) {
@@ -417,6 +445,11 @@ export function validateAppStoreMetadata(
   ) {
     errors.push("screenshots.requiredDisplayTypes must require the largest iPhone and 13-inch iPad App Store sets.");
   }
+  if (JSON.stringify(screenshots.displaySets) !== JSON.stringify(canonicalDisplaySets)) {
+    errors.push(
+      "screenshots.displaySets must declare the canonical iPhone 6.9-inch and iPad 13-inch portrait capture profiles.",
+    );
+  }
   if (!safeRepositoryPath(screenshots.assetsDirectory)) {
     errors.push("screenshots.assetsDirectory must be a safe repository-relative path.");
   }
@@ -460,29 +493,35 @@ export function validateAppStoreMetadata(
       && safeRepositoryPath(screenshots.assetsDirectory)
       && typeof entry.filename === "string"
     ) {
-      const screenshotPath = path.join(
-        root,
-        screenshots.assetsDirectory,
-        entry.filename,
-      );
-      if (!fs.existsSync(screenshotPath)) {
-        errors.push(`${label} is missing its approved screenshot: ${screenshotPath}.`);
-      } else {
-        try {
-          const dimensions = imageDimensions(
-            fs.readFileSync(screenshotPath),
-            entry.filename,
+      for (const displaySet of canonicalDisplaySets) {
+        const screenshotPath = path.join(
+          root,
+          screenshots.assetsDirectory,
+          displaySet.assetsSubdirectory,
+          entry.filename,
+        );
+        if (!fs.existsSync(screenshotPath)) {
+          errors.push(
+            `${label} is missing its approved ${displaySet.deviceClass} screenshot: ${screenshotPath}.`,
           );
-          if (
-            dimensions.width !== entry.width
-            || dimensions.height !== entry.height
-          ) {
-            errors.push(
-              `${label} is ${dimensions.width}x${dimensions.height}; expected ${entry.width}x${entry.height}.`,
+        } else {
+          try {
+            const dimensions = imageDimensions(
+              fs.readFileSync(screenshotPath),
+              entry.filename,
             );
+            if (
+              dimensions.width !== displaySet.width
+              || dimensions.height !== displaySet.height
+            ) {
+              errors.push(
+                `${label} ${displaySet.deviceClass} asset is ${dimensions.width}x${dimensions.height}; `
+                + `expected ${displaySet.width}x${displaySet.height}.`,
+              );
+            }
+          } catch (error) {
+            errors.push(error instanceof Error ? error.message : String(error));
           }
-        } catch (error) {
-          errors.push(error instanceof Error ? error.message : String(error));
         }
       }
       if (entry.status !== "approved") {

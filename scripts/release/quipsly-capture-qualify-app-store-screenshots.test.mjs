@@ -36,6 +36,7 @@ function fixture() {
   writeJson(draftReceiptPath, {
     schema: "quipsly-capture-app-store-draft-screenshots-v1", sourceRevision: revision,
     sourceDirty: false, sourceIsolation: "detached-worktree", submissionEligible: false,
+    device: { displayType: "APP_IPHONE_67", class: "iPhone 6.9-inch" },
     screenshots: [{ order: 1, filename: "01-today.png", width: 1320, height: 2868, bytes: bytes.length, sha256: digest, draftPath: screenshotPath }],
   });
   writeJson(committedSourceReceiptPath, {
@@ -62,8 +63,31 @@ test("qualifies an exact candidate-bound and visually inspected screenshot set",
     const receipt = qualifyScreenshots({ ...values, qualifiedAt: "2026-08-27T03:01:00.000Z" });
     assert.equal(receipt.submissionEligible, true);
     assert.equal(receipt.candidate.build, "35");
+    assert.equal(receipt.displayType, "APP_IPHONE_67");
     assert.equal(receipt.screenshots.length, 1);
     assert.match(receipt.screenshots[0].md5, /^[0-9a-f]{32}$/);
+  } finally {
+    fs.rmSync(values.directory, { recursive: true, force: true });
+  }
+});
+
+test("qualifies the same product story for the canonical 13-inch iPad set", () => {
+  const values = fixture();
+  try {
+    const draft = JSON.parse(fs.readFileSync(values.draftReceiptPath, "utf8"));
+    draft.device = {
+      displayType: "APP_IPAD_PRO_3GEN_129",
+      class: "iPad 13-inch",
+    };
+    draft.screenshots[0].width = 2048;
+    draft.screenshots[0].height = 2732;
+    writeJson(values.draftReceiptPath, draft);
+
+    const receipt = qualifyScreenshots(values);
+    assert.equal(receipt.displayType, "APP_IPAD_PRO_3GEN_129");
+    assert.equal(receipt.deviceClass, "iPad 13-inch");
+    assert.equal(receipt.screenshots[0].width, 2048);
+    assert.equal(receipt.screenshots[0].height, 2732);
   } finally {
     fs.rmSync(values.directory, { recursive: true, force: true });
   }

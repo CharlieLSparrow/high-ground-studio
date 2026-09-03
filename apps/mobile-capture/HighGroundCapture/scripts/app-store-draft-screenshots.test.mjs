@@ -7,7 +7,10 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 import { materializeDraftScreenshots } from "./app-store-draft-screenshots.mjs";
-import { readAppStoreMetadata } from "../../../../scripts/release/quipsly-capture-app-store-metadata.mjs";
+import {
+  appStoreScreenshotDisplaySet,
+  readAppStoreMetadata,
+} from "../../../../scripts/release/quipsly-capture-app-store-metadata.mjs";
 
 function pngHeader(width, height) {
   const buffer = Buffer.alloc(24);
@@ -17,7 +20,7 @@ function pngHeader(width, height) {
   return buffer;
 }
 
-function fixture() {
+function fixture(displayType = "APP_IPHONE_67") {
   const root = fs.mkdtempSync(
     path.join(os.tmpdir(), "quipsly-app-store-drafts-"),
   );
@@ -25,11 +28,12 @@ function fixture() {
   const outputDirectory = path.join(root, "output");
   fs.mkdirSync(exportedDirectory);
   const metadata = readAppStoreMetadata();
+  const displaySet = appStoreScreenshotDisplaySet(metadata, displayType);
   const attachments = metadata.screenshots.planned.map((planned, index) => {
     const exportedFileName = `attachment-${index}.png`;
     fs.writeFileSync(
       path.join(exportedDirectory, exportedFileName),
-      pngHeader(planned.width, planned.height),
+      pngHeader(displaySet.width, displaySet.height),
     );
     return {
       exportedFileName,
@@ -37,7 +41,7 @@ function fixture() {
         `${path.parse(planned.filename).name}_0_fixture.png`,
       isAssociatedWithFailure: false,
       configurationName: "Test",
-      deviceName: "iPhone 17 Pro Max",
+      deviceName: displaySet.deviceClass,
       deviceId: "fixture-device",
     };
   });
@@ -58,6 +62,8 @@ function fixture() {
     manifestPath,
     exportedDirectory,
     outputDirectory,
+    displayType,
+    displaySet,
   };
 }
 
@@ -74,6 +80,7 @@ test("materializes every metadata-declared 6.9-inch draft with a fail-closed rec
       resultBundlePath: path.join(current.root, "result.xcresult"),
       deviceName: "iPhone 17 Pro Max",
       deviceId: "fixture-device",
+      displayType: current.displayType,
       capturedAt: "2026-07-24T00:00:00.000Z",
     });
 
@@ -91,6 +98,29 @@ test("materializes every metadata-declared 6.9-inch draft with a fail-closed rec
         true,
       );
     }
+  } finally {
+    fs.rmSync(current.root, { recursive: true, force: true });
+  }
+});
+
+test("materializes the canonical 13-inch iPad draft set", () => {
+  const current = fixture("APP_IPAD_PRO_3GEN_129");
+  try {
+    const result = materializeDraftScreenshots({
+      manifestPath: current.manifestPath,
+      exportedDirectory: current.exportedDirectory,
+      outputDirectory: current.outputDirectory,
+      sourceRevision: "e".repeat(40),
+      sourceIsolation: "detached-worktree",
+      resultBundlePath: path.join(current.root, "result.xcresult"),
+      deviceName: "iPad Air 13-inch (M3)",
+      deviceId: "fixture-ipad",
+      displayType: current.displayType,
+    });
+    assert.equal(result.receipt.device.displayType, "APP_IPAD_PRO_3GEN_129");
+    assert.equal(result.receipt.device.class, "iPad 13-inch");
+    assert.equal(result.receipt.screenshots[0].width, 2048);
+    assert.equal(result.receipt.screenshots[0].height, 2732);
   } finally {
     fs.rmSync(current.root, { recursive: true, force: true });
   }
@@ -140,7 +170,7 @@ test("fails when an attachment is missing or has the wrong dimensions", () => {
         deviceName: "iPhone 17 Pro Max",
         deviceId: "fixture-device",
       }),
-      /01-today\.png is 1200x2400; expected 1320x2868/,
+      /01-today\.png is 1200x2400; expected 1320x2868 for APP_IPHONE_67/,
     );
   } finally {
     fs.rmSync(wrongSize.root, { recursive: true, force: true });

@@ -6472,7 +6472,11 @@ final class CaptureAppStoreScreenshotUITests: XCTestCase {
     }
 
     func testCapturePrivateDataSafeDrafts() {
-        launch(tab: "today", waitingFor: app.scrollViews["CaptureTodayView"])
+        launch(
+            tab: "today",
+            waitingFor: app.scrollViews["CaptureTodayView"],
+            or: app.staticTexts["CaptureTodayCreateHeading"]
+        )
         XCTAssertFalse(app.descendants(matching: .any)["CapturePreviewModeBadge"].exists)
         XCTAssertTrue(app.staticTexts["Coaching session"].exists)
         keepScreenshot("01-today.png")
@@ -6497,7 +6501,8 @@ final class CaptureAppStoreScreenshotUITests: XCTestCase {
 
         launch(tab: "work", waitingFor: app.navigationBars["Nests"])
         XCTAssertTrue(
-            app.scrollViews["CaptureWorkView"].waitForExistence(timeout: 5)
+            app.textFields["CaptureWorkSearchField"]
+                .waitForExistence(timeout: 5)
         )
         XCTAssertFalse(app.buttons["CaptureWorkNewProject"].exists)
         XCTAssertFalse(app.buttons["CaptureWorkNewProjectInline"].exists)
@@ -6638,7 +6643,11 @@ final class CaptureAppStoreScreenshotUITests: XCTestCase {
         Thread.sleep(forTimeInterval: 1.0)
         keepScreenshot("06-transcript.png")
 
-        launch(tab: "account", waitingFor: app.scrollViews["CaptureAccountView"])
+        launch(
+            tab: "account",
+            waitingFor: app.scrollViews["CaptureAccountView"],
+            or: app.buttons["CaptureAccountQuipslyPlan"]
+        )
         let plan = app.buttons["CaptureAccountQuipslyPlan"]
         XCTAssertTrue(plan.waitForExistence(timeout: 5))
         plan.tap()
@@ -6657,7 +6666,11 @@ final class CaptureAppStoreScreenshotUITests: XCTestCase {
         keepScreenshot("07-subscription.png")
     }
 
-    private func launch(tab: String, waitingFor destination: XCUIElement) {
+    private func launch(
+        tab: String,
+        waitingFor destination: XCUIElement,
+        or alternateDestination: XCUIElement? = nil
+    ) {
         app.terminate()
         app.launchArguments = [
             "--capture-ui-preview",
@@ -6665,8 +6678,14 @@ final class CaptureAppStoreScreenshotUITests: XCTestCase {
             "--capture-ui-preview-tab=\(tab)",
         ]
         app.launch()
+        let deadline = Date().addingTimeInterval(12)
+        var arrived = false
+        repeat {
+            arrived = destination.exists || alternateDestination?.exists == true
+            if !arrived { RunLoop.current.run(until: Date().addingTimeInterval(0.1)) }
+        } while !arrived && Date() < deadline
         XCTAssertTrue(
-            destination.waitForExistence(timeout: 12),
+            arrived,
             "The deterministic \(tab) screenshot state should launch without credentials or network access."
         )
     }

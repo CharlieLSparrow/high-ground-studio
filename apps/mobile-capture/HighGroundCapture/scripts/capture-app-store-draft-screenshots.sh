@@ -6,6 +6,7 @@ REPO_ROOT="$(git -C "$CAPTURE_ROOT" rev-parse --show-toplevel)"
 PROJECT_PATH="$CAPTURE_ROOT/HighGroundCapture.xcodeproj"
 SCHEME="HighGroundCapture"
 REQUESTED_DEVICE_NAME="${QUIPSLY_CAPTURE_SCREENSHOT_DEVICE:-}"
+DISPLAY_TYPE="${QUIPSLY_CAPTURE_SCREENSHOT_DISPLAY_TYPE:-APP_IPHONE_67}"
 DEVELOPER_DIR="${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}"
 export DEVELOPER_DIR
 
@@ -26,11 +27,10 @@ DEVICE_RECORD="$(
       process.stdin.on("end", () => {
         const requestedName = process.argv[1];
         const devices = Object.values(JSON.parse(input).devices).flat();
-        const preferredNames = [
-          "Quipsly App Store 17 Pro Max",
-          "iPhone 17 Pro Max",
-          "iPhone 17 Pro",
-        ];
+        const displayType = process.argv[2];
+        const preferredNames = displayType === "APP_IPAD_PRO_3GEN_129"
+          ? ["iPad Air 13-inch (M3)", "iPad Pro 13-inch (M4)", "iPad Pro 12.9-inch (6th generation)"]
+          : ["Quipsly App Store 17 Pro Max", "iPhone 17 Pro Max", "iPhone 17 Pro"];
         const match = requestedName
           ? devices.find((device) => device.name === requestedName && device.isAvailable)
           : preferredNames
@@ -39,12 +39,12 @@ DEVICE_RECORD="$(
         if (!match) process.exit(2);
         process.stdout.write(`${match.udid}|${match.name}`);
       });
-    ' "$REQUESTED_DEVICE_NAME"
+    ' "$REQUESTED_DEVICE_NAME" "$DISPLAY_TYPE"
 )" || {
   if [[ -n "$REQUESTED_DEVICE_NAME" ]]; then
     echo "FAIL No available simulator named $REQUESTED_DEVICE_NAME." >&2
   else
-    echo "FAIL No supported iPhone screenshot simulator is available." >&2
+    echo "FAIL No supported $DISPLAY_TYPE screenshot simulator is available." >&2
   fi
   echo "Available devices:" >&2
   xcrun simctl list devices available >&2
@@ -107,6 +107,7 @@ MATERIALIZER_ARGUMENTS=(
   --result-bundle "$RESULT_BUNDLE"
   --device-name "$DEVICE_NAME"
   --device-id "$DEVICE_ID"
+  --display-type "$DISPLAY_TYPE"
 )
 if [[ -n "$(git -C "$REPO_ROOT" status --porcelain -- apps/mobile-capture/HighGroundCapture release/app-store/quipsly-capture)" ]]; then
   MATERIALIZER_ARGUMENTS+=(--source-dirty)
