@@ -10,6 +10,8 @@ DESTINATION="${QUIPSLY_CAPTURE_UI_TEST_DESTINATION:-platform=iOS Simulator,name=
 BASE_URL="${QUIPSLY_CAPTURE_UI_TEST_BASE_URL:-http://127.0.0.1:3012}"
 TEST_EMAIL="${QUIPSLY_CAPTURE_UI_TEST_EMAIL:-}"
 TEST_PASSWORD="${QUIPSLY_CAPTURE_UI_TEST_PASSWORD:-}"
+TEST_VOICE_WRITING_TITLE="${QUIPSLY_CAPTURE_UI_TEST_VOICE_WRITING_TITLE:-}"
+TEST_VOICE_WRITING_BODY="${QUIPSLY_CAPTURE_UI_TEST_VOICE_WRITING_BODY:-}"
 TEST_SESSION_ID="${QUIPSLY_CAPTURE_UI_TEST_SESSION_ID:-}"
 TEST_SESSION_TITLE="${QUIPSLY_CAPTURE_UI_TEST_SESSION_TITLE:-}"
 TEST_SESSION_CONVERSATION_EXPECTED_BODY="${QUIPSLY_CAPTURE_UI_TEST_SESSION_CONVERSATION_EXPECTED_BODY:-}"
@@ -112,6 +114,13 @@ case "$TEST_MODE" in
     ;;
   surface)
     TEST_CASE="testSignedInCaptureRoomSurfacesAreVisible"
+    ;;
+  voice-writing)
+    TEST_CASE="testSignedInSpeakToWriteRecordsStopsAndEditorSavesWritingToNest"
+    if [[ -z "$TEST_VOICE_WRITING_TITLE" || -z "$TEST_VOICE_WRITING_BODY" ]]; then
+      echo "Voice-writing mode requires unique exact writing title and body evidence." >&2
+      exit 2
+    fi
     ;;
   session-deep-link)
     TEST_CASE="testAcceptedSessionLinkFocusesCanonicalRoomWithoutJoiningOrRecording"
@@ -411,7 +420,7 @@ case "$TEST_MODE" in
     fi
     ;;
   *)
-    echo "Unknown QUIPSLY_CAPTURE_UI_TEST_MODE: $TEST_MODE (expected google-handoff, surface, session-deep-link, today-client-follow-up, weekly-plan-preview, weekly-plan-operation, session-create-surface, coaching-phone-start, transcript-follow-through, transcript-task-readback, transcript-task-isolation, transcript-packet-span, transcript-packet-materialization, transcript-packet-note-merge, transcript-packet-goal-evidence-merge, transcript-packet-task-evidence-merge, transcript-review-offline-reconcile, client-follow-up, coach-follow-up-authoring, coaching-continuity, coaching-follow-through-work, account-identity, account-isolation, room-join, capture-recovery, reminder, task-edit, goal-edit, note-edit, annotation-review, annotation-writing, source-inbox-filing, recurrence, recurrence-authoring, recurrence-offline-authoring, recurrence-edit, recurrence-missed, tag-authoring, tag-edit, tag-edit-offline, project-work, project-create, nest-portability, or session-note-edit)" >&2
+    echo "Unknown QUIPSLY_CAPTURE_UI_TEST_MODE: $TEST_MODE (expected google-handoff, surface, voice-writing, session-deep-link, today-client-follow-up, weekly-plan-preview, weekly-plan-operation, session-create-surface, coaching-phone-start, transcript-follow-through, transcript-task-readback, transcript-task-isolation, transcript-packet-span, transcript-packet-materialization, transcript-packet-note-merge, transcript-packet-goal-evidence-merge, transcript-packet-task-evidence-merge, transcript-review-offline-reconcile, client-follow-up, coach-follow-up-authoring, coaching-continuity, coaching-follow-through-work, account-identity, account-isolation, room-join, capture-recovery, reminder, task-edit, goal-edit, note-edit, annotation-review, annotation-writing, source-inbox-filing, recurrence, recurrence-authoring, recurrence-offline-authoring, recurrence-edit, recurrence-missed, tag-authoring, tag-edit, tag-edit-offline, project-work, project-create, nest-portability, or session-note-edit)" >&2
     exit 2
     ;;
 esac
@@ -625,6 +634,22 @@ payload.update(
     {
         "sessionConversationExpectedBody": expected_body or None,
         "sessionConversationReplyBody": reply_body or None,
+    }
+)
+with open(path, "w", encoding="utf-8") as handle:
+    json.dump(payload, handle)
+PY
+  python3 - "$SMOKE_CREDENTIALS_FILE" "$TEST_VOICE_WRITING_TITLE" "$TEST_VOICE_WRITING_BODY" <<'PY'
+import json
+import sys
+
+path, title, body = sys.argv[1:4]
+with open(path, encoding="utf-8") as handle:
+    payload = json.load(handle)
+payload.update(
+    {
+        "voiceWritingTitle": title or None,
+        "voiceWritingBody": body or None,
     }
 )
 with open(path, "w", encoding="utf-8") as handle:

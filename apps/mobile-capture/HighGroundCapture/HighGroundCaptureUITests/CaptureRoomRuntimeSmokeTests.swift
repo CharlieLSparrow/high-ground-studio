@@ -69,6 +69,8 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         let baseURL: String
         let email: String
         let password: String
+        let voiceWritingTitle: String?
+        let voiceWritingBody: String?
         let sessionID: String?
         let sessionTitle: String?
         let sessionConversationExpectedBody: String?
@@ -142,6 +144,8 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
                 baseURL: environment["QUIPSLY_CAPTURE_UI_TEST_BASE_URL"] ?? "http://127.0.0.1:3012",
                 email: envEmail,
                 password: envPassword,
+                voiceWritingTitle: environment["QUIPSLY_CAPTURE_UI_TEST_VOICE_WRITING_TITLE"],
+                voiceWritingBody: environment["QUIPSLY_CAPTURE_UI_TEST_VOICE_WRITING_BODY"],
                 sessionID: environment["QUIPSLY_CAPTURE_UI_TEST_SESSION_ID"],
                 sessionTitle: environment["QUIPSLY_CAPTURE_UI_TEST_SESSION_TITLE"],
                 sessionConversationExpectedBody: environment["QUIPSLY_CAPTURE_UI_TEST_SESSION_CONVERSATION_EXPECTED_BODY"],
@@ -229,6 +233,8 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             baseURL: (payload["baseURL"] as? String) ?? "http://127.0.0.1:3012",
             email: email,
             password: password,
+            voiceWritingTitle: payload["voiceWritingTitle"] as? String,
+            voiceWritingBody: payload["voiceWritingBody"] as? String,
             sessionID: payload["sessionID"] as? String,
             sessionTitle: payload["sessionTitle"] as? String,
             sessionConversationExpectedBody: payload["sessionConversationExpectedBody"] as? String,
@@ -4913,6 +4919,89 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         XCTAssertTrue(rootNavigationControl("Library", in: app).exists)
         XCTAssertTrue(rootNavigationControl("Account", in: app).exists)
         XCTAssertFalse(app.otherElements["GlobalCaptureBanner"].firstMatch.exists, "A recording-in-progress banner must not appear before a take starts.")
+    }
+
+    func testSignedInSpeakToWriteRecordsStopsAndEditorSavesWritingToNest() throws {
+        let credentials = try runtimeSmokeCredentials()
+        guard let proofTitle = credentials.voiceWritingTitle,
+              !proofTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              let proofBody = credentials.voiceWritingBody,
+              !proofBody.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw XCTSkip("The signed-in voice-writing journey requires unique exact title and body evidence.")
+        }
+        let app = try launchSignedInCaptureApp(initialTab: "today")
+        let speakToWrite = app.frame.width >= 700
+            ? app.buttons["CaptureIPadSpeakToWrite"].firstMatch
+            : app.buttons["CaptureStartVoiceNote"].firstMatch
+        XCTAssertTrue(
+            speakToWrite.waitForExistence(timeout: 12) && speakToWrite.isHittable,
+            "The signed-in Home surface should make Speak to write directly operable."
+        )
+        speakToWrite.tap()
+
+        XCTAssertTrue(
+            app.otherElements["CaptureRecorderHero"].firstMatch.waitForExistence(timeout: 12),
+            "Speak to write should open its focused recorder without traversing Session setup."
+        )
+        let start = app.buttons["CaptureStartButton"].firstMatch
+        XCTAssertTrue(start.waitForExistence(timeout: 8) && start.isHittable)
+        start.tap()
+
+        let stop = app.buttons["CaptureStopButton"].firstMatch
+        XCTAssertTrue(
+            stop.waitForExistence(timeout: 15),
+            "The real signed-in recorder should enter an active state without crashing."
+        )
+        XCTAssertTrue(app.buttons["CaptureVoiceWritingPauseResumeButton"].firstMatch.exists)
+        stop.tap()
+        XCTAssertTrue(
+            stop.waitForNonExistence(timeout: 15),
+            "Stop should close the microphone source before the writing workflow continues."
+        )
+        XCTAssertEqual(app.state, .runningForeground)
+        attachRuntimeScreenshot(app, name: "Signed-in Speak to write source saved")
+
+        let allWriting = app.buttons["CaptureVoiceNoteOpenLibrary"].firstMatch
+        XCTAssertTrue(allWriting.waitForExistence(timeout: 8) && allWriting.isHittable)
+        allWriting.tap()
+        let startWriting = app.buttons["CaptureLibraryWriteNote"].firstMatch
+        XCTAssertTrue(
+            startWriting.waitForExistence(timeout: 12) && startWriting.isHittable,
+            "The focused voice recorder should return directly to all editable writing."
+        )
+        startWriting.tap()
+
+        let editor = app.descendants(matching: .any)["CaptureVoiceWritingEditor"].firstMatch
+        XCTAssertTrue(editor.waitForExistence(timeout: 10))
+        replaceText(
+            in: app.textFields["CaptureVoiceWritingTitle"].firstMatch,
+            with: proofTitle,
+            app: app
+        )
+        replaceText(
+            in: app.descendants(matching: .any)["CaptureVoiceWritingBody"].firstMatch,
+            with: proofBody,
+            app: app
+        )
+
+        let syncStatus = app.descendants(matching: .any)["CaptureVoiceWritingSyncStatus"].firstMatch
+        XCTAssertTrue(syncStatus.waitForExistence(timeout: 8))
+        let savedToNest = NSPredicate { evaluated, _ in
+            guard let element = evaluated as? XCUIElement else { return false }
+            let label = element.label.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !label.isEmpty else { return false }
+            return label != "Saving…"
+                && label != "Two copies"
+                && !label.hasPrefix("On ")
+        }
+        expectation(for: savedToNest, evaluatedWith: syncStatus)
+        waitForExpectations(timeout: 40)
+        XCTAssertEqual(app.state, .runningForeground)
+        attachRecordingIdentity(
+            "\(proofTitle)|\(proofBody)|\(syncStatus.label)",
+            name: "Signed-in voice-writing Nest save"
+        )
+        attachRuntimeScreenshot(app, name: "Signed-in writing saved to Nest")
     }
 
     func testAcceptedSessionLinkFocusesCanonicalRoomWithoutJoiningOrRecording() throws {

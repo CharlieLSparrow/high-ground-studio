@@ -392,6 +392,72 @@ async function readCoachStudioHandoffProjection(context, password) {
   }
 }
 
+async function readCoachVoiceWritingProjection(context, password, title, body) {
+  const { chromium } = await loadPlaywright();
+  const browser = await chromium.launch({ headless: true });
+  const browserContext = await browser.newContext({
+    viewport: { width: 390, height: 844 },
+    reducedMotion: "reduce",
+  });
+  const page = await browserContext.newPage();
+  try {
+    await signInThroughRenderedLogin({
+      page,
+      baseURL,
+      identity: context.identities.coach,
+      password,
+      callbackPath: "/coaching",
+    });
+    const response = await page.evaluate(async () => {
+      const candidate = await fetch("/api/mobile/capture/voice-writing", {
+        cache: "no-store",
+        headers: { "X-Quipsly-Writing-Version": "2" },
+      });
+      return {
+        status: candidate.status,
+        packet: await candidate.json().catch(() => null),
+      };
+    });
+    assert.equal(response.status, 200, "Coach could not read back private writing from Nest.");
+    assert.equal(response.packet?.ok, true, "Voice-writing readback was not successful.");
+    const draft = response.packet.drafts?.find(
+      (item) => item.title === title && item.body === body,
+    );
+    assert(draft, "Nest omitted the exact writing authored through the signed-in native editor.");
+    assert(
+      typeof draft.documentId === "string" && draft.documentId.length > 0,
+      "Native writing did not materialize one canonical document.",
+    );
+    assert(
+      typeof draft.projectId === "string" && draft.projectId.length > 0,
+      "Native writing did not bind to the signed-in account's Nest.",
+    );
+    assert.equal(
+      draft.visibility,
+      "personal",
+      "Fresh writing should remain private until the person explicitly shares it.",
+    );
+    return {
+      draftId: draft.draftId,
+      documentId: draft.documentId,
+      projectId: draft.projectId,
+      projectName: draft.projectName,
+      visibility: draft.visibility,
+      localRevision: draft.localRevision,
+      serverRevision: draft.serverRevision,
+      exactTitleAndBodyReadBack: true,
+    };
+  } finally {
+    await clearRenderedSession(
+      page,
+      baseURL,
+      "fresh native-recovery voice-writing verification",
+    ).catch(() => undefined);
+    await browserContext.close();
+    await browser.close();
+  }
+}
+
 process.stderr.write(
   "[fresh native recovery] creating a new coach, client, and Session through rendered product UI\n",
 );
@@ -428,6 +494,10 @@ const roomJoinResultBundlePath = path.join(
 const resultBundlePath = path.join(
   artifactDirectory,
   "native-capture-recovery.xcresult",
+);
+const voiceWritingResultBundlePath = path.join(
+  artifactDirectory,
+  "native-voice-writing.xcresult",
 );
 const receiptPath = path.join(
   artifactDirectory,
@@ -601,6 +671,60 @@ assert.equal(summary.skippedTests, 0);
 
 const studioHandoff = await readCoachStudioHandoffProjection(context, coachPassword);
 
+const voiceWritingToken = path.basename(artifactDirectory);
+const voiceWritingTitle = `Native writing ${voiceWritingToken}`;
+const voiceWritingBody = `This private writing was edited and saved to the signed-in Nest after operating Speak to write in Quipsly Capture. ${voiceWritingToken}`;
+process.stderr.write(
+  "[fresh native recovery] operating signed-in Speak to write and canonical Nest save\n",
+);
+const voiceWritingStatus = await runInherited(
+  "bash",
+  [
+    "apps/mobile-capture/HighGroundCapture/scripts/run-capture-runtime-ui-smoke.sh",
+  ],
+  {
+    env: {
+      ...process.env,
+      QUIPSLY_CAPTURE_UI_TEST_BASE_URL: baseURL,
+      QUIPSLY_CAPTURE_UI_TEST_EMAIL: context.identities.coach.email,
+      QUIPSLY_CAPTURE_UI_TEST_PASSWORD: coachPassword,
+      QUIPSLY_CAPTURE_UI_TEST_VOICE_WRITING_TITLE: voiceWritingTitle,
+      QUIPSLY_CAPTURE_UI_TEST_VOICE_WRITING_BODY: voiceWritingBody,
+      QUIPSLY_CAPTURE_UI_TEST_MODE: "voice-writing",
+      QUIPSLY_CAPTURE_UI_TEST_MICROPHONE_PERMISSION_MODE: "grant",
+      QUIPSLY_CAPTURE_UI_TEST_SIMULATOR_APP_STATE_MODE: "preserve",
+      QUIPSLY_CAPTURE_UI_TEST_DERIVED_DATA_PATH: derivedDataPath,
+      QUIPSLY_CAPTURE_UI_TEST_DESTINATION: destination,
+      QUIPSLY_CAPTURE_UI_TEST_RESULT_BUNDLE_PATH: voiceWritingResultBundlePath,
+      QUIPSLY_CAPTURE_UI_TEST_TIMEOUT_SECONDS:
+        process.env.QUIPSLY_CAPTURE_UI_TEST_TIMEOUT_SECONDS || "900",
+    },
+  },
+);
+assert.equal(
+  voiceWritingStatus,
+  0,
+  `Native voice-writing proof failed with exit ${String(voiceWritingStatus)}.`,
+);
+const voiceWritingSummary = await readJSONCommand("xcrun", [
+  "xcresulttool",
+  "get",
+  "test-results",
+  "summary",
+  "--path",
+  voiceWritingResultBundlePath,
+]);
+assert.equal(voiceWritingSummary.result, "Passed");
+assert.equal(voiceWritingSummary.passedTests, 1);
+assert.equal(voiceWritingSummary.failedTests, 0);
+assert.equal(voiceWritingSummary.skippedTests, 0);
+const voiceWriting = await readCoachVoiceWritingProjection(
+  context,
+  coachPassword,
+  voiceWritingTitle,
+  voiceWritingBody,
+);
+
 const receipt = {
   ok: true,
   localOnly: true,
@@ -613,6 +737,7 @@ const receipt = {
   clientEntryResultBundlePath,
   roomJoinResultBundlePath,
   resultBundlePath,
+  voiceWritingResultBundlePath,
   roomId: context.roomId,
   bookingId: context.bookingId,
   engagementId: context.engagementId,
@@ -641,6 +766,7 @@ const receipt = {
     totalTestCount: roomJoinSummary.totalTestCount,
   },
   studioHandoff,
+  voiceWriting,
   operated: {
     publicRenderedFreshStart: true,
     acceptedClientInvitationOpenedInFreshNativeApp: true,
@@ -666,6 +792,9 @@ const receipt = {
     offlinePlaybackOfFinalizedSource: true,
     onlineReentry: true,
     durableStudioHandoff: true,
+    signedInSpeakToWriteOpened: true,
+    signedInVoiceSourceRecordedAndStopped: true,
+    editableWritingSavedToCanonicalNest: voiceWriting.exactTitleAndBodyReadBack,
   },
   boundaries: {
     passwordsWrittenToArtifact: false,

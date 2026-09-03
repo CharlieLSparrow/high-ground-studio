@@ -7,13 +7,16 @@ const source = await readFile(
   "utf8",
 );
 
-test("fresh native flight keeps credentials private while operating client entry, room join, and recovery", () => {
+test("fresh native flight keeps credentials private while operating client entry, recovery, and writing", () => {
   assert.match(source, /stdio: \["ignore", "pipe", "inherit", "ipc"\]/);
   assert.match(source, /parseFreshCoachingCredentialIPCPacket/);
   assert.doesNotMatch(source, /security[^\n]+find-generic-password/);
   assert.match(source, /QUIPSLY_CAPTURE_UI_TEST_MODE: "session-deep-link"/);
   assert.match(source, /QUIPSLY_CAPTURE_UI_TEST_MODE: "room-join"/);
   assert.match(source, /QUIPSLY_CAPTURE_UI_TEST_MODE: "capture-recovery"/);
+  assert.match(source, /QUIPSLY_CAPTURE_UI_TEST_MODE: "voice-writing"/);
+  assert.match(source, /QUIPSLY_CAPTURE_UI_TEST_VOICE_WRITING_TITLE/);
+  assert.match(source, /QUIPSLY_CAPTURE_UI_TEST_VOICE_WRITING_BODY/);
   assert.match(source, /QUIPSLY_CAPTURE_UI_TEST_MICROPHONE_PERMISSION_MODE: "reset"/);
   assert.match(source, /QUIPSLY_CAPTURE_UI_TEST_EXPECT_MICROPHONE_PROMPT: "1"/);
   assert.match(source, /\?mode=prepare/);
@@ -25,6 +28,8 @@ test("fresh native flight keeps credentials private while operating client entry
   assert.match(source, /quipsly-session-workspace-consent-v1/);
   assert.match(source, /Crash recovery preserved the source but did not close the abandoned server recording boundary/);
   assert.match(source, /crashOpenServerBoundaryClosedAfterRelaunch/);
+  assert.match(source, /exactTitleAndBodyReadBack: true/);
+  assert.match(source, /editableWritingSavedToCanonicalNest/);
   assert.match(source, /passwordsWrittenToArtifact: false/);
   assert.match(source, /keychainReadRequiredForAutomatedFlight: false/);
 });

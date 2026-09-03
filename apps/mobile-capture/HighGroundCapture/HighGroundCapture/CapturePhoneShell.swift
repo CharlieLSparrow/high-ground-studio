@@ -9541,20 +9541,23 @@ private struct CaptureVoiceWritingEditor: View {
 
     @ViewBuilder
     private var syncStatus: some View {
-        if writingSync.syncingDraftIDs.contains(draftID) {
-            Label("Saving…", systemImage: "icloud.and.arrow.up")
-        } else if currentDraft?.pendingRemote != nil {
-            Label("Two copies", systemImage: "arrow.triangle.branch")
-                .foregroundStyle(.orange)
-        } else if currentDraft?.isSynced == true {
-            Label(
-                currentDraft?.canonicalProjectName?.nonempty ?? "Saved",
-                systemImage: "checkmark.icloud.fill"
-            )
-                .foregroundStyle(.green)
-        } else {
-            Label("On \(CaptureDeviceVocabulary.deviceName)", systemImage: CaptureDeviceVocabulary.systemImage)
+        Group {
+            if writingSync.syncingDraftIDs.contains(draftID) {
+                Label("Saving…", systemImage: "icloud.and.arrow.up")
+            } else if currentDraft?.pendingRemote != nil {
+                Label("Two copies", systemImage: "arrow.triangle.branch")
+                    .foregroundStyle(.orange)
+            } else if currentDraft?.isSynced == true {
+                Label(
+                    currentDraft?.canonicalProjectName?.nonempty ?? "Saved",
+                    systemImage: "checkmark.icloud.fill"
+                )
+                    .foregroundStyle(.green)
+            } else {
+                Label("On \(CaptureDeviceVocabulary.deviceName)", systemImage: CaptureDeviceVocabulary.systemImage)
+            }
         }
+        .accessibilityIdentifier("CaptureVoiceWritingSyncStatus")
     }
 
     private var shareText: String {
