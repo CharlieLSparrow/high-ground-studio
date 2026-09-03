@@ -23,7 +23,7 @@ export function requireLoopbackOrigin(value, label) {
 
 export async function loadPlaywright() {
   try {
-    return await import("playwright");
+    return await import("@playwright/test");
   } catch {
     throw new Error(
       "Playwright and Chromium are required for rendered retained-QA operation.",
