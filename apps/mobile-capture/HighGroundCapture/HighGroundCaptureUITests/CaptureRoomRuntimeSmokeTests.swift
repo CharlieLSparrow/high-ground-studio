@@ -733,12 +733,18 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         timeout: TimeInterval = 18,
         swipeAttempts: Int = 8
     ) -> Bool {
+        func persistentRecorderPrimaryAction() -> XCUIElement? {
+            [
+                app.buttons["CapturePersistentRecorderStartButton"].firstMatch,
+                app.buttons["CapturePersistentRecorderStopButton"].firstMatch,
+                app.buttons["CapturePersistentRecorderConsentButton"].firstMatch,
+            ].first(where: { $0.exists })
+        }
+
         func isVisiblyOperable() -> Bool {
             guard element.exists && element.isHittable else { return false }
-            let recorderDock = app.descendants(matching: .any)[
-                "CapturePersistentRecorderDock"
-            ].firstMatch
-            return !recorderDock.exists || !recorderDock.frame.intersects(element.frame)
+            guard let recorderAction = persistentRecorderPrimaryAction() else { return true }
+            return element.frame.maxY < recorderAction.frame.minY
         }
 
         let deadline = Date().addingTimeInterval(timeout)
@@ -747,12 +753,12 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             if isVisiblyOperable() { return true }
             if attempts < swipeAttempts {
                 let recorderSurface = recorderScrollSurface(in: app)
-                let recorderDock = app.descendants(matching: .any)[
-                    "CapturePersistentRecorderDock"
-                ].firstMatch
+                let recorderAction = persistentRecorderPrimaryAction()
                 let shouldMoveTowardTop = element.exists
                     && element.frame.midY < app.frame.midY
-                    && (!recorderDock.exists || element.frame.maxY < recorderDock.frame.minY)
+                    && (recorderAction.map {
+                        element.frame.maxY < $0.frame.minY
+                    } ?? true)
                 if recorderSurface.exists && recorderSurface.isHittable {
                     if shouldMoveTowardTop {
                         recorderSurface.swipeDown()
