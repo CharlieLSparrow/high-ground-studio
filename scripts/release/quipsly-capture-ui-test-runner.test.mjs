@@ -3,8 +3,10 @@ import test from "node:test";
 
 import {
   createXcodeArguments,
+  createExecutionGroups,
   executedTestCount,
   parseRunnerArguments,
+  skippedTestCount,
   verifyExecution,
 } from "./quipsly-capture-ui-test-runner.mjs";
 
@@ -34,6 +36,47 @@ test("reads the authoritative aggregate executed count", () => {
     Executed 15 tests, with 0 failures
   `;
   assert.equal(executedTestCount(output), 15);
+});
+
+test("partitions regular-width contracts onto an iPad destination", () => {
+  const groups = createExecutionGroups({
+    selectors: [
+      "HighGroundCaptureUITests/CaptureExperienceUITests/testPhoneJourney",
+      "HighGroundCaptureUITests/CaptureExperienceUITests/testRegularWidthIPadUsesANativeWorkspaceSidebar",
+      "HighGroundCaptureUITests/CaptureExperienceUITests/testVoiceWritingRecordsAndStopsThroughTheSourceFirstPathOnRegularWidthIPad",
+    ],
+  }, {
+    destination: "platform=iOS Simulator,name=iPhone 17 Pro",
+    ipadDestination: "platform=iOS Simulator,name=iPad Air 13-inch (M3)",
+  });
+
+  assert.deepEqual(groups, [
+    {
+      name: "iPhone",
+      destination: "platform=iOS Simulator,name=iPhone 17 Pro",
+      selectors: ["HighGroundCaptureUITests/CaptureExperienceUITests/testPhoneJourney"],
+    },
+    {
+      name: "iPad",
+      destination: "platform=iOS Simulator,name=iPad Air 13-inch (M3)",
+      selectors: [
+        "HighGroundCaptureUITests/CaptureExperienceUITests/testRegularWidthIPadUsesANativeWorkspaceSidebar",
+        "HighGroundCaptureUITests/CaptureExperienceUITests/testVoiceWritingRecordsAndStopsThroughTheSourceFirstPathOnRegularWidthIPad",
+      ],
+    },
+  ]);
+});
+
+test("detects skipped tests and refuses a false green", () => {
+  const output = `
+    Test Case '-[CaptureTests testIPad]' skipped (1.0 seconds).
+    Executed 2 tests, with 1 test skipped and 0 failures
+  `;
+  assert.equal(skippedTestCount(output), 1);
+  assert.throws(
+    () => verifyExecution({ output, expectedCount: 2, exitCode: 0 }),
+    /skipped 1 of 2 planned tests/,
+  );
 });
 
 test("rejects a zero-test false green", () => {
@@ -72,9 +115,11 @@ test("preserves spaces in a destination as one spawned argument", () => {
     "--shard=2",
     "--shards=4",
     "--destination=platform=iOS Simulator,name=iPhone 17 Pro",
+    "--ipad-destination=platform=iOS Simulator,name=iPad Air 13-inch (M3)",
   ]);
   assert.equal(options.suite, "full");
   assert.equal(options.shard, 2);
   assert.equal(options.shards, 4);
   assert.equal(options.destination, "platform=iOS Simulator,name=iPhone 17 Pro");
+  assert.equal(options.ipadDestination, "platform=iOS Simulator,name=iPad Air 13-inch (M3)");
 });

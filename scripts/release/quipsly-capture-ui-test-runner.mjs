@@ -29,6 +29,9 @@ export function parseRunnerArguments(argv) {
     destination:
       process.env.QUIPSLY_CAPTURE_UI_DESTINATION
       ?? "platform=iOS Simulator,name=iPhone 17 Pro",
+    ipadDestination:
+      process.env.QUIPSLY_CAPTURE_UI_IPAD_DESTINATION
+      ?? "platform=iOS Simulator,name=iPad Air 13-inch (M3)",
     derivedDataPath:
       process.env.QUIPSLY_CAPTURE_UI_DERIVED_DATA
       ?? "/tmp/quipsly-capture-ui-runner-derived",
@@ -44,11 +47,35 @@ export function parseRunnerArguments(argv) {
     else if (name === "--shard") options.shard = Number(value);
     else if (name === "--shards") options.shards = Number(value);
     else if (name === "--destination") options.destination = value;
+    else if (name === "--ipad-destination") options.ipadDestination = value;
     else if (name === "--derived-data") options.derivedDataPath = path.resolve(value);
     else throw new Error(`unknown argument: ${argument}`);
   }
 
   return options;
+}
+
+export function createExecutionGroups(plan, options) {
+  const ipadSelectors = plan.selectors.filter((selector) =>
+    selector.includes("RegularWidthIPad"));
+  const iphoneSelectors = plan.selectors.filter((selector) =>
+    !selector.includes("RegularWidthIPad"));
+  return [
+    iphoneSelectors.length > 0
+      ? {
+          name: "iPhone",
+          destination: options.destination,
+          selectors: iphoneSelectors,
+        }
+      : null,
+    ipadSelectors.length > 0
+      ? {
+          name: "iPad",
+          destination: options.ipadDestination,
+          selectors: ipadSelectors,
+        }
+      : null,
+  ].filter(Boolean);
 }
 
 export function createXcodeArguments(plan, options) {
@@ -75,11 +102,26 @@ export function executedTestCount(output) {
   return counts.length > 0 ? Math.max(...counts) : 0;
 }
 
+export function skippedTestCount(output) {
+  const explicitCases = output.match(/Test Case .* skipped \(/g) ?? [];
+  if (explicitCases.length > 0) return explicitCases.length;
+  const aggregateCounts = [...output.matchAll(/with\s+(\d+)\s+tests?\s+skipped/g)]
+    .map((match) => Number(match[1]))
+    .filter(Number.isFinite);
+  return aggregateCounts.length > 0 ? Math.max(...aggregateCounts) : 0;
+}
+
 export function verifyExecution({ output, expectedCount, exitCode }) {
   const executedCount = executedTestCount(output);
+  const skippedCount = skippedTestCount(output);
   if (exitCode !== 0) {
     throw new Error(
       `xcodebuild failed with exit code ${exitCode}; ${executedCount} of ${expectedCount} planned tests executed`,
+    );
+  }
+  if (skippedCount !== 0) {
+    throw new Error(
+      `xcodebuild skipped ${skippedCount} of ${expectedCount} planned tests`,
     );
   }
   if (executedCount !== expectedCount) {
@@ -120,18 +162,37 @@ async function main() {
   const options = parseRunnerArguments(process.argv.slice(2));
   const tests = discoverDeterministicTests(await readFile(SOURCE, "utf8"));
   const plan = createPlan(tests, options);
-  const xcodeArguments = createXcodeArguments(plan, options);
+  const executionGroups = createExecutionGroups(plan, options);
 
   process.stdout.write(
     `Quipsly Capture ${plan.suite} UI suite: ${plan.selectedTestCount} tests`
       + `${plan.shards > 1 ? ` · shard ${plan.shard}/${plan.shards}` : ""}\n`,
   );
-  const result = await runXcodebuild(xcodeArguments);
-  const count = verifyExecution({
-    ...result,
-    expectedCount: plan.selectedTestCount,
-  });
-  process.stdout.write(`PASS: executed all ${count} planned Capture UI tests.\n`);
+  let executedCount = 0;
+  for (const execution of executionGroups) {
+    process.stdout.write(
+      `Running ${execution.selectors.length} ${execution.name} contracts on ${execution.destination}\n`,
+    );
+    const result = await runXcodebuild(createXcodeArguments(
+      { selectors: execution.selectors },
+      {
+        ...options,
+        destination: execution.destination,
+      },
+    ));
+    executedCount += verifyExecution({
+      ...result,
+      expectedCount: execution.selectors.length,
+    });
+  }
+  if (executedCount !== plan.selectedTestCount) {
+    throw new Error(
+      `platform executions covered ${executedCount} of ${plan.selectedTestCount} planned tests`,
+    );
+  }
+  process.stdout.write(
+    `PASS: executed all ${executedCount} planned Capture UI tests across ${executionGroups.length} platform destinations.\n`,
+  );
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
