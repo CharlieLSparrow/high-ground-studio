@@ -20227,7 +20227,11 @@ private struct ProviderRoomControls: View {
                     }
                     .buttonStyle(.borderedProminent)
                     .controlSize(.large)
-                    .disabled((providerControlsLocked && !canRejoinSession) || model.isChangingRoom || session.providerCanJoin != true)
+                    .disabled(
+                        (providerControlsLocked && !canRejoinSession)
+                            || model.isChangingRoom
+                            || (session.providerCanJoin != true && !canRejoinSession)
+                    )
                     .accessibilityHint(providerControlHint)
                     .accessibilityIdentifier("ProviderJoinRoomButton")
 

@@ -82,6 +82,7 @@ final class CaptureExperienceUITests: XCTestCase {
                 "--capture-ui-preview-tab=record",
                 "--capture-ui-preview-session=preview-coaching-ready",
                 "--capture-call-rejoin-preview",
+                "--capture-call-rejoin-stale-provider-preview",
             ]
         }
         if name.contains("testPrivateVoiceNoteOpensCaptureWithoutMeetingPaperwork")
@@ -2274,7 +2275,10 @@ final class CaptureExperienceUITests: XCTestCase {
         reveal(rejoin)
         XCTAssertTrue(rejoin.waitForExistence(timeout: 5))
         XCTAssertEqual(rejoin.label, "Rejoin call")
-        XCTAssertTrue(rejoin.isHittable)
+        XCTAssertTrue(
+            rejoin.isHittable,
+            "A stale provider-readiness snapshot must not disable recovery before Quipsly can request a fresh join token."
+        )
 
         let recordWithoutCall = app.buttons["CaptureRecordWithoutJoiningButton"]
         reveal(recordWithoutCall)

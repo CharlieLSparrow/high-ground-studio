@@ -260,6 +260,17 @@ enum CaptureLaunchConfiguration {
         #endif
     }
 
+    static var usesCallRejoinWithStaleProviderSnapshotPreview: Bool {
+        #if DEBUG && targetEnvironment(simulator)
+        usesCallRejoinPreview
+            && ProcessInfo.processInfo.arguments.contains(
+                "--capture-call-rejoin-stale-provider-preview"
+            )
+        #else
+        false
+        #endif
+    }
+
     static var usesCoachingPreparationWorkingDraftPreview: Bool {
         #if DEBUG && targetEnvironment(simulator)
         usesPreviewData
@@ -4225,8 +4236,14 @@ extension MobileCaptureSession {
             updatedAt: ISO8601DateFormatter().string(from: Date()),
             provider: localPersonalDraft ? "local" : "livekit",
             providerRoomId: localPersonalDraft ? nil : "provider-\(id)",
-            providerCanJoin: localPersonalDraft ? false : true,
-            providerReadiness: localPersonalDraft ? "local" : "ready",
+            providerCanJoin: localPersonalDraft
+                ? false
+                : !CaptureLaunchConfiguration.usesCallRejoinWithStaleProviderSnapshotPreview,
+            providerReadiness: localPersonalDraft
+                ? "local"
+                : CaptureLaunchConfiguration.usesCallRejoinWithStaleProviderSnapshotPreview
+                    ? "refresh-required"
+                    : "ready",
             providerNextAction: localPersonalDraft ? "Record whenever you are ready." : "Join only when the other participant is ready.",
             projectId: localPersonalDraft ? nil : "preview-high-ground",
             projectSlug: localPersonalDraft ? nil : (appStoreCoachingPresentation ? "my-coaching-practice" : "high-ground-odyssey"),
