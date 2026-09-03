@@ -3207,7 +3207,12 @@ struct CaptureTranscriptReviewView: View {
     var body: some View {
         ScrollViewReader { scrollProxy in
             ScrollView {
-                LazyVStack(alignment: .leading, spacing: 16) {
+                // Keep the finite section spine eager and make the repeated
+                // transcript rows lazy below. A lazy outer stack wrapping one
+                // enormous eager segment subtree can repeatedly invalidate
+                // placement while an iPad scrolls, monopolizing the main
+                // thread on long or richly annotated transcripts.
+                VStack(alignment: .leading, spacing: 16) {
                     header
 
                     if let focusSegmentID {
@@ -3841,7 +3846,7 @@ struct CaptureTranscriptReviewView: View {
         } else {
             transcriptPresentationPicker(desk, scrollProxy: scrollProxy)
                 .id(linkedTranscriptScrollTargetID)
-            VStack(alignment: .leading, spacing: 16) {
+            LazyVStack(alignment: .leading, spacing: 16) {
                 if transcriptPresentationMode == .conversation {
                     let speakers = conversationSpeakerLabels(in: desk)
                     ForEach(orderedSegments(in: desk)) { segment in
@@ -3878,6 +3883,7 @@ struct CaptureTranscriptReviewView: View {
                     }
                 }
             }
+            .scrollTargetLayout()
             .id(transcriptPresentationMode)
         }
     }
