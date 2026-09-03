@@ -1040,8 +1040,11 @@ function SessionConsentControl({
         );
       }
       setMessage(
-        body.session?.nextAction ||
-          "Your consent choice is saved. Quipsly is refreshing the exact Session evidence.",
+        consentAction === "GRANT"
+          ? "You're ready. Recording starts only when someone presses Record."
+          : consentAction === "DECLINE"
+            ? "You can join this Session without being recorded."
+            : "Recording permission removed for this Session.",
       );
       if (consentAction === "GRANT") setIsEditingConsent(false);
       router.refresh();
@@ -1080,8 +1083,8 @@ function SessionConsentControl({
           </h3>
           {!consent?.recordingReady || isEditingConsent ? (
             <p className="mt-2 text-sm font-semibold leading-6 text-[#6b5538]">
-              Agree to this device&apos;s selected audio, video, and transcript
-              options. You can still join the call without being recorded.
+              Choose what this device may record. You can join the call without
+              recording anything.
             </p>
           ) : null}
         </div>

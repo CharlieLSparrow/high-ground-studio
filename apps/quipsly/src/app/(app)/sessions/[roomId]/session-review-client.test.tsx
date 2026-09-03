@@ -1167,7 +1167,9 @@ describe("Session review goal candidates", () => {
     }));
     expect(payload.consentPolicyVersion).toBeTruthy();
     expect(payload.consentTextHash).toMatch(/^[a-f0-9]{64}$/);
-    expect(await screen.findByRole("status")).toHaveTextContent("Consent saved for this exact Session.");
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      "You're ready. Recording starts only when someone presses Record.",
+    );
     expect(mockRouterRefresh).toHaveBeenCalledTimes(1);
   });
 
