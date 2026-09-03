@@ -37,3 +37,10 @@ test("Simulator CallKit skip is explicit evidence, never a provider-media pass",
   );
   assert.match(source, /realProviderRoomMediaProven: roomJoinPassed/);
 });
+
+test("recovery Nest selection atomically selects its isolated dependencies", () => {
+  assert.match(source, /parsedBaseURL\.port === "3022"/);
+  assert.match(source, /FIREBASE_AUTH_EMULATOR_HOST: "127\.0\.0\.1:9199"/);
+  assert.match(source, /QUIPSLY_LOCAL_FIREBASE_PROJECT: "quipsly-recovery-lab"/);
+  assert.match(source, /127\.0\.0\.1:55432\/quipsly_portable_recovery_lab/);
+});

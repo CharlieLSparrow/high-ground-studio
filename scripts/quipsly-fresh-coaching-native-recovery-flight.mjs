@@ -32,6 +32,22 @@ assert(
   "Fresh native recovery refuses a non-loopback Nest origin.",
 );
 
+// Port 3022 is owned by the isolated recovery lab. Select its entire service
+// set as one atomic environment so an otherwise-correct rehearsal cannot
+// create users in Auth 9199 while reading Auth 9099, or write synthetic work
+// into the canonical local database. Explicitly choosing the recovery Nest is
+// enough; callers should not have to memorize four matching environment
+// variables.
+if (parsedBaseURL.port === "3022") {
+  Object.assign(process.env, {
+    QUIPSLY_LOCAL_FIREBASE_PROJECT: "quipsly-recovery-lab",
+    FIREBASE_PROJECT_ID: "quipsly-recovery-lab",
+    FIREBASE_AUTH_EMULATOR_HOST: "127.0.0.1:9199",
+    DATABASE_URL:
+      "postgresql://postgres:quipsly_recovery_lab@127.0.0.1:55432/quipsly_portable_recovery_lab?schema=public",
+  });
+}
+
 function readGitReleaseIdentity() {
   const sourceSha = execFileSync("git", ["rev-parse", "HEAD"], {
     cwd: repoRoot,
