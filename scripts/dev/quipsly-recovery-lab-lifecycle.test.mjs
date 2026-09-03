@@ -81,6 +81,8 @@ test("acceptance defaults to a clean exact committed revision", () => {
   assert.match(up, /QUIPSLY_SOURCE_SHA="\$\(git rev-parse HEAD\)"/);
   assert.match(doctor, /Live Nest revision/);
   assert.match(doctor, /clean committed source/);
+  assert.match(doctor, /QUIPSLY_RECOVERY_LAB_ALLOW_DIRTY/);
+  assert.match(doctor, /development override; runtime revision remains pinned/);
 });
 
 test("an owned replacement forgets the pre-reset revision snapshot", () => {

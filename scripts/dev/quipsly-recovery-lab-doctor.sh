@@ -156,6 +156,8 @@ fi
 dirty_source="$(git status --porcelain=v1 --untracked-files=all)"
 if [[ -z "${dirty_source}" ]]; then
   printf "PASS  %-26s clean committed source\n" "Worktree"
+elif [[ "${QUIPSLY_RECOVERY_LAB_ALLOW_DIRTY:-0}" == "1" ]]; then
+  printf "WARN  %-26s development override; runtime revision remains pinned\n" "Worktree"
 else
   printf "FAIL  %-26s has tracked or untracked changes\n" "Worktree"
   failed=1
