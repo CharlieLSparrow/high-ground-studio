@@ -741,8 +741,19 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             ].first(where: { $0.exists })
         }
 
+        func topNavigationChromeBottom() -> CGFloat {
+            app.navigationBars.allElementsBoundByIndex
+                .filter { $0.exists }
+                .map { $0.frame.maxY }
+                .filter { $0 < app.frame.midY }
+                .max() ?? app.frame.minY
+        }
+
         func isVisiblyOperable() -> Bool {
             guard element.exists && element.isHittable else { return false }
+            guard element.frame.minY > topNavigationChromeBottom() + 4 else {
+                return false
+            }
             guard let recorderAction = persistentRecorderPrimaryAction() else { return true }
             return element.frame.maxY < recorderAction.frame.minY
         }
@@ -754,19 +765,16 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             if attempts < swipeAttempts {
                 let recorderSurface = recorderScrollSurface(in: app)
                 let recorderAction = persistentRecorderPrimaryAction()
-                let shouldMoveTowardTop = element.exists
-                    && element.frame.midY < app.frame.midY
-                    && (recorderAction.map {
-                        element.frame.maxY < $0.frame.minY
-                    } ?? true)
+                let shouldMoveTowardBottom = element.exists
+                    && element.frame.minY <= topNavigationChromeBottom() + 4
                 if recorderSurface.exists && recorderSurface.isHittable {
-                    if shouldMoveTowardTop {
+                    if shouldMoveTowardBottom {
                         recorderSurface.swipeDown()
                     } else {
                         recorderSurface.swipeUp()
                     }
                 } else {
-                    if shouldMoveTowardTop {
+                    if shouldMoveTowardBottom {
                         app.swipeDown()
                     } else {
                         app.swipeUp()

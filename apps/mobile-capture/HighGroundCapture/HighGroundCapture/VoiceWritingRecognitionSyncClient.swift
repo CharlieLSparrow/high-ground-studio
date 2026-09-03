@@ -73,7 +73,7 @@ final class VoiceWritingRecognitionSyncClient: ObservableObject {
     private let defaults: UserDefaults
     private let operationsKey = "com.quipsly.capture.voiceWriting.recognitionOutbox.v1"
     private let bootstrappedOwnersKey = "com.quipsly.capture.voiceWriting.recognitionBootstrap.v1"
-    private let apiBaseURL = normalizedNestAPIBaseURL(
+    private let nestBaseURL = normalizedNestBaseURL(
         Bundle.main.object(forInfoDictionaryKey: "QUIPSLY_API_BASE_URL") as? String
             ?? "https://nest.quipsly.com"
     )
@@ -132,7 +132,7 @@ final class VoiceWritingRecognitionSyncClient: ObservableObject {
               AuthManager.shared.networkActionsAllowed,
               let owner = Self.normalizedOwnerID(ownerAccountID),
               owner == Self.normalizedOwnerID(AuthManager.currentStoredOwnerID()),
-              let endpoint = URL(string: "\(apiBaseURL)/api/mobile/capture/speech-profile") else { return }
+              let endpoint = URL(string: "\(nestBaseURL)/api/mobile/capture/speech-profile") else { return }
 
         ensureBootstrapQueued(for: owner)
         isSyncing = true

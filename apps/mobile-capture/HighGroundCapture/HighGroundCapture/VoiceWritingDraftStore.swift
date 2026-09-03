@@ -1002,7 +1002,7 @@ final class VoiceWritingDraftSyncClient: ObservableObject {
     @Published private(set) var transcriptRefreshErrors: [UUID: String] = [:]
     private var pendingTasks: [UUID: Task<Void, Never>] = [:]
     private var accountCancellable: AnyCancellable?
-    private let apiBaseURL = normalizedNestAPIBaseURL(
+    private let nestBaseURL = normalizedNestBaseURL(
         Bundle.main.object(forInfoDictionaryKey: "QUIPSLY_API_BASE_URL") as? String
             ?? "https://nest.quipsly.com"
     )
@@ -1038,7 +1038,7 @@ final class VoiceWritingDraftSyncClient: ObservableObject {
     func refreshFromNest() async {
         guard !isRefreshing,
               AuthManager.shared.networkActionsAllowed,
-              let endpoint = URL(string: "\(apiBaseURL)/api/mobile/capture/voice-writing") else { return }
+              let endpoint = URL(string: "\(nestBaseURL)/api/mobile/capture/voice-writing") else { return }
         isRefreshing = true
         refreshError = nil
         defer { isRefreshing = false }
@@ -1083,7 +1083,7 @@ final class VoiceWritingDraftSyncClient: ObservableObject {
               let draft = VoiceWritingDraftStore.shared.draft(id: draftID),
               draft.canonicalDocumentID != nil,
               !draft.allSources.isEmpty,
-              var components = URLComponents(string: "\(apiBaseURL)/api/mobile/capture/voice-writing") else { return }
+              var components = URLComponents(string: "\(nestBaseURL)/api/mobile/capture/voice-writing") else { return }
 
         components.queryItems = [
             URLQueryItem(name: "draftId", value: draftID.uuidString.lowercased()),
@@ -1185,7 +1185,7 @@ final class VoiceWritingDraftSyncClient: ObservableObject {
                 userInfo: [NSLocalizedDescriptionKey: "Connect to Quipsly before deleting this writing."]
             )
         }
-        guard let endpoint = URL(string: "\(apiBaseURL)/api/mobile/capture/voice-writing") else {
+        guard let endpoint = URL(string: "\(nestBaseURL)/api/mobile/capture/voice-writing") else {
             throw NSError(
                 domain: "QuipslyVoiceWriting",
                 code: -2,
@@ -1254,7 +1254,7 @@ final class VoiceWritingDraftSyncClient: ObservableObject {
         guard destination.id != currentProjectID
                 || draft.canonicalVisibility != resolvedVisibility else { return }
         guard AuthManager.shared.networkActionsAllowed,
-              let endpoint = URL(string: "\(apiBaseURL)/api/mobile/capture/voice-writing") else {
+              let endpoint = URL(string: "\(nestBaseURL)/api/mobile/capture/voice-writing") else {
             throw NSError(
                 domain: "QuipslyVoiceWriting",
                 code: -1,
@@ -1314,7 +1314,7 @@ final class VoiceWritingDraftSyncClient: ObservableObject {
         guard AuthManager.shared.networkActionsAllowed,
               let draft = VoiceWritingDraftStore.shared.draft(id: draftID),
               !draft.isSynced else { return }
-        guard let endpoint = URL(string: "\(apiBaseURL)/api/mobile/capture/voice-writing") else {
+        guard let endpoint = URL(string: "\(nestBaseURL)/api/mobile/capture/voice-writing") else {
             VoiceWritingDraftStore.shared.markSyncFailed(
                 draftID: draftID,
                 message: "Quipsly's private writing address is invalid."

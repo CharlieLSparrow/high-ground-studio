@@ -74,6 +74,7 @@ const files = {
   captureRecordingReceiptOutbox: path.join(sourceRoot, "CaptureRecordingReceiptOutbox.swift"),
   capturePhoneShell: path.join(sourceRoot, "CapturePhoneShell.swift"),
   voiceWritingDraftStore: path.join(sourceRoot, "VoiceWritingDraftStore.swift"),
+  voiceWritingRecognitionSyncClient: path.join(sourceRoot, "VoiceWritingRecognitionSyncClient.swift"),
   subscriptionStore: path.join(sourceRoot, "QuipslySubscriptionStore.swift"),
   captureCoachingHome: path.join(sourceRoot, "CaptureCoachingHome.swift"),
   mobileCoachingFormAutomation: path.join(sourceRoot, "MobileCoachingFormAutomation.swift"),
@@ -263,6 +264,7 @@ const captureRecordingCoordinatorText = read(files.captureRecordingCoordinator);
 const captureRecordingReceiptOutboxText = read(files.captureRecordingReceiptOutbox);
 const capturePhoneShellText = read(files.capturePhoneShell);
 const voiceWritingDraftStoreText = read(files.voiceWritingDraftStore);
+const voiceWritingRecognitionSyncClientText = read(files.voiceWritingRecognitionSyncClient);
 const recorderSurfaceStart = capturePhoneShellText.indexOf(
   "private struct CaptureRecorderView: View",
 );
@@ -297,6 +299,39 @@ const localRecordingPlaybackText = read(files.localRecordingPlayback);
 const mobileText = read(files.mobileComponents);
 const shippingCaptureUIText = `${capturePhoneShellText}\n${captureRehearsalReadinessText}\n${captureSessionGuardianText}\n${mobileText}`;
 const bridgeText = read(files.bridgeModels);
+
+for (const [source, endpoint, label] of [
+  [
+    voiceWritingDraftStoreText,
+    '"\\(nestBaseURL)/api/mobile/capture/voice-writing"',
+    "voice-writing sync uses the Nest origin exactly once",
+  ],
+  [
+    voiceWritingRecognitionSyncClientText,
+    '"\\(nestBaseURL)/api/mobile/capture/speech-profile"',
+    "speech-profile sync uses the Nest origin exactly once",
+  ],
+  [
+    onDeviceTranscriptManagerText,
+    '"\\(nestBaseURL)/api/mobile/capture/transcripts/on-device"',
+    "device transcript delivery uses the Nest origin exactly once",
+  ],
+  [
+    capturePhoneShellText,
+    '"\\(nestBaseURL)/api/mobile/capture/voice-writing/export"',
+    "voice-writing export uses the Nest origin exactly once",
+  ],
+]) {
+  requireIncludes(source, endpoint, label);
+}
+for (const [source, label] of [
+  [voiceWritingDraftStoreText, "voice-writing sync never creates an /api/api route"],
+  [voiceWritingRecognitionSyncClientText, "speech-profile sync never creates an /api/api route"],
+  [onDeviceTranscriptManagerText, "device transcript delivery never creates an /api/api route"],
+  [capturePhoneShellText, "voice-writing export never creates an /api/api route"],
+]) {
+  requireExcludes(source, "\\(apiBaseURL)/api/mobile/capture", label);
+}
 const mobileCaptureReadinessRouteText = read(files.mobileCaptureReadinessRoute);
 const mobileCaptureSessionsRouteText = read(files.mobileCaptureSessionsRoute);
 const mobileCaptureSessionsServerText = read(files.mobileCaptureSessionsServer);
@@ -546,7 +581,9 @@ requireIncludes(runtimeUISmokeRunnerText, 'coach-follow-up-authoring)', "runtime
 requireIncludes(runtimeUISmokeRunnerText, 'coaching-follow-through-work)', "runtime UI smoke can select the exact next-Session follow-through to Work proof mode");
 requireIncludes(runtimeUISmokeTestsText, "func testSignedInCaptureRoomSurfacesAreVisible", "runtime UI smoke implements the signed-in surface proof");
 requireIncludes(runtimeUISmokeTestsText, "func testConsentedCapturePlaybackAndCrashRecovery", "runtime UI smoke implements real consented capture, playback, and crash recovery");
-requireIncludes(runtimeUISmokeTestsText, 'destination = app.buttons["CaptureSessionChooser"].firstMatch', "runtime UI smoke proves rendered recorder navigation through the platform-neutral Session chooser instead of trusting stale tab-selection metadata");
+requireIncludes(runtimeUISmokeTestsText, "destination = sessionsDestination(in: app)", "runtime UI smoke proves rendered recorder navigation through the platform-neutral restored Session surface instead of trusting stale tab-selection metadata");
+requireIncludes(runtimeUISmokeTestsText, '"CaptureSessionChooser",', "runtime UI navigation accepts the Session chooser when no prior Session is restored");
+requireIncludes(runtimeUISmokeTestsText, '"CaptureRecorderView"', "runtime UI navigation accepts the recorder when the last Session is restored");
 requireIncludes(runtimeUISmokeTestsText, "earlier idempotent attachment", "runtime UI recovery proof accepts only a durable existing Studio handoff when a retained source was already attached");
 requireIncludes(runtimeUISmokeTestsText, "func testSignedInIPhoneAuthorsCanonicalWeeklyRecurrence", "runtime UI smoke authors recurrence through signed-in iPhone controls and reads it back from Today");
 requireIncludes(runtimeUISmokeTestsText, "func testIPhoneRecurrenceOutboxSurvivesOfflineRelaunchAndConverges", "runtime UI smoke proves recurrence survives an unreachable Nest plus process relaunch before canonical convergence");

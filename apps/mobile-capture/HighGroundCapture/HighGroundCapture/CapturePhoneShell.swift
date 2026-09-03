@@ -10017,11 +10017,11 @@ private struct CaptureVoiceWritingEditor: View {
             showWordDocumentError("Sign in and connect to the internet before sharing a Word document. Your writing is still safe on \(CaptureDeviceVocabulary.thisDevice).")
             return
         }
-        let apiBaseURL = normalizedNestAPIBaseURL(
+        let nestBaseURL = normalizedNestBaseURL(
             Bundle.main.object(forInfoDictionaryKey: "QUIPSLY_API_BASE_URL") as? String
                 ?? "https://nest.quipsly.com"
         )
-        guard let endpoint = URL(string: "\(apiBaseURL)/api/mobile/capture/voice-writing/export") else {
+        guard let endpoint = URL(string: "\(nestBaseURL)/api/mobile/capture/voice-writing/export") else {
             showWordDocumentError("Quipsly’s private writing address is unavailable.")
             return
         }

@@ -762,7 +762,7 @@ final class OnDeviceTranscriptManager: ObservableObject {
     private var activeTasks: [UUID: Task<Void, Never>] = [:]
     private var backgroundProtectionIdentifiers: [UUID: UIBackgroundTaskIdentifier] = [:]
 
-    private let apiBaseURL = normalizedNestAPIBaseURL(
+    private let nestBaseURL = normalizedNestBaseURL(
         Bundle.main.object(forInfoDictionaryKey: "QUIPSLY_API_BASE_URL") as? String
             ?? "https://nest.quipsly.com"
     )
@@ -1422,7 +1422,7 @@ final class OnDeviceTranscriptManager: ObservableObject {
                 return
             }
             guard let endpoint = URL(
-                string: "\(apiBaseURL)/api/mobile/capture/transcripts/cloud-fallback"
+                string: "\(nestBaseURL)/api/mobile/capture/transcripts/cloud-fallback"
             ) else {
                 throw OnDeviceTranscriptFailure.serverRejected(
                     "Quipsly's transcript fallback address is invalid."
@@ -1514,7 +1514,7 @@ final class OnDeviceTranscriptManager: ObservableObject {
             guard AuthManager.currentStoredOwnerID() == stored.sidecar.ownerAccountId else {
                 throw OnDeviceTranscriptFailure.accountChanged
             }
-            guard let endpoint = URL(string: "\(apiBaseURL)/api/mobile/capture/transcripts/on-device") else {
+            guard let endpoint = URL(string: "\(nestBaseURL)/api/mobile/capture/transcripts/on-device") else {
                 throw OnDeviceTranscriptFailure.serverRejected("Quipsly's transcript address is invalid.")
             }
 
