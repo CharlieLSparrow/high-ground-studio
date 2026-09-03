@@ -506,9 +506,15 @@ requireRegex(
 );
 requireRegex(
   capturePhoneShellText,
-  /#if DEBUG && !targetEnvironment\(simulator\)\s*\/\/\/ Exercises the same start\/stop closures[\s\S]*private func runPhysicalVoiceWritingAcceptanceIfRequested[\s\S]*runsPhysicalVoiceWritingAcceptance[\s\S]*await requestCoordinatedStart\(for: session\)[\s\S]*waitUntilRecordingOrTerminal[\s\S]*Task\.sleep\(for: \.seconds\(7\)\)[\s\S]*await requestCoordinatedStop\(for: session\)[\s\S]*QUIPSLY_PHYSICAL_VOICE_WRITING_ACCEPTANCE finished[\s\S]*#endif/,
+  /#if DEBUG && !targetEnvironment\(simulator\)\s*\/\/\/ Exercises the same start\/stop closures[\s\S]*private func runPhysicalVoiceWritingAcceptanceIfRequested[\s\S]*runsPhysicalVoiceWritingAcceptance[\s\S]*PhysicalVoiceWritingAcceptanceReceiptStore\.write\([\s\S]*phase: \.requested[\s\S]*await requestCoordinatedStart\(for: session\)[\s\S]*waitUntilRecordingOrTerminal[\s\S]*phase: \.recording[\s\S]*Task\.sleep\(for: \.seconds\(7\)\)[\s\S]*await requestCoordinatedStop\(for: session\)[\s\S]*phase: \.finished[\s\S]*QUIPSLY_PHYSICAL_VOICE_WRITING_ACCEPTANCE finished[\s\S]*#endif/,
   "DEBUG physical-only voice-writing acceptance traverses production start, source confirmation, and stop before emitting a terminal receipt",
 );
+const physicalVoiceWritingReceiptText = fs.readFileSync(path.join(sourceRoot, "PhysicalVoiceWritingAcceptanceReceipt.swift"), "utf8");
+requireIncludes(physicalVoiceWritingReceiptText, "#if DEBUG && !targetEnvironment(simulator)", "physical acceptance receipts compile only for Debug physical-device builds");
+requireIncludes(physicalVoiceWritingReceiptText, 'static let schema = "quipsly-physical-voice-writing-acceptance-v1"', "physical acceptance receipts use a versioned machine-readable schema");
+requireIncludes(physicalVoiceWritingReceiptText, ".completeFileProtectionUntilFirstUserAuthentication", "physical acceptance receipt bytes use iOS file protection");
+requireIncludes(physicalVoiceWritingReceiptText, ".posixPermissions: 0o600", "physical acceptance receipts remain owner-readable only");
+requireIncludes(physicalVoiceWritingReceiptText, "isExcludedFromBackup = true", "physical acceptance receipts do not enter device backups");
 requireIncludes(deterministicUITestsText, "func testPrivateVoiceNoteOpensCaptureWithoutMeetingPaperworkOnRegularWidthIPad", "operated native acceptance covers iPad Speak to Write through the platform create rail");
 requireIncludes(deterministicUITestsText, "speakToWrite.isSelected", "operated iPad acceptance keeps the current Speak to Write location selected");
 requireIncludes(deterministicUITestsText, "func testConsentNeededNextEpisodeOpensRecorderWithoutCrashingOnRegularWidthIPad", "operated native acceptance covers the full iPad Session detail against the physical stack-overflow regression");

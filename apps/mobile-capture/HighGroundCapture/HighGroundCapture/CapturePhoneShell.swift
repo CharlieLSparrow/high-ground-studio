@@ -12113,10 +12113,26 @@ private struct CaptureRecorderView: View {
               audioCapture.captureState == .idle else { return }
 
         didRunPhysicalVoiceWritingAcceptance = true
+        let acceptanceAttemptID = UUID()
+        PhysicalVoiceWritingAcceptanceReceiptStore.write(
+            attemptID: acceptanceAttemptID,
+            phase: .requested,
+            sessionID: session.id,
+            captureState: audioCapture.captureState.rawValue
+        )
         print("QUIPSLY_PHYSICAL_VOICE_WRITING_ACCEPTANCE requested session=\(session.id)")
 
         await requestCoordinatedStart(for: session)
         guard await audioCapture.waitUntilRecordingOrTerminal(timeout: 12) else {
+            PhysicalVoiceWritingAcceptanceReceiptStore.write(
+                attemptID: acceptanceAttemptID,
+                phase: .startFailed,
+                sessionID: session.id,
+                recordingID: audioCapture.activeLocalRecordingID,
+                captureState: audioCapture.captureState.rawValue,
+                saved: false,
+                detail: audioCapture.lastErrorMessage
+            )
             print(
                 "QUIPSLY_PHYSICAL_VOICE_WRITING_ACCEPTANCE start_failed state=\(audioCapture.captureState.rawValue) detail=\(audioCapture.lastErrorMessage ?? "none")"
             )
@@ -12125,11 +12141,29 @@ private struct CaptureRecorderView: View {
 
         let recordingID = audioCapture.activeLocalRecordingID
         let recordingIDLabel = recordingID?.uuidString.lowercased() ?? "missing"
+        PhysicalVoiceWritingAcceptanceReceiptStore.write(
+            attemptID: acceptanceAttemptID,
+            phase: .recording,
+            sessionID: session.id,
+            recordingID: recordingID,
+            captureState: audioCapture.captureState.rawValue,
+            saved: false,
+            detail: audioCapture.lastErrorMessage
+        )
         print("QUIPSLY_PHYSICAL_VOICE_WRITING_ACCEPTANCE recording id=\(recordingIDLabel)")
 
         do {
             try await Task.sleep(for: .seconds(7))
         } catch {
+            PhysicalVoiceWritingAcceptanceReceiptStore.write(
+                attemptID: acceptanceAttemptID,
+                phase: .cancelled,
+                sessionID: session.id,
+                recordingID: recordingID,
+                captureState: audioCapture.captureState.rawValue,
+                saved: false,
+                detail: "Acceptance task cancelled before the requested stop."
+            )
             print("QUIPSLY_PHYSICAL_VOICE_WRITING_ACCEPTANCE cancelled id=\(recordingIDLabel)")
             return
         }
@@ -12139,8 +12173,20 @@ private struct CaptureRecorderView: View {
         let savedRecording = recordingID.flatMap {
             audioCapture.localRecordingLibrary.recording(id: $0)
         }
+        let saved = stopped || audioCapture.captureState == .saved
+        PhysicalVoiceWritingAcceptanceReceiptStore.write(
+            attemptID: acceptanceAttemptID,
+            phase: .finished,
+            sessionID: session.id,
+            recordingID: recordingID,
+            captureState: audioCapture.captureState.rawValue,
+            durationSeconds: savedRecording?.durationSeconds ?? audioCapture.currentDuration,
+            localStatus: savedRecording?.status.rawValue,
+            saved: saved,
+            detail: audioCapture.lastErrorMessage
+        )
         print(
-            "QUIPSLY_PHYSICAL_VOICE_WRITING_ACCEPTANCE finished saved=\(stopped || audioCapture.captureState == .saved) state=\(audioCapture.captureState.rawValue) id=\(recordingIDLabel) duration=\(savedRecording?.durationSeconds ?? audioCapture.currentDuration) status=\(savedRecording?.status.rawValue ?? "missing") detail=\(audioCapture.lastErrorMessage ?? "none")"
+            "QUIPSLY_PHYSICAL_VOICE_WRITING_ACCEPTANCE finished saved=\(saved) state=\(audioCapture.captureState.rawValue) id=\(recordingIDLabel) duration=\(savedRecording?.durationSeconds ?? audioCapture.currentDuration) status=\(savedRecording?.status.rawValue ?? "missing") detail=\(audioCapture.lastErrorMessage ?? "none")"
         )
     }
     #endif
