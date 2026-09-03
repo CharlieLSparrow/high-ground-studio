@@ -24,6 +24,7 @@ private struct CaptureSupportSnapshotHarness {
             surface: "Account",
             appVersion: "1.0",
             appBuild: "15",
+            installationClass: "store-distributed",
             deviceModelIdentifier: "iPhone17,3",
             systemName: "iOS",
             systemVersion: "26.2",
@@ -58,6 +59,10 @@ private struct CaptureSupportSnapshotHarness {
             "The snapshot must identify the exact app build."
         )
         try require(
+            text.contains("Install class: store-distributed"),
+            "The snapshot must distinguish a store-distributed app from a direct development install."
+        )
+        try require(
             text.contains("Audio route type: USBAudio"),
             "The snapshot must include only the coarse route type."
         )
@@ -85,6 +90,7 @@ private struct CaptureSupportSnapshotHarness {
             surface: "Sign-in",
             appVersion: "1.0\nunexpected line",
             appBuild: "",
+            installationClass: "simulator",
             deviceModelIdentifier:
                 String(repeating: "x", count: 300),
             systemName: "iOS",

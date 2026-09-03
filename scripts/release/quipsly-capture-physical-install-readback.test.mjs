@@ -20,6 +20,7 @@ function snapshot(overrides = {}) {
     Created: "2026-08-05T20:00:00Z",
     Surface: "Account",
     App: `${QUIPSLY_CAPTURE_RELEASE_TARGET.marketingVersion} (${QUIPSLY_CAPTURE_RELEASE_TARGET.buildNumber})`,
+    "Install class": "store-distributed",
     Device: "iPhone17,3",
     System: "iOS 26.2",
     "Account access": "online",
@@ -75,7 +76,7 @@ test("proves the canonical build on a physical authenticated iPhone without inve
   assert.equal(receipt.snapshot.cameraPermissionState, "granted");
   assert.equal(receipt.snapshot.speechRecognitionPermissionState, "granted");
   assert.equal(receipt.rawSnapshotRetainedInReceipt, false);
-  assert.equal(receipt.claimsNotMade.length, 6);
+  assert.equal(receipt.claimsNotMade.length, 7);
 });
 
 test("accepts the universal release on a physical iPad", () => {
@@ -84,10 +85,23 @@ test("accepts the universal release on a physical iPad", () => {
     auditedAt: new Date("2026-08-05T20:10:00Z"),
   });
   assert.equal(receipt.ok, true);
-  assert.equal(receipt.schema, "quipsly-capture-physical-install-readback-v2");
+  assert.equal(receipt.schema, "quipsly-capture-physical-install-readback-v3");
   assert.equal(receipt.checks.physicalIOSDevice, true);
   assert.equal(receipt.snapshot.deviceModel, "iPad13,11");
   assert.equal(receipt.physicalInstallAndAuthenticationProven, true);
+});
+
+test("rejects a direct development install that reuses public release metadata", () => {
+  const receipt = inspectPhysicalInstallSnapshot({
+    text: snapshot({ "Install class": "development-or-ad-hoc" }),
+    auditedAt: new Date("2026-08-05T20:10:00Z"),
+  });
+  assert.equal(receipt.ok, false);
+  assert.equal(receipt.checks.versionBuildMatchesRelease, true);
+  assert.equal(receipt.checks.storeDistributed, false);
+  assert.equal(receipt.checks.exactRelease, false);
+  assert.equal(receipt.snapshot.installationClass, "development-or-ad-hoc");
+  assert.equal(receipt.testFlightInstallationProven, false);
 });
 
 test("accepts a fresh verified offline account session", () => {
@@ -163,7 +177,7 @@ test("CLI writes an owner-only derivative receipt without the raw snapshot", () 
     );
     const receipt = JSON.parse(fs.readFileSync(receiptPath, "utf8"));
     assert.equal(receipt.ok, true);
-    assert.equal(receipt.rawSnapshotRetainedInReceipt, false);
+  assert.equal(receipt.rawSnapshotRetainedInReceipt, false);
     assert.equal(fs.statSync(receiptPath).mode & 0o777, 0o600);
     assert.doesNotMatch(JSON.stringify(receipt), /support snapshot\n|privacy boundary:/i);
   } finally {

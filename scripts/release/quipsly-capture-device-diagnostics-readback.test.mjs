@@ -10,7 +10,11 @@ import {
 } from "./quipsly-capture-device-diagnostics-readback.mjs";
 import { QUIPSLY_CAPTURE_RELEASE_TARGET } from "./quipsly-capture-release-target.mjs";
 
-function appsPayload({ version = "1.0", build = "59" } = {}) {
+function appsPayload({
+  version = "1.0",
+  build = "59",
+  builtByDeveloper = false,
+} = {}) {
   return {
     result: {
       deviceIdentifier: "private-device-id",
@@ -18,6 +22,7 @@ function appsPayload({ version = "1.0", build = "59" } = {}) {
         {
           bundleIdentifier: QUIPSLY_CAPTURE_RELEASE_TARGET.bundleId,
           bundleVersion: build,
+          builtByDeveloper,
           name: "Quipsly Capture",
           url: "file:///private/app/path/HighGroundCapture.app/",
           version,
@@ -104,7 +109,7 @@ test("summarizes the latest transition without retaining its message or identifi
   );
 });
 
-test("proves the exact release while omitting devicectl paths and device identity", () => {
+test("accepts distribution-class metadata while omitting devicectl paths and device identity", () => {
   const receipt = inspectDeviceReadback({
     appsPayload: appsPayload({
       version: QUIPSLY_CAPTURE_RELEASE_TARGET.marketingVersion,
@@ -114,10 +119,13 @@ test("proves the exact release while omitting devicectl paths and device identit
     checkedAt: new Date("2026-08-31T23:05:00Z"),
   });
   assert.equal(receipt.ok, true);
-  assert.equal(receipt.schema, "quipsly-capture-device-diagnostics-readback-v2");
+  assert.equal(receipt.schema, "quipsly-capture-device-diagnostics-readback-v3");
   assert.equal(receipt.target.channel, "public-testflight");
   assert.equal(receipt.checks.exactTarget, true);
   assert.equal(receipt.checks.exactRelease, true);
+  assert.equal(receipt.checks.developmentInstallExcluded, true);
+  assert.equal(receipt.installed.installationClass, "distribution");
+  assert.equal(receipt.testFlightInstallationProven, false);
   assert.equal(receipt.checks.diagnosticLedgerReadable, true);
   assert.equal(receipt.diagnostics.eventCount, 0);
   assert.equal(receipt.rawAttentionMessageRetained, false);
@@ -125,6 +133,24 @@ test("proves the exact release while omitting devicectl paths and device identit
     JSON.stringify(receipt),
     /private-device-id|private\/app\/path/,
   );
+});
+
+test("rejects a development install that reuses the public version and build", () => {
+  const receipt = inspectDeviceReadback({
+    appsPayload: appsPayload({
+      version: QUIPSLY_CAPTURE_RELEASE_TARGET.marketingVersion,
+      build: QUIPSLY_CAPTURE_RELEASE_TARGET.buildNumber,
+      builtByDeveloper: true,
+    }),
+    checkedAt: new Date("2026-09-03T17:30:00Z"),
+  });
+  assert.equal(receipt.ok, false);
+  assert.equal(receipt.checks.versionBuildMatchesTarget, true);
+  assert.equal(receipt.checks.developmentInstallExcluded, false);
+  assert.equal(receipt.checks.exactTarget, false);
+  assert.equal(receipt.checks.exactRelease, false);
+  assert.equal(receipt.installed.installationClass, "development");
+  assert.equal(receipt.testFlightInstallationProven, false);
 });
 
 test("proves an exact qualified candidate without calling it the public release", () => {

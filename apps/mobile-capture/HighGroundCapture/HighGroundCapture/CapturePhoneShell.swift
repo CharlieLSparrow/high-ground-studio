@@ -17376,6 +17376,7 @@ private struct CaptureAccountView: View {
             surface: "Account",
             appVersion: runtime.appVersion,
             appBuild: runtime.appBuild,
+            installationClass: runtime.installationClass,
             deviceModelIdentifier:
                 runtime.deviceModelIdentifier,
             systemName: runtime.systemName,

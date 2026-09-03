@@ -60,9 +60,11 @@ function usage() {
     [--max-age-hours 24]
 
 The input is the text a tester shares from Quipsly Capture > Account > Help &
-diagnostics. This read-only check proves the exact public release is running on
-a physical iPhone or iPad with a verified Quipsly session. It deliberately does not
-claim recording, consent, camera switching, recovery, upload, or playback.
+diagnostics. This read-only check confirms that a store-distributed app with the
+public release metadata is running on a physical iPhone or iPad with a verified
+Quipsly session. It rejects direct development/ad-hoc installs but cannot by
+itself distinguish TestFlight from the App Store. It deliberately does not claim
+recording, consent, camera switching, recovery, upload, or playback.
 `;
 }
 
@@ -132,6 +134,7 @@ export function inspectPhysicalInstallSnapshot({
   const appMatch = appLine.match(/^([0-9]+(?:\.[0-9]+)*) \(([0-9]+)\)$/);
   if (!appMatch) fail("App must contain an exact version and numeric build.");
   const [, version, build] = appMatch;
+  const installationClass = requiredField(fields, "Install class");
   const deviceModel = requiredField(fields, "Device");
   const systemLine = requiredField(fields, "System");
   const systemMatch = systemLine.match(/^iOS ([0-9]+(?:\.[0-9]+){0,2})$/);
@@ -140,10 +143,15 @@ export function inspectPhysicalInstallSnapshot({
   const nestHost = requiredField(fields, "Nest host");
   const previewMode = requiredField(fields, "Preview mode");
 
+  const versionBuildMatchesRelease =
+    version === QUIPSLY_CAPTURE_RELEASE_TARGET.marketingVersion
+    && build === QUIPSLY_CAPTURE_RELEASE_TARGET.buildNumber;
   const checks = {
+    versionBuildMatchesRelease,
+    storeDistributed: installationClass === "store-distributed",
     exactRelease:
-      version === QUIPSLY_CAPTURE_RELEASE_TARGET.marketingVersion
-      && build === QUIPSLY_CAPTURE_RELEASE_TARGET.buildNumber,
+      versionBuildMatchesRelease
+      && installationClass === "store-distributed",
     physicalIOSDevice: /^(?:iPhone|iPad)[0-9]+,[0-9]+$/.test(deviceModel),
     iosRuntime: Boolean(systemMatch),
     accountSurface: surface === "Account",
@@ -154,12 +162,23 @@ export function inspectPhysicalInstallSnapshot({
     snapshotFresh: true,
   };
   const ok = Object.values(checks).every(Boolean);
-  const blockers = Object.entries(checks)
-    .filter(([, passed]) => !passed)
-    .map(([name]) => name);
+  const blockers = [
+    !versionBuildMatchesRelease ? "exactRelease" : null,
+    versionBuildMatchesRelease && !checks.storeDistributed
+      ? "storeDistributed"
+      : null,
+    !checks.physicalIOSDevice ? "physicalIOSDevice" : null,
+    !checks.iosRuntime ? "iosRuntime" : null,
+    !checks.accountSurface ? "accountSurface" : null,
+    !checks.authenticatedAccess ? "authenticatedAccess" : null,
+    !checks.productionNest ? "productionNest" : null,
+    !checks.productionMode ? "productionMode" : null,
+    !checks.privacyBoundaryPresent ? "privacyBoundaryPresent" : null,
+    !checks.snapshotFresh ? "snapshotFresh" : null,
+  ].filter(Boolean);
 
   return {
-    schema: "quipsly-capture-physical-install-readback-v2",
+    schema: "quipsly-capture-physical-install-readback-v3",
     checkedAt: auditedDate.toISOString(),
     ok,
     target: {
@@ -176,6 +195,7 @@ export function inspectPhysicalInstallSnapshot({
       surface,
       appVersion: version,
       appBuild: build,
+      installationClass,
       deviceModel,
       systemName: systemMatch ? "iOS" : "unknown",
       systemVersion: systemMatch?.[1] || "unknown",
@@ -197,9 +217,11 @@ export function inspectPhysicalInstallSnapshot({
     checks,
     blockers,
     physicalInstallAndAuthenticationProven: ok,
+    testFlightInstallationProven: false,
     physicalCaptureAcceptanceProven: false,
     claimsNotMade: [
       "recording consent granted",
+      "TestFlight rather than App Store installation channel",
       "microphone or camera fidelity",
       "front/back camera switching",
       "pause/resume or interruption recovery",

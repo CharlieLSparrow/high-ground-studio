@@ -10,6 +10,7 @@ struct CaptureSupportSnapshot {
     let surface: String
     let appVersion: String
     let appBuild: String
+    let installationClass: String
     let deviceModelIdentifier: String
     let systemName: String
     let systemVersion: String
@@ -47,6 +48,7 @@ struct CaptureSupportSnapshot {
             "Created: \(Self.timestamp(generatedAt))",
             "Surface: \(Self.clean(surface))",
             "App: \(Self.clean(appVersion)) (\(Self.clean(appBuild)))",
+            "Install class: \(Self.clean(installationClass))",
             "Device: \(Self.clean(deviceModelIdentifier))",
             "System: \(Self.clean(systemName)) \(Self.clean(systemVersion))",
             "Account access: \(Self.clean(accountAccessMode))",

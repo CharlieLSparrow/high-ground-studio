@@ -506,6 +506,7 @@ struct LoginView: View {
             surface: "Sign-in",
             appVersion: runtime.appVersion,
             appBuild: runtime.appBuild,
+            installationClass: runtime.installationClass,
             deviceModelIdentifier:
                 runtime.deviceModelIdentifier,
             systemName: runtime.systemName,

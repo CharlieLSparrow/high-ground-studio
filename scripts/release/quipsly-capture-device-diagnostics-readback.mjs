@@ -60,11 +60,14 @@ function usage() {
     [--candidate-receipt <qualified-release-receipt.json>] \\
     [--output <owner-only-receipt.json>]
 
-Reads the installed Quipsly Capture version and its protected local attention
-ledger from a paired development iPhone or iPad. By default, it verifies the
-public TestFlight target. --candidate-receipt instead binds the readback to an
-already-qualified local candidate without changing the public release target.
-The receipt contains only a
+Reads the installed Quipsly Capture version, signing class, and protected local
+attention ledger from a paired development iPhone or iPad. By default, it checks
+whether the install is consistent with the public TestFlight target and rejects
+a development-signed app even when its version and build match. CoreDevice does
+not independently prove that a non-development install came from TestFlight,
+so that final channel observation remains separate evidence. --candidate-receipt
+instead binds the readback to an already-qualified local candidate without
+changing the public release target. The receipt contains only a
 coarse failure category and transition state. It never includes the original
 message, account, Session, source, filename, path, credential, or device ID.
 `;
@@ -250,6 +253,8 @@ export function inspectDeviceReadback({
   const app = object(installed);
   const version = clean(app.version);
   const build = clean(app.bundleVersion);
+  const builtByDeveloper =
+    typeof app.builtByDeveloper === "boolean" ? app.builtByDeveloper : null;
   const diagnostics =
     attentionLedger === null
       ? {
@@ -263,13 +268,20 @@ export function inspectDeviceReadback({
           latestLocalDraftSessionCount: null,
         }
       : summarizeAttentionLedger(attentionLedger);
-  const exactTarget =
+  const versionBuildMatchesTarget =
     version === target.marketingVersion && build === target.buildNumber;
-  const exactRelease =
+  const versionBuildMatchesRelease =
     version === QUIPSLY_CAPTURE_RELEASE_TARGET.marketingVersion &&
     build === QUIPSLY_CAPTURE_RELEASE_TARGET.buildNumber;
+  // A local Xcode install can intentionally share the public build number.
+  // CoreDevice exposes that distinction as builtByDeveloper. Require an
+  // explicit distribution-class readback before treating metadata as an exact
+  // candidate match. This still does not prove TestFlight was the installer.
+  const developmentInstallExcluded = builtByDeveloper === false;
+  const exactTarget = versionBuildMatchesTarget && developmentInstallExcluded;
+  const exactRelease = versionBuildMatchesRelease && developmentInstallExcluded;
   return {
-    schema: "quipsly-capture-device-diagnostics-readback-v2",
+    schema: "quipsly-capture-device-diagnostics-readback-v3",
     checkedAt: new Date(checkedAt).toISOString(),
     ok: exactTarget,
     target: {
@@ -287,9 +299,18 @@ export function inspectDeviceReadback({
       appName: clean(app.name) || target.appName,
       version,
       build,
+      installationClass:
+        builtByDeveloper === true
+          ? "development"
+          : builtByDeveloper === false
+            ? "distribution"
+            : "unknown",
     },
     checks: {
       appInstalled: true,
+      versionBuildMatchesTarget,
+      versionBuildMatchesRelease,
+      developmentInstallExcluded,
       exactTarget,
       exactRelease,
       diagnosticLedgerReadable: attentionLedger !== null,
@@ -297,6 +318,7 @@ export function inspectDeviceReadback({
     diagnostics,
     rawAttentionMessageRetained: false,
     privateIdentifiersRetained: false,
+    testFlightInstallationProven: false,
     externalMutation: false,
   };
 }

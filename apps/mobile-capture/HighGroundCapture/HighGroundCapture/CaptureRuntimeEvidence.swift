@@ -9,6 +9,7 @@ import UIKit
 struct CaptureRuntimeEvidence {
     let appVersion: String
     let appBuild: String
+    let installationClass: String
     let deviceModelIdentifier: String
     let systemName: String
     let systemVersion: String
@@ -33,6 +34,7 @@ struct CaptureRuntimeEvidence {
                 ?? "unknown",
             appBuild: bundleValue("CFBundleVersion")
                 ?? "unknown",
+            installationClass: installationClass(),
             deviceModelIdentifier: machineIdentifier(),
             systemName: UIDevice.current.systemName,
             systemVersion: UIDevice.current.systemVersion,
@@ -86,6 +88,24 @@ struct CaptureRuntimeEvidence {
 
     private static func bundleValue(_ key: String) -> String? {
         normalized(Bundle.main.object(forInfoDictionaryKey: key) as? String)
+    }
+
+    /// Store-installed iOS apps do not retain an embedded provisioning profile.
+    /// A profile is conclusive evidence that this is a direct development or
+    /// ad-hoc install, even when its public version/build metadata happens to
+    /// match TestFlight. Absence is only a store-distribution class signal; it
+    /// does not independently distinguish TestFlight from the App Store.
+    private static func installationClass() -> String {
+        #if targetEnvironment(simulator)
+        return "simulator"
+        #else
+        return Bundle.main.url(
+            forResource: "embedded",
+            withExtension: "mobileprovision"
+        ) == nil
+            ? "store-distributed"
+            : "development-or-ad-hoc"
+        #endif
     }
 
     private static func normalized(_ value: String?) -> String? {

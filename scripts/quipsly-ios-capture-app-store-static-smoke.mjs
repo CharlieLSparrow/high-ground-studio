@@ -81,6 +81,7 @@ const files = {
   mobileCoachingForms: path.join(sourceRoot, "MobileCoachingForms.swift"),
   mobileCoachingSessionPreparation: path.join(sourceRoot, "MobileCoachingSessionPreparation.swift"),
   captureCalendarEventEditor: path.join(sourceRoot, "CaptureCalendarEventEditor.swift"),
+  captureRuntimeEvidence: path.join(sourceRoot, "CaptureRuntimeEvidence.swift"),
   captureSupportSnapshot: path.join(sourceRoot, "CaptureSupportSnapshot.swift"),
   captureAttentionDiagnostics: path.join(sourceRoot, "CaptureAttentionDiagnostics.swift"),
   captureRecordingShare: path.join(sourceRoot, "CaptureRecordingShare.swift"),
@@ -249,6 +250,7 @@ const captureCoachingHomeText = read(files.captureCoachingHome);
 const mobileCoachingFormAutomationText = read(files.mobileCoachingFormAutomation);
 const mobileCoachingFormsText = read(files.mobileCoachingForms);
 const mobileCoachingSessionPreparationText = read(files.mobileCoachingSessionPreparation);
+const captureRuntimeEvidenceText = read(files.captureRuntimeEvidence);
 const sessionConversationText = read(files.sessionConversation);
 const uploadText = read(files.uploadManager);
 const uploadLedgerText = read(files.uploadLedgerStore);
@@ -1557,6 +1559,7 @@ for (const needle of [
   "CaptureSupportSnapshot",
   "privacyBoundary",
   "Surface:",
+  "Install class:",
   "Audio route type:",
   "Local originals:",
   "Recoverable uploads:",
@@ -1565,6 +1568,19 @@ for (const needle of [
   "Preview mode:",
 ]) {
   requireIncludes(captureSupportSnapshotText, needle, "redacted Capture support contract");
+}
+for (const needle of [
+  "let installationClass: String",
+  'return "simulator"',
+  'withExtension: "mobileprovision"',
+  '? "store-distributed"',
+  ': "development-or-ad-hoc"',
+]) {
+  requireIncludes(
+    captureRuntimeEvidenceText,
+    needle,
+    "support evidence distinguishes direct development installs from store distribution",
+  );
 }
 for (const needle of [
   "CaptureAttentionSupportSummary",
