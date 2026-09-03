@@ -17,6 +17,7 @@ jest.mock(
 import { recordingContentReadiness } from "./mobile-capture-content-readiness";
 import {
   afterCaptureNextAction,
+  captureReadinessForMobileSession,
   captureGroupStudioHandoff,
   captureSourceSummaries,
   canonicalMobileSessionEpisodeSlug,
@@ -35,6 +36,56 @@ import {
   MOBILE_CAPTURE_CONSENT_POLICY_VERSION,
   MOBILE_CAPTURE_CONSENT_TEXT_SHA256,
 } from "./mobile-capture-consent-readiness.js";
+
+describe("mobile capture readiness", () => {
+  const provider = {
+    providerCanJoin: true,
+    providerReadiness: "livekit-ready",
+    providerNextAction: "Join when ready.",
+  } as any;
+
+  it("keeps an open Session recordable after automatic results materialize", () => {
+    expect(captureReadinessForMobileSession({
+      room: {
+        status: "OPEN",
+        booking: { status: "CONFIRMED", paymentPolicy: "MANUAL" },
+      },
+      consentStatus: "GRANTED",
+      consentGranted: true,
+      allRegisteredParticipantConsentGranted: true,
+      provider,
+      recordingCount: 1,
+      latestTranscriptStatus: "COMPLETED",
+      packetSummaryNoteId: "summary-1",
+      afterCaptureNextAction: "Open results.",
+    })).toMatchObject({
+      status: "ready-provider",
+      safeToRecordLocally: true,
+      providerCanJoin: true,
+    });
+  });
+
+  it("treats materialized results as terminal only after the Session ends", () => {
+    expect(captureReadinessForMobileSession({
+      room: {
+        status: "ENDED",
+        booking: { status: "CONFIRMED", paymentPolicy: "MANUAL" },
+      },
+      consentStatus: "GRANTED",
+      consentGranted: true,
+      allRegisteredParticipantConsentGranted: true,
+      provider,
+      recordingCount: 1,
+      latestTranscriptStatus: "COMPLETED",
+      packetSummaryNoteId: "summary-1",
+      afterCaptureNextAction: "Open results.",
+    })).toMatchObject({
+      status: "review-ready",
+      safeToRecordLocally: false,
+      providerCanJoin: false,
+    });
+  });
+});
 
 describe("mobile transcript result projection", () => {
   it("keeps every participant master represented by a reconciled packet", () => {

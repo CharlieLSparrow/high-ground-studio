@@ -715,7 +715,7 @@ export function mobileCoachingResultsStatus(input: {
     : "NOT_READY";
 }
 
-function captureReadinessForMobileSession(input: {
+export function captureReadinessForMobileSession(input: {
   room: any;
   consentStatus?: string | null;
   consentGranted: boolean;
@@ -769,7 +769,12 @@ function captureReadinessForMobileSession(input: {
     };
   }
 
-  if (input.packetSummaryNoteId) {
+  // Finished transcript results and live capture are independent surfaces.
+  // A fast transcript/follow-through worker can materialize results while the
+  // room is still open, and that must not prevent another participant source
+  // or safety take from being recorded in the same Session. Results become a
+  // terminal capture state only after the room itself has ended.
+  if (input.packetSummaryNoteId && roomStatus === "ENDED") {
     return {
       status: "review-ready",
       label: "Results ready",
