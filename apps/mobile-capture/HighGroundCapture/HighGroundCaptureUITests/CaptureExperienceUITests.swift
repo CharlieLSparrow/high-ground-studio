@@ -58,6 +58,11 @@ final class CaptureExperienceUITests: XCTestCase {
                 "--capture-ui-preview-attention=The selected camera could not be prepared."
             )
         }
+        if name.contains("testSessionAttentionOpensSessionsWithoutBlockingTheApp") {
+            app.launchArguments.append(
+                "--capture-ui-preview-attention=The selected Session is not available in this Nest."
+            )
+        }
         if name.contains("testDisconnectedCallOffersOneTapRejoinWhileKeepingRecordingSafe") {
             app.launchArguments += [
                 "--capture-ui-preview-tab=record",
@@ -342,6 +347,32 @@ final class CaptureExperienceUITests: XCTestCase {
                 "The camera journey requires a physical iPhone or iPad. Preview mode never invents camera permissions, formats, or source bytes."
             ].waitForExistence(timeout: 8),
             "The deterministic preview must prove the retry reached a fresh camera preflight without claiming simulated hardware evidence."
+        )
+    }
+
+    func testSessionAttentionOpensSessionsWithoutBlockingTheApp() {
+        let title = app.staticTexts["Check this Session"]
+        let detail = app.staticTexts[
+            "The selected Session is not available in this Nest."
+        ]
+        XCTAssertTrue(title.waitForExistence(timeout: 12))
+        XCTAssertTrue(detail.exists)
+        XCTAssertFalse(app.alerts["Check this Session"].exists)
+
+        let openSessions = app.buttons["Open Sessions"]
+        XCTAssertTrue(openSessions.exists)
+        XCTAssertTrue(openSessions.isHittable)
+        openSessions.tap()
+
+        XCTAssertTrue(app.navigationBars["Sessions"].waitForExistence(timeout: 8))
+        XCTAssertFalse(
+            detail.exists,
+            "Opening Sessions should clear the stale failure while leaving the ordinary Session chooser usable."
+        )
+        XCTAssertTrue(
+            app.descendants(matching: .any)["CaptureSessionChooser"]
+                .waitForExistence(timeout: 5),
+            "Session recovery must lead to the ordinary Session chooser instead of a dead-end support surface."
         )
     }
 
