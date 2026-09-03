@@ -7,6 +7,7 @@ import {
   localTranscriptReleaseDecision,
   localWhisperRoutingSummary,
   normalizeWhisperTranscript,
+  reconcileLocalTranscriptFollowThrough,
   requireLocalDatabase,
   safeLocalSourcePath,
   validateLocalSourceReceipt,
@@ -16,6 +17,23 @@ import {
   MOBILE_CAPTURE_CONSENT_POLICY_VERSION,
   MOBILE_CAPTURE_CONSENT_TEXT_SHA256,
 } from "../../apps/quipsly/src/lib/server/mobile-capture-consent-readiness.js";
+
+test("local transcript completion delegates ordinary follow-through without owning transcript state", async () => {
+  const prisma = { transcriptJob: { update: () => assert.fail("follow-through helper must not rewrite transcript state itself") } };
+  const reconcile = async (input) => ({
+    transcriptJobId: input.transcriptJobId,
+    packetStatus: "ready",
+  });
+
+  await assert.doesNotReject(async () => {
+    const result = await reconcileLocalTranscriptFollowThrough(
+      prisma,
+      "job-1",
+      async () => ({ reconcileCaptureTranscriptFollowThrough: reconcile }),
+    );
+    assert.deepEqual(result, { transcriptJobId: "job-1", packetStatus: "ready" });
+  });
+});
 
 test("local transcript worker refuses remote databases and source traversal", () => {
   assert.equal(

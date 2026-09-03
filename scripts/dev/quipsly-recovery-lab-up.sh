@@ -58,7 +58,11 @@ if [[ "${1:-}" == "--run-transcript-worker" ]]; then
     QUIPSLY_LOCAL_WHISPER_DEVICE=cpu \
     QUIPSLY_LOCAL_WHISPER_LANGUAGE=en \
     QUIPSLY_LOCAL_TRANSCRIPT_WORKER_BUILD_ID="$(git rev-parse HEAD)" \
-    node "${repo_root}/scripts/dev/quipsly-local-transcript-worker.mjs"
+    TSX_TSCONFIG_PATH="${repo_root}/apps/quipsly/tsconfig.json" \
+    node \
+      --import tsx \
+      --import "${repo_root}/scripts/register-ts-extension-loader.mjs" \
+      "${repo_root}/scripts/dev/quipsly-local-transcript-worker.mjs"
 fi
 
 if [[ "${1:-}" == "--run-media-worker" ]]; then

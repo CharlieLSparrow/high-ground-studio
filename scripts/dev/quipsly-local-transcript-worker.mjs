@@ -554,6 +554,25 @@ async function processClaimedJob(prisma, job, options) {
   });
 }
 
+/**
+ * Local Whisper is the completion authority for local-development transcripts,
+ * so it must mirror the production follow-through scheduler after committing
+ * immutable transcript evidence. This is deliberately best-effort: useful
+ * notes and tasks remain retryable, while a failure can never downgrade or
+ * disguise the already-saved transcript.
+ */
+export async function reconcileLocalTranscriptFollowThrough(
+  prisma,
+  transcriptJobId,
+  importer = () => import("../../apps/quipsly/src/lib/server/capture-transcript-follow-through.ts"),
+) {
+  const { reconcileCaptureTranscriptFollowThrough } = await importer();
+  if (typeof reconcileCaptureTranscriptFollowThrough !== "function") {
+    throw new Error("Local transcript follow-through implementation is unavailable.");
+  }
+  return reconcileCaptureTranscriptFollowThrough({ prisma, transcriptJobId });
+}
+
 async function failClaimedJob(prisma, jobId, error) {
   const message = (error instanceof Error ? error.message : String(error)).slice(0, MAX_ERROR_LENGTH);
   const failedAt = new Date();
@@ -641,6 +660,19 @@ async function runWorker() {
           captureVaultRoot,
         });
         process.stdout.write(`PASS local transcript ${claimed.id} ${result.segmentCount} segments ${result.wordCount} words\n`);
+        try {
+          const followThrough = await reconcileLocalTranscriptFollowThrough(
+            prisma,
+            claimed.id,
+          );
+          process.stdout.write(
+            `PASS local transcript follow-through ${claimed.id} ${followThrough.packetStatus}\n`,
+          );
+        } catch (error) {
+          process.stderr.write(
+            `RETRY local transcript follow-through ${claimed.id} ${(error instanceof Error ? error.message : String(error)).slice(0, MAX_ERROR_LENGTH)}\n`,
+          );
+        }
       } catch (error) {
         const message = await failClaimedJob(prisma, claimed.id, error);
         process.stderr.write(`FAIL local transcript ${claimed.id} ${message}\n`);

@@ -7,6 +7,7 @@ import {
   CaptureTranscriptOutboxError,
   ensureCaptureTranscriptProcessingQueued,
 } from "@/lib/server/capture-transcript-processing";
+import { dispatchCaptureTranscriptFollowThrough } from "@/lib/server/capture-transcript-follow-through-dispatch";
 import { reconcileCaptureTranscriptJob } from "@/lib/server/capture-transcript-reconciliation";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 
@@ -208,6 +209,10 @@ export async function POST(request: Request) {
     transcriptJobId: job.id,
   });
   if (reconciled.status === "completed") {
+    dispatchCaptureTranscriptFollowThrough({
+      prisma,
+      transcriptJobId: job.id,
+    });
     return NextResponse.json({
       ok: true,
       transcriptJobId: job.id,

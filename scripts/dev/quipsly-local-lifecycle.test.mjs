@@ -122,6 +122,16 @@ test("machine-wide services use machine-wide ownership state", () => {
   assert.doesNotMatch(up, /livekit-secret=\$\{local_livekit_secret\}/);
   assert.match(up, /local-episode-worker\.ts/);
   assert.match(up, /quipsly-local-transcript-worker\.mjs/);
+  assert.match(
+    up,
+    /TSX_TSCONFIG_PATH=.*apps\/quipsly\/tsconfig\.json/,
+    "local transcript workers must load the same typed follow-through implementation as Nest",
+  );
+  assert.equal(
+    up.match(/--import tsx/g)?.length,
+    2,
+    "both local transcript worker launch paths must support typed follow-through",
+  );
   assert.match(up, /QUIPSLY_LOCAL_MEDIA_UPLOAD_ROOT/);
   assert.match(up, /QUIPSLY_LOCAL_MEDIA_WORKSPACE_ROOT/);
   assert.match(up, /QUIPSLY_LOCAL_MEDIA_LEGACY_ROOTS_JSON/);

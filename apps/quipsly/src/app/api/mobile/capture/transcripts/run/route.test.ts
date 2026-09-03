@@ -3,6 +3,7 @@
 import { getPrismaClient } from "@/lib/prisma";
 import { mobileCaptureTranscriptProcessingGate } from "@/lib/server/mobile-capture-processing-gates";
 import { ensureCaptureTranscriptProcessingQueued } from "@/lib/server/capture-transcript-processing";
+import { dispatchCaptureTranscriptFollowThrough } from "@/lib/server/capture-transcript-follow-through-dispatch";
 import { reconcileCaptureTranscriptJob } from "@/lib/server/capture-transcript-reconciliation";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 
@@ -25,6 +26,9 @@ jest.mock("@/lib/server/capture-transcript-processing", () => ({
 }));
 jest.mock("@/lib/server/capture-transcript-reconciliation", () => ({
   reconcileCaptureTranscriptJob: jest.fn(),
+}));
+jest.mock("@/lib/server/capture-transcript-follow-through-dispatch", () => ({
+  dispatchCaptureTranscriptFollowThrough: jest.fn(),
 }));
 jest.mock("@/lib/server/mobile-capture-processing-gates", () => ({ mobileCaptureTranscriptProcessingGate: jest.fn() }));
 jest.mock("@/lib/server/quipsly-session", () => ({ getQuipslySessionFromRequest: jest.fn() }));
@@ -173,6 +177,45 @@ describe("mobile transcript run versioning", () => {
     expect(update).not.toHaveBeenCalled();
     expect(mobileCaptureTranscriptProcessingGate).not.toHaveBeenCalled();
     expect(reconcileCaptureTranscriptJob).not.toHaveBeenCalled();
+    expect(ensureCaptureTranscriptProcessingQueued).not.toHaveBeenCalled();
+  });
+
+  it("immediately dispatches editable follow-through when polling observes completion", async () => {
+    jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({
+      user: { id: "coach-1", primaryEmail: "coach@example.com", isStaff: false },
+    } as any);
+    jest.mocked(reconcileCaptureTranscriptJob).mockResolvedValue({
+      status: "completed",
+      transcriptJobId: "job-complete",
+      segmentCount: 3,
+      wordCount: 24,
+      alreadyCompleted: false,
+    });
+    jest.mocked(getPrismaClient).mockReturnValue({
+      transcriptJob: {
+        findFirst: jest.fn().mockResolvedValue({ id: "job-complete" }),
+      },
+    } as any);
+
+    const response = await POST(new Request(
+      "http://localhost/api/mobile/capture/transcripts/run",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ transcriptJobId: "job-complete" }),
+      },
+    ));
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: true,
+      status: "COMPLETED",
+      transcriptJobId: "job-complete",
+    });
+    expect(dispatchCaptureTranscriptFollowThrough).toHaveBeenCalledWith({
+      prisma: expect.anything(),
+      transcriptJobId: "job-complete",
+    });
     expect(ensureCaptureTranscriptProcessingQueued).not.toHaveBeenCalled();
   });
 });

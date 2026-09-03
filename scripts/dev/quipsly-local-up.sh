@@ -144,7 +144,10 @@ if [[ "${1:-}" == "--run-transcript-worker" ]]; then
     "QUIPSLY_LOCAL_WHISPER_DEVICE=${QUIPSLY_LOCAL_WHISPER_DEVICE:-cpu}" \
     "QUIPSLY_LOCAL_WHISPER_LANGUAGE=${QUIPSLY_LOCAL_WHISPER_LANGUAGE:-en}" \
     "QUIPSLY_LOCAL_TRANSCRIPT_WORKER_BUILD_ID=${QUIPSLY_LOCAL_TRANSCRIPT_WORKER_BUILD_ID:-local-development}" \
+    "TSX_TSCONFIG_PATH=${script_repo_root}/apps/quipsly/tsconfig.json" \
     "${QUIPSLY_LOCAL_NODE_BIN:?Missing launcher node path}" \
+    --import tsx \
+    --import "${script_repo_root}/scripts/register-ts-extension-loader.mjs" \
     "${script_repo_root}/scripts/dev/quipsly-local-transcript-worker.mjs"
 fi
 
@@ -679,7 +682,11 @@ if [[ -n "${local_whisper_executable}" && -x "${local_whisper_executable}" ]]; t
         QUIPSLY_LOCAL_WHISPER_DEVICE="${local_whisper_device}" \
         QUIPSLY_LOCAL_WHISPER_LANGUAGE="${local_whisper_language}" \
         QUIPSLY_LOCAL_TRANSCRIPT_WORKER_BUILD_ID="${local_transcript_worker_build_id}" \
-        node "${repo_root}/scripts/dev/quipsly-local-transcript-worker.mjs" \
+        TSX_TSCONFIG_PATH="${repo_root}/apps/quipsly/tsconfig.json" \
+        node \
+          --import tsx \
+          --import "${repo_root}/scripts/register-ts-extension-loader.mjs" \
+          "${repo_root}/scripts/dev/quipsly-local-transcript-worker.mjs" \
         >"${state_dir}/transcript-worker.log" 2>&1 &
       record_process "transcript-worker" "$!" "${repo_root}"
     )
