@@ -1951,7 +1951,10 @@ export function TranscriptCorrectionDesk({
       const initialSeek = pendingInitialSeekRef.current;
       if (initialSeek === null) return;
       pendingInitialSeekRef.current = null;
-      const bounded = Math.min(initialSeek, Math.max(0, currentPlayback.durationSeconds - 0.001));
+      const playbackDuration = Number.isFinite(media.duration)
+        ? media.duration
+        : currentPlayback.durationSeconds ?? 0;
+      const bounded = Math.min(initialSeek, Math.max(0, playbackDuration - 0.001));
       media.currentTime = bounded;
       setPlaybackSeconds(bounded);
       return;

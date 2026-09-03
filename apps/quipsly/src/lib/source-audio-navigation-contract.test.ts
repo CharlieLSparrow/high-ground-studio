@@ -71,6 +71,7 @@ function audioSignal() {
         stereoIsDownmixedForFrequencyOverview: true as const,
       },
     },
+    loudness: null,
     observations: [],
   };
 }
