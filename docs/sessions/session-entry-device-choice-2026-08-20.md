@@ -11,7 +11,7 @@ one of two paths:
 
 - continue in the current browser with that device's microphone, camera, and
   headphones; or
-- use Quipsly Capture on iPhone, installing the public TestFlight beta first if
+- use Quipsly Capture on iPhone or iPad, installing the public TestFlight beta first if
   necessary.
 
 The browser call no longer opens automatically for a newly accepted invitee.

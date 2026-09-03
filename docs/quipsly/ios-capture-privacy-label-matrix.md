@@ -73,7 +73,7 @@ bundled manifests declare required-reason APIs but no retained collected-data
 type. Quipsly-retained room audio/video remains disclosed as Audio Data and
 Photos or Videos regardless of the transport provider.
 
-The current iPhone target does not link an advertising SDK, advertising
+The current iPhone and iPad target does not link an advertising SDK, advertising
 identifier, Stripe SDK, StoreKit purchase flow, or CoreLocation. The redacted
 support snapshot is shown to the user and opens the iOS share sheet; Quipsly
 does not automatically transmit it. Apple's guidance permits generic free-form

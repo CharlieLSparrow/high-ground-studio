@@ -399,11 +399,11 @@ try {
     .first()
     .waitFor({ timeout: 30_000 });
   const captureChoice = clientPage.getByRole("link", {
-    name: /Use Quipsly Capture on iPhone|Open Quipsly Capture/i,
+    name: /Use Quipsly Capture on iPhone or iPad|Open Quipsly Capture/i,
   });
   await captureChoice.waitFor({ timeout: 30_000 });
   const captureInstallLink = clientPage.getByRole("link", {
-    name: /Get Quipsly Capture for iPhone/i,
+    name: /Get Quipsly Capture for iPhone or iPad/i,
   });
   await captureInstallLink.waitFor({ timeout: 30_000 });
   assert.doesNotMatch(

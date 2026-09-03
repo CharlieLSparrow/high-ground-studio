@@ -147,7 +147,7 @@ describe("Session invitation email", () => {
     expect(body.cc).toBeUndefined();
     expect(body.bcc).toBeUndefined();
     expect(body.text).toContain("phone, tablet, or desktop");
-    expect(body.text).toContain("Quipsly Capture on iPhone");
+    expect(body.text).toContain("Quipsly Capture on iPhone or iPad");
     expect(body.text).toContain(
       "Thursday, August 20, 2026 at 12:00 PM MDT · America/Denver",
     );

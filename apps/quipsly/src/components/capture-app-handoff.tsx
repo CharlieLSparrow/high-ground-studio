@@ -181,7 +181,7 @@ export function CaptureAppHandoff({
           <p className="mt-1 text-sm font-semibold leading-5 text-[#765f40] sm:mt-2 sm:leading-6">
             {captureRecommended
               ? "Open Quipsly Capture or continue in this browser."
-              : "Continue here or use Quipsly Capture on iPhone."}
+              : "Continue here or use Quipsly Capture on iPhone or iPad."}
           </p>
         </div>
       </div>
@@ -324,7 +324,7 @@ export function CaptureAppHandoff({
                     }}
                     className="flex min-h-12 w-full items-center justify-center gap-2 rounded-full border border-violet-200 bg-white px-4 text-xs font-black text-violet-950"
                   >
-                    <Smartphone size={16} aria-hidden="true" /> Use Quipsly Capture on iPhone
+                    <Smartphone size={16} aria-hidden="true" /> Use Quipsly Capture on iPhone or iPad
                   </a>
                 </>
               )}
@@ -336,7 +336,7 @@ export function CaptureAppHandoff({
               onClick={() => recordChoice("TESTFLIGHT")}
               className="mt-3 inline-flex min-h-11 items-center gap-2 rounded-full px-2 text-xs font-black text-violet-900"
             >
-              <Download size={15} aria-hidden="true" /> Get Quipsly Capture for iPhone
+              <Download size={15} aria-hidden="true" /> Get Quipsly Capture for iPhone or iPad
             </a>
           </div>
         ) : null}

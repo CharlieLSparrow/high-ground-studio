@@ -967,7 +967,7 @@ export function LiveSessionRoom({
     }
     if (!navigator.mediaDevices?.enumerateDevices) {
       if (!preserveLiveConnection) setStatus("error");
-      setMessage("This browser cannot access media devices. Use HTTPS, localhost, or Quipsly Capture on iPhone.");
+      setMessage("This browser cannot access media devices. Use HTTPS, localhost, or Quipsly Capture on iPhone or iPad.");
       return false;
     }
     if (!preserveLiveConnection && (permission !== "none" || cause !== "initial")) {

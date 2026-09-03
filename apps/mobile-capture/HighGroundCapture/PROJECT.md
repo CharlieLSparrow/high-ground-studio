@@ -1,4 +1,4 @@
-# Quipsly Capture for iPhone
+# Quipsly Capture for iPhone and iPad
 
 Status: capture-first implementation baseline complete; live-service, schema, physical-device, and legal release proof still required
 
@@ -12,7 +12,7 @@ Verification and release gates: [`CAPTURE_VERIFICATION.md`](./CAPTURE_VERIFICATI
 
 Quipsly Capture is the calm field recorder for Quipsly sessions. A creator can find or create a session, record explicit consent, capture a high-quality local source, see exactly where that source is in the upload lifecycle, and recover without losing the original when the network or server fails. The app never prunes a source automatically; only the signed-in owner can explicitly remove a local original after an irreversible-deletion confirmation and protected tombstone write.
 
-The shipped iPhone navigation is deliberately limited to:
+The shipped iPhone and iPad navigation is deliberately limited to:
 
 1. **Today** — next session and next safe action.
 2. **Record** — consent-aware local recording plus optional room controls.
@@ -22,7 +22,7 @@ The shipped iPhone navigation is deliberately limited to:
 
 Capture does not compile a second editor, publisher, sample manuscript, fake
 clip preview, or simulated-success export path. Those retired facades were
-removed from the iPhone target. Nest owns collaborative episode work and
+removed from the mobile target. Nest owns collaborative episode work and
 QuipslyStudio owns deep media editing, review, export, and publishing handoff.
 
 ## Implemented baseline

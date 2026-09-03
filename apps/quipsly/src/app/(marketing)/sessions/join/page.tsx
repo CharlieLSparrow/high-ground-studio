@@ -118,7 +118,7 @@ export default async function JoinSessionPage({
             <span className="flex items-center gap-2"><MonitorSmartphone size={17} aria-hidden="true" />What to expect</span>
             <ChevronDown size={17} aria-hidden="true" />
           </summary>
-          <p className="pb-1 text-xs font-semibold leading-5">After continuing, choose this browser or Quipsly Capture on iPhone. You can check your microphone, headphones, and camera before joining. Recording starts only when someone deliberately starts it.</p>
+          <p className="pb-1 text-xs font-semibold leading-5">After continuing, choose this browser or Quipsly Capture on iPhone or iPad. You can check your microphone, headphones, and camera before joining. Recording starts only when someone deliberately starts it.</p>
         </details> : null}
       </div>
     </section>

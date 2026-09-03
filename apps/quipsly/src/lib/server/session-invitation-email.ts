@@ -291,13 +291,13 @@ export async function sendSessionInvitationEmail(input: {
     "Open your private Session:",
     joinUrl.toString(),
     "",
-    "Open the link on any phone, tablet, or desktop. Sign in with the invited email, then continue in your browser or Quipsly Capture on iPhone.",
+    "Open the link on any phone, tablet, or desktop. Sign in with the invited email, then continue in your browser or Quipsly Capture on iPhone or iPad.",
     "",
     `For your privacy, sign in with ${recipientEmail}. The link grants access only to this Session and never starts recording.`,
     "",
     "If you were not expecting this invitation, you can ignore this email.",
   ].join("\n");
-  const html = `<p>Hi ${escapeHtml(recipient)},</p><p>${escapeHtml(host)} invited you to a private Quipsly coaching Session: <strong>${escapeHtml(title)}</strong>.</p><p><strong>Scheduled:</strong> ${escapeHtml(scheduled)}</p><p><a href="${escapeHtml(joinUrl.toString())}">Open your private Session</a></p><p>Open the link on any phone, tablet, or desktop. Sign in with the invited email, then continue in your browser or Quipsly Capture on iPhone.</p><p>For your privacy, sign in with <strong>${escapeHtml(recipientEmail)}</strong>. The link grants access only to this Session and never starts recording.</p><p>If you were not expecting this invitation, you can ignore this email.</p>`;
+  const html = `<p>Hi ${escapeHtml(recipient)},</p><p>${escapeHtml(host)} invited you to a private Quipsly coaching Session: <strong>${escapeHtml(title)}</strong>.</p><p><strong>Scheduled:</strong> ${escapeHtml(scheduled)}</p><p><a href="${escapeHtml(joinUrl.toString())}">Open your private Session</a></p><p>Open the link on any phone, tablet, or desktop. Sign in with the invited email, then continue in your browser or Quipsly Capture on iPhone or iPad.</p><p>For your privacy, sign in with <strong>${escapeHtml(recipientEmail)}</strong>. The link grants access only to this Session and never starts recording.</p><p>If you were not expecting this invitation, you can ignore this email.</p>`;
 
   try {
     const response = await fetch("https://api.resend.com/emails", {

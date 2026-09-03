@@ -2,7 +2,7 @@
   "$schema": "./schema.json",
   "schemaVersion": 1,
   "id": "capture",
-  "displayName": "Quipsly Capture for iPhone",
+  "displayName": "Quipsly Capture for iPhone and iPad",
   "ownerSurface": "capture",
   "status": "active",
   "applicationRoot": "apps/mobile-capture/HighGroundCapture",

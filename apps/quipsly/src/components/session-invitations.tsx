@@ -402,7 +402,7 @@ export function SessionInvitations({
     (invitation) => invitation.id === inviteUrlInvitationId,
   );
   const invitationMessage = inviteUrl
-    ? `Join my private Quipsly Session. Open this link on your phone, tablet, or desktop, then sign in as ${activeInvitation?.email || "the invited email"}. You can continue in your browser or choose Quipsly Capture on iPhone: ${inviteUrl}`
+    ? `Join my private Quipsly Session. Open this link on your phone, tablet, or desktop, then sign in as ${activeInvitation?.email || "the invited email"}. You can continue in your browser or choose Quipsly Capture on iPhone or iPad: ${inviteUrl}`
     : "";
 
   async function copyMessage() {
@@ -415,7 +415,7 @@ export function SessionInvitations({
     if (!inviteUrl || !navigator.share) return;
     await navigator.share({
       title: "Join my Quipsly Session",
-      text: `Join my private Quipsly Session. Sign in as ${activeInvitation?.email || "the invited email"}. Continue in your browser or choose Quipsly Capture on iPhone.`,
+      text: `Join my private Quipsly Session. Sign in as ${activeInvitation?.email || "the invited email"}. Continue in your browser or choose Quipsly Capture on iPhone or iPad.`,
       url: inviteUrl,
     });
   }

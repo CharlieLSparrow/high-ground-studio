@@ -163,7 +163,7 @@
   "reviewNotes": [
     "Apple says free-form text and voice may be represented as Other User Content and Audio Data rather than every sensitive topic a user might enter.",
     "The redacted support snapshot opens the iOS share sheet and is not automatically transmitted to Quipsly, so it does not create app-owned diagnostics collection by itself.",
-    "No advertising, data broker, advertising identifier, tracking domain, Stripe SDK, or CoreLocation API is linked in the current iPhone target. StoreKit purchase history is used only to activate and maintain the signed-in user's Quipsly entitlement.",
+    "No advertising, data broker, advertising identifier, tracking domain, Stripe SDK, or CoreLocation API is linked in the current iPhone and iPad target. StoreKit purchase history is used only to activate and maintain the signed-in user's Quipsly entitlement.",
     "Google Sign-In's bundled privacy manifest—not Quipsly GPS access—is the source of the Coarse Location disclosure.",
     "LiveKit transports room media in real time; recordings retained by Quipsly remain covered by Audio Data and Photos or Videos regardless of transport provider.",
     "App Store privacy answers are app-level across platforms. No macOS or visionOS binary is being released; aggregate those binaries before enabling either platform."

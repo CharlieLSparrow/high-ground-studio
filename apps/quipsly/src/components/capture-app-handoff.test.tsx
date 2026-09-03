@@ -38,12 +38,12 @@ describe("CaptureAppHandoff", () => {
     ).toHaveAttribute("data-session-entry-ready", "true");
     expect(screen.getByRole("button", { name: "Continue in this browser" })).toBeInTheDocument();
     expect(screen.getByText(/recommended on this device/i)).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /Use Quipsly Capture on iPhone/i })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: /Use Quipsly Capture on iPhone or iPad/i })).toHaveAttribute(
       "href",
       "quipsly://session/room-safe_42?mode=live",
     );
     expect(
-      screen.getByRole("link", { name: /Get Quipsly Capture for iPhone/i }),
+      screen.getByRole("link", { name: /Get Quipsly Capture for iPhone or iPad/i }),
     ).toHaveAttribute("href", "https://testflight.apple.com/join/XwRRcYUm");
     expect(
       screen.getByText(/same private Session/i),

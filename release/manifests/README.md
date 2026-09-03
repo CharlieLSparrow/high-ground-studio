@@ -20,7 +20,7 @@ The six required manifests are:
 
 | ID | Product | Artifact | Delivery |
 | --- | --- | --- | --- |
-| `capture` | Quipsly Capture for iPhone | signed IPA | App Store Connect |
+| `capture` | Quipsly Capture for iPhone and iPad | signed IPA | App Store Connect |
 | `nest` | Quipsly Nest | container image | Cloud Run `studio` service |
 | `hgo-web` | High Ground Odyssey web | container image | Cloud Run `web` service |
 | `quipsly-studio` | native production editor | macOS application/operator artifact | operator workflow |

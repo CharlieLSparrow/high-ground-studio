@@ -1389,7 +1389,7 @@ export default function CoachingPage() {
     try {
       await navigator.share({
         title: input.title,
-        text: `Join your private Quipsly coaching Session in a browser on your phone, tablet, or desktop, or choose Quipsly Capture on iPhone after sign-in. Use ${input.clientEmail || "the invited email"}.`,
+        text: `Join your private Quipsly coaching Session in a browser on your phone, tablet, or desktop, or choose Quipsly Capture on iPhone or iPad after sign-in. Use ${input.clientEmail || "the invited email"}.`,
         url,
       });
       dispatchQuipslyProductEvent("booking_link_shared", {
