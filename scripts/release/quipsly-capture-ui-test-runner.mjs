@@ -35,6 +35,10 @@ export function parseRunnerArguments(argv) {
     derivedDataPath:
       process.env.QUIPSLY_CAPTURE_UI_DERIVED_DATA
       ?? "/tmp/quipsly-capture-ui-runner-derived",
+    evidenceRoot:
+      process.env.QUIPSLY_CAPTURE_UI_EVIDENCE_ROOT
+      ? path.resolve(process.env.QUIPSLY_CAPTURE_UI_EVIDENCE_ROOT)
+      : null,
   };
 
   for (const argument of argv) {
@@ -49,6 +53,7 @@ export function parseRunnerArguments(argv) {
     else if (name === "--destination") options.destination = value;
     else if (name === "--ipad-destination") options.ipadDestination = value;
     else if (name === "--derived-data") options.derivedDataPath = path.resolve(value);
+    else if (name === "--evidence-root") options.evidenceRoot = path.resolve(value);
     else throw new Error(`unknown argument: ${argument}`);
   }
 
@@ -90,9 +95,18 @@ export function createXcodeArguments(plan, options) {
     options.derivedDataPath,
     "-parallel-testing-enabled",
     "NO",
+    ...(options.resultBundlePath
+      ? ["-resultBundlePath", options.resultBundlePath]
+      : []),
     ...plan.selectors.map((selector) => `-only-testing:${selector}`),
     "test",
   ];
+}
+
+export function resultBundlePath(evidenceRoot, platformName) {
+  if (!evidenceRoot) return null;
+  const suffix = platformName.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-");
+  return path.join(evidenceRoot, `capture-ui-tests-${suffix}.xcresult`);
 }
 
 export function executedTestCount(output) {
@@ -178,6 +192,7 @@ async function main() {
       {
         ...options,
         destination: execution.destination,
+        resultBundlePath: resultBundlePath(options.evidenceRoot, execution.name),
       },
     ));
     executedCount += verifyExecution({

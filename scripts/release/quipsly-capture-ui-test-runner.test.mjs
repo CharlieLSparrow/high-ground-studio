@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import {
@@ -6,9 +7,15 @@ import {
   createExecutionGroups,
   executedTestCount,
   parseRunnerArguments,
+  resultBundlePath,
   skippedTestCount,
   verifyExecution,
 } from "./quipsly-capture-ui-test-runner.mjs";
+
+const captureWorkflow = readFileSync(
+  new URL("../../.github/workflows/capture-pr-tests.yml", import.meta.url),
+  "utf8",
+);
 
 test("builds one xcode selector argument for every planned test", () => {
   const plan = {
@@ -116,10 +123,44 @@ test("preserves spaces in a destination as one spawned argument", () => {
     "--shards=4",
     "--destination=platform=iOS Simulator,name=iPhone 17 Pro",
     "--ipad-destination=platform=iOS Simulator,name=iPad Air 13-inch (M3)",
+    "--evidence-root=/tmp/capture ui evidence",
   ]);
   assert.equal(options.suite, "full");
   assert.equal(options.shard, 2);
   assert.equal(options.shards, 4);
   assert.equal(options.destination, "platform=iOS Simulator,name=iPhone 17 Pro");
   assert.equal(options.ipadDestination, "platform=iOS Simulator,name=iPad Air 13-inch (M3)");
+  assert.equal(options.evidenceRoot, "/tmp/capture ui evidence");
+});
+
+test("creates separate stable result bundles for each platform", () => {
+  assert.equal(
+    resultBundlePath("/tmp/capture-evidence", "iPhone"),
+    "/tmp/capture-evidence/capture-ui-tests-iphone.xcresult",
+  );
+  assert.equal(
+    resultBundlePath("/tmp/capture-evidence", "iPad regular width"),
+    "/tmp/capture-evidence/capture-ui-tests-ipad-regular-width.xcresult",
+  );
+  assert.equal(resultBundlePath(null, "iPad"), null);
+});
+
+test("adds a result bundle without splitting its path", () => {
+  const arguments_ = createXcodeArguments({
+    selectors: ["HighGroundCaptureUITests/CaptureExperienceUITests/testOne"],
+  }, {
+    destination: "platform=iOS Simulator,name=iPad Air 13-inch (M3)",
+    derivedDataPath: "/tmp/capture-derived",
+    resultBundlePath: "/tmp/capture evidence/capture-ui-tests-ipad.xcresult",
+  });
+  const index = arguments_.indexOf("-resultBundlePath");
+  assert.equal(arguments_[index + 1], "/tmp/capture evidence/capture-ui-tests-ipad.xcresult");
+});
+
+test("GitHub CI uses the skip-intolerant platform runner and preserves both result bundles", () => {
+  assert.match(captureWorkflow, /node scripts\/release\/quipsly-capture-ui-test-runner\.mjs/);
+  assert.match(captureWorkflow, /--ipad-destination="\$\{CAPTURE_IPAD_DESTINATION\}"/);
+  assert.match(captureWorkflow, /--evidence-root="\$\{evidence_root\}"/);
+  assert.match(captureWorkflow, /capture-ui-\*\/\*\.xcresult/);
+  assert.doesNotMatch(captureWorkflow, /only_testing_args=/);
 });
