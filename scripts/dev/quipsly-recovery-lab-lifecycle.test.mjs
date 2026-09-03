@@ -83,6 +83,13 @@ test("acceptance defaults to a clean exact committed revision", () => {
   assert.match(doctor, /clean committed source/);
 });
 
+test("an owned replacement forgets the pre-reset revision snapshot", () => {
+  assert.match(
+    up,
+    /if \[\[ "\$\{replace_existing\}" == "1" \]\]; then[\s\S]*quipsly-recovery-lab-down\.sh[\s\S]*recorded_revision=""[\s\S]*source_revision_changed=0[\s\S]*fi/,
+  );
+});
+
 test("every recovery-lab Docker control-plane call is bounded", () => {
   for (const source of [up, doctor, down]) {
     assert.match(source, /quipsly_local_run_docker/);

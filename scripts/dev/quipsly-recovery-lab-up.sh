@@ -161,6 +161,13 @@ fi
 
 if [[ "${replace_existing}" == "1" ]]; then
   bash "${script_dir}/quipsly-recovery-lab-down.sh"
+  # `recorded_revision` was sampled before the owned reset so we could decide
+  # whether an ordinary start needs to rotate revision-bound workers. A full
+  # replacement deliberately deletes that ownership ledger. Do not carry its
+  # stale in-memory change flag past the reset and then demand a file that the
+  # reset correctly removed.
+  recorded_revision=""
+  source_revision_changed=0
 fi
 
 if ! quipsly_local_docker_ready "${docker_timeout_seconds}"; then
