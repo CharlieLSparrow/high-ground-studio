@@ -91,6 +91,28 @@ function desk(playback: boolean) {
   };
 }
 
+function sourceEvidence(routeName: string) {
+  return buildAudioTranscriptEvidence({
+    provider: "on-device",
+    recordingDurationSeconds: 60,
+    sourceProfile: {
+      includesAudio: true,
+      container: "m4a",
+      codec: "aac",
+      audioSampleRate: 48_000,
+      audioChannelCount: 1,
+      audioRouteName: routeName,
+      audioRoutePortType: "BuiltInMic",
+      recordedMedia: {
+        audioTrackCount: 1,
+        audioSampleRate: 48_000,
+        audioChannelCount: 1,
+      },
+    },
+    segments: [],
+  });
+}
+
 async function markProtectedPlaybackReady() {
   const media = await screen.findByLabelText("Protected session recording");
   fireEvent.loadedMetadata(media);
@@ -154,6 +176,71 @@ describe("TranscriptCorrectionDesk", () => {
     ).toEqual(["coach-word"]);
   });
 
+  it("switches audio evidence together with the selected participant recording", async () => {
+    const assembled: any = desk(true);
+    const clientPlayback = {
+      ...assembled.playback,
+      sourceId: "source-client",
+      recordingAssetId: "asset-client",
+      label: "Client recording",
+    };
+    assembled.recording.id = "asset-coach";
+    assembled.playback.recordingAssetId = "asset-coach";
+    assembled.evidence = sourceEvidence("Coach microphone");
+    assembled.segments = [
+      { ...segment, recordingAssetId: "asset-coach" },
+      {
+        ...segment,
+        id: "segment-client",
+        recordingAssetId: "asset-client",
+        words: [{ ...segment.words[0], id: "word-client" }],
+      },
+    ];
+    assembled.sessionTranscript = {
+      schema: "quipsly-session-transcript-correction-desk-v1",
+      status: "assembled",
+      sourceCount: 2,
+      programClock: null,
+      reason: "Two participant sources.",
+      sources: [
+        {
+          transcriptJobId: "job-coach",
+          recordingAssetId: "asset-coach",
+          participantId: "coach",
+          playback: assembled.playback,
+          evidence: assembled.evidence,
+          programOffsetSeconds: 0,
+          timingAuthority: "capture-clock-proposal",
+          timingUncertaintyMilliseconds: 10,
+          timingReviewRequired: true,
+          sampleAccurateClaimed: false,
+        },
+        {
+          transcriptJobId: "job-client",
+          recordingAssetId: "asset-client",
+          participantId: "client",
+          playback: clientPlayback,
+          evidence: sourceEvidence("Client microphone"),
+          programOffsetSeconds: 0.2,
+          timingAuthority: "capture-clock-proposal",
+          timingUncertaintyMilliseconds: 12,
+          timingReviewRequired: true,
+          sampleAccurateClaimed: false,
+        },
+      ],
+    };
+    global.fetch = jest.fn(async () => ({ ok: true, json: async () => assembled })) as unknown as typeof fetch;
+
+    render(<TranscriptCorrectionDesk roomId="room-1" />);
+    await screen.findByRole("heading", { name: "Edit the transcript" });
+    fireEvent.click(screen.getByText("Show details"));
+    expect(screen.getByText("Coach microphone · BuiltInMic")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Source 2" }));
+    expect(screen.getByText("Client microphone · BuiltInMic")).toBeInTheDocument();
+    expect(screen.queryByText("Coach microphone · BuiltInMic")).not.toBeInTheDocument();
+  });
+
   it("offers a conventional mentor report download inside a coaching Session", async () => {
     const click = jest.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
     const appendChild = jest.spyOn(document.body, "appendChild");
@@ -187,6 +274,10 @@ describe("TranscriptCorrectionDesk", () => {
     Object.defineProperty(HTMLMediaElement.prototype, "play", {
       configurable: true,
       value: jest.fn(async () => undefined),
+    });
+    Object.defineProperty(HTMLMediaElement.prototype, "pause", {
+      configurable: true,
+      value: jest.fn(),
     });
     Object.defineProperty(HTMLMediaElement.prototype, "readyState", {
       configurable: true,
