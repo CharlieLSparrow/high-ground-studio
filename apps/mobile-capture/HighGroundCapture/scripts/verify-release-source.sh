@@ -24,6 +24,7 @@ nest_evidence_contract_test="$capture_root/scripts/test-nest-source-evidence-con
 video_quality_policy_test="$capture_root/scripts/test-video-capture-quality-policy.sh"
 attention_presentation_test="$capture_root/scripts/test-capture-attention-presentation.sh"
 transcript_delivery_policy_test="$capture_root/scripts/test-on-device-transcript-delivery-policy.sh"
+transcript_ledger_policy_test="$capture_root/scripts/test-on-device-transcript-ledger-policy.sh"
 offline_recording_authority_test="$capture_root/scripts/test-capture-offline-recording-authority-policy.sh"
 developer_dir="${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}"
 
@@ -203,6 +204,8 @@ bash "$attention_presentation_test"
 pass "Capture attention presentation policy passes"
 bash "$transcript_delivery_policy_test"
 pass "On-device transcript delivery retry policy passes"
+bash "$transcript_ledger_policy_test"
+pass "On-device transcript ledger integrity policy passes"
 bash "$offline_recording_authority_test"
 pass "Offline recording authority policy passes"
 

@@ -65,6 +65,9 @@ enum OnDeviceTranscriptStore {
     private static let directoryName = "QuipslyCapture/OnDeviceTranscripts"
 
     static func save(_ sidecar: OnDeviceTranscriptSidecar) throws -> StoredSidecar {
+        guard accepts(sidecar, expectedRecordingId: sidecar.localRecordingId) else {
+            throw OnDeviceTranscriptFailure.localStorageUnavailable
+        }
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
         encoder.dateEncodingStrategy = .iso8601
@@ -83,20 +86,29 @@ enum OnDeviceTranscriptStore {
         decoder.dateDecodingStrategy = .iso8601
         let urls = try artifactURLs(for: recordingId, suffix: ".transcript.json")
         var candidates: [StoredSidecar] = []
+        var rejectedArtifact = false
         candidates.reserveCapacity(urls.count)
         for url in urls {
-            let data = try Data(contentsOf: url, options: [.mappedIfSafe])
-            let sidecar = try decoder.decode(OnDeviceTranscriptSidecar.self, from: data)
-            guard sidecar.localRecordingId == recordingId,
-                  url.lastPathComponent == sidecarFilename(
-                    recordingId: recordingId,
-                    clientRequestId: sidecar.clientRequestId
-                  ) else {
-                throw OnDeviceTranscriptFailure.localStorageUnavailable
+            do {
+                let data = try Data(contentsOf: url, options: [.mappedIfSafe])
+                let sidecar = try decoder.decode(OnDeviceTranscriptSidecar.self, from: data)
+                guard accepts(sidecar, expectedRecordingId: recordingId),
+                      url.lastPathComponent == sidecarFilename(
+                        recordingId: recordingId,
+                        clientRequestId: sidecar.clientRequestId
+                      ) else {
+                    rejectedArtifact = true
+                    continue
+                }
+                candidates.append(
+                    StoredSidecar(sidecar: sidecar, sha256: SHA256.hash(data: data).hexString)
+                )
+            } catch {
+                rejectedArtifact = true
             }
-            candidates.append(
-                StoredSidecar(sidecar: sidecar, sha256: SHA256.hash(data: data).hexString)
-            )
+        }
+        if candidates.isEmpty, rejectedArtifact {
+            throw OnDeviceTranscriptFailure.localStorageUnavailable
         }
         return candidates.max {
             if $0.sidecar.createdAt == $1.sidecar.createdAt {
@@ -107,6 +119,22 @@ enum OnDeviceTranscriptStore {
     }
 
     static func saveSubmissionReceipt(_ receipt: OnDeviceTranscriptSubmissionReceipt) throws {
+        guard OnDeviceTranscriptLedgerPolicy.acceptsReceipt(
+            .init(
+                schemaVersion: receipt.schemaVersion,
+                localRecordingId: receipt.localRecordingId,
+                clientRequestId: receipt.clientRequestId,
+                sidecarSha256: receipt.sidecarSha256,
+                transcriptJobId: receipt.transcriptJobId,
+                provider: receipt.provider,
+                submittedAt: receipt.submittedAt
+            ),
+            expectedRecordingId: receipt.localRecordingId,
+            expectedClientRequestId: receipt.clientRequestId,
+            expectedSidecarSha256: receipt.sidecarSha256
+        ) else {
+            throw OnDeviceTranscriptFailure.localStorageUnavailable
+        }
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
         encoder.dateEncodingStrategy = .iso8601
@@ -122,7 +150,8 @@ enum OnDeviceTranscriptStore {
 
     static func loadSubmissionReceipt(
         for recordingId: UUID,
-        clientRequestId: UUID
+        clientRequestId: UUID,
+        expectedSidecarSha256: String
     ) throws -> OnDeviceTranscriptSubmissionReceipt? {
         let url = try receiptURL(
             for: recordingId,
@@ -136,17 +165,56 @@ enum OnDeviceTranscriptStore {
             OnDeviceTranscriptSubmissionReceipt.self,
             from: Data(contentsOf: url, options: [.mappedIfSafe])
         )
-        guard receipt.localRecordingId == recordingId,
-              receipt.clientRequestId == clientRequestId else {
+        guard OnDeviceTranscriptLedgerPolicy.acceptsReceipt(
+            .init(
+                schemaVersion: receipt.schemaVersion,
+                localRecordingId: receipt.localRecordingId,
+                clientRequestId: receipt.clientRequestId,
+                sidecarSha256: receipt.sidecarSha256,
+                transcriptJobId: receipt.transcriptJobId,
+                provider: receipt.provider,
+                submittedAt: receipt.submittedAt
+            ),
+            expectedRecordingId: recordingId,
+            expectedClientRequestId: clientRequestId,
+            expectedSidecarSha256: expectedSidecarSha256
+        ) else {
             throw OnDeviceTranscriptFailure.localStorageUnavailable
         }
         return receipt
     }
 
+    private static func accepts(
+        _ sidecar: OnDeviceTranscriptSidecar,
+        expectedRecordingId: UUID
+    ) -> Bool {
+        OnDeviceTranscriptLedgerPolicy.acceptsSidecar(
+            .init(
+                schemaVersion: sidecar.schemaVersion,
+                localRecordingId: sidecar.localRecordingId,
+                ownerAccountId: sidecar.ownerAccountId,
+                sourceSha256: sidecar.sourceSha256,
+                sourceByteCount: sidecar.sourceByteCount,
+                language: sidecar.language,
+                createdAt: sidecar.createdAt,
+                recognitionExecution: sidecar.recognitionExecution,
+                configurationHash: sidecar.engine.configurationHash,
+                segments: sidecar.segments.map {
+                    .init(
+                        startSeconds: $0.startSeconds,
+                        endSeconds: $0.endSeconds,
+                        text: $0.text
+                    )
+                }
+            ),
+            expectedRecordingId: expectedRecordingId
+        )
+    }
+
     private static func writeProtected(_ data: Data, to url: URL) throws {
         try data.write(
             to: url,
-            options: [.withoutOverwriting, .completeFileProtectionUntilFirstUserAuthentication]
+            options: [.atomic, .withoutOverwriting, .completeFileProtectionUntilFirstUserAuthentication]
         )
         try FileManager.default.setAttributes(
             [.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication],
@@ -782,7 +850,8 @@ final class OnDeviceTranscriptManager: ObservableObject {
         if let stored = try? OnDeviceTranscriptStore.load(for: recording.id) {
             if let receipt = try? OnDeviceTranscriptStore.loadSubmissionReceipt(
                 for: recording.id,
-                clientRequestId: stored.sidecar.clientRequestId
+                clientRequestId: stored.sidecar.clientRequestId,
+                expectedSidecarSha256: stored.sha256
             ) {
                 phases[recording.id] = .attached(
                     transcriptJobId: receipt.transcriptJobId,
@@ -992,7 +1061,8 @@ final class OnDeviceTranscriptManager: ObservableObject {
             if let stored = try? OnDeviceTranscriptStore.load(for: recording.id) {
                 if (try? OnDeviceTranscriptStore.loadSubmissionReceipt(
                     for: recording.id,
-                    clientRequestId: stored.sidecar.clientRequestId
+                    clientRequestId: stored.sidecar.clientRequestId,
+                    expectedSidecarSha256: stored.sha256
                 )) != nil {
                     continue
                 }
@@ -1062,7 +1132,8 @@ final class OnDeviceTranscriptManager: ObservableObject {
             if let stored = try? OnDeviceTranscriptStore.load(for: recording.id) {
                 let receipt = try? OnDeviceTranscriptStore.loadSubmissionReceipt(
                     for: recording.id,
-                    clientRequestId: stored.sidecar.clientRequestId
+                    clientRequestId: stored.sidecar.clientRequestId,
+                    expectedSidecarSha256: stored.sha256
                 )
                 return receipt == nil && recording.status.isVerified
             }

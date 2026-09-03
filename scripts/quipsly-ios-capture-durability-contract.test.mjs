@@ -370,7 +370,11 @@ check(
 check("deep crash recovery decoding runs off MainActor", library.includes("Task.detached(priority: .utility)") && library.includes("validatePendingRecoveredSources()"));
 check("recovery has a durable non-playable pending state", library.includes("case validatingRecovery") && library.includes("recording.status = .validatingRecovery") && library.includes("Playback and upload remain disabled until that recovery check finishes"));
 check("pending recovery is requeued after relaunch", library.includes("case .armed, .recording, .paused, .finalizing, .validatingRecovery:") && library.includes("applyCrashRecoveryValidation(to: &storedRecordings[index]"));
-check("only deep validation can promote recovered playback", library.includes("guard recording.status == .validatingRecovery") && library.includes("recording.status = .recovered"));
+check(
+  "only deep validation can promote recovered playback",
+  library.includes("guard recording.status == .validatingRecovery")
+    && /validatePendingRecoveredSources\(\)[\s\S]*?applyValidatedSourceTruth\([\s\S]*?playableStatus:\s*\.recovered/.test(library),
+);
 check("undecodable source is needs-repair", library.includes("recording.status = .needsRepair"));
 check("needs-repair source is not upload eligible", library.includes("var isUploadEligible: Bool") && model.includes("guard recording.isUploadEligible else"));
 check(
