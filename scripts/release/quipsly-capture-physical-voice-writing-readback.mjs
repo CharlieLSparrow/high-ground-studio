@@ -65,6 +65,8 @@ export function parseArguments(argv) {
     outputPath: "",
     expectedBuild: "",
     maxAgeMinutes: 30,
+    requireCaptureProof: false,
+    requireTranscriptProof: false,
     help: false,
   };
   for (let index = 0; index < argv.length; index += 1) {
@@ -72,6 +74,15 @@ export function parseArguments(argv) {
     if (flag === "--") continue;
     if (flag === "--help" || flag === "-h") {
       options.help = true;
+      continue;
+    }
+    if (flag === "--require-capture-proof") {
+      options.requireCaptureProof = true;
+      continue;
+    }
+    if (flag === "--require-transcript-proof") {
+      options.requireCaptureProof = true;
+      options.requireTranscriptProof = true;
       continue;
     }
     const value = takeValue(argv, index, flag);
@@ -86,6 +97,9 @@ export function parseArguments(argv) {
   if (options.help) return options;
   if (Boolean(clean(options.device)) === Boolean(clean(options.receiptPath))) {
     fail("Provide exactly one of --device or --receipt.");
+  }
+  if ((options.requireCaptureProof || options.requireTranscriptProof) && !clean(options.device)) {
+    fail("Strict physical proof requires --device so source bytes can be read independently.");
   }
   if (!Number.isFinite(options.maxAgeMinutes) || options.maxAgeMinutes <= 0 || options.maxAgeMinutes > 1_440) {
     fail("--max-age-minutes must be greater than 0 and no more than 1440.");
@@ -104,6 +118,11 @@ function usage() {
 Options:
   --output <path>          Write an owner-only normalized receipt.
   --max-age-minutes <n>   Reject stale device evidence (default 30).
+  --require-capture-proof Fail unless the finished receipt names independently
+                          readable and playable audio bytes from the device.
+  --require-transcript-proof
+                          Also require a nonempty on-device transcript bound to
+                          the independently read source bytes.
 
 The device form reads the Debug physical-acceptance receipt and, once ready,
 independently pulls and decodes the named audio source plus its protected
@@ -320,6 +339,30 @@ export function inspectTranscriptSidecar(value, receipt, sourceEvidence) {
   };
 }
 
+export function assertRequiredProof(receipt, {
+  requireCaptureProof = false,
+  requireTranscriptProof = false,
+} = {}) {
+  if (requireCaptureProof && !(
+    receipt?.captureAcceptanceProven === true
+    && receipt?.sourceAudioRead === true
+    && receipt?.sourceAudioPlayable === true
+    && SHA256_PATTERN.test(clean(receipt?.sourceAudioSHA256))
+  )) {
+    fail("Physical capture proof is incomplete: a finished, independently readable playable source is required.");
+  }
+  if (requireTranscriptProof && !(
+    receipt?.sourceBoundTranscriptProven === true
+    && receipt?.transcriptContentRead === true
+    && receipt?.transcriptionRanOnDevice === true
+    && Number.isSafeInteger(receipt?.transcriptCharacterCount)
+    && receipt.transcriptCharacterCount > 0
+  )) {
+    fail("Physical transcript proof is incomplete: a nonempty on-device transcript bound to the exact source is required.");
+  }
+  return receipt;
+}
+
 async function pullAndInspectTranscript(device, receipt, sourceEvidence, destination) {
   const transcriptFileName = [
     receipt.recordingID.toLowerCase(),
@@ -462,6 +505,7 @@ async function main() {
         };
       }
     }
+    assertRequiredProof(receipt, options);
     if (options.outputPath) {
       await writeFile(options.outputPath, `${JSON.stringify(receipt, null, 2)}\n`, { mode: 0o600 });
       await chmod(options.outputPath, 0o600);

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  assertRequiredProof,
   inspectTranscriptSidecar,
   inspectPhysicalVoiceWritingReceipt,
   parseArguments,
@@ -34,6 +35,60 @@ test("requires exactly one device or previously pulled receipt", () => {
   assert.throws(
     () => parseArguments(["--device", "Morbo", "--receipt", "/tmp/latest.json"]),
     /exactly one/,
+  );
+  assert.equal(
+    parseArguments(["--device", "Morbo", "--require-transcript-proof"]).requireCaptureProof,
+    true,
+  );
+  assert.equal(
+    parseArguments(["--device", "Morbo", "--require-transcript-proof"]).requireTranscriptProof,
+    true,
+  );
+  assert.throws(
+    () => parseArguments(["--receipt", "/tmp/latest.json", "--require-capture-proof"]),
+    /requires --device/,
+  );
+});
+
+test("strict modes reject valid pending receipts instead of returning false confidence", () => {
+  const pending = inspectPhysicalVoiceWritingReceipt(receipt(), {
+    auditedAt: now,
+    expectedBuild: "69",
+  });
+  assert.throws(
+    () => assertRequiredProof(pending, { requireCaptureProof: true }),
+    /capture proof is incomplete/,
+  );
+});
+
+test("strict transcript proof requires exact-source on-device content", () => {
+  const sourceProof = {
+    captureAcceptanceProven: true,
+    sourceAudioRead: true,
+    sourceAudioPlayable: true,
+    sourceAudioSHA256: sourceSHA256,
+    sourceBoundTranscriptProven: false,
+    transcriptContentRead: false,
+    transcriptionRanOnDevice: false,
+    transcriptCharacterCount: null,
+  };
+  assert.equal(
+    assertRequiredProof(sourceProof, { requireCaptureProof: true }),
+    sourceProof,
+  );
+  assert.throws(
+    () => assertRequiredProof(sourceProof, { requireTranscriptProof: true }),
+    /transcript proof is incomplete/,
+  );
+  assert.equal(
+    assertRequiredProof({
+      ...sourceProof,
+      sourceBoundTranscriptProven: true,
+      transcriptContentRead: true,
+      transcriptionRanOnDevice: true,
+      transcriptCharacterCount: 42,
+    }, { requireCaptureProof: true, requireTranscriptProof: true }).transcriptCharacterCount,
+    42,
   );
 });
 
