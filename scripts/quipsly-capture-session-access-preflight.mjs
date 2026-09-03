@@ -1,7 +1,15 @@
 #!/usr/bin/env node
-import { initializeApp } from "firebase-admin/app";
-import { getAuth } from "firebase-admin/auth";
+import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
+
+// firebase-admin is owned by the Nest application rather than the workspace
+// root. Resolve it from that package boundary so this operator can run from a
+// clean collaborator checkout and from pnpm's strict node_modules layout.
+const requireFromNest = createRequire(
+  new URL("../apps/quipsly/package.json", import.meta.url),
+);
+const { initializeApp } = requireFromNest("firebase-admin/app");
+const { getAuth } = requireFromNest("firebase-admin/auth");
 
 function parseArgs(argv) {
   const input = {

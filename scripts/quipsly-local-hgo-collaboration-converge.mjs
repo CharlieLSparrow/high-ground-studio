@@ -1,12 +1,17 @@
 #!/usr/bin/env node
-import { PrismaClient } from "@prisma/client";
-import { PrismaPg } from "@prisma/adapter-pg";
+import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
 
 import {
   MOBILE_CAPTURE_CONSENT_POLICY_VERSION,
   MOBILE_CAPTURE_CONSENT_TEXT,
 } from "../apps/quipsly/src/lib/mobile-capture-consent-policy.js";
+
+const requireFromNest = createRequire(
+  new URL("../apps/quipsly/package.json", import.meta.url),
+);
+const { PrismaClient } = requireFromNest("@prisma/client");
+const { PrismaPg } = requireFromNest("@prisma/adapter-pg");
 
 const FIREBASE_AUTHORITY = "firebase:quipsly-reef";
 const DEFAULT_DATABASE_URL = "postgresql://postgres:postgres@127.0.0.1:5432/high_ground_studio";
