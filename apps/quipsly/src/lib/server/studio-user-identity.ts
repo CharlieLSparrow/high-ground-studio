@@ -105,6 +105,63 @@ export async function getStudioUserIdentityByEmail(
   return user ? mapStudioUserIdentity(user) : null;
 }
 
+/**
+ * Resolves an already-linked Firebase subject without mutating identity state.
+ *
+ * Session creation owns reconciliation, profile refresh, and last-seen writes.
+ * Ordinary API reads only need to prove that the exact provider subject is
+ * still attached to an active Quipsly user and that its verified mailbox has
+ * not drifted. Returning null deliberately hands unusual or legacy states to
+ * the slower collision-safe reconciliation path.
+ */
+export async function getBoundStudioUserFromFirebaseIdentity(input: {
+  firebaseUid: string;
+  email: string;
+  prisma?: PrismaClient | Prisma.TransactionClient;
+}): Promise<StudioUserIdentity | null> {
+  const firebaseUid = input.firebaseUid.trim();
+  const normalizedEmail = normalizeEmail(input.email);
+  if (!firebaseUid || !normalizedEmail) return null;
+
+  const prisma = input.prisma ?? getPrismaClient();
+  const authIdentity = await prisma.userAuthIdentity.findUnique({
+    where: {
+      authority_subject: {
+        authority: QUIPSLY_FIREBASE_IDENTITY_AUTHORITY,
+        subject: firebaseUid,
+      },
+    },
+    include: {
+      user: { include: userIdentityInclude },
+    },
+  });
+  if (!authIdentity) return null;
+  if (!authIdentity.user.isActive) {
+    throw new Error("Quipsly account is inactive.");
+  }
+
+  const emailStillBelongsToUser =
+    normalizeEmail(authIdentity.user.primaryEmail) === normalizedEmail ||
+    authIdentity.user.aliases.some(
+      (alias) => normalizeEmail(alias.email) === normalizedEmail,
+    );
+  const subjectMailboxIsCurrent =
+    normalizeEmail(authIdentity.emailAtLink || "") === normalizedEmail;
+  const bootstrapRoles = getBootstrapRolesForEmail(normalizedEmail);
+  const hasCurrentBootstrapRoles = bootstrapRoles.every((role) =>
+    authIdentity.user.roles.some((entry) => entry.role === role),
+  );
+
+  if (
+    !emailStillBelongsToUser ||
+    !subjectMailboxIsCurrent ||
+    !hasCurrentBootstrapRoles
+  ) {
+    return null;
+  }
+  return mapStudioUserIdentity(authIdentity.user);
+}
+
 export async function ensureInvitedStudioUserByEmail(input: {
   email: string;
   name?: string | null;

@@ -5,6 +5,7 @@ import { cookies } from "next/headers";
 import { adminAuth } from "@/lib/firebase/firebase-admin";
 import {
   ensureStudioUserFromFirebaseIdentity,
+  getBoundStudioUserFromFirebaseIdentity,
   type StudioUserIdentity,
 } from "@/lib/server/studio-user-identity";
 
@@ -43,14 +44,19 @@ async function sessionFromFirebaseIdentity(
   // inherit its pre-created Nest grants before Firebase verifies ownership.
   if (!decoded.email || decoded.email_verified !== true) return null;
 
-  const identity = await ensureStudioUserFromFirebaseIdentity({
-    firebaseUid: decoded.uid,
-    email: decoded.email,
-    emailVerified: decoded.email_verified,
-    provider: decoded.firebase?.sign_in_provider || null,
-    name: decoded.name ?? null,
-    image: decoded.picture ?? null,
-  });
+  const identity =
+    (await getBoundStudioUserFromFirebaseIdentity({
+      firebaseUid: decoded.uid,
+      email: decoded.email,
+    })) ??
+    (await ensureStudioUserFromFirebaseIdentity({
+      firebaseUid: decoded.uid,
+      email: decoded.email,
+      emailVerified: decoded.email_verified,
+      provider: decoded.firebase?.sign_in_provider || null,
+      name: decoded.name ?? null,
+      image: decoded.picture ?? null,
+    }));
 
   return {
     user: {

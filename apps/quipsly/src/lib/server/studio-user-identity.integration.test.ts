@@ -7,6 +7,7 @@ import {
   ensureInvitedStudioUserByEmail,
   ensureStudioUserFromAuthIdentity,
   ensureStudioUserFromFirebaseIdentity,
+  getBoundStudioUserFromFirebaseIdentity,
 } from "./studio-user-identity";
 
 const runLocalDatabaseSmoke =
@@ -76,6 +77,52 @@ runLocalDatabaseSmoke("Firebase identity reconciliation local database smoke", (
         },
       ],
     });
+  });
+
+  it("resolves an unchanged linked subject without rewriting its identity ledger", async () => {
+    const email = `firebase-fast-session-${nonce}@example.test`;
+    const firebaseUid = `firebase-fast-session-${nonce}`;
+    const lastSeenAt = new Date("2026-01-02T03:04:05.000Z");
+    const user = await prisma.user.create({
+      data: {
+        primaryEmail: email,
+        firebaseUid,
+        emailVerified: new Date(),
+        authIdentities: {
+          create: {
+            authority: "firebase:quipsly-reef",
+            subject: firebaseUid,
+            provider: "google.com",
+            emailAtLink: email,
+            emailVerifiedAt: new Date(),
+            lastSeenAt,
+          },
+        },
+      },
+    });
+    userIds.push(user.id);
+
+    await expect(
+      getBoundStudioUserFromFirebaseIdentity({ firebaseUid, email, prisma }),
+    ).resolves.toMatchObject({ id: user.id, primaryEmail: email });
+    await expect(
+      prisma.userAuthIdentity.findUnique({
+        where: {
+          authority_subject: {
+            authority: "firebase:quipsly-reef",
+            subject: firebaseUid,
+          },
+        },
+        select: { lastSeenAt: true },
+      }),
+    ).resolves.toEqual({ lastSeenAt });
+    await expect(
+      getBoundStudioUserFromFirebaseIdentity({
+        firebaseUid,
+        email: `changed-${email}`,
+        prisma,
+      }),
+    ).resolves.toBeNull();
   });
 
   it("requires an explicit identity ledger link before an alias can authenticate as the same person", async () => {

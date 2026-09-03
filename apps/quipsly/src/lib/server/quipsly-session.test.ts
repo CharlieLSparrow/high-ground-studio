@@ -3,7 +3,10 @@
 import { cookies } from "next/headers";
 
 import { adminAuth } from "@/lib/firebase/firebase-admin";
-import { ensureStudioUserFromFirebaseIdentity } from "@/lib/server/studio-user-identity";
+import {
+  ensureStudioUserFromFirebaseIdentity,
+  getBoundStudioUserFromFirebaseIdentity,
+} from "@/lib/server/studio-user-identity";
 import {
   getQuipslySessionFromBearer,
   getQuipslySessionFromRequest,
@@ -18,15 +21,18 @@ jest.mock("@/lib/firebase/firebase-admin", () => ({
 }));
 jest.mock("@/lib/server/studio-user-identity", () => ({
   ensureStudioUserFromFirebaseIdentity: jest.fn(),
+  getBoundStudioUserFromFirebaseIdentity: jest.fn(),
 }));
 
 const verifyIdToken = adminAuth.verifyIdToken as jest.Mock;
 const ensureIdentity = ensureStudioUserFromFirebaseIdentity as jest.Mock;
+const getBoundIdentity = getBoundStudioUserFromFirebaseIdentity as jest.Mock;
 const cookieStore = cookies as jest.Mock;
 
 describe("Quipsly Firebase session boundary", () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    getBoundIdentity.mockResolvedValue(null);
   });
 
   it("binds a request to an explicitly supplied bearer token and never falls back to cookies", async () => {
@@ -57,7 +63,37 @@ describe("Quipsly Firebase session boundary", () => {
 
     expect(session).toBeNull();
     expect(verifyIdToken).toHaveBeenCalledWith("unverified", true);
+    expect(getBoundIdentity).not.toHaveBeenCalled();
     expect(ensureIdentity).not.toHaveBeenCalled();
+  });
+
+  it("uses the read-only exact-subject path for an established session", async () => {
+    verifyIdToken.mockResolvedValue({
+      uid: "firebase-user",
+      email: "person@example.test",
+      email_verified: true,
+    });
+    getBoundIdentity.mockResolvedValue({
+      id: "quipsly-user",
+      primaryEmail: "person@example.test",
+      name: "Person",
+      image: null,
+      roles: ["CLIENT"],
+      isStaff: false,
+    });
+
+    const session = await getQuipslySessionFromBearer(
+      new Request("https://nest.quipsly.test/api/work", {
+        headers: { authorization: "Bearer verified" },
+      }),
+    );
+
+    expect(getBoundIdentity).toHaveBeenCalledWith({
+      firebaseUid: "firebase-user",
+      email: "person@example.test",
+    });
+    expect(ensureIdentity).not.toHaveBeenCalled();
+    expect(session?.user.id).toBe("quipsly-user");
   });
 
   it("maps a verified Firebase identity to durable Quipsly session truth", async () => {
