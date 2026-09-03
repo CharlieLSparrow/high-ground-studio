@@ -1164,7 +1164,25 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
 
     private func replaceText(in element: XCUIElement, with value: String, app: XCUIApplication) {
         XCTAssertTrue(element.waitForExistence(timeout: 8))
-        for _ in 0..<12 where !element.isHittable { appSwipeUp(app) }
+        // An empty writing body intentionally takes focus when a new document
+        // opens. iOS then scrolls the Form far enough that its title remains in
+        // the accessibility tree above the navigation bar, but cannot be
+        // tapped. Dismiss that automatic keyboard and move toward the actual
+        // target instead of blindly scrolling farther down the document.
+        let keyboardDone = app.keyboards.buttons["Done"].firstMatch
+        if keyboardDone.waitForExistence(timeout: 1) { keyboardDone.tap() }
+        for _ in 0..<12 where !element.isHittable {
+            let writingSurface = app.scrollViews.firstMatch
+            let targetIsAboveViewport = element.exists && element.frame.midY < app.frame.midY
+            if writingSurface.exists && writingSurface.isHittable {
+                if targetIsAboveViewport { writingSurface.swipeDown() }
+                else { writingSurface.swipeUp() }
+            } else if targetIsAboveViewport {
+                app.swipeDown()
+            } else {
+                appSwipeUp(app)
+            }
+        }
         XCTAssertTrue(element.isHittable)
         element.tap()
         element.typeKey("a", modifierFlags: .command)
@@ -1188,11 +1206,11 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         let packetNoteKeyboardDone = app.buttons["CapturePacketNoteKeyboardDone"].firstMatch
         let coachKeyboardDone = app.buttons["CaptureCoachFollowUpKeyboardDone"].firstMatch
         let weeklyPlanKeyboardDone = app.buttons["CaptureWeeklyPlanKeyboardDone"].firstMatch
-        let keyboardDone = app.keyboards.buttons["Done"].firstMatch
+        let keyboardDoneAfterEditing = app.keyboards.buttons["Done"].firstMatch
         if packetNoteKeyboardDone.waitForExistence(timeout: 2) { packetNoteKeyboardDone.tap() }
         else if coachKeyboardDone.waitForExistence(timeout: 2) { coachKeyboardDone.tap() }
         else if weeklyPlanKeyboardDone.waitForExistence(timeout: 2) { weeklyPlanKeyboardDone.tap() }
-        else if keyboardDone.exists { keyboardDone.tap() }
+        else if keyboardDoneAfterEditing.exists { keyboardDoneAfterEditing.tap() }
         else { app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.16)).tap() }
     }
 
