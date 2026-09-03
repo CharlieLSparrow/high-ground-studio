@@ -2663,6 +2663,26 @@ requireIncludes(capturePhoneShellText, 'accessibilityIdentifier("CapturePersiste
 requireIncludes(capturePhoneShellText, 'accessibilityIdentifier("CaptureAudioWaitingForHostStatus")', "audio recorder projects a non-interactive ready state for non-controller participants");
 requireIncludes(capturePhoneShellText, 'accessibilityIdentifier("CaptureVideoWaitingForHostStatus")', "video recorder projects a non-interactive ready state for non-controller participants");
 requireIncludes(capturePhoneShellText, "&& coordinatedLocalRecordingReady(for: session)", "waiting-for-host truth requires this exact iPhone's consent and system access");
+const captureRecorderViewStart = capturePhoneShellText.indexOf(
+  "private struct CaptureRecorderView: View",
+);
+const shellCoordinationTaskStart = capturePhoneShellText.indexOf(
+  ".task(id: recordingCoordinationTaskID)",
+);
+assert(
+  shellCoordinationTaskStart >= 0
+    && captureRecorderViewStart > shellCoordinationTaskStart
+    && capturePhoneShellText.indexOf(
+      ".task(id: recordingCoordinationTaskID)",
+      shellCoordinationTaskStart + 1,
+    ) < 0,
+  "Room recording coordination must remain app-shell-owned rather than disappearing with the Sessions tab.",
+  { label: "host Record and Stop survive navigation into notes and tasks" },
+);
+requireIncludes(capturePhoneShellText, "while !Task.isCancelled,", "shell-owned room coordination remains a cancellable joined-call loop");
+requireIncludes(capturePhoneShellText, "model.selectedSession?.callRoomId == session.callRoomId", "shell-owned room coordination cannot drift into a different Session");
+requireExcludes(capturePhoneShellText, '"tab=\\(visibleTab == .record)"', "recording coordination is never coupled to the visible tab");
+requireIncludes(captureRecordingCoordinatorText, "func claim(_ directive: CaptureRecordingDirective) -> Bool", "competing shell and visible controls atomically claim each room command");
 const coordinatedStartFunctionStart = capturePhoneShellText.indexOf(
   "private func requestCoordinatedStart",
 );

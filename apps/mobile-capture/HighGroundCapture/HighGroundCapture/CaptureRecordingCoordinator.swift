@@ -272,6 +272,25 @@ final class CaptureRecordingCoordinator: ObservableObject {
         statusMessage = handledStatusMessage(for: state)
     }
 
+    /// Atomically claims a directive before an async local start/stop crosses
+    /// actor suspension points. The shell observer and a visible host control
+    /// can discover the same command at nearly the same time; only one may
+    /// operate the endpoint. A failed attempt remains explicitly retryable.
+    func claim(_ directive: CaptureRecordingDirective) -> Bool {
+        let priorState = handledStates[directive.id]
+        switch directive.action {
+        case .start:
+            guard priorState == nil || priorState == .startFailed else { return false }
+            handledStates[directive.id] = .observed
+            statusMessage = handledStatusMessage(for: .observed)
+        case .stop:
+            guard priorState == nil || priorState == .stopFailed else { return false }
+            handledStates[directive.id] = .stopping
+            statusMessage = handledStatusMessage(for: .stopping)
+        }
+        return true
+    }
+
     func acknowledge(
         roomID: String,
         directive: CaptureRecordingDirective,
