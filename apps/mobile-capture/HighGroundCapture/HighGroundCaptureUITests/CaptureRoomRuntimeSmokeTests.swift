@@ -758,6 +758,26 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             return element.frame.maxY < recorderAction.frame.minY
         }
 
+        func moveSurface(_ surface: XCUIElement, towardBottom: Bool, gently: Bool) {
+            guard gently else {
+                if towardBottom { surface.swipeDown() } else { surface.swipeUp() }
+                return
+            }
+
+            // A full XCTest swipe can jump completely across a compact card.
+            // Once the target exists, make a short, deterministic drag so the
+            // action settles between the navigation bar and recorder dock.
+            let startY: CGFloat = towardBottom ? 0.42 : 0.68
+            let endY: CGFloat = towardBottom ? 0.62 : 0.48
+            surface.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: startY))
+                .press(
+                    forDuration: 0.05,
+                    thenDragTo: surface.coordinate(
+                        withNormalizedOffset: CGVector(dx: 0.5, dy: endY)
+                    )
+                )
+        }
+
         let deadline = Date().addingTimeInterval(timeout)
         var attempts = 0
         while Date() < deadline {
@@ -768,17 +788,17 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
                 let shouldMoveTowardBottom = element.exists
                     && element.frame.minY <= topNavigationChromeBottom() + 4
                 if recorderSurface.exists && recorderSurface.isHittable {
-                    if shouldMoveTowardBottom {
-                        recorderSurface.swipeDown()
-                    } else {
-                        recorderSurface.swipeUp()
-                    }
+                    moveSurface(
+                        recorderSurface,
+                        towardBottom: shouldMoveTowardBottom,
+                        gently: element.exists
+                    )
                 } else {
-                    if shouldMoveTowardBottom {
-                        app.swipeDown()
-                    } else {
-                        app.swipeUp()
-                    }
+                    moveSurface(
+                        app,
+                        towardBottom: shouldMoveTowardBottom,
+                        gently: element.exists
+                    )
                 }
                 attempts += 1
             }
