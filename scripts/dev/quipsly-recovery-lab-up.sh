@@ -81,8 +81,15 @@ fi
 
 if [[ "${1:-}" == "--run-firebase" ]]; then
   cd "${repo_root}"
+  firebase_command=(exec firebase)
+  if [[ ! -x "${repo_root}/node_modules/.bin/firebase" ]]; then
+    # The recovery lab must work from a clean collaborator checkout. Firebase
+    # Tools is intentionally not a shipping dependency, so use one pinned CLI
+    # through pnpm's content-addressed cache when no local binary is present.
+    firebase_command=(dlx firebase-tools@15.29.0)
+  fi
   exec "${pnpm_bin:?Missing launcher pnpm path}" \
-    exec firebase emulators:start \
+    "${firebase_command[@]}" emulators:start \
     --only auth \
     --project "${firebase_project}" \
     --config ops/firebase-auth-emulator.recovery-lab.json

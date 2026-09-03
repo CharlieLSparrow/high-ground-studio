@@ -50,6 +50,12 @@ test("fresh environments are migration-built and loopback-only", () => {
   assert.match(up, /--rm/);
 });
 
+test("a clean checkout can start the Auth emulator without ambient tooling", () => {
+  assert.match(up, /node_modules\/\.bin\/firebase/);
+  assert.match(up, /firebase-tools@15\.29\.0/);
+  assert.match(up, /firebase_command=\(dlx firebase-tools@15\.29\.0\)/);
+});
+
 test("shutdown is confined to exact owned jobs and the disposable database", () => {
   for (const source of [up, down]) {
     assert.match(source, /com\.quipsly\.recovery-lab\.nest/);
