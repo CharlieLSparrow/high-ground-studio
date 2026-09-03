@@ -11142,7 +11142,9 @@ private struct CaptureRecorderView: View {
     @State private var videoQualityIntent: VideoCaptureQualityIntent = CaptureCallPreferences.videoQualityIntent
     @State private var isRunningRehearsalCheck = false
     @State private var isSafelyLeavingRoom = false
+    #if DEBUG && !targetEnvironment(simulator)
     @State private var didRunPhysicalVoiceWritingAcceptance = false
+    #endif
     @StateObject private var soundCheck = CaptureAudioSoundCheckController()
     @StateObject private var sessionPreflight = CaptureSessionPreflightClient()
     @StateObject private var episodeManuscript = MobileEpisodeManuscriptClient()
@@ -12088,11 +12090,14 @@ private struct CaptureRecorderView: View {
                 CaptureInlineWarning(text: recorderMessage)
             }
         }
+        #if DEBUG && !targetEnvironment(simulator)
         .task(id: session.id) {
             await runPhysicalVoiceWritingAcceptanceIfRequested(for: session)
         }
+        #endif
     }
 
+    #if DEBUG && !targetEnvironment(simulator)
     /// Exercises the same start/stop closures as the visible record button on
     /// a directly attached iPhone or iPad. The launch gate is DEBUG + physical
     /// device + explicit command-line flag, and the one-shot state prevents a
@@ -12138,6 +12143,7 @@ private struct CaptureRecorderView: View {
             "QUIPSLY_PHYSICAL_VOICE_WRITING_ACCEPTANCE finished saved=\(stopped || audioCapture.captureState == .saved) state=\(audioCapture.captureState.rawValue) id=\(recordingIDLabel) duration=\(savedRecording?.durationSeconds ?? audioCapture.currentDuration) status=\(savedRecording?.status.rawValue ?? "missing") detail=\(audioCapture.lastErrorMessage ?? "none")"
         )
     }
+    #endif
 
     /// Episode source material belongs beside the recorder, but each tool must
     /// remain an independent lazy row. A single helper that returned all three

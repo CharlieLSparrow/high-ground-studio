@@ -506,8 +506,8 @@ requireRegex(
 );
 requireRegex(
   capturePhoneShellText,
-  /private func runPhysicalVoiceWritingAcceptanceIfRequested[\s\S]*runsPhysicalVoiceWritingAcceptance[\s\S]*await requestCoordinatedStart\(for: session\)[\s\S]*waitUntilRecordingOrTerminal[\s\S]*Task\.sleep\(for: \.seconds\(7\)\)[\s\S]*await requestCoordinatedStop\(for: session\)[\s\S]*QUIPSLY_PHYSICAL_VOICE_WRITING_ACCEPTANCE finished/,
-  "physical voice-writing acceptance traverses production start, source confirmation, and stop before emitting a terminal receipt",
+  /#if DEBUG && !targetEnvironment\(simulator\)\s*\/\/\/ Exercises the same start\/stop closures[\s\S]*private func runPhysicalVoiceWritingAcceptanceIfRequested[\s\S]*runsPhysicalVoiceWritingAcceptance[\s\S]*await requestCoordinatedStart\(for: session\)[\s\S]*waitUntilRecordingOrTerminal[\s\S]*Task\.sleep\(for: \.seconds\(7\)\)[\s\S]*await requestCoordinatedStop\(for: session\)[\s\S]*QUIPSLY_PHYSICAL_VOICE_WRITING_ACCEPTANCE finished[\s\S]*#endif/,
+  "DEBUG physical-only voice-writing acceptance traverses production start, source confirmation, and stop before emitting a terminal receipt",
 );
 requireIncludes(deterministicUITestsText, "func testPrivateVoiceNoteOpensCaptureWithoutMeetingPaperworkOnRegularWidthIPad", "operated native acceptance covers iPad Speak to Write through the platform create rail");
 requireIncludes(deterministicUITestsText, "speakToWrite.isSelected", "operated iPad acceptance keeps the current Speak to Write location selected");
