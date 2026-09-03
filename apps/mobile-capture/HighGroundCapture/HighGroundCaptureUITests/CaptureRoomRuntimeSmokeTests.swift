@@ -369,7 +369,7 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         requestedTab.tap()
         let initialSurfaceIdentifier: String
         switch initialTab {
-        case "record": initialSurfaceIdentifier = "CaptureSessionChooser"
+        case "record": initialSurfaceIdentifier = "CaptureSessionsDestination"
         case "work": initialSurfaceIdentifier = "CaptureWorkView"
         case "library": initialSurfaceIdentifier = "CaptureLibrarySectionPicker"
         case "account": initialSurfaceIdentifier = "CaptureAccountView"
@@ -389,8 +389,11 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
                 "The requested root tab should be visibly selected; a hidden TabView descendant is not launch proof."
             )
         }
+        let initialSurface = initialTab == "record"
+            ? sessionsDestination(in: app)
+            : app.descendants(matching: .any)[initialSurfaceIdentifier].firstMatch
         XCTAssertTrue(
-            app.descendants(matching: .any)[initialSurfaceIdentifier].waitForExistence(timeout: 60),
+            initialSurface.waitForExistence(timeout: 60),
             "The native auth transaction should finish and load the requested signed-in root surface before workflow navigation begins."
         )
         return app
@@ -809,7 +812,7 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
                     : "CaptureTodayView"
             ].firstMatch
         case "Sessions":
-            destination = app.buttons["CaptureSessionChooser"].firstMatch
+            destination = sessionsDestination(in: app)
         case "Work":
             destination = app.descendants(matching: .any)["CaptureWorkView"].firstMatch
         case "Library":
@@ -841,6 +844,20 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             destination.waitForExistence(timeout: 8),
             "Capture should render the \(title) destination after its root tab is tapped."
         )
+    }
+
+    private func sessionsDestination(in app: XCUIApplication) -> XCUIElement {
+        // Sessions remembers the last selected Session so returning coaches
+        // can resume recording immediately. The picker and recorder are both
+        // valid destination surfaces; requiring only the picker makes the
+        // acceptance harness reject that intentional restoration behavior.
+        app.descendants(matching: .any).matching(
+            NSPredicate(
+                format: "identifier == %@ OR identifier == %@",
+                "CaptureSessionChooser",
+                "CaptureRecorderView"
+            )
+        ).firstMatch
     }
 
     private func openLocalRecorderIfNeeded(in app: XCUIApplication) {
@@ -932,6 +949,16 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
     }
 
     private func selectRequestedSession(in app: XCUIApplication, credentials: RuntimeSmokeCredentials) {
+        if let sessionTitle = credentials.sessionTitle,
+           !sessionTitle.isEmpty,
+           app.staticTexts[sessionTitle].firstMatch.exists {
+            XCTAssertTrue(
+                app.scrollViews["CaptureRecorderView"].firstMatch.exists,
+                "A restored requested Session must be shown on the real recorder surface."
+            )
+            return
+        }
+
         let sessionChooser = app.buttons["CaptureSessionChooser"].firstMatch
         XCTAssertTrue(
             sessionChooser.waitForExistence(timeout: 12),
