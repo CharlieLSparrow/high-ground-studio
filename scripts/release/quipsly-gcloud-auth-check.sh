@@ -49,7 +49,9 @@ else
 fi
 
 if (
-  cd "${REPO_ROOT}"
+  # firebase-admin is an app dependency in this pnpm workspace. Resolve it
+  # from the app that actually deploys instead of assuming a root hoist.
+  cd "${REPO_ROOT}/apps/quipsly"
   FIREBASE_PROJECT_ID="${FIREBASE_PROJECT_ID}" node --input-type=module <<'NODE'
 import { applicationDefault, getApps, initializeApp } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
