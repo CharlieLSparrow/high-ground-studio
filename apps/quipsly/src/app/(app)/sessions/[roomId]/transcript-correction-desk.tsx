@@ -148,6 +148,8 @@ type TranscriptExportSegment = Pick<
   | "speakerLabel"
   | "startSeconds"
   | "endSeconds"
+  | "programStartSeconds"
+  | "programEndSeconds"
   | "text"
   | "acceptedCorrection"
   | "acceptedVerification"
@@ -186,8 +188,10 @@ export function reviewedTranscriptText(input: {
     const status = segment.acceptedCorrection || segment.acceptedVerification
       ? "playback-reviewed"
       : "provider-only";
+    const startSeconds = segment.programStartSeconds ?? segment.startSeconds;
+    const endSeconds = segment.programEndSeconds ?? segment.endSeconds;
     lines.push(
-      `[${timestampForSeconds(segment.startSeconds)}-${timestampForSeconds(segment.endSeconds)}] ${segment.speakerLabel || "Speaker not attributed"} (${status})`,
+      `[${timestampForSeconds(startSeconds)}-${timestampForSeconds(endSeconds)}] ${segment.speakerLabel || "Speaker not attributed"} (${status})`,
       segment.text.trim(),
       "",
     );
@@ -248,7 +252,7 @@ type Desk = {
     reason: string;
     sourceCount: number;
     programClock: null | {
-      authority: "single-source-origin" | "capture-clock-proposal" | "reported-wall-clock-fallback";
+      authority: "single-source-origin" | "reviewed-waveform-placement" | "capture-clock-proposal" | "reported-wall-clock-fallback";
       waveformReviewRequired: boolean;
       sampleAccurateClaimed: false;
     };
@@ -442,8 +446,13 @@ function audioFormat(evidence: AudioTranscriptEvidence["audio"]) {
   ].filter(Boolean).join(" · ") || "Audio format not preserved";
 }
 
-export function transcriptWordsForAudioEvidence(segments: Segment[]): AudioEvidenceTranscriptWord[] {
-  return segments.flatMap((segment) => segment.words.flatMap((word) => {
+export function transcriptWordsForAudioEvidence(
+  segments: Segment[],
+  recordingAssetId?: string | null,
+): AudioEvidenceTranscriptWord[] {
+  return segments
+    .filter((segment) => !recordingAssetId || !segment.recordingAssetId || segment.recordingAssetId === recordingAssetId)
+    .flatMap((segment) => segment.words.flatMap((word) => {
     if (!Number.isFinite(word.startSeconds) || !Number.isFinite(word.endSeconds) || word.startSeconds < 0 || word.endSeconds < word.startSeconds) return [];
     return [{
       id: word.id,
@@ -823,6 +832,7 @@ function AudioSignalEvidencePanel({
 function AudioTranscriptEvidencePanel({
   evidence,
   segments,
+  recordingAssetId,
   playbackReady,
   selectedSeconds,
   onSelectTime,
@@ -830,13 +840,17 @@ function AudioTranscriptEvidencePanel({
 }: {
   evidence: AudioTranscriptEvidence;
   segments: Segment[];
+  recordingAssetId?: string | null;
   playbackReady: boolean;
   selectedSeconds: number;
   onSelectTime: (seconds: number) => void;
   onPlayAt: (seconds: number) => Promise<void>;
 }) {
   const { audio, transcript } = evidence;
-  const transcriptWords = useMemo(() => transcriptWordsForAudioEvidence(segments), [segments]);
+  const transcriptWords = useMemo(
+    () => transcriptWordsForAudioEvidence(segments, recordingAssetId),
+    [recordingAssetId, segments],
+  );
   const confidenceLabel = transcript.meanWordConfidence === null
     ? "Not supplied"
     : percent(transcript.meanWordConfidence, 1);
@@ -1817,8 +1831,11 @@ export function TranscriptCorrectionDesk({
   }, [desk]);
 
   const spectralTranscriptWords = useMemo(
-    () => transcriptWordsForAudioEvidence(desk?.segments ?? []),
-    [desk?.segments],
+    () => transcriptWordsForAudioEvidence(
+      desk?.segments ?? [],
+      desk?.recording?.id,
+    ),
+    [desk?.recording?.id, desk?.segments],
   );
   const spectralEvidenceMarkers = useMemo<SpectralEvidenceMarker[]>(() => [
     ...(desk?.evidence?.audio.signal?.observations ?? []).map((observation, index) => ({
@@ -2320,6 +2337,7 @@ export function TranscriptCorrectionDesk({
           {desk.evidence ? <AudioTranscriptEvidencePanel
               evidence={desk.evidence}
               segments={desk.segments}
+              recordingAssetId={desk.recording?.id}
               playbackReady={playbackReady}
               selectedSeconds={playbackSeconds}
               onSelectTime={setPlaybackSeconds}

@@ -5,6 +5,7 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import {
   reviewedTranscriptFileName,
   reviewedTranscriptText,
+  transcriptWordsForAudioEvidence,
   TranscriptCorrectionDesk,
 } from "./transcript-correction-desk";
 import { buildAudioTranscriptEvidence } from "@/lib/transcript-evidence";
@@ -115,6 +116,42 @@ describe("TranscriptCorrectionDesk", () => {
     expect(text).toContain("Speaker not attributed (provider-only)");
     expect(text).toContain("I will bring the evidence.");
     expect(text).toContain("Provider evidence remains immutable");
+  });
+
+  it("exports assembled turns on the Session clock instead of each source clock", () => {
+    const text = reviewedTranscriptText({
+      title: "Two-person coaching Session",
+      transcriptJobId: "job-coach",
+      segments: [{
+        ...segment,
+        startSeconds: 3,
+        endSeconds: 5,
+        programStartSeconds: 11.25,
+        programEndSeconds: 13.25,
+      }],
+    });
+
+    expect(text).toContain("[00:11-00:13]");
+    expect(text).not.toContain("[00:03-00:05]");
+  });
+
+  it("keeps participant words on their exact source waveform", () => {
+    const coach = {
+      ...segment,
+      id: "coach-segment",
+      recordingAssetId: "coach-audio",
+      words: [{ ...segment.words[0], id: "coach-word" }],
+    };
+    const client = {
+      ...segment,
+      id: "client-segment",
+      recordingAssetId: "client-audio",
+      words: [{ ...segment.words[0], id: "client-word" }],
+    };
+
+    expect(
+      transcriptWordsForAudioEvidence([coach, client], "coach-audio").map((word) => word.id),
+    ).toEqual(["coach-word"]);
   });
 
   it("offers a conventional mentor report download inside a coaching Session", async () => {
