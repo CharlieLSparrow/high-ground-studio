@@ -517,8 +517,8 @@ requireIncludes(capturePhoneShellText, "waitForPhysicalVoiceWritingTranscript", 
 requireIncludes(capturePhoneShellText, "OnDeviceTranscriptManager.shared.storedTranscript", "physical acceptance reads the ordinary protected transcript store");
 requireRegex(
   deterministicUITestsText,
-  /#if !targetEnvironment\(simulator\)[\s\S]*func testPhysicalDeviceVoiceWritingCreatesOneSavedSource\(\)[\s\S]*XCUIApplication\(bundleIdentifier: "com\.apple\.springboard"\)[\s\S]*buttons\["Allow"\][\s\S]*CaptureStopButton[\s\S]*waitForNonExistence[\s\S]*CaptureStartButton[\s\S]*#endif/,
-  "physical-only operated acceptance handles the ordinary microphone prompt and proves one bounded saved source without creating simulator skips",
+  /#if !targetEnvironment\(simulator\)[\s\S]*waitForPhysicalVoiceWritingEditor[\s\S]*CaptureVoiceWritingOpen_[\s\S]*func testPhysicalDeviceVoiceWritingCreatesOneSavedSource\(\)[\s\S]*XCUIApplication\(bundleIdentifier: "com\.apple\.springboard"\)[\s\S]*buttons\["Allow"\][\s\S]*CaptureStopButton[\s\S]*waitForNonExistence[\s\S]*waitForPhysicalVoiceWritingEditor[\s\S]*CaptureVoiceWritingEditor[\s\S]*#endif/,
+  "physical-only operated acceptance handles ordinary microphone and speech permission, proves one bounded saved source, and reaches editable source-bound writing without creating simulator skips",
 );
 requireIncludes(deterministicUITestsText, "func testPrivateVoiceNoteOpensCaptureWithoutMeetingPaperworkOnRegularWidthIPad", "operated native acceptance covers iPad Speak to Write through the platform create rail");
 requireIncludes(deterministicUITestsText, "speakToWrite.isSelected", "operated iPad acceptance keeps the current Speak to Write location selected");

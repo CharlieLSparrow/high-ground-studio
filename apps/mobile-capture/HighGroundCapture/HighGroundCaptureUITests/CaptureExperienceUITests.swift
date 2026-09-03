@@ -9,11 +9,44 @@ final class CaptureExperienceUITests: XCTestCase {
     /// device proves the same one-tap user journey without timing luck.
     private func allowSystemPermissionIfPresented(timeout: TimeInterval = 4) {
         let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
-        let allow = springboard.buttons["Allow"].firstMatch
-        if allow.waitForExistence(timeout: timeout) {
-            allow.tap()
+        for title in ["Allow", "Allow While Using App"] {
+            let permission = springboard.buttons[title].firstMatch
+            if permission.waitForExistence(timeout: timeout) {
+                permission.tap()
+                return
+            }
         }
     }
+
+    #if !targetEnvironment(simulator)
+    /// Keep the target process alive through Apple's bounded post-capture
+    /// speech work. A saved microphone source is necessary but not sufficient
+    /// for Speak to write: the physical acceptance flight must also reach the
+    /// ordinary editable writing surface from that exact source.
+    private func waitForPhysicalVoiceWritingEditor(
+        timeout: TimeInterval
+    ) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        let editor = app.otherElements["CaptureVoiceWritingEditor"]
+        let openWriting = app.buttons.matching(
+            NSPredicate(
+                format: "identifier BEGINSWITH %@",
+                "CaptureVoiceWritingOpen_"
+            )
+        ).firstMatch
+
+        while Date() < deadline {
+            allowSystemPermissionIfPresented(timeout: 0.25)
+            if editor.exists { return true }
+            if openWriting.exists && openWriting.isHittable {
+                openWriting.tap()
+                if editor.waitForExistence(timeout: 5) { return true }
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.5))
+        }
+        return editor.exists
+    }
+    #endif
 
     override func setUpWithError() throws {
         continueAfterFailure = false
@@ -928,8 +961,9 @@ final class CaptureExperienceUITests: XCTestCase {
     /// This is intentionally absent from simulator discovery rather than
     /// reported as a skip. It proves the real attached microphone, the same
     /// source-first start/stop closures used by the visible controls, and a
-    /// completed local source. Transcript words and perceived audio quality
-    /// remain separate human evidence; this test never invents speech.
+    /// completed local source plus editable source-bound writing. Transcript
+    /// accuracy and perceived audio quality remain separate human evidence;
+    /// this test never invents speech.
     func testPhysicalDeviceVoiceWritingCreatesOneSavedSource() {
         let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
         let microphonePrompt = springboard.alerts.firstMatch
@@ -951,20 +985,22 @@ final class CaptureExperienceUITests: XCTestCase {
             stop.waitForNonExistence(timeout: 25),
             "The bounded physical acceptance take should stop and finalize automatically."
         )
-        XCTAssertTrue(
-            app.buttons["CaptureStartButton"].waitForExistence(timeout: 12),
-            "Finalizing the physical take should return the recorder to its ready state."
-        )
 
-        let state = app.staticTexts["CaptureRecorderStateLabel"]
-        XCTAssertTrue(state.exists)
-        XCTAssertFalse(
-            state.label.localizedCaseInsensitiveContains("failed"),
-            "The visible recorder state must not hide a failed physical finalization."
+        // Apple may present Speech Recognition independently from microphone
+        // permission. Keep servicing only the normal system Allow action while
+        // the exact finalized source is transcribed.
+        allowSystemPermissionIfPresented()
+        XCTAssertTrue(
+            waitForPhysicalVoiceWritingEditor(timeout: 150),
+            "The saved physical source should produce editable source-bound writing before the acceptance process exits."
+        )
+        XCTAssertTrue(
+            app.otherElements["CaptureVoiceWritingEditor"].exists,
+            "Physical voice writing should open the same editable surface a person uses."
         )
 
         let screenshot = XCTAttachment(screenshot: app.screenshot())
-        screenshot.name = "physical-voice-writing-saved-source.png"
+        screenshot.name = "physical-voice-writing-editable-source.png"
         screenshot.lifetime = .keepAlways
         add(screenshot)
     }
