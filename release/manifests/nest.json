@@ -41,6 +41,7 @@
     },
     "validation": {
       "prefixes": [
+        "scripts/release/quipsly-cloud-run-capability-readback",
         "scripts/ci/plan-changed-surfaces"
       ],
       "files": [

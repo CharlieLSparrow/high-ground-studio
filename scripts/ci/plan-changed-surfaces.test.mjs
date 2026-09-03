@@ -123,6 +123,19 @@ test("Capture release-tool families never wake a Nest deployment", () => {
   }
 });
 
+test("Nest runtime readback validates the product without deploying it", () => {
+  const plan = planChangedSurfaces([
+    "scripts/release/quipsly-cloud-run-capability-readback.mjs",
+    "scripts/release/quipsly-cloud-run-capability-readback.test.mjs",
+  ]);
+
+  assert.equal(plan.quipsly, true);
+  assert.equal(plan.studio, false);
+  assert.equal(plan.web, false);
+  assert.deepEqual(plan.deployTargets, []);
+  assert.deepEqual(plan.changedSurfaces, []);
+});
+
 test("Nest app changes validate and deploy only Nest", () => {
   const plan = planChangedSurfaces([
     "apps/quipsly/src/app/api/mobile/capture/sessions/route.ts",
