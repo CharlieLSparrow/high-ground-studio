@@ -733,14 +733,26 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         timeout: TimeInterval = 18,
         swipeAttempts: Int = 8
     ) -> Bool {
+        func isVisiblyOperable() -> Bool {
+            guard element.exists && element.isHittable else { return false }
+            let recorderDock = app.descendants(matching: .any)[
+                "CapturePersistentRecorderDock"
+            ].firstMatch
+            return !recorderDock.exists || !recorderDock.frame.intersects(element.frame)
+        }
+
         let deadline = Date().addingTimeInterval(timeout)
         var attempts = 0
         while Date() < deadline {
-            if element.exists && element.isHittable { return true }
+            if isVisiblyOperable() { return true }
             if attempts < swipeAttempts {
                 let recorderSurface = recorderScrollSurface(in: app)
+                let recorderDock = app.descendants(matching: .any)[
+                    "CapturePersistentRecorderDock"
+                ].firstMatch
                 let shouldMoveTowardTop = element.exists
                     && element.frame.midY < app.frame.midY
+                    && (!recorderDock.exists || element.frame.maxY < recorderDock.frame.minY)
                 if recorderSurface.exists && recorderSurface.isHittable {
                     if shouldMoveTowardTop {
                         recorderSurface.swipeDown()
@@ -758,7 +770,7 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             }
             RunLoop.current.run(until: Date().addingTimeInterval(0.5))
         }
-        return element.exists && element.isHittable
+        return isVisiblyOperable()
     }
 
     /// The persistent recorder dock is the ordinary, always-reachable path to
