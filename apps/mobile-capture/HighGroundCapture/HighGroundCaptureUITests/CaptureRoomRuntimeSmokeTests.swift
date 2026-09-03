@@ -739,10 +739,20 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             if element.exists && element.isHittable { return true }
             if attempts < swipeAttempts {
                 let recorderSurface = recorderScrollSurface(in: app)
+                let shouldMoveTowardTop = element.exists
+                    && element.frame.midY < app.frame.midY
                 if recorderSurface.exists && recorderSurface.isHittable {
-                    recorderSurface.swipeUp()
+                    if shouldMoveTowardTop {
+                        recorderSurface.swipeDown()
+                    } else {
+                        recorderSurface.swipeUp()
+                    }
                 } else {
-                    app.swipeUp()
+                    if shouldMoveTowardTop {
+                        app.swipeDown()
+                    } else {
+                        app.swipeUp()
+                    }
                 }
                 attempts += 1
             }
