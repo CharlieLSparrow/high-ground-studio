@@ -164,6 +164,22 @@ enum CaptureLaunchConfiguration {
         #endif
     }
 
+    /// Runs one bounded source-first recording on a directly attached physical
+    /// development device. This is intentionally unavailable to the simulator
+    /// and to every Release/TestFlight/App Store build: it exists only so a
+    /// developer can prove the real microphone, protected file, and stop path
+    /// without confusing a synthetic preview or matching build number for
+    /// physical acceptance evidence.
+    static var runsPhysicalVoiceWritingAcceptance: Bool {
+        #if DEBUG && !targetEnvironment(simulator)
+        ProcessInfo.processInfo.arguments.contains(
+            "--capture-physical-voice-writing-acceptance"
+        )
+        #else
+        false
+        #endif
+    }
+
     /// Deterministically reproduces the physical-device race where a Nest
     /// Session refresh completed after a local writing shell was created.
     /// Release and physical-device builds can never enable this path.

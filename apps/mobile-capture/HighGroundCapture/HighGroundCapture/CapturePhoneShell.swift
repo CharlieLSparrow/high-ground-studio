@@ -4,6 +4,12 @@ import EventKitUI
 import SwiftUI
 import UIKit
 
+private enum CaptureIPadSidebarSelection: Hashable {
+    case destination(CaptureRootTab)
+    case speakToWrite
+    case startWriting
+}
+
 struct CapturePhoneShell: View {
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
@@ -379,12 +385,28 @@ struct CapturePhoneShell: View {
         }
     }
 
-    private var sidebarSelection: Binding<CaptureRootTab?> {
+    /// The sidebar must identify the work surface a person is actually using,
+    /// not merely the root tab that happens to host it. Speak to Write and the
+    /// focused writing editor are first-class iPad destinations even though
+    /// they reuse Record and Library navigation infrastructure underneath.
+    private var currentIPadSidebarSelection: CaptureIPadSidebarSelection {
+        if visibleTab == .record,
+           model.selectedSession?.isPersonalVoiceNote == true {
+            return .speakToWrite
+        }
+        if visibleTab == .library,
+           requestedWritingDraftID != nil {
+            return .startWriting
+        }
+        return .destination(visibleTab)
+    }
+
+    private var sidebarSelection: Binding<CaptureIPadSidebarSelection?> {
         Binding(
-            get: { visibleTab },
+            get: { currentIPadSidebarSelection },
             set: { selection in
-                if let selection {
-                    visibleTab = selection
+                if case let .destination(tab) = selection {
+                    visibleTab = tab
                 }
             }
         )
@@ -400,7 +422,7 @@ struct CapturePhoneShell: View {
                             .fixedSize(horizontal: false, vertical: true)
                             .frame(minHeight: 44, alignment: .leading)
                             .padding(.vertical, 2)
-                            .tag(tab)
+                            .tag(CaptureIPadSidebarSelection.destination(tab))
                             .accessibilityIdentifier(
                                 "CaptureIPadSidebar_\(tab.rawValue)"
                             )
@@ -419,12 +441,14 @@ struct CapturePhoneShell: View {
                     Button(action: startVoiceNote) {
                         Label("Speak to write", systemImage: "waveform.circle.fill")
                     }
+                    .tag(CaptureIPadSidebarSelection.speakToWrite)
                     .keyboardShortcut("r", modifiers: [.command, .shift])
                     .accessibilityIdentifier("CaptureIPadSpeakToWrite")
 
                     Button(action: startWriting) {
                         Label("Start writing", systemImage: "square.and.pencil")
                     }
+                    .tag(CaptureIPadSidebarSelection.startWriting)
                     .keyboardShortcut("n", modifiers: [.command, .shift])
                     .accessibilityIdentifier("CaptureIPadStartWriting")
                 }
@@ -11118,6 +11142,7 @@ private struct CaptureRecorderView: View {
     @State private var videoQualityIntent: VideoCaptureQualityIntent = CaptureCallPreferences.videoQualityIntent
     @State private var isRunningRehearsalCheck = false
     @State private var isSafelyLeavingRoom = false
+    @State private var didRunPhysicalVoiceWritingAcceptance = false
     @StateObject private var soundCheck = CaptureAudioSoundCheckController()
     @StateObject private var sessionPreflight = CaptureSessionPreflightClient()
     @StateObject private var episodeManuscript = MobileEpisodeManuscriptClient()
@@ -12063,6 +12088,55 @@ private struct CaptureRecorderView: View {
                 CaptureInlineWarning(text: recorderMessage)
             }
         }
+        .task(id: session.id) {
+            await runPhysicalVoiceWritingAcceptanceIfRequested(for: session)
+        }
+    }
+
+    /// Exercises the same start/stop closures as the visible record button on
+    /// a directly attached iPhone or iPad. The launch gate is DEBUG + physical
+    /// device + explicit command-line flag, and the one-shot state prevents a
+    /// SwiftUI reconstruction from starting a second source. Seven seconds is
+    /// long enough for AVAudioSession activation, a spoken test phrase, and a
+    /// non-zero source while keeping accidental test media small.
+    private func runPhysicalVoiceWritingAcceptanceIfRequested(
+        for session: MobileCaptureSession
+    ) async {
+        guard CaptureLaunchConfiguration.runsPhysicalVoiceWritingAcceptance,
+              !didRunPhysicalVoiceWritingAcceptance,
+              session.isPersonalVoiceNote,
+              audioCapture.captureState == .idle else { return }
+
+        didRunPhysicalVoiceWritingAcceptance = true
+        print("QUIPSLY_PHYSICAL_VOICE_WRITING_ACCEPTANCE requested session=\(session.id)")
+
+        await requestCoordinatedStart(for: session)
+        guard await audioCapture.waitUntilRecordingOrTerminal(timeout: 12) else {
+            print(
+                "QUIPSLY_PHYSICAL_VOICE_WRITING_ACCEPTANCE start_failed state=\(audioCapture.captureState.rawValue) detail=\(audioCapture.lastErrorMessage ?? "none")"
+            )
+            return
+        }
+
+        let recordingID = audioCapture.activeLocalRecordingID
+        let recordingIDLabel = recordingID?.uuidString.lowercased() ?? "missing"
+        print("QUIPSLY_PHYSICAL_VOICE_WRITING_ACCEPTANCE recording id=\(recordingIDLabel)")
+
+        do {
+            try await Task.sleep(for: .seconds(7))
+        } catch {
+            print("QUIPSLY_PHYSICAL_VOICE_WRITING_ACCEPTANCE cancelled id=\(recordingIDLabel)")
+            return
+        }
+
+        await requestCoordinatedStop(for: session)
+        let stopped = await audioCapture.stopAndFinalize(timeout: 12)
+        let savedRecording = recordingID.flatMap {
+            audioCapture.localRecordingLibrary.recording(id: $0)
+        }
+        print(
+            "QUIPSLY_PHYSICAL_VOICE_WRITING_ACCEPTANCE finished saved=\(stopped || audioCapture.captureState == .saved) state=\(audioCapture.captureState.rawValue) id=\(recordingIDLabel) duration=\(savedRecording?.durationSeconds ?? audioCapture.currentDuration) status=\(savedRecording?.status.rawValue ?? "missing") detail=\(audioCapture.lastErrorMessage ?? "none")"
+        )
     }
 
     /// Episode source material belongs beside the recorder, but each tool must

@@ -505,6 +505,14 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertFalse(app.otherElements["CaptureConsentStrip"].exists)
         XCTAssertTrue(app.buttons["CaptureStartButton"].isEnabled)
         XCTAssertTrue(app.buttons["CaptureStartButton"].isHittable)
+        XCTAssertTrue(
+            speakToWrite.isSelected,
+            "The iPad sidebar should highlight Speak to Write itself, not the Sessions infrastructure that hosts its recorder."
+        )
+        XCTAssertFalse(
+            app.staticTexts["CaptureIPadSidebar_record"].firstMatch.isSelected,
+            "Sessions must not remain selected while the focused private writing surface is open."
+        )
         XCTAssertTrue(app.state == .runningForeground)
     }
 

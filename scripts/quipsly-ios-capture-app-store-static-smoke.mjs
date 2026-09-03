@@ -499,7 +499,18 @@ requireIncludes(capturePhoneShellText, "NavigationSplitView", "regular-width iPa
 requireIncludes(capturePhoneShellText, "horizontalSizeClass == .regular", "iPad workspace adapts to the current resizable window width");
 requireIncludes(capturePhoneShellText, 'accessibilityIdentifier("CaptureIPadSidebar")', "native iPad sidebar has stable operated-test identity");
 requireIncludes(capturePhoneShellText, 'keyboardShortcut("r", modifiers: [.command, .shift])', "iPad hardware keyboard reaches Speak to Write");
+requireRegex(
+  captureExperienceModelText,
+  /static var runsPhysicalVoiceWritingAcceptance: Bool \{\s*#if DEBUG && !targetEnvironment\(simulator\)[\s\S]*--capture-physical-voice-writing-acceptance[\s\S]*#else\s*false\s*#endif\s*\}/,
+  "physical voice-writing acceptance is unavailable to simulator and Release builds",
+);
+requireRegex(
+  capturePhoneShellText,
+  /private func runPhysicalVoiceWritingAcceptanceIfRequested[\s\S]*runsPhysicalVoiceWritingAcceptance[\s\S]*await requestCoordinatedStart\(for: session\)[\s\S]*waitUntilRecordingOrTerminal[\s\S]*Task\.sleep\(for: \.seconds\(7\)\)[\s\S]*await requestCoordinatedStop\(for: session\)[\s\S]*QUIPSLY_PHYSICAL_VOICE_WRITING_ACCEPTANCE finished/,
+  "physical voice-writing acceptance traverses production start, source confirmation, and stop before emitting a terminal receipt",
+);
 requireIncludes(deterministicUITestsText, "func testPrivateVoiceNoteOpensCaptureWithoutMeetingPaperworkOnRegularWidthIPad", "operated native acceptance covers iPad Speak to Write through the platform create rail");
+requireIncludes(deterministicUITestsText, "speakToWrite.isSelected", "operated iPad acceptance keeps the current Speak to Write location selected");
 requireIncludes(deterministicUITestsText, "func testConsentNeededNextEpisodeOpensRecorderWithoutCrashingOnRegularWidthIPad", "operated native acceptance covers the full iPad Session detail against the physical stack-overflow regression");
 requireIncludes(deterministicUITestPlanText, "CaptureExperienceUITests/testRegularWidthIPadUsesANativeWorkspaceSidebar", "the guarded critical lane cannot omit native iPad navigation");
 requireIncludes(deterministicUITestPlanText, "CaptureExperienceUITests/testPrivateVoiceNoteOpensCaptureWithoutMeetingPaperworkOnRegularWidthIPad", "the guarded critical lane cannot omit iPad Speak to Write");
