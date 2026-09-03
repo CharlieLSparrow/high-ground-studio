@@ -23,6 +23,8 @@ test("fresh native flight keeps credentials private while operating client entry
   assert.match(source, /recordingConsentCanRecordAudio/);
   assert.match(source, /recordingConsentCanTranscribe/);
   assert.match(source, /quipsly-session-workspace-consent-v1/);
+  assert.match(source, /Crash recovery preserved the source but did not close the abandoned server recording boundary/);
+  assert.match(source, /crashOpenServerBoundaryClosedAfterRelaunch/);
   assert.match(source, /passwordsWrittenToArtifact: false/);
   assert.match(source, /keychainReadRequiredForAutomatedFlight: false/);
 });

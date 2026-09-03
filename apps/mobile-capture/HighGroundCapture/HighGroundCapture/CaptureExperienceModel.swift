@@ -3645,9 +3645,14 @@ final class CaptureExperienceModel: ObservableObject {
 
         // ReceiptStore owns the partition switch on the same notification. Defer
         // restart one actor turn so observer ordering cannot select the prior
-        // account's rows. The expected-owner auth binding remains the final guard.
+        // account's rows. A launch can mount the model before saved-account
+        // verification finishes, so reconcile crash-open START receipts again
+        // after the authenticated owner is visible; otherwise Nest can remain
+        // marked recording even though iOS ended the recorder process. The
+        // expected-owner auth binding remains the final guard.
         Task { @MainActor [weak self] in
             await Task.yield()
+            self?.receiptStore.closeOrphanedStarts()
             self?.scheduleReceiptFlush()
             if let self {
                 self.sourcePlanOutbox.resume(client: self.sessionClient)

@@ -350,6 +350,11 @@ async function readCoachStudioHandoffProjection(context, password) {
       context.roomId,
       "Coaching Studio destination did not retain the canonical Session identity.",
     );
+    assert.equal(
+      session.status,
+      "OPEN",
+      "Crash recovery preserved the source but did not close the abandoned server recording boundary.",
+    );
     const requiredSources = (session.captureSources || []).filter(
       (source) => String(source.kind || "").toUpperCase() !== "SERVER_MIX",
     );
@@ -366,6 +371,7 @@ async function readCoachStudioHandoffProjection(context, password) {
     return {
       episodeProductionId: session.episodeProductionId,
       episodeSlug: session.episodeSlug,
+      roomStatus: session.status,
       captureGroupId: session.captureGroupId,
       requiredSources: requiredSources.map((source) => ({
         recordingAssetId: source.recordingAssetId,
@@ -653,6 +659,7 @@ const receipt = {
     finalizedSourceRecovered: true,
     finalizedSourcePlayableOffline: true,
     crashOpenReceiptPreserved: true,
+    crashOpenServerBoundaryClosedAfterRelaunch: studioHandoff.roomStatus === "OPEN",
     crashOpenBytesClaimedPlayable: false,
     reasonedAppendOnlySourceWaiver: true,
     resolvedReceiptNonBlocking: true,
