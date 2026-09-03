@@ -3,10 +3,8 @@
 import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
+import { createRequire } from "node:module";
 import path from "node:path";
-
-import { getApps, initializeApp } from "firebase-admin/app";
-import { getAuth } from "firebase-admin/auth";
 
 import { captureAppDeepLink } from "../apps/quipsly/src/lib/capture-universal-link.ts";
 import { SESSION_ENTRY_CHOICE_EVENT_NAMES } from "../apps/quipsly/src/lib/session-entry-choice.ts";
@@ -18,6 +16,15 @@ import {
   loadPlaywright,
   requireLoopbackOrigin,
 } from "./lib/retained-qa-browser.mjs";
+
+// firebase-admin belongs to the Nest app, not the workspace root. Resolve it
+// from that package explicitly so this acceptance operation works with pnpm's
+// strict dependency layout in a clean collaborator checkout.
+const requireFromNest = createRequire(
+  new URL("../apps/quipsly/package.json", import.meta.url),
+);
+const { getApps, initializeApp } = requireFromNest("firebase-admin/app");
+const { getAuth } = requireFromNest("firebase-admin/auth");
 
 const enabled = process.env.QUIPSLY_FRESH_COACHING_START_OPERATION === "1";
 const seriesMode = process.env.QUIPSLY_FRESH_COACHING_SERIES_OPERATION === "1";
