@@ -335,7 +335,13 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(openLibrary.isHittable)
         openLibrary.tap()
 
-        XCTAssertTrue(app.scrollViews["CaptureLibraryView"].waitForExistence(timeout: 8))
+        let compactLibrary = app.scrollViews["CaptureLibraryView"]
+        let adaptiveWorkspace = app.scrollViews["CaptureIPadWorkspace"]
+        XCTAssertTrue(
+            compactLibrary.waitForExistence(timeout: 2)
+                || adaptiveWorkspace.waitForExistence(timeout: 8),
+            "Library should open in the compact surface or the iPad workspace."
+        )
         XCTAssertTrue(app.staticTexts["Your recordings"].exists)
         XCTAssertFalse(app.staticTexts["Upload needs attention"].exists)
     }
@@ -4458,14 +4464,8 @@ final class CaptureExperienceUITests: XCTestCase {
     }
 
     func testTranscriptReviewShowsOrdinaryFollowUpAndReturnsToExactParticipantSource() {
-        app.tabBars.buttons["Library"].tap()
-        XCTAssertTrue(app.scrollViews["CaptureLibraryView"].waitForExistence(timeout: 5))
-
-        let reviewLink = app.buttons["CaptureTranscriptReviewPreviewLink"]
-        XCTAssertTrue(reviewLink.waitForExistence(timeout: 5))
-        reviewLink.tap()
+        openPreviewTranscriptReview()
         let transcriptScroll = app.scrollViews["CaptureTranscriptReviewView"].firstMatch
-        XCTAssertTrue(transcriptScroll.waitForExistence(timeout: 5))
 
         let results = app.descendants(matching: .any)["CaptureTranscriptFollowUpResults"].firstMatch
         revealBelow(results, in: transcriptScroll)
@@ -4493,22 +4493,16 @@ final class CaptureExperienceUITests: XCTestCase {
     }
 
     func testTranscriptReviewPresentsPlainFollowUpSuggestions() throws {
-        app.tabBars.buttons["Library"].tap()
-        XCTAssertTrue(app.scrollViews["CaptureLibraryView"].waitForExistence(timeout: 5))
-
-        let reviewLink = app.buttons["CaptureTranscriptReviewPreviewLink"]
-        XCTAssertTrue(reviewLink.waitForExistence(timeout: 5))
-        reviewLink.tap()
-
-        XCTAssertTrue(app.scrollViews["CaptureTranscriptReviewView"].waitForExistence(timeout: 5))
+        openPreviewTranscriptReview()
+        let transcriptScroll = app.scrollViews["CaptureTranscriptReviewView"].firstMatch
         let tools = app.descendants(matching: .any)["CaptureTranscriptToolsDisclosure"].firstMatch
-        reveal(tools, searchAboveFirst: false)
+        revealBelow(tools, in: transcriptScroll)
         XCTAssertTrue(tools.waitForExistence(timeout: 5))
         XCTAssertEqual(tools.value as? String, "Collapsed")
         tools.tap()
         XCTAssertEqual(tools.value as? String, "Expanded")
         let moreSuggestions = app.descendants(matching: .any)["CapturePacketAdditionalSuggestionsDisclosure"].firstMatch
-        reveal(moreSuggestions, searchAboveFirst: false)
+        revealBelow(moreSuggestions, in: transcriptScroll)
         XCTAssertTrue(
             moreSuggestions.exists,
             "Optional transcript suggestions should remain easy to find without becoming a required follow-up queue."
@@ -6108,9 +6102,29 @@ final class CaptureExperienceUITests: XCTestCase {
 
     private func openPreviewTranscriptReview() {
         let library = app.tabBars.buttons["Library"]
-        XCTAssertTrue(library.waitForExistence(timeout: 12))
-        library.tap()
-        XCTAssertTrue(app.scrollViews["CaptureLibraryView"].waitForExistence(timeout: 8))
+        if library.waitForExistence(timeout: 2) {
+            library.tap()
+        } else {
+            let sidebar = app.collectionViews["CaptureIPadSidebar"].firstMatch
+            let sidebarLibrary = sidebar.cells.element(boundBy: 4)
+            XCTAssertTrue(
+                sidebar.waitForExistence(timeout: 12)
+                    && sidebarLibrary.waitForExistence(timeout: 4),
+                "Library should remain a first-class destination in the iPad sidebar."
+            )
+            XCTAssertTrue(
+                sidebarLibrary.staticTexts["Library"].exists,
+                "The stable fourth Quipsly destination must remain Library."
+            )
+            sidebarLibrary.tap()
+        }
+        let compactLibrary = app.scrollViews["CaptureLibraryView"]
+        let adaptiveWorkspace = app.scrollViews["CaptureIPadWorkspace"]
+        XCTAssertTrue(
+            compactLibrary.waitForExistence(timeout: 2)
+                || adaptiveWorkspace.waitForExistence(timeout: 8),
+            "Library should open in the compact surface or the iPad workspace."
+        )
         let reviewLink = app.buttons["CaptureTranscriptReviewPreviewLink"]
         XCTAssertTrue(reviewLink.waitForExistence(timeout: 8))
         reviewLink.tap()

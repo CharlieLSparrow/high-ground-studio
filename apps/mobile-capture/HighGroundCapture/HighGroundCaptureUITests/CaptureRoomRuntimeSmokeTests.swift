@@ -2812,7 +2812,7 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         attachRecordingIdentity("\(sessionID):\(taskID)", name: "Fresh transcript task phone readback")
     }
 
-    func testReviewedTranscriptTaskStaysPrivateFromOtherSessionParticipant() throws {
+    func testAssignedTranscriptTaskStaysOutOfAnotherParticipantsTodayButAppearsInSharedSession() throws {
         let credentials = try runtimeSmokeCredentials()
         guard let sessionID = credentials.sessionID, !sessionID.isEmpty,
               credentials.sessionTitle?.isEmpty == false,
@@ -2845,12 +2845,20 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         reviewLink.tap()
         XCTAssertTrue(app.scrollViews["CaptureTranscriptReviewView"].waitForExistence(timeout: 30))
 
-        let sharedBoundary = app.descendants(matching: .any)["CaptureTranscriptParticipantFollowUpBoundary"].firstMatch
+        let sharedResults = app.descendants(matching: .any)["CaptureTranscriptFollowUpResults"].firstMatch
         XCTAssertTrue(
-            waitForRuntimeElement(sharedBoundary, in: app, timeout: 30, swipeAttempts: 18),
-            "The participant transcript should expose the ordinary shared-follow-up boundary."
+            waitForRuntimeElement(sharedResults, in: app, timeout: 30, swipeAttempts: 18),
+            "A Session participant should see the ordinary shared follow-up without receiving the assignee's personal Today item."
         )
-        XCTAssertTrue(sharedBoundary.label.contains("Nothing has been shared yet"))
+        XCTAssertTrue(sharedResults.label.contains("Follow-up ready"))
+        XCTAssertTrue(
+            sharedResults.staticTexts.matching(NSPredicate(format: "label == %@", taskTitle)).firstMatch.exists,
+            "The shared Session follow-up should include the generated task title."
+        )
+        XCTAssertFalse(
+            app.descendants(matching: .any)["CaptureTranscriptParticipantFollowUpBoundary"].firstMatch.exists,
+            "The empty shared-follow-up boundary must not contradict visible Session results."
+        )
         XCTAssertFalse(
             app.descendants(matching: .any)["CaptureTranscriptPacketLoadedBoundary"].firstMatch.exists,
             "Private packet candidates must not render for another Session participant."
@@ -2863,9 +2871,8 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             app.buttons["CaptureTranscriptBuildCurrentPacketButton"].firstMatch.exists,
             "A participant must not receive a private packet build action."
         )
-        XCTAssertFalse(app.staticTexts.matching(NSPredicate(format: "label == %@", taskTitle)).firstMatch.exists)
-        attachRuntimeScreenshot(app, name: "Fresh transcript participant shared-follow-up boundary")
-        attachRecordingIdentity("\(sessionID):\(taskID)", name: "Fresh transcript private packet participant isolation")
+        attachRuntimeScreenshot(app, name: "Fresh transcript participant shared follow-up")
+        attachRecordingIdentity("\(sessionID):\(taskID)", name: "Fresh transcript shared task and private Today boundary")
     }
 
     func testRetainedSessionShowsCompleteMultiSegmentPacketOnIPhone() throws {

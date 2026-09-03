@@ -15,6 +15,7 @@ import {
   buildPacketNoteCandidates,
   GET,
   isAutomaticTranscriptWorkForJob,
+  packetActionItemVisibilityWhere,
   packetNoteVisibilityWhere,
   packetUsesAutomaticFollowThrough,
 } from "./route-implementation";
@@ -66,6 +67,39 @@ describe("packet note privacy", () => {
                     },
                   },
                 },
+              },
+            },
+          ],
+        },
+      ],
+    });
+  });
+
+  it("shares only explicitly shared generated follow-through tasks across Session participants", () => {
+    expect(packetActionItemVisibilityWhere({
+      id: "coach-user",
+      primaryEmail: "coach@example.test",
+      isStaff: false,
+    } as any, "room-1")).toEqual({
+      roomId: "room-1",
+      OR: [
+        { assignedUserId: "coach-user" },
+        {
+          assignedUserId: null,
+          note: { authorUserId: "coach-user" },
+        },
+        {
+          AND: [
+            {
+              sourceJson: {
+                path: ["origin"],
+                equals: "quipsly-session-follow-through",
+              },
+            },
+            {
+              sourceJson: {
+                path: ["visibility"],
+                equals: "engagement-shared",
               },
             },
           ],
@@ -627,13 +661,7 @@ describe("packet source selection", () => {
       where: { roomId: "room-1", assetId: "asset-recovered-2" },
     }));
     expect(prisma.actionItem.findMany).toHaveBeenCalledWith(expect.objectContaining({
-      where: {
-        roomId: "room-1",
-        OR: [
-          { assignedUserId: actor.id },
-          { assignedUserId: null, note: { authorUserId: actor.id } },
-        ],
-      },
+      where: packetActionItemVisibilityWhere(actor as any, "room-1"),
     }));
     expect(payload.selectedRecordingAsset).toEqual({
       id: "asset-recovered-2",

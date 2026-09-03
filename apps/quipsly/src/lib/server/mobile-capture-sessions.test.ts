@@ -24,6 +24,7 @@ import {
   canonicalMobileSessionProductionId,
   canonicalMobileSessionProject,
   mobileCoachingResultsStatus,
+  mobileCommittedTranscriptActions,
   mobilePacketReviewLanes,
   mobilePacketTranscriptJobIds,
   mobileSessionCanControlRecording,
@@ -88,6 +89,25 @@ describe("mobile capture readiness", () => {
 });
 
 describe("mobile transcript result projection", () => {
+  it("counts current automatic tasks as committed Session work without reviving legacy suggestions", () => {
+    const automatic = {
+      id: "task-automatic",
+      sourceJson: {
+        schema: "quipsly-transcript-follow-through-v1",
+        origin: "quipsly-session-follow-through",
+        transcriptJobId: "job-1",
+      },
+    };
+    expect(mobileCommittedTranscriptActions([
+      automatic,
+      {
+        id: "other-job",
+        sourceJson: { ...automatic.sourceJson, transcriptJobId: "job-2" },
+      },
+      { id: "manual", sourceJson: { origin: "manual" } },
+    ], ["job-1"])).toEqual([automatic]);
+  });
+
   it("keeps every participant master represented by a reconciled packet", () => {
     expect(
       mobilePacketTranscriptJobIds({

@@ -244,6 +244,28 @@ export function mobilePacketTranscriptJobIds(summary: any) {
   );
 }
 
+export function mobileCommittedTranscriptActions(
+  actionItems: any[],
+  transcriptJobIds: Iterable<string>,
+) {
+  const currentTranscriptJobIds = new Set(transcriptJobIds);
+  return actionItems.filter((item: any) => {
+    const source = sourceJson(item.sourceJson);
+    const transcriptJobId = label(source.transcriptJobId) || "";
+    if (!currentTranscriptJobIds.has(transcriptJobId)) return false;
+    if (
+      source.schema === "quipsly-transcript-follow-through-v1" &&
+      source.origin === "quipsly-session-follow-through"
+    ) {
+      return true;
+    }
+    return (
+      isTranscriptPacketSource(source.source) &&
+      !isUnreviewedTranscriptActionItemSource(source)
+    );
+  });
+}
+
 export function mobilePacketReviewLanes(summary: any) {
   const saved = sourceJson(summary?.sourceJson).reviewLanes;
   if (!Array.isArray(saved)) return [];
@@ -1337,14 +1359,10 @@ export function mapMobileCaptureSessionsForUser(input: {
         )[0] || null;
     const committedPacketActions =
       transcriptProcessingGate.allowed && latestTranscriptJob
-        ? room.actionItems.filter((item: any) => {
-            const source = sourceJson(item.sourceJson);
-            return (
-              isTranscriptPacketSource(source.source) &&
-              packetTranscriptJobIdSet.has(label(source.transcriptJobId) || "") &&
-              !isUnreviewedTranscriptActionItemSource(source)
-            );
-          })
+        ? mobileCommittedTranscriptActions(
+            room.actionItems,
+            packetTranscriptJobIdSet,
+          )
         : [];
     const firstOpenAction =
       committedPacketActions.find((item: any) => item.status === "OPEN") || null;

@@ -2431,6 +2431,7 @@ for (const needle of [
 requireIncludes(bridgeText, "var coachingTranscriptResults: MobileCaptureTranscriptResults?", "native Session decodes transcript-derived work");
 requireIncludes(transcriptReviewText, "let results: MobileCaptureTranscriptResults?", "native transcript review decodes ordinary Session work instead of relying on legacy candidates");
 requireIncludes(transcriptReviewText, 'accessibilityIdentifier("CaptureTranscriptFollowUpResults")', "native transcript review presents generated follow-up beside its source transcript");
+requireIncludes(transcriptReviewText, "if !client.canReviewPrivatePacket && client.packetResults == nil", "native transcript review never contradicts visible shared follow-up with an empty-state boundary");
 requireIncludes(transcriptReviewText, "openFollowUpSource", "generated follow-up can return to the exact participant-owned transcript source");
 requireIncludes(bridgeText, "latestPacketBuildResponse", "native latest packet build response readback");
 requireIncludes(bridgeText, "let actionPacket: MobileCaptureActionPacket?", "native session decodes action packet");

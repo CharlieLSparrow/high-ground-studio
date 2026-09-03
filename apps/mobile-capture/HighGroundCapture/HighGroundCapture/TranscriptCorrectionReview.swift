@@ -3302,7 +3302,7 @@ struct CaptureTranscriptReviewView: View {
                         }
                         sourceTruth(desk)
                             .id("source-truth")
-                        if !client.canReviewPrivatePacket {
+                        if !client.canReviewPrivatePacket && client.packetResults == nil {
                             participantFollowUpBoundary
                                 .id("shared-follow-up")
                         }

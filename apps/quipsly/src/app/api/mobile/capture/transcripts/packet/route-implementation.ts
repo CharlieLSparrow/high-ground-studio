@@ -94,6 +94,43 @@ export function packetNoteVisibilityWhere(
   };
 }
 
+/**
+ * A generated follow-through task marked engagement-shared belongs on the
+ * shared Session surface even when it is assigned to just one participant.
+ * Manual and private tasks keep the existing owner/author boundary.
+ */
+export function packetActionItemVisibilityWhere(
+  actor: SessionAccessActor,
+  roomId: string,
+) {
+  return {
+    roomId,
+    OR: [
+      { assignedUserId: actor.id },
+      {
+        assignedUserId: null,
+        note: { authorUserId: actor.id },
+      },
+      {
+        AND: [
+          {
+            sourceJson: {
+              path: ["origin"],
+              equals: "quipsly-session-follow-through",
+            },
+          },
+          {
+            sourceJson: {
+              path: ["visibility"],
+              equals: "engagement-shared",
+            },
+          },
+        ],
+      },
+    ],
+  };
+}
+
 function sourceJson(value: unknown): Record<string, unknown> {
   return isObject(value) ? value : {};
 }
@@ -979,16 +1016,7 @@ export async function GET(request: Request) {
       },
     }),
     prisma.actionItem.findMany({
-      where: {
-        roomId,
-        OR: [
-          { assignedUserId: actor.id },
-          {
-            assignedUserId: null,
-            note: { authorUserId: actor.id },
-          },
-        ],
-      },
+      where: packetActionItemVisibilityWhere(actor, roomId),
       orderBy: [{ status: "asc" }, { createdAt: "asc" }],
       select: {
         id: true,

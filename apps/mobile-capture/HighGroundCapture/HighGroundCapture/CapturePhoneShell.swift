@@ -13582,22 +13582,26 @@ private struct CaptureSessionFollowUpStatus: View {
     var body: some View {
         Label(
             errorMessage
-                ?? (session.clientFollowUp == nil
-                    ? "Follow-up not shared yet"
-                    : "Follow-up ready"),
+                ?? (session.coachingTranscriptResults != nil
+                    ? "Session results ready"
+                    : session.clientFollowUp != nil
+                        ? "Shared follow-up ready"
+                        : "Recording and transcript stay in this Session"),
             systemImage: errorMessage != nil
                 ? "exclamationmark.triangle"
-                : session.clientFollowUp == nil
-                    ? "checkmark.icloud"
-                    : "person.crop.circle.badge.checkmark"
+                : session.coachingTranscriptResults != nil
+                    ? "sparkles"
+                    : session.clientFollowUp != nil
+                        ? "person.crop.circle.badge.checkmark"
+                        : "checkmark.icloud",
         )
         .font(.caption.weight(.semibold))
         .foregroundStyle(
             errorMessage != nil
                 ? Color.orange
-                : session.clientFollowUp == nil
-                    ? Color.secondary
-                    : Color.green
+                : session.coachingTranscriptResults != nil || session.clientFollowUp != nil
+                    ? Color.green
+                    : Color.secondary
         )
         .frame(maxWidth: .infinity, alignment: .leading)
         .fixedSize(horizontal: false, vertical: true)
