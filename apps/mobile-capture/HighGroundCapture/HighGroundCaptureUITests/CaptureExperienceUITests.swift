@@ -18,6 +18,20 @@ final class CaptureExperienceUITests: XCTestCase {
     override func setUpWithError() throws {
         continueAfterFailure = false
         app = XCUIApplication()
+        #if !targetEnvironment(simulator)
+        if name.contains("testPhysicalDeviceVoiceWritingCreatesOneSavedSource") {
+            app.launchArguments = [
+                "--capture-runtime-writing-link=quipsly://write",
+                "--capture-physical-voice-writing-acceptance",
+            ]
+            app.launch()
+            XCTAssertTrue(
+                app.otherElements["CaptureRecorderHero"].waitForExistence(timeout: 15),
+                "The directly attached device should open the ordinary Speak to write recorder."
+            )
+            return
+        }
+        #endif
         app.launchArguments = ["--capture-ui-preview"]
         let clientPreview = name.contains("testClientCanSeePublishedTimesAndOwnPendingRequest")
             || name.contains("testOfflineCoachingSnapshotIsClearlyReadOnly")
@@ -908,6 +922,52 @@ final class CaptureExperienceUITests: XCTestCase {
     func testVoiceWritingRecordsAndStopsThroughTheSourceFirstPathOnRegularWidthIPad() {
         exerciseSourceFirstVoiceWritingRecordAndStop()
     }
+
+    #if !targetEnvironment(simulator)
+    /// This is intentionally absent from simulator discovery rather than
+    /// reported as a skip. It proves the real attached microphone, the same
+    /// source-first start/stop closures used by the visible controls, and a
+    /// completed local source. Transcript words and perceived audio quality
+    /// remain separate human evidence; this test never invents speech.
+    func testPhysicalDeviceVoiceWritingCreatesOneSavedSource() {
+        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        let microphonePrompt = springboard.alerts.firstMatch
+        if microphonePrompt.waitForExistence(timeout: 12) {
+            let allow = microphonePrompt.buttons["Allow"]
+            XCTAssertTrue(
+                allow.exists,
+                "The ordinary first-use microphone prompt should expose Allow."
+            )
+            allow.tap()
+        }
+
+        let stop = app.buttons["CaptureStopButton"]
+        XCTAssertTrue(
+            stop.waitForExistence(timeout: 20),
+            "The real microphone should enter an operable recording state after permission is available."
+        )
+        XCTAssertTrue(
+            stop.waitForNonExistence(timeout: 25),
+            "The bounded physical acceptance take should stop and finalize automatically."
+        )
+        XCTAssertTrue(
+            app.buttons["CaptureStartButton"].waitForExistence(timeout: 12),
+            "Finalizing the physical take should return the recorder to its ready state."
+        )
+
+        let state = app.staticTexts["CaptureRecorderStateLabel"]
+        XCTAssertTrue(state.exists)
+        XCTAssertFalse(
+            state.label.localizedCaseInsensitiveContains("failed"),
+            "The visible recorder state must not hide a failed physical finalization."
+        )
+
+        let screenshot = XCTAttachment(screenshot: app.screenshot())
+        screenshot.name = "physical-voice-writing-saved-source.png"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
+    }
+    #endif
 
     private func exerciseSourceFirstVoiceWritingRecordAndStop() {
         let speakToWrite = app.frame.width >= 700

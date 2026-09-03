@@ -1,6 +1,6 @@
 # Quipsly deferred validation ledger
 
-Updated: 2026-08-29
+Updated: 2026-09-03
 
 This ledger keeps human, physical-device, live-service, and environment-bound
 acceptance work visible without blocking safe independent development. An item
@@ -11,6 +11,7 @@ never be substituted for the evidence requested here.
 
 | State | Validation still required | Evidence that closes it |
 | --- | --- | --- |
+| Environment retry — Morbo source harness compiled | The physical-only voice-writing XCTest compiled and signed for Morbo twice, but iPadOS timed out while enabling XCTest automation before the test method began. The direct physical launch remains at the ordinary microphone prompt; neither attempt reached a product assertion, so no recorder failure or success is claimed. | Enable physical-device UI Automation or complete the direct one-time microphone grant, then rerun `CaptureExperienceUITests/testPhysicalDeviceVoiceWritingCreatesOneSavedSource`. Retain a zero-skip xcresult plus the pulled terminal receipt, recording ID, non-zero duration, playable source bytes, source-bound transcript provenance, and separate human listening/transcription notes. |
 | Pending — native schedule/invite path automated | A minimally instructed coach and client complete scheduling, invitation, lobby, permissions, consent, join, conversation, participant-owned recording, leave, upload, and playable Session return without developer intervention. Capture now defaults **New session** to client email plus time, preserves **Start now**, composes durable appointment creation before idempotent email delivery, verifies the exact Session back onto the iPhone, and exposes an immediate private Share fallback if email fails. | Timestamped two-account flight record, both participant perspectives, real mailbox or Share-sheet delivery, retained appointment/invitation/Session/recording/source IDs, post-call playback, and observed friction. The 127-check source contract, generic Simulator build, and six focused scheduling/Start-now UI journeys do not prove real mailbox delivery, physical-iPhone behavior, minimally instructed comprehension, or the complete two-person call. |
 | Pending | The current Capture release runs the recording and recovery path on physical iPhones across interruption, background/foreground, temporary network loss, exhausted automatic reconnect, one-tap manual rejoin, and a genuine CallKit/headset hang-up. The call drop must not stop the participant-owned master; the deliberate system hang-up must protect it. | Device/build identities; before/drop/rejoin/leave timestamps; visible Rejoin state; source and segment receipts spanning the gap; retained `call-transport-gap` clock evidence; upload reconciliation; exact-byte verification; playable beginning/gap/rejoined/ending readback; and listening evidence that describes the actual local source instead of inferring silence from network loss. |
 | Pending | Fresh coach/client identities see only Home plus explicitly shared Nests, Sessions, notes, tasks, goals, transcripts, and media. | Two-account positive/negative UI checks plus direct authenticated route probes. |

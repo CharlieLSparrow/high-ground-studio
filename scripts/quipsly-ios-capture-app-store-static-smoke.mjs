@@ -463,18 +463,15 @@ assert(
 requireIncludes(projectText, "GENERATE_INFOPLIST_FILE = NO", "explicit app information property list");
 requireIncludes(projectText, "INFOPLIST_FILE = HighGroundCapture/Info.plist", "app information property list source");
 requireIncludes(appInfoText, "NSMicrophoneUsageDescription", "microphone usage string");
-requireIncludes(appInfoText, "when you join a call or explicitly start recording", "microphone usage call and recording boundary");
+requireIncludes(appInfoText, "Use your microphone for calls and audio recordings you start.", "concise microphone usage call and recording boundary");
 requireIncludes(appInfoText, "NSSpeechRecognitionUsageDescription", "on-device speech usage string");
 requireIncludes(
   appInfoText,
-  "your voice notes and chosen recordings",
-  "on-device speech stays scoped to user-started writing and selected recordings",
+  "Turn your recordings into editable transcripts.",
+  "speech usage names the direct user outcome",
 );
-requireIncludes(appInfoText, "Recognition stays on-device when Apple supports it", "speech disclosure distinguishes device recognition from Apple service fallback");
-requireIncludes(appInfoText, "otherwise Apple may use its speech service", "speech disclosure names Apple service fallback");
 requireIncludes(appInfoText, "NSCameraUsageDescription", "camera usage string required by linked session SDK");
-requireIncludes(appInfoText, "only after you explicitly choose video", "camera usage explicit video choice");
-requireIncludes(appInfoText, "Audio recording does not use the camera", "camera usage audio boundary");
+requireIncludes(appInfoText, "Use your camera for video calls and video recordings you start.", "concise camera usage call and recording boundary");
 requireIncludes(providerRoomText, "configuration.supportsVideo = true", "CallKit supports the user-controlled native video path");
 requireIncludes(providerRoomText, "action.isVideo = false", "calls still begin with camera off by default");
 requireIncludes(appInfoText, "UIBackgroundModes", "background audio mode");
@@ -515,6 +512,11 @@ requireIncludes(physicalVoiceWritingReceiptText, 'static let schema = "quipsly-p
 requireIncludes(physicalVoiceWritingReceiptText, ".completeFileProtectionUntilFirstUserAuthentication", "physical acceptance receipt bytes use iOS file protection");
 requireIncludes(physicalVoiceWritingReceiptText, ".posixPermissions: 0o600", "physical acceptance receipts remain owner-readable only");
 requireIncludes(physicalVoiceWritingReceiptText, "isExcludedFromBackup = true", "physical acceptance receipts do not enter device backups");
+requireRegex(
+  deterministicUITestsText,
+  /#if !targetEnvironment\(simulator\)[\s\S]*func testPhysicalDeviceVoiceWritingCreatesOneSavedSource\(\)[\s\S]*XCUIApplication\(bundleIdentifier: "com\.apple\.springboard"\)[\s\S]*buttons\["Allow"\][\s\S]*CaptureStopButton[\s\S]*waitForNonExistence[\s\S]*CaptureStartButton[\s\S]*#endif/,
+  "physical-only operated acceptance handles the ordinary microphone prompt and proves one bounded saved source without creating simulator skips",
+);
 requireIncludes(deterministicUITestsText, "func testPrivateVoiceNoteOpensCaptureWithoutMeetingPaperworkOnRegularWidthIPad", "operated native acceptance covers iPad Speak to Write through the platform create rail");
 requireIncludes(deterministicUITestsText, "speakToWrite.isSelected", "operated iPad acceptance keeps the current Speak to Write location selected");
 requireIncludes(deterministicUITestsText, "func testConsentNeededNextEpisodeOpensRecorderWithoutCrashingOnRegularWidthIPad", "operated native acceptance covers the full iPad Session detail against the physical stack-overflow regression");
