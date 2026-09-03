@@ -1199,6 +1199,19 @@ final class LocalRecordingLibrary: ObservableObject {
 
     func markCaptureFailed(_ id: UUID, durationSeconds: TimeInterval, message: String) throws {
         try mutate(id, allowInactiveOwner: true) { recording in
+            // This transition describes a capture attempt, not immutable
+            // source truth. A late recorder, transcription, analysis, upload,
+            // or UI error must never demote bytes that have already passed a
+            // source boundary. `validatingRecovery` also stays intact so the
+            // launch-owned EOF check can finish or retry after process death.
+            switch recording.status {
+            case .armed, .recording, .paused, .finalizing, .captureFailed:
+                break
+            case .validatingRecovery, .saved, .queued, .uploading,
+                 .awaitingVerification, .uploaded, .uploadHeld, .recovered,
+                 .needsRepair, .missingFile, .deletedLocally:
+                return
+            }
             recording.durationSeconds = max(0, durationSeconds)
             recording.byteCount = self.fileByteCount(at: self.sourceFileURL(for: recording))
             recording.status = .captureFailed
@@ -2058,6 +2071,14 @@ final class LocalRecordingLibrary: ObservableObject {
                 || validation.audibleEventAnalysis != nil) else { return }
         #if DEBUG && targetEnvironment(simulator)
         if CaptureLaunchConfiguration.usesDerivedAnalysisPersistenceFailureUITest {
+            // Reproduce the late generic failure report that originally
+            // demoted an already-decoded recording. The public transition
+            // guard above must preserve the committed source status.
+            try? markCaptureFailed(
+                recordingID,
+                durationSeconds: validation.durationSeconds ?? 0,
+                message: "Injected downstream analysis failure."
+            )
             derivedAnalysisNotices[recordingID] = "The recording is saved and playable. Its quality scan did not finish, so waveform and loudness details are not available yet."
             return
         }
