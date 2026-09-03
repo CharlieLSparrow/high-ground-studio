@@ -67,6 +67,11 @@ function desk(input: {
       durationSeconds: 120,
       label: input.participantId,
     },
+    spectralContext: {
+      projectSlug: "coaching",
+      assetId: `studio-${input.recordingAssetId}`,
+      sourceId: `spectral-${input.recordingAssetId}`,
+    },
     participants: [],
     speakerGroups: [],
     segments: [
@@ -180,6 +185,13 @@ describe("Session transcript correction desk", () => {
     ).toEqual([
       ["coach-turn", 5, 5, "coach-source", "coach-source"],
       ["client-turn", 5, 5.625, "client-source", "client-source"],
+    ]);
+    expect(result.sessionTranscript.sources.map((source: any) => [
+      source.recordingAssetId,
+      source.spectralContext.sourceId,
+    ])).toEqual([
+      ["coach-source", "spectral-coach-source"],
+      ["client-source", "spectral-client-source"],
     ]);
   });
 

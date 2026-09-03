@@ -261,6 +261,12 @@ type Desk = {
       recordingAssetId: string;
       participantId: string | null;
       playback: TranscriptPlayback | null;
+      evidence?: AudioTranscriptEvidence;
+      spectralContext?: null | {
+        projectSlug: string;
+        assetId: string;
+        sourceId: string;
+      };
       programOffsetSeconds: number;
       timingAuthority: string;
       timingUncertaintyMilliseconds: number | null;
@@ -1725,8 +1731,22 @@ export function TranscriptCorrectionDesk({
   const automaticPlaybackPreparationRef = useRef<string | null>(null);
   const speakerNamingPromptedRef = useRef(false);
   const currentPlayback = activePlayback ?? desk?.playback ?? null;
+  const currentSessionSource = desk?.sessionTranscript?.sources.find(
+    (source) => source.playback?.sourceId === currentPlayback?.sourceId,
+  ) ?? null;
+  const currentRecordingAssetId = currentSessionSource?.recordingAssetId
+    ?? desk?.recording?.id
+    ?? null;
+  const currentEvidence = currentSessionSource?.evidence
+    ?? (currentPlayback?.sourceId === desk?.playback?.sourceId ? desk?.evidence : null)
+    ?? null;
+  const currentSpectralContext = currentSessionSource?.spectralContext
+    ?? (currentPlayback?.sourceId === desk?.playback?.sourceId ? desk?.spectralContext : null)
+    ?? null;
   const playbackReady = Boolean(currentPlayback) && playbackState === "ready";
-  const detectorDurationSeconds = desk?.playback?.durationSeconds ?? desk?.evaluation?.sourceDurationSeconds ?? desk?.evidence?.audio.signal?.durationSeconds ?? 0;
+  const detectorDurationSeconds = currentPlayback?.durationSeconds
+    ?? currentEvidence?.audio.signal?.durationSeconds
+    ?? 0;
   const speakerGroupsNeedingIdentity = useMemo(
     () => speakerGroupsRequiringIdentity(desk),
     [desk],
@@ -1833,12 +1853,12 @@ export function TranscriptCorrectionDesk({
   const spectralTranscriptWords = useMemo(
     () => transcriptWordsForAudioEvidence(
       desk?.segments ?? [],
-      desk?.recording?.id,
+      currentRecordingAssetId,
     ),
-    [desk?.recording?.id, desk?.segments],
+    [currentRecordingAssetId, desk?.segments],
   );
   const spectralEvidenceMarkers = useMemo<SpectralEvidenceMarker[]>(() => [
-    ...(desk?.evidence?.audio.signal?.observations ?? []).map((observation, index) => ({
+    ...(currentEvidence?.audio.signal?.observations ?? []).map((observation, index) => ({
       id: `signal-${observation.kind}-${observation.startSeconds}-${index}`,
       category: "signal" as const,
       startSeconds: observation.startSeconds,
@@ -1847,7 +1867,7 @@ export function TranscriptCorrectionDesk({
       detail: observation.detail,
       severity: observation.severity,
     })),
-    ...(desk?.evidence?.audio.timelineEvents ?? []).map((event, index) => ({
+    ...(currentEvidence?.audio.timelineEvents ?? []).map((event, index) => ({
       id: `capture-${event.kind}-${event.startSeconds}-${index}`,
       category: "capture" as const,
       startSeconds: event.startSeconds,
@@ -1856,7 +1876,7 @@ export function TranscriptCorrectionDesk({
       detail: event.detail || [event.routeName, event.routePortType].filter(Boolean).join(" · ") || "Capture boundary preserved without route detail.",
       severity: event.kind === "interruption" ? "warning" as const : "attention" as const,
     })),
-  ], [desk?.evidence?.audio.signal?.observations, desk?.evidence?.audio.timelineEvents]);
+  ], [currentEvidence?.audio.signal?.observations, currentEvidence?.audio.timelineEvents]);
 
   function sourceBin(sourceId: string, seconds: number) {
     return `${sourceId}:${Math.max(0, Math.floor(seconds))}`;
@@ -2133,7 +2153,7 @@ export function TranscriptCorrectionDesk({
   const reviewedSegmentCount = desk.segments.filter((segment) => segment.acceptedCorrection || segment.acceptedVerification).length;
   const unidentifiedSpeakerCount = speakerGroupsNeedingIdentity.length;
   const identifiedSpeakerCount = Math.max(0, (desk.speakerGroups?.length ?? 0) - unidentifiedSpeakerCount);
-  const timingIntegrity = desk.evidence?.transcript.timingIntegrity ?? null;
+  const timingIntegrity = currentEvidence?.transcript.timingIntegrity ?? null;
   const protectedPlaybackSurface = !desk.gate.allowed ? (
     <p className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm font-bold text-rose-900">{desk.gate.error || "Transcript evidence remains held by consent and release policy."}</p>
   ) : currentPlayback ? (
@@ -2327,27 +2347,27 @@ export function TranscriptCorrectionDesk({
         </button>
         <div className="mt-3 flex flex-wrap gap-2 text-[10px] font-black uppercase tracking-wide">
           <span className={`rounded-full px-3 py-1.5 ${playbackReady ? "bg-emerald-100 text-emerald-900" : "bg-amber-100 text-amber-900"}`}>{playbackReady ? "Recording ready" : "Recording needs attention"}</span>
-          <span className={`rounded-full px-3 py-1.5 ${timingIntegrity?.disposition === "structurally-consistent" ? "bg-emerald-100 text-emerald-900" : "bg-amber-100 text-amber-900"}`}>{timingIntegrity ? `${timingIntegrity.editableSegmentCount}/${desk.segments.length} timed passages` : "Timing not measured"}</span>
+          <span className={`rounded-full px-3 py-1.5 ${timingIntegrity?.disposition === "structurally-consistent" ? "bg-emerald-100 text-emerald-900" : "bg-amber-100 text-amber-900"}`}>{timingIntegrity ? `${timingIntegrity.editableSegmentCount}/${currentEvidence?.transcript.segmentCount ?? 0} timed passages` : "Timing not measured"}</span>
           {(desk.speakerGroups ?? []).length > 0 ? <span className={`rounded-full px-3 py-1.5 ${identifiedSpeakerCount === desk.speakerGroups.length ? "bg-emerald-100 text-emerald-900" : "bg-indigo-100 text-indigo-900"}`}>{identifiedSpeakerCount}/{desk.speakerGroups.length} voices identified</span> : null}
           <span className="rounded-full bg-violet-100 px-3 py-1.5 text-violet-900">{reviewedSegmentCount}/{desk.segments.length} passages played</span>
         </div>
 
         {showQualityDetails ? <div id="transcript-quality-details" className="mt-5 space-y-5">
           {audioMastery ? <section aria-label="Session audio improvement" className="scroll-mt-24">{audioMastery}</section> : null}
-          {desk.evidence ? <AudioTranscriptEvidencePanel
-              evidence={desk.evidence}
+          {currentEvidence ? <AudioTranscriptEvidencePanel
+              evidence={currentEvidence}
               segments={desk.segments}
-              recordingAssetId={desk.recording?.id}
+              recordingAssetId={currentRecordingAssetId}
               playbackReady={playbackReady}
               selectedSeconds={playbackSeconds}
               onSelectTime={setPlaybackSeconds}
-              onPlayAt={playFromTime}
+              onPlayAt={(seconds) => currentPlayback ? playSourceAt(currentPlayback, seconds) : playFromTime(seconds)}
             /> : null}
 
-          {desk.playback && desk.spectralContext ? <SpectralEvidenceViewer
-            projectSlug={desk.spectralContext.projectSlug}
-            assetId={desk.spectralContext.assetId}
-            sourceId={desk.spectralContext.sourceId}
+          {currentPlayback && currentSpectralContext ? <SpectralEvidenceViewer
+            projectSlug={currentSpectralContext.projectSlug}
+            assetId={currentSpectralContext.assetId}
+            sourceId={currentSpectralContext.sourceId}
             selectedSeconds={playbackSeconds}
             playbackReady={playbackReady}
             onSelect={(seconds, play) => {
@@ -2355,17 +2375,17 @@ export function TranscriptCorrectionDesk({
               if (play) void playFromTime(seconds);
             }}
             transcriptWords={spectralTranscriptWords}
-            lowConfidenceThreshold={desk.evidence?.transcript.lowConfidenceThreshold ?? null}
-            transcriptEndSeconds={desk.evidence?.transcript.transcriptEndSeconds ?? null}
+            lowConfidenceThreshold={currentEvidence?.transcript.lowConfidenceThreshold ?? null}
+            transcriptEndSeconds={currentEvidence?.transcript.transcriptEndSeconds ?? null}
             transcriptScopeLabel="Session timed transcript"
             evidenceMarkers={spectralEvidenceMarkers}
           /> : null}
 
-          {desk.playback && desk.spectralContext && detectorDurationSeconds > 0 ? <AudibleEventQualificationLab
-            projectSlug={desk.spectralContext.projectSlug}
-            assetId={desk.spectralContext.assetId}
-            sourceId={desk.spectralContext.sourceId}
-            sourceUrl={desk.playback.url}
+          {currentPlayback && currentSpectralContext && detectorDurationSeconds > 0 ? <AudibleEventQualificationLab
+            projectSlug={currentSpectralContext.projectSlug}
+            assetId={currentSpectralContext.assetId}
+            sourceId={currentSpectralContext.sourceId}
+            sourceUrl={currentPlayback.url}
             durationSeconds={detectorDurationSeconds}
             defaultWorkload={desk.evaluation?.suggestedWorkload ?? "coaching"}
           /> : null}

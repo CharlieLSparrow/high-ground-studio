@@ -51,6 +51,7 @@ function sourceSummary(desk: any, source: Candidate, timing?: any) {
     sourceSha256: text(desk.sourceSha256).toLowerCase() || null,
     recording: desk.recording,
     playback: desk.playback,
+    spectralContext: desk.spectralContext,
     gate: desk.gate,
     processing: desk.processing,
     evidence: desk.evidence,
