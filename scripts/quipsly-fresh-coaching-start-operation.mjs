@@ -76,6 +76,12 @@ const identities = {
     displayName: `Fresh Client ${suffix.slice(0, 4).toUpperCase()}`,
     password: `Qp-${randomBytes(18).toString("base64url")}!26`,
   },
+  outsider: {
+    role: "outsider",
+    email: `acceptance-outsider-${suffix}@dev.test`,
+    displayName: `Uninvolved Account ${suffix.slice(0, 4).toUpperCase()}`,
+    password: `Qp-${randomBytes(18).toString("base64url")}!26`,
+  },
 };
 for (const identity of Object.values(identities)) {
   writeRetainedQAPassword({
@@ -192,8 +198,13 @@ const clientContext = await browser.newContext({
   permissions: ["microphone", "camera"],
   reducedMotion: "reduce",
 });
+const outsiderContext = await browser.newContext({
+  viewport: { width: 390, height: 844 },
+  reducedMotion: "reduce",
+});
 const coachPage = await coachContext.newPage();
 const clientPage = await clientContext.newPage();
+const outsiderPage = await outsiderContext.newPage();
 const evidence = {
   testLane: "fresh-ui-automation",
   fixtureIdentifiersUsed: false,
@@ -354,6 +365,57 @@ try {
   const invitationEntryURL = new URL(invitationPacket.invitePath, baseURL);
   assert.equal(invitationEntryURL.origin, baseURL);
   assert.equal(invitationEntryURL.pathname, "/sessions/join");
+
+  // Prove the invitation is bound to the intended identity before consuming
+  // it. This is an operated negative path through the rendered product and
+  // the authenticated Session projection, not an inference from database
+  // roles or a mocked authorization helper.
+  evidence.outsiderAuth = await createVerifyAndSignIn(
+    outsiderPage,
+    identities.outsider,
+    "/coaching",
+  );
+  await outsiderPage.goto(invitationEntryURL.toString(), {
+    waitUntil: "domcontentloaded",
+  });
+  await outsiderPage
+    .getByRole("alert")
+    .filter({ hasText: /This invitation is for/ })
+    .waitFor({ state: "visible", timeout: 20_000 });
+  await outsiderPage
+    .getByRole("link", { name: "Switch account", exact: true })
+    .waitFor({ state: "visible", timeout: 20_000 });
+  assert.equal(
+    await outsiderPage
+      .getByRole("button", { name: "Continue to Session", exact: true })
+      .count(),
+    0,
+    "An uninvolved signed-in account could operate another person's invitation.",
+  );
+  const outsiderSessionProjection = await outsiderPage.evaluate(async () => {
+    const response = await fetch("/api/mobile/capture/sessions", {
+      cache: "no-store",
+    });
+    return {
+      status: response.status,
+      packet: await response.json().catch(() => null),
+    };
+  });
+  assert.equal(
+    outsiderSessionProjection.status,
+    200,
+    "The uninvolved account could not read its own empty Session projection.",
+  );
+  assert.equal(outsiderSessionProjection.packet?.ok, true);
+  assert.equal(
+    outsiderSessionProjection.packet?.sessions?.some?.(
+      (session) => session.id === evidence.roomId,
+    ),
+    false,
+    "The private coaching Session leaked into an uninvolved account's projection.",
+  );
+  evidence.invitationRejectedWrongSignedInAccount = true;
+  evidence.privateSessionExcludedFromOutsiderProjection = true;
 
   await clientPage.goto(invitationEntryURL.toString(), {
     waitUntil: "domcontentloaded",
@@ -736,6 +798,8 @@ try {
           exactRenderedClientEntryUsed: true,
           primaryInvitationActionAttempted: true,
           oneTimeInvitationAccepted: true,
+          wrongSignedInAccountCouldNotAcceptInvitation: true,
+          uninvolvedAccountCouldNotListPrivateSession: true,
           localMailboxVerificationAdapterUsed: true,
           realMailboxDeliveryProven: false,
           humanNoviceAcceptanceProven: false,
@@ -755,6 +819,7 @@ try {
   );
   await coachContext.close();
   await clientContext.close();
+  await outsiderContext.close();
   await browser.close();
   await prisma.$disconnect();
 }

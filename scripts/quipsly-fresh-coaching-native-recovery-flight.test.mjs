@@ -34,6 +34,22 @@ test("fresh native flight keeps credentials private while operating client entry
   assert.match(source, /keychainReadRequiredForAutomatedFlight: false/);
 });
 
+test("fresh start adversarially excludes an uninvolved account", async () => {
+  const startSource = await readFile(
+    new URL("./quipsly-fresh-coaching-start-operation.mjs", import.meta.url),
+    "utf8",
+  );
+  assert.match(startSource, /acceptance-outsider-/);
+  assert.match(startSource, /This invitation is for/);
+  assert.match(startSource, /name: "Switch account"/);
+  assert.match(startSource, /An uninvolved signed-in account could operate another person's invitation/);
+  assert.match(startSource, /private coaching Session leaked into an uninvolved account's projection/);
+  assert.match(startSource, /invitationRejectedWrongSignedInAccount = true/);
+  assert.match(startSource, /privateSessionExcludedFromOutsiderProjection = true/);
+  assert.match(startSource, /wrongSignedInAccountCouldNotAcceptInvitation: true/);
+  assert.match(startSource, /uninvolvedAccountCouldNotListPrivateSession: true/);
+});
+
 test("Simulator CallKit skip is explicit evidence, never a provider-media pass", () => {
   assert.match(source, /const roomJoinPassed =/);
   assert.match(source, /const simulatorCallKitFailClosed =/);
