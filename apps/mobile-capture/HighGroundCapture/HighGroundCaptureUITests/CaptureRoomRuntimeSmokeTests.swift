@@ -5981,7 +5981,12 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             NSPredicate(format: "label == %@", "Open advanced edit")
         ).firstMatch
 
-        if waitForRuntimeElement(attachToStudio, in: app, timeout: 20, swipeAttempts: 10) {
+        if scrollRuntimeElementIntoHittableView(
+            attachToStudio,
+            in: app,
+            timeout: 20,
+            swipeAttempts: 10
+        ) {
             let attachEnabled = XCTNSPredicateExpectation(
                 predicate: NSPredicate(format: "enabled == true"),
                 object: attachToStudio
@@ -5990,6 +5995,10 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
                 XCTWaiter.wait(for: [attachEnabled], timeout: 45),
                 .completed,
                 "The verified source should become attachable without changing or deleting the local original."
+            )
+            XCTAssertTrue(
+                attachToStudio.isHittable,
+                "The advanced-edit action must be visibly operable before the harness invokes it."
             )
             attachToStudio.tap()
         } else {
