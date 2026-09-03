@@ -4,13 +4,13 @@
     "appId": "6780995957",
     "bundleId": "com.highgroundodyssey.HighGroundCapture",
     "version": "1.0",
-    "build": "67",
-    "sourceRevision": "62f0d57b6ea863d3021094aa0e2e742337391b2c"
+    "build": "69",
+    "sourceRevision": "7f0c14663bfe21cc925028fcc797232e7228a970"
   },
   "publication": {
     "status": "requires-account-holder-approval",
     "providerPublished": false,
-    "boundary": "Engineering recommendation validated against the exact signed and uploaded Build 67 archive; the Account Holder must publish the matching App Store Connect answers."
+    "boundary": "Engineering recommendation validated against the exact signed and uploaded Build 69 archive; the Account Holder must publish the matching App Store Connect answers."
   },
   "tracking": {
     "used": false,
@@ -157,8 +157,8 @@
   "archiveEvidence": {
     "manifestCount": 14,
     "aggregateSha256": "3f3b57b8ec5d8bfb081897c6efde2201d3f29f3a66140c73e33d53774f65c537",
-    "archiveKind": "exact signed and uploaded Build 67 release archive",
-    "inspectedAt": "2026-09-03T05:13:36.000Z"
+    "archiveKind": "exact signed and uploaded Build 69 release archive",
+    "inspectedAt": "2026-09-03T16:42:12.000Z"
   },
   "reviewNotes": [
     "Apple says free-form text and voice may be represented as Other User Content and Audio Data rather than every sensitive topic a user might enter.",

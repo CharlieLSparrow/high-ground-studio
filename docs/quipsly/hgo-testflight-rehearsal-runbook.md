@@ -1,6 +1,6 @@
 # High Ground Odyssey TestFlight Rehearsal
 
-Last verified: 2026-09-02
+Last verified: 2026-09-03
 
 This is the operator runbook for the first Charlie-and-Homer Quipsly Capture
 rehearsal. It distinguishes what is ready now from what the rehearsal still
@@ -8,10 +8,10 @@ needs to prove.
 
 ## Current release state
 
-- App: **Quipsly Capture 1.0 (67)**
+- App: **Quipsly Capture 1.0 (69)**
 - Exact native source:
-  `62f0d57b6ea863d3021094aa0e2e742337391b2c`
-- App Store Connect build ID: `87339159-d113-4211-b39b-73413371f6e6`
+  `7f0c14663bfe21cc925028fcc797232e7228a970`
+- App Store Connect build ID: `d0754c77-011a-41a5-98a7-2df59531eb77`
 - External TestFlight group: **Quipsly Capture Rehearsal**
 - TestFlight Apple Account: `shomers@icloud.com`
 - Quipsly Google identity: `shomers@gmail.com`
@@ -22,21 +22,23 @@ needs to prove.
 - Automatic tester notification: enabled
 - Installation mode: public-link-only; neither a named-tester email nor a
   redemption code is required
-- Build 67 is the current approved public beta identified by the canonical
+- Build 69 is the current approved public beta identified by the canonical
   release ledger and Apple readback. It includes recording-start and
   interruption recovery, local-first Speak to write, episode script and
   conversation access beside the recorder, shared Watch controls, simpler
   scheduling and account creation, durable Session note drafts, searchable
   Sessions, clearer call recovery, native iPad workspace behavior, automatic
-  delivery of on-device transcripts after reconnect, and an isolated personal
-  recorder layout that remains responsive when a recording is saved. All four
+  delivery of on-device transcripts after reconnect, an isolated personal
+  recorder layout that remains responsive when a recording is saved, and the
+  repaired crash-open Session boundary with operated Speak to Write coverage.
+  All four
   iPhone and iPad UI qualification shards passed; one keyboard-focus check
   passed on its bounded automatic retry, leaving zero final failures. The exact signed
   archive and IPA passed packaged metadata, entitlement, provisioning,
   privacy-manifest, and nested-signature inspection before upload. App Store
   Connect independently reports `VALID`, `IN_BETA_TESTING`, `APPROVED`, and
   inclusion in both the internal and public-link rehearsal groups; Apple's
-  public installation page and TestFlight handoff are open. A physical Build 67
+  public installation page and TestFlight handoff are open. A physical Build 69
   install remains the final experience and hardware acceptance proof.
 - Build 28 passed all 63 serialized iPhone and Share Extension journeys,
   exact-source preflight, signed archive/export inspection, Apple processing,
