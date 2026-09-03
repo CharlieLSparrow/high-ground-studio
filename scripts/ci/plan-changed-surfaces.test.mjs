@@ -105,6 +105,24 @@ test("Capture validators beat legacy broad scripts deploy prefixes", () => {
   assert.deepEqual(plan.changedSurfaces, ["capture"]);
 });
 
+test("Capture release-tool families never wake a Nest deployment", () => {
+  const paths = [
+    "scripts/release/quipsly-capture-ui-test-runner.mjs",
+    "scripts/release/quipsly-app-store-connect-diagnostics-readback.mjs",
+    "scripts/release/quipsly-testflight-public-link-readback.mjs",
+    "scripts/release/quipsly-xcode-cloud-workflow-audit.mjs",
+  ];
+
+  for (const path of paths) {
+    const plan = planChangedSurfaces([path]);
+    assert.equal(plan.capture, true, path);
+    assert.equal(plan.studio, false, path);
+    assert.equal(plan.quipsly, false, path);
+    assert.deepEqual(plan.deployTargets, [], path);
+    assert.deepEqual(plan.changedSurfaces, ["capture"], path);
+  }
+});
+
 test("Nest app changes validate and deploy only Nest", () => {
   const plan = planChangedSurfaces([
     "apps/quipsly/src/app/api/mobile/capture/sessions/route.ts",

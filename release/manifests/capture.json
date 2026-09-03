@@ -18,7 +18,11 @@
     },
     "validation": {
       "prefixes": [
-        "release/app-store/quipsly-capture/"
+        "release/app-store/quipsly-capture/",
+        "scripts/release/quipsly-app-store-connect-",
+        "scripts/release/quipsly-capture-",
+        "scripts/release/quipsly-testflight-",
+        "scripts/release/quipsly-xcode-cloud-"
       ],
       "files": [
         "docs/quipsly/hgo-testflight-rehearsal-runbook.md",
