@@ -5,7 +5,7 @@ set -euo pipefail
 usage() {
   cat <<'USAGE'
 Usage:
-  scripts/release/quipsly-capture-screenshots-from-commit.sh [--revision <commit-ish>] [--metadata-revision <commit-ish>] [--device <simulator-name>]
+  scripts/release/quipsly-capture-screenshots-from-commit.sh [--revision <commit-ish>] [--metadata-revision <commit-ish>] [--display-type <App Store display type>] [--device <simulator-name>]
 
 Captures Quipsly Capture's private-data-safe App Store layout drafts from a
 disposable detached worktree at one resolved commit. Any uncommitted files in
@@ -29,7 +29,8 @@ fail() {
 
 revision="HEAD"
 metadata_revision_input=""
-device_name="${QUIPSLY_CAPTURE_SCREENSHOT_DEVICE:-iPhone 17 Pro Max}"
+display_type="${QUIPSLY_CAPTURE_SCREENSHOT_DISPLAY_TYPE:-APP_IPHONE_67}"
+device_name="${QUIPSLY_CAPTURE_SCREENSHOT_DEVICE:-}"
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --revision)
@@ -62,6 +63,16 @@ while [[ $# -gt 0 ]]; do
       [[ -n "$device_name" ]] || fail "--device requires a simulator name."
       shift
       ;;
+    --display-type)
+      [[ $# -ge 2 ]] || fail "--display-type requires a value."
+      display_type="$2"
+      shift 2
+      ;;
+    --display-type=*)
+      display_type="${1#--display-type=}"
+      [[ -n "$display_type" ]] || fail "--display-type requires a value."
+      shift
+      ;;
     -h | --help)
       usage
       exit 0
@@ -72,6 +83,13 @@ while [[ $# -gt 0 ]]; do
       ;;
   esac
 done
+
+case "$display_type" in
+  APP_IPHONE_67) default_device_name="iPhone 17 Pro Max" ;;
+  APP_IPAD_PRO_3GEN_129) default_device_name="iPad Air 13-inch (M3)" ;;
+  *) fail "Unsupported App Store screenshot display type: $display_type" ;;
+esac
+device_name="${device_name:-$default_device_name}"
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(git -C "${script_dir}/../.." rev-parse --show-toplevel)"
@@ -133,6 +151,7 @@ capture_runner="${worktree_path}/apps/mobile-capture/HighGroundCapture/scripts/c
 
 export QUIPSLY_CAPTURE_SCREENSHOT_DIR="$output_directory"
 export QUIPSLY_CAPTURE_SCREENSHOT_DEVICE="$device_name"
+export QUIPSLY_CAPTURE_SCREENSHOT_DISPLAY_TYPE="$display_type"
 export QUIPSLY_CAPTURE_SCREENSHOT_RUN_ID="$run_id"
 export QUIPSLY_CAPTURE_SCREENSHOT_SOURCE_ISOLATION="detached-worktree"
 
@@ -196,7 +215,8 @@ NODE
     --source-isolation "detached-worktree" \
     --result-bundle "$result_bundle" \
     --device-name "$manifest_device_name" \
-    --device-id "$manifest_device_id" <<'NODE'
+    --device-id "$manifest_device_id" \
+    --display-type "$display_type" <<'NODE'
 import { pathToFileURL } from "node:url";
 
 const [materializerPath, ...materializerArguments] = process.argv.slice(2);
@@ -214,7 +234,7 @@ fi
 [[ -f "$draft_receipt" ]] ||
   fail "Exact committed screenshot materialization returned without a draft receipt."
 
-node - "$draft_receipt" "$metadata_path" "$output_directory" "$source_revision" "$metadata_revision" "$materialization_mode" "$capture_runner_exit_code" <<'NODE'
+node - "$draft_receipt" "$metadata_path" "$output_directory" "$source_revision" "$metadata_revision" "$materialization_mode" "$capture_runner_exit_code" "$display_type" <<'NODE'
 const fs = require("node:fs");
 const path = require("node:path");
 const crypto = require("node:crypto");
@@ -227,6 +247,7 @@ const [
   metadataRevision,
   materializationMode,
   captureRunnerExitCodeInput,
+  displayType,
 ] = process.argv.slice(2);
 const draft = JSON.parse(fs.readFileSync(draftReceiptPath, "utf8"));
 const metadataBytes = fs.readFileSync(metadataPath);
@@ -254,6 +275,11 @@ if (draft.sourceDirty !== false) {
 if (draft.submissionEligible !== false) {
   throw new Error("DEBUG layout drafts must remain ineligible for submission");
 }
+if (draft.device?.displayType !== displayType) {
+  throw new Error(
+    `draft display type ${draft.device?.displayType ?? "<missing>"} does not match ${displayType}`,
+  );
+}
 if (
   !Array.isArray(draft.screenshots)
   || draft.screenshots.length !== expectedScreenshotCount
@@ -279,6 +305,7 @@ const receipt = {
   sourceRevision,
   sourceDirty: false,
   sourceIsolation: "detached-worktree",
+  displayType,
   metadataRevision,
   metadataSHA256: crypto.createHash("sha256").update(metadataBytes).digest("hex"),
   materializationMode,

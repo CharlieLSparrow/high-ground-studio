@@ -42,6 +42,7 @@ function fixture() {
   writeJson(committedSourceReceiptPath, {
     schema: "quipsly-capture-committed-screenshot-evidence-v1", sourceRevision: revision,
     sourceDirty: false, sourceIsolation: "detached-worktree", draftReceiptPath,
+    displayType: "APP_IPHONE_67",
     expectedScreenshotCount: 1, screenshotCount: 1,
   });
   writeJson(candidateReceiptPath, {
@@ -82,6 +83,11 @@ test("qualifies the same product story for the canonical 13-inch iPad set", () =
     draft.screenshots[0].width = 2048;
     draft.screenshots[0].height = 2732;
     writeJson(values.draftReceiptPath, draft);
+    const committed = JSON.parse(
+      fs.readFileSync(values.committedSourceReceiptPath, "utf8"),
+    );
+    committed.displayType = "APP_IPAD_PRO_3GEN_129";
+    writeJson(values.committedSourceReceiptPath, committed);
 
     const receipt = qualifyScreenshots(values);
     assert.equal(receipt.displayType, "APP_IPAD_PRO_3GEN_129");

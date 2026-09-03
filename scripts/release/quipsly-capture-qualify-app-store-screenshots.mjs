@@ -162,6 +162,7 @@ export function qualifyScreenshots({
     committed.sourceRevision !== revision
     || committed.sourceDirty !== false
     || committed.sourceIsolation !== "detached-worktree"
+    || committed.displayType !== displayType
     || path.resolve(committed.draftReceiptPath || "") !== path.resolve(draftReceiptPath)
   ) {
     fail("Committed-source receipt does not bind the draft screenshots to the candidate source.");
