@@ -41,6 +41,10 @@ test("reports a fresh requested permission boundary without inventing capture pr
   });
   assert.equal(result.ok, true);
   assert.equal(result.phase, "requested");
+  assert.equal(result.observedPhase, "requested");
+  assert.equal(result.phaseContractValid, true);
+  assert.equal(result.recordingPhaseObserved, false);
+  assert.equal(result.terminalPhaseObserved, false);
   assert.equal(result.terminal, false);
   assert.equal(result.captureAcceptanceProven, false);
   assert.equal(result.sourceAudioRead, false);
@@ -57,6 +61,10 @@ test("proves a finished playable local source with exact identifiers", () => {
     saved: true,
   }), { auditedAt: now, expectedBuild: "69" });
   assert.equal(result.captureAcceptanceProven, true);
+  assert.equal(result.observedPhase, "finished");
+  assert.equal(result.phaseContractValid, true);
+  assert.equal(result.recordingPhaseObserved, false);
+  assert.equal(result.terminalPhaseObserved, true);
   assert.equal(result.terminal, true);
   assert.equal(result.recordingID, recordingID);
   assert.equal(result.durationSeconds, 7.14);
@@ -98,4 +106,3 @@ test("rejects stale, wrong-build, malformed, and contradictory evidence", () => 
     /contradicts its recording evidence/,
   );
 });
-

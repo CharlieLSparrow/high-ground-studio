@@ -131,23 +131,23 @@ export function inspectPhysicalVoiceWritingReceipt(value, {
   const durationSeconds = Number.isFinite(value.durationSeconds) ? value.durationSeconds : null;
   const localStatus = clean(value.localStatus) || null;
   const saved = value.saved === true;
-  const phaseEvidenceValid = {
-    requested: phase !== "requested" || (!recordingID && saved === false),
-    recording: phase !== "recording" || (Boolean(recordingID) && captureState === "recording" && saved === false),
-    terminal: !TERMINAL_PHASES.has(phase) || phase !== "finished" || (
+  const phaseContractValid = phase === "requested"
+    ? !recordingID && saved === false
+    : phase === "recording"
+      ? Boolean(recordingID) && captureState === "recording" && saved === false
+      : phase !== "finished" || (
       Boolean(recordingID)
       && captureState === "saved"
       && saved
       && durationSeconds !== null
       && durationSeconds >= 1
       && PLAYABLE_LOCAL_STATUSES.has(localStatus)
-    ),
-  };
-  if (!Object.values(phaseEvidenceValid).every(Boolean)) {
+    );
+  if (!phaseContractValid) {
     fail(`The ${phase} receipt contradicts its recording evidence.`);
   }
 
-  const captureAcceptanceProven = phase === "finished" && phaseEvidenceValid.terminal;
+  const captureAcceptanceProven = phase === "finished" && phaseContractValid;
   return {
     schema: "quipsly-capture-physical-voice-writing-readback-v1",
     checkedAt: auditDate.toISOString(),
@@ -164,7 +164,10 @@ export function inspectPhysicalVoiceWritingReceipt(value, {
     saved,
     detail: clean(value.detail) || null,
     ageSeconds: Math.max(0, Math.floor(ageMilliseconds / 1_000)),
-    phaseEvidenceValid,
+    observedPhase: phase,
+    phaseContractValid,
+    recordingPhaseObserved: phase === "recording",
+    terminalPhaseObserved: TERMINAL_PHASES.has(phase),
     captureAcceptanceProven,
     sourceAudioRead: false,
     transcriptContentRead: false,
@@ -227,4 +230,3 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     process.exit(1);
   });
 }
-
