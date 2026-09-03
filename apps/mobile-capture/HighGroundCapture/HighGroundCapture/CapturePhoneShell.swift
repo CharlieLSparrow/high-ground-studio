@@ -11665,6 +11665,7 @@ private struct CaptureRecorderView: View {
                                 audioCapture.currentDuration,
                                 videoCapture.durationSeconds
                             ),
+                            userMarkOffsets: audioCapture.userMarkOffsets,
                             isBusy:
                                 model.isChangingCapture
                                 || model.isCoordinatingPodcastCapture
@@ -11719,6 +11720,7 @@ private struct CaptureRecorderView: View {
                             audioCapture.currentDuration,
                             videoCapture.durationSeconds
                         ),
+                        userMarkOffsets: audioCapture.userMarkOffsets,
                         isBusy:
                             model.isChangingCapture
                             || model.isCoordinatingPodcastCapture
@@ -20248,6 +20250,7 @@ private struct CapturePersistentRecorderDock: View {
     let audioState: AudioCaptureState
     let videoState: VideoCaptureState
     let duration: TimeInterval
+    let userMarkOffsets: [TimeInterval]
     let isBusy: Bool
     let canStartRecording: Bool
     let waitingForHost: Bool
@@ -20286,6 +20289,11 @@ private struct CapturePersistentRecorderDock: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier(
+                    latestMark == nil
+                        ? "CapturePersistentRecorderDetail"
+                        : "CaptureLatestMomentMark"
+                )
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .layoutPriority(1)
@@ -20404,6 +20412,10 @@ private struct CapturePersistentRecorderDock: View {
         audioState == .recording
     }
 
+    private var latestMark: TimeInterval? {
+        supportsSourceMarks ? userMarkOffsets.last : nil
+    }
+
     private var actionDisabled: Bool {
         if isBusy { return true }
         // Missing consent is handled by the dock's conventional Allow action,
@@ -20468,6 +20480,9 @@ private struct CapturePersistentRecorderDock: View {
             return "Your audio and timed transcript stay connected"
         }
         if captureIsActive {
+            if let latestMark {
+                return "Last mark at \(latestMark.captureDurationLabel) · saved locally when stopped"
+            }
             return "\(duration.captureDurationLabel) · saved locally when stopped"
         }
         if waitingForHost {
