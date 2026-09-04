@@ -790,7 +790,6 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             if isVisiblyOperable() { return true }
             if attempts < swipeAttempts {
                 let recorderSurface = recorderScrollSurface(in: app)
-                let recorderAction = persistentRecorderPrimaryAction()
                 let shouldMoveTowardBottom = element.exists
                     && element.frame.minY <= topNavigationChromeBottom() + 4
                 if recorderSurface.exists && recorderSurface.isHittable {
