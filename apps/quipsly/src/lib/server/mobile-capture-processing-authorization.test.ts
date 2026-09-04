@@ -257,6 +257,39 @@ describe("Capture processing authorization", () => {
     })).resolves.toMatchObject({ authorized: true, reasonCode: "READY" });
   });
 
+  it("accepts the distinct exact-source authorization used by a private personal recording", async () => {
+    const personalRecord = {
+      ...authorizationRecord,
+      attestationVersion: PERSONAL_SELF_CAPTURE_ATTESTATION_VERSION,
+    };
+    const client = prisma(personalRecord);
+    await expect(evaluateMobileCaptureProcessingAuthorization({
+      prisma: client,
+      manifest: externalManifest({
+        processingAuthorization: {
+          kind: "source-import",
+          authorizationId: personalRecord.id,
+          consentVersion: personalRecord.consentVersion,
+          attestationVersion: PERSONAL_SELF_CAPTURE_ATTESTATION_VERSION,
+        },
+      }),
+    })).resolves.toMatchObject({ authorized: true, reasonCode: "READY" });
+  });
+
+  it("rejects a manifest that substitutes a different supported attestation for the database record", async () => {
+    const personalRecord = {
+      ...authorizationRecord,
+      attestationVersion: PERSONAL_SELF_CAPTURE_ATTESTATION_VERSION,
+    };
+    await expect(evaluateMobileCaptureProcessingAuthorization({
+      prisma: prisma(personalRecord),
+      manifest: externalManifest(),
+    })).resolves.toMatchObject({
+      authorized: false,
+      reasonCode: "SOURCE_IMPORT_AUTHORIZATION_MISMATCH",
+    });
+  });
+
   it("fails closed when any exact source binding differs", async () => {
     const client = prisma({
       ...authorizationRecord,

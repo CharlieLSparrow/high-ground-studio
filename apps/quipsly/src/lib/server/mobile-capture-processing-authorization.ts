@@ -425,12 +425,12 @@ export async function evaluateMobileCaptureProcessingAuthorization(input: {
   const authorized = authorizationMatchesBinding(imported, binding)
     && imported.id === authorization.authorizationId
     && imported.consentVersion === authorization.consentVersion
-    && authorization.attestationVersion === EXTERNAL_SOURCE_IMPORT_ATTESTATION_VERSION;
+    && imported.attestationVersion === authorization.attestationVersion;
   return {
     authorized,
     reasonCode: authorized ? "READY" : "SOURCE_IMPORT_AUTHORIZATION_MISMATCH",
     reason: authorized
-      ? "The external original has an exact source-time attestation and current participant consent."
+      ? "The retained original has exact source authorization and current participant consent."
       : "The imported source does not match its immutable authorization.",
     readiness,
     authorization,
