@@ -212,9 +212,22 @@ enum OnDeviceTranscriptStore {
     }
 
     private static func writeProtected(_ data: Data, to url: URL) throws {
+        // Foundation traps on physical iPadOS when `.atomic` and
+        // `.withoutOverwriting` are combined. These artifacts are addressed by
+        // immutable recording/request IDs and transcript work is serialized per
+        // recording, so make replays idempotent before performing the protected
+        // atomic write. A different payload at the same identity still fails
+        // closed instead of replacing evidence.
+        if FileManager.default.fileExists(atPath: url.path) {
+            let existing = try Data(contentsOf: url, options: [.mappedIfSafe])
+            guard existing == data else {
+                throw OnDeviceTranscriptFailure.localStorageUnavailable
+            }
+            return
+        }
         try data.write(
             to: url,
-            options: [.atomic, .withoutOverwriting, .completeFileProtectionUntilFirstUserAuthentication]
+            options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication]
         )
         try FileManager.default.setAttributes(
             [.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication],
