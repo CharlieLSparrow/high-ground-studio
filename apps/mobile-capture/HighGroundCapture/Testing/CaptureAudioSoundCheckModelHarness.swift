@@ -108,6 +108,54 @@ struct CaptureAudioSoundCheckModelHarness {
                 .contains("normal voice"),
             "invalid timer evidence must return to the safe first prompt"
         )
+        require(
+            CaptureAudioLiveInputState.evaluate(
+                averagePowerDBFS: -160,
+                peakPowerDBFS: -160,
+                isActive: false
+            ) == .inactive,
+            "an idle recorder must never claim missing input"
+        )
+        require(
+            CaptureAudioLiveInputState.evaluate(
+                averagePowerDBFS: -72,
+                peakPowerDBFS: -59,
+                isActive: true
+            ) == .noUsefulSignal,
+            "a continuing flat recorder route must be visible as no useful signal"
+        )
+        require(
+            CaptureAudioLiveInputState.evaluate(
+                averagePowerDBFS: -48,
+                peakPowerDBFS: -35,
+                isActive: true
+            ) == .low,
+            "quiet but responsive input must remain distinct from a flat route"
+        )
+        require(
+            CaptureAudioLiveInputState.evaluate(
+                averagePowerDBFS: -24,
+                peakPowerDBFS: -9,
+                isActive: true
+            ) == .healthy,
+            "ordinary speech must remain in the healthy live range"
+        )
+        require(
+            CaptureAudioLiveInputState.evaluate(
+                averagePowerDBFS: -11,
+                peakPowerDBFS: -5,
+                isActive: true
+            ) == .hot,
+            "high live average level must retain a headroom warning"
+        )
+        require(
+            CaptureAudioLiveInputState.evaluate(
+                averagePowerDBFS: -20,
+                peakPowerDBFS: -0.5,
+                isActive: true
+            ) == .clippingRisk,
+            "near-full-scale live peaks must retain a clipping warning"
+        )
 
         do {
             let original = summary(average: -24, peak: -9)
@@ -130,6 +178,6 @@ struct CaptureAudioSoundCheckModelHarness {
             exit(1)
         }
 
-        print("PASS Capture audio sound-check classifications preserve headroom, route, explicit listener decisions, and outbox evidence.")
+        print("PASS Capture audio sound-check and live-input classifications preserve headroom, route, explicit listener decisions, and outbox evidence.")
     }
 }

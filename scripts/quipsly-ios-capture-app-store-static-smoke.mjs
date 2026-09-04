@@ -1389,6 +1389,21 @@ requireIncludes(
   "@Published private(set) var captureState: AudioCaptureState = .idle",
   "single visible recording state source",
 );
+requireIncludes(
+  capturePhoneShellText,
+  'accessibilityIdentifier("CaptureRecorderNoSignalWarning")',
+  "a sustained flat microphone route becomes visible without interrupting capture",
+);
+requireIncludes(
+  capturePhoneShellText,
+  "try await Task.sleep(for: .seconds(4))",
+  "the live no-signal warning waits for a sustained flat meter",
+);
+requireIncludes(
+  capturePhoneShellText,
+  "Your recording is still running and safe.",
+  "the no-signal warning preserves source confidence and gives direct recovery guidance",
+);
 assert(
   !audioText.includes("@Published private(set) var isRecording"),
   "Recorder must not publish a second Boolean recording truth alongside captureState.",

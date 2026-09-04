@@ -19328,6 +19328,7 @@ private struct RecorderHero: View {
     @ObservedObject private var writingStore = VoiceWritingDraftStore.shared
     @State private var showsVoiceWritingTips = false
     @State private var showsSpeechAccuracy = false
+    @State private var showsPersistentNoSignalWarning = false
 
     let session: MobileCaptureSession
     let captureState: AudioCaptureState
@@ -19380,6 +19381,29 @@ private struct RecorderHero: View {
                     isActive: isActuallyRecording
                 )
                 primaryControl
+            }
+
+            if showsPersistentNoSignalWarning {
+                HStack(alignment: .top, spacing: 10) {
+                    Image(systemName: "waveform.slash")
+                        .foregroundStyle(.orange)
+                        .accessibilityHidden(true)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("The microphone meter is staying flat")
+                            .font(.subheadline.weight(.bold))
+                        Text("Your recording is still running and safe. If you are speaking, check that the microphone is not covered or muted. If the meter stays flat, stop and run Device & sound check before continuing.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(12)
+                .background(
+                    .orange.opacity(0.10),
+                    in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+                )
+                .accessibilityElement(children: .combine)
+                .accessibilityIdentifier("CaptureRecorderNoSignalWarning")
             }
 
             if isCaptureActive && captureState != .finalizing {
@@ -19488,12 +19512,38 @@ private struct RecorderHero: View {
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("CaptureRecorderHero")
+        .task(id: liveInputMonitorID) {
+            guard captureState == .recording,
+                  liveInputState == .noUsefulSignal else {
+                showsPersistentNoSignalWarning = false
+                return
+            }
+            do {
+                try await Task.sleep(for: .seconds(4))
+            } catch {
+                return
+            }
+            guard !Task.isCancelled else { return }
+            showsPersistentNoSignalWarning = true
+        }
         .onAppear {
             recognitionPreferences.refresh()
         }
         .onReceive(NotificationCenter.default.publisher(for: .quipslyCaptureAccountIdentityDidChange)) { _ in
             recognitionPreferences.refresh()
         }
+    }
+
+    private var liveInputState: CaptureAudioLiveInputState {
+        CaptureAudioLiveInputState.evaluate(
+            averagePowerDBFS: averagePowerDB,
+            peakPowerDBFS: peakPowerDB,
+            isActive: captureState == .recording
+        )
+    }
+
+    private var liveInputMonitorID: String {
+        "\(captureState.rawValue)|\(liveInputState.rawValue)|\(inputRoute)"
     }
 
     @ViewBuilder
@@ -19927,21 +19977,20 @@ struct InputLevelMeter: View {
         normalized(safePeakDB)
     }
 
-    private var signalState: String {
-        guard isActive else { return "Meter inactive" }
-        if safePeakDB >= -1 { return "Clipping risk" }
-        if safePeakDB >= -3 || safeAverageDB >= -12 { return "Hot input" }
-        if safeAverageDB < -60 && safePeakDB < -54 { return "No useful signal" }
-        if safeAverageDB < -42 { return "Low input" }
-        return "Healthy speech range"
+    private var signalState: CaptureAudioLiveInputState {
+        CaptureAudioLiveInputState.evaluate(
+            averagePowerDBFS: safeAverageDB,
+            peakPowerDBFS: safePeakDB,
+            isActive: isActive
+        )
     }
 
     private var signalTint: Color {
         switch signalState {
-        case "Clipping risk": .red
-        case "Hot input", "Low input": .orange
-        case "Healthy speech range": .green
-        default: .secondary
+        case .clippingRisk: .red
+        case .hot, .low: .orange
+        case .healthy: .green
+        case .inactive, .noUsefulSignal: .secondary
         }
     }
 
@@ -19952,7 +20001,7 @@ struct InputLevelMeter: View {
                     .font(.caption2.weight(.bold))
                     .textCase(.uppercase)
                 Spacer()
-                Text(signalState)
+                Text(signalState.title)
                     .font(.caption2.weight(.bold))
                     .foregroundStyle(signalTint)
             }
@@ -19979,7 +20028,7 @@ struct InputLevelMeter: View {
         .accessibilityLabel("Microphone level")
         .accessibilityValue(
             isActive
-                ? "\(signalState), average power \(formatted(safeAverageDB)), peak power \(formatted(safePeakDB)). Not LUFS or true peak."
+                ? "\(signalState.title), average power \(formatted(safeAverageDB)), peak power \(formatted(safePeakDB)). Not LUFS or true peak."
                 : "Inactive"
         )
         .accessibilityIdentifier("CaptureRecorderInputEvidence")

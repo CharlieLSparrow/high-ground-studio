@@ -45,6 +45,50 @@ enum CaptureAudioSoundCheckPlaybackDecision: String, Codable, Equatable, Sendabl
     }
 }
 
+/// Fast electrical-level feedback for the continuing recorder meter. This is
+/// deliberately separate from the post-stop loudness and audible-event scan:
+/// it can warn that a route looks flat, but it cannot claim that speech was or
+/// was not intelligible.
+enum CaptureAudioLiveInputState: String, Equatable, Sendable {
+    case inactive
+    case noUsefulSignal
+    case low
+    case healthy
+    case hot
+    case clippingRisk
+
+    var title: String {
+        switch self {
+        case .inactive: "Meter inactive"
+        case .noUsefulSignal: "No useful signal"
+        case .low: "Low input"
+        case .healthy: "Healthy speech range"
+        case .hot: "Hot input"
+        case .clippingRisk: "Clipping risk"
+        }
+    }
+
+    static func evaluate(
+        averagePowerDBFS: Float,
+        peakPowerDBFS: Float,
+        isActive: Bool
+    ) -> Self {
+        guard isActive else { return .inactive }
+        let average = normalizedDecibels(averagePowerDBFS)
+        let peak = normalizedDecibels(peakPowerDBFS)
+        if peak >= -1 { return .clippingRisk }
+        if peak >= -3 || average >= -12 { return .hot }
+        if average < -60 && peak < -54 { return .noUsefulSignal }
+        if average < -42 { return .low }
+        return .healthy
+    }
+
+    private static func normalizedDecibels(_ value: Float) -> Float {
+        guard value.isFinite else { return -160 }
+        return min(0, max(-160, value))
+    }
+}
+
 struct CaptureAudioSoundCheckPrompt: Equatable, Sendable {
     let heading: String
     let detail: String
