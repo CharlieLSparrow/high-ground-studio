@@ -2357,12 +2357,15 @@ final class LocalRecordingLibrary: ObservableObject {
         let observations = signalObservations(
             windows: windows,
             durationSeconds: durationSeconds,
+            signalRmsDbfs: rms,
             signalPeakDbfs: peak,
             stereoBalanceDb: balance,
             thresholds: thresholds
         )
         let signalStatus = peak <= thresholds.nearSilenceDbfs
             ? "near-digital-silence"
+            : rms <= -60 && peak <= thresholds.surroundingSignalDbfs
+                ? "attention"
             : !observations.isEmpty
                 ? "attention"
                 : "signal-present"
@@ -2393,6 +2396,7 @@ final class LocalRecordingLibrary: ObservableObject {
     nonisolated private static func signalObservations(
         windows: [LocalRecordingAudioSignalWindow],
         durationSeconds: Double,
+        signalRmsDbfs: Double,
         signalPeakDbfs: Double,
         stereoBalanceDb: Double?,
         thresholds: LocalRecordingAudioSignalThresholds
@@ -2406,6 +2410,17 @@ final class LocalRecordingLibrary: ObservableObject {
                     startSeconds: 0,
                     endSeconds: roundedSignal(durationSeconds),
                     detail: "The decoded source peak stayed at or below the recorded near-silence threshold. Listen before relying on this take."
+                )
+            )
+        } else if signalRmsDbfs <= -60,
+                  signalPeakDbfs <= thresholds.surroundingSignalDbfs {
+            observations.append(
+                LocalRecordingAudioSignalObservation(
+                    kind: "very-low-level",
+                    severity: "warning",
+                    startSeconds: 0,
+                    endSeconds: roundedSignal(durationSeconds),
+                    detail: "The source is far below a normal speech level. Check the selected microphone or record closer to it before relying on this take."
                 )
             )
         }

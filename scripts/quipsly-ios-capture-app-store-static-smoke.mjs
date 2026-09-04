@@ -659,6 +659,7 @@ assert(
 );
 for (const needle of [
   "CaptureOnDeviceTranscriptAction_",
+  "case .failed(_, let retryable) where !retryable",
   "Download English speech model",
   "Quipsly turns the finished recording into timed, editable text",
   "Your original audio stays unchanged",
@@ -695,6 +696,8 @@ for (const needle of [
   "pendingVerifiedUploadWakeups.insert(recording.id)",
   "pendingVerifiedUploadWakeups.remove(recordingID)",
   "LocalRecordingLibrary.shared.recording(id: recordingID)",
+  "signal.isEffectivelySilentForSpeech",
+  "No clear speech was detected in this recording.",
   "beginBackgroundTask(",
   "BGProcessingTaskRequest",
   "maximumRecordings: 1",
@@ -712,6 +715,17 @@ for (const needle of [
     onDeviceTranscriptManagerText,
     needle,
     "on-device transcript evidence remains protected, source-bound, and explicit",
+  );
+}
+for (const needle of [
+  'kind: "very-low-level"',
+  'signalStatus = peak <= thresholds.nearSilenceDbfs',
+  'rms <= -60 && peak <= thresholds.surroundingSignalDbfs',
+]) {
+  requireIncludes(
+    localRecordingLibraryText,
+    needle,
+    "source analysis distinguishes an effectively silent speech take from usable input",
   );
 }
 for (const [source, needle, label] of [

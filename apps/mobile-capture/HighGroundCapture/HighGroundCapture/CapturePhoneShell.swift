@@ -8682,6 +8682,8 @@ private struct CapturePersonalVoiceNoteTranscriptCard: View {
         switch phase {
         case .modelDownloadRequired:
             "Download English speech model"
+        case .failed(_, let retryable) where !retryable:
+            nil
         case .failed:
             recording.cloudTranscriptFallbackRequestId != nil
                 ? "Try cloud transcript again"
@@ -21734,6 +21736,8 @@ private struct LocalRecordingRow: View {
                 guard let fileURL else { return }
                 transcriptManager.begin(recording: recording, fileURL: fileURL, allowModelDownload: true)
             }
+        case .failed(_, let retryable) where !retryable:
+            return nil
         case .failed where hasSavedTranscript:
             return { transcriptManager.submitSavedTranscript(recording: recording) }
         case .failed where recording.cloudTranscriptFallbackRequestId != nil:

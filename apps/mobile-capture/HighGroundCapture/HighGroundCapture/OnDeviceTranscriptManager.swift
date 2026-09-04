@@ -1394,6 +1394,17 @@ final class OnDeviceTranscriptManager: ObservableObject {
             } else {
                 let fallbackReason: String?
                 if let known = error as? OnDeviceTranscriptFailure {
+                    if case .noFinalizedSpeech = known,
+                       let signal = LocalRecordingLibrary.shared.recording(
+                        id: recording.id
+                       )?.sourceProfile?.audioSignal,
+                       signal.isEffectivelySilentForSpeech {
+                        phases[recording.id] = .failed(
+                            message: "No clear speech was detected in this recording. The original audio is safe; make a fresh take closer to the microphone or check the selected input.",
+                            retryable: false
+                        )
+                        return
+                    }
                     fallbackReason = known.cloudFallbackReasonCode
                 } else if attemptStage.allowsUnknownCloudFallback {
                     fallbackReason = "apple-speech-processing-failed"
@@ -1688,6 +1699,15 @@ final class OnDeviceTranscriptManager: ObservableObject {
     private func isRetryableDeliveryError(_ error: Error) -> Bool {
         OnDeviceTranscriptDeliveryPolicy.shouldRetry(transportError: error)
             || (error as? OnDeviceTranscriptFailure)?.isRetryableDeliveryFailure == true
+    }
+}
+
+private extension LocalRecordingAudioSignalProfile {
+    var isEffectivelySilentForSpeech: Bool {
+        rmsDbfs <= -60
+            && samplePeakDbfs <= -45
+            && (nearSilentFrameFraction >= 0.5
+                || loudness?.status == "below-absolute-gate")
     }
 }
 
