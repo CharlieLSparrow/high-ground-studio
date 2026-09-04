@@ -125,7 +125,14 @@ final class CaptureAudioSoundCheckController: NSObject, ObservableObject,
 
         do {
             try coordinator.activateLocalCapture()
-            routeName = normalizedRouteName(currentRouteName)
+            // Activation may interrupt another app and select a different port
+            // or built-in microphone data source. Bind the saved check to the
+            // route that actually receives PCM, not the pre-activation label.
+            routeName = normalizedRouteName(
+                coordinator.currentInputRouteName == "No microphone active"
+                    ? currentRouteName
+                    : coordinator.currentInputRouteName
+            )
             let url = try makeSoundCheckURL()
             let settings: [String: Any] = [
                 AVFormatIDKey: Int(kAudioFormatMPEG4AAC),

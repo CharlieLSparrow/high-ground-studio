@@ -247,6 +247,7 @@ const swiftPackageResolutionText = read(files.swiftPackageResolution);
 const audioText = read(files.audioCapture);
 const providerAudioMasterText = read(files.providerAudioMaster);
 const voiceWritingLiveSourceText = read(files.voiceWritingLiveSource);
+const captureAudioSoundCheckText = read(files.audioSoundCheck);
 const videoCaptureControllerText = read(files.videoCaptureController);
 const videoCaptureServiceText = read(files.videoCaptureService);
 const captureAudioSessionCoordinatorText = read(files.captureAudioSessionCoordinator);
@@ -2713,6 +2714,20 @@ requireIncludes(captureAudioSessionCoordinatorText, '@Published private(set) var
 requireIncludes(captureAudioSessionCoordinatorText, "AVAudioSession.routeChangeNotification", "shared native audio policy refreshes route truth after hardware or system changes");
 requireIncludes(captureAudioSessionCoordinatorText, "private func refreshRouteSnapshot()", "shared native audio policy derives display routes from the active AVAudioSession");
 requireIncludes(captureAudioSessionCoordinatorText, "No microphone became active.", "recording validates the real microphone only after Quipsly owns the active audio session");
+for (const needle of [
+  "includeSelectedDataSource: true",
+  "port.selectedDataSource?.dataSourceName",
+  "coordinator.currentInputRouteName == \"No microphone active\"",
+  ": coordinator.currentInputRouteName",
+]) {
+  requireIncludes(
+    needle.includes("coordinator.")
+      ? captureAudioSoundCheckText
+      : captureAudioSessionCoordinatorText,
+    needle,
+    "sound check records the activated input port and selected microphone data source",
+  );
+}
 requireIncludes(captureAudioSessionCoordinatorText, "options: [.defaultToSpeaker, .allowBluetoothHFP]", "recording and calls use primary audio that conventionally interrupts background playback");
 requireExcludes(captureAudioSessionCoordinatorText, ".mixWithOthers", "recording does not lose microphone IO by mixing with a competing playback app");
 requireIncludes(audioText, "iOS may\n            // report no current input while another app still owns the active", "side-effect-free recorder preparation does not mistake an inactive route for missing hardware");

@@ -308,42 +308,53 @@ final class CaptureAudioSessionCoordinator: ObservableObject {
         currentInputRouteName = routeNames(
             audioSession.currentRoute.inputs,
             fallback: "No microphone active",
-            builtInFallback: CaptureDeviceVocabulary.builtInMicrophone
+            builtInFallback: CaptureDeviceVocabulary.builtInMicrophone,
+            includeSelectedDataSource: true
         )
         currentOutputRouteName = routeNames(
             audioSession.currentRoute.outputs,
             fallback: CaptureDeviceVocabulary.audioRoute,
-            builtInFallback: "\(CaptureDeviceVocabulary.deviceName) speaker"
+            builtInFallback: "\(CaptureDeviceVocabulary.deviceName) speaker",
+            includeSelectedDataSource: false
         )
     }
 
     private func routeNames(
         _ ports: [AVAudioSessionPortDescription],
         fallback: String,
-        builtInFallback: String
+        builtInFallback: String,
+        includeSelectedDataSource: Bool
     ) -> String {
         let names = ports.map { port -> String in
             let systemName = port.portName.trimmingCharacters(in: .whitespacesAndNewlines)
-            switch port.portType {
+            let portName = switch port.portType {
             case .builtInMic, .builtInReceiver, .builtInSpeaker:
-                return systemName.isEmpty || systemName == port.portType.rawValue
+                systemName.isEmpty || systemName == port.portType.rawValue
                     ? builtInFallback
                     : systemName
             case .headphones, .headsetMic:
-                return systemName.isEmpty || systemName == port.portType.rawValue
+                systemName.isEmpty || systemName == port.portType.rawValue
                     ? "Headphones"
                     : systemName
             case .bluetoothA2DP, .bluetoothHFP, .bluetoothLE:
-                return systemName.isEmpty || systemName == port.portType.rawValue
+                systemName.isEmpty || systemName == port.portType.rawValue
                     ? "Bluetooth audio"
                     : systemName
             case .usbAudio:
-                return systemName.isEmpty || systemName == port.portType.rawValue
+                systemName.isEmpty || systemName == port.portType.rawValue
                     ? "USB audio"
                     : systemName
             default:
-                return systemName.isEmpty ? port.portType.rawValue : systemName
+                systemName.isEmpty ? port.portType.rawValue : systemName
             }
+            guard includeSelectedDataSource else { return portName }
+            let dataSourceName = port.selectedDataSource?.dataSourceName
+                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            guard !dataSourceName.isEmpty,
+                  dataSourceName.caseInsensitiveCompare(portName) != .orderedSame else {
+                return portName
+            }
+            return "\(portName) · \(dataSourceName)"
         }
         .filter { !$0.isEmpty }
         return names.isEmpty ? fallback : names.joined(separator: " + ")
