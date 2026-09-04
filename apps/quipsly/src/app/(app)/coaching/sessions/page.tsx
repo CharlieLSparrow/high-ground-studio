@@ -180,11 +180,11 @@ function toneForSession(session: MobileCaptureSession): SessionTone {
 
 function Pill({ label, tone = "warm" }: { label: string; tone?: SessionTone }) {
   const classes = {
-    good: "border-emerald-200 bg-emerald-50 text-emerald-700",
-    warn: "border-amber-200 bg-amber-50 text-amber-800",
-    bad: "border-rose-200 bg-rose-50 text-rose-700",
+    good: "border-[#b7c9b1] bg-[#e7efe3] text-[#31543a]",
+    warn: "border-[#d8bb82] bg-[#f7eed9] text-[#6d4b22]",
+    bad: "border-[#d8aaa2] bg-[#f7e8e4] text-[#713d36]",
     warm: "border-[#ead8b4] bg-[#fff7e8] text-[#7b5c3b]",
-    blue: "border-sky-200 bg-sky-50 text-sky-700",
+    blue: "border-[#b6ccc8] bg-[#e5efed] text-[#315d5a]",
   }[tone];
 
   return <span className={`rounded-full border px-3 py-1 text-[11px] font-black uppercase tracking-wide ${classes}`}>{label}</span>;
@@ -247,13 +247,13 @@ function SessionCard({ session }: { session: MobileCaptureSession }) {
             <div><dt className="text-[10px] font-black uppercase tracking-wide">Transcript</dt><dd className="font-bold">{titleCase(session.latestTranscriptStatus || "not started")}</dd></div>
           </dl>
           <div className="mt-4 grid gap-2">
-            {session.providerCanJoin ? <Link href={`${workspaceHref}?mode=live`} className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-full bg-violet-800 px-4 py-2 text-xs font-black uppercase tracking-wide text-white hover:bg-violet-700"><Video size={15} aria-hidden="true" /> Join call</Link> : null}
+            {session.providerCanJoin ? <Link href={`${workspaceHref}?mode=live`} className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-full bg-[#4f6f52] px-4 py-2 text-xs font-black uppercase tracking-wide text-white hover:bg-[#3f5c43]"><Video size={15} aria-hidden="true" /> Join call</Link> : null}
             <Link href={workspaceHref} className="inline-flex min-h-11 w-full items-center justify-center rounded-full bg-[#3d3122] px-4 py-2 text-xs font-black uppercase tracking-wide text-white hover:bg-[#5a472f]">
               Open session
             </Link>
-            {session.recordingConsentGranted !== true && !sessionIsCompleted(session) ? <Link href={`${workspaceHref}?mode=prepare`} className="inline-flex min-h-11 w-full items-center justify-center rounded-full border border-amber-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-amber-900 hover:bg-amber-50">Recording options</Link> : null}
-            {session.coachingEngagementId ? <Link href={`/coaching/engagements/${encodeURIComponent(session.coachingEngagementId)}`} className="inline-flex min-h-11 w-full items-center justify-center rounded-full border border-violet-200 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-violet-900 hover:bg-violet-50">Shared coaching space</Link> : null}
-            {session.latestCheckoutUrl && !paymentResolvedFor(session) ? <a href={session.latestCheckoutUrl} target="_blank" rel="noreferrer" className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-full border border-emerald-200 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-emerald-900 hover:bg-emerald-50"><ExternalLink size={14} aria-hidden="true" /> Open Stripe</a> : null}
+            {session.recordingConsentGranted !== true && !sessionIsCompleted(session) ? <Link href={`${workspaceHref}?mode=prepare`} className="inline-flex min-h-11 w-full items-center justify-center rounded-full border border-[#d8bb82] bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-[#6d4b22] hover:bg-[#f7eed9]">Recording options</Link> : null}
+            {session.coachingEngagementId ? <Link href={`/coaching/engagements/${encodeURIComponent(session.coachingEngagementId)}`} className="inline-flex min-h-11 w-full items-center justify-center rounded-full border border-[#b6ccc8] bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-[#315d5a] hover:bg-[#e5efed]">Shared coaching space</Link> : null}
+            {session.latestCheckoutUrl && !paymentResolvedFor(session) ? <a href={session.latestCheckoutUrl} target="_blank" rel="noreferrer" className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-full border border-[#b7c9b1] bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-[#31543a] hover:bg-[#e7efe3]"><ExternalLink size={14} aria-hidden="true" /> Open Stripe</a> : null}
           </div>
         </div>
       </div>
@@ -405,7 +405,7 @@ export default function CoachingSessionsPage() {
             </div> : null}
           </div>
           {error && (
-            <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-bold text-amber-800">
+            <div className="mt-5 rounded-2xl border border-[#d8bb82] bg-[#f7eed9] p-4 text-sm font-bold text-[#6d4b22]">
               {error} If you expected a Session here, sign in with the invited email or ask your coach to resend the invitation.
             </div>
           )}
@@ -414,27 +414,27 @@ export default function CoachingSessionsPage() {
 
       <main className="mx-auto max-w-6xl space-y-5 px-6 pb-10">
         {payload?.user?.canCreateCaptureSessions ? (
-          <section className="rounded-[1.8rem] border border-sky-200 bg-white/85 p-6 shadow-sm" aria-labelledby="new-session-heading">
+          <section className="rounded-[1.8rem] border border-[#b6ccc8] bg-white/85 p-6 shadow-sm" aria-labelledby="new-session-heading">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
               <div>
-                <p className="text-xs font-black uppercase tracking-[0.2em] text-sky-700">{isEmptyCreator ? "Start with the right path" : "New Session"}</p>
+                <p className="text-xs font-black uppercase tracking-[0.2em] text-[#315d5a]">{isEmptyCreator ? "Start with the right path" : "New Session"}</p>
                 <h2 id="new-session-heading" className="mt-1 text-2xl font-black text-[#3d3122]">{isEmptyCreator ? "Schedule coaching—or plan another kind of Session" : "Plan a real session"}</h2>
                 <p className="mt-2 max-w-3xl text-sm font-semibold leading-6 text-[#6f5a3d]">{isEmptyCreator ? "Coaching uses the simple client-and-time scheduler. The flexible planner remains here for podcasts, interviews, and internal meetings." : "Create a podcast, coaching, interview, or internal Session when you need one."}</p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
-                {isEmptyCreator ? <Link href="/coaching#create-appointment" className="inline-flex min-h-11 items-center justify-center rounded-full bg-violet-800 px-5 py-3 text-xs font-black uppercase tracking-wide text-white hover:bg-violet-900">Schedule coaching</Link> : null}
-                <button type="button" aria-expanded={isPlannerOpen} aria-controls="session-planner" onClick={() => setIsPlannerOpen((current) => !current)} className="inline-flex min-h-11 items-center justify-center rounded-full bg-sky-800 px-5 py-3 text-xs font-black uppercase tracking-wide text-white hover:bg-sky-900">
+                {isEmptyCreator ? <Link href="/coaching#create-appointment" className="inline-flex min-h-11 items-center justify-center rounded-full bg-[#4f6f52] px-5 py-3 text-xs font-black uppercase tracking-wide text-white hover:bg-[#3f5c43]">Schedule coaching</Link> : null}
+                <button type="button" aria-expanded={isPlannerOpen} aria-controls="session-planner" onClick={() => setIsPlannerOpen((current) => !current)} className="inline-flex min-h-11 items-center justify-center rounded-full bg-[#5f8380] px-5 py-3 text-xs font-black uppercase tracking-wide text-white hover:bg-[#4b6e6b]">
                   {isPlannerOpen ? "Close planner" : isEmptyCreator ? "Plan another kind" : "Plan a session"}
                 </button>
               </div>
             </div>
-            {isPlannerOpen ? <form id="session-planner" onSubmit={createSession} className="mt-5 grid gap-4 border-t border-sky-100 pt-5 md:grid-cols-2">
-              <p className="rounded-xl border border-sky-100 bg-sky-50 px-4 py-3 text-xs font-bold leading-5 text-sky-950 md:col-span-2">After this step, Quipsly will take you to the private Session workspace to schedule it and invite your client.</p>
+            {isPlannerOpen ? <form id="session-planner" onSubmit={createSession} className="mt-5 grid gap-4 border-t border-[#cbdad6] pt-5 md:grid-cols-2">
+              <p className="rounded-xl border border-[#cbdad6] bg-[#eef4f1] px-4 py-3 text-xs font-bold leading-5 text-[#315d5a] md:col-span-2">After this step, Quipsly will take you to the private Session workspace to schedule it and invite your client.</p>
               <label className="text-sm font-black text-[#3d3122] md:col-span-2">Session title
-                <input required value={createDraft.title} onChange={(event) => setCreateDraft((current) => ({ ...current, title: event.target.value }))} placeholder="Weekly coaching session" className="mt-1 min-h-11 w-full rounded-xl border border-[#d6c5a5] bg-white px-3 py-2 font-semibold outline-none focus:ring-2 focus:ring-sky-500" />
+                <input required value={createDraft.title} onChange={(event) => setCreateDraft((current) => ({ ...current, title: event.target.value }))} placeholder="Weekly coaching session" className="mt-1 min-h-11 w-full rounded-xl border border-[#d6c5a5] bg-white px-3 py-2 font-semibold outline-none focus:ring-2 focus:ring-[#5f8380]" />
               </label>
               <label className="text-sm font-black text-[#3d3122]">Purpose
-                <select value={createDraft.purpose} onChange={(event) => setCreateDraft((current) => ({ ...current, purpose: event.target.value, episodeSlug: event.target.value === "PODCAST" ? current.episodeSlug : "", coachingEngagementId: event.target.value === "COACHING" ? current.coachingEngagementId : "" }))} className="mt-1 min-h-11 w-full rounded-xl border border-[#d6c5a5] bg-white px-3 py-2 font-semibold outline-none focus:ring-2 focus:ring-sky-500">
+                <select value={createDraft.purpose} onChange={(event) => setCreateDraft((current) => ({ ...current, purpose: event.target.value, episodeSlug: event.target.value === "PODCAST" ? current.episodeSlug : "", coachingEngagementId: event.target.value === "COACHING" ? current.coachingEngagementId : "" }))} className="mt-1 min-h-11 w-full rounded-xl border border-[#d6c5a5] bg-white px-3 py-2 font-semibold outline-none focus:ring-2 focus:ring-[#5f8380]">
                   <option value="PODCAST">Podcast episode</option>
                   <option value="COACHING">Coaching session</option>
                   <option value="RESEARCH_INTERVIEW">Research interview</option>
@@ -442,16 +442,16 @@ export default function CoachingSessionsPage() {
                 </select>
               </label>
               <label className="text-sm font-black text-[#3d3122]">Nest
-                <select value={createDraft.projectSlug} onChange={(event) => setCreateDraft((current) => ({ ...current, projectSlug: event.target.value }))} className="mt-1 min-h-11 w-full rounded-xl border border-[#d6c5a5] bg-white px-3 py-2 font-semibold outline-none focus:ring-2 focus:ring-sky-500">
+                <select value={createDraft.projectSlug} onChange={(event) => setCreateDraft((current) => ({ ...current, projectSlug: event.target.value }))} className="mt-1 min-h-11 w-full rounded-xl border border-[#d6c5a5] bg-white px-3 py-2 font-semibold outline-none focus:ring-2 focus:ring-[#5f8380]">
                   <option value="">My Home Nest</option>
                   {(payload.captureProjects ?? []).map((project) => <option key={project.id} value={project.slug}>{project.name} · {project.role.toLowerCase()}</option>)}
                 </select>
               </label>
               {createDraft.purpose === "PODCAST" ? <label className="text-sm font-black text-[#3d3122]">Episode slug <span className="font-semibold text-[#806a4d]">(optional)</span>
-                <input value={createDraft.episodeSlug} onChange={(event) => setCreateDraft((current) => ({ ...current, episodeSlug: event.target.value }))} placeholder="episode-8" className="mt-1 min-h-11 w-full rounded-xl border border-[#d6c5a5] bg-white px-3 py-2 font-semibold outline-none focus:ring-2 focus:ring-sky-500" />
+                <input value={createDraft.episodeSlug} onChange={(event) => setCreateDraft((current) => ({ ...current, episodeSlug: event.target.value }))} placeholder="episode-8" className="mt-1 min-h-11 w-full rounded-xl border border-[#d6c5a5] bg-white px-3 py-2 font-semibold outline-none focus:ring-2 focus:ring-[#5f8380]" />
               </label> : null}
               {createDraft.purpose === "COACHING" ? <label className="text-sm font-black text-[#3d3122]">Coaching engagement <span className="font-semibold text-[#806a4d]">(optional)</span>
-                <select value={createDraft.coachingEngagementId} onChange={(event) => { const engagement = (payload?.coachingEngagements ?? []).find((item) => item.id === event.target.value); setCreateDraft((current) => ({ ...current, coachingEngagementId: event.target.value, projectSlug: engagement?.projectSlug || current.projectSlug })); }} className="mt-1 min-h-11 w-full rounded-xl border border-[#d6c5a5] bg-white px-3 py-2 font-semibold outline-none focus:ring-2 focus:ring-sky-500">
+                <select value={createDraft.coachingEngagementId} onChange={(event) => { const engagement = (payload?.coachingEngagements ?? []).find((item) => item.id === event.target.value); setCreateDraft((current) => ({ ...current, coachingEngagementId: event.target.value, projectSlug: engagement?.projectSlug || current.projectSlug })); }} className="mt-1 min-h-11 w-full rounded-xl border border-[#d6c5a5] bg-white px-3 py-2 font-semibold outline-none focus:ring-2 focus:ring-[#5f8380]">
                   <option value="">Individual Session only</option>
                   {(payload?.coachingEngagements ?? []).map((engagement) => <option key={engagement.id} value={engagement.id}>{engagement.title} · {engagement.status.toLowerCase()}</option>)}
                 </select>
@@ -459,17 +459,17 @@ export default function CoachingSessionsPage() {
               </label> : null}
               <div className="grid gap-4 sm:grid-cols-2">
                 <label className="text-sm font-black text-[#3d3122]">Starts <span className="font-semibold text-[#806a4d]">(optional)</span>
-                  <input type="datetime-local" value={createDraft.scheduledStart} onChange={(event) => setCreateDraft((current) => ({ ...current, scheduledStart: event.target.value }))} className="mt-1 min-h-11 w-full rounded-xl border border-[#d6c5a5] bg-white px-3 py-2 font-semibold outline-none focus:ring-2 focus:ring-sky-500" />
+                  <input type="datetime-local" value={createDraft.scheduledStart} onChange={(event) => setCreateDraft((current) => ({ ...current, scheduledStart: event.target.value }))} className="mt-1 min-h-11 w-full rounded-xl border border-[#d6c5a5] bg-white px-3 py-2 font-semibold outline-none focus:ring-2 focus:ring-[#5f8380]" />
                 </label>
                 <label className="text-sm font-black text-[#3d3122]">Ends <span className="font-semibold text-[#806a4d]">(optional)</span>
-                  <input type="datetime-local" value={createDraft.scheduledEnd} onChange={(event) => setCreateDraft((current) => ({ ...current, scheduledEnd: event.target.value }))} className="mt-1 min-h-11 w-full rounded-xl border border-[#d6c5a5] bg-white px-3 py-2 font-semibold outline-none focus:ring-2 focus:ring-sky-500" />
+                  <input type="datetime-local" value={createDraft.scheduledEnd} onChange={(event) => setCreateDraft((current) => ({ ...current, scheduledEnd: event.target.value }))} className="mt-1 min-h-11 w-full rounded-xl border border-[#d6c5a5] bg-white px-3 py-2 font-semibold outline-none focus:ring-2 focus:ring-[#5f8380]" />
                 </label>
               </div>
               <div className="md:col-span-2 flex flex-wrap items-center gap-3">
-                <button type="submit" disabled={createBusy} className="inline-flex min-h-11 items-center justify-center rounded-full bg-sky-800 px-5 py-3 text-sm font-black uppercase tracking-wide text-white hover:bg-sky-900 disabled:cursor-wait disabled:opacity-60">{createBusy ? "Creating Session…" : "Create Session"}</button>
-                {createMessage ? <p role="status" className="text-sm font-bold text-emerald-800">{createMessage}</p> : null}
-                {createdRoomId ? <Link href={`/sessions/${encodeURIComponent(createdRoomId)}`} className="inline-flex min-h-11 items-center rounded-full border border-emerald-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-emerald-900">Open created session</Link> : null}
-                {createError ? <p role="alert" className="text-sm font-bold text-rose-800">{createError}</p> : null}
+                <button type="submit" disabled={createBusy} className="inline-flex min-h-11 items-center justify-center rounded-full bg-[#5f8380] px-5 py-3 text-sm font-black uppercase tracking-wide text-white hover:bg-[#4b6e6b] disabled:cursor-wait disabled:opacity-60">{createBusy ? "Creating Session…" : "Create Session"}</button>
+                {createMessage ? <p role="status" className="text-sm font-bold text-[#31543a]">{createMessage}</p> : null}
+                {createdRoomId ? <Link href={`/sessions/${encodeURIComponent(createdRoomId)}`} className="inline-flex min-h-11 items-center rounded-full border border-[#b7c9b1] bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-[#31543a]">Open created session</Link> : null}
+                {createError ? <p role="alert" className="text-sm font-bold text-[#713d36]">{createError}</p> : null}
               </div>
             </form> : null}
           </section>
@@ -487,10 +487,10 @@ export default function CoachingSessionsPage() {
             </div>
             <div className="mt-5 grid gap-3 lg:grid-cols-[minmax(0,1fr)_12rem_12rem]">
               <label className="text-sm font-black text-[#3d3122]">Search Sessions
-                <input type="search" value={sessionQuery} onChange={(event) => setSessionQuery(event.target.value)} placeholder="Client, coach, purpose, or title" className="mt-1 min-h-11 w-full rounded-xl border border-[#d6c5a5] bg-white px-3 py-2 font-semibold outline-none focus:ring-2 focus:ring-sky-500" />
+                <input type="search" value={sessionQuery} onChange={(event) => setSessionQuery(event.target.value)} placeholder="Client, coach, purpose, or title" className="mt-1 min-h-11 w-full rounded-xl border border-[#d6c5a5] bg-white px-3 py-2 font-semibold outline-none focus:ring-2 focus:ring-[#5f8380]" />
               </label>
               <label className="text-sm font-black text-[#3d3122]">Purpose
-                <select value={purposeFilter} onChange={(event) => setPurposeFilter(event.target.value as SessionPurposeFilter)} className="mt-1 min-h-11 w-full rounded-xl border border-[#d6c5a5] bg-white px-3 py-2 font-semibold outline-none focus:ring-2 focus:ring-sky-500">
+                <select value={purposeFilter} onChange={(event) => setPurposeFilter(event.target.value as SessionPurposeFilter)} className="mt-1 min-h-11 w-full rounded-xl border border-[#d6c5a5] bg-white px-3 py-2 font-semibold outline-none focus:ring-2 focus:ring-[#5f8380]">
                   <option value="ALL">All purposes</option>
                   <option value="PODCAST">Podcast</option>
                   <option value="COACHING">Coaching</option>
@@ -498,7 +498,7 @@ export default function CoachingSessionsPage() {
                 </select>
               </label>
               <label className="text-sm font-black text-[#3d3122]">View
-                <select value={viewFilter} onChange={(event) => setViewFilter(event.target.value as SessionViewFilter)} className="mt-1 min-h-11 w-full rounded-xl border border-[#d6c5a5] bg-white px-3 py-2 font-semibold outline-none focus:ring-2 focus:ring-sky-500">
+                <select value={viewFilter} onChange={(event) => setViewFilter(event.target.value as SessionViewFilter)} className="mt-1 min-h-11 w-full rounded-xl border border-[#d6c5a5] bg-white px-3 py-2 font-semibold outline-none focus:ring-2 focus:ring-[#5f8380]">
                   <option value="ACTIVE">Active</option>
                   <option value="ATTENTION">Needs attention</option>
                   <option value="READY">Ready now</option>

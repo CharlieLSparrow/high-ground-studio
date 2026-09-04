@@ -54,9 +54,9 @@ export function CoachingSuiteNav({ canSchedule }: { canSchedule: boolean }) {
                 key={item.href}
                 href={item.href}
                 aria-current={active ? "page" : undefined}
-                className={`${canSchedule && ["Sessions", "Forms"].includes(item.label) ? "hidden sm:inline-flex" : "inline-flex"} min-h-11 shrink-0 items-center gap-2 rounded-full px-3 text-sm font-black transition sm:px-4 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-700 ${
+                className={`${canSchedule && ["Sessions", "Forms"].includes(item.label) ? "hidden sm:inline-flex" : "inline-flex"} min-h-11 shrink-0 items-center gap-2 rounded-full px-3 text-sm font-black transition sm:px-4 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#5f8380] ${
                   active
-                    ? "bg-violet-100 text-violet-950"
+                    ? "bg-[#dfe9da] text-[#294332] shadow-[inset_0_0_0_1px_rgba(79,111,82,0.12)]"
                     : "text-[#6f5a3f] hover:bg-[#f4ecdd] hover:text-[#3d3122]"
                 }`}
               >
@@ -68,7 +68,7 @@ export function CoachingSuiteNav({ canSchedule }: { canSchedule: boolean }) {
         {canSchedule ? (
           <Link
             href="/coaching#create-appointment"
-            className="inline-flex min-h-11 shrink-0 items-center gap-2 rounded-full bg-violet-800 px-4 text-sm font-black text-white shadow-sm transition hover:bg-violet-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-700"
+            className="inline-flex min-h-11 shrink-0 items-center gap-2 rounded-full bg-[#4f6f52] px-4 text-sm font-black text-white shadow-sm transition hover:bg-[#3f5c43] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#5f8380]"
           >
             <Plus size={16} aria-hidden="true" />
             <span className="hidden sm:inline">New session</span>
