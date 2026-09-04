@@ -941,8 +941,7 @@ describe("Session review goal candidates", () => {
 
     expect(await screen.findByRole("heading", { name: "Session results" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /Use Session results/i })).toHaveAttribute("href", "#session-results");
-    expect(screen.getByText("1 category has no candidates")).toBeInTheDocument();
-    expect(screen.getByText("1 category has no results")).toBeInTheDocument();
+    expect(screen.getAllByText("1 category has no results")).toHaveLength(2);
     expect(screen.queryByRole("heading", { name: "Goals and tasks" })).not.toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Follow-through is ready" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Open session work" })).toHaveAttribute("href", "/sessions/room-1?mode=work");
@@ -973,7 +972,7 @@ describe("Session review goal candidates", () => {
       "Your Session recap, notes, tasks, and goals are ready. Everything stays editable and linked to the recording.",
     );
     expect(screen.getByRole("heading", { name: "Session brief" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Candidate goals" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Goals" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /00:12-00:17.*build a repeatable coaching review habit/i })).toHaveAttribute("href", "#transcript-segment-segment-1");
     expect(screen.getByText("Every brief item points to immutable transcript evidence.")).toBeInTheDocument();
     expect(screen.getByText("Inspect exact saved packet text")).toBeInTheDocument();

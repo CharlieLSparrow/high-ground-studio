@@ -368,6 +368,27 @@ type PacketSummary = NonNullable<
   NonNullable<SessionReviewPacket["packet"]>["summary"]
 >;
 
+function sessionResultSectionLabel(value: unknown) {
+  const original = String(value || "").trim();
+  const normalized = original.toLowerCase();
+  if (!original || normalized === "review candidates") return "Key moments";
+  if (normalized.includes("candidate") && normalized.includes("goal")) return "Goals";
+  if (
+    normalized.includes("candidate") &&
+    (normalized.includes("task") || normalized.includes("action"))
+  ) {
+    return "Next actions";
+  }
+  if (normalized.includes("candidate") && normalized.includes("clip")) {
+    return "Clip moments";
+  }
+  const withoutLegacyProcessLanguage = original
+    .replace(/\bcandidates?\b/gi, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+  return withoutLegacyProcessLanguage || "Key moments";
+}
+
 function packetBrief(summary: PacketSummary) {
   const source = record(record(summary).source);
   const brief = record(source.packetBrief);
@@ -376,7 +397,7 @@ function packetBrief(summary: PacketSummary) {
   const sections = Array.isArray(brief.sections)
     ? brief.sections.map(record).map((section) => ({
         id: String(section.id || "section"),
-        label: String(section.label || "Review candidates"),
+        label: sessionResultSectionLabel(section.label),
         items: Array.isArray(section.items)
           ? section.items.map(record).flatMap((item) => {
               const segmentId = String(item.segmentId || "").trim();
@@ -486,8 +507,8 @@ function ReviewPacketSummary({ summary }: { summary: PacketSummary }) {
         </div>
       ) : (
         <p className="rounded-xl border border-dashed border-[#d8c7a7] bg-[#fffdf8] p-4 text-sm font-semibold text-[#765f40]">
-          This packet contains no source-linked brief candidates. Quipsly
-          created nothing to fill the space.
+          Quipsly found no source-linked Session results here and created
+          nothing just to fill the space.
         </p>
       )}
       {emptySections.length ? (
@@ -495,11 +516,12 @@ function ReviewPacketSummary({ summary }: { summary: PacketSummary }) {
           <summary className="cursor-pointer text-xs font-black uppercase tracking-wide text-[#5b472f]">
             {emptySections.length}{" "}
             {emptySections.length === 1 ? "category has" : "categories have"} no
-            candidates
+            results
           </summary>
           <p className="mt-3 font-semibold leading-relaxed">
             {emptySections.map((section) => section.label).join(" · ")}. These
-            categories stay visible as taxonomy, not review work.
+            categories stay available for organization without becoming extra
+            work.
           </p>
         </details>
       ) : null}

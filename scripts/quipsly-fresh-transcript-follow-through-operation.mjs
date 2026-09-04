@@ -61,7 +61,6 @@ try {
     roomId: room.id,
     authorUserId: room.booking.coachUserId,
     kind: "SUMMARY",
-    sourceJson: { path: ["transcriptJobId"], equals: transcript.id },
   };
   const highlightWhere = {
     roomId: room.id,
@@ -69,7 +68,13 @@ try {
     kind: "HIGHLIGHT",
     sourceJson: { path: ["transcriptJobId"], equals: transcript.id },
   };
-  const before = await snapshot({ prisma, roomId: room.id, packetWhere, highlightWhere });
+  const before = await snapshot({
+    prisma,
+    roomId: room.id,
+    transcriptJobId: transcript.id,
+    packetWhere,
+    highlightWhere,
+  });
   assert.equal(before.summaryCount, 1, "The exact fresh transcript should already have one shared recap.");
 
   const results = await Promise.all([
@@ -79,7 +84,13 @@ try {
   assert(results.every((result) => result.packetStatus === "ready"));
   assert.equal(results[0]?.packetBuildId, results[1]?.packetBuildId);
 
-  const after = await snapshot({ prisma, roomId: room.id, packetWhere, highlightWhere });
+  const after = await snapshot({
+    prisma,
+    roomId: room.id,
+    transcriptJobId: transcript.id,
+    packetWhere,
+    highlightWhere,
+  });
   assert.equal(after.summaryCount, before.summaryCount, "Concurrent reconciliation duplicated the shared recap.");
   assert.equal(after.highlightCount, before.highlightCount, "Concurrent reconciliation duplicated shared highlights.");
   assert.equal(after.actionItemCount, before.actionItemCount, "Automatic follow-through created or changed canonical tasks.");
@@ -153,14 +164,20 @@ try {
   await prisma.$disconnect();
 }
 
-async function snapshot({ prisma, roomId, packetWhere, highlightWhere }) {
-  const [summaryCount, highlightCount, actionItemCount, deliveryCount, calendarLinkCount] = await Promise.all([
-    prisma.coachingNote.count({ where: packetWhere }),
+async function snapshot({ prisma, roomId, transcriptJobId, packetWhere, highlightWhere }) {
+  const [summaries, highlightCount, actionItemCount, deliveryCount, calendarLinkCount] = await Promise.all([
+    prisma.coachingNote.findMany({ where: packetWhere, select: { sourceJson: true } }),
     prisma.coachingNote.count({ where: highlightWhere }),
     prisma.actionItem.count({ where: { roomId } }),
     prisma.deliveryEvent.count(),
     prisma.calendarEventLink.count(),
   ]);
+  const summaryCount = summaries.filter(({ sourceJson }) => {
+    const source = record(sourceJson);
+    return source.transcriptJobId === transcriptJobId
+      || (Array.isArray(source.transcriptSources)
+        && source.transcriptSources.some((candidate) => record(candidate).transcriptJobId === transcriptJobId));
+  }).length;
   return { summaryCount, highlightCount, actionItemCount, deliveryCount, calendarLinkCount };
 }
 

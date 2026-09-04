@@ -371,12 +371,23 @@ describe("automatic transcript follow-through", () => {
     const ready = {
       packetStatus: "ready",
       packetBuildId: "packet-ready",
+      summaryNoteId: "summary-ready",
       ordinarySessionWorkCreated: true,
       candidateOnly: false,
       canonicalAccessApplied: true,
       automaticAssignment: true,
     };
     const prisma = transactionalPrisma({
+      coachingNote: {
+        findUnique: jest.fn().mockResolvedValue({
+          roomId: "room-1",
+          sourceJson: {
+            packetBuildId: "packet-ready",
+            reviewRequired: false,
+            transcriptJobId: "job-1",
+          },
+        }),
+      },
       transcriptJob: {
         findUnique: jest.fn()
           .mockResolvedValueOnce({ roomId: "room-1" })
@@ -402,6 +413,64 @@ describe("automatic transcript follow-through", () => {
     });
     expect(buildCoachingPacketFromTranscriptJob).not.toHaveBeenCalled();
     expect(prisma.transcriptJob.update).not.toHaveBeenCalled();
+  });
+
+  it("repairs a stale ready marker when a multi-source recap has a different packet build", async () => {
+    const prisma = transactionalPrisma({
+      coachingNote: {
+        findUnique: jest.fn().mockResolvedValue({
+          roomId: "room-1",
+          sourceJson: {
+            packetBuildId: "packet-current",
+            reviewRequired: false,
+            transcriptSources: [{ transcriptJobId: "job-1" }],
+          },
+        }),
+      },
+      transcriptJob: {
+        findUnique: jest.fn()
+          .mockResolvedValueOnce({ roomId: "room-1" })
+          .mockResolvedValueOnce({
+            roomId: "room-1",
+            requestedBy: "recording-owner",
+            room: { createdByUserId: "room-owner", booking: null },
+            resultJson: { followThrough: {
+              packetStatus: "ready",
+              packetBuildId: "packet-stale",
+              summaryNoteId: "summary-ready",
+              ordinarySessionWorkCreated: true,
+              candidateOnly: false,
+              canonicalAccessApplied: true,
+              automaticAssignment: true,
+            } },
+          }),
+        update: jest.fn().mockResolvedValue({ id: "job-1" }),
+      },
+    });
+    jest.mocked(buildCoachingPacketFromTranscriptJob).mockResolvedValue({
+      ok: true,
+      packetBuildId: "packet-current",
+      summaryNoteId: "summary-ready",
+      reusedExistingPacket: true,
+    } as any);
+
+    await expect(reconcileCaptureTranscriptFollowThrough({
+      prisma,
+      transcriptJobId: "job-1",
+    })).resolves.toMatchObject({
+      packetStatus: "ready",
+      packetBuildId: "packet-current",
+      reusedExistingPacket: true,
+    });
+    expect(buildCoachingPacketFromTranscriptJob).toHaveBeenCalled();
+    expect(prisma.transcriptJob.update).toHaveBeenCalledWith(expect.objectContaining({
+      data: { resultJson: expect.objectContaining({
+        followThrough: expect.objectContaining({
+          packetBuildId: "packet-current",
+          summaryNoteId: "summary-ready",
+        }),
+      }) },
+    }));
   });
 
   it("retries the complete locked transaction after a database write conflict", async () => {

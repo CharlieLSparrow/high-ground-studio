@@ -2,6 +2,7 @@ import "server-only";
 
 import {
   buildCoachingPacketFromTranscriptJob,
+  packetCreatesOrdinarySessionWork,
 } from "@/lib/server/coaching-packets";
 import { reconcileCaptureTranscriptJob } from "@/lib/server/capture-transcript-reconciliation";
 import { acquirePrismaAdvisoryTransactionLock } from "@/lib/server/prisma-advisory-lock";
@@ -105,7 +106,21 @@ async function prepareSessionFollowThrough(input: {
     },
   });
   const durableReady = durableReadyFollowThrough(authority?.resultJson);
-  if (durableReady) {
+  const durableSummary = durableReady?.summaryNoteId
+    ? await input.prisma.coachingNote.findUnique({
+        where: { id: durableReady.summaryNoteId },
+        select: { roomId: true, sourceJson: true },
+      })
+    : null;
+  if (
+    durableReady
+    && durableSummary?.roomId === authority?.roomId
+    && durableSummaryMatchesTranscript({
+      sourceJson: durableSummary.sourceJson,
+      transcriptJobId: input.transcriptJobId,
+      packetBuildId: durableReady.packetBuildId,
+    })
+  ) {
     return {
       transcriptJobId: input.transcriptJobId,
       transcriptStatus: "completed",
@@ -164,6 +179,7 @@ async function prepareSessionFollowThrough(input: {
 
 function durableReadyFollowThrough(value: unknown): {
   packetBuildId: string | null;
+  summaryNoteId: string | null;
 } | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const followThrough = (value as Record<string, unknown>).followThrough;
@@ -184,7 +200,36 @@ function durableReadyFollowThrough(value: unknown): {
     packetBuildId: typeof ready.packetBuildId === "string"
       ? ready.packetBuildId
       : null,
+    summaryNoteId: typeof ready.summaryNoteId === "string"
+      ? ready.summaryNoteId
+      : null,
   };
+}
+
+function durableSummaryMatchesTranscript(input: {
+  sourceJson: unknown;
+  transcriptJobId: string;
+  packetBuildId: string | null;
+}) {
+  if (
+    !input.sourceJson
+    || typeof input.sourceJson !== "object"
+    || Array.isArray(input.sourceJson)
+  ) return false;
+  const source = input.sourceJson as Record<string, unknown>;
+  if (!packetCreatesOrdinarySessionWork(source)) return false;
+  if (
+    typeof source.packetBuildId !== "string"
+    || source.packetBuildId !== input.packetBuildId
+  ) return false;
+  if (source.transcriptJobId === input.transcriptJobId) return true;
+  return Array.isArray(source.transcriptSources)
+    && source.transcriptSources.some((candidate) => (
+      candidate
+      && typeof candidate === "object"
+      && !Array.isArray(candidate)
+      && (candidate as Record<string, unknown>).transcriptJobId === input.transcriptJobId
+    ));
 }
 
 async function recordReadyFollowThrough(prisma: any, input: {
