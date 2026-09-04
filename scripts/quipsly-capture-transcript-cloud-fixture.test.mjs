@@ -80,7 +80,11 @@ test("transcript fixture proves private create-once provider and retry boundarie
     "replayManifest.generation === firstGenerations.manifest",
     "FIXTURE_CONSENT_ACKNOWLEDGED",
     "textDisclosed: false",
-    "if (cleanupRequested)",
+    "completeFixtureManifest",
+    'manifest.status === "processing"',
+    "retireCompletedReplay",
+    "cleanupRequested && cleanupSafe",
+    "a worker may still own its lease",
     "ifGenerationMatch: evidence.generation",
   ]) {
     assert.ok(source.includes(required), `Missing fixture boundary: ${required}`);

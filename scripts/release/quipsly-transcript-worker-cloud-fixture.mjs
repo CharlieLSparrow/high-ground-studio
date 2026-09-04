@@ -111,6 +111,7 @@ const fixtureObjectNames = [
   manifestObjectName,
   sourceObjectName,
 ];
+let cleanupSafe = true;
 
 try {
   const jobContract = await readJobContract();
@@ -197,17 +198,12 @@ try {
     },
   );
   await enqueue(initialManifest.generation, queuedAt);
+  cleanupSafe = false;
 
-  const firstExecution = await executeJob();
-  const completedManifestStored = await loadJson(manifestObjectName);
-  const completedManifest = parseCaptureTranscriptManifest(
-    completedManifestStored.value,
-    jobId,
-  );
-  assert(
-    completedManifest.status === "completed",
-    `Fixture manifest ended in ${completedManifest.status}, not completed.`,
-  );
+  const completion = await completeFixtureManifest();
+  const completedManifestStored = completion.stored;
+  const completedManifest = completion.manifest;
+  cleanupSafe = true;
   assert(
     completedManifestStored.generation !== initialManifest.generation,
     "Worker did not advance the transcript manifest generation.",
@@ -254,7 +250,9 @@ try {
 
   const replayQueuedAt = new Date().toISOString();
   await enqueue(completedManifestStored.generation, replayQueuedAt);
-  const secondExecution = await executeJob();
+  cleanupSafe = false;
+  const replayExecutions = await retireCompletedReplay();
+  cleanupSafe = true;
   const replaySource = await objectEvidence(sourceObjectName);
   const replayManifest = await loadJson(manifestObjectName);
   const replayRaw = await loadJson(rawObjectName);
@@ -292,7 +290,7 @@ try {
     jobId,
     expectedBuildId,
     imageDigest: jobContract.imageDigest,
-    executions: [firstExecution, secondExecution],
+    executions: [...completion.executions, ...replayExecutions],
     source: {
       objectName: sourceObjectName,
       generation: sourceEvidence.generation,
@@ -335,7 +333,7 @@ try {
   };
   process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
 } finally {
-  if (cleanupRequested) {
+  if (cleanupRequested && cleanupSafe) {
     for (const objectName of fixtureObjectNames) {
       const evidence = await objectEvidence(objectName).catch((error) => {
         if (Number(error?.code) === 404) return null;
@@ -343,6 +341,10 @@ try {
       });
       if (evidence) await deleteExactGeneration(evidence);
     }
+  } else if (cleanupRequested) {
+    process.stderr.write(
+      `Fixture ${jobId} was retained because a worker may still own its lease.\n`,
+    );
   }
   const markerValue = await readFile(marker, "utf8").catch(() => "");
   if (markerValue === jobId) {
@@ -565,6 +567,46 @@ async function executeJob() {
     || stderr.match(/executions\/([A-Za-z0-9-]+)/)?.[1]
     || "completed-execution-name-not-returned";
   return { executionName };
+}
+
+async function completeFixtureManifest() {
+  const deadline = Date.now() + 15 * 60 * 1_000;
+  const executions = [];
+  while (Date.now() < deadline) {
+    const stored = await loadJson(manifestObjectName);
+    const manifest = parseCaptureTranscriptManifest(stored.value, jobId);
+    if (manifest.status === "completed") {
+      return { stored, manifest, executions };
+    }
+    if (manifest.status === "failed-terminal") {
+      throw new Error(
+        `Fixture worker failed terminal: ${manifest.failure?.code || "unknown"}.`,
+      );
+    }
+    if (manifest.status === "processing") {
+      // A scheduler execution may have won the lease before the fixture's own
+      // execution. Follow that lease instead of deleting its live objects.
+      await delay(5_000);
+      continue;
+    }
+    executions.push(await executeJob());
+  }
+  throw new Error("Fixture transcript did not complete within 15 minutes.");
+}
+
+async function retireCompletedReplay() {
+  const deadline = Date.now() + 10 * 60 * 1_000;
+  const executions = [];
+  while (Date.now() < deadline) {
+    const [queueExists] = await bucket.file(queueObjectName).exists();
+    if (!queueExists) return executions;
+    executions.push(await executeJob());
+  }
+  throw new Error("Completed fixture replay did not retire within 10 minutes.");
+}
+
+function delay(milliseconds) {
+  return new Promise((resolveDelay) => setTimeout(resolveDelay, milliseconds));
 }
 
 async function saveJsonIfAbsent(objectName, value, customMetadata) {
