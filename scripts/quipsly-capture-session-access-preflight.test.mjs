@@ -20,11 +20,17 @@ test("capture access preflight accepts several identity paths for one expected S
     "alternate@example.com",
     "--expect-session",
     "Episode 9: The Swear Jar",
+    "--expect-room-id",
+    "mobile-session-0123456789abcdef0123456789abcdef",
   ]);
 
   assert.equal(parsed.baseUrl, "https://nest.quipsly.com");
   assert.deepEqual(parsed.emails, ["charlie@example.com", "alternate@example.com"]);
   assert.equal(parsed.expectedSession, "Episode 9: The Swear Jar");
+  assert.equal(
+    parsed.expectedRoomId,
+    "mobile-session-0123456789abcdef0123456789abcdef",
+  );
 });
 
 test("local collaboration convergence is dry-run by default and retains repeated credentials", () => {

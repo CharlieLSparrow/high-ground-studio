@@ -16,6 +16,7 @@ function parseArgs(argv) {
     baseUrl: "https://nest.quipsly.com",
     emails: [],
     expectedSession: "Episode 9: The Swear Jar",
+    expectedRoomId: "",
     firebaseProjectId: "quipsly-reef",
     serviceAccountId: "firebase-adminsdk-fbsvc@quipsly-reef.iam.gserviceaccount.com",
   };
@@ -26,12 +27,15 @@ function parseArgs(argv) {
     else if (arg === "--base-url") input.baseUrl = value, index += 1;
     else if (arg === "--email") input.emails.push(String(value || "").trim().toLowerCase()), index += 1;
     else if (arg === "--expect-session") input.expectedSession = value, index += 1;
+    else if (arg === "--expect-room-id") input.expectedRoomId = String(value || "").trim(), index += 1;
     else if (arg === "--firebase-project-id") input.firebaseProjectId = value, index += 1;
     else if (arg === "--service-account-id") input.serviceAccountId = value, index += 1;
     else throw new Error(`Unknown argument: ${arg}`);
   }
   if (input.emails.length === 0) throw new Error("At least one --email is required.");
-  if (!input.expectedSession) throw new Error("--expect-session must not be empty.");
+  if (!input.expectedSession && !input.expectedRoomId) {
+    throw new Error("Provide --expect-session or --expect-room-id.");
+  }
   input.baseUrl = input.baseUrl.replace(/\/$/, "");
   return input;
 }
@@ -45,7 +49,7 @@ async function readJson(response) {
   }
 }
 
-async function preflightIdentity({ auth, apiKey, baseUrl, email, expectedSession }) {
+async function preflightIdentity({ auth, apiKey, baseUrl, email, expectedSession, expectedRoomId }) {
   const firebaseUser = await auth.getUserByEmail(email);
   if (firebaseUser.disabled || !firebaseUser.emailVerified) {
     throw new Error(`${email} is not an enabled, verified Firebase identity.`);
@@ -72,7 +76,12 @@ async function preflightIdentity({ auth, apiKey, baseUrl, email, expectedSession
   });
   const body = await readJson(sessionsResponse);
   const sessions = Array.isArray(body.sessions) ? body.sessions : [];
-  const expected = sessions.find((session) => session.title === expectedSession);
+  const expected = expectedRoomId
+    ? sessions.find((session) => session.id === expectedRoomId || session.callRoomId === expectedRoomId)
+    : sessions.find((session) => session.title === expectedSession);
+  const source = Array.isArray(expected?.captureSources)
+    ? expected.captureSources[0] || null
+    : null;
 
   return {
     email,
@@ -95,6 +104,34 @@ async function preflightIdentity({ auth, apiKey, baseUrl, email, expectedSession
         title: expected.title,
         status: expected.status,
         projectId: expected.projectId,
+        recordingConsentStatus: expected.recordingConsentStatus || null,
+        recordingConsentGranted: expected.recordingConsentGranted === true,
+        recordingConsentCanRecordAudio: expected.recordingConsentCanRecordAudio === true,
+        recordingConsentCanTranscribe: expected.recordingConsentCanTranscribe === true,
+        allRegisteredParticipantConsentGranted: expected.allRegisteredParticipantConsentGranted === true,
+        allRegisteredParticipantTranscriptionConsentGranted:
+          expected.allRegisteredParticipantTranscriptionConsentGranted === true,
+        recordingCount: Number(expected.recordingCount || 0),
+        latestRecordingAssetStatus: expected.latestRecordingAssetStatus || null,
+        latestTranscriptStatus: expected.latestTranscriptStatus || null,
+        latestTranscriptSegmentCount: Number(expected.latestTranscriptSegmentCount || 0),
+        captureSourceCount: Array.isArray(expected.captureSources) ? expected.captureSources.length : 0,
+        latestCaptureSource: source ? {
+          recordingStatus: source.recordingStatus || null,
+          exactBytesVerified: source.exactBytesVerified === true,
+          byteVerificationKind: source.byteVerificationKind || null,
+          processingDisposition: source.processingDisposition || null,
+          transcriptDisposition: source.transcriptDisposition || null,
+          durationSeconds: Number(source.durationSeconds || 0),
+          transcript: source.transcript ? {
+            status: source.transcript.status || null,
+            provider: source.transcript.provider || null,
+            recognitionExecution: source.transcript.recognitionExecution || null,
+            deviceTranscriptExpected: source.transcript.deviceTranscriptExpected === true,
+            segmentCount: Number(source.transcript.segmentCount || 0),
+            wordCount: Number(source.transcript.wordCount || 0),
+          } : null,
+        } : null,
       } : null,
     },
     passed: sessionsResponse.ok && body.ok === true && Boolean(expected),
@@ -123,6 +160,7 @@ async function main() {
       baseUrl: input.baseUrl,
       email,
       expectedSession: input.expectedSession,
+      expectedRoomId: input.expectedRoomId,
     }));
   }
 
@@ -132,6 +170,7 @@ async function main() {
     readOnly: true,
     baseUrl: input.baseUrl,
     expectedSession: input.expectedSession,
+    expectedRoomId: input.expectedRoomId || null,
     identities,
     checkedAt: new Date().toISOString(),
     tokenHandling: "Short-lived tokens remained in memory and were not printed or persisted.",
