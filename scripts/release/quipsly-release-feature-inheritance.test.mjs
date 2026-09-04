@@ -69,6 +69,19 @@ test("inherits absent optional capabilities as disabled", () => {
   assert.ok(Object.values(flags).every((value) => value === "0"));
 });
 
+test("inherits deliberately disabled staged capabilities without an override", () => {
+  const flags = deriveReleaseFeatureFlags(serviceWith([
+    plain("QUIPSLY_ACCOUNT_DELETION_WORKER_ENABLED", "false"),
+    plain("QUIPSLY_ACCOUNT_DELETION_WORKER_URL", "https://delete.example.invalid"),
+    secret("QUIPSLY_ACCOUNT_DELETION_WORKER_SHARED_SECRET"),
+    plain("QUIPSLY_ALLOW_LIVE_STRIPE_SAAS", "false"),
+    plain("QUIPSLY_SAAS_ENTITLEMENT_ENFORCEMENT", "false"),
+    secret("STRIPE_SECRET_KEY"),
+  ]));
+  assert.equal(flags.ENABLE_ACCOUNT_DELETION_WORKER, "0");
+  assert.equal(flags.ENABLE_STRIPE_SAAS, "0");
+});
+
 test("fails closed instead of disabling a partially configured live capability", () => {
   assert.throws(
     () => deriveReleaseFeatureFlags(serviceWith([
@@ -87,8 +100,8 @@ test("fails closed instead of disabling a partially configured live capability",
 test("an explicit feature choice bypasses only that capability's partial-state inheritance", () => {
   const service = serviceWith([
     secret("GOOGLE_DRIVE_OAUTH_CLIENT_ID"),
+    plain("QUIPSLY_ACCOUNT_DELETION_WORKER_ENABLED", "true"),
     plain("QUIPSLY_ACCOUNT_DELETION_WORKER_URL", "https://delete.example.invalid"),
-    secret("QUIPSLY_ACCOUNT_DELETION_WORKER_SHARED_SECRET"),
   ]);
   assert.throws(
     () => deriveReleaseFeatureFlags(service),

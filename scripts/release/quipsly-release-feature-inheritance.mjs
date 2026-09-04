@@ -18,6 +18,7 @@ export const RELEASE_FEATURE_KEYS = [
 ];
 
 function inheritedBoolean(label, state) {
+  if (state?.enabled === false) return "0";
   if (state?.configured && !state?.ready) {
     throw new Error(
       `Refusing to inherit partially configured ${label}; repair it or provide an explicit release override.`,

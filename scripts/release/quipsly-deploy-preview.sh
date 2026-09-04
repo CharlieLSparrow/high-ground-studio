@@ -103,7 +103,11 @@ TRANSCRIPT_WORKER_SERVICE_ACCOUNT="${TRANSCRIPT_WORKER_SERVICE_ACCOUNT:-quipsly-
 TRANSCRIPT_FOLLOW_THROUGH_SCHEDULER_SERVICE_ACCOUNT="${TRANSCRIPT_FOLLOW_THROUGH_SCHEDULER_SERVICE_ACCOUNT:-quipsly-transcript-scheduler@${PROJECT_ID}.iam.gserviceaccount.com}"
 TRANSCRIPT_WORKER_MEDIA_BUCKET="${TRANSCRIPT_WORKER_MEDIA_BUCKET:-high-ground-odyssey-media}"
 TRANSCRIPT_WORKER_SECRET_NAME="${TRANSCRIPT_WORKER_SECRET_NAME:-quipsly-deepgram-api-key}"
-TRANSCRIPT_PROVIDER="${TRANSCRIPT_PROVIDER:-deepgram}"
+# Quipsly's deployed, audible-fixture-qualified provider is Google Speech v2.
+# Deepgram remains an explicit supported override, but it must never become an
+# accidental release dependency merely because no provider was typed into the
+# operator shell.
+TRANSCRIPT_PROVIDER="${TRANSCRIPT_PROVIDER:-google-speech-v2}"
 GOOGLE_SPEECH_MODEL="${GOOGLE_SPEECH_MODEL:-chirp_3}"
 GOOGLE_SPEECH_LOCATION="${GOOGLE_SPEECH_LOCATION:-us}"
 GOOGLE_CALENDAR_OAUTH_CLIENT_ID_SECRET_NAME="${GOOGLE_CALENDAR_OAUTH_CLIENT_ID_SECRET_NAME:-quipsly-google-calendar-oauth-client-id}"

@@ -31,6 +31,19 @@ const capabilityState = (checks) => ({
   ready: all(checks),
 });
 
+// A disabled integration may retain complete secret/config bindings so it can
+// be enabled deliberately later. That is staged configuration, not a broken
+// live capability. Conversely, any true runtime gate with missing bindings is
+// an enabled-but-incomplete state and must still fail release inheritance.
+const gatedCapabilityState = (enabledChecks, requirementChecks) => {
+  const enabled = any(enabledChecks);
+  return {
+    configured: enabled || any(requirementChecks),
+    enabled,
+    ready: all(enabledChecks) && all(requirementChecks),
+  };
+};
+
 function environmentMap(serviceDocument) {
   const container = serviceDocument?.spec?.template?.spec?.containers?.[0]
     ?? serviceDocument?.spec?.containers?.[0]
@@ -141,21 +154,24 @@ export function summarizeCloudRunCapabilities(
     hasSecret(environment, "QUIPSLY_RESEND_WEBHOOK_SECRET"),
     hasPlain(environment, "QUIPSLY_SESSION_INVITATION_EMAIL_FROM"),
   ]);
-  const transcriptDispatch = capabilityState([
+  const transcriptDispatch = gatedCapabilityState([
     booleanValue(environment.QUIPSLY_TRANSCRIPT_WORKER_ENABLED),
+  ], [
     hasPlain(environment, "QUIPSLY_TRANSCRIPT_WORKER_PROJECT_ID"),
     hasPlain(environment, "QUIPSLY_TRANSCRIPT_WORKER_REGION"),
     hasPlain(environment, "QUIPSLY_TRANSCRIPT_WORKER_JOB"),
     hasPlain(environment, "QUIPSLY_TRANSCRIPT_PROVIDER"),
   ]);
-  const accountDeletion = capabilityState([
+  const accountDeletion = gatedCapabilityState([
     booleanValue(environment.QUIPSLY_ACCOUNT_DELETION_WORKER_ENABLED),
+  ], [
     hasPlain(environment, "QUIPSLY_ACCOUNT_DELETION_WORKER_URL"),
     hasSecret(environment, "QUIPSLY_ACCOUNT_DELETION_WORKER_SHARED_SECRET"),
   ]);
-  const subscriptions = capabilityState([
+  const subscriptions = gatedCapabilityState([
     booleanValue(environment.QUIPSLY_ALLOW_LIVE_STRIPE_SAAS),
     booleanValue(environment.QUIPSLY_SAAS_ENTITLEMENT_ENFORCEMENT),
+  ], [
     hasSecret(environment, "STRIPE_SECRET_KEY"),
     hasSecret(environment, "QUIPSLY_STRIPE_COACH_MONTHLY_PRICE_ID"),
     hasSecret(environment, "QUIPSLY_STRIPE_COACH_ANNUAL_PRICE_ID"),
@@ -204,7 +220,7 @@ export function summarizeCloudRunCapabilities(
     ["analytics", analytics],
     ["App Store receipt checks", appStoreReceiptChecks],
   ]) {
-    if (state.configured && !state.ready) {
+    if (state.configured && !state.ready && state.enabled !== false) {
       warnings.push(`${label} is only partially configured.`);
     }
   }

@@ -175,6 +175,40 @@ test("distinguishes absent capabilities from dangerous partial configuration", (
   assert.match(report.warnings.join("\n"), /Google Drive is only partially configured/);
 });
 
+test("distinguishes staged disabled integrations from enabled incomplete integrations", () => {
+  const staged = fixture();
+  staged.spec.template.spec.containers[0].env = [
+    plain("QUIPSLY_ACCOUNT_DELETION_WORKER_ENABLED", "false"),
+    plain("QUIPSLY_ACCOUNT_DELETION_WORKER_URL", "https://delete.example.run.app"),
+    secret("QUIPSLY_ACCOUNT_DELETION_WORKER_SHARED_SECRET"),
+    plain("QUIPSLY_ALLOW_LIVE_STRIPE_SAAS", "false"),
+    plain("QUIPSLY_SAAS_ENTITLEMENT_ENFORCEMENT", "false"),
+    secret("STRIPE_SECRET_KEY"),
+  ];
+  const stagedReport = summarizeCloudRunCapabilities(staged);
+  assert.deepEqual(stagedReport.capabilities.accountDeletion, {
+    configured: true,
+    enabled: false,
+    ready: false,
+  });
+  assert.deepEqual(stagedReport.capabilities.subscriptions, {
+    configured: true,
+    enabled: false,
+    ready: false,
+  });
+  assert.doesNotMatch(stagedReport.warnings.join("\n"), /account deletion|subscriptions/);
+
+  const incomplete = fixture();
+  incomplete.spec.template.spec.containers[0].env = [
+    plain("QUIPSLY_ACCOUNT_DELETION_WORKER_ENABLED", "true"),
+    plain("QUIPSLY_ACCOUNT_DELETION_WORKER_URL", "https://delete.example.run.app"),
+  ];
+  const incompleteReport = summarizeCloudRunCapabilities(incomplete);
+  assert.equal(incompleteReport.capabilities.accountDeletion.enabled, true);
+  assert.equal(incompleteReport.capabilities.accountDeletion.ready, false);
+  assert.match(incompleteReport.warnings.join("\n"), /account deletion is only partially configured/);
+});
+
 test("parses only the bounded readback arguments", () => {
   assert.deepEqual(
     parseArguments([
