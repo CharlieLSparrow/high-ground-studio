@@ -43,6 +43,43 @@ struct OnDeviceTranscriptDeliveryPolicyHarness {
                 )
             )
         )
+        for code in [
+            "CLOUD_FALLBACK_VERIFIED_SOURCE_REQUIRED",
+            "PROCESSING_AUTHORIZATION_REQUIRED",
+        ] {
+            precondition(
+                OnDeviceTranscriptDeliveryPolicy.shouldRetryCloudFallbackReadiness(
+                    errorCode: code,
+                    completedRetries: 0
+                )
+            )
+            precondition(
+                !OnDeviceTranscriptDeliveryPolicy.shouldRetryCloudFallbackReadiness(
+                    errorCode: code,
+                    completedRetries: 3
+                )
+            )
+        }
+        for code in [
+            "TRANSCRIPT_CONSENT_REQUIRED",
+            "CLOUD_FALLBACK_SOURCE_MISMATCH",
+            "CLOUD_FALLBACK_PARTICIPANT_MISMATCH",
+            "AUTHENTICATION_REQUIRED",
+        ] {
+            precondition(
+                !OnDeviceTranscriptDeliveryPolicy.shouldRetryCloudFallbackReadiness(
+                    errorCode: code,
+                    completedRetries: 0
+                )
+            )
+        }
+        precondition(
+            [0, 1, 2].map(
+                OnDeviceTranscriptDeliveryPolicy.cloudFallbackReadinessRetryDelaySeconds(
+                    completedRetries:
+                )
+            ) == [1, 2, 4]
+        )
         print("PASS On-device transcript delivery retry policy")
     }
 }

@@ -1553,29 +1553,47 @@ final class OnDeviceTranscriptManager: ObservableObject {
                     reasonCode: reasonCode
                 )
             )
-            let (data, response) = try await AuthManager.shared.authenticatedData(
-                for: request,
-                expectedOwnerAccountID: ownerAccountId
-            )
-            let envelope = try? JSONDecoder().decode(
-                OnDeviceTranscriptCloudFallbackResponse.self,
-                from: data
-            )
-            guard (200...299).contains(response.statusCode) else {
+            var completedReadinessRetries = 0
+            let envelope: OnDeviceTranscriptCloudFallbackResponse
+            while true {
+                let (data, response) = try await AuthManager.shared.authenticatedData(
+                    for: request,
+                    expectedOwnerAccountID: ownerAccountId
+                )
+                let candidate = try? JSONDecoder().decode(
+                    OnDeviceTranscriptCloudFallbackResponse.self,
+                    from: data
+                )
+                if (200...299).contains(response.statusCode),
+                   let candidate {
+                    envelope = candidate
+                    break
+                }
+                if OnDeviceTranscriptDeliveryPolicy.shouldRetryCloudFallbackReadiness(
+                    errorCode: candidate?.errorCode,
+                    completedRetries: completedReadinessRetries
+                ) {
+                    let delaySeconds = OnDeviceTranscriptDeliveryPolicy
+                        .cloudFallbackReadinessRetryDelaySeconds(
+                            completedRetries: completedReadinessRetries
+                        )
+                    completedReadinessRetries += 1
+                    try await Task.sleep(for: .seconds(delaySeconds))
+                    continue
+                }
                 throw OnDeviceTranscriptFailure.serverRejected(
-                    envelope?.error
+                    candidate?.error
                         ?? "Quipsly could not start transcript fallback. The original recording and durable fallback intent remain safe.",
                     statusCode: response.statusCode
                 )
             }
-            guard let envelope,
-                  envelope.ok,
+            guard envelope.ok,
                   let transcriptJobId = envelope.transcriptJobId,
                   !transcriptJobId.isEmpty,
                   let status = envelope.status,
                   !status.isEmpty else {
                 throw OnDeviceTranscriptFailure.serverRejected(
-                    envelope?.error
+                    envelope.error
                         ?? "Quipsly could not start transcript fallback. The original recording and durable fallback intent remain safe."
                 )
             }
