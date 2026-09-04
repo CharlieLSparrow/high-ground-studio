@@ -26,5 +26,7 @@ assert.match(subject, /secretsPrinted: false/);
 
 const packageJson = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
 assert.match(packageJson.scripts["quipsly:fresh:transcript-follow-through"], /register-ts-extension-loader/);
+assert.match(packageJson.scripts["quipsly:fresh:transcript-follow-through"], /--experimental-transform-types/);
+assert.doesNotMatch(packageJson.scripts["quipsly:fresh:transcript-follow-through"], /--import tsx/);
 
-console.log(JSON.stringify({ ok: true, assertions: 16 }));
+console.log(JSON.stringify({ ok: true, assertions: 18 }));
