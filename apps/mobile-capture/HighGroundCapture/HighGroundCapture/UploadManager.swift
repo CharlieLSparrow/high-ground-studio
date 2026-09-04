@@ -143,27 +143,15 @@ final class UploadManager: NSObject, ObservableObject, URLSessionTaskDelegate, U
         let fileName: String
 
         var fileUrl: URL {
-            if let data = fileUrlBookmark {
-                var isStale = false
-                if let url = try? URL(resolvingBookmarkData: data, bookmarkDataIsStale: &isStale),
-                   FileManager.default.fileExists(atPath: url.path) {
-                    return url
-                }
-            }
-
-            if let relativeURL = Self.resolveRelativePath(fileRelativePath),
-               FileManager.default.fileExists(atPath: relativeURL.path) {
-                return relativeURL
-            }
-
-            let fallbackRoots = Self.sandboxRoots.map(\.url)
-            if let fallback = fallbackRoots
-                .map({ $0.appendingPathComponent(fileName, isDirectory: false) })
-                .first(where: { FileManager.default.fileExists(atPath: $0.path) }) {
-                return fallback
-            }
-
-            return Self.sandboxRoots[0].url.appendingPathComponent(fileName, isDirectory: false)
+            // Never recover a protected source by basename. A different take
+            // can legitimately have the same display filename, and silently
+            // hashing or uploading that file would bind the wrong bytes to the
+            // durable room/consent receipt. Callers already fail closed when
+            // this exact confined identity no longer exists.
+            durableSourceIdentityURL
+                ?? Self.sandboxRoots[0].url
+                    .appendingPathComponent(".quipsly-missing-upload-source", isDirectory: true)
+                    .appendingPathComponent(sessionId, isDirectory: false)
         }
 
         /// Stable source identity used for destructive local-file coordination.
@@ -454,6 +442,11 @@ final class UploadManager: NSObject, ObservableObject, URLSessionTaskDelegate, U
             statusText = "Upload held. This protected source is not available to the current account."
             return
         }
+        guard let requestedSourceIdentity = UploadSession.canonicalConfinedSourceURL(for: fileUrl) else {
+            completion?(false, nil, "Recording source is outside protected Quipsly storage")
+            statusText = "Upload held because the recording source identity could not be verified."
+            return
+        }
         guard FileManager.default.fileExists(atPath: fileUrl.path) else {
             completion?(false, nil, "Recording file is missing")
             statusText = "Recording file is missing"
@@ -478,7 +471,7 @@ final class UploadManager: NSObject, ObservableObject, URLSessionTaskDelegate, U
 
             if let existingSessionId = activeUploads.first(where: {
                 sessionBelongsToActiveOwner($0.key)
-                    && $0.value.fileUrl.standardizedFileURL == fileUrl.standardizedFileURL
+                    && $0.value.durableSourceIdentityURL == requestedSourceIdentity
             })?.key {
                 completion?(false, nil, "This recording already has a pending upload")
                 statusText = "This recording already has a pending upload. Reconnecting it instead of creating a duplicate."

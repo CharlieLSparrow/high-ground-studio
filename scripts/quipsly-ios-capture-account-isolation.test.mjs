@@ -143,6 +143,25 @@ test("upload jobs and callbacks cannot cross account partitions", () => {
   assert.match(capture, /ownerAccountID == AuthManager\.currentStoredOwnerID\(\) else \{ return \}/);
 });
 
+test("upload recovery never substitutes a same-named source", () => {
+  assert.match(
+    uploads,
+    /var fileUrl: URL \{[\s\S]*?durableSourceIdentityURL[\s\S]*?\.quipsly-missing-upload-source/,
+  );
+  assert.doesNotMatch(
+    uploads,
+    /map\(\{ \$0\.appendingPathComponent\(fileName,[\s\S]*?first\(where:/,
+  );
+  assert.match(
+    uploads,
+    /let requestedSourceIdentity = UploadSession\.canonicalConfinedSourceURL\(for: fileUrl\)/,
+  );
+  assert.match(
+    uploads,
+    /\$0\.value\.durableSourceIdentityURL == requestedSourceIdentity/,
+  );
+});
+
 test("every canonical upload control-plane replay is bound to its durable job owner", () => {
   const createStart = uploads.indexOf("private func createOrRecoverCanonicalSession(");
   const createEnd = uploads.indexOf("private func startCanonicalBackgroundUpload(", createStart);

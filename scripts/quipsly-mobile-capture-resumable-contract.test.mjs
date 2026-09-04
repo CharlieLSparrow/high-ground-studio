@@ -2,11 +2,22 @@
 
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import { register } from "node:module";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
-import { normalizeMobileCaptureResumableManifestForRead } from "../apps/quipsly/src/lib/server/mobile-capture-resumable-manifest.ts";
-import { newLongSourceQueuedState } from "../packages/quipsly-capture-verification/src/index.ts";
+
+// This contract imports production TypeScript that uses the app's `@/` alias.
+// Register the repository loader before evaluating those modules so the file is
+// runnable with the ordinary `node --test …` command used by local and CI
+// diagnostics, rather than passing only under an undocumented wrapper.
+register("./ts-extension-loader.mjs", import.meta.url);
+const { normalizeMobileCaptureResumableManifestForRead } = await import(
+  "../apps/quipsly/src/lib/server/mobile-capture-resumable-manifest.ts"
+);
+const { newLongSourceQueuedState } = await import(
+  "../packages/quipsly-capture-verification/src/index.ts"
+);
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const read = (relativePath) => fs.readFileSync(path.join(root, relativePath), "utf8");
