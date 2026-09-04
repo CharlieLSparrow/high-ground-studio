@@ -4,11 +4,15 @@ import os from "node:os";
 import path from "node:path";
 import crypto from "node:crypto";
 import { spawnSync } from "node:child_process";
+import { createRequire } from "node:module";
 
-import { PrismaClient } from "@prisma/client";
-import { PrismaPg } from "@prisma/adapter-pg";
-import { initializeApp, getApps } from "firebase-admin/app";
-import { getAuth } from "firebase-admin/auth";
+const requireFromQuipsly = createRequire(
+  new URL("../apps/quipsly/package.json", import.meta.url),
+);
+const { PrismaClient } = requireFromQuipsly("@prisma/client");
+const { PrismaPg } = requireFromQuipsly("@prisma/adapter-pg");
+const { initializeApp, getApps } = requireFromQuipsly("firebase-admin/app");
+const { getAuth } = requireFromQuipsly("firebase-admin/auth");
 
 const repoRoot = process.cwd();
 

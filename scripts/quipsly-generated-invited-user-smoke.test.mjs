@@ -10,6 +10,21 @@ const auth = readFileSync(
   new URL("./quipsly-firebase-auth-smoke.mjs", import.meta.url),
   "utf8",
 );
+const setup = readFileSync(
+  new URL("./quipsly-invited-user-smoke-setup.mjs", import.meta.url),
+  "utf8",
+);
+
+test("production invite operators resolve dependencies from the Quipsly workspace", () => {
+  for (const source of [generated, setup]) {
+    assert.match(source, /createRequire/);
+    assert.match(source, /\.\.\/apps\/quipsly\/package\.json/);
+    assert.match(source, /requireFromQuipsly\("@prisma\/adapter-pg"\)/);
+    assert.match(source, /requireFromQuipsly\("firebase-admin\/auth"\)/);
+    assert.doesNotMatch(source, /from "@prisma\/adapter-pg"/);
+    assert.doesNotMatch(source, /from "firebase-admin\/auth"/);
+  }
+});
 
 test("generated invite smoke requires an exact project visibility allowlist", () => {
   assert.match(
