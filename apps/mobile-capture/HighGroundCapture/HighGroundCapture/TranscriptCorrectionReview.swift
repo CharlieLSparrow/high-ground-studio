@@ -1085,6 +1085,7 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
 
     private struct ProtectedCache: Codable {
         let schemaVersion: Int
+        let ownerAccountID: String?
         let ownerEmail: String
         let roomID: String
         let savedAt: Date
@@ -2522,11 +2523,7 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
     }
 
     static func hasUsableProtectedCache(roomID: String) -> Bool {
-        guard let ownerEmail = AuthManager.shared.userEmail?
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .lowercased(),
-              !ownerEmail.isEmpty,
-              let url = protectedCacheURL(roomID: roomID),
+        guard let url = protectedCacheURL(roomID: roomID),
               let data = try? Data(contentsOf: url, options: .mappedIfSafe) else {
             return false
         }
@@ -2536,25 +2533,29 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
             return false
         }
         let cacheAge = Date().timeIntervalSince(cache.savedAt)
-        return cache.schemaVersion == 1
-            && cache.ownerEmail == ownerEmail
+        return ProtectedProjectionCacheIdentity.permitsRestore(
+                cacheSchemaVersion: cache.schemaVersion,
+                cachedOwnerAccountID: cache.ownerAccountID,
+                activeOwnerAccountID: AuthManager.currentStoredOwnerID()
+            )
             && cache.roomID == roomID
             && cacheAge >= -5 * 60
             && cacheAge <= 30 * 24 * 60 * 60
     }
 
     private func restoreProtectedCache(roomID: String) -> Bool {
-        guard let ownerEmail = AuthManager.shared.userEmail?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
-              !ownerEmail.isEmpty,
-              let url = Self.protectedCacheURL(roomID: roomID),
+        guard let url = Self.protectedCacheURL(roomID: roomID),
               let data = try? Data(contentsOf: url, options: .mappedIfSafe) else { return false }
         do {
             let decoder = JSONDecoder()
             decoder.dateDecodingStrategy = .iso8601
             let cache = try decoder.decode(ProtectedCache.self, from: data)
             let cacheAge = Date().timeIntervalSince(cache.savedAt)
-            guard cache.schemaVersion == 1,
-                  cache.ownerEmail == ownerEmail,
+            guard ProtectedProjectionCacheIdentity.permitsRestore(
+                    cacheSchemaVersion: cache.schemaVersion,
+                    cachedOwnerAccountID: cache.ownerAccountID,
+                    activeOwnerAccountID: AuthManager.currentStoredOwnerID()
+                  ),
                   cache.roomID == roomID,
                   cacheAge >= -5 * 60,
                   cacheAge <= 30 * 24 * 60 * 60 else {
@@ -2573,6 +2574,7 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
 
     private func persist(_ desk: CaptureTranscriptCorrectionDesk, roomID: String) {
         guard AuthManager.shared.networkActionsAllowed,
+              let ownerAccountID = AuthManager.currentStoredOwnerID(),
               let ownerEmail = AuthManager.shared.userEmail?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
               !ownerEmail.isEmpty,
               let url = Self.protectedCacheURL(roomID: roomID) else { return }
@@ -2585,7 +2587,16 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
             let encoder = JSONEncoder()
             encoder.dateEncodingStrategy = .iso8601
             encoder.outputFormatting = [.sortedKeys]
-            try encoder.encode(ProtectedCache(schemaVersion: 1, ownerEmail: ownerEmail, roomID: roomID, savedAt: Date(), desk: desk))
+            try encoder.encode(
+                ProtectedCache(
+                    schemaVersion: ProtectedProjectionCacheIdentity.schemaVersion,
+                    ownerAccountID: ownerAccountID,
+                    ownerEmail: ownerEmail,
+                    roomID: roomID,
+                    savedAt: Date(),
+                    desk: desk
+                )
+            )
                 .write(to: url, options: [.atomic, .completeFileProtection])
             var values = URLResourceValues()
             values.isExcludedFromBackup = true
@@ -2626,6 +2637,7 @@ private func captureTranscriptJSONNullable(_ value: String?) -> Any {
 
 private struct CaptureTranscriptCorrectionDraft: Codable {
     let schemaVersion: Int
+    let ownerAccountID: String?
     let ownerEmail: String
     let roomID: String
     let segmentID: String
@@ -2639,15 +2651,17 @@ private struct CaptureTranscriptCorrectionDraft: Codable {
 @MainActor
 enum CaptureTranscriptCorrectionDraftStore {
     fileprivate static func load(roomID: String, segment: CaptureTranscriptSegment) -> CaptureTranscriptCorrectionDraft? {
-        guard let ownerEmail = currentOwnerEmail(),
-              let url = fileURL(roomID: roomID, segmentID: segment.id),
+        guard let url = fileURL(roomID: roomID, segmentID: segment.id),
               let data = try? Data(contentsOf: url, options: .mappedIfSafe) else { return nil }
         do {
             let decoder = JSONDecoder()
             decoder.dateDecodingStrategy = .iso8601
             let draft = try decoder.decode(CaptureTranscriptCorrectionDraft.self, from: data)
-            guard draft.schemaVersion == 1,
-                  draft.ownerEmail == ownerEmail,
+            guard ProtectedProjectionCacheIdentity.permitsRestore(
+                    cacheSchemaVersion: draft.schemaVersion,
+                    cachedOwnerAccountID: draft.ownerAccountID,
+                    activeOwnerAccountID: AuthManager.currentStoredOwnerID()
+                  ),
                   draft.roomID == roomID,
                   draft.segmentID == segment.id,
                   draft.providerTextSha256 == segment.providerTextSha256,
@@ -2669,7 +2683,9 @@ enum CaptureTranscriptCorrectionDraftStore {
         correctedSpeaker: String,
         reason: String
     ) -> Bool {
-        guard let ownerEmail = currentOwnerEmail(), let url = fileURL(roomID: roomID, segmentID: segment.id) else { return false }
+        guard let ownerAccountID = AuthManager.currentStoredOwnerID(),
+              let ownerEmail = currentOwnerEmail(),
+              let url = fileURL(roomID: roomID, segmentID: segment.id) else { return false }
         do {
             try FileManager.default.createDirectory(
                 at: url.deletingLastPathComponent(),
@@ -2680,7 +2696,8 @@ enum CaptureTranscriptCorrectionDraftStore {
             encoder.dateEncodingStrategy = .iso8601
             encoder.outputFormatting = [.sortedKeys]
             let draft = CaptureTranscriptCorrectionDraft(
-                schemaVersion: 1,
+                schemaVersion: ProtectedProjectionCacheIdentity.schemaVersion,
+                ownerAccountID: ownerAccountID,
                 ownerEmail: ownerEmail,
                 roomID: roomID,
                 segmentID: segment.id,

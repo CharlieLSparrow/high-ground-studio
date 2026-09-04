@@ -4706,6 +4706,7 @@ final class CaptureTodayClient: ObservableObject {
 
     private struct ProtectedCache: Codable {
         let schemaVersion: Int
+        let ownerAccountID: String?
         let ownerEmail: String
         let savedAt: Date
         let brief: MobileCaptureTodayResponse
@@ -6394,15 +6395,20 @@ final class CaptureTodayClient: ObservableObject {
     }
 
     private func restoreProtectedCache() -> Bool {
-        guard let ownerEmail = AuthManager.shared.userEmail?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
-              !ownerEmail.isEmpty,
-              let url = Self.protectedCacheURL(),
+        guard let url = Self.protectedCacheURL(),
               let data = try? Data(contentsOf: url, options: .mappedIfSafe) else { return false }
         do {
             let decoder = JSONDecoder()
             decoder.dateDecodingStrategy = .iso8601
             let cache = try decoder.decode(ProtectedCache.self, from: data)
-            guard cache.schemaVersion == 1, cache.ownerEmail == ownerEmail, Date().timeIntervalSince(cache.savedAt) <= 30 * 24 * 60 * 60 else {
+            let age = Date().timeIntervalSince(cache.savedAt)
+            guard ProtectedProjectionCacheIdentity.permitsRestore(
+                    cacheSchemaVersion: cache.schemaVersion,
+                    cachedOwnerAccountID: cache.ownerAccountID,
+                    activeOwnerAccountID: AuthManager.currentStoredOwnerID()
+                  ),
+                  age >= 0,
+                  age <= 30 * 24 * 60 * 60 else {
                 Self.clearProtectedCache()
                 return false
             }
@@ -6419,6 +6425,7 @@ final class CaptureTodayClient: ObservableObject {
 
     private func persist(_ brief: MobileCaptureTodayResponse) {
         guard AuthManager.shared.networkActionsAllowed,
+              let ownerAccountID = AuthManager.currentStoredOwnerID(),
               let ownerEmail = AuthManager.shared.userEmail?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
               !ownerEmail.isEmpty,
               let url = Self.protectedCacheURL() else { return }
@@ -6432,7 +6439,13 @@ final class CaptureTodayClient: ObservableObject {
             encoder.dateEncodingStrategy = .iso8601
             encoder.outputFormatting = [.sortedKeys]
             try encoder.encode(
-                ProtectedCache(schemaVersion: 1, ownerEmail: ownerEmail, savedAt: Date(), brief: brief)
+                ProtectedCache(
+                    schemaVersion: ProtectedProjectionCacheIdentity.schemaVersion,
+                    ownerAccountID: ownerAccountID,
+                    ownerEmail: ownerEmail,
+                    savedAt: Date(),
+                    brief: brief
+                )
             ).write(to: url, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
             var values = URLResourceValues()
             values.isExcludedFromBackup = true
@@ -6901,6 +6914,7 @@ final class CaptureWorkClient: ObservableObject {
 
     private struct ProtectedCache: Codable {
         let schemaVersion: Int
+        let ownerAccountID: String?
         let ownerEmail: String
         let savedAt: Date
         let brief: MobileCaptureWorkResponse
@@ -7665,19 +7679,18 @@ final class CaptureWorkClient: ObservableObject {
     }
 
     private func restoreProtectedCache() -> Bool {
-        guard let ownerEmail = AuthManager.shared.userEmail?
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .lowercased(),
-              !ownerEmail.isEmpty,
-              let url = Self.protectedCacheURL(),
+        guard let url = Self.protectedCacheURL(),
               let data = try? Data(contentsOf: url, options: .mappedIfSafe) else { return false }
         do {
             let decoder = JSONDecoder()
             decoder.dateDecodingStrategy = .iso8601
             let cache = try decoder.decode(ProtectedCache.self, from: data)
             let age = Date().timeIntervalSince(cache.savedAt)
-            guard cache.schemaVersion == 1,
-                  cache.ownerEmail == ownerEmail,
+            guard ProtectedProjectionCacheIdentity.permitsRestore(
+                    cacheSchemaVersion: cache.schemaVersion,
+                    cachedOwnerAccountID: cache.ownerAccountID,
+                    activeOwnerAccountID: AuthManager.currentStoredOwnerID()
+                  ),
                   age >= 0,
                   age <= 30 * 24 * 60 * 60 else {
                 Self.clearProtectedCache()
@@ -7693,6 +7706,7 @@ final class CaptureWorkClient: ObservableObject {
 
     private func persist(_ brief: MobileCaptureWorkResponse) {
         guard AuthManager.shared.networkActionsAllowed,
+              let ownerAccountID = AuthManager.currentStoredOwnerID(),
               let ownerEmail = AuthManager.shared.userEmail?
                 .trimmingCharacters(in: .whitespacesAndNewlines)
                 .lowercased(),
@@ -7708,7 +7722,13 @@ final class CaptureWorkClient: ObservableObject {
             encoder.dateEncodingStrategy = .iso8601
             encoder.outputFormatting = [.sortedKeys]
             try encoder.encode(
-                ProtectedCache(schemaVersion: 1, ownerEmail: ownerEmail, savedAt: Date(), brief: brief)
+                ProtectedCache(
+                    schemaVersion: ProtectedProjectionCacheIdentity.schemaVersion,
+                    ownerAccountID: ownerAccountID,
+                    ownerEmail: ownerEmail,
+                    savedAt: Date(),
+                    brief: brief
+                )
             ).write(to: url, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
             var values = URLResourceValues()
             values.isExcludedFromBackup = true

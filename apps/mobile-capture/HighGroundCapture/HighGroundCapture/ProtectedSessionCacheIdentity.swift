@@ -1,9 +1,9 @@
 import Foundation
 
-/// Fail-closed identity policy for the recoverable Session projection.
+/// Fail-closed identity policy for recoverable server projections.
 /// Email is mutable display/contact data; only Nest's immutable actor ID may
-/// authorize restoring a protected cache into the signed-in product shell.
-enum ProtectedSessionCacheIdentity {
+/// authorize restoring protected tenant data into the signed-in product shell.
+enum ProtectedProjectionCacheIdentity {
     static let schemaVersion = 3
 
     static func permitsRestore(
@@ -27,5 +27,24 @@ enum ProtectedSessionCacheIdentity {
             return nil
         }
         return value
+    }
+}
+
+/// Compatibility spelling retained for the Session projection and its focused
+/// release harness. All protected server projections now share the same actor
+/// identity contract rather than independently trusting mutable email aliases.
+enum ProtectedSessionCacheIdentity {
+    static let schemaVersion = ProtectedProjectionCacheIdentity.schemaVersion
+
+    static func permitsRestore(
+        cacheSchemaVersion: Int,
+        cachedOwnerAccountID: String?,
+        activeOwnerAccountID: String?
+    ) -> Bool {
+        ProtectedProjectionCacheIdentity.permitsRestore(
+            cacheSchemaVersion: cacheSchemaVersion,
+            cachedOwnerAccountID: cachedOwnerAccountID,
+            activeOwnerAccountID: activeOwnerAccountID
+        )
     }
 }
