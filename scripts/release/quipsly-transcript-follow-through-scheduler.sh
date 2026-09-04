@@ -9,7 +9,9 @@ SCHEDULER_JOB="${SCHEDULER_JOB:-quipsly-transcript-follow-through}"
 SCHEDULE="${SCHEDULE:-*/2 * * * *}"
 HELD_RELEASE_SCHEDULER_JOB="${HELD_RELEASE_SCHEDULER_JOB:-quipsly-capture-held-release}"
 HELD_RELEASE_SCHEDULE="${HELD_RELEASE_SCHEDULE:-*/5 * * * *}"
-SCHEDULER_SERVICE_ACCOUNT="${SCHEDULER_SERVICE_ACCOUNT:-quipsly-transcript-follow-through@${PROJECT_ID}.iam.gserviceaccount.com}"
+# Keep the default within Google's 30-character service-account ID limit and
+# aligned with the identity already installed on transcript-enabled revisions.
+SCHEDULER_SERVICE_ACCOUNT="${SCHEDULER_SERVICE_ACCOUNT:-quipsly-transcript-scheduler@${PROJECT_ID}.iam.gserviceaccount.com}"
 
 if [[ ! "${PROJECT_ID}" =~ ^[a-z][a-z0-9-]{4,62}$ ]] \
   || [[ ! "${REGION}" =~ ^[a-z][a-z0-9-]{0,62}$ ]] \
