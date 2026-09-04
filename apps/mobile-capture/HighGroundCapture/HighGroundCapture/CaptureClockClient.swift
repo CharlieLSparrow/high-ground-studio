@@ -155,6 +155,11 @@ final class CaptureClockClient {
 
         let (data, response) = try await AuthManager.shared.authenticatedData(
             for: request,
+            // Clock samples improve later alignment but are deliberately
+            // best-effort. A slow sample must not replace the entire signed-in
+            // shell with offline recovery while local source capture remains
+            // healthy and other Nest endpoints are reachable.
+            transitionToOfflineOnNetworkFailure: false,
             expectedOwnerAccountID: expectedOwnerAccountID
         )
         let deviceMonotonicReceived = DispatchTime.now().uptimeNanoseconds

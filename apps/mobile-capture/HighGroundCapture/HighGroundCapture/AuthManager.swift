@@ -805,11 +805,14 @@ final class AuthManager: ObservableObject {
     /// session-check endpoint before the replay. If one feature endpoint still
     /// returns 401 after that verification, the denial belongs to that feature;
     /// it must not evict an otherwise valid account from the entire app. Callers
-    /// own decoding and handling every returned HTTP status.
+    /// own decoding and handling every returned HTTP status. Best-effort probes
+    /// may suppress the global offline transition while still receiving their
+    /// original transport error.
     func authenticatedData(
         for originalRequest: URLRequest,
         session: URLSession = .shared,
         allowOfflineRecovery: Bool = false,
+        transitionToOfflineOnNetworkFailure: Bool = true,
         expectedOwnerAccountID: String? = nil
     ) async throws -> (Data, HTTPURLResponse) {
         guard getKeychainItem(account: "refreshToken") != nil else {
@@ -847,8 +850,11 @@ final class AuthManager: ObservableObject {
                 throw CancellationError()
             }
             if isNetworkAvailabilityError(error) {
-                enterProtectedOfflineAccess(reason: error.localizedDescription)
-                throw AuthenticatedRequestError.offlineAccess
+                if transitionToOfflineOnNetworkFailure {
+                    enterProtectedOfflineAccess(reason: error.localizedDescription)
+                    throw AuthenticatedRequestError.offlineAccess
+                }
+                throw error
             }
             throw error
         }
@@ -895,8 +901,11 @@ final class AuthManager: ObservableObject {
                 throw CancellationError()
             }
             if isNetworkAvailabilityError(error) {
-                enterProtectedOfflineAccess(reason: error.localizedDescription)
-                throw AuthenticatedRequestError.offlineAccess
+                if transitionToOfflineOnNetworkFailure {
+                    enterProtectedOfflineAccess(reason: error.localizedDescription)
+                    throw AuthenticatedRequestError.offlineAccess
+                }
+                throw error
             }
             throw error
         }
