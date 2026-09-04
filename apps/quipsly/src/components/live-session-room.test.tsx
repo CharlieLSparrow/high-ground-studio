@@ -254,6 +254,9 @@ describe("LiveSessionRoom", () => {
     expect(screen.getByText(/You joined muted/i)).toBeInTheDocument();
     expect(mockLiveKitRoom.localParticipant.setMicrophoneEnabled).toHaveBeenCalledWith(false);
     expect(screen.getByRole("button", { name: "Unmute" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "Simulate recording choice ready" }));
+    expect(screen.getByTestId("call-status-message")).toHaveTextContent(/You joined muted/i);
+    expect(screen.getByTestId("call-status-message")).not.toHaveTextContent(/recording choice is saved/i);
   });
 
   it("uses Join as the bounded permission boundary even when device ids are already visible", async () => {

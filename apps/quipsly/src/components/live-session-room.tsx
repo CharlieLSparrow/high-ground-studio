@@ -2122,7 +2122,11 @@ export function LiveSessionRoom({
     participantReady: boolean;
     everyoneReady: boolean;
   }) => {
-    if (!connected) return;
+    // Joining muted is the conventional fallback when a microphone prompt is
+    // denied, dismissed, or cannot expose a usable input. Keep that immediate
+    // device recovery message visible; recorder consent/readiness must not
+    // overwrite the reason Unmute is unavailable.
+    if (!connected || microphoneRecoveryHeld) return;
     setMessage(
       !state.participantReady
         ? "You’re connected. Recording is off until you allow it."
@@ -2130,7 +2134,7 @@ export function LiveSessionRoom({
           ? "You’re connected. Everyone is ready to record."
           : "You’re connected. Your recording choice is saved. Waiting for the other participant.",
     );
-  }, [connected]);
+  }, [connected, microphoneRecoveryHeld]);
 
   const retainedSourceControls = typeof captureGroupId === "string" && captureGroupId.trim() ? (
     <BrowserSourceRecorder
