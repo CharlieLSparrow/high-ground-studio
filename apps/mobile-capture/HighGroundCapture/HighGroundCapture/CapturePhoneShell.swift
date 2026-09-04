@@ -418,10 +418,9 @@ struct CapturePhoneShell: View {
                 Section("Quipsly") {
                     ForEach(CaptureRootTab.allCases) { tab in
                         Label(tab.title, systemImage: tab.systemImage)
-                            .lineLimit(2)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .frame(minHeight: 44, alignment: .leading)
-                            .padding(.vertical, 2)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 10)
+                            .frame(maxWidth: .infinity, alignment: .leading)
                             .tag(CaptureIPadSidebarSelection.destination(tab))
                             .accessibilityIdentifier(
                                 "CaptureIPadSidebar_\(tab.rawValue)"
@@ -434,12 +433,20 @@ struct CapturePhoneShell: View {
                         showsNewSession = true
                     } label: {
                         Label("New Session", systemImage: "calendar.badge.plus")
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 10)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .contentShape(Rectangle())
                     }
                     .keyboardShortcut("n", modifiers: [.command])
                     .accessibilityIdentifier("CaptureIPadNewSession")
 
                     Button(action: startVoiceNote) {
                         Label("Speak to write", systemImage: "waveform.circle.fill")
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 10)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .contentShape(Rectangle())
                     }
                     .tag(CaptureIPadSidebarSelection.speakToWrite)
                     .keyboardShortcut("r", modifiers: [.command, .shift])
@@ -447,6 +454,10 @@ struct CapturePhoneShell: View {
 
                     Button(action: startWriting) {
                         Label("Start writing", systemImage: "square.and.pencil")
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 10)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .contentShape(Rectangle())
                     }
                     .tag(CaptureIPadSidebarSelection.startWriting)
                     .keyboardShortcut("n", modifiers: [.command, .shift])
@@ -16796,6 +16807,8 @@ private struct CaptureLibraryView: View {
 }
 
 private struct CaptureVoiceWritingLibraryRow: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
     let draft: VoiceWritingDraft
     let recording: LocalRecording?
     let timedTranscript: [OnDeviceTranscriptSegment]
@@ -16837,7 +16850,7 @@ private struct CaptureVoiceWritingLibraryRow: View {
                 Text(draft.body)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
-                    .lineLimit(4)
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 4)
                     .multilineTextAlignment(.leading)
 
                 HStack(spacing: 12) {
@@ -16870,6 +16883,7 @@ private struct CaptureVoiceWritingLibraryRow: View {
 }
 
 private struct CaptureLibraryNoteRow: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.openURL) private var openURL
 
     let note: MobileCaptureWorkNote
@@ -16915,7 +16929,7 @@ private struct CaptureLibraryNoteRow: View {
                         Text(note.excerpt)
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
-                            .lineLimit(4)
+                            .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 4)
                             .multilineTextAlignment(.leading)
                     }
                     HStack(spacing: 10) {
@@ -16956,6 +16970,8 @@ private struct CaptureLibraryNoteRow: View {
 }
 
 private struct CaptureLibraryPreviewWritingCard: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
     @ObservedObject var tagClient: CaptureTodayClient
 
     private static let recordingID = UUID(uuidString: "A17F4C12-0000-4000-8000-000000000032")!
@@ -17057,7 +17073,7 @@ private struct CaptureLibraryPreviewWritingCard: View {
                 Text("The first idea connects the experience I described to the research question. I want to open with the concrete story, then explain why it matters…")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
-                    .lineLimit(4)
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 4)
                 HStack(spacing: 12) {
                     Label("My Nest", systemImage: "checkmark.icloud.fill")
                     Label("Timed transcript", systemImage: "waveform")
