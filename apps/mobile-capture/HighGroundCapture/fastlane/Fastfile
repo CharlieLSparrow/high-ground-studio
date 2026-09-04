@@ -17,6 +17,12 @@ SOURCE_VERIFIER = File.join(CAPTURE_ROOT, "scripts", "verify-release-source.sh")
 APPLE_APP_ID = "6780995957"
 APP_IDENTIFIER = "com.highgroundodyssey.HighGroundCapture"
 UI_TEST_PLANNER = File.join(REPO_ROOT, "scripts", "release", "quipsly-capture-ui-test-plan.mjs")
+BUILD_NUMBER_AVAILABILITY = File.join(
+  REPO_ROOT,
+  "scripts",
+  "release",
+  "quipsly-app-store-connect-build-number-availability.mjs",
+)
 DEFAULT_FULL_UI_TEST_SHARDS = 4
 IPAD_UI_TEST_SELECTORS = [
   "HighGroundCaptureUITests/CaptureExperienceUITests/testRegularWidthIPadUsesANativeWorkspaceSidebar",
@@ -542,6 +548,27 @@ def upload_capture_candidate(paths, options)
   receipt_path
 end
 
+def verify_capture_build_number_available(paths, options)
+  api_key_path = options[:api_key_path] || ENV["APP_STORE_CONNECT_API_KEY_PATH"]
+  UI.user_error!("Set APP_STORE_CONNECT_API_KEY_PATH to a Fastlane App Store Connect API key JSON file.") if api_key_path.to_s.empty?
+  expanded_api_key_path = File.expand_path(api_key_path)
+  UI.user_error!("App Store Connect API key is not a regular file.") unless File.file?(expanded_api_key_path)
+  UI.user_error!("App Store Connect API key must not be group- or world-readable.") unless
+    (File.stat(expanded_api_key_path).mode & 0o077).zero?
+  sh(
+    "node",
+    BUILD_NUMBER_AVAILABILITY,
+    "--api-key-path",
+    expanded_api_key_path,
+    "--app-id",
+    APPLE_APP_ID,
+    "--version",
+    paths.fetch(:version),
+    "--build",
+    paths.fetch(:build),
+  )
+end
+
 platform :ios do
   before_all do
     ENV["DEVELOPER_DIR"] ||= "/Applications/Xcode.app/Contents/Developer"
@@ -816,8 +843,12 @@ platform :ios do
 
   desc "Qualify and upload to TestFlight without silently changing the committed build number"
   lane :beta do |options|
-    candidate(options)
     paths = release_paths(options)
+    verify_capture_build_number_available(paths, options)
+    candidate(options)
+    # Recheck immediately before upload in case another release claimed this
+    # number while the complete qualification lane was running.
+    verify_capture_build_number_available(paths, options)
     upload_capture_candidate(paths, options)
   end
 
@@ -856,6 +887,7 @@ platform :ios do
 
     receipt_path = options[:receipt_path] || ENV["QUIPSLY_CAPTURE_QUALIFIED_RECEIPT"]
     paths = qualified_release_paths(receipt_path)
+    verify_capture_build_number_available(paths, options)
     upload_capture_candidate(paths, options)
   end
 end

@@ -149,6 +149,8 @@ require_text "$fastfile" 'derived_data_path: derived_data_path' "Capture UI and 
 require_text "$fastfile" 'lane :candidate do |options|' "Capture exposes an auth-free candidate qualification lane"
 require_text "$fastfile" 'receipt["candidateQualified"] = true' "Candidate receipt records deterministic UI and signed-artifact qualification"
 require_text "$fastfile" 'candidate(options)' "TestFlight reuses the complete candidate qualification lane"
+require_text "$fastfile" 'verify_capture_build_number_available(paths, options)' "TestFlight rejects stale build numbers before qualification and upload"
+require_text "$fastfile" 'BUILD_NUMBER_AVAILABILITY' "TestFlight uses provider build-number availability readback"
 require_text "$fastfile" 'lane :seal_candidate do |options|' "Capture can seal independently completed exact-source proof without rerunning expensive lanes"
 require_text "$fastfile" 'lane :recover_candidate do |options|' "Capture can recover a missing receipt after a verifier-only failure without rebuilding"
 require_text "$fastfile" 'Refusing to replace an existing release receipt' "Candidate recovery cannot overwrite prior release state"
