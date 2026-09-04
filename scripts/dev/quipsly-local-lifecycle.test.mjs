@@ -104,6 +104,15 @@ test("machine-wide services use machine-wide ownership state", () => {
     "Quipsly production builds must pin the same supported Next 16 bundler as local development and the release image.",
   );
   assert.match(up, /"--env-file=\$\{QUIPSLY_LOCAL_ENV_FILE\}"/);
+  assert.match(
+    up,
+    /"--env-file=\$\{QUIPSLY_LOCAL_ENV_FILE\}" \\\n      --run dev/,
+    "the env-file lane must ask Node to run the package script instead of parsing a pnpm shell wrapper",
+  );
+  assert.doesNotMatch(
+    up,
+    /"--env-file=\$\{QUIPSLY_LOCAL_ENV_FILE\}" \\\n      "\$\{QUIPSLY_LOCAL_PNPM_BIN/,
+  );
   assert.doesNotMatch(up, /source "\$\{local_env_file\}"/);
   assert.match(up, /"Nest projects shell"/);
   assert.equal(
@@ -114,6 +123,19 @@ test("machine-wide services use machine-wide ownership state", () => {
   assert.match(up, /--run-media-worker/);
   assert.match(up, /--run-transcript-worker/);
   assert.match(up, /--run-livekit/);
+  assert.match(up, /--run-firebase/);
+  assert.match(up, /firebase_tools_version="15\.29\.0"/);
+  assert.match(
+    up,
+    /QUIPSLY_LOCAL_FIREBASE_BIN=\$\{local_firebase_bin\}/,
+    "launchd must receive the verified absolute Firebase CLI path",
+  );
+  assert.match(
+    up,
+    /"\$\{local_firebase_bin\}" emulators:start/,
+    "both launcher paths must execute the pinned Firebase CLI directly",
+  );
+  assert.doesNotMatch(up, /pnpm exec firebase/);
   assert.match(up, /livekit-server/);
   assert.match(up, /LIVEKIT_URL=/);
   assert.match(up, /LIVEKIT_API_KEY=/);
@@ -127,11 +149,13 @@ test("machine-wide services use machine-wide ownership state", () => {
     /TSX_TSCONFIG_PATH=.*apps\/quipsly\/tsconfig\.json/,
     "local transcript workers must load the same typed follow-through implementation as Nest",
   );
+  assert.match(up, /tsx_version="4\.23\.12"/);
   assert.equal(
-    up.match(/--import tsx/g)?.length,
+    up.match(/--import "\$\{(?:QUIPSLY_LOCAL_TSX_LOADER:[^}]+|local_tsx_loader)\}"/g)?.length,
     2,
-    "both local transcript worker launch paths must support typed follow-through",
+    "both local transcript worker launch paths must use a verified absolute tsx loader",
   );
+  assert.doesNotMatch(up, /--import tsx/);
   assert.match(up, /QUIPSLY_LOCAL_MEDIA_UPLOAD_ROOT/);
   assert.match(up, /QUIPSLY_LOCAL_MEDIA_WORKSPACE_ROOT/);
   assert.match(up, /QUIPSLY_LOCAL_MEDIA_LEGACY_ROOTS_JSON/);

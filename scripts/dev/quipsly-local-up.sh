@@ -59,7 +59,7 @@ fi
 
 if [[ "${1:-}" == "--run-firebase" ]]; then
   cd "${script_repo_root}"
-  exec "${QUIPSLY_LOCAL_PNPM_BIN:?Missing launcher pnpm path}" exec firebase emulators:start \
+  exec "${QUIPSLY_LOCAL_FIREBASE_BIN:?Missing launcher Firebase CLI path}" emulators:start \
     --only auth \
     --project quipsly-reef \
     --config ops/firebase-auth-emulator.local.json
@@ -95,8 +95,7 @@ if [[ "${1:-}" == "--run-nest" ]]; then
       "${nest_environment[@]}" \
       "${QUIPSLY_LOCAL_NODE_BIN:?Missing launcher node path}" \
       "--env-file=${QUIPSLY_LOCAL_ENV_FILE}" \
-      "${QUIPSLY_LOCAL_PNPM_BIN:?Missing launcher pnpm path}" \
-      dev
+      --run dev
   fi
   exec /usr/bin/env \
     "${nest_environment[@]}" \
@@ -146,7 +145,7 @@ if [[ "${1:-}" == "--run-transcript-worker" ]]; then
     "QUIPSLY_LOCAL_TRANSCRIPT_WORKER_BUILD_ID=${QUIPSLY_LOCAL_TRANSCRIPT_WORKER_BUILD_ID:-local-development}" \
     "TSX_TSCONFIG_PATH=${script_repo_root}/apps/quipsly/tsconfig.json" \
     "${QUIPSLY_LOCAL_NODE_BIN:?Missing launcher node path}" \
-    --import tsx \
+    --import "${QUIPSLY_LOCAL_TSX_LOADER:?Missing launcher tsx loader path}" \
     --import "${script_repo_root}/scripts/register-ts-extension-loader.mjs" \
     "${script_repo_root}/scripts/dev/quipsly-local-transcript-worker.mjs"
 fi
@@ -296,6 +295,47 @@ if [[ -n "${local_env_file}" ]]; then
 fi
 local_node_bin="$(command -v node)"
 local_pnpm_bin="$(command -v pnpm)"
+local_npm_bin="$(command -v npm)"
+firebase_tools_version="15.29.0"
+firebase_tools_root="${QUIPSLY_LOCAL_FIREBASE_TOOLS_ROOT:-${state_dir}/tools/firebase-tools-${firebase_tools_version}}"
+local_firebase_bin="${QUIPSLY_LOCAL_FIREBASE_BIN:-${firebase_tools_root}/node_modules/.bin/firebase}"
+if [[ ! -x "${local_firebase_bin}" ]]; then
+  echo "Installing pinned Firebase CLI ${firebase_tools_version} in the Quipsly tool cache..."
+  mkdir -p "${firebase_tools_root}"
+  "${local_npm_bin}" install \
+    --prefix "${firebase_tools_root}" \
+    --no-audit \
+    --no-fund \
+    --no-package-lock \
+    "firebase-tools@${firebase_tools_version}"
+fi
+if [[ ! -x "${local_firebase_bin}" ]]; then
+  echo "Firebase CLI bootstrap did not create an executable at ${local_firebase_bin}." >&2
+  exit 1
+fi
+installed_firebase_tools_version="$("${local_firebase_bin}" --version 2>/dev/null || true)"
+if [[ "${installed_firebase_tools_version}" != "${firebase_tools_version}" ]]; then
+  echo "Quipsly local development requires Firebase CLI ${firebase_tools_version}; found ${installed_firebase_tools_version:-unknown}." >&2
+  echo "Remove ${firebase_tools_root} or set QUIPSLY_LOCAL_FIREBASE_BIN to that exact version." >&2
+  exit 1
+fi
+tsx_version="4.23.12"
+tsx_tools_root="${QUIPSLY_LOCAL_TSX_TOOLS_ROOT:-${state_dir}/tools/tsx-${tsx_version}}"
+local_tsx_loader="${QUIPSLY_LOCAL_TSX_LOADER:-${tsx_tools_root}/node_modules/tsx/dist/loader.mjs}"
+if [[ ! -f "${local_tsx_loader}" ]]; then
+  echo "Installing pinned tsx loader ${tsx_version} in the Quipsly tool cache..."
+  mkdir -p "${tsx_tools_root}"
+  "${local_npm_bin}" install \
+    --prefix "${tsx_tools_root}" \
+    --no-audit \
+    --no-fund \
+    --no-package-lock \
+    "tsx@${tsx_version}"
+fi
+if [[ ! -f "${local_tsx_loader}" ]]; then
+  echo "tsx bootstrap did not create a loader at ${local_tsx_loader}." >&2
+  exit 1
+fi
 local_prisma_pg_pool_max="${QUIPSLY_LOCAL_PRISMA_PG_POOL_MAX:-4}"
 if [[ ! "${local_prisma_pg_pool_max}" =~ ^[0-9]+$ ]] \
   || (( local_prisma_pg_pool_max < 1 )) \
@@ -308,6 +348,8 @@ local_nest_runtime_revision="$(
     "source=${local_nest_source_revision}" \
     "node=${local_node_bin}" \
     "pnpm=${local_pnpm_bin}" \
+    "firebase=${local_firebase_bin}" \
+    "firebase-version=${installed_firebase_tools_version}" \
     "env-path=${local_env_file}" \
     "env-revision=${local_env_revision}" \
     "database=${local_database_url}" \
@@ -352,6 +394,7 @@ local_transcript_worker_runtime_revision="$(
   quipsly_local_runtime_revision "${repo_root}" \
     "source=${local_worker_source_revision}" \
     "node=${local_node_bin}" \
+    "tsx=${local_tsx_loader}" \
     "database=${local_database_url}" \
     "media-root=${local_worker_media_root}" \
     "capture-vault=${local_capture_vault_root}" \
@@ -496,6 +539,8 @@ start_macos_job() {
     -- /usr/bin/env \
       "QUIPSLY_LOCAL_PNPM_BIN=${local_pnpm_bin}" \
       "QUIPSLY_LOCAL_NODE_BIN=${local_node_bin}" \
+      "QUIPSLY_LOCAL_FIREBASE_BIN=${local_firebase_bin}" \
+      "QUIPSLY_LOCAL_TSX_LOADER=${local_tsx_loader}" \
       "QUIPSLY_LOCAL_ENV_FILE=${local_env_file}" \
       "QUIPSLY_LOCAL_DATABASE_URL=${local_database_url}" \
       "QUIPSLY_LOCAL_MEDIA_UPLOAD_ROOT=${local_media_root}" \
@@ -684,7 +729,7 @@ if [[ -n "${local_whisper_executable}" && -x "${local_whisper_executable}" ]]; t
         QUIPSLY_LOCAL_TRANSCRIPT_WORKER_BUILD_ID="${local_transcript_worker_build_id}" \
         TSX_TSCONFIG_PATH="${repo_root}/apps/quipsly/tsconfig.json" \
         node \
-          --import tsx \
+          --import "${local_tsx_loader}" \
           --import "${repo_root}/scripts/register-ts-extension-loader.mjs" \
           "${repo_root}/scripts/dev/quipsly-local-transcript-worker.mjs" \
         >"${state_dir}/transcript-worker.log" 2>&1 &
@@ -763,7 +808,7 @@ else
   else
     (
       cd "${repo_root}"
-      nohup pnpm exec firebase emulators:start \
+      nohup "${local_firebase_bin}" emulators:start \
         --only auth \
         --project quipsly-reef \
         --config ops/firebase-auth-emulator.local.json \
