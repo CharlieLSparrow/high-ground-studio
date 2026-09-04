@@ -32,7 +32,7 @@ struct ContextPickerView: View {
                             }
                         }
                         .pickerStyle(.menu)
-                        .tint(.primary)
+                        .tint(CapturePalette.accent)
                         
                         if let projId = contextManager.selectedProjectId,
                            let proj = ws.projects.first(where: { $0.id == projId }) {
@@ -43,14 +43,14 @@ struct ContextPickerView: View {
                                 }
                             }
                             .pickerStyle(.menu)
-                            .tint(.secondary)
+                            .tint(CapturePalette.accent)
                         }
                     }
                 }
             }
         }
         .padding()
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .background(CapturePalette.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         .task {
             if contextManager.workspaces.isEmpty {
                 await contextManager.fetchContext()

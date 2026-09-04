@@ -401,30 +401,35 @@ struct CapturePhoneShell: View {
         return .destination(visibleTab)
     }
 
-    private var sidebarSelection: Binding<CaptureIPadSidebarSelection?> {
-        Binding(
-            get: { currentIPadSidebarSelection },
-            set: { selection in
-                if case let .destination(tab) = selection {
-                    visibleTab = tab
-                }
-            }
-        )
-    }
-
     private var captureIPadWorkspace: AnyView {
         AnyView(NavigationSplitView {
-            List(selection: sidebarSelection) {
+            List {
                 Section("Quipsly") {
                     ForEach(CaptureRootTab.allCases) { tab in
-                        Label(tab.title, systemImage: tab.systemImage)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 10)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .tag(CaptureIPadSidebarSelection.destination(tab))
-                            .accessibilityIdentifier(
-                                "CaptureIPadSidebar_\(tab.rawValue)"
-                            )
+                        Button {
+                            visibleTab = tab
+                        } label: {
+                            Label(tab.title, systemImage: tab.systemImage)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 10)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .contentShape(Rectangle())
+                                .background(
+                                    currentIPadSidebarSelection == .destination(tab)
+                                        ? CapturePalette.accentSoft.opacity(0.62)
+                                        : Color.clear,
+                                    in: RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                )
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityAddTraits(
+                            currentIPadSidebarSelection == .destination(tab)
+                                ? .isSelected
+                                : []
+                        )
+                        .accessibilityIdentifier(
+                            "CaptureIPadSidebar_\(tab.rawValue)"
+                        )
                     }
                 }
 
@@ -443,28 +448,52 @@ struct CapturePhoneShell: View {
 
                     Button(action: startVoiceNote) {
                         Label("Speak to write", systemImage: "waveform.circle.fill")
-                            .padding(.horizontal, 6)
+                            .padding(.horizontal, 10)
                             .padding(.vertical, 10)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .contentShape(Rectangle())
+                            .background(
+                                currentIPadSidebarSelection == .speakToWrite
+                                    ? CapturePalette.accentSoft.opacity(0.62)
+                                    : Color.clear,
+                                in: RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            )
                     }
-                    .tag(CaptureIPadSidebarSelection.speakToWrite)
+                    .buttonStyle(.plain)
+                    .accessibilityAddTraits(
+                        currentIPadSidebarSelection == .speakToWrite
+                            ? .isSelected
+                            : []
+                    )
                     .keyboardShortcut("r", modifiers: [.command, .shift])
                     .accessibilityIdentifier("CaptureIPadSpeakToWrite")
 
                     Button(action: startWriting) {
                         Label("Start writing", systemImage: "square.and.pencil")
-                            .padding(.horizontal, 6)
+                            .padding(.horizontal, 10)
                             .padding(.vertical, 10)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .contentShape(Rectangle())
+                            .background(
+                                currentIPadSidebarSelection == .startWriting
+                                    ? CapturePalette.accentSoft.opacity(0.62)
+                                    : Color.clear,
+                                in: RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            )
                     }
-                    .tag(CaptureIPadSidebarSelection.startWriting)
+                    .buttonStyle(.plain)
+                    .accessibilityAddTraits(
+                        currentIPadSidebarSelection == .startWriting
+                            ? .isSelected
+                            : []
+                    )
                     .keyboardShortcut("n", modifiers: [.command, .shift])
                     .accessibilityIdentifier("CaptureIPadStartWriting")
                 }
             }
             .listStyle(.sidebar)
+            .scrollContentBackground(.hidden)
+            .background(CapturePalette.sidebarSurface)
             .navigationSplitViewColumnWidth(
                 min: 260,
                 ideal: 300,
@@ -1352,7 +1381,7 @@ private struct CaptureHomeContinueSection: View {
             .frame(maxWidth: .infinity, minHeight: 54, alignment: .leading)
             .padding(.horizontal, 14)
             .padding(.vertical, 8)
-            .background(.background, in: RoundedRectangle(cornerRadius: 16))
+            .background(CapturePalette.surface, in: RoundedRectangle(cornerRadius: 16))
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -1499,7 +1528,7 @@ private struct CaptureFinishQueueCard: View {
             }
         }
         .padding(16)
-        .background(.background, in: RoundedRectangle(cornerRadius: 20))
+        .background(CapturePalette.surface, in: RoundedRectangle(cornerRadius: 20))
         .overlay {
             RoundedRectangle(cornerRadius: 20)
                 .stroke(CapturePalette.plum.opacity(0.18), lineWidth: 1)
@@ -2904,7 +2933,7 @@ private struct CaptureWorkView: View {
             .padding(.trailing, 4)
             .padding(.vertical, 6)
             .frame(maxWidth: .infinity, minHeight: 52)
-            .background(.background, in: RoundedRectangle(cornerRadius: 16))
+            .background(CapturePalette.surface, in: RoundedRectangle(cornerRadius: 16))
             .overlay {
                 RoundedRectangle(cornerRadius: 16)
                     .stroke(.primary.opacity(0.1))
@@ -3094,7 +3123,7 @@ private struct CaptureWorkView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(14)
-        .background(.background, in: RoundedRectangle(cornerRadius: 18))
+        .background(CapturePalette.surface, in: RoundedRectangle(cornerRadius: 18))
         .overlay {
             RoundedRectangle(cornerRadius: 18)
                 .stroke(Color.primary.opacity(0.07))
@@ -3226,7 +3255,7 @@ private struct CaptureWorkView: View {
             }
         }
         .padding(16)
-        .background(.background, in: RoundedRectangle(cornerRadius: 22))
+        .background(CapturePalette.surface, in: RoundedRectangle(cornerRadius: 22))
         .overlay {
             RoundedRectangle(cornerRadius: 22)
                 .stroke(.primary.opacity(0.09))
@@ -3371,7 +3400,7 @@ private struct CaptureWorkView: View {
                 .foregroundStyle(.secondary)
                 .padding(14)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(.background, in: RoundedRectangle(cornerRadius: 18))
+                .background(CapturePalette.surface, in: RoundedRectangle(cornerRadius: 18))
         }
     }
 
@@ -3432,7 +3461,7 @@ private struct CaptureWorkView: View {
                 }
             }
             .padding(16)
-            .background(.background, in: RoundedRectangle(cornerRadius: 22))
+            .background(CapturePalette.surface, in: RoundedRectangle(cornerRadius: 22))
         }
     }
 
@@ -3606,7 +3635,7 @@ private struct CaptureWorkView: View {
             Spacer(minLength: 0)
         }
         .padding(14)
-        .background(.background, in: RoundedRectangle(cornerRadius: 18))
+        .background(CapturePalette.surface, in: RoundedRectangle(cornerRadius: 18))
         .overlay {
             RoundedRectangle(cornerRadius: 18)
                 .stroke(
@@ -3705,7 +3734,7 @@ private struct CaptureWorkView: View {
             }
         }
         .padding(14)
-        .background(.background, in: RoundedRectangle(cornerRadius: 18))
+        .background(CapturePalette.surface, in: RoundedRectangle(cornerRadius: 18))
         .overlay {
             RoundedRectangle(cornerRadius: 18)
                 .stroke(
@@ -3807,7 +3836,7 @@ private struct CaptureWorkView: View {
             }
         }
         .padding(14)
-        .background(.background, in: RoundedRectangle(cornerRadius: 18))
+        .background(CapturePalette.surface, in: RoundedRectangle(cornerRadius: 18))
         .overlay {
             RoundedRectangle(cornerRadius: 18)
                 .stroke(
@@ -6959,7 +6988,7 @@ private struct CaptureDocumentNoteEditSheet: View {
                             ))
                             .frame(minHeight: blocks.count == 1 ? 220 : 140)
                             .padding(8)
-                            .background(.background, in: RoundedRectangle(cornerRadius: 12))
+                            .background(CapturePalette.surface, in: RoundedRectangle(cornerRadius: 12))
                             .overlay {
                                 RoundedRectangle(cornerRadius: 12)
                                     .stroke(.primary.opacity(0.12))
@@ -16293,7 +16322,7 @@ private struct CaptureLibraryView: View {
             .frame(maxWidth: .infinity, minHeight: 60, alignment: .leading)
             .padding(.horizontal, 14)
             .padding(.vertical, 7)
-            .background(.background, in: RoundedRectangle(cornerRadius: 18))
+            .background(CapturePalette.surface, in: RoundedRectangle(cornerRadius: 18))
             .overlay {
                 RoundedRectangle(cornerRadius: 18)
                     .stroke(.primary.opacity(0.1))
@@ -16631,7 +16660,7 @@ private struct CaptureLibraryView: View {
         .padding(.leading, 14)
         .padding(.trailing, 4)
         .frame(minHeight: 52)
-        .background(.background, in: RoundedRectangle(cornerRadius: 16))
+        .background(CapturePalette.surface, in: RoundedRectangle(cornerRadius: 16))
         .overlay {
             RoundedRectangle(cornerRadius: 16)
                 .stroke(.primary.opacity(0.1))
@@ -18286,7 +18315,7 @@ struct CaptureConsentConfirmationSheet: View {
             }
             .navigationTitle("Recording")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbarBackground(Color(uiColor: .systemGroupedBackground), for: .navigationBar)
+            .toolbarBackground(CapturePalette.canvas, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -21476,7 +21505,7 @@ struct CaptureRecordingEditScreen: View {
                 .padding(.horizontal, 16)
                 .padding(.vertical, 12)
         }
-        .background(Color(uiColor: .systemGroupedBackground))
+        .background(CapturePalette.canvas)
         .navigationTitle("Edit recording")
         .navigationBarTitleDisplayMode(.inline)
         .accessibilityLabel("Edit recording for \(sessionTitle)")
@@ -23304,13 +23333,35 @@ struct CaptureCanvas: View {
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
-        LinearGradient(
-            colors: colorScheme == .dark
-                ? [CapturePalette.canvas, CapturePalette.canvasLift]
-                : [CapturePalette.canvas, CapturePalette.canvasLift],
-            startPoint: .top,
-            endPoint: .bottomTrailing
-        )
+        ZStack {
+            LinearGradient(
+                colors: [CapturePalette.canvas, CapturePalette.canvasLift],
+                startPoint: .top,
+                endPoint: .bottomTrailing
+            )
+
+            // A quiet lichen bloom gives the reading canvas some living depth
+            // without turning work surfaces into decorative wallpaper.
+            RadialGradient(
+                colors: [
+                    CapturePalette.accentSoft.opacity(colorScheme == .dark ? 0.20 : 0.34),
+                    .clear,
+                ],
+                center: .topTrailing,
+                startRadius: 12,
+                endRadius: 520
+            )
+
+            RadialGradient(
+                colors: [
+                    CapturePalette.brass.opacity(colorScheme == .dark ? 0.045 : 0.07),
+                    .clear,
+                ],
+                center: .bottomLeading,
+                startRadius: 8,
+                endRadius: 460
+            )
+        }
         .ignoresSafeArea()
     }
 }
@@ -23325,16 +23376,24 @@ struct CaptureCanvas: View {
 /// recording, warning, success, and signal meanings.
 enum CapturePalette {
     static let canvas = adaptive(
-        light: UIColor(red: 0.95, green: 0.90, blue: 0.82, alpha: 1),
-        dark: UIColor(red: 0.105, green: 0.067, blue: 0.052, alpha: 1)
+        light: UIColor(red: 0.957, green: 0.918, blue: 0.843, alpha: 1),
+        dark: UIColor(red: 0.112, green: 0.074, blue: 0.058, alpha: 1)
     )
     static let canvasLift = adaptive(
-        light: UIColor(red: 0.90, green: 0.84, blue: 0.74, alpha: 1),
-        dark: UIColor(red: 0.17, green: 0.105, blue: 0.078, alpha: 1)
+        light: UIColor(red: 0.902, green: 0.843, blue: 0.725, alpha: 1),
+        dark: UIColor(red: 0.164, green: 0.108, blue: 0.082, alpha: 1)
     )
     static let surface = adaptive(
-        light: UIColor(red: 1.00, green: 0.975, blue: 0.925, alpha: 0.94),
-        dark: UIColor(red: 0.19, green: 0.12, blue: 0.09, alpha: 0.94)
+        light: UIColor(red: 1.00, green: 0.982, blue: 0.941, alpha: 0.96),
+        dark: UIColor(red: 0.205, green: 0.137, blue: 0.102, alpha: 0.96)
+    )
+    static let surfaceMuted = adaptive(
+        light: UIColor(red: 0.91, green: 0.885, blue: 0.815, alpha: 0.96),
+        dark: UIColor(red: 0.245, green: 0.184, blue: 0.145, alpha: 0.96)
+    )
+    static let sidebarSurface = adaptive(
+        light: UIColor(red: 0.982, green: 0.947, blue: 0.873, alpha: 1),
+        dark: UIColor(red: 0.105, green: 0.078, blue: 0.064, alpha: 1)
     )
     static let locationBarBackground = adaptive(
         light: UIColor(red: 0.985, green: 0.945, blue: 0.875, alpha: 0.97),
@@ -23353,26 +23412,26 @@ enum CapturePalette {
         dark: UIColor(red: 0.83, green: 0.73, blue: 0.58, alpha: 0.82)
     )
     static let accent = adaptive(
-        light: UIColor(red: 0.20, green: 0.36, blue: 0.25, alpha: 1),
-        dark: UIColor(red: 0.62, green: 0.77, blue: 0.56, alpha: 1)
+        light: UIColor(red: 0.17, green: 0.35, blue: 0.25, alpha: 1),
+        dark: UIColor(red: 0.58, green: 0.75, blue: 0.52, alpha: 1)
     )
     static let accentDeep = adaptive(
         light: UIColor(red: 0.12, green: 0.27, blue: 0.18, alpha: 1),
         dark: UIColor(red: 0.43, green: 0.60, blue: 0.38, alpha: 1)
     )
     static let accentSoft = adaptive(
-        light: UIColor(red: 0.84, green: 0.88, blue: 0.76, alpha: 1),
-        dark: UIColor(red: 0.20, green: 0.28, blue: 0.19, alpha: 1)
+        light: UIColor(red: 0.79, green: 0.85, blue: 0.70, alpha: 1),
+        dark: UIColor(red: 0.18, green: 0.29, blue: 0.19, alpha: 1)
     )
     // Filled controls need their own token. The readable foreground accent used
     // for links and icons becomes a washed-out button background in dark mode.
     static let actionFill = adaptive(
-        light: UIColor(red: 0.145, green: 0.302, blue: 0.204, alpha: 1),
-        dark: UIColor(red: 0.271, green: 0.427, blue: 0.239, alpha: 1)
+        light: UIColor(red: 0.12, green: 0.29, blue: 0.20, alpha: 1),
+        dark: UIColor(red: 0.25, green: 0.43, blue: 0.24, alpha: 1)
     )
     static let actionFillRaised = adaptive(
-        light: UIColor(red: 0.20, green: 0.36, blue: 0.25, alpha: 1),
-        dark: UIColor(red: 0.32, green: 0.49, blue: 0.28, alpha: 1)
+        light: UIColor(red: 0.20, green: 0.40, blue: 0.28, alpha: 1),
+        dark: UIColor(red: 0.34, green: 0.54, blue: 0.31, alpha: 1)
     )
     static let brass = adaptive(
         light: UIColor(red: 0.57, green: 0.40, blue: 0.18, alpha: 1),
@@ -23383,12 +23442,12 @@ enum CapturePalette {
         dark: UIColor(red: 0.52, green: 0.33, blue: 0.11, alpha: 1)
     )
     static let ink = adaptive(
-        light: UIColor(red: 0.20, green: 0.31, blue: 0.33, alpha: 1),
-        dark: UIColor(red: 0.61, green: 0.73, blue: 0.71, alpha: 1)
+        light: UIColor(red: 0.24, green: 0.36, blue: 0.31, alpha: 1),
+        dark: UIColor(red: 0.57, green: 0.68, blue: 0.62, alpha: 1)
     )
     static let inkFill = adaptive(
-        light: UIColor(red: 0.16, green: 0.29, blue: 0.30, alpha: 1),
-        dark: UIColor(red: 0.22, green: 0.37, blue: 0.37, alpha: 1)
+        light: UIColor(red: 0.20, green: 0.33, blue: 0.27, alpha: 1),
+        dark: UIColor(red: 0.24, green: 0.39, blue: 0.31, alpha: 1)
     )
     static let plum = adaptive(
         light: UIColor(red: 0.34, green: 0.24, blue: 0.30, alpha: 1),

@@ -83,10 +83,11 @@ struct LoginView: View {
                     VStack(spacing: 7) {
                         Text("Quipsly Capture")
                             .font(.largeTitle.weight(.bold))
+                            .foregroundStyle(CapturePalette.primaryText)
 
                         Text("Sign in to your sessions, recordings, notes, and tasks.")
                             .font(.body)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(CapturePalette.secondaryText)
                             .multilineTextAlignment(.center)
                             .frame(maxWidth: 340)
                     }
@@ -171,7 +172,7 @@ struct LoginView: View {
                     }
                     .padding(14)
                     .background(
-                        .regularMaterial,
+                        CapturePalette.surface,
                         in: RoundedRectangle(
                             cornerRadius: 14,
                             style: .continuous
@@ -195,14 +196,8 @@ struct LoginView: View {
             .frame(maxWidth: .infinity)
         }
         .scrollDismissesKeyboard(.interactively)
-        .background(
-            LinearGradient(
-                colors: [Color(.systemBackground), CapturePalette.accent.opacity(0.045), Color(.systemBackground)],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-            .ignoresSafeArea()
-        )
+        .background(CaptureCanvas())
+        .tint(CapturePalette.accent)
         .onAppear {
             applyRuntimeSmokeCredentialsIfNeeded()
         }
@@ -341,6 +336,10 @@ struct LoginView: View {
                 focusedField = nil
                 authManager.signInWithApple()
             }
+            // ASAuthorizationAppleIDButton fixes its style at creation time.
+            // Recreate it when appearance changes so it never carries a stale
+            // black or white treatment into the opposite canvas.
+            .id(colorScheme)
             .frame(maxWidth: .infinity, minHeight: 52)
             .disabled(authManager.isAuthenticating)
             .opacity(authManager.isAuthenticating ? 0.55 : 1)
@@ -348,7 +347,10 @@ struct LoginView: View {
             .accessibilityIdentifier("QuipslyCaptureAppleSignInButton")
 
             GoogleSignInButton(
-                scheme: colorScheme == .dark ? .dark : .light,
+                // Google's blue dark-style button is visually unrelated to the
+                // rest of Capture. The official light treatment stays familiar
+                // while sitting naturally on both parchment and walnut.
+                scheme: .light,
                 style: .wide,
                 state: authManager.isAuthenticating || !authManager.googleSignInAvailable
                     ? .disabled
@@ -421,7 +423,7 @@ struct LoginView: View {
             .frame(maxWidth: .infinity, minHeight: 44)
         }
         .captureProminentButton(fill: passwordMode == mode ? CapturePalette.actionFill : Color.secondary.opacity(0.16))
-        .foregroundStyle(passwordMode == mode ? Color.white : Color.primary)
+        .foregroundStyle(passwordMode == mode ? CapturePalette.onAccent : CapturePalette.primaryText)
         .disabled(authManager.isAuthenticating)
         .accessibilityIdentifier(
             mode == .signIn
@@ -603,10 +605,10 @@ private extension View {
         self
             .padding(.horizontal, 16)
             .frame(minHeight: 54)
-            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .background(CapturePalette.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
             .overlay {
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+                    .stroke(CapturePalette.divider, lineWidth: 1)
             }
     }
 }

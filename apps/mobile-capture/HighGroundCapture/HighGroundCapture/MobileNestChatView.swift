@@ -79,7 +79,7 @@ struct MobileNestChatView: View {
             .font(.caption)
         }
         .padding()
-        .background(.regularMaterial)
+        .background(CapturePalette.locationBarBackground)
     }
 
     private var composer: some View {
@@ -92,7 +92,7 @@ struct MobileNestChatView: View {
                 TextEditor(text: $draft)
                     .frame(minHeight: 72, maxHeight: 110)
                     .padding(4)
-                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .background(CapturePalette.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
 
                 Button {
                     Task {
@@ -108,7 +108,7 @@ struct MobileNestChatView: View {
             }
         }
         .padding()
-        .background(.ultraThinMaterial)
+        .background(CapturePalette.locationBarBackground)
     }
 }
 
@@ -138,7 +138,7 @@ private struct MobileNestChatMessageCard: View {
             }
         }
         .padding()
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .background(CapturePalette.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
     }
 }
 

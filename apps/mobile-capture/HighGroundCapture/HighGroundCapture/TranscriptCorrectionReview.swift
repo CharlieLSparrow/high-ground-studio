@@ -3340,7 +3340,7 @@ struct CaptureTranscriptReviewView: View {
             }
             .scrollPosition(id: $scrollTargetSegmentID, anchor: .center)
             .scrollDismissesKeyboard(.immediately)
-            .background(Color(uiColor: .systemGroupedBackground))
+            .background(CapturePalette.canvas)
             .safeAreaInset(edge: .top, spacing: 0) {
                 if focusSegmentID != nil {
                     VStack(alignment: .leading, spacing: 2) {
@@ -3535,7 +3535,7 @@ struct CaptureTranscriptReviewView: View {
                                 .frame(maxWidth: .infinity, minHeight: 180)
                         }
                     }
-                    .background(Color(uiColor: .systemGroupedBackground))
+                    .background(CapturePalette.canvas)
                     .navigationTitle("Recording source")
                     .navigationBarTitleDisplayMode(.inline)
                     .toolbar {
@@ -5135,7 +5135,7 @@ struct CapturePacketNoteReviewPreviewView: View {
             .padding(18)
             .padding(.bottom, 48)
         }
-        .background(Color(uiColor: .systemGroupedBackground))
+        .background(CapturePalette.canvas)
         .navigationTitle("Transcript idea")
         .navigationBarTitleDisplayMode(.inline)
         .accessibilityIdentifier("CapturePacketNoteReviewPreviewView")
@@ -5672,7 +5672,7 @@ private struct CapturePacketTaskCandidateCard: View {
                                 .foregroundStyle(CapturePalette.ink)
                         }
                         .padding(10)
-                        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 12))
+                        .background(CapturePalette.surfaceMuted, in: RoundedRectangle(cornerRadius: 12))
                         .accessibilityIdentifier("CapturePacketTaskMergeTargetSummary_\(target.id)")
                     }
                     HStack {
@@ -6081,7 +6081,7 @@ private struct CapturePacketGoalCandidateCard: View {
                                 .foregroundStyle(CapturePalette.ink)
                         }
                         .padding(10)
-                        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 12))
+                        .background(CapturePalette.surfaceMuted, in: RoundedRectangle(cornerRadius: 12))
                         .accessibilityIdentifier("CapturePacketGoalMergeTargetSummary_\(target.id)")
                     }
                     HStack {

@@ -1968,7 +1968,7 @@ struct MobileCoachingFormsHomeView: View {
                     .foregroundStyle(.secondary)
             }
             .padding(16)
-            .background(.background, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+            .background(CapturePalette.surface, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
             .overlay {
                 RoundedRectangle(cornerRadius: 20, style: .continuous)
                     .stroke(CapturePalette.accent.opacity(0.16), lineWidth: 1)
@@ -2094,7 +2094,7 @@ struct MobileCoachingFormsHomeView: View {
                 .padding(.top, 5)
         }
         .padding(16)
-        .background(.background, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .background(CapturePalette.surface, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 20, style: .continuous)
                 .stroke(.primary.opacity(0.08), lineWidth: 1)
@@ -2812,7 +2812,7 @@ private struct MobileCoachingFormOutcomeReceipts: View {
                 }
                 .padding(12)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(.background, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .background(CapturePalette.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
             }
             Text("Find and update these in \(relationshipTitle).")
                 .font(.caption2.weight(.semibold))

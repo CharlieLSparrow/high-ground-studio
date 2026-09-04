@@ -79,7 +79,7 @@ struct CaptureSourceEvidenceView: View {
             }
             .padding(18)
         }
-        .background(Color(uiColor: .systemGroupedBackground))
+        .background(CapturePalette.canvas)
         .navigationTitle("Recording quality")
         .navigationBarTitleDisplayMode(.inline)
         .accessibilityIdentifier("CaptureSourceEvidenceView")
@@ -2426,7 +2426,7 @@ struct CaptureSourceEvidencePreviewView: View {
             }
             .padding(18)
         }
-        .background(Color(uiColor: .systemGroupedBackground))
+        .background(CapturePalette.canvas)
         .navigationTitle("Recording quality")
         .navigationBarTitleDisplayMode(.inline)
         .accessibilityIdentifier("CaptureSourceEvidenceView")

@@ -522,7 +522,7 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(app.buttons["CaptureIPadSpeakToWrite"].exists)
         XCTAssertTrue(app.buttons["CaptureIPadStartWriting"].exists)
 
-        let sessions = app.staticTexts["CaptureIPadSidebar_record"].firstMatch
+        let sessions = app.buttons["CaptureIPadSidebar_record"].firstMatch
         XCTAssertTrue(sessions.exists)
         sessions.tap()
         XCTAssertTrue(
@@ -564,7 +564,7 @@ final class CaptureExperienceUITests: XCTestCase {
             "The iPad sidebar should highlight Speak to Write itself, not the Sessions infrastructure that hosts its recorder."
         )
         XCTAssertFalse(
-            app.staticTexts["CaptureIPadSidebar_record"].firstMatch.isSelected,
+            app.buttons["CaptureIPadSidebar_record"].firstMatch.isSelected,
             "Sessions must not remain selected while the focused private writing surface is open."
         )
         XCTAssertTrue(app.state == .runningForeground)
@@ -6551,7 +6551,7 @@ final class CaptureExperienceUITests: XCTestCase {
                 line: line
             )
             guard !rawValue.isEmpty else { return }
-            let destination = app.staticTexts[
+            let destination = app.buttons[
                 "CaptureIPadSidebar_\(rawValue)"
             ].firstMatch
             XCTAssertTrue(

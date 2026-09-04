@@ -147,7 +147,7 @@ struct CaptureSessionContextPanel: View {
                 ))
                 .frame(minHeight: 82)
                 .padding(8)
-                .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .background(CapturePalette.surfaceMuted, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                 .overlay {
                     RoundedRectangle(cornerRadius: 12, style: .continuous)
                         .stroke(Color.secondary.opacity(0.18), lineWidth: 1)
@@ -195,7 +195,7 @@ struct CaptureSessionContextPanel: View {
                 .foregroundStyle(.secondary)
         }
         .padding(10)
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .background(CapturePalette.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("CaptureSessionContextPanel")
         .onAppear { loadIfNeeded(force: true) }
@@ -1069,7 +1069,7 @@ private struct MobileClientFollowUpSnapshot: View {
             }
         }
         .padding(10)
-        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .background(CapturePalette.surfaceMuted, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 }
 
@@ -1566,7 +1566,7 @@ private struct MobileCoachFollowUpSelectionSection: View {
             }
         }
         .padding(10)
-        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 12))
+        .background(CapturePalette.surfaceMuted, in: RoundedRectangle(cornerRadius: 12))
     }
 }
 

@@ -312,7 +312,7 @@ struct MobileCoachingFormAutomationView: View {
             }
         }
         .padding(18)
-        .background(.background, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .background(CapturePalette.surface, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 22, style: .continuous)
                 .stroke(CapturePalette.accent.opacity(0.16), lineWidth: 1)
@@ -435,7 +435,7 @@ struct MobileCoachingFormAutomationView: View {
             .controlSize(.large)
         }
         .padding(18)
-        .background(.background, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .background(CapturePalette.surface, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
     }
 
     private func timingBinding(

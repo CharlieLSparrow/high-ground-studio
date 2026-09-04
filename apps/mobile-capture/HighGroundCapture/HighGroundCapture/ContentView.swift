@@ -56,6 +56,9 @@ struct ContentView: View {
                 LoginView()
             }
         }
+        // Keep native controls inside the same library-garden color language.
+        // Provider-owned sign-in buttons retain their required brand treatment.
+        .tint(CapturePalette.accent)
         .onChange(of: authManager.accessMode) { previousMode, currentMode in
             guard previousMode == .online,
                   currentMode == .checkingCachedIdentity || currentMode == .offlineCachedIdentity else {

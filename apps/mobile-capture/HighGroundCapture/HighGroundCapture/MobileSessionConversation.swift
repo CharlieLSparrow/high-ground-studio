@@ -969,7 +969,7 @@ private struct MobileSessionConversationThread: View {
             }
         }
         .padding()
-        .background(.regularMaterial)
+        .background(CapturePalette.locationBarBackground)
     }
 
     nonisolated private static func formattedTime(_ value: String) -> String {

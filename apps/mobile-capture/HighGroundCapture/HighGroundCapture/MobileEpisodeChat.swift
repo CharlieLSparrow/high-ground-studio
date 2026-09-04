@@ -1202,7 +1202,7 @@ private struct MobileEpisodeChatThread: View {
                 .foregroundStyle(.secondary)
         }
         .padding()
-        .background(.regularMaterial)
+        .background(CapturePalette.locationBarBackground)
     }
 
     nonisolated private static func formattedTime(_ value: String) -> String {
