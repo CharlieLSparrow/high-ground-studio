@@ -275,6 +275,9 @@ export function inspectPhysicalVoiceWritingReceipt(value, {
     sourceAudioCodec: null,
     sourceAudioSampleRate: null,
     sourceAudioChannels: null,
+    sourceAudioMeanVolumeDbfs: null,
+    sourceAudioPeakVolumeDbfs: null,
+    sourceAudioLikelySilent: false,
     transcriptAcceptanceReady,
     transcriptContentRead: false,
     sourceBoundTranscriptProven: false,
@@ -363,6 +366,23 @@ export function assertRequiredProof(receipt, {
   return receipt;
 }
 
+export function inspectVolumeDetectOutput(output) {
+  const text = typeof output === "string" ? output : "";
+  const meanMatch = text.match(/mean_volume:\s*(-?\d+(?:\.\d+)?)\s*dB/i);
+  const peakMatch = text.match(/max_volume:\s*(-?\d+(?:\.\d+)?)\s*dB/i);
+  const meanVolumeDbfs = meanMatch ? Number(meanMatch[1]) : null;
+  const peakVolumeDbfs = peakMatch ? Number(peakMatch[1]) : null;
+  const likelySilent = Number.isFinite(meanVolumeDbfs)
+    && Number.isFinite(peakVolumeDbfs)
+    && meanVolumeDbfs <= -60
+    && peakVolumeDbfs <= -45;
+  return {
+    sourceAudioMeanVolumeDbfs: meanVolumeDbfs,
+    sourceAudioPeakVolumeDbfs: peakVolumeDbfs,
+    sourceAudioLikelySilent: likelySilent,
+  };
+}
+
 async function pullAndInspectTranscript(device, receipt, sourceEvidence, destination) {
   const transcriptFileName = [
     receipt.recordingID.toLowerCase(),
@@ -435,6 +455,14 @@ async function pullAndInspectSource(device, receipt, destination) {
   if (!Number.isSafeInteger(decodedSize) || decodedSize !== bytes.byteLength) {
     fail("The decoded source size does not match the pulled source bytes.");
   }
+  const { stderr: volumeOutput } = await execFileAsync("ffmpeg", [
+    "-hide_banner", "-nostats",
+    "-i", destination,
+    "-map", "0:a:0",
+    "-af", "volumedetect",
+    "-f", "null",
+    "-",
+  ], { maxBuffer: 1024 * 1024, timeout: 30_000 });
   return {
     sourceAudioRead: true,
     sourceAudioPlayable: true,
@@ -443,6 +471,7 @@ async function pullAndInspectSource(device, receipt, destination) {
     sourceAudioCodec: clean(audioStream.codec_name) || null,
     sourceAudioSampleRate: Number(audioStream.sample_rate) || null,
     sourceAudioChannels: Number(audioStream.channels) || null,
+    ...inspectVolumeDetectOutput(volumeOutput),
   };
 }
 

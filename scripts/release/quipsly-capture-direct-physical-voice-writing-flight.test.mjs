@@ -48,6 +48,15 @@ test("reports actionable device states without disclosing transcript content", (
     }),
     /Audio is saved and playable/,
   );
+  assert.match(
+    physicalFlightStateMessage({
+      phase: "finished",
+      captureAcceptanceProven: true,
+      sourceAudioLikelySilent: true,
+      transcriptAcceptanceReady: false,
+    }),
+    /effectively silent/,
+  );
   assert.doesNotMatch(
     physicalFlightStateMessage({
       phase: "finished",
@@ -83,4 +92,3 @@ test("completion requires playable exact-source on-device text", () => {
   }
   assert.equal(physicalFlightIsComplete({ ...complete, transcriptCharacterCount: 0 }), false);
 });
-

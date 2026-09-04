@@ -115,6 +115,11 @@ export function physicalFlightStateMessage(receipt) {
   if (receipt.phase === "cancelled") {
     return `The physical take was cancelled${receipt.detail ? `: ${receipt.detail}` : "."}`;
   }
+  if (receipt.captureAcceptanceProven
+      && receipt.sourceAudioLikelySilent
+      && !receipt.transcriptAcceptanceReady) {
+    return "Audio is saved, but the source is effectively silent; speak near the device and run a fresh take.";
+  }
   if (receipt.captureAcceptanceProven && !receipt.transcriptAcceptanceReady) {
     return "Audio is saved and playable; waiting for the exact-source on-device transcript.";
   }
@@ -244,6 +249,11 @@ async function main() {
         lastState = state;
       }
       if (["start-failed", "cancelled"].includes(current.phase)) fail(state);
+      if (current.captureAcceptanceProven
+          && current.sourceAudioLikelySilent
+          && !current.transcriptAcceptanceReady) {
+        fail(state);
+      }
       if (physicalFlightIsComplete(current)) break;
     } else if (!lastState) {
       lastState = physicalFlightStateMessage(null);
@@ -294,4 +304,3 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     process.exit(1);
   });
 }
-

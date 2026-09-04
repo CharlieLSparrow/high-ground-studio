@@ -842,6 +842,7 @@ final class OnDeviceTranscriptManager: ObservableObject {
     @Published private(set) var phases: [UUID: OnDeviceTranscriptPhase] = [:]
     private var activeTasks: [UUID: Task<Void, Never>] = [:]
     private var backgroundProtectionIdentifiers: [UUID: UIBackgroundTaskIdentifier] = [:]
+    private var pendingVerifiedUploadWakeups: Set<UUID> = []
 
     private let nestBaseURL = normalizedNestBaseURL(
         Bundle.main.object(forInfoDictionaryKey: "QUIPSLY_API_BASE_URL") as? String
@@ -1039,6 +1040,16 @@ final class OnDeviceTranscriptManager: ObservableObject {
               recording.shouldBeginAutomaticOnDeviceTranscript else {
             return
         }
+        // Upload verification and on-device recognition deliberately run in
+        // parallel. The verification callback can therefore arrive while the
+        // recognition task is preserving text or recording a durable cloud
+        // fallback intent. Do not drop that edge merely because this source is
+        // momentarily busy: replay it exactly once from the latest protected
+        // recording projection as soon as the active task has finished.
+        if activeTasks[recording.id] != nil {
+            pendingVerifiedUploadWakeups.insert(recording.id)
+            return
+        }
         if (try? OnDeviceTranscriptStore.load(for: recording.id)) != nil {
             submitSavedTranscript(recording: recording)
         } else if recording.cloudTranscriptFallbackRequestId != nil,
@@ -1207,6 +1218,11 @@ final class OnDeviceTranscriptManager: ObservableObject {
            identifier != .invalid {
             UIApplication.shared.endBackgroundTask(identifier)
         }
+        guard pendingVerifiedUploadWakeups.remove(recordingID) != nil,
+              let recording = LocalRecordingLibrary.shared.recording(id: recordingID) else {
+            return
+        }
+        verifiedUploadDidFinish(recording: recording)
     }
 
     private func transcribe(

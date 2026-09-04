@@ -5,6 +5,7 @@ import {
   assertRequiredProof,
   inspectTranscriptSidecar,
   inspectPhysicalVoiceWritingReceipt,
+  inspectVolumeDetectOutput,
   parseArguments,
 } from "./quipsly-capture-physical-voice-writing-readback.mjs";
 
@@ -58,6 +59,25 @@ test("strict modes reject valid pending receipts instead of returning false conf
   assert.throws(
     () => assertRequiredProof(pending, { requireCaptureProof: true }),
     /capture proof is incomplete/,
+  );
+});
+
+test("distinguishes an effectively silent source from ordinary recorded speech", () => {
+  assert.deepEqual(
+    inspectVolumeDetectOutput("mean_volume: -72.8 dB\nmax_volume: -58.9 dB"),
+    {
+      sourceAudioMeanVolumeDbfs: -72.8,
+      sourceAudioPeakVolumeDbfs: -58.9,
+      sourceAudioLikelySilent: true,
+    },
+  );
+  assert.deepEqual(
+    inspectVolumeDetectOutput("mean_volume: -28.2 dB\nmax_volume: -8.4 dB"),
+    {
+      sourceAudioMeanVolumeDbfs: -28.2,
+      sourceAudioPeakVolumeDbfs: -8.4,
+      sourceAudioLikelySilent: false,
+    },
   );
 });
 
