@@ -332,7 +332,13 @@ function routingPlanMatchesManifest(
   source: CaptureTranscriptSourceBinding,
   provider: CaptureTranscriptProviderRequest,
 ) {
-  const expectedModel = `${provider.model}@${provider.version || "provider-default"}`;
+  // Deepgram routes pin the requested model and revision into one replayable
+  // identity. Google Speech v2 identifies its provider-managed model by name,
+  // so appending a synthetic revision would make every valid Google manifest
+  // fail its own construction-time parser.
+  const expectedModel = provider.name === "deepgram"
+    ? `${provider.model}@${provider.version || "provider-default"}`
+    : provider.model;
   const expectedTermSha = provider.terminology?.snapshotSha256 ?? null;
   return plan.source.sourceId === source.recordingAssetId
     && plan.source.sha256 === source.sha256
