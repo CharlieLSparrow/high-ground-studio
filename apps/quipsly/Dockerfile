@@ -88,10 +88,11 @@ RUN groupadd --system --gid 1001 nodejs \
 COPY --from=builder --chown=nextjs:nodejs /app/apps/quipsly/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/apps/quipsly/.next/static ./apps/quipsly/.next/static
 COPY --from=builder --chown=nextjs:nodejs /app/apps/quipsly/public ./apps/quipsly/public
-# Runtime readiness compares the exact migration history shipped with this
-# image to production's completed Prisma ledger before promotion. These are
+# Next's standalone server changes cwd to /app/apps/quipsly before loading the
+# application. Put the exact migration history beneath that runtime cwd so the
+# pre-promotion ledger check reads the image it is actually serving. These are
 # source-only SQL files; no database credential or generated client is copied.
-COPY --from=builder --chown=nextjs:nodejs /app/prisma/migrations ./prisma/migrations
+COPY --from=builder --chown=nextjs:nodejs /app/prisma/migrations ./apps/quipsly/prisma/migrations
 
 USER nextjs
 

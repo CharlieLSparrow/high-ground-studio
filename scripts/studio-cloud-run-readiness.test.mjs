@@ -109,9 +109,10 @@ test("Studio deploy helper ignores GitHub auth credential files only", () => {
   assert.match(dockerfile, /ca-certificates openssl/);
   assert.match(
     dockerfile,
-    /COPY --from=builder --chown=nextjs:nodejs \/app\/prisma\/migrations \.\/prisma\/migrations/,
-    "the runtime image must carry its exact migration ledger for the pre-promotion schema gate",
+    /COPY --from=builder --chown=nextjs:nodejs \/app\/prisma\/migrations \.\/apps\/quipsly\/prisma\/migrations/,
+    "the runtime image must carry its exact migration ledger beneath Next standalone's runtime cwd",
   );
+  assert.match(dockerfile, /Next's standalone server changes cwd to \/app\/apps\/quipsly/);
 });
 
 test("preview smoke blocks promotion when the exact image's migrations are not applied", () => {
