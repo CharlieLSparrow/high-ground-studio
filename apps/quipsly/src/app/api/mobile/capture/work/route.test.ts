@@ -94,6 +94,7 @@ describe("mobile Capture Work contract", () => {
       ]) },
       goal: { findMany: jest.fn().mockResolvedValue([{
         id: "goal-1",
+        ownerUserId: "actor-1",
         title: "Publish a trustworthy episode",
         description: "Finish the human review loop.",
         status: "ACTIVE",
@@ -221,6 +222,7 @@ describe("mobile Capture Work contract", () => {
         tasks: [{ id: "task-1", isOverdue: true, tagIds: ["tag-1"] }],
         goals: [{
           id: "goal-1",
+          canEdit: true,
           progressPercent: 60,
           progressNote: "First proof pass complete.",
           lastMergedTranscriptEvidence: {

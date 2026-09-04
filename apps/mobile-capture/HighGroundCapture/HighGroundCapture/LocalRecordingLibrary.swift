@@ -804,6 +804,12 @@ final class LocalRecordingLibrary: ObservableObject {
             ?? "/tmp/quipsly-capture-runtime-ui-smoke-credentials.json"
         let credentialData = try Data(contentsOf: URL(fileURLWithPath: credentialsPath))
         let fixture = try decoder.decode(RuntimeSmokePlaybackFixture.self, from: credentialData)
+        // Restored Firebase authentication and the SwiftUI launch task can
+        // settle in either order. Bind this DEBUG-only fixture transaction to
+        // the already verified stored identity before applying its strict
+        // owner check. Production recordings still move partitions through
+        // the ordinary account-identity notification.
+        activateOwner(AuthManager.currentStoredOwnerID())
         guard let localID = UUID(uuidString: fixture.recordingFixtureLocalID),
               let ownerAccountID = normalizedOwnerID(fixture.recordingFixtureOwnerAccountID),
               let expectedSHA256 = normalizedSHA256(fixture.recordingFixtureSHA256),

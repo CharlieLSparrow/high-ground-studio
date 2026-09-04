@@ -64,21 +64,26 @@ describe("transcript correction and accuracy-corpus route", () => {
     expect(readTranscriptEvaluationReadiness).toHaveBeenCalledWith(expect.objectContaining({ roomId: "room-1", actor: { id: "user-1", email: "producer@example.com", isStaff: false } }));
   });
 
-  it("keeps an exact-source correction desk bound to one RecordingAsset and suppresses room-wide scorecards", async () => {
+  it("keeps an exact-source correction desk bound to one RecordingAsset and TranscriptJob and suppresses room-wide scorecards", async () => {
     jest.mocked(getQuipslySessionFromRequest).mockResolvedValue(session as any);
     jest.mocked(readSessionTranscriptCorrectionDesk).mockResolvedValue({ ok: true, roomId: "room-1", transcriptJobId: "job-backup", segments: [] } as any);
 
-    const response = await GET(new Request("http://localhost/api/mobile/capture/transcripts/corrections?callRoomId=room-1&recordingAssetId=asset-backup"));
+    const response = await GET(new Request("http://localhost/api/mobile/capture/transcripts/corrections?callRoomId=room-1&recordingAssetId=asset-backup&transcriptJobId=job-backup"));
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({
       ok: true,
       transcriptJobId: "job-backup",
       evaluation: null,
-      focusedSource: { recordingAssetId: "asset-backup", roomWideEvaluationSuppressed: true },
+      focusedSource: {
+        recordingAssetId: "asset-backup",
+        transcriptJobId: "job-backup",
+        roomWideEvaluationSuppressed: true,
+      },
     });
     expect(readSessionTranscriptCorrectionDesk).toHaveBeenCalledWith(expect.objectContaining({
       roomId: "room-1",
       recordingAssetId: "asset-backup",
+      transcriptJobId: "job-backup",
     }));
     expect(readTranscriptEvaluationReadiness).not.toHaveBeenCalled();
     expect(readTranscriptEvaluationCandidates).not.toHaveBeenCalled();

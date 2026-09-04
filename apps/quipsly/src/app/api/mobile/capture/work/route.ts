@@ -140,6 +140,7 @@ export async function GET(request: Request) {
       take: 60,
       select: {
         id: true,
+        ownerUserId: true,
         title: true,
         description: true,
         status: true,
@@ -263,6 +264,7 @@ export async function GET(request: Request) {
       roomId: goal.room?.id ?? null,
       sessionTitle: goal.room?.title ?? null,
       project: goal.project ?? { id: selectedProject.id, name: selectedProject.name, slug: selectedProject.slug },
+      canEdit: goal.ownerUserId === actorUserId,
       canEditTags: project.canWrite,
       tagIds: goal.tagLinks.map((link) => link.tag.id),
       tagLabels: goal.tagLinks.map((link) => link.tag.label),

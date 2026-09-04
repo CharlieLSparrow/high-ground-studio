@@ -1018,6 +1018,8 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
     private var isFlushingReviewDecisions = false
     private var isFlushingSpeakerAttributions = false
     private var activeRoomID: String?
+    private var activeRecordingAssetID: String?
+    private var activeTranscriptJobID: String?
     private var includesFollowUpWorkspace = true
     private var automaticPacketAttemptKeys: Set<String> = []
     private var packetSnapshotSHA256: String?
@@ -1088,6 +1090,8 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
         let ownerAccountID: String?
         let ownerEmail: String
         let roomID: String
+        let recordingAssetID: String?
+        let transcriptJobID: String?
         let savedAt: Date
         let desk: CaptureTranscriptCorrectionDesk
     }
@@ -1109,10 +1113,17 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
         )
     }
 
-    func load(roomID: String, previewOnly: Bool) async {
+    func load(
+        roomID: String,
+        recordingAssetID: String? = nil,
+        transcriptJobID: String? = nil,
+        previewOnly: Bool
+    ) async {
         includesFollowUpWorkspace = true
         await loadDesk(
             roomID: roomID,
+            recordingAssetID: recordingAssetID,
+            transcriptJobID: transcriptJobID,
             previewOnly: previewOnly,
             includeFollowUpWorkspace: true
         )
@@ -1125,6 +1136,8 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
         includesFollowUpWorkspace = false
         await loadDesk(
             roomID: roomID,
+            recordingAssetID: nil,
+            transcriptJobID: nil,
             previewOnly: previewOnly,
             includeFollowUpWorkspace: false
         )
@@ -1133,6 +1146,8 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
     private func reloadActiveDesk(roomID: String) async {
         await loadDesk(
             roomID: roomID,
+            recordingAssetID: activeRecordingAssetID,
+            transcriptJobID: activeTranscriptJobID,
             previewOnly: false,
             includeFollowUpWorkspace: includesFollowUpWorkspace
         )
@@ -1140,14 +1155,24 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
 
     private func loadDesk(
         roomID: String,
+        recordingAssetID: String?,
+        transcriptJobID: String?,
         previewOnly: Bool,
         includeFollowUpWorkspace: Bool
     ) async {
         let normalizedRoomID = roomID.trimmingCharacters(in: .whitespacesAndNewlines)
-        if activeRoomID != normalizedRoomID {
+        let trimmedRecordingAssetID = recordingAssetID?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedTranscriptJobID = transcriptJobID?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedRecordingAssetID = trimmedRecordingAssetID?.isEmpty == false ? trimmedRecordingAssetID : nil
+        let normalizedTranscriptJobID = trimmedTranscriptJobID?.isEmpty == false ? trimmedTranscriptJobID : nil
+        if activeRoomID != normalizedRoomID
+            || activeRecordingAssetID != normalizedRecordingAssetID
+            || activeTranscriptJobID != normalizedTranscriptJobID {
             removePreparedMentorReport()
         }
         activeRoomID = normalizedRoomID
+        activeRecordingAssetID = normalizedRecordingAssetID
+        activeTranscriptJobID = normalizedTranscriptJobID
         guard !previewOnly else {
             desk = .preview(roomID: roomID)
             if !includeFollowUpWorkspace {
@@ -1223,7 +1248,11 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
             canReviewPrivatePacket = true
             privatePacketBoundary = nil
             resetPacketReviewState()
-            if restoreProtectedCache(roomID: roomID) {
+            if restoreProtectedCache(
+                roomID: roomID,
+                recordingAssetID: normalizedRecordingAssetID,
+                transcriptJobID: normalizedTranscriptJobID
+            ) {
                 errorMessage = "Nest is unavailable. Showing a protected transcript snapshot; exact local playback-reviewed word decisions and voice identities can be queued safely, while packet and AI decisions stay locked until authority is verified."
             } else {
                 errorMessage = "Sign in with a stable Quipsly account before loading transcript review."
@@ -1236,6 +1265,16 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
             return
         }
         components.queryItems = [URLQueryItem(name: "callRoomId", value: roomID)]
+        if let normalizedRecordingAssetID {
+            components.queryItems?.append(
+                URLQueryItem(name: "recordingAssetId", value: normalizedRecordingAssetID)
+            )
+        }
+        if let normalizedTranscriptJobID {
+            components.queryItems?.append(
+                URLQueryItem(name: "transcriptJobId", value: normalizedTranscriptJobID)
+            )
+        }
         guard let url = components.url else {
             errorMessage = "The transcript review URL could not be created."
             return
@@ -1254,7 +1293,14 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
             }
             desk = try JSONDecoder().decode(CaptureTranscriptCorrectionDesk.self, from: data)
             isUsingProtectedCache = false
-            if let desk { persist(desk, roomID: roomID) }
+            if let desk {
+                persist(
+                    desk,
+                    roomID: roomID,
+                    recordingAssetID: normalizedRecordingAssetID,
+                    transcriptJobID: normalizedTranscriptJobID
+                )
+            }
             message = nil
             if includeFollowUpWorkspace {
                 await loadPacketCandidates(roomID: roomID)
@@ -1284,7 +1330,11 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
             packetGoalReviewContext = nil
             packetStatus = nil
             resetPacketReviewState()
-            if restoreProtectedCache(roomID: roomID) {
+            if restoreProtectedCache(
+                roomID: roomID,
+                recordingAssetID: normalizedRecordingAssetID,
+                transcriptJobID: normalizedTranscriptJobID
+            ) {
                 errorMessage = "Nest is unavailable. Showing a protected transcript snapshot; exact local playback-reviewed word decisions and voice identities can be queued safely, while packet and AI decisions stay locked until authority is verified."
             } else {
                 desk = nil
@@ -2543,8 +2593,16 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
             && cacheAge <= 30 * 24 * 60 * 60
     }
 
-    private func restoreProtectedCache(roomID: String) -> Bool {
-        guard let url = Self.protectedCacheURL(roomID: roomID),
+    private func restoreProtectedCache(
+        roomID: String,
+        recordingAssetID: String?,
+        transcriptJobID: String?
+    ) -> Bool {
+        guard let url = Self.protectedCacheURL(
+                roomID: roomID,
+                recordingAssetID: recordingAssetID,
+                transcriptJobID: transcriptJobID
+              ),
               let data = try? Data(contentsOf: url, options: .mappedIfSafe) else { return false }
         do {
             let decoder = JSONDecoder()
@@ -2557,6 +2615,8 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
                     activeOwnerAccountID: AuthManager.currentStoredOwnerID()
                   ),
                   cache.roomID == roomID,
+                  cache.recordingAssetID == recordingAssetID,
+                  cache.transcriptJobID == transcriptJobID,
                   cacheAge >= -5 * 60,
                   cacheAge <= 30 * 24 * 60 * 60 else {
                 try? FileManager.default.removeItem(at: url)
@@ -2572,12 +2632,21 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
         }
     }
 
-    private func persist(_ desk: CaptureTranscriptCorrectionDesk, roomID: String) {
+    private func persist(
+        _ desk: CaptureTranscriptCorrectionDesk,
+        roomID: String,
+        recordingAssetID: String?,
+        transcriptJobID: String?
+    ) {
         guard AuthManager.shared.networkActionsAllowed,
               let ownerAccountID = AuthManager.currentStoredOwnerID(),
               let ownerEmail = AuthManager.shared.userEmail?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
               !ownerEmail.isEmpty,
-              let url = Self.protectedCacheURL(roomID: roomID) else { return }
+              let url = Self.protectedCacheURL(
+                roomID: roomID,
+                recordingAssetID: recordingAssetID,
+                transcriptJobID: transcriptJobID
+              ) else { return }
         do {
             try FileManager.default.createDirectory(
                 at: url.deletingLastPathComponent(),
@@ -2593,6 +2662,8 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
                     ownerAccountID: ownerAccountID,
                     ownerEmail: ownerEmail,
                     roomID: roomID,
+                    recordingAssetID: recordingAssetID,
+                    transcriptJobID: transcriptJobID,
                     savedAt: Date(),
                     desk: desk
                 )
@@ -2612,8 +2683,13 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
             .appendingPathComponent("QuipslyCapture/ProtectedTranscriptReview", isDirectory: true)
     }
 
-    nonisolated private static func protectedCacheURL(roomID: String) -> URL? {
-        let digest = SHA256.hash(data: Data(roomID.utf8)).map { String(format: "%02x", $0) }.joined()
+    nonisolated private static func protectedCacheURL(
+        roomID: String,
+        recordingAssetID: String? = nil,
+        transcriptJobID: String? = nil
+    ) -> URL? {
+        let cacheIdentity = [roomID, recordingAssetID ?? "", transcriptJobID ?? ""].joined(separator: "\u{1f}")
+        let digest = SHA256.hash(data: Data(cacheIdentity.utf8)).map { String(format: "%02x", $0) }.joined()
         return protectedCacheDirectoryURL()?.appendingPathComponent("\(digest).json")
     }
 }
@@ -3177,6 +3253,8 @@ struct CaptureTranscriptReviewView: View {
     let roomID: String
     let sessionTitle: String
     let recording: LocalRecording?
+    let recordingAssetID: String?
+    let transcriptJobID: String?
     let previewOnly: Bool
     let focusSegmentID: String?
     let canUseProjectTeamNotes: Bool
@@ -3205,6 +3283,8 @@ struct CaptureTranscriptReviewView: View {
         roomID: String,
         sessionTitle: String,
         recording: LocalRecording?,
+        recordingAssetID: String? = nil,
+        transcriptJobID: String? = nil,
         previewOnly: Bool,
         focusSegmentID: String? = nil,
         canUseProjectTeamNotes: Bool = false,
@@ -3214,6 +3294,8 @@ struct CaptureTranscriptReviewView: View {
         self.roomID = roomID
         self.sessionTitle = sessionTitle
         self.recording = recording
+        self.recordingAssetID = recordingAssetID
+        self.transcriptJobID = transcriptJobID
         self.previewOnly = previewOnly
         self.focusSegmentID = focusSegmentID
         self.canUseProjectTeamNotes = canUseProjectTeamNotes
@@ -3516,7 +3598,14 @@ struct CaptureTranscriptReviewView: View {
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
-                        Task { await client.load(roomID: roomID, previewOnly: previewOnly) }
+                        Task {
+                            await client.load(
+                                roomID: roomID,
+                                recordingAssetID: recordingAssetID,
+                                transcriptJobID: transcriptJobID,
+                                previewOnly: previewOnly
+                            )
+                        }
                     } label: {
                         Image(systemName: "arrow.clockwise")
                     }
@@ -3547,7 +3636,12 @@ struct CaptureTranscriptReviewView: View {
                 .presentationDetents([.medium, .large])
             }
             .task {
-                await client.load(roomID: roomID, previewOnly: previewOnly)
+                await client.load(
+                    roomID: roomID,
+                    recordingAssetID: recordingAssetID,
+                    transcriptJobID: transcriptJobID,
+                    previewOnly: previewOnly
+                )
                 guard let focusSegmentID,
                       client.desk?.segments.contains(where: { $0.id == focusSegmentID }) == true else { return }
                 transcriptPresentationMode = .timeline
@@ -3883,7 +3977,10 @@ struct CaptureTranscriptReviewView: View {
                             sessionTitle: sessionTitle,
                             transcriptJobID: segment.transcriptJobId ?? desk.transcriptJobId,
                             segment: segment,
-                            recording: recording,
+                            recording: exactLocalRecording(
+                                expectedRecordingAssetID: segment.recordingAssetId
+                                    ?? desk.playback?.recordingAssetId
+                            ),
                             expectedRecordingAssetID: segment.recordingAssetId ?? desk.playback?.recordingAssetId,
                             attention: desk.evidence?.transcript.attentionSegments.first(where: { $0.segmentId == segment.id }),
                             previewOnly: previewOnly,
@@ -4202,9 +4299,12 @@ struct CaptureTranscriptReviewView: View {
                     Button {
                         let expectedRecordingAssetID = segment.recordingAssetId ?? desk.playback?.recordingAssetId
                         Task {
+                            let localRecording = exactLocalRecording(
+                                expectedRecordingAssetID: expectedRecordingAssetID
+                            )
                             await playback.play(
                                 segment: segment,
-                                recording: recording,
+                                recording: localRecording,
                                 library: library,
                                 expectedRecordingAssetID: expectedRecordingAssetID,
                                 protectedSource: segment.sourcePlayback ?? desk.playback,
@@ -4285,12 +4385,26 @@ struct CaptureTranscriptReviewView: View {
     }
 
     private func hasExactLocalSource(expectedRecordingAssetID: String?) -> Bool {
-        guard let recording,
-              recording.status.isPlaybackEligible,
-              let expectedRecordingAssetID,
-              recording.recordingAssetId == expectedRecordingAssetID,
-              library.fileURL(for: recording) != nil else { return false }
-        return true
+        exactLocalRecording(expectedRecordingAssetID: expectedRecordingAssetID) != nil
+    }
+
+    /// A transcript destination can be constructed before account-scoped
+    /// Library restoration or a protected download publishes its source. Keep
+    /// the immutable navigation snapshot as a fast path, then continuously
+    /// resolve the exact room + asset from the observed Library so playback
+    /// becomes available in place without leaving and reopening the transcript.
+    private func exactLocalRecording(
+        expectedRecordingAssetID: String?
+    ) -> LocalRecording? {
+        guard let expectedRecordingAssetID = expectedRecordingAssetID?
+            .nonemptyTranscriptValue else { return nil }
+        let candidates = [recording].compactMap { $0 } + library.recordings
+        return candidates.first {
+            $0.callRoomId == roomID
+                && $0.recordingAssetId == expectedRecordingAssetID
+                && $0.status.isPlaybackEligible
+                && library.fileURL(for: $0) != nil
+        }
     }
 
     private func orderedSegments(in desk: CaptureTranscriptCorrectionDesk) -> [CaptureTranscriptSegment] {
@@ -4426,7 +4540,9 @@ struct CaptureTranscriptReviewView: View {
                         transcriptJobID: transcriptJobID,
                         group: group,
                         participants: participants,
-                        recording: recording,
+                        recording: exactLocalRecording(
+                            expectedRecordingAssetID: desk.playback?.recordingAssetId
+                        ),
                         expectedRecordingAssetID: desk.playback?.recordingAssetId,
                         protectedSource: desk.playback,
                         protectedPlayback: protectedSessionPlayback,
@@ -4559,10 +4675,10 @@ struct CaptureTranscriptReviewView: View {
     }
 
     private func sourceTruth(_ desk: CaptureTranscriptCorrectionDesk) -> some View {
-        let exactRecording = desk.playback?.recordingAssetId.nonemptyTranscriptValue.flatMap { expectedAssetID in
-            recording.flatMap { $0.recordingAssetId == expectedAssetID ? $0 : nil }
-        }
-        let exactMatch = exactRecording.map { library.fileURL(for: $0) != nil } ?? false
+        let exactRecording = exactLocalRecording(
+            expectedRecordingAssetID: desk.playback?.recordingAssetId
+        )
+        let exactMatch = exactRecording != nil
         let appStorePresentation = CaptureLaunchConfiguration.usesAppStorePresentation
         return VStack(alignment: .leading, spacing: 10) {
             Label(
@@ -4723,9 +4839,12 @@ struct CaptureTranscriptReviewView: View {
         desk: CaptureTranscriptCorrectionDesk
     ) -> some View {
         Button {
+            let localRecording = exactLocalRecording(
+                expectedRecordingAssetID: desk.playback?.recordingAssetId
+            )
             playback.play(
                 listenPoint: point,
-                recording: recording,
+                recording: localRecording,
                 library: library,
                 expectedRecordingAssetID: desk.playback?.recordingAssetId
             )
@@ -4784,7 +4903,9 @@ struct CaptureTranscriptReviewView: View {
     private func audioAttentionPlan(
         _ desk: CaptureTranscriptCorrectionDesk
     ) -> CaptureTranscriptAudioAttentionPlan? {
-        guard let recording,
+        guard let recording = exactLocalRecording(
+                expectedRecordingAssetID: desk.playback?.recordingAssetId
+              ),
               let signal = recording.sourceProfile?.audioSignal else { return nil }
         return CaptureTranscriptAudioAttentionResolver.resolve(
             expectedRecordingAssetID: desk.playback?.recordingAssetId,
@@ -6599,7 +6720,7 @@ private struct CaptureTranscriptSpeakerGroupCard: View {
             }
         }
         .padding(10)
-        .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12))
+        .background(CapturePalette.surfaceMuted, in: RoundedRectangle(cornerRadius: 12))
     }
 
     private var pendingAttribution: PendingTranscriptSpeakerAttribution? {
@@ -7065,7 +7186,7 @@ private struct CaptureTranscriptSegmentCard: View {
             }
         }
         .padding(11)
-        .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 11))
+        .background(CapturePalette.surfaceMuted, in: RoundedRectangle(cornerRadius: 11))
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("CaptureTranscriptImpact_\(impact.artifactKind)_\(impact.artifactId)")
     }
@@ -7561,7 +7682,7 @@ private extension View {
         self
             .padding(16)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .background(CapturePalette.surfaceMuted, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(Color.primary.opacity(0.07)))
     }
 }

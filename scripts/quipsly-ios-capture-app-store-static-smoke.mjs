@@ -322,15 +322,26 @@ const brandedCaptureSurfaceTexts = [
   ["TranscriptCorrectionReview.swift", transcriptReviewText],
 ];
 for (const [surface, source] of brandedCaptureSurfaceTexts) {
-  const rawFeatureHighlight = source.match(/(?:Color)?\.(?:blue|teal|cyan|purple|pink|indigo)\b/);
+  const rawFeatureHighlight = source.match(
+    /(?:Color)?\.(?:blue|teal|cyan|purple|pink|indigo)\b|UIColor\.system(?:Blue|Teal|Cyan|Purple|Pink|Indigo)\b/,
+  );
   assert(
     rawFeatureHighlight == null,
     "Branded Capture surfaces must use semantic library-garden tokens instead of unrelated system feature colors.",
     { label: `${surface} has no raw blue, teal, purple, pink, or indigo feature highlight`, forbidden: rawFeatureHighlight?.[0] },
   );
+  const rawSystemSurface = source.match(
+    /Color\(uiColor: \.(?:secondary|tertiary)?System(?:Grouped)?Background\)/,
+  );
+  assert(
+    rawSystemSurface == null,
+    "Branded Capture surfaces must keep cards inside the adaptive parchment and walnut surface hierarchy.",
+    { label: `${surface} has no unrelated gray system-card surface`, forbidden: rawSystemSurface?.[0] },
+  );
 }
 requireIncludes(capturePhoneShellText, "static let actionFill = adaptive(", "filled actions have an independent accessible forest token");
-requireIncludes(capturePhoneShellText, "static let plumFill = adaptive(", "editor actions have an independent accessible aubergine token");
+requireIncludes(capturePhoneShellText, "static let plumFill = adaptive(", "editor actions have an independent accessible rosewood token");
+requireIncludes(capturePhoneShellText, "static let accentUIColor = adaptiveUIColor(", "system-owned controls receive the same adaptive moss accent");
 requireIncludes(capturePhoneShellText, "func captureProminentButton(fill:", "filled controls share one readable Quipsly action treatment");
 const captureSwiftSourceDirectory = path.join(
   root,
@@ -2114,6 +2125,7 @@ for (const needle of [
   "static let primaryText = adaptive(",
   "static let secondaryText = adaptive(",
   "static let accentGradient = LinearGradient(",
+  ".toolbarBackground(CapturePalette.surface, for: .tabBar)",
 ]) {
   requireIncludes(capturePhoneShellText, needle, "adaptive warm tan and dark brown Capture visual foundation");
 }

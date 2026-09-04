@@ -566,7 +566,9 @@ struct CapturePhoneShell: View {
             captureDestination(for: .account)
             .tabItem { Label(CaptureRootTab.account.title, systemImage: CaptureRootTab.account.systemImage) }
             .tag(CaptureRootTab.account)
-        })
+        }
+        .toolbarBackground(CapturePalette.surface, for: .tabBar)
+        .toolbarBackground(.visible, for: .tabBar))
     }
 
     private func captureDestination(
@@ -2368,6 +2370,7 @@ private struct CaptureWorkView: View {
     @State private var noteTagsToEdit: MobileCaptureWorkNote?
     @State private var noteToEdit: MobileCaptureWorkNote?
     @State private var focusedWorkEntityID: String?
+    @State private var isDirectWorkFocus = false
 
     init(
         model: CaptureExperienceModel,
@@ -2585,7 +2588,7 @@ private struct CaptureWorkView: View {
                     .accessibilityIdentifier("CaptureOpenAcrossNestsFollowThrough")
                 }
 
-                if normalizedQuery.count >= 2 {
+                if normalizedQuery.count >= 2, !isDirectWorkFocus {
                     workspaceSearchResults(proxy: proxy)
                 } else if let workspace {
                     workspaceSpaces
@@ -2780,7 +2783,7 @@ private struct CaptureWorkView: View {
             }
         }
         .task(id: normalizedQuery) {
-            guard normalizedQuery.count >= 2 else {
+            guard normalizedQuery.count >= 2, !isDirectWorkFocus else {
                 searchClient.clear()
                 return
             }
@@ -2800,6 +2803,8 @@ private struct CaptureWorkView: View {
                     roomID: destination.roomID,
                     recordingAssetID: destination.source.recordingAssetId
                 ),
+                recordingAssetID: destination.source.recordingAssetId,
+                transcriptJobID: destination.source.transcriptJobId,
                 previewOnly: model.usesPreviewData,
                 focusSegmentID: destination.source.segmentId
             )
@@ -2807,6 +2812,7 @@ private struct CaptureWorkView: View {
         .task(id: model.workNavigationRequest?.id) {
             guard let request = model.workNavigationRequest else { return }
             selectedTagID = nil
+            isDirectWorkFocus = true
             searchText = request.title
             if request.kind == .task { showsCompletedTasks = true }
             selectedProjectID = request.projectID
@@ -2902,7 +2908,14 @@ private struct CaptureWorkView: View {
                     .accessibilityHidden(true)
                 TextField(
                     "Search all your Nests",
-                    text: $searchText,
+                    text: Binding(
+                        get: { searchText },
+                        set: { value in
+                            isDirectWorkFocus = false
+                            focusedWorkEntityID = nil
+                            searchText = value
+                        }
+                    ),
                     axis: .vertical
                 )
                     .textFieldStyle(.plain)
@@ -2917,6 +2930,8 @@ private struct CaptureWorkView: View {
                     .accessibilityIdentifier("CaptureWorkSearchField")
                 if !searchText.isEmpty {
                     Button {
+                        isDirectWorkFocus = false
+                        focusedWorkEntityID = nil
                         searchText = ""
                         searchIsFocused = false
                     } label: {
@@ -2945,6 +2960,8 @@ private struct CaptureWorkView: View {
     private func selectProject(_ project: MobileCaptureWorkProject) {
         requestedCoachingEngagement = nil
         selectedTagID = nil
+        isDirectWorkFocus = false
+        focusedWorkEntityID = nil
         searchText = ""
         client.tagVocabularyMessage = nil
         if model.usesPreviewData {
@@ -4015,6 +4032,8 @@ private struct CaptureAcrossNestsFollowThroughView: View {
                     roomID: destination.roomID,
                     recordingAssetID: destination.source.recordingAssetId
                 ),
+                recordingAssetID: destination.source.recordingAssetId,
+                transcriptJobID: destination.source.transcriptJobId,
                 previewOnly: model.usesPreviewData,
                 focusSegmentID: destination.source.segmentId
             )
@@ -5590,6 +5609,8 @@ struct TodayFollowThroughCard: View {
                 roomID: destination.roomID,
                 sessionTitle: destination.sessionTitle,
                 recording: matchingRecording(roomID: destination.roomID, recordingAssetID: destination.source.recordingAssetId),
+                recordingAssetID: destination.source.recordingAssetId,
+                transcriptJobID: destination.source.transcriptJobId,
                 previewOnly: previewOnly,
                 focusSegmentID: destination.source.segmentId
             )
@@ -12627,6 +12648,8 @@ private struct CaptureRecorderView: View {
                     roomID: destination.roomID,
                     recordingAssetID: destination.source.recordingAssetId
                 ),
+                recordingAssetID: destination.source.recordingAssetId,
+                transcriptJobID: destination.source.transcriptJobId,
                 previewOnly: model.usesPreviewData,
                 focusSegmentID: destination.source.segmentId
             )
@@ -20293,7 +20316,7 @@ private struct CaptureSystemAudioRoutePicker: UIViewRepresentable {
         let picker = AVRoutePickerView(frame: .zero)
         picker.prioritizesVideoDevices = false
         picker.tintColor = UIColor.secondaryLabel
-        picker.activeTintColor = UIColor.systemBlue
+        picker.activeTintColor = CapturePalette.accentUIColor
         picker.isAccessibilityElement = true
         picker.accessibilityLabel = "Choose call audio device"
         picker.accessibilityHint = "Opens the standard \(CaptureDeviceVocabulary.deviceName) audio route menu."
@@ -20303,7 +20326,7 @@ private struct CaptureSystemAudioRoutePicker: UIViewRepresentable {
 
     func updateUIView(_ uiView: AVRoutePickerView, context: Context) {
         uiView.tintColor = UIColor.secondaryLabel
-        uiView.activeTintColor = UIColor.systemBlue
+        uiView.activeTintColor = CapturePalette.accentUIColor
     }
 }
 
@@ -23341,10 +23364,11 @@ struct CaptureCanvas: View {
             )
 
             // A quiet lichen bloom gives the reading canvas some living depth
-            // without turning work surfaces into decorative wallpaper.
+            // without turning work surfaces into decorative wallpaper. These
+            // are atmosphere, not competing feature colors.
             RadialGradient(
                 colors: [
-                    CapturePalette.accentSoft.opacity(colorScheme == .dark ? 0.20 : 0.34),
+                    CapturePalette.accentSoft.opacity(colorScheme == .dark ? 0.17 : 0.27),
                     .clear,
                 ],
                 center: .topTrailing,
@@ -23354,7 +23378,7 @@ struct CaptureCanvas: View {
 
             RadialGradient(
                 colors: [
-                    CapturePalette.brass.opacity(colorScheme == .dark ? 0.045 : 0.07),
+                    CapturePalette.brass.opacity(colorScheme == .dark ? 0.035 : 0.05),
                     .clear,
                 ],
                 center: .bottomLeading,
@@ -23369,105 +23393,110 @@ struct CaptureCanvas: View {
 /// Shared semantic color tokens for the shipping Capture experience.
 ///
 /// Parchment and walnut establish the calm reading canvas; moss and fern
-/// identify the ordinary interactive/collaborative path. A restrained aged
-/// brass is available for warm emphasis. Feature screens should consume these
+/// identify the ordinary interactive/collaborative path. Lake-glass, rosewood,
+/// and antique brass separate information, goals, and attention without
+/// leaving the overgrown-library family. Feature screens should consume these
 /// tokens instead of inventing a new brand color for each workflow.
 /// Red, orange, green, and the audio meter remain reserved for familiar
 /// recording, warning, success, and signal meanings.
 enum CapturePalette {
     static let canvas = adaptive(
-        light: UIColor(red: 0.957, green: 0.918, blue: 0.843, alpha: 1),
-        dark: UIColor(red: 0.112, green: 0.074, blue: 0.058, alpha: 1)
+        light: UIColor(red: 0.949, green: 0.914, blue: 0.847, alpha: 1),
+        dark: UIColor(red: 0.129, green: 0.086, blue: 0.059, alpha: 1)
     )
     static let canvasLift = adaptive(
-        light: UIColor(red: 0.902, green: 0.843, blue: 0.725, alpha: 1),
-        dark: UIColor(red: 0.164, green: 0.108, blue: 0.082, alpha: 1)
+        light: UIColor(red: 0.898, green: 0.867, blue: 0.780, alpha: 1),
+        dark: UIColor(red: 0.169, green: 0.145, blue: 0.098, alpha: 1)
     )
     static let surface = adaptive(
-        light: UIColor(red: 1.00, green: 0.982, blue: 0.941, alpha: 0.96),
-        dark: UIColor(red: 0.205, green: 0.137, blue: 0.102, alpha: 0.96)
+        light: UIColor(red: 1.00, green: 0.976, blue: 0.933, alpha: 0.97),
+        dark: UIColor(red: 0.220, green: 0.153, blue: 0.114, alpha: 0.97)
     )
     static let surfaceMuted = adaptive(
-        light: UIColor(red: 0.91, green: 0.885, blue: 0.815, alpha: 0.96),
-        dark: UIColor(red: 0.245, green: 0.184, blue: 0.145, alpha: 0.96)
+        light: UIColor(red: 0.918, green: 0.886, blue: 0.827, alpha: 0.97),
+        dark: UIColor(red: 0.286, green: 0.220, blue: 0.169, alpha: 0.97)
     )
     static let sidebarSurface = adaptive(
-        light: UIColor(red: 0.982, green: 0.947, blue: 0.873, alpha: 1),
-        dark: UIColor(red: 0.105, green: 0.078, blue: 0.064, alpha: 1)
+        light: UIColor(red: 0.961, green: 0.929, blue: 0.871, alpha: 1),
+        dark: UIColor(red: 0.106, green: 0.075, blue: 0.055, alpha: 1)
     )
     static let locationBarBackground = adaptive(
-        light: UIColor(red: 0.985, green: 0.945, blue: 0.875, alpha: 0.97),
-        dark: UIColor(red: 0.135, green: 0.083, blue: 0.065, alpha: 0.97)
+        light: UIColor(red: 0.969, green: 0.925, blue: 0.867, alpha: 0.98),
+        dark: UIColor(red: 0.161, green: 0.106, blue: 0.078, alpha: 0.98)
     )
     static let divider = adaptive(
-        light: UIColor(red: 0.28, green: 0.18, blue: 0.12, alpha: 0.13),
-        dark: UIColor(red: 0.94, green: 0.85, blue: 0.70, alpha: 0.16)
+        light: UIColor(red: 0.31, green: 0.22, blue: 0.15, alpha: 0.16),
+        dark: UIColor(red: 0.95, green: 0.87, blue: 0.73, alpha: 0.16)
     )
     static let primaryText = adaptive(
-        light: UIColor(red: 0.16, green: 0.09, blue: 0.055, alpha: 1),
-        dark: UIColor(red: 0.96, green: 0.88, blue: 0.73, alpha: 1)
+        light: UIColor(red: 0.169, green: 0.106, blue: 0.071, alpha: 1),
+        dark: UIColor(red: 0.969, green: 0.906, blue: 0.796, alpha: 1)
     )
     static let secondaryText = adaptive(
-        light: UIColor(red: 0.34, green: 0.23, blue: 0.16, alpha: 0.78),
-        dark: UIColor(red: 0.83, green: 0.73, blue: 0.58, alpha: 0.82)
+        light: UIColor(red: 0.373, green: 0.294, blue: 0.235, alpha: 1),
+        dark: UIColor(red: 0.800, green: 0.725, blue: 0.608, alpha: 1)
     )
-    static let accent = adaptive(
-        light: UIColor(red: 0.17, green: 0.35, blue: 0.25, alpha: 1),
-        dark: UIColor(red: 0.58, green: 0.75, blue: 0.52, alpha: 1)
+    static let accentUIColor = adaptiveUIColor(
+        light: UIColor(red: 0.239, green: 0.404, blue: 0.275, alpha: 1),
+        dark: UIColor(red: 0.651, green: 0.788, blue: 0.561, alpha: 1)
     )
+    static let accent = Color(uiColor: accentUIColor)
     static let accentDeep = adaptive(
-        light: UIColor(red: 0.12, green: 0.27, blue: 0.18, alpha: 1),
-        dark: UIColor(red: 0.43, green: 0.60, blue: 0.38, alpha: 1)
+        light: UIColor(red: 0.173, green: 0.318, blue: 0.220, alpha: 1),
+        dark: UIColor(red: 0.510, green: 0.678, blue: 0.475, alpha: 1)
     )
     static let accentSoft = adaptive(
-        light: UIColor(red: 0.79, green: 0.85, blue: 0.70, alpha: 1),
-        dark: UIColor(red: 0.18, green: 0.29, blue: 0.19, alpha: 1)
+        light: UIColor(red: 0.835, green: 0.878, blue: 0.780, alpha: 1),
+        dark: UIColor(red: 0.204, green: 0.294, blue: 0.192, alpha: 1)
     )
     // Filled controls need their own token. The readable foreground accent used
     // for links and icons becomes a washed-out button background in dark mode.
     static let actionFill = adaptive(
-        light: UIColor(red: 0.12, green: 0.29, blue: 0.20, alpha: 1),
-        dark: UIColor(red: 0.25, green: 0.43, blue: 0.24, alpha: 1)
+        light: UIColor(red: 0.204, green: 0.353, blue: 0.243, alpha: 1),
+        dark: UIColor(red: 0.271, green: 0.416, blue: 0.271, alpha: 1)
     )
     static let actionFillRaised = adaptive(
-        light: UIColor(red: 0.20, green: 0.40, blue: 0.28, alpha: 1),
-        dark: UIColor(red: 0.34, green: 0.54, blue: 0.31, alpha: 1)
+        light: UIColor(red: 0.310, green: 0.455, blue: 0.302, alpha: 1),
+        dark: UIColor(red: 0.361, green: 0.490, blue: 0.314, alpha: 1)
     )
     static let brass = adaptive(
-        light: UIColor(red: 0.57, green: 0.40, blue: 0.18, alpha: 1),
-        dark: UIColor(red: 0.82, green: 0.66, blue: 0.36, alpha: 1)
+        light: UIColor(red: 0.541, green: 0.404, blue: 0.180, alpha: 1),
+        dark: UIColor(red: 0.831, green: 0.694, blue: 0.400, alpha: 1)
     )
     static let warningFill = adaptive(
-        light: UIColor(red: 0.45, green: 0.28, blue: 0.09, alpha: 1),
-        dark: UIColor(red: 0.52, green: 0.33, blue: 0.11, alpha: 1)
+        light: UIColor(red: 0.463, green: 0.314, blue: 0.110, alpha: 1),
+        dark: UIColor(red: 0.502, green: 0.349, blue: 0.133, alpha: 1)
     )
+    // The historic API names remain stable because feature code uses these as
+    // semantic roles. Visually they are now lake-glass and rosewood—not stray
+    // teal and purple brands competing with Quipsly's living moss.
     static let ink = adaptive(
-        light: UIColor(red: 0.24, green: 0.36, blue: 0.31, alpha: 1),
-        dark: UIColor(red: 0.57, green: 0.68, blue: 0.62, alpha: 1)
+        light: UIColor(red: 0.208, green: 0.384, blue: 0.388, alpha: 1),
+        dark: UIColor(red: 0.533, green: 0.714, blue: 0.690, alpha: 1)
     )
     static let inkFill = adaptive(
-        light: UIColor(red: 0.20, green: 0.33, blue: 0.27, alpha: 1),
-        dark: UIColor(red: 0.24, green: 0.39, blue: 0.31, alpha: 1)
+        light: UIColor(red: 0.192, green: 0.349, blue: 0.357, alpha: 1),
+        dark: UIColor(red: 0.243, green: 0.392, blue: 0.384, alpha: 1)
     )
     static let plum = adaptive(
-        light: UIColor(red: 0.34, green: 0.24, blue: 0.30, alpha: 1),
-        dark: UIColor(red: 0.75, green: 0.61, blue: 0.67, alpha: 1)
+        light: UIColor(red: 0.459, green: 0.318, blue: 0.298, alpha: 1),
+        dark: UIColor(red: 0.788, green: 0.604, blue: 0.553, alpha: 1)
     )
     static let plumFill = adaptive(
-        light: UIColor(red: 0.31, green: 0.20, blue: 0.28, alpha: 1),
-        dark: UIColor(red: 0.36, green: 0.23, blue: 0.31, alpha: 1)
+        light: UIColor(red: 0.388, green: 0.259, blue: 0.243, alpha: 1),
+        dark: UIColor(red: 0.420, green: 0.282, blue: 0.259, alpha: 1)
     )
     static let success = adaptive(
-        light: UIColor(red: 0.13, green: 0.42, blue: 0.23, alpha: 1),
-        dark: UIColor(red: 0.58, green: 0.72, blue: 0.47, alpha: 1)
+        light: UIColor(red: 0.184, green: 0.420, blue: 0.271, alpha: 1),
+        dark: UIColor(red: 0.545, green: 0.796, blue: 0.573, alpha: 1)
     )
     static let successFill = adaptive(
-        light: UIColor(red: 0.12, green: 0.37, blue: 0.20, alpha: 1),
-        dark: UIColor(red: 0.26, green: 0.45, blue: 0.23, alpha: 1)
+        light: UIColor(red: 0.192, green: 0.373, blue: 0.247, alpha: 1),
+        dark: UIColor(red: 0.239, green: 0.439, blue: 0.294, alpha: 1)
     )
     static let onAccent = adaptive(
-        light: UIColor(red: 1.00, green: 0.98, blue: 0.93, alpha: 1),
-        dark: UIColor(red: 1.00, green: 0.94, blue: 0.82, alpha: 1)
+        light: UIColor(red: 1.00, green: 0.969, blue: 0.906, alpha: 1),
+        dark: UIColor(red: 1.00, green: 0.953, blue: 0.867, alpha: 1)
     )
     static let accentGradient = LinearGradient(
         colors: [actionFill, actionFillRaised],
@@ -23482,9 +23511,13 @@ enum CapturePalette {
     )
 
     private static func adaptive(light: UIColor, dark: UIColor) -> Color {
-        Color(uiColor: UIColor { traits in
+        Color(uiColor: adaptiveUIColor(light: light, dark: dark))
+    }
+
+    private static func adaptiveUIColor(light: UIColor, dark: UIColor) -> UIColor {
+        UIColor { traits in
             traits.userInterfaceStyle == .dark ? dark : light
-        })
+        }
     }
 }
 

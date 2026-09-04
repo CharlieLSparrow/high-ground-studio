@@ -697,7 +697,7 @@ struct CaptureRecordingShareEditor: View {
                 .foregroundStyle(.secondary)
         }
         .padding(16)
-        .background(Color(uiColor: .secondarySystemGroupedBackground))
+        .background(CapturePalette.surfaceMuted)
         .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 18, style: .continuous)

@@ -670,7 +670,7 @@ struct CaptureSourceEvidenceView: View {
                         }
                     }
                     .padding(10)
-                    .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12))
+                    .background(CapturePalette.surfaceMuted, in: RoundedRectangle(cornerRadius: 12))
                 }
 
                 HStack(spacing: 8) {
@@ -1902,7 +1902,7 @@ struct CaptureSourceEvidenceView: View {
             .font(.caption2.weight(.semibold))
             .foregroundStyle(complete ? CapturePalette.success : .secondary)
             .frame(maxWidth: .infinity, minHeight: 34)
-            .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 10))
+            .background(CapturePalette.surfaceMuted, in: RoundedRectangle(cornerRadius: 10))
     }
 
     private func nonempty(_ value: String?) -> String? {
@@ -2109,7 +2109,7 @@ private extension View {
     func evidenceSurface() -> some View {
         padding(16)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color(uiColor: .secondarySystemGroupedBackground))
+            .background(CapturePalette.surfaceMuted)
             .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
             .overlay {
                 RoundedRectangle(cornerRadius: 18, style: .continuous)

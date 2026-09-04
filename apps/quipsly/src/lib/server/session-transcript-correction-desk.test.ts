@@ -94,6 +94,42 @@ describe("Session transcript correction desk", () => {
     jest.mocked(readSessionReviewedSourcePlacements).mockResolvedValue([]),
   );
 
+  it("returns an exact transcript job without assembling newer Session sources", async () => {
+    const exact = desk({
+      participantId: "coach",
+      recordingAssetId: "retained-source",
+      transcriptJobId: "retained-job",
+      sha: "d".repeat(64),
+      segmentId: "retained-turn",
+      startSeconds: 7,
+      text: "The original linked evidence.",
+    });
+    jest.mocked(readTranscriptCorrectionDesk).mockResolvedValueOnce(exact as any);
+    const prisma = {
+      recordingAsset: {
+        findMany: jest.fn(),
+      },
+    };
+
+    const result = await readSessionTranscriptCorrectionDesk({
+      prisma,
+      roomId: "room-1",
+      actor,
+      recordingAssetId: "retained-source",
+      transcriptJobId: "retained-job",
+    });
+
+    expect(result).toBe(exact);
+    expect(readTranscriptCorrectionDesk).toHaveBeenCalledWith({
+      prisma,
+      roomId: "room-1",
+      actor,
+      recordingAssetId: "retained-source",
+      transcriptJobId: "retained-job",
+    });
+    expect(prisma.recordingAsset.findMany).not.toHaveBeenCalled();
+  });
+
   it("assembles participant segments on program time while retaining exact source playback", async () => {
     const coach = desk({
       participantId: "coach",

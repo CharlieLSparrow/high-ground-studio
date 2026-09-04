@@ -360,6 +360,21 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             password: identityPassword,
             restoringTab: initialTab
         )
+        if let expectedFixtureAssetID = credentials.recordingFixtureAssetID,
+           !expectedFixtureAssetID.isEmpty {
+            let fixtureReceipt = app.descendants(matching: .any)[
+                "CaptureRuntimePlaybackFixtureReceipt"
+            ].firstMatch
+            XCTAssertTrue(
+                fixtureReceipt.waitForExistence(timeout: 12),
+                "The exact runtime audio fixture should settle immediately after account verification."
+            )
+            XCTAssertEqual(
+                fixtureReceipt.value as? String,
+                expectedFixtureAssetID,
+                "The runtime audio fixture must bind to the exact canonical asset before transcript-source acceptance continues."
+            )
+        }
         // iOS correctly preserves the last visible tab across process
         // recovery. Operate the requested surface explicitly instead of
         // treating that user-friendly restoration as an authentication
@@ -635,6 +650,64 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             RunLoop.current.run(until: Date().addingTimeInterval(0.5))
         }
         return element.exists
+    }
+
+    private func makeRuntimeElementHittable(
+        _ element: XCUIElement,
+        in app: XCUIApplication,
+        swipeAttempts: Int = 12
+    ) -> Bool {
+        let recorder = recorderScrollSurface(in: app)
+        guard recorder.exists, recorder.isHittable else { return element.isHittable }
+        for _ in 0..<swipeAttempts {
+            guard element.exists else {
+                recorder.swipeUp()
+                continue
+            }
+            let navigationBottom = app.navigationBars.firstMatch.exists
+                ? app.navigationBars.firstMatch.frame.maxY
+                : recorder.frame.minY
+            let visibleTop = max(recorder.frame.minY, navigationBottom) + 8
+            let visibleBottom = min(recorder.frame.maxY, app.frame.maxY - 150)
+            if element.isHittable,
+               element.frame.midY >= visibleTop,
+               element.frame.midY <= visibleBottom {
+                return true
+            } else if element.frame.midY < visibleTop {
+                nudgeRuntimeSurface(recorder, upward: false)
+            } else if element.frame.midY > visibleBottom {
+                nudgeRuntimeSurface(recorder, upward: true)
+            } else {
+                // The element is geometrically visible but another transient
+                // layer still owns the hit point. A small reverse movement
+                // gives SwiftUI a fresh, unobscured accessibility frame.
+                nudgeRuntimeSurface(recorder, upward: false)
+            }
+        }
+        return element.isHittable
+    }
+
+    /// A full XCTest swipe can move an entire iPad page. That made the work
+    /// acceptance harness bounce an exact goal between the navigation bar and
+    /// recorder dock even though a person could reach it with a short drag.
+    /// Nudge only the obscured distance so hit-testing reflects the real UI.
+    private func nudgeRuntimeSurface(
+        _ surface: XCUIElement,
+        upward: Bool
+    ) {
+        let start = surface.coordinate(
+            withNormalizedOffset: CGVector(
+                dx: 0.5,
+                dy: upward ? 0.72 : 0.34
+            )
+        )
+        let end = surface.coordinate(
+            withNormalizedOffset: CGVector(
+                dx: 0.5,
+                dy: upward ? 0.51 : 0.55
+            )
+        )
+        start.press(forDuration: 0.05, thenDragTo: end)
     }
 
     /// Recorder recovery and Studio cards sit above the recorder hero. After
@@ -1028,6 +1101,16 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
 
         if let sessionID = credentials.sessionID, !sessionID.isEmpty {
             sessionChooser.tap()
+            if let sessionTitle = credentials.sessionTitle,
+               !sessionTitle.isEmpty {
+                let search = app.searchFields["Search sessions"].firstMatch
+                XCTAssertTrue(
+                    search.waitForExistence(timeout: 8),
+                    "The ordinary Session picker search should be available for exact navigation."
+                )
+                search.tap()
+                search.typeText(sessionTitle)
+            }
             let exactSession = app.descendants(matching: .any)["CaptureSessionPicker_\(sessionID)"].firstMatch
             XCTAssertTrue(
                 waitForRuntimeElement(
@@ -1037,6 +1120,10 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
                     swipeAttempts: 12
                 ),
                 "The exact canonical Session ID should be selectable in the native runtime."
+            )
+            XCTAssertTrue(
+                waitUntilHittable(exactSession, timeout: 8),
+                "The exact Session row should finish presenting before the runtime flight selects it."
             )
             exactSession.tap()
         } else if let sessionTitle = credentials.sessionTitle, !sessionTitle.isEmpty,
@@ -1053,6 +1140,14 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         }
 
         if let sessionTitle = credentials.sessionTitle, !sessionTitle.isEmpty {
+            XCTAssertTrue(
+                sessionChooser.waitForExistence(timeout: 8),
+                "Choosing a Session should dismiss the picker and restore the Session workspace."
+            )
+            XCTAssertTrue(
+                sessionChooser.label.localizedCaseInsensitiveContains(sessionTitle),
+                "The restored Session chooser should identify the exact selected Session, not a title still visible inside the picker."
+            )
             XCTAssertTrue(
                 app.staticTexts[sessionTitle].firstMatch.waitForExistence(timeout: 8),
                 "The Record surface should show the exact selected real Session title."
@@ -5620,9 +5715,16 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             "The intended client should be able to open the exact released goal in Work."
         )
         XCTAssertTrue(goalButton.isEnabled)
-        let recorder = app.scrollViews["CaptureRecorderView"].firstMatch
-        for _ in 0..<12 where !goalButton.isHittable {
-            recorder.swipeUp()
+        _ = makeRuntimeElementHittable(goalButton, in: app)
+        if !goalButton.isHittable {
+            let screenshot = XCTAttachment(screenshot: app.screenshot())
+            screenshot.name = "Client follow-through goal reachability failure"
+            screenshot.lifetime = .keepAlways
+            add(screenshot)
+            attachRecordingIdentity(
+                goalButton.debugDescription,
+                name: "Client follow-through goal accessibility frame"
+            )
         }
         XCTAssertTrue(goalButton.isHittable, "The exact goal action should be physically reachable on iPhone.")
         goalButton.tap()

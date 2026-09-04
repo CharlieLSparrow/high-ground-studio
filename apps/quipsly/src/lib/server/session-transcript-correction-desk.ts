@@ -77,9 +77,10 @@ export async function readSessionTranscriptCorrectionDesk(input: {
   roomId: string;
   actor: TranscriptCorrectionActor;
   recordingAssetId?: string | null;
+  transcriptJobId?: string | null;
 }) {
   const anchor = await readTranscriptCorrectionDesk(input);
-  if (input.recordingAssetId) {
+  if (input.recordingAssetId || input.transcriptJobId) {
     return anchor;
   }
 
@@ -124,6 +125,7 @@ export async function readSessionTranscriptCorrectionDesk(input: {
       readTranscriptCorrectionDesk({
         ...input,
         recordingAssetId: source.id,
+        transcriptJobId: source.transcriptJobs[0]!.id,
       }),
     ),
   );

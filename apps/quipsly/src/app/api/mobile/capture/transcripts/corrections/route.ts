@@ -96,8 +96,10 @@ export async function GET(request: Request) {
       { status: 401, headers: { "Cache-Control": "private, no-store" } },
     );
   }
-  const roomId = text(new URL(request.url).searchParams.get("callRoomId"));
-  const recordingAssetId = text(new URL(request.url).searchParams.get("recordingAssetId")) || null;
+  const searchParams = new URL(request.url).searchParams;
+  const roomId = text(searchParams.get("callRoomId"));
+  const recordingAssetId = text(searchParams.get("recordingAssetId")) || null;
+  const transcriptJobId = text(searchParams.get("transcriptJobId")) || null;
   if (!roomId) {
     return NextResponse.json(
       { ok: false, error: "callRoomId is required." },
@@ -110,15 +112,17 @@ export async function GET(request: Request) {
       roomId,
       actor: actorFromSession(session),
       recordingAssetId,
+      transcriptJobId,
     });
     let evaluation = null;
     try {
-      if (recordingAssetId) {
+      if (recordingAssetId || transcriptJobId) {
         return NextResponse.json({
           ...result,
           evaluation: null,
           focusedSource: {
             recordingAssetId,
+            transcriptJobId,
             roomWideEvaluationSuppressed: true,
           },
         }, { headers: { "Cache-Control": "private, no-store" } });
