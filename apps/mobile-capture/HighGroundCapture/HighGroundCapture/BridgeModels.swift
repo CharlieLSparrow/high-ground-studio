@@ -372,7 +372,9 @@ struct MobileCaptureActionBoundaries: Codable, Hashable {
     let recordingPromotionRequiresVerifiedEvidence: Bool?
     let providerRecordingStartAvailable: Bool?
     let noHiddenRecording: Bool?
-    let reviewOnlyUntilUserActs: Bool?
+    let automaticFollowThroughCreatesEditableWork: Bool?
+    let optionalSuggestionsRequireUserAction: Bool?
+    let externalSideEffectsRequireUserAction: Bool?
 }
 
 struct MobileCaptureActionPacket: Codable, Hashable {

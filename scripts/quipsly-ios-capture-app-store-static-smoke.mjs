@@ -2560,6 +2560,10 @@ requireIncludes(bridgeText, "struct MobileCaptureLifecycleSafeAction: Codable", 
 requireIncludes(bridgeText, "struct MobileCaptureActionPacket: Codable", "native action packet model");
 requireIncludes(bridgeText, "struct MobileCaptureActionCapabilities: Codable", "native action capabilities model");
 requireIncludes(bridgeText, "struct MobileCaptureActionBoundaries: Codable", "native action boundaries model");
+requireIncludes(bridgeText, "let automaticFollowThroughCreatesEditableWork: Bool?", "native action contract permits automatic editable Session follow-through");
+requireIncludes(bridgeText, "let optionalSuggestionsRequireUserAction: Bool?", "native action contract reserves user intent for optional suggestions");
+requireIncludes(bridgeText, "let externalSideEffectsRequireUserAction: Bool?", "native action contract reserves user intent for external side effects");
+requireExcludes(bridgeText, "reviewOnlyUntilUserActs", "native action contract does not impose a blanket review gate on ordinary editable work");
 requireIncludes(bridgeText, "struct MobileCaptureTranscriptPacketBoundaries: Codable", "native transcript packet boundary model");
 requireIncludes(bridgeText, "let boundaries: MobileCaptureTranscriptPacketBoundaries?", "native packet build decodes boundaries");
 requireIncludes(bridgeText, "struct MobileCaptureTranscriptResults: Codable", "native transcript results model");

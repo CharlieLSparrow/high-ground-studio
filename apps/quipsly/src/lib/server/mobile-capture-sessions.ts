@@ -1148,7 +1148,9 @@ function buildMobileCaptureActionPacket(input: {
       recordingPromotionRequiresVerifiedEvidence: true,
       providerRecordingStartAvailable: false,
       noHiddenRecording: true,
-      reviewOnlyUntilUserActs: true,
+      automaticFollowThroughCreatesEditableWork: true,
+      optionalSuggestionsRequireUserAction: true,
+      externalSideEffectsRequireUserAction: true,
       captureGroupPromotionRequiresCompleteSourceSet: true,
     },
   };
