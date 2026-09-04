@@ -11,6 +11,9 @@ describe("product operations surface", () => {
     expect(source).toContain("prisma.recordingAsset.count");
     expect(source).toContain("prisma.transcriptJob.count");
     expect(source).toContain("prisma.callRoomInvitationDeliveryReceipt.groupBy");
+    expect(source).toContain("transactionalEmailReadiness");
+    expect(source).toContain("Session email is not active in this runtime.");
+    expect(source).toContain("Invitations still produce private share links");
   });
 
   it("labels activity honestly instead of fabricating conversion rates", () => {

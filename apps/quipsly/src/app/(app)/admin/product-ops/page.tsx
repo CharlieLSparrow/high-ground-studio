@@ -15,6 +15,7 @@ import {
 
 import { getPrismaClient } from "@/lib/prisma";
 import { readQuipslyGoogleAnalyticsSummary } from "@/lib/server/google-analytics-reporting";
+import { transactionalEmailReadiness } from "@/lib/server/transactional-email-transport";
 import { requireQuipslyProductAnalyst } from "@/lib/server/user-management";
 
 export const dynamic = "force-dynamic";
@@ -41,6 +42,7 @@ export default async function ProductOperationsPage({
   const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
   const prisma = getPrismaClient();
   const googleAnalyticsPromise = readQuipslyGoogleAnalyticsSummary({ days });
+  const emailRuntime = transactionalEmailReadiness();
 
   const [
     newAccounts,
@@ -213,6 +215,22 @@ export default async function ProductOperationsPage({
           <Summary label="Email delivery" value={delivered} detail={`${sent} accepted · ${deliveryProblems} problems · ${pending} pending`} tone={deliveryProblems ? "bad" : "good"} />
           <Summary label="Deletion attention" value={openDeletionRequests} detail="Open or failed requests" tone={openDeletionRequests ? "warn" : "neutral"} />
         </section>
+
+        {!emailRuntime.available ? (
+          <section className="rounded-3xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-950">
+            <div className="flex items-start gap-3">
+              <CircleAlert className="mt-0.5 shrink-0" size={20} />
+              <div>
+                <strong>Session email is not active in this runtime.</strong>
+                <p className="mt-1">
+                  {emailRuntime.status === "PUBLIC_URL_NOT_CONFIGURED"
+                    ? "The provider is connected, but confirmations and reminders need the trusted public Quipsly URL."
+                    : "Invitations still produce private share links, but provider credentials and a verified sender are required for automatic invitations, confirmations, and reminders."}
+                </p>
+              </div>
+            </div>
+          </section>
+        ) : null}
 
         {googleAnalytics.status === "available" ? (
           <section className="rounded-3xl border border-[#ddcfba] bg-white p-6 shadow-sm">
