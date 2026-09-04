@@ -201,6 +201,39 @@ async function getUserMediaWithTimeout(
   }
 }
 
+function waitForDeviceEnumeration(milliseconds: number) {
+  return new Promise<void>((resolve) => setTimeout(resolve, milliseconds));
+}
+
+async function enumerateDevicesAfterPermissionSettles(
+  permission: "none" | "microphone" | "camera" | "media",
+) {
+  const requiredKinds: MediaDeviceKind[] = permission === "media"
+    ? ["audioinput", "videoinput"]
+    : permission === "microphone"
+      ? ["audioinput"]
+      : permission === "camera"
+        ? ["videoinput"]
+        : [];
+  const retryDelays = requiredKinds.length ? [100, 200, 400] : [];
+  let devices = await navigator.mediaDevices.enumerateDevices();
+
+  for (const delay of retryDelays) {
+    const allRequiredDevicesVisible = requiredKinds.every((kind) =>
+      devices.some((device) => device.kind === kind && device.deviceId),
+    );
+    if (allRequiredDevicesVisible) break;
+    // Browsers can resolve getUserMedia before enumerateDevices has published
+    // the newly granted input IDs. Give that standard permission transition a
+    // short bounded settle window instead of telling the person no microphone
+    // exists or making them press Refresh devices.
+    await waitForDeviceEnumeration(delay);
+    devices = await navigator.mediaDevices.enumerateDevices();
+  }
+
+  return devices;
+}
+
 function audioOutputSupported(element: HTMLMediaElement | null) {
   return Boolean(element && "setSinkId" in element);
 }
@@ -990,7 +1023,7 @@ export function LiveSessionRoom({
         stopStream(permissionStream);
         if (generation !== deviceRefreshGenerationRef.current) return false;
       }
-      const devices = await navigator.mediaDevices.enumerateDevices();
+      const devices = await enumerateDevicesAfterPermissionSettles(permission);
       if (generation !== deviceRefreshGenerationRef.current) return false;
       const rawMicrophones = devices.filter((device) => device.kind === "audioinput");
       const rawCameras = devices.filter((device) => device.kind === "videoinput");

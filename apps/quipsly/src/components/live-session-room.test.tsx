@@ -303,6 +303,57 @@ describe("LiveSessionRoom", () => {
     }));
   });
 
+  it("waits for a newly granted microphone to appear without asking for manual refresh", async () => {
+    const stop = jest.fn();
+    const getUserMedia = jest.fn().mockResolvedValue({
+      getTracks: () => [{ stop }],
+    });
+    const enumerateDevices = jest.fn()
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValue([
+        { kind: "audioinput", deviceId: "settled-mic", label: "Coach microphone" },
+      ]);
+    Object.defineProperty(navigator, "permissions", {
+      configurable: true,
+      value: { query: jest.fn().mockResolvedValue({ state: "prompt" }) },
+    });
+    Object.defineProperty(navigator, "mediaDevices", {
+      configurable: true,
+      value: {
+        enumerateDevices,
+        getUserMedia,
+        addEventListener: jest.fn(),
+        removeEventListener: jest.fn(),
+      },
+    });
+    global.fetch = jest.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        ok: true,
+        canJoin: true,
+        serverUrl: "wss://live.test",
+        participantToken: "room-scoped-test-token",
+        recordingConsentGranted: false,
+      }),
+    })) as unknown as typeof fetch;
+
+    await act(async () => {
+      render(<LiveSessionRoom callRoomId="room-delayed-device" captureGroupId="55555555-5555-4555-8555-555555555549" sessionTitle="Delayed microphone" kind="coaching" />);
+    });
+    await waitFor(() => expect(enumerateDevices).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole("button", { name: "Join call" }));
+
+    expect(await screen.findByRole("button", { name: "Leave" })).toBeInTheDocument();
+    expect(enumerateDevices).toHaveBeenCalledTimes(3);
+    expect(stop).toHaveBeenCalledTimes(1);
+    expect(mockLiveKitRoom.localParticipant.setMicrophoneEnabled).toHaveBeenCalledWith(
+      true,
+      expect.objectContaining({ deviceId: "settled-mic" }),
+    );
+  });
+
   it("joins deliberately muted without opening a first-time microphone prompt", async () => {
     const getUserMedia = jest.fn();
     const query = jest.fn().mockResolvedValue({ state: "prompt" });
