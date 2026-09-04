@@ -72,6 +72,10 @@ import {
 } from "@/lib/session-guardian";
 import { browserRetainedStartFailure } from "@/lib/browser-retained-start-failure";
 import {
+  browserSourcePreparationRetryDelayMs,
+  browserSourcePreparationShouldRetry,
+} from "@/lib/browser-source-preparation";
+import {
   browserSourceTypeAfterConsentReadback,
   browserTranscriptionChoiceAfterConsentReadback,
   preferredBrowserSourceType,
@@ -139,6 +143,16 @@ const RETAINED_SOURCE_SIGNAL_GRACE_MS = 5_000;
 const STOP_RECEIPT_PENDING_PREFIX = "Session STOP receipt pending: ";
 const FINALIZATION_IDENTITY_PENDING_PREFIX =
   "Exact bytes verified, but Quipsly has not returned the canonical recording identity yet.";
+
+class BrowserSourcePreparationError extends Error {
+  constructor(
+    message: string,
+    readonly responseStatus: number | null,
+  ) {
+    super(message);
+    this.name = "BrowserSourcePreparationError";
+  }
+}
 
 function safeTrackSettings(settings: MediaTrackSettings) {
   return Object.fromEntries(
@@ -641,17 +655,37 @@ export function BrowserSourceRecorder({
 
   useEffect(() => {
     let cancelled = false;
-    const policyRequest =
-      typeof globalThis.fetch === "function"
-        ? globalThis
-            .fetch(
-              `/api/mobile/capture/consent?callRoomId=${encodeURIComponent(callRoomId)}`,
-              { cache: "no-store" },
-            )
-            .then((response) => response.json())
-        : Promise.resolve({ currentPolicy: null });
-    void Promise.all([browserSourceVaultReadiness(), policyRequest])
-      .then(async ([vault, consentPacket]) => {
+    let retryTimer: number | null = null;
+    let retryAttempt = 0;
+
+    const prepare = async () => {
+      try {
+        if (typeof globalThis.fetch !== "function") {
+          throw new BrowserSourcePreparationError(
+            "Recording setup is unavailable in this browser.",
+            null,
+          );
+        }
+        const [vault, response] = await Promise.all([
+          browserSourceVaultReadiness(),
+          globalThis.fetch(
+            `/api/mobile/capture/consent?callRoomId=${encodeURIComponent(callRoomId)}`,
+            { cache: "no-store" },
+          ),
+        ]);
+        const consentPacket = await response.json().catch(() => ({}));
+        if (
+          !response.ok ||
+          consentPacket?.ok !== true ||
+          !consentPacket?.currentPolicy
+        ) {
+          throw new BrowserSourcePreparationError(
+            typeof consentPacket?.error === "string"
+              ? consentPacket.error
+              : "Recording choices could not be loaded.",
+            response.status,
+          );
+        }
         const currentParticipantId =
           typeof consentPacket?.session?.participantId === "string"
             ? consentPacket.session.participantId
@@ -720,18 +754,36 @@ export function BrowserSourceRecorder({
               : "Recording is not supported in this browser. Use Quipsly Capture or a current desktop browser.",
           );
         }
-      })
-      .catch((error) => {
+      } catch (error) {
         if (cancelled) return;
+        const responseStatus =
+          error instanceof BrowserSourcePreparationError
+            ? error.responseStatus
+            : null;
+        if (browserSourcePreparationShouldRetry(responseStatus)) {
+          setStatus("checking");
+          setMessage(
+            "Still getting recording ready. Quipsly will retry automatically.",
+          );
+          retryTimer = window.setTimeout(
+            () => void prepare(),
+            browserSourcePreparationRetryDelayMs(retryAttempt++),
+          );
+          return;
+        }
         setStatus("error");
         setMessage(
           error instanceof Error
             ? error.message
             : "Recording couldn't get ready.",
         );
-      });
+      }
+    };
+
+    void prepare();
     return () => {
       cancelled = true;
+      if (retryTimer !== null) window.clearTimeout(retryTimer);
     };
   }, [callRoomId, sessionKind, setTranscriptionChoice]);
 
