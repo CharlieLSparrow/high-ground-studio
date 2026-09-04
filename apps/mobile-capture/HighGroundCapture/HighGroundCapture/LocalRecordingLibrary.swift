@@ -365,6 +365,17 @@ struct LocalRecording: Codable, Identifiable, Equatable {
         effectiveMediaKind == .audio || sourceProfile?.includesAudio == true
     }
 
+    /// A decoded source can be structurally healthy yet contain too little
+    /// audible speech to transcribe. Keep that distinction out of transport
+    /// status while giving the everyday Library a direct recovery action.
+    var needsClearSpeechRetry: Bool {
+        guard let audioSignal = sourceProfile?.audioSignal else { return false }
+        return audioSignal.signalStatus.lowercased() == "attention"
+            && audioSignal.observations.contains {
+                $0.kind.lowercased() == "very-low-level"
+            }
+    }
+
     /// Personal voice writing is an explicit transcription action. Shared
     /// Sessions require the separate all-party transcription decision captured
     /// at the same authoritative refresh that allowed recording to start.

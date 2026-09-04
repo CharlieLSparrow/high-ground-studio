@@ -660,6 +660,8 @@ assert(
 for (const needle of [
   "CaptureOnDeviceTranscriptAction_",
   "case .failed(_, let retryable) where !retryable",
+  "Label(\"Record again\", systemImage: \"mic.badge.plus\")",
+  "onRecordAgain: recordAgainAction(for: recording)",
   "Download English speech model",
   "Quipsly turns the finished recording into timed, editable text",
   "Your original audio stays unchanged",
@@ -671,6 +673,11 @@ for (const needle of [
     "Capture exposes an honest and reachable on-device transcript lifecycle",
   );
 }
+requireIncludes(
+  localRecordingLibraryText,
+  "var needsClearSpeechRetry: Bool",
+  "decoded very-low-level sources expose a focused recovery state",
+);
 for (const needle of [
   "SpeechTranscriber.isAvailable",
   "AssetInventory.status(forModules:",

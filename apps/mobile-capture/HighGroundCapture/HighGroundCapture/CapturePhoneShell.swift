@@ -16738,6 +16738,7 @@ private struct CaptureLibraryView: View {
                     canRequestDeletion: !model.isSessionContextLocked,
                     onPlay: { playback.toggle(recording: recording, library: library) },
                     onRetry: { model.retryUpload(for: recording) },
+                    onRecordAgain: recordAgainAction(for: recording),
                     onDelete: {
                         playback.stop()
                         recordingPendingLocalDeletion = recording
@@ -16805,6 +16806,21 @@ private struct CaptureLibraryView: View {
         }
         model.select(session)
         visibleTab = .record
+    }
+
+    private func recordAgainAction(for recording: LocalRecording) -> (() -> Void)? {
+        guard recording.needsClearSpeechRetry else { return nil }
+        if recording.isPersonalVoiceNote {
+            return onStartVoiceNote
+        }
+        guard let roomID = recording.callRoomId?.nonempty,
+              let session = model.sessions.first(where: {
+                  $0.id == roomID || $0.callRoomId == roomID
+              }) else { return nil }
+        return {
+            model.select(session)
+            visibleTab = .record
+        }
     }
 }
 
@@ -21429,6 +21445,7 @@ private struct LocalRecordingRow: View {
     let canRequestDeletion: Bool
     let onPlay: () -> Void
     let onRetry: () -> Void
+    let onRecordAgain: (() -> Void)?
     let onDelete: () -> Void
     let previewOnly: Bool
 
@@ -21553,6 +21570,23 @@ private struct LocalRecordingRow: View {
             }
 
             onDeviceTranscriptControl
+
+            if let onRecordAgain {
+                Button(action: onRecordAgain) {
+                    Label("Record again", systemImage: "mic.badge.plus")
+                        .font(.subheadline.weight(.semibold))
+                        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(CapturePalette.accent)
+                .disabled(previewOnly || !canAudition)
+                .accessibilityHint(
+                    recording.isPersonalVoiceNote
+                        ? "Starts a fresh private voice-writing recording. This original remains in Library."
+                        : "Returns to this Session so you can make a clearer take. This original remains in Library."
+                )
+                .accessibilityIdentifier("CaptureRecordAgain_\(recording.id)")
+            }
 
             if let callRoomID = recording.callRoomId?.nonempty {
                 NavigationLink {
