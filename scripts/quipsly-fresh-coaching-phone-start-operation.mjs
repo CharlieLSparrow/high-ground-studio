@@ -4,12 +4,16 @@ import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
 import { spawn } from "node:child_process";
 import { chmod, mkdir, writeFile } from "node:fs/promises";
+import { createRequire } from "node:module";
 import path from "node:path";
 
-import { getApps, initializeApp } from "firebase-admin/app";
-import { getAuth } from "firebase-admin/auth";
-
 import { writeRetainedQAPassword } from "./lib/retained-qa-keychain.mjs";
+
+const requireFromNest = createRequire(
+  new URL("../apps/quipsly/package.json", import.meta.url),
+);
+const { getApps, initializeApp } = requireFromNest("firebase-admin/app");
+const { getAuth } = requireFromNest("firebase-admin/auth");
 
 assert.equal(
   process.env.QUIPSLY_FRESH_COACHING_PHONE_START,

@@ -2,8 +2,7 @@
 
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { getApps, initializeApp } from "firebase-admin/app";
-import { getAuth } from "firebase-admin/auth";
+import { createRequire } from "node:module";
 import { loadFreshCoachingAcceptanceContext } from "./lib/coaching-acceptance-context.mjs";
 import { readRetainedQAPassword } from "./lib/retained-qa-keychain.mjs";
 import {
@@ -13,6 +12,12 @@ import {
   requireLoopbackOrigin,
   signInThroughRenderedLogin,
 } from "./lib/retained-qa-browser.mjs";
+
+const requireFromNest = createRequire(
+  new URL("../apps/quipsly/package.json", import.meta.url),
+);
+const { getApps, initializeApp } = requireFromNest("firebase-admin/app");
+const { getAuth } = requireFromNest("firebase-admin/auth");
 
 assert.equal(
   process.env.QUIPSLY_FRESH_COACHING_FORM_AUTOMATION_OPERATION,
