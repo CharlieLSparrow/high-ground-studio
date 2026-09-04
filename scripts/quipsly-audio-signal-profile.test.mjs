@@ -117,6 +117,74 @@ test("local signal worker binds a complete-decode receipt to exact immutable byt
   }
 });
 
+test("local signal worker stops retrying a poisoned job after five attempts", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "quipsly-signal-retry-"));
+  try {
+    const sourcePath = path.join(root, "poisoned-source.wav");
+    const bytes = Buffer.from("immutable poisoned signal source");
+    await writeFile(sourcePath, bytes);
+    const sha256 = createHash("sha256").update(bytes).digest("hex");
+    const job = newAudioSignalProfileJob({
+      jobId: "audio_signal_worker_poisoned_001",
+      projectId: "project_signal_poisoned_001",
+      requestedByEmail: "editor@example.test",
+      queuedAt: "2026-08-04T12:00:00.000Z",
+      source: {
+        assetId: "asset_signal_poisoned_001",
+        provider: "local",
+        locator: sourcePath,
+        generation: `sha256:${sha256}`,
+        sha256,
+        sizeBytes: bytes.length,
+        contentType: "audio/wav",
+      },
+    });
+    let failure = null;
+    const store = {
+      async claim() {
+        return {
+          id: job.jobId,
+          inputJson: job,
+          attempt: 5,
+          executionId: "execution_signal_poisoned_001",
+        };
+      },
+      async complete() {
+        assert.fail("poisoned analysis must not complete");
+      },
+      async retry() {
+        assert.fail("a fifth failed attempt must not requeue forever");
+      },
+      async fail(input) {
+        failure = input;
+        return true;
+      },
+    };
+    const profiler = {
+      async analyze() {
+        throw new Error("unexpected analyzer failure");
+      },
+    };
+    const result = await runOneLocalAudioSignalProfileJob(store, profiler, {
+      executionId: "execution_signal_poisoned_001",
+      buildId: "build-signal-poisoned",
+      imageDigest: null,
+      leaseMs: 60_000,
+      localMediaRoot: root,
+      now: () => new Date("2026-08-04T12:01:00.000Z"),
+    });
+    assert.deepEqual(result, {
+      disposition: "failed",
+      jobId: job.jobId,
+      code: "audio-signal-retry-exhausted",
+    });
+    assert.equal(failure?.code, "audio-signal-retry-exhausted");
+    assert.equal(failure?.message, "unexpected analyzer failure");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("FFmpeg profile distinguishes low warmth from high presence on the immutable source clock", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "quipsly-frequency-profile-"));
   const sourcePath = path.join(root, "warmth-then-presence.wav");

@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
 import { loadFreshCoachingAcceptanceContext } from "./lib/coaching-acceptance-context.mjs";
 import { readRetainedQAPassword } from "./lib/retained-qa-keychain.mjs";
 import {
@@ -40,7 +41,11 @@ const context = await browser.newContext({
 });
 const page = await context.newPage();
 const suffix = target.roomId.slice(-6);
-const firstTitle = `Momentum reflection ${suffix}`;
+// A retained fresh context is intentionally reusable for diagnosing a failed
+// downstream step. Give each operated builder run its own visible identity so
+// retrying the harness cannot collide with a form the product already saved.
+const operationSuffix = randomUUID().slice(0, 6);
+const firstTitle = `Momentum reflection ${suffix}-${operationSuffix}`;
 const revisedTitle = `${firstTitle} refined`;
 const firstQuestion = "What progress feels most important this week?";
 const revisedQuestion = "What progress feels most important before we meet?";
@@ -129,7 +134,10 @@ try {
     page.getByRole("button", { name: "Send form", exact: true }).click(),
   ]);
   const assignmentPacket = await assignmentResponse.json().catch(() => null);
-  assert(assignmentResponse.ok() && assignmentPacket?.ok === true);
+  assert(
+    assignmentResponse.ok() && assignmentPacket?.ok === true,
+    `Custom form assignment failed with HTTP ${assignmentResponse.status()}: ${JSON.stringify(assignmentPacket)}`,
+  );
   const assignmentId = assignmentPacket.result?.id;
 
   await page.getByRole("button", { name: `Edit ${firstTitle}`, exact: true }).click();

@@ -111,6 +111,36 @@ const JOB_SOURCE = "episode-import-media.upload";
 const DEFAULT_LEASE_MS = 15 * 60 * 1_000;
 const DEFAULT_POLL_MS = 2_000;
 
+export type LocalMediaWorkerCycleResult = { disposition: string };
+export type LocalMediaWorkerRunner = () => Promise<LocalMediaWorkerCycleResult>;
+
+/**
+ * Scan one complete worker ring, starting just after the worker that last did
+ * work. At most one job is operated per cycle, preserving the local lane's
+ * bounded CPU and disk behavior while preventing a retrying job in one queue
+ * from starving every queue declared after it.
+ */
+export async function runFairLocalMediaWorkerCycle(
+  runners: readonly LocalMediaWorkerRunner[],
+  startIndex: number,
+): Promise<{ result: LocalMediaWorkerCycleResult; nextIndex: number }> {
+  if (!runners.length) {
+    return { result: { disposition: "idle" }, nextIndex: 0 };
+  }
+  const normalizedStart = ((startIndex % runners.length) + runners.length) % runners.length;
+  for (let offset = 0; offset < runners.length; offset += 1) {
+    const index = (normalizedStart + offset) % runners.length;
+    const result = await runners[index]();
+    if (result.disposition !== "idle") {
+      return { result, nextIndex: (index + 1) % runners.length };
+    }
+  }
+  return {
+    result: { disposition: "idle" },
+    nextIndex: (normalizedStart + 1) % runners.length,
+  };
+}
+
 export type LocalEpisodeProxyClaim = {
   id: string;
   inputJson: unknown;
@@ -821,7 +851,118 @@ async function main() {
     leaseMs: options.leaseMs,
     buildId: options.buildId,
   });
+  const workerRunners: LocalMediaWorkerRunner[] = [
+    () => runOneLocalGoogleDriveMaterializationJob(
+      googleDriveMaterialization.store,
+      googleDriveMaterialization.provider,
+      googleDriveMaterialization.options,
+    ),
+    () => runOneLocalExternalSourceProxyJob(
+      externalSourceProxy.store,
+      externalSourceProxy.transcoder,
+      externalSourceProxy.options,
+    ),
+    () => runOneLocalSourceVisualOverviewJob(
+      sourceVisualOverview.store,
+      sourceVisualOverview.renderer,
+      sourceVisualOverview.options,
+    ),
+    () => runOneLocalSourceAudioNavigationJob(
+      sourceAudioNavigation.store,
+      sourceAudioNavigation.analyzer,
+      sourceAudioNavigation.options,
+    ),
+    () => runOneLocalEpisodeProxyJob(store, transcoder, options),
+    () => runOneLocalAudioMasteryJob(
+      audioMastery.store,
+      audioMastery.engine,
+      audioMastery.options,
+    ),
+    () => runOneLocalAudioDeliveryJob(
+      audioDelivery.store,
+      audioDelivery.encoder,
+      audioDelivery.measurer,
+      audioDelivery.options,
+    ),
+    () => runOneLocalAudioTreatmentJob(
+      audioTreatment.store,
+      audioTreatment.engine,
+      audioTreatment.options,
+    ),
+    () => runOneLocalDialogueRepairJob(
+      dialogueRepair.store,
+      dialogueRepair.engine,
+      dialogueRepair.options,
+    ),
+    () => runOneLocalAudioSignalProfileJob(
+      audioSignalProfile.store,
+      audioSignalProfile.profiler,
+      audioSignalProfile.options,
+    ),
+    () => runOneLocalAudioSpectralEvidenceJob(
+      audioSpectral.store,
+      audioSpectral.analyzer,
+      audioSpectral.options,
+    ),
+    () => runOneLocalStudioTranscriptJob(
+      studioTranscript.store,
+      studioTranscript.transcriber,
+      studioTranscript.options,
+    ),
+    () => runOneLocalAudioAlignmentJob(
+      audioAlignment.store,
+      audioAlignment.analyzer,
+      audioAlignment.options,
+    ),
+    () => runOneLocalAudioAlignmentJob(
+      sessionAudioAlignment.store,
+      sessionAudioAlignment.analyzer,
+      sessionAudioAlignment.options,
+    ),
+    () => runOneLocalAudioPairCorrelationJob(
+      audioPairCorrelation.store,
+      audioPairCorrelation.analyzer,
+      audioPairCorrelation.options,
+    ),
+    () => runOneLocalSessionRecordingShareJob(
+      sessionRecordingShare.store,
+      sessionRecordingShare.renderer,
+      sessionRecordingShare.options,
+    ),
+    () => runOneLocalEpisodeAudioMixJob(
+      episodeAudioMix.store,
+      episodeAudioMix.renderer,
+      episodeAudioMix.mastery,
+      episodeAudioMix.options,
+    ),
+    () => runOneLocalEpisodeRenderProofJob(
+      episodeRenderProof.store,
+      episodeRenderProof.renderer,
+      episodeRenderProof.options,
+    ),
+    () => runOneLocalEpisodeProgramRenderJob(
+      episodeProgramRender.store,
+      episodeProgramRender.renderer,
+      episodeProgramRender.options,
+    ),
+    () => runOneLocalEpisodeMasterConformJob(
+      episodeMasterConform.store,
+      episodeMasterConform.renderer,
+      episodeMasterConform.options,
+    ),
+    () => runOneLocalEpisodeMasterPromotionJob(
+      episodeMasterPromotion.store,
+      episodeMasterPromotion.options,
+    ),
+    () => runOneLocalSpatialReframeJob(
+      spatialReframe.store,
+      spatialReframe.renderer,
+      spatialReframe.options,
+    ),
+    () => localMediaReconciler.maybeRun(once),
+  ];
   let stopping = false;
+  let workerCursor = 0;
   process.once("SIGTERM", () => {
     stopping = true;
     shutdown.abort();
@@ -834,181 +975,12 @@ async function main() {
     await presence.heartbeat(new Date(), true);
     do {
       await presence.heartbeat();
-      const driveMaterializationResult =
-        await runOneLocalGoogleDriveMaterializationJob(
-          googleDriveMaterialization.store,
-          googleDriveMaterialization.provider,
-          googleDriveMaterialization.options,
-        );
-      const externalProxyResult =
-        driveMaterializationResult.disposition === "idle"
-          ? await runOneLocalExternalSourceProxyJob(
-              externalSourceProxy.store,
-              externalSourceProxy.transcoder,
-              externalSourceProxy.options,
-            )
-          : driveMaterializationResult;
-      const visualOverviewResult =
-        externalProxyResult.disposition === "idle"
-          ? await runOneLocalSourceVisualOverviewJob(
-              sourceVisualOverview.store,
-              sourceVisualOverview.renderer,
-              sourceVisualOverview.options,
-            )
-          : externalProxyResult;
-      const sourceAudioNavigationResult =
-        visualOverviewResult.disposition === "idle"
-          ? await runOneLocalSourceAudioNavigationJob(
-              sourceAudioNavigation.store,
-              sourceAudioNavigation.analyzer,
-              sourceAudioNavigation.options,
-            )
-          : visualOverviewResult;
-      const proxyResult =
-        sourceAudioNavigationResult.disposition === "idle"
-          ? await runOneLocalEpisodeProxyJob(store, transcoder, options)
-          : sourceAudioNavigationResult;
-      const masteryResult =
-        proxyResult.disposition === "idle"
-          ? await runOneLocalAudioMasteryJob(
-              audioMastery.store,
-              audioMastery.engine,
-              audioMastery.options,
-            )
-          : proxyResult;
-      const deliveryResult =
-        masteryResult.disposition === "idle"
-          ? await runOneLocalAudioDeliveryJob(
-              audioDelivery.store,
-              audioDelivery.encoder,
-              audioDelivery.measurer,
-              audioDelivery.options,
-            )
-          : masteryResult;
-      const treatmentResult =
-        deliveryResult.disposition === "idle"
-          ? await runOneLocalAudioTreatmentJob(
-              audioTreatment.store,
-              audioTreatment.engine,
-              audioTreatment.options,
-            )
-          : deliveryResult;
-      const dialogueRepairResult =
-        treatmentResult.disposition === "idle"
-          ? await runOneLocalDialogueRepairJob(
-              dialogueRepair.store,
-              dialogueRepair.engine,
-              dialogueRepair.options,
-            )
-          : treatmentResult;
-      const signalResult =
-        dialogueRepairResult.disposition === "idle"
-          ? await runOneLocalAudioSignalProfileJob(
-              audioSignalProfile.store,
-              audioSignalProfile.profiler,
-              audioSignalProfile.options,
-            )
-          : dialogueRepairResult;
-      const spectralResult =
-        signalResult.disposition === "idle"
-          ? await runOneLocalAudioSpectralEvidenceJob(
-              audioSpectral.store,
-              audioSpectral.analyzer,
-              audioSpectral.options,
-            )
-          : signalResult;
-      const transcriptResult =
-        spectralResult.disposition === "idle"
-          ? await runOneLocalStudioTranscriptJob(
-              studioTranscript.store,
-              studioTranscript.transcriber,
-              studioTranscript.options,
-            )
-          : spectralResult;
-      const alignmentResult =
-        transcriptResult.disposition === "idle"
-          ? await runOneLocalAudioAlignmentJob(
-              audioAlignment.store,
-              audioAlignment.analyzer,
-              audioAlignment.options,
-            )
-          : transcriptResult;
-      const pairResult =
-        alignmentResult.disposition === "idle"
-          ? await runOneLocalAudioAlignmentJob(
-              sessionAudioAlignment.store,
-              sessionAudioAlignment.analyzer,
-              sessionAudioAlignment.options,
-            )
-          : alignmentResult;
-      const sourcePairResult =
-        pairResult.disposition === "idle"
-          ? await runOneLocalAudioPairCorrelationJob(
-              audioPairCorrelation.store,
-              audioPairCorrelation.analyzer,
-              audioPairCorrelation.options,
-            )
-          : pairResult;
-      const mixResult =
-        sourcePairResult.disposition === "idle"
-          ? await runOneLocalSessionRecordingShareJob(
-              sessionRecordingShare.store,
-              sessionRecordingShare.renderer,
-              sessionRecordingShare.options,
-            )
-          : sourcePairResult;
-      const episodeMixResult =
-        mixResult.disposition === "idle"
-          ? await runOneLocalEpisodeAudioMixJob(
-              episodeAudioMix.store,
-              episodeAudioMix.renderer,
-              episodeAudioMix.mastery,
-              episodeAudioMix.options,
-            )
-          : mixResult;
-      const episodeProofResult =
-        episodeMixResult.disposition === "idle"
-          ? await runOneLocalEpisodeRenderProofJob(
-              episodeRenderProof.store,
-              episodeRenderProof.renderer,
-              episodeRenderProof.options,
-            )
-          : episodeMixResult;
-      const workResult =
-        episodeProofResult.disposition === "idle"
-          ? await runOneLocalEpisodeProgramRenderJob(
-              episodeProgramRender.store,
-              episodeProgramRender.renderer,
-              episodeProgramRender.options,
-            )
-          : episodeProofResult;
-      const masterResult =
-        workResult.disposition === "idle"
-          ? await runOneLocalEpisodeMasterConformJob(
-              episodeMasterConform.store,
-              episodeMasterConform.renderer,
-              episodeMasterConform.options,
-            )
-          : workResult;
-      const promotionResult =
-        masterResult.disposition === "idle"
-          ? await runOneLocalEpisodeMasterPromotionJob(
-              episodeMasterPromotion.store,
-              episodeMasterPromotion.options,
-            )
-          : masterResult;
-      const spatialResult =
-        promotionResult.disposition === "idle"
-          ? await runOneLocalSpatialReframeJob(
-              spatialReframe.store,
-              spatialReframe.renderer,
-              spatialReframe.options,
-            )
-          : masterResult;
-      const result =
-        spatialResult.disposition === "idle"
-          ? await localMediaReconciler.maybeRun(once)
-          : spatialResult;
+      const cycle = await runFairLocalMediaWorkerCycle(
+        workerRunners,
+        workerCursor,
+      );
+      workerCursor = cycle.nextIndex;
+      const result = cycle.result;
       if (result.disposition !== "idle") {
         process.stdout.write(
           `${JSON.stringify({ at: new Date().toISOString(), ...result })}\n`,

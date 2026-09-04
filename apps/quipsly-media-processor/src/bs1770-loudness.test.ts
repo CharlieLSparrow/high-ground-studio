@@ -68,6 +68,19 @@ test("derives K-weighting at 44.1 kHz and declines to invent short-source loudne
   assert.equal(tooShort.integratedLoudnessLufs, null);
 });
 
+test("represents complete digital silence without emitting non-finite loudness", () => {
+  const silent = analyzeStereoTone(48_000, [
+    { durationSeconds: 2, peakDbfs: null },
+  ]);
+  assert.equal(silent.status, "below-absolute-gate");
+  assert.equal(silent.measurementBlockCount, 17);
+  assert.equal(silent.absoluteGatedBlockCount, 0);
+  assert.equal(silent.relativeGatedBlockCount, 0);
+  assert.equal(silent.relativeGateLufs, null);
+  assert.equal(silent.integratedLoudnessLufs, null);
+  assert.equal(silent.maximumMomentaryLoudnessLufs, null);
+});
+
 test("preserves exact frame identity while declining unsupported layouts", () => {
   const analyzer = new Bs1770LoudnessAnalyzer(48_000, 6);
   analyzer.consumeInterleavedFloat32(Buffer.alloc(48_000 * 6 * 4));

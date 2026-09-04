@@ -175,7 +175,13 @@ export class Bs1770LoudnessAnalyzer {
       absoluteGateLufs: -70,
       relativeGateLufs: relativeGateLufs === null ? null : rounded(relativeGateLufs),
       integratedLoudnessLufs: integratedLoudnessLufs === null ? null : rounded(integratedLoudnessLufs),
-      maximumMomentaryLoudnessLufs: maximumEnergy === null ? null : rounded(energyToLoudness(maximumEnergy)),
+      // A completely digital-silent block has zero energy, whose logarithmic
+      // loudness is -Infinity. The public evidence contract deliberately uses
+      // null when no finite loudness exists; leaking -Infinity here makes a
+      // healthy silent recording look like a retryable worker failure.
+      maximumMomentaryLoudnessLufs: maximumEnergy === null || maximumEnergy <= 0
+        ? null
+        : rounded(energyToLoudness(maximumEnergy)),
     });
   }
 }

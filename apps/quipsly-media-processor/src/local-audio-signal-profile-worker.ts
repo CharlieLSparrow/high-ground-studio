@@ -18,6 +18,7 @@ import { sha256File } from "./transcoder.js";
 
 const { Pool } = pg;
 const JOB_TYPE = "audio-signal-profile";
+const MAXIMUM_RETRY_ATTEMPTS = 5;
 
 export type LocalAudioSignalProfileClaim = { id: string; inputJson: unknown; attempt: number; executionId: string };
 
@@ -132,6 +133,16 @@ export async function runOneLocalAudioSignalProfileJob(
     if (terminal) {
       await store.fail({ claim, code, message: errorMessage(error), now: options.now() });
       return { disposition: "failed", jobId: job.jobId, code };
+    }
+    if (claim.attempt >= MAXIMUM_RETRY_ATTEMPTS) {
+      const exhaustedCode = "audio-signal-retry-exhausted";
+      await store.fail({
+        claim,
+        code: exhaustedCode,
+        message: errorMessage(error),
+        now: options.now(),
+      });
+      return { disposition: "failed", jobId: job.jobId, code: exhaustedCode };
     }
     await store.retry({ claim, code, message: errorMessage(error), now: options.now() });
     return { disposition: "retry", jobId: job.jobId, code };

@@ -295,7 +295,30 @@ try {
   const outstandingHeading = page.getByRole("heading", {
     name: /reflections? to complete/,
   });
-  await outstandingHeading.waitFor();
+  try {
+    await outstandingHeading.waitFor();
+  } catch (error) {
+    const diagnostic = {
+      url: page.url(),
+      title: await page.title().catch(() => null),
+      body: await page.locator("body").innerText().catch(() => null),
+      formsResponse: await page
+        .evaluate(async () => {
+          const response = await fetch("/api/coaching/forms", {
+            cache: "no-store",
+          });
+          return {
+            status: response.status,
+            body: await response.text(),
+          };
+        })
+        .catch(() => null),
+    };
+    throw new Error(
+      `The client automatic-form readback did not render: ${JSON.stringify(diagnostic)}`,
+      { cause: error },
+    );
+  }
   const outstandingText = await outstandingHeading.innerText();
   const outstandingCount = Number(outstandingText.match(/^\d+/)?.[0] || 0);
   assert(
