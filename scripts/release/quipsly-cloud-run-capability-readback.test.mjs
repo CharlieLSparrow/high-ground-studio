@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   CAPABILITY_READBACK_SCHEMA,
   parseArguments,
+  servingRevisionName,
   summarizeCloudRunCapabilities,
 } from "./quipsly-cloud-run-capability-readback.mjs";
 
@@ -84,7 +85,10 @@ test("summarizes a fully configured runtime without exposing secret references",
   assert.equal(report.release.exactSourceIdentity, true);
   assert.equal(report.release.committedSourceIdentity, true);
   assert.equal(report.release.immutableImageIdentity, true);
+  assert.equal(report.release.servingRevisionIdentified, true);
   assert.equal(report.release.readyRevisionIdentified, true);
+  assert.equal(report.revision.serving, "studio-00600-abc");
+  assert.equal(report.revision.audited, "studio-00600-abc");
   assert.equal(report.runtime.maxInstances, 2);
   assert.deepEqual(report.warnings, []);
   for (const capability of Object.values(report.capabilities)) {
@@ -94,6 +98,32 @@ test("summarizes a fully configured runtime without exposing secret references",
   const serialized = JSON.stringify(report);
   assert.doesNotMatch(serialized, /secret-for-/);
   assert.doesNotMatch(serialized, /valueFrom|secretKeyRef/);
+});
+
+test("binds capability and release identity to the revision serving production traffic", () => {
+  const service = fixture();
+  service.status.latestReadyRevisionName = "studio-00601-preview";
+  service.status.latestCreatedRevisionName = "studio-00601-preview";
+  const source = fixture();
+  const servingRevision = {
+    metadata: {
+      name: "studio-00600-abc",
+      annotations: source.spec.template.metadata.annotations,
+    },
+    spec: source.spec.template.spec,
+  };
+
+  assert.equal(servingRevisionName(service), "studio-00600-abc");
+  const report = summarizeCloudRunCapabilities(service, {
+    runtimeDocument: servingRevision,
+    auditedRevision: "studio-00600-abc",
+  });
+  assert.equal(report.revision.latestReady, "studio-00601-preview");
+  assert.equal(report.revision.serving, "studio-00600-abc");
+  assert.equal(report.revision.audited, "studio-00600-abc");
+  assert.equal(report.release.exactSourceIdentity, true);
+  assert.equal(report.release.servingRevisionIdentified, true);
+  assert.deepEqual(report.warnings, []);
 });
 
 test("reports missing integrations and unsafe traffic without leaking unknown environment values", () => {

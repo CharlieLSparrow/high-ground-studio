@@ -33,6 +33,7 @@ const capabilityState = (checks) => ({
 
 function environmentMap(serviceDocument) {
   const container = serviceDocument?.spec?.template?.spec?.containers?.[0]
+    ?? serviceDocument?.spec?.containers?.[0]
     ?? serviceDocument?.template?.containers?.[0]
     ?? {};
   return Object.fromEntries(
@@ -43,7 +44,12 @@ function environmentMap(serviceDocument) {
 }
 
 function runtimeShape(serviceDocument) {
-  const template = serviceDocument?.spec?.template ?? serviceDocument?.template ?? {};
+  const template = serviceDocument?.spec?.template
+    ?? serviceDocument?.template
+    ?? {
+      metadata: serviceDocument?.metadata ?? {},
+      spec: serviceDocument?.spec ?? {},
+    };
   const spec = template?.spec ?? template;
   const metadata = template?.metadata ?? {};
   const annotations = metadata?.annotations ?? {};
@@ -75,6 +81,14 @@ function productionTraffic(serviceDocument) {
   }));
 }
 
+export function servingRevisionName(serviceDocument) {
+  const production = productionTraffic(serviceDocument)
+    .filter((entry) => entry.percent > 0 && !entry.tag);
+  return production.length === 1 && production[0]?.percent === 100
+    ? production[0].revision
+    : "";
+}
+
 export function summarizeCloudRunCapabilities(
   serviceDocument,
   {
@@ -82,12 +96,18 @@ export function summarizeCloudRunCapabilities(
     region = "us-central1",
     service = "studio",
     auditedAt = new Date().toISOString(),
+    runtimeDocument = serviceDocument,
+    auditedRevision = "",
   } = {},
 ) {
-  const environment = environmentMap(serviceDocument);
-  const runtime = runtimeShape(serviceDocument);
+  const environment = environmentMap(runtimeDocument);
+  const runtime = runtimeShape(runtimeDocument);
   const traffic = productionTraffic(serviceDocument);
   const production = traffic.filter((entry) => entry.percent > 0 && !entry.tag);
+  const servingRevision = servingRevisionName(serviceDocument);
+  const runtimeRevision = auditedRevision
+    || serviceDocument?.status?.latestReadyRevisionName
+    || "";
   const sourceSha = environment.QUIPSLY_SOURCE_SHA?.value ?? "";
   const releaseChannel = environment.QUIPSLY_RELEASE_CHANNEL?.value ?? "";
 
@@ -151,19 +171,21 @@ export function summarizeCloudRunCapabilities(
   ]);
   const committedSourceIdentity = /^[0-9a-f]{40}$/.test(sourceSha);
   const immutableImageIdentity = /@sha256:[0-9a-f]{64}$/.test(runtime.image);
-  const readyRevisionIdentified = Boolean(
-    serviceDocument?.status?.latestReadyRevisionName,
-  );
+  const servingRevisionIdentified = Boolean(runtimeRevision)
+    && runtimeRevision === servingRevision;
   const releaseIdentity = committedSourceIdentity
     && immutableImageIdentity
-    && readyRevisionIdentified;
+    && servingRevisionIdentified;
 
   const warnings = [];
   if (production.length !== 1 || production[0]?.percent !== 100) {
     warnings.push("Production traffic is not pinned 100% to one untagged revision.");
   }
   if (!releaseIdentity) {
-    warnings.push("The ready revision is missing a committed source SHA, immutable image digest, or ready-revision identity.");
+    warnings.push("The serving revision is missing a committed source SHA, immutable image digest, or exact traffic identity.");
+  }
+  if (servingRevision && releaseChannel !== "production") {
+    warnings.push("The revision serving production traffic is not labeled with the production release channel.");
   }
   if (runtime.maxInstances < 2) {
     warnings.push("The service cannot scale to two instances during replacement or load.");
@@ -194,13 +216,18 @@ export function summarizeCloudRunCapabilities(
     revision: {
       latestReady: serviceDocument?.status?.latestReadyRevisionName ?? "",
       latestCreated: serviceDocument?.status?.latestCreatedRevisionName ?? "",
+      serving: servingRevision,
+      audited: runtimeRevision,
       traffic,
     },
     release: {
       exactSourceIdentity: releaseIdentity,
       committedSourceIdentity,
       immutableImageIdentity,
-      readyRevisionIdentified,
+      servingRevisionIdentified,
+      // Compatibility alias for existing report consumers. This now means that
+      // the audited revision is the sole revision serving production traffic.
+      readyRevisionIdentified: servingRevisionIdentified,
       sourceSha,
       releaseChannel,
       image: runtime.image,
@@ -273,9 +300,38 @@ function readServiceDocument(options) {
   return JSON.parse(output);
 }
 
+function readServingRevisionDocument(options, serviceDocument) {
+  if (options.serviceJson) return null;
+  const revision = servingRevisionName(serviceDocument);
+  if (!revision) return null;
+  const output = execFileSync(
+    process.env.GCLOUD_BIN || "gcloud",
+    [
+      "run",
+      "revisions",
+      "describe",
+      revision,
+      `--project=${options.project}`,
+      `--region=${options.region}`,
+      "--format=json",
+    ],
+    { encoding: "utf8", stdio: ["ignore", "pipe", "inherit"] },
+  );
+  return JSON.parse(output);
+}
+
 function main() {
   const options = parseArguments(process.argv.slice(2));
-  const report = summarizeCloudRunCapabilities(readServiceDocument(options), options);
+  const serviceDocument = readServiceDocument(options);
+  const runtimeDocument = readServingRevisionDocument(options, serviceDocument)
+    ?? serviceDocument;
+  const report = summarizeCloudRunCapabilities(serviceDocument, {
+    ...options,
+    runtimeDocument,
+    auditedRevision: runtimeDocument === serviceDocument
+      ? serviceDocument?.status?.latestReadyRevisionName ?? ""
+      : runtimeDocument?.metadata?.name ?? "",
+  });
   const serialized = `${JSON.stringify(report, null, 2)}\n`;
   if (options.output) {
     writeFileSync(options.output, serialized, { encoding: "utf8", mode: 0o600 });
