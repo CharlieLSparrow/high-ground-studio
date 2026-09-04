@@ -66,13 +66,13 @@ struct LoginView: View {
                         Circle()
                             .fill(
                                 LinearGradient(
-                                    colors: [.teal, .cyan],
+                                    colors: [CapturePalette.accent, CapturePalette.accent],
                                     startPoint: .topLeading,
                                     endPoint: .bottomTrailing
                                 )
                             )
                             .frame(width: 84, height: 84)
-                            .shadow(color: .teal.opacity(0.24), radius: 18, y: 9)
+                            .shadow(color: CapturePalette.accent.opacity(0.24), radius: 18, y: 9)
 
                         Image(systemName: "waveform.badge.mic")
                             .font(.system(size: 35, weight: .semibold))
@@ -197,7 +197,7 @@ struct LoginView: View {
         .scrollDismissesKeyboard(.interactively)
         .background(
             LinearGradient(
-                colors: [Color(.systemBackground), .teal.opacity(0.045), Color(.systemBackground)],
+                colors: [Color(.systemBackground), CapturePalette.accent.opacity(0.045), Color(.systemBackground)],
                 startPoint: .top,
                 endPoint: .bottom
             )
@@ -309,8 +309,7 @@ struct LoginView: View {
                     }
                     .frame(maxWidth: .infinity, minHeight: 52)
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(.teal)
+                .captureProminentButton(fill: CapturePalette.actionFill)
                 .disabled(!canSubmitPasswordAuth)
                 .accessibilityIdentifier(
                     passwordMode == .createAccount
@@ -421,8 +420,7 @@ struct LoginView: View {
             .font(.subheadline.weight(.semibold))
             .frame(maxWidth: .infinity, minHeight: 44)
         }
-        .buttonStyle(.borderedProminent)
-        .tint(passwordMode == mode ? .teal : Color.secondary.opacity(0.16))
+        .captureProminentButton(fill: passwordMode == mode ? CapturePalette.actionFill : Color.secondary.opacity(0.16))
         .foregroundStyle(passwordMode == mode ? Color.white : Color.primary)
         .disabled(authManager.isAuthenticating)
         .accessibilityIdentifier(

@@ -22,7 +22,7 @@ struct ContextPickerView: View {
                         }
                     }
                     .pickerStyle(.menu)
-                    .tint(.teal)
+                    .tint(CapturePalette.accent)
                     
                     if let wsId = contextManager.selectedWorkspaceId,
                        let ws = contextManager.workspaces.first(where: { $0.id == wsId }) {

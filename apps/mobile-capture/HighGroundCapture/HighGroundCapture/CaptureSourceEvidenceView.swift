@@ -289,7 +289,7 @@ struct CaptureSourceEvidenceView: View {
                             )
                             .frame(maxWidth: .infinity, minHeight: 44)
                         }
-                        .buttonStyle(.borderedProminent)
+                        .captureProminentButton()
                         .accessibilityIdentifier("CaptureAudioSignalPlaySelected")
                     }
 
@@ -368,7 +368,7 @@ struct CaptureSourceEvidenceView: View {
                     if playback.isPlaying(recordingID: recording.id) {
                         Label("Playing this local original", systemImage: "speaker.wave.2.fill")
                             .font(.caption.weight(.semibold))
-                            .foregroundStyle(.blue)
+                            .foregroundStyle(CapturePalette.ink)
                     }
                     if let error = playback.errorMessage {
                         Label(error, systemImage: "exclamationmark.triangle.fill")
@@ -397,7 +397,7 @@ struct CaptureSourceEvidenceView: View {
                                 .frame(maxWidth: .infinity, minHeight: 44)
                         }
                     }
-                    .buttonStyle(.borderedProminent)
+                    .captureProminentButton()
                     .disabled(isRetryingQualityScan)
                     .accessibilityIdentifier("CaptureRetryQualityScan")
                 }
@@ -549,7 +549,7 @@ struct CaptureSourceEvidenceView: View {
                                 }
                                 .frame(maxWidth: .infinity, minHeight: 44)
                             }
-                            .buttonStyle(.borderedProminent)
+                            .captureProminentButton()
                             .disabled(mastery.isLoading)
                             .accessibilityIdentifier("CaptureAudioMasteryPlay")
                         }
@@ -720,7 +720,7 @@ struct CaptureSourceEvidenceView: View {
                             )
                         }
                     }
-                    .buttonStyle(.borderedProminent)
+                    .captureProminentButton()
                     .disabled(mastery.isReviewing || !coverage.approvalReady)
                     .accessibilityIdentifier("CaptureAudioMasteryApprove")
                 }
@@ -781,7 +781,7 @@ struct CaptureSourceEvidenceView: View {
                             )
                         }
                     }
-                    .buttonStyle(.borderedProminent)
+                    .captureProminentButton()
                     .disabled(mastery.isPromoting)
                     .accessibilityIdentifier("CaptureAudioMasteryPromote")
                 }
@@ -828,7 +828,7 @@ struct CaptureSourceEvidenceView: View {
                         )
                     }
                 }
-                .buttonStyle(.borderedProminent)
+                .captureProminentButton()
                 .disabled(mastery.isPromoting)
                 .accessibilityIdentifier("CaptureAudioMasteryPromote")
             } else {
@@ -883,7 +883,7 @@ struct CaptureSourceEvidenceView: View {
                                 )
                             }
                         }
-                        .buttonStyle(.borderedProminent)
+                        .captureProminentButton()
                         .disabled(delivery.isLoading)
                         .accessibilityIdentifier("CaptureAudioDeliveryPrepare")
                     } else {
@@ -974,7 +974,7 @@ struct CaptureSourceEvidenceView: View {
             }
             .frame(maxWidth: .infinity, minHeight: 44)
         }
-        .buttonStyle(.borderedProminent)
+        .captureProminentButton()
         .disabled(delivery.isLoading)
         .accessibilityIdentifier("CaptureAudioDeliveryPrepare")
     }
@@ -1021,7 +1021,7 @@ struct CaptureSourceEvidenceView: View {
                 )
                 .frame(maxWidth: .infinity, minHeight: 44)
             }
-            .buttonStyle(.borderedProminent)
+            .captureProminentButton()
             .disabled(delivery.isLoading)
             .accessibilityIdentifier("CaptureAudioDeliveryPlay")
 
@@ -1072,7 +1072,7 @@ struct CaptureSourceEvidenceView: View {
                             : "exclamationmark.triangle.fill"
                     )
                     .font(.caption.weight(.bold))
-                    .foregroundStyle(saved.disposition == .pending ? .blue : .orange)
+                    .foregroundStyle(saved.disposition == .pending ? CapturePalette.ink : .orange)
 
                     Text(
                         saved.disposition == .pending
@@ -1133,7 +1133,7 @@ struct CaptureSourceEvidenceView: View {
                         )
                     }
                 }
-                .buttonStyle(.borderedProminent)
+                .captureProminentButton()
                 .disabled(delivery.isReviewing || delivery.savedDecision != nil || !coverage.approvalReady)
                 .accessibilityIdentifier("CaptureAudioDeliveryApprove")
             }
@@ -1378,7 +1378,7 @@ struct CaptureSourceEvidenceView: View {
                     Label("Share evidence receipt", systemImage: "square.and.arrow.up")
                         .frame(maxWidth: .infinity, minHeight: 44)
                 }
-                .buttonStyle(.borderedProminent)
+                .captureProminentButton()
                 .accessibilityIdentifier("CaptureSourceEvidenceShare")
             } else {
                 Button {
@@ -1395,7 +1395,7 @@ struct CaptureSourceEvidenceView: View {
                     }
                     .frame(maxWidth: .infinity, minHeight: 44)
                 }
-                .buttonStyle(.borderedProminent)
+                .captureProminentButton()
                 .disabled(isPreparing || !recording.status.isPlaybackEligible)
                 .accessibilityIdentifier("CaptureSourceEvidencePrepare")
             }
@@ -1941,8 +1941,8 @@ private struct CaptureAudioReviewMarker: Identifiable {
         var color: Color {
             switch self {
             case .signalWarning: .orange
-            case .captureBoundary: .purple
-            case .detectedSound: .teal
+            case .captureBoundary: CapturePalette.plum
+            case .detectedSound: CapturePalette.accent
             }
         }
     }
@@ -1982,7 +1982,7 @@ private struct CaptureAudioReviewTimeline: View {
                             )
                             let color: Color = point.isClipped
                                 ? .red
-                                : point.isNearSilent ? .gray.opacity(0.4) : .blue
+                                : point.isNearSilent ? .gray.opacity(0.4) : CapturePalette.ink
                             context.fill(
                                 Path(roundedRect: rect, cornerRadius: 1),
                                 with: .color(color)
@@ -2255,7 +2255,7 @@ struct CaptureSourceEvidencePreviewView: View {
                             .disabled(true)
                             .accessibilityIdentifier("CaptureAudioMasteryPlayOriginal")
                         Button("Play improved") {}
-                            .buttonStyle(.borderedProminent)
+                            .captureProminentButton()
                             .disabled(true)
                             .accessibilityIdentifier("CaptureAudioMasteryPlay")
                     }
@@ -2276,7 +2276,7 @@ struct CaptureSourceEvidencePreviewView: View {
                                 .disabled(true)
                                 .accessibilityIdentifier("CaptureAudioMasteryReject")
                             Button("Approve improved") {}
-                                .buttonStyle(.borderedProminent)
+                                .captureProminentButton()
                                 .disabled(true)
                                 .accessibilityIdentifier("CaptureAudioMasteryApprove")
                         }
@@ -2292,7 +2292,7 @@ struct CaptureSourceEvidencePreviewView: View {
                             .font(.caption)
                             .foregroundStyle(.secondary)
                         Button("Use improved for delivery") {}
-                            .buttonStyle(.borderedProminent)
+                            .captureProminentButton()
                             .disabled(true)
                             .accessibilityIdentifier("CaptureAudioMasteryPromote")
                         Text("Preview only · no promotion receipt created")
@@ -2308,7 +2308,7 @@ struct CaptureSourceEvidencePreviewView: View {
                             .font(.caption)
                             .foregroundStyle(.secondary)
                         Button("Prepare share-ready audio") {}
-                            .buttonStyle(.borderedProminent)
+                            .captureProminentButton()
                             .disabled(true)
                             .accessibilityIdentifier("CaptureAudioDeliveryPrepare")
                         VStack(alignment: .leading, spacing: 6) {
@@ -2319,7 +2319,7 @@ struct CaptureSourceEvidencePreviewView: View {
                         }
                         .accessibilityIdentifier("CaptureAudioDeliveryOutput")
                         Button("Play encoded audio") {}
-                            .buttonStyle(.borderedProminent)
+                            .captureProminentButton()
                             .disabled(true)
                             .accessibilityIdentifier("CaptureAudioDeliveryPlay")
                         VStack(alignment: .leading, spacing: 6) {
@@ -2342,7 +2342,7 @@ struct CaptureSourceEvidencePreviewView: View {
                                     .disabled(true)
                                     .accessibilityIdentifier("CaptureAudioDeliveryReject")
                                 Button("Approve encoded file") {}
-                                    .buttonStyle(.borderedProminent)
+                                    .captureProminentButton()
                                     .disabled(true)
                                     .accessibilityIdentifier("CaptureAudioDeliveryApprove")
                             }

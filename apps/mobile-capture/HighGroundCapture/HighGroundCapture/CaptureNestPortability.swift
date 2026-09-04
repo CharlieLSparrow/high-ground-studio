@@ -708,7 +708,7 @@ struct CaptureNestPortabilityView: View {
                 )
                 .frame(maxWidth: .infinity)
             }
-            .buttonStyle(.borderedProminent)
+            .captureProminentButton()
             .disabled(client.isBusy || client.selectedProject == nil || !auth.networkActionsAllowed || usesPreviewData)
             .accessibilityIdentifier("CaptureNestExportButton")
 
@@ -770,8 +770,7 @@ struct CaptureNestPortabilityView: View {
                 Text(client.operation == .validating ? "Validating…" : "Validate restore plan")
                     .frame(maxWidth: .infinity)
             }
-            .buttonStyle(.borderedProminent)
-            .tint(.blue)
+            .captureProminentButton(fill: CapturePalette.inkFill)
             .disabled(
                 client.isBusy
                     || client.importedFileName == nil
@@ -828,7 +827,7 @@ struct CaptureNestPortabilityView: View {
         VStack(alignment: .leading, spacing: 12) {
             Label("Verified no-overwrite plan", systemImage: "checkmark.shield.fill")
                 .font(.subheadline.weight(.bold))
-                .foregroundStyle(.blue)
+                .foregroundStyle(CapturePalette.ink)
             Text("SHA-256 \(plan.manifestSha256)")
                 .font(.caption2.monospaced())
                 .foregroundStyle(.secondary)
@@ -853,13 +852,12 @@ struct CaptureNestPortabilityView: View {
                 Text(client.operation == .applying ? "Restoring…" : client.appliedReceipt == nil ? "Apply verified restore" : "Restore confirmed")
                     .frame(maxWidth: .infinity)
             }
-            .buttonStyle(.borderedProminent)
-            .tint(.blue)
+            .captureProminentButton(fill: CapturePalette.inkFill)
             .disabled(client.isBusy || !plan.isSafeToApply || client.appliedReceipt != nil || !auth.networkActionsAllowed)
             .accessibilityIdentifier("CaptureNestApplyRestore")
         }
         .padding(14)
-        .background(.blue.opacity(0.08), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .background(CapturePalette.ink.opacity(0.08), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("CaptureNestVerifiedRestorePlan")
     }

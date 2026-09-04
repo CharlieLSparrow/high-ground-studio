@@ -646,9 +646,9 @@ struct CaptureRecordingShareEditor: View {
             HStack(alignment: .top, spacing: 12) {
                 Image(systemName: "scissors")
                     .font(.title3.weight(.bold))
-                    .foregroundStyle(.indigo)
+                    .foregroundStyle(CapturePalette.plum)
                     .frame(width: 38, height: 38)
-                    .background(Color.indigo.opacity(0.1), in: RoundedRectangle(cornerRadius: 12))
+                    .background(CapturePalette.plum.opacity(0.1), in: RoundedRectangle(cornerRadius: 12))
                 VStack(alignment: .leading, spacing: 3) {
                     Text("Edit recording")
                         .font(.headline)
@@ -836,7 +836,7 @@ struct CaptureRecordingShareEditor: View {
                     .font(.caption.weight(.bold))
                 }
                 .padding(12)
-                .background(Color.indigo.opacity(0.05), in: RoundedRectangle(cornerRadius: 14))
+                .background(CapturePalette.plum.opacity(0.05), in: RoundedRectangle(cornerRadius: 14))
 
                 if !videoSources.isEmpty {
                     VStack(alignment: .leading, spacing: 10) {
@@ -872,7 +872,7 @@ struct CaptureRecordingShareEditor: View {
                         }
                     }
                     .padding(12)
-                    .background(Color.indigo.opacity(0.05), in: RoundedRectangle(cornerRadius: 14))
+                    .background(CapturePalette.plum.opacity(0.05), in: RoundedRectangle(cornerRadius: 14))
                 }
 
                 DisclosureGroup("Title and sources (\(selectedSourceIDs.count) selected)") {
@@ -891,7 +891,7 @@ struct CaptureRecordingShareEditor: View {
                                         .font(.caption2).foregroundStyle(.secondary)
                                 }
                             }
-                            .tint(.indigo)
+                            .tint(CapturePalette.plum)
                             .accessibilityIdentifier("CaptureRecordingShareSource_\(source.id)")
                         }
                     }
@@ -998,10 +998,10 @@ struct CaptureRecordingShareEditor: View {
                                     .strikethrough(excludedSegmentIDs.contains(segment.id), color: .red)
                             }
                         }
-                        .tint(.indigo)
+                        .tint(CapturePalette.plum)
                         .disabled(!segment.canRippleDelete)
                         .padding(10)
-                        .background(segment.canRippleDelete ? Color.indigo.opacity(0.06) : Color.orange.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
+                        .background(segment.canRippleDelete ? CapturePalette.plum.opacity(0.06) : Color.orange.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
                         .accessibilityIdentifier("CaptureRecordingShareSegment_\(segment.segmentId)")
                         if segment.canRippleDelete {
                             Button {
@@ -1068,8 +1068,7 @@ struct CaptureRecordingShareEditor: View {
                         Text("Create edited \(outputMediaKind) copy").frame(maxWidth: .infinity)
                     }
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(.indigo)
+                .captureProminentButton(fill: CapturePalette.plumFill)
                 .disabled(
                     client.busyAction != nil
                         || selectedSourceIDs.isEmpty
@@ -1108,7 +1107,7 @@ struct CaptureRecordingShareEditor: View {
         VStack(alignment: .leading, spacing: 10) {
             Label("Opened from transcript", systemImage: "text.line.first.and.arrowtriangle.forward")
                 .font(.caption.weight(.bold))
-                .foregroundStyle(.indigo)
+                .foregroundStyle(CapturePalette.plum)
 
             if let segment = snapshot.available?.transcriptSegments.first(where: {
                 $0.transcriptJobId == focus.transcriptJobID && $0.segmentId == focus.segmentID
@@ -1167,7 +1166,7 @@ struct CaptureRecordingShareEditor: View {
                         isOn: segmentBinding(segment.id)
                     )
                     .font(.subheadline.weight(.semibold))
-                    .tint(.indigo)
+                    .tint(CapturePalette.plum)
                     .accessibilityIdentifier("CaptureRecordingShareFocusedSegmentToggle_\(segment.segmentId)")
                     Text("Changing this switch only updates the private draft below. The original and transcript stay unchanged until you deliberately create a preview.")
                         .font(.caption2)
@@ -1190,7 +1189,7 @@ struct CaptureRecordingShareEditor: View {
             }
         }
         .padding(12)
-        .background(Color.indigo.opacity(0.07), in: RoundedRectangle(cornerRadius: 14))
+        .background(CapturePalette.plum.opacity(0.07), in: RoundedRectangle(cornerRadius: 14))
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("CaptureRecordingShareFocusedPassage")
     }
@@ -1223,7 +1222,7 @@ struct CaptureRecordingShareEditor: View {
                 Text(output.render.status.replacingOccurrences(of: "_", with: " "))
                     .font(.caption2.weight(.black))
                     .padding(.horizontal, 8).padding(.vertical, 5)
-                    .background(Color.indigo.opacity(0.1), in: Capsule())
+                    .background(CapturePalette.plum.opacity(0.1), in: Capsule())
             }
 
             if output.render.status == "VERIFIED" {
@@ -1336,8 +1335,7 @@ struct CaptureRecordingShareEditor: View {
                 Button("Share with \(output.recipient.label)") {
                     Task { _ = await client.changeVisibility(roomID: roomID, action: "RELEASE") }
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(.green)
+                .captureProminentButton(fill: CapturePalette.successFill)
                 .disabled(client.busyAction != nil)
                 .accessibilityIdentifier("CaptureRecordingShareRelease")
             }
@@ -1352,7 +1350,7 @@ struct CaptureRecordingShareEditor: View {
             }
         }
         .padding(12)
-        .background(Color.indigo.opacity(0.06), in: RoundedRectangle(cornerRadius: 14))
+        .background(CapturePalette.plum.opacity(0.06), in: RoundedRectangle(cornerRadius: 14))
     }
 
     private var pollKey: String? {
@@ -1483,7 +1481,7 @@ struct CaptureRecordingShareEditor: View {
                 in: min(lowerBound, upperBound)...max(lowerBound, upperBound),
                 step: 0.1
             )
-            .tint(.indigo)
+            .tint(CapturePalette.plum)
             .accessibilityLabel("Recording \(label.lowercased())")
             .accessibilityValue(captureRecordingShareTime(value.wrappedValue))
         }

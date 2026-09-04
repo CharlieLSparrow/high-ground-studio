@@ -87,6 +87,9 @@ const files = {
   captureSupportSnapshot: path.join(sourceRoot, "CaptureSupportSnapshot.swift"),
   captureAttentionDiagnostics: path.join(sourceRoot, "CaptureAttentionDiagnostics.swift"),
   captureRecordingShare: path.join(sourceRoot, "CaptureRecordingShare.swift"),
+  captureSourceEvidence: path.join(sourceRoot, "CaptureSourceEvidenceView.swift"),
+  captureNestPortability: path.join(sourceRoot, "CaptureNestPortability.swift"),
+  contextPicker: path.join(sourceRoot, "ContextPickerView.swift"),
   transcriptReview: path.join(sourceRoot, "TranscriptCorrectionReview.swift"),
   sessionProtectedPlayback: path.join(sourceRoot, "CaptureSessionProtectedPlayback.swift"),
   transcriptReviewDecisionOutbox: path.join(sourceRoot, "TranscriptReviewDecisionOutbox.swift"),
@@ -295,6 +298,9 @@ const captureCalendarEventEditorText = read(files.captureCalendarEventEditor);
 const captureSupportSnapshotText = read(files.captureSupportSnapshot);
 const captureAttentionDiagnosticsText = read(files.captureAttentionDiagnostics);
 const captureRecordingShareText = read(files.captureRecordingShare);
+const captureSourceEvidenceText = read(files.captureSourceEvidence);
+const captureNestPortabilityText = read(files.captureNestPortability);
+const contextPickerText = read(files.contextPicker);
 const transcriptReviewText = read(files.transcriptReview);
 const sessionProtectedPlaybackText = read(files.sessionProtectedPlayback);
 const transcriptReviewDecisionOutboxText = read(files.transcriptReviewDecisionOutbox);
@@ -304,6 +310,27 @@ const localRecordingLibraryText = read(files.localRecordingLibrary);
 const localRecordingPlaybackText = read(files.localRecordingPlayback);
 const mobileText = read(files.mobileComponents);
 const shippingCaptureUIText = `${capturePhoneShellText}\n${captureRehearsalReadinessText}\n${captureSessionGuardianText}\n${mobileText}`;
+const brandedCaptureSurfaceTexts = [
+  ["CapturePhoneShell.swift", capturePhoneShellText],
+  ["QuipslyMobileComponents.swift", mobileText],
+  ["ContextPickerView.swift", contextPickerText],
+  ["CaptureNestPortability.swift", captureNestPortabilityText],
+  ["LoginView.swift", loginText],
+  ["CaptureSourceEvidenceView.swift", captureSourceEvidenceText],
+  ["CaptureRecordingShare.swift", captureRecordingShareText],
+  ["TranscriptCorrectionReview.swift", transcriptReviewText],
+];
+for (const [surface, source] of brandedCaptureSurfaceTexts) {
+  const rawFeatureHighlight = source.match(/(?:Color)?\.(?:blue|teal|cyan|purple|pink|indigo)\b/);
+  assert(
+    rawFeatureHighlight == null,
+    "Branded Capture surfaces must use semantic library-garden tokens instead of unrelated system feature colors.",
+    { label: `${surface} has no raw blue, teal, purple, pink, or indigo feature highlight`, forbidden: rawFeatureHighlight?.[0] },
+  );
+}
+requireIncludes(capturePhoneShellText, "static let actionFill = adaptive(", "filled actions have an independent accessible forest token");
+requireIncludes(capturePhoneShellText, "static let plumFill = adaptive(", "editor actions have an independent accessible aubergine token");
+requireIncludes(capturePhoneShellText, "func captureProminentButton(fill:", "filled controls share one readable Quipsly action treatment");
 const bridgeText = read(files.bridgeModels);
 
 for (const [source, endpoint, label] of [

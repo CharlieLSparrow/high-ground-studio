@@ -3084,8 +3084,8 @@ private enum CapturePacketCandidateReviewKind: Int {
     var tint: Color {
         switch self {
         case .note: .orange
-        case .goal: .purple
-        case .task: .blue
+        case .goal: CapturePalette.plum
+        case .task: CapturePalette.ink
         }
     }
 }
@@ -3110,7 +3110,7 @@ private enum CapturePacketCandidateReviewState: String {
         case .ready: .green
         case .listenFirst: .orange
         case .deferred: .brown
-        case .decided: .blue
+        case .decided: CapturePalette.ink
         }
     }
 }
@@ -3236,7 +3236,7 @@ struct CaptureTranscriptReviewView: View {
                         reviewNotice(
                             title: "Opened from linked work",
                             detail: "Quipsly returned to the exact transcript segment. Press play yourself before making any correction decision.",
-                            tint: .blue,
+                            tint: CapturePalette.ink,
                             icon: "link.circle.fill"
                         )
                         .accessibilityIdentifier("CaptureTranscriptSourceBoundary_\(focusSegmentID)")
@@ -3253,7 +3253,7 @@ struct CaptureTranscriptReviewView: View {
                     }
 
                     if let message = client.message {
-                        reviewNotice(title: "Transcript status", detail: message, tint: .blue, icon: "info.circle.fill")
+                        reviewNotice(title: "Transcript status", detail: message, tint: CapturePalette.ink, icon: "info.circle.fill")
                     }
                     if client.isUsingProtectedCache {
                         reviewNotice(
@@ -3272,7 +3272,7 @@ struct CaptureTranscriptReviewView: View {
                             detail: client.heldTranscriptDecisionCount > 0
                                 ? "\(client.heldTranscriptDecisionCount) change\(client.heldTranscriptDecisionCount == 1 ? "" : "s") could not sync. Open the saved-changes button to review."
                                 : "\(client.pendingTranscriptDecisionCount) change\(client.pendingTranscriptDecisionCount == 1 ? " is" : "s are") waiting to sync.",
-                            tint: client.heldTranscriptDecisionCount > 0 ? .orange : .blue,
+                            tint: client.heldTranscriptDecisionCount > 0 ? .orange : CapturePalette.ink,
                             icon: client.heldTranscriptDecisionCount > 0 ? "exclamationmark.shield.fill" : "arrow.triangle.2.circlepath"
                         )
                         .id("transcript-outbox-status")
@@ -3286,7 +3286,7 @@ struct CaptureTranscriptReviewView: View {
                             detail: client.heldSpeakerAttributionCount > 0
                                 ? "\(client.heldSpeakerAttributionCount) voice label\(client.heldSpeakerAttributionCount == 1 ? "" : "s") could not sync. Open the saved-changes button to review."
                                 : "\(client.pendingSpeakerAttributionCount) voice label\(client.pendingSpeakerAttributionCount == 1 ? " is" : "s are") waiting to sync.",
-                            tint: client.heldSpeakerAttributionCount > 0 ? .orange : .indigo,
+                            tint: client.heldSpeakerAttributionCount > 0 ? .orange : CapturePalette.plum,
                             icon: client.heldSpeakerAttributionCount > 0 ? "exclamationmark.shield.fill" : "person.wave.2.fill"
                         )
                         .id("speaker-attribution-outbox-status")
@@ -3297,7 +3297,7 @@ struct CaptureTranscriptReviewView: View {
                             title: "Preparing exact recording",
                             detail: protectedSessionPlayback.statusMessage
                                 ?? "Downloading and verifying the retained participant source before playback.",
-                            tint: .blue,
+                            tint: CapturePalette.ink,
                             icon: "arrow.down.circle.fill"
                         )
                         .accessibilityIdentifier("CaptureTranscriptProtectedPlaybackPreparing")
@@ -3400,7 +3400,7 @@ struct CaptureTranscriptReviewView: View {
                                     .padding(.vertical, 1)
                                     .foregroundStyle(.white)
                                     .background(
-                                        totalHeldOutboxCount > 0 ? Color.orange : Color.blue,
+                                        totalHeldOutboxCount > 0 ? Color.orange : CapturePalette.ink,
                                         in: Capsule()
                                     )
                                     .offset(x: 9, y: -7)
@@ -3745,9 +3745,9 @@ struct CaptureTranscriptReviewView: View {
             HStack(alignment: .top, spacing: 12) {
                 Image(systemName: "waveform.badge.magnifyingglass")
                     .font(.title3.weight(.semibold))
-                    .foregroundStyle(.indigo)
+                    .foregroundStyle(CapturePalette.plum)
                     .frame(width: 42, height: 42)
-                    .background(Color.indigo.opacity(0.1), in: Circle())
+                    .background(CapturePalette.plum.opacity(0.1), in: Circle())
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 3) {
                     Text("Audio, speakers & follow-up")
@@ -3914,9 +3914,9 @@ struct CaptureTranscriptReviewView: View {
             HStack(alignment: .top, spacing: 12) {
                 Image(systemName: "sparkles")
                     .font(.title3.weight(.semibold))
-                    .foregroundStyle(.teal)
+                    .foregroundStyle(CapturePalette.accent)
                     .frame(width: 38, height: 38)
-                    .background(Color.teal.opacity(0.1), in: Circle())
+                    .background(CapturePalette.accent.opacity(0.1), in: Circle())
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 3) {
                     Text("Follow-up ready")
@@ -3933,7 +3933,7 @@ struct CaptureTranscriptReviewView: View {
                 .fixedSize(horizontal: false, vertical: true)
 
             if !results.notes.isEmpty {
-                followUpResultSection(title: "Notes", systemImage: "note.text", tint: .teal) {
+                followUpResultSection(title: "Notes", systemImage: "note.text", tint: CapturePalette.accent) {
                     ForEach(Array(results.notes.prefix(3))) { note in
                         followUpResultRow(
                             title: captureTranscriptNonempty(note.title) ?? "Session note",
@@ -3959,7 +3959,7 @@ struct CaptureTranscriptReviewView: View {
                 }
             }
             if !results.goals.isEmpty {
-                followUpResultSection(title: "Goals", systemImage: "target", tint: .purple) {
+                followUpResultSection(title: "Goals", systemImage: "target", tint: CapturePalette.plum) {
                     ForEach(Array(results.goals.prefix(3))) { goal in
                         followUpResultRow(
                             title: goal.title,
@@ -4045,14 +4045,14 @@ struct CaptureTranscriptReviewView: View {
                 if let sourceDetail = followUpSourceDetail(source) {
                     Text(sourceDetail)
                         .font(.caption2.weight(.semibold))
-                        .foregroundStyle(.blue)
+                        .foregroundStyle(CapturePalette.ink)
                 }
             }
             Spacer(minLength: 4)
             if captureTranscriptNonempty(source?.segmentId) != nil {
                 Image(systemName: "waveform.and.magnifyingglass")
                     .font(.caption.weight(.bold))
-                    .foregroundStyle(.blue)
+                    .foregroundStyle(CapturePalette.ink)
                     .accessibilityHidden(true)
             }
         }
@@ -4161,7 +4161,7 @@ struct CaptureTranscriptReviewView: View {
                     .frame(maxWidth: .infinity, minHeight: 44)
                 }
                 .buttonStyle(.bordered)
-                .tint(.indigo)
+                .tint(CapturePalette.plum)
                 .accessibilityHint("Opens voice naming. The transcript remains usable if you skip it.")
                 .accessibilityIdentifier("CaptureTranscriptNameVoicesButton")
             }
@@ -4256,7 +4256,7 @@ struct CaptureTranscriptReviewView: View {
             .padding(13)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(
-                trails ? Color.indigo.opacity(0.1) : Color.blue.opacity(0.09),
+                trails ? CapturePalette.plum.opacity(0.1) : CapturePalette.ink.opacity(0.09),
                 in: RoundedRectangle(cornerRadius: 17, style: .continuous)
             )
             if !trails { Spacer(minLength: 40) }
@@ -4316,7 +4316,7 @@ struct CaptureTranscriptReviewView: View {
         return VStack(alignment: .leading, spacing: 11) {
             Label("Accuracy insights", systemImage: "waveform.badge.magnifyingglass")
                 .font(.headline)
-                .foregroundStyle(.indigo)
+                .foregroundStyle(CapturePalette.plum)
             HStack(spacing: 8) {
                 transcriptEvidenceMetric(
                     value: "\(evidence.segmentCount)",
@@ -4356,8 +4356,7 @@ struct CaptureTranscriptReviewView: View {
                     )
                     .frame(minHeight: 44)
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(.indigo)
+                .captureProminentButton(fill: CapturePalette.plumFill)
                 .accessibilityIdentifier("CaptureTranscriptEvidenceReviewFirst")
             }
             VStack(alignment: .leading, spacing: 3) {
@@ -4405,7 +4404,7 @@ struct CaptureTranscriptReviewView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(9)
-        .background(Color.indigo.opacity(0.07), in: RoundedRectangle(cornerRadius: 10))
+        .background(CapturePalette.plum.opacity(0.07), in: RoundedRectangle(cornerRadius: 10))
     }
 
     @ViewBuilder
@@ -4416,7 +4415,7 @@ struct CaptureTranscriptReviewView: View {
             VStack(alignment: .leading, spacing: 12) {
                 Label("Identify voices once", systemImage: "person.wave.2.fill")
                     .font(.title3.weight(.bold))
-                    .foregroundStyle(.indigo)
+                    .foregroundStyle(CapturePalette.plum)
                 Text("Connect each detected voice to a Session participant. Updating a speaker name applies it across matching turns, and you can change it again anytime.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -4483,8 +4482,7 @@ struct CaptureTranscriptReviewView: View {
                         Label("Share mentor report", systemImage: "square.and.arrow.up")
                             .frame(minHeight: 44)
                     }
-                    .buttonStyle(.borderedProminent)
-                    .tint(.orange)
+                    .captureProminentButton(fill: CapturePalette.warningFill)
                     .accessibilityHint("Opens the standard share sheet. Quipsly does not send the report until you choose a destination.")
                     .accessibilityIdentifier("CaptureTranscriptShareMentorReport")
                 } else {
@@ -4547,8 +4545,7 @@ struct CaptureTranscriptReviewView: View {
                     Label("Show changed passage", systemImage: "waveform.and.magnifyingglass")
                         .frame(minHeight: 44)
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(.orange)
+                .captureProminentButton(fill: CapturePalette.warningFill)
                 .accessibilityIdentifier("CaptureTranscriptImpactReviewFirst")
             }
             Text("Nothing is blocked. Open any linked item if you want to update it; otherwise keep working.")
@@ -4618,7 +4615,7 @@ struct CaptureTranscriptReviewView: View {
                 HStack(alignment: .firstTextBaseline) {
                     Label("Audio listen points", systemImage: "ear.badge.exclamationmark")
                         .font(.headline)
-                        .foregroundStyle(plan.isClockQualified ? Color.indigo : Color.orange)
+                        .foregroundStyle(plan.isClockQualified ? CapturePalette.plum : Color.orange)
                     Spacer(minLength: 8)
                     Text("\(plan.listenPoints.count)")
                         .font(.caption.monospacedDigit().weight(.bold))
@@ -4716,7 +4713,7 @@ struct CaptureTranscriptReviewView: View {
             }
         }
         .padding(10)
-        .background(Color.indigo.opacity(0.06), in: RoundedRectangle(cornerRadius: 11))
+        .background(CapturePalette.plum.opacity(0.06), in: RoundedRectangle(cornerRadius: 11))
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("CaptureTranscriptAudioListenPoint_\(point.id)")
     }
@@ -4736,8 +4733,7 @@ struct CaptureTranscriptReviewView: View {
             Label("Listen", systemImage: "play.fill")
                 .frame(minHeight: 44)
         }
-        .buttonStyle(.borderedProminent)
-        .tint(.indigo)
+        .captureProminentButton(fill: CapturePalette.plumFill)
         .disabled(!hasExactLocalSource(expectedRecordingAssetID: desk.playback?.recordingAssetId) || client.isMutating)
         .accessibilityHint("Plays the exact local source around this measured point. It makes no correction or edit.")
     }
@@ -5054,7 +5050,7 @@ struct CaptureTranscriptReviewView: View {
         VStack(alignment: .leading, spacing: 10) {
             Label("Shared follow-up", systemImage: "person.2.fill")
                 .font(.subheadline.weight(.bold))
-                .foregroundStyle(Color.indigo)
+                .foregroundStyle(CapturePalette.plum)
             Text("Nothing has been shared yet")
                 .font(.headline)
             Text("Your timed transcript remains available here. The coach's private review stays private unless they deliberately share a follow-up with you.")
@@ -5088,8 +5084,7 @@ struct CaptureTranscriptReviewView: View {
                 Label("Try again", systemImage: "arrow.triangle.2.circlepath")
                     .frame(minHeight: 44)
             }
-            .buttonStyle(.borderedProminent)
-            .tint(.orange)
+            .captureProminentButton(fill: CapturePalette.warningFill)
             .disabled(previewOnly || client.isMutating || client.isUsingProtectedCache)
             .accessibilityIdentifier("CaptureTranscriptPrepareFollowUpRetry")
         }
@@ -5173,10 +5168,10 @@ struct CaptureTranscriptSpeakerEvidenceBadge: View {
         if let evidence {
             Label(evidence.label, systemImage: evidence.icon)
                 .font(.caption2.weight(.bold))
-                .foregroundStyle(.blue)
+                .foregroundStyle(CapturePalette.ink)
                 .padding(.horizontal, 9)
                 .padding(.vertical, 5)
-                .background(Color.blue.opacity(0.09), in: Capsule())
+                .background(CapturePalette.ink.opacity(0.09), in: Capsule())
                 .accessibilityElement(children: .combine)
                 .accessibilityLabel("Speaker evidence: \(evidence.label)")
                 .accessibilityHint(evidence.detail)
@@ -5412,8 +5407,7 @@ private struct CapturePacketNoteCandidateCard: View {
                             }
                         }
                     }
-                    .buttonStyle(.borderedProminent)
-                    .tint(.orange)
+                    .captureProminentButton(fill: CapturePalette.warningFill)
                     .frame(minHeight: 44)
                     .disabled(
                         noteBody.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -5454,8 +5448,7 @@ private struct CapturePacketNoteCandidateCard: View {
                     } label: {
                         Label("Add private note", systemImage: "note.text.badge.plus")
                     }
-                    .buttonStyle(.borderedProminent)
-                    .tint(.orange)
+                    .captureProminentButton(fill: CapturePalette.warningFill)
                     .frame(minHeight: 44)
                     .disabled(client.isMutating || previewOnly || decisionsLocked || laneRejected)
                     .accessibilityIdentifier("CapturePacketReviewNoteButton_\(candidate.accessibilityKey)")
@@ -5606,7 +5599,7 @@ private struct CapturePacketTaskCandidateCard: View {
                 VStack(alignment: .leading, spacing: 3) {
                     Text("\(candidate.startSeconds.captureTranscriptTimestamp)–\(candidate.endSeconds.captureTranscriptTimestamp) · \(captureTranscriptNonempty(candidate.speakerLabel) ?? "Unlabelled speaker")")
                         .font(.caption.monospacedDigit().weight(.bold))
-                        .foregroundStyle(.blue)
+                        .foregroundStyle(CapturePalette.ink)
                     Text(candidate.title)
                         .font(.headline)
                         .fixedSize(horizontal: false, vertical: true)
@@ -5655,7 +5648,7 @@ private struct CapturePacketTaskCandidateCard: View {
                 VStack(alignment: .leading, spacing: 12) {
                     Label("Add to an existing task", systemImage: "link.badge.plus")
                         .font(.subheadline.weight(.bold))
-                        .foregroundStyle(.blue)
+                        .foregroundStyle(CapturePalette.ink)
                     Text("The transcript moment will stay attached without changing the task's wording, owner, or dates.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -5676,7 +5669,7 @@ private struct CapturePacketTaskCandidateCard: View {
                                 .foregroundStyle(.secondary)
                             Text("\(target.dueAt == nil ? "No due date" : "Due date preserved") · \(target.evidenceCount) existing evidence \(target.evidenceCount == 1 ? "receipt" : "receipts")")
                                 .font(.caption2.weight(.semibold))
-                                .foregroundStyle(.blue)
+                                .foregroundStyle(CapturePalette.ink)
                         }
                         .padding(10)
                         .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 12))
@@ -5689,7 +5682,7 @@ private struct CapturePacketTaskCandidateCard: View {
                                 _ = await client.reviewPacketAction(candidate: candidate, decision: "MERGE", title: nil, detail: nil, mergeTarget: target, previewOnly: previewOnly)
                             }
                         }
-                        .buttonStyle(.borderedProminent)
+                        .captureProminentButton()
                         .disabled(decisionsDisabled || mergeTargetID.isEmpty)
                         .accessibilityIdentifier("CapturePacketTaskMergeButton")
                         Button("Cancel") { isMerging = false }
@@ -5773,7 +5766,7 @@ private struct CapturePacketTaskCandidateCard: View {
                                 )
                             }
                         }
-                        .buttonStyle(.borderedProminent)
+                        .captureProminentButton()
                         .disabled(decisionsDisabled || title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                         .accessibilityIdentifier("CapturePacketTaskCreateButton")
                         Button("Cancel") { isCreating = false }
@@ -5801,7 +5794,7 @@ private struct CapturePacketTaskCandidateCard: View {
                             )
                         }
                     }
-                    .buttonStyle(.borderedProminent)
+                    .captureProminentButton()
                     .disabled(previewOnly || decisionsLocked || client.isMutating)
                     .accessibilityIdentifier("CapturePacketTaskAcceptButton")
                     Button("Edit first") { isCreating = true }
@@ -5825,7 +5818,7 @@ private struct CapturePacketTaskCandidateCard: View {
             }
         }
         .padding(12)
-        .background(Color.blue.opacity(0.07), in: RoundedRectangle(cornerRadius: 14))
+        .background(CapturePalette.ink.opacity(0.07), in: RoundedRectangle(cornerRadius: 14))
         .onChange(of: candidate.reviewStatus) { _, _ in
             title = candidate.title
             detail = candidate.detail
@@ -5917,7 +5910,7 @@ private struct CapturePacketGoalCandidateCard: View {
                 VStack(alignment: .leading, spacing: 3) {
                     Text("\(candidate.startSeconds.captureTranscriptTimestamp)–\(candidate.endSeconds.captureTranscriptTimestamp) · \(captureTranscriptNonempty(candidate.speakerLabel) ?? "Unlabelled speaker")")
                         .font(.caption.monospacedDigit().weight(.bold))
-                        .foregroundStyle(.purple)
+                        .foregroundStyle(CapturePalette.plum)
                     Text(candidate.suggestedTitle)
                         .font(.headline)
                         .fixedSize(horizontal: false, vertical: true)
@@ -5966,7 +5959,7 @@ private struct CapturePacketGoalCandidateCard: View {
                 VStack(alignment: .leading, spacing: 12) {
                     Label("Adjust goal", systemImage: "target")
                         .font(.subheadline.weight(.bold))
-                        .foregroundStyle(.purple)
+                        .foregroundStyle(CapturePalette.plum)
                     Text("Change anything you want, or keep Quipsly's defaults.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -6030,8 +6023,7 @@ private struct CapturePacketGoalCandidateCard: View {
                                 )
                             }
                         }
-                        .buttonStyle(.borderedProminent)
-                        .tint(.purple)
+                        .captureProminentButton(fill: CapturePalette.plumFill)
                         .disabled(decisionsDisabled || title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                         .accessibilityIdentifier("CapturePacketGoalCreateButton")
                         Button("Cancel") { isCreating = false }
@@ -6047,7 +6039,7 @@ private struct CapturePacketGoalCandidateCard: View {
                 VStack(alignment: .leading, spacing: 12) {
                     Label("Add to an existing goal", systemImage: "target")
                         .font(.subheadline.weight(.bold))
-                        .foregroundStyle(.blue)
+                        .foregroundStyle(CapturePalette.ink)
                     Text("The transcript moment will stay attached without changing the goal's wording, status, or date.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -6072,7 +6064,7 @@ private struct CapturePacketGoalCandidateCard: View {
                                     .font(.caption2.weight(.bold))
                                     .padding(.horizontal, 7)
                                     .padding(.vertical, 4)
-                                    .background(Color.blue.opacity(0.12), in: Capsule())
+                                    .background(CapturePalette.ink.opacity(0.12), in: Capsule())
                             }
                             if let definition = target.description?.trimmingCharacters(in: .whitespacesAndNewlines), !definition.isEmpty {
                                 Text(definition)
@@ -6086,7 +6078,7 @@ private struct CapturePacketGoalCandidateCard: View {
                             }
                             Text("\(target.evidenceCount) existing evidence \(target.evidenceCount == 1 ? "receipt" : "receipts")")
                                 .font(.caption2.weight(.semibold))
-                                .foregroundStyle(.blue)
+                                .foregroundStyle(CapturePalette.ink)
                         }
                         .padding(10)
                         .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 12))
@@ -6106,8 +6098,7 @@ private struct CapturePacketGoalCandidateCard: View {
                                 )
                             }
                         }
-                        .buttonStyle(.borderedProminent)
-                        .tint(.blue)
+                        .captureProminentButton(fill: CapturePalette.inkFill)
                         .disabled(decisionsDisabled || mergeTargetID.isEmpty)
                         .accessibilityIdentifier("CapturePacketGoalMergeButton")
                         Button("Cancel") {
@@ -6137,8 +6128,7 @@ private struct CapturePacketGoalCandidateCard: View {
                             )
                         }
                     }
-                    .buttonStyle(.borderedProminent)
-                    .tint(.purple)
+                    .captureProminentButton(fill: CapturePalette.plumFill)
                     .disabled(previewOnly || decisionsLocked || client.isMutating)
                     .accessibilityIdentifier("CapturePacketGoalAcceptButton")
                     Button("Edit first") { isCreating = true }
@@ -6148,7 +6138,7 @@ private struct CapturePacketGoalCandidateCard: View {
                 }
                 Button("Add evidence to existing goal") { isMerging = true }
                     .buttonStyle(.bordered)
-                    .tint(.blue)
+                    .tint(CapturePalette.ink)
                     .disabled(decisionsLocked || client.isMutating || mergeTargets.isEmpty)
                     .accessibilityIdentifier("CapturePacketGoalBeginMergeButton")
                 if mergeTargets.isEmpty {
@@ -6166,7 +6156,7 @@ private struct CapturePacketGoalCandidateCard: View {
             }
         }
         .padding(12)
-        .background(Color.purple.opacity(0.07), in: RoundedRectangle(cornerRadius: 14))
+        .background(CapturePalette.plum.opacity(0.07), in: RoundedRectangle(cornerRadius: 14))
         .onChange(of: candidate.reviewStatus) { _, _ in
             title = candidate.suggestedTitle
             description = candidate.suggestedDescription
@@ -6344,7 +6334,7 @@ private struct CaptureTranscriptAudioQualityCard: View {
         switch mastery.snapshot?.status {
         case "completed": .green
         case "failed", "blocked": .orange
-        default: .indigo
+        default: CapturePalette.plum
         }
     }
 
@@ -6453,7 +6443,7 @@ private struct CaptureTranscriptSpeakerGroupCard: View {
                             : "arrow.triangle.2.circlepath"
                     )
                     .font(.caption.weight(.bold))
-                    .foregroundStyle(pendingAttribution.disposition == .held ? Color.orange : Color.indigo)
+                    .foregroundStyle(pendingAttribution.disposition == .held ? Color.orange : CapturePalette.plum)
                     Text(
                         pendingAttribution.lastErrorMessage
                             ?? "The participant, full provider-cluster snapshot, and playback receipts are protected until Nest acknowledges this stable request. No words are marked reviewed."
@@ -6478,7 +6468,7 @@ private struct CaptureTranscriptSpeakerGroupCard: View {
                 }
                 .padding(12)
                 .background(
-                    (pendingAttribution.disposition == .held ? Color.orange : Color.indigo)
+                    (pendingAttribution.disposition == .held ? Color.orange : CapturePalette.plum)
                         .opacity(0.08),
                     in: RoundedRectangle(cornerRadius: 12)
                 )
@@ -6502,8 +6492,7 @@ private struct CaptureTranscriptSpeakerGroupCard: View {
                     )
                     .frame(maxWidth: .infinity, minHeight: 44)
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(.indigo)
+                .captureProminentButton(fill: CapturePalette.plumFill)
                 .accessibilityHint("Saves only a provider voice to participant mapping. Transcript words remain unreviewed.")
                 .accessibilityIdentifier("CaptureTranscriptIdentifySpeaker_\(group.providerSpeakerLabel)")
                 .disabled(
@@ -6522,10 +6511,10 @@ private struct CaptureTranscriptSpeakerGroupCard: View {
                 .accessibilityIdentifier("CaptureTranscriptSpeakerWordReviewBoundary_\(group.providerSpeakerLabel)")
         }
         .padding(14)
-        .background(Color.indigo.opacity(0.055), in: RoundedRectangle(cornerRadius: 16))
+        .background(CapturePalette.plum.opacity(0.055), in: RoundedRectangle(cornerRadius: 16))
         .overlay {
             RoundedRectangle(cornerRadius: 16)
-                .stroke(Color.indigo.opacity(0.16), lineWidth: 1)
+                .stroke(CapturePalette.plum.opacity(0.16), lineWidth: 1)
         }
         .task {
             if selectedParticipantID.isEmpty {
@@ -6552,7 +6541,7 @@ private struct CaptureTranscriptSpeakerGroupCard: View {
                 VStack(alignment: .leading, spacing: 3) {
                     Text("\(sample.startSeconds.captureTranscriptTimestamp)–\(sample.endSeconds.captureTranscriptTimestamp)")
                         .font(.caption.monospacedDigit().weight(.bold))
-                        .foregroundStyle(.indigo)
+                        .foregroundStyle(CapturePalette.plum)
                     Text(sample.text)
                         .font(.caption)
                         .lineLimit(3)
@@ -6681,7 +6670,7 @@ private struct CaptureTranscriptSegmentCard: View {
                 VStack(alignment: .leading, spacing: 5) {
                     Text("\(segment.sessionStartSeconds.captureTranscriptTimestamp)–\(segment.sessionEndSeconds.captureTranscriptTimestamp)")
                         .font(.caption.monospacedDigit().weight(.bold))
-                        .foregroundStyle(.blue)
+                        .foregroundStyle(CapturePalette.ink)
                     Text(captureTranscriptNonempty(segment.speakerLabel) ?? "Unlabelled speaker")
                         .font(.headline)
                     CaptureTranscriptSpeakerEvidenceBadge(
@@ -6775,13 +6764,13 @@ private struct CaptureTranscriptSegmentCard: View {
                 VStack(alignment: .leading, spacing: 5) {
                     Label("Voice identified from Session samples", systemImage: "person.wave.2.fill")
                         .font(.caption.weight(.bold))
-                        .foregroundStyle(.indigo)
+                        .foregroundStyle(CapturePalette.plum)
                     Text("Provider \(attribution.providerSpeakerLabel) is displayed as \(attribution.attributedLabel). This does not mark this turn's words playback-reviewed.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
                 .padding(12)
-                .background(Color.indigo.opacity(0.09), in: RoundedRectangle(cornerRadius: 12))
+                .background(CapturePalette.plum.opacity(0.09), in: RoundedRectangle(cornerRadius: 12))
                 .accessibilityIdentifier("CaptureTranscriptSpeakerAttribution_\(segment.id)")
             }
 
@@ -6805,7 +6794,7 @@ private struct CaptureTranscriptSegmentCard: View {
                     )
                     .font(.caption.weight(.bold))
                     .foregroundStyle(
-                        pendingDecision.disposition == .held ? Color.orange : Color.blue
+                        pendingDecision.disposition == .held ? Color.orange : CapturePalette.ink
                     )
                     Text(
                         pendingDecision.lastErrorMessage
@@ -6831,7 +6820,7 @@ private struct CaptureTranscriptSegmentCard: View {
                 }
                 .padding(12)
                 .background(
-                    (pendingDecision.disposition == .held ? Color.orange : Color.blue)
+                    (pendingDecision.disposition == .held ? Color.orange : CapturePalette.ink)
                         .opacity(0.08),
                     in: RoundedRectangle(cornerRadius: 12)
                 )
@@ -6848,8 +6837,7 @@ private struct CaptureTranscriptSegmentCard: View {
                 Button(segment.acceptedCorrection == nil ? "Edit transcript" : "Revise correction") {
                     beginEditing()
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(.blue)
+                .captureProminentButton(fill: CapturePalette.inkFill)
                 .disabled(client.isMutating || pendingDecision != nil)
                 .accessibilityIdentifier("CaptureTranscriptCorrectButton_\(segment.id)")
 
@@ -6928,7 +6916,7 @@ private struct CaptureTranscriptSegmentCard: View {
                 systemImage: "ear.badge.exclamationmark"
             )
             .font(.caption.weight(.bold))
-            .foregroundStyle(.indigo)
+            .foregroundStyle(CapturePalette.plum)
             if let minimum = attention.minimumWordConfidence {
                 Text("Lowest provider word confidence: \(Int((minimum * 100).rounded()))%. This ranks review effort; it does not estimate whether the whole segment is correct.")
                     .font(.caption)
@@ -6948,12 +6936,12 @@ private struct CaptureTranscriptSegmentCard: View {
                         }.joined(separator: " · ")
                 )
                 .font(.caption.monospacedDigit().weight(.semibold))
-                .foregroundStyle(.indigo)
+                .foregroundStyle(CapturePalette.plum)
                 .fixedSize(horizontal: false, vertical: true)
             }
         }
         .padding(11)
-        .background(Color.indigo.opacity(0.075), in: RoundedRectangle(cornerRadius: 11))
+        .background(CapturePalette.plum.opacity(0.075), in: RoundedRectangle(cornerRadius: 11))
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier("CaptureTranscriptConfidenceAttention_\(segment.id)")
     }
@@ -7042,8 +7030,7 @@ private struct CaptureTranscriptSegmentCard: View {
                         Label("Keep \(impact.kindLabel.lowercased()) as written", systemImage: "checkmark.seal")
                             .frame(maxWidth: .infinity, minHeight: 44)
                     }
-                    .buttonStyle(.borderedProminent)
-                    .tint(.orange)
+                    .captureProminentButton(fill: CapturePalette.warningFill)
                     .disabled(
                         client.isMutating
                             || previewOnly
@@ -7157,7 +7144,7 @@ private struct CaptureTranscriptSegmentCard: View {
                         }
                     }
                 }
-                .buttonStyle(.borderedProminent)
+                .captureProminentButton()
                 .frame(maxWidth: .infinity, minHeight: 44)
                 .disabled(client.isMutating || previewOnly || pendingDecision != nil || correctionIsEmptyOrUnchanged)
                 .accessibilityIdentifier("CaptureTranscriptAcceptCorrectionButton_\(segment.id)")
@@ -7190,7 +7177,7 @@ private struct CaptureTranscriptSegmentCard: View {
             if isCreatingTask {
                 Label("Task", systemImage: "checklist")
                     .font(.caption.weight(.bold))
-                    .foregroundStyle(.blue)
+                    .foregroundStyle(CapturePalette.ink)
                 TextField("Task title", text: $taskTitle, axis: .vertical)
                     .lineLimit(2...4)
                     .textFieldStyle(.roundedBorder)
@@ -7215,7 +7202,7 @@ private struct CaptureTranscriptSegmentCard: View {
                             }
                         }
                     }
-                    .buttonStyle(.borderedProminent)
+                    .captureProminentButton()
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(minHeight: 44)
                     .disabled(taskTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || client.isMutating || previewOnly || decisionsLocked)
@@ -7243,7 +7230,7 @@ private struct CaptureTranscriptSegmentCard: View {
             }
         }
         .padding(12)
-        .background(Color.blue.opacity(0.07), in: RoundedRectangle(cornerRadius: 12))
+        .background(CapturePalette.ink.opacity(0.07), in: RoundedRectangle(cornerRadius: 12))
     }
 
     private var transcriptGoalComposer: some View {
@@ -7251,7 +7238,7 @@ private struct CaptureTranscriptSegmentCard: View {
             if isCreatingGoal {
                 Label("Goal", systemImage: "target")
                     .font(.caption.weight(.bold))
-                    .foregroundStyle(.purple)
+                    .foregroundStyle(CapturePalette.plum)
                 TextField("Goal title", text: $goalTitle, axis: .vertical)
                     .lineLimit(2...4)
                     .textFieldStyle(.roundedBorder)
@@ -7276,8 +7263,7 @@ private struct CaptureTranscriptSegmentCard: View {
                             }
                         }
                     }
-                    .buttonStyle(.borderedProminent)
-                    .tint(.purple)
+                    .captureProminentButton(fill: CapturePalette.plumFill)
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(minHeight: 44)
                     .disabled(goalTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || client.isMutating || previewOnly || decisionsLocked)
@@ -7307,7 +7293,7 @@ private struct CaptureTranscriptSegmentCard: View {
             }
         }
         .padding(12)
-        .background(Color.purple.opacity(0.07), in: RoundedRectangle(cornerRadius: 12))
+        .background(CapturePalette.plum.opacity(0.07), in: RoundedRectangle(cornerRadius: 12))
     }
 
     private var transcriptNoteComposer: some View {
@@ -7362,8 +7348,7 @@ private struct CaptureTranscriptSegmentCard: View {
                             }
                         }
                     }
-                    .buttonStyle(.borderedProminent)
-                    .tint(.orange)
+                    .captureProminentButton(fill: CapturePalette.warningFill)
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(minHeight: 44)
                     .disabled(noteBody.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || client.isMutating || previewOnly || decisionsLocked)
@@ -7415,7 +7400,7 @@ private struct CaptureTranscriptSegmentCard: View {
         VStack(alignment: .leading, spacing: 8) {
             Label("AI proposal · not transcript truth", systemImage: "sparkles")
                 .font(.caption.weight(.bold))
-                .foregroundStyle(.purple)
+                .foregroundStyle(CapturePalette.plum)
                 .accessibilityIdentifier("CaptureTranscriptAIProposal")
             if let speaker = captureTranscriptNonempty(proposal.correctedSpeakerLabel) {
                 Text("Proposed speaker: \(speaker)").font(.subheadline.weight(.semibold))
@@ -7438,10 +7423,10 @@ private struct CaptureTranscriptSegmentCard: View {
             }
             Text("Until accepted here, this proposal does not change the effective transcript.")
                 .font(.caption2.weight(.semibold))
-                .foregroundStyle(.purple)
+                .foregroundStyle(CapturePalette.plum)
         }
         .padding(12)
-        .background(Color.purple.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
+        .background(CapturePalette.plum.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
     }
 
     private func acceptAIProposalButton(_ proposal: CaptureTranscriptCorrection) -> some View {
@@ -7462,8 +7447,7 @@ private struct CaptureTranscriptSegmentCard: View {
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
         }
-        .buttonStyle(.borderedProminent)
-        .tint(.purple)
+        .captureProminentButton(fill: CapturePalette.plumFill)
         .disabled(playbackPosition == nil || client.isMutating || previewOnly || decisionsLocked)
         .accessibilityIdentifier("CaptureTranscriptAcceptAIButton")
     }

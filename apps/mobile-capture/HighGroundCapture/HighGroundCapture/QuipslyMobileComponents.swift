@@ -6,9 +6,9 @@ struct MobileStudioBackground: View {
     var body: some View {
         LinearGradient(
             colors: [
-                Color(.systemBackground),
-                Color.teal.opacity(0.10),
-                Color.orange.opacity(0.08),
+                CapturePalette.canvas,
+                CapturePalette.accentSoft.opacity(0.72),
+                CapturePalette.brass.opacity(0.08),
             ],
             startPoint: .topLeading,
             endPoint: .bottomTrailing
@@ -60,7 +60,7 @@ struct CaptureSessionContextPanel: View {
                         } label: {
                             Label("Save Nest", systemImage: "arrow.up.doc")
                         }
-                        .buttonStyle(.borderedProminent)
+                        .captureProminentButton()
                         .controlSize(.mini)
                         .disabled(isSyncingContext)
                     }
@@ -79,13 +79,13 @@ struct CaptureSessionContextPanel: View {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("PHONE DRAFT")
                             .font(.caption2.bold())
-                            .foregroundStyle(.teal)
+                            .foregroundStyle(CapturePalette.accent)
                         Text(draft.contextConflictSummary)
                             .font(.caption2)
                     }
                     .padding(8)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Color.teal.opacity(0.08), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .background(CapturePalette.accent.opacity(0.08), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
 
                     VStack(alignment: .leading, spacing: 4) {
                         Text("LATEST NEST")
@@ -117,7 +117,7 @@ struct CaptureSessionContextPanel: View {
                             conflictMessage = nil
                             syncStatus = "Phone draft ready to resave"
                         }
-                        .buttonStyle(.borderedProminent)
+                        .captureProminentButton()
                         .controlSize(.small)
                         .accessibilityIdentifier("KeepPhoneContextVersion")
                     }
@@ -183,7 +183,7 @@ struct CaptureSessionContextPanel: View {
             HStack(spacing: 8) {
                 Label("Saved on this device", systemImage: "iphone.gen3")
                     .font(.caption2)
-                    .foregroundStyle(.teal)
+                    .foregroundStyle(CapturePalette.accent)
                 Spacer()
                 Text(draft.updatedAtDisplay)
                     .font(.caption2)
@@ -874,7 +874,7 @@ private struct MobileClientFollowUpSnapshot: View {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Current progress")
                         .font(.caption2.bold())
-                        .foregroundStyle(.blue)
+                        .foregroundStyle(CapturePalette.ink)
                     HStack(spacing: 8) {
                         StatusChip(
                             label: "\(current.summary.completedTaskCount) done",
@@ -887,7 +887,7 @@ private struct MobileClientFollowUpSnapshot: View {
                         if current.summary.changedSinceReleaseCount > 0 {
                             StatusChip(
                                 label: "\(current.summary.changedSinceReleaseCount) updated",
-                                tint: .blue
+                                tint: CapturePalette.ink
                             )
                         }
                     }
@@ -897,7 +897,7 @@ private struct MobileClientFollowUpSnapshot: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 .padding(8)
-                .background(Color.blue.opacity(0.07), in: RoundedRectangle(cornerRadius: 10))
+                .background(CapturePalette.ink.opacity(0.07), in: RoundedRectangle(cornerRadius: 10))
                 .accessibilityElement(children: .contain)
                 .accessibilityIdentifier("CaptureClientFollowUpCurrentProgress_\(followUp.id)")
             }
@@ -962,7 +962,7 @@ private struct MobileClientFollowUpSnapshot: View {
                                                 : "questionmark.circle"
                                     )
                                     .font(.caption2.bold())
-                                    .foregroundStyle(current.status == "ACHIEVED" ? .green : .blue)
+                                    .foregroundStyle(current.status == "ACHIEVED" ? .green : CapturePalette.ink)
                                     .accessibilityIdentifier("CaptureClientFollowUpCurrentGoalStatus_\(goal.id)")
                                     if let progress = current.latestProgress {
                                         Text(progress.progressPercent.map { "Latest check-in \($0)%" } ?? "Latest check-in recorded")
@@ -1020,7 +1020,7 @@ private struct MobileClientFollowUpSnapshot: View {
                                                 : "questionmark.circle"
                                     )
                                     .font(.caption2.bold())
-                                    .foregroundStyle(current.status == "DONE" ? .green : .blue)
+                                    .foregroundStyle(current.status == "DONE" ? .green : CapturePalette.ink)
                                     .accessibilityIdentifier("CaptureClientFollowUpCurrentTaskStatus_\(task.id)")
                                     if current.availability == "CURRENT",
                                        currentFollowThrough?.canOpenWork == true,
@@ -1041,14 +1041,14 @@ private struct MobileClientFollowUpSnapshot: View {
                 VStack(alignment: .leading, spacing: 3) {
                     Text("Bring into the next Session")
                         .font(.caption2.bold())
-                        .foregroundStyle(.purple)
+                        .foregroundStyle(CapturePalette.plum)
                     Text(next)
                         .font(.caption)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 .padding(8)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color.purple.opacity(0.07), in: RoundedRectangle(cornerRadius: 10))
+                .background(CapturePalette.plum.opacity(0.07), in: RoundedRectangle(cornerRadius: 10))
             }
 
             DisclosureGroup(isExpanded: $showsDetails) {
@@ -1226,7 +1226,7 @@ struct MobileCoachClientFollowUpCard: View {
                 VStack(alignment: .leading, spacing: 3) {
                     Label("Follow-up for \(workspace.room.client.label)", systemImage: "person.crop.circle.badge.checkmark")
                         .font(.caption.bold())
-                        .foregroundStyle(.teal)
+                        .foregroundStyle(CapturePalette.accent)
                     Text(workspace.output?.status == "DRAFT" ? "Draft ready" : "Create a follow-up")
                         .font(.subheadline.bold())
                     HStack {
@@ -1245,7 +1245,7 @@ struct MobileCoachClientFollowUpCard: View {
             .accessibilityIdentifier("CaptureCoachClientFollowUp")
             .accessibilityHint("Opens the private follow-up editor. Nothing is shared until you tap Share.")
             .padding(10)
-            .background(Color.teal.opacity(0.08), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .background(CapturePalette.accent.opacity(0.08), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
             .sheet(isPresented: $isReviewing) {
                 NavigationStack {
                     if let sourceToReview {
@@ -1267,11 +1267,11 @@ struct MobileCoachClientFollowUpCard: View {
                     if let notice {
                         Text(notice)
                             .font(.caption.bold())
-                            .foregroundStyle(.teal)
+                            .foregroundStyle(CapturePalette.accent)
                             .fixedSize(horizontal: false, vertical: true)
                             .padding(8)
                             .frame(maxWidth: .infinity, alignment: .leading)
-                            .background(Color.teal.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
+                            .background(CapturePalette.accent.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
                             .accessibilityIdentifier("CaptureCoachFollowUpNotice")
                     }
 
@@ -1377,8 +1377,7 @@ struct MobileCoachClientFollowUpCard: View {
                         )
                         .frame(maxWidth: .infinity)
                     }
-                    .buttonStyle(.borderedProminent)
-                    .tint(.teal)
+                    .captureProminentButton(fill: CapturePalette.actionFill)
                     .disabled(previewOnly || isSaving || isReleasing || !draft.isValid || !AuthManager.shared.networkActionsAllowed)
                     .accessibilityIdentifier("CaptureCoachFollowUpSave")
                     .accessibilityHint("Saves this private draft without sharing it with the client.")
@@ -1443,8 +1442,7 @@ struct MobileCoachClientFollowUpCard: View {
                                 Label(isReleasing ? "Sharing" : "Share with \(output.recipientLabel)", systemImage: "paperplane")
                                     .frame(maxWidth: .infinity)
                             }
-                            .buttonStyle(.borderedProminent)
-                            .tint(.green)
+                            .captureProminentButton(fill: CapturePalette.successFill)
                             .disabled(previewOnly || !releaseReady || isSaving || isReleasing || !AuthManager.shared.networkActionsAllowed)
                             .accessibilityIdentifier("CaptureCoachFollowUpRelease")
                         }
@@ -1506,14 +1504,14 @@ struct MobileClientFollowUpLoadingCard: View {
                 Spacer(minLength: 0)
             }
             .padding(10)
-            .background(Color.teal.opacity(0.06), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .background(CapturePalette.accent.opacity(0.06), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
             .accessibilityElement(children: .combine)
             .accessibilityIdentifier("CaptureClientFollowUpLoading")
         case .failed:
             Button(action: retry) {
                 HStack(spacing: 10) {
                     Image(systemName: "arrow.clockwise.circle")
-                        .foregroundStyle(.teal)
+                        .foregroundStyle(CapturePalette.accent)
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Follow-up couldn't load")
                             .font(.subheadline.bold())
