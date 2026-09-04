@@ -107,6 +107,24 @@ test("Studio deploy helper ignores GitHub auth credential files only", () => {
   assert.match(deployScript, /STUDIO_IMAGE_BUILD_STRATEGY/);
   assert.match(deployScript, /apps\/quipsly\/Dockerfile/);
   assert.match(dockerfile, /ca-certificates openssl/);
+  assert.match(
+    dockerfile,
+    /COPY --from=builder --chown=nextjs:nodejs \/app\/prisma\/migrations \.\/prisma\/migrations/,
+    "the runtime image must carry its exact migration ledger for the pre-promotion schema gate",
+  );
+});
+
+test("preview smoke blocks promotion when the exact image's migrations are not applied", () => {
+  const smoke = readFileSync("scripts/release/quipsly-smoke-preview.sh", "utf8");
+  const readiness = readFileSync(
+    "apps/quipsly/src/lib/server/production-core-readiness.ts",
+    "utf8",
+  );
+
+  assert.match(smoke, /check_json_endpoint "\/api\/production-core\/readiness"/);
+  assert.match(readiness, /FROM "_prisma_migrations"/);
+  assert.match(readiness, /missingMigrations/);
+  assert.match(readiness, /status: ok \? "ready" : "needs-schema-sync"/);
 });
 
 test("Quipsly owns the React DOM declarations required by its dependency-closed image build", () => {

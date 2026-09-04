@@ -1,5 +1,7 @@
 import "server-only";
 
+import { readdir } from "node:fs/promises";
+import path from "node:path";
 import { Prisma } from "@prisma/client";
 import { getPrismaClient } from "@/lib/prisma";
 
@@ -113,9 +115,19 @@ export type ProductionCoreReadiness = {
   presentTableCount: number;
   missingTables: string[];
   groups: ProductionCoreReadinessGroup[];
+  migrationLedger?: ProductionMigrationLedgerReadiness;
   nextStep: string;
   error?: string;
 };
+
+export type ProductionMigrationLedgerReadiness = {
+  ok: boolean;
+  expectedMigrationCount: number;
+  appliedMigrationCount: number;
+  missingMigrations: string[];
+};
+
+const PRISMA_MIGRATION_NAME = /^\d{14}_[a-z0-9_]+$/;
 
 function isNextBuildPhase() {
   return process.env.NEXT_PHASE === "phase-production-build" || process.env.npm_lifecycle_event === "build";
@@ -147,17 +159,67 @@ export function readinessFromTables(existingTables: Set<string>, generatedAt: st
   };
 }
 
+export function migrationReadinessFromNames(
+  expectedMigrationNames: Iterable<string>,
+  appliedMigrationNames: Iterable<string>,
+): ProductionMigrationLedgerReadiness {
+  const expected = [...new Set(expectedMigrationNames)].sort();
+  const applied = new Set(appliedMigrationNames);
+  const missingMigrations = expected.filter((migration) => !applied.has(migration));
+  return {
+    ok: missingMigrations.length === 0,
+    expectedMigrationCount: expected.length,
+    appliedMigrationCount: expected.filter((migration) => applied.has(migration)).length,
+    missingMigrations,
+  };
+}
+
+async function expectedMigrationNames() {
+  const migrationRoot = path.join(process.cwd(), "prisma", "migrations");
+  const entries = await readdir(migrationRoot, { withFileTypes: true });
+  return entries
+    .filter((entry) => entry.isDirectory() && PRISMA_MIGRATION_NAME.test(entry.name))
+    .map((entry) => entry.name)
+    .sort();
+}
+
 export async function getProductionCoreReadiness(): Promise<ProductionCoreReadiness> {
   const generatedAt = new Date().toISOString();
   const prisma = getPrismaClient();
-  const rows = await prisma.$queryRaw<Array<{ table_name: string }>>`
-    SELECT table_name
-    FROM information_schema.tables
-    WHERE table_schema = 'public'
-      AND table_name IN (${Prisma.join([...REQUIRED_PRODUCTION_CORE_TABLES])})
-  `;
+  const [rows, expectedMigrations, appliedMigrationRows] = await Promise.all([
+    prisma.$queryRaw<Array<{ table_name: string }>>`
+      SELECT table_name
+      FROM information_schema.tables
+      WHERE table_schema = 'public'
+        AND table_name IN (${Prisma.join([...REQUIRED_PRODUCTION_CORE_TABLES])})
+    `,
+    expectedMigrationNames(),
+    prisma.$queryRaw<Array<{ migration_name: string }>>`
+      SELECT migration_name
+      FROM "_prisma_migrations"
+      WHERE finished_at IS NOT NULL
+        AND rolled_back_at IS NULL
+    `,
+  ]);
 
-  return readinessFromTables(new Set(rows.map((row) => row.table_name)), generatedAt);
+  const tableReadiness = readinessFromTables(
+    new Set(rows.map((row) => row.table_name)),
+    generatedAt,
+  );
+  const migrationLedger = migrationReadinessFromNames(
+    expectedMigrations,
+    appliedMigrationRows.map((row) => row.migration_name),
+  );
+  const ok = tableReadiness.ok && migrationLedger.ok;
+  return {
+    ...tableReadiness,
+    ok,
+    status: ok ? "ready" : "needs-schema-sync",
+    migrationLedger,
+    nextStep: migrationLedger.ok
+      ? tableReadiness.nextStep
+      : "Apply the exact image's committed Prisma migrations through the guarded schema release before promoting this revision.",
+  };
 }
 
 export async function getProductionCoreReadinessSafe(): Promise<ProductionCoreReadiness> {

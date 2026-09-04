@@ -1,6 +1,7 @@
 import {
   PRODUCTION_CORE_FEATURE_GROUPS,
   REQUIRED_PRODUCTION_CORE_TABLES,
+  migrationReadinessFromNames,
   readinessFromTables,
 } from "./production-core-readiness";
 
@@ -36,6 +37,36 @@ describe("production core readiness", () => {
     expect(result.groups.find((group) => group.id === "work-session-taxonomy")).toMatchObject({
       status: "needs-schema-sync",
       missingTables: ["GoalTagLink"],
+    });
+  });
+
+  it("blocks an exact app image when any shipped migration is absent", () => {
+    expect(migrationReadinessFromNames(
+      [
+        "20260827223000_add_personal_note_sessions",
+        "20260829100000_add_voice_recognition_preferences",
+      ],
+      ["20260827223000_add_personal_note_sessions"],
+    )).toEqual({
+      ok: false,
+      expectedMigrationCount: 2,
+      appliedMigrationCount: 1,
+      missingMigrations: ["20260829100000_add_voice_recognition_preferences"],
+    });
+  });
+
+  it("allows a compatible older image when all migrations it ships are applied", () => {
+    expect(migrationReadinessFromNames(
+      ["20260827223000_add_personal_note_sessions"],
+      [
+        "20260827223000_add_personal_note_sessions",
+        "20260829100000_add_voice_recognition_preferences",
+      ],
+    )).toMatchObject({
+      ok: true,
+      expectedMigrationCount: 1,
+      appliedMigrationCount: 1,
+      missingMigrations: [],
     });
   });
 });
