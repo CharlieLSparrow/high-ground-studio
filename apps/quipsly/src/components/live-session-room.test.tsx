@@ -305,8 +305,12 @@ describe("LiveSessionRoom", () => {
 
   it("waits for a newly granted microphone to appear without asking for manual refresh", async () => {
     const stop = jest.fn();
-    const getUserMedia = jest.fn().mockResolvedValue({
-      getTracks: () => [{ stop }],
+    let onDeviceChange: (() => void) | undefined;
+    const getUserMedia = jest.fn(async () => {
+      onDeviceChange?.();
+      return {
+        getTracks: () => [{ stop }],
+      };
     });
     const enumerateDevices = jest.fn()
       .mockResolvedValueOnce([])
@@ -323,7 +327,9 @@ describe("LiveSessionRoom", () => {
       value: {
         enumerateDevices,
         getUserMedia,
-        addEventListener: jest.fn(),
+        addEventListener: jest.fn((event: string, listener: () => void) => {
+          if (event === "devicechange") onDeviceChange = listener;
+        }),
         removeEventListener: jest.fn(),
       },
     });

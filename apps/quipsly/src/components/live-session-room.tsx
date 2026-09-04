@@ -568,6 +568,7 @@ export function LiveSessionRoom({
   const sourceLockedRef = useRef(sourceLocked);
   const previousSourceLockedRef = useRef(sourceLocked);
   const deviceRefreshGenerationRef = useRef(0);
+  const activePermissionRefreshesRef = useRef(0);
   const joinAttemptGenerationRef = useRef(0);
   const suppressPreferenceWriteRef = useRef(false);
   const lastPublishedWatchReceiptRef = useRef("");
@@ -1013,6 +1014,8 @@ export function LiveSessionRoom({
     } else if (permission !== "none" || cause === "manual") {
       setMessage("Checking connected call devices without leaving the room…");
     }
+    const ownsPermissionRefresh = permission !== "none";
+    if (ownsPermissionRefresh) activePermissionRefreshesRef.current += 1;
     try {
       if (permission !== "none") {
         clearPreflightPreview();
@@ -1242,6 +1245,13 @@ export function LiveSessionRoom({
       setTechnicalMessage(error instanceof Error ? error.message : "The browser did not return a media-device error.");
       setMessage("Device access couldn't be completed. Check this site's microphone and camera permissions, then try again.");
       return false;
+    } finally {
+      if (ownsPermissionRefresh) {
+        activePermissionRefreshesRef.current = Math.max(
+          0,
+          activePermissionRefreshesRef.current - 1,
+        );
+      }
     }
   }, [attachLocalCameraTrack, clearPreflightPreview, startAudioMeter, stopAudioMeter]);
 
@@ -2046,6 +2056,12 @@ export function LiveSessionRoom({
     void refreshDevices("none", "initial");
     let refreshTimer: ReturnType<typeof setTimeout> | undefined;
     const changed = () => {
+      // Permission grants commonly emit devicechange before enumerateDevices
+      // exposes the granted IDs. The active permission refresh already owns a
+      // bounded settle-and-enumerate cycle; a competing refresh would cancel
+      // it by advancing deviceRefreshGenerationRef and can leave the lobby in
+      // a false no-microphone state.
+      if (activePermissionRefreshesRef.current > 0) return;
       if (refreshTimer) clearTimeout(refreshTimer);
       refreshTimer = setTimeout(() => void refreshDevices("none", "devicechange"), 250);
     };
