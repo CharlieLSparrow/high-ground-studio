@@ -176,6 +176,14 @@ export async function reconcileHeldMobileCaptureRelease(input: {
     }
   }
 
+  // `manifest` can be replaced above after an optimistic control-manifest
+  // write. Re-establish the verified-source invariant on that winning copy
+  // instead of relying on narrowing from the initially loaded generation.
+  const verification = manifest.verification;
+  if (manifest.status !== "verified" || !verification) {
+    return { status: "bytes-not-verified" as const, releasedMedia: false, releasedTranscript: false };
+  }
+
   const processingAuthorization = await evaluateMobileCaptureProcessingAuthorization({
     prisma: input.prisma,
     manifest,
@@ -239,32 +247,32 @@ export async function reconcileHeldMobileCaptureRelease(input: {
   const object = await getMobileCaptureObjectEvidence(manifest.bucketName, manifest.objectName);
   if (
     !object
-    || object.generation !== manifest.verification.generation
-    || object.sizeBytes !== manifest.verification.verifiedSizeBytes
+    || object.generation !== verification.generation
+    || object.sizeBytes !== verification.verifiedSizeBytes
     || (
-      manifest.verification.crc32c !== null
+      verification.crc32c !== null
       && object.crc32c !== null
-      && object.crc32c !== manifest.verification.crc32c
+      && object.crc32c !== verification.crc32c
     )
     || (
-      manifest.verification.md5Hash !== null
+      verification.md5Hash !== null
       && object.md5Hash !== null
-      && object.md5Hash !== manifest.verification.md5Hash
+      && object.md5Hash !== verification.md5Hash
     )
   ) {
     return { status: "source-evidence-mismatch" as const, releasedMedia: false, releasedTranscript: false };
   }
   const hasImmutableGcsChecksumEvidence =
     object.storageBackend === "gcs"
-    && manifest.verification.crc32c !== null
-    && object.crc32c === manifest.verification.crc32c;
+    && verification.crc32c !== null
+    && object.crc32c === verification.crc32c;
   if (!hasImmutableGcsChecksumEvidence) {
     // Legacy receipts and local-development sources do not always retain a
     // provider checksum. Preserve the full SHA-256 fallback for those cases.
     const hashed = await computeMobileCaptureObjectSha256(object);
     if (
-      hashed.streamedBytes !== manifest.verification.verifiedSizeBytes
-      || hashed.sha256 !== manifest.verification.computedSha256
+      hashed.streamedBytes !== verification.verifiedSizeBytes
+      || hashed.sha256 !== verification.computedSha256
       || hashed.sha256 !== manifest.sha256
     ) {
       return { status: "source-integrity-failed" as const, releasedMedia: false, releasedTranscript: false };
