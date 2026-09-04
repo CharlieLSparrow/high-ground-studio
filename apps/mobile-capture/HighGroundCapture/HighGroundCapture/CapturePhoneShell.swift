@@ -23392,11 +23392,11 @@ struct CaptureCanvas: View {
 
 /// Shared semantic color tokens for the shipping Capture experience.
 ///
-/// Parchment and walnut establish the calm reading canvas; moss and fern
-/// identify the ordinary interactive/collaborative path. Lake-glass, rosewood,
-/// and antique brass separate information, goals, and attention without
-/// leaving the overgrown-library family. Feature screens should consume these
-/// tokens instead of inventing a new brand color for each workflow.
+/// Parchment and walnut establish the calm reading canvas. Peacock bookcloth,
+/// fern, lichen, olive, and antique brass provide the restrained highlights:
+/// an elegant old library that has been pleasantly reclaimed by a garden.
+/// Feature screens should consume these tokens instead of inventing a new
+/// brand color for each workflow.
 /// Red, orange, green, and the audio meter remain reserved for familiar
 /// recording, warning, success, and signal meanings.
 enum CapturePalette {
@@ -23437,27 +23437,27 @@ enum CapturePalette {
         dark: UIColor(red: 0.800, green: 0.725, blue: 0.608, alpha: 1)
     )
     static let accentUIColor = adaptiveUIColor(
-        light: UIColor(red: 0.239, green: 0.404, blue: 0.275, alpha: 1),
-        dark: UIColor(red: 0.651, green: 0.788, blue: 0.561, alpha: 1)
+        light: UIColor(red: 0.173, green: 0.380, blue: 0.345, alpha: 1),
+        dark: UIColor(red: 0.525, green: 0.722, blue: 0.655, alpha: 1)
     )
     static let accent = Color(uiColor: accentUIColor)
     static let accentDeep = adaptive(
-        light: UIColor(red: 0.173, green: 0.318, blue: 0.220, alpha: 1),
-        dark: UIColor(red: 0.510, green: 0.678, blue: 0.475, alpha: 1)
+        light: UIColor(red: 0.122, green: 0.286, blue: 0.255, alpha: 1),
+        dark: UIColor(red: 0.420, green: 0.600, blue: 0.529, alpha: 1)
     )
     static let accentSoft = adaptive(
-        light: UIColor(red: 0.835, green: 0.878, blue: 0.780, alpha: 1),
-        dark: UIColor(red: 0.204, green: 0.294, blue: 0.192, alpha: 1)
+        light: UIColor(red: 0.843, green: 0.886, blue: 0.835, alpha: 1),
+        dark: UIColor(red: 0.173, green: 0.227, blue: 0.180, alpha: 1)
     )
     // Filled controls need their own token. The readable foreground accent used
     // for links and icons becomes a washed-out button background in dark mode.
     static let actionFill = adaptive(
-        light: UIColor(red: 0.204, green: 0.353, blue: 0.243, alpha: 1),
-        dark: UIColor(red: 0.271, green: 0.416, blue: 0.271, alpha: 1)
+        light: UIColor(red: 0.157, green: 0.353, blue: 0.314, alpha: 1),
+        dark: UIColor(red: 0.204, green: 0.412, blue: 0.365, alpha: 1)
     )
     static let actionFillRaised = adaptive(
-        light: UIColor(red: 0.310, green: 0.455, blue: 0.302, alpha: 1),
-        dark: UIColor(red: 0.361, green: 0.490, blue: 0.314, alpha: 1)
+        light: UIColor(red: 0.314, green: 0.467, blue: 0.361, alpha: 1),
+        dark: UIColor(red: 0.282, green: 0.427, blue: 0.345, alpha: 1)
     )
     static let brass = adaptive(
         light: UIColor(red: 0.541, green: 0.404, blue: 0.180, alpha: 1),
@@ -23468,23 +23468,23 @@ enum CapturePalette {
         dark: UIColor(red: 0.502, green: 0.349, blue: 0.133, alpha: 1)
     )
     // The historic API names remain stable because feature code uses these as
-    // semantic roles. Visually they are now lake-glass and rosewood—not stray
-    // teal and purple brands competing with Quipsly's living moss.
+    // semantic roles. Visually they are now spruce and olive: near-neighbors
+    // of the primary bookcloth and fern, not separate feature brands.
     static let ink = adaptive(
-        light: UIColor(red: 0.208, green: 0.384, blue: 0.388, alpha: 1),
-        dark: UIColor(red: 0.533, green: 0.714, blue: 0.690, alpha: 1)
+        light: UIColor(red: 0.239, green: 0.357, blue: 0.294, alpha: 1),
+        dark: UIColor(red: 0.573, green: 0.667, blue: 0.557, alpha: 1)
     )
     static let inkFill = adaptive(
-        light: UIColor(red: 0.192, green: 0.349, blue: 0.357, alpha: 1),
-        dark: UIColor(red: 0.243, green: 0.392, blue: 0.384, alpha: 1)
+        light: UIColor(red: 0.204, green: 0.318, blue: 0.267, alpha: 1),
+        dark: UIColor(red: 0.251, green: 0.373, blue: 0.314, alpha: 1)
     )
     static let plum = adaptive(
-        light: UIColor(red: 0.459, green: 0.318, blue: 0.298, alpha: 1),
-        dark: UIColor(red: 0.788, green: 0.604, blue: 0.553, alpha: 1)
+        light: UIColor(red: 0.431, green: 0.392, blue: 0.271, alpha: 1),
+        dark: UIColor(red: 0.702, green: 0.639, blue: 0.455, alpha: 1)
     )
     static let plumFill = adaptive(
-        light: UIColor(red: 0.388, green: 0.259, blue: 0.243, alpha: 1),
-        dark: UIColor(red: 0.420, green: 0.282, blue: 0.259, alpha: 1)
+        light: UIColor(red: 0.365, green: 0.325, blue: 0.220, alpha: 1),
+        dark: UIColor(red: 0.357, green: 0.329, blue: 0.216, alpha: 1)
     )
     static let success = adaptive(
         light: UIColor(red: 0.184, green: 0.420, blue: 0.271, alpha: 1),
@@ -23503,9 +23503,9 @@ enum CapturePalette {
         startPoint: .leading,
         endPoint: .trailing
     )
-    static let record = Color(red: 0.92, green: 0.13, blue: 0.19)
+    static let record = Color(red: 0.714, green: 0.243, blue: 0.227)
     static let meterGradient = LinearGradient(
-        colors: [accent, CapturePalette.success, .yellow, CapturePalette.brass],
+        colors: [accent, CapturePalette.success, CapturePalette.brass, CapturePalette.record],
         startPoint: .leading,
         endPoint: .trailing
     )

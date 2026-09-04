@@ -339,9 +339,9 @@ for (const [surface, source] of brandedCaptureSurfaceTexts) {
     { label: `${surface} has no unrelated gray system-card surface`, forbidden: rawSystemSurface?.[0] },
   );
 }
-requireIncludes(capturePhoneShellText, "static let actionFill = adaptive(", "filled actions have an independent accessible forest token");
-requireIncludes(capturePhoneShellText, "static let plumFill = adaptive(", "editor actions have an independent accessible rosewood token");
-requireIncludes(capturePhoneShellText, "static let accentUIColor = adaptiveUIColor(", "system-owned controls receive the same adaptive moss accent");
+requireIncludes(capturePhoneShellText, "static let actionFill = adaptive(", "filled actions have an independent accessible peacock token");
+requireIncludes(capturePhoneShellText, "static let plumFill = adaptive(", "editor actions have an independent accessible olive token");
+requireIncludes(capturePhoneShellText, "static let accentUIColor = adaptiveUIColor(", "system-owned controls receive the same adaptive bookcloth accent");
 requireIncludes(capturePhoneShellText, "func captureProminentButton(fill:", "filled controls share one readable Quipsly action treatment");
 const captureSwiftSourceDirectory = path.join(
   root,
@@ -565,7 +565,7 @@ requireRegex(
 );
 requireRegex(
   capturePhoneShellText,
-  /#if DEBUG && !targetEnvironment\(simulator\)\s*\/\/\/ Exercises the same start\/stop closures[\s\S]*private func runPhysicalVoiceWritingAcceptanceIfRequested[\s\S]*runsPhysicalVoiceWritingAcceptance[\s\S]*PhysicalVoiceWritingAcceptanceReceiptStore\.write\([\s\S]*phase: \.requested[\s\S]*await requestCoordinatedStart\(for: session\)[\s\S]*waitUntilRecordingOrTerminal[\s\S]*phase: \.recording[\s\S]*Task\.sleep\(for: \.seconds\(7\)\)[\s\S]*await requestCoordinatedStop\(for: session\)[\s\S]*phase: \.finished[\s\S]*QUIPSLY_PHYSICAL_VOICE_WRITING_ACCEPTANCE finished[\s\S]*#endif/,
+  /#if DEBUG && !targetEnvironment\(simulator\)\s*\/\/\/ Exercises the same start\/stop closures[\s\S]*private func runPhysicalVoiceWritingAcceptanceIfRequested[\s\S]*runsPhysicalVoiceWritingAcceptance[\s\S]*PhysicalVoiceWritingAcceptanceReceiptStore\.write\([\s\S]*phase: \.requested[\s\S]*await requestCoordinatedStart\(for: session\)[\s\S]*waitUntilRecordingOrTerminal[\s\S]*phase: \.recording[\s\S]*Task\.sleep\(for: \.seconds\(15\)\)[\s\S]*await requestCoordinatedStop\(for: session\)[\s\S]*phase: \.finished[\s\S]*QUIPSLY_PHYSICAL_VOICE_WRITING_ACCEPTANCE finished[\s\S]*#endif/,
   "DEBUG physical-only voice-writing acceptance traverses production start, source confirmation, and stop before emitting a terminal receipt",
 );
 const physicalVoiceWritingReceiptText = fs.readFileSync(path.join(sourceRoot, "PhysicalVoiceWritingAcceptanceReceipt.swift"), "utf8");

@@ -184,7 +184,7 @@ function Pill({ label, tone = "warm" }: { label: string; tone?: SessionTone }) {
     warn: "border-[#d8bb82] bg-[#f7eed9] text-[#6d4b22]",
     bad: "border-[#d8aaa2] bg-[#f7e8e4] text-[#713d36]",
     warm: "border-[#ead8b4] bg-[#fff7e8] text-[#7b5c3b]",
-    blue: "border-[#b6ccc8] bg-[#e5efed] text-[#315d5a]",
+    blue: "border-[#bdd7cd] bg-[#eef5f1] text-[#2c5148]",
   }[tone];
 
   return <span className={`rounded-full border px-3 py-1 text-[11px] font-black uppercase tracking-wide ${classes}`}>{label}</span>;
@@ -252,7 +252,7 @@ function SessionCard({ session }: { session: MobileCaptureSession }) {
               Open session
             </Link>
             {session.recordingConsentGranted !== true && !sessionIsCompleted(session) ? <Link href={`${workspaceHref}?mode=prepare`} className="inline-flex min-h-11 w-full items-center justify-center rounded-full border border-[#d8bb82] bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-[#6d4b22] hover:bg-[#f7eed9]">Recording options</Link> : null}
-            {session.coachingEngagementId ? <Link href={`/coaching/engagements/${encodeURIComponent(session.coachingEngagementId)}`} className="inline-flex min-h-11 w-full items-center justify-center rounded-full border border-[#b6ccc8] bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-[#315d5a] hover:bg-[#e5efed]">Shared coaching space</Link> : null}
+            {session.coachingEngagementId ? <Link href={`/coaching/engagements/${encodeURIComponent(session.coachingEngagementId)}`} className="inline-flex min-h-11 w-full items-center justify-center rounded-full border border-[#bdd7cd] bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-[#2c5148] hover:bg-[#eef5f1]">Shared coaching space</Link> : null}
             {session.latestCheckoutUrl && !paymentResolvedFor(session) ? <a href={session.latestCheckoutUrl} target="_blank" rel="noreferrer" className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-full border border-[#b7c9b1] bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-[#31543a] hover:bg-[#e7efe3]"><ExternalLink size={14} aria-hidden="true" /> Open Stripe</a> : null}
           </div>
         </div>
@@ -414,22 +414,22 @@ export default function CoachingSessionsPage() {
 
       <main className="mx-auto max-w-6xl space-y-5 px-6 pb-10">
         {payload?.user?.canCreateCaptureSessions ? (
-          <section className="rounded-[1.8rem] border border-[#b6ccc8] bg-white/85 p-6 shadow-sm" aria-labelledby="new-session-heading">
+          <section className="rounded-[1.8rem] border border-[#bdd7cd] bg-white/85 p-6 shadow-sm" aria-labelledby="new-session-heading">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
               <div>
-                <p className="text-xs font-black uppercase tracking-[0.2em] text-[#315d5a]">{isEmptyCreator ? "Start with the right path" : "New Session"}</p>
+                <p className="text-xs font-black uppercase tracking-[0.2em] text-[#2c5148]">{isEmptyCreator ? "Start with the right path" : "New Session"}</p>
                 <h2 id="new-session-heading" className="mt-1 text-2xl font-black text-[#3d3122]">{isEmptyCreator ? "Schedule coaching—or plan another kind of Session" : "Plan a real session"}</h2>
                 <p className="mt-2 max-w-3xl text-sm font-semibold leading-6 text-[#6f5a3d]">{isEmptyCreator ? "Coaching uses the simple client-and-time scheduler. The flexible planner remains here for podcasts, interviews, and internal meetings." : "Create a podcast, coaching, interview, or internal Session when you need one."}</p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 {isEmptyCreator ? <Link href="/coaching#create-appointment" className="inline-flex min-h-11 items-center justify-center rounded-full bg-[#4f6f52] px-5 py-3 text-xs font-black uppercase tracking-wide text-white hover:bg-[#3f5c43]">Schedule coaching</Link> : null}
-                <button type="button" aria-expanded={isPlannerOpen} aria-controls="session-planner" onClick={() => setIsPlannerOpen((current) => !current)} className="inline-flex min-h-11 items-center justify-center rounded-full bg-[#5f8380] px-5 py-3 text-xs font-black uppercase tracking-wide text-white hover:bg-[#4b6e6b]">
+                <button type="button" aria-expanded={isPlannerOpen} aria-controls="session-planner" onClick={() => setIsPlannerOpen((current) => !current)} className="inline-flex min-h-11 items-center justify-center rounded-full bg-[#346457] px-5 py-3 text-xs font-black uppercase tracking-wide text-white hover:bg-[#2c5148]">
                   {isPlannerOpen ? "Close planner" : isEmptyCreator ? "Plan another kind" : "Plan a session"}
                 </button>
               </div>
             </div>
-            {isPlannerOpen ? <form id="session-planner" onSubmit={createSession} className="mt-5 grid gap-4 border-t border-[#cbdad6] pt-5 md:grid-cols-2">
-              <p className="rounded-xl border border-[#cbdad6] bg-[#eef4f1] px-4 py-3 text-xs font-bold leading-5 text-[#315d5a] md:col-span-2">After this step, Quipsly will take you to the private Session workspace to schedule it and invite your client.</p>
+            {isPlannerOpen ? <form id="session-planner" onSubmit={createSession} className="mt-5 grid gap-4 border-t border-[#dceae4] pt-5 md:grid-cols-2">
+              <p className="rounded-xl border border-[#dceae4] bg-[#eef5f1] px-4 py-3 text-xs font-bold leading-5 text-[#2c5148] md:col-span-2">After this step, Quipsly will take you to the private Session workspace to schedule it and invite your client.</p>
               <label className="text-sm font-black text-[#3d3122] md:col-span-2">Session title
                 <input required value={createDraft.title} onChange={(event) => setCreateDraft((current) => ({ ...current, title: event.target.value }))} placeholder="Weekly coaching session" className="mt-1 min-h-11 w-full rounded-xl border border-[#d6c5a5] bg-white px-3 py-2 font-semibold outline-none focus:ring-2 focus:ring-[#5f8380]" />
               </label>
@@ -466,7 +466,7 @@ export default function CoachingSessionsPage() {
                 </label>
               </div>
               <div className="md:col-span-2 flex flex-wrap items-center gap-3">
-                <button type="submit" disabled={createBusy} className="inline-flex min-h-11 items-center justify-center rounded-full bg-[#5f8380] px-5 py-3 text-sm font-black uppercase tracking-wide text-white hover:bg-[#4b6e6b] disabled:cursor-wait disabled:opacity-60">{createBusy ? "Creating Session…" : "Create Session"}</button>
+                <button type="submit" disabled={createBusy} className="inline-flex min-h-11 items-center justify-center rounded-full bg-[#346457] px-5 py-3 text-sm font-black uppercase tracking-wide text-white hover:bg-[#2c5148] disabled:cursor-wait disabled:opacity-60">{createBusy ? "Creating Session…" : "Create Session"}</button>
                 {createMessage ? <p role="status" className="text-sm font-bold text-[#31543a]">{createMessage}</p> : null}
                 {createdRoomId ? <Link href={`/sessions/${encodeURIComponent(createdRoomId)}`} className="inline-flex min-h-11 items-center rounded-full border border-[#b7c9b1] bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-[#31543a]">Open created session</Link> : null}
                 {createError ? <p role="alert" className="text-sm font-bold text-[#713d36]">{createError}</p> : null}

@@ -54,9 +54,9 @@ export function CoachingSuiteNav({ canSchedule }: { canSchedule: boolean }) {
                 key={item.href}
                 href={item.href}
                 aria-current={active ? "page" : undefined}
-                className={`${canSchedule && ["Sessions", "Forms"].includes(item.label) ? "hidden sm:inline-flex" : "inline-flex"} min-h-11 shrink-0 items-center gap-2 rounded-full px-3 text-sm font-black transition sm:px-4 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#5f8380] ${
+                className={`${canSchedule && ["Sessions", "Forms"].includes(item.label) ? "hidden sm:inline-flex" : "inline-flex"} min-h-11 shrink-0 items-center gap-2 rounded-full px-3 text-sm font-black transition sm:px-4 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#477d6e] ${
                   active
-                    ? "bg-[#dfe9da] text-[#294332] shadow-[inset_0_0_0_1px_rgba(79,111,82,0.12)]"
+                    ? "bg-[#dceae4] text-[#243731] shadow-[inset_0_0_0_1px_rgba(44,81,72,0.13)]"
                     : "text-[#6f5a3f] hover:bg-[#f4ecdd] hover:text-[#3d3122]"
                 }`}
               >
@@ -68,7 +68,7 @@ export function CoachingSuiteNav({ canSchedule }: { canSchedule: boolean }) {
         {canSchedule ? (
           <Link
             href="/coaching#create-appointment"
-            className="inline-flex min-h-11 shrink-0 items-center gap-2 rounded-full bg-[#4f6f52] px-4 text-sm font-black text-white shadow-sm transition hover:bg-[#3f5c43] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#5f8380]"
+            className="inline-flex min-h-11 shrink-0 items-center gap-2 rounded-full bg-[linear-gradient(110deg,#284f47,#50775c)] px-4 text-sm font-black text-[#fff7e8] shadow-sm transition hover:saturate-125 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#477d6e]"
           >
             <Plus size={16} aria-hidden="true" />
             <span className="hidden sm:inline">New session</span>

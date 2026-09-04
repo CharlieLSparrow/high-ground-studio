@@ -1,6 +1,108 @@
 @import "tailwindcss";
 
 @theme {
+  /*
+   * Quipsly's utility colors intentionally replace Tailwind's unrelated
+   * rainbow with one library-garden family. Existing feature code keeps its
+   * semantic utility names, while every highlight now reads as peacock
+   * bookcloth, fern, antique brass, or oxblood against parchment and walnut.
+   */
+  --color-violet-50: #eef5f1;
+  --color-violet-100: #dceae4;
+  --color-violet-200: #bdd7cd;
+  --color-violet-300: #93bbae;
+  --color-violet-400: #679a8a;
+  --color-violet-500: #477d6e;
+  --color-violet-600: #346457;
+  --color-violet-700: #2c5148;
+  --color-violet-800: #28413b;
+  --color-violet-900: #243731;
+  --color-violet-950: #101f1c;
+
+  --color-purple-50: var(--color-violet-50);
+  --color-purple-100: var(--color-violet-100);
+  --color-purple-200: var(--color-violet-200);
+  --color-purple-300: var(--color-violet-300);
+  --color-purple-400: var(--color-violet-400);
+  --color-purple-500: var(--color-violet-500);
+  --color-purple-600: var(--color-violet-600);
+  --color-purple-700: var(--color-violet-700);
+  --color-purple-800: var(--color-violet-800);
+  --color-purple-900: var(--color-violet-900);
+  --color-purple-950: var(--color-violet-950);
+
+  --color-fuchsia-50: var(--color-violet-50);
+  --color-fuchsia-100: var(--color-violet-100);
+  --color-fuchsia-200: var(--color-violet-200);
+  --color-fuchsia-300: var(--color-violet-300);
+  --color-fuchsia-400: var(--color-violet-400);
+  --color-fuchsia-500: var(--color-violet-500);
+  --color-fuchsia-600: var(--color-violet-600);
+  --color-fuchsia-700: var(--color-violet-700);
+  --color-fuchsia-800: var(--color-violet-800);
+  --color-fuchsia-900: var(--color-violet-900);
+  --color-fuchsia-950: var(--color-violet-950);
+
+  --color-indigo-50: var(--color-violet-50);
+  --color-indigo-100: var(--color-violet-100);
+  --color-indigo-200: var(--color-violet-200);
+  --color-indigo-300: var(--color-violet-300);
+  --color-indigo-400: var(--color-violet-400);
+  --color-indigo-500: var(--color-violet-500);
+  --color-indigo-600: var(--color-violet-600);
+  --color-indigo-700: var(--color-violet-700);
+  --color-indigo-800: var(--color-violet-800);
+  --color-indigo-900: var(--color-violet-900);
+  --color-indigo-950: var(--color-violet-950);
+
+  --color-sky-50: var(--color-violet-50);
+  --color-sky-100: var(--color-violet-100);
+  --color-sky-200: var(--color-violet-200);
+  --color-sky-300: var(--color-violet-300);
+  --color-sky-400: var(--color-violet-400);
+  --color-sky-500: var(--color-violet-500);
+  --color-sky-600: var(--color-violet-600);
+  --color-sky-700: var(--color-violet-700);
+  --color-sky-800: var(--color-violet-800);
+  --color-sky-900: var(--color-violet-900);
+  --color-sky-950: var(--color-violet-950);
+
+  --color-blue-50: var(--color-violet-50);
+  --color-blue-100: var(--color-violet-100);
+  --color-blue-200: var(--color-violet-200);
+  --color-blue-300: var(--color-violet-300);
+  --color-blue-400: var(--color-violet-400);
+  --color-blue-500: var(--color-violet-500);
+  --color-blue-600: var(--color-violet-600);
+  --color-blue-700: var(--color-violet-700);
+  --color-blue-800: var(--color-violet-800);
+  --color-blue-900: var(--color-violet-900);
+  --color-blue-950: var(--color-violet-950);
+
+  --color-cyan-50: var(--color-violet-50);
+  --color-cyan-100: var(--color-violet-100);
+  --color-cyan-200: var(--color-violet-200);
+  --color-cyan-300: var(--color-violet-300);
+  --color-cyan-400: var(--color-violet-400);
+  --color-cyan-500: var(--color-violet-500);
+  --color-cyan-600: var(--color-violet-600);
+  --color-cyan-700: var(--color-violet-700);
+  --color-cyan-800: var(--color-violet-800);
+  --color-cyan-900: var(--color-violet-900);
+  --color-cyan-950: var(--color-violet-950);
+
+  --color-teal-50: var(--color-violet-50);
+  --color-teal-100: var(--color-violet-100);
+  --color-teal-200: var(--color-violet-200);
+  --color-teal-300: var(--color-violet-300);
+  --color-teal-400: var(--color-violet-400);
+  --color-teal-500: var(--color-violet-500);
+  --color-teal-600: var(--color-violet-600);
+  --color-teal-700: var(--color-violet-700);
+  --color-teal-800: var(--color-violet-800);
+  --color-teal-900: var(--color-violet-900);
+  --color-teal-950: var(--color-violet-950);
+
   --color-studio-ink: #f4f0e8;
   --color-studio-muted: #afc5c0;
   --color-studio-dim: #7fa09b;
@@ -11,9 +113,9 @@
   --color-studio-line-strong: rgba(218, 246, 241, 0.24);
   --color-studio-tag: #9fd18b;
   --color-studio-node: #f0b765;
-  --color-studio-source: #82c6d8;
-  --color-studio-review: #c9b3ff;
-  --color-studio-danger: #f2a6a6;
+  --color-studio-source: #86ad9f;
+  --color-studio-review: #a9ba93;
+  --color-studio-danger: #d5a098;
 
   --shadow-studio-panel: 0 18px 54px rgba(0, 0, 0, 0.24);
 
