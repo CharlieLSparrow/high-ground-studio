@@ -7,6 +7,17 @@ acceptance work visible without blocking safe independent development. An item
 leaves this ledger only when the named evidence exists. Automated checks must
 never be substituted for the evidence requested here.
 
+Latest retained Morbo negative control: Build 72 saved and independently
+decoded a 7.253-second, 48 kHz mono AAC source from `iPad Microphone · Top`
+(`5034bcf6…`, 243,416 bytes), but its -62.8 dBFS mean / -49.2 dBFS peak was
+still effectively silent and Apple Speech produced no source-bound text. The
+protected receipt is
+`artifacts/device-acceptance/morbo-build72-cloud-fallback-partial-readback.json`.
+This strengthens source-capture and silence-diagnosis evidence only; it does
+not close the audible dictation, transcript accuracy, correction, or relaunch
+checks below. The direct physical flight now retains a fifteen-second speech
+window for the next human-assisted run.
+
 ## Capture and coaching flight
 
 | State | Validation still required | Evidence that closes it |
