@@ -12166,13 +12166,13 @@ private struct CaptureRecorderView: View {
     /// Exercises the same start/stop closures as the visible record button on
     /// a directly attached iPhone or iPad. The launch gate is DEBUG + physical
     /// device + explicit command-line flag, and the one-shot state prevents a
-    /// SwiftUI reconstruction from starting a second source. Seven seconds is
+    /// SwiftUI reconstruction from starting a second source. Fifteen seconds is
     /// long enough for AVAudioSession activation, a spoken test phrase, and a
     /// non-zero source while keeping accidental test media small. A bounded
     /// five-second lead-in is retained in the protected receipt so a person can
     /// see the launched recorder before the evidence window begins; otherwise
     /// an immediate command-line launch makes a silent microphone
-    /// indistinguishable from a tester who simply missed the seven-second take.
+    /// indistinguishable from a tester who simply missed the fifteen-second take.
     private func runPhysicalVoiceWritingAcceptanceIfRequested(
         for session: MobileCaptureSession
     ) async {
@@ -12249,7 +12249,7 @@ private struct CaptureRecorderView: View {
         print("QUIPSLY_PHYSICAL_VOICE_WRITING_ACCEPTANCE recording id=\(recordingIDLabel)")
 
         do {
-            try await Task.sleep(for: .seconds(7))
+            try await Task.sleep(for: .seconds(15))
         } catch {
             PhysicalVoiceWritingAcceptanceReceiptStore.write(
                 attemptID: acceptanceAttemptID,

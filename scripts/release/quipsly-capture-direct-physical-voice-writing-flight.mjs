@@ -102,7 +102,7 @@ launches the Debug-only source-first acceptance path, waits for one fresh
 attempt, and requires independently pulled playable audio plus nonempty
 on-device timed text bound to those exact source bytes. Grant Apple's ordinary
 microphone and speech permissions on the device if prompted, then speak for
-the seven-second take. Transcript words are never printed or retained in the
+the fifteen-second take. Transcript words are never printed or retained in the
 evidence receipt.
 `;
 }
@@ -115,7 +115,7 @@ export function physicalFlightStateMessage(receipt) {
       : "Waiting for microphone permission and recorder activation on the device.";
   }
   if (receipt.phase === "recording") {
-    return "Recording on the physical device now; speak for the seven-second take.";
+    return "Recording on the physical device now; speak for the fifteen-second take.";
   }
   if (receipt.phase === "start-failed") {
     return `Recorder start failed${receipt.detail ? `: ${receipt.detail}` : "."}`;

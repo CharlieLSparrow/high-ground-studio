@@ -60,6 +60,7 @@ test("reports actionable device states without disclosing transcript content", (
     "Recording begins in 3 seconds. Speak after the recorder starts.",
   );
   assert.match(physicalFlightStateMessage({ phase: "recording" }), /speak/);
+  assert.match(physicalFlightStateMessage({ phase: "recording" }), /fifteen-second/);
   assert.match(
     physicalFlightStateMessage({
       phase: "finished",
