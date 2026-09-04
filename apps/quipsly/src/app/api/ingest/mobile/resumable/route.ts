@@ -21,7 +21,9 @@ import {
 import { evaluateMobileCaptureRoomReadiness } from "@/lib/server/mobile-capture-room-readiness";
 import {
   authorizeExternalSourceImport,
+  authorizePersonalSelfCaptureSource,
   isExternalSourceImportProfile,
+  isPersonalSelfCaptureProfile,
 } from "@/lib/server/mobile-capture-processing-authorization";
 import {
   MOBILE_CAPTURE_RESUMABLE_RESERVATION_TTL_MS,
@@ -576,6 +578,10 @@ export async function POST(request: Request) {
     const externalSourceImport = isExternalSourceImportProfile(
       payload.sourceProfileJson,
     );
+    const personalSelfCapture = isPersonalSelfCaptureProfile(
+      payload.sourceProfileJson,
+      payload.capturePurpose,
+    );
     const uploadOrigin = browserUploadOrigin(request, payload.sourceProfileJson);
     if (parsedSourceProfile?.clientKind === "web" && !uploadOrigin) {
       return jsonNoStore({ ok: false, error: "Browser source uploads require an exact HTTP Origin binding." }, 400);
@@ -703,8 +709,38 @@ export async function POST(request: Request) {
     if (externalAuthorization && !externalAuthorization.ok) {
       return jsonNoStore({ ok: false, error: externalAuthorization.error }, externalAuthorization.status);
     }
-    const roomReadiness = externalAuthorization?.ok
-      ? externalAuthorization.readiness
+    // Private voice writing begins locally before its canonical Home-Nest room
+    // exists. By upload creation the app has materialized that exact source to
+    // a one-person actor-owned PERSONAL_NOTE room. Authorize it here so the
+    // ordinary success path is immediate; the held-release worker remains the
+    // crash/reconnect fallback if those facts have not converged yet.
+    const personalAuthorization = !externalSourceImport && personalSelfCapture
+      ? await authorizePersonalSelfCaptureSource({
+          prisma,
+          binding: {
+            uploadSessionId: binding.uploadSessionId,
+            captureId: binding.captureId,
+            captureGroupId: binding.captureGroupId,
+            callRoomId: binding.callRoomId,
+            actorUserId: binding.actorUserId,
+            participantId: references.participant.id,
+            recordingConsentId: binding.recordingConsentId,
+            sourceType: binding.sourceType as "audio" | "video",
+            sha256: binding.sha256,
+            expectedSizeBytes: binding.expectedSizeBytes,
+            fileName: binding.fileName,
+          },
+          sourceProfileJson: binding.sourceProfileJson,
+          capturePurpose: binding.capturePurpose,
+        })
+      : null;
+    const sourceAuthorization = externalAuthorization?.ok
+      ? externalAuthorization
+      : personalAuthorization?.ok
+        ? personalAuthorization
+        : null;
+    const roomReadiness = sourceAuthorization
+      ? sourceAuthorization.readiness
       : await evaluateMobileCaptureRoomReadiness({
           prisma,
           roomId: payload.callRoomId,
@@ -713,8 +749,8 @@ export async function POST(request: Request) {
           recordingConsentId: references.consent.id,
           sourceType: payload.sourceType,
         });
-    const processingAuthorization = externalAuthorization?.ok
-      ? externalAuthorization.authorization
+    const processingAuthorization = sourceAuthorization
+      ? sourceAuthorization.authorization
       : roomReadiness.eligibleForProcessing
         && roomReadiness.startReceiptId
         && roomReadiness.startConsentVersion
@@ -803,7 +839,9 @@ export async function POST(request: Request) {
       startReceiptId: roomReadiness.startReceiptId,
       consentVersion: externalAuthorization?.ok
         ? externalAuthorization.authorization.consentVersion
-        : roomReadiness.startConsentVersion,
+        : personalAuthorization?.ok
+          ? personalAuthorization.authorization.consentVersion
+          : roomReadiness.startConsentVersion,
       processingAuthorization,
       processingDisposition: processingAuthorization
         ? "eligible"
