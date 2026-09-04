@@ -83,3 +83,38 @@ test("fails closed instead of disabling a partially configured live capability",
     /enabled LiveKit egress/,
   );
 });
+
+test("an explicit feature choice bypasses only that capability's partial-state inheritance", () => {
+  const service = serviceWith([
+    secret("GOOGLE_DRIVE_OAUTH_CLIENT_ID"),
+    plain("QUIPSLY_ACCOUNT_DELETION_WORKER_URL", "https://delete.example.invalid"),
+    secret("QUIPSLY_ACCOUNT_DELETION_WORKER_SHARED_SECRET"),
+  ]);
+  assert.throws(
+    () => deriveReleaseFeatureFlags(service),
+    /partially configured Google Drive/,
+  );
+  assert.throws(
+    () => deriveReleaseFeatureFlags(service, {
+      explicitFeatureKeys: ["ENABLE_GOOGLE_DRIVE_OAUTH"],
+    }),
+    /partially configured account deletion/,
+  );
+  const flags = deriveReleaseFeatureFlags(service, {
+    explicitFeatureKeys: [
+      "ENABLE_GOOGLE_DRIVE_OAUTH",
+      "ENABLE_ACCOUNT_DELETION_WORKER",
+    ],
+  });
+  assert.equal(flags.ENABLE_GOOGLE_DRIVE_OAUTH, "0");
+  assert.equal(flags.ENABLE_ACCOUNT_DELETION_WORKER, "0");
+});
+
+test("rejects unknown explicit feature keys", () => {
+  assert.throws(
+    () => deriveReleaseFeatureFlags(serviceWith([]), {
+      explicitFeatureKeys: ["ENABLE_MYSTERY_SERVICE"],
+    }),
+    /Unknown explicit release feature key/,
+  );
+});

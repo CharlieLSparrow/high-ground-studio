@@ -160,6 +160,17 @@ if [[ "${PRESERVE_LIVE_CAPABILITIES}" == "1" ]]; then
   done
 
   if [[ "${needs_live_capability_readback}" == "1" ]]; then
+    explicit_feature_keys=""
+    [[ -n "${ENABLE_GOOGLE_CALENDAR_OAUTH_EXPLICIT}" ]] && explicit_feature_keys+=",ENABLE_GOOGLE_CALENDAR_OAUTH"
+    [[ -n "${ENABLE_GOOGLE_DRIVE_OAUTH_EXPLICIT}" ]] && explicit_feature_keys+=",ENABLE_GOOGLE_DRIVE_OAUTH"
+    [[ -n "${ENABLE_TRANSCRIPT_WORKER_EXPLICIT}" ]] && explicit_feature_keys+=",ENABLE_TRANSCRIPT_WORKER"
+    [[ -n "${ENABLE_ACCOUNT_DELETION_WORKER_EXPLICIT}" ]] && explicit_feature_keys+=",ENABLE_ACCOUNT_DELETION_WORKER"
+    [[ -n "${ENABLE_SESSION_INVITATION_EMAIL_EXPLICIT}" ]] && explicit_feature_keys+=",ENABLE_SESSION_INVITATION_EMAIL"
+    [[ -n "${ENABLE_STRIPE_SAAS_EXPLICIT}" ]] && explicit_feature_keys+=",ENABLE_STRIPE_SAAS"
+    [[ -n "${ENABLE_LIVEKIT_PROVIDER_EXPLICIT}" ]] && explicit_feature_keys+=",ENABLE_LIVEKIT_PROVIDER"
+    [[ -n "${CONFIGURE_LIVEKIT_EGRESS_EXPLICIT}" ]] && explicit_feature_keys+=",CONFIGURE_LIVEKIT_EGRESS"
+    [[ -n "${ENABLE_LIVEKIT_EGRESS_EXPLICIT}" ]] && explicit_feature_keys+=",ENABLE_LIVEKIT_EGRESS"
+    explicit_feature_keys="${explicit_feature_keys#,}"
     live_service_document="$(
       gcloud run services describe "${SERVICE_NAME}" \
         --project="${PROJECT_ID}" \
@@ -168,7 +179,8 @@ if [[ "${PRESERVE_LIVE_CAPABILITIES}" == "1" ]]; then
     )"
     inherited_feature_lines="$(
       printf '%s' "${live_service_document}" \
-        | node "$(git rev-parse --show-toplevel)/scripts/release/quipsly-release-feature-inheritance.mjs"
+        | QUIPSLY_RELEASE_EXPLICIT_FEATURE_KEYS="${explicit_feature_keys}" \
+          node "$(git rev-parse --show-toplevel)/scripts/release/quipsly-release-feature-inheritance.mjs"
     )"
     while IFS='=' read -r inherited_name inherited_value; do
       [[ -n "${inherited_name}" ]] || continue
