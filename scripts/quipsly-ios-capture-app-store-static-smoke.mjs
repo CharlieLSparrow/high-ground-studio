@@ -31,6 +31,7 @@ const files = {
   captureApp: path.join(sourceRoot, "HighGroundCaptureApp.swift"),
   appDelegate: path.join(sourceRoot, "AppDelegate.swift"),
   authManager: path.join(sourceRoot, "AuthManager.swift"),
+  authResponseDecoder: path.join(sourceRoot, "AuthResponseDecoder.swift"),
   appleSignInCoordinator: path.join(sourceRoot, "AppleSignInCoordinator.swift"),
   captureEntitlements: path.join(sourceRoot, "HighGroundCapture.entitlements"),
   captureUniversalLinkRoute: path.join(
@@ -231,6 +232,7 @@ const contentViewText = read(files.contentView);
 const captureAppText = read(files.captureApp);
 const appDelegateText = read(files.appDelegate);
 const authText = read(files.authManager);
+const authResponseDecoderText = read(files.authResponseDecoder);
 const appleSignInCoordinatorText = read(files.appleSignInCoordinator);
 const captureEntitlementsText = read(files.captureEntitlements);
 const captureUniversalLinkRouteText = read(files.captureUniversalLinkRoute);
@@ -1339,6 +1341,26 @@ requireIncludes(appleSignInCoordinatorText, "request.nonce = Self.sha256(nonce)"
 requireIncludes(authText, 'URLQueryItem(name: "providerId", value: "apple.com")', "Firebase exchanges the native Apple credential with the canonical provider");
 requireIncludes(authText, 'URLQueryItem(name: "nonce", value: rawNonce)', "Firebase receives the one-time unhashed nonce for replay validation");
 requireIncludes(authText, "verifyQuipslyNativeSession(accessToken: idToken)", "federated identity still passes the canonical Quipsly owner boundary");
+requireIncludes(
+  authText,
+  "AuthResponseDecoder.decode(",
+  "native authentication endpoints use stable response decoding",
+);
+requireIncludes(
+  authResponseDecoderText,
+  "NSUnderlyingErrorKey: error",
+  "authentication response failures retain their underlying development diagnostic",
+);
+requireIncludes(
+  authResponseDecoderText,
+  "Your work is safe on this device",
+  "temporary authentication service failures explain local-source durability",
+);
+requireExcludes(
+  authResponseDecoderText,
+  "return error.localizedDescription",
+  "raw Foundation decoder failures never become person-facing authentication copy",
+);
 requireIncludes(loginText, "Create an account with email and password.", "account creation keeps the optional email path plain");
 requireExcludes(loginText, "We will ask you to verify your email once.", "account creation does not front-load verification instructions before the email path is chosen");
 for (const forbidden of [

@@ -7833,8 +7833,22 @@ final class CaptureSessionClient: ObservableObject {
                   payload.ok else {
                 let message = decodedPayload?.error
                     ?? "Nest returned an invalid capture-session response."
-                clearSessionsAfterAuthorityFailure()
-                status = "Needs attention"
+                // A malformed or contract-incompatible collection response is
+                // not proof that previously authorized Sessions disappeared.
+                // Preserve the account-bound projection for navigation and
+                // local-source recovery, but mark it stale so it cannot grant
+                // new collaborative recording authority or consent.
+                let restoredCache = sessions.isEmpty
+                    && restoreProtectedSessionCacheIfAvailable()
+                if !sessions.isEmpty {
+                    isUsingCachedSessions = true
+                    cachedSessionsSavedAt = cachedSessionsSavedAt
+                        ?? lastAuthoritativeLoadAt
+                        ?? Date()
+                }
+                status = restoredCache || !sessions.isEmpty
+                    ? "Sessions need refresh"
+                    : "Needs attention"
                 errorMessage = message
                 return .invalidResponse(message: message)
             }

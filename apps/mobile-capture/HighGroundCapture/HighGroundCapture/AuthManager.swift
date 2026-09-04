@@ -1258,8 +1258,15 @@ final class AuthManager: ObservableObject {
         }
 
         let (data, response) = try await URLSession.shared.data(from: url)
-        guard let http = response as? HTTPURLResponse else { throw URLError(.badServerResponse) }
-        let payload = try JSONDecoder().decode(FirebaseClientConfigResponse.self, from: data)
+        let decoded = try AuthResponseDecoder.decode(
+            FirebaseClientConfigResponse.self,
+            from: data,
+            response: response,
+            errorDomain: "QuipslyAuthConfiguration",
+            malformedResponseMessage: "Quipsly could not read its sign-in configuration. Try again in a moment."
+        )
+        let http = decoded.response
+        let payload = decoded.payload
         guard http.statusCode < 400, payload.ok, let firebase = payload.firebase, !firebase.apiKey.isEmpty else {
             throw NSError(domain: "Auth", code: http.statusCode, userInfo: [NSLocalizedDescriptionKey: payload.error ?? "Firebase client configuration is unavailable."])
         }
@@ -1284,10 +1291,18 @@ final class AuthManager: ObservableObject {
         ])
 
         let (data, response) = try await URLSession.shared.data(for: request)
-        let payload = try JSONDecoder().decode(FirebasePasswordSignInResponse.self, from: data)
-        guard let http = response as? HTTPURLResponse, http.statusCode < 400 else {
+        let decoded = try AuthResponseDecoder.decode(
+            FirebasePasswordSignInResponse.self,
+            from: data,
+            response: response,
+            errorDomain: "FirebaseAuth",
+            malformedResponseMessage: "Firebase returned an unreadable sign-in response. Try again."
+        )
+        let http = decoded.response
+        let payload = decoded.payload
+        guard http.statusCode < 400 else {
             throw firebaseRequestError(
-                statusCode: (response as? HTTPURLResponse)?.statusCode ?? 400,
+                statusCode: http.statusCode,
                 firebaseCode: payload.error?.message,
                 fallback: "Firebase sign-in failed."
             )
@@ -1325,8 +1340,16 @@ final class AuthManager: ObservableObject {
         ])
 
         let (data, response) = try await URLSession.shared.data(for: request)
-        let payload = try JSONDecoder().decode(FirebaseFederatedSignInResponse.self, from: data)
-        guard let http = response as? HTTPURLResponse, http.statusCode < 400 else {
+        let decoded = try AuthResponseDecoder.decode(
+            FirebaseFederatedSignInResponse.self,
+            from: data,
+            response: response,
+            errorDomain: "FirebaseAuth",
+            malformedResponseMessage: "Firebase returned an unreadable Google sign-in response. Try again."
+        )
+        let http = decoded.response
+        let payload = decoded.payload
+        guard http.statusCode < 400 else {
             let code = normalizedFirebaseErrorCode(payload.error?.message)
             if let code, [
                 "ACCOUNT_EXISTS_WITH_DIFFERENT_CREDENTIAL",
@@ -1336,7 +1359,7 @@ final class AuthManager: ObservableObject {
                 throw NativeAuthFlowError.googleAccountNeedsLinking
             }
             throw firebaseRequestError(
-                statusCode: (response as? HTTPURLResponse)?.statusCode ?? 400,
+                statusCode: http.statusCode,
                 firebaseCode: payload.error?.message,
                 fallback: "Firebase could not finish Google sign-in."
             )
@@ -1379,8 +1402,16 @@ final class AuthManager: ObservableObject {
         ])
 
         let (data, response) = try await URLSession.shared.data(for: request)
-        let payload = try JSONDecoder().decode(FirebaseFederatedSignInResponse.self, from: data)
-        guard let http = response as? HTTPURLResponse, http.statusCode < 400 else {
+        let decoded = try AuthResponseDecoder.decode(
+            FirebaseFederatedSignInResponse.self,
+            from: data,
+            response: response,
+            errorDomain: "FirebaseAuth",
+            malformedResponseMessage: "Firebase returned an unreadable Apple sign-in response. Try again."
+        )
+        let http = decoded.response
+        let payload = decoded.payload
+        guard http.statusCode < 400 else {
             let code = normalizedFirebaseErrorCode(payload.error?.message)
             if let code, [
                 "ACCOUNT_EXISTS_WITH_DIFFERENT_CREDENTIAL",
@@ -1390,7 +1421,7 @@ final class AuthManager: ObservableObject {
                 throw NativeAuthFlowError.appleAccountNeedsLinking
             }
             throw firebaseRequestError(
-                statusCode: (response as? HTTPURLResponse)?.statusCode ?? 400,
+                statusCode: http.statusCode,
                 firebaseCode: payload.error?.message,
                 fallback: "Firebase could not finish Apple sign-in."
             )
@@ -1417,10 +1448,18 @@ final class AuthManager: ObservableObject {
         ])
 
         let (data, response) = try await URLSession.shared.data(for: request)
-        let payload = try JSONDecoder().decode(FirebasePasswordSignInResponse.self, from: data)
-        guard let http = response as? HTTPURLResponse, http.statusCode < 400 else {
+        let decoded = try AuthResponseDecoder.decode(
+            FirebasePasswordSignInResponse.self,
+            from: data,
+            response: response,
+            errorDomain: "FirebaseAuth",
+            malformedResponseMessage: "Firebase returned an unreadable account-creation response. Try again."
+        )
+        let http = decoded.response
+        let payload = decoded.payload
+        guard http.statusCode < 400 else {
             throw firebaseRequestError(
-                statusCode: (response as? HTTPURLResponse)?.statusCode ?? 400,
+                statusCode: http.statusCode,
                 firebaseCode: payload.error?.message,
                 fallback: "Firebase account creation failed."
             )
@@ -1439,10 +1478,18 @@ final class AuthManager: ObservableObject {
         request.httpBody = try JSONSerialization.data(withJSONObject: ["idToken": idToken])
 
         let (data, response) = try await URLSession.shared.data(for: request)
-        let payload = try JSONDecoder().decode(FirebaseAccountLookupResponse.self, from: data)
-        guard let http = response as? HTTPURLResponse, http.statusCode < 400 else {
+        let decoded = try AuthResponseDecoder.decode(
+            FirebaseAccountLookupResponse.self,
+            from: data,
+            response: response,
+            errorDomain: "FirebaseAuth",
+            malformedResponseMessage: "Firebase returned an unreadable account response. Sign in again if this continues."
+        )
+        let http = decoded.response
+        let payload = decoded.payload
+        guard http.statusCode < 400 else {
             throw firebaseRequestError(
-                statusCode: (response as? HTTPURLResponse)?.statusCode ?? 400,
+                statusCode: http.statusCode,
                 firebaseCode: payload.error?.message,
                 fallback: "Firebase could not verify this account."
             )
@@ -1497,10 +1544,18 @@ final class AuthManager: ObservableObject {
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
         let (data, response) = try await URLSession.shared.data(for: request)
-        let payload = try JSONDecoder().decode(FirebaseOOBResponse.self, from: data)
-        guard let http = response as? HTTPURLResponse, http.statusCode < 400 else {
+        let decoded = try AuthResponseDecoder.decode(
+            FirebaseOOBResponse.self,
+            from: data,
+            response: response,
+            errorDomain: "FirebaseAuth",
+            malformedResponseMessage: "Firebase returned an unreadable email response. Try again."
+        )
+        let http = decoded.response
+        let payload = decoded.payload
+        guard http.statusCode < 400 else {
             throw firebaseRequestError(
-                statusCode: (response as? HTTPURLResponse)?.statusCode ?? 400,
+                statusCode: http.statusCode,
                 firebaseCode: payload.error?.message,
                 fallback: fallback
             )
@@ -1519,10 +1574,18 @@ final class AuthManager: ObservableObject {
         request.httpBody = body.data(using: .utf8)
 
         let (data, response) = try await URLSession.shared.data(for: request)
-        let payload = try JSONDecoder().decode(FirebaseRefreshResponse.self, from: data)
-        guard let http = response as? HTTPURLResponse, http.statusCode < 400 else {
+        let decoded = try AuthResponseDecoder.decode(
+            FirebaseRefreshResponse.self,
+            from: data,
+            response: response,
+            errorDomain: "FirebaseRefresh",
+            malformedResponseMessage: "Quipsly could not refresh your saved sign-in. Open Account and sign in again if this continues."
+        )
+        let http = decoded.response
+        let payload = decoded.payload
+        guard http.statusCode < 400 else {
             let baseError = firebaseRequestError(
-                statusCode: (response as? HTTPURLResponse)?.statusCode ?? 400,
+                statusCode: http.statusCode,
                 firebaseCode: payload.error?.message,
                 fallback: "Firebase could not refresh this session."
             )
@@ -1549,12 +1612,21 @@ final class AuthManager: ObservableObject {
         var payload: NativeSessionCheckResponse?
         for attempt in 0..<3 {
             (data, response) = try await URLSession.shared.data(for: request)
-            payload = try JSONDecoder().decode(NativeSessionCheckResponse.self, from: data)
-            let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 500
+            guard let http = response as? HTTPURLResponse else {
+                throw URLError(.badServerResponse)
+            }
+            let statusCode = http.statusCode
             if statusCode == 503 && attempt < 2 {
                 try await Task.sleep(nanoseconds: UInt64(attempt + 1) * 300_000_000)
                 continue
             }
+            payload = try AuthResponseDecoder.decode(
+                NativeSessionCheckResponse.self,
+                from: data,
+                response: http,
+                errorDomain: "QuipslySession",
+                malformedResponseMessage: "Quipsly could not verify your saved sign-in. Open Account and sign in again if this continues."
+            ).payload
             break
         }
         guard let payload,
