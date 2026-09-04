@@ -456,8 +456,8 @@ struct CaptureSessionGuardianCard: View {
 
     private var tint: Color {
         switch projection.level {
-        case .ready: .green
-        case .watch: .orange
+        case .ready: CapturePalette.success
+        case .watch: CapturePalette.brass
         case .intervene: .red
         }
     }

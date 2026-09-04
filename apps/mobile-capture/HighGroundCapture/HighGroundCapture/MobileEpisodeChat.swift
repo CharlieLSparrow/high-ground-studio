@@ -910,7 +910,7 @@ struct MobileEpisodeChatCard: View {
                 Label(client.scope.openLabel, systemImage: "bubble.left.and.bubble.right.fill")
                     .frame(maxWidth: .infinity)
             }
-            .buttonStyle(.borderedProminent)
+            .captureProminentButton()
             .disabled(client.isLoading && client.messages.isEmpty)
             .accessibilityIdentifier(client.scope.openButtonAccessibilityIdentifier)
 
@@ -942,7 +942,7 @@ struct MobileEpisodeChatCard: View {
     private var status: some View {
         Text(client.isUsingProtectedCache ? "Offline copy" : (client.statusMessage ?? "Nest chat"))
             .font(.caption.weight(.semibold))
-            .foregroundStyle(client.isUsingProtectedCache ? .orange : .secondary)
+            .foregroundStyle(client.isUsingProtectedCache ? CapturePalette.brass : .secondary)
             .fixedSize(horizontal: false, vertical: true)
             .accessibilityIdentifier("\(client.scope.accessibilityPrefix)Status")
     }
@@ -992,7 +992,7 @@ struct MobileEngagementChatCard: View {
                 Label(client.scope.openLabel, systemImage: "bubble.left.and.bubble.right.fill")
                     .frame(maxWidth: .infinity)
             }
-            .buttonStyle(.borderedProminent)
+            .captureProminentButton()
             .disabled(client.isLoading && client.messages.isEmpty)
             .accessibilityIdentifier("CaptureCoachingConversationOpenButton")
 
@@ -1024,7 +1024,7 @@ struct MobileEngagementChatCard: View {
     private var status: some View {
         Text(client.isUsingProtectedCache ? "Offline copy" : (client.statusMessage ?? "Private chat"))
             .font(.caption.weight(.semibold))
-            .foregroundStyle(client.isUsingProtectedCache ? .orange : .secondary)
+            .foregroundStyle(client.isUsingProtectedCache ? CapturePalette.brass : .secondary)
             .fixedSize(horizontal: false, vertical: true)
             .accessibilityIdentifier("CaptureCoachingConversationStatus")
     }
@@ -1158,7 +1158,7 @@ private struct MobileEpisodeChatThread: View {
             if let errorMessage = client.errorMessage {
                 Label(errorMessage, systemImage: "exclamationmark.triangle.fill")
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(CapturePalette.brass)
             }
             HStack(alignment: .bottom, spacing: 8) {
                 TextField(
@@ -1187,7 +1187,7 @@ private struct MobileEpisodeChatThread: View {
                         Image(systemName: "paperplane.fill")
                     }
                 }
-                .buttonStyle(.borderedProminent)
+                .captureProminentButton()
                 .disabled(
                     draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                         || !client.canEdit

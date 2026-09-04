@@ -41,10 +41,10 @@ struct CaptureSessionContextPanel: View {
                 VStack(alignment: .trailing, spacing: 6) {
                     Text(isSyncingContext ? "SYNCING" : syncStatus.uppercased())
                         .font(.caption2.bold())
-                        .foregroundStyle(syncStatus == "Saved to Nest" || syncStatus == "Loaded from Nest" ? .green : .orange)
+                        .foregroundStyle(syncStatus == "Saved to Nest" || syncStatus == "Loaded from Nest" ? CapturePalette.success : CapturePalette.brass)
                         .padding(.horizontal, 8)
                         .padding(.vertical, 4)
-                        .background((syncStatus == "Saved to Nest" || syncStatus == "Loaded from Nest" ? Color.green : Color.orange).opacity(0.14), in: Capsule())
+                        .background((syncStatus == "Saved to Nest" || syncStatus == "Loaded from Nest" ? CapturePalette.success : CapturePalette.brass).opacity(0.14), in: Capsule())
                     HStack(spacing: 6) {
                         Button {
                             Task { await loadNestContext() }
@@ -71,7 +71,7 @@ struct CaptureSessionContextPanel: View {
                 VStack(alignment: .leading, spacing: 8) {
                     Label("Nest changed elsewhere", systemImage: "arrow.triangle.branch")
                         .font(.caption.bold())
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(CapturePalette.brass)
                     Text(conflictMessage ?? "Your phone draft is still saved on this device. Compare it with the latest Nest revision before choosing.")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
@@ -90,13 +90,13 @@ struct CaptureSessionContextPanel: View {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("LATEST NEST")
                             .font(.caption2.bold())
-                            .foregroundStyle(.orange)
+                            .foregroundStyle(CapturePalette.brass)
                         Text(remoteConflictDraft.contextConflictSummary)
                             .font(.caption2)
                     }
                     .padding(8)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Color.orange.opacity(0.08), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .background(CapturePalette.brass.opacity(0.08), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
 
                     HStack(spacing: 8) {
                         Button("Use Nest version") {
@@ -127,10 +127,10 @@ struct CaptureSessionContextPanel: View {
                         .foregroundStyle(.secondary)
                 }
                 .padding(10)
-                .background(Color.orange.opacity(0.06), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .background(CapturePalette.brass.opacity(0.06), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                 .overlay {
                     RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .stroke(Color.orange.opacity(0.3), lineWidth: 1)
+                        .stroke(CapturePalette.brass.opacity(0.3), lineWidth: 1)
                 }
                 .accessibilityIdentifier("SessionContextConflictCard")
             }
@@ -712,7 +712,7 @@ private struct MobileClientFollowUpExportControl: View {
                 .accessibilityIdentifier("CaptureClientFollowUpExportRetry_\(followUp.id)")
                 Text(fileError)
                     .font(.caption2)
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(CapturePalette.brass)
                     .fixedSize(horizontal: false, vertical: true)
             } else {
                 HStack(spacing: 8) {
@@ -844,13 +844,13 @@ private struct MobileClientFollowUpSnapshot: View {
             HStack(spacing: 8) {
                 StatusChip(
                     label: followUp.status == "DRAFT" ? "Draft" : "Shared",
-                    tint: followUp.status == "DRAFT" ? .orange : .green,
+                    tint: followUp.status == "DRAFT" ? CapturePalette.brass : CapturePalette.success,
                     accessibilityIdentifier: "CaptureClientFollowUpSnapshot_\(followUp.id)_r\(followUp.revision)"
                 )
                 if followUp.status == "RELEASED" {
                     StatusChip(
                         label: followUp.openedAt == nil ? "New" : "Viewed",
-                        tint: followUp.openedAt == nil ? .orange : .green,
+                        tint: followUp.openedAt == nil ? CapturePalette.brass : CapturePalette.success,
                         accessibilityIdentifier: "CaptureClientFollowUpOpenState_\(followUp.id)"
                     )
                 }
@@ -878,11 +878,11 @@ private struct MobileClientFollowUpSnapshot: View {
                     HStack(spacing: 8) {
                         StatusChip(
                             label: "\(current.summary.completedTaskCount) done",
-                            tint: .green
+                            tint: CapturePalette.success
                         )
                         StatusChip(
                             label: "\(current.summary.openTaskCount) open",
-                            tint: current.summary.openTaskCount == 0 ? .green : .orange
+                            tint: current.summary.openTaskCount == 0 ? CapturePalette.success : CapturePalette.brass
                         )
                         if current.summary.changedSinceReleaseCount > 0 {
                             StatusChip(
@@ -923,7 +923,7 @@ private struct MobileClientFollowUpSnapshot: View {
                         }
                         .padding(8)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(Color.green.opacity(0.07), in: RoundedRectangle(cornerRadius: 10))
+                        .background(CapturePalette.success.opacity(0.07), in: RoundedRectangle(cornerRadius: 10))
                     }
                 }
             }
@@ -962,7 +962,7 @@ private struct MobileClientFollowUpSnapshot: View {
                                                 : "questionmark.circle"
                                     )
                                     .font(.caption2.bold())
-                                    .foregroundStyle(current.status == "ACHIEVED" ? .green : CapturePalette.ink)
+                                    .foregroundStyle(current.status == "ACHIEVED" ? CapturePalette.success : CapturePalette.ink)
                                     .accessibilityIdentifier("CaptureClientFollowUpCurrentGoalStatus_\(goal.id)")
                                     if let progress = current.latestProgress {
                                         Text(progress.progressPercent.map { "Latest check-in \($0)%" } ?? "Latest check-in recorded")
@@ -994,7 +994,7 @@ private struct MobileClientFollowUpSnapshot: View {
                         HStack(alignment: .top, spacing: 8) {
                             Image(systemName: task.status == "DONE" ? "checkmark.circle.fill" : "circle")
                                 .font(.caption)
-                                .foregroundStyle(task.status == "DONE" ? .green : .secondary)
+                                .foregroundStyle(task.status == "DONE" ? CapturePalette.success : .secondary)
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(task.title)
                                     .font(.caption.bold())
@@ -1020,7 +1020,7 @@ private struct MobileClientFollowUpSnapshot: View {
                                                 : "questionmark.circle"
                                     )
                                     .font(.caption2.bold())
-                                    .foregroundStyle(current.status == "DONE" ? .green : CapturePalette.ink)
+                                    .foregroundStyle(current.status == "DONE" ? CapturePalette.success : CapturePalette.ink)
                                     .accessibilityIdentifier("CaptureClientFollowUpCurrentTaskStatus_\(task.id)")
                                     if current.availability == "CURRENT",
                                        currentFollowThrough?.canOpenWork == true,
@@ -1109,7 +1109,7 @@ struct MobileClientFollowUpCard: View {
                 VStack(alignment: .leading, spacing: 3) {
                     Label("Client follow-up", systemImage: "person.crop.circle.badge.checkmark")
                         .font(.caption.bold())
-                        .foregroundStyle(.green)
+                        .foregroundStyle(CapturePalette.success)
                     Text(followUp.title)
                         .font(.subheadline.bold())
                     Text("Released to \(followUp.recipientLabel) in Quipsly")
@@ -1120,7 +1120,7 @@ struct MobileClientFollowUpCard: View {
                 .accessibilityIdentifier("CaptureClientFollowUp_\(followUp.id)")
             }
             .padding(10)
-            .background(Color.green.opacity(0.08), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .background(CapturePalette.success.opacity(0.08), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
             .task(id: "\(followUp.id)|\(followUp.openedAt ?? "new")") {
                 guard !previewOnly,
                       followUp.canAcknowledge,
@@ -1388,7 +1388,7 @@ struct MobileCoachClientFollowUpCard: View {
                                 VStack(alignment: .leading, spacing: 3) {
                                     Label("Ready to share", systemImage: "checkmark.shield.fill")
                                         .font(.caption.bold())
-                                        .foregroundStyle(.green)
+                                        .foregroundStyle(CapturePalette.success)
                                     Text("The selected notes, tasks, and goals have not changed since this draft was saved.")
                                         .font(.caption2)
                                         .foregroundStyle(.secondary)
@@ -1403,7 +1403,7 @@ struct MobileCoachClientFollowUpCard: View {
                                         .font(.caption2)
                                         .fixedSize(horizontal: false, vertical: true)
                                 }
-                                .foregroundStyle(.orange)
+                                .foregroundStyle(CapturePalette.brass)
                                 .accessibilityIdentifier("CaptureCoachFollowUpUnsavedChanges")
                             } else {
                                 VStack(alignment: .leading, spacing: 5) {
@@ -1447,7 +1447,7 @@ struct MobileCoachClientFollowUpCard: View {
                             .accessibilityIdentifier("CaptureCoachFollowUpRelease")
                         }
                         .padding(10)
-                        .background(Color.orange.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
+                        .background(CapturePalette.brass.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
                     }
 
                     Text("Sharing puts this follow-up in \(workspace.room.client.label)'s Quipsly Session. It does not send an email or message.")
@@ -1525,7 +1525,7 @@ struct MobileClientFollowUpLoadingCard: View {
             }
             .buttonStyle(.plain)
             .padding(10)
-            .background(Color.orange.opacity(0.08), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .background(CapturePalette.brass.opacity(0.08), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
             .accessibilityIdentifier("CaptureClientFollowUpRetry")
             .accessibilityHint("Retries the private follow-up check without changing the Session.")
         case .loaded, .unavailable:

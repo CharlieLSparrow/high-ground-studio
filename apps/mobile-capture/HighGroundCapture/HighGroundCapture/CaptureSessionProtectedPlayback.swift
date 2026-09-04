@@ -763,7 +763,7 @@ struct CaptureSessionProtectedPlaybackSheet: View {
                             )
                             .frame(maxWidth: .infinity)
                         }
-                        .buttonStyle(.borderedProminent)
+                        .captureProminentButton()
                         .accessibilityIdentifier("CaptureSessionProtectedPlaybackToggle")
 
                         Button("Remove protected copy from \(CaptureDeviceVocabulary.thisDevice)", role: .destructive) {
@@ -785,7 +785,7 @@ struct CaptureSessionProtectedPlaybackSheet: View {
                                 .frame(maxWidth: .infinity)
                             }
                         }
-                        .buttonStyle(.borderedProminent)
+                        .captureProminentButton()
                         .disabled(controller.isPreparing || previewOnly)
                         .accessibilityIdentifier("CaptureSessionProtectedPlaybackPrepare")
                     }
@@ -793,18 +793,18 @@ struct CaptureSessionProtectedPlaybackSheet: View {
                     if previewOnly {
                         Text("Preview only · no recording is downloaded")
                             .font(.caption.weight(.semibold))
-                            .foregroundStyle(.orange)
+                            .foregroundStyle(CapturePalette.brass)
                     }
 
                     if let status = controller.statusMessage {
                         Label(status, systemImage: "checkmark.shield.fill")
                             .font(.caption.weight(.semibold))
-                            .foregroundStyle(.green)
+                            .foregroundStyle(CapturePalette.success)
                     }
                     if let error = controller.errorMessage {
                         Label(error, systemImage: "exclamationmark.triangle.fill")
                             .font(.caption.weight(.semibold))
-                            .foregroundStyle(.orange)
+                            .foregroundStyle(CapturePalette.brass)
                     }
 
                     Text("Quipsly verifies the downloaded bytes against the retained source receipt. Playback never changes or replaces the original.")

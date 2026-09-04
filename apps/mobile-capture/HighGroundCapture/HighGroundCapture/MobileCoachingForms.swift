@@ -1810,30 +1810,30 @@ struct MobileCoachingFormsHomeView: View {
                         systemImage: "wifi.slash"
                     )
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(CapturePalette.brass)
                     .padding(14)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(.orange.opacity(0.1), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    .background(CapturePalette.brass.opacity(0.1), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                     .accessibilityIdentifier("CaptureCoachingFormsOffline")
                 }
 
                 if let message = client.statusMessage {
                     Label(message, systemImage: "checkmark.circle.fill")
                         .font(.caption.weight(.semibold))
-                        .foregroundStyle(.green)
+                        .foregroundStyle(CapturePalette.success)
                         .padding(14)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(.green.opacity(0.09), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                        .background(CapturePalette.success.opacity(0.09), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                         .accessibilityIdentifier("CaptureCoachingFormsStatus")
                 }
 
                 if let error = client.errorMessage {
                     Label(error, systemImage: "exclamationmark.triangle.fill")
                         .font(.caption.weight(.semibold))
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(CapturePalette.brass)
                         .padding(14)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(.orange.opacity(0.09), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                        .background(CapturePalette.brass.opacity(0.09), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                         .accessibilityIdentifier("CaptureCoachingFormsError")
                 }
 
@@ -1904,10 +1904,10 @@ struct MobileCoachingFormsHomeView: View {
                 systemImage: "checkmark.circle.fill"
             )
             .font(.subheadline.weight(.semibold))
-            .foregroundStyle(.green)
+            .foregroundStyle(CapturePalette.success)
             .padding(18)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(.green.opacity(0.09), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+            .background(CapturePalette.success.opacity(0.09), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
         } else {
             formSectionTitle("To complete", count: active.count)
             ForEach(active) { assignment in
@@ -1934,8 +1934,7 @@ struct MobileCoachingFormsHomeView: View {
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 4)
         }
-        .buttonStyle(.borderedProminent)
-        .tint(CapturePalette.accent)
+        .captureProminentButton()
         .controlSize(.large)
         .disabled(
             client.isUsingProtectedCache
@@ -2038,7 +2037,7 @@ struct MobileCoachingFormsHomeView: View {
             assignmentCard(
                 assignment,
                 status: assignment.isSubmitted ? "Shared" : assignment.response == nil ? "Not started" : "Private draft",
-                color: assignment.isSubmitted ? .green : CapturePalette.accent,
+                color: assignment.isSubmitted ? CapturePalette.success : CapturePalette.accent,
                 symbol: assignment.isSubmitted ? "checkmark.circle.fill" : "square.and.pencil"
             )
         }
@@ -2055,7 +2054,7 @@ struct MobileCoachingFormsHomeView: View {
                 status: assignment.coachCanRead
                     ? "Shared · Review"
                     : assignment.status == "IN_PROGRESS" ? "Draft in progress · Answers private" : "Waiting for client",
-                color: assignment.coachCanRead ? .green : .orange,
+                color: assignment.coachCanRead ? CapturePalette.success : CapturePalette.brass,
                 symbol: assignment.coachCanRead ? "doc.text.magnifyingglass" : "lock.fill"
             )
         }
@@ -2116,8 +2115,7 @@ struct MobileCoachingFormsHomeView: View {
                 Button("Try again") {
                     Task { await client.load() }
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(CapturePalette.accent)
+                .captureProminentButton()
             }
         }
         .frame(maxWidth: .infinity)
@@ -2152,9 +2150,9 @@ struct MobileCoachingFormResponseView: View {
                                 systemImage: "checkmark.circle.fill"
                             )
                             .font(.caption.weight(.semibold))
-                            .foregroundStyle(.green)
+                            .foregroundStyle(CapturePalette.success)
                             .padding(14)
-                            .background(.green.opacity(0.09), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                            .background(CapturePalette.success.opacity(0.09), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                         }
 
                         ForEach(assignment.template.definition.fields) { field in
@@ -2184,9 +2182,9 @@ struct MobileCoachingFormResponseView: View {
                         if let error = client.errorMessage {
                             Label(error, systemImage: "exclamationmark.triangle.fill")
                                 .font(.caption.weight(.semibold))
-                                .foregroundStyle(.orange)
+                                .foregroundStyle(CapturePalette.brass)
                                 .padding(14)
-                                .background(.orange.opacity(0.09), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                                .background(CapturePalette.brass.opacity(0.09), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                         }
 
                         actionBar(assignment, proxy: proxy)
@@ -2297,8 +2295,7 @@ struct MobileCoachingFormResponseView: View {
                 )
                 .frame(maxWidth: .infinity)
             }
-            .buttonStyle(.borderedProminent)
-            .tint(CapturePalette.accent)
+            .captureProminentButton()
             .controlSize(.large)
             .disabled(busy || client.isUsingProtectedCache || CaptureLaunchConfiguration.usesPreviewData)
             .accessibilityIdentifier("CaptureCoachingFormSubmit")
@@ -2462,7 +2459,7 @@ private struct MobileCoachingFormAnswerField: View {
         default:
             Label("This question needs a newer version of Capture.", systemImage: "exclamationmark.triangle.fill")
                 .font(.caption.weight(.semibold))
-                .foregroundStyle(.orange)
+                .foregroundStyle(CapturePalette.brass)
         }
     }
 
@@ -2572,7 +2569,7 @@ struct MobileCoachingFormCoachReviewView: View {
                     if assignment.coachCanRead, let response = assignment.response {
                         Label("Shared by your client", systemImage: "checkmark.circle.fill")
                             .font(.caption.weight(.bold))
-                            .foregroundStyle(.green)
+                            .foregroundStyle(CapturePalette.success)
                         Text("Choose only the answers that belong in one useful next step.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
@@ -2634,12 +2631,12 @@ struct MobileCoachingFormCoachReviewView: View {
                         if let status = client.statusMessage {
                             Label(status, systemImage: "checkmark.circle.fill")
                                 .font(.caption.weight(.semibold))
-                                .foregroundStyle(.green)
+                                .foregroundStyle(CapturePalette.success)
                         }
                         if let error = client.errorMessage {
                             Label(error, systemImage: "exclamationmark.triangle.fill")
                                 .font(.caption.weight(.semibold))
-                                .foregroundStyle(.orange)
+                                .foregroundStyle(CapturePalette.brass)
                         }
                     } else {
                         VStack(alignment: .leading, spacing: 8) {
@@ -2653,7 +2650,7 @@ struct MobileCoachingFormCoachReviewView: View {
                                 .foregroundStyle(.secondary)
                         }
                         .padding(18)
-                        .background(.orange.opacity(0.09), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                        .background(CapturePalette.brass.opacity(0.09), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
                         .accessibilityIdentifier("CaptureCoachingFormPrivateDraftBoundary")
                     }
                 }
@@ -2717,8 +2714,7 @@ struct MobileCoachingFormCoachReviewView: View {
             }
             .frame(maxWidth: .infinity, minHeight: 48)
         }
-        .buttonStyle(.borderedProminent)
-        .tint(CapturePalette.accent)
+        .captureProminentButton()
         .disabled(
             selectedFieldIDs.isEmpty
                 || !assignment.canCoachPromoteOutcome
@@ -2796,14 +2792,14 @@ private struct MobileCoachingFormOutcomeReceipts: View {
         VStack(alignment: .leading, spacing: 10) {
             Label("Follow-through created together", systemImage: "checkmark.seal.fill")
                 .font(.headline)
-                .foregroundStyle(.green)
+                .foregroundStyle(CapturePalette.success)
             ForEach(promotions) { promotion in
                 HStack(alignment: .top, spacing: 12) {
                     Image(systemName: symbol(promotion.kind))
                         .font(.headline.weight(.bold))
-                        .foregroundStyle(.green)
+                        .foregroundStyle(CapturePalette.success)
                         .frame(width: 34, height: 34)
-                        .background(.green.opacity(0.1), in: Circle())
+                        .background(CapturePalette.success.opacity(0.1), in: Circle())
                     VStack(alignment: .leading, spacing: 3) {
                         Text(promotion.reviewedPayload.title)
                             .font(.subheadline.weight(.black))
@@ -2823,7 +2819,7 @@ private struct MobileCoachingFormOutcomeReceipts: View {
                 .foregroundStyle(.secondary)
         }
         .padding(16)
-        .background(.green.opacity(0.07), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .background(CapturePalette.success.opacity(0.07), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
         .accessibilityIdentifier("CaptureCoachingFormOutcomeReceipts")
     }
 
@@ -2942,7 +2938,7 @@ private struct MobileCoachingFormOutcomeReviewSheet: View {
                 Section {
                     Label("Preview only — saving is intentionally disabled.", systemImage: "eye.fill")
                         .font(.caption.weight(.semibold))
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(CapturePalette.brass)
                 }
             }
         }
@@ -3073,7 +3069,7 @@ struct MobileCoachingSendFormView: View {
                 Section {
                     Label(error, systemImage: "exclamationmark.triangle.fill")
                         .font(.caption.weight(.semibold))
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(CapturePalette.brass)
                 }
             }
         }

@@ -165,7 +165,7 @@ private struct ProtectedOfflineLibraryShell: View {
                         }
                     } icon: {
                         Image(systemName: authManager.accessMode == .checkingCachedIdentity ? "person.badge.clock" : "wifi.slash")
-                            .foregroundStyle(.orange)
+                            .foregroundStyle(CapturePalette.brass)
                     }
                     .accessibilityElement(children: .combine)
                     .accessibilityIdentifier("CaptureOfflineAccessBanner")
@@ -196,7 +196,7 @@ private struct ProtectedOfflineLibraryShell: View {
                 if let playbackError = playback.errorMessage {
                     Section("Playback") {
                         Label(playbackError, systemImage: "exclamationmark.triangle")
-                            .foregroundStyle(.orange)
+                            .foregroundStyle(CapturePalette.brass)
                     }
                 }
 
@@ -370,7 +370,7 @@ private struct ProtectedOfflineRecordingRow: View {
         VStack(alignment: .leading, spacing: 9) {
             HStack(alignment: .top, spacing: 10) {
                 Image(systemName: recording.status.isVerified ? "checkmark.circle.fill" : "waveform")
-                    .foregroundStyle(recording.status.isVerified ? Color.green : Color.accentColor)
+                    .foregroundStyle(recording.status.isVerified ? CapturePalette.success : Color.accentColor)
                     .frame(width: 32, height: 32)
                 VStack(alignment: .leading, spacing: 3) {
                     Text(recording.displayTitle)

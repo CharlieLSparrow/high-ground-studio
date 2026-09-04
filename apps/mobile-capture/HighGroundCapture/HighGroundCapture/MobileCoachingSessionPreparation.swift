@@ -630,14 +630,14 @@ struct MobileCoachingSessionPreparationCard: View {
                     if let message = client.statusMessage {
                         Label(message, systemImage: "checkmark.circle.fill")
                             .font(.caption.weight(.semibold))
-                            .foregroundStyle(.green)
+                            .foregroundStyle(CapturePalette.success)
                             .accessibilityIdentifier("CaptureSessionPreparationSaved")
                     }
                     if let error = client.errorMessage {
                         VStack(alignment: .leading, spacing: 8) {
                             Label(error, systemImage: "exclamationmark.circle")
                                 .font(.caption.weight(.semibold))
-                                .foregroundStyle(.orange)
+                                .foregroundStyle(CapturePalette.brass)
                             if client.preparation == nil {
                                 Button("Try again") {
                                     Task { await client.load(session: session) }
@@ -743,7 +743,7 @@ struct MobileCoachingSessionPreparationCard: View {
                     Text("Save Session plan").frame(maxWidth: .infinity)
                 }
             }
-            .buttonStyle(.borderedProminent)
+            .captureProminentButton()
             .controlSize(.large)
             .disabled(client.isSaving || previewOnly)
             .accessibilityIdentifier("CaptureSessionPreparationSaveClient")
@@ -805,7 +805,7 @@ struct MobileCoachingSessionPreparationCard: View {
                     Text("Save private prep").frame(maxWidth: .infinity)
                 }
             }
-            .buttonStyle(.borderedProminent)
+            .captureProminentButton()
             .controlSize(.large)
             .disabled(client.isSaving || previewOnly)
             .accessibilityIdentifier("CaptureSessionPreparationSaveCoach")
@@ -853,7 +853,7 @@ struct MobileCoachingSessionPreparationCard: View {
         if let workingDraftError {
             Label(workingDraftError, systemImage: "exclamationmark.triangle")
                 .font(.caption.weight(.semibold))
-                .foregroundStyle(.orange)
+                .foregroundStyle(CapturePalette.brass)
                 .accessibilityIdentifier("CaptureSessionPreparationWorkingDraftError")
         }
     }

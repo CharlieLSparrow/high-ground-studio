@@ -219,8 +219,7 @@ struct MobileCoachingFormAutomationView: View {
                 Label("Add rhythm", systemImage: "plus")
                     .frame(maxWidth: .infinity)
             }
-            .buttonStyle(.borderedProminent)
-            .tint(CapturePalette.accent)
+            .captureProminentButton()
             .controlSize(.large)
             .disabled(client.isUsingProtectedCache || client.isAutomationBusy)
             .accessibilityIdentifier("CaptureCoachingAutomationAdd")
@@ -256,7 +255,7 @@ struct MobileCoachingFormAutomationView: View {
                 VStack(alignment: .leading, spacing: 5) {
                     Text(policy.isActive ? "ACTIVE" : "PAUSED")
                         .font(.caption2.weight(.black))
-                        .foregroundStyle(policy.isActive ? .green : .secondary)
+                        .foregroundStyle(policy.isActive ? CapturePalette.success : .secondary)
                     Text(policy.template.title)
                         .font(.title3.weight(.black))
                         .accessibilityIdentifier("CaptureCoachingAutomationPolicy_\(policy.id)")
@@ -305,7 +304,7 @@ struct MobileCoachingFormAutomationView: View {
                     systemImage: "checkmark.seal.fill"
                 )
                 .font(.caption.weight(.semibold))
-                .foregroundStyle(.green)
+                .foregroundStyle(CapturePalette.success)
             } else {
                 Text("No forms sent yet")
                     .font(.caption.weight(.semibold))
@@ -342,8 +341,7 @@ struct MobileCoachingFormAutomationView: View {
                         Button("Send now") {
                             Task { _ = await client.saveAutomationOverride(policyID: policy.id, bookingID: session.id, action: "SEND_NOW") }
                         }
-                        .buttonStyle(.borderedProminent)
-                        .tint(CapturePalette.accent)
+                        .captureProminentButton()
                         .accessibilityIdentifier("CaptureCoachingAutomationSendNow_\(policy.id)_\(session.id)")
                         Button("Skip once") {
                             Task { _ = await client.saveAutomationOverride(policyID: policy.id, bookingID: session.id, action: "SKIP") }
@@ -427,8 +425,7 @@ struct MobileCoachingFormAutomationView: View {
                         if await client.saveAutomationPolicy(value) { draft = nil }
                     }
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(CapturePalette.accent)
+                .captureProminentButton()
                 .disabled(client.isAutomationBusy || CaptureLaunchConfiguration.usesPreviewData)
                 .accessibilityIdentifier("CaptureCoachingAutomationSave")
                 Button("Cancel") { draft = nil }

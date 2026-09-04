@@ -331,6 +331,25 @@ for (const [surface, source] of brandedCaptureSurfaceTexts) {
 requireIncludes(capturePhoneShellText, "static let actionFill = adaptive(", "filled actions have an independent accessible forest token");
 requireIncludes(capturePhoneShellText, "static let plumFill = adaptive(", "editor actions have an independent accessible aubergine token");
 requireIncludes(capturePhoneShellText, "func captureProminentButton(fill:", "filled controls share one readable Quipsly action treatment");
+const captureSwiftSourceDirectory = path.join(
+  root,
+  "apps/mobile-capture/HighGroundCapture/HighGroundCapture",
+);
+const allCaptureSwiftSource = fs.readdirSync(captureSwiftSourceDirectory)
+  .filter((name) => name.endsWith(".swift"))
+  .map((name) => fs.readFileSync(path.join(captureSwiftSourceDirectory, name), "utf8"))
+  .join("\n");
+const rawSemanticOutlier = allCaptureSwiftSource.match(/(?:Color)?\.(?:green|orange)\b/);
+assert(
+  rawSemanticOutlier == null,
+  "Capture success and warning states use the adaptive sage and aged-brass semantic tokens.",
+  { label: "shipping Capture Swift surfaces contain no raw system green or orange", forbidden: rawSemanticOutlier?.[0] },
+);
+assert(
+  (allCaptureSwiftSource.match(/\.buttonStyle\(\.borderedProminent\)/g) ?? []).length === 1,
+  "Every prominent Capture action receives the shared readable foreground and adaptive fill treatment.",
+  { label: "the only direct borderedProminent style is inside captureProminentButton" },
+);
 const bridgeText = read(files.bridgeModels);
 
 for (const [source, endpoint, label] of [

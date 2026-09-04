@@ -68,7 +68,7 @@ struct MobileNestChatView: View {
 
             HStack {
                 Label(client.status, systemImage: client.errorMessage == nil ? "checkmark.circle" : "exclamationmark.triangle")
-                    .foregroundStyle(client.errorMessage == nil ? .green : .orange)
+                    .foregroundStyle(client.errorMessage == nil ? CapturePalette.success : CapturePalette.brass)
                 if let errorMessage = client.errorMessage {
                     Text(errorMessage)
                         .font(.caption)
@@ -103,7 +103,7 @@ struct MobileNestChatView: View {
                 } label: {
                     Image(systemName: "paperplane.fill")
                 }
-                .buttonStyle(.borderedProminent)
+                .captureProminentButton()
                 .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
         }

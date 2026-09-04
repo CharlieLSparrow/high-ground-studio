@@ -192,7 +192,7 @@ struct CaptureSourceEvidenceView: View {
                             : "waveform.badge.exclamationmark"
                     )
                     .font(.subheadline.weight(.bold))
-                    .foregroundStyle(reviewMomentCount == 0 ? Color.green : Color.orange)
+                    .foregroundStyle(reviewMomentCount == 0 ? CapturePalette.success : CapturePalette.brass)
                     .accessibilityIdentifier("CaptureAudioQualitySummary")
                     Text(reviewMomentCount == 0
                         ? "Quipsly scanned the full decoded recording for clipping, unusual silence, and capture interruptions. Listening is still the final check."
@@ -363,7 +363,7 @@ struct CaptureSourceEvidenceView: View {
                     if signal.observations.isEmpty && captureTimelineEvents(recording).isEmpty {
                         Label("No configured signal observation or capture boundary needs attention.", systemImage: "checkmark.circle")
                             .font(.caption.weight(.semibold))
-                            .foregroundStyle(.green)
+                            .foregroundStyle(CapturePalette.success)
                     }
                     if playback.isPlaying(recordingID: recording.id) {
                         Label("Playing this local original", systemImage: "speaker.wave.2.fill")
@@ -373,12 +373,12 @@ struct CaptureSourceEvidenceView: View {
                     if let error = playback.errorMessage {
                         Label(error, systemImage: "exclamationmark.triangle.fill")
                             .font(.caption)
-                            .foregroundStyle(.orange)
+                            .foregroundStyle(CapturePalette.brass)
                     }
                 } else {
                     Label("Quality scan needs another try", systemImage: "arrow.clockwise.circle")
                         .font(.subheadline.weight(.bold))
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(CapturePalette.brass)
                     Text(
                         library.derivedAnalysisNotices[recording.id]
                             ?? "The original recording is safe and playable. Run the quality scan again to create waveform, loudness, and listening markers."
@@ -452,7 +452,7 @@ struct CaptureSourceEvidenceView: View {
                     case "completed" where status.derivative?.playbackUrl != nil:
                         Label("Improved copy ready", systemImage: "checkmark.circle.fill")
                             .font(.subheadline.weight(.bold))
-                            .foregroundStyle(.green)
+                            .foregroundStyle(CapturePalette.success)
                             .accessibilityIdentifier("CaptureAudioMasteryReady")
                         Text("Compare the original and improved copy from the same selected time. This is a separate preview; your original has not been replaced.")
                             .font(.caption)
@@ -558,14 +558,14 @@ struct CaptureSourceEvidenceView: View {
                     case "completed":
                         Label("This recording is already balanced", systemImage: "checkmark.circle.fill")
                             .font(.subheadline.weight(.bold))
-                            .foregroundStyle(.green)
+                            .foregroundStyle(CapturePalette.success)
                         Text("Quipsly checked the complete recording and did not create a louder copy just for the sake of making one.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     case "failed", "blocked":
                         Label("Improved copy was not prepared", systemImage: "exclamationmark.triangle.fill")
                             .font(.subheadline.weight(.bold))
-                            .foregroundStyle(.orange)
+                            .foregroundStyle(CapturePalette.brass)
                         Button("Try again") {
                             Task { await mastery.retry(recording: recording) }
                         }
@@ -611,7 +611,7 @@ struct CaptureSourceEvidenceView: View {
                     Spacer(minLength: 8)
                     Text(coverage.approvalReady ? "Ready" : "Listening")
                         .font(.caption2.weight(.bold))
-                        .foregroundStyle(coverage.approvalReady ? .green : .orange)
+                        .foregroundStyle(coverage.approvalReady ? CapturePalette.success : CapturePalette.brass)
                         .padding(.horizontal, 8)
                         .padding(.vertical, 5)
                         .background(.thinMaterial, in: Capsule())
@@ -631,7 +631,7 @@ struct CaptureSourceEvidenceView: View {
                             }
                             Spacer(minLength: 8)
                             Image(systemName: sourceDone && previewDone ? "checkmark.circle.fill" : "circle")
-                                .foregroundStyle(sourceDone && previewDone ? .green : .secondary)
+                                .foregroundStyle(sourceDone && previewDone ? CapturePalette.success : .secondary)
                         }
                         HStack(spacing: 8) {
                             Button {
@@ -684,7 +684,7 @@ struct CaptureSourceEvidenceView: View {
                         systemImage: latest.decision == "approved" ? "checkmark.seal.fill" : "arrow.uturn.backward.circle.fill"
                     )
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(latest.decision == "approved" ? .green : .orange)
+                    .foregroundStyle(latest.decision == "approved" ? CapturePalette.success : CapturePalette.brass)
                     .accessibilityIdentifier("CaptureAudioMasteryLatestDecision")
                 }
 
@@ -758,7 +758,7 @@ struct CaptureSourceEvidenceView: View {
                 Spacer(minLength: 8)
                 Text(promotionIsHeld ? "Held after review" : activePromotion == nil ? "Not selected" : thisPreviewIsActive ? "Improved selected" : "Earlier pass selected")
                     .font(.caption2.weight(.bold))
-                    .foregroundStyle(promotionIsHeld ? Color.orange : activePromotion == nil ? Color.gray : thisPreviewIsActive ? Color.green : Color.orange)
+                    .foregroundStyle(promotionIsHeld ? CapturePalette.brass : activePromotion == nil ? Color.gray : thisPreviewIsActive ? CapturePalette.success : CapturePalette.brass)
             }
 
             if promotionIsHeld {
@@ -767,7 +767,7 @@ struct CaptureSourceEvidenceView: View {
                     systemImage: "exclamationmark.shield.fill"
                 )
                 .font(.caption.weight(.semibold))
-                .foregroundStyle(.orange)
+                .foregroundStyle(CapturePalette.brass)
                 .accessibilityIdentifier("CaptureAudioMasteryPromotionHeld")
                 if let latest = status.review?.latest,
                    latest.decision == "approved",
@@ -793,7 +793,7 @@ struct CaptureSourceEvidenceView: View {
                     systemImage: "checkmark.seal.fill"
                 )
                 .font(.caption.weight(.semibold))
-                .foregroundStyle(thisPreviewIsActive ? .green : .orange)
+                .foregroundStyle(thisPreviewIsActive ? CapturePalette.success : CapturePalette.brass)
                 .accessibilityIdentifier("CaptureAudioMasteryActivePromotion")
 
                 TextField("Why are you changing back?", text: $masteryWithdrawalReason, axis: .vertical)
@@ -874,7 +874,7 @@ struct CaptureSourceEvidenceView: View {
                             systemImage: "exclamationmark.shield.fill"
                         )
                         .font(.caption.weight(.semibold))
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(CapturePalette.brass)
                         Button("Prepare current share-ready audio") {
                             Task {
                                 await delivery.prepare(
@@ -907,7 +907,7 @@ struct CaptureSourceEvidenceView: View {
                             } else {
                                 Label("The encoded file receipt is incomplete.", systemImage: "exclamationmark.triangle.fill")
                                     .font(.caption.weight(.semibold))
-                                    .foregroundStyle(.orange)
+                                    .foregroundStyle(CapturePalette.brass)
                             }
                         case "failed":
                             Label(
@@ -915,7 +915,7 @@ struct CaptureSourceEvidenceView: View {
                                 systemImage: "exclamationmark.triangle.fill"
                             )
                             .font(.caption.weight(.semibold))
-                            .foregroundStyle(.orange)
+                            .foregroundStyle(CapturePalette.brass)
                             Button("Try encoding again") {
                                 Task {
                                     await delivery.prepare(
@@ -988,7 +988,7 @@ struct CaptureSourceEvidenceView: View {
         return VStack(alignment: .leading, spacing: 12) {
             Label("Encoded file verified", systemImage: "checkmark.seal.fill")
                 .font(.caption.weight(.bold))
-                .foregroundStyle(.green)
+                .foregroundStyle(CapturePalette.success)
             VStack(alignment: .leading, spacing: 7) {
                 EvidenceRow(
                     label: "Format",
@@ -1058,7 +1058,7 @@ struct CaptureSourceEvidenceView: View {
                     systemImage: latest.decision == "approved" ? "checkmark.seal.fill" : "arrow.uturn.backward.circle.fill"
                 )
                 .font(.caption.weight(.semibold))
-                .foregroundStyle(latest.decision == "approved" ? .green : .orange)
+                .foregroundStyle(latest.decision == "approved" ? CapturePalette.success : CapturePalette.brass)
             }
 
             if let saved = delivery.savedDecision {
@@ -1072,7 +1072,7 @@ struct CaptureSourceEvidenceView: View {
                             : "exclamationmark.triangle.fill"
                     )
                     .font(.caption.weight(.bold))
-                    .foregroundStyle(saved.disposition == .pending ? CapturePalette.ink : .orange)
+                    .foregroundStyle(saved.disposition == .pending ? CapturePalette.ink : CapturePalette.brass)
 
                     Text(
                         saved.disposition == .pending
@@ -1144,7 +1144,7 @@ struct CaptureSourceEvidenceView: View {
                     : "Approval unlocks after beginning, middle, and ending playback."
             )
             .font(.caption2.weight(.semibold))
-            .foregroundStyle(coverage.approvalReady ? .green : .secondary)
+            .foregroundStyle(coverage.approvalReady ? CapturePalette.success : .secondary)
         }
     }
 
@@ -1285,7 +1285,7 @@ struct CaptureSourceEvidenceView: View {
                         systemImage: "exclamationmark.triangle.fill"
                     )
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(CapturePalette.brass)
                     EvidenceRow(
                         label: "Failure receipt",
                         value: analysis.failureCode ?? "analysis-incomplete"
@@ -1311,7 +1311,7 @@ struct CaptureSourceEvidenceView: View {
                 systemImage: complete ? "checkmark.circle.fill" : "exclamationmark.triangle.fill"
             )
             .font(.caption.weight(.semibold))
-            .foregroundStyle(complete ? .green : .orange)
+            .foregroundStyle(complete ? CapturePalette.success : CapturePalette.brass)
             .accessibilityIdentifier("CaptureSourceEvidenceRoomBoundaryStatus")
         }
     }
@@ -1364,7 +1364,7 @@ struct CaptureSourceEvidenceView: View {
             if let errorMessage {
                 Label(errorMessage, systemImage: "exclamationmark.triangle.fill")
                     .font(.caption)
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(CapturePalette.brass)
                     .fixedSize(horizontal: false, vertical: true)
                     .accessibilityIdentifier("CaptureSourceEvidenceError")
             }
@@ -1372,7 +1372,7 @@ struct CaptureSourceEvidenceView: View {
             if let evidenceFileURL {
                 Label("Evidence receipt prepared", systemImage: "checkmark.seal.fill")
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(.green)
+                    .foregroundStyle(CapturePalette.success)
                     .accessibilityIdentifier("CaptureSourceEvidencePrepared")
                 ShareLink(item: evidenceFileURL) {
                     Label("Share evidence receipt", systemImage: "square.and.arrow.up")
@@ -1470,7 +1470,7 @@ struct CaptureSourceEvidenceView: View {
             if let comparisonError {
                 Label(comparisonError, systemImage: "wifi.exclamationmark")
                     .font(.caption)
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(CapturePalette.brass)
                     .fixedSize(horizontal: false, vertical: true)
                     .accessibilityIdentifier("CaptureNestEvidenceError")
             }
@@ -1548,9 +1548,9 @@ struct CaptureSourceEvidenceView: View {
     ) -> Color {
         switch status {
         case .verifiedMatch:
-            return .green
+            return CapturePalette.success
         case .held, .incomplete:
-            return .orange
+            return CapturePalette.brass
         case .drift:
             return .red
         }
@@ -1900,7 +1900,7 @@ struct CaptureSourceEvidenceView: View {
     private func reviewEvidenceBadge(_ label: String, complete: Bool) -> some View {
         Label(label, systemImage: complete ? "checkmark.circle.fill" : "circle")
             .font(.caption2.weight(.semibold))
-            .foregroundStyle(complete ? .green : .secondary)
+            .foregroundStyle(complete ? CapturePalette.success : .secondary)
             .frame(maxWidth: .infinity, minHeight: 34)
             .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 10))
     }
@@ -1940,7 +1940,7 @@ private struct CaptureAudioReviewMarker: Identifiable {
 
         var color: Color {
             switch self {
-            case .signalWarning: .orange
+            case .signalWarning: CapturePalette.brass
             case .captureBoundary: CapturePalette.plum
             case .detectedSound: CapturePalette.accent
             }
@@ -2166,7 +2166,7 @@ struct CaptureSourceEvidencePreviewView: View {
                 previewCard(title: "Recording quality", systemImage: "waveform.path.ecg") {
                     Label("1 moment worth checking", systemImage: "waveform.badge.exclamationmark")
                         .font(.subheadline.weight(.bold))
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(CapturePalette.brass)
                         .accessibilityIdentifier("CaptureAudioQualitySummary")
                     Text("Tap a marked moment to hear it in the original. Quipsly never removes or repairs audio without your review.")
                         .font(.caption)
@@ -2224,7 +2224,7 @@ struct CaptureSourceEvidencePreviewView: View {
                 previewCard(title: "Improved audio", systemImage: "wand.and.sparkles") {
                     Label("Improved copy ready", systemImage: "checkmark.circle.fill")
                         .font(.subheadline.weight(.bold))
-                        .foregroundStyle(.green)
+                        .foregroundStyle(CapturePalette.success)
                         .accessibilityIdentifier("CaptureAudioMasteryReady")
                     Text("A real improved copy is downloaded privately, checked against its verified SHA-256 and byte count, and played without replacing the original.")
                         .font(.caption)
@@ -2389,7 +2389,7 @@ struct CaptureSourceEvidencePreviewView: View {
                     EvidenceRow(label: "STOP receipt", value: "preview-stop-receipt")
                     Label("Complete capture boundary", systemImage: "checkmark.circle.fill")
                         .font(.caption.weight(.semibold))
-                        .foregroundStyle(.green)
+                        .foregroundStyle(CapturePalette.success)
                         .accessibilityIdentifier("CaptureSourceEvidenceRoomBoundaryStatus")
                 }
 

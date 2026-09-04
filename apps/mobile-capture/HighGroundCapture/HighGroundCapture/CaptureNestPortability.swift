@@ -652,7 +652,7 @@ struct CaptureNestPortabilityView: View {
                 systemImage: auth.networkActionsAllowed ? "checkmark.icloud.fill" : "icloud.slash"
             )
             .font(.caption.weight(.semibold))
-            .foregroundStyle(auth.networkActionsAllowed ? .green : .orange)
+            .foregroundStyle(auth.networkActionsAllowed ? CapturePalette.success : CapturePalette.brass)
         }
         .captureCard()
         .accessibilityIdentifier("CaptureNestPortabilityBoundary")
@@ -792,7 +792,7 @@ struct CaptureNestPortabilityView: View {
                     systemImage: "checkmark.seal.fill"
                 )
                 .font(.caption.weight(.semibold))
-                .foregroundStyle(.green)
+                .foregroundStyle(CapturePalette.success)
                 .fixedSize(horizontal: false, vertical: true)
                 .accessibilityIdentifier("CaptureNestRestoreReceipt")
             }
@@ -843,7 +843,7 @@ struct CaptureNestPortabilityView: View {
 
             Text("\(plan.overwrites) overwrites · \(plan.sourceMutations) source mutations · \(plan.externalSideEffects) external effects")
                 .font(.caption.weight(.bold))
-                .foregroundStyle(plan.isSafeToApply ? .green : .red)
+                .foregroundStyle(plan.isSafeToApply ? CapturePalette.success : .red)
                 .fixedSize(horizontal: false, vertical: true)
 
             Button {

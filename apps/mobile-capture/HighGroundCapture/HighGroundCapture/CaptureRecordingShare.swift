@@ -766,7 +766,7 @@ struct CaptureRecordingShareEditor: View {
             if sources.isEmpty {
                 Text("Finish the verified participant uploads before preparing a private copy.")
                     .font(.caption.weight(.bold))
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(CapturePalette.brass)
             } else {
                 if let output = snapshot.output,
                    editing,
@@ -777,9 +777,9 @@ struct CaptureRecordingShareEditor: View {
                         systemImage: "waveform.badge.exclamationmark"
                     )
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(CapturePalette.brass)
                     .padding(12)
-                    .background(Color.orange.opacity(0.08), in: RoundedRectangle(cornerRadius: 14))
+                    .background(CapturePalette.brass.opacity(0.08), in: RoundedRectangle(cornerRadius: 14))
                     .accessibilityIdentifier("CaptureRecordingShareMissingSources")
                 }
 
@@ -800,7 +800,7 @@ struct CaptureRecordingShareEditor: View {
                     }
                     .padding(12)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Color.green.opacity(0.08), in: RoundedRectangle(cornerRadius: 14))
+                    .background(CapturePalette.success.opacity(0.08), in: RoundedRectangle(cornerRadius: 14))
                     .accessibilityIdentifier("CaptureRecordingShareTimelineStatus")
                 }
 
@@ -1001,7 +1001,7 @@ struct CaptureRecordingShareEditor: View {
                         .tint(CapturePalette.plum)
                         .disabled(!segment.canRippleDelete)
                         .padding(10)
-                        .background(segment.canRippleDelete ? CapturePalette.plum.opacity(0.06) : Color.orange.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
+                        .background(segment.canRippleDelete ? CapturePalette.plum.opacity(0.06) : CapturePalette.brass.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
                         .accessibilityIdentifier("CaptureRecordingShareSegment_\(segment.segmentId)")
                         if segment.canRippleDelete {
                             Button {
@@ -1028,14 +1028,14 @@ struct CaptureRecordingShareEditor: View {
                         } else {
                             Text(segment.cutSafetyReason ?? "Precise source timing is unavailable, so this passage stays included.")
                                 .font(.caption2.weight(.semibold))
-                                .foregroundStyle(.orange)
+                                .foregroundStyle(CapturePalette.brass)
                                 .padding(.horizontal, 10)
                         }
                     }
                     if let auditionNotice {
                         Text(auditionNotice)
                             .font(.caption.weight(.semibold))
-                            .foregroundStyle(sourcePlayback.errorMessage == nil ? Color.secondary : Color.orange)
+                            .foregroundStyle(sourcePlayback.errorMessage == nil ? Color.secondary : CapturePalette.brass)
                             .padding(10)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .background(Color.secondary.opacity(0.07), in: RoundedRectangle(cornerRadius: 12))
@@ -1083,7 +1083,7 @@ struct CaptureRecordingShareEditor: View {
                 if snapshot.readiness?.verifiedRendererAvailable != true {
                     Text("Preview preparation is temporarily unavailable. Your trim and transcript choices stay here; try again shortly.")
                         .font(.caption.weight(.semibold))
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(CapturePalette.brass)
                 }
             }
         } else if snapshot.output != nil {
@@ -1152,14 +1152,14 @@ struct CaptureRecordingShareEditor: View {
                         systemImage: "waveform.badge.exclamationmark"
                     )
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(CapturePalette.brass)
                 } else if segment.endSeconds <= startSeconds || segment.startSeconds >= endSeconds {
                     Label(
                         "This passage is outside the current start and end trim. Adjust the range below; Quipsly did not widen it automatically.",
                         systemImage: "timeline.selection"
                     )
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(CapturePalette.brass)
                 } else if segment.canRippleDelete {
                     Toggle(
                         "Include this passage",
@@ -1177,7 +1177,7 @@ struct CaptureRecordingShareEditor: View {
                         systemImage: "shield.lefthalf.filled"
                     )
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(CapturePalette.brass)
                 }
             } else {
                 Label(
@@ -1185,7 +1185,7 @@ struct CaptureRecordingShareEditor: View {
                     systemImage: "exclamationmark.triangle.fill"
                 )
                 .font(.caption.weight(.semibold))
-                .foregroundStyle(.orange)
+                .foregroundStyle(CapturePalette.brass)
             }
         }
         .padding(12)

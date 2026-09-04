@@ -1716,7 +1716,7 @@ struct MobileEpisodeWatchCard: View {
                             )
                             .frame(maxWidth: .infinity)
                         }
-                        .buttonStyle(.borderedProminent)
+                        .captureProminentButton()
                         .disabled(
                             client.isMutating
                                 || !client.canEdit
@@ -1811,7 +1811,7 @@ struct MobileEpisodeWatchCard: View {
                             )
                             .frame(maxWidth: .infinity)
                         }
-                        .buttonStyle(.borderedProminent)
+                        .captureProminentButton()
                         .disabled(
                             client.isMutating
                                 || !client.sharedConnectionReady
@@ -1838,7 +1838,7 @@ struct MobileEpisodeWatchCard: View {
                             .frame(maxWidth: .infinity, minHeight: 44)
                         }
                     }
-                    .buttonStyle(.borderedProminent)
+                    .captureProminentButton()
                     .disabled(
                         client.isPreparingClip
                             || client.isCheckingPlayback
@@ -1866,8 +1866,11 @@ struct MobileEpisodeWatchCard: View {
                         )
                         .frame(maxWidth: .infinity)
                     }
-                    .buttonStyle(.borderedProminent)
-                    .tint(client.room?.timelineIsCurrent == true ? .green : nil)
+                    .captureProminentButton(
+                        fill: client.room?.timelineIsCurrent == true
+                            ? CapturePalette.successFill
+                            : CapturePalette.actionFill
+                    )
                     .disabled(
                         client.isMutating
                             || !client.canEdit
@@ -1925,7 +1928,7 @@ struct MobileEpisodeWatchCard: View {
             if let errorMessage = client.errorMessage {
                 Label(errorMessage, systemImage: "exclamationmark.triangle.fill")
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(CapturePalette.brass)
                     .fixedSize(horizontal: false, vertical: true)
                     .accessibilityIdentifier("CaptureEpisodeWatchError")
             }
@@ -1944,7 +1947,7 @@ struct MobileEpisodeWatchCard: View {
         Text(client.statusLabel)
             .font(.caption2.weight(.bold))
             .foregroundStyle(
-                client.isSharedPlaying ? Color.green : Color.secondary
+                client.isSharedPlaying ? CapturePalette.success : Color.secondary
             )
             .padding(.horizontal, 9)
             .padding(.vertical, 5)

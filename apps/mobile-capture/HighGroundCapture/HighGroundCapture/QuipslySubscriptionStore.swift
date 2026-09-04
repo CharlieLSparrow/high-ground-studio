@@ -350,7 +350,7 @@ struct QuipslySubscriptionView: View {
                 if let error = store.errorMessage {
                     Text(error)
                         .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(CapturePalette.brass)
                         .captureCard()
                 }
             }
@@ -450,7 +450,7 @@ struct QuipslySubscriptionView: View {
             if let value = annualValueLabel(for: product) {
                 Label(value, systemImage: "checkmark.seal.fill")
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(.green)
+                    .foregroundStyle(CapturePalette.success)
             }
             Button {
                 Task { await store.purchase(product) }
@@ -467,7 +467,7 @@ struct QuipslySubscriptionView: View {
                 }
                 .frame(maxWidth: .infinity, minHeight: 44)
             }
-            .buttonStyle(.borderedProminent)
+            .captureProminentButton()
             .disabled(store.purchasingProductID != nil || store.entitlement?.planKey == planKey(for: product.id))
             .accessibilityIdentifier("CaptureSubscribe_\(product.id)")
         }
@@ -497,11 +497,11 @@ struct QuipslySubscriptionView: View {
             if let value = plan.value {
                 Label(value, systemImage: "checkmark.seal.fill")
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(.green)
+                    .foregroundStyle(CapturePalette.success)
             }
             Button("Start free trial") {}
                 .frame(maxWidth: .infinity, minHeight: 44)
-                .buttonStyle(.borderedProminent)
+                .captureProminentButton()
                 .accessibilityIdentifier("CaptureSubscribe_\(plan.id)")
         }
         .captureCard()

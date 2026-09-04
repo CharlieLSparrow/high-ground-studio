@@ -15,8 +15,8 @@ private enum CaptureRehearsalCheckState {
 
     var tint: Color {
         switch self {
-        case .ready: .green
-        case .action: .orange
+        case .ready: CapturePalette.success
+        case .action: CapturePalette.brass
         case .blocked: .red
         }
     }
@@ -177,7 +177,7 @@ struct CaptureRehearsalReadinessCard: View {
                             .frame(maxWidth: .infinity)
                         }
                     }
-                    .buttonStyle(.borderedProminent)
+                    .captureProminentButton()
                     .disabled(runCheckDisabled)
                     .accessibilityHint(runCheckHint)
                     .accessibilityIdentifier("CaptureRehearsalRunCheck")
@@ -557,8 +557,8 @@ struct CaptureRehearsalReadinessCard: View {
 
     private var summaryTint: Color {
         remainingRequiredCount == 0 && optionalWarningCount == 0 && !previewOnly
-            ? .green
-            : .orange
+            ? CapturePalette.success
+            : CapturePalette.brass
     }
 
     private var readinessChevron: some View {
@@ -706,8 +706,7 @@ private struct CaptureAudioSoundCheckControls: View {
                     Label("Stop sound check", systemImage: "stop.fill")
                         .frame(maxWidth: .infinity)
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(.red)
+                .captureProminentButton(fill: CapturePalette.record)
                 .accessibilityIdentifier("CaptureSoundCheckStop")
             } else if let summary = controller.summary {
                 VStack(alignment: .leading, spacing: 5) {
@@ -721,7 +720,7 @@ private struct CaptureAudioSoundCheckControls: View {
                             systemImage: "arrow.trianglehead.2.clockwise.rotate.90"
                         )
                         .font(.caption.weight(.bold))
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(CapturePalette.brass)
                     }
                     Text(summary.health.guidance)
                         .font(.caption)
@@ -744,7 +743,7 @@ private struct CaptureAudioSoundCheckControls: View {
                             systemImage: controller.state == .playing ? "stop.fill" : "play.fill"
                         )
                     }
-                    .buttonStyle(.borderedProminent)
+                    .captureProminentButton()
                     .disabled(providerConnected || captureIsActive)
                     .accessibilityIdentifier("CaptureSoundCheckPlayback")
 
@@ -775,8 +774,7 @@ private struct CaptureAudioSoundCheckControls: View {
                             } label: {
                                 Label("Sounds clear", systemImage: "checkmark.circle")
                             }
-                            .buttonStyle(.borderedProminent)
-                            .tint(.green)
+                            .captureProminentButton(fill: CapturePalette.successFill)
                             .disabled(controller.playbackDecision == .heardClear)
                             .accessibilityIdentifier("CaptureSoundCheckHeardClear")
 
@@ -793,7 +791,7 @@ private struct CaptureAudioSoundCheckControls: View {
                             Text(decision.title)
                                 .font(.caption2.weight(.bold))
                                 .foregroundStyle(
-                                    decision == .heardClear ? Color.green : Color.orange
+                                    decision == .heardClear ? CapturePalette.success : CapturePalette.brass
                                 )
                                 .accessibilityIdentifier("CaptureSoundCheckPlaybackDecision")
                         }
@@ -819,7 +817,7 @@ private struct CaptureAudioSoundCheckControls: View {
                             .frame(maxWidth: .infinity)
                     }
                 }
-                .buttonStyle(.borderedProminent)
+                .captureProminentButton()
                 .disabled(!canStart)
                 .accessibilityHint(startHint)
                 .accessibilityIdentifier("CaptureSoundCheckStart")
@@ -867,8 +865,8 @@ private struct CaptureAudioSoundCheckControls: View {
 
     private func summaryTint(_ health: CaptureAudioSoundCheckHealth) -> Color {
         switch health {
-        case .healthy: .green
-        case .tooQuiet, .hot: .orange
+        case .healthy: CapturePalette.success
+        case .tooQuiet, .hot: CapturePalette.brass
         case .noSignal, .clippingRisk: .red
         }
     }

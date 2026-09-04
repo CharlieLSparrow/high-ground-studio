@@ -646,7 +646,7 @@ struct MobileSessionConversationCard: View {
                     ? "Offline copy"
                     : (client.statusMessage ?? "Session"))
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(client.isUsingProtectedCache ? .orange : .secondary)
+                    .foregroundStyle(client.isUsingProtectedCache ? CapturePalette.brass : .secondary)
             }
 
             if client.isLoading && client.messages.isEmpty {
@@ -672,14 +672,14 @@ struct MobileSessionConversationCard: View {
                 Label("Open conversation", systemImage: "bubble.left.and.bubble.right.fill")
                     .frame(maxWidth: .infinity)
             }
-            .buttonStyle(.borderedProminent)
+            .captureProminentButton()
             .disabled(client.isLoading && client.messages.isEmpty)
             .accessibilityIdentifier("CaptureSessionChatOpenButton")
 
             if let errorMessage = client.errorMessage {
                 Text(errorMessage)
                     .font(.caption)
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(CapturePalette.brass)
                     .accessibilityIdentifier("CaptureSessionChatError")
             }
         }
@@ -881,7 +881,7 @@ private struct MobileSessionConversationThread: View {
             if let errorMessage = client.errorMessage {
                 Label(errorMessage, systemImage: "exclamationmark.triangle.fill")
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(CapturePalette.brass)
             }
             if let editing {
                 HStack {
@@ -910,7 +910,7 @@ private struct MobileSessionConversationThread: View {
                     Label("Save changes", systemImage: "checkmark")
                         .frame(maxWidth: .infinity)
                 }
-                .buttonStyle(.borderedProminent)
+                .captureProminentButton()
                 .disabled(editDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || client.isMutating)
             } else {
                 if let replyTo {
@@ -956,7 +956,7 @@ private struct MobileSessionConversationThread: View {
                         if client.isSending { ProgressView() }
                         else { Image(systemName: "paperplane.fill") }
                     }
-                    .buttonStyle(.borderedProminent)
+                    .captureProminentButton()
                     .disabled(
                         draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                             || !client.canWrite

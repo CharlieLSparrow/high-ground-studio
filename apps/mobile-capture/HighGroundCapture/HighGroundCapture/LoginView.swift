@@ -376,7 +376,7 @@ struct LoginView: View {
         if let status = authManager.statusMessage {
             Label(status, systemImage: "checkmark.circle.fill")
                 .font(.footnote.weight(.semibold))
-                .foregroundStyle(.green)
+                .foregroundStyle(CapturePalette.success)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .accessibilityIdentifier("QuipslyCaptureLoginStatus")
         }
@@ -564,7 +564,7 @@ struct LoginView: View {
     private func authValidationLabel(_ text: String, systemImage: String) -> some View {
         Label(text, systemImage: systemImage)
             .font(.footnote.weight(.semibold))
-            .foregroundStyle(.orange)
+            .foregroundStyle(CapturePalette.brass)
             .frame(maxWidth: .infinity, alignment: .leading)
     }
 

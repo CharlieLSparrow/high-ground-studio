@@ -1806,7 +1806,7 @@ struct CaptureCoachingHomeView: View {
                     if let error = client.errorMessage {
                         Label(error, systemImage: "exclamationmark.triangle.fill")
                             .font(.caption.weight(.semibold))
-                            .foregroundStyle(.orange)
+                            .foregroundStyle(CapturePalette.brass)
                             .captureCard()
                             .accessibilityIdentifier("CaptureCoachingError")
                     }
@@ -1875,8 +1875,7 @@ struct CaptureCoachingHomeView: View {
                             Label(item.actionLabel, systemImage: practiceCommandSymbol(item.kind))
                                 .frame(maxWidth: .infinity)
                         }
-                        .buttonStyle(.borderedProminent)
-                        .tint(practiceCommandColor(item.tone))
+                        .captureProminentButton(fill: practiceCommandFill(item.tone))
                         .accessibilityIdentifier("CaptureCoachingCommand_\(item.kind)_\(index)")
                     }
                     .padding(14)
@@ -1921,11 +1920,19 @@ struct CaptureCoachingHomeView: View {
 
     private func practiceCommandColor(_ tone: String) -> Color {
         switch tone {
-        case "live": return .green
-        case "attention": return .orange
+        case "live": return CapturePalette.success
+        case "attention": return CapturePalette.brass
         case "upcoming": return CapturePalette.accent
         case "follow-up": return CapturePalette.accent
         default: return CapturePalette.accent
+        }
+    }
+
+    private func practiceCommandFill(_ tone: String) -> Color {
+        switch tone {
+        case "live": return CapturePalette.successFill
+        case "attention": return CapturePalette.warningFill
+        default: return CapturePalette.actionFill
         }
     }
 
@@ -2124,7 +2131,7 @@ struct CaptureCoachingHomeView: View {
                 Label(client.isMutating ? "Setting up…" : "Set up coaching", systemImage: "sparkles")
                     .frame(maxWidth: .infinity)
             }
-            .buttonStyle(.borderedProminent)
+            .captureProminentButton()
             .disabled(client.isMutating || client.isUsingProtectedCache || model.usesPreviewData)
             .accessibilityIdentifier("CaptureCoachingSetupButton")
         }
@@ -2156,7 +2163,7 @@ struct CaptureCoachingHomeView: View {
                                 Label("Confirm Session", systemImage: "checkmark.circle.fill")
                                     .frame(maxWidth: .infinity)
                             }
-                            .buttonStyle(.borderedProminent)
+                            .captureProminentButton()
                             .disabled(client.isMutating || client.isUsingProtectedCache || model.usesPreviewData)
                             .accessibilityIdentifier("CaptureCoachingConfirmRequest_\(request.id)")
 
@@ -2291,7 +2298,7 @@ struct CaptureCoachingHomeView: View {
                     Label("New session", systemImage: "calendar.badge.plus")
                         .frame(maxWidth: .infinity)
                 }
-                .buttonStyle(.borderedProminent)
+                .captureProminentButton()
                 .disabled(
                     client.isMutating
                         || client.isUsingProtectedCache
@@ -2332,7 +2339,7 @@ struct CaptureCoachingHomeView: View {
         VStack(alignment: .leading, spacing: 12) {
             Label("Appointment ready", systemImage: "checkmark.circle.fill")
                 .font(.headline)
-                .foregroundStyle(.green)
+                .foregroundStyle(CapturePalette.success)
             if let roomID = handoff.callRoomId,
                client.invitationDeliveries[roomID]?.wasSent == true {
                 Text("Invitation sent. Open the Session when you're ready.")
@@ -2361,7 +2368,7 @@ struct CaptureCoachingHomeView: View {
                             Label("Open Session", systemImage: "arrow.right.circle.fill")
                                 .frame(maxWidth: .infinity)
                         }
-                        .buttonStyle(.borderedProminent)
+                        .captureProminentButton()
                         .accessibilityIdentifier("CaptureCoachingOpen_Handoff_\(roomID)")
                         if !model.usesPreviewData {
                             appointmentManagementMenu(for: booking)
@@ -2437,7 +2444,7 @@ struct CaptureCoachingHomeView: View {
                                         Label("Open Session", systemImage: "arrow.right.circle.fill")
                                             .frame(maxWidth: .infinity)
                                     }
-                                    .buttonStyle(.borderedProminent)
+                                    .captureProminentButton()
                                     .accessibilityIdentifier("CaptureCoachingOpen_\(booking.id)")
                                 }
                                 if !model.usesPreviewData {
@@ -2466,7 +2473,7 @@ struct CaptureCoachingHomeView: View {
                                     Label("Open Session", systemImage: "arrow.right.circle.fill")
                                         .frame(maxWidth: .infinity)
                                 }
-                                .buttonStyle(.borderedProminent)
+                                .captureProminentButton()
                                 .accessibilityIdentifier("CaptureCoachingOpen_\(booking.id)")
                             }
                             if engagement(for: booking) != nil {
@@ -2563,7 +2570,7 @@ struct CaptureCoachingHomeView: View {
                         systemImage: delivery.wasSent ? "checkmark.circle.fill" : "exclamationmark.triangle.fill"
                     )
                     .font(.caption)
-                    .foregroundStyle(delivery.wasSent ? .green : .orange)
+                    .foregroundStyle(delivery.wasSent ? CapturePalette.success : CapturePalette.brass)
                     .accessibilityIdentifier("CaptureCoachingInviteDelivery_\(booking.id)")
                 }
             }
@@ -2706,7 +2713,7 @@ private struct MobileCoachingScheduleRequestReviewCard: View {
                 VStack(alignment: .leading, spacing: 10) {
                     Label("Client requested a change", systemImage: "calendar.badge.exclamationmark")
                         .font(.subheadline.weight(.bold))
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(CapturePalette.brass)
 
                     Text(message.body)
                         .font(.subheadline)
@@ -2721,7 +2728,7 @@ private struct MobileCoachingScheduleRequestReviewCard: View {
                             Label("Review requested time", systemImage: "calendar.badge.clock")
                                 .frame(maxWidth: .infinity)
                         }
-                        .buttonStyle(.borderedProminent)
+                        .captureProminentButton()
                         .accessibilityIdentifier("CaptureCoachingReviewRequestedTime_\(booking.id)")
                     } else if request.kind == "CANCEL" {
                         Button(role: .destructive) {
@@ -2730,7 +2737,7 @@ private struct MobileCoachingScheduleRequestReviewCard: View {
                             Label("Review cancellation", systemImage: "calendar.badge.minus")
                                 .frame(maxWidth: .infinity)
                         }
-                        .buttonStyle(.borderedProminent)
+                        .captureProminentButton()
                         .accessibilityIdentifier("CaptureCoachingReviewRequestedCancellation_\(booking.id)")
                     }
 
@@ -2749,7 +2756,7 @@ private struct MobileCoachingScheduleRequestReviewCard: View {
                     .accessibilityIdentifier("CaptureCoachingKeepCurrent_\(booking.id)")
                 }
                 .padding(12)
-                .background(.orange.opacity(0.08), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .background(CapturePalette.brass.opacity(0.08), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                 .accessibilityElement(children: .contain)
                 .accessibilityIdentifier("CaptureCoachingPendingChangeRequest_\(booking.id)")
             }
@@ -2836,7 +2843,7 @@ private struct MobileCoachingScheduleRequestSheet: View {
                     Section {
                         Label("Request sent", systemImage: "checkmark.circle.fill")
                             .font(.headline)
-                            .foregroundStyle(.green)
+                            .foregroundStyle(CapturePalette.success)
                         Text("Your appointment has not changed yet. Your coach will confirm the next step in this private coaching conversation.")
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
@@ -2977,7 +2984,7 @@ private struct MobileCoachingInlineWarning: View {
     var body: some View {
         Label(text, systemImage: "exclamationmark.triangle.fill")
             .font(.caption.weight(.semibold))
-            .foregroundStyle(.orange)
+            .foregroundStyle(CapturePalette.brass)
             .frame(maxWidth: .infinity, alignment: .leading)
             .captureCard()
     }
@@ -3072,9 +3079,11 @@ struct CaptureCoachingEngagementWorkspaceView: View {
             }
             .padding(20)
         }
-        .background(Color.primary.opacity(0.035).ignoresSafeArea())
+        .background(CaptureCanvas())
         .navigationTitle(client.workspace?.title ?? engagement.title)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(CapturePalette.canvas, for: .navigationBar)
+        .toolbarBackground(.visible, for: .navigationBar)
         .toolbar {
             if client.workspace?.canWrite == true {
                 ToolbarItem(placement: .topBarTrailing) {
@@ -3202,8 +3211,11 @@ struct CaptureCoachingEngagementWorkspaceView: View {
                         )
                         .frame(maxWidth: .infinity)
                     }
-                    .buttonStyle(.borderedProminent)
-                    .tint(relationshipPulseIsLive(pulseSession) ? .red : CapturePalette.accent)
+                    .captureProminentButton(
+                        fill: relationshipPulseIsLive(pulseSession)
+                            ? CapturePalette.record
+                            : CapturePalette.actionFill
+                    )
                     .accessibilityIdentifier("CaptureCoachingRelationshipPrimaryAction")
                 } else {
                     Button {
@@ -3223,8 +3235,7 @@ struct CaptureCoachingEngagementWorkspaceView: View {
                         )
                             .frame(maxWidth: .infinity)
                     }
-                    .buttonStyle(.borderedProminent)
-                    .tint(CapturePalette.accent)
+                    .captureProminentButton()
                     .disabled(
                         canonicalPriority?.kind == "REVIEW_OVERDUE_COMMITMENTS"
                             ? false
@@ -3284,7 +3295,7 @@ struct CaptureCoachingEngagementWorkspaceView: View {
                     systemImage: "lock.fill"
                 )
                 .font(.caption.weight(.semibold))
-                .foregroundStyle(.orange)
+                .foregroundStyle(CapturePalette.brass)
             }
         }
         .captureCard()
@@ -3541,7 +3552,7 @@ struct CaptureCoachingEngagementWorkspaceView: View {
             HStack(alignment: .top) {
                 Label(entry.kindLabel, systemImage: icon(for: entry))
                     .font(.caption.weight(.bold))
-                    .foregroundStyle(entry.visibility == "PRIVATE" ? .orange : CapturePalette.accent)
+                    .foregroundStyle(entry.visibility == "PRIVATE" ? CapturePalette.brass : CapturePalette.accent)
                 Spacer()
             }
 
@@ -3555,11 +3566,11 @@ struct CaptureCoachingEngagementWorkspaceView: View {
                     Text("Only you can read this note")
                 }
                 .font(.caption.weight(.bold))
-                .foregroundStyle(.orange)
+                .foregroundStyle(CapturePalette.brass)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 10)
                 .padding(.vertical, 7)
-                .background(.orange.opacity(0.12), in: Capsule())
+                .background(CapturePalette.brass.opacity(0.12), in: Capsule())
             }
             if let body = entry.body?.nonemptyCoachingText, body != entry.title {
                 Text(body)
@@ -3581,7 +3592,7 @@ struct CaptureCoachingEngagementWorkspaceView: View {
                         Button(entry.isComplete ? "Reopen" : entry.kind == "TASK" ? "Complete" : "Achieve") {
                             Task { await toggleCompletion(entry) }
                         }
-                        .buttonStyle(.borderedProminent)
+                        .captureProminentButton()
                         .disabled(client.isSaving)
                         .accessibilityIdentifier("CaptureCoachingToggle_\(entry.id)")
                     }
@@ -3839,7 +3850,7 @@ private struct MobileCoachingRescheduleSheet: View {
                             systemImage: "clock.badge.exclamationmark.fill"
                         )
                         .font(.caption)
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(CapturePalette.brass)
                         .accessibilityIdentifier("CaptureCoachingRescheduleOutsideWorkingHours")
                     }
                 }
@@ -3952,7 +3963,7 @@ struct MobileCoachingAppointmentFields: View {
                     systemImage: "clock.badge.exclamationmark.fill"
                 )
                 .font(.caption)
-                .foregroundStyle(.orange)
+                .foregroundStyle(CapturePalette.brass)
                 .accessibilityIdentifier("CaptureCoachingAppointmentOutsideWorkingHours")
             }
         }
@@ -4151,7 +4162,7 @@ private struct MobileCoachingAvailabilitySheet: View {
                                 : "End time must be after start time.",
                             systemImage: "exclamationmark.triangle.fill"
                         )
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(CapturePalette.brass)
                     }
                 }
 

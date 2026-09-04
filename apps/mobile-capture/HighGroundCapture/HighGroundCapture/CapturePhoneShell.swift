@@ -223,7 +223,7 @@ struct CapturePhoneShell: View {
                     audioCapture.currentDuration,
                     videoCapture.durationSeconds
                 ),
-                tint: coordinatedCaptureIsPaused ? .orange : .red,
+                tint: coordinatedCaptureIsPaused ? CapturePalette.brass : .red,
                 isPulsing:
                     audioCapture.captureState == .recording
                     && videoCapture.state == .recording,
@@ -237,7 +237,7 @@ struct CapturePhoneShell: View {
                         ? "Saving audio"
                         : "Recording audio",
                 duration: audioCapture.currentDuration,
-                tint: audioCapture.captureState == .paused ? .orange : .red,
+                tint: audioCapture.captureState == .paused ? CapturePalette.brass : .red,
                 isPulsing: audioCapture.captureState == .recording,
                 action: openActiveRecorder
             )
@@ -249,7 +249,7 @@ struct CapturePhoneShell: View {
                         ? "Saving video"
                         : "Recording video",
                 duration: videoCapture.durationSeconds,
-                tint: videoCapture.state == .paused ? .orange : .red,
+                tint: videoCapture.state == .paused ? CapturePalette.brass : .red,
                 isPulsing: videoCapture.state == .recording,
                 action: openActiveRecorder
             )
@@ -957,10 +957,10 @@ private struct CaptureTodayView: View {
                     && !CaptureLaunchConfiguration.usesAppStorePresentation {
                     Label("Preview data — no server actions", systemImage: "hammer.fill")
                         .font(.caption.weight(.semibold))
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(CapturePalette.brass)
                         .padding(.horizontal, 12)
                         .padding(.vertical, 8)
-                        .background(.orange.opacity(0.12), in: Capsule())
+                        .background(CapturePalette.brass.opacity(0.12), in: Capsule())
                         // XCTest must not mistake the first mounted frame for
                         // a usable fixture graph. The ready identifier appears
                         // only after every core preview projection is present.
@@ -1285,7 +1285,7 @@ private struct CaptureHomeContinueSection: View {
                         title: followUp.title,
                         detail: "Notes and next steps from \(followUp.sessionTitle)",
                         systemImage: "person.crop.circle.badge.checkmark",
-                        tint: .green
+                        tint: CapturePalette.success
                     ) {
                         onOpenFollowUp(followUp.roomId)
                     }
@@ -1309,7 +1309,7 @@ private struct CaptureHomeContinueSection: View {
                         title: "Finish backing up",
                         detail: "\(uploadManager.recoverableUploadCount) recording\(uploadManager.recoverableUploadCount == 1 ? "" : "s") saved safely on \(CaptureDeviceVocabulary.thisDevice)",
                         systemImage: "icloud.and.arrow.up",
-                        tint: .orange,
+                        tint: CapturePalette.brass,
                         action: onOpenLibrary
                     )
                     .accessibilityIdentifier("CaptureHomeContinueUpload")
@@ -1370,10 +1370,10 @@ private struct CaptureFinishQueueCard: View {
             HStack(alignment: .top, spacing: 12) {
                 Image(systemName: needsDeviceAttention ? "externaldrive.badge.exclamationmark" : "checkmark.icloud")
                     .font(.system(size: 20, weight: .bold))
-                    .foregroundStyle(needsDeviceAttention ? Color.orange : Color.green)
+                    .foregroundStyle(needsDeviceAttention ? CapturePalette.brass : CapturePalette.success)
                     .frame(minWidth: 36, minHeight: 36)
                     .background(
-                        (needsDeviceAttention ? Color.orange : Color.green).opacity(0.12),
+                        (needsDeviceAttention ? CapturePalette.brass : CapturePalette.success).opacity(0.12),
                         in: RoundedRectangle(cornerRadius: 11)
                     )
                     .accessibilityHidden(true)
@@ -1424,7 +1424,7 @@ private struct CaptureFinishQueueCard: View {
                                         if let exit = action.sourceExitReadiness {
                                             Text(exit.experience.title)
                                                 .font(.caption.weight(.semibold))
-                                                .foregroundStyle(exit.experience.isSafe ? .green : .orange)
+                                                .foregroundStyle(exit.experience.isSafe ? CapturePalette.success : CapturePalette.brass)
                                             Text(exit.experience.detail)
                                                 .font(.caption2)
                                                 .foregroundStyle(.secondary)
@@ -1487,7 +1487,7 @@ private struct CaptureFinishQueueCard: View {
             } else if let error = client.errorMessage {
                 Label(error, systemImage: "exclamationmark.triangle.fill")
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(CapturePalette.brass)
                     .accessibilityIdentifier("CaptureFinishQueueError")
             } else {
                 HStack(spacing: 8) {
@@ -1564,7 +1564,7 @@ private struct CaptureSourceRecoveryCard: View {
     @State private var showsRecordingDetails = false
 
     private var tint: Color {
-        readiness.experience.isSafe ? .green : .orange
+        readiness.experience.isSafe ? CapturePalette.success : CapturePalette.brass
     }
 
     var body: some View {
@@ -1657,7 +1657,7 @@ private struct CaptureSourceRecoveryCard: View {
                             detail: [source.participantLabel, source.expectedDeviceLabel, source.fulfillment.replacingOccurrences(of: "-", with: " ")]
                                 .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines).nonempty }
                                 .joined(separator: " · "),
-                            tone: .orange
+                            tone: CapturePalette.brass
                         )
 
                         TextField(
@@ -1704,7 +1704,7 @@ private struct CaptureSourceRecoveryCard: View {
                         .accessibilityIdentifier("CaptureWaiveMissingPlannedSource_\(source.id)")
                     }
                     .padding(10)
-                    .background(Color.orange.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
+                    .background(CapturePalette.brass.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
                 }
             }
         }
@@ -1732,7 +1732,7 @@ private struct CaptureSourceRecoveryCard: View {
                         icon: "waveform.badge.exclamationmark",
                         title: source.label,
                         detail: "\(source.deviceLabel) · \(sourceRetentionLabel(source.serverRetentionState))",
-                        tone: .orange
+                        tone: CapturePalette.brass
                     )
                 }
             }
@@ -1752,7 +1752,7 @@ private struct CaptureSourceRecoveryCard: View {
                         detail: source.disposition.map {
                             "Plan revision \($0.revision) · \($0.status) · \($0.reason)"
                         } ?? "Resolved without discarding the recording history",
-                        tone: .green
+                        tone: CapturePalette.success
                     )
                 }
             }
@@ -1766,7 +1766,7 @@ private struct CaptureSourceRecoveryCard: View {
                         icon: queue.clientKind == "ios" ? "iphone" : "laptopcomputer",
                         title: queue.deviceLabel,
                         detail: queue.evidenceLine,
-                        tone: queue.isDrained ? .green : .orange
+                        tone: queue.isDrained ? CapturePalette.success : CapturePalette.brass
                     )
                 }
             }
@@ -2493,25 +2493,25 @@ private struct CaptureWorkView: View {
                 if client.isUsingProtectedCache {
                     Label("Offline · you can still capture new work; reconnect to edit existing items", systemImage: "wifi.slash")
                         .font(.caption.weight(.semibold))
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(CapturePalette.brass)
                         .padding(.horizontal, 12)
                         .padding(.vertical, 9)
-                        .background(.orange.opacity(0.12), in: Capsule())
+                        .background(CapturePalette.brass.opacity(0.12), in: Capsule())
                         .accessibilityIdentifier("CaptureWorkProtectedSnapshot")
                 } else if model.usesPreviewData
                     && !CaptureLaunchConfiguration.usesAppStorePresentation {
                     Label("Preview data · changes are off", systemImage: "hammer.fill")
                         .font(.caption.weight(.semibold))
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(CapturePalette.brass)
                         .padding(.horizontal, 12)
                         .padding(.vertical, 9)
-                        .background(.orange.opacity(0.12), in: Capsule())
+                        .background(CapturePalette.brass.opacity(0.12), in: Capsule())
                 }
 
                 if let errorMessage = client.errorMessage {
                     Text(errorMessage)
                         .font(.caption.weight(.semibold))
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(CapturePalette.brass)
                         .accessibilityIdentifier("CaptureWorkStatus")
                 }
                 if client.pendingDocumentNoteEditCount > 0
@@ -2826,7 +2826,7 @@ private struct CaptureWorkView: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .top, spacing: 10) {
                 Image(systemName: client.heldDocumentNoteEditCount > 0 ? "exclamationmark.shield.fill" : "lock.iphone")
-                    .foregroundStyle(client.heldDocumentNoteEditCount > 0 ? .orange : CapturePalette.accent)
+                    .foregroundStyle(client.heldDocumentNoteEditCount > 0 ? CapturePalette.brass : CapturePalette.accent)
                 VStack(alignment: .leading, spacing: 3) {
                     Text(client.heldDocumentNoteEditCount > 0
                          ? "This note also changed somewhere else"
@@ -2861,7 +2861,7 @@ private struct CaptureWorkView: View {
             }
         }
         .padding(13)
-        .background(.orange.opacity(0.08), in: RoundedRectangle(cornerRadius: 18))
+        .background(CapturePalette.brass.opacity(0.08), in: RoundedRectangle(cornerRadius: 18))
         .accessibilityIdentifier("CaptureWorkNoteEditStatus")
     }
 
@@ -3514,7 +3514,7 @@ private struct CaptureWorkView: View {
             } label: {
                 Image(systemName: task.status == "OPEN" ? "circle" : "checkmark.circle.fill")
                     .font(.title3)
-                    .foregroundStyle(task.status == "OPEN" ? CapturePalette.accent : .green)
+                    .foregroundStyle(task.status == "OPEN" ? CapturePalette.accent : CapturePalette.success)
             }
             .disabled(decisionsDisabled || task.canEdit != true)
             .accessibilityLabel(task.status == "OPEN" ? "Mark \(task.title) done" : "Reopen \(task.title)")
@@ -3531,7 +3531,7 @@ private struct CaptureWorkView: View {
                 if let dueLabel = captureTaskDueLabel(task) {
                     Label(dueLabel, systemImage: task.isOverdue == true ? "exclamationmark.circle.fill" : "calendar")
                         .font(.caption2.weight(.semibold))
-                        .foregroundStyle(task.isOverdue == true ? Color.orange : Color.secondary)
+                        .foregroundStyle(task.isOverdue == true ? CapturePalette.brass : Color.secondary)
                         .accessibilityIdentifier("CaptureWorkTaskDue_\(task.id)")
                 }
                 if let evidence = task.lastMergedTranscriptEvidence {
@@ -3613,7 +3613,7 @@ private struct CaptureWorkView: View {
                     focusedWorkEntityID == task.id
                         ? CapturePalette.accent
                         : task.isOverdue == true
-                            ? Color.orange.opacity(0.45)
+                            ? CapturePalette.brass.opacity(0.45)
                             : Color.primary.opacity(0.07),
                     lineWidth: focusedWorkEntityID == task.id ? 3 : 1
                 )
@@ -3760,7 +3760,7 @@ private struct CaptureWorkView: View {
                         : "lock.iphone"
                 )
                 .font(.caption2.weight(.semibold))
-                .foregroundStyle(pendingEdit.disposition == .held ? .orange : CapturePalette.accent)
+                .foregroundStyle(pendingEdit.disposition == .held ? CapturePalette.brass : CapturePalette.accent)
                 .accessibilityIdentifier("CaptureWorkNoteEditState_\(note.id)")
             }
             workTagDecisionStatus(kind: .document, entityID: note.id)
@@ -3923,7 +3923,7 @@ private struct CaptureWorkView: View {
                 systemImage: pending.disposition == .held ? "exclamationmark.triangle.fill" : "tag.fill"
             )
             .font(.caption2.weight(.semibold))
-            .foregroundStyle(pending.disposition == .held ? Color.orange : CapturePalette.ink)
+            .foregroundStyle(pending.disposition == .held ? CapturePalette.brass : CapturePalette.ink)
             .accessibilityIdentifier("CaptureWorkTagsPending_\(kind.rawValue)_\(entityID)")
             .accessibilityValue(pending.disposition == .held ? "Held" : "Queued")
             if pending.disposition == .held {
@@ -4112,7 +4112,7 @@ private struct CaptureCalendarContinuityCard: View {
                     VStack(alignment: .leading, spacing: 10) {
                         Label("Shown once · \(feed.displayName)", systemImage: "key.fill")
                             .font(.caption.weight(.bold))
-                            .foregroundStyle(.green)
+                            .foregroundStyle(CapturePalette.success)
                         Text("Treat this private subscription like a password. Anyone with it can read this calendar projection until you revoke or replace it.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
@@ -4139,7 +4139,7 @@ private struct CaptureCalendarContinuityCard: View {
                         .accessibilityIdentifier("CaptureCalendarHideLink")
                     }
                     .padding(12)
-                    .background(Color.green.opacity(0.08), in: RoundedRectangle(cornerRadius: 14))
+                    .background(CapturePalette.success.opacity(0.08), in: RoundedRectangle(cornerRadius: 14))
                     .accessibilityElement(children: .contain)
                     .accessibilityIdentifier("CaptureCalendarOneTimeLink")
                 }
@@ -4153,7 +4153,7 @@ private struct CaptureCalendarContinuityCard: View {
                 if let error = client.errorMessage {
                     Label(error, systemImage: "exclamationmark.triangle")
                         .font(.caption2.weight(.semibold))
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(CapturePalette.brass)
                         .accessibilityIdentifier("CaptureCalendarError")
                 }
 
@@ -4230,8 +4230,8 @@ private struct CaptureCalendarContinuityCard: View {
                         .font(.caption2.weight(.bold))
                         .foregroundStyle(
                             connection.status.uppercased() == "VERIFIED"
-                                ? Color.green
-                                : Color.orange
+                                ? CapturePalette.success
+                                : CapturePalette.brass
                         )
                 } else if client.hasLoadedGoogleSummary {
                     Text("Not connected")
@@ -4255,7 +4255,7 @@ private struct CaptureCalendarContinuityCard: View {
                         HStack(alignment: .top, spacing: 8) {
                             Image(systemName: "checkmark.circle.fill")
                                 .font(.caption)
-                                .foregroundStyle(.green)
+                                .foregroundStyle(CapturePalette.success)
                                 .accessibilityHidden(true)
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(selection.purpose.title)
@@ -4305,7 +4305,7 @@ private struct CaptureCalendarContinuityCard: View {
             if let error = client.googleErrorMessage {
                 Label(error, systemImage: "exclamationmark.triangle")
                     .font(.caption2.weight(.semibold))
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(CapturePalette.brass)
                     .accessibilityIdentifier("CaptureGoogleCalendarError")
             }
 
@@ -4315,7 +4315,7 @@ private struct CaptureCalendarContinuityCard: View {
                 .accessibilityIdentifier("CaptureGoogleCalendarBoundary")
         }
         .padding(12)
-        .background(Color.green.opacity(0.07), in: RoundedRectangle(cornerRadius: 14))
+        .background(CapturePalette.success.opacity(0.07), in: RoundedRectangle(cornerRadius: 14))
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("CaptureGoogleCalendarProjection")
     }
@@ -4336,7 +4336,7 @@ private struct CaptureCalendarContinuityCard: View {
                 Spacer()
                 Text(active ? "Active" : "Not shared")
                     .font(.caption2.weight(.bold))
-                    .foregroundStyle(active ? Color.green : Color.secondary)
+                    .foregroundStyle(active ? CapturePalette.success : Color.secondary)
             }
 
             if purpose == .podcastProduction {
@@ -4490,7 +4490,7 @@ struct TodayFollowThroughCard: View {
                 VStack(alignment: .leading, spacing: 8) {
                     Label("New coaching follow-up", systemImage: "person.crop.circle.badge.checkmark")
                         .font(.caption.weight(.bold))
-                        .foregroundStyle(.green)
+                        .foregroundStyle(CapturePalette.success)
                     Text(followUp.title)
                         .font(.headline)
                         .fixedSize(horizontal: false, vertical: true)
@@ -4524,7 +4524,7 @@ struct TodayFollowThroughCard: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 .padding(12)
-                .background(Color.green.opacity(0.09), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .background(CapturePalette.success.opacity(0.09), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                 .accessibilityElement(children: .contain)
                 .accessibilityIdentifier("CaptureTodayClientFollowUp_\(followUp.outputId)")
             }
@@ -4558,7 +4558,7 @@ struct TodayFollowThroughCard: View {
                 VStack(alignment: .leading, spacing: 9) {
                     Label("Focus updates", systemImage: "iphone.and.arrow.forward")
                         .font(.caption.weight(.bold))
-                        .foregroundStyle(client.heldFocusDecisionCount > 0 ? Color.orange : CapturePalette.plum)
+                        .foregroundStyle(client.heldFocusDecisionCount > 0 ? CapturePalette.brass : CapturePalette.plum)
                     ForEach(client.focusDecisions) { decision in
                         let title = client.focusBlocks.first(where: { $0.id == decision.blockID })?.title
                             ?? "Focus block \(decision.blockID.prefix(8))"
@@ -4573,7 +4573,7 @@ struct TodayFollowThroughCard: View {
                                     : "lock.doc.fill"
                             )
                             .font(.caption.weight(.semibold))
-                            .foregroundStyle(decision.disposition == .held ? Color.orange : CapturePalette.plum)
+                            .foregroundStyle(decision.disposition == .held ? CapturePalette.brass : CapturePalette.plum)
                             if let minutes = decision.actualMinutes {
                                 Text("\(minutes) actual minute\(minutes == 1 ? "" : "s") · linked work unchanged")
                                     .font(.caption)
@@ -4616,7 +4616,7 @@ struct TodayFollowThroughCard: View {
                         VStack(alignment: .leading, spacing: 7) {
                             HStack(alignment: .top, spacing: 10) {
                                 Image(systemName: "circle")
-                                    .foregroundStyle(.orange)
+                                    .foregroundStyle(CapturePalette.brass)
                                     .padding(.top, 2)
                                 VStack(alignment: .leading, spacing: 2) {
                                     let pendingTags = client.pendingWorkTagDecision(kind: .task, entityID: task.id)
@@ -4629,7 +4629,7 @@ struct TodayFollowThroughCard: View {
                                     if let dueLabel = captureTaskDueLabel(task) {
                                         Label(dueLabel, systemImage: task.isOverdue == true ? "exclamationmark.circle.fill" : "calendar")
                                             .font(.caption2.weight(.semibold))
-                                            .foregroundStyle(task.isOverdue == true ? Color.orange : Color.secondary)
+                                            .foregroundStyle(task.isOverdue == true ? CapturePalette.brass : Color.secondary)
                                             .accessibilityIdentifier("CaptureTodayTaskDue_\(task.id)")
                                     }
                                     if let project = task.project {
@@ -4650,7 +4650,7 @@ struct TodayFollowThroughCard: View {
                                                 systemImage: pendingTags.disposition == .held ? "exclamationmark.triangle.fill" : "tag.fill"
                                             )
                                             .font(.caption2.weight(.semibold))
-                                            .foregroundStyle(pendingTags.disposition == .held ? Color.orange : CapturePalette.ink)
+                                            .foregroundStyle(pendingTags.disposition == .held ? CapturePalette.brass : CapturePalette.ink)
                                             .accessibilityIdentifier("CaptureTodayTaskTagsPending_\(task.id)")
                                             .accessibilityValue(pendingTags.disposition == .held ? "Held" : "Queued")
                                             if pendingTags.disposition == .held {
@@ -4713,7 +4713,7 @@ struct TodayFollowThroughCard: View {
                                                     : "lock.doc.fill"
                                             )
                                             .font(.caption2.weight(.semibold))
-                                            .foregroundStyle(pendingPlan.disposition == .held ? Color.orange : CapturePalette.plum)
+                                            .foregroundStyle(pendingPlan.disposition == .held ? CapturePalette.brass : CapturePalette.plum)
                                             .accessibilityIdentifier("CaptureTodayFocusPlanPending_\(task.id)")
                                             HStack {
                                                 Button("Retry plan") {
@@ -4769,7 +4769,7 @@ struct TodayFollowThroughCard: View {
                                                     : "arrow.triangle.2.circlepath"
                                             )
                                             .font(.caption2.weight(.semibold))
-                                            .foregroundStyle(pending.disposition == .held ? Color.orange : CapturePalette.ink)
+                                            .foregroundStyle(pending.disposition == .held ? CapturePalette.brass : CapturePalette.ink)
                                             .accessibilityIdentifier("CaptureTodayTaskReminderPending_\(task.id)")
                                             if pending.disposition == .held {
                                                 Button("Discard changes") {
@@ -5013,7 +5013,7 @@ struct TodayFollowThroughCard: View {
                                     systemImage: matchingRecording(for: review) == nil ? "lock.fill" : "checkmark.shield.fill"
                                 )
                                 .font(.caption2.weight(.semibold))
-                                .foregroundStyle(matchingRecording(for: review) == nil ? Color.orange : Color.green)
+                                .foregroundStyle(matchingRecording(for: review) == nil ? CapturePalette.brass : CapturePalette.success)
                             }
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(10)
@@ -5093,7 +5093,7 @@ struct TodayFollowThroughCard: View {
                                         systemImage: pendingTags.disposition == .held ? "exclamationmark.triangle.fill" : "tag.fill"
                                     )
                                     .font(.caption2.weight(.semibold))
-                                    .foregroundStyle(pendingTags.disposition == .held ? Color.orange : CapturePalette.ink)
+                                    .foregroundStyle(pendingTags.disposition == .held ? CapturePalette.brass : CapturePalette.ink)
                                     .accessibilityIdentifier("CaptureTodayGoalTagsPending_\(goal.id)")
                                     .accessibilityValue(pendingTags.disposition == .held ? "Held" : "Queued")
                                     if pendingTags.disposition == .held {
@@ -5235,7 +5235,7 @@ struct TodayFollowThroughCard: View {
                             systemImage: "lock.iphone"
                         )
                         .font(.caption2.weight(.semibold))
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(CapturePalette.brass)
                         .accessibilityIdentifier("CaptureSourceInboxProtectedSnapshot")
                     }
 
@@ -5276,7 +5276,7 @@ struct TodayFollowThroughCard: View {
                                 )
                                 .font(.caption2.weight(.semibold))
                                 .foregroundStyle(
-                                    pending.disposition == .held ? Color.orange : CapturePalette.ink
+                                    pending.disposition == .held ? CapturePalette.brass : CapturePalette.ink
                                 )
                                 .accessibilityIdentifier(
                                     "CaptureSourceInboxPending_\(source.id)"
@@ -5380,7 +5380,7 @@ struct TodayFollowThroughCard: View {
                         )
                         .font(.caption2)
                         .foregroundStyle(
-                            inboxClient.isUsingProtectedCache ? Color.secondary : Color.orange
+                            inboxClient.isUsingProtectedCache ? Color.secondary : CapturePalette.brass
                         )
                     }
                 }
@@ -5397,7 +5397,7 @@ struct TodayFollowThroughCard: View {
                         Spacer()
                         Text(review.reviewState.replacingOccurrences(of: "-", with: " ").capitalized)
                             .font(.caption2.weight(.bold))
-                            .foregroundStyle(.green)
+                            .foregroundStyle(CapturePalette.success)
                     }
                     HStack(spacing: 10) {
                         weeklyReviewMetric("Planned", minutes: review.plannedMinutes)
@@ -5416,7 +5416,7 @@ struct TodayFollowThroughCard: View {
                             HStack(alignment: .firstTextBaseline) {
                                 Text(goal.title).font(.subheadline.weight(.semibold))
                                 Spacer(minLength: 8)
-                                Text(goal.healthLabel).font(.caption2.weight(.bold)).foregroundStyle(goal.health == "needs-attention" ? Color.orange : Color.green)
+                                Text(goal.healthLabel).font(.caption2.weight(.bold)).foregroundStyle(goal.health == "needs-attention" ? CapturePalette.brass : CapturePalette.success)
                             }
                             Text(goal.latestEvidence ?? "No recent progress note")
                                 .font(.caption)
@@ -5427,7 +5427,7 @@ struct TodayFollowThroughCard: View {
                     if !review.blockers.isEmpty {
                         Text("Blocker: \(review.blockers.prefix(2).joined(separator: " · "))")
                             .font(.caption.weight(.semibold))
-                            .foregroundStyle(.orange)
+                            .foregroundStyle(CapturePalette.brass)
                     }
                     if !review.nextCommitments.isEmpty {
                         VStack(alignment: .leading, spacing: 3) {
@@ -5447,7 +5447,7 @@ struct TodayFollowThroughCard: View {
                         .foregroundStyle(.secondary)
                 }
                 .padding(12)
-                .background(Color.green.opacity(0.08), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .background(CapturePalette.success.opacity(0.08), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                 .accessibilityElement(children: .contain)
                 .accessibilityIdentifier("CaptureTodayWeeklyReview")
             }
@@ -5456,7 +5456,7 @@ struct TodayFollowThroughCard: View {
                 VStack(alignment: .leading, spacing: 9) {
                     Label("This week", systemImage: "calendar.badge.checkmark")
                         .font(.caption.weight(.bold))
-                        .foregroundStyle(.green)
+                        .foregroundStyle(CapturePalette.success)
                     ForEach(Array(weekly.commitments.prefix(3).enumerated()), id: \.offset) { index, commitment in
                         Text("\(index + 1). \(commitment)")
                             .font(.subheadline)
@@ -5474,7 +5474,7 @@ struct TodayFollowThroughCard: View {
                     if weekly.clientReviewedAt != nil {
                         Label("Reviewed against what actually happened", systemImage: "checkmark.seal")
                             .font(.caption2.weight(.semibold))
-                            .foregroundStyle(.green)
+                            .foregroundStyle(CapturePalette.success)
                     }
                     weeklyPlanDecisionStatus
                     Button {
@@ -5488,14 +5488,14 @@ struct TodayFollowThroughCard: View {
                     .accessibilityIdentifier("CaptureTodayWeeklyPlanEdit")
                 }
                 .padding(12)
-                .background(Color.green.opacity(0.07), in: RoundedRectangle(cornerRadius: 14))
+                .background(CapturePalette.success.opacity(0.07), in: RoundedRectangle(cornerRadius: 14))
                 .accessibilityElement(children: .contain)
                 .accessibilityIdentifier("CaptureTodayWeeklyPlan")
             } else if client.currentWeekStartsOn != nil {
                 VStack(alignment: .leading, spacing: 8) {
                     Label("Plan the week", systemImage: "calendar.badge.plus")
                         .font(.caption.weight(.bold))
-                        .foregroundStyle(.green)
+                        .foregroundStyle(CapturePalette.success)
                     Text("Choose up to three commitments and note the support you need.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -5511,7 +5511,7 @@ struct TodayFollowThroughCard: View {
                     .accessibilityIdentifier("CaptureTodayWeeklyPlanCreate")
                 }
                 .padding(12)
-                .background(Color.green.opacity(0.07), in: RoundedRectangle(cornerRadius: 14))
+                .background(CapturePalette.success.opacity(0.07), in: RoundedRectangle(cornerRadius: 14))
                 .accessibilityElement(children: .contain)
                 .accessibilityIdentifier("CaptureTodayWeeklyPlanEmpty")
             }
@@ -5526,7 +5526,7 @@ struct TodayFollowThroughCard: View {
             if let error = client.errorMessage {
                 Label(error, systemImage: client.isUsingProtectedCache ? "lock.shield" : "exclamationmark.triangle")
                     .font(.caption)
-                    .foregroundStyle(client.isUsingProtectedCache ? Color.secondary : Color.orange)
+                    .foregroundStyle(client.isUsingProtectedCache ? Color.secondary : CapturePalette.brass)
             }
 
         }
@@ -5677,7 +5677,7 @@ struct TodayFollowThroughCard: View {
                     : "lock.iphone"
             )
             .font(.caption2.weight(.semibold))
-            .foregroundStyle(pending.disposition == .held ? Color.orange : CapturePalette.ink)
+            .foregroundStyle(pending.disposition == .held ? CapturePalette.brass : CapturePalette.ink)
             .accessibilityIdentifier("CaptureTodayWeeklyPlanPending")
             .accessibilityValue(pending.disposition == .held ? "Held" : "Queued")
             if pending.disposition == .held {
@@ -5772,7 +5772,7 @@ struct TodayFollowThroughCard: View {
                         : "lock.doc.fill"
                 )
                 .font(.caption2.weight(.semibold))
-                .foregroundStyle(pending.disposition == .held ? Color.orange : CapturePalette.plum)
+                .foregroundStyle(pending.disposition == .held ? CapturePalette.brass : CapturePalette.plum)
                 .accessibilityIdentifier("CaptureTodayAnnotationDraftPending_\(annotation.id)")
                 .accessibilityValue(pending.disposition == .held ? "Held" : "Queued")
 
@@ -6138,7 +6138,7 @@ private struct CaptureFocusPlanningSheet: View {
 
                 Section("About focus time") {
                     Label("Private to you", systemImage: "person.crop.circle.badge.checkmark")
-                        .foregroundStyle(.green)
+                        .foregroundStyle(CapturePalette.success)
                     Text("Focus time stays beside this task in Quipsly. You can record how much time you spent when you finish.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -6261,7 +6261,7 @@ private struct CaptureTagVocabularySheet: View {
                         systemImage: readOnly ? "lock.fill" : "checkmark.shield.fill"
                     )
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(readOnly ? .orange : .secondary)
+                    .foregroundStyle(readOnly ? CapturePalette.brass : .secondary)
                 }
 
                 if let message = client.tagVocabularyMessage {
@@ -6291,7 +6291,7 @@ private struct CaptureTagVocabularySheet: View {
                                     : "archivebox"
                             )
                             .font(.caption.weight(.semibold))
-                            .foregroundStyle(matchingCreateTag.isActive ? CapturePalette.ink : .orange)
+                            .foregroundStyle(matchingCreateTag.isActive ? CapturePalette.ink : CapturePalette.brass)
                         } else if !normalizedCreateLabel.isEmpty {
                             Text("#\(normalizedCreateLabel) will join this Nest’s private vocabulary without being attached to a record.")
                                 .font(.caption)
@@ -6303,7 +6303,7 @@ private struct CaptureTagVocabularySheet: View {
                                 systemImage: "exclamationmark.triangle.fill"
                             )
                             .font(.caption.weight(.semibold))
-                            .foregroundStyle(.orange)
+                            .foregroundStyle(CapturePalette.brass)
                         }
                         Button {
                             let requestedLabel = normalizedCreateLabel
@@ -6712,7 +6712,7 @@ private struct CaptureSourceFilingSheet: View {
                             "Preview only · no filing decision will be saved",
                             systemImage: "hammer.fill"
                         )
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(CapturePalette.brass)
                         .accessibilityIdentifier("CaptureSourceFilingPreviewBoundary")
                     }
                 }
@@ -6721,7 +6721,7 @@ private struct CaptureSourceFilingSheet: View {
                     Section {
                         Text(localMessage)
                             .font(.caption)
-                            .foregroundStyle(.orange)
+                            .foregroundStyle(CapturePalette.brass)
                             .accessibilityIdentifier("CaptureSourceFilingMessage")
                     }
                 }
@@ -6914,7 +6914,7 @@ private struct CaptureDocumentNoteEditSheet: View {
                                     : "lock.iphone"
                             )
                             .font(.caption.weight(.bold))
-                            .foregroundStyle(.orange)
+                            .foregroundStyle(CapturePalette.brass)
                             if let message = protectedEdit.lastErrorMessage {
                                 Text(message)
                                     .font(.caption2)
@@ -6922,7 +6922,7 @@ private struct CaptureDocumentNoteEditSheet: View {
                             }
                         }
                         .padding(12)
-                        .background(.orange.opacity(0.1), in: RoundedRectangle(cornerRadius: 14))
+                        .background(CapturePalette.brass.opacity(0.1), in: RoundedRectangle(cornerRadius: 14))
                         .accessibilityIdentifier("CaptureWorkNoteEditProtectedDraft")
                     }
 
@@ -6969,7 +6969,7 @@ private struct CaptureDocumentNoteEditSheet: View {
                             if block.body.count >= 18_000 {
                                 Text("\(block.body.count.formatted()) / 20,000 characters")
                                     .font(.caption2.monospacedDigit())
-                                    .foregroundStyle(block.body.count > 20_000 ? .orange : .secondary)
+                                    .foregroundStyle(block.body.count > 20_000 ? CapturePalette.brass : .secondary)
                             }
                         }
                     }
@@ -6977,14 +6977,14 @@ private struct CaptureDocumentNoteEditSheet: View {
                     if let validationMessage {
                         Label(validationMessage, systemImage: "exclamationmark.triangle")
                             .font(.caption.weight(.semibold))
-                            .foregroundStyle(.orange)
+                            .foregroundStyle(CapturePalette.brass)
                             .accessibilityIdentifier("CaptureWorkNoteEditValidation")
                     }
 
                     if let localMessage {
                         Text(localMessage)
                             .font(.caption.weight(.semibold))
-                            .foregroundStyle(.orange)
+                            .foregroundStyle(CapturePalette.brass)
                             .accessibilityIdentifier("CaptureWorkNoteEditMessage")
                     }
 
@@ -7308,7 +7308,7 @@ private struct TodayWorkTagSheet: View {
                             systemImage: "eye"
                         )
                         .font(.caption.weight(.semibold))
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(CapturePalette.brass)
                         .accessibilityIdentifier("CaptureWorkTagEditorPreviewBoundary")
                     }
                 }
@@ -7348,7 +7348,7 @@ private struct TodayWorkTagSheet: View {
                                         if !tag.isActive {
                                             Text("Archived · remove to save another change")
                                                 .font(.caption2)
-                                                .foregroundStyle(.orange)
+                                                .foregroundStyle(CapturePalette.brass)
                                         }
                                     }
                                     Spacer()
@@ -7386,7 +7386,7 @@ private struct TodayWorkTagSheet: View {
                     if let newTagError {
                         Label(newTagError, systemImage: "exclamationmark.triangle.fill")
                             .font(.caption.weight(.semibold))
-                            .foregroundStyle(.orange)
+                            .foregroundStyle(CapturePalette.brass)
                             .accessibilityIdentifier("CaptureTodayWorkTagNewLabelError")
                     }
                 }
@@ -7398,7 +7398,7 @@ private struct TodayWorkTagSheet: View {
                             systemImage: "exclamationmark.triangle.fill"
                         )
                         .font(.caption.weight(.semibold))
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(CapturePalette.brass)
                     }
                     Text("Tags help you find related notes, recordings, tasks, and goals across this Nest.")
                         .font(.caption)
@@ -7553,7 +7553,7 @@ private struct CaptureTaskEditSheet: View {
                     Section {
                         Label(error, systemImage: "exclamationmark.triangle")
                             .font(.caption)
-                            .foregroundStyle(.orange)
+                            .foregroundStyle(CapturePalette.brass)
                     }
                 }
 
@@ -7710,7 +7710,7 @@ private struct CaptureGoalEditSheet: View {
                     Section {
                         Label(error, systemImage: "exclamationmark.triangle")
                             .font(.caption)
-                            .foregroundStyle(.orange)
+                            .foregroundStyle(CapturePalette.brass)
                     }
                 }
 
@@ -7904,7 +7904,7 @@ private struct CaptureRecurrenceEditSheet: View {
                             systemImage: chosenTimeZone == nil ? "exclamationmark.triangle" : "globe.americas"
                         )
                         .font(.caption)
-                        .foregroundStyle(chosenTimeZone == nil ? Color.orange : Color.secondary)
+                        .foregroundStyle(chosenTimeZone == nil ? CapturePalette.brass : Color.secondary)
                     }
                 }
 
@@ -7916,7 +7916,7 @@ private struct CaptureRecurrenceEditSheet: View {
                     if let error = client.errorMessage {
                         Label(error, systemImage: "exclamationmark.triangle")
                             .font(.caption)
-                            .foregroundStyle(.orange)
+                            .foregroundStyle(CapturePalette.brass)
                     }
                 }
             }
@@ -8177,7 +8177,7 @@ private struct NewCaptureProjectSheet: View {
                     if normalizedName.count > 120 {
                         Label("Keep the Nest name to 120 characters.", systemImage: "exclamationmark.triangle.fill")
                             .font(.caption.weight(.semibold))
-                            .foregroundStyle(.orange)
+                            .foregroundStyle(CapturePalette.brass)
                     }
                 } header: {
                     Text("Private Nest")
@@ -8226,7 +8226,7 @@ private struct NewCaptureProjectSheet: View {
                     Section {
                         Label(errorMessage, systemImage: "exclamationmark.triangle.fill")
                             .font(.caption.weight(.semibold))
-                            .foregroundStyle(.orange)
+                            .foregroundStyle(CapturePalette.brass)
                             .accessibilityIdentifier("CaptureWorkProjectCreateError")
                     } header: {
                         Text("Couldn’t create Nest")
@@ -8601,7 +8601,7 @@ private struct CapturePersonalVoiceNoteTranscriptCard: View {
                             : "Saved on \(CaptureDeviceVocabulary.thisDevice); syncing automatically")
                 }
                 .font(.caption.weight(.semibold))
-                .foregroundStyle(draft.isSynced ? .green : .secondary)
+                .foregroundStyle(draft.isSynced ? CapturePalette.success : .secondary)
                 .accessibilityIdentifier("CaptureVoiceWritingSync_\(recording.id)")
             }
 
@@ -8637,7 +8637,7 @@ private struct CapturePersonalVoiceNoteTranscriptCard: View {
             if let error = writingStore.persistenceError?.nonempty {
                 Label(error, systemImage: "exclamationmark.triangle.fill")
                     .font(.caption)
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(CapturePalette.brass)
             }
         }
         .captureCard()
@@ -8795,8 +8795,8 @@ private struct CapturePersonalVoiceNoteTranscriptCard: View {
     private var statusTint: Color {
         if draft != nil { return CapturePalette.accent }
         switch phase {
-        case .failed, .modelDownloadRequired: return .orange
-        case .attached, .cloudFallback(_, "COMPLETED"): return .green
+        case .failed, .modelDownloadRequired: return CapturePalette.brass
+        case .attached, .cloudFallback(_, "COMPLETED"): return CapturePalette.success
         default: return CapturePalette.accent
         }
     }
@@ -8965,7 +8965,7 @@ private struct CaptureVoiceWritingEditor: View {
                 Section {
                     Label(message, systemImage: "icloud.slash")
                         .font(.caption)
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(CapturePalette.brass)
                     Button("Try saving again") {
                         saveImmediately()
                         writingSync.syncNow(draftID: draftID)
@@ -8978,7 +8978,7 @@ private struct CaptureVoiceWritingEditor: View {
                 Section {
                     Label(localSaveError, systemImage: "externaldrive.badge.exclamationmark")
                         .font(.caption)
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(CapturePalette.brass)
                     Button("Try saving on \(CaptureDeviceVocabulary.thisDevice) again") {
                         saveImmediately()
                     }
@@ -9803,13 +9803,13 @@ private struct CaptureVoiceWritingEditor: View {
                 Label("Saving…", systemImage: "icloud.and.arrow.up")
             } else if currentDraft?.pendingRemote != nil {
                 Label("Two copies", systemImage: "arrow.triangle.branch")
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(CapturePalette.brass)
             } else if currentDraft?.isSynced == true {
                 Label(
                     currentDraft?.canonicalProjectName?.nonempty ?? "Saved",
                     systemImage: "checkmark.icloud.fill"
                 )
-                    .foregroundStyle(.green)
+                    .foregroundStyle(CapturePalette.success)
             } else {
                 Label("On \(CaptureDeviceVocabulary.deviceName)", systemImage: CaptureDeviceVocabulary.systemImage)
             }
@@ -10116,9 +10116,9 @@ private struct CaptureVoiceWritingEditor: View {
     private func correctionStatusColor(for segment: CaptureTranscriptSegment) -> Color {
         guard let roomID = directCorrectionRoomID else { return CapturePalette.accent }
         if let pending = transcriptCorrections.pendingDecision(roomID: roomID, segmentID: segment.id) {
-            return pending.disposition == .held ? .orange : CapturePalette.ink
+            return pending.disposition == .held ? CapturePalette.brass : CapturePalette.ink
         }
-        return segment.acceptedCorrection == nil ? CapturePalette.accent : .green
+        return segment.acceptedCorrection == nil ? CapturePalette.accent : CapturePalette.success
     }
 
     private func voiceSourcePlayer(_ recording: LocalRecording) -> some View {
@@ -10212,7 +10212,7 @@ private struct CaptureVoiceWritingEditor: View {
             if let message = playback.errorMessage?.nonempty {
                 Label(message, systemImage: "exclamationmark.triangle.fill")
                     .font(.caption)
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(CapturePalette.brass)
             }
         }
         .padding(.vertical, 4)
@@ -10485,7 +10485,7 @@ private struct CaptureVoiceWritingTranscriptCorrectionSheet: View {
                             : "icloud.and.arrow.up"
                     )
                     .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(pending.disposition == .held ? Color.orange : CapturePalette.ink)
+                    .foregroundStyle(pending.disposition == .held ? CapturePalette.brass : CapturePalette.ink)
                     .accessibilityIdentifier("CaptureVoiceWritingCorrectionPending")
                 }
             }
@@ -10494,7 +10494,7 @@ private struct CaptureVoiceWritingTranscriptCorrectionSheet: View {
                 Section {
                     Label(error, systemImage: "exclamationmark.triangle.fill")
                         .font(.caption)
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(CapturePalette.brass)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
@@ -11203,7 +11203,7 @@ private struct CaptureRecorderView: View {
                 } else if model.sessionClient.sessionsAreStale {
                     Label("Offline copy · some actions unavailable", systemImage: "wifi.slash")
                         .font(.caption.weight(.semibold))
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(CapturePalette.brass)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .accessibilityIdentifier("CaptureSessionAuthorityStatus")
                 }
@@ -11894,7 +11894,7 @@ private struct CaptureRecorderView: View {
             if let message = model.quickEntrySyncMessage {
                 HStack(alignment: .top, spacing: 10) {
                     Image(systemName: "checkmark.circle.fill")
-                        .foregroundStyle(.green)
+                        .foregroundStyle(CapturePalette.success)
                     Text(message)
                         .font(.caption.weight(.semibold))
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -13151,8 +13151,8 @@ private struct MobilePriorSessionFollowThroughCard: View {
     }
 
     private func statusTint(_ status: String, unavailable: Bool) -> Color {
-        if unavailable { return .orange }
-        return ["DONE", "ACHIEVED"].contains(status.uppercased()) ? .green : CapturePalette.plum
+        if unavailable { return CapturePalette.brass }
+        return ["DONE", "ACHIEVED"].contains(status.uppercased()) ? CapturePalette.success : CapturePalette.plum
     }
 
     var body: some View {
@@ -13178,7 +13178,7 @@ private struct MobilePriorSessionFollowThroughCard: View {
             HStack(spacing: 8) {
                 StatusChip(
                     label: "\(followThrough.summary.openTaskCount) open",
-                    tint: followThrough.summary.openTaskCount == 0 ? .green : .orange
+                    tint: followThrough.summary.openTaskCount == 0 ? CapturePalette.success : CapturePalette.brass
                 )
                 StatusChip(
                     label: "\(followThrough.summary.activeGoalCount) active",
@@ -13488,7 +13488,7 @@ private struct CaptureSessionResultsCard: View {
                         resultSection(
                             title: "Tasks",
                             systemImage: "checklist",
-                            tint: .orange
+                            tint: CapturePalette.brass
                         ) {
                             ForEach(results.tasks.prefix(5)) { task in
                                 Button {
@@ -13496,7 +13496,7 @@ private struct CaptureSessionResultsCard: View {
                                 } label: {
                                     HStack(alignment: .top, spacing: 8) {
                                         Image(systemName: task.status == "DONE" ? "checkmark.circle.fill" : "circle")
-                                            .foregroundStyle(task.status == "DONE" ? Color.green : Color.secondary)
+                                            .foregroundStyle(task.status == "DONE" ? CapturePalette.success : Color.secondary)
                                         VStack(alignment: .leading, spacing: 3) {
                                             Text(task.title)
                                                 .font(.caption.weight(.bold))
@@ -13534,7 +13534,7 @@ private struct CaptureSessionResultsCard: View {
                                 } label: {
                                     HStack(alignment: .top, spacing: 8) {
                                         Image(systemName: goal.status == "ACHIEVED" ? "checkmark.circle.fill" : "target")
-                                            .foregroundStyle(goal.status == "ACHIEVED" ? Color.green : CapturePalette.plum)
+                                            .foregroundStyle(goal.status == "ACHIEVED" ? CapturePalette.success : CapturePalette.plum)
                                         VStack(alignment: .leading, spacing: 3) {
                                             Text(goal.title)
                                                 .font(.caption.weight(.bold))
@@ -13644,9 +13644,9 @@ private struct CaptureSessionFollowUpStatus: View {
         .font(.caption.weight(.semibold))
         .foregroundStyle(
             errorMessage != nil
-                ? Color.orange
+                ? CapturePalette.brass
                 : session.coachingTranscriptResults != nil || session.clientFollowUp != nil
-                    ? Color.green
+                    ? CapturePalette.success
                     : Color.secondary
         )
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -13670,7 +13670,7 @@ private struct CaptureSessionTruthPanel: View {
                 systemImage: "point.topleft.down.to.point.bottomright.curvepath",
                 status: session.journeyStageLabel,
                 detail: session.journeyNextAction,
-                tint: session.captureReadinessIsSafeToRecord ? .green : .orange
+                tint: session.captureReadinessIsSafeToRecord ? CapturePalette.success : CapturePalette.brass
             )
 
             if let content = session.contentReadiness {
@@ -13679,7 +13679,7 @@ private struct CaptureSessionTruthPanel: View {
                     systemImage: "waveform.badge.magnifyingglass",
                     status: content.label ?? (content.isSubstantial ? "Production source" : "Proof only"),
                     detail: "\(content.detail ?? content.nextAction ?? "Review the retained source before transcription.") \(content.evidenceLine)",
-                    tint: content.isSubstantial ? .green : .orange
+                    tint: content.isSubstantial ? CapturePalette.success : CapturePalette.brass
                 )
             }
 
@@ -13688,7 +13688,7 @@ private struct CaptureSessionTruthPanel: View {
                 systemImage: "checkmark.seal",
                 status: session.lifecycleReceiptLine,
                 detail: session.lifecycleNextAction,
-                tint: session.lifecycle?.readyForCapture == true ? .green : .orange
+                tint: session.lifecycle?.readyForCapture == true ? CapturePalette.success : CapturePalette.brass
             )
 
             retainedSourceTruth
@@ -13701,7 +13701,7 @@ private struct CaptureSessionTruthPanel: View {
                     ForEach(session.lifecycleSafeActions.prefix(3)) { action in
                         HStack(alignment: .top, spacing: 8) {
                             Image(systemName: action.enabled ? "checkmark.circle.fill" : "clock.badge.exclamationmark")
-                                .foregroundStyle(action.enabled ? Color.green : Color.secondary)
+                                .foregroundStyle(action.enabled ? CapturePalette.success : Color.secondary)
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(action.label)
                                     .font(.subheadline.weight(.semibold))
@@ -13736,7 +13736,7 @@ private struct CaptureSessionTruthPanel: View {
                         : session.providerCanJoin == true
                             ? "phone.fill"
                             : "exclamationmark.triangle.fill",
-                    tint: model.providerRoom.isConnected || session.providerCanJoin == true ? .green : .orange
+                    tint: model.providerRoom.isConnected || session.providerCanJoin == true ? CapturePalette.success : CapturePalette.brass
                 )
                 Text("Joining the call never starts a recording. Recording starts only after everyone has allowed it and someone taps Record.")
                     .font(.caption)
@@ -13750,7 +13750,7 @@ private struct CaptureSessionTruthPanel: View {
                         CaptureStatusPill(
                             label: model.providerRoom.providerRuntimeLabel,
                             systemImage: model.providerRoom.providerRuntimeAvailable ? "checkmark.circle.fill" : "xmark.circle",
-                            tint: model.providerRoom.providerRuntimeAvailable ? .green : .orange
+                            tint: model.providerRoom.providerRuntimeAvailable ? CapturePalette.success : CapturePalette.brass
                         )
                         Text(model.providerRoom.providerRuntimeDetail)
                             .font(.caption)
@@ -13760,7 +13760,7 @@ private struct CaptureSessionTruthPanel: View {
                         if let technicalError = model.providerRoom.lastTechnicalError {
                             Text(technicalError)
                                 .font(.caption)
-                                .foregroundStyle(.orange)
+                                .foregroundStyle(CapturePalette.brass)
                                 .textSelection(.enabled)
                                 .fixedSize(horizontal: false, vertical: true)
                                 .accessibilityIdentifier("CaptureCallTechnicalError")
@@ -13770,7 +13770,7 @@ private struct CaptureSessionTruthPanel: View {
                             CaptureStatusPill(
                                 label: readiness.providerEgressLabel,
                                 systemImage: readiness.providerEgressReady ? "checkmark.circle.fill" : "lock.shield",
-                                tint: readiness.providerEgressReady ? .green : .orange
+                                tint: readiness.providerEgressReady ? CapturePalette.success : CapturePalette.brass
                             )
                             Text(readiness.providerEgressDetail)
                                 .font(.caption)
@@ -13799,8 +13799,8 @@ private struct CaptureSessionTruthPanel: View {
                                             .font(.caption2.weight(.bold))
                                             .foregroundStyle(
                                                 source.transcript?.quipslyCloudASRRequested == true
-                                                    ? Color.orange
-                                                    : Color.green
+                                                    ? CapturePalette.brass
+                                                    : CapturePalette.success
                                             )
                                             .multilineTextAlignment(.trailing)
                                     }
@@ -13834,7 +13834,7 @@ private struct CaptureSessionTruthPanel: View {
                                 ? "Receipt \(session.providerReceiptStatusLabel)"
                                 : "Server recording not prepared",
                             systemImage: session.hasProviderRecordingReceiptSlot ? "doc.badge.checkmark" : "doc.badge.plus",
-                            tint: session.hasProviderRecordingReceiptSlot ? .green : .secondary
+                            tint: session.hasProviderRecordingReceiptSlot ? CapturePalette.success : .secondary
                         )
                         Text(session.providerReceiptActionLabel)
                             .font(.caption)
@@ -13895,7 +13895,7 @@ private struct CaptureSessionTruthPanel: View {
             ForEach(session.studioHandoffSources.prefix(4)) { source in
                 HStack(alignment: .top, spacing: 8) {
                     Image(systemName: source.isVerifiedForStudio ? "checkmark.circle.fill" : "clock.badge.exclamationmark")
-                        .foregroundStyle(source.isVerifiedForStudio ? Color.green : Color.orange)
+                        .foregroundStyle(source.isVerifiedForStudio ? CapturePalette.success : CapturePalette.brass)
                         .accessibilityHidden(true)
                     VStack(alignment: .leading, spacing: 2) {
                         Text(source.fileName?.nonempty ?? "Unnamed capture source")
@@ -13910,7 +13910,7 @@ private struct CaptureSessionTruthPanel: View {
                     if source.isPromotedToStudio {
                         Text("In Studio")
                             .font(.caption2.weight(.bold))
-                            .foregroundStyle(.green)
+                            .foregroundStyle(CapturePalette.success)
                     }
                     if source.protectedPlaybackReady {
                         Button {
@@ -13948,7 +13948,7 @@ private struct CaptureSessionTruthPanel: View {
     private var retainedSourceTint: Color {
         let requiredSources = session.studioRequiredHandoffSources
         guard !requiredSources.isEmpty else { return .secondary }
-        return requiredSources.allSatisfy(\.isVerifiedForStudio) ? .green : .orange
+        return requiredSources.allSatisfy(\.isVerifiedForStudio) ? CapturePalette.success : CapturePalette.brass
     }
 
     private func retainedSourceDetail(_ source: MobileCaptureSourceSummary) -> String {
@@ -14043,7 +14043,7 @@ private struct CaptureSessionTranscriptReviewCard: View {
                             ? "Transcript ready · local playback source unavailable on \(CaptureDeviceVocabulary.thisDevice)"
                             : "Exact local source ready for playback and editing")
                             .font(.caption2.weight(.semibold))
-                            .foregroundStyle(matchingTranscriptRecording == nil ? Color.orange : Color.green)
+                            .foregroundStyle(matchingTranscriptRecording == nil ? CapturePalette.brass : CapturePalette.success)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                     Spacer(minLength: 8)
@@ -14113,7 +14113,7 @@ private struct CaptureSessionTranscriptReviewCard: View {
                 if let actionMessage {
                     Text(actionMessage)
                         .font(.caption.weight(.semibold))
-                        .foregroundStyle(actionMessage.hasPrefix("Couldn’t") ? Color.orange : Color.secondary)
+                        .foregroundStyle(actionMessage.hasPrefix("Couldn’t") ? CapturePalette.brass : Color.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                         .accessibilityIdentifier("CaptureSessionTranscriptRecoveryStatus")
                 }
@@ -14220,7 +14220,7 @@ private struct CaptureSessionTranscriptReviewCard: View {
 
     private var transcriptLifecycleTint: Color {
         ["HELD", "FAILED"].contains(normalizedTranscriptStatus)
-            ? .orange
+            ? CapturePalette.brass
             : CapturePalette.plum
     }
 
@@ -14461,7 +14461,7 @@ struct CaptureQuickEntrySyncCard: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .top, spacing: 10) {
                 Image(systemName: outbox.heldCount > 0 ? "exclamationmark.icloud" : "icloud.and.arrow.up")
-                    .foregroundStyle(outbox.heldCount > 0 ? Color.orange : CapturePalette.accent)
+                    .foregroundStyle(outbox.heldCount > 0 ? CapturePalette.brass : CapturePalette.accent)
                 VStack(alignment: .leading, spacing: 3) {
                     Text(syncTitle)
                         .font(.subheadline.weight(.bold))
@@ -14514,7 +14514,7 @@ struct CaptureQuickEntrySyncCard: View {
                         }
                         Text(entry.disposition == .held ? "Needs attention" : "Saved on \(CaptureDeviceVocabulary.thisDevice) · waiting to sync")
                             .font(.caption2)
-                            .foregroundStyle(entry.disposition == .held ? Color.orange : Color.secondary)
+                            .foregroundStyle(entry.disposition == .held ? CapturePalette.brass : Color.secondary)
                     }
                     .accessibilityIdentifier("CaptureQuickEntryPending_\(entry.clientRequestID)")
                 }
@@ -14680,7 +14680,7 @@ private struct CaptureSessionNotesSheetContent: View {
                             : hasPendingEdit ? "iphone.gen3.radiowaves.left.and.right" : "checkmark.shield"
                     )
                         .font(.caption)
-                        .foregroundStyle(hasHeldEdit ? Color.orange : CapturePalette.accent)
+                        .foregroundStyle(hasHeldEdit ? CapturePalette.brass : CapturePalette.accent)
                         .fixedSize(horizontal: false, vertical: true)
                         .accessibilityIdentifier("CaptureSessionNoteEditMessage")
                 }
@@ -14697,7 +14697,7 @@ private struct CaptureSessionNotesSheetContent: View {
                         HStack(spacing: 6) {
                             Label(entry.disposition == .held ? "Needs attention" : "Saving", systemImage: "iphone.gen3.radiowaves.left.and.right")
                                 .font(.caption2.weight(.bold))
-                                .foregroundStyle(.orange)
+                                .foregroundStyle(CapturePalette.brass)
                             Spacer(minLength: 0)
                             Text(entry.noteVisibility?.title ?? "Only me")
                                 .font(.caption2.weight(.bold))
@@ -14714,7 +14714,7 @@ private struct CaptureSessionNotesSheetContent: View {
                             .fixedSize(horizontal: false, vertical: true)
                     }
                     .padding(10)
-                    .background(Color.orange.opacity(0.07), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .background(CapturePalette.brass.opacity(0.07), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                     .accessibilityElement(children: .contain)
                     .accessibilityIdentifier("CaptureSessionNotePending_\(entry.clientRequestID)")
                 }
@@ -14837,7 +14837,7 @@ private struct CaptureSessionNotesSheetContent: View {
                                     : "iphone.gen3.radiowaves.left.and.right"
                             )
                             .font(.caption2.weight(.bold))
-                            .foregroundStyle(protectedEdit.disposition == .held ? Color.orange : CapturePalette.accent)
+                            .foregroundStyle(protectedEdit.disposition == .held ? CapturePalette.brass : CapturePalette.accent)
                             .accessibilityIdentifier("CaptureSessionNoteEditState_\(note.id)")
                             if let error = protectedEdit.lastErrorMessage {
                                 Text(error)
@@ -15033,7 +15033,7 @@ private struct CaptureSessionNoteEditSheet: View {
                         if protectedEdit.disposition == .held {
                             Text("A newer version was saved elsewhere. Compare it below before choosing Save.")
                                 .font(.caption)
-                                .foregroundStyle(.orange)
+                                .foregroundStyle(CapturePalette.brass)
                             if let error = protectedEdit.lastErrorMessage {
                                 Text(error)
                                     .font(.caption)
@@ -15160,7 +15160,7 @@ private struct CaptureSessionNoteEditSheet: View {
                     Section {
                         Label(localMessage, systemImage: "exclamationmark.triangle")
                             .font(.caption.weight(.semibold))
-                            .foregroundStyle(.orange)
+                            .foregroundStyle(CapturePalette.brass)
                             .accessibilityIdentifier("CaptureSessionNoteWorkingDraftError")
                     }
                 }
@@ -16920,7 +16920,7 @@ private struct CaptureVoiceWritingLibraryRow: View {
                     }
                 }
                 .font(.caption.weight(.semibold))
-                .foregroundStyle(draft.pendingRemote != nil ? .orange : draft.isSynced ? .green : .secondary)
+                .foregroundStyle(draft.pendingRemote != nil ? CapturePalette.brass : draft.isSynced ? CapturePalette.success : .secondary)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .captureCard()
@@ -17161,7 +17161,7 @@ private struct CaptureLibraryPreviewSourceCard: View {
                 CaptureStatusPill(
                     label: "Backed up",
                     systemImage: "checkmark",
-                    tint: .green
+                    tint: CapturePalette.success
                 )
             }
 
@@ -18020,7 +18020,7 @@ private struct SessionChooserButton: View {
                         }
                         Text(session.projectName?.nonempty ?? (session.projectBindingSource == "unfiled-session" ? "Unfiled Session" : session.projectSlug?.nonempty ?? "Nest not resolved"))
                             .font(.caption.weight(.semibold))
-                            .foregroundStyle(session.projectBindingSource == "unfiled-session" ? Color.orange : Color.secondary)
+                            .foregroundStyle(session.projectBindingSource == "unfiled-session" ? CapturePalette.brass : Color.secondary)
                             .fixedSize(horizontal: false, vertical: true)
                             .accessibilityIdentifier("CaptureSessionProject_\(session.id)")
                     }
@@ -18056,7 +18056,7 @@ private struct ConsentStrip: View {
             }
         }
         .padding(13)
-        .background((session.hasCurrentRecordingConsent ? Color.green : Color.orange).opacity(0.09), in: RoundedRectangle(cornerRadius: 17, style: .continuous))
+        .background((session.hasCurrentRecordingConsent ? CapturePalette.success : CapturePalette.brass).opacity(0.09), in: RoundedRectangle(cornerRadius: 17, style: .continuous))
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("CaptureConsentStrip")
     }
@@ -18098,7 +18098,7 @@ private struct ConsentStrip: View {
     private var consentIcon: some View {
         Image(systemName: session.hasCurrentRecordingConsent ? "checkmark.shield.fill" : "exclamationmark.shield.fill")
             .font(.title3)
-            .foregroundStyle(session.hasCurrentRecordingConsent ? .green : .orange)
+            .foregroundStyle(session.hasCurrentRecordingConsent ? CapturePalette.success : CapturePalette.brass)
             .accessibilityHidden(true)
     }
 
@@ -18273,7 +18273,7 @@ struct CaptureConsentConfirmationSheet: View {
                     Section {
                         Label(localErrorMessage, systemImage: "exclamationmark.triangle.fill")
                             .font(.subheadline)
-                            .foregroundStyle(.orange)
+                            .foregroundStyle(CapturePalette.brass)
                             .accessibilityIdentifier("CaptureConsentOwnerChangedWarning")
                     }
                 }
@@ -18435,7 +18435,7 @@ private struct CaptureRecordingModePicker: View {
                 if isLocked {
                     Label("Locked", systemImage: "lock.fill")
                         .font(.caption.weight(.semibold))
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(CapturePalette.brass)
                 }
             }
 
@@ -18508,7 +18508,7 @@ private struct CaptureRecordingCoordinationStatus: View {
                         ? "Keep Quipsly open on \(CaptureDeviceVocabulary.thisDevice). It will retry the recording automatically."
                         : "Open Quipsly on the affected recording device. It will retry automatically.")
                         .font(.caption.weight(.semibold))
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(CapturePalette.brass)
                 }
 
                 if !endpointReceipts.isEmpty {
@@ -18606,9 +18606,9 @@ private struct CaptureRecordingCoordinationStatus: View {
     }
 
     private func healthTint(_ health: CaptureRecordingHealth) -> Color {
-        if health.attentionParticipantCount > 0 { return .orange }
+        if health.attentionParticipantCount > 0 { return CapturePalette.brass }
         if health.allParticipantsRecording { return .red }
-        if health.allParticipantsStoppedSafely { return .green }
+        if health.allParticipantsStoppedSafely { return CapturePalette.success }
         return CapturePalette.accent
     }
 
@@ -18626,8 +18626,8 @@ private struct CaptureRecordingCoordinationStatus: View {
     private func participantTint(_ state: CaptureRecordingParticipantState) -> Color {
         switch state {
         case .recording: .red
-        case .needsAttention, .stopping: .orange
-        case .stoppedSafely: .green
+        case .needsAttention, .stopping: CapturePalette.brass
+        case .stoppedSafely: CapturePalette.success
         case .gettingReady, .waiting: CapturePalette.accent
         }
     }
@@ -18645,8 +18645,8 @@ private struct CaptureRecordingCoordinationStatus: View {
     private func endpointTint(_ state: CaptureRecordingEndpointState) -> Color {
         switch state {
         case .started: .red
-        case .startFailed, .stopFailed, .stopping: .orange
-        case .stopped: .green
+        case .startFailed, .stopFailed, .stopping: CapturePalette.brass
+        case .stopped: CapturePalette.success
         case .observed: CapturePalette.accent
         }
     }
@@ -18813,7 +18813,7 @@ private struct VideoRecorderHero: View {
                                 .font(.caption2.weight(.black))
                                 .tracking(1.2)
                                 .foregroundStyle(
-                                    controller.state == .paused ? .orange : .red
+                                    controller.state == .paused ? CapturePalette.brass : .red
                                 )
                                 .padding(.horizontal, 10)
                                 .padding(.vertical, 6)
@@ -18886,7 +18886,7 @@ private struct VideoRecorderHero: View {
                         .foregroundStyle(
                             profile.qualityIntentFulfilled
                                 ? CapturePalette.accent
-                                : .orange
+                                : CapturePalette.brass
                         )
                     ViewThatFits(in: .horizontal) {
                         HStack(spacing: 12) {
@@ -18991,7 +18991,7 @@ private struct VideoRecorderHero: View {
             if let error = controller.lastErrorMessage {
                 Label(error, systemImage: "exclamationmark.triangle.fill")
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(CapturePalette.brass)
                     .fixedSize(horizontal: false, vertical: true)
                     .accessibilityIdentifier("CaptureVideoErrorMessage")
             }
@@ -19072,7 +19072,7 @@ private struct VideoRecorderHero: View {
         .foregroundStyle(
             controller.captureSystemPressure == .serious
                 || controller.captureSystemPressure.preventsReliableCapture
-                ? Color.orange
+                ? CapturePalette.brass
                 : Color.secondary
         )
         .accessibilityIdentifier("CaptureVideoSystemPressure")
@@ -19366,7 +19366,7 @@ private struct RecorderHero: View {
                 if completedVoiceWritingIsReady {
                     Label("Last take \(formattedDuration)", systemImage: "checkmark.circle.fill")
                         .font(.subheadline.monospacedDigit().weight(.semibold))
-                        .foregroundStyle(.green)
+                        .foregroundStyle(CapturePalette.success)
                         .accessibilityIdentifier("CaptureCompletedVoiceWritingDuration")
                 } else {
                     Text(formattedDuration)
@@ -19396,7 +19396,7 @@ private struct RecorderHero: View {
             if showsPersistentNoSignalWarning {
                 HStack(alignment: .top, spacing: 10) {
                     Image(systemName: "waveform.slash")
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(CapturePalette.brass)
                         .accessibilityHidden(true)
                     VStack(alignment: .leading, spacing: 3) {
                         Text("The microphone meter is staying flat")
@@ -19409,7 +19409,7 @@ private struct RecorderHero: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(12)
                 .background(
-                    .orange.opacity(0.10),
+                    CapturePalette.brass.opacity(0.10),
                     in: RoundedRectangle(cornerRadius: 14, style: .continuous)
                 )
                 .accessibilityElement(children: .combine)
@@ -19515,7 +19515,7 @@ private struct RecorderHero: View {
                 Text(captureState == .paused ? "PAUSED" : "REC")
                     .font(.caption2.weight(.black))
                     .tracking(1.2)
-                    .foregroundStyle(captureState == .paused ? .orange : .red)
+                    .foregroundStyle(captureState == .paused ? CapturePalette.brass : .red)
                     .padding(.horizontal, 10)
                     .padding(.vertical, 6)
                     .background(.background.opacity(0.84), in: Capsule())
@@ -20004,8 +20004,8 @@ struct InputLevelMeter: View {
     private var signalTint: Color {
         switch signalState {
         case .clippingRisk: .red
-        case .hot, .low: .orange
-        case .healthy: .green
+        case .hot, .low: CapturePalette.brass
+        case .healthy: CapturePalette.success
         case .inactive, .noUsefulSignal: .secondary
         }
     }
@@ -20035,13 +20035,13 @@ struct InputLevelMeter: View {
                 label: "Voice",
                 decibels: safeAverageDB,
                 level: averageLevel,
-                tint: .green
+                tint: CapturePalette.success
             )
             meterLane(
                 label: "Peak",
                 decibels: safePeakDB,
                 level: peakLevel,
-                tint: safePeakDB >= -1 ? .red : safePeakDB >= -3 ? .orange : CapturePalette.plum
+                tint: safePeakDB >= -1 ? .red : safePeakDB >= -3 ? CapturePalette.brass : CapturePalette.plum
             )
 
             Text("Aim for Healthy speech range and avoid Clipping risk. Quipsly checks the complete saved recording after you stop.")
@@ -20315,7 +20315,7 @@ private struct ProviderRoomControls: View {
                 Spacer()
                 Text("Call")
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(model.providerRoom.isConnected ? Color.green : Color.secondary)
+                    .foregroundStyle(model.providerRoom.isConnected ? CapturePalette.success : Color.secondary)
             }
 
             if canRejoinSession {
@@ -20324,7 +20324,7 @@ private struct ProviderRoomControls: View {
                     systemImage: "checkmark.shield.fill"
                 )
                 .font(.subheadline.weight(.semibold))
-                .foregroundStyle(.green)
+                .foregroundStyle(CapturePalette.success)
                 .fixedSize(horizontal: false, vertical: true)
                 .accessibilityElement(children: .combine)
                 .accessibilityIdentifier("CaptureCallRejoinRecoveryStatus")
@@ -20443,7 +20443,7 @@ private struct ProviderRoomControls: View {
                 if model.providerRoom.isReconnecting {
                     Label("Restoring the call…", systemImage: "arrow.trianglehead.2.clockwise.rotate.90")
                         .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(CapturePalette.brass)
                         .accessibilityIdentifier("CaptureProviderRoomReconnecting")
                 }
             } else {
@@ -20602,7 +20602,7 @@ private struct ProviderRoomControls: View {
             if let detail = model.providerRoom.lastError {
                 Text(detail)
                     .font(.caption)
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(CapturePalette.brass)
             }
 
             if microphonePermissionNeedsRecovery {
@@ -20776,9 +20776,9 @@ private struct ProviderRoomControls: View {
     private var callAudioStatusTint: Color {
         switch model.providerRoom.callAudioHealth {
         case .healthy:
-            .green
+            CapturePalette.success
         case .noSignal, .tooQuiet, .hot, .clippingRisk, .needsAttention:
-            .orange
+            CapturePalette.brass
         case .checking, .muted:
             .secondary
         }
@@ -21238,7 +21238,7 @@ private struct ProviderRoomDock: View {
                 dockButton(
                     title: model.providerRoom.isMuted ? "Unmute" : "Mute",
                     systemImage: model.providerRoom.isMuted ? "mic.slash.fill" : "mic.fill",
-                    tint: model.providerRoom.isMuted ? .orange : .primary,
+                    tint: model.providerRoom.isMuted ? CapturePalette.brass : .primary,
                     disabled:
                         model.providerMuteControlLockedForLocalCapture
                         || model.isChangingRoom
@@ -21394,9 +21394,9 @@ private struct UploadSummaryCard: View {
 
     private var uploadTint: Color {
         guard let recording = selectedSessionRecording else { return CapturePalette.accent }
-        if recording.serverProcessingDisposition?.uppercased() == "HELD" { return .orange }
-        if recording.status == .uploadHeld || recording.status == .awaitingVerification { return .orange }
-        if recording.status.isVerified { return .green }
+        if recording.serverProcessingDisposition?.uppercased() == "HELD" { return CapturePalette.brass }
+        if recording.status == .uploadHeld || recording.status == .awaitingVerification { return CapturePalette.brass }
+        if recording.status.isVerified { return CapturePalette.success }
         return CapturePalette.accent
     }
 
@@ -21492,10 +21492,10 @@ private struct StudioHandoffCard: View {
             HStack(alignment: .top, spacing: 12) {
                 Image(systemName: session.recordingPromotedToStudioMedia ? "checkmark.circle.fill" : "film.stack")
                     .font(.title3)
-                    .foregroundStyle(session.recordingPromotedToStudioMedia ? Color.green : CapturePalette.accent)
+                    .foregroundStyle(session.recordingPromotedToStudioMedia ? CapturePalette.success : CapturePalette.accent)
                     .frame(width: 38, height: 38)
                     .background(
-                        (session.recordingPromotedToStudioMedia ? Color.green : CapturePalette.accent).opacity(0.11),
+                        (session.recordingPromotedToStudioMedia ? CapturePalette.success : CapturePalette.accent).opacity(0.11),
                         in: Circle()
                     )
                     .accessibilityHidden(true)
@@ -21515,11 +21515,11 @@ private struct StudioHandoffCard: View {
             HStack(spacing: 10) {
                 Text(session.recordingPromotionBadgeLabel)
                     .font(.caption.weight(.bold))
-                    .foregroundStyle(session.recordingPromotedToStudioMedia ? Color.green : CapturePalette.accent)
+                    .foregroundStyle(session.recordingPromotedToStudioMedia ? CapturePalette.success : CapturePalette.accent)
                     .padding(.horizontal, 10)
                     .padding(.vertical, 6)
                     .background(
-                        (session.recordingPromotedToStudioMedia ? Color.green : CapturePalette.accent).opacity(0.11),
+                        (session.recordingPromotedToStudioMedia ? CapturePalette.success : CapturePalette.accent).opacity(0.11),
                         in: Capsule()
                     )
                     .accessibilityLabel(session.recordingPromotionBadgeLabel)
@@ -21556,7 +21556,7 @@ private struct StudioHandoffCard: View {
                             )
                         }
                     }
-                    .captureProminentButton(fill: session.recordingPromotedToStudioMedia ? .green : CapturePalette.accent)
+                    .captureProminentButton(fill: session.recordingPromotedToStudioMedia ? CapturePalette.success : CapturePalette.accent)
                     .disabled(
                         captureIsActive
                             || model.isChangingCapture
@@ -21582,7 +21582,7 @@ private struct StudioHandoffCard: View {
                         : "checkmark.circle.fill"
                 )
                 .font(.caption.weight(.semibold))
-                .foregroundStyle(feedback.isError ? Color.orange : Color.green)
+                .foregroundStyle(feedback.isError ? CapturePalette.brass : CapturePalette.success)
                 .fixedSize(horizontal: false, vertical: true)
                 .accessibilityIdentifier("CaptureStudioHandoffFeedback_\(session.id)")
             }
@@ -21681,7 +21681,7 @@ private struct UploadActivityCard: View {
     }
 
     private var uploadTint: Color {
-        model.uploadManager.isUploading ? CapturePalette.accent : .orange
+        model.uploadManager.isUploading ? CapturePalette.accent : CapturePalette.brass
     }
 }
 
@@ -21706,9 +21706,9 @@ private struct LocalRecordingRow: View {
             HStack(alignment: .top, spacing: 12) {
                 Image(systemName: sourceSystemImage)
                     .font(.title3)
-                    .foregroundStyle(recording.status.isVerified ? .green : CapturePalette.accent)
+                    .foregroundStyle(recording.status.isVerified ? CapturePalette.success : CapturePalette.accent)
                     .frame(width: 40, height: 40)
-                    .background((recording.status.isVerified ? Color.green : CapturePalette.accent).opacity(0.1), in: Circle())
+                    .background((recording.status.isVerified ? CapturePalette.success : CapturePalette.accent).opacity(0.1), in: Circle())
                 VStack(alignment: .leading, spacing: 3) {
                     Text(recording.displayTitle)
                         .font(.headline)
@@ -21744,7 +21744,7 @@ private struct LocalRecordingRow: View {
                     systemImage: "exclamationmark.shield.fill"
                 )
                 .font(.caption.weight(.semibold))
-                .foregroundStyle(.orange)
+                .foregroundStyle(CapturePalette.brass)
                 .fixedSize(horizontal: false, vertical: true)
                 .accessibilityIdentifier(
                     "LocalRecordingSourceIntegrityHold_\(recording.id)"
@@ -22148,8 +22148,8 @@ private struct LocalRecordingRow: View {
 
     private func transcriptStatusTint(_ phase: OnDeviceTranscriptPhase) -> Color {
         switch phase {
-        case .attached, .cloudFallback(_, "COMPLETED"): return .green
-        case .failed, .waitingForVerifiedUpload, .modelDownloadRequired: return .orange
+        case .attached, .cloudFallback(_, "COMPLETED"): return CapturePalette.success
+        case .failed, .waitingForVerifiedUpload, .modelDownloadRequired: return CapturePalette.brass
         default: return CapturePalette.accent
         }
     }
@@ -22213,8 +22213,8 @@ private struct LocalRecordingRow: View {
 
     private var displayStatusTint: Color {
         switch recording.status {
-        case .uploaded: return .green
-        case .uploadHeld, .needsRepair, .captureFailed, .missingFile: return .orange
+        case .uploaded: return CapturePalette.success
+        case .uploadHeld, .needsRepair, .captureFailed, .missingFile: return CapturePalette.brass
         case .recording: return .red
         default: return CapturePalette.accent
         }
@@ -22370,7 +22370,7 @@ private struct LocalRecordingDeletionSheet: View {
 
                 Section("Cloud verification") {
                     Label(cloudVerificationTitle, systemImage: cloudVerificationIcon)
-                        .foregroundStyle(cloudCopyIsVerified ? Color.green : Color.orange)
+                        .foregroundStyle(cloudCopyIsVerified ? CapturePalette.success : CapturePalette.brass)
                     Text(cloudVerificationDetail)
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -22402,7 +22402,7 @@ private struct LocalRecordingDeletionSheet: View {
                 if let deletionError {
                     Section("Deletion held") {
                         Label(deletionError, systemImage: "exclamationmark.triangle.fill")
-                            .foregroundStyle(.orange)
+                            .foregroundStyle(CapturePalette.brass)
                     }
                 }
 
@@ -22760,7 +22760,7 @@ private struct NewCaptureSessionSheet: View {
         Section {
             Label("Session scheduled", systemImage: "checkmark.circle.fill")
                 .font(.headline)
-                .foregroundStyle(.green)
+                .foregroundStyle(CapturePalette.success)
             Text(
                 outcome.invitationEmailSent
                     ? "The private invitation was emailed to \(coachingDraft.normalizedEmail)."
@@ -23057,10 +23057,10 @@ private struct CaptureInlineMessage: View {
     var body: some View {
         Label(text, systemImage: "checkmark.circle.fill")
             .font(.caption.weight(.medium))
-            .foregroundStyle(.green)
+            .foregroundStyle(CapturePalette.success)
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(12)
-            .background(.green.opacity(0.08), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .background(CapturePalette.success.opacity(0.08), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 }
 
@@ -23087,10 +23087,10 @@ private struct CaptureInlineWarning: View {
     var body: some View {
         Label(text, systemImage: "pause.circle.fill")
             .font(.caption.weight(.medium))
-            .foregroundStyle(.orange)
+            .foregroundStyle(CapturePalette.brass)
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(12)
-            .background(.orange.opacity(0.09), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .background(CapturePalette.brass.opacity(0.09), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(text)
             .accessibilityIdentifier("CapturePausedReason")
@@ -23119,7 +23119,7 @@ private struct CapturePermissionRecoveryButton: View {
             .accessibilityIdentifier("CaptureOpenPermissionSettingsButton")
         }
         .padding(12)
-        .background(.orange.opacity(0.09), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .background(CapturePalette.brass.opacity(0.09), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 }
 
@@ -23172,7 +23172,7 @@ private struct CaptureAttentionCard: View {
         HStack(alignment: .top, spacing: 12) {
             Image(systemName: systemImage)
                 .font(.title3)
-                .foregroundStyle(.orange)
+                .foregroundStyle(CapturePalette.brass)
             VStack(alignment: .leading, spacing: 5) {
                 Text(title).font(.headline)
                 Text(detail).font(.caption).foregroundStyle(.secondary)
@@ -23181,7 +23181,7 @@ private struct CaptureAttentionCard: View {
             Spacer()
         }
         .padding(14)
-        .background(.orange.opacity(0.09), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .background(CapturePalette.brass.opacity(0.09), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
     }
 }
 
@@ -23415,7 +23415,7 @@ enum CapturePalette {
     )
     static let record = Color(red: 0.92, green: 0.13, blue: 0.19)
     static let meterGradient = LinearGradient(
-        colors: [accent, .green, .yellow, .orange],
+        colors: [accent, CapturePalette.success, .yellow, CapturePalette.brass],
         startPoint: .leading,
         endPoint: .trailing
     )

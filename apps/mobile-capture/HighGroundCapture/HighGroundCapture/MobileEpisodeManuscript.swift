@@ -594,7 +594,7 @@ struct MobileEpisodeManuscriptCard: View {
                 )
                 .frame(maxWidth: .infinity, minHeight: 44)
             }
-            .buttonStyle(.borderedProminent)
+            .captureProminentButton()
             .disabled(!client.hasReadableCopy && client.isLoading)
             .accessibilityHint("Opens a read-only copy of the canonical Nest manuscript.")
             .accessibilityIdentifier("CaptureEpisodeManuscriptOpenButton")
@@ -627,7 +627,7 @@ struct MobileEpisodeManuscriptCard: View {
     private var status: some View {
         Text(client.isUsingProtectedCache ? "Offline copy" : "Nest manuscript")
             .font(.caption.weight(.semibold))
-            .foregroundStyle(client.isUsingProtectedCache ? .orange : .secondary)
+            .foregroundStyle(client.isUsingProtectedCache ? CapturePalette.brass : .secondary)
             .fixedSize(horizontal: false, vertical: true)
             .accessibilityIdentifier("CaptureEpisodeManuscriptStatus")
     }
@@ -742,7 +742,7 @@ private struct MobileEpisodeManuscriptReader: View {
             if client.writing?.truncated == true {
                 Text("This episode is longer than the mobile reading limit. Open Nest for the complete manuscript.")
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(CapturePalette.brass)
             }
         }
         .accessibilityElement(children: .combine)

@@ -3083,7 +3083,7 @@ private enum CapturePacketCandidateReviewKind: Int {
 
     var tint: Color {
         switch self {
-        case .note: .orange
+        case .note: CapturePalette.brass
         case .goal: CapturePalette.plum
         case .task: CapturePalette.ink
         }
@@ -3107,8 +3107,8 @@ private enum CapturePacketCandidateReviewState: String {
 
     var tint: Color {
         switch self {
-        case .ready: .green
-        case .listenFirst: .orange
+        case .ready: CapturePalette.success
+        case .listenFirst: CapturePalette.brass
         case .deferred: .brown
         case .decided: CapturePalette.ink
         }
@@ -3246,7 +3246,7 @@ struct CaptureTranscriptReviewView: View {
                         reviewNotice(
                             title: "Preview data — no server actions",
                             detail: "This demonstrates the review workflow without claiming playback or saving a correction.",
-                            tint: .orange,
+                            tint: CapturePalette.brass,
                             icon: "hammer.fill"
                         )
                         .accessibilityIdentifier("CaptureTranscriptPreviewBoundary")
@@ -3272,7 +3272,7 @@ struct CaptureTranscriptReviewView: View {
                             detail: client.heldTranscriptDecisionCount > 0
                                 ? "\(client.heldTranscriptDecisionCount) change\(client.heldTranscriptDecisionCount == 1 ? "" : "s") could not sync. Open the saved-changes button to review."
                                 : "\(client.pendingTranscriptDecisionCount) change\(client.pendingTranscriptDecisionCount == 1 ? " is" : "s are") waiting to sync.",
-                            tint: client.heldTranscriptDecisionCount > 0 ? .orange : CapturePalette.ink,
+                            tint: client.heldTranscriptDecisionCount > 0 ? CapturePalette.brass : CapturePalette.ink,
                             icon: client.heldTranscriptDecisionCount > 0 ? "exclamationmark.shield.fill" : "arrow.triangle.2.circlepath"
                         )
                         .id("transcript-outbox-status")
@@ -3286,7 +3286,7 @@ struct CaptureTranscriptReviewView: View {
                             detail: client.heldSpeakerAttributionCount > 0
                                 ? "\(client.heldSpeakerAttributionCount) voice label\(client.heldSpeakerAttributionCount == 1 ? "" : "s") could not sync. Open the saved-changes button to review."
                                 : "\(client.pendingSpeakerAttributionCount) voice label\(client.pendingSpeakerAttributionCount == 1 ? " is" : "s are") waiting to sync.",
-                            tint: client.heldSpeakerAttributionCount > 0 ? .orange : CapturePalette.plum,
+                            tint: client.heldSpeakerAttributionCount > 0 ? CapturePalette.brass : CapturePalette.plum,
                             icon: client.heldSpeakerAttributionCount > 0 ? "exclamationmark.shield.fill" : "person.wave.2.fill"
                         )
                         .id("speaker-attribution-outbox-status")
@@ -3305,7 +3305,7 @@ struct CaptureTranscriptReviewView: View {
                     if let error = client.errorMessage
                         ?? playback.errorMessage
                         ?? protectedSessionPlayback.errorMessage {
-                        reviewNotice(title: "Needs attention", detail: error, tint: .orange, icon: "exclamationmark.triangle.fill")
+                        reviewNotice(title: "Needs attention", detail: error, tint: CapturePalette.brass, icon: "exclamationmark.triangle.fill")
                     }
 
                     if client.isLoading {
@@ -3400,7 +3400,7 @@ struct CaptureTranscriptReviewView: View {
                                     .padding(.vertical, 1)
                                     .foregroundStyle(.white)
                                     .background(
-                                        totalHeldOutboxCount > 0 ? Color.orange : CapturePalette.ink,
+                                        totalHeldOutboxCount > 0 ? CapturePalette.brass : CapturePalette.ink,
                                         in: Capsule()
                                     )
                                     .offset(x: 9, y: -7)
@@ -3604,10 +3604,10 @@ struct CaptureTranscriptReviewView: View {
                         ? "person.2.wave.2.fill"
                         : "waveform.badge.exclamationmark")
                         .font(.title3.weight(.semibold))
-                        .foregroundStyle(assembly.status == "assembled" ? CapturePalette.accent : .orange)
+                        .foregroundStyle(assembly.status == "assembled" ? CapturePalette.accent : CapturePalette.brass)
                         .frame(width: 38, height: 38)
                         .background(
-                            (assembly.status == "assembled" ? CapturePalette.accent : Color.orange)
+                            (assembly.status == "assembled" ? CapturePalette.accent : CapturePalette.brass)
                                 .opacity(0.1),
                             in: Circle()
                         )
@@ -3643,7 +3643,7 @@ struct CaptureTranscriptReviewView: View {
                             : "checkmark.seal.fill"
                     )
                     .font(.caption2.weight(.semibold))
-                    .foregroundStyle(clock.waveformReviewRequired ? Color.orange : Color.green)
+                    .foregroundStyle(clock.waveformReviewRequired ? CapturePalette.brass : CapturePalette.success)
                     .fixedSize(horizontal: false, vertical: true)
                 }
             }
@@ -3792,7 +3792,7 @@ struct CaptureTranscriptReviewView: View {
                     reviewNotice(
                         title: "Follow-up unavailable",
                         detail: packetReviewError,
-                        tint: .orange,
+                        tint: CapturePalette.brass,
                         icon: "target"
                     )
                     .accessibilityIdentifier("CaptureTranscriptPacketErrorBoundary")
@@ -3851,7 +3851,7 @@ struct CaptureTranscriptReviewView: View {
             reviewNotice(
                 title: "Transcript unavailable",
                 detail: desk.gate.error ?? "The recording release gate has not cleared.",
-                tint: .orange,
+                tint: CapturePalette.brass,
                 icon: "lock.fill"
             )
         } else if desk.segments.isEmpty {
@@ -3946,7 +3946,7 @@ struct CaptureTranscriptReviewView: View {
                 }
             }
             if !results.tasks.isEmpty {
-                followUpResultSection(title: "Tasks", systemImage: "checklist", tint: .orange) {
+                followUpResultSection(title: "Tasks", systemImage: "checklist", tint: CapturePalette.brass) {
                     ForEach(Array(results.tasks.prefix(3))) { task in
                         followUpResultRow(
                             title: task.title,
@@ -4471,7 +4471,7 @@ struct CaptureTranscriptReviewView: View {
                 .font(.title3.weight(.bold))
             Label("Transcript ready", systemImage: "checkmark.circle.fill")
                 .font(.caption.weight(.semibold))
-                .foregroundStyle(.green)
+                .foregroundStyle(CapturePalette.success)
             if client.desk?.roomPurpose == "COACHING", !previewOnly {
                 if let reportURL = client.mentorReportURL {
                     ShareLink(
@@ -4527,7 +4527,7 @@ struct CaptureTranscriptReviewView: View {
                 systemImage: "arrow.triangle.branch"
             )
             .font(.headline)
-            .foregroundStyle(.orange)
+            .foregroundStyle(CapturePalette.brass)
             Text("Your existing notes, tasks, goals, and follow-ups stay as they are. The transcript change remains visible from the linked work, and everything stays editable.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -4572,7 +4572,7 @@ struct CaptureTranscriptReviewView: View {
                 systemImage: appStorePresentation ? "waveform.and.magnifyingglass" : (exactMatch ? "checkmark.circle.fill" : "text.bubble")
             )
                 .font(.headline)
-                .foregroundStyle(appStorePresentation || exactMatch ? Color.green : Color.orange)
+                .foregroundStyle(appStorePresentation || exactMatch ? CapturePalette.success : CapturePalette.brass)
             Text(
                 appStorePresentation
                     ? "Play the session, correct any word, or make a basic cut from the words you said."
@@ -4615,7 +4615,7 @@ struct CaptureTranscriptReviewView: View {
                 HStack(alignment: .firstTextBaseline) {
                     Label("Audio listen points", systemImage: "ear.badge.exclamationmark")
                         .font(.headline)
-                        .foregroundStyle(plan.isClockQualified ? CapturePalette.plum : Color.orange)
+                        .foregroundStyle(plan.isClockQualified ? CapturePalette.plum : CapturePalette.brass)
                     Spacer(minLength: 8)
                     Text("\(plan.listenPoints.count)")
                         .font(.caption.monospacedDigit().weight(.bold))
@@ -4644,7 +4644,7 @@ struct CaptureTranscriptReviewView: View {
                 if let reason = plan.reason {
                     Label(reason, systemImage: plan.isClockQualified ? "info.circle" : "exclamationmark.shield.fill")
                         .font(.caption.weight(.semibold))
-                        .foregroundStyle(plan.isClockQualified ? Color.secondary : Color.orange)
+                        .foregroundStyle(plan.isClockQualified ? Color.secondary : CapturePalette.brass)
                         .fixedSize(horizontal: false, vertical: true)
                         .accessibilityIdentifier("CaptureTranscriptAudioAttentionHold")
                 }
@@ -4922,7 +4922,7 @@ struct CaptureTranscriptReviewView: View {
                         systemImage: client.packetNeedsRebuild ? "arrow.triangle.2.circlepath" : "wifi.slash"
                     )
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(CapturePalette.brass)
                 }
 
                 Picker("Show suggestions", selection: $packetCandidateFilter) {
@@ -4958,7 +4958,7 @@ struct CaptureTranscriptReviewView: View {
                             if recentPacketDecisionID == item.id, packetCandidateFilter == .open {
                                 Label("Saved", systemImage: "checkmark.circle.fill")
                                     .font(.caption2.weight(.bold))
-                                    .foregroundStyle(.green)
+                                    .foregroundStyle(CapturePalette.success)
                             }
                             packetCandidateCard(item, onOpenSource: onOpenSource)
                         }
@@ -5074,7 +5074,7 @@ struct CaptureTranscriptReviewView: View {
         VStack(alignment: .leading, spacing: 10) {
             Label("Follow-up needs attention", systemImage: "exclamationmark.triangle.fill")
                 .font(.subheadline.weight(.bold))
-                .foregroundStyle(.orange)
+                .foregroundStyle(CapturePalette.brass)
             Text("Quipsly could not prepare the suggestions. Your transcript is safe.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -5116,7 +5116,7 @@ struct CapturePacketNoteReviewPreviewView: View {
             VStack(alignment: .leading, spacing: 16) {
                 Label("Optional transcript idea", systemImage: "note.text.badge.plus")
                     .font(.title2.weight(.bold))
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(CapturePalette.brass)
                 Text("Quipsly can add this as a private note in one tap, or you can adjust it first. This preview never saves anything.")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
@@ -5277,14 +5277,14 @@ private struct CapturePacketNoteCandidateCard: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(candidate.laneLabel.uppercased())
                         .font(.caption2.weight(.black))
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(CapturePalette.brass)
                     Text(candidate.speakerLabel ?? "Unlabelled speaker")
                         .font(.headline)
                 }
                 Spacer()
                 Text(accepted ? "ADDED" : reviewStatusLabel)
                     .font(.caption2.weight(.black))
-                    .foregroundStyle(accepted ? .green : candidate.reviewStatus == "REJECTED_BY_HUMAN" || laneRejected ? .red : .orange)
+                    .foregroundStyle(accepted ? CapturePalette.success : candidate.reviewStatus == "REJECTED_BY_HUMAN" || laneRejected ? .red : CapturePalette.brass)
                     .multilineTextAlignment(.trailing)
             }
             Text(candidate.sourceText)
@@ -5307,7 +5307,7 @@ private struct CapturePacketNoteCandidateCard: View {
             if !accepted && !sourceWasReviewed {
                 Label("Play the source whenever you want to double-check this idea.", systemImage: "play.circle")
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(CapturePalette.brass)
                     .fixedSize(horizontal: false, vertical: true)
                     .accessibilityIdentifier("CapturePacketNoteSourceReviewRequired")
             }
@@ -5317,7 +5317,7 @@ private struct CapturePacketNoteCandidateCard: View {
                     systemImage: "arrow.triangle.2.circlepath.doc.on.clipboard"
                 )
                 .font(.caption.weight(.semibold))
-                .foregroundStyle(.orange)
+                .foregroundStyle(CapturePalette.brass)
                 .fixedSize(horizontal: false, vertical: true)
                 .accessibilityIdentifier("CapturePacketNoteCarriedDraft_\(candidate.accessibilityKey)")
             }
@@ -5330,7 +5330,7 @@ private struct CapturePacketNoteCandidateCard: View {
                     systemImage: "checkmark.circle.fill"
                 )
                     .font(.caption.weight(.bold))
-                    .foregroundStyle(.green)
+                    .foregroundStyle(CapturePalette.success)
                     .accessibilityIdentifier("CapturePacketNoteSaved_\(candidate.accessibilityKey)")
             } else if reviewMode != nil {
                 Divider()
@@ -5339,7 +5339,7 @@ private struct CapturePacketNoteCandidateCard: View {
                     systemImage: reviewMode == .merge ? "arrow.triangle.merge" : "pencil.line"
                 )
                     .font(.caption.weight(.bold))
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(CapturePalette.brass)
                 if reviewMode == .merge {
                     Picker("Existing note", selection: Binding(
                         get: { mergeTargetID },
@@ -5480,7 +5480,7 @@ private struct CapturePacketNoteCandidateCard: View {
             }
         }
         .padding(12)
-        .background(Color.orange.opacity(0.06), in: RoundedRectangle(cornerRadius: 12))
+        .background(CapturePalette.brass.opacity(0.06), in: RoundedRectangle(cornerRadius: 12))
         .accessibilityElement(children: .contain)
         .confirmationDialog(
             "Hide this idea?",
@@ -5609,7 +5609,7 @@ private struct CapturePacketTaskCandidateCard: View {
                     .font(.caption2.weight(.bold))
                     .padding(.horizontal, 8)
                     .padding(.vertical, 5)
-                    .background((accepted ? Color.green : Color.orange).opacity(0.12), in: Capsule())
+                    .background((accepted ? CapturePalette.success : CapturePalette.brass).opacity(0.12), in: Capsule())
             }
             Text(candidate.detail)
                 .font(.subheadline)
@@ -5628,7 +5628,7 @@ private struct CapturePacketTaskCandidateCard: View {
             if !accepted && !sourceWasReviewed {
                 Label("Play the source whenever you want to double-check this idea.", systemImage: "play.circle")
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(CapturePalette.brass)
                     .accessibilityIdentifier("CapturePacketTaskSourceReviewRequired")
             }
 
@@ -5641,7 +5641,7 @@ private struct CapturePacketTaskCandidateCard: View {
                         systemImage: "checkmark.circle.fill"
                     )
                         .font(.subheadline.weight(.bold))
-                        .foregroundStyle(.green)
+                        .foregroundStyle(CapturePalette.success)
                         .accessibilityIdentifier("CapturePacketTaskAccepted_\(candidate.id)")
                 }
             } else if isMerging {
@@ -5698,7 +5698,7 @@ private struct CapturePacketTaskCandidateCard: View {
                 VStack(alignment: .leading, spacing: 12) {
                     Label("Adjust task", systemImage: "checklist.checked")
                         .font(.subheadline.weight(.bold))
-                        .foregroundStyle(.green)
+                        .foregroundStyle(CapturePalette.success)
                     Text("Change anything you want, or keep Quipsly's defaults.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -5920,7 +5920,7 @@ private struct CapturePacketGoalCandidateCard: View {
                     .font(.caption2.weight(.bold))
                     .padding(.horizontal, 8)
                     .padding(.vertical, 5)
-                    .background((accepted ? Color.green : Color.orange).opacity(0.12), in: Capsule())
+                    .background((accepted ? CapturePalette.success : CapturePalette.brass).opacity(0.12), in: Capsule())
             }
             Text(candidate.sourceText)
                 .font(.subheadline)
@@ -5939,7 +5939,7 @@ private struct CapturePacketGoalCandidateCard: View {
             if !accepted && !sourceWasReviewed {
                 Label("Play the source whenever you want to double-check this idea.", systemImage: "play.circle")
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(CapturePalette.brass)
                     .accessibilityIdentifier("CapturePacketGoalSourceReviewRequired")
             }
 
@@ -5952,7 +5952,7 @@ private struct CapturePacketGoalCandidateCard: View {
                         systemImage: "checkmark.circle.fill"
                     )
                         .font(.subheadline.weight(.bold))
-                        .foregroundStyle(.green)
+                        .foregroundStyle(CapturePalette.success)
                         .accessibilityIdentifier("CapturePacketGoalAccepted_\(candidate.id)")
                 }
             } else if isCreating {
@@ -6247,7 +6247,7 @@ private struct CaptureTranscriptAudioQualityCard: View {
                mastery.snapshot?.status == "failed" || mastery.snapshot?.status == "blocked" {
                 Text(notice)
                     .font(.caption2.weight(.semibold))
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(CapturePalette.brass)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
@@ -6332,8 +6332,8 @@ private struct CaptureTranscriptAudioQualityCard: View {
 
     private var statusTint: Color {
         switch mastery.snapshot?.status {
-        case "completed": .green
-        case "failed", "blocked": .orange
+        case "completed": CapturePalette.success
+        case "failed", "blocked": CapturePalette.brass
         default: CapturePalette.plum
         }
     }
@@ -6386,7 +6386,7 @@ private struct CaptureTranscriptSpeakerGroupCard: View {
                 if let attribution = group.attribution {
                     Label(attribution.attributedLabel, systemImage: "checkmark.shield.fill")
                         .font(.caption.weight(.bold))
-                        .foregroundStyle(.green)
+                        .foregroundStyle(CapturePalette.success)
                 }
             }
 
@@ -6396,7 +6396,7 @@ private struct CaptureTranscriptSpeakerGroupCard: View {
                     systemImage: "arrow.triangle.2.circlepath"
                 )
                 .font(.caption)
-                .foregroundStyle(.orange)
+                .foregroundStyle(CapturePalette.brass)
                 .fixedSize(horizontal: false, vertical: true)
                 .accessibilityIdentifier("CaptureTranscriptSpeakerStale_\(group.providerSpeakerLabel)")
             }
@@ -6407,7 +6407,7 @@ private struct CaptureTranscriptSpeakerGroupCard: View {
                     systemImage: "person.crop.circle.badge.exclamationmark"
                 )
                 .font(.caption)
-                .foregroundStyle(.orange)
+                .foregroundStyle(CapturePalette.brass)
             } else {
                 Picker("Session participant", selection: $selectedParticipantID) {
                     ForEach(participants) { participant in
@@ -6443,7 +6443,7 @@ private struct CaptureTranscriptSpeakerGroupCard: View {
                             : "arrow.triangle.2.circlepath"
                     )
                     .font(.caption.weight(.bold))
-                    .foregroundStyle(pendingAttribution.disposition == .held ? Color.orange : CapturePalette.plum)
+                    .foregroundStyle(pendingAttribution.disposition == .held ? CapturePalette.brass : CapturePalette.plum)
                     Text(
                         pendingAttribution.lastErrorMessage
                             ?? "The participant, full provider-cluster snapshot, and playback receipts are protected until Nest acknowledges this stable request. No words are marked reviewed."
@@ -6468,7 +6468,7 @@ private struct CaptureTranscriptSpeakerGroupCard: View {
                 }
                 .padding(12)
                 .background(
-                    (pendingAttribution.disposition == .held ? Color.orange : CapturePalette.plum)
+                    (pendingAttribution.disposition == .held ? CapturePalette.brass : CapturePalette.plum)
                         .opacity(0.08),
                     in: RoundedRectangle(cornerRadius: 12)
                 )
@@ -6580,7 +6580,7 @@ private struct CaptureTranscriptSpeakerGroupCard: View {
                     Label("Heard sample selected", systemImage: "checkmark.circle.fill")
                 }
                 .buttonStyle(.borderless)
-                .foregroundStyle(.green)
+                .foregroundStyle(CapturePalette.success)
                 .accessibilityHint("Removes this sample from the voice identity review.")
                 .accessibilityIdentifier("CaptureTranscriptSpeakerSampleSelected_\(sample.segmentId)")
             } else if let livePosition {
@@ -6735,13 +6735,13 @@ private struct CaptureTranscriptSegmentCard: View {
                 VStack(alignment: .leading, spacing: 5) {
                     Label("Transcript correction · revision \(accepted.revisions.count)", systemImage: "checkmark.circle.fill")
                         .font(.caption.weight(.bold))
-                        .foregroundStyle(.green)
+                        .foregroundStyle(CapturePalette.success)
                     Text("Provider: \(captureTranscriptNonempty(segment.providerSpeakerLabel) ?? "Unlabelled") — \(segment.providerText)")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
                 .padding(12)
-                .background(Color.green.opacity(0.09), in: RoundedRectangle(cornerRadius: 12))
+                .background(CapturePalette.success.opacity(0.09), in: RoundedRectangle(cornerRadius: 12))
             }
 
             if segment.acceptedCorrection == nil,
@@ -6749,13 +6749,13 @@ private struct CaptureTranscriptSegmentCard: View {
                 VStack(alignment: .leading, spacing: 5) {
                     Label("Checked against the audio", systemImage: "checkmark.circle.fill")
                         .font(.caption.weight(.bold))
-                        .foregroundStyle(.green)
+                        .foregroundStyle(CapturePalette.success)
                     Text("You listened to this passage and left the words as they are.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
                 .padding(12)
-                .background(Color.green.opacity(0.09), in: RoundedRectangle(cornerRadius: 12))
+                .background(CapturePalette.success.opacity(0.09), in: RoundedRectangle(cornerRadius: 12))
                 .accessibilityIdentifier("CaptureTranscriptVerifiedAsIs_\(segment.id)")
             }
 
@@ -6794,7 +6794,7 @@ private struct CaptureTranscriptSegmentCard: View {
                     )
                     .font(.caption.weight(.bold))
                     .foregroundStyle(
-                        pendingDecision.disposition == .held ? Color.orange : CapturePalette.ink
+                        pendingDecision.disposition == .held ? CapturePalette.brass : CapturePalette.ink
                     )
                     Text(
                         pendingDecision.lastErrorMessage
@@ -6820,7 +6820,7 @@ private struct CaptureTranscriptSegmentCard: View {
                 }
                 .padding(12)
                 .background(
-                    (pendingDecision.disposition == .held ? Color.orange : CapturePalette.ink)
+                    (pendingDecision.disposition == .held ? CapturePalette.brass : CapturePalette.ink)
                         .opacity(0.08),
                     in: RoundedRectangle(cornerRadius: 12)
                 )
@@ -6952,7 +6952,7 @@ private struct CaptureTranscriptSegmentCard: View {
         VStack(alignment: .leading, spacing: 10) {
             Label("Linked work", systemImage: "arrow.triangle.branch")
                 .font(.caption.weight(.bold))
-                .foregroundStyle(impacts.contains(where: \.needsReview) ? Color.orange : Color.green)
+                .foregroundStyle(impacts.contains(where: \.needsReview) ? CapturePalette.brass : CapturePalette.success)
             Text("These notes, tasks, goals, or follow-ups link back to this transcript moment. Your correction did not overwrite them.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -6962,7 +6962,7 @@ private struct CaptureTranscriptSegmentCard: View {
             }
         }
         .padding(12)
-        .background(Color.orange.opacity(0.065), in: RoundedRectangle(cornerRadius: 12))
+        .background(CapturePalette.brass.opacity(0.065), in: RoundedRectangle(cornerRadius: 12))
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("CaptureTranscriptDownstreamImpacts_\(segment.id)")
     }
@@ -6976,7 +6976,7 @@ private struct CaptureTranscriptSegmentCard: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(impact.kindLabel.uppercased())
                         .font(.caption2.weight(.black))
-                        .foregroundStyle(impact.needsReview ? Color.orange : Color.green)
+                        .foregroundStyle(impact.needsReview ? CapturePalette.brass : CapturePalette.success)
                     Text(impact.label)
                         .font(.subheadline.weight(.bold))
                         .fixedSize(horizontal: false, vertical: true)
@@ -6984,7 +6984,7 @@ private struct CaptureTranscriptSegmentCard: View {
                 Spacer(minLength: 8)
                 Text(impactStateLabel(impact))
                     .font(.caption2.weight(.black))
-                    .foregroundStyle(impact.needsReview ? Color.orange : Color.green)
+                    .foregroundStyle(impact.needsReview ? CapturePalette.brass : CapturePalette.success)
                     .multilineTextAlignment(.trailing)
             }
 
@@ -7053,7 +7053,7 @@ private struct CaptureTranscriptSegmentCard: View {
                     systemImage: "questionmark.diamond"
                 )
                 .font(.caption)
-                .foregroundStyle(.orange)
+                .foregroundStyle(CapturePalette.brass)
                 .fixedSize(horizontal: false, vertical: true)
             } else {
                 Label(
@@ -7061,7 +7061,7 @@ private struct CaptureTranscriptSegmentCard: View {
                     systemImage: "checkmark.circle.fill"
                 )
                 .font(.caption.weight(.semibold))
-                .foregroundStyle(.green)
+                .foregroundStyle(CapturePalette.success)
             }
         }
         .padding(11)
@@ -7085,7 +7085,7 @@ private struct CaptureTranscriptSegmentCard: View {
                 .fixedSize(horizontal: false, vertical: true)
             Text("Current · \(captureTranscriptNonempty(current) ?? "Unlabelled")")
                 .font(.caption.weight(.semibold))
-                .foregroundStyle(.green)
+                .foregroundStyle(CapturePalette.success)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .padding(9)
@@ -7119,7 +7119,7 @@ private struct CaptureTranscriptSegmentCard: View {
                 systemImage: playbackPosition == nil ? "square.and.pencil" : "ear.fill"
             )
                 .font(.caption.weight(.semibold))
-                .foregroundStyle(playbackPosition == nil ? Color.secondary : Color.green)
+                .foregroundStyle(playbackPosition == nil ? Color.secondary : CapturePalette.success)
             if let draftStatus {
                 Label(draftStatus, systemImage: "internaldrive.fill")
                     .font(.caption.weight(.semibold))
@@ -7169,7 +7169,7 @@ private struct CaptureTranscriptSegmentCard: View {
                 .foregroundStyle(.secondary)
         }
         .padding(12)
-        .background(Color.orange.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
+        .background(CapturePalette.brass.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
     }
 
     private var transcriptTaskComposer: some View {
@@ -7301,7 +7301,7 @@ private struct CaptureTranscriptSegmentCard: View {
             if isCreatingNote {
                 Label("Session note", systemImage: "note.text.badge.plus")
                     .font(.caption.weight(.bold))
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(CapturePalette.brass)
                 TextField("Note title (optional)", text: $noteTitle, axis: .vertical)
                     .lineLimit(1...3)
                     .textFieldStyle(.roundedBorder)
@@ -7381,7 +7381,7 @@ private struct CaptureTranscriptSegmentCard: View {
             }
         }
         .padding(12)
-        .background(Color.orange.opacity(0.07), in: RoundedRectangle(cornerRadius: 12))
+        .background(CapturePalette.brass.opacity(0.07), in: RoundedRectangle(cornerRadius: 12))
     }
 
     private var availableNoteKinds: [MobileSessionNoteKind] {
