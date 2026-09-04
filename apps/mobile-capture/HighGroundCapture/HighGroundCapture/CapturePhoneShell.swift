@@ -11423,6 +11423,8 @@ private struct CaptureRecorderView: View {
                             duration: audioCapture.currentDuration,
                             averagePowerDB: audioCapture.inputLevelDB,
                             peakPowerDB: audioCapture.peakInputLevelDB,
+                            meterSampleSequence: audioCapture.meterSampleSequence,
+                            meterHistoryEpoch: audioCapture.meterHistoryEpoch,
                             inputRoute: audioCapture.inputRouteName,
                             capturePipeline: audioCapture.capturePipelineLabel,
                             liveWritingFinalText: audioCapture.liveWritingFinalText,
@@ -11527,6 +11529,8 @@ private struct CaptureRecorderView: View {
                                 duration: audioCapture.currentDuration,
                                 averagePowerDB: audioCapture.inputLevelDB,
                                 peakPowerDB: audioCapture.peakInputLevelDB,
+                                meterSampleSequence: audioCapture.meterSampleSequence,
+                                meterHistoryEpoch: audioCapture.meterHistoryEpoch,
                                 inputRoute: audioCapture.inputRouteName,
                                 capturePipeline: audioCapture.capturePipelineLabel,
                                 markCount: audioCapture.userMarkOffsets.count,
@@ -12061,6 +12065,8 @@ private struct CaptureRecorderView: View {
                 duration: audioCapture.currentDuration,
                 averagePowerDB: audioCapture.inputLevelDB,
                 peakPowerDB: audioCapture.peakInputLevelDB,
+                meterSampleSequence: audioCapture.meterSampleSequence,
+                meterHistoryEpoch: audioCapture.meterHistoryEpoch,
                 inputRoute: audioCapture.inputRouteName,
                 capturePipeline: audioCapture.capturePipelineLabel,
                 liveWritingFinalText: audioCapture.liveWritingFinalText,
@@ -19239,6 +19245,8 @@ private struct CoordinatedPodcastAudioStatus: View {
     let duration: TimeInterval
     let averagePowerDB: Float
     let peakPowerDB: Float
+    let meterSampleSequence: UInt64
+    let meterHistoryEpoch: UInt64
     let inputRoute: String
     let capturePipeline: String
     let markCount: Int
@@ -19258,7 +19266,9 @@ private struct CoordinatedPodcastAudioStatus: View {
             InputLevelMeter(
                 averagePowerDB: averagePowerDB,
                 peakPowerDB: peakPowerDB,
-                isActive: captureState == .recording
+                isActive: captureState == .recording,
+                sampleSequence: meterSampleSequence,
+                historyEpoch: meterHistoryEpoch
             )
 
             HStack(alignment: .center, spacing: 12) {
@@ -19331,6 +19341,8 @@ private struct RecorderHero: View {
     let duration: TimeInterval
     let averagePowerDB: Float
     let peakPowerDB: Float
+    let meterSampleSequence: UInt64
+    let meterHistoryEpoch: UInt64
     let inputRoute: String
     let capturePipeline: String
     let liveWritingFinalText: String
@@ -19374,7 +19386,9 @@ private struct RecorderHero: View {
                 InputLevelMeter(
                     averagePowerDB: averagePowerDB,
                     peakPowerDB: peakPowerDB,
-                    isActive: isActuallyRecording
+                    isActive: isActuallyRecording,
+                    sampleSequence: meterSampleSequence,
+                    historyEpoch: meterHistoryEpoch
                 )
                 primaryControl
             }
@@ -19438,7 +19452,9 @@ private struct RecorderHero: View {
                     InputLevelMeter(
                         averagePowerDB: averagePowerDB,
                         peakPowerDB: peakPowerDB,
-                        isActive: isActuallyRecording
+                        isActive: isActuallyRecording,
+                        sampleSequence: meterSampleSequence,
+                        historyEpoch: meterHistoryEpoch
                     )
                 }
 
@@ -19949,11 +19965,15 @@ private struct RecorderHero: View {
 
 struct InputLevelMeter: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var history: [CaptureLiveMeterSample] = []
     let averagePowerDB: Float
     let peakPowerDB: Float
     let isActive: Bool
+    let sampleSequence: UInt64
+    let historyEpoch: UInt64
 
     private let displayFloorDB: Float = -60
+    private let maximumHistorySamples = 120
 
     private var safeAverageDB: Float {
         guard averagePowerDB.isFinite else { return -160 }
@@ -20002,6 +20022,15 @@ struct InputLevelMeter: View {
                     .foregroundStyle(signalTint)
             }
 
+            if isActive || !history.isEmpty {
+                CaptureLiveSignalHistory(
+                    samples: history,
+                    currentState: signalState,
+                    isActive: isActive,
+                    windowSeconds: 12
+                )
+            }
+
             meterLane(
                 label: "Voice",
                 decibels: safeAverageDB,
@@ -20024,10 +20053,32 @@ struct InputLevelMeter: View {
         .accessibilityLabel("Microphone level")
         .accessibilityValue(
             isActive
-                ? "\(signalState.title), average power \(formatted(safeAverageDB)), peak power \(formatted(safePeakDB)). Not LUFS or true peak."
+                ? "\(signalState.title), average power \(formatted(safeAverageDB)), peak power \(formatted(safePeakDB)), \(history.count) recent level samples. Not LUFS or true peak."
                 : "Inactive"
         )
         .accessibilityIdentifier("CaptureRecorderInputEvidence")
+        .onAppear {
+            appendCurrentSampleIfActive()
+        }
+        .onChange(of: sampleSequence) { _, _ in
+            appendCurrentSampleIfActive()
+        }
+        .onChange(of: historyEpoch) { _, _ in
+            history.removeAll(keepingCapacity: true)
+            appendCurrentSampleIfActive()
+        }
+    }
+
+    private func appendCurrentSampleIfActive() {
+        guard isActive else { return }
+        history.append(CaptureLiveMeterSample(
+            averageLevel: averageLevel,
+            peakLevel: peakLevel,
+            state: signalState
+        ))
+        if history.count > maximumHistorySamples {
+            history.removeFirst(history.count - maximumHistorySamples)
+        }
     }
 
     private func normalized(_ decibels: Float) -> Double {
@@ -20071,6 +20122,134 @@ struct InputLevelMeter: View {
                 }
             }
             .frame(height: 7)
+        }
+    }
+}
+
+private struct CaptureLiveMeterSample: Equatable {
+    let averageLevel: Double
+    let peakLevel: Double
+    let state: CaptureAudioLiveInputState
+}
+
+/// A short rolling history of the recorder's electrical level evidence. This
+/// intentionally does not call itself a waveform: the final source waveform,
+/// LUFS, true peak, and audible-event scan are measured from decoded source
+/// bytes after Stop.
+private struct CaptureLiveSignalHistory: View {
+    let samples: [CaptureLiveMeterSample]
+    let currentState: CaptureAudioLiveInputState
+    let isActive: Bool
+    let windowSeconds: Int
+
+    private let maximumVisibleSamples = 120
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            HStack {
+                Text("Live signal history")
+                    .font(.caption2.weight(.semibold))
+                Spacer()
+                Text(isActive ? "Last \(windowSeconds) sec" : "Recent signal")
+                    .font(.caption2.monospacedDigit())
+                    .foregroundStyle(.secondary)
+            }
+
+            Canvas { context, size in
+                drawGrid(context: &context, size: size)
+                drawSamples(context: &context, size: size)
+            }
+            .frame(height: 58)
+            .background(
+                CapturePalette.primaryText.opacity(0.045),
+                in: RoundedRectangle(cornerRadius: 12, style: .continuous)
+            )
+            .overlay {
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .stroke(CapturePalette.divider, lineWidth: 1)
+            }
+
+            Text("Level over time · final waveform and loudness come from the saved source")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .lineLimit(2)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Live microphone signal history")
+        .accessibilityValue(
+            "\(currentState.title). \(samples.count) recent level samples. Final waveform and loudness are measured after recording."
+        )
+        .accessibilityIdentifier("CaptureLiveSignalHistory")
+    }
+
+    private func drawGrid(context: inout GraphicsContext, size: CGSize) {
+        guard size.width > 0, size.height > 0 else { return }
+        let gridColor = CapturePalette.divider.opacity(0.72)
+        for fraction in [0.25, 0.5, 0.75] as [CGFloat] {
+            var line = Path()
+            let x = size.width * fraction
+            line.move(to: CGPoint(x: x, y: 7))
+            line.addLine(to: CGPoint(x: x, y: size.height - 7))
+            context.stroke(
+                line,
+                with: .color(gridColor),
+                style: StrokeStyle(lineWidth: 0.7, dash: [2, 4])
+            )
+        }
+        var center = Path()
+        center.move(to: CGPoint(x: 7, y: size.height / 2))
+        center.addLine(to: CGPoint(x: size.width - 7, y: size.height / 2))
+        context.stroke(center, with: .color(gridColor), lineWidth: 0.7)
+    }
+
+    private func drawSamples(context: inout GraphicsContext, size: CGSize) {
+        guard size.width > 0, size.height > 0, !samples.isEmpty else { return }
+        let visible = Array(samples.suffix(maximumVisibleSamples))
+        let step = size.width / CGFloat(maximumVisibleSamples)
+        let lineWidth = max(1.4, step * 0.62)
+        let midY = size.height / 2
+        let usableHalfHeight = max(1, (size.height - 10) / 2)
+        let firstX = size.width - (CGFloat(visible.count) * step) + (step / 2)
+
+        for (index, sample) in visible.enumerated() {
+            let x = firstX + (CGFloat(index) * step)
+            let averageHalfHeight = max(1, usableHalfHeight * CGFloat(sample.averageLevel))
+            let peakHalfHeight = max(averageHalfHeight, usableHalfHeight * CGFloat(sample.peakLevel))
+            let tint = tint(for: sample.state)
+
+            var averageBar = Path()
+            averageBar.move(to: CGPoint(x: x, y: midY - averageHalfHeight))
+            averageBar.addLine(to: CGPoint(x: x, y: midY + averageHalfHeight))
+            context.stroke(
+                averageBar,
+                with: .color(tint.opacity(0.78)),
+                style: StrokeStyle(lineWidth: lineWidth, lineCap: .round)
+            )
+
+            if peakHalfHeight > averageHalfHeight + 1.5 {
+                let markerSize = max(1.8, lineWidth)
+                for y in [midY - peakHalfHeight, midY + peakHalfHeight] {
+                    context.fill(
+                        Path(ellipseIn: CGRect(
+                            x: x - markerSize / 2,
+                            y: y - markerSize / 2,
+                            width: markerSize,
+                            height: markerSize
+                        )),
+                        with: .color(tint)
+                    )
+                }
+            }
+        }
+    }
+
+    private func tint(for state: CaptureAudioLiveInputState) -> Color {
+        switch state {
+        case .clippingRisk: CapturePalette.record
+        case .hot: CapturePalette.brass
+        case .healthy: CapturePalette.success
+        case .low: CapturePalette.ink
+        case .inactive, .noUsefulSignal: CapturePalette.secondaryText.opacity(0.62)
         }
     }
 }

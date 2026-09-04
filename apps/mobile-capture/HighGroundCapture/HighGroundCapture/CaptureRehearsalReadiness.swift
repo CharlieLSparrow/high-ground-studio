@@ -696,7 +696,9 @@ private struct CaptureAudioSoundCheckControls: View {
                 InputLevelMeter(
                     averagePowerDB: controller.liveAveragePowerDBFS,
                     peakPowerDB: controller.livePeakPowerDBFS,
-                    isActive: true
+                    isActive: true,
+                    sampleSequence: UInt64(max(0, floor(controller.elapsed * 10))),
+                    historyEpoch: 0
                 )
                 Button {
                     controller.finishRecording()

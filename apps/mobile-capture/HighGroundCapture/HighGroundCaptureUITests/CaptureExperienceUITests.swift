@@ -987,6 +987,16 @@ final class CaptureExperienceUITests: XCTestCase {
             stop.waitForExistence(timeout: 20),
             "The real microphone should enter an operable recording state after permission is available."
         )
+        let liveInputEvidence = app.descendants(matching: .any)["CaptureRecorderInputEvidence"]
+        XCTAssertTrue(
+            liveInputEvidence.waitForExistence(timeout: 5),
+            "The physical recorder should expose live microphone evidence while the source is open."
+        )
+        expectation(
+            for: NSPredicate(format: "value CONTAINS %@", "recent level samples"),
+            evaluatedWith: liveInputEvidence
+        )
+        waitForExpectations(timeout: 5)
         XCTAssertTrue(
             stop.waitForNonExistence(timeout: 25),
             "The bounded physical acceptance take should stop and finalize automatically."
@@ -1058,6 +1068,16 @@ final class CaptureExperienceUITests: XCTestCase {
             app.buttons["CaptureVoiceWritingPauseResumeButton"].exists,
             "Pause must remain next to the active recorder instead of becoming a setup workflow."
         )
+        let liveSignalHistory = app.descendants(matching: .any)["CaptureRecorderInputEvidence"]
+        XCTAssertTrue(
+            liveSignalHistory.waitForExistence(timeout: 4),
+            "An active take should expose its live microphone evidence beside the controls."
+        )
+        expectation(
+            for: NSPredicate(format: "value CONTAINS %@", "recent level samples"),
+            evaluatedWith: liveSignalHistory
+        )
+        waitForExpectations(timeout: 4)
 
         let deferred = app.descendants(matching: .any)["CaptureVoiceWritingDeferredTranscript"]
         let live = app.descendants(matching: .any)["CaptureVoiceWritingLiveTranscript"]

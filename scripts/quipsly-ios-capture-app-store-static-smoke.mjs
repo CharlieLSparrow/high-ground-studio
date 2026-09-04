@@ -2655,6 +2655,16 @@ requireIncludes(captureSessionGuardianText, "The high-quality local recording is
 requireIncludes(captureSessionGuardianText, "The high-quality recording continues even though the call disconnected.", "shipping Guardian preserves independent local capture through call loss");
 requireIncludes(captureSessionGuardianText, "No useful microphone signal is reaching the recording", "shipping Guardian exposes retained-source signal loss");
 requireIncludes(capturePhoneShellText, "CaptureAudioSoundCheckController()", "shipping recorder owns the local sound-check lifecycle");
+requireIncludes(audioText, "@Published private(set) var meterSampleSequence", "live recorder publishes a meter clock even when sustained signal is unchanged");
+requireIncludes(audioText, "defer { meterSampleSequence &+= 1 }", "every recorder meter observation advances the live history clock");
+assert(
+  (audioText.match(/meterHistoryEpoch &\+= 1/g) ?? []).length === 1,
+  "a new journaled source resets live history exactly once while pause and provider resume preserve it",
+  { expectedIncrementCount: 1 },
+);
+requireIncludes(capturePhoneShellText, 'accessibilityIdentifier("CaptureLiveSignalHistory")', "shipping recorder exposes accessible rolling signal history");
+requireIncludes(capturePhoneShellText, "final waveform and loudness come from the saved source", "live level history does not impersonate decoded waveform or loudness evidence");
+requireIncludes(deterministicUITestsText, "recent level samples", "operated voice-writing acceptance observes live signal-history sampling");
 requireIncludes(captureRehearsalReadinessText, 'accessibilityIdentifier("CaptureSoundCheckStart")', "shipping rehearsal exposes an addressable sound-check action");
 assert(!captureRehearsalReadinessText.includes("consentReady"), "Private local sound check must not depend on Session recording consent.", { forbidden: "consentReady" });
 requireIncludes(captureRehearsalReadinessText, "never uploaded or added to the Session", "shipping sound check declares its local-only boundary");

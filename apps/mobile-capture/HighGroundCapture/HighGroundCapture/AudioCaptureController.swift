@@ -33,6 +33,13 @@ final class AudioCaptureController: NSObject, ObservableObject {
     @Published private(set) var userMarkOffsets: [TimeInterval] = []
     @Published private(set) var inputLevelDB: Float = -160
     @Published private(set) var peakInputLevelDB: Float = -160
+    /// Monotonic live-meter clock. A sequence is published even when the level
+    /// is unchanged so sustained room tone or silence remains visible instead
+    /// of collapsing into one SwiftUI `onChange` event.
+    @Published private(set) var meterSampleSequence: UInt64 = 0
+    /// Changes only when a new immutable audio take begins, not when that take
+    /// resumes after a deliberate pause or system interruption.
+    @Published private(set) var meterHistoryEpoch: UInt64 = 0
     @Published private(set) var inputRouteName: String = "No microphone selected"
     @Published private(set) var inputRoutePortType: String?
     @Published private(set) var liveWritingFinalText: String = ""
@@ -1177,6 +1184,11 @@ final class AudioCaptureController: NSObject, ObservableObject {
         _ = CaptureSourcePlanOutbox.shared.stageDurably(
             recording: ledgerEntry
         )
+        // Reset the rolling UI evidence exactly once for the newly journaled
+        // source. Provider-audio resume briefly passes through `.preparing`, so
+        // tying this epoch to state transitions would incorrectly erase the
+        // history after an interruption.
+        meterHistoryEpoch &+= 1
 
         currentRecordingURL = audioFilename
         activeLocalRecordingID = ledgerEntry.id
@@ -1894,6 +1906,7 @@ final class AudioCaptureController: NSObject, ObservableObject {
     }
 
     private func updateMeters() {
+        defer { meterSampleSequence &+= 1 }
         #if canImport(LiveKit)
         if let providerAudioMaster {
             guard captureState == .recording else {
