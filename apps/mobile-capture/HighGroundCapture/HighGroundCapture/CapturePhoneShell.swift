@@ -12116,7 +12116,11 @@ private struct CaptureRecorderView: View {
     /// device + explicit command-line flag, and the one-shot state prevents a
     /// SwiftUI reconstruction from starting a second source. Seven seconds is
     /// long enough for AVAudioSession activation, a spoken test phrase, and a
-    /// non-zero source while keeping accidental test media small.
+    /// non-zero source while keeping accidental test media small. A bounded
+    /// five-second lead-in is retained in the protected receipt so a person can
+    /// see the launched recorder before the evidence window begins; otherwise
+    /// an immediate command-line launch makes a silent microphone
+    /// indistinguishable from a tester who simply missed the seven-second take.
     private func runPhysicalVoiceWritingAcceptanceIfRequested(
         for session: MobileCaptureSession
     ) async {
@@ -12134,6 +12138,33 @@ private struct CaptureRecorderView: View {
             captureState: audioCapture.captureState.rawValue
         )
         print("QUIPSLY_PHYSICAL_VOICE_WRITING_ACCEPTANCE requested session=\(session.id)")
+
+        for remainingSeconds in stride(from: 5, through: 1, by: -1) {
+            PhysicalVoiceWritingAcceptanceReceiptStore.write(
+                attemptID: acceptanceAttemptID,
+                phase: .requested,
+                sessionID: session.id,
+                captureState: audioCapture.captureState.rawValue,
+                saved: false,
+                detail: "Recording begins in \(remainingSeconds) second\(remainingSeconds == 1 ? "" : "s"). Speak after the recorder starts."
+            )
+            print(
+                "QUIPSLY_PHYSICAL_VOICE_WRITING_ACCEPTANCE lead_in seconds=\(remainingSeconds)"
+            )
+            do {
+                try await Task.sleep(for: .seconds(1))
+            } catch {
+                PhysicalVoiceWritingAcceptanceReceiptStore.write(
+                    attemptID: acceptanceAttemptID,
+                    phase: .cancelled,
+                    sessionID: session.id,
+                    captureState: audioCapture.captureState.rawValue,
+                    saved: false,
+                    detail: "Acceptance task cancelled during the five-second lead-in."
+                )
+                return
+            }
+        }
 
         await requestCoordinatedStart(for: session)
         guard await audioCapture.waitUntilRecordingOrTerminal(timeout: 12) else {

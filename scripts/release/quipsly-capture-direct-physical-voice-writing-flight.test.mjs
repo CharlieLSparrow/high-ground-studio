@@ -22,6 +22,7 @@ test("requires explicit device, signed app, and retained evidence path", () => {
       timeoutSeconds: 180,
       pollSeconds: 2,
       skipInstall: false,
+      forceDirectRecorder: false,
       help: false,
     },
   );
@@ -36,9 +37,28 @@ test("requires explicit device, signed app, and retained evidence path", () => {
   );
 });
 
+test("accepts an explicit physical direct-recorder isolation flight", () => {
+  assert.equal(
+    parseArguments([
+      "--device", "Morbo",
+      "--skip-install",
+      "--force-direct-recorder",
+      "--output", "/tmp/evidence.json",
+    ]).forceDirectRecorder,
+    true,
+  );
+});
+
 test("reports actionable device states without disclosing transcript content", () => {
   assert.match(physicalFlightStateMessage(null), /protected acceptance receipt/);
   assert.match(physicalFlightStateMessage({ phase: "requested" }), /microphone permission/);
+  assert.equal(
+    physicalFlightStateMessage({
+      phase: "requested",
+      detail: "Recording begins in 3 seconds. Speak after the recorder starts.",
+    }),
+    "Recording begins in 3 seconds. Speak after the recorder starts.",
+  );
   assert.match(physicalFlightStateMessage({ phase: "recording" }), /speak/);
   assert.match(
     physicalFlightStateMessage({

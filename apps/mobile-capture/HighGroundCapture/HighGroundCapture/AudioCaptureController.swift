@@ -822,38 +822,43 @@ final class AudioCaptureController: NSObject, ObservableObject {
             )
         )
 
-        let prepared = await VoiceWritingLiveSourceFactory.prepareIfAvailable(
-            fileURL: audioFilename,
-            audioSettings: settings,
-            recognitionProfile: recognitionProfile,
-            contextualPhrases: contextualPhrases,
-            onTextChange: { [weak self] finalized, volatile in
-                Task { @MainActor [weak self] in
-                    guard let self, self.captureState == .recording || self.captureState == .paused else {
-                        return
+        let prepared: VoiceWritingLiveSourceRecording?
+        if CaptureLaunchConfiguration.forcesPhysicalVoiceWritingRecorderFallback {
+            prepared = nil
+        } else {
+            prepared = await VoiceWritingLiveSourceFactory.prepareIfAvailable(
+                fileURL: audioFilename,
+                audioSettings: settings,
+                recognitionProfile: recognitionProfile,
+                contextualPhrases: contextualPhrases,
+                onTextChange: { [weak self] finalized, volatile in
+                    Task { @MainActor [weak self] in
+                        guard let self, self.captureState == .recording || self.captureState == .paused else {
+                            return
+                        }
+                        self.liveWritingFinalText = finalized
+                        self.liveWritingVolatileText = volatile
                     }
-                    self.liveWritingFinalText = finalized
-                    self.liveWritingVolatileText = volatile
-                }
-            },
-            onPreviewUnavailable: { [weak self] reason in
-                Task { @MainActor [weak self] in
-                    guard let self else { return }
-                    self.liveWritingPreviewMessage = reason
-                }
-            },
-            onSourceWriteFailure: { [weak self] reason in
-                Task { @MainActor [weak self] in
-                    guard let self,
-                          self.captureState == .recording || self.captureState == .paused else {
-                        return
+                },
+                onPreviewUnavailable: { [weak self] reason in
+                    Task { @MainActor [weak self] in
+                        guard let self else { return }
+                        self.liveWritingPreviewMessage = reason
                     }
-                    self.finishCaptureFailure(
-                        "The original audio file stopped accepting microphone data: \(reason) Quipsly preserved every byte written before the failure."
-                    )
+                },
+                onSourceWriteFailure: { [weak self] reason in
+                    Task { @MainActor [weak self] in
+                        guard let self,
+                              self.captureState == .recording || self.captureState == .paused else {
+                            return
+                        }
+                        self.finishCaptureFailure(
+                            "The original audio file stopped accepting microphone data: \(reason) Quipsly preserved every byte written before the failure."
+                        )
+                    }
                 }
-            }
-        )
+            )
+        }
 
         do {
             try Task.checkCancellation()

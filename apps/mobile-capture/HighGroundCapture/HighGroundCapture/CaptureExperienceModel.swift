@@ -180,6 +180,21 @@ enum CaptureLaunchConfiguration {
         #endif
     }
 
+    /// Keeps physical acceptance capable of isolating Apple's live-preview
+    /// audio-engine path from the durable AVAudioRecorder fallback. This flag
+    /// cannot exist in TestFlight/App Store behavior and is meaningful only
+    /// alongside the explicit physical voice-writing acceptance launch.
+    static var forcesPhysicalVoiceWritingRecorderFallback: Bool {
+        #if DEBUG && !targetEnvironment(simulator)
+        runsPhysicalVoiceWritingAcceptance
+            && ProcessInfo.processInfo.arguments.contains(
+                "--capture-force-voice-writing-recorder-fallback"
+            )
+        #else
+        false
+        #endif
+    }
+
     /// Deterministically reproduces the physical-device race where a Nest
     /// Session refresh completed after a local writing shell was created.
     /// Release and physical-device builds can never enable this path.

@@ -34,6 +34,7 @@ export function parseArguments(argv) {
     timeoutSeconds: 180,
     pollSeconds: 2,
     skipInstall: false,
+    forceDirectRecorder: false,
     help: false,
   };
   for (let index = 0; index < argv.length; index += 1) {
@@ -44,6 +45,10 @@ export function parseArguments(argv) {
     }
     if (flag === "--skip-install") {
       options.skipInstall = true;
+      continue;
+    }
+    if (flag === "--force-direct-recorder") {
+      options.forceDirectRecorder = true;
       continue;
     }
     const value = valueAfter(argv, index, flag);
@@ -88,6 +93,7 @@ function usage() {
 
 Options:
   --skip-install          Exercise the already-installed Debug app.
+  --force-direct-recorder Isolate the AVAudioRecorder fallback from live preview.
   --timeout-seconds <n>   Overall receipt wait, 30-600 (default 180).
   --poll-seconds <n>      Readback interval, 0.5-10 (default 2).
 
@@ -104,7 +110,9 @@ evidence receipt.
 export function physicalFlightStateMessage(receipt) {
   if (!receipt) return "Waiting for the app's protected acceptance receipt.";
   if (receipt.phase === "requested") {
-    return "Waiting for microphone permission and recorder activation on the device.";
+    return receipt.detail?.startsWith("Recording begins in ")
+      ? receipt.detail
+      : "Waiting for microphone permission and recorder activation on the device.";
   }
   if (receipt.phase === "recording") {
     return "Recording on the physical device now; speak for the seven-second take.";
@@ -221,7 +229,7 @@ async function main() {
   const previous = await readback(options.device, expectedBuild);
   const previousAttemptID = previous?.attemptID || null;
   process.stderr.write("[physical voice writing] launching the direct source-first acceptance path\n");
-  await execFileAsync("xcrun", [
+  const launchArguments = [
     "devicectl",
     "device",
     "process",
@@ -234,7 +242,14 @@ async function main() {
     APP_BUNDLE_ID,
     "--capture-runtime-writing-link=quipsly://write",
     "--capture-physical-voice-writing-acceptance",
-  ], { timeout: 90_000, maxBuffer: 4 * 1024 * 1024 });
+  ];
+  if (options.forceDirectRecorder) {
+    launchArguments.push("--capture-force-voice-writing-recorder-fallback");
+  }
+  await execFileAsync("xcrun", launchArguments, {
+    timeout: 90_000,
+    maxBuffer: 4 * 1024 * 1024,
+  });
 
   const deadline = Date.now() + options.timeoutSeconds * 1_000;
   let lastState = "";
@@ -284,6 +299,7 @@ async function main() {
     schema: "quipsly-direct-physical-voice-writing-flight-v1",
     device: options.device,
     appBuild: strictReceipt.appBuild,
+    recorderPath: options.forceDirectRecorder ? "av-audio-recorder" : "live-preview-when-available",
     attemptID: strictReceipt.attemptID,
     recordingID: strictReceipt.recordingID,
     sourceAudioDurationSeconds: strictReceipt.sourceAudioDurationSeconds,
