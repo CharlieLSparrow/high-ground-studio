@@ -73,9 +73,20 @@ test("reports actionable device states without disclosing transcript content", (
       phase: "finished",
       captureAcceptanceProven: true,
       sourceAudioLikelySilent: true,
+      transcriptState: "failed",
       transcriptAcceptanceReady: false,
     }),
-    /effectively silent/,
+    /very quiet.*found no speech/,
+  );
+  assert.match(
+    physicalFlightStateMessage({
+      phase: "finished",
+      captureAcceptanceProven: true,
+      sourceAudioLikelySilent: true,
+      transcriptState: "transcribing",
+      transcriptAcceptanceReady: false,
+    }),
+    /very quiet.*waiting for exact-source transcript evidence/,
   );
   assert.doesNotMatch(
     physicalFlightStateMessage({

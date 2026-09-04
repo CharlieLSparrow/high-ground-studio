@@ -125,8 +125,14 @@ export function physicalFlightStateMessage(receipt) {
   }
   if (receipt.captureAcceptanceProven
       && receipt.sourceAudioLikelySilent
+      && receipt.transcriptState === "failed"
       && !receipt.transcriptAcceptanceReady) {
-    return "Audio is saved, but the source is effectively silent; speak near the device and run a fresh take.";
+    return "Audio is saved, but the source is very quiet and on-device recognition found no speech; speak near the device and run a fresh take.";
+  }
+  if (receipt.captureAcceptanceProven
+      && receipt.sourceAudioLikelySilent
+      && !receipt.transcriptAcceptanceReady) {
+    return "Audio is saved but very quiet; waiting for exact-source transcript evidence before deciding whether the take is usable.";
   }
   if (receipt.captureAcceptanceProven && !receipt.transcriptAcceptanceReady) {
     return "Audio is saved and playable; waiting for the exact-source on-device transcript.";
@@ -266,6 +272,7 @@ async function main() {
       if (["start-failed", "cancelled"].includes(current.phase)) fail(state);
       if (current.captureAcceptanceProven
           && current.sourceAudioLikelySilent
+          && current.transcriptState === "failed"
           && !current.transcriptAcceptanceReady) {
         fail(state);
       }
