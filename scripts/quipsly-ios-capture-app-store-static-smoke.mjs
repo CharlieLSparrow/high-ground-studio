@@ -2465,14 +2465,39 @@ assert(
 );
 requireIncludes(
   preferredAudioModeBody,
-  "providerRoomActive || callKitAudioActive ? .voiceChat : .measurement",
-  "calls retain voice processing while local spoken masters use minimally processed primary input",
+  "providerRoomActive || callKitAudioActive ? .voiceChat : .default",
+  "calls retain voice processing while local spoken masters let iOS choose a usable ordinary recording route",
 );
 requireIncludes(
   captureAudioSessionCoordinatorText,
-  "`videoRecording` is not an",
+  "`measurement` is deliberately avoided here",
+  "the audio mode policy documents why forcing the primary microphone is unsafe on multi-microphone devices",
+);
+requireIncludes(
+  captureAudioSessionCoordinatorText,
+  "`videoRecording` is not an audio-quality synonym either",
   "the audio mode policy documents why movie capture mode is unsafe for audio-only masters",
 );
+requireExcludes(
+  captureAudioSessionCoordinatorText,
+  "setPreferredDataSource(",
+  "standalone spoken capture does not guess microphone quality from a built-in data-source orientation",
+);
+requireExcludes(
+  captureAudioSessionCoordinatorText,
+  "setPreferredInput(",
+  "standalone spoken capture leaves ordinary microphone selection to iOS unless the person explicitly selects an external route",
+);
+for (const needle of [
+  "input.selectedDataSource?.dataSourceName",
+  '"\\(portName) · \\(dataSourceName)"',
+]) {
+  requireIncludes(
+    audioText,
+    needle,
+    "the live recorder identifies the exact selected microphone data source when iOS exposes it",
+  );
+}
 const privateRouteRequirementStart = captureAudioSessionCoordinatorText.indexOf("private func requirePrivateRouteDuringCapture() throws");
 const privateRouteRequirementEnd = captureAudioSessionCoordinatorText.indexOf("private func holdSharedWatchForUnsafeRoute()", privateRouteRequirementStart);
 const privateRouteRequirementBody = captureAudioSessionCoordinatorText.slice(

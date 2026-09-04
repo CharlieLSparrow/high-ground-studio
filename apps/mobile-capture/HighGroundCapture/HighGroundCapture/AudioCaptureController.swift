@@ -1976,23 +1976,29 @@ final class AudioCaptureController: NSObject, ObservableObject {
         }
 
         let systemName = input.portName.trimmingCharacters(in: .whitespacesAndNewlines)
-        let resolvedName: String
+        let portName: String
         switch input.portType {
         case .builtInMic:
-            resolvedName = CaptureDeviceVocabulary.builtInMicrophone
+            portName = CaptureDeviceVocabulary.builtInMicrophone
         case .headsetMic:
-            resolvedName = systemName == input.portType.rawValue ? "Headset microphone" : systemName
+            portName = systemName == input.portType.rawValue ? "Headset microphone" : systemName
         case .bluetoothHFP, .bluetoothLE:
-            resolvedName = systemName == input.portType.rawValue ? "Bluetooth microphone" : systemName
+            portName = systemName == input.portType.rawValue ? "Bluetooth microphone" : systemName
         case .usbAudio:
-            resolvedName = systemName == input.portType.rawValue ? "USB microphone" : systemName
+            portName = systemName == input.portType.rawValue ? "USB microphone" : systemName
         case .carAudio:
-            resolvedName = systemName == input.portType.rawValue ? "Car microphone" : systemName
+            portName = systemName == input.portType.rawValue ? "Car microphone" : systemName
         default:
-            resolvedName = systemName.isEmpty || systemName == input.portType.rawValue
+            portName = systemName.isEmpty || systemName == input.portType.rawValue
                 ? "External microphone"
                 : systemName
         }
+        let dataSourceName = input.selectedDataSource?.dataSourceName
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let resolvedName = dataSourceName.isEmpty
+            || dataSourceName.caseInsensitiveCompare(portName) == .orderedSame
+            ? portName
+            : "\(portName) · \(dataSourceName)"
         scheduleInputRoutePublication(
             name: resolvedName,
             portType: input.portType.rawValue

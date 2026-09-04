@@ -435,16 +435,23 @@ final class CaptureAudioSessionCoordinator: ObservableObject {
     }
 
     /// Conversation transport needs Apple's voice-processing route. A local
-    /// participant master or spoken draft instead needs the primary physical
-    /// microphone with minimal system processing. `videoRecording` is not an
-    /// audio-quality synonym: Apple defines it as a movie mode that selects
-    /// the microphone nearest the camera, which can silently move an audio-only
-    /// take onto a camera-facing data source on multi-microphone iPads.
+    /// participant master or spoken draft uses the ordinary recording route so
+    /// iOS can select a usable built-in microphone for the current device. Do
+    /// not force a built-in data source here: its physical orientation is not a
+    /// reliable proxy for speech level, and the current route plus selected
+    /// data source are retained as source evidence for diagnosis.
+    /// `measurement` is deliberately avoided here: Apple specifies that it
+    /// forces the primary microphone on multi-microphone devices, and physical
+    /// iPad acceptance proved that route can resolve to an effectively silent
+    /// top data source. `videoRecording` is not an audio-quality synonym either:
+    /// Apple defines it as a movie mode that selects the microphone nearest the
+    /// camera, which can silently move an audio-only take onto a camera-facing
+    /// data source.
     nonisolated static func preferredMode(
         providerRoomActive: Bool,
         callKitAudioActive: Bool
     ) -> AVAudioSession.Mode {
-        providerRoomActive || callKitAudioActive ? .voiceChat : .measurement
+        providerRoomActive || callKitAudioActive ? .voiceChat : .default
     }
 
     private func releaseProviderInputRetention() {
