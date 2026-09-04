@@ -444,7 +444,7 @@ describe("LiveSessionRoom", () => {
       video: expect.objectContaining({ deviceId: { exact: "remembered-camera" } }),
     }));
     expect(query).toHaveBeenCalledWith({ name: "camera" });
-    expect(screen.getByText("Preview ready")).toBeInTheDocument();
+    expect(screen.getByText("Devices checked")).toBeInTheDocument();
   });
 
   it("does not open devices automatically when a first-time browser still needs permission", async () => {

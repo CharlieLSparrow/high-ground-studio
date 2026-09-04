@@ -2230,7 +2230,7 @@ export function LiveSessionRoom({
                     {cameraEnabledForNextJoin ? ` · ${cameras.find((device) => device.deviceId === cameraId)?.label || "Camera not available yet"}` : " · Camera off"}
                   </p>
                 </div>
-                {previewTested ? <span className="rounded-full bg-emerald-100 px-3 py-1.5 text-[10px] font-black uppercase tracking-wide text-emerald-950">Preview ready</span> : null}
+                {previewTested ? <span className="rounded-full border border-violet-200 bg-white px-3 py-1.5 text-[10px] font-black uppercase tracking-wide text-violet-950">Devices checked</span> : null}
               </div>
               <div className="mt-4">{callVideoStage}</div>
               <div className="mt-4 flex flex-wrap gap-2">
