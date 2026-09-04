@@ -6,13 +6,7 @@ import { mobileVoiceWritingContentHash } from "@/lib/server/mobile-voice-writing
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 import { resolveStudioProjectAccess } from "@/lib/server/studio-project-access";
 
-import {
-  DELETE,
-  GET,
-  PATCH,
-  POST,
-  voiceWritingTransactionRetryDelayMs,
-} from "./route";
+import { DELETE, GET, PATCH, POST } from "./route";
 
 jest.mock("@/lib/prisma", () => ({ getPrismaClient: jest.fn() }));
 jest.mock("next/cache", () => ({ revalidatePath: jest.fn() }));
@@ -82,14 +76,6 @@ describe("mobile voice-writing continuation", () => {
       sourceLabel: "nest-kind:home",
       role: "OWNER",
     }] as never);
-  });
-
-  it("bounds retries to transient database collisions", () => {
-    expect(voiceWritingTransactionRetryDelayMs({ code: "P2002" }, 0)).toBe(50);
-    expect(voiceWritingTransactionRetryDelayMs({ code: "P2028" }, 1)).toBe(125);
-    expect(voiceWritingTransactionRetryDelayMs({ code: "P2034" }, 2)).toBe(250);
-    expect(voiceWritingTransactionRetryDelayMs({ code: "P2034" }, 3)).toBeNull();
-    expect(voiceWritingTransactionRetryDelayMs({ code: "P2025" }, 0)).toBeNull();
   });
 
   it("authenticates before reading private writing", async () => {

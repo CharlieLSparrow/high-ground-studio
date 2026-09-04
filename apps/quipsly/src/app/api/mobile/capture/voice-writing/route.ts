@@ -34,7 +34,7 @@ function record(value: unknown): Record<string, any> {
     : {};
 }
 
-export function voiceWritingTransactionRetryDelayMs(
+function voiceWritingTransactionRetryDelayMs(
   error: unknown,
   attempt: number,
 ) {
