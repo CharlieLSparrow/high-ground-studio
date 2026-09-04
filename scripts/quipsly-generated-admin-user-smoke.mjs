@@ -3,11 +3,18 @@ import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import { spawnSync } from "node:child_process";
+import { createRequire } from "node:module";
 
-import { PrismaClient } from "@prisma/client";
-import { PrismaPg } from "@prisma/adapter-pg";
-import { initializeApp, getApps } from "firebase-admin/app";
-import { getAuth } from "firebase-admin/auth";
+// The generated reviewer is a repository-level operator, but these runtime
+// packages belong to the Nest workspace. Resolve from that declared package
+// boundary so a clean collaborator checkout works with pnpm's strict layout.
+const requireFromNest = createRequire(
+  new URL("../apps/quipsly/package.json", import.meta.url),
+);
+const { PrismaClient } = requireFromNest("@prisma/client");
+const { PrismaPg } = requireFromNest("@prisma/adapter-pg");
+const { initializeApp, getApps } = requireFromNest("firebase-admin/app");
+const { getAuth } = requireFromNest("firebase-admin/auth");
 
 const repoRoot = process.cwd();
 

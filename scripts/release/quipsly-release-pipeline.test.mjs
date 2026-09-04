@@ -46,6 +46,10 @@ const generatedReviewerUrl = new URL(
 );
 const generatedReviewerPath = fileURLToPath(generatedReviewerUrl);
 const generatedReviewer = fs.readFileSync(generatedReviewerUrl, "utf8");
+const generatedAdminUserSmoke = fs.readFileSync(
+  new URL("../quipsly-generated-admin-user-smoke.mjs", import.meta.url),
+  "utf8",
+);
 
 test("standalone preflight materializes the committed Nest release context", () => {
   assert.match(preflight, /quipsly-build-context\.sh/);
@@ -261,6 +265,26 @@ test("generated reviewer keeps smoke-only and immutable promotion modes explicit
   assert.doesNotMatch(
     generatedReviewer,
     /gcloud run services update-traffic|--to-revisions|--to-tags/,
+  );
+});
+
+test("generated reviewer resolves Nest-owned runtime dependencies from the Nest package", () => {
+  assert.match(generatedAdminUserSmoke, /createRequire/);
+  assert.match(
+    generatedAdminUserSmoke,
+    /new URL\("\.\.\/apps\/quipsly\/package\.json", import\.meta\.url\)/,
+  );
+  for (const dependency of [
+    "@prisma/client",
+    "@prisma/adapter-pg",
+    "firebase-admin/app",
+    "firebase-admin/auth",
+  ]) {
+    assert.match(generatedAdminUserSmoke, new RegExp(`requireFromNest\\(\"${dependency.replace("/", "\\/")}\"\\)`));
+  }
+  assert.doesNotMatch(
+    generatedAdminUserSmoke,
+    /from \"(?:@prisma\/client|@prisma\/adapter-pg|firebase-admin\/)/,
   );
 });
 
