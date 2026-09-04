@@ -185,11 +185,11 @@ assert.equal(noNativeProvider.callRoomId, room.id);
 assert.equal(noNativeProvider.providerReadiness, "livekit-needs-config");
 assert.equal(noNativeProvider.providerCanJoin, false);
 assert.equal(noNativeProvider.recordingConsentGranted, true);
-assert.equal(noNativeProvider.captureReadiness.status, "review-ready");
-assert.equal(noNativeProvider.captureReadiness.safeToRecordLocally, false);
+assert.equal(noNativeProvider.captureReadiness.status, "ready-local-fallback");
+assert.equal(noNativeProvider.captureReadiness.safeToRecordLocally, true);
 assert.equal(noNativeProvider.captureReadiness.providerCanJoin, false);
-assert.equal(noNativeProvider.captureReadiness.label, "Results ready");
-assert.match(noNativeProvider.captureReadiness.detail, /editable notes, tasks, and goals/i);
+assert.equal(noNativeProvider.captureReadiness.label, "Ready locally");
+assert.match(noNativeProvider.captureReadiness.detail, /local capture can proceed/i);
 assert.equal(noNativeProvider.recordingCount, 1);
 assert.equal(noNativeProvider.latestRecordingAssetStatus, "VERIFIED");
 assert.equal(noNativeProvider.latestTranscriptStatus, "COMPLETED");
@@ -201,6 +201,20 @@ assert.equal(noNativeProvider.coachingPacketFirstOpenActionItemId, "action_item_
 assert.match(noNativeProvider.coachingPacketPreview, /reviewer practiced/i);
 assert.equal(noNativeProvider.afterCaptureNextAction, "Session results are ready. Open the editable recap, notes, tasks, and goals whenever they are useful.");
 assert.match(noNativeProvider.nextAction, /Session results are ready/i);
+
+const endedWithResults = mapOne({
+  ...room,
+  status: "ENDED",
+});
+assert.equal(endedWithResults.captureReadiness.status, "review-ready");
+assert.equal(endedWithResults.captureReadiness.safeToRecordLocally, false);
+assert.equal(endedWithResults.captureReadiness.providerCanJoin, false);
+assert.equal(endedWithResults.captureReadiness.label, "Results ready");
+assert.match(
+  endedWithResults.captureReadiness.detail,
+  /editable notes, tasks, and goals/i,
+);
+assert.match(endedWithResults.nextAction, /Session results are ready/i);
 
 const liveKitServerReady = providerReadinessForMobileCaptureSession(room, {
   LIVEKIT_URL: "wss://example.livekit.cloud",

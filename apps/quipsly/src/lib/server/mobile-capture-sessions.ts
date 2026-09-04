@@ -1015,8 +1015,12 @@ function mobileSessionJourneySummary(input: {
             `transcript-processing-held:${input.transcriptHoldReasonCode || "reviewed-release-required"}`,
           ],
     ]),
+    // Once source-derived work exists, lead with that durable outcome even if
+    // the room deliberately remains open for another participant source or a
+    // safety take. Capture readiness stays available as its own projection;
+    // it must not bury completed results in the Session's primary guidance.
     nextAction:
-      !input.transcriptProcessingAllowed && input.recordingCount > 0
+      input.recordingCount > 0
         ? input.afterCaptureNextAction
         : input.captureReadiness.nextAction || input.afterCaptureNextAction,
   };
@@ -1501,9 +1505,7 @@ export function mapMobileCaptureSessionsForUser(input: {
         latestTranscriptStatus === "COMPLETED",
       packetExists: Boolean(packetSummaryNoteId),
       publicationReceiptExists: false,
-      nextAction: transcriptProcessingGate.allowed
-        ? captureReadiness.nextAction || afterCaptureLine
-        : afterCaptureLine,
+      nextAction: journeySummary.nextAction,
     });
     const actionPacket = buildMobileCaptureActionPacket({
       room,
@@ -1719,11 +1721,7 @@ export function mapMobileCaptureSessionsForUser(input: {
       canUseProjectTeamNotes: canUseProjectTeam,
       sessionNotes,
       afterCaptureNextAction: afterCaptureLine,
-      nextAction:
-        captureReadiness.nextAction ||
-        (recordingConsentGranted
-          ? provider.providerNextAction
-          : consentNextAction(consent?.status)),
+      nextAction: journeySummary.nextAction,
     };
   });
 }
