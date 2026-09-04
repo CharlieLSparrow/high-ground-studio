@@ -4,6 +4,7 @@ import test from "node:test";
 
 import {
   CRITICAL_TESTS,
+  PHYSICAL_ONLY_TESTS,
   TEST_TARGET,
   buildFullShards,
   createPlan,
@@ -20,6 +21,7 @@ test("discovers only shipping deterministic test classes", () => {
   const fixture = `
 final class CaptureExperienceUITests: XCTestCase {
     func testOne() {}
+    func testPhysicalDeviceVoiceWritingCreatesOneSavedSource() {}
 }
 final class CaptureAppStoreScreenshotUITests: XCTestCase {
     func testScreenshot() {}
@@ -35,6 +37,14 @@ final class ShareCaptureExtensionUITests: XCTestCase {
     "CaptureLoginExperienceUITests/testLogin",
     "ShareCaptureExtensionUITests/testShare",
   ]);
+  assert.equal(PHYSICAL_ONLY_TESTS.length, 1);
+});
+
+test("simulator release plans exclude every physical-only selector", async () => {
+  const tests = discoverDeterministicTests(await readFile(SOURCE_URL, "utf8"));
+  assert.ok(
+    PHYSICAL_ONLY_TESTS.every((physicalTest) => !tests.includes(physicalTest)),
+  );
 });
 
 test("accepts the conventional pnpm argument separator", () => {

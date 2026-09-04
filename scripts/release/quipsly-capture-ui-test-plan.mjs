@@ -18,6 +18,14 @@ export const DETERMINISTIC_CLASSES = Object.freeze([
   "ShareCaptureExtensionUITests",
 ]);
 
+// These selectors are intentionally compiled out of simulator test bundles.
+// They have their own direct physical-device acceptance lane and therefore
+// cannot appear in release UI plans whose result-count contract is evaluated
+// against an iOS Simulator xcresult.
+export const PHYSICAL_ONLY_TESTS = Object.freeze([
+  "CaptureExperienceUITests/testPhysicalDeviceVoiceWritingCreatesOneSavedSource",
+]);
+
 export const CRITICAL_TESTS = Object.freeze([
   "CaptureExperienceUITests/testRecoverableProblemStaysInlineAndDoesNotBlockNavigation",
   "CaptureExperienceUITests/testUploadAttentionOpensTheProtectedRecordingLibrary",
@@ -81,7 +89,9 @@ export function discoverDeterministicTests(source) {
     }
   }
 
-  return discovered.sort();
+  return discovered
+    .filter((test) => !PHYSICAL_ONLY_TESTS.includes(test))
+    .sort();
 }
 
 export function estimatedWeight(testName) {
