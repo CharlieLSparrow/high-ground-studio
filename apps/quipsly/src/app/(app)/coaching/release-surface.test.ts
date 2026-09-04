@@ -108,6 +108,18 @@ describe("coaching release surfaces", () => {
     );
   });
 
+  it("hands a newly scheduled Session to either supported device without an iOS-only instruction", () => {
+    const source = readFileSync(
+      join(process.cwd(), "src/app/api/coaching/runway/route.ts"),
+      "utf8",
+    );
+
+    expect(source).toContain(
+      "Open it in this browser or Quipsly Capture, then join and record when everyone is ready.",
+    );
+    expect(source).not.toContain("Open the iOS capture app");
+  });
+
   it("takes an accepted invitation back to the canonical Session without another acceptance step", () => {
     const source = readFileSync(
       join(process.cwd(), "src/app/(marketing)/sessions/join/page.tsx"),

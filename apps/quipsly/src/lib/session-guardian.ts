@@ -19,6 +19,22 @@ export type BrowserRetainedSourceIssue = {
 export const RETAINED_SOURCE_STORAGE_WATCH_BYTES = 2 * 1024 ** 3;
 export const RETAINED_SOURCE_STORAGE_RESERVE_BYTES = 512 * 1024 ** 2;
 
+export function browserRetainedRecorderStatusLabel(input: {
+  status: BrowserRetainedSourceStatus;
+  elapsedSeconds: number;
+  hasProtectedSource: boolean;
+}) {
+  if (input.status === "recording") return `Recording ${input.elapsedSeconds}s`;
+  if (input.status === "checking") return "Getting ready";
+  if (input.status === "starting") return "Starting";
+  if (input.status === "stopping") return "Saving recording";
+  if (input.status === "uploading") return "Uploading";
+  if (input.status === "held")
+    return input.hasProtectedSource ? "Saved on this device" : "Needs attention";
+  if (input.status === "error") return "Needs attention";
+  return "Ready";
+}
+
 export function browserRetainedStorageIssue(
   usageBytes: number | null,
   quotaBytes: number | null,

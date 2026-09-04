@@ -66,7 +66,10 @@ import type {
   BrowserRetainedSourceIssue,
   BrowserRetainedSourceStatus,
 } from "@/lib/session-guardian";
-import { browserRetainedStorageIssue } from "@/lib/session-guardian";
+import {
+  browserRetainedRecorderStatusLabel,
+  browserRetainedStorageIssue,
+} from "@/lib/session-guardian";
 import { browserRetainedStartFailure } from "@/lib/browser-retained-start-failure";
 import {
   browserSourceTypeAfterConsentReadback,
@@ -154,20 +157,6 @@ function formatBytes(bytes: number | null) {
   if (bytes < 1024 ** 2) return `${(bytes / 1024).toFixed(1)} KB`;
   if (bytes < 1024 ** 3) return `${(bytes / 1024 ** 2).toFixed(1)} MB`;
   return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
-}
-
-function retainedRecorderStatusLabel(
-  status: BrowserRetainedSourceStatus,
-  elapsedSeconds: number,
-) {
-  if (status === "recording") return `Recording ${elapsedSeconds}s`;
-  if (status === "checking") return "Getting ready";
-  if (status === "starting") return "Starting";
-  if (status === "stopping") return "Saving recording";
-  if (status === "uploading") return "Uploading";
-  if (status === "held") return "Saved on this device";
-  if (status === "error") return "Needs attention";
-  return "Ready";
 }
 
 function recordingEndpointStatus(state: string) {
@@ -2805,11 +2794,15 @@ export function BrowserSourceRecorder({
         >
           {conversationEnded
             ? exitSafety.label
-            : retainedRecorderStatusLabel(status, elapsedSeconds)}
+            : browserRetainedRecorderStatusLabel({
+                status,
+                elapsedSeconds,
+                hasProtectedSource: Boolean(activeLedger || recoveryRows.length),
+              })}
         </span>
       </div>
 
-      {!conversationEnded && !myConsentCoversSource ? (
+      {!conversationEnded && vaultAvailable && !myConsentCoversSource ? (
         <section
           className="mt-4 rounded-xl border border-emerald-300 bg-emerald-50 p-3 text-emerald-950"
           aria-label="Recording consent needed"

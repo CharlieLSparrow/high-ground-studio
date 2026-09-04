@@ -2743,7 +2743,7 @@ export async function POST(request: Request) {
         status: booking.status,
         nextAction: paymentRecord
           ? "Hold converted to booking and room. Prepare Stripe test checkout evidence before confirming payment."
-          : "Hold converted to booking and room. Open the iOS capture app, confirm consent, and capture when ready.",
+          : "Session ready. Open it in this browser or Quipsly Capture, then join and record when everyone is ready.",
       };
     });
 
@@ -3145,7 +3145,7 @@ export async function POST(request: Request) {
       status: booking.status,
       nextAction: paymentRecord
         ? "Booking and room created. Prepare Stripe test checkout evidence before confirming payment."
-        : "Booking and room created. Open the iOS capture app, grant consent, and start local capture when ready.",
+        : "Session ready. Open it in this browser or Quipsly Capture, then join and record when everyone is ready.",
     };
   });
 

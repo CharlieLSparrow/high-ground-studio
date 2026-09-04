@@ -1,4 +1,4 @@
-import { browserRetainedStorageIssue, projectSessionGuardian, type BrowserRetainedSourceGuardianEvidence, type SessionGuardianInput } from "./session-guardian";
+import { browserRetainedRecorderStatusLabel, browserRetainedStorageIssue, projectSessionGuardian, type BrowserRetainedSourceGuardianEvidence, type SessionGuardianInput } from "./session-guardian";
 
 const retained: BrowserRetainedSourceGuardianEvidence = {
   status: "ready",
@@ -139,5 +139,23 @@ describe("browserRetainedStorageIssue", () => {
   it("does not invent storage health without finite evidence", () => {
     expect(browserRetainedStorageIssue(null, 10 * 1024 ** 3)).toBeNull();
     expect(browserRetainedStorageIssue(Number.NaN, 10 * 1024 ** 3)).toBeNull();
+  });
+});
+
+describe("browserRetainedRecorderStatusLabel", () => {
+  it("does not call an unsupported or failed preflight a saved recording", () => {
+    expect(browserRetainedRecorderStatusLabel({
+      status: "held",
+      elapsedSeconds: 0,
+      hasProtectedSource: false,
+    })).toBe("Needs attention");
+  });
+
+  it("reserves the saved label for an actual protected source", () => {
+    expect(browserRetainedRecorderStatusLabel({
+      status: "held",
+      elapsedSeconds: 0,
+      hasProtectedSource: true,
+    })).toBe("Saved on this device");
   });
 });

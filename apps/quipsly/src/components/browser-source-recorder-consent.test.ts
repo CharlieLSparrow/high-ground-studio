@@ -42,6 +42,9 @@ describe("browser retained-source consent", () => {
       "browserTranscriptionChoiceAfterConsentReadback({",
     );
     expect(source).toContain('aria-label="Recording consent needed"');
+    expect(source).toMatch(
+      /!conversationEnded\s*&&\s*vaultAvailable\s*&&\s*!myConsentCoversSource/,
+    );
     expect(source).not.toContain('open={status === "recording"}');
     expect(source).toContain("Recording settings ·");
     expect(source).toContain(
