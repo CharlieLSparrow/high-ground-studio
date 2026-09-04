@@ -1165,6 +1165,7 @@ final class AudioCaptureController: NSObject, ObservableObject {
                 audioRouteName: runtimeEvidence.audioRouteName,
                 audioRoutePortType: runtimeEvidence.audioRoutePortType,
                 audioInputDataSourceName: runtimeEvidence.audioInputDataSourceName,
+                audioSessionMode: runtimeEvidence.audioSessionMode,
                 audioHardwareSampleRate: runtimeEvidence.audioHardwareSampleRate,
                 audioHardwareInputChannelCount: runtimeEvidence.audioHardwareInputChannelCount,
                 monotonicStartedNanoseconds: DispatchTime.now().uptimeNanoseconds,

@@ -42,6 +42,7 @@ function fixture(): Parameters<typeof buildSessionSourceEvidence>[0] {
           audioRouteName: "Shure MV7i",
           audioRoutePortType: "USBAudio",
           audioInputDataSourceName: "MV7i microphone",
+          audioSessionMode: "AVAudioSessionModeVideoRecording",
           container: "mov",
           codec: "hevc",
           width: 3840,
@@ -436,6 +437,7 @@ describe("Session source evidence", () => {
         operatingSystem: "iOS 26.2",
         audioRoute: "Shure MV7i · USBAudio",
         audioInputDataSource: "MV7i microphone",
+        audioSessionMode: "AVAudioSessionModeVideoRecording",
         audioFormat: expect.objectContaining({
           sampleRateHz: 48_000,
           decodedSampleRateHz: 48_000,

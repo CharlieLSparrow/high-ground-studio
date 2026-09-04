@@ -137,6 +137,11 @@ struct CaptureSourceEvidenceView: View {
                     ?? "Not exposed by this input"
             )
             EvidenceRow(
+                label: "Audio session mode",
+                value: nonempty(recording.sourceProfile?.audioSessionMode)
+                    ?? "Not recorded"
+            )
+            EvidenceRow(
                 label: "Encoded audio",
                 value: audioFormatLabel(recording.sourceProfile)
             )

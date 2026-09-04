@@ -2351,6 +2351,27 @@ for (const needle of [
 ]) {
   requireIncludes(callKitDeactivateBody, needle, "fail-safe CallKit deactivation reconciliation");
 }
+const preferredAudioModeStart = captureAudioSessionCoordinatorText.indexOf("nonisolated static func preferredMode(");
+const preferredAudioModeEnd = captureAudioSessionCoordinatorText.indexOf("private func releaseProviderInputRetention()", preferredAudioModeStart);
+const preferredAudioModeBody = captureAudioSessionCoordinatorText.slice(
+  preferredAudioModeStart,
+  preferredAudioModeEnd,
+);
+assert(
+  preferredAudioModeStart >= 0 && preferredAudioModeEnd > preferredAudioModeStart,
+  "Purpose-aware audio-session routing must remain inspectable.",
+  { label: "purpose-aware audio mode policy is present" },
+);
+requireIncludes(
+  preferredAudioModeBody,
+  "providerRoomActive || callKitAudioActive ? .voiceChat : .measurement",
+  "calls retain voice processing while local spoken masters use minimally processed primary input",
+);
+requireIncludes(
+  captureAudioSessionCoordinatorText,
+  "`videoRecording` is not an",
+  "the audio mode policy documents why movie capture mode is unsafe for audio-only masters",
+);
 const privateRouteRequirementStart = captureAudioSessionCoordinatorText.indexOf("private func requirePrivateRouteDuringCapture() throws");
 const privateRouteRequirementEnd = captureAudioSessionCoordinatorText.indexOf("private func holdSharedWatchForUnsafeRoute()", privateRouteRequirementStart);
 const privateRouteRequirementBody = captureAudioSessionCoordinatorText.slice(

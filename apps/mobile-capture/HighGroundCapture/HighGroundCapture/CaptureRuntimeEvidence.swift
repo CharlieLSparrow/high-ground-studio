@@ -16,6 +16,7 @@ struct CaptureRuntimeEvidence {
     let audioRouteName: String?
     let audioRoutePortType: String?
     let audioInputDataSourceName: String?
+    let audioSessionMode: String?
     let audioHardwareSampleRate: Double?
     let audioHardwareInputChannelCount: Int?
     let microphonePermissionState: String
@@ -44,6 +45,7 @@ struct CaptureRuntimeEvidence {
                 input?.selectedDataSource?.dataSourceName
                     ?? audioSession.inputDataSource?.dataSourceName
             ),
+            audioSessionMode: normalized(audioSession.mode.rawValue),
             audioHardwareSampleRate: sampleRate.isFinite && sampleRate > 0
                 ? sampleRate
                 : nil,

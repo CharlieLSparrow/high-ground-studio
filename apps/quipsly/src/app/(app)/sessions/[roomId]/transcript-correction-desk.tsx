@@ -896,6 +896,7 @@ function AudioTranscriptEvidencePanel({
       <summary className="cursor-pointer text-xs font-black uppercase tracking-wide text-sky-950">Inspect capture and timing details</summary>
       <dl className="mt-4 grid gap-3 text-xs font-semibold text-[#765f40] sm:grid-cols-2 lg:grid-cols-3">
         <div><dt className="font-black uppercase tracking-wide text-[#8a7354]">Capture pipeline</dt><dd className="mt-1 break-words">{audio.capturePipeline || "Not preserved"}</dd></div>
+        <div><dt className="font-black uppercase tracking-wide text-[#8a7354]">Audio session mode</dt><dd className="mt-1 break-words">{audio.audioSessionMode ? humanize(audio.audioSessionMode.replace("AVAudioSessionMode", "")) : "Not preserved"}</dd></div>
         <div><dt className="font-black uppercase tracking-wide text-[#8a7354]">Pause timeline</dt><dd className="mt-1 break-words">{audio.pauseTimelinePolicy || "Not preserved"}</dd></div>
         <div><dt className="font-black uppercase tracking-wide text-[#8a7354]">Hardware input</dt><dd className="mt-1">{audio.hardwareSampleRateHz ? `${audio.hardwareSampleRateHz} Hz` : "Not measured"} · {audio.hardwareInputChannelCount ? `${audio.hardwareInputChannelCount} ch` : "channels unknown"}</dd></div>
         <div><dt className="font-black uppercase tracking-wide text-[#8a7354]">Transcript engine</dt><dd className="mt-1">{[transcript.provider, transcript.providerModel, transcript.language].filter(Boolean).join(" · ") || "Not identified"}</dd></div>

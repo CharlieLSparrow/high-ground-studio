@@ -1927,6 +1927,9 @@ function SessionSourceEvidenceCard({
                 {source.captureRuntime.audioInputDataSource
                   ? ` · ${source.captureRuntime.audioInputDataSource}`
                   : ""}
+                {source.captureRuntime.audioSessionMode
+                  ? ` · ${humanize(source.captureRuntime.audioSessionMode.replace("AVAudioSessionMode", ""))} mode`
+                  : ""}
               </dd>
               <dd className="mt-1 text-[10px] font-black leading-4 text-sky-800">
                 {audioFormatLabel}
@@ -2204,6 +2207,9 @@ function SessionSourceEvidenceCard({
               <dd className="mt-1 break-words">
                 {audio.capturePipeline || "absent"} ·{" "}
                 {audio.pauseTimelinePolicy || "pause policy absent"}
+                {audio.audioSessionMode
+                  ? ` · ${humanize(audio.audioSessionMode.replace("AVAudioSessionMode", ""))} mode`
+                  : ""}
               </dd>
             </div>
             <div>

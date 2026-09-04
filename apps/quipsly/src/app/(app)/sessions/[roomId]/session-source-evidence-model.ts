@@ -114,6 +114,7 @@ export type SessionSourceEvidence = {
       operatingSystem: string | null;
       audioRoute: string | null;
       audioInputDataSource?: string | null;
+      audioSessionMode?: string | null;
       audioFormat?: {
         container: string | null;
         codec: string | null;
@@ -282,6 +283,7 @@ function sourceRuntime(manifest: UnknownRecord) {
     operatingSystem: [systemName, systemVersion].filter(Boolean).join(" ") || null,
     audioRoute: [routeName, routeType].filter(Boolean).join(" · ") || null,
     audioInputDataSource: text(profile.audioInputDataSourceName),
+    audioSessionMode: text(profile.audioSessionMode),
     audioFormat: {
       container: text(profile.container),
       codec: text(profile.codec),

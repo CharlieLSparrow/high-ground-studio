@@ -53,6 +53,7 @@ struct LocalRecordingSourceProfile: Codable, Equatable, Sendable {
     var audioRouteName: String?
     var audioRoutePortType: String?
     var audioInputDataSourceName: String?
+    var audioSessionMode: String?
     var audioHardwareSampleRate: Double?
     var audioHardwareInputChannelCount: Int?
     var monotonicStartedNanoseconds: UInt64?
@@ -91,6 +92,7 @@ struct LocalRecordingSourceProfile: Codable, Equatable, Sendable {
         audioRouteName: String? = nil,
         audioRoutePortType: String? = nil,
         audioInputDataSourceName: String? = nil,
+        audioSessionMode: String? = nil,
         audioHardwareSampleRate: Double? = nil,
         audioHardwareInputChannelCount: Int? = nil,
         monotonicStartedNanoseconds: UInt64? = nil,
@@ -128,6 +130,7 @@ struct LocalRecordingSourceProfile: Codable, Equatable, Sendable {
         self.audioRouteName = audioRouteName
         self.audioRoutePortType = audioRoutePortType
         self.audioInputDataSourceName = audioInputDataSourceName
+        self.audioSessionMode = audioSessionMode
         self.audioHardwareSampleRate = audioHardwareSampleRate
         self.audioHardwareInputChannelCount = audioHardwareInputChannelCount
         self.monotonicStartedNanoseconds = monotonicStartedNanoseconds

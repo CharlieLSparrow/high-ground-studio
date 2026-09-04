@@ -406,7 +406,10 @@ final class CaptureAudioSessionCoordinator: ObservableObject {
     }
 
     private func applySharedCategory() throws {
-        let mode: AVAudioSession.Mode = (isProviderRoomActive || isCallKitAudioActive) ? .voiceChat : .videoRecording
+        let mode = Self.preferredMode(
+            providerRoomActive: isProviderRoomActive,
+            callKitAudioActive: isCallKitAudioActive
+        )
         try audioSession.setCategory(
             .playAndRecord,
             mode: mode,
@@ -418,6 +421,19 @@ final class CaptureAudioSessionCoordinator: ObservableObject {
             // notifyOthersOnDeactivation so the interrupted app may resume.
             options: [.defaultToSpeaker, .allowBluetoothHFP]
         )
+    }
+
+    /// Conversation transport needs Apple's voice-processing route. A local
+    /// participant master or spoken draft instead needs the primary physical
+    /// microphone with minimal system processing. `videoRecording` is not an
+    /// audio-quality synonym: Apple defines it as a movie mode that selects
+    /// the microphone nearest the camera, which can silently move an audio-only
+    /// take onto a camera-facing data source on multi-microphone iPads.
+    nonisolated static func preferredMode(
+        providerRoomActive: Bool,
+        callKitAudioActive: Bool
+    ) -> AVAudioSession.Mode {
+        providerRoomActive || callKitAudioActive ? .voiceChat : .measurement
     }
 
     private func releaseProviderInputRetention() {

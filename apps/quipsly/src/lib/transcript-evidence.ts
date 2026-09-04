@@ -34,6 +34,7 @@ export type AudioTranscriptEvidence = {
     inputRoute: string | null;
     inputPortType: string | null;
     inputDataSource: string | null;
+    audioSessionMode: string | null;
     capturePipeline: string | null;
     pauseTimelinePolicy: string | null;
     durationSeconds: number | null;
@@ -414,6 +415,7 @@ function sourceAudio(
     inputRoute: text(profile.audioRouteName),
     inputPortType: text(profile.audioRoutePortType),
     inputDataSource: text(profile.audioInputDataSourceName),
+    audioSessionMode: text(profile.audioSessionMode),
     capturePipeline: text(profile.audioCapturePipeline),
     pauseTimelinePolicy: text(profile.pauseTimelinePolicy),
     durationSeconds: finite(recorded.durationSeconds),

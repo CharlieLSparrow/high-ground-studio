@@ -95,6 +95,7 @@ describe("audio and transcript evidence", () => {
         audioRouteName: "Shure MV7i",
         audioRoutePortType: "USBAudio",
         audioInputDataSourceName: "MV7i microphone",
+        audioSessionMode: "AVAudioSessionModeVoiceChat",
         audioCapturePipeline: "livekit-local-input-pcm",
         pauseTimelinePolicy: "silence-preserves-wall-clock",
         recordedMedia: {
@@ -226,6 +227,7 @@ describe("audio and transcript evidence", () => {
     expect(evidence.audio).toMatchObject({
       formatComparison: "MATCH",
       inputRoute: "Shure MV7i",
+      audioSessionMode: "AVAudioSessionModeVoiceChat",
       decodedSampleRateHz: 48_000,
       decodedChannelCount: 1,
       issues: [],

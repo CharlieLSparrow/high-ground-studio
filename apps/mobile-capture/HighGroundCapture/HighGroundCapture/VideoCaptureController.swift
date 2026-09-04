@@ -516,6 +516,9 @@ final class VideoCaptureController: ObservableObject {
                 audioInputDataSourceName: profile.includesAudio
                     ? runtimeEvidence.audioInputDataSourceName
                     : nil,
+                audioSessionMode: profile.includesAudio
+                    ? runtimeEvidence.audioSessionMode
+                    : nil,
                 audioHardwareSampleRate: profile.includesAudio
                     ? runtimeEvidence.audioHardwareSampleRate
                     : nil,
