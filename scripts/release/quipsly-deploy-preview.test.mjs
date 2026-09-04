@@ -168,6 +168,11 @@ test("session invitation email is explicit, Secret Manager backed, and safe to d
   );
   assert.match(
     source,
+    /QUIPSLY_SITE_URL="\$\{QUIPSLY_SITE_URL:-https:\/\/nest\.quipsly\.com\}"/,
+  );
+  assert.match(source, /QUIPSLY_SITE_URL must be one HTTPS origin/);
+  assert.match(
+    source,
     /validate_private_secret "\$\{SESSION_INVITATION_RESEND_API_KEY_SECRET_NAME\}" "api-key"/,
   );
   assert.match(
@@ -186,6 +191,7 @@ test("session invitation email is explicit, Secret Manager backed, and safe to d
     source,
     /QUIPSLY_SESSION_INVITATION_EMAIL_FROM=\$\{SESSION_INVITATION_EMAIL_FROM\}/,
   );
+  assert.match(source, /QUIPSLY_SITE_URL=\$\{QUIPSLY_SITE_URL\}/);
   assert.doesNotMatch(source, /QUIPSLY_SESSION_INVITATION_RESEND_API_KEY=[^$]/);
 });
 

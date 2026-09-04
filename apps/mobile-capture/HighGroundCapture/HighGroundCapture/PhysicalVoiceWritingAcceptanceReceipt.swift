@@ -37,6 +37,13 @@ struct PhysicalVoiceWritingAcceptanceReceipt: Codable {
     let transcriptSourceSHA256: String?
     let transcriptSourceByteCount: Int64?
     let transcriptRecognitionExecution: String?
+    let audioRouteName: String?
+    let audioRoutePortType: String?
+    let audioInputDataSourceName: String?
+    let audioSessionMode: String?
+    let audioHardwareSampleRate: Double?
+    let audioHardwareInputChannelCount: Int?
+    let microphonePermissionState: String
     let saved: Bool
     let detail: String?
 }
@@ -61,11 +68,13 @@ enum PhysicalVoiceWritingAcceptanceReceiptStore {
         transcriptSourceSHA256: String? = nil,
         transcriptSourceByteCount: Int64? = nil,
         transcriptRecognitionExecution: String? = nil,
+        sourceProfile: LocalRecordingSourceProfile? = nil,
         saved: Bool = false,
         detail: String? = nil,
         fileManager: FileManager = .default
     ) {
         do {
+            let runtime = CaptureRuntimeEvidence.current()
             let receipt = PhysicalVoiceWritingAcceptanceReceipt(
                 schema: PhysicalVoiceWritingAcceptanceReceipt.schema,
                 attemptID: attemptID,
@@ -85,6 +94,26 @@ enum PhysicalVoiceWritingAcceptanceReceiptStore {
                 transcriptSourceSHA256: cleaned(transcriptSourceSHA256),
                 transcriptSourceByteCount: transcriptSourceByteCount,
                 transcriptRecognitionExecution: cleaned(transcriptRecognitionExecution),
+                audioRouteName: cleaned(
+                    sourceProfile?.audioRouteName ?? runtime.audioRouteName
+                ),
+                audioRoutePortType: cleaned(
+                    sourceProfile?.audioRoutePortType ?? runtime.audioRoutePortType
+                ),
+                audioInputDataSourceName: cleaned(
+                    sourceProfile?.audioInputDataSourceName
+                        ?? runtime.audioInputDataSourceName
+                ),
+                audioSessionMode: cleaned(
+                    sourceProfile?.audioSessionMode ?? runtime.audioSessionMode
+                ),
+                audioHardwareSampleRate:
+                    sourceProfile?.audioHardwareSampleRate
+                        ?? runtime.audioHardwareSampleRate,
+                audioHardwareInputChannelCount:
+                    sourceProfile?.audioHardwareInputChannelCount
+                        ?? runtime.audioHardwareInputChannelCount,
+                microphonePermissionState: runtime.microphonePermissionState,
                 saved: saved,
                 detail: cleaned(detail)
             )

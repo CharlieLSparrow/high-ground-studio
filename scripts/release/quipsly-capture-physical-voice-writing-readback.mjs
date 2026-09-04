@@ -188,6 +188,30 @@ export function inspectPhysicalVoiceWritingReceipt(value, {
     ? value.transcriptSourceByteCount
     : null;
   const transcriptRecognitionExecution = clean(value.transcriptRecognitionExecution) || null;
+  const boundedText = (candidate, label, max = 180) => {
+    const result = clean(candidate) || null;
+    if (result && result.length > max) fail(`The physical acceptance ${label} is invalid.`);
+    return result;
+  };
+  const audioRouteName = boundedText(value.audioRouteName, "audio route");
+  const audioRoutePortType = boundedText(value.audioRoutePortType, "audio route type");
+  const audioInputDataSourceName = boundedText(value.audioInputDataSourceName, "audio input data source");
+  const audioSessionMode = boundedText(value.audioSessionMode, "audio session mode");
+  const audioHardwareSampleRate = Number.isFinite(value.audioHardwareSampleRate)
+    && value.audioHardwareSampleRate > 0
+    && value.audioHardwareSampleRate <= 384_000
+    ? value.audioHardwareSampleRate
+    : null;
+  const audioHardwareInputChannelCount = Number.isSafeInteger(value.audioHardwareInputChannelCount)
+    && value.audioHardwareInputChannelCount > 0
+    && value.audioHardwareInputChannelCount <= 32
+    ? value.audioHardwareInputChannelCount
+    : null;
+  const microphonePermissionState = boundedText(
+    value.microphonePermissionState,
+    "microphone permission state",
+    40,
+  );
   if (transcriptState && !TRANSCRIPT_STATES.has(transcriptState)) {
     fail("The physical acceptance transcript state is invalid.");
   }
@@ -260,6 +284,13 @@ export function inspectPhysicalVoiceWritingReceipt(value, {
     transcriptSourceSHA256,
     transcriptSourceByteCount,
     transcriptRecognitionExecution,
+    audioRouteName,
+    audioRoutePortType,
+    audioInputDataSourceName,
+    audioSessionMode,
+    audioHardwareSampleRate,
+    audioHardwareInputChannelCount,
+    microphonePermissionState,
     saved,
     detail: clean(value.detail) || null,
     ageSeconds: Math.max(0, Math.floor(ageMilliseconds / 1_000)),

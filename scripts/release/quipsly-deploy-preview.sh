@@ -124,6 +124,7 @@ GOOGLE_DRIVE_PICKER_APP_ID_SECRET_NAME="${GOOGLE_DRIVE_PICKER_APP_ID_SECRET_NAME
 SESSION_INVITATION_RESEND_API_KEY_SECRET_NAME="${SESSION_INVITATION_RESEND_API_KEY_SECRET_NAME:-quipsly-session-invitation-resend-api-key}"
 RESEND_WEBHOOK_SECRET_NAME="${RESEND_WEBHOOK_SECRET_NAME:-quipsly-resend-webhook-secret}"
 SESSION_INVITATION_EMAIL_FROM="${SESSION_INVITATION_EMAIL_FROM:-invites@notify.quipsly.com}"
+QUIPSLY_SITE_URL="${QUIPSLY_SITE_URL:-https://nest.quipsly.com}"
 TRANSACTIONAL_EMAIL_SCHEDULER_SERVICE_ACCOUNT="${TRANSACTIONAL_EMAIL_SCHEDULER_SERVICE_ACCOUNT:-quipsly-transactional-email@${PROJECT_ID}.iam.gserviceaccount.com}"
 STRIPE_SECRET_KEY_SECRET_NAME="${STRIPE_SECRET_KEY_SECRET_NAME:-quipsly-stripe-secret-key}"
 STRIPE_SAAS_WEBHOOK_SECRET_NAME="${STRIPE_SAAS_WEBHOOK_SECRET_NAME:-quipsly-stripe-saas-webhook-secret}"
@@ -504,12 +505,16 @@ if [[ "${ENABLE_SESSION_INVITATION_EMAIL}" == "1" ]]; then
     echo "SESSION_INVITATION_EMAIL_FROM must be one plain email address safe for Cloud Run environment configuration." >&2
     exit 2
   fi
+  if [[ ! "${QUIPSLY_SITE_URL}" =~ ^https://[A-Za-z0-9.-]+(:[0-9]+)?$ ]]; then
+    echo "QUIPSLY_SITE_URL must be one HTTPS origin without a path, query, fragment, comma, or credentials." >&2
+    exit 2
+  fi
   require_enabled_secret "${SESSION_INVITATION_RESEND_API_KEY_SECRET_NAME}"
   require_enabled_secret "${RESEND_WEBHOOK_SECRET_NAME}"
   validate_private_secret "${SESSION_INVITATION_RESEND_API_KEY_SECRET_NAME}" "api-key"
   validate_private_secret "${RESEND_WEBHOOK_SECRET_NAME}" "webhook-secret"
   session_invitation_email_secret=",QUIPSLY_SESSION_INVITATION_RESEND_API_KEY=${SESSION_INVITATION_RESEND_API_KEY_SECRET_NAME}:latest,QUIPSLY_RESEND_WEBHOOK_SECRET=${RESEND_WEBHOOK_SECRET_NAME}:latest"
-  session_invitation_email_env_vars=",QUIPSLY_SESSION_INVITATION_EMAIL_FROM=${SESSION_INVITATION_EMAIL_FROM}"
+  session_invitation_email_env_vars=",QUIPSLY_SESSION_INVITATION_EMAIL_FROM=${SESSION_INVITATION_EMAIL_FROM},QUIPSLY_SITE_URL=${QUIPSLY_SITE_URL}"
   if [[ ! "${TRANSACTIONAL_EMAIL_SCHEDULER_SERVICE_ACCOUNT}" =~ ^[a-z0-9][a-z0-9-]{4,28}@[a-z][a-z0-9-]{4,62}\.iam\.gserviceaccount\.com$ ]]; then
     echo "Transactional email scheduler service account is unsafe." >&2
     exit 2

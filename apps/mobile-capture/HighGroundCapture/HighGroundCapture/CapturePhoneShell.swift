@@ -12230,6 +12230,7 @@ private struct CaptureRecorderView: View {
             localStatus: savedRecording?.status.rawValue,
             sourceFileName: savedRecording?.fileName,
             sourceByteCount: savedRecording?.byteCount,
+            sourceProfile: savedRecording?.sourceProfile,
             saved: saved,
             detail: audioCapture.lastErrorMessage
         )
@@ -12261,6 +12262,7 @@ private struct CaptureRecorderView: View {
             transcriptSourceSHA256: transcript?.sourceSha256,
             transcriptSourceByteCount: transcript?.sourceByteCount,
             transcriptRecognitionExecution: transcript?.recognitionExecution,
+            sourceProfile: savedRecording.sourceProfile,
             saved: true,
             detail: audioCapture.lastErrorMessage
         )

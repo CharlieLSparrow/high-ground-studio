@@ -46,6 +46,7 @@ test("inherits every complete live capability as an enabled release flag", () =>
     secret("GOOGLE_DRIVE_PICKER_API_KEY"), secret("GOOGLE_DRIVE_PICKER_APP_ID"),
     secret("QUIPSLY_SESSION_INVITATION_RESEND_API_KEY"), secret("QUIPSLY_RESEND_WEBHOOK_SECRET"),
     plain("QUIPSLY_SESSION_INVITATION_EMAIL_FROM", "invites@example.invalid"),
+    plain("QUIPSLY_SITE_URL", "https://nest.quipsly.com"),
     plain("QUIPSLY_TRANSCRIPT_WORKER_ENABLED", "1"),
     plain("QUIPSLY_TRANSCRIPT_WORKER_PROJECT_ID", "project"),
     plain("QUIPSLY_TRANSCRIPT_WORKER_REGION", "region"),

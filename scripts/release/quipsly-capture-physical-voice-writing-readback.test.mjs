@@ -140,6 +140,13 @@ test("proves a finished playable local source with exact identifiers", () => {
     localStatus: "saved",
     sourceFileName: "20260903-123456-b9c77be4.m4a",
     sourceByteCount: 123_456,
+    audioRouteName: "iPad Microphone",
+    audioRoutePortType: "MicrophoneBuiltIn",
+    audioInputDataSourceName: "Front",
+    audioSessionMode: "measurement",
+    audioHardwareSampleRate: 48_000,
+    audioHardwareInputChannelCount: 1,
+    microphonePermissionState: "granted",
     saved: true,
   }), { auditedAt: now, expectedBuild: "69" });
   assert.equal(result.captureAcceptanceProven, true);
@@ -152,6 +159,13 @@ test("proves a finished playable local source with exact identifiers", () => {
   assert.equal(result.durationSeconds, 7.14);
   assert.equal(result.sourceFileName, "20260903-123456-b9c77be4.m4a");
   assert.equal(result.sourceByteCount, 123_456);
+  assert.equal(result.audioRouteName, "iPad Microphone");
+  assert.equal(result.audioRoutePortType, "MicrophoneBuiltIn");
+  assert.equal(result.audioInputDataSourceName, "Front");
+  assert.equal(result.audioSessionMode, "measurement");
+  assert.equal(result.audioHardwareSampleRate, 48_000);
+  assert.equal(result.audioHardwareInputChannelCount, 1);
+  assert.equal(result.microphonePermissionState, "granted");
   assert.equal(result.transcriptAcceptanceReady, false);
 });
 

@@ -149,11 +149,21 @@ export function summarizeCloudRunCapabilities(
     hasSecret(environment, "GOOGLE_DRIVE_PICKER_API_KEY"),
     hasSecret(environment, "GOOGLE_DRIVE_PICKER_APP_ID"),
   ]);
-  const invitationEmail = capabilityState([
+  const invitationEmailProviderChecks = [
     hasSecret(environment, "QUIPSLY_SESSION_INVITATION_RESEND_API_KEY"),
     hasSecret(environment, "QUIPSLY_RESEND_WEBHOOK_SECRET"),
     hasPlain(environment, "QUIPSLY_SESSION_INVITATION_EMAIL_FROM"),
-  ]);
+  ];
+  const invitationEmail = {
+    // The shared public URL alone does not mean email was intentionally staged.
+    configured: any(invitationEmailProviderChecks),
+    ready: all([
+      ...invitationEmailProviderChecks,
+      /^https:\/\/[^/?#]+$/.test(
+        environment.QUIPSLY_SITE_URL?.value?.trim() ?? "",
+      ),
+    ]),
+  };
   const transcriptDispatch = gatedCapabilityState([
     booleanValue(environment.QUIPSLY_TRANSCRIPT_WORKER_ENABLED),
   ], [
