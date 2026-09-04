@@ -7765,6 +7765,7 @@ final class CaptureSessionClient: ObservableObject {
 
     private struct ProtectedSessionCache: Codable {
         let schemaVersion: Int
+        let ownerAccountID: String?
         let ownerEmail: String
         let savedAt: Date
         let sessions: [MobileCaptureSession]
@@ -9541,11 +9542,7 @@ final class CaptureSessionClient: ObservableObject {
 
     @discardableResult
     private func restoreProtectedSessionCacheIfAvailable() -> Bool {
-        guard let ownerEmail = AuthManager.shared.userEmail?
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .lowercased(),
-              !ownerEmail.isEmpty,
-              let cacheURL = Self.protectedSessionCacheURL(),
+        guard let cacheURL = Self.protectedSessionCacheURL(),
               FileManager.default.fileExists(atPath: cacheURL.path) else {
             return false
         }
@@ -9556,8 +9553,11 @@ final class CaptureSessionClient: ObservableObject {
             decoder.dateDecodingStrategy = .iso8601
             let cache = try decoder.decode(ProtectedSessionCache.self, from: data)
             let age = Date().timeIntervalSince(cache.savedAt)
-            guard [1, 2].contains(cache.schemaVersion),
-                  cache.ownerEmail == ownerEmail,
+            guard ProtectedSessionCacheIdentity.permitsRestore(
+                    cacheSchemaVersion: cache.schemaVersion,
+                    cachedOwnerAccountID: cache.ownerAccountID,
+                    activeOwnerAccountID: AuthManager.currentStoredOwnerID()
+                  ),
                   age >= 0,
                   age <= Self.cacheLifetime else {
                 Self.clearProtectedSessionCache()
@@ -9580,6 +9580,7 @@ final class CaptureSessionClient: ObservableObject {
 
     private func persistProtectedSessionCache() {
         guard AuthManager.shared.networkActionsAllowed,
+              let ownerAccountID = AuthManager.currentStoredOwnerID(),
               let ownerEmail = AuthManager.shared.userEmail?
                 .trimmingCharacters(in: .whitespacesAndNewlines)
                 .lowercased(),
@@ -9590,7 +9591,8 @@ final class CaptureSessionClient: ObservableObject {
 
         let savedAt = Date()
         let cache = ProtectedSessionCache(
-            schemaVersion: 2,
+            schemaVersion: ProtectedSessionCacheIdentity.schemaVersion,
+            ownerAccountID: ownerAccountID,
             ownerEmail: ownerEmail,
             savedAt: savedAt,
             sessions: sessions,

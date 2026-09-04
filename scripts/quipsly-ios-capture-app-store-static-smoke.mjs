@@ -32,6 +32,7 @@ const files = {
   appDelegate: path.join(sourceRoot, "AppDelegate.swift"),
   authManager: path.join(sourceRoot, "AuthManager.swift"),
   authResponseDecoder: path.join(sourceRoot, "AuthResponseDecoder.swift"),
+  protectedSessionCacheIdentity: path.join(sourceRoot, "ProtectedSessionCacheIdentity.swift"),
   appleSignInCoordinator: path.join(sourceRoot, "AppleSignInCoordinator.swift"),
   captureEntitlements: path.join(sourceRoot, "HighGroundCapture.entitlements"),
   captureUniversalLinkRoute: path.join(
@@ -233,6 +234,7 @@ const captureAppText = read(files.captureApp);
 const appDelegateText = read(files.appDelegate);
 const authText = read(files.authManager);
 const authResponseDecoderText = read(files.authResponseDecoder);
+const protectedSessionCacheIdentityText = read(files.protectedSessionCacheIdentity);
 const appleSignInCoordinatorText = read(files.appleSignInCoordinator);
 const captureEntitlementsText = read(files.captureEntitlements);
 const captureUniversalLinkRouteText = read(files.captureUniversalLinkRoute);
@@ -1360,6 +1362,21 @@ requireExcludes(
   authResponseDecoderText,
   "return error.localizedDescription",
   "raw Foundation decoder failures never become person-facing authentication copy",
+);
+requireIncludes(
+  protectedSessionCacheIdentityText,
+  "cachedOwner == activeOwner",
+  "protected Session recovery is bound to Nest's immutable actor identity",
+);
+requireIncludes(
+  protectedSessionCacheIdentityText,
+  "cacheSchemaVersion == schemaVersion",
+  "email-era Session caches fail closed rather than crossing account boundaries",
+);
+requireIncludes(
+  bridgeText,
+  "activeOwnerAccountID: AuthManager.currentStoredOwnerID()",
+  "Session cache restoration checks the currently verified Quipsly actor",
 );
 requireIncludes(loginText, "Create an account with email and password.", "account creation keeps the optional email path plain");
 requireExcludes(loginText, "We will ask you to verify your email once.", "account creation does not front-load verification instructions before the email path is chosen");
