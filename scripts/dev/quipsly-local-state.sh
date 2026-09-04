@@ -211,6 +211,32 @@ quipsly_local_docker_start_timeout_seconds() {
     "QUIPSLY_LOCAL_DOCKER_START_TIMEOUT_SECONDS"
 }
 
+quipsly_local_minimum_free_kib() {
+  local minimum_free_gib="${QUIPSLY_LOCAL_MIN_FREE_GIB:-12}"
+  if ! [[ "${minimum_free_gib}" =~ ^[0-9]+$ ]] \
+    || [[ "${minimum_free_gib}" -lt 1 ]] \
+    || [[ "${minimum_free_gib}" -gt 1024 ]]; then
+    echo "QUIPSLY_LOCAL_MIN_FREE_GIB must be an integer from 1 through 1024." >&2
+    return 64
+  fi
+  printf '%s\n' "$((minimum_free_gib * 1024 * 1024))"
+}
+
+quipsly_local_available_kib() {
+  local target_path="$1"
+  local available_kib
+  available_kib="$(LC_ALL=C df -Pk "${target_path}" | awk 'NR == 2 { print $4; exit }')" || return
+  if ! [[ "${available_kib}" =~ ^[0-9]+$ ]]; then
+    echo "Could not determine available disk space for ${target_path}." >&2
+    return 1
+  fi
+  printf '%s\n' "${available_kib}"
+}
+
+quipsly_local_format_kib_as_gib() {
+  awk -v kib="$1" 'BEGIN { printf "%.1f", kib / 1024 / 1024 }'
+}
+
 quipsly_local_run_docker() {
   local timeout_seconds="${1:-}"
   shift

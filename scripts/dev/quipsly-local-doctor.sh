@@ -22,6 +22,7 @@ Environment overrides:
   QUIPSLY_LOCAL_DATABASE_CONTAINER   PostgreSQL container name
   QUIPSLY_LOCAL_DOCKER_TIMEOUT_SECONDS
                                      Docker CLI timeout (default: 8)
+  QUIPSLY_LOCAL_MIN_FREE_GIB          Required worktree disk headroom (default: 12)
 
 Options:
   -h, --help                         Show this help without probing services
@@ -88,6 +89,21 @@ tracked_changes="$(printf "%s\n" "${status_output}" | awk 'substr($0,1,2) != "??
 untracked_changes="$(printf "%s\n" "${status_output}" | awk 'substr($0,1,2) == "??" { count += 1 } END { print count + 0 }')"
 
 echo "Quipsly local services"
+if minimum_free_kib="$(quipsly_local_minimum_free_kib)" \
+  && available_kib="$(quipsly_local_available_kib "${repo_root}")"; then
+  if [[ "${available_kib}" -ge "${minimum_free_kib}" ]]; then
+    printf "PASS  %-24s %s GiB free\n" "Disk headroom" "$(quipsly_local_format_kib_as_gib "${available_kib}")"
+  else
+    printf "FAIL  %-24s %s GiB free; %s GiB required\n" \
+      "Disk headroom" \
+      "$(quipsly_local_format_kib_as_gib "${available_kib}")" \
+      "$(quipsly_local_format_kib_as_gib "${minimum_free_kib}")"
+    failed=1
+  fi
+else
+  printf "FAIL  %-24s unavailable or invalid configuration\n" "Disk headroom"
+  failed=1
+fi
 report_http "Nest health" "${nest_url%/}/api/health" "200"
 report_http "Nest signed-out shell" "${nest_url%/}/login?callbackUrl=%2Fprojects" "200"
 report_http "LiveKit conversation" "${livekit_http_url%/}/" "200"

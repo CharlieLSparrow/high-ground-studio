@@ -369,6 +369,37 @@ test("the state-directory override remains deterministic for isolated tests", ()
   assert.equal(result.stdout.trim(), expected);
 });
 
+test("local recording services enforce a configurable disk-headroom floor", () => {
+  const result = spawnSync(
+    "bash",
+    [
+      "-c",
+      'source "$1"; QUIPSLY_LOCAL_MIN_FREE_GIB=12 quipsly_local_minimum_free_kib',
+      "quipsly-local-disk-test",
+      stateHelperPath,
+    ],
+    { encoding: "utf8" },
+  );
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.stdout.trim(), String(12 * 1024 * 1024));
+
+  const invalid = spawnSync(
+    "bash",
+    [
+      "-c",
+      'source "$1"; QUIPSLY_LOCAL_MIN_FREE_GIB=0 quipsly_local_minimum_free_kib',
+      "quipsly-local-disk-test",
+      stateHelperPath,
+    ],
+    { encoding: "utf8" },
+  );
+  assert.equal(invalid.status, 64);
+  assert.match(invalid.stderr, /must be an integer from 1 through 1024/);
+  assert.match(up, /Disk headroom/);
+  assert.match(up, /before starting recording and transcription services/);
+  assert.match(doctor, /Disk headroom/);
+});
+
 test("healthy ports cannot hide another worktree", () => {
   assert.match(up, /quipsly_local_process_cwd "\$\{nest_listener\}"/);
   assert.match(up, /nest_cwd}" != "\$\{expected_nest_cwd}/);

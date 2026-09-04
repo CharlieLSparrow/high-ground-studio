@@ -161,6 +161,15 @@ fi
 repo_root="$(cd "${repo_root}" && pwd -P)"
 cd "${repo_root}"
 
+minimum_free_kib="$(quipsly_local_minimum_free_kib)" || exit "$?"
+available_kib="$(quipsly_local_available_kib "${repo_root}")" || exit "$?"
+if [[ "${available_kib}" -lt "${minimum_free_kib}" ]]; then
+  echo "Quipsly local development needs at least $(quipsly_local_format_kib_as_gib "${minimum_free_kib}") GiB free before starting recording and transcription services." >&2
+  echo "Only $(quipsly_local_format_kib_as_gib "${available_kib}") GiB is available on the worktree volume. Reclaim reproducible build artifacts, then retry." >&2
+  exit 1
+fi
+printf "PASS  %-24s %s GiB free\n" "Disk headroom" "$(quipsly_local_format_kib_as_gib "${available_kib}")"
+
 state_dir="$(quipsly_local_state_dir)"
 nest_url="${TARGET_URL:-http://127.0.0.1:3012}"
 firebase_url="${QUIPSLY_LOCAL_FIREBASE_AUTH_URL:-http://127.0.0.1:9099}"
