@@ -12,10 +12,9 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
+import { createRequire } from "node:module";
 import { isAbsolute, join, resolve } from "node:path";
 import { promisify } from "node:util";
-
-import { Storage } from "@google-cloud/storage";
 
 import {
   CAPTURE_TRANSCRIPT_QUEUE_KIND,
@@ -77,6 +76,14 @@ if (!/^[A-Za-z0-9._-]{1,128}$/.test(providerModel)) {
 if (!/^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$/.test(providerLanguage)) {
   throw new Error("TRANSCRIPT_LANGUAGE is unsafe.");
 }
+
+// This operator fixture owns no duplicate cloud SDK dependency. Resolve the
+// storage client from the worker package that it is explicitly validating,
+// and only after the fail-before-cloud argument and consent gates above.
+const requireFromWorker = createRequire(
+  new URL("../../apps/quipsly-transcript-worker/package.json", import.meta.url),
+);
+const { Storage } = requireFromWorker("@google-cloud/storage");
 
 const fixtureAudioPath = await resolveFixtureAudioPath(fixtureAudioInput);
 const suffix = `${utcCompact()}_${randomBytes(6).toString("hex")}`;
