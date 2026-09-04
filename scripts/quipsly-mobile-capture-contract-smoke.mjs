@@ -728,6 +728,9 @@ function checkMeetingSpineContractSources() {
   expect(
     bridgeText.includes("struct MobileCaptureSessionCreateResponse")
       && bridgeText.includes("func createQuickSession(")
+      && bridgeText.includes("let payload = try? JSONDecoder().decode(MobileCaptureSessionCreateResponse.self, from: data)")
+      && bridgeText.includes("Your recording and transcript remain safe")
+      && bridgeText.includes("guard let payload, payload.ok == true")
       && capturePhoneShellText.includes("NewCaptureSessionSheet")
       && capturePhoneShellText.includes("showsNewSession")
       && capturePhoneShellText.includes('accessibilityIdentifier("NewCaptureSessionCreateButton")')

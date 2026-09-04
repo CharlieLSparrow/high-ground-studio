@@ -19305,14 +19305,21 @@ private struct RecorderHero: View {
                 Text(stateTitle)
                     .font(.title2.weight(.bold))
                     .accessibilityIdentifier("CaptureRecorderStateLabel")
-                Text(formattedDuration)
-                    .font(.system(size: min(timerFontSize, 64), weight: .medium, design: .monospaced))
-                    .monospacedDigit()
-                    .contentTransition(reduceMotion ? .identity : .numericText())
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.72)
-                    .accessibilityLabel("Elapsed time \(formattedDuration)")
-                    .accessibilityIdentifier("CaptureElapsedTime")
+                if completedVoiceWritingIsReady {
+                    Label("Last take \(formattedDuration)", systemImage: "checkmark.circle.fill")
+                        .font(.subheadline.monospacedDigit().weight(.semibold))
+                        .foregroundStyle(.green)
+                        .accessibilityIdentifier("CaptureCompletedVoiceWritingDuration")
+                } else {
+                    Text(formattedDuration)
+                        .font(.system(size: min(timerFontSize, 64), weight: .medium, design: .monospaced))
+                        .monospacedDigit()
+                        .contentTransition(reduceMotion ? .identity : .numericText())
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.72)
+                        .accessibilityLabel("Elapsed time \(formattedDuration)")
+                        .accessibilityIdentifier("CaptureElapsedTime")
+                }
             }
 
             if session.isPersonalVoiceNote {
@@ -19659,6 +19666,23 @@ private struct RecorderHero: View {
 
     private var isActuallyRecording: Bool { captureState == .recording }
 
+    /// Once the exact saved source has produced an editable draft, the old
+    /// recorder state must stop looking like unfinished work. Keep the last
+    /// take duration visible for audio confidence while making the next Record
+    /// button an optional new thought—not an implied retry of completed work.
+    private var completedVoiceWritingIsReady: Bool {
+        guard session.isPersonalVoiceNote,
+              captureState == .saved else { return false }
+        let roomID = session.callRoomId.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        )
+        guard !roomID.isEmpty else { return false }
+        return writingStore.drafts.contains { draft in
+            draft.effectiveCallRoomID == roomID
+                || draft.allSources.contains(where: { $0.callRoomID == roomID })
+        }
+    }
+
     private var isCaptureActive: Bool {
         switch captureState {
         case .recording, .paused, .finalizing: true
@@ -19700,7 +19724,10 @@ private struct RecorderHero: View {
             case .recording: return "Listening…"
             case .paused: return "Listening paused"
             case .finalizing: return "Saving your words…"
-            case .saved: return "Creating your writing…"
+            case .saved:
+                return completedVoiceWritingIsReady
+                    ? "Writing ready"
+                    : "Creating your writing…"
             case .failed: return "Recording needs attention"
             }
         }
@@ -19731,7 +19758,9 @@ private struct RecorderHero: View {
         case .finalizing:
             return "Quipsly is closing the original recording before creating its timed transcript."
         case .saved:
-            return "The audio is safe. Quipsly is turning it into editable, time-linked writing."
+            return completedVoiceWritingIsReady
+                ? "Open your writing above, or tap Record when you want to start another thought."
+                : "The audio is safe. Quipsly is turning it into editable, time-linked writing."
         case .failed:
             return "Nothing will be discarded. Open Library to review any audio that was saved."
         }

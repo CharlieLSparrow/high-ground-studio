@@ -2645,7 +2645,7 @@ struct MobileGoogleCalendarSummaryResponse: Decodable {
 }
 
 struct MobileCaptureSessionCreateResponse: Codable {
-    let ok: Bool
+    let ok: Bool?
     let error: String?
     let created: Bool?
     let session: MobileCaptureSession?
@@ -7993,13 +7993,24 @@ final class CaptureSessionClient: ObservableObject {
             request.httpBody = try JSONSerialization.data(withJSONObject: requestBody)
 
             let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
-            let payload = try JSONDecoder().decode(MobileCaptureSessionCreateResponse.self, from: data)
+            let payload = try? JSONDecoder().decode(MobileCaptureSessionCreateResponse.self, from: data)
 
-            guard response.statusCode < 400, payload.ok, let created = payload.session else {
+            guard response.statusCode < 400 else {
+                let fallback = purpose == "PERSONAL_NOTE"
+                    ? "Nest could not file this writing right now (HTTP \(response.statusCode)). Your recording and transcript remain safe on \(CaptureDeviceVocabulary.thisDevice), and Quipsly will retry."
+                    : "Nest could not create this Session right now (HTTP \(response.statusCode)). Try again after refreshing."
+                throw NSError(
+                    domain: "CaptureSessions",
+                    code: response.statusCode,
+                    userInfo: [NSLocalizedDescriptionKey: payload?.error ?? fallback]
+                )
+            }
+
+            guard let payload, payload.ok == true, let created = payload.session else {
                 throw NSError(
                     domain: "CaptureSessions",
                     code: 0,
-                    userInfo: [NSLocalizedDescriptionKey: payload.error ?? "Capture session could not be created."]
+                    userInfo: [NSLocalizedDescriptionKey: payload?.error ?? "Nest returned an invalid Session response. Refresh and try again."]
                 )
             }
 
