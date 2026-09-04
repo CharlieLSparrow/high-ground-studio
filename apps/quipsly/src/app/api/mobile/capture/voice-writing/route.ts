@@ -26,11 +26,37 @@ const DEVICE_CREATED_TRANSCRIPT_PROVIDERS = [
   "apple-speech-recognizer-service",
 ];
 const SOURCELESS_WRITING_VERSION = "2";
+const VOICE_WRITING_TRANSACTION_RETRY_DELAYS_MS = [50, 125, 250];
 
 function record(value: unknown): Record<string, any> {
   return value && typeof value === "object" && !Array.isArray(value)
     ? value as Record<string, any>
     : {};
+}
+
+export function voiceWritingTransactionRetryDelayMs(
+  error: unknown,
+  attempt: number,
+) {
+  const code = String(record(error).code || "");
+  if (!["P2002", "P2028", "P2034"].includes(code)) return null;
+  const delay = VOICE_WRITING_TRANSACTION_RETRY_DELAYS_MS[attempt];
+  return Number.isSafeInteger(delay) ? delay : null;
+}
+
+async function runVoiceWritingTransaction(operation: () => Promise<any>) {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      return await operation();
+    } catch (error) {
+      const delayMs = voiceWritingTransactionRetryDelayMs(error, attempt);
+      if (delayMs === null) throw error;
+      // A small bounded jitter prevents two devices replaying the same durable
+      // identity in lockstep after PostgreSQL resolves their first collision.
+      const jitterMs = Math.floor(Math.random() * Math.max(1, delayMs / 2));
+      await new Promise((resolve) => setTimeout(resolve, delayMs + jitterMs));
+    }
+  }
 }
 
 async function requestBody(request: Request) {
@@ -521,14 +547,7 @@ export async function PATCH(request: Request) {
     return { kind: "moved" as const, document: movedDocument, idempotentReplay: false, previousProjectId };
   }, { isolationLevel: "Serializable" });
 
-  let result;
-  try {
-    result = await move();
-  } catch (error) {
-    const code = record(error).code;
-    if (code !== "P2002" && code !== "P2034") throw error;
-    result = await move();
-  }
+  const result = await runVoiceWritingTransaction(move);
 
   if (result.kind === "missing") {
     return NextResponse.json(
@@ -611,7 +630,7 @@ export async function DELETE(request: Request) {
 
   const prisma = getPrismaClient() as any;
   const documentId = mobileVoiceWritingDocumentId(draftId);
-  const result = await prisma.$transaction(async (tx: any) => {
+  const remove = () => prisma.$transaction(async (tx: any) => {
     const document = await tx.studioDocument.findFirst({
       where: {
         id: documentId,
@@ -653,6 +672,7 @@ export async function DELETE(request: Request) {
     });
     return { kind: "deleted" as const, idempotentReplay: false };
   });
+  const result = await runVoiceWritingTransaction(remove);
   if (result.kind === "missing") {
     return NextResponse.json(
       { ok: false, code: "VOICE_WRITING_NOT_FOUND", error: "This writing is not available." },
@@ -953,14 +973,7 @@ export async function POST(request: Request) {
     return { kind: "saved" as const, document, serverRevision: input.localRevision, idempotentReplay: false };
   }, { isolationLevel: "Serializable" });
 
-  let result;
-  try {
-    result = await commit();
-  } catch (error) {
-    const code = record(error).code;
-    if (code !== "P2002" && code !== "P2034") throw error;
-    result = await commit();
-  }
+  const result = await runVoiceWritingTransaction(commit);
 
   if (result.kind === "forbidden") {
     return NextResponse.json(

@@ -6,7 +6,13 @@ import { mobileVoiceWritingContentHash } from "@/lib/server/mobile-voice-writing
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 import { resolveStudioProjectAccess } from "@/lib/server/studio-project-access";
 
-import { DELETE, GET, PATCH, POST } from "./route";
+import {
+  DELETE,
+  GET,
+  PATCH,
+  POST,
+  voiceWritingTransactionRetryDelayMs,
+} from "./route";
 
 jest.mock("@/lib/prisma", () => ({ getPrismaClient: jest.fn() }));
 jest.mock("next/cache", () => ({ revalidatePath: jest.fn() }));
@@ -76,6 +82,14 @@ describe("mobile voice-writing continuation", () => {
       sourceLabel: "nest-kind:home",
       role: "OWNER",
     }] as never);
+  });
+
+  it("bounds retries to transient database collisions", () => {
+    expect(voiceWritingTransactionRetryDelayMs({ code: "P2002" }, 0)).toBe(50);
+    expect(voiceWritingTransactionRetryDelayMs({ code: "P2028" }, 1)).toBe(125);
+    expect(voiceWritingTransactionRetryDelayMs({ code: "P2034" }, 2)).toBe(250);
+    expect(voiceWritingTransactionRetryDelayMs({ code: "P2034" }, 3)).toBeNull();
+    expect(voiceWritingTransactionRetryDelayMs({ code: "P2025" }, 0)).toBeNull();
   });
 
   it("authenticates before reading private writing", async () => {
@@ -476,6 +490,68 @@ describe("mobile voice-writing continuation", () => {
         sources: [],
       },
       homeProject: { id: "project-home", name: "Person Home Nest", slug: "person-home" },
+    });
+  });
+
+  it("converges after repeated serialization conflicts instead of dropping a new draft", async () => {
+    jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({
+      user: { id: "actor-1", primaryEmail: "person@example.com" },
+    } as never);
+    jest.mocked(ensureHomeNestForEmail).mockResolvedValue({
+      id: "project-home",
+      name: "Person Home Nest",
+      slug: "person-home",
+    } as never);
+    const createdDocument = storedVoiceDocument();
+    const create = jest.fn().mockResolvedValue(createdDocument);
+    const tx = {
+      studioDocument: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        create,
+      },
+    };
+    const serializationConflict = Object.assign(
+      new Error("Transaction failed due to a write conflict or a deadlock."),
+      { code: "P2034" },
+    );
+    const transaction = jest.fn()
+      .mockRejectedValueOnce(serializationConflict)
+      .mockRejectedValueOnce(serializationConflict)
+      .mockImplementation(async (callback: (client: unknown) => unknown) => callback(tx));
+    jest.mocked(getPrismaClient).mockReturnValue({ $transaction: transaction } as never);
+
+    const response = await POST(new Request("http://localhost/api/mobile/capture/voice-writing", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        draftId,
+        writingOrigin: "recorded",
+        localRecordingId: recordingId,
+        transcriptClientRequestId: transcriptId,
+        sourceSha256: "a".repeat(64),
+        callRoomId: "voice-room-1",
+        sources: [{
+          localRecordingId: recordingId,
+          transcriptClientRequestId: transcriptId,
+          sourceSha256: "a".repeat(64),
+          callRoomId: "voice-room-1",
+        }],
+        title: "Dissertation opening",
+        body: "Start with the concrete story.",
+        localRevision: 1,
+        expectedServerRevision: 0,
+        expectedContentRevision: null,
+        richText: null,
+      }),
+    }));
+
+    expect(response.status).toBe(200);
+    expect(transaction).toHaveBeenCalledTimes(3);
+    expect(create).toHaveBeenCalledTimes(1);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: true,
+      draft: { draftId },
+      idempotentReplay: false,
     });
   });
 
