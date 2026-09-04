@@ -2229,8 +2229,8 @@ function SessionSourceEvidenceCard({
               <dd className="mt-1 break-words">
                 {audio.capturePipeline || "absent"} ·{" "}
                 {audio.pauseTimelinePolicy || "pause policy absent"}
-                {audio.audioSessionMode
-                  ? ` · ${humanize(audio.audioSessionMode.replace("AVAudioSessionMode", ""))} mode`
+                {source.captureRuntime.audioSessionMode
+                  ? ` · ${humanize(source.captureRuntime.audioSessionMode.replace("AVAudioSessionMode", ""))} mode`
                   : ""}
               </dd>
             </div>
