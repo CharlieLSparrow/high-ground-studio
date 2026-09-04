@@ -3,10 +3,13 @@
 import { evaluateMobileCaptureRoomReadiness } from "./mobile-capture-room-readiness";
 import {
   authorizeExternalSourceImport,
+  authorizePersonalSelfCaptureSource,
   evaluateMobileCaptureProcessingAuthorization,
   EXTERNAL_SOURCE_IMPORT_ATTESTATION_VERSION,
   isExternalSourceImportProfile,
+  isPersonalSelfCaptureProfile,
   mobileCaptureHoldRecoveryPolicy,
+  PERSONAL_SELF_CAPTURE_ATTESTATION_VERSION,
 } from "./mobile-capture-processing-authorization";
 
 jest.mock("server-only", () => ({}));
@@ -46,8 +49,23 @@ const readiness = {
   consentVersions: [{ consentId: binding.recordingConsentId }],
 };
 
-function prisma(record = authorizationRecord) {
+function prisma(record: any = authorizationRecord) {
   return {
+    callRoom: {
+      findUnique: jest.fn().mockResolvedValue({
+        purpose: "PERSONAL_NOTE",
+        createdByUserId: binding.actorUserId,
+        metadataJson: {
+          personalSelfCapture: true,
+          otherAudibleParticipantsAllowed: false,
+        },
+        participants: [{
+          id: binding.participantId,
+          userId: binding.actorUserId,
+          role: "HOST",
+        }],
+      }),
+    },
     captureSourceImportAuthorization: {
       upsert: jest.fn().mockResolvedValue(record),
       findUnique: jest.fn().mockResolvedValue(record),
@@ -94,6 +112,15 @@ describe("Capture processing authorization", () => {
       kind: "quipsly-nest-external-recording-import-v1",
     }))).toBe(false);
     expect(isExternalSourceImportProfile("not-json")).toBe(false);
+  });
+
+  it("recognizes only an iOS local-draft source in a personal-note purpose", () => {
+    const profile = JSON.stringify({ captureAuthorityBasis: "local-draft" });
+    expect(isPersonalSelfCaptureProfile(profile, "PERSONAL_NOTE")).toBe(true);
+    expect(isPersonalSelfCaptureProfile(profile, "COACHING")).toBe(false);
+    expect(isPersonalSelfCaptureProfile(JSON.stringify({
+      captureAuthorityBasis: "authoritative-refresh",
+    }), "PERSONAL_NOTE")).toBe(false);
   });
 
   it("describes automatic recovery without inventing a review step", () => {
@@ -161,6 +188,61 @@ describe("Capture processing authorization", () => {
       }),
       update: {},
     }));
+  });
+
+  it("authorizes a private one-person local draft without a review queue", async () => {
+    const personalRecord = {
+      ...authorizationRecord,
+      attestationVersion: PERSONAL_SELF_CAPTURE_ATTESTATION_VERSION,
+    };
+    const client = prisma(personalRecord);
+    await expect(authorizePersonalSelfCaptureSource({
+      prisma: client,
+      binding,
+      sourceProfileJson: JSON.stringify({
+        captureAuthorityBasis: "local-draft",
+      }),
+      capturePurpose: "PERSONAL_NOTE",
+    })).resolves.toMatchObject({
+      ok: true,
+      authorization: {
+        kind: "source-import",
+        attestationVersion: PERSONAL_SELF_CAPTURE_ATTESTATION_VERSION,
+      },
+    });
+    expect(client.captureSourceImportAuthorization.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          actorUserId: binding.actorUserId,
+          participantId: binding.participantId,
+          attestationVersion: PERSONAL_SELF_CAPTURE_ATTESTATION_VERSION,
+        }),
+        update: {},
+      }),
+    );
+  });
+
+  it("rejects personal-note automation when another participant is present", async () => {
+    const client = prisma();
+    client.callRoom.findUnique.mockResolvedValue({
+      purpose: "PERSONAL_NOTE",
+      createdByUserId: binding.actorUserId,
+      metadataJson: {
+        personalSelfCapture: true,
+        otherAudibleParticipantsAllowed: false,
+      },
+      participants: [
+        { id: binding.participantId, userId: binding.actorUserId, role: "HOST" },
+        { id: "participant-2", userId: "other-user", role: "GUEST" },
+      ],
+    });
+    await expect(authorizePersonalSelfCaptureSource({
+      prisma: client,
+      binding,
+      sourceProfileJson: JSON.stringify({ captureAuthorityBasis: "local-draft" }),
+      capturePurpose: "PERSONAL_NOTE",
+    })).resolves.toMatchObject({ ok: false, status: 409 });
+    expect(client.captureSourceImportAuthorization.upsert).not.toHaveBeenCalled();
   });
 
   it("accepts an exact imported source while current recording permission remains ready", async () => {

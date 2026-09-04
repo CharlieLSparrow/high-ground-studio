@@ -8,7 +8,11 @@ import {
   loadMobileCaptureResumableManifest,
   saveMobileCaptureResumableManifest,
 } from "./mobile-capture-resumable-store";
-import { evaluateMobileCaptureProcessingAuthorization } from "./mobile-capture-processing-authorization";
+import {
+  authorizePersonalSelfCaptureSource,
+  evaluateMobileCaptureProcessingAuthorization,
+  isPersonalSelfCaptureProfile,
+} from "./mobile-capture-processing-authorization";
 import {
   AUTOMATIC_CAPTURE_RELEASE_REASON,
   reconcileHeldMobileCaptureRelease,
@@ -29,7 +33,9 @@ jest.mock("./mobile-capture-resumable-store", () => ({
   saveMobileCaptureResumableManifest: jest.fn(),
 }));
 jest.mock("./mobile-capture-processing-authorization", () => ({
+  authorizePersonalSelfCaptureSource: jest.fn(),
   evaluateMobileCaptureProcessingAuthorization: jest.fn(),
+  isPersonalSelfCaptureProfile: jest.fn(),
 }));
 
 const now = new Date("2026-09-01T12:00:00.000Z");
@@ -95,6 +101,12 @@ describe("automatic held Capture release", () => {
     jest.mocked(loadMobileCaptureResumableManifest).mockResolvedValue({
       manifest: manifest as never,
       generation: "7",
+    });
+    jest.mocked(isPersonalSelfCaptureProfile).mockReturnValue(false);
+    jest.mocked(authorizePersonalSelfCaptureSource).mockResolvedValue({
+      ok: false,
+      status: 409,
+      error: "not a personal source",
     });
     jest.mocked(evaluateMobileCaptureProcessingAuthorization).mockResolvedValue({
       authorized: true,
@@ -268,6 +280,53 @@ describe("automatic held Capture release", () => {
         },
       },
     });
+  });
+
+  it("adds exact-source authority and releases a verified private local draft automatically", async () => {
+    const personalManifest = {
+      ...manifest,
+      participantId: "participant-1",
+      captureGroupId: receipt.captureId,
+      capturePurpose: "PERSONAL_NOTE",
+      sourceProfileJson: JSON.stringify({ captureAuthorityBasis: "local-draft" }),
+      processingDisposition: "preservation-only",
+      processingAuthorization: null,
+    };
+    jest.mocked(loadMobileCaptureResumableManifest).mockResolvedValue({
+      manifest: personalManifest as never,
+      generation: "7",
+    });
+    jest.mocked(isPersonalSelfCaptureProfile).mockReturnValue(true);
+    jest.mocked(authorizePersonalSelfCaptureSource).mockResolvedValue({
+      ok: true,
+      authorization: {
+        kind: "source-import",
+        authorizationId: "47f0d0a5-e663-4c9b-b4ac-0f6ca31c39e8",
+        consentVersion: "personal-consent",
+        attestationVersion: "quipsly-personal-self-capture-2026-09-04",
+      },
+      readiness: {},
+    } as never);
+
+    await expect(reconcileHeldMobileCaptureRelease({
+      prisma: prisma(),
+      receipt,
+      now,
+    })).resolves.toMatchObject({
+      status: "released",
+      releasedMedia: true,
+      releasedTranscript: true,
+    });
+    expect(saveMobileCaptureResumableManifest).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        processingDisposition: "eligible",
+        processingAuthorization: expect.objectContaining({
+          kind: "source-import",
+        }),
+      }),
+      "7",
+    );
   });
 
   it("uses immutable GCS generation and CRC32C evidence without redownloading a current source", async () => {

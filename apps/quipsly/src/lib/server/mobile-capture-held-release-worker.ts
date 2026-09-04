@@ -9,7 +9,11 @@ import {
   saveMobileCaptureResumableManifest,
   type MobileCaptureResumableManifest,
 } from "@/lib/server/mobile-capture-resumable-store";
-import { evaluateMobileCaptureProcessingAuthorization } from "@/lib/server/mobile-capture-processing-authorization";
+import {
+  authorizePersonalSelfCaptureSource,
+  evaluateMobileCaptureProcessingAuthorization,
+  isPersonalSelfCaptureProfile,
+} from "@/lib/server/mobile-capture-processing-authorization";
 
 export const AUTOMATIC_CAPTURE_RELEASE_REASON =
   "Automatically released after immutable recording authorization and current participant consent converged.";
@@ -116,9 +120,9 @@ export async function reconcileHeldMobileCaptureRelease(input: {
   now?: Date;
 }) {
   const now = input.now ?? new Date();
-  const stored = await loadMobileCaptureResumableManifest(input.receipt.uploadSessionId);
+  let stored = await loadMobileCaptureResumableManifest(input.receipt.uploadSessionId);
   if (!stored) return { status: "manifest-missing" as const, releasedMedia: false, releasedTranscript: false };
-  const manifest = stored.manifest;
+  let manifest = stored.manifest;
   if (manifest.status !== "verified" || !manifest.verification) {
     return { status: "bytes-not-verified" as const, releasedMedia: false, releasedTranscript: false };
   }
@@ -128,6 +132,48 @@ export async function reconcileHeldMobileCaptureRelease(input: {
     || input.receipt.captureId !== manifest.captureId
   ) {
     return { status: "binding-mismatch" as const, releasedMedia: false, releasedTranscript: false };
+  }
+
+  // Personal voice writing is intentionally allowed to begin before Nest is
+  // reachable. Once its immutable bytes, actor-owned room, single participant,
+  // and current self-capture consent converge, add the same exact-source import
+  // authorization used by other pre-existing recordings. No user review queue
+  // or staff release is required for this narrow, app-created source class.
+  if (
+    !manifest.processingAuthorization
+    && manifest.participantId
+    && isPersonalSelfCaptureProfile(
+      manifest.sourceProfileJson,
+      manifest.capturePurpose,
+    )
+  ) {
+    const personalAuthorization = await authorizePersonalSelfCaptureSource({
+      prisma: input.prisma,
+      binding: {
+        uploadSessionId: manifest.uploadSessionId,
+        captureId: manifest.captureId,
+        captureGroupId: manifest.captureGroupId,
+        callRoomId: manifest.callRoomId,
+        actorUserId: manifest.actorUserId,
+        participantId: manifest.participantId,
+        recordingConsentId: manifest.recordingConsentId,
+        sourceType: manifest.sourceType as "audio" | "video",
+        sha256: manifest.sha256,
+        expectedSizeBytes: manifest.expectedSizeBytes,
+        fileName: manifest.fileName,
+      },
+      sourceProfileJson: manifest.sourceProfileJson,
+      capturePurpose: manifest.capturePurpose,
+    });
+    if (personalAuthorization.ok) {
+      stored = await saveMobileCaptureResumableManifest({
+        ...manifest,
+        updatedAt: now.toISOString(),
+        processingAuthorization: personalAuthorization.authorization,
+        processingDisposition: "eligible",
+      }, stored.generation);
+      manifest = stored.manifest;
+    }
   }
 
   const processingAuthorization = await evaluateMobileCaptureProcessingAuthorization({
