@@ -434,6 +434,50 @@ const saveRenderedConsent = async (
   return packet;
 };
 
+async function collectJoinReadinessDiagnostics(page, liveCallDock) {
+  const browserMedia = await page.evaluate(async () => {
+    const mediaDevices = navigator.mediaDevices;
+    const devices = mediaDevices?.enumerateDevices
+      ? await mediaDevices.enumerateDevices().catch((error) => [{
+          kind: "enumeration-error",
+          deviceId: "",
+          label: error instanceof Error ? error.message : String(error),
+        }])
+      : [];
+    const permissionState = async (name) => {
+      if (!navigator.permissions?.query) return "unsupported";
+      try {
+        return (await navigator.permissions.query({ name })).state;
+      } catch {
+        return "unsupported";
+      }
+    };
+    return {
+      microphonePermission: await permissionState("microphone"),
+      cameraPermission: await permissionState("camera"),
+      devices: devices.map((device) => ({
+        kind: device.kind,
+        hasId: Boolean(device.deviceId),
+        label: device.label,
+      })),
+    };
+  });
+  return {
+    statusLabels: (await liveCallDock.locator("[role=status]").allInnerTexts())
+      .map((line) => line.trim())
+      .filter(Boolean),
+    visibleText: (await liveCallDock.innerText())
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean),
+    settingsOpen: await liveCallDock
+      .getByTestId("call-device-settings")
+      .evaluate((element) => element.hasAttribute("open")),
+    browserMedia,
+    url: page.url(),
+  };
+}
+
 try {
   for (const identity of identities) {
     const browser =
@@ -610,7 +654,9 @@ try {
       .allInnerTexts();
     assert(
       await join.isEnabled(),
-      `${identity.role} live-room join did not become ready. Microphones: ${JSON.stringify(microphoneOptions)}`,
+      `${identity.role} live-room join did not become ready. ` +
+        `Microphones: ${JSON.stringify(microphoneOptions)}. ` +
+        `Diagnostics: ${JSON.stringify(await collectJoinReadinessDiagnostics(page, liveCallDock))}`,
     );
     journeys.push({
       identity,
