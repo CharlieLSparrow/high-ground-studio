@@ -113,6 +113,7 @@ quipsly_local_nest_source_revision() {
     pnpm-workspace.yaml
     prisma.config.ts
     scripts/dev/quipsly-local-up.sh
+    scripts/dev/quipsly-local-nest-launcher.mjs
     scripts/dev/quipsly-local-state.sh
   )
 

@@ -17,6 +17,9 @@ const stateHelperPath = fileURLToPath(
   new URL("./quipsly-local-state.sh", import.meta.url),
 );
 const upPath = fileURLToPath(new URL("./quipsly-local-up.sh", import.meta.url));
+const nestLauncherPath = fileURLToPath(
+  new URL("./quipsly-local-nest-launcher.mjs", import.meta.url),
+);
 const downPath = fileURLToPath(
   new URL("./quipsly-local-down.sh", import.meta.url),
 );
@@ -29,6 +32,7 @@ const generatedMobileDogfoodPath = fileURLToPath(
 
 const stateHelper = readFileSync(stateHelperPath, "utf8");
 const up = readFileSync(upPath, "utf8");
+const nestLauncher = readFileSync(nestLauncherPath, "utf8");
 const down = readFileSync(downPath, "utf8");
 const doctor = readFileSync(doctorPath, "utf8");
 const generatedMobileDogfood = readFileSync(generatedMobileDogfoodPath, "utf8");
@@ -103,16 +107,26 @@ test("machine-wide services use machine-wide ownership state", () => {
     /"build": "[^"]*next build --webpack"/,
     "Quipsly production builds must pin the same supported Next 16 bundler as local development and the release image.",
   );
-  assert.match(up, /"--env-file=\$\{QUIPSLY_LOCAL_ENV_FILE\}"/);
+  assert.match(up, /scripts\/dev\/quipsly-local-nest-launcher\.mjs/);
   assert.match(
-    up,
-    /"--env-file=\$\{QUIPSLY_LOCAL_ENV_FILE\}" \\\n      --run dev/,
-    "the env-file lane must ask Node to run the package script instead of parsing a pnpm shell wrapper",
+    nestLauncher,
+    /loadEnvFile\(envFile\)/,
+    "the Nest launcher must load the canonical environment before importing Next",
   );
+  assert.match(
+    nestLauncher,
+    /node_modules\/next\/dist\/bin\/next/,
+    "the environment-bearing process must import Next directly",
+  );
+  const nestLauncherBlock = up.match(
+    /if \[\[ "\$\{1:-\}" == "--run-nest" \]\]; then[\s\S]*?\nfi/,
+  )?.[0];
+  assert.ok(nestLauncherBlock, "the Nest launcher block must exist");
   assert.doesNotMatch(
-    up,
-    /"--env-file=\$\{QUIPSLY_LOCAL_ENV_FILE\}" \\\n      "\$\{QUIPSLY_LOCAL_PNPM_BIN/,
+    nestLauncherBlock,
+    /"--env-file=\$\{QUIPSLY_LOCAL_ENV_FILE\}"/,
   );
+  assert.doesNotMatch(nestLauncherBlock, /--run dev/);
   assert.doesNotMatch(up, /source "\$\{local_env_file\}"/);
   assert.match(up, /"Nest projects shell"/);
   assert.equal(
@@ -222,6 +236,54 @@ test("machine-wide services use machine-wide ownership state", () => {
   assert.match(up, /--experimental-transform-types/);
 });
 
+test("the Nest launcher loads secrets before executing Next without leaking them", () => {
+  const sandbox = mkdtempSync(join(tmpdir(), "quipsly-nest-launcher-"));
+  const nextBin = join(sandbox, "node_modules", "next", "dist", "bin");
+  const envFile = join(sandbox, ".env.local");
+  const outputFile = join(sandbox, "launcher-result.json");
+
+  try {
+    mkdirSync(nextBin, { recursive: true });
+    writeFileSync(envFile, "AUTH_SECRET=local-private-value\n");
+    writeFileSync(
+      join(nextBin, "next"),
+      [
+        '#!/usr/bin/env node',
+        'const { writeFileSync } = require("node:fs");',
+        'writeFileSync(process.env.QUIPSLY_LAUNCHER_OUTPUT, JSON.stringify({',
+        '  secretLoaded: Boolean(process.env.AUTH_SECRET),',
+        '  explicitEnvironmentPreserved: process.env.PORT === "3012",',
+        '  argv: process.argv.slice(2),',
+        '}));',
+      ].join("\n"),
+    );
+
+    const launcherEnvironment = {
+      ...process.env,
+      PORT: "3012",
+      QUIPSLY_LOCAL_ENV_FILE: envFile,
+      QUIPSLY_LAUNCHER_OUTPUT: outputFile,
+    };
+    delete launcherEnvironment.AUTH_SECRET;
+
+    const result = spawnSync(process.execPath, [nestLauncherPath], {
+      cwd: sandbox,
+      encoding: "utf8",
+      env: launcherEnvironment,
+    });
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(JSON.parse(readFileSync(outputFile, "utf8")), {
+      secretLoaded: true,
+      explicitEnvironmentPreserved: true,
+      argv: ["dev", "--webpack"],
+    });
+    assert.doesNotMatch(`${result.stdout}\n${result.stderr}`, /local-private-value/);
+  } finally {
+    rmSync(sandbox, { recursive: true, force: true });
+  }
+});
+
 test("optional Drive dogfood secrets are fetched inside durable children without entering launcher state", () => {
   assert.match(up, /state_dir}\/google-drive-secret-project/);
   assert.match(up, /configured_google_drive_secret_project/);
@@ -326,6 +388,7 @@ test("healthy Nest reloads when its exact application or schema source changes",
   assert.match(stateHelper, /apps\/quipsly/);
   assert.match(stateHelper, /prisma\/schema\.prisma/);
   assert.match(stateHelper, /packages\/quipsly-media-processing/);
+  assert.match(stateHelper, /scripts\/dev\/quipsly-local-nest-launcher\.mjs/);
   assert.match(stateHelper, /hash-object "\$\{local_env_file\}"/);
   assert.match(up, /recorded_nest_runtime_revision/);
   assert.match(

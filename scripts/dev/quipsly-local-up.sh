@@ -90,17 +90,10 @@ if [[ "${1:-}" == "--run-nest" ]]; then
     GCLOUD_PROJECT=quipsly-reef
     GOOGLE_CLOUD_PROJECT=quipsly-reef
   )
-  if [[ -n "${QUIPSLY_LOCAL_ENV_FILE:-}" ]]; then
-    exec /usr/bin/env \
-      "${nest_environment[@]}" \
-      "${QUIPSLY_LOCAL_NODE_BIN:?Missing launcher node path}" \
-      "--env-file=${QUIPSLY_LOCAL_ENV_FILE}" \
-      --run dev
-  fi
   exec /usr/bin/env \
     "${nest_environment[@]}" \
-    "${QUIPSLY_LOCAL_PNPM_BIN:?Missing launcher pnpm path}" \
-    dev
+    "${QUIPSLY_LOCAL_NODE_BIN:?Missing launcher node path}" \
+    "${script_repo_root}/scripts/dev/quipsly-local-nest-launcher.mjs"
 fi
 
 if [[ "${1:-}" == "--run-media-worker" ]]; then
