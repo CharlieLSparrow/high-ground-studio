@@ -414,7 +414,8 @@ final class MobileCoachingEngagementWorkspaceClient: ObservableObject {
         title: String,
         body: String,
         visibility: String,
-        ownerUserID: String
+        ownerUserID: String,
+        targetAt: Date?
     ) async -> Bool {
         guard !isSaving else { return false }
         isSaving = true
@@ -431,6 +432,7 @@ final class MobileCoachingEngagementWorkspaceClient: ObservableObject {
                 requestBody["visibility"] = visibility
             } else {
                 requestBody["ownerUserId"] = ownerUserID
+                requestBody["targetAt"] = targetAt.map(coachingISO8601String) ?? NSNull()
             }
             let (payload, response) = try await request(method: "POST", body: requestBody)
             guard response.statusCode < 400, payload.ok, payload.entry != nil else {
@@ -451,7 +453,8 @@ final class MobileCoachingEngagementWorkspaceClient: ObservableObject {
         body: String,
         visibility: String,
         ownerUserID: String,
-        status: String
+        status: String,
+        targetAt: Date?
     ) async -> Bool {
         guard !isSaving else { return false }
         isSaving = true
@@ -470,6 +473,7 @@ final class MobileCoachingEngagementWorkspaceClient: ObservableObject {
             } else {
                 requestBody["ownerUserId"] = ownerUserID
                 requestBody["status"] = status
+                requestBody["targetAt"] = targetAt.map(coachingISO8601String) ?? NSNull()
             }
             let (payload, response) = try await request(method: "PATCH", body: requestBody)
             guard response.statusCode < 400, payload.ok, payload.entry != nil else {
@@ -3792,6 +3796,16 @@ struct CaptureCoachingEngagementWorkspaceView: View {
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
             }
+            if let targetDate = entry.dueAt.flatMap(coachingISO8601Date) {
+                let isPastDue = !entry.isComplete && targetDate < Date()
+                Label(
+                    "\(isPastDue ? "Past due" : entry.kind == "TASK" ? "Due" : "Target") \(targetDate.formatted(date: .abbreviated, time: .omitted))",
+                    systemImage: isPastDue ? "exclamationmark.circle.fill" : "calendar"
+                )
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(isPastDue ? CapturePalette.record : Color.secondary)
+                .accessibilityIdentifier("CaptureCoachingWorkDate_\(entry.id)")
+            }
 
             if entry.canEdit {
                 HStack(spacing: 10) {
@@ -3834,7 +3848,8 @@ struct CaptureCoachingEngagementWorkspaceView: View {
             body: entry.body ?? "",
             visibility: entry.visibility,
             ownerUserID: entry.owner?.id ?? client.workspace?.currentUserId ?? "",
-            status: nextStatus
+            status: nextStatus,
+            targetAt: entry.dueAt.flatMap(coachingISO8601Date)
         )
     }
 }
@@ -3852,6 +3867,8 @@ private struct MobileCoachingWorkEditorSheet: View {
     @State private var visibility: String
     @State private var ownerUserID: String
     @State private var status: String
+    @State private var hasTargetDate: Bool
+    @State private var targetDate: Date
     @State private var isConfirmingRemoval = false
 
     init(
@@ -3871,6 +3888,13 @@ private struct MobileCoachingWorkEditorSheet: View {
         _visibility = State(initialValue: entry?.visibility ?? "SHARED")
         _ownerUserID = State(initialValue: entry?.owner?.id ?? workspace.currentUserId)
         _status = State(initialValue: entry?.status ?? "OPEN")
+        let existingTargetDate = entry?.dueAt.flatMap(coachingISO8601Date)
+        _hasTargetDate = State(initialValue: existingTargetDate != nil)
+        _targetDate = State(
+            initialValue: existingTargetDate
+                ?? Calendar.current.date(byAdding: .day, value: 1, to: Date())
+                ?? Date()
+        )
     }
 
     private var canSave: Bool {
@@ -3940,6 +3964,24 @@ private struct MobileCoachingWorkEditorSheet: View {
                             .accessibilityIdentifier("CaptureCoachingWorkStatus")
                         }
                     }
+
+                    Section(kind == "TASK" ? "Due date" : "Target date") {
+                        Toggle(
+                            kind == "TASK" ? "Add due date" : "Add target date",
+                            isOn: $hasTargetDate
+                        )
+                        .accessibilityIdentifier("CaptureCoachingWorkDateToggle")
+
+                        if hasTargetDate {
+                            DatePicker(
+                                kind == "TASK" ? "Due" : "Target",
+                                selection: $targetDate,
+                                displayedComponents: [.date]
+                            )
+                            .datePickerStyle(.compact)
+                            .accessibilityIdentifier("CaptureCoachingWorkDate")
+                        }
+                    }
                 }
 
                 if let error = client.errorMessage {
@@ -3978,7 +4020,8 @@ private struct MobileCoachingWorkEditorSheet: View {
                                     body: detail,
                                     visibility: visibility,
                                     ownerUserID: ownerUserID,
-                                    status: status
+                                    status: status,
+                                    targetAt: hasTargetDate ? targetDate : nil
                                 )
                             } else {
                                 saved = await client.create(
@@ -3986,7 +4029,8 @@ private struct MobileCoachingWorkEditorSheet: View {
                                     title: title,
                                     body: detail,
                                     visibility: visibility,
-                                    ownerUserID: ownerUserID
+                                    ownerUserID: ownerUserID,
+                                    targetAt: hasTargetDate ? targetDate : nil
                                 )
                             }
                             if saved { dismiss() }
@@ -4458,6 +4502,10 @@ private func coachingISO8601Date(_ value: String) -> Date? {
     let fractional = ISO8601DateFormatter()
     fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
     return fractional.date(from: value) ?? ISO8601DateFormatter().date(from: value)
+}
+
+private func coachingISO8601String(_ value: Date) -> String {
+    ISO8601DateFormatter().string(from: value)
 }
 
 private func coachingClientError(_ message: String) -> NSError {

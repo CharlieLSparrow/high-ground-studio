@@ -1322,6 +1322,16 @@ for (const needle of [
 ]) {
   requireIncludes(captureCoachingHomeText, needle, "native coaching work supports conventional reversible remove and Undo");
 }
+for (const needle of [
+  'requestBody["targetAt"] = targetAt.map(coachingISO8601String) ?? NSNull()',
+  'targetAt: entry.dueAt.flatMap(coachingISO8601Date)',
+  'accessibilityIdentifier("CaptureCoachingWorkDateToggle")',
+  'accessibilityIdentifier("CaptureCoachingWorkDate")',
+  'accessibilityIdentifier("CaptureCoachingWorkDate_\\(entry.id)")',
+  'kind == "TASK" ? "Add due date" : "Add target date"',
+]) {
+  requireIncludes(captureCoachingHomeText, needle, "native coaching work preserves and edits optional task and goal dates");
+}
 requireIncludes(runtimeUISmokeTestsText, "Phone coaching conversation", "the fresh compiled iPhone journey authors relationship conversation through product UI");
 requireIncludes(sessionConversationText, "CaptureSessionChatOpenButton", "exact-call Session conversation is reachable beside the primary recorder");
 requireIncludes(sessionConversationText, "QuipslyCapture/SessionConversation", "Session conversation uses a distinct protected cache namespace");
