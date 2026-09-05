@@ -152,6 +152,24 @@ enum VoiceWritingTextComposer {
         return String(candidate.prefix(80))
     }
 
+    /// Older Capture builds could accidentally preserve the canonical Session
+    /// purpose as a writing title. Keep those machine-only enum values out of
+    /// every human surface without renaming an ordinary title such as
+    /// "Personal note". The original stored title remains available until the
+    /// person next edits the document, so this compatibility repair cannot
+    /// manufacture a sync conflict or rewrite source evidence.
+    nonisolated static func presentedTitle(
+        _ title: String,
+        body: String
+    ) -> String {
+        let cleanTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let canonicalToken = cleanTitle.uppercased()
+        guard ["PERSONAL_NOTE", "FIELD_NOTE", "VOICE_NOTE"].contains(canonicalToken) else {
+            return cleanTitle.isEmpty ? "Untitled" : cleanTitle
+        }
+        return suggestedTitle(from: body) ?? "Voice note"
+    }
+
     /// A keyboard-first draft can be empty when someone decides speaking is
     /// easier. In that one narrow case, use the same calm automatic title as a
     /// voice-first draft. Deliberate titles and already-written documents are

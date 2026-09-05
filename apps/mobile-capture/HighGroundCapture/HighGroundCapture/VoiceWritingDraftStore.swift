@@ -90,6 +90,12 @@ struct VoiceWritingDraft: Codable, Identifiable, Equatable {
 
     var beganWithVoice: Bool { writingOrigin != "typed" }
 
+    /// User-facing title with legacy machine-purpose leakage repaired. The
+    /// canonical stored title is not mutated until the author actually saves.
+    var presentedTitle: String {
+        VoiceWritingTextComposer.presentedTitle(title, body: body)
+    }
+
     var isUntouchedTypedDraft: Bool {
         writingOrigin == "typed"
             && canonicalDocumentID == nil
@@ -240,7 +246,7 @@ final class VoiceWritingDraftStore: ObservableObject {
         })
         guard let draft else { return nil }
         return VoiceWritingRecognitionContext(
-            documentTitle: draft.title,
+            documentTitle: draft.presentedTitle,
             nestName: draft.canonicalProjectName,
             tagLabels: (draft.canonicalTags ?? []).map(\.label)
         )
@@ -399,6 +405,7 @@ final class VoiceWritingDraftStore: ObservableObject {
         let keepsSessionTitle = !sessionTitle.isEmpty
             && !normalizedSessionTitle.hasPrefix("voice note ·")
             && !normalizedSessionTitle.hasPrefix("speak to write ·")
+            && VoiceWritingTextComposer.presentedTitle(sessionTitle, body: body) == sessionTitle
         let title = keepsSessionTitle
             ? sessionTitle
             : VoiceWritingTextComposer.suggestedTitle(from: body) ?? recording.displayTitle

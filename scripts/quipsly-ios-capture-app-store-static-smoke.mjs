@@ -77,6 +77,7 @@ const files = {
   captureRecordingReceiptOutbox: path.join(sourceRoot, "CaptureRecordingReceiptOutbox.swift"),
   capturePhoneShell: path.join(sourceRoot, "CapturePhoneShell.swift"),
   voiceWritingDraftStore: path.join(sourceRoot, "VoiceWritingDraftStore.swift"),
+  voiceWritingTextComposer: path.join(sourceRoot, "VoiceWritingTextComposer.swift"),
   voiceWritingRecognitionSyncClient: path.join(sourceRoot, "VoiceWritingRecognitionSyncClient.swift"),
   subscriptionStore: path.join(sourceRoot, "QuipslySubscriptionStore.swift"),
   captureCoachingHome: path.join(sourceRoot, "CaptureCoachingHome.swift"),
@@ -282,6 +283,7 @@ const capturePhoneShellText = read(files.capturePhoneShell);
 const webGlobalsText = read(files.webGlobals);
 const webNestSignInGateText = read(files.webNestSignInGate);
 const voiceWritingDraftStoreText = read(files.voiceWritingDraftStore);
+const voiceWritingTextComposerText = read(files.voiceWritingTextComposer);
 const voiceWritingRecognitionSyncClientText = read(files.voiceWritingRecognitionSyncClient);
 const recorderSurfaceStart = capturePhoneShellText.indexOf(
   "private struct CaptureRecorderView: View",
@@ -2148,6 +2150,33 @@ for (const needle of [
   "? draft.preferredProjectID",
 ]) {
   requireIncludes(voiceWritingDraftStoreText, needle, "protected writing preserves its intended Nest until first sync");
+}
+requireIncludes(
+  voiceWritingDraftStoreText,
+  "var presentedTitle: String",
+  "writing drafts expose a human-facing title without mutating legacy canonical evidence",
+);
+for (const needle of [
+  "presentedTitle(",
+  '"PERSONAL_NOTE", "FIELD_NOTE", "VOICE_NOTE"',
+  '?? "Voice note"',
+]) {
+  requireIncludes(
+    voiceWritingTextComposerText,
+    needle,
+    "legacy machine-purpose tokens never escape as human writing titles",
+  );
+}
+for (const needle of [
+  "initialDraft.presentedTitle",
+  "draft.presentedTitle.localizedCaseInsensitiveContains",
+  "Text(draft.presentedTitle)",
+]) {
+  requireIncludes(
+    capturePhoneShellText,
+    needle,
+    "writing cards, search, and editing use the repaired human title",
+  );
 }
 for (const needle of [
   "destinationProjectId: string | null",

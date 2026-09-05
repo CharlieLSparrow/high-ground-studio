@@ -1088,7 +1088,7 @@ private struct CaptureTodayView: View {
         insertionUtf16: Int?
     ) {
         Task {
-            guard let created = await model.createPersonalVoiceNote(continuing: draft.title) else { return }
+            guard let created = await model.createPersonalVoiceNote(continuing: draft.presentedTitle) else { return }
             do {
                 try writingStore.stageContinuation(
                     callRoomID: created.callRoomId,
@@ -8983,7 +8983,7 @@ private struct CaptureVoiceWritingEditor: View {
         self.initialDraft = initialDraft
         self.tagClient = tagClient
         self.onContinueByVoice = onContinueByVoice
-        _title = State(initialValue: initialDraft.title)
+        _title = State(initialValue: initialDraft.presentedTitle)
         _bodyText = State(initialValue: initialDraft.body)
         _richText = State(initialValue: initialDraft.richText ?? VoiceWritingRichText(text: initialDraft.body))
         _currentWritingSelection = State(
@@ -12930,7 +12930,7 @@ private struct CaptureRecorderView: View {
         insertionUtf16: Int?
     ) {
         Task {
-            guard let created = await model.createPersonalVoiceNote(continuing: draft.title) else { return }
+            guard let created = await model.createPersonalVoiceNote(continuing: draft.presentedTitle) else { return }
             do {
                 try VoiceWritingDraftStore.shared.stageContinuation(
                     callRoomID: created.callRoomId,
@@ -16152,7 +16152,7 @@ private enum CaptureLibraryWritingItem: Identifiable {
 
     var title: String {
         switch self {
-        case .voice(let draft): draft.title
+        case .voice(let draft): draft.presentedTitle
         case .note(let note): note.title
         }
     }
@@ -16441,7 +16441,7 @@ private struct CaptureLibraryView: View {
         writingStore.drafts.filter { draft in
             scopeMatches(draft)
                 && (normalizedSearch.isEmpty
-                    || draft.title.localizedCaseInsensitiveContains(normalizedSearch)
+                    || draft.presentedTitle.localizedCaseInsensitiveContains(normalizedSearch)
                     || draft.body.localizedCaseInsensitiveContains(normalizedSearch))
         }
     }
@@ -16944,7 +16944,7 @@ private struct CaptureLibraryView: View {
         insertionUtf16: Int?
     ) {
         Task {
-            guard let created = await model.createPersonalVoiceNote(continuing: draft.title) else { return }
+            guard let created = await model.createPersonalVoiceNote(continuing: draft.presentedTitle) else { return }
             do {
                 try VoiceWritingDraftStore.shared.stageContinuation(
                     callRoomID: created.callRoomId,
@@ -17012,7 +17012,7 @@ private struct CaptureVoiceWritingLibraryRow: View {
                         .frame(width: 42, height: 42)
                         .background(CapturePalette.accent.opacity(0.1), in: Circle())
                     VStack(alignment: .leading, spacing: 4) {
-                        Text(draft.title)
+                        Text(draft.presentedTitle)
                             .font(.headline)
                             .foregroundStyle(.primary)
                             .multilineTextAlignment(.leading)

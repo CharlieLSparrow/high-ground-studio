@@ -20,6 +20,7 @@ private struct VoiceWritingTextComposerHarness {
         try headingCommandsCanArriveBeforeTheirText()
         try richContinuationPreservesBothDocuments()
         try emptyKeyboardDraftCanGainAVoiceTitleWithoutRenamingRealWork()
+        try machinePurposeNeverEscapesAsAWritingTitle()
         try ordinaryProseIsNotMistakenForACommand()
         try pausesStillCreateReadableParagraphs()
         print("PASS Voice writing speech structure composition")
@@ -111,6 +112,24 @@ private struct VoiceWritingTextComposerHarness {
                 combinedBody: "An existing paragraph.\n\nA new spoken paragraph."
             ) == nil,
             "An existing document must not be renamed merely because its current title is Untitled."
+        )
+    }
+
+    private static func machinePurposeNeverEscapesAsAWritingTitle() throws {
+        try require(
+            VoiceWritingTextComposer.presentedTitle(
+                "PERSONAL_NOTE",
+                body: "A practical framework for calmer coaching conversations starts here."
+            ) == "A practical framework for calmer coaching conversations starts here",
+            "A legacy Session-purpose token should become a useful title derived from the writing."
+        )
+        try require(
+            VoiceWritingTextComposer.presentedTitle("field_note", body: "Too short") == "Voice note",
+            "A machine-purpose token with too little prose should still have a calm human title."
+        )
+        try require(
+            VoiceWritingTextComposer.presentedTitle("Personal note", body: "Different words") == "Personal note",
+            "An ordinary deliberate title must never be mistaken for an internal enum token."
         )
     }
 
