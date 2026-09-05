@@ -211,7 +211,7 @@ export async function removeTeamMemberAction(orgId: string, memberId: string) {
     include: { user: true },
   });
 
-  if (!targetMember) {
+  if (!targetMember || targetMember.organizationId !== orgId) {
     return { ok: false, error: "Member not found." };
   }
 
@@ -258,12 +258,27 @@ export async function updateMemberRoleAction(orgId: string, memberId: string, ro
     include: { user: true },
   });
 
-  if (!targetMember) {
+  if (!targetMember || targetMember.organizationId !== orgId) {
     return { ok: false, error: "Member not found." };
   }
 
   if (targetMember.role === OrganizationRole.OWNER && callerMember.role !== OrganizationRole.OWNER) {
     return { ok: false, error: "Only the Owner can modify Owner roles." };
+  }
+
+  if (role === OrganizationRole.OWNER && callerMember.role !== OrganizationRole.OWNER) {
+    return { ok: false, error: "Only an Owner can grant the Owner role." };
+  }
+
+  if (
+    targetMember.userId === user.id &&
+    targetMember.role === OrganizationRole.OWNER &&
+    role !== OrganizationRole.OWNER
+  ) {
+    return {
+      ok: false,
+      error: "Transfer ownership before changing your own Owner role.",
+    };
   }
 
   await prisma.organizationMember.update({
@@ -397,14 +412,18 @@ export async function getOrgEventsAction(orgId: string) {
 export async function getOrgFeedbackTicketsAction(orgId: string) {
   const user = await getSessionUser();
   const prisma = getPrismaClient();
+  const member = await prisma.organizationMember.findUnique({
+    where: { organizationId_userId: { organizationId: orgId, userId: user.id } },
+  });
+
+  if (!member && user.isStaff !== true) {
+    throw new Error("Unauthorized to access organization feedback tickets.");
+  }
 
   return prisma.feedbackTicket.findMany({
-    where: {
-      OR: [
-        { organizationId: orgId },
-        { userId: user.id }
-      ]
-    },
+    where: user.isStaff === true
+      ? { OR: [{ organizationId: orgId }, { userId: user.id }] }
+      : { userId: user.id },
     include: {
       user: {
         select: {
