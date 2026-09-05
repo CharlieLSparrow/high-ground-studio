@@ -1,4 +1,5 @@
 import React, { useRef, useState, useEffect } from "react";
+import { QUIPSLY_TIMELINE_COLORS } from "@/lib/quipsly-palette";
 import type { TimelineClip } from "../useTimelineState";
 import { timeToPixels, pixelsToTime, clampTime, calculateSnapPoint } from "./timelineMath";
 
@@ -130,7 +131,11 @@ export function TimelineClipView({
         left: `${left}px`,
         width: `${width}px`,
         top: `${top + 5}px`, // 5px padding from top of track
-        background: clip.color || (clip.kind === "video" ? "linear-gradient(180deg, #284448 0%, #2d5356 100%)" : "linear-gradient(180deg, #39432d 0%, #455233 100%)"),
+        background:
+          clip.color
+          || (clip.kind === "video"
+            ? `linear-gradient(180deg, #2d4039 0%, ${QUIPSLY_TIMELINE_COLORS.video} 100%)`
+            : `linear-gradient(180deg, #3d452f 0%, ${QUIPSLY_TIMELINE_COLORS.audio} 100%)`),
       }}
       onMouseDown={(e) => {
         if (e.button !== 0) return;

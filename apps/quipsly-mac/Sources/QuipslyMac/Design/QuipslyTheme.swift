@@ -3,10 +3,10 @@ import SwiftUI
 struct QuipslyTheme {
     static let darkDeepBrown = Color(red: 0.17, green: 0.12, blue: 0.09) // #2C1E16
     static let earthyLightBeige = Color(red: 0.96, green: 0.94, blue: 0.92) // #F4EFEB
-    static let mossGreen = Color(red: 0.35, green: 0.44, blue: 0.32) // #597052
-    static let burntOrange = Color(red: 0.81, green: 0.43, blue: 0.22) // #CF6D38
-    static let clayTeal = Color(red: 0.29, green: 0.48, blue: 0.46) // #4A7A75
-    static let earthyAmber = Color(red: 0.85, green: 0.58, blue: 0.23) // #D9943A
+    static let mossGreen = Color(red: 0.43, green: 0.50, blue: 0.33) // #6F7F53
+    static let burntOrange = Color(red: 0.56, green: 0.39, blue: 0.30) // #8E634D
+    static let clayTeal = Color(red: 0.32, green: 0.47, blue: 0.40) // #527867
+    static let earthyAmber = Color(red: 0.58, green: 0.47, blue: 0.26) // #937943
 
     @Environment(\.colorScheme) private static var systemColorScheme
 

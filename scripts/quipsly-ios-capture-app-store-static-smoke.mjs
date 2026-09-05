@@ -2851,7 +2851,7 @@ requireIncludes(captureRehearsalReadinessText, 'accessibilityIdentifier("Capture
 assert(!captureRehearsalReadinessText.includes("consentReady"), "Private local sound check must not depend on Session recording consent.", { forbidden: "consentReady" });
 requireIncludes(captureRehearsalReadinessText, "never uploaded or added to the Session", "shipping sound check declares its local-only boundary");
 requireIncludes(captureRehearsalReadinessText, "deleted automatically", "shipping sound check declares automatic cleanup");
-requireIncludes(audioSoundCheckText, "coordinator.activateLocalCapture()", "sound check shares the process audio-session lease");
+requireIncludes(audioSoundCheckText, "coordinator.activateLocalCaptureAwaitingInput()", "sound check shares the process audio-session lease and waits for the physical input route");
 requireIncludes(audioSoundCheckText, "coordinator.beginLocalPlayback()", "sound check listen-back shares the process playback lease");
 requireIncludes(audioSoundCheckText, "purgeAbandonedChecks()", "sound check purges abandoned temporary files on launch");
 requireIncludes(audioSoundCheckText, "FileProtectionType.complete", "sound check file is protected at rest");
@@ -3111,7 +3111,7 @@ const personalVoiceWritingStart = audioText.slice(
 assert(
   personalVoiceWritingStart.indexOf("CaptureSpeechRecognitionPermission.requestIfNeeded()") >= 0
     && personalVoiceWritingStart.indexOf("CaptureSpeechRecognitionPermission.requestIfNeeded()")
-      < personalVoiceWritingStart.indexOf("audioSessionCoordinator.activateLocalCapture()"),
+      < personalVoiceWritingStart.indexOf("audioSessionCoordinator.activateLocalCaptureAwaitingInput()"),
   "Speak to write must settle Apple's Speech permission before starting the microphone source.",
   { label: "Speak to write requests Speech permission before source capture" },
 );

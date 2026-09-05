@@ -4,69 +4,69 @@
   /*
    * Quipsly's utility colors form one overgrown-library system. Historic
    * utility names remain source-compatible, but their rendered colors now come
-   * from four related materials: peacock bookcloth, fern and lichen, antique
-   * brass, and rosewood leather. Pale values are warmed toward parchment so a
+   * from four related materials: evergreen bookcloth, fern and moss, aged
+   * brass, and cedar leather. Pale values are warmed toward parchment so a
    * secondary action never turns into a bubble-gum badge beside the walnut UI.
    */
-  --color-quipsly-peacock-50: #eef5f4;
-  --color-quipsly-peacock-100: #d9e9e7;
-  --color-quipsly-peacock-200: #b9d5d2;
-  --color-quipsly-peacock-300: #8dbab7;
-  --color-quipsly-peacock-400: #619b99;
-  --color-quipsly-peacock-500: #447e7e;
-  --color-quipsly-peacock-600: #356668;
-  --color-quipsly-peacock-700: #2d5356;
-  --color-quipsly-peacock-800: #284448;
-  --color-quipsly-peacock-900: #243a3d;
-  --color-quipsly-peacock-950: #112124;
+  --color-quipsly-peacock-50: #f0f5ef;
+  --color-quipsly-peacock-100: #dce9df;
+  --color-quipsly-peacock-200: #bfd5c5;
+  --color-quipsly-peacock-300: #99b9a4;
+  --color-quipsly-peacock-400: #709884;
+  --color-quipsly-peacock-500: #527867;
+  --color-quipsly-peacock-600: #405f52;
+  --color-quipsly-peacock-700: #354e45;
+  --color-quipsly-peacock-800: #2d4039;
+  --color-quipsly-peacock-900: #273630;
+  --color-quipsly-peacock-950: #131e1a;
 
-  --color-quipsly-lake-50: #f0f5f4;
-  --color-quipsly-lake-100: #dce9e7;
-  --color-quipsly-lake-200: #bfd5d3;
-  --color-quipsly-lake-300: #96b9b8;
-  --color-quipsly-lake-400: #729c9e;
-  --color-quipsly-lake-500: #557f82;
-  --color-quipsly-lake-600: #42666a;
-  --color-quipsly-lake-700: #375357;
-  --color-quipsly-lake-800: #304448;
-  --color-quipsly-lake-900: #2b3b3e;
-  --color-quipsly-lake-950: #172123;
+  --color-quipsly-lake-50: #f1f5f2;
+  --color-quipsly-lake-100: #dfe9e3;
+  --color-quipsly-lake-200: #c4d6cc;
+  --color-quipsly-lake-300: #9fbdb0;
+  --color-quipsly-lake-400: #799f91;
+  --color-quipsly-lake-500: #5b8074;
+  --color-quipsly-lake-600: #48665d;
+  --color-quipsly-lake-700: #3b534d;
+  --color-quipsly-lake-800: #33443f;
+  --color-quipsly-lake-900: #2d3b37;
+  --color-quipsly-lake-950: #18211e;
 
-  --color-quipsly-fern-50: #f2f5ec;
-  --color-quipsly-fern-100: #e4ead8;
-  --color-quipsly-fern-200: #cad7b2;
-  --color-quipsly-fern-300: #aabe88;
-  --color-quipsly-fern-400: #879f62;
-  --color-quipsly-fern-500: #6c814c;
-  --color-quipsly-fern-600: #55663d;
-  --color-quipsly-fern-700: #455233;
-  --color-quipsly-fern-800: #39432d;
-  --color-quipsly-fern-900: #323a29;
-  --color-quipsly-fern-950: #181f13;
+  --color-quipsly-fern-50: #f3f5ed;
+  --color-quipsly-fern-100: #e6ead9;
+  --color-quipsly-fern-200: #ced6b6;
+  --color-quipsly-fern-300: #afbd8f;
+  --color-quipsly-fern-400: #8c9d69;
+  --color-quipsly-fern-500: #6f7f53;
+  --color-quipsly-fern-600: #596643;
+  --color-quipsly-fern-700: #495338;
+  --color-quipsly-fern-800: #3d452f;
+  --color-quipsly-fern-900: #353b2b;
+  --color-quipsly-fern-950: #1b2016;
 
-  --color-quipsly-brass-50: #fbf6e9;
-  --color-quipsly-brass-100: #f5e9c8;
-  --color-quipsly-brass-200: #ead292;
-  --color-quipsly-brass-300: #dbb55c;
-  --color-quipsly-brass-400: #c6963e;
-  --color-quipsly-brass-500: #a9772f;
-  --color-quipsly-brass-600: #895d28;
-  --color-quipsly-brass-700: #6e4724;
-  --color-quipsly-brass-800: #5c3b24;
-  --color-quipsly-brass-900: #4d3222;
-  --color-quipsly-brass-950: #2c190f;
+  --color-quipsly-brass-50: #faf6ea;
+  --color-quipsly-brass-100: #f2e9cf;
+  --color-quipsly-brass-200: #e3d39e;
+  --color-quipsly-brass-300: #ceb970;
+  --color-quipsly-brass-400: #b49a53;
+  --color-quipsly-brass-500: #937943;
+  --color-quipsly-brass-600: #786139;
+  --color-quipsly-brass-700: #614d32;
+  --color-quipsly-brass-800: #513f2e;
+  --color-quipsly-brass-900: #45362a;
+  --color-quipsly-brass-950: #271d17;
 
-  --color-quipsly-inkberry-50: #f7f1ed;
-  --color-quipsly-inkberry-100: #ede1db;
-  --color-quipsly-inkberry-200: #dcc5bc;
-  --color-quipsly-inkberry-300: #c49b91;
-  --color-quipsly-inkberry-400: #a9776f;
-  --color-quipsly-inkberry-500: #8b5d58;
-  --color-quipsly-inkberry-600: #704d4a;
-  --color-quipsly-inkberry-700: #5c3f3e;
-  --color-quipsly-inkberry-800: #4a3434;
-  --color-quipsly-inkberry-900: #3d2c2c;
-  --color-quipsly-inkberry-950: #241818;
+  --color-quipsly-inkberry-50: #f6f2ed;
+  --color-quipsly-inkberry-100: #eae1d8;
+  --color-quipsly-inkberry-200: #d5c4b6;
+  --color-quipsly-inkberry-300: #b8a08f;
+  --color-quipsly-inkberry-400: #947b6c;
+  --color-quipsly-inkberry-500: #765f54;
+  --color-quipsly-inkberry-600: #604c44;
+  --color-quipsly-inkberry-700: #4e3e39;
+  --color-quipsly-inkberry-800: #40332f;
+  --color-quipsly-inkberry-900: #362b29;
+  --color-quipsly-inkberry-950: #201817;
 
   --color-quipsly-rosewood-50: #f8f2ed;
   --color-quipsly-rosewood-100: #f0e4da;
@@ -80,17 +80,17 @@
   --color-quipsly-rosewood-900: #4d2d2d;
   --color-quipsly-rosewood-950: #2d1818;
 
-  --color-quipsly-terracotta-50: #fbf3eb;
-  --color-quipsly-terracotta-100: #f5e4d4;
-  --color-quipsly-terracotta-200: #eac8ac;
-  --color-quipsly-terracotta-300: #d9a27c;
-  --color-quipsly-terracotta-400: #c17a50;
-  --color-quipsly-terracotta-500: #a95d39;
-  --color-quipsly-terracotta-600: #8c472f;
-  --color-quipsly-terracotta-700: #71392a;
-  --color-quipsly-terracotta-800: #5e3229;
-  --color-quipsly-terracotta-900: #502c26;
-  --color-quipsly-terracotta-950: #2d1713;
+  --color-quipsly-terracotta-50: #faf3ed;
+  --color-quipsly-terracotta-100: #f1e4da;
+  --color-quipsly-terracotta-200: #dfc9ba;
+  --color-quipsly-terracotta-300: #c7a38d;
+  --color-quipsly-terracotta-400: #aa8066;
+  --color-quipsly-terracotta-500: #8e634d;
+  --color-quipsly-terracotta-600: #74503f;
+  --color-quipsly-terracotta-700: #5f4236;
+  --color-quipsly-terracotta-800: #4f372f;
+  --color-quipsly-terracotta-900: #43302a;
+  --color-quipsly-terracotta-950: #261a17;
 
   /*
    * Warm neutral material for utility-heavy surfaces. Slate, zinc, gray,
