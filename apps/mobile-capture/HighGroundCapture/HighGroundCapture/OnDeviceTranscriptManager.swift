@@ -1204,6 +1204,18 @@ final class OnDeviceTranscriptManager: ObservableObject {
                         for: recording,
                         errorMessage: transcript.errorMessage
                     )
+                case "COMPLETED":
+                    if (try? OnDeviceTranscriptStore.load(for: recording.id)) != nil {
+                        restoreAttachedCloudTranscriptState(
+                            for: recording,
+                            transcriptJobID: transcriptJobID
+                        )
+                    } else {
+                        materializeCompletedCloudTranscript(
+                            recording: recording,
+                            transcriptJobID: transcriptJobID
+                        )
+                    }
                 default:
                     phases[recording.id] = .cloudFallback(
                         transcriptJobId: transcriptJobID,
@@ -1305,6 +1317,16 @@ final class OnDeviceTranscriptManager: ObservableObject {
     func submitPendingCloudFallback(recording: LocalRecording) {
         guard !phase(for: recording.id).isBusy,
               activeTasks[recording.id] == nil else { return }
+        if recording.cloudTranscriptFallbackStatus?.uppercased() == "COMPLETED",
+           let transcriptJobID = recording.cloudTranscriptFallbackJobId?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+           !transcriptJobID.isEmpty {
+            materializeCompletedCloudTranscript(
+                recording: recording,
+                transcriptJobID: transcriptJobID
+            )
+            return
+        }
         startProtectedWork(
             recordingID: recording.id,
             name: "Request transcript fallback"
@@ -1951,6 +1973,280 @@ final class OnDeviceTranscriptManager: ObservableObject {
         }
     }
 
+    /// A completed fallback is useful only when its exact-source timed text
+    /// returns to the device. Preserve it beside the immutable recording and
+    /// seed the ordinary editable writing surface without creating a second
+    /// transcript job or asking the person to perform a handoff.
+    private func materializeCompletedCloudTranscript(
+        recording: LocalRecording,
+        transcriptJobID: String
+    ) {
+        guard activeTasks[recording.id] == nil,
+              let ownerAccountID = recording.ownerAccountID?
+                .trimmingCharacters(in: .whitespacesAndNewlines),
+              !ownerAccountID.isEmpty,
+              ownerAccountID == AuthManager.currentStoredOwnerID(),
+              let recordingAssetID = recording.recordingAssetId?
+                .trimmingCharacters(in: .whitespacesAndNewlines),
+              !recordingAssetID.isEmpty,
+              let callRoomID = recording.callRoomId?
+                .trimmingCharacters(in: .whitespacesAndNewlines),
+              !callRoomID.isEmpty,
+              let requestID = recording.cloudTranscriptFallbackRequestId,
+              let sourceSHA256 = recording.verifiedCloudSHA256?.lowercased(),
+              sourceSHA256.range(
+                of: #"^[0-9a-f]{64}$"#,
+                options: .regularExpression
+              ) != nil,
+              let sourceByteCount = recording.verifiedCloudSizeBytes,
+              sourceByteCount > 0 else {
+            return
+        }
+        if finalizePreviouslySavedCloudTranscript(
+            recording: recording,
+            requestID: requestID,
+            transcriptJobID: transcriptJobID
+        ) {
+            return
+        }
+        phases[recording.id] = .cloudFallback(
+            transcriptJobId: transcriptJobID,
+            status: "IMPORTING"
+        )
+        startProtectedWork(
+            recordingID: recording.id,
+            name: "Save completed cloud transcript"
+        ) { [weak self] in
+            guard let self else { return }
+            do {
+                var components = URLComponents(
+                    string: "\(nestBaseURL)/api/mobile/capture/transcripts/handoff"
+                )
+                components?.queryItems = [
+                    URLQueryItem(name: "callRoomId", value: callRoomID),
+                    URLQueryItem(name: "transcriptJobId", value: transcriptJobID),
+                    URLQueryItem(name: "recordingAssetId", value: recordingAssetID),
+                ]
+                guard let endpoint = components?.url else {
+                    throw OnDeviceTranscriptFailure.serverRejected(
+                        "Quipsly's transcript handoff address is invalid."
+                    )
+                }
+                var request = URLRequest(url: endpoint)
+                request.httpMethod = "GET"
+                request.cachePolicy = .reloadIgnoringLocalCacheData
+                request.setValue("application/json", forHTTPHeaderField: "Accept")
+                request.setValue("no-cache", forHTTPHeaderField: "Cache-Control")
+                let (data, response) = try await AuthManager.shared.authenticatedData(
+                    for: request,
+                    expectedOwnerAccountID: ownerAccountID
+                )
+                let envelope = try JSONDecoder().decode(
+                    OnDeviceTranscriptCloudHandoffResponse.self,
+                    from: data
+                )
+                guard response.statusCode < 400,
+                      envelope.ok,
+                      let handoffSchema = envelope.schema,
+                      let handoffRoomID = envelope.roomId,
+                      let handoffTranscriptJobID = envelope.transcriptJobId,
+                      let handoffRecordingAssetID = envelope.source.recordingAssetId else {
+                    throw OnDeviceTranscriptFailure.serverRejected(
+                        envelope.error
+                            ?? "Quipsly could not verify the completed transcript against this exact recording.",
+                        statusCode: response.statusCode
+                    )
+                }
+                let handoffEvidence = OnDeviceTranscriptCloudHandoffEvidence(
+                    schema: handoffSchema,
+                    roomId: handoffRoomID,
+                    transcriptJobId: handoffTranscriptJobID,
+                    recordingAssetId: handoffRecordingAssetID,
+                    segments: envelope.segments.map {
+                        OnDeviceTranscriptLedgerSegmentEvidence(
+                            startSeconds: $0.startTime,
+                            endSeconds: $0.endTime,
+                            text: $0.text
+                        )
+                    }
+                )
+                guard OnDeviceTranscriptLedgerPolicy.acceptsCloudHandoff(
+                    handoffEvidence,
+                    expectedRoomId: callRoomID,
+                    expectedTranscriptJobId: transcriptJobID,
+                    expectedRecordingAssetId: recordingAssetID
+                ) else {
+                    throw OnDeviceTranscriptFailure.serverRejected(
+                        "Quipsly could not verify the completed transcript against this exact recording."
+                    )
+                }
+                let segments = envelope.segments.map { segment in
+                    OnDeviceTranscriptSegment(
+                        startSeconds: segment.startTime,
+                        endSeconds: segment.endTime,
+                        text: segment.text.trimmingCharacters(
+                            in: .whitespacesAndNewlines
+                        )
+                    )
+                }
+                let configuration = "quipsly-cloud-handoff-v2|\(transcriptJobID)|\(recordingAssetID)|\(sourceSHA256)"
+                let handoffLanguage = normalizedCloudHandoffValue(
+                    envelope.language,
+                    fallback: "und"
+                )
+                let handoffProvider = normalizedCloudHandoffValue(
+                    envelope.provider,
+                    fallback: "quipsly-cloud"
+                )
+                let sidecar = OnDeviceTranscriptSidecar(
+                    schemaVersion: 1,
+                    clientRequestId: requestID,
+                    localRecordingId: recording.id,
+                    ownerAccountId: ownerAccountID,
+                    sourceSha256: sourceSHA256,
+                    sourceByteCount: sourceByteCount,
+                    language: handoffLanguage,
+                    createdAt: recording.cloudTranscriptFallbackCompletedAt
+                        ?? recording.cloudTranscriptFallbackAcceptedAt
+                        ?? recording.startedAt,
+                    recognitionExecution: "quipsly-cloud",
+                    speakerDiarization: "provider-or-source-bound",
+                    humanPlaybackReviewRequired: false,
+                    engine: .init(
+                        framework: "QuipslyCloud",
+                        transcriber: handoffProvider,
+                        preset: "canonical-source-handoff-v2",
+                        configurationHash: SHA256.hash(
+                            data: Data(configuration.utf8)
+                        ).hexString,
+                        modelAssetStatus: "server-completed"
+                    ),
+                    device: .current,
+                    segments: segments
+                )
+                let stored = try OnDeviceTranscriptStore.save(sidecar)
+                try OnDeviceTranscriptStore.saveSubmissionReceipt(.init(
+                    schemaVersion: 1,
+                    localRecordingId: recording.id,
+                    clientRequestId: requestID,
+                    sidecarSha256: stored.sha256,
+                    transcriptJobId: transcriptJobID,
+                    provider: handoffProvider,
+                    submittedAt: Date(),
+                    idempotentReplay: true
+                ))
+                try LocalRecordingLibrary.shared.markOnDeviceTranscriptAttached(
+                    recording.id,
+                    transcriptJobId: transcriptJobID
+                )
+                if let draft = VoiceWritingDraftStore.shared.seed(
+                    from: sidecar,
+                    recording: recording
+                ) {
+                    VoiceWritingDraftSyncClient.shared.schedule(draft, delay: .zero)
+                }
+                phases[recording.id] = .attached(
+                    transcriptJobId: transcriptJobID,
+                    segmentCount: segments.count
+                )
+            } catch {
+                if Task.isCancelled || error is CancellationError {
+                    phases[recording.id] = .cloudFallback(
+                        transcriptJobId: transcriptJobID,
+                        status: "COMPLETED"
+                    )
+                } else {
+                    phases[recording.id] = .failed(
+                        message: "The transcript is ready in Nest, but this device could not save its editable copy yet: \(error.localizedDescription)",
+                        retryable: true
+                    )
+                }
+            }
+        }
+    }
+
+    private func normalizedCloudHandoffValue(
+        _ value: String?,
+        fallback: String
+    ) -> String {
+        let normalized = value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return normalized.isEmpty ? fallback : normalized
+    }
+
+    private func finalizePreviouslySavedCloudTranscript(
+        recording: LocalRecording,
+        requestID: UUID,
+        transcriptJobID: String
+    ) -> Bool {
+        guard let stored = try? OnDeviceTranscriptStore.load(for: recording.id),
+              stored.sidecar.clientRequestId == requestID,
+              stored.sidecar.recognitionExecution == "quipsly-cloud",
+              stored.sidecar.sourceSha256 == recording.verifiedCloudSHA256?.lowercased(),
+              stored.sidecar.sourceByteCount == recording.verifiedCloudSizeBytes else {
+            return false
+        }
+        do {
+            try OnDeviceTranscriptStore.saveSubmissionReceipt(.init(
+                schemaVersion: 1,
+                localRecordingId: recording.id,
+                clientRequestId: requestID,
+                sidecarSha256: stored.sha256,
+                transcriptJobId: transcriptJobID,
+                provider: stored.sidecar.engine.transcriber,
+                submittedAt: recording.cloudTranscriptFallbackCompletedAt
+                    ?? recording.cloudTranscriptFallbackAcceptedAt
+                    ?? Date(),
+                idempotentReplay: true
+            ))
+            try LocalRecordingLibrary.shared.markOnDeviceTranscriptAttached(
+                recording.id,
+                transcriptJobId: transcriptJobID
+            )
+            if let draft = VoiceWritingDraftStore.shared.seed(
+                from: stored.sidecar,
+                recording: recording
+            ) {
+                VoiceWritingDraftSyncClient.shared.schedule(draft, delay: .zero)
+            }
+            phases[recording.id] = .attached(
+                transcriptJobId: transcriptJobID,
+                segmentCount: stored.sidecar.segments.count
+            )
+            return true
+        } catch {
+            return false
+        }
+    }
+
+    private func restoreAttachedCloudTranscriptState(
+        for recording: LocalRecording,
+        transcriptJobID: String
+    ) {
+        guard let stored = try? OnDeviceTranscriptStore.load(for: recording.id),
+              let receipt = try? OnDeviceTranscriptStore.loadSubmissionReceipt(
+                for: recording.id,
+                clientRequestId: stored.sidecar.clientRequestId,
+                expectedSidecarSha256: stored.sha256
+              ),
+              receipt.transcriptJobId == transcriptJobID else {
+            phases[recording.id] = .cloudFallback(
+                transcriptJobId: transcriptJobID,
+                status: "COMPLETED"
+            )
+            return
+        }
+        if let draft = VoiceWritingDraftStore.shared.seed(
+            from: stored.sidecar,
+            recording: recording
+        ) {
+            VoiceWritingDraftSyncClient.shared.schedule(draft, delay: .zero)
+        }
+        phases[recording.id] = .attached(
+            transcriptJobId: transcriptJobID,
+            segmentCount: stored.sidecar.segments.count
+        )
+    }
+
     private func submit(recording: LocalRecording) async {
         do {
             guard let stored = try OnDeviceTranscriptStore.load(for: recording.id) else {
@@ -2136,6 +2432,29 @@ private struct OnDeviceTranscriptCloudFallbackResponse: Decodable {
     let transcriptJobId: String?
     let providerExecutionRequested: Bool?
     let idempotentReplay: Bool?
+    let error: String?
+    let errorCode: String?
+}
+
+private struct OnDeviceTranscriptCloudHandoffResponse: Decodable {
+    struct Source: Decodable {
+        let recordingAssetId: String?
+    }
+
+    struct Segment: Decodable {
+        let startTime: Double
+        let endTime: Double
+        let text: String
+    }
+
+    let ok: Bool
+    let schema: String?
+    let roomId: String?
+    let transcriptJobId: String?
+    let language: String?
+    let provider: String?
+    let source: Source
+    let segments: [Segment]
     let error: String?
     let errorCode: String?
 }

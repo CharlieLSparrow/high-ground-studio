@@ -2,7 +2,10 @@ import { NextResponse } from "next/server";
 
 import { getPrismaClient } from "@/lib/prisma";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
-import { readTranscriptCorrectionDesk } from "@/lib/server/transcript-corrections";
+import {
+  readTranscriptCorrectionDesk,
+  TranscriptCorrectionError,
+} from "@/lib/server/transcript-corrections";
 
 export const dynamic = "force-dynamic";
 
@@ -54,6 +57,7 @@ export async function GET(request: Request) {
   const url = new URL(request.url);
   const roomId = text(url.searchParams.get("callRoomId"));
   const transcriptJobId = text(url.searchParams.get("transcriptJobId"));
+  const recordingAssetId = text(url.searchParams.get("recordingAssetId"));
   if (!roomId || !transcriptJobId) {
     return NextResponse.json(
       { ok: false, error: "callRoomId and transcriptJobId are required." },
@@ -70,6 +74,8 @@ export async function GET(request: Request) {
         email: session.user.primaryEmail,
         isStaff: session.user.isStaff,
       },
+      recordingAssetId: recordingAssetId || null,
+      transcriptJobId,
     });
     if (desk.transcriptJobId !== transcriptJobId) {
       return NextResponse.json(
@@ -113,6 +119,8 @@ export async function GET(request: Request) {
         immutableProviderWords: true,
         reviewedCorrectionsAreOverlays: true,
       },
+      language: desk.evidence?.language ?? null,
+      provider: desk.processing?.routing?.provider ?? null,
       segments: (desk.segments as CanonicalDeskSegment[]).map((segment) => ({
         id: segment.id,
         speaker: segment.speakerLabel,
@@ -147,6 +155,12 @@ export async function GET(request: Request) {
       },
     }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {
+    if (error instanceof TranscriptCorrectionError) {
+      return NextResponse.json(
+        { ok: false, error: error.message, errorCode: error.code },
+        { status: error.status, headers: { "Cache-Control": "private, no-store" } },
+      );
+    }
     console.error("[capture-transcript-handoff] failed", error);
     return NextResponse.json(
       { ok: false, error: "Quipsly could not build the canonical transcript handoff." },

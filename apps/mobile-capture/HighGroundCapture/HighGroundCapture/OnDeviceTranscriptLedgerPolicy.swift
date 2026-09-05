@@ -29,6 +29,14 @@ struct OnDeviceTranscriptLedgerReceiptEvidence: Sendable {
     let submittedAt: Date
 }
 
+struct OnDeviceTranscriptCloudHandoffEvidence: Sendable {
+    let schema: String
+    let roomId: String
+    let transcriptJobId: String
+    let recordingAssetId: String
+    let segments: [OnDeviceTranscriptLedgerSegmentEvidence]
+}
+
 /// Validates the protected transcript ledger before any local artifact can be
 /// treated as saved or attached. Nest repeats these checks at its trust
 /// boundary; this local policy prevents a damaged sidecar or stale receipt from
@@ -40,6 +48,7 @@ enum OnDeviceTranscriptLedgerPolicy {
     private static let acceptedRecognitionExecutions = [
         "on-device",
         "apple-speech-service",
+        "quipsly-cloud",
     ]
 
     static func acceptsSidecar(
@@ -61,9 +70,30 @@ enum OnDeviceTranscriptLedgerPolicy {
             return false
         }
 
+        return acceptsSegments(sidecar.segments)
+    }
+
+    static func acceptsCloudHandoff(
+        _ handoff: OnDeviceTranscriptCloudHandoffEvidence,
+        expectedRoomId: String,
+        expectedTranscriptJobId: String,
+        expectedRecordingAssetId: String
+    ) -> Bool {
+        handoff.schema == "quipsly-canonical-transcript-handoff-v2"
+            && handoff.roomId == expectedRoomId
+            && handoff.transcriptJobId == expectedTranscriptJobId
+            && handoff.recordingAssetId == expectedRecordingAssetId
+            && handoff.segments.count <= maximumSegments
+            && acceptsSegments(handoff.segments)
+    }
+
+    private static func acceptsSegments(
+        _ segments: [OnDeviceTranscriptLedgerSegmentEvidence]
+    ) -> Bool {
+        guard !segments.isEmpty else { return false }
         var previousStart = -1.0
         var totalCharacters = 0
-        for segment in sidecar.segments {
+        for segment in segments {
             let text = segment.text.trimmingCharacters(in: .whitespacesAndNewlines)
             guard segment.startSeconds.isFinite,
                   segment.endSeconds.isFinite,

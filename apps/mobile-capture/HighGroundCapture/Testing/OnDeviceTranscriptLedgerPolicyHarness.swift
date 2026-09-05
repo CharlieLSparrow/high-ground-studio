@@ -15,19 +15,29 @@ enum OnDeviceTranscriptLedgerPolicyHarness {
         expectSidecar(validSidecar(segments: [segment(2, 3), segment(1, 2)]), false, "out-of-order timing")
         expectSidecar(validSidecar(segments: [segment(0, .infinity)]), false, "nonfinite timing")
         expectSidecar(validSidecar(segments: [segment(0, 1, text: "  ")]), false, "blank text")
+        expectSidecar(validSidecar(recognitionExecution: "quipsly-cloud"), true, "canonical cloud handoff")
+        expectSidecar(validSidecar(recognitionExecution: "untrusted-import"), false, "unknown transcript execution")
 
         expectReceipt(validReceipt(), true, "receipt bound to sidecar")
         expectReceipt(validReceipt(sidecarSha256: String(repeating: "b", count: 64)), false, "receipt for stale sidecar")
         expectReceipt(validReceipt(transcriptJobId: " "), false, "receipt without canonical job")
         expectReceipt(validReceipt(provider: ""), false, "receipt without provider")
 
-        print("PASS 8 sidecar and 4 receipt transcript-ledger policy tests")
+        expectHandoff(validHandoff(), true, "exact cloud handoff")
+        expectHandoff(validHandoff(roomId: "room-2"), false, "wrong handoff room")
+        expectHandoff(validHandoff(transcriptJobId: "job-2"), false, "wrong handoff job")
+        expectHandoff(validHandoff(recordingAssetId: "asset-2"), false, "wrong handoff source")
+        expectHandoff(validHandoff(schema: "quipsly-canonical-transcript-handoff-v1"), false, "stale handoff schema")
+        expectHandoff(validHandoff(segments: [segment(2, 3), segment(1, 2)]), false, "invalid handoff timing")
+
+        print("PASS 10 sidecar, 4 receipt, and 6 cloud handoff transcript-ledger policy tests")
     }
 
     private static func validSidecar(
         sourceSha256: String = digest,
         sourceByteCount: Int64 = 4_096,
         ownerAccountId: String = "firebase:participant-1",
+        recognitionExecution: String = "on-device",
         segments: [OnDeviceTranscriptLedgerSegmentEvidence] = [segment(0, 1)]
     ) -> OnDeviceTranscriptLedgerSidecarEvidence {
         OnDeviceTranscriptLedgerSidecarEvidence(
@@ -38,7 +48,7 @@ enum OnDeviceTranscriptLedgerPolicyHarness {
             sourceByteCount: sourceByteCount,
             language: "en-US",
             createdAt: Date(timeIntervalSince1970: 1_800_000_000),
-            recognitionExecution: "on-device",
+            recognitionExecution: recognitionExecution,
             configurationHash: digest,
             segments: segments
         )
@@ -57,6 +67,22 @@ enum OnDeviceTranscriptLedgerPolicyHarness {
             transcriptJobId: transcriptJobId,
             provider: provider,
             submittedAt: Date(timeIntervalSince1970: 1_800_000_030)
+        )
+    }
+
+    private static func validHandoff(
+        schema: String = "quipsly-canonical-transcript-handoff-v2",
+        roomId: String = "room-1",
+        transcriptJobId: String = "job-1",
+        recordingAssetId: String = "asset-1",
+        segments: [OnDeviceTranscriptLedgerSegmentEvidence] = [segment(0, 1)]
+    ) -> OnDeviceTranscriptCloudHandoffEvidence {
+        OnDeviceTranscriptCloudHandoffEvidence(
+            schema: schema,
+            roomId: roomId,
+            transcriptJobId: transcriptJobId,
+            recordingAssetId: recordingAssetId,
+            segments: segments
         )
     }
 
@@ -95,6 +121,21 @@ enum OnDeviceTranscriptLedgerPolicyHarness {
             expectedRecordingId: recordingId,
             expectedClientRequestId: requestId,
             expectedSidecarSha256: digest
+        ) == expected else {
+            fail(label)
+        }
+    }
+
+    private static func expectHandoff(
+        _ handoff: OnDeviceTranscriptCloudHandoffEvidence,
+        _ expected: Bool,
+        _ label: String
+    ) {
+        guard OnDeviceTranscriptLedgerPolicy.acceptsCloudHandoff(
+            handoff,
+            expectedRoomId: "room-1",
+            expectedTranscriptJobId: "job-1",
+            expectedRecordingAssetId: "asset-1"
         ) == expected else {
             fail(label)
         }

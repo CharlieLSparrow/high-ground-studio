@@ -96,6 +96,7 @@ const files = {
   transcriptReviewDecisionOutbox: path.join(sourceRoot, "TranscriptReviewDecisionOutbox.swift"),
   captureAudioDecisionOutbox: path.join(sourceRoot, "CaptureAudioDecisionOutbox.swift"),
   onDeviceTranscriptManager: path.join(sourceRoot, "OnDeviceTranscriptManager.swift"),
+  onDeviceTranscriptLedgerPolicy: path.join(sourceRoot, "OnDeviceTranscriptLedgerPolicy.swift"),
   localRecordingLibrary: path.join(sourceRoot, "LocalRecordingLibrary.swift"),
   localRecordingPlayback: path.join(sourceRoot, "LocalRecordingPlaybackController.swift"),
   mobileComponents: path.join(sourceRoot, "QuipslyMobileComponents.swift"),
@@ -124,6 +125,7 @@ const files = {
   mobileCaptureConsentRoute: path.join(root, "apps/quipsly/src/app/api/mobile/capture/consent/route.ts"),
   onDeviceTranscriptRoute: path.join(root, "apps/quipsly/src/app/api/mobile/capture/transcripts/on-device/route.ts"),
   cloudTranscriptFallbackRoute: path.join(root, "apps/quipsly/src/app/api/mobile/capture/transcripts/cloud-fallback/route.ts"),
+  cloudTranscriptHandoffRoute: path.join(root, "apps/quipsly/src/app/api/mobile/capture/transcripts/handoff/route.ts"),
   mobileCaptureTranscriptDeviceAccess: path.join(root, "apps/quipsly/src/lib/server/mobile-capture-transcript-device-access.ts"),
   mobileQuickEntryRoute: path.join(root, "apps/quipsly/src/app/api/mobile/capture/quick-entry/route.ts"),
   mobileTodayRoute: path.join(root, "apps/quipsly/src/app/api/mobile/capture/today/route.ts"),
@@ -313,6 +315,7 @@ const sessionProtectedPlaybackText = read(files.sessionProtectedPlayback);
 const transcriptReviewDecisionOutboxText = read(files.transcriptReviewDecisionOutbox);
 const captureAudioDecisionOutboxText = read(files.captureAudioDecisionOutbox);
 const onDeviceTranscriptManagerText = read(files.onDeviceTranscriptManager);
+const onDeviceTranscriptLedgerPolicyText = read(files.onDeviceTranscriptLedgerPolicy);
 const localRecordingLibraryText = read(files.localRecordingLibrary);
 const localRecordingPlaybackText = read(files.localRecordingPlayback);
 const mobileText = read(files.mobileComponents);
@@ -837,11 +840,34 @@ for (const needle of [
   "source.sha256?.lowercased() == expectedSHA256",
   "source.byteSize == String(expectedSize)",
   "transcript.id == transcriptJobID",
+  "materializeCompletedCloudTranscript(",
+  "/api/mobile/capture/transcripts/handoff",
+  "OnDeviceTranscriptLedgerPolicy.acceptsCloudHandoff(",
+  'recognitionExecution: "quipsly-cloud"',
+  "OnDeviceTranscriptStore.saveSubmissionReceipt",
 ]) {
   requireIncludes(
     onDeviceTranscriptManagerText,
     needle,
     "on-device transcript evidence remains protected, source-bound, and explicit",
+  );
+}
+requireIncludes(
+  onDeviceTranscriptLedgerPolicyText,
+  '"quipsly-cloud"',
+  "the protected local transcript ledger accepts verified Quipsly cloud handoffs",
+);
+const cloudTranscriptHandoffRouteText = read(files.cloudTranscriptHandoffRoute);
+for (const needle of [
+  "recordingAssetId: recordingAssetId || null",
+  "transcriptJobId,",
+  "language: desk.evidence?.language ?? null",
+  "provider: desk.processing?.routing?.provider ?? null",
+]) {
+  requireIncludes(
+    cloudTranscriptHandoffRouteText,
+    needle,
+    "cloud transcript handoff returns the exact requested source identity and materialization metadata",
   );
 }
 for (const needle of [

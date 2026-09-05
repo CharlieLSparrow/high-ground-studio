@@ -13,6 +13,15 @@ jest.mock("@/lib/server/quipsly-session", () => ({
 }));
 jest.mock("@/lib/server/transcript-corrections", () => ({
   readTranscriptCorrectionDesk: jest.fn(),
+  TranscriptCorrectionError: class MockTranscriptCorrectionError extends Error {
+    status: number;
+    code: string;
+    constructor(message: string, status: number, code: string) {
+      super(message);
+      this.status = status;
+      this.code = code;
+    }
+  },
 }));
 
 describe("canonical transcript handoff", () => {
@@ -46,6 +55,8 @@ describe("canonical transcript handoff", () => {
       transcriptJobId: "job-1",
       transcriptStatus: "COMPLETED",
       gate: { allowed: true },
+      evidence: { language: "en-US" },
+      processing: { routing: { provider: "deepgram" } },
       playback: {
         recordingAssetId: "asset-1",
         url: "/api/playback/asset-1",
@@ -93,6 +104,8 @@ describe("canonical transcript handoff", () => {
       schema: "quipsly-canonical-transcript-handoff-v2",
       roomId: "room-1",
       transcriptJobId: "job-1",
+      language: "en-US",
+      provider: "deepgram",
       source: {
         recordingAssetId: "asset-1",
         immutableProviderWords: true,
@@ -128,6 +141,8 @@ describe("canonical transcript handoff", () => {
     expect(readTranscriptCorrectionDesk).toHaveBeenCalledWith(
       expect.objectContaining({
         roomId: "room-1",
+        recordingAssetId: null,
+        transcriptJobId: "job-1",
         actor: {
           id: "user-1",
           email: "producer@example.com",
@@ -154,5 +169,38 @@ describe("canonical transcript handoff", () => {
 
     expect(response.status).toBe(409);
     expect(payload.errorCode).toBe("TRANSCRIPT_VERSION_SUPERSEDED");
+  });
+
+  it("reads the exact recording and returns typed access failures", async () => {
+    const { TranscriptCorrectionError } = jest.requireMock(
+      "@/lib/server/transcript-corrections",
+    ) as { TranscriptCorrectionError: new (message: string, status: number, code: string) => Error };
+    jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({
+      user: { id: "user-1", isStaff: false },
+    } as any);
+    jest.mocked(readTranscriptCorrectionDesk).mockRejectedValue(
+      new TranscriptCorrectionError(
+        "The selected source is unavailable.",
+        404,
+        "SOURCE_TRANSCRIPT_NOT_FOUND",
+      ),
+    );
+
+    const response = await GET(
+      new Request(
+        "http://localhost/api/mobile/capture/transcripts/handoff?callRoomId=room-1&transcriptJobId=job-1&recordingAssetId=asset-1",
+      ),
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(404);
+    expect(payload.errorCode).toBe("SOURCE_TRANSCRIPT_NOT_FOUND");
+    expect(readTranscriptCorrectionDesk).toHaveBeenCalledWith(
+      expect.objectContaining({
+        roomId: "room-1",
+        recordingAssetId: "asset-1",
+        transcriptJobId: "job-1",
+      }),
+    );
   });
 });
