@@ -296,7 +296,7 @@
     "quipsly:audio-spectral-evidence:test": "node --experimental-strip-types --import ./scripts/register-ts-extension-loader.mjs --test scripts/quipsly-audio-spectral-evidence.test.mjs",
     "quipsly:audio-spectral-cloud:test": "node --experimental-strip-types --import ./scripts/register-ts-extension-loader.mjs --test scripts/quipsly-audio-spectral-cloud-worker.test.mjs",
     "quipsly:audio-spectral:gcs-fixture": "node --experimental-strip-types --import ./scripts/register-ts-extension-loader.mjs scripts/release/quipsly-audio-spectral-gcs-fixture.mjs",
-    "quipsly:session-audio-audition:test": "pnpm exec tsx --test packages/quipsly-media-processing/src/session-audio-audition.test.ts apps/quipsly-media-processor/src/session-audio-audition-worker.test.ts",
+    "quipsly:session-audio-audition:test": "node --experimental-transform-types --import ./scripts/register-ts-extension-loader.mjs --test packages/quipsly-media-processing/src/session-audio-audition.test.ts apps/quipsly-media-processor/src/session-audio-audition-worker.test.ts",
     "quipsly:session-audio-audition:gcs-fixture": "node --experimental-strip-types --import ./scripts/register-ts-extension-loader.mjs scripts/release/quipsly-session-audio-audition-gcs-fixture.mjs",
     "quipsly:session-audio-audition:gcs-fixture:test": "node --test scripts/release/quipsly-session-audio-audition-gcs-fixture.test.mjs",
     "quipsly:session-recording-share:test": "pnpm exec tsx --test packages/quipsly-media-processing/src/session-recording-share-cloud.test.ts apps/quipsly-media-processor/src/session-recording-share-cloud-worker.test.ts apps/quipsly-media-processor/src/session-recording-share-ffmpeg.test.ts",
