@@ -19101,7 +19101,13 @@ private struct VideoRecorderHero: View {
                 .accessibilityIdentifier("CaptureVideoResolvedProfile")
             }
 
-            if waitingForHost && !isCaptureGroupOpen && controller.state == .ready {
+            if waitingForParticipantConsent && controller.state == .ready {
+                CaptureReadyForHostIndicator(
+                    title: "Your choice is saved",
+                    detail: participantConsentWaitingDetail
+                )
+                .accessibilityIdentifier("CaptureVideoWaitingForConsentStatus")
+            } else if waitingForHost && !isCaptureGroupOpen && controller.state == .ready {
                 CaptureReadyForHostIndicator(
                     title: "Camera ready",
                     detail: "The coach or host starts recording for the Session"
@@ -19294,24 +19300,54 @@ private struct VideoRecorderHero: View {
             && session.canRecordVideoNow == true
     }
 
+    private var ownConsentCoversMode: Bool {
+        let audioAllowed = session.recordingConsentCanRecordAudio
+            ?? session.recordingConsentGranted
+        let videoAllowed = session.recordingConsentCanRecordVideo
+            ?? session.recordingConsentVideoGranted
+            ?? false
+        return videoAllowed && (!mode.requiresAudioConsent || audioAllowed)
+    }
+
+    private var sourceReady: Bool {
+        videoReady
+            && (!mode.requiresAudioConsent
+                || (session.canRecordAudioNow ?? session.canRecordNow))
+    }
+
+    private var waitingForParticipantConsent: Bool {
+        !isCaptureGroupOpen
+            && ownConsentCoversMode
+            && !sourceReady
+    }
+
+    private var participantConsentWaitingDetail: String {
+        let required = session.consentRequiredParticipantCount ?? 0
+        let videoGranted = session.videoConsentGrantedParticipantCount ?? 0
+        let audioGranted = session.consentGrantedParticipantCount ?? 0
+        let granted = mode.requiresAudioConsent
+            ? min(audioGranted, videoGranted)
+            : videoGranted
+        guard required > 1 else {
+            return "Waiting for the other participant to allow recording"
+        }
+        return "Recording starts when everyone is ready · \(granted) of \(required) allowed"
+    }
+
     private var primaryDisabled: Bool {
         if isBusy || [.preparing, .arming, .finalizing].contains(controller.state) {
             return true
         }
         if controller.state == .ready {
             return !canStartRecording
-                || !videoReady
-                || (
-                    mode.requiresAudioConsent
-                    && !(session.canRecordAudioNow ?? session.canRecordNow)
-                )
+                || !sourceReady
         }
         return false
     }
 
     private var primaryTint: Color {
         if isCaptureGroupOpen { return .red }
-        if controller.state == .ready && (!videoReady || !canStartRecording) { return .gray }
+        if controller.state == .ready && (!sourceReady || !canStartRecording) { return .gray }
         return CapturePalette.record
     }
 
@@ -19337,9 +19373,12 @@ private struct VideoRecorderHero: View {
             if waitingForHost {
                 return "Recording starts when the coach or host presses Record"
             }
-            return videoReady
+            if !ownConsentCoversMode {
+                return "Update recording choices before starting \(mode.title.lowercased())"
+            }
+            return sourceReady
                 ? "Start \(mode.title.lowercased())"
-                : "Video recording unavailable until every participant's video consent is ready"
+                : "Recording starts when every participant is ready"
         }
         return "Prepare \(cameraPosition.rawValue) camera"
     }
@@ -19349,11 +19388,15 @@ private struct VideoRecorderHero: View {
         case .idle: "Camera is off"
         case .preparing: "Verifying camera…"
         case .ready:
-            waitingForHost
-                ? "Camera ready · waiting for host"
-                : videoReady
-                    ? "Camera and consent ready"
-                    : "Camera ready · video consent needed"
+            if !ownConsentCoversMode {
+                "Camera ready · update recording choice"
+            } else if !sourceReady {
+                "Camera ready · waiting for consent"
+            } else if waitingForHost {
+                "Camera ready · waiting for host"
+            } else {
+                "Camera and consent ready"
+            }
         case .arming: "Starting camera…"
         case .recording:
             switch mode {
@@ -19754,7 +19797,13 @@ private struct RecorderHero: View {
 
     @ViewBuilder
     private var primaryControl: some View {
-        if waitingForHost && !isCaptureActive {
+        if waitingForParticipantConsent {
+            CaptureReadyForHostIndicator(
+                title: "Your choice is saved",
+                detail: participantConsentWaitingDetail
+            )
+            .accessibilityIdentifier("CaptureAudioWaitingForConsentStatus")
+        } else if waitingForHost && !isCaptureActive {
             CaptureReadyForHostIndicator(
                 title: "Microphone ready",
                 detail: "The coach or host starts recording for the Session"
@@ -20003,6 +20052,22 @@ private struct RecorderHero: View {
         case .recording, .paused, .finalizing: true
         default: false
         }
+    }
+
+    private var waitingForParticipantConsent: Bool {
+        !session.isPersonalVoiceNote
+            && !isCaptureActive
+            && (session.recordingConsentCanRecordAudio ?? session.recordingConsentGranted)
+            && !(session.canRecordAudioNow ?? session.canRecordNow)
+    }
+
+    private var participantConsentWaitingDetail: String {
+        let required = session.consentRequiredParticipantCount ?? 0
+        let granted = session.consentGrantedParticipantCount ?? 0
+        guard required > 1 else {
+            return "Waiting for the other participant to allow audio recording"
+        }
+        return "Recording starts when everyone is ready · \(granted) of \(required) allowed"
     }
 
     private var primaryDisabled: Bool {
@@ -21197,9 +21262,12 @@ private struct CapturePersistentRecorderDock: View {
 
     @ViewBuilder
     private var actionControl: some View {
-        if !captureIsActive && !session.hasCurrentRecordingConsent {
+        if !captureIsActive && !ownConsentCoversMode {
             Button(action: onRequestConsent) {
-                Label("Allow", systemImage: "checkmark.shield.fill")
+                Label(
+                    session.hasCurrentRecordingConsent ? "Update" : "Allow",
+                    systemImage: "checkmark.shield.fill"
+                )
                     .font(.subheadline.weight(.bold))
                     .foregroundStyle(.white)
                     .padding(.horizontal, 16)
@@ -21210,8 +21278,25 @@ private struct CapturePersistentRecorderDock: View {
             .buttonStyle(.plain)
             .disabled(isBusy)
             .opacity(isBusy ? 0.55 : 1)
-            .accessibilityLabel("Allow recording for this Session")
+            .accessibilityLabel(
+                session.hasCurrentRecordingConsent
+                    ? "Update recording choices for this source"
+                    : "Allow recording for this Session"
+            )
             .accessibilityIdentifier("CapturePersistentRecorderConsentButton")
+        } else if waitingForParticipantConsent {
+            Label("Waiting", systemImage: "person.2.fill")
+                .font(.subheadline.weight(.bold))
+                .foregroundStyle(CapturePalette.brass)
+                .padding(.horizontal, 16)
+                .frame(minHeight: 50)
+                .fixedSize(horizontal: true, vertical: true)
+                .background(
+                    CapturePalette.brass.opacity(0.12),
+                    in: Capsule()
+                )
+                .accessibilityLabel(participantConsentWaitingDetail)
+                .accessibilityIdentifier("CapturePersistentRecorderWaitingForConsentStatus")
         } else if waitingForHost && !captureIsActive {
             Label("Ready", systemImage: "checkmark.circle.fill")
                 .font(.subheadline.weight(.bold))
@@ -21317,7 +21402,7 @@ private struct CapturePersistentRecorderDock: View {
         // Missing consent is handled by the dock's conventional Allow action,
         // not by a disabled Record button that sends people hunting behind the
         // dock for a second control.
-        if !captureIsActive && !session.hasCurrentRecordingConsent {
+        if !captureIsActive && !ownConsentCoversMode {
             return false
         }
         if !captureIsActive && !canStartRecording {
@@ -21353,10 +21438,11 @@ private struct CapturePersistentRecorderDock: View {
         if captureIsActive {
             return mode == .audio ? "Recording audio" : "Recording \(mode.title.lowercased())"
         }
+        if waitingForParticipantConsent { return "Waiting for consent" }
         if waitingForHost { return "Waiting for host" }
         if !sourceIsReady {
-            return session.hasCurrentRecordingConsent
-                ? "Waiting for participant"
+            return ownConsentCoversMode
+                ? "Waiting for consent"
                 : "Allow recording"
         }
         return mode == .audio ? "Ready to record" : "Ready for \(mode.title.lowercased())"
@@ -21381,13 +21467,18 @@ private struct CapturePersistentRecorderDock: View {
             }
             return "\(duration.captureDurationLabel) · saved locally when stopped"
         }
+        if waitingForParticipantConsent {
+            return participantConsentWaitingDetail
+        }
         if waitingForHost {
             return "Recording starts when the coach or host presses Record"
         }
         if !sourceIsReady {
-            return session.hasCurrentRecordingConsent
+            return ownConsentCoversMode
                 ? "Your choice is saved"
-                : "Choose once for this Session"
+                : session.hasCurrentRecordingConsent
+                    ? "Update your choice for this source"
+                    : "Choose once for this Session"
         }
         return "Primary control stays within reach"
     }
@@ -21402,6 +21493,45 @@ private struct CapturePersistentRecorderDock: View {
             return session.canRecordAudioNow ?? session.canRecordNow
         }
         return true
+    }
+
+    private var ownConsentCoversMode: Bool {
+        let audioAllowed = session.recordingConsentCanRecordAudio
+            ?? session.recordingConsentGranted
+        let videoAllowed = session.recordingConsentCanRecordVideo
+            ?? session.recordingConsentVideoGranted
+            ?? false
+        switch mode {
+        case .audio:
+            return audioAllowed
+        case .podcastAV, .soloVideo:
+            return audioAllowed && videoAllowed
+        case .podcastCamera:
+            return videoAllowed
+        }
+    }
+
+    private var waitingForParticipantConsent: Bool {
+        !captureIsActive && ownConsentCoversMode && !sourceIsReady
+    }
+
+    private var participantConsentWaitingDetail: String {
+        let required = session.consentRequiredParticipantCount ?? 0
+        let audioGranted = session.consentGrantedParticipantCount ?? 0
+        let videoGranted = session.videoConsentGrantedParticipantCount ?? 0
+        let granted: Int
+        switch mode {
+        case .audio:
+            granted = audioGranted
+        case .podcastAV, .soloVideo:
+            granted = min(audioGranted, videoGranted)
+        case .podcastCamera:
+            granted = videoGranted
+        }
+        guard required > 1 else {
+            return "Your choice is saved. Recording starts after the other participant allows it."
+        }
+        return "Your choice is saved · \(granted) of \(required) participants allowed"
     }
 
     private var actionTitle: String {

@@ -3134,8 +3134,10 @@ assert(
   { label: "connected iPhone call keeps persistent Record above Mute, Camera, and Leave" },
 );
 requireIncludes(capturePhoneShellText, 'accessibilityIdentifier("CapturePersistentRecorderDock")', "persistent iPhone Record row has a stable automation identity");
-requireIncludes(capturePhoneShellText, "Waiting for participant", "persistent iPhone Record row explains participant readiness without extra administration");
+requireIncludes(capturePhoneShellText, "Waiting for consent", "persistent iPhone Record row explains participant readiness without extra administration");
 requireIncludes(capturePhoneShellText, "Waiting for host", "persistent iPhone recorder explains host-controlled recording");
+requireIncludes(capturePhoneShellText, 'accessibilityIdentifier("CapturePersistentRecorderWaitingForConsentStatus")', "saved participant consent becomes a calm waiting state instead of a broken-looking disabled Record button");
+requireIncludes(capturePhoneShellText, 'session.hasCurrentRecordingConsent ? "Update" : "Allow"', "recording mode changes offer one direct consent update instead of a disabled control");
 requireIncludes(capturePhoneShellText, 'accessibilityIdentifier("CapturePersistentRecorderWaitingForHostStatus")', "ready participants see a conventional status instead of a broken-looking disabled Record button");
 requireIncludes(capturePhoneShellText, 'accessibilityIdentifier("CaptureAudioWaitingForHostStatus")', "audio recorder projects a non-interactive ready state for non-controller participants");
 requireIncludes(capturePhoneShellText, 'accessibilityIdentifier("CaptureVideoWaitingForHostStatus")', "video recorder projects a non-interactive ready state for non-controller participants");

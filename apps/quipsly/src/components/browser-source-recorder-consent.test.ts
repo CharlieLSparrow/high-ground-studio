@@ -65,6 +65,17 @@ describe("browser retained-source consent", () => {
     expect(source).toContain("Existing recording choices stay saved");
     expect(source).not.toContain("Reconfirm consent");
     expect(source).toContain("Ready to record when everyone is ready.");
+    expect(source).toContain(
+      "const waitingForParticipantConsent =",
+    );
+    expect(source).toContain('aria-label="Allow recording before starting"');
+    expect(source).toContain('aria-label="Waiting for recording consent"');
+    expect(source).toContain(
+      "Your choice is saved. Recording starts when everyone is ready.",
+    );
+    expect(source.indexOf(") : !myConsentCoversSource ? (")).toBeLessThan(
+      source.indexOf(") : canControlRoom ? ("),
+    );
     expect(source).toContain('data-testid="recording-readiness-message"');
     expect(source).not.toContain(
       "Every signed-in participant must grant the selected recording consent.",

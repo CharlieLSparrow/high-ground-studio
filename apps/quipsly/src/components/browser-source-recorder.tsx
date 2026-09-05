@@ -791,6 +791,8 @@ export function BrowserSourceRecorder({
     sourceType === "video" ? allPartyVideoReady : allPartyAudioReady;
   const myConsentCoversSource =
     sourceType === "video" ? myVideoConsent : myAudioConsent;
+  const waitingForParticipantConsent =
+    myConsentCoversSource && !consentReady;
   useEffect(() => {
     onPreparationStateChange?.({
       participantReady: myConsentCoversSource,
@@ -3115,6 +3117,23 @@ export function BrowserSourceRecorder({
                 </button>
               ) : null}
             </>
+          ) : !myConsentCoversSource ? (
+            <span
+              className="rounded-xl border border-emerald-300 bg-emerald-50 px-4 py-3 text-xs font-bold text-emerald-950"
+              aria-label="Allow recording before starting"
+              aria-live="polite"
+            >
+              Allow recording above. Quipsly remembers the choice for this
+              Session.
+            </span>
+          ) : waitingForParticipantConsent ? (
+            <span
+              className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-xs font-bold text-amber-950"
+              aria-label="Waiting for recording consent"
+              aria-live="polite"
+            >
+              Your choice is saved. Recording starts when everyone is ready.
+            </span>
           ) : canControlRoom ? (
             <button
               type="button"

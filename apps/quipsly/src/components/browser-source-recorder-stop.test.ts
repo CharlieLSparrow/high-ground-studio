@@ -135,8 +135,8 @@ describe("browser source stop confidence", () => {
       "utf8",
     );
 
-    expect(source).toContain(
-      "const finalizationProjection = projectBrowserSourceFinalization(finalized)",
+    expect(source).toMatch(
+      /const finalizationProjection\s*=\s*projectBrowserSourceFinalization\(finalized\)/,
     );
     expect(source).toContain("state: finalizationProjection.state");
     expect(source).toContain(
