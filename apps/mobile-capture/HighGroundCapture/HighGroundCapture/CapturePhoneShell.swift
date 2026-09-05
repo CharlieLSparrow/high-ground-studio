@@ -11245,6 +11245,7 @@ private struct CaptureRecorderView: View {
     @EnvironmentObject private var videoCapture: VideoCaptureController
     @EnvironmentObject private var deepLinkRouter: CaptureDeepLinkRouter
     @StateObject private var library = LocalRecordingLibrary.shared
+    @ObservedObject private var transcriptManager = OnDeviceTranscriptManager.shared
     @State private var showsSessionPicker = false
     @State private var showsSessionContext = false
     @State private var showsSessionReadiness = false
@@ -12861,6 +12862,9 @@ private struct CaptureRecorderView: View {
             #endif
             await sessionPreflight.flushPending()
         }
+        .task(id: personalVoiceTranscriptMonitorID) {
+            await monitorPersonalVoiceTranscript()
+        }
         .onDisappear {
             soundCheck.discard()
             guard !videoCapture.state.isActive,
@@ -13211,6 +13215,107 @@ private struct CaptureRecorderView: View {
             }
             .sorted { $0.startedAt > $1.startedAt }
             .first
+    }
+
+    /// Voice writing should finish as one continuous experience even when the
+    /// device speech engine is unavailable. Shared Session transcripts already
+    /// monitor their canonical job; this keeps the smaller personal-writing
+    /// workspace equally automatic without asking the person to leave and
+    /// reopen it. The task is tied to one account-bound local source, backs off
+    /// quickly, and SwiftUI cancels it when that source or workspace changes.
+    private var personalVoiceTranscriptMonitorID: String {
+        guard let session = model.selectedSession,
+              session.isPersonalVoiceNote,
+              let recording = latestPersonalVoiceRecording(for: session) else {
+            return "inactive"
+        }
+        return [
+            session.id,
+            recording.id.uuidString.lowercased(),
+            recording.status.rawValue,
+            recording.cloudTranscriptFallbackJobId ?? "no-job",
+            recording.cloudTranscriptFallbackStatus ?? "no-status",
+            "preview=\(model.usesPreviewData)",
+        ].joined(separator: "|")
+    }
+
+    @MainActor
+    private func monitorPersonalVoiceTranscript() async {
+        guard let session = model.selectedSession,
+              session.isPersonalVoiceNote,
+              let initialRecording = latestPersonalVoiceRecording(for: session),
+              let ownerAccountID = initialRecording.ownerAccountID?
+                .trimmingCharacters(in: .whitespacesAndNewlines),
+              !ownerAccountID.isEmpty,
+              ownerAccountID == AuthManager.currentStoredOwnerID(),
+              !model.usesPreviewData,
+              AuthManager.shared.networkActionsAllowed else { return }
+
+        let recordingID = initialRecording.id
+        var canonicalPollDelaySeconds = 2.0
+        let expiresAt = Date().addingTimeInterval(20 * 60)
+
+        while !Task.isCancelled, Date() < expiresAt {
+            guard model.selectedSession?.id == session.id,
+                  let recording = library.recording(id: recordingID),
+                  recording.ownerAccountID == ownerAccountID,
+                  ownerAccountID == AuthManager.currentStoredOwnerID() else {
+                return
+            }
+            if transcriptManager.storedTranscript(for: recordingID) != nil {
+                return
+            }
+
+            let phase = transcriptManager.phase(for: recordingID)
+            switch phase {
+            case .attached, .modelDownloadRequired, .failed:
+                return
+            default:
+                break
+            }
+
+            if recording.cloudTranscriptFallbackRequestId == nil {
+                // Apple Speech is still doing useful local work. Do not poll
+                // Nest or spend cloud resources unless that attempt records a
+                // durable fallback reason first.
+                do {
+                    try await Task.sleep(for: .seconds(1))
+                } catch {
+                    return
+                }
+                continue
+            }
+
+            if recording.cloudTranscriptFallbackAcceptedAt == nil {
+                if !phase.isBusy, recording.status.isVerified {
+                    transcriptManager.submitPendingCloudFallback(
+                        recording: recording
+                    )
+                }
+                do {
+                    try await Task.sleep(for: .seconds(2))
+                } catch {
+                    return
+                }
+                continue
+            }
+
+            do {
+                try await Task.sleep(
+                    for: .seconds(canonicalPollDelaySeconds)
+                )
+            } catch {
+                return
+            }
+            guard !Task.isCancelled,
+                  AuthManager.shared.networkActionsAllowed else { return }
+
+            await model.refreshSelectedSessionEntryReadiness()
+            canonicalPollDelaySeconds = min(
+                canonicalPollDelaySeconds * 1.7,
+                30
+            )
+        }
     }
 
     private func sessionHasPostCallWork(_ session: MobileCaptureSession) -> Bool {

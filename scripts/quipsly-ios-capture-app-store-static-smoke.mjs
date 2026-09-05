@@ -3234,6 +3234,22 @@ requireIncludes(
   "returning from Settings retries the exact local source before an unaccepted permission fallback"
 );
 requireIncludes(capturePhoneShellText, 'case .waitingForCloudFallback: return "Transcript queued"', "Capture describes automatic cloud transcript follow-through without an action ritual");
+for (const needle of [
+  ".task(id: personalVoiceTranscriptMonitorID)",
+  "private func monitorPersonalVoiceTranscript() async",
+  "ownerAccountID == AuthManager.currentStoredOwnerID()",
+  "if recording.cloudTranscriptFallbackRequestId == nil",
+  "if recording.cloudTranscriptFallbackAcceptedAt == nil",
+  "transcriptManager.submitPendingCloudFallback(",
+  "await model.refreshSelectedSessionEntryReadiness()",
+  "canonicalPollDelaySeconds * 1.7",
+]) {
+  requireIncludes(
+    capturePhoneShellText,
+    needle,
+    "personal voice writing automatically carries an exact-source cloud fallback into the editable transcript without navigation or refresh paperwork",
+  );
+}
 const providerStartBoundary = audioText.slice(
   audioText.indexOf("if let providerRecorder {"),
   audioText.indexOf("if let preparedVoiceWritingSource {"),
