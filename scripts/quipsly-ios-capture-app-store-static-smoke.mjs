@@ -2167,6 +2167,9 @@ for (const needle of [
   "quipsly.coaching.preferred-project-owner.v1",
   "AuthManager.currentStoredOwnerID()",
   'contextualBody["projectSlug"] = preferredProjectSlug',
+  "private func decodeCoachingResponse<Payload: Decodable>(",
+  'errorDomain: "QuipslyCoaching"',
+  "Your coaching work is safe; try again.",
 ]) {
   requireIncludes(captureCoachingHomeText, needle, "coaching scheduling creates client Spaces inside the coach-selected Nest");
 }

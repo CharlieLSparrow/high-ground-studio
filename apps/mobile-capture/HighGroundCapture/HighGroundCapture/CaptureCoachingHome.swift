@@ -486,10 +486,12 @@ final class MobileCoachingEngagementWorkspaceClient: ObservableObject {
             request.httpBody = try JSONSerialization.data(withJSONObject: body)
         }
         let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
-        return (
-            try JSONDecoder().decode(MobileCoachingEngagementWorkspaceResponse.self, from: data),
-            response
+        let payload = try decodeCoachingResponse(
+            MobileCoachingEngagementWorkspaceResponse.self,
+            from: data,
+            response: response
         )
+        return (payload, response)
     }
 }
 
@@ -998,7 +1000,11 @@ final class MobileCoachingRunwayClient: ObservableObject {
                 "scheduledStart": slot.instant,
             ])
             let (data, httpResponse) = try await AuthManager.shared.authenticatedData(for: request)
-            let payload = try JSONDecoder().decode(MobileCoachingBookingRequestResponse.self, from: data)
+            let payload = try decodeCoachingResponse(
+                MobileCoachingBookingRequestResponse.self,
+                from: data,
+                response: httpResponse
+            )
             guard httpResponse.statusCode < 400, payload.ok, payload.request?.holdId.isEmpty == false else {
                 throw coachingClientError(payload.error ?? "That coaching time could not be requested.")
             }
@@ -1033,7 +1039,11 @@ final class MobileCoachingRunwayClient: ObservableObject {
             var request = URLRequest(url: url)
             request.httpMethod = "DELETE"
             let (data, httpResponse) = try await AuthManager.shared.authenticatedData(for: request)
-            let payload = try JSONDecoder().decode(MobileCoachingBookingRequestResponse.self, from: data)
+            let payload = try decodeCoachingResponse(
+                MobileCoachingBookingRequestResponse.self,
+                from: data,
+                response: httpResponse
+            )
             guard httpResponse.statusCode < 400, payload.ok else {
                 throw coachingClientError(payload.error ?? "That time request could not be canceled.")
             }
@@ -1385,7 +1395,11 @@ final class MobileCoachingRunwayClient: ObservableObject {
                 "requestId": requestID.uuidString.lowercased(),
             ])
             let (data, httpResponse) = try await AuthManager.shared.authenticatedData(for: request)
-            let payload = try JSONDecoder().decode(MobileCoachingInvitationResponse.self, from: data)
+            let payload = try decodeCoachingResponse(
+                MobileCoachingInvitationResponse.self,
+                from: data,
+                response: httpResponse
+            )
 
             // A receipt or a client error is definitive. A transport failure or
             // receipt-less server error can happen after provider acceptance, so
@@ -1453,7 +1467,11 @@ final class MobileCoachingRunwayClient: ObservableObject {
                 "delivery": "LINK",
             ])
             let (data, httpResponse) = try await AuthManager.shared.authenticatedData(for: request)
-            let payload = try JSONDecoder().decode(MobileCoachingInvitationResponse.self, from: data)
+            let payload = try decodeCoachingResponse(
+                MobileCoachingInvitationResponse.self,
+                from: data,
+                response: httpResponse
+            )
             guard httpResponse.statusCode < 400,
                   payload.ok,
                   let invitePath = payload.invitePath?.nonemptyCoachingText,
@@ -1523,7 +1541,11 @@ final class MobileCoachingRunwayClient: ObservableObject {
         }
         request.httpBody = try JSONSerialization.data(withJSONObject: contextualBody)
         let (data, httpResponse) = try await AuthManager.shared.authenticatedData(for: request)
-        let payload = try JSONDecoder().decode(MobileCoachingActionResponse.self, from: data)
+        let payload = try decodeCoachingResponse(
+            MobileCoachingActionResponse.self,
+            from: data,
+            response: httpResponse
+        )
         if httpResponse.statusCode == 402 || payload.code == "QUIPSLY_SUBSCRIPTION_REQUIRED" {
             subscriptionRequired = true
         }
@@ -4322,6 +4344,20 @@ private func coachingClientError(_ message: String) -> NSError {
         code: 1,
         userInfo: [NSLocalizedDescriptionKey: message]
     )
+}
+
+private func decodeCoachingResponse<Payload: Decodable>(
+    _ type: Payload.Type,
+    from data: Data,
+    response: URLResponse
+) throws -> Payload {
+    try AuthResponseDecoder.decode(
+        type,
+        from: data,
+        response: response,
+        errorDomain: "QuipslyCoaching",
+        malformedResponseMessage: "Quipsly received an unexpected response. Your coaching work is safe; try again."
+    ).payload
 }
 
 private extension String {
