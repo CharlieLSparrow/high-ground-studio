@@ -2,11 +2,13 @@ import { LoginClient } from "./LoginClient";
 import {
   cleanQuipslyCallbackUrl,
   cleanQuipslyInviteToken,
+  cleanSessionInviteToken,
 } from "@/lib/firebase/quipsly-auth-input";
 
 type LoginPageSearchParams = {
   callbackUrl?: string;
   inviteToken?: string;
+  sessionInviteToken?: string;
   error?: string;
   emailAction?: string;
 };
@@ -21,6 +23,7 @@ export default async function LoginPage({
     <LoginClient
       callbackUrl={cleanQuipslyCallbackUrl(params.callbackUrl)}
       inviteToken={cleanQuipslyInviteToken(params.inviteToken)}
+      sessionInviteToken={cleanSessionInviteToken(params.sessionInviteToken)}
       initialError={
         typeof params.error === "string"
           ? params.error

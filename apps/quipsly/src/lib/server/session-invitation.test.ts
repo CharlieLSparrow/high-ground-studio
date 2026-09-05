@@ -15,6 +15,7 @@ import {
   replayableSessionInvitationToken,
   sessionInvitationExpiry,
   sessionInvitationRole,
+  verifySessionInvitationMailboxProof,
 } from "./session-invitation";
 
 describe("Session invitation token policy", () => {
@@ -113,6 +114,46 @@ describe("Session invitation token policy", () => {
     expect(jest.mocked(getPrismaClient)().callRoomInvitation.findFirst).toHaveBeenCalledWith(
       expect.objectContaining({ where: { OR: [{ tokenHash }, { acceptedTokenHash: tokenHash }] } }),
     );
+  });
+
+  it("uses only a matching, pending, unexpired invitation as mailbox proof", async () => {
+    const { token } = createSessionInvitationToken();
+    jest.mocked(getPrismaClient).mockReturnValue({
+      callRoomInvitation: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "invite-proof",
+          email: "client@example.test",
+          displayName: null,
+          role: "CLIENT",
+          status: "PENDING",
+          expiresAt: new Date(Date.now() + 60_000),
+          acceptedByUserId: null,
+          participant: null,
+          room: {
+            id: "room-proof",
+            title: "Private Session",
+            purpose: "COACHING",
+            status: "PLANNED",
+            scheduledStart: null,
+            scheduledEnd: null,
+            createdByUser: { name: "Coach" },
+          },
+        }),
+      },
+    } as never);
+
+    await expect(verifySessionInvitationMailboxProof({
+      token,
+      email: " CLIENT@example.test ",
+    })).resolves.toBe(true);
+    await expect(verifySessionInvitationMailboxProof({
+      token,
+      email: "forwarded@example.test",
+    })).resolves.toBe(false);
+    await expect(verifySessionInvitationMailboxProof({
+      token: "qsinv_bad",
+      email: "client@example.test",
+    })).resolves.toBe(false);
   });
 
   it("lets only the accepting account reuse a link with active participant access", async () => {

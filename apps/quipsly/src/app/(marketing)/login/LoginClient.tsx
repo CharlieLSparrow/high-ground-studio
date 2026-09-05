@@ -17,6 +17,7 @@ import { auth } from "@/lib/firebase/firebase";
 import {
   cleanQuipslyCallbackUrl,
   cleanQuipslyInviteToken,
+  cleanSessionInviteToken,
   finishQuipslyFirebaseSignIn,
   quipslyEmailActionSettings,
 } from "@/lib/firebase/quipsly-session";
@@ -74,10 +75,12 @@ function friendlyFirebaseAuthError(error: any) {
 export function LoginClient({
   callbackUrl,
   inviteToken,
+  sessionInviteToken,
   initialError,
 }: {
   callbackUrl: string;
   inviteToken?: string;
+  sessionInviteToken?: string;
   initialError?: string;
 }) {
   const safeCallbackUrl = cleanQuipslyCallbackUrl(callbackUrl);
@@ -99,6 +102,7 @@ export function LoginClient({
           description: "Open your projects, notes, and Sessions.",
         };
   const safeInviteToken = cleanQuipslyInviteToken(inviteToken);
+  const safeSessionInviteToken = cleanSessionInviteToken(sessionInviteToken);
   const initialMessage =
     initialError === "google-link-required"
       ? "That email already uses another sign-in method. Sign in with it first, then add Google from Account settings."
@@ -151,6 +155,7 @@ export function LoginClient({
           user,
           callbackUrl: safeCallbackUrl,
           inviteToken: safeInviteToken,
+          sessionInviteToken: safeSessionInviteToken,
         });
       })
       .catch((error) => {
@@ -178,6 +183,7 @@ export function LoginClient({
         user: result.user,
         callbackUrl: safeCallbackUrl,
         inviteToken: safeInviteToken,
+        sessionInviteToken: safeSessionInviteToken,
       });
     } catch (error: any) {
       if (error?.code === "auth/popup-blocked") {
@@ -219,13 +225,14 @@ export function LoginClient({
       const result = passwordMode === "create"
         ? await createUserWithEmailAndPassword(auth, trimmedEmail, submittedPassword)
         : await signInWithEmailAndPassword(auth, trimmedEmail, submittedPassword);
-      if (passwordMode === "create") {
+      if (passwordMode === "create" && !safeSessionInviteToken) {
         const verificationSent = await sendEmailVerification(
           result.user,
           quipslyEmailActionSettings({
             origin: window.location.origin,
             callbackUrl: safeCallbackUrl,
             inviteToken: safeInviteToken,
+            sessionInviteToken: safeSessionInviteToken,
             action: "verify",
           }),
         )
@@ -243,6 +250,7 @@ export function LoginClient({
         user: result.user,
         callbackUrl: safeCallbackUrl,
         inviteToken: safeInviteToken,
+        sessionInviteToken: safeSessionInviteToken,
       });
     } catch (error: any) {
       setMessage(
@@ -271,6 +279,7 @@ export function LoginClient({
           origin: window.location.origin,
           callbackUrl: safeCallbackUrl,
           inviteToken: safeInviteToken,
+          sessionInviteToken: safeSessionInviteToken,
           action: "reset",
         }),
       );
@@ -313,7 +322,7 @@ export function LoginClient({
             : loginContext.description}
         </p>
 
-        {safeInviteToken ? (
+        {safeInviteToken || safeSessionInviteToken ? (
           <div className="mt-5 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm leading-6 text-emerald-950">
             Use the email address that received this invite.
           </div>

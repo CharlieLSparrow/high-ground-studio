@@ -174,6 +174,26 @@ export async function inspectSessionInvitation(tokenValue: unknown) {
   };
 }
 
+/**
+ * Treats a still-pending Session link as narrow proof that the caller can
+ * access the mailbox it was delivered to. This does not claim the invitation
+ * or create any Quipsly identity or access; acceptance remains a separate,
+ * transactional step after a verified server session exists.
+ */
+export async function verifySessionInvitationMailboxProof(input: {
+  token: unknown;
+  email: unknown;
+}) {
+  const email = normalizeEmail(typeof input.email === "string" ? input.email : "");
+  if (!email || !cleanSessionInvitationToken(input.token)) return false;
+  const invitation = await inspectSessionInvitation(input.token);
+  return Boolean(
+    invitation?.available
+    && invitation.status === "PENDING"
+    && invitation.recipientEmail === email,
+  );
+}
+
 export async function acceptSessionInvitation(input: {
   token: unknown;
   actor: { id: string; email?: string | null; primaryEmail?: string | null; name?: string | null };

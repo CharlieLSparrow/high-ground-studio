@@ -1,5 +1,6 @@
 const DEFAULT_QUIPSLY_CALLBACK_URL = "/projects";
 const QUIPSLY_INVITE_TOKEN_PATTERN = /^qinv_[A-Za-z0-9_-]+$/;
+const SESSION_INVITE_TOKEN_PATTERN = /^qsinv_[A-Za-z0-9_-]{32,120}$/;
 
 export function cleanQuipslyCallbackUrl(
   value: string | null | undefined,
@@ -33,15 +34,30 @@ export function cleanQuipslyInviteToken(
   return candidate;
 }
 
+export function cleanSessionInviteToken(
+  value: string | null | undefined,
+) {
+  const candidate = String(value || "").trim();
+  if (
+    candidate.length > 160
+    || !SESSION_INVITE_TOKEN_PATTERN.test(candidate)
+  ) {
+    return "";
+  }
+  return candidate;
+}
+
 export function quipslyEmailActionSettings({
   origin,
   callbackUrl,
   inviteToken,
+  sessionInviteToken,
   action,
 }: {
   origin: string;
   callbackUrl?: string | null;
   inviteToken?: string | null;
+  sessionInviteToken?: string | null;
   action: "verify" | "reset";
 }) {
   let safeOrigin = "https://nest.quipsly.com";
@@ -66,6 +82,10 @@ export function quipslyEmailActionSettings({
   const safeInviteToken = cleanQuipslyInviteToken(inviteToken);
   if (safeInviteToken) {
     continueUrl.searchParams.set("inviteToken", safeInviteToken);
+  }
+  const safeSessionInviteToken = cleanSessionInviteToken(sessionInviteToken);
+  if (safeSessionInviteToken) {
+    continueUrl.searchParams.set("sessionInviteToken", safeSessionInviteToken);
   }
 
   return {

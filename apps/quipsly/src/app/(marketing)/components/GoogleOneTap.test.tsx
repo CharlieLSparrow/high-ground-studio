@@ -138,6 +138,33 @@ describe("GoogleOneTap", () => {
       user,
       callbackUrl: "/work",
       inviteToken: "qinv_one-tap-test",
+      sessionInviteToken: "",
+    });
+  });
+
+  it("preserves a Session invitation through the standard Google handoff", async () => {
+    const sessionInviteToken = `qsinv_${"a".repeat(32)}`;
+    const firebaseCredential = { providerId: "google.com" };
+    const user = { emailVerified: true };
+    (GoogleAuthProvider.credential as jest.Mock).mockReturnValue(firebaseCredential);
+    (signInWithCredential as jest.Mock).mockResolvedValue({ user });
+    currentPathname = "/login";
+    currentSearchParams = new URLSearchParams(
+      `callbackUrl=${encodeURIComponent(`/sessions/join?token=${sessionInviteToken}`)}&sessionInviteToken=${sessionInviteToken}`,
+    );
+
+    render(<GoogleOneTap clientId="public-web-client.apps.googleusercontent.com" />);
+    await waitFor(() => expect(initialize).toHaveBeenCalledTimes(1));
+
+    await act(async () => {
+      await initialize.mock.calls[0][0].callback({ credential: "google-id-token" });
+    });
+
+    expect(finishQuipslyFirebaseSignIn).toHaveBeenCalledWith({
+      user,
+      callbackUrl: `/sessions/join?token=${sessionInviteToken}`,
+      inviteToken: "",
+      sessionInviteToken,
     });
   });
 

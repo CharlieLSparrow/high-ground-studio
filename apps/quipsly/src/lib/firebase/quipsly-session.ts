@@ -6,12 +6,14 @@ import { auth } from "@/lib/firebase/firebase";
 import {
   cleanQuipslyCallbackUrl,
   cleanQuipslyInviteToken,
+  cleanSessionInviteToken,
   quipslyEmailActionSettings,
 } from "@/lib/firebase/quipsly-auth-input";
 
 export {
   cleanQuipslyCallbackUrl,
   cleanQuipslyInviteToken,
+  cleanSessionInviteToken,
   quipslyEmailActionSettings,
 } from "@/lib/firebase/quipsly-auth-input";
 
@@ -25,10 +27,12 @@ function waitForSessionRetry(delayMs: number) {
 async function createQuipslyServerSession({
   idToken,
   inviteToken,
+  sessionInviteToken,
   fetcher,
 }: {
   idToken: string;
   inviteToken?: string;
+  sessionInviteToken?: string;
   fetcher: typeof fetch;
 }) {
   let lastError = "Quipsly could not create a server session.";
@@ -39,7 +43,7 @@ async function createQuipslyServerSession({
       response = await fetcher("/api/auth/session", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ idToken, inviteToken }),
+        body: JSON.stringify({ idToken, inviteToken, sessionInviteToken }),
       });
     } catch (error) {
       lastError = error instanceof Error ? error.message : lastError;
@@ -51,7 +55,11 @@ async function createQuipslyServerSession({
       error?: string;
       code?: string;
     };
-    if (response.ok) return;
+    if (response.ok) {
+      return payload.code === "INVITATION_EMAIL_VERIFIED"
+        ? "refresh-id-token" as const
+        : "complete" as const;
+    }
     lastError = String(payload.error || lastError);
     const retryable =
       RETRYABLE_SESSION_STATUSES.has(response.status) ||
@@ -65,24 +73,28 @@ export async function finishQuipslyFirebaseSignIn({
   user,
   callbackUrl,
   inviteToken,
+  sessionInviteToken,
   fetcher = fetch,
   navigate = (url) => window.location.assign(url),
 }: {
   user: User;
   callbackUrl?: string | null;
   inviteToken?: string | null;
+  sessionInviteToken?: string | null;
   fetcher?: typeof fetch;
   navigate?: (url: string) => void;
 }) {
   await user.reload();
 
-  if (!user.emailVerified) {
+  const safeSessionInviteToken = cleanSessionInviteToken(sessionInviteToken);
+  if (!user.emailVerified && !safeSessionInviteToken) {
     const verificationSent = await sendEmailVerification(
       user,
       quipslyEmailActionSettings({
         origin: window.location.origin,
         callbackUrl,
         inviteToken,
+        sessionInviteToken,
         action: "verify",
       }),
     )
@@ -96,13 +108,27 @@ export async function finishQuipslyFirebaseSignIn({
     );
   }
 
-  const idToken = await user.getIdToken(true);
   const safeInviteToken = cleanQuipslyInviteToken(inviteToken);
-  await createQuipslyServerSession({
+  let idToken = await user.getIdToken(true);
+  const handoff = await createQuipslyServerSession({
     idToken,
     inviteToken: safeInviteToken || undefined,
+    sessionInviteToken: safeSessionInviteToken || undefined,
     fetcher,
   });
+  if (handoff === "refresh-id-token") {
+    await user.reload();
+    idToken = await user.getIdToken(true);
+    const retried = await createQuipslyServerSession({
+      idToken,
+      inviteToken: safeInviteToken || undefined,
+      sessionInviteToken: safeSessionInviteToken || undefined,
+      fetcher,
+    });
+    if (retried !== "complete") {
+      throw new Error("Quipsly could not finish the secure invitation sign-in.");
+    }
+  }
 
   const safeCallbackUrl = cleanQuipslyCallbackUrl(callbackUrl);
   navigate(safeCallbackUrl);

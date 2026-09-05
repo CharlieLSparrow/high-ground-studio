@@ -3,6 +3,7 @@ import { sendEmailVerification, signOut } from "firebase/auth";
 import {
   cleanQuipslyCallbackUrl,
   cleanQuipslyInviteToken,
+  cleanSessionInviteToken,
   finishQuipslyFirebaseSignIn,
   quipslyEmailActionSettings,
 } from "./quipsly-session";
@@ -96,6 +97,58 @@ describe("Quipsly Firebase session completion", () => {
     expect(signOut).toHaveBeenCalled();
     expect(fetcher).not.toHaveBeenCalled();
     expect(navigate).not.toHaveBeenCalled();
+  });
+
+  it("uses an exact Session invitation to verify once, refresh the token, and finish sign-in", async () => {
+    const user = firebaseUser({ emailVerified: false });
+    user.getIdToken
+      .mockResolvedValueOnce("unverified-id-token")
+      .mockResolvedValueOnce("verified-id-token");
+    const fetcher = jest.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 202,
+        json: jest.fn().mockResolvedValue({
+          code: "INVITATION_EMAIL_VERIFIED",
+          retryWithFreshIdToken: true,
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: jest.fn().mockResolvedValue({ success: true }),
+      });
+    const navigate = jest.fn();
+    const sessionInviteToken = `qsinv_${"a".repeat(32)}`;
+
+    await expect(finishQuipslyFirebaseSignIn({
+      user: user as any,
+      callbackUrl: `/sessions/join?token=${sessionInviteToken}`,
+      sessionInviteToken,
+      fetcher: fetcher as any,
+      navigate,
+    })).resolves.toEqual({
+      callbackUrl: `/sessions/join?token=${sessionInviteToken}`,
+    });
+
+    expect(sendEmailVerification).not.toHaveBeenCalled();
+    expect(signOut).not.toHaveBeenCalled();
+    expect(user.reload).toHaveBeenCalledTimes(2);
+    expect(user.getIdToken).toHaveBeenNthCalledWith(1, true);
+    expect(user.getIdToken).toHaveBeenNthCalledWith(2, true);
+    expect(fetcher).toHaveBeenNthCalledWith(1, "/api/auth/session", expect.objectContaining({
+      body: JSON.stringify({
+        idToken: "unverified-id-token",
+        sessionInviteToken,
+      }),
+    }));
+    expect(fetcher).toHaveBeenNthCalledWith(2, "/api/auth/session", expect.objectContaining({
+      body: JSON.stringify({
+        idToken: "verified-id-token",
+        sessionInviteToken,
+      }),
+    }));
+    expect(navigate).toHaveBeenCalledWith(`/sessions/join?token=${sessionInviteToken}`);
   });
 
   it("retries one malformed or transient server-session handoff and then navigates", async () => {
@@ -199,6 +252,10 @@ describe("Quipsly Firebase session completion", () => {
     expect(cleanQuipslyInviteToken("not-an-invite")).toBe("");
     expect(cleanQuipslyInviteToken("qinv_bad token")).toBe("");
     expect(cleanQuipslyInviteToken("qinv_valid")).toBe("qinv_valid");
+    expect(cleanSessionInviteToken("qsinv_short")).toBe("");
+    expect(cleanSessionInviteToken(`qsinv_${"a".repeat(32)}`)).toBe(
+      `qsinv_${"a".repeat(32)}`,
+    );
     expect(
       quipslyEmailActionSettings({
         origin: "https://nest.quipsly.com",

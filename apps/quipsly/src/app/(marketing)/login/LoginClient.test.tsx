@@ -1,11 +1,14 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { renderToString } from "react-dom/server";
 import {
+  createUserWithEmailAndPassword,
   GoogleAuthProvider,
+  sendEmailVerification,
   signInWithEmailAndPassword,
   signInWithPopup,
 } from "firebase/auth";
 
+import { finishQuipslyFirebaseSignIn } from "@/lib/firebase/quipsly-session";
 import { LoginClient } from "./LoginClient";
 
 jest.mock("firebase/auth", () => ({
@@ -25,6 +28,14 @@ jest.mock("firebase/auth", () => ({
 jest.mock("@/lib/firebase/firebase", () => ({
   auth: { name: "local-auth-test" },
 }));
+
+jest.mock("@/lib/firebase/quipsly-session", () => {
+  const actual = jest.requireActual("@/lib/firebase/quipsly-session");
+  return {
+    ...actual,
+    finishQuipslyFirebaseSignIn: jest.fn().mockResolvedValue({ callbackUrl: "/projects" }),
+  };
+});
 
 describe("Quipsly direct login", () => {
   beforeEach(() => {
@@ -144,5 +155,38 @@ describe("Quipsly direct login", () => {
 
     expect(screen.getByRole("heading", { name: "Open your Session" })).toBeInTheDocument();
     expect(screen.getByText(/join your private Session/)).toBeInTheDocument();
+  });
+
+  it("opens an invited new account directly instead of creating an email-verification errand", async () => {
+    const sessionInviteToken = `qsinv_${"a".repeat(32)}`;
+    const user = { uid: "new-client" };
+    (createUserWithEmailAndPassword as jest.Mock).mockResolvedValue({ user });
+    render(
+      <LoginClient
+        callbackUrl={`/sessions/join?token=${sessionInviteToken}`}
+        sessionInviteToken={sessionInviteToken}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Create account" }));
+    fireEvent.change(screen.getByLabelText("Email"), {
+      target: { value: "client@example.com" },
+    });
+    fireEvent.change(screen.getByLabelText("Password"), {
+      target: { value: "a secure client phrase" },
+    });
+    fireEvent.click(screen.getAllByRole("button", { name: "Create account" })[1]);
+
+    await waitFor(() => expect(createUserWithEmailAndPassword).toHaveBeenCalledWith(
+      { name: "local-auth-test" },
+      "client@example.com",
+      "a secure client phrase",
+    ));
+    expect(sendEmailVerification).not.toHaveBeenCalled();
+    expect(finishQuipslyFirebaseSignIn).toHaveBeenCalledWith({
+      user,
+      callbackUrl: `/sessions/join?token=${sessionInviteToken}`,
+      inviteToken: "",
+      sessionInviteToken,
+    });
   });
 });

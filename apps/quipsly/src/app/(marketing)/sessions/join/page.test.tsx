@@ -63,7 +63,7 @@ describe("JoinSessionPage identity return", () => {
     const expectedCallback = `/sessions/join?token=${encodeURIComponent(TOKEN)}`;
     expect(continueLink).toHaveAttribute(
       "href",
-      `/login?callbackUrl=${encodeURIComponent(expectedCallback)}`,
+      `/login?callbackUrl=${encodeURIComponent(expectedCallback)}&sessionInviteToken=${encodeURIComponent(TOKEN)}`,
     );
     expect(screen.getByText("Coaching with Homer")).toBeInTheDocument();
   });

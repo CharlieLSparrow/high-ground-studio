@@ -2,6 +2,7 @@
 
 import { adminAuth } from "@/lib/firebase/firebase-admin";
 import { ensureStudioUserFromFirebaseIdentity } from "@/lib/server/studio-user-identity";
+import { verifySessionInvitationMailboxProof } from "@/lib/server/session-invitation";
 
 import { POST } from "./route";
 
@@ -9,6 +10,7 @@ jest.mock("@/lib/firebase/firebase-admin", () => ({
   adminAuth: {
     verifyIdToken: jest.fn(),
     createSessionCookie: jest.fn(),
+    updateUser: jest.fn(),
   },
 }));
 jest.mock("next/headers", () => ({
@@ -16,6 +18,9 @@ jest.mock("next/headers", () => ({
 }));
 jest.mock("@/lib/server/invite-login-token", () => ({
   consumeInviteLoginTokenForEmail: jest.fn(),
+}));
+jest.mock("@/lib/server/session-invitation", () => ({
+  verifySessionInvitationMailboxProof: jest.fn(),
 }));
 jest.mock("@/lib/server/quipsly-onboarding", () => ({
   ensureQuipslyStarterStateForUser: jest.fn(),
@@ -85,6 +90,68 @@ describe("Quipsly session creation error boundaries", () => {
       code: "INVALID_SESSION_REQUEST",
     });
     expect(adminAuth.verifyIdToken).not.toHaveBeenCalled();
+    expect(ensureStudioUserFromFirebaseIdentity).not.toHaveBeenCalled();
+    expect(adminAuth.createSessionCookie).not.toHaveBeenCalled();
+  });
+
+  it("turns an exact pending Session invitation into verified Firebase state only", async () => {
+    jest.mocked(adminAuth.verifyIdToken).mockResolvedValue({
+      uid: "firebase-client-1",
+      email: "client@example.com",
+      email_verified: false,
+      firebase: { sign_in_provider: "password" },
+    } as never);
+    jest.mocked(verifySessionInvitationMailboxProof).mockResolvedValue(true);
+    jest.mocked(adminAuth.updateUser).mockResolvedValue({} as never);
+    const sessionInviteToken = `qsinv_${"a".repeat(32)}`;
+
+    const response = await POST(new Request("http://localhost/api/auth/session", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ idToken: "unverified-id-token", sessionInviteToken }),
+    }));
+
+    expect(response.status).toBe(202);
+    await expect(response.json()).resolves.toEqual({
+      success: false,
+      code: "INVITATION_EMAIL_VERIFIED",
+      retryWithFreshIdToken: true,
+    });
+    expect(verifySessionInvitationMailboxProof).toHaveBeenCalledWith({
+      token: sessionInviteToken,
+      email: "client@example.com",
+    });
+    expect(adminAuth.updateUser).toHaveBeenCalledWith(
+      "firebase-client-1",
+      { emailVerified: true },
+    );
+    expect(ensureStudioUserFromFirebaseIdentity).not.toHaveBeenCalled();
+    expect(adminAuth.createSessionCookie).not.toHaveBeenCalled();
+  });
+
+  it("keeps an unverified account blocked when the Session proof does not match", async () => {
+    jest.mocked(adminAuth.verifyIdToken).mockResolvedValue({
+      uid: "firebase-client-2",
+      email: "other@example.com",
+      email_verified: false,
+      firebase: { sign_in_provider: "password" },
+    } as never);
+    jest.mocked(verifySessionInvitationMailboxProof).mockResolvedValue(false);
+
+    const response = await POST(new Request("http://localhost/api/auth/session", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        idToken: "unverified-id-token",
+        sessionInviteToken: `qsinv_${"b".repeat(32)}`,
+      }),
+    }));
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toEqual(expect.objectContaining({
+      code: "EMAIL_VERIFICATION_REQUIRED",
+    }));
+    expect(adminAuth.updateUser).not.toHaveBeenCalled();
     expect(ensureStudioUserFromFirebaseIdentity).not.toHaveBeenCalled();
     expect(adminAuth.createSessionCookie).not.toHaveBeenCalled();
   });

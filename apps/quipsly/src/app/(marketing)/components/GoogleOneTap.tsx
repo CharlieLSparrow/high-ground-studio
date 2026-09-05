@@ -15,6 +15,7 @@ import { auth } from "@/lib/firebase/firebase";
 import {
   cleanQuipslyCallbackUrl,
   cleanQuipslyInviteToken,
+  cleanSessionInviteToken,
   finishQuipslyFirebaseSignIn,
 } from "@/lib/firebase/quipsly-session";
 
@@ -76,10 +77,12 @@ const DEFAULT_GOOGLE_WEB_CLIENT_ID =
 function loginErrorUrl({
   callbackUrl,
   inviteToken,
+  sessionInviteToken,
   error,
 }: {
   callbackUrl: string;
   inviteToken: string;
+  sessionInviteToken: string;
   error: "google-link-required" | "google-one-tap-failed";
 }) {
   const params = new URLSearchParams({
@@ -87,6 +90,7 @@ function loginErrorUrl({
     error,
   });
   if (inviteToken) params.set("inviteToken", inviteToken);
+  if (sessionInviteToken) params.set("sessionInviteToken", sessionInviteToken);
   return `/login?${params.toString()}`;
 }
 
@@ -125,6 +129,10 @@ export function GoogleOneTap({
     () => cleanQuipslyInviteToken(searchParams.get("inviteToken")),
     [searchParams],
   );
+  const safeSessionInviteToken = useMemo(
+    () => cleanSessionInviteToken(searchParams.get("sessionInviteToken")),
+    [searchParams],
+  );
 
   useEffect(() => onAuthStateChanged(auth, (user) => {
     setFirebaseUserPresent(Boolean(user));
@@ -146,6 +154,7 @@ export function GoogleOneTap({
       window.location.assign(loginErrorUrl({
         callbackUrl: safeCallbackUrl,
         inviteToken: safeInviteToken,
+        sessionInviteToken: safeSessionInviteToken,
         error: "google-one-tap-failed",
       }));
       return;
@@ -170,12 +179,14 @@ export function GoogleOneTap({
         user: result.user,
         callbackUrl: safeCallbackUrl,
         inviteToken: safeInviteToken,
+        sessionInviteToken: safeSessionInviteToken,
       });
     } catch (error: any) {
       const code = String(error?.code || "");
       window.location.assign(loginErrorUrl({
         callbackUrl: safeCallbackUrl,
         inviteToken: safeInviteToken,
+        sessionInviteToken: safeSessionInviteToken,
         error:
           code === "auth/account-exists-with-different-credential"
           || code === "auth/credential-already-in-use"
@@ -183,7 +194,7 @@ export function GoogleOneTap({
             : "google-one-tap-failed",
       }));
     }
-  }, [safeCallbackUrl, safeInviteToken]);
+  }, [safeCallbackUrl, safeInviteToken, safeSessionInviteToken]);
 
   useEffect(() => {
     const googleIdentity = window.google?.accounts?.id;

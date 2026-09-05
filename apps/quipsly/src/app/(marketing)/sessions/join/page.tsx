@@ -100,7 +100,7 @@ export default async function JoinSessionPage({
         </> : !session?.user ? <>
           <h2 className="font-serif text-2xl font-black">Ready when you are</h2>
           <p className="mt-2 text-sm font-semibold leading-6 text-[#765f40]">Continue with the email that received this invitation.</p>
-          <Link href={`/login?callbackUrl=${encodeURIComponent(callbackUrl)}`} className="mt-5 inline-flex min-h-12 w-full items-center justify-center rounded-full bg-violet-800 px-5 text-sm font-black text-white">Continue</Link>
+          <Link href={`/login?callbackUrl=${encodeURIComponent(callbackUrl)}&sessionInviteToken=${encodeURIComponent(token)}`} className="mt-5 inline-flex min-h-12 w-full items-center justify-center rounded-full bg-violet-800 px-5 text-sm font-black text-white">Continue</Link>
         </> : emailMatches ? <>
           <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm font-bold text-emerald-950"><CheckCircle2 className="mr-2 inline" size={17} aria-hidden="true" />{actorEmail}</div>
           {errorCode && ERROR_MESSAGES[errorCode] ? <p role="alert" className="mt-3 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm font-bold text-rose-900">{ERROR_MESSAGES[errorCode]}</p> : null}

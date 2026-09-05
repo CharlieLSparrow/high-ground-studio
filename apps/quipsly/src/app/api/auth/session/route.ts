@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { adminAuth } from "@/lib/firebase/firebase-admin";
 import { cookies } from "next/headers";
 import { consumeInviteLoginTokenForEmail } from "@/lib/server/invite-login-token";
+import { verifySessionInvitationMailboxProof } from "@/lib/server/session-invitation";
 import { ensureQuipslyStarterStateForUser } from "@/lib/server/quipsly-onboarding";
 import { ensureStudioUserFromFirebaseIdentity } from "@/lib/server/studio-user-identity";
 import {
@@ -105,7 +106,11 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
-  let input: { idToken?: unknown; inviteToken?: unknown };
+  let input: {
+    idToken?: unknown;
+    inviteToken?: unknown;
+    sessionInviteToken?: unknown;
+  };
   try {
     input = await req.json();
   } catch {
@@ -119,7 +124,7 @@ export async function POST(req: Request) {
   }
 
   try {
-    const { idToken, inviteToken } = input;
+    const { idToken, inviteToken, sessionInviteToken } = input;
 
     if (typeof idToken !== "string" || !idToken) {
       return NextResponse.json({ error: "Missing ID token" }, { status: 400 });
@@ -135,9 +140,29 @@ export async function POST(req: Request) {
       );
     }
     if (decodedToken.email_verified !== true) {
-      // This check must happen before identity resolution, onboarding, invite
-      // consumption, or cookie creation. An unverified account cannot claim a
-      // pre-invited email address.
+      const provider = decodedToken.firebase?.sign_in_provider || null;
+      const invitationProvesMailbox = provider === "password"
+        && await verifySessionInvitationMailboxProof({
+          token: sessionInviteToken,
+          email,
+        });
+      if (invitationProvesMailbox) {
+        await adminAuth.updateUser(decodedToken.uid, { emailVerified: true });
+        // The token presented above still contains email_verified=false. Never
+        // make a Quipsly identity or cookie from it. The client must refresh
+        // Firebase state and present a newly signed token once.
+        return NextResponse.json(
+          {
+            success: false,
+            code: "INVITATION_EMAIL_VERIFIED",
+            retryWithFreshIdToken: true,
+          },
+          { status: 202 },
+        );
+      }
+      // This check happens before identity resolution, onboarding, invite
+      // consumption, or cookie creation. A general unverified account cannot
+      // claim a pre-invited email address.
       return NextResponse.json(
         {
           error:
