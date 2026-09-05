@@ -230,6 +230,8 @@ cleanup_created_xctest_devices() {
 
 if [[ "$lane" == "candidate" || "$lane" == "beta" ]]; then
   snapshot_xctest_devices "$xctest_devices_before"
+  export QUIPSLY_CAPTURE_XCTEST_DEVICE_ROOT="$xctest_device_root"
+  export QUIPSLY_CAPTURE_XCTEST_BASELINE_PATH="$xctest_devices_before"
 fi
 
 cleanup() {

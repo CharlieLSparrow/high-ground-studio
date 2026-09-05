@@ -95,6 +95,29 @@ rescue JSON::ParserError => error
   UI.user_error!("Capture UI test planner returned invalid JSON: #{error.message}")
 end
 
+def cleanup_capture_ui_xctest_devices
+  return if ENV["QUIPSLY_CAPTURE_KEEP_XCTEST_DEVICES"] == "1"
+
+  root = ENV["QUIPSLY_CAPTURE_XCTEST_DEVICE_ROOT"].to_s
+  baseline_path = ENV["QUIPSLY_CAPTURE_XCTEST_BASELINE_PATH"].to_s
+  return if root.empty? || baseline_path.empty?
+  return unless File.directory?(root) && File.file?(baseline_path)
+
+  baseline = File.readlines(baseline_path, chomp: true).to_h { |device_id| [device_id, true] }
+  uuid = /\A[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}\z/
+  Dir.children(root).sort.each do |device_id|
+    next unless device_id.match?(uuid)
+    next if baseline.key?(device_id)
+
+    device_path = File.join(root, device_id)
+    next unless File.directory?(device_path)
+    next if File.symlink?(device_path)
+
+    UI.message("Removing completed disposable XCTest clone: #{device_id}")
+    FileUtils.rm_rf(device_path)
+  end
+end
+
 def write_ui_test_evidence_manifest(path, manifest)
   temporary_path = "#{path}.tmp-#{Process.pid}"
   File.write(temporary_path, JSON.pretty_generate(manifest) + "\n")
@@ -694,19 +717,30 @@ platform :ios do
         else
           run_options[:devices] = [execution.fetch(:device)]
         end
-        run_tests(**run_options)
-        result_bundles = Dir[File.join(execution_root, "*.xcresult")].select { |path| File.directory?(path) }
-        UI.user_error!(
-          "Expected exactly one UI result bundle in #{execution_root}; found #{result_bundles.length}.",
-        ) unless result_bundles.length == 1
-        result_bundle_path = File.expand_path(result_bundles.fetch(0))
-        result_summary = verify_capture_ui_xcresult(result_bundle_path, execution.fetch(:selectors).length)
-        {
-          device: execution.fetch(:device),
-          selectors: execution.fetch(:selectors),
-          resultBundlePath: result_bundle_path,
-          resultSummary: result_summary.transform_keys(&:to_s),
-        }
+        execution_record = nil
+        begin
+          run_tests(**run_options)
+          result_bundles = Dir[File.join(execution_root, "*.xcresult")].select { |path| File.directory?(path) }
+          UI.user_error!(
+            "Expected exactly one UI result bundle in #{execution_root}; found #{result_bundles.length}.",
+          ) unless result_bundles.length == 1
+          result_bundle_path = File.expand_path(result_bundles.fetch(0))
+          result_summary = verify_capture_ui_xcresult(result_bundle_path, execution.fetch(:selectors).length)
+          execution_record = {
+            device: execution.fetch(:device),
+            selectors: execution.fetch(:selectors),
+            resultBundlePath: result_bundle_path,
+            resultSummary: result_summary.transform_keys(&:to_s),
+          }
+        ensure
+          # Xcode creates nearly-gigabyte XCTest clone devices for an
+          # execution. Retaining every clone until all four shards finish can
+          # exhaust an otherwise healthy release machine before its final
+          # cleanup trap runs. Result bundles are already stored separately,
+          # so remove only UUID directories absent from the wrapper's baseline.
+          cleanup_capture_ui_xctest_devices
+        end
+        execution_record
       end
       evidence_shards << {
         shard: shard_number,
