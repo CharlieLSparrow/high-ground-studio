@@ -693,27 +693,6 @@ final class AudioCaptureController: NSObject, ObservableObject {
             return
         }
 
-        if AVAudioApplication.shared.recordPermission == .granted {
-            microphonePreflightState = .granted
-            guard hasCaptureStorageHeadroom() else {
-                failCapture(combining(storageStartFailureMessage, with: closeStartBoundaryAfterFailedArm()))
-                return
-            }
-            transition(to: .preparing)
-            failureMessage = nil
-            lastErrorMessage = nil
-            if isPersonalVoiceWritingPurpose {
-                beginPersonalVoiceWritingRecording()
-                return
-            }
-            do {
-                try activateAudioSessionAndBeginRecording()
-            } catch {
-                handleStartFailure(error)
-            }
-            return
-        }
-
         transition(to: .preparing)
         failureMessage = nil
         lastErrorMessage = nil
@@ -765,25 +744,15 @@ final class AudioCaptureController: NSObject, ObservableObject {
             if isPersonalVoiceWritingPurpose {
                 try await activateAudioSessionAndBeginPersonalVoiceWriting()
             } else {
-                try activateAudioSessionAndBeginRecording()
+                try await activateAudioSessionAndBeginRecording()
             }
+        } catch is CancellationError {
+            // Stop, account change, or view teardown owns the visible terminal
+            // state and START-boundary cleanup. Do not turn that intentional
+            // cancellation into a second, misleading recorder failure.
+            return
         } catch {
             handleStartFailure(error)
-        }
-    }
-
-    private func beginPersonalVoiceWritingRecording() {
-        startTask?.cancel()
-        startTask = Task { [weak self] in
-            guard let self else { return }
-            do {
-                try await self.activateAudioSessionAndBeginPersonalVoiceWriting()
-            } catch is CancellationError {
-                // The visible Stop action owns the START-boundary cleanup.
-            } catch {
-                self.handleStartFailure(error)
-            }
-            self.startTask = nil
         }
     }
 
@@ -794,7 +763,7 @@ final class AudioCaptureController: NSObject, ObservableObject {
     private func activateAudioSessionAndBeginPersonalVoiceWriting() async throws {
         let speechPermission = await CaptureSpeechRecognitionPermission.requestIfNeeded()
         try Task.checkCancellation()
-        try audioSessionCoordinator.activateLocalCapture()
+        try await audioSessionCoordinator.activateLocalCaptureAwaitingInput()
         refreshInputRoute()
         try Task.checkCancellation()
 
@@ -1042,8 +1011,9 @@ final class AudioCaptureController: NSObject, ObservableObject {
         try audioSessionCoordinator.prepareLocalCaptureRoute()
     }
 
-    private func activateAudioSessionAndBeginRecording() throws {
-        try audioSessionCoordinator.activateLocalCapture()
+    private func activateAudioSessionAndBeginRecording() async throws {
+        try await audioSessionCoordinator.activateLocalCaptureAwaitingInput()
+        try Task.checkCancellation()
         refreshInputRoute()
         try beginActualRecording()
     }

@@ -70,31 +70,71 @@ final class CaptureAudioSessionCoordinator: ObservableObject {
     }
 
     func activateLocalCapture() throws {
-        isLocalPlaybackActive = false
-        isLocalCaptureActive = true
         do {
-            try applySharedCategory()
-            try audioSession.setPreferredSampleRate(48_000)
-            if !isCallKitAudioActive {
-                try audioSession.setActive(true)
-            }
-            refreshRouteSnapshot()
-            guard !audioSession.currentRoute.inputs.isEmpty else {
-                throw NSError(
-                    domain: "CaptureAudioSession",
-                    code: 5,
-                    userInfo: [
-                        NSLocalizedDescriptionKey:
-                            "No microphone became active. Check Quipsly microphone access or reconnect the selected audio device, then try again."
-                    ]
-                )
-            }
+            try beginLocalCaptureActivation()
+            try requireActiveInputRoute()
             try requirePrivateRouteDuringCapture()
         } catch {
-            isLocalCaptureActive = false
-            reconcileAfterLeaseChange()
+            rollBackLocalCaptureActivation()
             throw error
         }
+    }
+
+    /// Activating a non-mixing recording session conventionally interrupts
+    /// an audiobook, podcast, or music app. On some physical devices the
+    /// category and activation calls return a fraction of a second before the
+    /// replacement input is published in `currentRoute`. A fresh recording
+    /// must wait for that route transition instead of turning a transient
+    /// empty route into a false "no microphone" failure.
+    func activateLocalCaptureAwaitingInput(
+        timeout: Duration = .seconds(1.5)
+    ) async throws {
+        do {
+            try beginLocalCaptureActivation()
+            let clock = ContinuousClock()
+            let deadline = clock.now.advanced(by: timeout)
+            refreshRouteSnapshot()
+            while audioSession.currentRoute.inputs.isEmpty,
+                  clock.now < deadline {
+                try await Task.sleep(for: .milliseconds(50))
+                refreshRouteSnapshot()
+            }
+            try Task.checkCancellation()
+            try requireActiveInputRoute()
+            try requirePrivateRouteDuringCapture()
+        } catch {
+            rollBackLocalCaptureActivation()
+            throw error
+        }
+    }
+
+    private func beginLocalCaptureActivation() throws {
+        isLocalPlaybackActive = false
+        isLocalCaptureActive = true
+        try applySharedCategory()
+        try audioSession.setPreferredSampleRate(48_000)
+        if !isCallKitAudioActive {
+            try audioSession.setActive(true)
+        }
+        refreshRouteSnapshot()
+    }
+
+    private func requireActiveInputRoute() throws {
+        guard !audioSession.currentRoute.inputs.isEmpty else {
+            throw NSError(
+                domain: "CaptureAudioSession",
+                code: 5,
+                userInfo: [
+                    NSLocalizedDescriptionKey:
+                        "No microphone became active. Check Quipsly microphone access or reconnect the selected audio device, then try again."
+                ]
+            )
+        }
+    }
+
+    private func rollBackLocalCaptureActivation() {
+        isLocalCaptureActive = false
+        reconcileAfterLeaseChange()
     }
 
     func releaseLocalCapture() {
@@ -421,6 +461,17 @@ final class CaptureAudioSessionCoordinator: ObservableObject {
             providerRoomActive: isProviderRoomActive,
             callKitAudioActive: isCallKitAudioActive
         )
+        var options: AVAudioSession.CategoryOptions = [
+            .defaultToSpeaker,
+            .allowBluetoothHFP,
+        ]
+        if #available(iOS 26.0, *), mode == .default {
+            // Apple's creator-focused Bluetooth path can provide full-bandwidth
+            // input on supported AirPods. HFP remains the automatic fallback,
+            // and real-time call audio deliberately stays on voiceChat because
+            // the high-quality mode adds latency and only supports `.default`.
+            options.insert(.bluetoothHighQualityRecording)
+        }
         try audioSession.setCategory(
             .playAndRecord,
             mode: mode,
@@ -430,7 +481,7 @@ final class CaptureAudioSessionCoordinator: ObservableObject {
             // input/output from becoming available when another app already
             // owns a non-mixable audio session. Deactivation below uses
             // notifyOthersOnDeactivation so the interrupted app may resume.
-            options: [.defaultToSpeaker, .allowBluetoothHFP]
+            options: options
         )
     }
 

@@ -358,6 +358,8 @@ function checkMeetingSpineContractSources() {
   const providerAudioPCMLevelsText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/ProviderAudioPCMLevels.swift");
   const authManagerText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/AuthManager.swift");
   const audioCaptureText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/AudioCaptureController.swift");
+  const audioSessionCoordinatorText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/CaptureAudioSessionCoordinator.swift");
+  const audioSoundCheckText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/CaptureAudioSoundCheck.swift");
   const authenticatedDataBoundary = authManagerText.slice(
     authManagerText.indexOf("func authenticatedData("),
     authManagerText.indexOf("/// Downloads a potentially large authenticated source"),
@@ -641,6 +643,20 @@ function checkMeetingSpineContractSources() {
       && capturePhoneShellText.includes("peak power"),
     "nativeRecorderExposesMeasuredAudioEvidence",
     "Capture exposes recorder average and peak power in dBFS, with explicit LUFS and true-peak limits, instead of an unexplained percentage.",
+  );
+  expect(
+    audioSessionCoordinatorText.includes("activateLocalCaptureAwaitingInput")
+      && audioSessionCoordinatorText.includes("while audioSession.currentRoute.inputs.isEmpty")
+      && audioSessionCoordinatorText.includes("Task.sleep(for: .milliseconds(50))")
+      && audioSessionCoordinatorText.includes("A book, podcast, or music app should")
+      && !audioSessionCoordinatorText.includes("options: [.defaultToSpeaker, .allowBluetoothHFP, .mixWithOthers]")
+      && audioSessionCoordinatorText.includes("options.insert(.bluetoothHighQualityRecording)")
+      && audioCaptureText.includes("try await audioSessionCoordinator.activateLocalCaptureAwaitingInput()")
+      && audioSoundCheckText.includes("try await coordinator.activateLocalCaptureAwaitingInput()")
+      && capturePhoneShellText.includes("AVInputPickerInteraction()")
+      && capturePhoneShellText.includes('accessibilityIdentifier = "CaptureSystemAudioInputPicker"'),
+    "nativeAudioActivationAndInputSelection",
+    "Record and sound check take the audio session conventionally, tolerate the physical route-publication race, enable creator-quality Bluetooth capture outside calls, and expose Apple's microphone picker.",
   );
   expect(
     episodeChatText.includes("enum MobileCollaborationChatScope")

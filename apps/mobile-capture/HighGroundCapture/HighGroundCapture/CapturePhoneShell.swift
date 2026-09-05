@@ -12331,7 +12331,7 @@ private struct CaptureRecorderView: View {
             detail: transcriptDetail ?? audioCapture.lastErrorMessage
         )
         print(
-            "QUIPSLY_PHYSICAL_VOICE_WRITING_ACCEPTANCE transcript state=\(transcriptState) segments=\(transcript?.segments.count ?? 0) execution=\(transcript?.recognitionExecution ?? "none")"
+            "QUIPSLY_PHYSICAL_VOICE_WRITING_ACCEPTANCE transcript state=\(transcriptState) segments=\(transcript?.segments.count ?? 0) execution=\(transcript?.recognitionExecution ?? "none") detail=\(transcriptDetail ?? "none")"
         )
     }
 
@@ -12385,6 +12385,10 @@ private struct CaptureRecorderView: View {
         case .failed(let message, _): message
         case .modelDownloadRequired(let locale):
             "Apple's \(locale) speech model is not ready on this device."
+        case .waitingForCloudFallback, .requestingCloudFallback, .cloudFallback:
+            LocalRecordingLibrary.shared.recording(id: recordingID)?
+                .cloudTranscriptFallbackReasonCode
+                .map { "Device transcription fallback reason: \($0)." }
         default: nil
         }
     }
@@ -19649,7 +19653,7 @@ private struct RecorderHero: View {
                     .accessibilityIdentifier("CaptureLatestMomentMark")
             }
 
-            HStack(spacing: 7) {
+            HStack(spacing: 10) {
                 Image(systemName: "mic.fill")
                 VStack(alignment: .leading, spacing: 2) {
                     Text(inputRoute.isEmpty ? CaptureDeviceVocabulary.builtInMicrophone : inputRoute)
@@ -19658,6 +19662,14 @@ private struct RecorderHero: View {
                 }
                 .multilineTextAlignment(.leading)
                 .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 4)
+                if #available(iOS 26.0, *),
+                   !isCaptureActive,
+                   captureState != .preparing,
+                   captureState != .finalizing {
+                    CaptureSystemAudioInputPicker()
+                        .frame(width: 44, height: 44)
+                }
             }
             .font(.caption)
             .foregroundStyle(.secondary)
@@ -20449,6 +20461,49 @@ private struct CaptureSystemAudioRoutePicker: UIViewRepresentable {
     }
 }
 
+/// iOS 26's system microphone picker keeps USB, wired, built-in, and supported
+/// Bluetooth inputs in the same familiar sheet used by Apple's own capture
+/// experiences. Quipsly only prepares the inactive recording category so the
+/// system can enumerate valid inputs; choosing a route does not record, join a
+/// room, or request microphone permission.
+@available(iOS 26.0, *)
+private struct CaptureSystemAudioInputPicker: UIViewRepresentable {
+    @MainActor
+    final class Coordinator: NSObject {
+        let interaction = AVInputPickerInteraction()
+
+        @objc func presentPicker() {
+            try? CaptureAudioSessionCoordinator.shared.prepareLocalCaptureRoute()
+            interaction.present()
+        }
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
+
+    func makeUIView(context: Context) -> UIButton {
+        let button = UIButton(type: .system)
+        button.setImage(UIImage(systemName: "mic.and.signal.meter"), for: .normal)
+        button.tintColor = CapturePalette.accentUIColor
+        button.addInteraction(context.coordinator.interaction)
+        button.addTarget(
+            context.coordinator,
+            action: #selector(Coordinator.presentPicker),
+            for: .touchUpInside
+        )
+        button.isAccessibilityElement = true
+        button.accessibilityLabel = "Choose microphone"
+        button.accessibilityHint = "Opens the standard device microphone menu."
+        button.accessibilityIdentifier = "CaptureSystemAudioInputPicker"
+        return button
+    }
+
+    func updateUIView(_ uiView: UIButton, context: Context) {
+        uiView.tintColor = CapturePalette.accentUIColor
+    }
+}
+
 private struct ProviderRoomControls: View {
     @ObservedObject var model: CaptureExperienceModel
     @ObservedObject private var callAudioSession = CaptureAudioSessionCoordinator.shared
@@ -20528,6 +20583,10 @@ private struct ProviderRoomControls: View {
                         .accessibilityIdentifier("CaptureCallOutputRoute")
                     }
                     Spacer(minLength: 8)
+                    if #available(iOS 26.0, *) {
+                        CaptureSystemAudioInputPicker()
+                            .frame(width: 44, height: 44)
+                    }
                     CaptureSystemAudioRoutePicker()
                         .frame(width: 44, height: 44)
                 }

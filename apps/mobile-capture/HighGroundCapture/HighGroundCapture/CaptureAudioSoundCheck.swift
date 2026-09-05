@@ -124,7 +124,7 @@ final class CaptureAudioSoundCheckController: NSObject, ObservableObject,
         }
 
         do {
-            try coordinator.activateLocalCapture()
+            try await coordinator.activateLocalCaptureAwaitingInput()
             // Activation may interrupt another app and select a different port
             // or built-in microphone data source. Bind the saved check to the
             // route that actually receives PCM, not the pre-activation label.
