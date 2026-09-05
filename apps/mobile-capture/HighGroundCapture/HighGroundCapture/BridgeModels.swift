@@ -7986,6 +7986,21 @@ final class CaptureSessionClient: ObservableObject {
         [404, 408, 410, 425, 429].contains(statusCode) || (500...599).contains(statusCode)
     }
 
+    private func decodeCaptureSessionResponse<Payload: Decodable>(
+        _ type: Payload.Type,
+        from data: Data,
+        response: URLResponse,
+        malformedResponseMessage: String
+    ) throws -> Payload {
+        try AuthResponseDecoder.decode(
+            type,
+            from: data,
+            response: response,
+            errorDomain: "QuipslyCapture.CaptureSessions",
+            malformedResponseMessage: malformedResponseMessage
+        ).payload
+    }
+
     func createQuickSession(
         title: String,
         purpose: String,
@@ -8123,7 +8138,12 @@ final class CaptureSessionClient: ObservableObject {
             request.httpBody = try JSONSerialization.data(withJSONObject: requestBody)
 
             let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
-            let payload = try JSONDecoder().decode(MobileCaptureConsentResponse.self, from: data)
+            let payload = try decodeCaptureSessionResponse(
+                MobileCaptureConsentResponse.self,
+                from: data,
+                response: response,
+                malformedResponseMessage: "Nest could not confirm your recording choice. Nothing started; try again."
+            )
 
             guard response.statusCode < 400, payload.ok else {
                 throw NSError(
@@ -8313,7 +8333,12 @@ final class CaptureSessionClient: ObservableObject {
             request.httpBody = try JSONSerialization.data(withJSONObject: requestBody)
 
             let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
-            let payload = try JSONDecoder().decode(MobileCaptureRoomStateResponse.self, from: data)
+            let payload = try decodeCaptureSessionResponse(
+                MobileCaptureRoomStateResponse.self,
+                from: data,
+                response: response,
+                malformedResponseMessage: "Nest could not confirm this room change. Your local recording state is unchanged; try again."
+            )
 
             guard response.statusCode < 400, payload.ok else {
                 throw NSError(
@@ -8470,7 +8495,12 @@ final class CaptureSessionClient: ObservableObject {
                 for: request,
                 expectedOwnerAccountID: expectedOwnerAccountID
             )
-            let payload = try JSONDecoder().decode(MobileCaptureRoomStateResponse.self, from: data)
+            let payload = try decodeCaptureSessionResponse(
+                MobileCaptureRoomStateResponse.self,
+                from: data,
+                response: response,
+                malformedResponseMessage: "Nest could not confirm this saved recording receipt. It remains protected on this device and will retry automatically."
+            )
             latestRoomStateResponse = payload
             if payload.receiptPersisted == true, !payload.ok {
                 let message = payload.error ?? "Nest preserved the receipt but held the requested room-state change."
@@ -8611,7 +8641,12 @@ final class CaptureSessionClient: ObservableObject {
             ])
 
             let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
-            let payload = try JSONDecoder().decode(MobileCaptureRoomJoinResponse.self, from: data)
+            let payload = try decodeCaptureSessionResponse(
+                MobileCaptureRoomJoinResponse.self,
+                from: data,
+                response: response,
+                malformedResponseMessage: "Nest could not prepare this call. Nothing joined or recorded; try again."
+            )
 
             guard response.statusCode < 400, payload.ok else {
                 roomJoinFailureCode = payload.code
@@ -8651,7 +8686,12 @@ final class CaptureSessionClient: ObservableObject {
             request.setValue("application/json", forHTTPHeaderField: "Accept")
 
             let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
-            let payload = try JSONDecoder().decode(MobileCaptureRoomJoinDiagnosticResponse.self, from: data)
+            let payload = try decodeCaptureSessionResponse(
+                MobileCaptureRoomJoinDiagnosticResponse.self,
+                from: data,
+                response: response,
+                malformedResponseMessage: "Nest could not inspect this call right now. Your Session and recordings are unchanged; try again."
+            )
 
             guard response.statusCode < 400, payload.ok else {
                 throw NSError(

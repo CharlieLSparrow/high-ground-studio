@@ -2001,6 +2001,21 @@ requireIncludes(
   "local voice writing never asks the canonical Session collection to authorize its private draft",
 );
 for (const needle of [
+  "private func decodeCaptureSessionResponse<Payload: Decodable>(",
+  'errorDomain: "QuipslyCapture.CaptureSessions"',
+  "Nothing started; try again.",
+  "Your local recording state is unchanged; try again.",
+  "It remains protected on this device and will retry automatically.",
+  "Nothing joined or recorded; try again.",
+  "Your Session and recordings are unchanged; try again.",
+]) {
+  requireIncludes(
+    bridgeText,
+    needle,
+    "consent, room, and call entry failures use the recoverable Capture response boundary",
+  );
+}
+for (const needle of [
   "localPersonalVoiceNoteSessions",
   "return localPersonalVoiceNoteSessions",
   "sessionClient.sessions.filter",
