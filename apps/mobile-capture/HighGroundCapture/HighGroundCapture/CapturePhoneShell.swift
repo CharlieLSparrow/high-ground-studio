@@ -1,6 +1,7 @@
 import AVFoundation
 import AVKit
 import EventKitUI
+import Speech
 import SwiftUI
 import UIKit
 
@@ -8667,6 +8668,14 @@ private struct CapturePersonalVoiceNoteTranscriptCard: View {
                     .accessibilityIdentifier("CaptureVoiceNoteTranscriptAction_\(recording.id)")
             }
 
+            if shouldOfferOnDeviceSpeechRecovery {
+                CapturePermissionRecoveryButton(
+                    title: "Use on-device transcription",
+                    detail: "Quipsly used its cloud backup for this take. Turn on Speech Recognition once to keep future transcripts on this device when supported."
+                )
+                .accessibilityIdentifier("CaptureVoiceNoteSpeechPermissionRecovery")
+            }
+
             if draft != nil,
                let roomID = recording.callRoomId?.nonempty {
                 NavigationLink {
@@ -8755,6 +8764,16 @@ private struct CapturePersonalVoiceNoteTranscriptCard: View {
         default:
             true
         }
+    }
+
+    private var shouldOfferOnDeviceSpeechRecovery: Bool {
+        guard recording.cloudTranscriptFallbackReasonCode?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased() == "apple-speech-permission-denied" else {
+            return false
+        }
+        let status = SFSpeechRecognizer.authorizationStatus()
+        return status == .denied || status == .restricted
     }
 
     private func performTranscriptAction() {
@@ -22058,6 +22077,14 @@ private struct LocalRecordingRow: View {
 
             onDeviceTranscriptControl
 
+            if shouldOfferOnDeviceSpeechRecovery {
+                CapturePermissionRecoveryButton(
+                    title: "Use on-device transcription",
+                    detail: "Quipsly used its cloud backup for this take. Turn on Speech Recognition once to keep future transcripts on this device when supported."
+                )
+                .accessibilityIdentifier("CaptureLibrarySpeechPermissionRecovery_\(recording.id)")
+            }
+
             if let onRecordAgain {
                 Button(action: onRecordAgain) {
                     Label("Record again", systemImage: "mic.badge.plus")
@@ -22303,6 +22330,16 @@ private struct LocalRecordingRow: View {
         default:
             true
         }
+    }
+
+    private var shouldOfferOnDeviceSpeechRecovery: Bool {
+        guard recording.cloudTranscriptFallbackReasonCode?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased() == "apple-speech-permission-denied" else {
+            return false
+        }
+        let status = SFSpeechRecognizer.authorizationStatus()
+        return status == .denied || status == .restricted
     }
 
     private func transcriptActionIcon(_ phase: OnDeviceTranscriptPhase) -> String {
