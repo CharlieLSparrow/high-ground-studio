@@ -7,6 +7,15 @@ acceptance work visible without blocking safe independent development. An item
 leaves this ledger only when the named evidence exists. Automated checks must
 never be substituted for the evidence requested here.
 
+Build 74 reached internal and public-link TestFlight testing on 2026-09-04
+from exact source `3c4be440e54bb6914b8bf339c1a16de4a693e24b`; App Store Connect reports
+the build `VALID` and `IN_BETA_TESTING` in both intended groups, and the
+public invitation page was directly rendered. Morbo still has the directly
+installed development Build 73 and is waiting at Apple's standard Speech
+Recognition permission prompt. Installing and operating TestFlight Build 74
+on Morbo and an iPhone remains required physical evidence; neither provider
+state nor the successful direct-build transcription substitutes for it.
+
 Latest retained Morbo positive control: on 2026-09-04, current source
 `02c8ca2c` directly installed as Debug build 73 saved and independently
 decoded a 15.147-second, 48 kHz mono AAC source from
