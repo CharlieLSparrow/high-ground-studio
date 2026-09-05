@@ -16,7 +16,7 @@ jest.mock("@/auth", () => ({ auth: jest.fn() }));
 jest.mock("@/lib/prisma", () => ({ getPrismaClient: jest.fn() }));
 jest.mock("@/lib/server/subscription-entitlements", () => ({ ensureQuipslyBillingContext: jest.fn() }));
 jest.mock("../studio-access-shell", () => ({ StudioAccessShell: ({ mode, redirectTo }: { mode: string; redirectTo: string }) => <div>{mode}:{redirectTo}</div> }));
-jest.mock("./settings-client-view", () => ({ SettingsClientView: ({ initialEntitlement }: { initialEntitlement: { planName: string } }) => <div>settings:{initialEntitlement.planName}</div> }));
+jest.mock("./settings-client-view", () => ({ SettingsClientView: ({ initialEntitlement, currentUserIsStaff }: { initialEntitlement: { planName: string }; currentUserIsStaff: boolean }) => <div>settings:{initialEntitlement.planName}:staff-{String(currentUserIsStaff)}</div> }));
 jest.mock("./actions", () => ({
   getOrgMembersAction: jest.fn(),
   getOrgEventsAction: jest.fn(),
@@ -76,7 +76,7 @@ describe("Settings page read boundary", () => {
 
     render(await SettingsPage());
 
-    expect(screen.getByText("settings:Quipsly Coach trial")).toBeInTheDocument();
+    expect(screen.getByText("settings:Quipsly Coach trial:staff-false")).toBeInTheDocument();
     expect(mockedEnsureBilling).toHaveBeenCalledWith({
       prisma,
       user: { id: "user-1", name: undefined },
@@ -85,6 +85,25 @@ describe("Settings page read boundary", () => {
     expect(getOrgMembersAction).toHaveBeenCalledWith("org-1");
     expect(getOrgEventsAction).toHaveBeenCalledWith("org-1");
     expect(getOrgFeedbackTicketsAction).toHaveBeenCalledWith("org-1");
+    expect(prisma.knowledgeCategory.findMany).not.toHaveBeenCalled();
+  });
+
+  it("loads global Help Center records only for Quipsly staff", async () => {
+    mockedAuth.mockResolvedValue({ user: { id: "staff-1", isStaff: true } } as never);
+    const organization = { id: "org-1", name: "Quipsly", slug: "quipsly", subscription: null };
+    const prisma = {
+      organizationMember: { findFirst: jest.fn().mockResolvedValue({ role: "OWNER", organization }) },
+      knowledgeCategory: { findMany: jest.fn().mockResolvedValue([]) },
+    };
+    mockedPrisma.mockReturnValue(prisma as never);
+    jest.mocked(getOrgMembersAction).mockResolvedValue([] as never);
+    jest.mocked(getOrgEventsAction).mockResolvedValue([] as never);
+    jest.mocked(getOrgFeedbackTicketsAction).mockResolvedValue([] as never);
+
+    render(await SettingsPage());
+
+    expect(screen.getByText("settings:Quipsly Coach trial:staff-true")).toBeInTheDocument();
+    expect(prisma.knowledgeCategory.findMany).toHaveBeenCalledTimes(1);
   });
 
   it("shows an honest outage without substituting sample records", async () => {

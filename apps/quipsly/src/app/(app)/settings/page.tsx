@@ -36,15 +36,18 @@ function SettingsUnavailableState() {
 async function loadWorkspaceSettings(
   prisma: ReturnType<typeof getPrismaClient>,
   organizationId: string,
+  includeStaffTools: boolean,
 ) {
   const [members, events, feedbackTickets, kbData] = await Promise.all([
     getOrgMembersAction(organizationId),
     getOrgEventsAction(organizationId),
     getOrgFeedbackTicketsAction(organizationId),
-    prisma.knowledgeCategory.findMany({
-      include: { articles: { orderBy: { order: "asc" } } },
-      orderBy: { order: "asc" },
-    }),
+    includeStaffTools
+      ? prisma.knowledgeCategory.findMany({
+          include: { articles: { orderBy: { order: "asc" } } },
+          orderBy: { order: "asc" },
+        })
+      : Promise.resolve([]),
   ]);
 
   return { members, events, feedbackTickets, kbData };
@@ -95,7 +98,11 @@ export default async function SettingsPage() {
   const { organization, role } = membership;
   let records: Awaited<ReturnType<typeof loadWorkspaceSettings>>;
   try {
-    records = await loadWorkspaceSettings(prisma, organization.id);
+    records = await loadWorkspaceSettings(
+      prisma,
+      organization.id,
+      session.user.isStaff === true,
+    );
   } catch (error) {
     console.error("Failed to load workspace settings records:", error);
     return <SettingsUnavailableState />;
@@ -118,6 +125,7 @@ export default async function SettingsPage() {
         initialFeedback={records.feedbackTickets}
         currentUserRole={role}
         currentUserId={session.user.id}
+        currentUserIsStaff={session.user.isStaff === true}
         initialEntitlement={entitlement}
         initialKbData={records.kbData}
       />

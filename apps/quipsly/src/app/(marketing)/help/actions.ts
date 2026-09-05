@@ -3,27 +3,21 @@
 import { revalidatePath } from "next/cache";
 import { auth } from "@/auth";
 import { getPrismaClient } from "@/lib/prisma";
-import { OrganizationRole } from "@prisma/client";
 
-// Helper to check for Admin permission in settings
-async function assertAdmin() {
+async function assertStaff() {
   const session = await auth();
   if (!session?.user?.id) {
     throw new Error("Unauthorized. Please sign in.");
   }
-  const prisma = getPrismaClient();
-  const membership = await prisma.organizationMember.findFirst({
-    where: { userId: session.user.id },
-  });
-
-  if (!membership || (membership.role !== OrganizationRole.OWNER && membership.role !== OrganizationRole.ADMIN)) {
-    throw new Error("Forbidden. Admin access required.");
+  if (session.user.isStaff !== true) {
+    throw new Error("Forbidden. Quipsly staff access required.");
   }
   return session.user;
 }
 
 // 1. Bootstrap/Seed baseline Help Center documents
 export async function bootstrapHelpDocsAction() {
+  await assertStaff();
   const prisma = getPrismaClient();
 
   const count = await prisma.knowledgeCategory.count();
@@ -148,7 +142,7 @@ Never include a password, authentication code, private recording, coaching trans
 
 // 2. Create Category
 export async function createCategoryAction(name: string, description: string, order: number = 0) {
-  await assertAdmin();
+  await assertStaff();
   const prisma = getPrismaClient();
 
   const slug = name.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-");
@@ -164,7 +158,7 @@ export async function createCategoryAction(name: string, description: string, or
 
 // 3. Delete Category
 export async function deleteCategoryAction(catId: string) {
-  await assertAdmin();
+  await assertStaff();
   const prisma = getPrismaClient();
 
   await prisma.knowledgeCategory.delete({
@@ -186,7 +180,7 @@ export async function upsertArticleAction(
   isPublished: boolean,
   order: number = 0
 ) {
-  await assertAdmin();
+  await assertStaff();
   const prisma = getPrismaClient();
 
   let article;
@@ -210,7 +204,7 @@ export async function upsertArticleAction(
 
 // 5. Delete Article
 export async function deleteArticleAction(articleId: string) {
-  await assertAdmin();
+  await assertStaff();
   const prisma = getPrismaClient();
 
   await prisma.knowledgeArticle.delete({
@@ -224,7 +218,7 @@ export async function deleteArticleAction(articleId: string) {
 
 // 6. Fetch Categories for Admin list
 export async function getAdminKbDataAction() {
-  await assertAdmin();
+  await assertStaff();
   const prisma = getPrismaClient();
 
   const categories = await prisma.knowledgeCategory.findMany({

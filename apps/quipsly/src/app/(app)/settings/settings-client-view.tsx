@@ -112,6 +112,7 @@ export function SettingsClientView({
   initialFeedback,
   currentUserRole,
   currentUserId,
+  currentUserIsStaff,
   initialEntitlement,
   initialKbData = []
 }: {
@@ -121,6 +122,7 @@ export function SettingsClientView({
   initialFeedback: any[];
   currentUserRole: OrganizationRole;
   currentUserId: string;
+  currentUserIsStaff: boolean;
   initialEntitlement: AccountEntitlement;
   initialKbData?: any[];
 }) {
@@ -397,17 +399,19 @@ export function SettingsClientView({
           <CreditCard size={16} />
           Billing & Plans
         </button>
-        <button
-          onClick={() => setActiveTab("kb")}
-          className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl font-bold text-sm transition-all ${
-            activeTab === "kb" 
-              ? "bg-studio-tag text-[#032321] shadow-sm" 
-              : "text-studio-muted hover:text-studio-ink hover:bg-[#062d2a]"
-          }`}
-        >
-          <BookOpen size={16} />
-          Knowledge Base
-        </button>
+        {currentUserIsStaff && (
+          <button
+            onClick={() => setActiveTab("kb")}
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl font-bold text-sm transition-all ${
+              activeTab === "kb"
+                ? "bg-studio-tag text-[#032321] shadow-sm"
+                : "text-studio-muted hover:text-studio-ink hover:bg-[#062d2a]"
+            }`}
+          >
+            <BookOpen size={16} />
+            Knowledge Base
+          </button>
+        )}
         <button
           onClick={() => setActiveTab("support")}
           className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl font-bold text-sm transition-all ${
@@ -692,7 +696,7 @@ export function SettingsClientView({
         )}
 
         {/* TAB 3: KNOWLEDGE BASE ADMIN */}
-        {activeTab === "kb" && (
+        {currentUserIsStaff && activeTab === "kb" && (
           <div className="flex flex-col gap-6 animate-in fade-in duration-200">
             <div className="bg-[#032321]/90 border border-studio-line rounded-2xl p-6 shadow-studio-panel">
               <div className="flex justify-between items-center mb-6 border-b border-studio-line pb-4">

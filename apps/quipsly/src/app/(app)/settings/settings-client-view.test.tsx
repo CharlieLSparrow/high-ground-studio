@@ -57,6 +57,7 @@ const props = {
   plans: [plan, { ...plan, id: "plan-2", name: "Legacy Agency row", price: 9900 }],
   currentUserRole: OrganizationRole.OWNER,
   currentUserId: "user-1",
+  currentUserIsStaff: false,
   initialEntitlement: {
     entitled: true,
     accessMode: "SUBSCRIBED" as const,
@@ -136,5 +137,17 @@ describe("SettingsClientView truth UX", () => {
 
     expect(screen.getByText("Feedback portal")).toBeInTheDocument();
     expect(screen.getByText("Account deletion")).toBeInTheDocument();
+  });
+
+  it("does not expose global Help Center publishing to an ordinary organization owner", () => {
+    render(<SettingsClientView {...props} />);
+
+    expect(screen.queryByRole("button", { name: "Knowledge Base" })).not.toBeInTheDocument();
+  });
+
+  it("exposes global Help Center publishing only to Quipsly staff", () => {
+    render(<SettingsClientView {...props} currentUserIsStaff />);
+
+    expect(screen.getByRole("button", { name: "Knowledge Base" })).toBeInTheDocument();
   });
 });

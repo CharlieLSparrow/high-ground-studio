@@ -1,9 +1,8 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import Link from "next/link";
-import { Search, BookOpen, ChevronRight, HelpCircle, ArrowLeft, ArrowUpRight, Sparkles, Loader2 } from "lucide-react";
-import { bootstrapHelpDocsAction } from "./actions";
+import { Search, BookOpen, ChevronRight, HelpCircle, ArrowLeft, ArrowUpRight, Sparkles } from "lucide-react";
 
 interface Article {
   id: string;
@@ -26,25 +25,8 @@ export function HelpClientPortal({
 }: {
   initialCategories: Category[];
 }) {
-  const [categories, setCategories] = useState<Category[]>(initialCategories);
+  const categories = initialCategories;
   const [searchQuery, setSearchQuery] = useState("");
-  const [bootstrapping, setBootstrapping] = useState(false);
-
-  // Trigger bootstrap automatically if categories list is empty
-  useEffect(() => {
-    if (categories.length === 0) {
-      setBootstrapping(true);
-      bootstrapHelpDocsAction()
-        .then((res) => {
-          if (res.ok) {
-            // Reload page to fetch seeded data
-            window.location.reload();
-          }
-        })
-        .catch(console.error)
-        .finally(() => setBootstrapping(false));
-    }
-  }, [categories]);
 
   // Client search algorithm
   const filteredCategories = categories.map(cat => {
@@ -57,12 +39,17 @@ export function HelpClientPortal({
     return { ...cat, articles: matchedArticles };
   }).filter(cat => cat.articles.length > 0);
 
-  if (bootstrapping || categories.length === 0) {
+  if (categories.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] text-studio-ink text-center p-6">
-        <Loader2 className="w-8 h-8 text-studio-tag animate-spin mb-4" />
-        <h3 className="font-bold text-sm">Provisioning Quipsly Knowledge Base...</h3>
-        <p className="text-xs text-studio-dim mt-1">Seeding default documentation templates in the database.</p>
+        <HelpCircle className="mb-4 h-8 w-8 text-studio-tag" />
+        <h3 className="font-bold text-base">Help Center updates are underway</h3>
+        <p className="mt-2 max-w-md text-sm leading-6 text-studio-muted">
+          No published guides are available right now. Quipsly did not create or change global documentation from your visit.
+        </p>
+        <Link href="/support" className="mt-5 rounded-xl border border-studio-line px-4 py-2 text-sm font-bold text-studio-ink hover:border-studio-tag">
+          Contact support
+        </Link>
       </div>
     );
   }
