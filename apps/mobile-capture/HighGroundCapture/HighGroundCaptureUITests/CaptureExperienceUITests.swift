@@ -4702,10 +4702,10 @@ final class CaptureExperienceUITests: XCTestCase {
             "Preview may explain transcript consequence review but must never append a canonical receipt."
         )
         XCTAssertTrue(aiProposal.exists)
-        XCTAssertTrue(app.staticTexts["AI proposal · not transcript truth"].exists)
+        XCTAssertTrue(app.staticTexts["Suggested correction"].exists)
         XCTAssertFalse(app.buttons["CaptureTranscriptAcceptAIButton"].isEnabled)
         XCTAssertFalse(app.buttons["CaptureTranscriptRejectAIButton"].isEnabled)
-        XCTAssertTrue(app.staticTexts["Until accepted here, this proposal does not change the effective transcript."].exists)
+        XCTAssertTrue(app.staticTexts["Use this now or listen first. The original words and timing stay underneath, so you can change or undo it later."].exists)
         let correct = app.buttons["CaptureTranscriptCorrectButton_preview-segment"]
         XCTAssertTrue(correct.isEnabled, "Preview may inspect the editor while every save path remains disabled.")
         correct.tap()

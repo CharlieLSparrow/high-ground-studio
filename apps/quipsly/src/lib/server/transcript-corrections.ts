@@ -1382,6 +1382,7 @@ export function transcriptCorrectionBoundaries() {
     providerSegmentsImmutable: true,
     correctionOverlayVersioned: true,
     acceptedHumanCorrectionRequiresPlaybackConfirmation: false,
+    acceptedAiSuggestionRequiresPlaybackConfirmation: false,
     directHumanCorrectionPreservesSourceAnchors: true,
     confirmedAsIsRequiresPlaybackConfirmation: true,
     aiSuggestionRequiresAcceptanceToChangeTranscript: true,
@@ -2558,7 +2559,11 @@ export async function reviewTranscriptCorrectionProposal(input: {
   })) {
     throw new TranscriptCorrectionError("That proposal matches the correction already in effect.", 409, "UNCHANGED_CORRECTION_OVERLAY");
   }
-  const position = input.decision === "accept"
+  // Choosing an AI wording suggestion is an ordinary editable transcript
+  // action, not an accuracy-certification ceremony. Preserve the immutable
+  // provider segment and versioned overlay either way; attach playback proof
+  // only when the person actually listened.
+  const position = input.decision === "accept" && input.confirmedAgainstPlayback === true
     ? assertPlaybackConfirmation({
         playback: evidence.playback,
         confirmedAgainstPlayback: input.confirmedAgainstPlayback,
@@ -2603,13 +2608,15 @@ export async function reviewTranscriptCorrectionProposal(input: {
         reviewedByUserId: input.actor.id,
         reviewedAt: now,
         reviewNote: text(input.reviewNote) || (input.decision === "accept"
-          ? "Reviewer explicitly accepted this AI proposal against protected playback."
+          ? position === null
+            ? "User applied this AI transcript suggestion without claiming playback review."
+            : "User applied this AI transcript suggestion after protected playback."
           : "Reviewer rejected this AI proposal."),
         provenanceJson: {
           ...object(correction.provenanceJson),
           review: {
             decision: input.decision,
-            playbackConfirmed: input.decision === "accept",
+            playbackConfirmed: input.decision === "accept" && position !== null,
             playbackPositionSeconds: position,
             reviewedAt: now.toISOString(),
           },
@@ -2620,7 +2627,11 @@ export async function reviewTranscriptCorrectionProposal(input: {
       data: {
         correctionId: correction.id,
         revision: correction.revisions.length + 1,
-        operation: input.decision === "accept" ? "ai-proposal-accepted-after-playback" : "ai-proposal-rejected",
+        operation: input.decision === "accept"
+          ? position === null
+            ? "ai-proposal-accepted-without-playback"
+            : "ai-proposal-accepted-after-playback"
+          : "ai-proposal-rejected",
         actorUserId: input.actor.id,
         snapshotJson: correctionSnapshot(updated),
       },

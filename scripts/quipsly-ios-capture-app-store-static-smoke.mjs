@@ -3240,6 +3240,21 @@ requireExcludes(
 );
 requireIncludes(
   transcriptReviewText,
+  'Text("Use suggestion")',
+  "native AI transcript suggestions remain one-tap editable without a listening ceremony",
+);
+requireIncludes(
+  transcriptReviewText,
+  '"confirmedAgainstPlayback": decision == "accept" && playbackPosition != nil',
+  "native AI suggestion provenance distinguishes optional playback from ordinary acceptance",
+);
+requireExcludes(
+  transcriptReviewText,
+  'Text("Accept after listening")',
+  "retired forced-playback AI suggestion gate",
+);
+requireIncludes(
+  transcriptReviewText,
   "CaptureTranscriptSegmentVerification",
   "native transcript review decodes the append-only verification receipt",
 );

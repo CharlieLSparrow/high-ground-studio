@@ -1577,16 +1577,22 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
             "correctionId": proposal.id,
             "decision": decision,
             "expectedAcceptedCorrectionId": captureTranscriptJSONNullable(segment.acceptedCorrection?.id),
-            "confirmedAgainstPlayback": decision == "accept",
+            "confirmedAgainstPlayback": decision == "accept" && playbackPosition != nil,
             "reviewNote": decision == "accept"
-                ? "Reviewed against the exact retained device recording asset."
+                ? playbackPosition == nil
+                    ? "Applied in Quipsly Capture without claiming playback review."
+                    : "Applied after listening to the exact retained device recording asset."
                 : "Rejected from Quipsly Capture; proposal preserved in correction history.",
         ]
         if let playbackPosition { body["playbackPositionSeconds"] = playbackPosition }
         await mutate(
             roomID: roomID,
             body: body,
-            success: decision == "accept" ? "AI proposal accepted after playback review." : "AI proposal rejected and preserved."
+            success: decision == "accept"
+                ? playbackPosition == nil
+                    ? "Suggestion applied. The original transcript remains recoverable."
+                    : "Suggestion applied and linked to the moment you heard."
+                : "AI proposal rejected and preserved."
         )
     }
 
@@ -7522,7 +7528,7 @@ private struct CaptureTranscriptSegmentCard: View {
 
     private func proposalReview(_ proposal: CaptureTranscriptCorrection) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            Label("AI proposal · not transcript truth", systemImage: "sparkles")
+            Label("Suggested correction", systemImage: "sparkles")
                 .font(.caption.weight(.bold))
                 .foregroundStyle(CapturePalette.plum)
                 .accessibilityIdentifier("CaptureTranscriptAIProposal")
@@ -7545,7 +7551,7 @@ private struct CaptureTranscriptSegmentCard: View {
                         .frame(maxWidth: .infinity)
                 }
             }
-            Text("Until accepted here, this proposal does not change the effective transcript.")
+            Text("Use this now or listen first. The original words and timing stay underneath, so you can change or undo it later.")
                 .font(.caption2.weight(.semibold))
                 .foregroundStyle(CapturePalette.plum)
         }
@@ -7555,7 +7561,6 @@ private struct CaptureTranscriptSegmentCard: View {
 
     private func acceptAIProposalButton(_ proposal: CaptureTranscriptCorrection) -> some View {
         Button {
-            guard let playbackPosition else { return }
             Task {
                 await client.reviewAIProposal(
                     roomID: roomID,
@@ -7567,12 +7572,12 @@ private struct CaptureTranscriptSegmentCard: View {
                 )
             }
         } label: {
-            Text("Accept after listening")
+            Text("Use suggestion")
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .captureProminentButton(fill: CapturePalette.plumFill)
-        .disabled(playbackPosition == nil || client.isMutating || previewOnly || decisionsLocked)
+        .disabled(client.isMutating || previewOnly || decisionsLocked)
         .accessibilityIdentifier("CaptureTranscriptAcceptAIButton")
     }
 

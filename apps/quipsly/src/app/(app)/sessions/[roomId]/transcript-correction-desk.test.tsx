@@ -517,7 +517,7 @@ describe("TranscriptCorrectionDesk", () => {
     expect(await screen.findByText(/scott sparrow is now used for this voice throughout the session/i)).toBeInTheDocument();
   });
 
-  it("unlocks an AI correction proposal from observed playback without another checkbox", async () => {
+  it("applies an AI correction without forced playback and preserves whether listening occurred", async () => {
     const proposalDesk = desk(true);
     proposalDesk.segments = [{
       ...segment,
@@ -535,19 +535,27 @@ describe("TranscriptCorrectionDesk", () => {
         revisions: [],
       }],
     }];
-    global.fetch = jest.fn(async () => ({ ok: true, json: async () => proposalDesk })) as unknown as typeof fetch;
+    const fetchMock = jest.fn(async (_input: RequestInfo | URL, init?: RequestInit) => ({
+      ok: true,
+      json: async () => init?.method === "POST" ? { ok: true } : proposalDesk,
+    }));
+    global.fetch = fetchMock as unknown as typeof fetch;
 
     render(<TranscriptCorrectionDesk roomId="room-1" />);
     await screen.findByText("Welcome, everyone.");
     await markProtectedPlaybackReady();
-    const accept = screen.getByRole("button", { name: "Accept correction" });
-    expect(accept).toBeDisabled();
-
-    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Play timestamp" })); });
-
-    expect(await screen.findByText(/recording checked from 00:03/i)).toBeInTheDocument();
+    const accept = screen.getByRole("button", { name: "Use suggestion" });
     expect(accept).toBeEnabled();
-    expect(screen.queryByRole("checkbox", { name: /verified the proposal/i })).not.toBeInTheDocument();
+    expect(screen.getByText(/listening first is optional/i)).toBeInTheDocument();
+
+    fireEvent.click(accept);
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+    expect(JSON.parse(fetchMock.mock.calls[1][1]?.body as string)).toMatchObject({
+      operation: "review-ai-proposal",
+      decision: "accept",
+      confirmedAgainstPlayback: false,
+    });
+    expect(await screen.findByText(/clearly marked as not playback-checked/i)).toBeInTheDocument();
   });
 
   it("loads an explicitly focused RecordingAsset without room-latest fallback", async () => {

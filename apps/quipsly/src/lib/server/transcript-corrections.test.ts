@@ -15,6 +15,7 @@ import {
   createTranscriptCorrection,
   readTranscriptCorrectionDesk,
   readTranscriptCorrectionImpactSummary,
+  reviewTranscriptCorrectionProposal,
   TRANSCRIPT_CORRECTION_SCHEMA,
   TRANSCRIPT_CORRECTION_IMPACT_REVIEW_SCHEMA,
   TRANSCRIPT_SPEAKER_ATTRIBUTION_SCHEMA,
@@ -150,7 +151,7 @@ function correctionRecord(data: Record<string, any>, revisions: any[] = []) {
   };
 }
 
-function mutationHarness(options: { promoted?: boolean; active?: { id: string } | null; existingVerification?: any | null } = {}) {
+function mutationHarness(options: { promoted?: boolean; active?: { id: string } | null; proposal?: any | null; existingVerification?: any | null } = {}) {
   let created: any = null;
   let verificationCreated: any = null;
   const revisionCreate = jest.fn(async ({ data }: any) => ({ id: `revision-${data.revision}`, ...data, createdAt: new Date() }));
@@ -175,7 +176,10 @@ function mutationHarness(options: { promoted?: boolean; active?: { id: string } 
         created = correctionRecord({ id: "correction-1", ...data });
         return created;
       }),
-      update: jest.fn(async ({ where, data }: any) => correctionRecord({ id: where.id, ...data })),
+      update: jest.fn(async ({ where, data }: any) => {
+        created = correctionRecord({ id: where.id, ...data });
+        return created;
+      }),
       findUnique: jest.fn(async () => created ? { ...created, revisions: [{ revision: 1, operation: created.status === "accepted" ? "created-and-accepted-after-playback" : "ai-proposal-created", createdAt: new Date() }] } : null),
     },
     transcriptCorrectionRevision: {
@@ -198,7 +202,9 @@ function mutationHarness(options: { promoted?: boolean; active?: { id: string } 
     mobileCaptureFinalizationReceipt: { findMany: jest.fn(async () => [{ id: "receipt-1" }]) },
     transcriptCorrection: {
       findUnique: jest.fn(async () => null),
-      findFirst: jest.fn(async () => options.active ?? null),
+      findFirst: jest.fn()
+        .mockResolvedValueOnce(options.proposal ?? options.active ?? null)
+        .mockResolvedValue(options.active ?? null),
     },
     transcriptSegmentVerification: {
       findUnique: jest.fn(async () => null),
@@ -1371,6 +1377,45 @@ describe("transcript correction desk", () => {
       reviewedAt: null,
     }) }));
     expect(tx.transcriptJob.update).not.toHaveBeenCalled();
+  });
+
+  it("applies an AI wording suggestion without forcing playback while preserving that distinction", async () => {
+    const proposal = correctionRecord({
+      id: "proposal-1",
+      roomId: "room-1",
+      segmentId: "segment-1",
+      origin: "ai",
+      status: "proposed",
+      baseTextSha256: sha256(providerText),
+      expectedText: providerText,
+      expectedSpeakerLabel: providerSpeakerLabel,
+      correctedText: "We should ship the proof-watch tomorrow.",
+      correctedSpeakerLabel: providerSpeakerLabel,
+      reason: "Compound noun punctuation",
+      provenanceJson: { source: "ai-transcript-correction-proposal" },
+    }, []);
+    const { prisma, tx, revisionCreate } = mutationHarness({ promoted: false, proposal });
+
+    const result = await reviewTranscriptCorrectionProposal({
+      prisma,
+      actor,
+      roomId: "room-1",
+      correctionId: proposal.id,
+      decision: "accept",
+    });
+
+    expect(result.correction).toMatchObject({ status: "accepted" });
+    expect(tx.transcriptCorrection.update).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        reviewNote: "User applied this AI transcript suggestion without claiming playback review.",
+        provenanceJson: expect.objectContaining({
+          review: expect.objectContaining({ playbackConfirmed: false, playbackPositionSeconds: null }),
+        }),
+      }),
+    }));
+    expect(revisionCreate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ operation: "ai-proposal-accepted-without-playback" }),
+    }));
   });
 
   it("fails closed rather than replacing a correction the reviewer did not see", async () => {

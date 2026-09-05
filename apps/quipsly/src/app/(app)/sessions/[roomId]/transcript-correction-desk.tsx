@@ -1093,7 +1093,9 @@ function ProposalReview({
       const body = await response.json() as { ok?: boolean; error?: string };
       if (!response.ok || !body.ok) throw new Error(body.error || "The proposal decision was not saved.");
       await onSaved(decision === "accept"
-        ? "AI proposal accepted only after playback review. Its reviewed overlay is now effective."
+        ? playbackReviewed
+          ? "Suggestion applied and linked to the moment you heard. The original transcript remains recoverable."
+          : "Suggestion applied. It remains clearly marked as not playback-checked, and the original transcript is recoverable."
         : "AI proposal rejected and preserved in correction history.");
     } catch (decisionError) {
       setError(decisionError instanceof Error ? decisionError.message : "The proposal decision was not saved.");
@@ -1102,7 +1104,7 @@ function ProposalReview({
 
   return (
     <div className="mt-4 rounded-xl border border-violet-200 bg-violet-50 p-4">
-      <p className="flex items-center gap-2 text-xs font-black uppercase tracking-wide text-violet-800"><Sparkles size={15} aria-hidden="true" />AI proposal · not transcript truth</p>
+      <p className="flex items-center gap-2 text-xs font-black uppercase tracking-wide text-violet-800"><Sparkles size={15} aria-hidden="true" />Suggested correction</p>
       {proposal.correctedSpeakerLabel && <p className="mt-2 text-sm font-bold text-violet-950">Proposed speaker: {proposal.correctedSpeakerLabel}</p>}
       <p className="mt-2 text-sm font-semibold leading-relaxed text-violet-950">{proposal.correctedText || segment.text}</p>
       {proposal.reason && <p className="mt-2 text-xs font-bold text-violet-800">Reason: {proposal.reason}</p>}
@@ -1110,10 +1112,10 @@ function ProposalReview({
       {error && <p role="alert" className="mt-3 flex items-start gap-2 text-sm font-bold text-rose-800"><CircleAlert size={16} className="mt-0.5 shrink-0" aria-hidden="true" />{error}</p>}
       <div className="mt-3 flex flex-wrap gap-2">
         <button type="button" onClick={() => void onPlay()} disabled={!playbackReady || busy} className="inline-flex items-center gap-2 rounded-full border border-violet-300 bg-white px-3 py-2 text-xs font-black uppercase tracking-wide text-violet-900 disabled:opacity-50"><Play size={14} fill="currentColor" aria-hidden="true" />Play timestamp</button>
-        <button type="button" onClick={() => void decide("accept")} disabled={!playbackReady || !playbackReviewed || busy} className="inline-flex items-center gap-2 rounded-full bg-violet-800 px-3 py-2 text-xs font-black uppercase tracking-wide text-white disabled:opacity-50"><Check size={14} aria-hidden="true" />Accept correction</button>
+        <button type="button" onClick={() => void decide("accept")} disabled={busy} className="inline-flex min-h-11 items-center gap-2 rounded-full bg-violet-800 px-4 py-2 text-xs font-black text-white disabled:opacity-50"><Check size={14} aria-hidden="true" />Use suggestion</button>
         <button type="button" onClick={() => void decide("reject")} disabled={busy} className="inline-flex items-center gap-2 rounded-full border border-rose-300 bg-white px-3 py-2 text-xs font-black uppercase tracking-wide text-rose-800 disabled:opacity-50"><X size={14} aria-hidden="true" />Reject proposal</button>
       </div>
-      <p className="mt-2 text-xs font-bold text-violet-800">Until accepted here, this proposal does not change the effective transcript.</p>
+      <p className="mt-2 text-xs font-bold text-violet-800">Using this keeps the original words and timing underneath, so you can change or undo it later. Listening first is optional.</p>
     </div>
   );
 }
