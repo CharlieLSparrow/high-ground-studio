@@ -1715,6 +1715,9 @@ for (const needle of [
   "clientTrackedPlaybackIsNotProofOfAudibility",
   "Play this edit above, or share it now.",
   "Share with \\(output.recipient.label)",
+  "AuthResponseDecoder.decode(",
+  'errorDomain: "QuipslyCapture.RecordingEditor"',
+  "Your original recording and edit choices are safe; try again.",
   'accessibilityIdentifier("CaptureRecordingSharePrepare")',
   'accessibilityIdentifier("CaptureRecordingShareRelease")',
 ]) {

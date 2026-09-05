@@ -237,10 +237,16 @@ final class CaptureRecordingShareClient: NSObject, ObservableObject, AVAudioPlay
             request.cachePolicy = .reloadIgnoringLocalCacheData
             request.setValue("no-cache", forHTTPHeaderField: "Cache-Control")
             let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
+            let decoded = try AuthResponseDecoder.decode(
+                CaptureRecordingShareSnapshot.self,
+                from: data,
+                response: response,
+                errorDomain: "QuipslyCapture.RecordingEditor",
+                malformedResponseMessage: "The recording editor received an unexpected response. Your original recording and edit choices are safe; try again."
+            ).payload
             guard response.statusCode < 400 else {
                 throw responseError(data, fallback: "The recording editor could not load.")
             }
-            let decoded = try JSONDecoder().decode(CaptureRecordingShareSnapshot.self, from: data)
             guard decoded.ok else {
                 throw CaptureRecordingShareClientError.message(decoded.error ?? "The recording editor could not load.")
             }
