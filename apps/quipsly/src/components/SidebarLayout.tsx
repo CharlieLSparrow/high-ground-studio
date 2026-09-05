@@ -187,7 +187,7 @@ export function SidebarLayout({
       {/* Main Content */}
       <main className="relative min-h-0 flex-1 overflow-hidden bg-quipsly-canvas">
         {/* Soft sunlight glow background */}
-        <div className="pointer-events-none absolute left-0 top-0 h-64 w-full bg-[radial-gradient(circle_at_22%_0%,rgba(80,112,63,0.18),transparent_42%),radial-gradient(circle_at_78%_0%,rgba(40,85,77,0.16),transparent_38%)] blur-[72px]" />
+        <div className="pointer-events-none absolute left-0 top-0 h-64 w-full bg-[radial-gradient(circle_at_22%_0%,rgba(72,109,53,0.19),transparent_42%),radial-gradient(circle_at_78%_0%,rgba(35,104,95,0.17),transparent_38%)] blur-[72px]" />
 
         <div className="h-full overflow-y-auto custom-scrollbar p-4 md:p-6 pb-24 md:pb-6">
           {children}

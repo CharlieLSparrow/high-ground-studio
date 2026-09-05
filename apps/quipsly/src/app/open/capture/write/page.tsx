@@ -7,7 +7,7 @@ export const metadata = {
 };
 
 export default function OpenCaptureWritingPage() {
-  return <main className="grid min-h-screen place-items-center bg-[radial-gradient(circle_at_top,_#d9eae2,_transparent_44%),radial-gradient(circle_at_bottom_left,_#e3ecd8,_transparent_38%),linear-gradient(180deg,#f3e9d8,#e8dfc9)] px-5 py-10 text-quipsly-ink">
+  return <main className="grid min-h-screen place-items-center bg-[radial-gradient(circle_at_top,_#d5eee9,_transparent_44%),radial-gradient(circle_at_bottom_left,_#e1efd5,_transparent_38%),linear-gradient(180deg,#f3ead8,#e6dcc7)] px-5 py-10 text-quipsly-ink">
     <section className="w-full max-w-xl rounded-[2rem] border border-quipsly-divider bg-quipsly-surface/92 p-7 text-center shadow-xl shadow-[#5f4720]/10 sm:p-10">
       <span className="mx-auto grid h-16 w-16 place-items-center rounded-2xl bg-gradient-to-br from-quipsly-peacock-600 to-quipsly-fern-600 text-[#fff7e8]"><Mic2 className="h-8 w-8" aria-hidden="true" /></span>
       <p className="mt-6 text-xs font-black uppercase tracking-[0.2em] text-quipsly-peacock-700">Quipsly Capture</p>

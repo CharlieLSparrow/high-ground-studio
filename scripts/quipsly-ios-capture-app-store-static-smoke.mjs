@@ -354,6 +354,7 @@ requireIncludes(capturePhoneShellText, "static let actionFill = adaptive(", "fil
 requireIncludes(capturePhoneShellText, "static let plumFill = adaptive(", "editor actions have an independent accessible inkberry token");
 requireIncludes(capturePhoneShellText, "static let accentUIColor = adaptiveUIColor(", "system-owned controls receive the same adaptive bookcloth accent");
 requireIncludes(capturePhoneShellText, "func captureProminentButton(fill:", "filled controls share one readable Quipsly action treatment");
+requireIncludes(capturePhoneShellText, ".toolbarColorScheme(colorScheme, for: .tabBar)", "the tab bar follows the active parchment or walnut appearance");
 for (const family of ["peacock", "lake", "fern", "brass", "inkberry", "rosewood", "terracotta", "walnut"]) {
   for (const step of [50, 500, 950]) {
     requireIncludes(
@@ -383,7 +384,7 @@ for (const [legacyFamily, materialFamily] of [
     `${legacyFamily} utilities resolve through the ${materialFamily} material`,
   );
 }
-requireIncludes(webGlobalsText, "--color-studio-bg: #17110e;", "heavy web tools use walnut rather than a near-black teal product theme");
+requireIncludes(webGlobalsText, "--color-studio-bg: #1e1510;", "heavy web tools use walnut rather than a near-black teal product theme");
 requireExcludes(webNestSignInGateText, "#ffc0c5", "the Session sign-in gate has no bubble-gum border escape hatch");
 requireExcludes(webNestSignInGateText, "#fff1f2", "the Session sign-in gate has no bubble-gum surface escape hatch");
 const captureSwiftSourceDirectory = path.join(

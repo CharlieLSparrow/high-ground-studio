@@ -13,6 +13,7 @@ private enum CaptureIPadSidebarSelection: Hashable {
 
 struct CapturePhoneShell: View {
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.colorScheme) private var colorScheme
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @EnvironmentObject private var audioCapture: AudioCaptureController
     @EnvironmentObject private var videoCapture: VideoCaptureController
@@ -594,7 +595,8 @@ struct CapturePhoneShell: View {
             .tag(CaptureRootTab.account)
         }
         .toolbarBackground(CapturePalette.surface, for: .tabBar)
-        .toolbarBackground(.visible, for: .tabBar))
+        .toolbarBackground(.visible, for: .tabBar)
+        .toolbarColorScheme(colorScheme, for: .tabBar))
     }
 
     private func captureDestination(
@@ -23849,7 +23851,7 @@ struct CaptureCanvas: View {
                 endPoint: .bottomTrailing
             )
 
-            // A quiet moss bloom gives the reading canvas some living depth
+            // A quiet fern bloom gives the reading canvas some living depth
             // without turning work surfaces into decorative wallpaper. These
             // are atmosphere, not competing feature colors.
             RadialGradient(
@@ -23888,118 +23890,119 @@ struct CaptureCanvas: View {
 
 /// Shared semantic color tokens for the shipping Capture experience.
 ///
-/// Parchment and walnut establish the calm reading canvas. Peacock spruce,
-/// living fern, cedar leather, and aged brass provide the restrained highlights:
-/// an elegant old library delightfully reclaimed by a garden.
+/// Parchment and walnut establish the calm reading canvas. Peacock spruce is
+/// the primary interactive color; fern, inkberry, and aged brass are supporting
+/// materials. That hierarchy keeps the room richly alive without letting every
+/// feature introduce a competing brand color.
 /// Feature screens should consume these tokens instead of inventing a new
 /// brand color for each workflow.
 /// Red, orange, green, and the audio meter remain reserved for familiar
 /// recording, warning, success, and signal meanings.
 enum CapturePalette {
     static let canvas = adaptive(
-        light: UIColor(red: 0.953, green: 0.914, blue: 0.847, alpha: 1),
-        dark: UIColor(red: 0.129, green: 0.059, blue: 0.039, alpha: 1)
+        light: UIColor(red: 0.953, green: 0.918, blue: 0.847, alpha: 1),
+        dark: UIColor(red: 0.118, green: 0.082, blue: 0.063, alpha: 1)
     )
     static let canvasLift = adaptive(
-        light: UIColor(red: 0.910, green: 0.875, blue: 0.788, alpha: 1),
-        dark: UIColor(red: 0.176, green: 0.122, blue: 0.086, alpha: 1)
+        light: UIColor(red: 0.902, green: 0.863, blue: 0.780, alpha: 1),
+        dark: UIColor(red: 0.165, green: 0.125, blue: 0.094, alpha: 1)
     )
     static let surface = adaptive(
-        light: UIColor(red: 1.00, green: 0.973, blue: 0.922, alpha: 0.97),
-        dark: UIColor(red: 0.208, green: 0.145, blue: 0.110, alpha: 0.97)
+        light: UIColor(red: 1.00, green: 0.976, blue: 0.933, alpha: 0.97),
+        dark: UIColor(red: 0.208, green: 0.153, blue: 0.114, alpha: 0.97)
     )
     static let surfaceMuted = adaptive(
-        light: UIColor(red: 0.918, green: 0.882, blue: 0.812, alpha: 0.97),
-        dark: UIColor(red: 0.278, green: 0.204, blue: 0.157, alpha: 0.97)
+        light: UIColor(red: 0.925, green: 0.890, blue: 0.820, alpha: 0.97),
+        dark: UIColor(red: 0.267, green: 0.200, blue: 0.153, alpha: 0.97)
     )
     static let sidebarSurface = adaptive(
-        light: UIColor(red: 0.973, green: 0.937, blue: 0.875, alpha: 1),
-        dark: UIColor(red: 0.106, green: 0.075, blue: 0.055, alpha: 1)
+        light: UIColor(red: 0.980, green: 0.953, blue: 0.898, alpha: 1),
+        dark: UIColor(red: 0.098, green: 0.067, blue: 0.051, alpha: 1)
     )
     static let locationBarBackground = adaptive(
-        light: UIColor(red: 0.969, green: 0.925, blue: 0.867, alpha: 0.98),
-        dark: UIColor(red: 0.161, green: 0.106, blue: 0.078, alpha: 0.98)
+        light: UIColor(red: 0.969, green: 0.929, blue: 0.871, alpha: 0.98),
+        dark: UIColor(red: 0.157, green: 0.110, blue: 0.082, alpha: 0.98)
     )
     static let divider = adaptive(
-        light: UIColor(red: 0.31, green: 0.22, blue: 0.15, alpha: 0.16),
-        dark: UIColor(red: 0.95, green: 0.87, blue: 0.73, alpha: 0.16)
+        light: UIColor(red: 0.169, green: 0.110, blue: 0.075, alpha: 0.17),
+        dark: UIColor(red: 0.961, green: 0.906, blue: 0.804, alpha: 0.16)
     )
     static let primaryText = adaptive(
-        light: UIColor(red: 0.169, green: 0.106, blue: 0.071, alpha: 1),
-        dark: UIColor(red: 0.969, green: 0.906, blue: 0.796, alpha: 1)
+        light: UIColor(red: 0.169, green: 0.110, blue: 0.075, alpha: 1),
+        dark: UIColor(red: 0.961, green: 0.906, blue: 0.804, alpha: 1)
     )
     static let secondaryText = adaptive(
-        light: UIColor(red: 0.373, green: 0.294, blue: 0.235, alpha: 1),
-        dark: UIColor(red: 0.800, green: 0.725, blue: 0.608, alpha: 1)
+        light: UIColor(red: 0.400, green: 0.318, blue: 0.247, alpha: 1),
+        dark: UIColor(red: 0.816, green: 0.749, blue: 0.635, alpha: 1)
     )
     static let accentUIColor = adaptiveUIColor(
-        light: UIColor(red: 0.184, green: 0.412, blue: 0.369, alpha: 1),
-        dark: UIColor(red: 0.624, green: 0.780, blue: 0.616, alpha: 1)
+        light: UIColor(red: 0.141, green: 0.408, blue: 0.365, alpha: 1),
+        dark: UIColor(red: 0.545, green: 0.812, blue: 0.753, alpha: 1)
     )
     static let accent = Color(uiColor: accentUIColor)
     static let accentDeep = adaptive(
-        light: UIColor(red: 0.133, green: 0.306, blue: 0.278, alpha: 1),
-        dark: UIColor(red: 0.514, green: 0.678, blue: 0.537, alpha: 1)
+        light: UIColor(red: 0.090, green: 0.290, blue: 0.263, alpha: 1),
+        dark: UIColor(red: 0.455, green: 0.702, blue: 0.608, alpha: 1)
     )
     static let accentSoft = adaptive(
-        light: UIColor(red: 0.851, green: 0.914, blue: 0.847, alpha: 1),
-        dark: UIColor(red: 0.118, green: 0.200, blue: 0.153, alpha: 1)
+        light: UIColor(red: 0.847, green: 0.914, blue: 0.871, alpha: 1),
+        dark: UIColor(red: 0.090, green: 0.208, blue: 0.169, alpha: 1)
     )
     // Filled controls need their own token. The readable foreground accent used
     // for links and icons becomes a washed-out button background in dark mode.
     static let actionFill = adaptive(
-        light: UIColor(red: 0.157, green: 0.369, blue: 0.329, alpha: 1),
-        dark: UIColor(red: 0.180, green: 0.420, blue: 0.333, alpha: 1)
+        light: UIColor(red: 0.125, green: 0.365, blue: 0.325, alpha: 1),
+        dark: UIColor(red: 0.137, green: 0.408, blue: 0.373, alpha: 1)
     )
     static let actionFillRaised = adaptive(
-        light: UIColor(red: 0.302, green: 0.455, blue: 0.318, alpha: 1),
-        dark: UIColor(red: 0.310, green: 0.478, blue: 0.345, alpha: 1)
+        light: UIColor(red: 0.255, green: 0.427, blue: 0.239, alpha: 1),
+        dark: UIColor(red: 0.255, green: 0.427, blue: 0.239, alpha: 1)
     )
     static let brass = adaptive(
-        light: UIColor(red: 0.502, green: 0.392, blue: 0.180, alpha: 1),
-        dark: UIColor(red: 0.816, green: 0.694, blue: 0.416, alpha: 1)
+        light: UIColor(red: 0.502, green: 0.357, blue: 0.133, alpha: 1),
+        dark: UIColor(red: 0.847, green: 0.706, blue: 0.392, alpha: 1)
     )
     static let warningFill = adaptive(
-        light: UIColor(red: 0.463, green: 0.314, blue: 0.110, alpha: 1),
-        dark: UIColor(red: 0.502, green: 0.349, blue: 0.133, alpha: 1)
+        light: UIColor(red: 0.459, green: 0.271, blue: 0.059, alpha: 1),
+        dark: UIColor(red: 0.490, green: 0.306, blue: 0.098, alpha: 1)
     )
     // The historic API names remain stable because feature code uses these as
-    // semantic roles. Visually they are fern and cedar: distinct materials in
-    // the same room, not separate feature brands or candy-colored outliers.
+    // semantic roles. Visually they are fern and inkberry: one organic
+    // supporting hue and one restrained bookish accent.
     static let ink = adaptive(
-        light: UIColor(red: 0.365, green: 0.443, blue: 0.259, alpha: 1),
-        dark: UIColor(red: 0.690, green: 0.776, blue: 0.545, alpha: 1)
+        light: UIColor(red: 0.247, green: 0.380, blue: 0.192, alpha: 1),
+        dark: UIColor(red: 0.659, green: 0.776, blue: 0.518, alpha: 1)
     )
     static let inkFill = adaptive(
-        light: UIColor(red: 0.243, green: 0.373, blue: 0.208, alpha: 1),
-        dark: UIColor(red: 0.275, green: 0.388, blue: 0.235, alpha: 1)
+        light: UIColor(red: 0.212, green: 0.337, blue: 0.169, alpha: 1),
+        dark: UIColor(red: 0.255, green: 0.427, blue: 0.239, alpha: 1)
     )
     static let plum = adaptive(
-        light: UIColor(red: 0.439, green: 0.294, blue: 0.259, alpha: 1),
-        dark: UIColor(red: 0.816, green: 0.627, blue: 0.545, alpha: 1)
+        light: UIColor(red: 0.420, green: 0.325, blue: 0.420, alpha: 1),
+        dark: UIColor(red: 0.757, green: 0.631, blue: 0.729, alpha: 1)
     )
     static let plumFill = adaptive(
-        light: UIColor(red: 0.361, green: 0.267, blue: 0.204, alpha: 1),
-        dark: UIColor(red: 0.416, green: 0.286, blue: 0.220, alpha: 1)
+        light: UIColor(red: 0.349, green: 0.267, blue: 0.337, alpha: 1),
+        dark: UIColor(red: 0.408, green: 0.310, blue: 0.392, alpha: 1)
     )
     static let success = adaptive(
-        light: UIColor(red: 0.224, green: 0.451, blue: 0.290, alpha: 1),
-        dark: UIColor(red: 0.553, green: 0.722, blue: 0.475, alpha: 1)
+        light: UIColor(red: 0.247, green: 0.459, blue: 0.278, alpha: 1),
+        dark: UIColor(red: 0.659, green: 0.776, blue: 0.518, alpha: 1)
     )
     static let successFill = adaptive(
-        light: UIColor(red: 0.192, green: 0.373, blue: 0.247, alpha: 1),
-        dark: UIColor(red: 0.239, green: 0.439, blue: 0.294, alpha: 1)
+        light: UIColor(red: 0.208, green: 0.384, blue: 0.231, alpha: 1),
+        dark: UIColor(red: 0.255, green: 0.427, blue: 0.239, alpha: 1)
     )
     static let onAccent = adaptive(
-        light: UIColor(red: 1.00, green: 0.969, blue: 0.906, alpha: 1),
-        dark: UIColor(red: 1.00, green: 0.953, blue: 0.867, alpha: 1)
+        light: UIColor(red: 1.00, green: 0.953, blue: 0.863, alpha: 1),
+        dark: UIColor(red: 1.00, green: 0.953, blue: 0.863, alpha: 1)
     )
     static let accentGradient = LinearGradient(
         colors: [actionFill, actionFillRaised],
         startPoint: .leading,
         endPoint: .trailing
     )
-    static let record = Color(red: 0.604, green: 0.290, blue: 0.247)
+    static let record = Color(red: 0.627, green: 0.294, blue: 0.259)
     static let meterGradient = LinearGradient(
         colors: [accent, CapturePalette.success, CapturePalette.brass, CapturePalette.record],
         startPoint: .leading,
