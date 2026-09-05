@@ -2012,6 +2012,7 @@ for (const needle of [
   'return "Writing ready"',
   'return "mic.fill"',
   'return "Record another thought"',
+  "Quipsly handles cloud backup and transcription automatically.",
 ]) {
   requireIncludes(
     capturePhoneShellText,
@@ -2019,6 +2020,11 @@ for (const needle of [
     "completed voice writing follows the exact saved source instead of a mutable room identifier",
   );
 }
+requireExcludes(
+  capturePhoneShellText,
+  "will start the transcript automatically",
+  "saved-source status never remains stuck in a future transcript phase after writing is ready",
+);
 for (const needle of [
   "var preferredProjectID: String? = nil",
   "let destinationProjectId: String?",
@@ -2749,7 +2755,7 @@ requireIncludes(capturePhoneShellText, "VideoRecorderHero(", "shipping recorder 
 requireIncludes(capturePhoneShellText, "onSwitchCamera:", "shipping video recorder exposes deliberate camera switching");
 requireIncludes(capturePhoneShellText, "private func announceSavedSourceIfStopped()", "shipping recorder owns an explicit post-stop confirmation");
 requireIncludes(capturePhoneShellText, "You can keep talking or leave the call when you are ready", "stopping a recording does not force the coach out of an active call");
-requireIncludes(capturePhoneShellText, "will start the transcript automatically", "local-only capture explains the automatic post-call path without an approval step");
+requireIncludes(capturePhoneShellText, "Quipsly handles cloud backup and transcription automatically.", "local-only capture explains the automatic post-call path without an approval step or a stale future phase");
 requireIncludes(capturePhoneShellText, "&& !localRecordingWorkspaceIsOpen(for: session)", "completed Sessions retain an in-app edit doorway after the recorder workspace closes");
 requireIncludes(capturePhoneShellText, "session.isCoachingSession && !sessionHasPostCallWork(session)", "pre-call coaching preparation yields to completed-session work after capture or transcription begins");
 requireIncludes(runtimeUISmokeTestsText, "The completed take should appear as a new immutable local source.", "runtime iPhone flight proves Stop reaches a new immutable local source row");

@@ -13029,7 +13029,7 @@ private struct CaptureRecorderView: View {
         guard !captureIsActive else { return }
         model.message = model.providerRoom.isConnected
             ? "Recording saved on \(CaptureDeviceVocabulary.thisDevice). You can keep talking or leave the call when you are ready."
-            : "Recording saved on \(CaptureDeviceVocabulary.thisDevice). Quipsly is verifying the cloud copy and will start the transcript automatically."
+            : "Recording saved on \(CaptureDeviceVocabulary.thisDevice). Quipsly handles cloud backup and transcription automatically."
     }
 
     /// Leaving a conversation is an endpoint action, not a room-wide recording
