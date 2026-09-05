@@ -16,6 +16,7 @@ jest.mock("@/app/(marketing)/help/actions", () => ({
   deleteArticleAction: jest.fn(),
 }));
 jest.mock("./feedback-card", () => ({ FeedbackPortal: () => <div>Feedback portal</div> }));
+jest.mock("./account-deletion-panel", () => ({ AccountDeletionPanel: () => <div>Account deletion</div> }));
 
 const plan = {
   id: "plan-1",
@@ -127,5 +128,13 @@ describe("SettingsClientView truth UX", () => {
 
     expect(screen.getByRole("button", { name: /manage subscription/i })).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /manage subscription/i })).not.toBeInTheDocument();
+  });
+
+  it("keeps account deletion reachable from ordinary support settings", () => {
+    render(<SettingsClientView {...props} />);
+    fireEvent.click(screen.getByRole("button", { name: "Feedback & Support" }));
+
+    expect(screen.getByText("Feedback portal")).toBeInTheDocument();
+    expect(screen.getByText("Account deletion")).toBeInTheDocument();
   });
 });

@@ -33,6 +33,7 @@ import {
   deleteArticleAction 
 } from "@/app/(marketing)/help/actions";
 import { FeedbackPortal } from "./feedback-card";
+import { AccountDeletionPanel } from "./account-deletion-panel";
 import { OrganizationRole, SubscriptionStatus } from "@prisma/client";
 
 interface SubscriptionPlan {
@@ -800,8 +801,9 @@ export function SettingsClientView({
 
         {/* TAB 4: FEEDBACK & SUPPORT */}
         {activeTab === "support" && (
-          <div className="animate-in fade-in duration-200">
+          <div className="flex flex-col gap-6 animate-in fade-in duration-200">
             <FeedbackPortal initialTickets={initialFeedback} orgId={org.id} />
+            <AccountDeletionPanel />
           </div>
         )}
 

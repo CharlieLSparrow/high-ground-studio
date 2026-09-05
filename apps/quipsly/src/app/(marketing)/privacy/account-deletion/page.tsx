@@ -22,9 +22,10 @@ export default function AccountDeletionPage() {
             Delete your account without a scavenger hunt.
           </h1>
           <p className="text-[#8c552e] font-sans leading-relaxed mb-8 text-lg">
-            Start from Account in Quipsly Capture. Confirm once, and Quipsly
-            begins the deletion process for your account and eligible personal
-            data. You do not need to find every Session, file, or setting first.
+            Start from Account in Quipsly Capture or Feedback &amp; Support in web
+            Settings. Confirm once, and Quipsly begins deleting your account and
+            eligible personal data. You do not need to find every Session, file,
+            or setting first.
           </p>
 
           <div className="grid gap-4 md:grid-cols-3">
@@ -34,9 +35,10 @@ export default function AccountDeletionPage() {
                 1. Start the request
               </h2>
               <p className="leading-relaxed text-[#7a604c]">
-                In the app, open Account, choose Delete account, and confirm.
-                If you cannot sign in, email support from the address tied to
-                your Quipsly account.
+                In Capture, open Account. On the web, open Settings, then
+                Feedback &amp; Support. Choose Delete account and confirm once. If
+                you cannot sign in, email support from the address tied to your
+                Quipsly account.
               </p>
             </section>
             <section className="rounded-3xl border border-[#ead8c2] bg-[#fffaf3] p-6 font-sans">
