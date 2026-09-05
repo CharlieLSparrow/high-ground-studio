@@ -2,8 +2,6 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-import { QUIPSLY_CAPTURE_RELEASE_TARGET } from "./quipsly-capture-release-target.mjs";
-
 const reportURL = new URL(
   "../../docs/quipsly/coaching-build33-release-report.md",
   import.meta.url,
@@ -13,13 +11,20 @@ const handoffURL = new URL(
   import.meta.url,
 );
 
-test("coaching release report binds the current public build without claiming human acceptance", async () => {
+const BUILD_33_RELEASE = Object.freeze({
+  buildNumber: "33",
+  buildId: "9a7944d0-55d7-46da-9755-694384fbe9fd",
+  sourceRevision: "b84e75f8608455247c7083b933c15be645d67e8d",
+  publicLink: "https://testflight.apple.com/join/XwRRcYUm",
+});
+
+test("historical coaching release report remains bound to Build 33 without claiming human acceptance", async () => {
   const report = await readFile(reportURL, "utf8");
 
-  assert.match(report, new RegExp(`Quipsly Capture 1\\.0 \\(${QUIPSLY_CAPTURE_RELEASE_TARGET.buildNumber}\\)`));
-  assert.match(report, new RegExp(QUIPSLY_CAPTURE_RELEASE_TARGET.buildId));
-  assert.match(report, new RegExp(QUIPSLY_CAPTURE_RELEASE_TARGET.sourceRevision));
-  assert.match(report, new RegExp(QUIPSLY_CAPTURE_RELEASE_TARGET.publicLink.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  assert.match(report, new RegExp(`Quipsly Capture 1\\.0 \\(${BUILD_33_RELEASE.buildNumber}\\)`));
+  assert.match(report, new RegExp(BUILD_33_RELEASE.buildId));
+  assert.match(report, new RegExp(BUILD_33_RELEASE.sourceRevision));
+  assert.match(report, new RegExp(BUILD_33_RELEASE.publicLink.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   assert.match(report, /hands-off acceptance is\s+not yet proved/i);
   assert.match(report, /Only those combined authorities satisfy the active goal\./);
   assert.doesNotMatch(report, /hands-off acceptance (?:is|has been) proved/i);
@@ -44,4 +49,3 @@ test("coaching handoff links the current report and exact post-call verifier", a
   assert.match(report, /ROLLBACK_REVISION=<verified-previous-ready-revision>/);
   assert.doesNotMatch(report, /postgresql:\/\/[^…\s'`]+:[^…\s'`]+@/);
 });
-
