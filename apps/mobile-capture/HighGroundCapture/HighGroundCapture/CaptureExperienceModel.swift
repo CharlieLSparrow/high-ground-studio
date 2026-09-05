@@ -1565,7 +1565,7 @@ final class CaptureExperienceModel: ObservableObject {
             return CaptureCoachingScheduleOutcome(
                 appointment: appointment,
                 invitationEmailSent: true,
-                invitationURL: coachingRunwayClient.absoluteURL(for: appointment.clientEntryPath),
+                invitationURL: URL(string: "https://nest.quipsly.com/sessions/join?token=qsinv_preview-coaching-invitation-000000000000"),
                 sessionReadyOnDevice: true
             )
         }
@@ -1586,6 +1586,21 @@ final class CaptureExperienceModel: ObservableObject {
             )
         } else {
             invitationEmailSent = false
+        }
+
+        var invitationURL = roomID.flatMap {
+            coachingRunwayClient.absoluteURL(
+                for: coachingRunwayClient.invitationPaths[$0]
+            )
+        }
+        if invitationURL == nil,
+           let roomID,
+           !roomID.isEmpty {
+            invitationURL = await coachingRunwayClient.prepareInvitationLink(
+                roomID: roomID,
+                recipientEmail: draft.normalizedEmail,
+                recipientName: draft.clientName
+            )
         }
 
         let sessionReadyOnDevice: Bool
@@ -1613,7 +1628,7 @@ final class CaptureExperienceModel: ObservableObject {
         return CaptureCoachingScheduleOutcome(
             appointment: appointment,
             invitationEmailSent: invitationEmailSent,
-            invitationURL: coachingRunwayClient.absoluteURL(for: appointment.clientEntryPath),
+            invitationURL: invitationURL,
             sessionReadyOnDevice: sessionReadyOnDevice
         )
     }

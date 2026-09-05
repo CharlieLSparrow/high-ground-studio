@@ -5,7 +5,7 @@ import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 import { sessionInvitationAccessWhere } from "@/lib/server/session-access";
 import { projectSessionCollaborationActivity } from "@/lib/server/session-collaboration-activity";
 import {
-  createSessionInvitationToken,
+  replayableSessionInvitationToken,
   sessionInvitationExpiry,
   sessionInvitationRole,
 } from "@/lib/server/session-invitation";
@@ -16,6 +16,7 @@ import {
 } from "@/lib/server/session-invitation-email";
 import { normalizeEmail } from "@/lib/server/studio-user-identity";
 import { recordQuipslyProductOutcome } from "@/lib/server/product-event";
+import { acquirePrismaAdvisoryTransactionLock } from "@/lib/server/prisma-advisory-lock";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -302,6 +303,17 @@ export async function POST(
         },
       });
     if (existingDelivery) {
+      const replayable = replayableSessionInvitationToken({
+        roomId: existingDelivery.invitation.roomId,
+        email: existingDelivery.invitation.email,
+        expiresAt: existingDelivery.invitation.expiresAt,
+      });
+      const invitePath =
+        existingDelivery.invitation.status === "PENDING" &&
+        existingDelivery.invitation.expiresAt.getTime() > Date.now() &&
+        existingDelivery.invitation.tokenHash === replayable.tokenHash
+          ? `/sessions/join?token=${encodeURIComponent(replayable.token)}`
+          : null;
       return privateJson({
         ok: true,
         deliveryCapabilities: {
@@ -309,7 +321,7 @@ export async function POST(
           privateLink: { available: true },
         },
         invitation: invitationRow(existingDelivery.invitation),
-        invitePath: null,
+        invitePath,
         delivery: deliveryRow(existingDelivery),
         boundaries: {
           sessionScoped: true,
@@ -341,47 +353,67 @@ export async function POST(
     );
   }
 
-  const { token, tokenHash } = createSessionInvitationToken();
-  const expiresAt = sessionInvitationExpiry(input.expiresInHours);
-  const invitation = await access.prisma.callRoomInvitation.upsert({
-    where: { roomId_email: { roomId: access.room.id, email } },
-    create: {
+  const preparedInvitation = await access.prisma.$transaction(async (tx) => {
+    await acquirePrismaAdvisoryTransactionLock(
+      tx,
+      `session-invitation:${access.room.id}:${email}`,
+    );
+    const existingInvitation = await tx.callRoomInvitation.findUnique({
+      where: { roomId_email: { roomId: access.room.id, email } },
+      select: { status: true, expiresAt: true },
+    });
+    const expiresAt =
+      existingInvitation?.status === "PENDING" &&
+      existingInvitation.expiresAt.getTime() > Date.now()
+        ? existingInvitation.expiresAt
+        : sessionInvitationExpiry(input.expiresInHours);
+    const { token, tokenHash } = replayableSessionInvitationToken({
       roomId: access.room.id,
       email,
-      displayName,
-      role,
-      tokenHash,
       expiresAt,
-      createdByUserId: access.actor.id,
-      metadataJson: {
-        source: "nest-session-live-room",
-        delivery,
-        deliveryReceiptIsCanonical: true,
-        grantsNestAccess: false,
+    });
+    const invitation = await tx.callRoomInvitation.upsert({
+      where: { roomId_email: { roomId: access.room.id, email } },
+      create: {
+        roomId: access.room.id,
+        email,
+        displayName,
+        role,
+        tokenHash,
+        expiresAt,
+        createdByUserId: access.actor.id,
+        metadataJson: {
+          source: "nest-session-live-room",
+          delivery,
+          deliveryReceiptIsCanonical: true,
+          grantsNestAccess: false,
+        },
       },
-    },
-    update: {
-      displayName,
-      role,
-      status: "PENDING",
-      tokenHash,
-      acceptedTokenHash: null,
-      expiresAt,
-      acceptedAt: null,
-      acceptedByUserId: null,
-      participantId: null,
-      participantCreated: false,
-      revokedAt: null,
-      createdByUserId: access.actor.id,
-      metadataJson: {
-        source: "nest-session-live-room",
-        delivery,
-        deliveryReceiptIsCanonical: true,
-        grantsNestAccess: false,
-        regenerated: true,
+      update: {
+        displayName,
+        role,
+        status: "PENDING",
+        tokenHash,
+        acceptedTokenHash: null,
+        expiresAt,
+        acceptedAt: null,
+        acceptedByUserId: null,
+        participantId: null,
+        participantCreated: false,
+        revokedAt: null,
+        createdByUserId: access.actor.id,
+        metadataJson: {
+          source: "nest-session-live-room",
+          delivery,
+          deliveryReceiptIsCanonical: true,
+          grantsNestAccess: false,
+          regenerated: true,
+        },
       },
-    },
+    });
+    return { invitation, token, expiresAt };
   });
+  const { invitation, token, expiresAt } = preparedInvitation;
   const invitePath = `/sessions/join?token=${encodeURIComponent(token)}`;
   let deliveryReceipt: any = null;
   if (delivery === "EMAIL") {

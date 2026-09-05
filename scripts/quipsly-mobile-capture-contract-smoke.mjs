@@ -1567,7 +1567,8 @@ function checkTranscriptCorrectionContractSources() {
       && nativeText.includes(".quipslyCaptureAccountIdentityDidChange")
       && nativeText.includes("AuthManager.shared.matchesStableOwnerSnapshot(owner)")
       && nativeSessionPlaybackText.includes("prepareTranscriptReviewFile")
-      && nativeText.includes("AI proposal · not transcript truth")
+      && nativeText.includes("Suggested correction")
+      && nativeText.includes("Use this now or listen first. The original words and timing stay underneath, so you can change or undo it later.")
       && nativeText.includes("FileProtectionType.complete")
       && nativeText.includes("CaptureTranscriptProtectedCacheBoundary")
       && nativeText.includes("guard !isUsingProtectedCache, AuthManager.shared.networkActionsAllowed")
@@ -2611,6 +2612,15 @@ function checkNativeSessionSchedulingSources() {
   const coachingText = sourceText(
     "apps/mobile-capture/HighGroundCapture/HighGroundCapture/CaptureCoachingHome.swift",
   );
+  const invitationRouteText = sourceText(
+    "apps/quipsly/src/app/api/sessions/[roomId]/invitations/route.ts",
+  );
+  const invitationServiceText = sourceText(
+    "apps/quipsly/src/lib/server/session-invitation.ts",
+  );
+  const webCoachingText = sourceText(
+    "apps/quipsly/src/app/(app)/coaching/page.tsx",
+  );
   const uiTestText = sourceText(
     "apps/mobile-capture/HighGroundCapture/HighGroundCaptureUITests/CaptureExperienceUITests.swift",
   );
@@ -2628,10 +2638,17 @@ function checkNativeSessionSchedulingSources() {
       && modelText.includes("sessionClient.load(authoritativeSessionID: roomID)")
       && coachingText.includes('TextField("Client email", text: $draft.clientEmail)')
       && coachingText.includes("They can join from phone, tablet, or desktop.")
+      && coachingText.includes("func prepareInvitationLink(")
+      && coachingText.includes('"delivery": "LINK"')
+      && modelText.includes("coachingRunwayClient.invitationPaths")
+      && invitationRouteText.includes("replayableSessionInvitationToken")
+      && invitationServiceText.includes("quipsly-session-invitation-replayable-v1:")
+      && webCoachingText.includes("ensureClientInvitationLink")
+      && webCoachingText.includes('delivery: "LINK"')
       && uiTestText.includes("testNewCoachingSessionDefaultsToSimpleSchedulingAndInvitation")
       && uiTestText.includes("without setup paperwork"),
     "nativeSessionSchedulingAndInvitation",
-    "Capture defaults New Session to conventional client email plus time scheduling, composes durable appointment and idempotent invitation receipts, and retains an immediate share fallback without blocking Start now.",
+    "Capture defaults New Session to conventional client email plus time scheduling, composes durable appointment and idempotent invitation receipts, and gives email, Copy, and Share one valid private link without blocking Start now.",
   );
 }
 

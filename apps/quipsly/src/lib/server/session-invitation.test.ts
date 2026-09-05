@@ -12,6 +12,7 @@ import {
   hashSessionInvitationToken,
   inspectSessionInvitation,
   maskInvitationEmail,
+  replayableSessionInvitationToken,
   sessionInvitationExpiry,
   sessionInvitationRole,
 } from "./session-invitation";
@@ -31,6 +32,28 @@ describe("Session invitation token policy", () => {
     expect(invitation.tokenHash).toMatch(/^[a-f0-9]{64}$/);
     expect(invitation.tokenHash).toBe(hashSessionInvitationToken(invitation.token));
     expect(invitation.tokenHash).not.toContain(invitation.token);
+  });
+
+  it("reconstructs one opaque link for email, copy, and share without storing it", () => {
+    const input = {
+      roomId: "room-1",
+      email: " Guest@Example.Test ",
+      expiresAt: new Date("2026-09-01T18:00:00.000Z"),
+    };
+    const first = replayableSessionInvitationToken(input);
+    const repeated = replayableSessionInvitationToken({
+      ...input,
+      email: "guest@example.test",
+    });
+    const otherRoom = replayableSessionInvitationToken({
+      ...input,
+      roomId: "room-2",
+    });
+
+    expect(first).toEqual(repeated);
+    expect(first.token).toMatch(/^qsinv_[A-Za-z0-9_-]+$/);
+    expect(first.tokenHash).toBe(hashSessionInvitationToken(first.token));
+    expect(otherRoom.token).not.toBe(first.token);
   });
 
   it("rejects malformed and oversized token input", () => {

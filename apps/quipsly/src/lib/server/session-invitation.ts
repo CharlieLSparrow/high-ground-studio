@@ -56,6 +56,32 @@ export function createSessionInvitationToken() {
   return { token, tokenHash: hashSessionInvitationToken(token) };
 }
 
+/**
+ * Creates the same opaque bearer token for the same still-pending invitation.
+ *
+ * The database continues to store only the token HMAC. Reconstructing the
+ * token lets email, Copy, and Share all use one valid link without persisting
+ * the bearer credential or silently invalidating an invitation that is
+ * already in the client's inbox.
+ */
+export function replayableSessionInvitationToken(input: {
+  roomId: string;
+  email: string;
+  expiresAt: Date;
+}) {
+  const email = normalizeEmail(input.email);
+  const signature = createHmac("sha256", invitationSecret())
+    .update("quipsly-session-invitation-replayable-v1:")
+    .update(input.roomId)
+    .update(":")
+    .update(email)
+    .update(":")
+    .update(input.expiresAt.toISOString())
+    .digest("base64url");
+  const token = `qsinv_${signature}`;
+  return { token, tokenHash: hashSessionInvitationToken(token) };
+}
+
 export function sessionInvitationRole(value: unknown, purpose?: unknown): SessionInvitationRole {
   const role = typeof value === "string" ? value.trim().toUpperCase() : "";
   if (SESSION_INVITATION_ROLES.includes(role as SessionInvitationRole)) return role as SessionInvitationRole;

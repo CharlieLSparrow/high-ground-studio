@@ -6,6 +6,8 @@ import {
   sendSessionInvitationEmail,
   sessionInvitationEmailReadiness,
 } from "@/lib/server/session-invitation-email";
+import { replayableSessionInvitationToken } from "@/lib/server/session-invitation";
+import { acquirePrismaAdvisoryTransactionLock } from "@/lib/server/prisma-advisory-lock";
 
 import { DELETE, GET, POST } from "./route";
 
@@ -13,6 +15,9 @@ jest.mock("server-only", () => ({}));
 jest.mock("@/lib/prisma", () => ({ getPrismaClient: jest.fn() }));
 jest.mock("@/lib/server/quipsly-session", () => ({
   getQuipslySessionFromRequest: jest.fn(),
+}));
+jest.mock("@/lib/server/prisma-advisory-lock", () => ({
+  acquirePrismaAdvisoryTransactionLock: jest.fn(),
 }));
 jest.mock("@/lib/server/session-invitation-email", () => ({
   sessionInvitationJoinUrl: jest.fn(
@@ -28,10 +33,12 @@ jest.mock("@/lib/server/session-invitation-email", () => ({
 const now = new Date("2026-08-04T18:00:00.000Z");
 const expiresAt = new Date("2026-08-11T18:00:00.000Z");
 const prisma = {
+  $transaction: jest.fn(),
   callRoom: { findFirst: jest.fn() },
   callParticipant: { findFirst: jest.fn() },
   callRoomInvitation: {
     findMany: jest.fn(),
+    findUnique: jest.fn(),
     upsert: jest.fn(),
     updateMany: jest.fn(),
   },
@@ -80,6 +87,7 @@ describe("Session invitation API", () => {
     });
     prisma.callParticipant.findFirst.mockResolvedValue(null);
     prisma.callRoomInvitation.findMany.mockResolvedValue([]);
+    prisma.callRoomInvitation.findUnique.mockResolvedValue(null);
     prisma.callParticipantAccessReceipt.findMany.mockResolvedValue([]);
     prisma.callParticipantProviderGrantReceipt.findMany.mockResolvedValue([]);
     prisma.callRoomInvitation.updateMany.mockResolvedValue({ count: 1 });
@@ -124,6 +132,9 @@ describe("Session invitation API", () => {
         revokedAt: null,
         createdAt: now,
       }),
+    );
+    prisma.$transaction.mockImplementation(
+      async (operation: (tx: typeof prisma) => unknown) => operation(prisma),
     );
   });
 
@@ -272,6 +283,47 @@ describe("Session invitation API", () => {
     expect(stored.tokenHash).not.toContain("qsinv_");
   });
 
+  it("reuses one pending invite link across email, copy, and share actions", async () => {
+    const pendingExpiry = new Date(Date.now() + 7 * 24 * 60 * 60 * 1_000);
+    prisma.callRoomInvitation.findUnique.mockResolvedValue({
+      status: "PENDING",
+      expiresAt: pendingExpiry,
+    });
+
+    const first = await POST(
+      request("POST", {
+        email: "client@example.test",
+        role: "CLIENT",
+        delivery: "LINK",
+      }),
+      context,
+    );
+    const second = await POST(
+      request("POST", {
+        email: "client@example.test",
+        role: "CLIENT",
+        delivery: "LINK",
+      }),
+      context,
+    );
+
+    const firstPacket = await first.json();
+    const secondPacket = await second.json();
+    expect(firstPacket.invitePath).toBe(secondPacket.invitePath);
+    expect(firstPacket.invitePath).toMatch(/^\/sessions\/join\?token=qsinv_/);
+    expect(prisma.callRoomInvitation.upsert.mock.calls[0][0].update).toMatchObject({
+      expiresAt: pendingExpiry,
+      tokenHash: expect.stringMatching(/^[a-f0-9]{64}$/),
+    });
+    expect(prisma.callRoomInvitation.upsert.mock.calls[1][0].update.tokenHash).toBe(
+      prisma.callRoomInvitation.upsert.mock.calls[0][0].update.tokenHash,
+    );
+    expect(acquirePrismaAdvisoryTransactionLock).toHaveBeenCalledWith(
+      prisma,
+      "session-invitation:room-1:client@example.test",
+    );
+  });
+
   it("can deliver the handoff to an already provisioned active coaching participant", async () => {
     prisma.callParticipant.findFirst.mockResolvedValue({
       id: "client-participant",
@@ -337,6 +389,58 @@ describe("Session invitation API", () => {
         idempotencyKey: "session-invitation/delivery-1",
       }),
     );
+  });
+
+  it("returns the same private link when an email request is safely replayed", async () => {
+    const pendingExpiry = new Date(Date.now() + 7 * 24 * 60 * 60 * 1_000);
+    const replayable = replayableSessionInvitationToken({
+      roomId: "room-1",
+      email: "client@example.test",
+      expiresAt: pendingExpiry,
+    });
+    prisma.callRoomInvitationDeliveryReceipt.findFirst.mockResolvedValue({
+      id: "delivery-1",
+      requestId: "123e4567-e89b-42d3-a456-426614174000",
+      channel: "EMAIL",
+      status: "SENT",
+      requestedAt: now,
+      completedAt: now,
+      errorCode: null,
+      errorMessage: null,
+      invitation: {
+        id: "invite-1",
+        roomId: "room-1",
+        email: "client@example.test",
+        displayName: "Client",
+        role: "CLIENT",
+        status: "PENDING",
+        tokenHash: replayable.tokenHash,
+        expiresAt: pendingExpiry,
+        acceptedAt: null,
+        revokedAt: null,
+        createdAt: now,
+        deliveries: [],
+      },
+    });
+
+    const response = await POST(
+      request("POST", {
+        email: "client@example.test",
+        role: "CLIENT",
+        delivery: "EMAIL",
+        requestId: "123e4567-e89b-42d3-a456-426614174000",
+      }),
+      context,
+    );
+    const packet = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(packet.invitePath).toBe(
+      `/sessions/join?token=${encodeURIComponent(replayable.token)}`,
+    );
+    expect(packet.boundaries.idempotentReplay).toBe(true);
+    expect(prisma.callRoomInvitation.upsert).not.toHaveBeenCalled();
+    expect(sendSessionInvitationEmail).not.toHaveBeenCalled();
   });
 
   it("keeps the private link usable without repeatedly mailing a suppressed recipient", async () => {

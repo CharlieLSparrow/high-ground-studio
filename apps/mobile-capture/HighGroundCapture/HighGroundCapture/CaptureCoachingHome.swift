@@ -1,6 +1,7 @@
 import Combine
 import Foundation
 import SwiftUI
+import UIKit
 
 struct MobileCoachingPerson: Codable, Hashable {
     let id: String
@@ -290,6 +291,7 @@ struct MobileCoachingInvitationDelivery: Codable, Hashable {
 private struct MobileCoachingInvitationResponse: Codable {
     let ok: Bool
     let error: String?
+    let invitePath: String?
     let delivery: MobileCoachingInvitationDelivery?
 }
 
@@ -530,6 +532,7 @@ final class MobileCoachingRunwayClient: ObservableObject {
     @Published private(set) var status = "Coaching not loaded"
     @Published private(set) var errorMessage: String?
     @Published private(set) var invitationDeliveries: [String: MobileCoachingInvitationDelivery] = [:]
+    @Published private(set) var invitationPaths: [String: String] = [:]
     @Published private(set) var isUsingProtectedCache = false
     @Published private(set) var cachedSnapshotSavedAt: Date?
     @Published private(set) var subscriptionRequired = false
@@ -1393,6 +1396,9 @@ final class MobileCoachingRunwayClient: ObservableObject {
             if let delivery = payload.delivery {
                 invitationDeliveries[roomID] = delivery
             }
+            if let invitePath = payload.invitePath?.nonemptyCoachingText {
+                invitationPaths[roomID] = invitePath
+            }
             guard httpResponse.statusCode < 400, payload.ok, payload.delivery?.wasSent == true else {
                 throw coachingClientError(
                     payload.delivery?.errorMessage
@@ -1406,6 +1412,61 @@ final class MobileCoachingRunwayClient: ObservableObject {
             status = "Invitation needs attention"
             errorMessage = error.localizedDescription
             return false
+        }
+    }
+
+    func prepareInvitationLink(
+        roomID: String,
+        recipientEmail: String,
+        recipientName: String?
+    ) async -> URL? {
+        if let existing = invitationPaths[roomID],
+           let url = absoluteURL(for: existing) {
+            return url
+        }
+        guard !isMutating else { return nil }
+        guard allowAuthoritativeMutation() else { return nil }
+        let normalizedEmail = recipientEmail.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !roomID.isEmpty, normalizedEmail.contains("@") else {
+            errorMessage = "Add a client email before preparing this private invitation."
+            return nil
+        }
+        guard let encodedRoomID = roomID.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed),
+              let url = URL(string: "\(baseURL)/api/sessions/\(encodedRoomID)/invitations") else {
+            errorMessage = "The configured Nest URL is not valid."
+            return nil
+        }
+
+        isMutating = true
+        defer { isMutating = false }
+        status = "Preparing private invitation"
+        errorMessage = nil
+        do {
+            var request = URLRequest(url: url)
+            request.httpMethod = "POST"
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = try JSONSerialization.data(withJSONObject: [
+                "email": normalizedEmail,
+                "displayName": recipientName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "",
+                "role": "CLIENT",
+                "expiresInHours": 24 * 30,
+                "delivery": "LINK",
+            ])
+            let (data, httpResponse) = try await AuthManager.shared.authenticatedData(for: request)
+            let payload = try JSONDecoder().decode(MobileCoachingInvitationResponse.self, from: data)
+            guard httpResponse.statusCode < 400,
+                  payload.ok,
+                  let invitePath = payload.invitePath?.nonemptyCoachingText,
+                  let invitationURL = absoluteURL(for: invitePath) else {
+                throw coachingClientError(payload.error ?? "The private invitation could not be prepared.")
+            }
+            invitationPaths[roomID] = invitePath
+            status = "Private invitation ready"
+            return invitationURL
+        } catch {
+            status = "Invitation needs attention"
+            errorMessage = error.localizedDescription
+            return nil
         }
     }
 
@@ -1515,6 +1576,7 @@ final class MobileCoachingRunwayClient: ObservableObject {
         publicOfferings = []
         latestHandoff = nil
         invitationDeliveries = [:]
+        invitationPaths = [:]
         isUsingProtectedCache = false
         cachedSnapshotSavedAt = nil
         subscriptionRequired = false
@@ -1725,6 +1787,29 @@ private struct MobileCoachingPublicTimeSelection: Identifiable {
     var id: String { "\(offering.id)|\(slot.id)" }
 }
 
+private struct MobileCoachingInvitationShare: Identifiable {
+    let id = UUID()
+    let title: String
+    let url: URL
+    let invitedIdentity: String
+}
+
+private struct MobileCoachingInvitationShareSheet: UIViewControllerRepresentable {
+    let invitation: MobileCoachingInvitationShare
+
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(
+            activityItems: [
+                "Join \(invitation.title) in Quipsly. Open this private invitation on your phone, tablet, or desktop, then sign in as \(invitation.invitedIdentity).",
+                invitation.url,
+            ],
+            applicationActivities: nil
+        )
+    }
+
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
+}
+
 struct CaptureCoachingHomeView: View {
     @ObservedObject var model: CaptureExperienceModel
     @Binding var visibleTab: CaptureRootTab
@@ -1738,6 +1823,7 @@ struct CaptureCoachingHomeView: View {
     @State private var bookingRequestToCancel: MobileCoachingBookingHold?
     @State private var bookingRequestToDecline: MobileCoachingBookingHold?
     @State private var selectedPublicTime: MobileCoachingPublicTimeSelection?
+    @State private var invitationToShare: MobileCoachingInvitationShare?
 
     private var client: MobileCoachingRunwayClient { model.coachingRunwayClient }
 
@@ -1991,6 +2077,9 @@ struct CaptureCoachingHomeView: View {
                     description: Text("Open the client space below and message your coach there.")
                 )
             }
+        }
+        .sheet(item: $invitationToShare) { invitation in
+            MobileCoachingInvitationShareSheet(invitation: invitation)
         }
     }
 
@@ -2655,24 +2744,33 @@ struct CaptureCoachingHomeView: View {
         entryPath: String?,
         recipientEmail: String?
     ) -> some View {
-        if let entryURL = client.absoluteURL(for: entryPath) {
-            let nativeURL = client.nativeURL(for: roomID)
-            let invitedIdentity = recipientEmail?.nonemptyCoachingText ?? "the invited email"
-            ShareLink(
-                item: entryURL,
-                subject: Text(title),
-                message: Text(
-                    nativeURL.map {
-                        "Join this private Quipsly Session. Open the link on your phone, tablet, or desktop, then sign in as \(invitedIdentity). Continue in your browser or choose Quipsly Capture: \($0.absoluteString)"
-                    } ?? "Join this private Quipsly Session. Open the link on your phone, tablet, or desktop, then sign in as \(invitedIdentity)."
-                )
-            ) {
+        if let roomID = roomID?.nonemptyCoachingText,
+           let recipientEmail = recipientEmail?.nonemptyCoachingText {
+            Button {
+                Task {
+                    guard let url = await client.prepareInvitationLink(
+                        roomID: roomID,
+                        recipientEmail: recipientEmail,
+                        recipientName: booking(for: roomID)?.client?.name
+                    ) else { return }
+                    invitationToShare = MobileCoachingInvitationShare(
+                        title: title,
+                        url: url,
+                        invitedIdentity: recipientEmail
+                    )
+                }
+            } label: {
                 Label("Share invite", systemImage: "square.and.arrow.up")
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.bordered)
+            .disabled(client.isMutating || client.isUsingProtectedCache)
             .accessibilityLabel("Share coaching invitation")
             .accessibilityIdentifier("CaptureCoachingShareInvite")
+        } else if client.absoluteURL(for: entryPath) != nil {
+            Text("Add a client email to share this private invitation.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
     }
 

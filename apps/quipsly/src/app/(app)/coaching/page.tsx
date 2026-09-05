@@ -1043,6 +1043,9 @@ export default function CoachingPage() {
   const [linkCopyStatusByBooking, setLinkCopyStatusByBooking] = useState<
     Record<string, string>
   >({});
+  const [invitationPathByBooking, setInvitationPathByBooking] = useState<
+    Record<string, string>
+  >({});
   const [invitationBusyByBooking, setInvitationBusyByBooking] = useState<
     Record<string, boolean>
   >({});
@@ -1340,55 +1343,112 @@ export default function CoachingPage() {
     return new URL(path, window.location.origin).toString();
   }
 
-  async function copyClientSessionLink(
-    bookingId: string,
-    path?: string | null,
-  ) {
-    setLinkCopyStatusByBooking((current) => ({
+  type ClientInvitationTarget = {
+    bookingId: string;
+    callRoomId: string | null | undefined;
+    clientEmail: string | null | undefined;
+    clientName: string | null | undefined;
+    title: string;
+  };
+
+  async function ensureClientInvitationLink(
+    input: ClientInvitationTarget,
+  ): Promise<string | null> {
+    const existing = invitationPathByBooking[input.bookingId];
+    if (existing) return existing;
+    if (!input.callRoomId || !input.clientEmail) {
+      setLinkCopyStatusByBooking((current) => ({
+        ...current,
+        [input.bookingId]:
+          "Add a client email before preparing this private invitation.",
+      }));
+      return null;
+    }
+    setInvitationBusyByBooking((current) => ({
       ...current,
-      [bookingId]: "Copying client session link...",
+      [input.bookingId]: true,
     }));
     try {
-      const url = clientEntryUrl(path);
-      if (!url)
-        throw new Error("This booking does not have a live Session path yet.");
-      await navigator.clipboard.writeText(url);
-      setLinkCopyStatusByBooking((current) => ({
+      const response = await fetch(
+        `/api/sessions/${encodeURIComponent(input.callRoomId)}/invitations`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            email: input.clientEmail,
+            displayName: input.clientName,
+            role: "CLIENT",
+            expiresInHours: 24 * 30,
+            delivery: "LINK",
+          }),
+        },
+      );
+      const packet = await response.json().catch(() => ({}));
+      if (!response.ok || !packet.ok || !packet.invitePath) {
+        throw new Error(packet.error || "The private invitation could not be prepared.");
+      }
+      setInvitationPathByBooking((current) => ({
         ...current,
-        [bookingId]:
-          "Client entry copied. Their verified invited email—not possession of the URL—controls access.",
+        [input.bookingId]: packet.invitePath,
       }));
-    } catch {
+      return packet.invitePath;
+    } catch (cause) {
       setLinkCopyStatusByBooking((current) => ({
         ...current,
-        [bookingId]:
-          "Copy failed. Open the coachee view and copy the URL from the browser instead.",
+        [input.bookingId]:
+          cause instanceof Error
+            ? cause.message
+            : "The private invitation could not be prepared.",
+      }));
+      return null;
+    } finally {
+      setInvitationBusyByBooking((current) => ({
+        ...current,
+        [input.bookingId]: false,
       }));
     }
   }
 
-  async function shareClientSessionLink(input: {
-    bookingId: string;
-    title: string;
-    clientEmail: string | null | undefined;
-    clientEntryPath: string | null | undefined;
-  }) {
-    const url = clientEntryUrl(input.clientEntryPath);
+  async function copyClientSessionLink(input: ClientInvitationTarget) {
+    setLinkCopyStatusByBooking((current) => ({
+      ...current,
+      [input.bookingId]: "Preparing private invitation...",
+    }));
+    try {
+      const path = await ensureClientInvitationLink(input);
+      const url = clientEntryUrl(path);
+      if (!url)
+        throw new Error("This Session does not have a private invitation yet.");
+      await navigator.clipboard.writeText(url);
+      setLinkCopyStatusByBooking((current) => ({
+        ...current,
+        [input.bookingId]: "Private invitation copied.",
+      }));
+    } catch {
+      setLinkCopyStatusByBooking((current) => ({
+        ...current,
+        [input.bookingId]: "Copy failed. Try Share invite instead.",
+      }));
+    }
+  }
+
+  async function shareClientSessionLink(input: ClientInvitationTarget) {
+    const path = await ensureClientInvitationLink(input);
+    const url = clientEntryUrl(path);
     if (!url) {
       setLinkCopyStatusByBooking((current) => ({
         ...current,
-        [input.bookingId]:
-          "This booking does not have a live Session path yet.",
+        [input.bookingId]: "This Session does not have a private invitation yet.",
       }));
       return;
     }
     if (!navigator.share) {
-      await copyClientSessionLink(input.bookingId, input.clientEntryPath);
+      await copyClientSessionLink(input);
       return;
     }
     try {
       await navigator.share({
-        title: input.title,
+        title: input.title || "Quipsly coaching Session",
         text: `Join your private Quipsly coaching Session in a browser on your phone, tablet, or desktop, or choose Quipsly Capture on iPhone or iPad after sign-in. Use ${input.clientEmail || "the invited email"}.`,
         url,
       });
@@ -1401,31 +1461,28 @@ export default function CoachingPage() {
       });
       setLinkCopyStatusByBooking((current) => ({
         ...current,
-        [input.bookingId]: "Client entry opened in the system share sheet.",
+        [input.bookingId]: "Private invitation opened in the share sheet.",
       }));
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") return;
       setLinkCopyStatusByBooking((current) => ({
         ...current,
         [input.bookingId]:
-          "The system share sheet could not open. Copy the client entry instead.",
+          "The share sheet could not open. Copy the invitation instead.",
       }));
     }
   }
 
-  async function sendClientSessionInvitation(input: {
-    bookingId: string;
-    callRoomId: string | null | undefined;
-    clientEmail: string | null | undefined;
-    clientName: string | null | undefined;
-  }) {
+  async function sendClientSessionInvitation(
+    input: ClientInvitationTarget,
+  ): Promise<string | null> {
     if (!input.callRoomId || !input.clientEmail) {
       setLinkCopyStatusByBooking((current) => ({
         ...current,
         [input.bookingId]:
           "This appointment needs both a private Session and a client email before Quipsly can send an invitation.",
       }));
-      return;
+      return null;
     }
     setInvitationBusyByBooking((current) => ({
       ...current,
@@ -1457,22 +1514,30 @@ export default function CoachingPage() {
           packet.error || "The invitation could not be prepared.",
         );
       }
+      if (packet.invitePath) {
+        setInvitationPathByBooking((current) => ({
+          ...current,
+          [input.bookingId]: packet.invitePath,
+        }));
+      }
       setLinkCopyStatusByBooking((current) => ({
         ...current,
         [input.bookingId]:
           packet.delivery?.status === "SENT"
             ? `Invitation email sent to ${input.clientEmail}. Acceptance will appear separately after the client signs in.`
             : packet.delivery?.errorMessage ||
-              "The email was not sent. The private client entry is still available to copy or share.",
+              "The email was not sent. The private invitation is ready to copy or share.",
       }));
+      return packet.invitePath || null;
     } catch (cause) {
       setLinkCopyStatusByBooking((current) => ({
         ...current,
         [input.bookingId]:
           cause instanceof Error
             ? cause.message
-            : "The invitation could not be sent. Copy or share the client entry instead.",
+            : "The invitation could not be sent. Copy or share it instead.",
       }));
+      return null;
     } finally {
       setInvitationBusyByBooking((current) => ({
         ...current,
@@ -2358,6 +2423,7 @@ export default function CoachingPage() {
           callRoomId: handoff.callRoomId,
           clientEmail: handoff.clientEmail,
           clientName: handoff.clientName,
+          title: handoff.title,
         });
       }
       setCreateForm((current) => ({
@@ -3526,6 +3592,7 @@ export default function CoachingPage() {
                                           callRoomId: booking.callRoomId,
                                           clientEmail: booking.client?.email,
                                           clientName: booking.client?.name,
+                                          title: booking.title,
                                         })
                                       }
                                       disabled={
@@ -3551,10 +3618,13 @@ export default function CoachingPage() {
                                     <button
                                       type="button"
                                       onClick={() =>
-                                        void copyClientSessionLink(
-                                          booking.id,
-                                          booking.clientEntryPath,
-                                        )
+                                        void copyClientSessionLink({
+                                          bookingId: booking.id,
+                                          callRoomId: booking.callRoomId,
+                                          clientEmail: booking.client?.email,
+                                          clientName: booking.client?.name,
+                                          title: booking.title,
+                                        })
                                       }
                                       className="mt-2 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-[#d6c5a5] bg-[#fffaf1] px-3 py-2 text-xs font-black uppercase tracking-wide text-[#7b5c3b] transition hover:bg-white"
                                     >
@@ -3566,9 +3636,9 @@ export default function CoachingPage() {
                                         void shareClientSessionLink({
                                           bookingId: booking.id,
                                           title: booking.title,
+                                          callRoomId: booking.callRoomId,
                                           clientEmail: booking.client?.email,
-                                          clientEntryPath:
-                                            booking.clientEntryPath,
+                                          clientName: booking.client?.name,
                                         })
                                       }
                                       className="mt-2 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-violet-200 bg-violet-50 px-3 py-2 text-xs font-black uppercase tracking-wide text-violet-800 transition hover:bg-violet-100"
@@ -4853,6 +4923,7 @@ export default function CoachingPage() {
                                   callRoomId: createdHandoff.callRoomId,
                                   clientEmail: createdHandoff.clientEmail,
                                   clientName: createdHandoff.clientName,
+                                  title: createdHandoff.title,
                                 })
                               }
                               disabled={
@@ -4874,10 +4945,13 @@ export default function CoachingPage() {
                             <button
                               type="button"
                               onClick={() =>
-                                void copyClientSessionLink(
-                                  createdHandoff.bookingId,
-                                  createdHandoff.clientEntryPath,
-                                )
+                                void copyClientSessionLink({
+                                  bookingId: createdHandoff.bookingId,
+                                  callRoomId: createdHandoff.callRoomId,
+                                  clientEmail: createdHandoff.clientEmail,
+                                  clientName: createdHandoff.clientName,
+                                  title: createdHandoff.title,
+                                })
                               }
                               className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-emerald-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-emerald-950"
                             >
@@ -4889,9 +4963,9 @@ export default function CoachingPage() {
                                 void shareClientSessionLink({
                                   bookingId: createdHandoff.bookingId,
                                   title: createdHandoff.title,
+                                  callRoomId: createdHandoff.callRoomId,
                                   clientEmail: createdHandoff.clientEmail,
-                                  clientEntryPath:
-                                    createdHandoff.clientEntryPath,
+                                  clientName: createdHandoff.clientName,
                                 })
                               }
                               className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-violet-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-violet-900"
