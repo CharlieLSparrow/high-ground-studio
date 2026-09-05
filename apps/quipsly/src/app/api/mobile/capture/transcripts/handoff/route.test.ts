@@ -55,8 +55,7 @@ describe("canonical transcript handoff", () => {
       transcriptJobId: "job-1",
       transcriptStatus: "COMPLETED",
       gate: { allowed: true },
-      evidence: { language: "en-US" },
-      processing: { routing: { provider: "deepgram" } },
+      processing: { routing: { language: "en-US", provider: "deepgram" } },
       playback: {
         recordingAssetId: "asset-1",
         url: "/api/playback/asset-1",

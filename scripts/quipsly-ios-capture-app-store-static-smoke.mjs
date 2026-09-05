@@ -865,7 +865,7 @@ const cloudTranscriptHandoffRouteText = read(files.cloudTranscriptHandoffRoute);
 for (const needle of [
   "recordingAssetId: recordingAssetId || null",
   "transcriptJobId,",
-  "language: desk.evidence?.language ?? null",
+  "language: desk.processing?.routing?.language ?? null",
   "provider: desk.processing?.routing?.provider ?? null",
 ]) {
   requireIncludes(

@@ -119,7 +119,7 @@ export async function GET(request: Request) {
         immutableProviderWords: true,
         reviewedCorrectionsAreOverlays: true,
       },
-      language: desk.evidence?.language ?? null,
+      language: desk.processing?.routing?.language ?? null,
       provider: desk.processing?.routing?.provider ?? null,
       segments: (desk.segments as CanonicalDeskSegment[]).map((segment) => ({
         id: segment.id,
