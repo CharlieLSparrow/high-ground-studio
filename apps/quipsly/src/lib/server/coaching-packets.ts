@@ -209,6 +209,36 @@ function cleanText(value: unknown) {
   return typeof value === "string" ? value.replace(/\s+/g, " ").trim() : "";
 }
 
+function activeRelationshipWorkRemoval(value: unknown) {
+  const source =
+    typeof value === "object" && value !== null && !Array.isArray(value)
+      ? (value as Record<string, unknown>)
+      : {};
+  const removal =
+    typeof source.relationshipWorkRemoval === "object" &&
+    source.relationshipWorkRemoval !== null &&
+    !Array.isArray(source.relationshipWorkRemoval)
+      ? (source.relationshipWorkRemoval as Record<string, unknown>)
+      : null;
+  return removal?.active === true ? removal : null;
+}
+
+/**
+ * Relationship work is removed reversibly so Undo stays immediate and an
+ * automatic transcript refresh cannot resurrect something a person removed.
+ * The latest generated content can still refresh behind the tombstone and is
+ * ready if the person later restores it.
+ */
+function preserveActiveRelationshipWorkRemoval(
+  existingSource: unknown,
+  nextSource: Record<string, unknown>,
+) {
+  const removal = activeRelationshipWorkRemoval(existingSource);
+  return removal
+    ? { ...nextSource, relationshipWorkRemoval: removal }
+    : nextSource;
+}
+
 export function sessionRecapTitle(roomTitle: unknown) {
   const title = cleanText(roomTitle).slice(0, 120);
   if (!title) return "Session recap";
@@ -345,6 +375,7 @@ export function generatedPacketHighlightCanRemove(input: {
       : {};
   return (
     input.existing?.kind === "HIGHLIGHT" &&
+    !activeRelationshipWorkRemoval(input.existing?.sourceJson) &&
     !input.retainedNoteIds.has(cleanText(input.existing.id)) &&
     input.transcriptJobIds.has(cleanText(source.transcriptJobId)) &&
     generatedPacketNoteCanRefresh(input.existing)
@@ -1687,7 +1718,9 @@ export async function buildCoachingPacketFromTranscriptJob(
       legacyActionItems: existing.actionItems,
     });
     const committedActionItems = (existing.actionItems || []).filter(
-      (item: any) => !isUnreviewedTranscriptActionItem(item),
+      (item: any) =>
+        !isUnreviewedTranscriptActionItem(item) &&
+        !activeRelationshipWorkRemoval(item.sourceJson),
     );
     return {
       ok: true,
@@ -1851,7 +1884,10 @@ export async function buildCoachingPacketFromTranscriptJob(
         data: {
           title: packetTitle,
           body: summaryBody,
-          sourceJson: summarySourceJson,
+          sourceJson: preserveActiveRelationshipWorkRemoval(
+            existing.sourceJson,
+            summarySourceJson,
+          ),
         },
       })
     : await args.prisma.coachingNote.create({
@@ -1929,7 +1965,10 @@ export async function buildCoachingPacketFromTranscriptJob(
               noteId: summaryNote.id,
               title: candidate.title,
               detail: candidate.detail || null,
-              sourceJson,
+              sourceJson: preserveActiveRelationshipWorkRemoval(
+                existing.sourceJson,
+                sourceJson,
+              ),
             },
           })
         : existing ||
@@ -2008,7 +2047,10 @@ export async function buildCoachingPacketFromTranscriptJob(
               data: {
                 title: output.title,
                 description: goalDescription,
-                sourceJson,
+                sourceJson: preserveActiveRelationshipWorkRemoval(
+                  existing.sourceJson,
+                  sourceJson,
+                ),
               },
             })
           : existing ||
@@ -2168,7 +2210,10 @@ export async function buildCoachingPacketFromTranscriptJob(
           data: {
             title,
             body,
-            sourceJson: highlightSourceJson,
+            sourceJson: preserveActiveRelationshipWorkRemoval(
+              existingHighlight.sourceJson,
+              highlightSourceJson,
+            ),
           },
         })
       : await args.prisma.coachingNote.create({

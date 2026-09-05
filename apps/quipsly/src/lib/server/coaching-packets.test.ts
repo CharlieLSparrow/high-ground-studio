@@ -936,6 +936,24 @@ describe("transcript coaching follow-through", () => {
     ).toBe(false);
     expect(
       generatedPacketHighlightCanRemove({
+        existing: {
+          ...generated,
+          sourceJson: {
+            ...generated.sourceJson,
+            relationshipWorkRemoval: {
+              schema: "quipsly-coaching-engagement-work-removal-v1",
+              active: true,
+              removedAt: "2026-08-02T01:30:00.000Z",
+              removedByUserId: "client-1",
+            },
+          },
+        },
+        retainedNoteIds: new Set(),
+        transcriptJobIds: new Set(["transcript-1"]),
+      }),
+    ).toBe(false);
+    expect(
+      generatedPacketHighlightCanRemove({
         existing: generated,
         retainedNoteIds: new Set(),
         transcriptJobIds: new Set(["different-transcript"]),
@@ -1357,6 +1375,191 @@ describe("transcript coaching follow-through", () => {
         where: { id: first.actionItemIds[0] },
       }),
     ).toBeNull();
+  });
+
+  it("keeps user-removed generated work hidden across transcript rebuilds", async () => {
+    const job = completedTranscriptJob();
+    job.segments[1].text = "My goal is to publish the finished episode.";
+    const work = automaticWorkStores();
+    const notes = new Map<string, any>();
+    let latestSummary: any = null;
+    let noteSequence = 0;
+    const coachingNoteCreate = jest.fn(async ({ data }: any) => {
+      noteSequence += 1;
+      const note = {
+        id: data.id || `note-${noteSequence}`,
+        ...data,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+      notes.set(note.id, note);
+      if (data.kind === "SUMMARY") {
+        latestSummary = { ...note, actionItems: [] };
+        notes.set(note.id, latestSummary);
+      }
+      return note;
+    });
+    const coachingNoteUpdate = jest.fn(async ({ where, data }: any) => {
+      const note = {
+        ...notes.get(where.id),
+        ...data,
+        updatedAt: new Date(),
+      };
+      notes.set(note.id, note);
+      if (note.kind === "SUMMARY") latestSummary = note;
+      return note;
+    });
+    const coachingNoteDelete = jest.fn(async ({ where }: any) => {
+      const note = notes.get(where.id) || null;
+      notes.delete(where.id);
+      return note;
+    });
+    const prisma = {
+      transcriptJob: { findUnique: jest.fn(async () => job) },
+      coachingNote: {
+        findFirst: jest.fn(async ({ where }: any) => {
+          if (where.kind === "SUMMARY") return latestSummary;
+          if (where.kind !== "HIGHLIGHT") return null;
+          const expected = Object.fromEntries(
+            (where.AND || []).map((entry: any) => [
+              entry.sourceJson.path[0],
+              entry.sourceJson.equals,
+            ]),
+          );
+          return (
+            Array.from(notes.values())
+              .reverse()
+              .find(
+                (note) =>
+                  note.kind === "HIGHLIGHT" &&
+                  note.sourceJson.origin === expected.origin &&
+                  note.sourceJson.transcriptJobId ===
+                    expected.transcriptJobId &&
+                  note.sourceJson.segmentId === expected.segmentId,
+              ) || null
+          );
+        }),
+        findMany: jest.fn(async () =>
+          Array.from(notes.values()).filter(
+            (note) => note.kind === "HIGHLIGHT",
+          ),
+        ),
+        create: coachingNoteCreate,
+        update: coachingNoteUpdate,
+        delete: coachingNoteDelete,
+      },
+      ...work,
+    };
+
+    const first = (await buildCoachingPacketFromTranscriptJob({
+      prisma,
+      transcriptJobId: job.id,
+      authorUserId: "coach-1",
+    })) as any;
+    expect(first.actionItemIds).toHaveLength(1);
+    expect(first.goalIds).toHaveLength(1);
+    expect(first.highlightNoteIds).toHaveLength(2);
+
+    const removedAt = "2026-08-02T01:30:00.000Z";
+    const removal = {
+      schema: "quipsly-coaching-engagement-work-removal-v1",
+      active: true,
+      removedAt,
+      removedByUserId: "client-1",
+    };
+    latestSummary.sourceJson = {
+      ...latestSummary.sourceJson,
+      relationshipWorkRemoval: removal,
+    };
+    notes.set(latestSummary.id, latestSummary);
+
+    const task = await work.actionItem.findUnique({
+      where: { id: first.actionItemIds[0] },
+    });
+    task.status = "CANCELED";
+    task.sourceJson = {
+      ...task.sourceJson,
+      relationshipWorkRemoval: { ...removal, previousStatus: "OPEN" },
+    };
+    const goal = await work.goal.findUnique({
+      where: { id: first.goalIds[0] },
+    });
+    goal.status = "ARCHIVED";
+    goal.sourceJson = {
+      ...goal.sourceJson,
+      relationshipWorkRemoval: { ...removal, previousStatus: "ACTIVE" },
+    };
+    const hiddenHighlight = notes.get(first.highlightNoteIds[0]);
+    hiddenHighlight.sourceJson = {
+      ...hiddenHighlight.sourceJson,
+      relationshipWorkRemoval: removal,
+    };
+    notes.set(hiddenHighlight.id, hiddenHighlight);
+
+    const firstProvider = job.segments[0];
+    (firstProvider as any).corrections = [
+      {
+        id: "correction-hidden-task",
+        status: "accepted",
+        baseTextSha256: createHash("sha256")
+          .update(firstProvider.text)
+          .digest("hex"),
+        expectedSpeakerLabel: firstProvider.speakerLabel,
+        correctedText: "I will send the revised outline tomorrow.",
+        correctedSpeakerLabel: firstProvider.speakerLabel,
+        updatedAt: new Date("2026-08-02T01:31:00.000Z"),
+      },
+    ];
+    const secondProvider = job.segments[1];
+    (secondProvider as any).corrections = [
+      {
+        id: "correction-hidden-goal",
+        status: "accepted",
+        baseTextSha256: createHash("sha256")
+          .update(secondProvider.text)
+          .digest("hex"),
+        expectedSpeakerLabel: secondProvider.speakerLabel,
+        correctedText: "My goal is to publish the polished episode.",
+        correctedSpeakerLabel: secondProvider.speakerLabel,
+        updatedAt: new Date("2026-08-02T01:32:00.000Z"),
+      },
+    ];
+
+    const rebuilt = (await buildCoachingPacketFromTranscriptJob({
+      prisma,
+      transcriptJobId: job.id,
+      authorUserId: "coach-1",
+    })) as any;
+
+    expect(rebuilt).toMatchObject({
+      summaryRefreshedInPlace: true,
+      summaryNoteId: first.summaryNoteId,
+      removedActionItemIds: [],
+      removedGoalIds: [],
+      removedHighlightNoteIds: [],
+    });
+    expect(latestSummary.sourceJson.relationshipWorkRemoval).toEqual(removal);
+    expect(
+      (
+        await work.actionItem.findUnique({
+          where: { id: first.actionItemIds[0] },
+        })
+      ).sourceJson.relationshipWorkRemoval,
+    ).toMatchObject({ active: true, previousStatus: "OPEN" });
+    expect(
+      (
+        await work.goal.findUnique({ where: { id: first.goalIds[0] } })
+      ).sourceJson.relationshipWorkRemoval,
+    ).toMatchObject({ active: true, previousStatus: "ACTIVE" });
+    expect(
+      notes.get(hiddenHighlight.id).sourceJson.relationshipWorkRemoval,
+    ).toEqual(removal);
+    expect(
+      coachingNoteCreate.mock.calls.filter(
+        ([{ data }]: any[]) => data.kind === "HIGHLIGHT",
+      ),
+    ).toHaveLength(2);
+    expect(coachingNoteDelete).not.toHaveBeenCalled();
   });
 
   it("keeps completed or edited generated work when a correction removes the original commitment", async () => {
