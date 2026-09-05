@@ -47,8 +47,8 @@ export function EpisodeMixWaveformComparison({
     const rmsHeight = Math.max(1.5, episodeMixDbfsHeight(point.rmsDbfs, 28));
     const peakHeight = Math.max(rmsHeight, episodeMixDbfsHeight(point.samplePeakDbfs, 32));
     return <g key={`${point.startSeconds}:${index}`}>
-      <rect x={x} y={centerY - peakHeight} width={pointWidth} height={peakHeight * 2} fill={point.clippedFrameCount > 0 ? "#fb7185" : color} opacity="0.2" />
-      <rect x={x} y={centerY - rmsHeight} width={pointWidth} height={rmsHeight * 2} fill={point.clippedFrameCount > 0 ? "#fb7185" : color} opacity="0.88" />
+      <rect x={x} y={centerY - peakHeight} width={pointWidth} height={peakHeight * 2} fill={point.clippedFrameCount > 0 ? "var(--color-quipsly-rosewood-400)" : color} opacity="0.2" />
+      <rect x={x} y={centerY - rmsHeight} width={pointWidth} height={rmsHeight * 2} fill={point.clippedFrameCount > 0 ? "var(--color-quipsly-rosewood-400)" : color} opacity="0.88" />
     </g>;
   });
 
@@ -65,10 +65,10 @@ export function EpisodeMixWaveformComparison({
         <text x="8" y="112" fill="#c4b5fd" fontSize="11" fontWeight="800">PROPOSAL</text>
         <line x1="0" x2={width} y1="68" y2="68" stroke="#155e75" />
         <line x1="0" x2={width} y1="142" y2="142" stroke="#5b21b6" />
-        {lane(baselinePoints, 68, "#22d3ee")}
-        {lane(proposalPoints, 142, "#a78bfa")}
-        {actions.map((action) => { const x = Math.max(0, Math.min(width, action.startSeconds / safeDuration * width)); const actionWidth = Math.max(2, Math.min(width - x, (action.endSeconds - action.startSeconds) / safeDuration * width)); return <g key={action.id}><rect x={x} y="18" width={actionWidth} height="146" fill="#d946ef" opacity="0.18"><title>{action.targetTitle} · {action.gainDb.toFixed(1)} dB · {clock(action.startSeconds)}–{clock(action.endSeconds)}</title></rect><line x1={x} x2={x} y1="18" y2="164" stroke="#f0abfc" strokeWidth="1.5" /></g>; })}
-        {checkpoints.map((second) => { const x = Math.max(0, Math.min(width, second / safeDuration * width)); return <line key={second} x1={x} x2={x} y1="18" y2="164" stroke="#fbbf24" strokeWidth="1.5" strokeDasharray="5 4"><title>Required listening checkpoint · {clock(second)}</title></line>; })}
+        {lane(baselinePoints, 68, "var(--color-quipsly-lake-400)")}
+        {lane(proposalPoints, 142, "var(--color-quipsly-inkberry-400)")}
+        {actions.map((action) => { const x = Math.max(0, Math.min(width, action.startSeconds / safeDuration * width)); const actionWidth = Math.max(2, Math.min(width - x, (action.endSeconds - action.startSeconds) / safeDuration * width)); return <g key={action.id}><rect x={x} y="18" width={actionWidth} height="146" fill="var(--color-quipsly-inkberry-500)" opacity="0.18"><title>{action.targetTitle} · {action.gainDb.toFixed(1)} dB · {clock(action.startSeconds)}–{clock(action.endSeconds)}</title></rect><line x1={x} x2={x} y1="18" y2="164" stroke="var(--color-quipsly-inkberry-300)" strokeWidth="1.5" /></g>; })}
+        {checkpoints.map((second) => { const x = Math.max(0, Math.min(width, second / safeDuration * width)); return <line key={second} x1={x} x2={x} y1="18" y2="164" stroke="var(--color-quipsly-brass-400)" strokeWidth="1.5" strokeDasharray="5 4"><title>Required listening checkpoint · {clock(second)}</title></line>; })}
         <line x1={Math.max(0, Math.min(width, currentTime / safeDuration * width))} x2={Math.max(0, Math.min(width, currentTime / safeDuration * width))} y1="18" y2="164" stroke="#ffffff" strokeWidth="2.5" />
       </svg>
     </button>

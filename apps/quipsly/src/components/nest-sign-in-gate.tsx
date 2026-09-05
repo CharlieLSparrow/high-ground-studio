@@ -63,7 +63,7 @@ export function NestSignInGate() {
           </a>
           <a
             href="https://quipsly.com/support"
-            className="rounded-full border border-[#ffc0c5] bg-[#fff1f2] px-6 py-3 text-sm font-black uppercase tracking-[0.18em] text-[#a32631]"
+            className="rounded-full border border-rose-200 bg-rose-50 px-6 py-3 text-sm font-black uppercase tracking-[0.18em] text-rose-700"
           >
             Get help
           </a>

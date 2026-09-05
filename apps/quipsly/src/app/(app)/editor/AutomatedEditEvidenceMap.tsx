@@ -268,7 +268,7 @@ export function AutomatedEditEvidenceMap({
             const rmsHeight = Math.max(1, ((clamp(point.rmsDbfs, -96, 0) + 96) / 96) * 35);
             const peakHeight = Math.max(rmsHeight, ((clamp(point.samplePeakDbfs, -96, 0) + 96) / 96) * 38);
             const lowEnergy = signal && point.rmsDbfs <= signal.nearSilenceDbfs;
-            return <g key={`${point.startSeconds}-${index}`}><rect x={pointX} y={center - rmsHeight} width={pointWidth} height={rmsHeight * 2} fill={lowEnergy ? "#334155" : "#64748b"}><title>{clock(point.startSeconds)} decoded RMS {point.rmsDbfs.toFixed(1)} dBFS · peak {point.samplePeakDbfs.toFixed(1)} dBFS</title></rect><line x1={pointX + pointWidth / 2} x2={pointX + pointWidth / 2} y1={center - peakHeight} y2={center + peakHeight} stroke={point.clippedFrameCount > 0 ? "#fb7185" : "#a78bfa"} strokeWidth="1" /></g>;
+            return <g key={`${point.startSeconds}-${index}`}><rect x={pointX} y={center - rmsHeight} width={pointWidth} height={rmsHeight * 2} fill={lowEnergy ? "#334155" : "#64748b"}><title>{clock(point.startSeconds)} decoded RMS {point.rmsDbfs.toFixed(1)} dBFS · peak {point.samplePeakDbfs.toFixed(1)} dBFS</title></rect><line x1={pointX + pointWidth / 2} x2={pointX + pointWidth / 2} y1={center - peakHeight} y2={center + peakHeight} stroke={point.clippedFrameCount > 0 ? "var(--color-quipsly-rosewood-400)" : "var(--color-quipsly-inkberry-400)"} strokeWidth="1" /></g>;
           })}
           {!signal && <text x="500" y="62" textAnchor="middle" fill="#94a3b8" fontSize="13" fontWeight="800">Decoded waveform is not bound to this proposal set</text>}
           <text x="6" y="119" fill="#6ee7b7" fontSize="9" fontWeight="800">PROPOSALS</text>

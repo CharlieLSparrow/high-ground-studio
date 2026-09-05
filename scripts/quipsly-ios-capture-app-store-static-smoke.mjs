@@ -111,6 +111,8 @@ const files = {
   webAppLayout: path.join(root, "apps/quipsly/src/app/(app)/layout.tsx"),
   webProjectCreateAction: path.join(root, "apps/quipsly/src/app/(app)/projects/actions.ts"),
   webSidebar: path.join(root, "apps/quipsly/src/components/SidebarLayout.tsx"),
+  webGlobals: path.join(root, "apps/quipsly/src/app/globals.css"),
+  webNestSignInGate: path.join(root, "apps/quipsly/src/components/nest-sign-in-gate.tsx"),
   webCaptureAppHandoff: path.join(root, "apps/quipsly/src/components/capture-app-handoff.tsx"),
   webRecorderBottomBar: path.join(root, "apps/quipsly/src/app/(app)/read/RecorderBottomBar.tsx"),
   appStoreTransactionRoute: path.join(root, "apps/quipsly/src/app/api/mobile/capture/entitlements/app-store/transaction/route.ts"),
@@ -273,6 +275,8 @@ const captureReceiptStoreText = read(files.captureReceiptStore);
 const captureRecordingCoordinatorText = read(files.captureRecordingCoordinator);
 const captureRecordingReceiptOutboxText = read(files.captureRecordingReceiptOutbox);
 const capturePhoneShellText = read(files.capturePhoneShell);
+const webGlobalsText = read(files.webGlobals);
+const webNestSignInGateText = read(files.webNestSignInGate);
 const voiceWritingDraftStoreText = read(files.voiceWritingDraftStore);
 const voiceWritingRecognitionSyncClientText = read(files.voiceWritingRecognitionSyncClient);
 const recorderSurfaceStart = capturePhoneShellText.indexOf(
@@ -340,9 +344,35 @@ for (const [surface, source] of brandedCaptureSurfaceTexts) {
   );
 }
 requireIncludes(capturePhoneShellText, "static let actionFill = adaptive(", "filled actions have an independent accessible peacock token");
-requireIncludes(capturePhoneShellText, "static let plumFill = adaptive(", "editor actions have an independent accessible olive token");
+requireIncludes(capturePhoneShellText, "static let plumFill = adaptive(", "editor actions have an independent accessible inkberry token");
 requireIncludes(capturePhoneShellText, "static let accentUIColor = adaptiveUIColor(", "system-owned controls receive the same adaptive bookcloth accent");
 requireIncludes(capturePhoneShellText, "func captureProminentButton(fill:", "filled controls share one readable Quipsly action treatment");
+for (const family of ["peacock", "lake", "fern", "brass", "inkberry", "rosewood", "terracotta"]) {
+  for (const step of [50, 500, 950]) {
+    requireIncludes(
+      webGlobalsText,
+      `--color-quipsly-${family}-${step}:`,
+      `web palette keeps the ${family} ${step} material token`,
+    );
+  }
+}
+for (const [legacyFamily, materialFamily] of [
+  ["violet", "peacock"],
+  ["blue", "lake"],
+  ["emerald", "fern"],
+  ["amber", "brass"],
+  ["purple", "inkberry"],
+  ["rose", "rosewood"],
+  ["orange", "terracotta"],
+]) {
+  requireIncludes(
+    webGlobalsText,
+    `--color-${legacyFamily}-500: var(--color-quipsly-${materialFamily}-500);`,
+    `${legacyFamily} utilities resolve through the ${materialFamily} material`,
+  );
+}
+requireExcludes(webNestSignInGateText, "#ffc0c5", "the Session sign-in gate has no bubble-gum border escape hatch");
+requireExcludes(webNestSignInGateText, "#fff1f2", "the Session sign-in gate has no bubble-gum surface escape hatch");
 const captureSwiftSourceDirectory = path.join(
   root,
   "apps/mobile-capture/HighGroundCapture/HighGroundCapture",

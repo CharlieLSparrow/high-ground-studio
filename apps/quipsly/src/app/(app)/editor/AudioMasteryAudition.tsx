@@ -234,7 +234,7 @@ function AudioMasteryComparisonGraph({ source, mastered, targetLufs }: {
             <text x="6" y={Math.max(10, y(level) - 4)} fill={level === targetLufs ? "#bbf7d0" : "#a1a1b5"} fontSize="10" fontWeight="700">{level} LUFS</text>
           </g>
         ))}
-        {sourcePath && <path d={sourcePath} fill="none" stroke="#f0abfc" strokeWidth="2.1" opacity="0.78" />}
+        {sourcePath && <path d={sourcePath} fill="none" stroke="var(--color-quipsly-inkberry-300)" strokeWidth="2.1" opacity="0.78" />}
         {masteredPath && <path d={masteredPath} fill="none" stroke="#4ade80" strokeWidth="2.3" />}
       </svg>
       <figcaption className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-[9px] font-black uppercase tracking-[0.1em] text-slate-200">

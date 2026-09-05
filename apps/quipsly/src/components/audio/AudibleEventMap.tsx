@@ -60,9 +60,9 @@ const FAMILY_LABELS: Record<AudibleEventMoment["family"], string> = {
 };
 const FAMILY_COLORS: Record<AudibleEventMoment["family"], string> = {
   signal: "#38bdf8",
-  dialogue: "#fbbf24",
+  dialogue: "var(--color-quipsly-brass-400)",
   content: "#34d399",
-  environment: "#fb7185",
+  environment: "var(--color-quipsly-rosewood-400)",
   capture: "#c084fc",
 };
 
@@ -294,7 +294,7 @@ export function AudibleEventMap({
           const pointX = x(start);
           const pointWidth = Math.max(1, x(end) - pointX - 0.3);
           const height = levelHeight(point.rmsDbfs);
-          const fill = point.clippedFrameCount > 0 ? "#fb7185" : point.rmsDbfs <= (signal?.thresholds.nearSilenceDbfs ?? -72) ? "#64748b" : "#0ea5e9";
+          const fill = point.clippedFrameCount > 0 ? "var(--color-quipsly-rosewood-400)" : point.rmsDbfs <= (signal?.thresholds.nearSilenceDbfs ?? -72) ? "#64748b" : "var(--color-quipsly-lake-500)";
           return <rect key={`${point.startSeconds}-${index}`} x={pointX} y={center - height} width={pointWidth} height={height * 2} rx="0.8" fill={fill} opacity="0.62" />;
         })}
         {signal === null ? <text x="500" y="75" textAnchor="middle" fill="#94a3b8" fontSize="12" fontWeight="800">Decoded waveform evidence is not attached yet; source-clock event marks remain reviewable.</text> : null}

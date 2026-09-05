@@ -63,7 +63,7 @@ export function AudioMasteryLoudnessGraph({
               x2={width}
               y1={y(level)}
               y2={y(level)}
-              stroke={level === -16 ? "#f0abfc" : "#4c3d64"}
+              stroke={level === -16 ? "var(--color-quipsly-inkberry-300)" : "var(--color-quipsly-inkberry-800)"}
               strokeWidth={level === -16 ? 1.5 : 1}
               strokeDasharray={level === -16 ? "7 5" : "2 6"}
             />
@@ -82,7 +82,7 @@ export function AudioMasteryLoudnessGraph({
           <path d={momentaryPath} fill="none" stroke="#818cf8" strokeWidth="1.3" opacity="0.75" />
         ) : null}
         {shortTermPath ? (
-          <path d={shortTermPath} fill="none" stroke="#f0abfc" strokeWidth="2.3" />
+          <path d={shortTermPath} fill="none" stroke="var(--color-quipsly-inkberry-300)" strokeWidth="2.3" />
         ) : null}
       </svg>
       <figcaption className="mt-1 grid grid-cols-2 gap-x-2 gap-y-1 text-[9px] font-bold uppercase tracking-[0.08em] text-fuchsia-100">

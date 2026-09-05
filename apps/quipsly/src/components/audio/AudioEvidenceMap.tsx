@@ -191,8 +191,8 @@ function frequencyRangeLabel(minimumHz: number, maximumHz: number) {
 const FREQUENCY_COLORS: Record<FrequencyProfile["bands"][number]["id"], string> = {
   rumble: "#c084fc",
   warmth: "#f472b6",
-  body: "#fb7185",
-  speech: "#fbbf24",
+  body: "var(--color-quipsly-rosewood-400)",
+  speech: "var(--color-quipsly-brass-400)",
   presence: "#34d399",
   air: "#38bdf8",
 };
@@ -341,7 +341,7 @@ export function AudioEvidenceMap({
           return <g key={`${point.startSeconds}-${index}`}>
             {nearSilent || clipped ? <rect x={pointX} y={plotTop} width={pointWidth} height={plotBottom - plotTop} fill={fill} opacity="0.1" /> : null}
             <rect x={pointX} y={center - rmsHeight} width={pointWidth} height={rmsHeight * 2} rx="0.8" fill={fill} opacity="0.78" />
-            <line x1={pointX + pointWidth / 2} x2={pointX + pointWidth / 2} y1={center - peakHeight} y2={center + peakHeight} stroke={clipped ? "#fb7185" : "#c4b5fd"} strokeWidth={Math.max(0.8, Math.min(2, pointWidth / 3))} />
+            <line x1={pointX + pointWidth / 2} x2={pointX + pointWidth / 2} y1={center - peakHeight} y2={center + peakHeight} stroke={clipped ? "var(--color-quipsly-rosewood-400)" : "var(--color-quipsly-inkberry-300)"} strokeWidth={Math.max(0.8, Math.min(2, pointWidth / 3))} />
           </g>;
         })}
         {displayMode === "frequency" && frequencyProfile ? [...frequencyProfile.bands].reverse().flatMap((band, visualIndex) => {
@@ -367,7 +367,7 @@ export function AudioEvidenceMap({
           const observationEnd = Math.min(Math.max(observation.endSeconds, observation.startSeconds + signal.windowDurationSeconds), span.endSeconds);
           const observationX = x(observationStart);
           const observationWidth = Math.max(2, x(observationEnd) - observationX);
-          const tone = observation.severity === "warning" ? "#fb7185" : "#fbbf24";
+          const tone = observation.severity === "warning" ? "var(--color-quipsly-rosewood-400)" : "var(--color-quipsly-brass-400)";
           return <g key={`${observation.kind}-${observation.startSeconds}-${index}`}><rect x={observationX} y={plotTop} width={observationWidth} height={plotBottom - plotTop} fill={tone} opacity="0.12"><title>{`${timestampForSeconds(observation.startSeconds)}–${timestampForSeconds(observation.endSeconds)} ${observation.detail}`}</title></rect><line x1={observationX} x2={observationX} y1={plotTop} y2={plotBottom} stroke={tone} strokeWidth="2" strokeDasharray="5 3" /></g>;
         })}
         {transcriptEndSeconds !== null && transcriptEndSeconds >= span.startSeconds && transcriptEndSeconds <= span.endSeconds ? <g><line x1={x(transcriptEndSeconds)} x2={x(transcriptEndSeconds)} y1={plotTop - 4} y2={plotBottom + 4} stroke="#6ee7b7" strokeWidth="2" strokeDasharray="4 3" /><text x={clamp(x(transcriptEndSeconds) + 5, 5, width - 95)} y={plotBottom + 16} fill="#a7f3d0" fontSize="9" fontWeight="800">Transcript end</text></g> : null}
@@ -377,7 +377,7 @@ export function AudioEvidenceMap({
           const wordX = x(start);
           const wordWidth = Math.max(1, x(end) - wordX - 0.35);
           const needsAttention = lowConfidenceThreshold !== null && word.confidence !== null && word.confidence < lowConfidenceThreshold;
-          const fill = word.reviewState === "corrected" ? "#34d399" : word.reviewState === "confirmed" ? "#60a5fa" : needsAttention ? "#a78bfa" : "#475569";
+          const fill = word.reviewState === "corrected" ? "var(--color-quipsly-fern-400)" : word.reviewState === "confirmed" ? "var(--color-quipsly-lake-400)" : needsAttention ? "var(--color-quipsly-inkberry-400)" : "#475569";
           return <rect key={word.id} x={wordX} y={transcriptTop} width={wordWidth} height={transcriptBottom - transcriptTop} rx="1" fill={fill} opacity="0.9"><title>{`${timestampForSeconds(word.startSeconds)} ${word.text} · ${word.reviewState}${word.confidence === null ? " · provider confidence unavailable" : ` · provider confidence ${Math.round(word.confidence * 100)}%`}`}</title></rect>;
         })}
         {transcriptWords.length > 0 && <text x="6" y="198" fill="#94a3b8" fontSize="9" fontWeight="800">{transcriptScopeLabel} · {transcriptSummary.reviewedWordCount}/{transcriptSummary.timedWordCount} words in reviewed segments{transcriptSummary.attentionWordCount === null ? " · no cross-provider confidence threshold" : ` · ${transcriptSummary.attentionWordCount} provider-attention words`}</text>}

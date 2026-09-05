@@ -279,7 +279,7 @@ export function SpectralEvidenceViewer({
         <div className="pointer-events-none absolute inset-0" aria-hidden="true">
           {visibleMarkers.map((marker) => <span key={marker.id} className={`absolute inset-y-0 border-l-2 ${markerTone(marker.category, marker.severity)}`} style={{ left: `${percentWithinView(marker.startSeconds)}%`, width: `${Math.max(0.2, percentWithinView(Math.max(marker.endSeconds, marker.startSeconds + 0.001)) - percentWithinView(marker.startSeconds))}%` }} />)}
           {transcriptEndSeconds !== null && transcriptEndSeconds >= view.start && transcriptEndSeconds <= view.end ? <span className="absolute inset-y-0 border-l-2 border-emerald-300" style={{ left: `${percentWithinView(transcriptEndSeconds)}%` }} /> : null}
-          {loudnessPath ? <svg viewBox="0 0 100 40" preserveAspectRatio="none" className="absolute inset-x-0 top-0 h-[35%] w-full overflow-visible"><path d={loudnessPath} fill="none" stroke="#f0abfc" strokeWidth="0.55" vectorEffect="non-scaling-stroke" /></svg> : null}
+          {loudnessPath ? <svg viewBox="0 0 100 40" preserveAspectRatio="none" className="absolute inset-x-0 top-0 h-[35%] w-full overflow-visible"><path d={loudnessPath} fill="none" stroke="var(--color-quipsly-inkberry-300)" strokeWidth="0.55" vectorEffect="non-scaling-stroke" /></svg> : null}
           <div className="absolute inset-x-0 bottom-[17%] h-[9%] border-y border-white/10 bg-slate-950/35">
             {transcriptSlices.map((slice) => <span key={slice.id} className="absolute inset-y-0" style={{ left: `${percentWithinView(slice.startSeconds)}%`, width: `${Math.max(0.15, percentWithinView(slice.endSeconds) - percentWithinView(slice.startSeconds))}%`, background: transcriptSliceBackground(slice.states) }} />)}
           </div>

@@ -170,16 +170,16 @@ export function SourceSyncEvidenceMap({
           {[0, 0.25, 0.5, 0.75, 1].map((fraction) => <line key={fraction} x1={fraction * 1_000} y1="16" x2={fraction * 1_000} y2="150" stroke="#334155" strokeWidth="1" />)}
           <line x1="0" y1="62" x2="1000" y2="62" stroke="#475569" />
           <line x1="0" y1="126" x2="1000" y2="126" stroke="#475569" />
-          {spineSignal && waveformBars({ signal: spineSignal, offsetSeconds: 0, viewStart, viewDuration, laneCenter: 52, color: "#22d3ee" })}
-          {targetSignal && waveformBars({ signal: targetSignal, offsetSeconds: anchorSeconds, viewStart, viewDuration, laneCenter: 116, color: "#a78bfa" })}
+          {spineSignal && waveformBars({ signal: spineSignal, offsetSeconds: 0, viewStart, viewDuration, laneCenter: 52, color: "var(--color-quipsly-lake-400)" })}
+          {targetSignal && waveformBars({ signal: targetSignal, offsetSeconds: anchorSeconds, viewStart, viewDuration, laneCenter: 116, color: "var(--color-quipsly-inkberry-400)" })}
           <line x1={anchorX} y1="12" x2={anchorX} y2="148" stroke="#f8fafc" strokeWidth="2" />
-          {observationX !== null && <line x1={observationX} y1="12" x2={observationX} y2="148" stroke="#fbbf24" strokeWidth="2" strokeDasharray="8 5" />}
+          {observationX !== null && <line x1={observationX} y1="12" x2={observationX} y2="148" stroke="var(--color-quipsly-brass-400)" strokeWidth="2" strokeDasharray="8 5" />}
           {!spineSignal && <text x="500" y="56" textAnchor="middle" fill="#67e8f9" fontSize="12" fontWeight="800">Spine decoded waveform not attached</text>}
           {!targetSignal && <text x="500" y="120" textAnchor="middle" fill="#c4b5fd" fontSize="12" fontWeight="800">Target decoded waveform not attached</text>}
           <text x="8" y="20" fill="#67e8f9" fontSize="11" fontWeight="900">SPINE</text>
           <text x="8" y="84" fill="#c4b5fd" fontSize="11" fontWeight="900">TARGET</text>
           <text x={Math.min(940, anchorX + 6)} y="164" fill="#f8fafc" fontSize="10" fontWeight="900">OPEN {clock(anchorSeconds)}</text>
-          {observationX !== null && <text x={Math.max(8, Math.min(890, observationX - 96))} y="20" fill="#fbbf24" fontSize="10" fontWeight="900">LATER {clock(model.observationTimelineSeconds!)}</text>}
+          {observationX !== null && <text x={Math.max(8, Math.min(890, observationX - 96))} y="20" fill="var(--color-quipsly-brass-400)" fontSize="10" fontWeight="900">LATER {clock(model.observationTimelineSeconds!)}</text>}
         </svg>
         <div className="mt-1 grid gap-1 text-[9px] font-bold text-slate-300 sm:grid-cols-2"><span className="truncate text-cyan-200">Spine · {spineLabel}</span><span className="truncate text-violet-200">Target · {targetLabel}</span></div>
       </div>
