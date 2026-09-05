@@ -565,7 +565,8 @@ const result = {
       appointmentCreation:
         start.appointmentCreatedThroughRenderedProduct === true,
       invitationHandoff:
-        start.clientEntryCopiedFromRenderedProduct === true &&
+        start.invitationLinkCopiedFromRenderedProduct === true &&
+        start.clientEntryDerivedFromInvitationEndpoint === true &&
         start.primaryInvitationActionAttempted === true,
       coachPracticeCommand:
         practiceCommand.renderedPhoneWidthCommand === true

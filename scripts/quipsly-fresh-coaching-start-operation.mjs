@@ -336,6 +336,21 @@ try {
   evidence.localInvitationDeliveryReceiptRecorded = true;
   evidence.externalInvitationMessageSent = false;
 
+  const invitationEndpointURL = new URL(invitationResponse.url());
+  const invitationEndpointMatch = invitationEndpointURL.pathname.match(
+    /^\/api\/sessions\/([^/]+)\/invitations$/,
+  );
+  assert(
+    invitationEndpointMatch?.[1],
+    "Scheduling invitation response did not identify its private Session.",
+  );
+  evidence.roomId = decodeURIComponent(invitationEndpointMatch[1]);
+  evidence.clientEntryPath = `/sessions/${encodeURIComponent(evidence.roomId)}?mode=live`;
+  const canonicalClientEntryURL = new URL(evidence.clientEntryPath, baseURL);
+  const invitationEntryURL = new URL(invitationPacket.invitePath, baseURL);
+  assert.equal(invitationEntryURL.origin, baseURL);
+  assert.equal(invitationEntryURL.pathname, "/sessions/join");
+
   await handoff
     .getByText("Invitation options", { exact: true })
     .click();
@@ -343,28 +358,20 @@ try {
     .getByRole("button", { name: "Copy invite link", exact: true })
     .click();
   await handoff.getByText(/copied/i).waitFor({ timeout: 20_000 });
-  const copiedClientEntry = await coachPage.evaluate(() =>
+  const copiedInvitationEntry = await coachPage.evaluate(() =>
     navigator.clipboard.readText(),
   );
-  const clientEntryURL = new URL(copiedClientEntry, baseURL);
+  const copiedInvitationURL = new URL(copiedInvitationEntry, baseURL);
   assert.equal(
-    clientEntryURL.origin,
+    copiedInvitationURL.origin,
     baseURL,
-    "Rendered client entry escaped the local Quipsly origin.",
+    "Rendered invitation link escaped the local Quipsly origin.",
   );
-  assert.match(
-    clientEntryURL.pathname,
-    /^\/sessions\/[^/]+$/,
-    "Rendered client entry did not target one private Session.",
+  assert.equal(
+    `${copiedInvitationURL.pathname}${copiedInvitationURL.search}`,
+    `${invitationEntryURL.pathname}${invitationEntryURL.search}`,
+    "Rendered invitation link did not preserve the exact expiring one-time entry token.",
   );
-  evidence.clientEntryPath = `${clientEntryURL.pathname}${clientEntryURL.search}`;
-  evidence.roomId = decodeURIComponent(
-    clientEntryURL.pathname.split("/").at(-1),
-  );
-
-  const invitationEntryURL = new URL(invitationPacket.invitePath, baseURL);
-  assert.equal(invitationEntryURL.origin, baseURL);
-  assert.equal(invitationEntryURL.pathname, "/sessions/join");
 
   // Prove the invitation is bound to the intended identity before consuming
   // it. This is an operated negative path through the rendered product and
@@ -450,10 +457,19 @@ try {
   await acceptInvitation.click();
   await clientPage.waitForURL(
     (url) =>
-      url.pathname === clientEntryURL.pathname &&
+      /^\/sessions\/[^/]+$/.test(url.pathname) &&
       url.searchParams.get("mode") === "live" &&
       url.searchParams.get("joined") === "1",
-    { timeout: 30_000 },
+    // A live Session immediately opens persistent media and presence
+    // connections. Those must not make acceptance depend on a traditional
+    // document `load` event; the rendered title below remains the UI proof.
+    { timeout: 30_000, waitUntil: "commit" },
+  );
+  const acceptedSessionURL = new URL(clientPage.url());
+  assert.equal(
+    acceptedSessionURL.pathname,
+    canonicalClientEntryURL.pathname,
+    "Accepting the one-time invitation opened a different private Session than the coach shared.",
   );
   evidence.clientAcceptedOneTimeInvitation = true;
   await clientPage
@@ -552,7 +568,7 @@ try {
   );
   assert.equal(
     clientNextSessionURL.pathname,
-    clientEntryURL.pathname,
+    canonicalClientEntryURL.pathname,
     "Client-only coaching home did not return to the exact private Session.",
   );
   assert.equal(
@@ -710,7 +726,8 @@ try {
   evidence.clientHasNoStaffAuthority = true;
   evidence.coachIdentityCreatedOnFirstSession = true;
   evidence.appointmentCreatedThroughRenderedProduct = true;
-  evidence.clientEntryCopiedFromRenderedProduct = true;
+  evidence.invitationLinkCopiedFromRenderedProduct = true;
+  evidence.clientEntryDerivedFromInvitationEndpoint = true;
   evidence.clientInvitationAcceptedThroughRenderedProduct = true;
   evidence.privateClientEntryRequiredRenderedSignInGate = true;
   evidence.clientCreatedAccountFromExactEntry = true;
