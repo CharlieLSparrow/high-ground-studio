@@ -1,6 +1,6 @@
 # Quipsly deferred validation ledger
 
-Updated: 2026-09-04
+Updated: 2026-09-05
 
 This ledger keeps human, physical-device, live-service, and environment-bound
 acceptance work visible without blocking safe independent development. An item
@@ -11,10 +11,14 @@ Build 74 reached internal and public-link TestFlight testing on 2026-09-04
 from exact source `3c4be440e54bb6914b8bf339c1a16de4a693e24b`; App Store Connect reports
 the build `VALID` and `IN_BETA_TESTING` in both intended groups, and the
 public invitation page was directly rendered. Morbo still has the directly
-installed development Build 73 and is waiting at Apple's standard Speech
-Recognition permission prompt. Installing and operating TestFlight Build 74
-on Morbo and an iPhone remains required physical evidence; neither provider
-state nor the successful direct-build transcription substitutes for it.
+installed development Build 75 from exact source `24b7d8e962ac`. CoreDevice
+currently reports Morbo connected and the installed app as version 1.0 (75).
+The fresh audible flight remains pending the ordinary Speech Recognition grant
+and a person speaking near the iPad; connection, installation, and launch do
+not prove microphone level, source audibility, transcript accuracy, or human
+experience. Installing and operating TestFlight Build 74 on Morbo and an
+iPhone also remains required physical evidence; neither provider state nor a
+directly installed development build substitutes for it.
 
 Latest retained Morbo positive control: on 2026-09-04, current source
 `02c8ca2c` directly installed as Debug build 73 saved and independently
