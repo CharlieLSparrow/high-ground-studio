@@ -267,6 +267,34 @@ describe("mobile voice-writing continuation", () => {
     }));
   });
 
+  it("repairs a legacy machine-purpose title without weakening canonical conflict evidence", async () => {
+    jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({
+      user: { id: "actor-1", primaryEmail: "person@example.com" },
+    } as never);
+    const document = storedVoiceDocument();
+    document.title = "PERSONAL_NOTE";
+    document.blocks[0].body = "PERSONAL_NOTE";
+    document.blocks[1].body = "A practical framework for calmer coaching conversations starts here.";
+    jest.mocked(getPrismaClient).mockReturnValue({
+      studioDocument: { findMany: jest.fn().mockResolvedValue([document]) },
+      transcriptJob: { findMany: jest.fn().mockResolvedValue([]) },
+    } as never);
+
+    const response = await GET(new Request("http://localhost/api/mobile/capture/voice-writing"));
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.drafts[0]).toMatchObject({
+      title: "A practical framework for calmer coaching conversations starts here",
+      body: "A practical framework for calmer coaching conversations starts here.",
+      contentRevision: mobileVoiceWritingContentHash({
+        title: "PERSONAL_NOTE",
+        body: "A practical framework for calmer coaching conversations starts here.",
+        richText: null,
+      }),
+    });
+  });
+
   it("drops stale rich-text ranges after a Nest member edits the canonical words", async () => {
     jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({
       user: { id: "actor-1", primaryEmail: "person@example.com" },
