@@ -8,6 +8,18 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
 failures=0
 
+if command -v gcloud >/dev/null 2>&1; then
+  GCLOUD_BIN="$(command -v gcloud)"
+elif [[ -n "${HOME:-}" && -x "${HOME}/google-cloud-sdk/bin/gcloud" ]]; then
+  # The official macOS archive installs here by default, but non-interactive
+  # shells (including release agents) do not always inherit its PATH update.
+  GCLOUD_BIN="${HOME}/google-cloud-sdk/bin/gcloud"
+else
+  printf "FAIL Google Cloud CLI is not installed or discoverable.\n" >&2
+  printf "Add gcloud to PATH or install the official Google Cloud CLI, then retry.\n" >&2
+  exit 1
+fi
+
 pass() {
   printf "PASS %s\n" "$1"
 }
@@ -17,32 +29,32 @@ fail() {
   failures=$((failures + 1))
 }
 
-account="$(gcloud config get-value account 2>/dev/null || true)"
+account="$("${GCLOUD_BIN}" config get-value account 2>/dev/null || true)"
 if [[ -n "${account}" ]]; then
   pass "Selected gcloud account: ${account}"
 else
   fail "No selected gcloud account."
 fi
 
-if gcloud auth print-access-token >/dev/null 2>&1; then
+if "${GCLOUD_BIN}" auth print-access-token >/dev/null 2>&1; then
   pass "gcloud user credentials can mint an access token."
 else
   fail "gcloud user credentials cannot mint an access token."
 fi
 
-if gcloud auth application-default print-access-token >/dev/null 2>&1; then
+if "${GCLOUD_BIN}" auth application-default print-access-token >/dev/null 2>&1; then
   pass "Application Default Credentials can mint an access token."
 else
   fail "Application Default Credentials cannot mint an access token."
 fi
 
-if gcloud projects describe "${PROJECT_ID}" --format="value(projectId)" >/dev/null 2>&1; then
+if "${GCLOUD_BIN}" projects describe "${PROJECT_ID}" --format="value(projectId)" >/dev/null 2>&1; then
   pass "Can access deploy project ${PROJECT_ID}."
 else
   fail "Cannot access deploy project ${PROJECT_ID}."
 fi
 
-if gcloud projects describe "${FIREBASE_PROJECT_ID}" --format="value(projectId)" >/dev/null 2>&1; then
+if "${GCLOUD_BIN}" projects describe "${FIREBASE_PROJECT_ID}" --format="value(projectId)" >/dev/null 2>&1; then
   pass "Can access Firebase project ${FIREBASE_PROJECT_ID}."
 else
   fail "Cannot access Firebase project ${FIREBASE_PROJECT_ID}."

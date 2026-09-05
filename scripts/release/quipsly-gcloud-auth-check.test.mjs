@@ -13,6 +13,12 @@ test("Firebase Admin authorization resolves from the deployed app workspace", ()
 });
 
 test("credential probes never print minted tokens", () => {
-  assert.match(source, /gcloud auth print-access-token >\/dev\/null 2>&1/);
-  assert.match(source, /gcloud auth application-default print-access-token >\/dev\/null 2>&1/);
+  assert.match(source, /auth print-access-token >\/dev\/null 2>&1/);
+  assert.match(source, /auth application-default print-access-token >\/dev\/null 2>&1/);
+});
+
+test("non-interactive macOS agents can discover the official archive install", () => {
+  assert.match(source, /command -v gcloud/);
+  assert.match(source, /\$\{HOME\}\/google-cloud-sdk\/bin\/gcloud/);
+  assert.match(source, /GCLOUD_BIN/);
 });
