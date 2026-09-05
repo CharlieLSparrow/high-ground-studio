@@ -169,6 +169,28 @@ test("proves a finished playable local source with exact identifiers", () => {
   assert.equal(result.transcriptAcceptanceReady, false);
 });
 
+test("accepts a finished capture awaiting cloud fallback without inventing transcript proof", () => {
+  const result = inspectPhysicalVoiceWritingReceipt(receipt({
+    phase: "finished",
+    captureState: "saved",
+    recordingID,
+    durationSeconds: 7.14,
+    localStatus: "uploaded",
+    sourceFileName: "20260903-123456-b9c77be4.m4a",
+    sourceByteCount: 123_456,
+    transcriptState: "waiting-for-cloud-fallback",
+    saved: true,
+  }), { auditedAt: now, expectedBuild: "69" });
+
+  assert.equal(result.captureAcceptanceProven, true);
+  assert.equal(result.transcriptState, "waiting-for-cloud-fallback");
+  assert.equal(result.transcriptAcceptanceReady, false);
+  assert.throws(
+    () => assertRequiredProof(result, { requireTranscriptProof: true }),
+    /transcript proof is incomplete/,
+  );
+});
+
 test("proves non-disclosing source-bound transcript metadata against independently read audio", () => {
   const result = inspectPhysicalVoiceWritingReceipt(receipt({
     phase: "finished",

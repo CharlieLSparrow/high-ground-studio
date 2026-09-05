@@ -29,6 +29,7 @@ const TRANSCRIPT_STATES = new Set([
   "waiting-for-verified-upload",
   "submitting",
   "attached",
+  "waiting-for-cloud-fallback",
   "requesting-cloud-fallback",
   "cloud-fallback",
   "failed",
