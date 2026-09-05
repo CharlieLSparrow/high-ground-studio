@@ -325,6 +325,10 @@ enum OnDeviceTranscriptPhase: Equatable {
     case waitingForVerifiedUpload(segmentCount: Int)
     case submitting(segmentCount: Int)
     case attached(transcriptJobId: String, segmentCount: Int)
+    /// The exact source needs Quipsly's cloud engine, but delivery is waiting
+    /// on verified upload or a retryable service edge. This is automatic
+    /// follow-through, not an error the person needs to resolve.
+    case waitingForCloudFallback
     case requestingCloudFallback
     case cloudFallback(transcriptJobId: String, status: String)
     case failed(message: String, retryable: Bool)
@@ -333,7 +337,8 @@ enum OnDeviceTranscriptPhase: Equatable {
         switch self {
         case .checkingSupport, .installingModel, .transcribing, .submitting, .requestingCloudFallback:
             return true
-        case .idle, .modelDownloadRequired, .savedLocally, .waitingForVerifiedUpload, .attached, .cloudFallback, .failed:
+        case .idle, .modelDownloadRequired, .savedLocally, .waitingForVerifiedUpload,
+             .attached, .waitingForCloudFallback, .cloudFallback, .failed:
             return false
         }
     }
@@ -985,6 +990,11 @@ final class OnDeviceTranscriptManager: ObservableObject {
             }
             return
         }
+        if recording.cloudTranscriptFallbackRequestId != nil,
+           recording.cloudTranscriptFallbackAcceptedAt == nil {
+            phases[recording.id] = .waitingForCloudFallback
+            return
+        }
         if let jobId = recording.cloudTranscriptFallbackJobId,
            let status = recording.cloudTranscriptFallbackStatus,
            recording.cloudTranscriptFallbackAcceptedAt != nil {
@@ -1361,6 +1371,9 @@ final class OnDeviceTranscriptManager: ObservableObject {
                 sessionTitle: recording.sessionTitle,
                 context: VoiceWritingDraftStore.shared.recognitionContext(for: recording)
             )
+            guard await CaptureSpeechRecognitionPermission.requestIfNeeded() == .authorized else {
+                throw OnDeviceTranscriptFailure.speechPermissionDenied
+            }
             let before = try await Task.detached(priority: .utility) {
                 try OnDeviceTranscriptSource.fingerprint(fileURL)
             }.value
@@ -1541,10 +1554,7 @@ final class OnDeviceTranscriptManager: ObservableObject {
                     if current.status.isVerified {
                         await submitCloudFallback(recording: current)
                     } else {
-                        phases[recording.id] = .failed(
-                            message: "\(error.localizedDescription) Quipsly will use the verified cloud copy once its backup finishes.",
-                            retryable: true
-                        )
+                        phases[recording.id] = .waitingForCloudFallback
                         OnDeviceTranscriptBackgroundCoordinator.shared.schedule()
                     }
                 } catch {
@@ -1656,10 +1666,7 @@ final class OnDeviceTranscriptManager: ObservableObject {
                   sourceByteCount > 0,
                   let ownerAccountId = recording.ownerAccountID,
                   AuthManager.currentStoredOwnerID() == ownerAccountId else {
-                phases[recording.id] = .failed(
-                    message: "Cloud transcript fallback is waiting for the verified recording and its owning account.",
-                    retryable: true
-                )
+                phases[recording.id] = .waitingForCloudFallback
                 OnDeviceTranscriptBackgroundCoordinator.shared.schedule()
                 return
             }
@@ -1742,9 +1749,10 @@ final class OnDeviceTranscriptManager: ObservableObject {
             if Task.isCancelled || error is CancellationError
                 || isRetryableDeliveryError(error) {
                 // The fallback request ID already lives in the protected
-                // recording ledger. Return to idle so launch/background
-                // reconciliation can replay the same idempotent request.
-                phases[recording.id] = .idle
+                // recording ledger. Keep a truthful, non-actionable queued
+                // state while launch/background reconciliation replays the
+                // same idempotent request.
+                phases[recording.id] = .waitingForCloudFallback
                 OnDeviceTranscriptBackgroundCoordinator.shared.schedule()
             } else {
                 phases[recording.id] = .failed(

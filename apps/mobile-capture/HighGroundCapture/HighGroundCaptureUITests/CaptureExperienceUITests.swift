@@ -6,16 +6,26 @@ final class CaptureExperienceUITests: XCTestCase {
     /// Permission alerts belong to SpringBoard, and their animation can finish
     /// after the first app-side tap that normally wakes an interruption
     /// monitor. Address the visible system button directly so a genuinely new
-    /// device proves the same one-tap user journey without timing luck.
+    /// device proves the same one-tap user journey without timing luck. A
+    /// first Speak to write can legitimately show microphone and Speech
+    /// Recognition in sequence, so drain both ordinary Apple prompts.
     private func allowSystemPermissionIfPresented(timeout: TimeInterval = 4) {
         let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
-        for title in ["Allow", "Allow While Using App"] {
-            let permission = springboard.buttons[title].firstMatch
-            if permission.waitForExistence(timeout: timeout) {
-                permission.tap()
-                return
+        let deadline = Date().addingTimeInterval(timeout)
+        var handledPrompt = false
+        repeat {
+            var handledThisPass = false
+            for title in ["Allow", "Allow While Using App"] {
+                let permission = springboard.buttons[title].firstMatch
+                if permission.waitForExistence(timeout: handledPrompt ? 0.75 : min(1, timeout)) {
+                    permission.tap()
+                    handledPrompt = true
+                    handledThisPass = true
+                    break
+                }
             }
-        }
+            if !handledThisPass && handledPrompt { return }
+        } while Date() < deadline
     }
 
     #if !targetEnvironment(simulator)
@@ -1002,9 +1012,9 @@ final class CaptureExperienceUITests: XCTestCase {
             "The bounded physical acceptance take should stop and finalize automatically."
         )
 
-        // Apple may present Speech Recognition independently from microphone
-        // permission. Keep servicing only the normal system Allow action while
-        // the exact finalized source is transcribed.
+        // Build 75 requests Speech Recognition before source capture. Keep a
+        // defensive check here for older installed permission state and OS
+        // alert animation races while the exact source is transcribed.
         allowSystemPermissionIfPresented()
         XCTAssertTrue(
             waitForPhysicalVoiceWritingEditor(timeout: 150),
@@ -1096,8 +1106,8 @@ final class CaptureExperienceUITests: XCTestCase {
             "Stopping voice writing must close the microphone-owned source instead of leaving capture active."
         )
         // Finalization immediately begins the requested speech-to-writing
-        // outcome. Service a first-run Speech Recognition prompt so it cannot
-        // leak into the next UI flight after this process exits.
+        // outcome. Permission is intentionally requested before capture, but
+        // keep this defensive drain for older simulator state and OS races.
         allowSystemPermissionIfPresented()
     }
 

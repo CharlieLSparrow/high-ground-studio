@@ -792,6 +792,8 @@ final class AudioCaptureController: NSObject, ObservableObject {
     /// formats are unavailable, beginActualRecording falls back to the proven
     /// AVAudioRecorder path and the finalized file is transcribed after Stop.
     private func activateAudioSessionAndBeginPersonalVoiceWriting() async throws {
+        let speechPermission = await CaptureSpeechRecognitionPermission.requestIfNeeded()
+        try Task.checkCancellation()
         try audioSessionCoordinator.activateLocalCapture()
         refreshInputRoute()
         try Task.checkCancellation()
@@ -813,7 +815,9 @@ final class AudioCaptureController: NSObject, ObservableObject {
         let settings = directAudioSettings
         liveWritingFinalText = ""
         liveWritingVolatileText = ""
-        liveWritingPreviewMessage = nil
+        liveWritingPreviewMessage = speechPermission == .authorized
+            ? nil
+            : "Recording normally. Your writing will appear after this recording is safely backed up."
         let recognitionOwner = AuthManager.currentStoredOwnerID()
         let recognitionProfile = VoiceWritingRecognitionPreferences.shared.profile(
             for: recognitionOwner
@@ -830,7 +834,8 @@ final class AudioCaptureController: NSObject, ObservableObject {
         )
 
         let prepared: VoiceWritingLiveSourceRecording?
-        if CaptureLaunchConfiguration.forcesPhysicalVoiceWritingRecorderFallback {
+        if CaptureLaunchConfiguration.forcesPhysicalVoiceWritingRecorderFallback
+            || speechPermission != .authorized {
             prepared = nil
         } else {
             prepared = await VoiceWritingLiveSourceFactory.prepareIfAvailable(

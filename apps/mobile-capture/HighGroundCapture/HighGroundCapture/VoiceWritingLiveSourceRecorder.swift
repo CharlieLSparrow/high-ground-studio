@@ -7,6 +7,40 @@ struct VoiceWritingLiveMeterSnapshot: Sendable {
     let peakPowerDB: Float
 }
 
+/// One ordinary Apple permission prompt should happen at the moment a person
+/// asks Quipsly to turn speech into writing—not unexpectedly after their take.
+/// Denial never blocks source recording; it only selects the source-bound
+/// cloud fallback after the local master is safely verified.
+enum CaptureSpeechRecognitionPermission: Equatable, Sendable {
+    case notDetermined
+    case authorized
+    case denied
+
+    static var current: Self {
+        switch SFSpeechRecognizer.authorizationStatus() {
+        case .notDetermined: .notDetermined
+        case .authorized: .authorized
+        case .denied, .restricted: .denied
+        @unknown default: .denied
+        }
+    }
+
+    static func requestIfNeeded() async -> Self {
+        let current = current
+        guard current == .notDetermined else { return current }
+        return await withCheckedContinuation { continuation in
+            SFSpeechRecognizer.requestAuthorization { status in
+                switch status {
+                case .authorized: continuation.resume(returning: .authorized)
+                case .notDetermined: continuation.resume(returning: .notDetermined)
+                case .denied, .restricted: continuation.resume(returning: .denied)
+                @unknown default: continuation.resume(returning: .denied)
+                }
+            }
+        }
+    }
+}
+
 /// Type-erased boundary used by AudioCaptureController so iOS 17-25 never
 /// need to reference SpeechAnalyzer's iOS 26-only implementation. This object
 /// owns the microphone and the source file; it is never run beside

@@ -1,6 +1,6 @@
 # High Ground Odyssey TestFlight Rehearsal
 
-Last verified: 2026-09-03
+Last verified: 2026-09-04
 
 This is the operator runbook for the first Charlie-and-Homer Quipsly Capture
 rehearsal. It distinguishes what is ready now from what the rehearsal still
@@ -8,10 +8,10 @@ needs to prove.
 
 ## Current release state
 
-- App: **Quipsly Capture 1.0 (70)**
+- App: **Quipsly Capture 1.0 (74)**
 - Exact native source:
-  `7743053e4e8d45e0b766431245b66d267e5e11ad`
-- App Store Connect build ID: `4eee0c65-4c17-4914-b47a-4d94c280614c`
+  `3c4be440e54bb6914b8bf339c1a16de4a693e24b`
+- App Store Connect build ID: `cbe5e793-5d42-439f-80bb-7136b9539d13`
 - External TestFlight group: **Quipsly Capture Rehearsal**
 - TestFlight Apple Account: `shomers@icloud.com`
 - Quipsly Google identity: `shomers@gmail.com`
@@ -22,7 +22,7 @@ needs to prove.
 - Automatic tester notification: enabled
 - Installation mode: public-link-only; neither a named-tester email nor a
   redemption code is required
-- Build 70 is the current approved public beta identified by the canonical
+- Build 74 is the current approved public beta identified by the canonical
   release ledger and Apple readback. It includes recording-start and
   interruption recovery, local-first Speak to write, episode script and
   conversation access beside the recorder, shared Watch controls, simpler
@@ -30,9 +30,9 @@ needs to prove.
   Sessions, clearer call recovery, native iPad workspace behavior, automatic
   delivery of on-device transcripts after reconnect, an isolated personal
   recorder layout that remains responsive when a recording is saved, and the
-  repaired crash-open Session boundary with operated Speak to Write coverage,
-  plus protected idempotent transcript-receipt persistence that no longer
-  crashes when iOS replays the same successful submission.
+  repaired crash-open Session boundary, protected idempotent transcript
+  receipts, bounded physical-device speech recognition, healthier media
+  analysis queues, and the unified overgrown-library palette.
   All four
   iPhone and iPad UI qualification shards passed; one keyboard-focus check
   passed on its bounded automatic retry, leaving zero final failures. The exact signed
@@ -40,9 +40,10 @@ needs to prove.
   privacy-manifest, and nested-signature inspection before upload. App Store
   Connect independently reports `VALID`, `IN_BETA_TESTING`, `APPROVED`, and
   inclusion in both the internal and public-link rehearsal groups; Apple's
-  public installation page and TestFlight handoff are open. A physical Build 70
-  source capture is saved and independently playable on Morbo; a fresh
-  human-speech transcript remains the final exact-source hardware proof.
+  public installation page and TestFlight handoff are open. Morbo's directly
+  installed development Build 73 saved and independently decoded a fresh
+  human-speech source; installing and operating TestFlight Build 74 on Morbo
+  and an iPhone remains required candidate-level physical evidence.
 - Build 28 passed all 63 serialized iPhone and Share Extension journeys,
   exact-source preflight, signed archive/export inspection, Apple processing,
   external beta review, external-group readback, and an anonymous HTTP 200 read

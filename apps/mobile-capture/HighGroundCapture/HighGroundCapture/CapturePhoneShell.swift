@@ -8736,6 +8736,8 @@ private struct CapturePersonalVoiceNoteTranscriptCard: View {
                 : "Try transcription again"
         case .savedLocally, .waitingForVerifiedUpload:
             recording.status.isVerified ? "Retry Nest transcript sync" : nil
+        case .waitingForCloudFallback:
+            nil
         case .idle:
             "Transcribe now"
         case .checkingSupport, .installingModel, .transcribing, .submitting,
@@ -8746,7 +8748,7 @@ private struct CapturePersonalVoiceNoteTranscriptCard: View {
 
     private var transcriptActionRequiresLocalFile: Bool {
         switch phase {
-        case .savedLocally, .waitingForVerifiedUpload:
+        case .savedLocally, .waitingForVerifiedUpload, .waitingForCloudFallback:
             false
         case .failed where recording.cloudTranscriptFallbackRequestId != nil:
             false
@@ -8792,6 +8794,7 @@ private struct CapturePersonalVoiceNoteTranscriptCard: View {
         case .savedLocally, .waitingForVerifiedUpload: return "Writing ready"
         case .submitting: return "Saving transcript…"
         case .attached: return "Writing ready"
+        case .waitingForCloudFallback: return "Transcript queued"
         case .requestingCloudFallback: return "Starting cloud transcript…"
         case .cloudFallback(_, let status):
             return status == "COMPLETED" ? "Transcript ready in Nest" : "Cloud transcript underway"
@@ -8820,6 +8823,10 @@ private struct CapturePersonalVoiceNoteTranscriptCard: View {
             return "Your writing is available now; Quipsly is connecting the timed transcript to its Nest."
         case .attached:
             return "The editable writing, timed transcript, and original audio are connected."
+        case .waitingForCloudFallback:
+            return recording.status.isVerified
+                ? "Quipsly will retry the cloud transcript automatically. Your exact recording is safe; no action is needed."
+                : "Your exact recording is safe here. Quipsly will create the transcript automatically as soon as backup finishes."
         case .requestingCloudFallback:
             return "Apple Speech could not finish this recording. Quipsly is switching this exact verified source to its cloud transcript engine once."
         case .cloudFallback(_, let status):
@@ -8837,7 +8844,7 @@ private struct CapturePersonalVoiceNoteTranscriptCard: View {
         case .failed: return "exclamationmark.triangle.fill"
         case .modelDownloadRequired: return "arrow.down.circle.fill"
         case .savedLocally, .waitingForVerifiedUpload, .attached: return "doc.text.fill"
-        case .requestingCloudFallback, .cloudFallback: return "cloud.fill"
+        case .waitingForCloudFallback, .requestingCloudFallback, .cloudFallback: return "cloud.fill"
         default: return "waveform"
         }
     }
@@ -12362,6 +12369,7 @@ private struct CaptureRecorderView: View {
         case .waitingForVerifiedUpload: "waiting-for-verified-upload"
         case .submitting: "submitting"
         case .attached: "attached"
+        case .waitingForCloudFallback: "waiting-for-cloud-fallback"
         case .requestingCloudFallback: "requesting-cloud-fallback"
         case .cloudFallback: "cloud-fallback"
         case .failed: "failed"
@@ -22154,7 +22162,7 @@ private struct LocalRecordingRow: View {
 
     private func transcriptAction(_ phase: OnDeviceTranscriptPhase) -> (() -> Void)? {
         switch phase {
-        case .attached, .cloudFallback:
+        case .attached, .waitingForCloudFallback, .cloudFallback:
             return nil
         case .savedLocally, .waitingForVerifiedUpload:
             guard recording.status.isVerified else { return nil }
@@ -22205,7 +22213,7 @@ private struct LocalRecordingRow: View {
 
     private func transcriptActionRequiresLocalFile(_ phase: OnDeviceTranscriptPhase) -> Bool {
         switch phase {
-        case .savedLocally, .waitingForVerifiedUpload:
+        case .savedLocally, .waitingForVerifiedUpload, .waitingForCloudFallback:
             false
         case .failed where recording.cloudTranscriptFallbackRequestId != nil:
             false
@@ -22219,7 +22227,7 @@ private struct LocalRecordingRow: View {
         case .modelDownloadRequired: return "arrow.down.circle"
         case .savedLocally, .waitingForVerifiedUpload: return "icloud.and.arrow.up"
         case .failed: return "arrow.clockwise"
-        case .requestingCloudFallback, .cloudFallback: return "cloud"
+        case .waitingForCloudFallback, .requestingCloudFallback, .cloudFallback: return "cloud"
         default: return "waveform.badge.mic"
         }
     }
@@ -22238,6 +22246,7 @@ private struct LocalRecordingRow: View {
         case .waitingForVerifiedUpload: return "Transcript ready · waiting for backup"
         case .submitting: return "Saving transcript…"
         case .attached: return "Transcript ready"
+        case .waitingForCloudFallback: return "Transcript queued"
         case .requestingCloudFallback: return "Starting cloud transcript…"
         case .cloudFallback(_, let status):
             return status == "COMPLETED" ? "Transcript ready" : "Cloud transcript underway"
@@ -22267,6 +22276,10 @@ private struct LocalRecordingRow: View {
             return "Saving \(segmentCount) timed passage\(segmentCount == 1 ? "" : "s") to this Session."
         case .attached(_, let segmentCount):
             return "\(segmentCount) timed passage\(segmentCount == 1 ? " is" : "s are") source-bound, synced to this Session, and ready to read, correct, and play.\(transcriptExecutionCostDetail)"
+        case .waitingForCloudFallback:
+            return recording.status.isVerified
+                ? "Quipsly will retry this exact source automatically. The recording is safe; no action is needed."
+                : "The exact source is safe here. Quipsly will create its transcript automatically as soon as backup finishes."
         case .requestingCloudFallback:
             return "Apple Speech could not finish this source. Quipsly is sending the exact verified recording to its cloud transcript engine once."
         case .cloudFallback(_, let status):
@@ -22281,7 +22294,7 @@ private struct LocalRecordingRow: View {
     private func transcriptStatusIcon(_ phase: OnDeviceTranscriptPhase) -> String {
         switch phase {
         case .attached, .cloudFallback(_, "COMPLETED"): return "checkmark.seal.fill"
-        case .cloudFallback, .requestingCloudFallback: return "cloud.fill"
+        case .cloudFallback, .waitingForCloudFallback, .requestingCloudFallback: return "cloud.fill"
         case .failed: return "exclamationmark.triangle.fill"
         case .savedLocally, .waitingForVerifiedUpload: return "lock.doc.fill"
         case .modelDownloadRequired: return "arrow.down.circle.fill"

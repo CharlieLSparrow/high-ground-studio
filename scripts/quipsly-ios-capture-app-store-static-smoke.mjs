@@ -2982,6 +2982,22 @@ requireIncludes(audioText, "VoiceWritingLivePCMAnalyzerFactory.prepareIfAvailabl
 requireIncludes(audioText, "startProviderLiveTranscriptPreview(", "the provider master starts its best-effort live transcript observer");
 requireIncludes(audioText, "detachProviderLiveTranscriptPreview(", "normal stop and failure paths detach the provider transcript observer");
 requireIncludes(audioText, "await liveTranscriptAnalyzer?.finish()", "provisional words flush without delaying immutable source finalization");
+requireIncludes(voiceWritingLiveSourceText, "enum CaptureSpeechRecognitionPermission", "Speak to write owns one conventional Apple Speech permission boundary");
+const personalVoiceWritingStart = audioText.slice(
+  audioText.indexOf("private func activateAudioSessionAndBeginPersonalVoiceWriting()"),
+  audioText.indexOf("#if canImport(LiveKit)", audioText.indexOf("private func activateAudioSessionAndBeginPersonalVoiceWriting()")),
+);
+assert(
+  personalVoiceWritingStart.indexOf("CaptureSpeechRecognitionPermission.requestIfNeeded()") >= 0
+    && personalVoiceWritingStart.indexOf("CaptureSpeechRecognitionPermission.requestIfNeeded()")
+      < personalVoiceWritingStart.indexOf("audioSessionCoordinator.activateLocalCapture()"),
+  "Speak to write must settle Apple's Speech permission before starting the microphone source.",
+  { label: "Speak to write requests Speech permission before source capture" },
+);
+requireIncludes(audioText, "|| speechPermission != .authorized", "Speech denial selects the proven audio recorder instead of blocking source capture");
+requireIncludes(onDeviceTranscriptManagerText, "case waitingForCloudFallback", "cloud transcript delivery has an automatic non-error waiting phase");
+requireIncludes(onDeviceTranscriptManagerText, "phases[recording.id] = .waitingForCloudFallback", "retryable cloud transcript delivery remains visibly queued");
+requireIncludes(capturePhoneShellText, 'case .waitingForCloudFallback: return "Transcript queued"', "Capture describes automatic cloud transcript follow-through without an action ritual");
 const providerStartBoundary = audioText.slice(
   audioText.indexOf("if let providerRecorder {"),
   audioText.indexOf("if let preparedVoiceWritingSource {"),
