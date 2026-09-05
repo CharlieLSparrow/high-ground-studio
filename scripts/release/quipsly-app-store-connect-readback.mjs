@@ -4,6 +4,7 @@ import { createHash, sign } from "node:crypto";
 import { chmod, readFile, stat, writeFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 
+import { appStoreConnectReadCredentialPath } from "./quipsly-app-store-connect-credentials.mjs";
 import { QUIPSLY_CAPTURE_RELEASE_TARGET } from "./quipsly-capture-release-target.mjs";
 
 const API_ORIGIN = "https://api.appstoreconnect.apple.com";
@@ -23,7 +24,7 @@ function fail(message) {
 
 export function parseArguments(argv) {
   const options = {
-    apiKeyPath: process.env.APP_STORE_CONNECT_API_KEY_PATH || "",
+    apiKeyPath: appStoreConnectReadCredentialPath(),
     appId: DEFAULTS.appId,
     appName: DEFAULTS.appName,
     bundleId: DEFAULTS.bundleId,
@@ -121,11 +122,10 @@ export function parseArguments(argv) {
 
 function usage() {
   return `Usage:
-  APP_STORE_CONNECT_API_KEY_PATH=/absolute/private/key.json \\
-    node scripts/release/quipsly-app-store-connect-readback.mjs [options]
+  node scripts/release/quipsly-app-store-connect-readback.mjs [options]
 
 Options:
-  --api-key-path <path>          Fastlane App Store Connect API-key JSON.
+  --api-key-path <path>          Override the default private credential path.
   --app-id <id>                  App Store Connect app ID.
   --app-name <name>              Expected App Store name.
   --bundle-id <id>               Expected bundle ID.

@@ -5,6 +5,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 
 import { createScopedToken } from "./quipsly-app-store-connect-readback.mjs";
+import { appStoreConnectReadCredentialPath } from "./quipsly-app-store-connect-credentials.mjs";
 import { QUIPSLY_CAPTURE_RELEASE_TARGET } from "./quipsly-capture-release-target.mjs";
 
 const API_ORIGIN = "https://api.appstoreconnect.apple.com";
@@ -15,7 +16,7 @@ function fail(message) {
 
 export function parseArguments(argv) {
   const options = {
-    apiKeyPath: process.env.APP_STORE_CONNECT_API_KEY_PATH || "",
+    apiKeyPath: appStoreConnectReadCredentialPath(),
     appId: QUIPSLY_CAPTURE_RELEASE_TARGET.appId,
     marketingVersion: QUIPSLY_CAPTURE_RELEASE_TARGET.marketingVersion,
     buildNumber: QUIPSLY_CAPTURE_RELEASE_TARGET.buildNumber,
@@ -64,11 +65,10 @@ export function parseArguments(argv) {
 
 function usage() {
   return `Usage:
-  APP_STORE_CONNECT_API_KEY_PATH=/absolute/private/key.json \\
-    node scripts/release/quipsly-app-store-connect-diagnostics-readback.mjs [options]
+  node scripts/release/quipsly-app-store-connect-diagnostics-readback.mjs [options]
 
 Options:
-  --api-key-path <path>  Fastlane App Store Connect API-key JSON.
+  --api-key-path <path>  Override the default private credential path.
   --app-id <id>          App Store Connect app ID.
   --version <version>    Expected marketing version.
   --build <number>       Expected build number.

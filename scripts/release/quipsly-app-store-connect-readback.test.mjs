@@ -7,6 +7,10 @@ import {
   parseArguments,
   summarizeReadback,
 } from "./quipsly-app-store-connect-readback.mjs";
+import {
+  appStoreConnectReadCredentialPath,
+  DEFAULT_APP_STORE_CONNECT_API_KEY_PATH,
+} from "./quipsly-app-store-connect-credentials.mjs";
 import { QUIPSLY_CAPTURE_RELEASE_TARGET } from "./quipsly-capture-release-target.mjs";
 
 const options = {
@@ -21,6 +25,19 @@ const options = {
   expectedTesterStates: ["INVITED", "ACCEPTED"],
   expectedPublicLinkStates: [],
 };
+
+test("read-only Apple audits use the installed private credential by default", () => {
+  assert.equal(
+    appStoreConnectReadCredentialPath({}),
+    DEFAULT_APP_STORE_CONNECT_API_KEY_PATH,
+  );
+  assert.equal(
+    appStoreConnectReadCredentialPath({
+      APP_STORE_CONNECT_API_KEY_PATH: "/private/override.json",
+    }),
+    "/private/override.json",
+  );
+});
 
 test("creates a five-minute ES256 token with explicit read scopes", () => {
   const { privateKey } = generateKeyPairSync("ec", {

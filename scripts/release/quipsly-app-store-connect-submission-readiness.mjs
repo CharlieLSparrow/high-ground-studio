@@ -9,6 +9,7 @@ import {
   validateAppStoreMetadata,
 } from "./quipsly-capture-app-store-metadata.mjs";
 import { createScopedToken } from "./quipsly-app-store-connect-readback.mjs";
+import { appStoreConnectReadCredentialPath } from "./quipsly-app-store-connect-credentials.mjs";
 import { summarizeTerritoryAvailability } from "./quipsly-app-store-connect-availability.mjs";
 import { validateConfiguration } from "./quipsly-app-store-connect-submission-configuration.mjs";
 import { QUIPSLY_CAPTURE_RELEASE_TARGET } from "./quipsly-capture-release-target.mjs";
@@ -71,7 +72,7 @@ function requiredValue(argv, index, flag) {
 
 export function parseArguments(argv) {
   const options = {
-    apiKeyPath: process.env.APP_STORE_CONNECT_API_KEY_PATH || "",
+    apiKeyPath: appStoreConnectReadCredentialPath(),
     metadataPath: defaultMetadataPath,
     configurationPath: defaultConfigurationPath,
     appId: QUIPSLY_CAPTURE_RELEASE_TARGET.appId,
@@ -107,11 +108,10 @@ export function parseArguments(argv) {
 
 function usage() {
   return `Usage:
-  APP_STORE_CONNECT_API_KEY_PATH=/absolute/private/key.json \\
-    node scripts/release/quipsly-app-store-connect-submission-readiness.mjs [options]
+  node scripts/release/quipsly-app-store-connect-submission-readiness.mjs [options]
 
 Read-only options:
-  --api-key-path <path>  Mode-0600 App Store Connect API-key JSON.
+  --api-key-path <path>  Override the default mode-0600 credential path.
   --metadata <path>      Canonical Quipsly Capture metadata JSON.
   --configuration <path> Canonical provider configuration JSON.
   --app-id <id>          Expected App Store Connect app ID.
