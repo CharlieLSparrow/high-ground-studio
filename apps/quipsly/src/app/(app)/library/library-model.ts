@@ -1,3 +1,5 @@
+import { presentVoiceWritingTitle } from "@/lib/voice-writing-title";
+
 export type LibraryKind = "SESSION" | "NOTE" | "SOURCE" | "DOCUMENT" | "MEDIA" | "SAVED";
 
 export type LibraryEntry = {
@@ -204,12 +206,15 @@ export function buildLibraryEntries(input: {
         && (!writingNote || body !== clean(document.title));
     }) ?? document.blocks?.[0] ?? null;
     const preview = clean(previewBlock?.body);
+    const presentedDocumentTitle = voiceWriting
+      ? presentVoiceWritingTitle(document.title, preview)
+      : clean(document.title) || "Untitled document";
     const documentTags = (document.tagLinks ?? []).map((link) => link.tag);
     const tagBadges = documentTags.map((tag) => `#${clean(tag.label)}`).filter((tag) => tag !== "#");
     entries.push({
       id: `document:${document.id}`,
       kind: voiceWriting ? "DOCUMENT" : writingNote ? "NOTE" : "DOCUMENT",
-      title: clean(document.title) || "Untitled document",
+      title: presentedDocumentTitle,
       detail: writingNote && preview
         ? (preview.length > 220 ? `${preview.slice(0, 217)}…` : preview)
         : episode
@@ -234,7 +239,7 @@ export function buildLibraryEntries(input: {
         : writingNote
         ? ["Writing", ...tagBadges, `${blockCount} section${blockCount === 1 ? "" : "s"}`]
         : [episode ? "Episode manuscript" : "Writing", ...tagBadges, `${blockCount} section${blockCount === 1 ? "" : "s"}`],
-      searchText: [document.title, document.projectionStatus, document.project.name, episode?.title, episode?.status, ...documentTags.flatMap((tag) => [tag.label, tag.slug]), ...(document.blocks ?? []).flatMap((block) => [block.title, block.body])].map(clean).join(" "),
+      searchText: [presentedDocumentTitle, document.title, document.projectionStatus, document.project.name, episode?.title, episode?.status, ...documentTags.flatMap((tag) => [tag.label, tag.slug]), ...(document.blocks ?? []).flatMap((block) => [block.title, block.body])].map(clean).join(" "),
     });
   }
 

@@ -148,6 +148,37 @@ describe("source-first Library model", () => {
     });
   });
 
+  it("never presents a legacy Session purpose as the writing title", () => {
+    const result = buildLibraryEntries({
+      viewerUserId: "homer-user",
+      sessions: [],
+      notes: [],
+      sources: [],
+      documents: [{
+        id: "voice-writing-7a9b10f0-97bd-4bbb-a7dd-0b93fbc5918b",
+        title: "PERSONAL_NOTE",
+        sourceLabel: "document-kind:note;origin:ios-voice-writing",
+        personalOwnerUserId: "homer-user",
+        isPrivate: true,
+        projectionStatus: "private",
+        updatedAt: "2026-08-27T18:00:00Z",
+        project: { name: "Homer's Nest", slug: "home-homer" },
+        blocks: [{
+          id: "voice-body",
+          body: "A practical framework for calmer coaching conversations starts here.",
+        }],
+        episodeProductions: [],
+        _count: { blocks: 1 },
+      }],
+      media: [],
+    });
+
+    expect(result.entries[0]).toMatchObject({
+      title: "A practical framework for calmer coaching conversations starts here",
+      actionLabel: "Continue writing",
+    });
+  });
+
   it("fails closed when a promotion manifest is malformed", () => {
     expect(promotedMediaAssetId(null)).toBeNull();
     expect(promotedMediaAssetId({ promotion: { mediaAssetId: "" } })).toBeNull();

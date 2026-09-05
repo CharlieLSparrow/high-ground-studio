@@ -16,6 +16,7 @@ import {
   validateMobileVoiceWriting,
   type MobileVoiceWritingInput,
 } from "@/lib/server/mobile-voice-writing";
+import { presentVoiceWritingTitle } from "@/lib/voice-writing-title";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 import { resolveStudioProjectAccess } from "@/lib/server/studio-project-access";
 
@@ -179,6 +180,7 @@ function voiceWritingDocumentInclude() {
 function publicDraft(document: any, serverRevision: number, input: MobileVoiceWritingInput) {
   const body = voiceWritingBody(document, input.draftId) || input.body;
   const richText = voiceWritingRichText(document);
+  const title = presentVoiceWritingTitle(document.title, body);
   return {
     draftId: input.draftId,
     documentId: document.id,
@@ -186,7 +188,7 @@ function publicDraft(document: any, serverRevision: number, input: MobileVoiceWr
     projectName: document.project?.name || "My Nest",
     projectSlug: document.project?.slug || "",
     visibility: document.isPrivate === false ? "nest" : "personal",
-    title: document.title,
+    title,
     body,
     richText,
     localRevision: input.localRevision,
@@ -213,6 +215,7 @@ function publicStoredDraft(document: any) {
   const current = currentVoiceRevision(document);
   const body = voiceWritingBody(document, draftId);
   const richText = voiceWritingRichText(document);
+  const title = presentVoiceWritingTitle(document.title, body);
   const legacySource = {
     localRecordingId: typeof source.localRecordingId === "string" ? source.localRecordingId : null,
     transcriptClientRequestId: typeof source.transcriptClientRequestId === "string" ? source.transcriptClientRequestId : null,
@@ -234,7 +237,7 @@ function publicStoredDraft(document: any) {
     projectName: document.project?.name || "My Nest",
     projectSlug: document.project?.slug || "",
     visibility: document.isPrivate === false ? "nest" : "personal",
-    title: document.title,
+    title,
     body,
     richText,
     localRevision: current.serverRevision ?? 1,
