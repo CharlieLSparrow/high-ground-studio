@@ -7,6 +7,17 @@ acceptance work visible without blocking safe independent development. An item
 leaves this ledger only when the named evidence exists. Automated checks must
 never be substituted for the evidence requested here.
 
+Latest retained Morbo positive control: on 2026-09-04, current source
+`02c8ca2c` directly installed as Debug build 73 saved and independently
+decoded a 15.147-second, 48 kHz mono AAC source from
+`iPad Microphone · Top`. Apple Speech produced four on-device timed segments
+(52 characters), and the protected sidecar's source SHA-256 and byte count
+matched the independently pulled recording exactly. The compact receipt is
+`artifacts/device-acceptance/morbo-build73-bounded-engine-lifecycle-human-voice.json`.
+This closes physical source creation and source-bound on-device transcript
+generation for that take. Human listening, wording comparison, one correction,
+relaunch persistence, verified upload, and cross-device readback remain open.
+
 Latest retained Morbo negative control: Build 72 saved and independently
 decoded a 7.253-second, 48 kHz mono AAC source from `iPad Microphone · Top`
 (`5034bcf6…`, 243,416 bytes), but its -62.8 dBFS mean / -49.2 dBFS peak was
