@@ -36,7 +36,7 @@ export default function CaptureHandoffLayout({
 }>) {
   return (
     <html lang="en" className={`${inter.variable} ${merriweather.variable}`}>
-      <body className="bg-[#fffaf2] font-sans text-[#392d20] antialiased">
+      <body className="bg-quipsly-canvas font-sans text-quipsly-ink antialiased">
         <QuipslyProductAnalytics measurementId={process.env.QUIPSLY_GA_MEASUREMENT_ID} />
         {children}
       </body>

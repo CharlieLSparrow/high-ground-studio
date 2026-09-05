@@ -8191,8 +8191,8 @@ function CloudEditorContent() {
             <div className="mt-3 rounded-lg border border-indigo-200 bg-indigo-50 p-3 text-[11px] leading-5 text-indigo-950 shadow-sm">
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <div className="font-black uppercase tracking-[0.18em] text-[#2f2a7a]">Editor co-pilot</div>
-                  <div className="mt-1 text-[11px] font-bold leading-5 text-[#3d316b]">
+                  <div className="font-black uppercase tracking-[0.18em] text-quipsly-peacock-800">Editor co-pilot</div>
+                  <div className="mt-1 text-[11px] font-bold leading-5 text-quipsly-peacock-900">
                     Run a command to execute quick editorial actions across imported media, timeline, sync, and DB-backed state.
                   </div>
                 </div>
@@ -8213,7 +8213,7 @@ function CloudEditorContent() {
                   }}
                   className="space-y-2"
                 >
-                  <label className="block font-black text-[#2f2a7a]">Ask co-pilot</label>
+                  <label className="block font-black text-quipsly-peacock-800">Ask co-pilot</label>
                   <textarea
                     value={editorCoPilotInput}
                     onChange={(event) => setEditorCoPilotInput(event.target.value)}
@@ -8231,7 +8231,7 @@ function CloudEditorContent() {
                     <button
                       type="submit"
                       disabled={isEditorCoPilotBusy}
-                      className="rounded-lg border border-[#2f2a7a] bg-[#2f2a7a] px-3 py-2 font-black text-white hover:bg-[#211f57] disabled:cursor-not-allowed disabled:opacity-50"
+                      className="rounded-lg border border-quipsly-peacock-700 bg-quipsly-peacock-700 px-3 py-2 font-black text-[#fff7e8] hover:bg-quipsly-peacock-800 disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       {isEditorCoPilotBusy ? "Running..." : "Run co-pilot"}
                     </button>
@@ -8264,7 +8264,7 @@ function CloudEditorContent() {
                     );
                   })
                 ) : (
-                  <div className="rounded-lg border border-dashed border-violet-200 bg-white p-3 font-black text-[#4f4494]">
+                  <div className="rounded-lg border border-dashed border-violet-200 bg-white p-3 font-black text-quipsly-peacock-800">
                     No co-pilot messages yet.
                   </div>
                 )}
@@ -8275,7 +8275,7 @@ function CloudEditorContent() {
                     key={command}
                     type="button"
                     onClick={() => void runEditorCoPilotCommand(command)}
-                    className="rounded-full border border-indigo-200 bg-white px-2 py-1 text-[10px] font-black text-[#2f2a7a] hover:bg-indigo-50"
+                    className="rounded-full border border-indigo-200 bg-white px-2 py-1 text-[10px] font-black text-quipsly-peacock-800 hover:bg-indigo-50"
                   >
                     {command}
                   </button>
@@ -8296,14 +8296,14 @@ function CloudEditorContent() {
                             type="button"
                             onClick={() => void revertEditorCoPilotAction(entry)}
                             disabled={!canRollback}
-                            className="rounded border border-[#2f2a7a] bg-white px-2 py-1 font-black text-[10px] text-[#2f2a7a] disabled:cursor-not-allowed disabled:opacity-40"
+                            className="rounded border border-quipsly-peacock-700 bg-white px-2 py-1 font-black text-[10px] text-quipsly-peacock-800 disabled:cursor-not-allowed disabled:opacity-40"
                           >
                             {canRollback ? EDITOR_CO_PILOT_REVERT_LABEL[entry.revert.kind] : "No rollback"}
                           </button>
                         </div>
                         <div className="mt-1 text-[11px] font-bold leading-5">{entry.result}</div>
                         {entry.changeSummary ? (
-                          <div className="mt-1 rounded-md border border-indigo-100 bg-white px-2 py-1 text-[10px] leading-4 font-bold text-[#3c2c6d]">
+                          <div className="mt-1 rounded-md border border-indigo-100 bg-white px-2 py-1 text-[10px] leading-4 font-bold text-quipsly-peacock-900">
                             Changes: {entry.changeSummary}
                           </div>
                         ) : null}
@@ -8311,7 +8311,7 @@ function CloudEditorContent() {
                     );
                   })
                 ) : (
-                  <div className="rounded-lg border border-dashed border-indigo-200 bg-white p-3 font-black text-[#4f4494]">
+                  <div className="rounded-lg border border-dashed border-indigo-200 bg-white p-3 font-black text-quipsly-peacock-800">
                     No actions yet. Start with `help` or type one.
                   </div>
                 )}

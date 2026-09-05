@@ -4,8 +4,8 @@
  * matching CSS material variables from globals.css.
  */
 export const QUIPSLY_TIMELINE_COLORS = Object.freeze({
-  audio: "#495338",
-  video: "#354e45",
+  audio: "#425a35",
+  video: "#28554d",
   importedAudio: "#786139",
   importedVideo: "#604c44",
   watchedAudio: "#765f54",

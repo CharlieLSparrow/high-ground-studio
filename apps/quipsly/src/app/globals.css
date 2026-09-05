@@ -4,52 +4,52 @@
   /*
    * Quipsly's utility colors form one overgrown-library system. Historic
    * utility names remain source-compatible, but their rendered colors now come
-   * from four related materials: evergreen bookcloth, fern and moss, aged
+   * from four related materials: peacock spruce, living fern, aged
    * brass, and cedar leather. Pale values are warmed toward parchment so a
    * secondary action never turns into a bubble-gum badge beside the walnut UI.
    */
-  --color-quipsly-peacock-50: #f0f5ef;
-  --color-quipsly-peacock-100: #dce9df;
-  --color-quipsly-peacock-200: #bfd5c5;
-  --color-quipsly-peacock-300: #99b9a4;
-  --color-quipsly-peacock-400: #709884;
-  --color-quipsly-peacock-500: #527867;
-  --color-quipsly-peacock-600: #405f52;
-  --color-quipsly-peacock-700: #354e45;
-  --color-quipsly-peacock-800: #2d4039;
-  --color-quipsly-peacock-900: #273630;
-  --color-quipsly-peacock-950: #131e1a;
+  --color-quipsly-peacock-50: #edf6f2;
+  --color-quipsly-peacock-100: #d9eae2;
+  --color-quipsly-peacock-200: #b6d7cb;
+  --color-quipsly-peacock-300: #88bdae;
+  --color-quipsly-peacock-400: #5d9e8d;
+  --color-quipsly-peacock-500: #438272;
+  --color-quipsly-peacock-600: #32695e;
+  --color-quipsly-peacock-700: #28554d;
+  --color-quipsly-peacock-800: #23463f;
+  --color-quipsly-peacock-900: #1f3a35;
+  --color-quipsly-peacock-950: #10211e;
 
-  --color-quipsly-lake-50: #f1f5f2;
-  --color-quipsly-lake-100: #dfe9e3;
-  --color-quipsly-lake-200: #c4d6cc;
-  --color-quipsly-lake-300: #9fbdb0;
-  --color-quipsly-lake-400: #799f91;
-  --color-quipsly-lake-500: #5b8074;
-  --color-quipsly-lake-600: #48665d;
-  --color-quipsly-lake-700: #3b534d;
-  --color-quipsly-lake-800: #33443f;
-  --color-quipsly-lake-900: #2d3b37;
-  --color-quipsly-lake-950: #18211e;
+  --color-quipsly-lake-50: #eff7f5;
+  --color-quipsly-lake-100: #d9ece7;
+  --color-quipsly-lake-200: #b8dad2;
+  --color-quipsly-lake-300: #89c2b8;
+  --color-quipsly-lake-400: #5fa59a;
+  --color-quipsly-lake-500: #43877e;
+  --color-quipsly-lake-600: #356e68;
+  --color-quipsly-lake-700: #2d5955;
+  --color-quipsly-lake-800: #274947;
+  --color-quipsly-lake-900: #223d3b;
+  --color-quipsly-lake-950: #112221;
 
-  --color-quipsly-fern-50: #f3f5ed;
-  --color-quipsly-fern-100: #e6ead9;
-  --color-quipsly-fern-200: #ced6b6;
-  --color-quipsly-fern-300: #afbd8f;
-  --color-quipsly-fern-400: #8c9d69;
-  --color-quipsly-fern-500: #6f7f53;
-  --color-quipsly-fern-600: #596643;
-  --color-quipsly-fern-700: #495338;
-  --color-quipsly-fern-800: #3d452f;
-  --color-quipsly-fern-900: #353b2b;
-  --color-quipsly-fern-950: #1b2016;
+  --color-quipsly-fern-50: #f2f6ec;
+  --color-quipsly-fern-100: #e3ecd8;
+  --color-quipsly-fern-200: #c8d9b5;
+  --color-quipsly-fern-300: #a5c18f;
+  --color-quipsly-fern-400: #82a76b;
+  --color-quipsly-fern-500: #668b52;
+  --color-quipsly-fern-600: #50703f;
+  --color-quipsly-fern-700: #425a35;
+  --color-quipsly-fern-800: #37492d;
+  --color-quipsly-fern-900: #303e28;
+  --color-quipsly-fern-950: #192116;
 
   --color-quipsly-brass-50: #faf6ea;
   --color-quipsly-brass-100: #f2e9cf;
   --color-quipsly-brass-200: #e3d39e;
   --color-quipsly-brass-300: #ceb970;
-  --color-quipsly-brass-400: #b49a53;
-  --color-quipsly-brass-500: #937943;
+  --color-quipsly-brass-400: #bc9b53;
+  --color-quipsly-brass-500: #9a783b;
   --color-quipsly-brass-600: #786139;
   --color-quipsly-brass-700: #614d32;
   --color-quipsly-brass-800: #513f2e;
@@ -109,6 +109,15 @@
   --color-quipsly-walnut-800: #3a3028;
   --color-quipsly-walnut-900: #2a211b;
   --color-quipsly-walnut-950: #17110e;
+
+  /* Semantic room materials used by the app shell and handoff surfaces. */
+  --color-quipsly-canvas: #f3e9d8;
+  --color-quipsly-canvas-lift: #e8dfc9;
+  --color-quipsly-surface: #fff8eb;
+  --color-quipsly-surface-muted: #eae1cf;
+  --color-quipsly-ink: #2c1c12;
+  --color-quipsly-muted: #67513e;
+  --color-quipsly-divider: #d9c9ac;
 
   --color-violet-50: var(--color-quipsly-peacock-50);
   --color-violet-100: var(--color-quipsly-peacock-100);
@@ -382,10 +391,10 @@
   --color-studio-panel-soft: #30231b;
   --color-studio-line: rgba(240, 226, 199, 0.14);
   --color-studio-line-strong: rgba(240, 226, 199, 0.25);
-  --color-studio-tag: #aabe88;
-  --color-studio-node: #dbb55c;
-  --color-studio-source: #96b9b8;
-  --color-studio-review: #c49b91;
+  --color-studio-tag: #a5c18f;
+  --color-studio-node: #d1b46c;
+  --color-studio-source: #89c2b8;
+  --color-studio-review: #b8a08f;
   --color-studio-danger: #cda292;
 
   --shadow-studio-panel: 0 18px 54px rgba(0, 0, 0, 0.24);
@@ -411,8 +420,8 @@ body {
   min-height: 100vh;
   margin: 0;
   background:
-    radial-gradient(circle at 18% 0%, rgba(69, 82, 51, 0.2) 0%, transparent 34%),
-    radial-gradient(circle at 82% 2%, rgba(45, 83, 86, 0.18) 0%, transparent 30%),
+    radial-gradient(circle at 18% 0%, rgba(80, 112, 63, 0.22) 0%, transparent 34%),
+    radial-gradient(circle at 82% 2%, rgba(40, 85, 77, 0.2) 0%, transparent 30%),
     linear-gradient(180deg, #2a211b 0%, #17110e 46%, #100c09 100%);
   background-attachment: fixed;
   color: var(--color-studio-ink);

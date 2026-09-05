@@ -1,3 +1,5 @@
+import { QUIPSLY_TIMELINE_COLORS } from "@/lib/quipsly-palette";
+
 export const EPISODE_ROOM_VERSION = "quipsly-episode-room.v1" as const;
 export const EPISODE_ROOM_TIMELINE_SOURCE = "quipsly-episode-room-watch.v1" as const;
 
@@ -746,7 +748,9 @@ export function episodeRoomTimelineClips(state: EpisodeRoomState): EpisodeRoomTi
         sourceStart: Number(segment.sourceStartSeconds.toFixed(3)),
         sourceEnd: Number((segment.sourceStartSeconds + duration).toFixed(3)),
         name: `Watched · ${clip.title}`,
-        color: clip.kind === "audio" ? "#8f6fc2" : "#d37b43",
+        color: clip.kind === "audio"
+          ? QUIPSLY_TIMELINE_COLORS.watchedAudio
+          : QUIPSLY_TIMELINE_COLORS.watchedVideo,
         kind: clip.kind,
         generatedFrom: EPISODE_ROOM_TIMELINE_SOURCE,
         recordingSync: {

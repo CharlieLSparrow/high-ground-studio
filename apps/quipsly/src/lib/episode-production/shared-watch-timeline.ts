@@ -1,5 +1,6 @@
 import type { TimelineClip, TimelineState } from "@high-ground/quipsly-domain";
 import { EPISODE_ROOM_TIMELINE_SOURCE } from "@/lib/episode-room/episode-room-contract";
+import { QUIPSLY_TIMELINE_COLORS } from "@/lib/quipsly-palette";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -57,7 +58,9 @@ function normalizeSharedWatchClip(value: unknown): TimelineClip | null {
     sourceStart,
     sourceEnd,
     name: text(row.name) || "Watched clip",
-    color: text(row.color) || (kind === "audio" ? "#8f6fc2" : "#d37b43"),
+    color: text(row.color) || (kind === "audio"
+      ? QUIPSLY_TIMELINE_COLORS.watchedAudio
+      : QUIPSLY_TIMELINE_COLORS.watchedVideo),
     generatedFrom: EPISODE_ROOM_TIMELINE_SOURCE,
     recordingSync: {
       episodeRoomSessionId,

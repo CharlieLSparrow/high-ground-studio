@@ -56,7 +56,7 @@ export default async function RootLayout({
   if (!session?.user) {
     return (
       <html lang="en" className={`${inter.variable} ${merriweather.variable}`}>
-        <body className="bg-[#f3ead9] font-sans antialiased">
+        <body className="bg-quipsly-canvas font-sans antialiased">
           <QuipslyProductAnalytics measurementId={process.env.QUIPSLY_GA_MEASUREMENT_ID} />
           <NestSignInGate />
         </body>

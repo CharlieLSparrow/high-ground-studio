@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { Prisma } from "@prisma/client";
 import { getPrismaClient } from "@/lib/prisma";
+import { QUIPSLY_TIMELINE_COLORS } from "@/lib/quipsly-palette";
 import {
   PROGRAM_DECISION_KINDS,
   PROGRAM_EDIT_VERSION,
@@ -316,7 +317,9 @@ export function normalizeWatchDerivatives(
       durationSeconds,
       sourceStartSeconds,
       sourceEndSeconds,
-      color: textValue(row.color) ?? (kind === "audio" ? "#8f6fc2" : "#d37b43"),
+      color: textValue(row.color) ?? (kind === "audio"
+        ? QUIPSLY_TIMELINE_COLORS.watchedAudio
+        : QUIPSLY_TIMELINE_COLORS.watchedVideo),
       episodeRoomSessionId,
       watchSegmentId,
       startReceiptId,

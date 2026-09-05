@@ -451,7 +451,7 @@ const mobileVoiceWritingServerText = read(files.mobileVoiceWritingServer);
 const webAppLayoutText = read(files.webAppLayout);
 const webProjectCreateActionText = read(files.webProjectCreateAction);
 const webSidebarText = read(files.webSidebar);
-requireIncludes(webSidebarText, "from-quipsly-peacock-700 to-quipsly-fern-700", "workspace navigation joins peacock bookcloth to fern instead of adding a brown feature brand");
+requireIncludes(webSidebarText, "from-quipsly-peacock-700 to-quipsly-fern-600", "workspace navigation joins peacock spruce to living fern instead of adding an unrelated feature brand");
 const webCaptureAppHandoffText = read(files.webCaptureAppHandoff);
 const webRecorderBottomBarText = read(files.webRecorderBottomBar);
 const appStoreTransactionRouteText = read(files.appStoreTransactionRoute);

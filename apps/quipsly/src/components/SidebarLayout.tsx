@@ -110,15 +110,15 @@ export function SidebarLayout({
   const isMoreActive = moreNavItems.some((item) => isNavItemActive(item, currentPath));
 
   return (
-    <div className="flex h-screen w-full flex-col overflow-hidden bg-[#f3ead9] font-sans text-[#34271c]">
+    <div className="flex h-screen w-full flex-col overflow-hidden bg-quipsly-canvas font-sans text-quipsly-ink">
       {/* Sleek Top Header */}
-      <header className="relative z-20 flex h-[60px] shrink-0 items-center justify-between border-b border-[#deceb4] bg-[#f7efe2]/92 px-4 backdrop-blur-md md:px-6">
+      <header className="relative z-20 flex h-[60px] shrink-0 items-center justify-between border-b border-quipsly-divider bg-quipsly-surface/92 px-4 backdrop-blur-md md:px-6">
         <div className="flex items-center gap-8">
           <div className="flex items-center gap-2">
-            <div className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-lg bg-[#efe4d1] mix-blend-multiply">
+            <div className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-lg bg-quipsly-surface-muted mix-blend-multiply">
               <img src="/quipsly-app-icon.png" alt="Quipsly Character" className="w-full h-full object-cover" />
             </div>
-            <span className="text-lg font-bold tracking-wide text-[#34271c]">Quipsly</span>
+            <span className="text-lg font-bold tracking-wide text-quipsly-ink">Quipsly</span>
           </div>
 
           <nav className="hidden md:flex items-center gap-1" aria-label="Primary workspace">
@@ -131,8 +131,8 @@ export function SidebarLayout({
                   className={cn(
                     "flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg transition-all text-sm font-semibold",
                     isActive
-                      ? "bg-gradient-to-r from-quipsly-peacock-700 to-quipsly-fern-700 text-white shadow-sm"
-                      : "text-[#5e4b33] hover:bg-[#e7ddc9] hover:text-[#34271c]"
+                      ? "bg-gradient-to-r from-quipsly-peacock-700 to-quipsly-fern-600 text-[#fff7e8] shadow-sm"
+                      : "text-quipsly-muted hover:bg-quipsly-surface-muted hover:text-quipsly-ink"
                   )}
                 >
                   <item.icon className={cn("h-4 w-4", isActive ? "text-quipsly-brass-100" : "text-quipsly-peacock-700")} />
@@ -145,19 +145,19 @@ export function SidebarLayout({
                 className={cn(
                   "flex cursor-pointer list-none items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm font-semibold transition-all",
                   isMoreActive
-                    ? "bg-gradient-to-r from-quipsly-peacock-700 to-quipsly-fern-700 text-white shadow-sm"
-                    : "text-[#5e4b33] hover:bg-[#e7ddc9] hover:text-[#34271c]",
+                    ? "bg-gradient-to-r from-quipsly-peacock-700 to-quipsly-fern-600 text-[#fff7e8] shadow-sm"
+                    : "text-quipsly-muted hover:bg-quipsly-surface-muted hover:text-quipsly-ink",
                 )}
               >
                 <MoreHorizontal className={cn("h-4 w-4", isMoreActive ? "text-quipsly-brass-100" : "text-quipsly-peacock-700")} />
                 More
                 <ChevronDown className="h-3.5 w-3.5 transition group-open:rotate-180" />
               </summary>
-              <nav aria-label="More workspace tools" className="absolute left-0 top-11 z-50 grid w-64 gap-1 rounded-2xl border border-[#deceb4] bg-[#fffaf0] p-2 shadow-2xl shadow-amber-950/15">
+              <nav aria-label="More workspace tools" className="absolute left-0 top-11 z-50 grid w-64 gap-1 rounded-2xl border border-quipsly-divider bg-quipsly-surface p-2 shadow-2xl shadow-amber-950/15">
                 {moreNavItems.map((item) => {
                   const isActive = isNavItemActive(item, currentPath);
                   return (
-                    <Link key={item.href} href={item.href} className={cn("flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-bold transition", isActive ? "bg-gradient-to-r from-quipsly-peacock-700 to-quipsly-fern-700 text-white" : "text-[#5e4b33] hover:bg-[#f2e8d6]")}>
+                    <Link key={item.href} href={item.href} className={cn("flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-bold transition", isActive ? "bg-gradient-to-r from-quipsly-peacock-700 to-quipsly-fern-600 text-[#fff7e8]" : "text-quipsly-muted hover:bg-quipsly-surface-muted")}>
                       <item.icon className={cn("h-4 w-4", isActive ? "text-quipsly-brass-100" : "text-quipsly-peacock-700")} />
                       {item.name}
                     </Link>
@@ -171,23 +171,23 @@ export function SidebarLayout({
         <div className="flex items-center gap-3 md:gap-4">
           <a
             href="https://quipsly.com/support"
-            className="hidden rounded-full border border-[#deceb4] bg-[#fffaf0] px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-quipsly-peacock-700 shadow-sm transition hover:border-quipsly-brass-400/50 hover:bg-[#f2e8d6] lg:inline-flex"
+            className="hidden rounded-full border border-quipsly-divider bg-quipsly-surface px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-quipsly-peacock-700 shadow-sm transition hover:border-quipsly-brass-400/50 hover:bg-quipsly-surface-muted lg:inline-flex"
           >
             Get support
           </a>
-          <Link href="/settings" className="relative hidden rounded-full p-2 text-quipsly-peacock-700 transition-colors hover:bg-[#e7ddc9] hover:text-[#34271c] md:block" aria-label="Settings">
+          <Link href="/settings" className="relative hidden rounded-full p-2 text-quipsly-peacock-700 transition-colors hover:bg-quipsly-surface-muted hover:text-quipsly-ink md:block" aria-label="Settings">
             <Settings className="w-5 h-5" />
           </Link>
-          <Link href="/find" className="relative rounded-full p-2 text-quipsly-peacock-700 transition-colors hover:bg-[#e7ddc9] hover:text-[#34271c]" aria-label="Search all Quipsly"><ScanSearch className="h-5 w-5" /></Link>
-          <Link href="/work?view=attention" className="relative rounded-full p-2 text-quipsly-peacock-700 transition-colors hover:bg-[#e7ddc9] hover:text-[#34271c]" aria-label="Open attention queue"><BellRing className="h-5 w-5" /></Link>
+          <Link href="/find" className="relative rounded-full p-2 text-quipsly-peacock-700 transition-colors hover:bg-quipsly-surface-muted hover:text-quipsly-ink" aria-label="Search all Quipsly"><ScanSearch className="h-5 w-5" /></Link>
+          <Link href="/work?view=attention" className="relative rounded-full p-2 text-quipsly-peacock-700 transition-colors hover:bg-quipsly-surface-muted hover:text-quipsly-ink" aria-label="Open attention queue"><BellRing className="h-5 w-5" /></Link>
           <AccountSwitcher currentUser={currentUser} currentPath={currentPath} />
         </div>
       </header>
 
       {/* Main Content */}
-      <main className="relative min-h-0 flex-1 overflow-hidden bg-[#f3ead9]">
+      <main className="relative min-h-0 flex-1 overflow-hidden bg-quipsly-canvas">
         {/* Soft sunlight glow background */}
-        <div className="absolute top-0 left-0 w-full h-64 bg-amber-100/30 blur-[100px] pointer-events-none" />
+        <div className="pointer-events-none absolute left-0 top-0 h-64 w-full bg-[radial-gradient(circle_at_22%_0%,rgba(80,112,63,0.18),transparent_42%),radial-gradient(circle_at_78%_0%,rgba(40,85,77,0.16),transparent_38%)] blur-[72px]" />
 
         <div className="h-full overflow-y-auto custom-scrollbar p-4 md:p-6 pb-24 md:pb-6">
           {children}
@@ -195,7 +195,7 @@ export function SidebarLayout({
       </main>
 
       {/* Mobile Bottom Navigation */}
-      <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-[#deceb4] bg-[#f7efe2]/95 pb-safe backdrop-blur-md md:hidden">
+      <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-quipsly-divider bg-quipsly-surface/95 pb-safe backdrop-blur-md md:hidden">
         <div className="flex items-center justify-around h-16 px-2">
           {primaryNavItems.slice(0, 4).map((item) => {
             const isActive = isNavItemActive(item, currentPath);
@@ -207,24 +207,24 @@ export function SidebarLayout({
                   "flex flex-col items-center justify-center gap-1 w-full h-full rounded-lg transition-all text-[10px] font-semibold",
                   isActive
                     ? "text-quipsly-peacock-700"
-                    : "text-[#75634e] hover:bg-[#e7ddc9]/50 hover:text-quipsly-peacock-700"
+                    : "text-quipsly-muted hover:bg-quipsly-surface-muted/50 hover:text-quipsly-peacock-700"
                 )}
               >
-                <item.icon className={cn("h-5 w-5", isActive ? "text-quipsly-peacock-700" : "text-[#75634e]")} />
+                <item.icon className={cn("h-5 w-5", isActive ? "text-quipsly-peacock-700" : "text-quipsly-muted")} />
                 {item.name}
               </Link>
             );
           })}
           <details className="group relative h-full w-full">
-            <summary className={cn("flex h-full w-full cursor-pointer list-none flex-col items-center justify-center gap-1 rounded-lg text-[10px] font-semibold transition", isMoreActive || isNavItemActive(primaryNavItems[4], currentPath) ? "text-quipsly-peacock-700" : "text-[#75634e]")}>
+            <summary className={cn("flex h-full w-full cursor-pointer list-none flex-col items-center justify-center gap-1 rounded-lg text-[10px] font-semibold transition", isMoreActive || isNavItemActive(primaryNavItems[4], currentPath) ? "text-quipsly-peacock-700" : "text-quipsly-muted")}>
               <MoreHorizontal className="h-5 w-5" />
               More
             </summary>
-            <nav aria-label="More mobile tools" className="absolute bottom-[4.5rem] right-0 grid w-[min(92vw,320px)] grid-cols-2 gap-1 rounded-2xl border border-[#deceb4] bg-[#fffaf0] p-2 shadow-2xl shadow-amber-950/20">
+            <nav aria-label="More mobile tools" className="absolute bottom-[4.5rem] right-0 grid w-[min(92vw,320px)] grid-cols-2 gap-1 rounded-2xl border border-quipsly-divider bg-quipsly-surface p-2 shadow-2xl shadow-amber-950/20">
               {[...primaryNavItems.slice(4), ...moreNavItems, { name: "Settings", href: "/settings", icon: Settings }].map((item) => {
                 const isActive = isNavItemActive(item, currentPath);
                 return (
-                  <Link key={item.href} href={item.href} className={cn("flex items-center gap-2 rounded-xl px-3 py-3 text-xs font-bold", isActive ? "bg-gradient-to-r from-quipsly-peacock-700 to-quipsly-fern-700 text-white" : "text-[#5e4b33] hover:bg-[#f2e8d6]")}>
+                  <Link key={item.href} href={item.href} className={cn("flex items-center gap-2 rounded-xl px-3 py-3 text-xs font-bold", isActive ? "bg-gradient-to-r from-quipsly-peacock-700 to-quipsly-fern-600 text-[#fff7e8]" : "text-quipsly-muted hover:bg-quipsly-surface-muted")}>
                     <item.icon className={cn("h-4 w-4", isActive ? "text-quipsly-brass-100" : "text-quipsly-peacock-700")} />
                     {item.name}
                   </Link>
@@ -269,29 +269,29 @@ function AccountSwitcher({
 
   return (
     <details className="group relative">
-      <summary className="flex cursor-pointer list-none items-center gap-2 rounded-full border border-[#e8dcc4] bg-white px-2 py-1 shadow-sm transition hover:bg-[#fff8ec]">
-        <span className="h-8 w-8 overflow-hidden rounded-full border border-white bg-[#ebdcc8]">
+      <summary className="flex cursor-pointer list-none items-center gap-2 rounded-full border border-quipsly-divider bg-quipsly-surface px-2 py-1 shadow-sm transition hover:bg-quipsly-surface-muted">
+        <span className="h-8 w-8 overflow-hidden rounded-full border border-quipsly-surface bg-quipsly-surface-muted">
           <img src={avatar} alt="" className="h-full w-full object-cover" />
         </span>
-        <span className="hidden max-w-[150px] truncate text-left text-xs font-bold leading-tight text-[#4f3a28] xl:block">
+        <span className="hidden max-w-[150px] truncate text-left text-xs font-bold leading-tight text-quipsly-ink xl:block">
           {currentUser?.name || email || "Account"}
-          <span className="block truncate text-[10px] font-semibold text-[#8c6b4a]">
+          <span className="block truncate text-[10px] font-semibold text-quipsly-muted">
             {email || "Choose user"}
           </span>
         </span>
-        <ChevronDown className="hidden h-4 w-4 text-[#8c6b4a] transition group-open:rotate-180 md:block" />
+        <ChevronDown className="hidden h-4 w-4 text-quipsly-muted transition group-open:rotate-180 md:block" />
       </summary>
 
-      <div className="absolute right-0 top-12 z-50 w-[320px] rounded-3xl border border-[#ead8ba] bg-white p-4 text-[#3d3122] shadow-2xl shadow-amber-950/20">
+      <div className="absolute right-0 top-12 z-50 w-[320px] rounded-3xl border border-quipsly-divider bg-quipsly-surface p-4 text-quipsly-ink shadow-2xl shadow-amber-950/20">
         <div className="flex items-start gap-3">
-          <span className="h-11 w-11 overflow-hidden rounded-2xl border border-white bg-[#ebdcc8] shadow-sm">
+          <span className="h-11 w-11 overflow-hidden rounded-2xl border border-quipsly-surface bg-quipsly-surface-muted shadow-sm">
             <img src={avatar} alt="" className="h-full w-full object-cover" />
           </span>
           <div className="min-w-0">
             <p className="truncate font-serif text-lg font-black">
               {currentUser?.name || "Signed-in user"}
             </p>
-            <p className="break-all text-xs font-bold text-[#8c6b4a]">
+            <p className="break-all text-xs font-bold text-quipsly-muted">
               {email || "No email in session"}
             </p>
             <div className="mt-2 flex flex-wrap gap-1.5">
@@ -307,7 +307,7 @@ function AccountSwitcher({
         <div className="mt-3 grid gap-2">
           <Link
             href={`/account/switch?callbackUrl=${encodeURIComponent(currentPath || "/projects")}`}
-            className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-[#3d2a1e] px-4 py-2.5 text-xs font-black uppercase tracking-[0.14em] text-white transition hover:bg-[#24180f]"
+            className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-gradient-to-r from-quipsly-peacock-700 to-quipsly-fern-600 px-4 py-2.5 text-xs font-black uppercase tracking-[0.14em] text-[#fff7e8] transition hover:saturate-125"
           >
             <UserRound className="h-4 w-4" />
             Switch account
@@ -315,7 +315,7 @@ function AccountSwitcher({
           <button
             type="button"
             onClick={signOut}
-            className="inline-flex w-full items-center justify-center gap-2 rounded-full border border-[#ead8ba] bg-white px-4 py-2.5 text-xs font-black uppercase tracking-[0.14em] text-[#7b512d] transition hover:bg-[#fff8ec]"
+            className="inline-flex w-full items-center justify-center gap-2 rounded-full border border-quipsly-divider bg-quipsly-surface px-4 py-2.5 text-xs font-black uppercase tracking-[0.14em] text-quipsly-muted transition hover:bg-quipsly-surface-muted"
           >
             <LogOut className="h-4 w-4" />
             Sign out
