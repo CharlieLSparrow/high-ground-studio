@@ -345,6 +345,7 @@ function checkMeetingSpineContractSources() {
   const contentReadinessText = sourceText("apps/quipsly/src/lib/server/mobile-capture-content-readiness.ts");
   const lifecycleText = sourceText("packages/quipsly-domain/src/coaching-lifecycle.ts");
   const bridgeText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/BridgeModels.swift");
+  const onDeviceTranscriptText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/OnDeviceTranscriptManager.swift");
   const componentsText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/QuipslyMobileComponents.swift");
   const capturePhoneShellText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/CapturePhoneShell.swift");
   const captureRecorderViewText = capturePhoneShellText.slice(
@@ -747,6 +748,13 @@ function checkMeetingSpineContractSources() {
       && runtimeRunnerText.includes("session-create-surface)"),
     "nativeCaptureCanCreateSafeQuickSession",
     "Native Capture exposes a first-class create-session action before recording consent and recording controls.",
+  );
+  expect(
+    onDeviceTranscriptText.includes("recognitionDeadlineSeconds: Double")
+      && onDeviceTranscriptText.includes("Task.sleep(for: .seconds(recognitionDeadlineSeconds))")
+      && !onDeviceTranscriptText.includes("Task.sleep(for: .seconds(45))"),
+    "nativeLongFormTranscriptFallbackUsesSourceDeadline",
+    "Every Apple speech path uses the source-duration deadline instead of cancelling long coaching transcription after a fixed short timeout.",
   );
   expect(
     sessionsRouteText.includes("coachingEngagements: coachingEngagements.map")

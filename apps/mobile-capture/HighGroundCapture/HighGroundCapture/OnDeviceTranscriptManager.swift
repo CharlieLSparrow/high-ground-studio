@@ -795,7 +795,8 @@ private enum AppleCompatibleTranscriptEngine {
     static func transcribe(
         fileURL: URL,
         locale: Locale,
-        contextualPhrases: [String]
+        contextualPhrases: [String],
+        recognitionDeadlineSeconds: Double
     ) async throws -> Result {
         let authorization = await speechAuthorization()
         guard authorization == .authorized else {
@@ -834,7 +835,7 @@ private enum AppleCompatibleTranscriptEngine {
             }
             taskBox.store(recognitionTask)
             Task {
-                try? await Task.sleep(for: .seconds(45))
+                try? await Task.sleep(for: .seconds(recognitionDeadlineSeconds))
                 taskBox.cancel()
                 gate.resume(throwing: OnDeviceTranscriptFailure.recognitionTimedOut)
             }
@@ -1462,7 +1463,8 @@ final class OnDeviceTranscriptManager: ObservableObject {
                 let result = try await AppleCompatibleTranscriptEngine.transcribe(
                     fileURL: preparedAudio.url,
                     locale: locale,
-                    contextualPhrases: contextualPhrases
+                    contextualPhrases: contextualPhrases,
+                    recognitionDeadlineSeconds: recognitionDeadlineSeconds
                 )
                 segments = result.segments
                 language = result.language
@@ -1632,7 +1634,8 @@ final class OnDeviceTranscriptManager: ObservableObject {
                 return try await compatibleTranscriptResult(
                     fileURL: fileURL,
                     locale: locale,
-                    contextualPhrases: contextualPhrases
+                    contextualPhrases: contextualPhrases,
+                    recognitionDeadlineSeconds: recognitionDeadlineSeconds
                 )
             default:
                 throw failure
@@ -1643,7 +1646,8 @@ final class OnDeviceTranscriptManager: ObservableObject {
     private func compatibleTranscriptResult(
         fileURL: URL,
         locale: Locale,
-        contextualPhrases: [String]
+        contextualPhrases: [String],
+        recognitionDeadlineSeconds: Double
     ) async throws -> (
         segments: [OnDeviceTranscriptSegment],
         language: String,
@@ -1655,7 +1659,8 @@ final class OnDeviceTranscriptManager: ObservableObject {
         let result = try await AppleCompatibleTranscriptEngine.transcribe(
             fileURL: fileURL,
             locale: locale,
-            contextualPhrases: contextualPhrases
+            contextualPhrases: contextualPhrases,
+            recognitionDeadlineSeconds: recognitionDeadlineSeconds
         )
         return (
             result.segments,
