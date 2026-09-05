@@ -130,7 +130,7 @@ export function TimelineClipView({
         left: `${left}px`,
         width: `${width}px`,
         top: `${top + 5}px`, // 5px padding from top of track
-        background: clip.color || (clip.kind === "video" ? "linear-gradient(180deg, #1e3a8a 0%, #1e40af 100%)" : "linear-gradient(180deg, #064e3b 0%, #047857 100%)"),
+        background: clip.color || (clip.kind === "video" ? "linear-gradient(180deg, #284448 0%, #2d5356 100%)" : "linear-gradient(180deg, #39432d 0%, #455233 100%)"),
       }}
       onMouseDown={(e) => {
         if (e.button !== 0) return;

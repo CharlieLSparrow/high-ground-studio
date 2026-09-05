@@ -310,19 +310,19 @@ export function AudioProcessingChangeMap({
         })}
         <line x1="0" x2={width} y1={center} y2={center} stroke="#94a3b8" strokeWidth="1.5" />
         <text x="6" y={center - 5} fill="#94a3b8" fontSize="9" fontWeight="700">Uniform program shift</text>
-        <text x="6" y={plotTop + 10} fill="#6ee7b7" fontSize="9" fontWeight="800">+{displayLimitLu} LU shape</text>
-        <text x="6" y={plotBottom - 5} fill="#c4b5fd" fontSize="9" fontWeight="800">-{displayLimitLu} LU shape</text>
+        <text x="6" y={plotTop + 10} fill="var(--color-quipsly-fern-300)" fontSize="9" fontWeight="800">+{displayLimitLu} LU shape</text>
+        <text x="6" y={plotBottom - 5} fill="var(--color-quipsly-inkberry-300)" fontSize="9" fontWeight="800">-{displayLimitLu} LU shape</text>
         {visiblePoints.map((point, index) => {
           const pointX = x(point.timeSeconds);
           const next = visiblePoints[index + 1];
           const pointEndX = next ? x(next.timeSeconds) : Math.min(width, pointX + width / Math.max(1, visiblePoints.length));
           const pointWidth = Math.max(1.5, pointEndX - pointX - 0.5);
           const pointY = y(point.shapeDeltaLu);
-          return <rect key={`${point.timeSeconds}-${index}`} x={pointX} y={Math.min(center, pointY)} width={pointWidth} height={Math.max(1, Math.abs(center - pointY))} fill={point.shapeDeltaLu >= 0 ? "#34d399" : "#8b5cf6"} opacity="0.82"><title>{clock(point.timeSeconds)} level {point.levelDeltaLu >= 0 ? "+" : ""}{point.levelDeltaLu.toFixed(1)} LU; shape {point.shapeDeltaLu >= 0 ? "+" : ""}{point.shapeDeltaLu.toFixed(1)} LU</title></rect>;
+          return <rect key={`${point.timeSeconds}-${index}`} x={pointX} y={Math.min(center, pointY)} width={pointWidth} height={Math.max(1, Math.abs(center - pointY))} fill={point.shapeDeltaLu >= 0 ? "var(--color-quipsly-fern-400)" : "var(--color-quipsly-inkberry-500)"} opacity="0.82"><title>{clock(point.timeSeconds)} level {point.levelDeltaLu >= 0 ? "+" : ""}{point.levelDeltaLu.toFixed(1)} LU; shape {point.shapeDeltaLu >= 0 ? "+" : ""}{point.shapeDeltaLu.toFixed(1)} LU</title></rect>;
         })}
         {visibleObservations.map((observation, index) => <line key={`${observation.kind}-${observation.startSeconds}-${index}`} x1={x(observation.startSeconds)} x2={x(observation.startSeconds)} y1={plotTop} y2={plotBottom} stroke={observation.severity === "warning" ? "var(--color-quipsly-rosewood-400)" : "var(--color-quipsly-brass-400)"} strokeWidth="2" strokeDasharray="5 3"><title>{clock(observation.startSeconds)} {observation.detail}</title></line>)}
-        {visibleCandidateObservations.map((observation, index) => <line key={`candidate-${observation.kind}-${observation.startSeconds}-${index}`} x1={x(observation.startSeconds)} x2={x(observation.startSeconds)} y1={plotTop} y2={plotBottom} stroke={observation.severity === "warning" ? "#f43f5e" : "#60a5fa"} strokeWidth="2" strokeDasharray="2 4"><title>{clock(observation.startSeconds)} {candidateLabel}: {observation.detail}</title></line>)}
-        <line x1={x(selectedSeconds)} x2={x(selectedSeconds)} y1={plotTop - 5} y2={plotBottom + 5} stroke="#67e8f9" strokeWidth="2.5" />
+        {visibleCandidateObservations.map((observation, index) => <line key={`candidate-${observation.kind}-${observation.startSeconds}-${index}`} x1={x(observation.startSeconds)} x2={x(observation.startSeconds)} y1={plotTop} y2={plotBottom} stroke={observation.severity === "warning" ? "var(--color-quipsly-rosewood-500)" : "var(--color-quipsly-lake-400)"} strokeWidth="2" strokeDasharray="2 4"><title>{clock(observation.startSeconds)} {candidateLabel}: {observation.detail}</title></line>)}
+        <line x1={x(selectedSeconds)} x2={x(selectedSeconds)} y1={plotTop - 5} y2={plotBottom + 5} stroke="var(--color-quipsly-lake-300)" strokeWidth="2.5" />
       </svg>
     </button>
 

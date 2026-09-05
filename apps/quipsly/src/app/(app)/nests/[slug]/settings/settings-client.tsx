@@ -221,7 +221,7 @@ export function SettingsClient({
                 <div key={tag.id} className="flex items-center gap-2 p-2 bg-[#062d2a]/30 border border-studio-line rounded-lg">
                   <span
                     className="inline-flex items-center rounded-md px-1.5 py-0.5 text-xs font-bold ring-1 ring-inset"
-                    style={{ color: tag.hexColor || "#10b981", borderColor: tag.hexColor || "#10b981" }}
+                    style={{ color: tag.hexColor || "#55663d", borderColor: tag.hexColor || "#55663d" }}
                   >
                     #{tag.label}
                   </span>

@@ -17,6 +17,7 @@ import {
   type EpisodeImportedMediaAsset,
 } from "@/app/(app)/episode-production/episodeArtifact";
 import { externalMediaMemberRole } from "@/lib/external-media-contract";
+import { QUIPSLY_TIMELINE_COLORS } from "@/lib/quipsly-palette";
 
 import {
   SOURCE_STORY_SCHEMA_VERSION,
@@ -2936,7 +2937,7 @@ export async function promoteSourceStoryCardToEpisode(input: {
         sourceStart: range.startSeconds,
         sourceEnd: range.endSeconds,
         name: card.title,
-        color: "#7c3aed",
+        color: QUIPSLY_TIMELINE_COLORS.watchedVideo,
         transforms,
         generatedFrom: "quipsly-source-story-promotion-v1",
         sourceStory,

@@ -16,16 +16,16 @@ import { Maximize, Filter, Download } from "lucide-react";
 
 // Mock data to demonstrate the complexity of the domain mapping
 const initialNodes: any[] = [
-  { id: 'camus', position: { x: 250, y: 150 }, data: { label: 'Albert Camus' }, type: 'input', style: { background: '#f59e0b', color: '#000', fontWeight: 'bold', border: 'none', borderRadius: '8px' } },
+  { id: 'camus', position: { x: 250, y: 150 }, data: { label: 'Albert Camus' }, type: 'input', style: { background: 'var(--color-quipsly-brass-400)', color: '#000', fontWeight: 'bold', border: 'none', borderRadius: '8px' } },
   { id: 'rebel', position: { x: 100, y: 250 }, data: { label: 'The Rebel (1951)' }, style: { background: '#27272a', color: '#fff', border: '1px solid #3f3f46', borderRadius: '8px' } },
   { id: 'myth', position: { x: 400, y: 250 }, data: { label: 'Myth of Sisyphus' }, style: { background: '#27272a', color: '#fff', border: '1px solid #3f3f46', borderRadius: '8px' } },
   
-  { id: 'q1', position: { x: 50, y: 350 }, data: { label: '"I rebel; therefore I exist."' }, style: { background: '#18181b', color: '#e4e4e7', border: '1px solid #10b981', borderRadius: '4px', fontSize: '10px', width: 150 } },
-  { id: 'q2', position: { x: 250, y: 350 }, data: { label: '"The only way to deal with an unfree world..."' }, style: { background: '#18181b', color: '#e4e4e7', border: '1px solid #10b981', borderRadius: '4px', fontSize: '10px', width: 180 } },
-  { id: 'q3', position: { x: 450, y: 350 }, data: { label: '"One must imagine Sisyphus happy."' }, style: { background: '#18181b', color: '#e4e4e7', border: '1px solid #10b981', borderRadius: '4px', fontSize: '10px', width: 150 } },
+  { id: 'q1', position: { x: 50, y: 350 }, data: { label: '"I rebel; therefore I exist."' }, style: { background: '#18181b', color: '#e4e4e7', border: '1px solid var(--color-quipsly-fern-400)', borderRadius: '4px', fontSize: '10px', width: 150 } },
+  { id: 'q2', position: { x: 250, y: 350 }, data: { label: '"The only way to deal with an unfree world..."' }, style: { background: '#18181b', color: '#e4e4e7', border: '1px solid var(--color-quipsly-fern-400)', borderRadius: '4px', fontSize: '10px', width: 180 } },
+  { id: 'q3', position: { x: 450, y: 350 }, data: { label: '"One must imagine Sisyphus happy."' }, style: { background: '#18181b', color: '#e4e4e7', border: '1px solid var(--color-quipsly-fern-400)', borderRadius: '4px', fontSize: '10px', width: 150 } },
   
-  { id: 't_absurd', position: { x: 550, y: 150 }, data: { label: 'Absurdism' }, type: 'output', style: { background: '#3b82f6', color: '#fff', border: 'none', borderRadius: '20px' } },
-  { id: 't_freedom', position: { x: 50, y: 150 }, data: { label: 'Freedom' }, type: 'output', style: { background: '#8b5cf6', color: '#fff', border: 'none', borderRadius: '20px' } },
+  { id: 't_absurd', position: { x: 550, y: 150 }, data: { label: 'Absurdism' }, type: 'output', style: { background: 'var(--color-quipsly-lake-600)', color: '#fff', border: 'none', borderRadius: '20px' } },
+  { id: 't_freedom', position: { x: 50, y: 150 }, data: { label: 'Freedom' }, type: 'output', style: { background: 'var(--color-quipsly-inkberry-600)', color: '#fff', border: 'none', borderRadius: '20px' } },
 ];
 
 const initialEdges: any[] = [
@@ -34,10 +34,10 @@ const initialEdges: any[] = [
   { id: 'e3', source: 'rebel', target: 'q1', style: { stroke: '#3f3f46' } },
   { id: 'e4', source: 'rebel', target: 'q2', style: { stroke: '#3f3f46' } },
   { id: 'e5', source: 'myth', target: 'q3', style: { stroke: '#3f3f46' } },
-  { id: 'e6', source: 'q3', target: 't_absurd', style: { stroke: '#3b82f6', strokeDasharray: '5,5' } },
-  { id: 'e7', source: 'camus', target: 't_absurd', style: { stroke: '#3b82f6', strokeDasharray: '5,5' } },
-  { id: 'e8', source: 'q1', target: 't_freedom', style: { stroke: '#8b5cf6', strokeDasharray: '5,5' } },
-  { id: 'e9', source: 'q2', target: 't_freedom', style: { stroke: '#8b5cf6', strokeDasharray: '5,5' } },
+  { id: 'e6', source: 'q3', target: 't_absurd', style: { stroke: 'var(--color-quipsly-lake-500)', strokeDasharray: '5,5' } },
+  { id: 'e7', source: 'camus', target: 't_absurd', style: { stroke: 'var(--color-quipsly-lake-500)', strokeDasharray: '5,5' } },
+  { id: 'e8', source: 'q1', target: 't_freedom', style: { stroke: 'var(--color-quipsly-inkberry-500)', strokeDasharray: '5,5' } },
+  { id: 'e9', source: 'q2', target: 't_freedom', style: { stroke: 'var(--color-quipsly-inkberry-500)', strokeDasharray: '5,5' } },
 ];
 
 export function AuthorRelationshipGraph() {

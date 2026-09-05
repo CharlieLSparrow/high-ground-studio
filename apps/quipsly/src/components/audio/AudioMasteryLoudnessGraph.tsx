@@ -70,7 +70,7 @@ export function AudioMasteryLoudnessGraph({
             <text
               x="6"
               y={y(level) - 4}
-              fill={level === -16 ? "#f5d0fe" : "#a99abb"}
+              fill={level === -16 ? "var(--color-quipsly-inkberry-200)" : "var(--color-quipsly-inkberry-400)"}
               fontSize="10"
               fontWeight="700"
             >

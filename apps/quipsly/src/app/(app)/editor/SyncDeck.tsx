@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { QUIPSLY_TIMELINE_COLORS } from "@/lib/quipsly-palette";
 
 type TimelineClip = {
   id: string;
@@ -177,7 +178,7 @@ function normalizeTimelineClips(payload: unknown): TimelineClip[] {
       sourceStart,
       sourceEnd,
       name: stringValue(recordClip.name, `Timeline clip ${index + 1}`),
-      color: stringValue(recordClip.color, trackId.startsWith("A") ? "#047857" : "#2563eb"),
+      color: stringValue(recordClip.color, trackId.startsWith("A") ? QUIPSLY_TIMELINE_COLORS.audio : QUIPSLY_TIMELINE_COLORS.video),
     };
   });
 }
@@ -253,7 +254,7 @@ function timelineSourcesFromClips(clips: TimelineClip[]): SyncSource[] {
         timelineEnd: roundTime(timelineStart + duration),
         sourceStart,
         sourceEnd,
-        color: clip.color ?? "#2563eb",
+        color: clip.color ?? QUIPSLY_TIMELINE_COLORS.video,
       };
     });
 }
@@ -280,7 +281,7 @@ function recordingSourcesFromTracks(tracks: RecordingTrack[]): SyncSource[] {
         timelineEnd: roundTime(timelineStart + duration),
         sourceStart: 0,
         sourceEnd: roundTime(duration),
-        color: track.trackId?.startsWith("V") ? "#2563eb" : "#047857",
+        color: track.trackId?.startsWith("V") ? QUIPSLY_TIMELINE_COLORS.video : QUIPSLY_TIMELINE_COLORS.audio,
       };
       return source;
     })
@@ -311,7 +312,7 @@ function cueSourcesFromClipStack(cues: ClipCue[]): SyncSource[] {
         timelineEnd: roundTime(timelineStart + duration),
         sourceStart,
         sourceEnd,
-        color: "#b45309",
+        color: QUIPSLY_TIMELINE_COLORS.marker,
       });
     });
   });
@@ -351,7 +352,7 @@ function makeCutClipFromSource(source: SyncSource, playhead: number, existingCli
     sourceStart,
     sourceEnd: roundTime(sourceStart + duration),
     name: `${source.title} / cut ${formatClock(sourceStart)}`,
-    color: source.kind === "video" ? "#2563eb" : "#047857",
+    color: source.kind === "video" ? QUIPSLY_TIMELINE_COLORS.video : QUIPSLY_TIMELINE_COLORS.audio,
   };
 }
 

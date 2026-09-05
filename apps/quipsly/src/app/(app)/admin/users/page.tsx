@@ -375,51 +375,51 @@ export default async function UserManagementPage({
             </div>
           </section>
 
-          <section className="rounded-3xl border border-[#d8e5f4] bg-[#f3f8ff] p-5 text-[#1d3650] shadow-sm md:p-6">
+          <section className="rounded-3xl border border-blue-200 bg-blue-50 p-5 text-blue-900 shadow-sm md:p-6">
             <div className="grid gap-5 lg:grid-cols-[1.1fr_1fr]">
               <div>
-                <div className="text-xs font-black uppercase tracking-[0.22em] text-[#456f9c]">
+                <div className="text-xs font-black uppercase tracking-[0.22em] text-blue-600">
                   Capture reviewer setup
                 </div>
                 <h2 className="mt-2 font-serif text-3xl font-black">Create the iOS test login on purpose</h2>
-                <p className="mt-2 text-sm leading-6 text-[#526981]">
+                <p className="mt-2 text-sm leading-6 text-blue-700">
                   The native capture app now signs in through Firebase email/password, then asks Quipsly for app-owned
                   session truth. Use this card when you need a real reviewer, operator, or Codex-safe account with free
                   starter access and a Home Nest.
                 </p>
-                <div className="mt-4 grid gap-3 text-xs leading-5 text-[#526981] md:grid-cols-3">
-                  <div className="rounded-2xl border border-[#c3d9ef] bg-white/80 p-3">
-                    <div className="font-black uppercase tracking-[0.14em] text-[#456f9c]">1. Firebase</div>
+                <div className="mt-4 grid gap-3 text-xs leading-5 text-blue-700 md:grid-cols-3">
+                  <div className="rounded-2xl border border-blue-200 bg-white/80 p-3">
+                    <div className="font-black uppercase tracking-[0.14em] text-blue-600">1. Firebase</div>
                     <p className="mt-1">Email/password proves the person or reviewer can sign in.</p>
                   </div>
-                  <div className="rounded-2xl border border-[#c3d9ef] bg-white/80 p-3">
-                    <div className="font-black uppercase tracking-[0.14em] text-[#456f9c]">2. Quipsly</div>
+                  <div className="rounded-2xl border border-blue-200 bg-white/80 p-3">
+                    <div className="font-black uppercase tracking-[0.14em] text-blue-600">2. Quipsly</div>
                     <p className="mt-1">Postgres owns roles, Home Nest, free tier, and capture sessions.</p>
                   </div>
-                  <div className="rounded-2xl border border-[#c3d9ef] bg-white/80 p-3">
-                    <div className="font-black uppercase tracking-[0.14em] text-[#456f9c]">3. Device</div>
+                  <div className="rounded-2xl border border-blue-200 bg-white/80 p-3">
+                    <div className="font-black uppercase tracking-[0.14em] text-blue-600">3. Device</div>
                     <p className="mt-1">The iOS app verifies `/api/mac/session-check` with a bearer token.</p>
                   </div>
                 </div>
               </div>
 
-              <form action={upsertCaptureReviewerAction} className="grid gap-3 rounded-3xl border border-[#c3d9ef] bg-white p-4 shadow-sm">
+              <form action={upsertCaptureReviewerAction} className="grid gap-3 rounded-3xl border border-blue-200 bg-white p-4 shadow-sm">
                 <input
                   type="email"
                   name="primaryEmail"
                   defaultValue="reviewer-capture@dev.test"
-                  className="rounded-2xl border border-[#c3d9ef] bg-[#fbfdff] px-4 py-3 text-sm text-[#1d3650] shadow-sm outline-none focus:border-[#456f9c]"
+                  className="rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900 shadow-sm outline-none focus:border-blue-600"
                   required
                 />
                 <input
                   type="text"
                   name="name"
                   defaultValue="Quipsly Capture Reviewer"
-                  className="rounded-2xl border border-[#c3d9ef] bg-[#fbfdff] px-4 py-3 text-sm text-[#1d3650] shadow-sm outline-none focus:border-[#456f9c]"
+                  className="rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900 shadow-sm outline-none focus:border-blue-600"
                 />
                 <select
                   name="role"
-                  className="rounded-2xl border border-[#c3d9ef] bg-[#fbfdff] px-4 py-3 text-sm font-bold text-[#1d3650] shadow-sm outline-none focus:border-[#456f9c]"
+                  className="rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm font-bold text-blue-900 shadow-sm outline-none focus:border-blue-600"
                   defaultValue="CLIENT"
                 >
                   <option value="CLIENT">CLIENT reviewer</option>
@@ -431,14 +431,14 @@ export default async function UserManagementPage({
                   type="password"
                   name="firebasePassword"
                   placeholder="Set temporary Firebase password"
-                  className="rounded-2xl border border-[#c3d9ef] bg-[#fbfdff] px-4 py-3 text-sm text-[#1d3650] shadow-sm outline-none focus:border-[#456f9c]"
+                  className="rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900 shadow-sm outline-none focus:border-blue-600"
                   required
                 />
-                <p className="rounded-2xl border border-[#c3d9ef] bg-[#f7fbff] px-4 py-3 text-xs leading-5 text-[#526981]">
+                <p className="rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-xs leading-5 text-blue-700">
                   This test-only control accepts only <code>@dev.test</code> addresses. Customer passwords are never
                   visible to or set by support. It does not create a coaching session by itself.
                 </p>
-                <button className="rounded-2xl bg-[#1d3650] px-5 py-3 text-sm font-black uppercase tracking-[0.14em] text-white shadow-lg transition hover:-translate-y-0.5">
+                <button className="rounded-2xl bg-blue-900 px-5 py-3 text-sm font-black uppercase tracking-[0.14em] text-white shadow-lg transition hover:-translate-y-0.5">
                   Create capture reviewer login
                 </button>
               </form>

@@ -1,4 +1,5 @@
 import { useReducer } from "react";
+import { QUIPSLY_TIMELINE_COLORS } from "@/lib/quipsly-palette";
 import { resolveTrackCollisions } from "./timeline/timelineMath";
 
 export const TRACK_PREFIX_VIDEO = "V" as const;
@@ -50,7 +51,7 @@ function sanitizeTimelineClip(clip: TimelineClip, fallbackTrackId: string): Time
     sourceEnd: safeSourceEnd,
     kind: safeKind,
     name: (clip.name ?? "").trim() || "Clip",
-    color: clip.color || "#2563eb",
+    color: clip.color || QUIPSLY_TIMELINE_COLORS.video,
     assetId: clip.assetId || "",
     sourceId: typeof clip.sourceId === "string" ? clip.sourceId : undefined,
     volume: Math.max(0, Math.min(2, toFiniteNumber(clip.volume, 1))),

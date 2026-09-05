@@ -227,15 +227,15 @@ function AudioMasteryComparisonGraph({ source, mastered, targetLufs }: {
       <svg viewBox={`0 0 ${width} ${height}`} className="h-28 w-full" role="img" aria-labelledby="mastery-comparison-title mastery-comparison-description">
         <title id="mastery-comparison-title">Source and mastered short-term loudness over time</title>
         <desc id="mastery-comparison-description">The source and verified mastered preview are measured from complete decodes. The shaded band is the selected delivery target plus or minus one loudness unit.</desc>
-        <rect x="0" width={width} y={targetTop} height={Math.max(1, targetBottom - targetTop)} fill="#14532d" opacity="0.38" />
+        <rect x="0" width={width} y={targetTop} height={Math.max(1, targetBottom - targetTop)} fill="var(--color-quipsly-fern-800)" opacity="0.38" />
         {[-48, -32, targetLufs, 0].map((level) => (
           <g key={level}>
-            <line x1="0" x2={width} y1={y(level)} y2={y(level)} stroke={level === targetLufs ? "#86efac" : "#3f3f55"} strokeDasharray={level === targetLufs ? "8 5" : "2 7"} />
-            <text x="6" y={Math.max(10, y(level) - 4)} fill={level === targetLufs ? "#bbf7d0" : "#a1a1b5"} fontSize="10" fontWeight="700">{level} LUFS</text>
+            <line x1="0" x2={width} y1={y(level)} y2={y(level)} stroke={level === targetLufs ? "var(--color-quipsly-fern-300)" : "#3f3f55"} strokeDasharray={level === targetLufs ? "8 5" : "2 7"} />
+            <text x="6" y={Math.max(10, y(level) - 4)} fill={level === targetLufs ? "var(--color-quipsly-fern-200)" : "#a1a1b5"} fontSize="10" fontWeight="700">{level} LUFS</text>
           </g>
         ))}
         {sourcePath && <path d={sourcePath} fill="none" stroke="var(--color-quipsly-inkberry-300)" strokeWidth="2.1" opacity="0.78" />}
-        {masteredPath && <path d={masteredPath} fill="none" stroke="#4ade80" strokeWidth="2.3" />}
+        {masteredPath && <path d={masteredPath} fill="none" stroke="var(--color-quipsly-fern-400)" strokeWidth="2.3" />}
       </svg>
       <figcaption className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-[9px] font-black uppercase tracking-[0.1em] text-slate-200">
         <span><span className="mr-1 inline-block h-0.5 w-3 bg-fuchsia-300 align-middle" />Immutable source</span>

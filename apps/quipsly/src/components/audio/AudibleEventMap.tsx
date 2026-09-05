@@ -59,11 +59,11 @@ const FAMILY_LABELS: Record<AudibleEventMoment["family"], string> = {
   capture: "Capture",
 };
 const FAMILY_COLORS: Record<AudibleEventMoment["family"], string> = {
-  signal: "#38bdf8",
+  signal: "var(--color-quipsly-lake-400)",
   dialogue: "var(--color-quipsly-brass-400)",
-  content: "#34d399",
+  content: "var(--color-quipsly-fern-400)",
   environment: "var(--color-quipsly-rosewood-400)",
-  capture: "#c084fc",
+  capture: "var(--color-quipsly-inkberry-400)",
 };
 
 function clamp(value: number, minimum: number, maximum: number) {
@@ -308,7 +308,7 @@ export function AudibleEventMap({
           const confirmed = moment.reviewState === "confirmed";
           return <g key={moment.id} opacity={dismissed ? 0.38 : 1}><rect x={eventX} y="122" width={eventWidth} height="24" rx="3" fill={color} opacity={confirmed ? 0.85 : 0.35} stroke={color} strokeWidth={confirmed ? 2 : 1} strokeDasharray={moment.reviewState === "unreviewed" || moment.reviewState === "measured-needs-listening" ? "4 3" : undefined}><title>{clock(moment.startSeconds)} · {moment.label} · {humanize(moment.reviewState)} · {moment.originLabel}</title></rect><line x1={eventX} x2={eventX} y1={waveformTop} y2="148" stroke={color} strokeWidth={moment.severity === "warning" ? 2.5 : 1.5} strokeDasharray="5 3" /></g>;
         })}
-        <line x1={x(selectedSeconds)} x2={x(selectedSeconds)} y1="17" y2="154" stroke="#67e8f9" strokeWidth="2.5" />
+        <line x1={x(selectedSeconds)} x2={x(selectedSeconds)} y1="17" y2="154" stroke="var(--color-quipsly-lake-300)" strokeWidth="2.5" />
         <text x="6" y="166" fill="#94a3b8" fontSize="9" fontWeight="800">Dashed = not yet confirmed · solid = confirmed · faded = false positive · treatment remains a separate reviewed operation</text>
       </svg>
     </button>

@@ -1,3 +1,5 @@
+import { QUIPSLY_TIMELINE_COLORS } from "@/lib/quipsly-palette";
+
 export type EdlClip = {
   id: string;
   type: "video" | "audio" | "graphic";
@@ -125,7 +127,7 @@ export function VisualTimeline({ clips, currentTime, selectedClipId, onTimeScrub
                     style={{
                       left: `${clip.startIn * PIXELS_PER_SECOND}px`,
                       width: `${clip.duration * PIXELS_PER_SECOND}px`,
-                      backgroundColor: clip.color || (isAudio ? "#047857" : "#2563eb"),
+                      backgroundColor: clip.color || (isAudio ? QUIPSLY_TIMELINE_COLORS.audio : QUIPSLY_TIMELINE_COLORS.video),
                       opacity: hasSrc ? 1 : 0.6,
                     }}
                   >

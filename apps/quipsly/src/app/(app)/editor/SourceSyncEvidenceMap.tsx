@@ -174,10 +174,10 @@ export function SourceSyncEvidenceMap({
           {targetSignal && waveformBars({ signal: targetSignal, offsetSeconds: anchorSeconds, viewStart, viewDuration, laneCenter: 116, color: "var(--color-quipsly-inkberry-400)" })}
           <line x1={anchorX} y1="12" x2={anchorX} y2="148" stroke="#f8fafc" strokeWidth="2" />
           {observationX !== null && <line x1={observationX} y1="12" x2={observationX} y2="148" stroke="var(--color-quipsly-brass-400)" strokeWidth="2" strokeDasharray="8 5" />}
-          {!spineSignal && <text x="500" y="56" textAnchor="middle" fill="#67e8f9" fontSize="12" fontWeight="800">Spine decoded waveform not attached</text>}
-          {!targetSignal && <text x="500" y="120" textAnchor="middle" fill="#c4b5fd" fontSize="12" fontWeight="800">Target decoded waveform not attached</text>}
-          <text x="8" y="20" fill="#67e8f9" fontSize="11" fontWeight="900">SPINE</text>
-          <text x="8" y="84" fill="#c4b5fd" fontSize="11" fontWeight="900">TARGET</text>
+          {!spineSignal && <text x="500" y="56" textAnchor="middle" fill="var(--color-quipsly-lake-300)" fontSize="12" fontWeight="800">Spine decoded waveform not attached</text>}
+          {!targetSignal && <text x="500" y="120" textAnchor="middle" fill="var(--color-quipsly-inkberry-300)" fontSize="12" fontWeight="800">Target decoded waveform not attached</text>}
+          <text x="8" y="20" fill="var(--color-quipsly-lake-300)" fontSize="11" fontWeight="900">SPINE</text>
+          <text x="8" y="84" fill="var(--color-quipsly-inkberry-300)" fontSize="11" fontWeight="900">TARGET</text>
           <text x={Math.min(940, anchorX + 6)} y="164" fill="#f8fafc" fontSize="10" fontWeight="900">OPEN {clock(anchorSeconds)}</text>
           {observationX !== null && <text x={Math.max(8, Math.min(890, observationX - 96))} y="20" fill="var(--color-quipsly-brass-400)" fontSize="10" fontWeight="900">LATER {clock(model.observationTimelineSeconds!)}</text>}
         </svg>

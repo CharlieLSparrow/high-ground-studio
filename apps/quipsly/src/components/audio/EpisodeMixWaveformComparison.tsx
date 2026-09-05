@@ -61,10 +61,10 @@ export function EpisodeMixWaveformComparison({
       <svg viewBox={`0 0 ${width} ${height}`} className="h-48 w-full" role="img" aria-label="Complete-decode baseline and proposal windowed RMS comparison">
         <rect width={width} height={height} fill="#020617" />
         {[0, 0.25, 0.5, 0.75, 1].map((fraction) => <g key={fraction}><line x1={fraction * width} x2={fraction * width} y1="18" y2="164" stroke="#334155" strokeDasharray="3 8" /><text x={Math.min(width - 55, fraction * width + 5)} y="13" fill="#94a3b8" fontSize="10" fontWeight="700">{clock(safeDuration * fraction)}</text></g>)}
-        <text x="8" y="38" fill="#67e8f9" fontSize="11" fontWeight="800">BASELINE</text>
-        <text x="8" y="112" fill="#c4b5fd" fontSize="11" fontWeight="800">PROPOSAL</text>
-        <line x1="0" x2={width} y1="68" y2="68" stroke="#155e75" />
-        <line x1="0" x2={width} y1="142" y2="142" stroke="#5b21b6" />
+        <text x="8" y="38" fill="var(--color-quipsly-lake-300)" fontSize="11" fontWeight="800">BASELINE</text>
+        <text x="8" y="112" fill="var(--color-quipsly-inkberry-300)" fontSize="11" fontWeight="800">PROPOSAL</text>
+        <line x1="0" x2={width} y1="68" y2="68" stroke="var(--color-quipsly-lake-800)" />
+        <line x1="0" x2={width} y1="142" y2="142" stroke="var(--color-quipsly-inkberry-800)" />
         {lane(baselinePoints, 68, "var(--color-quipsly-lake-400)")}
         {lane(proposalPoints, 142, "var(--color-quipsly-inkberry-400)")}
         {actions.map((action) => { const x = Math.max(0, Math.min(width, action.startSeconds / safeDuration * width)); const actionWidth = Math.max(2, Math.min(width - x, (action.endSeconds - action.startSeconds) / safeDuration * width)); return <g key={action.id}><rect x={x} y="18" width={actionWidth} height="146" fill="var(--color-quipsly-inkberry-500)" opacity="0.18"><title>{action.targetTitle} · {action.gainDb.toFixed(1)} dB · {clock(action.startSeconds)}–{clock(action.endSeconds)}</title></rect><line x1={x} x2={x} y1="18" y2="164" stroke="var(--color-quipsly-inkberry-300)" strokeWidth="1.5" /></g>; })}

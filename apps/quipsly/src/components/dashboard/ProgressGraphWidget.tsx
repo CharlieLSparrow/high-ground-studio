@@ -70,13 +70,13 @@ export const ProgressGraphWidget = React.memo(({ data }: { data: DailyMetric[] }
         <svg viewBox={`0 0 ${chartWidth} ${chartHeight}`} className="w-full h-full overflow-visible" aria-hidden="true">
           <defs>
             <linearGradient id="lineGradient" x1="0%" y1="0%" x2="100%" y2="0%">
-              <stop offset="0%" stopColor="#f59e0b" />
-              <stop offset="50%" stopColor="#d97706" />
-              <stop offset="100%" stopColor="#b45309" />
+              <stop offset="0%" stopColor="var(--color-quipsly-brass-300)" />
+              <stop offset="50%" stopColor="var(--color-quipsly-brass-500)" />
+              <stop offset="100%" stopColor="var(--color-quipsly-brass-700)" />
             </linearGradient>
             <linearGradient id="areaGradient" x1="0%" y1="0%" x2="0%" y2="100%">
-              <stop offset="0%" stopColor="#f59e0b" stopOpacity="0.3" />
-              <stop offset="100%" stopColor="#f59e0b" stopOpacity="0.0" />
+              <stop offset="0%" stopColor="var(--color-quipsly-brass-400)" stopOpacity="0.3" />
+              <stop offset="100%" stopColor="var(--color-quipsly-brass-400)" stopOpacity="0.0" />
             </linearGradient>
           </defs>
           
@@ -130,9 +130,9 @@ export const ProgressGraphWidget = React.memo(({ data }: { data: DailyMetric[] }
                   cy={y}
                   r="6"
                   fill="white"
-                  stroke="#d97706"
+                  stroke="var(--color-quipsly-brass-500)"
                   strokeWidth="3"
-                  className="transition-all duration-300 group-hover/point:r-8 group-hover/point:stroke-[#b45309] group-focus/point:r-8 group-focus/point:stroke-amber-600 group-focus/point:ring-4 ring-amber-500/50"
+                  className="transition-all duration-300 group-hover/point:r-8 group-hover/point:stroke-amber-700 group-focus/point:r-8 group-focus/point:stroke-amber-600 group-focus/point:ring-4 ring-amber-500/50"
                 />
                 <g className="opacity-0 group-hover/point:opacity-100 group-focus/point:opacity-100 transition-opacity duration-200 pointer-events-none">
                   <rect x={x - 45} y={y - 55} width="90" height="40" rx="8" fill="#3d3122" />

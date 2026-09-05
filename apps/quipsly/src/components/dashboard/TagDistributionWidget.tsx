@@ -81,7 +81,7 @@ export const TagDistributionWidget = React.memo(({ tags }: { tags: TagData[] }) 
             <polygon 
               points={polygonPath} 
               fill="rgba(244, 63, 94, 0.2)" 
-              stroke="#f43f5e" 
+              stroke="var(--color-quipsly-rosewood-500)"
               strokeWidth="3"
               strokeLinejoin="round"
               className="transition-all duration-700 ease-out group-hover:fill-[rgba(244,63,94,0.4)]"
@@ -100,7 +100,7 @@ export const TagDistributionWidget = React.memo(({ tags }: { tags: TagData[] }) 
                   cx={data.p.x} 
                   cy={data.p.y} 
                   r="6" 
-                  fill="#f43f5e" 
+                  fill="var(--color-quipsly-rosewood-500)"
                   className="transition-transform group-focus/node:scale-150"
                 />
                 <text 

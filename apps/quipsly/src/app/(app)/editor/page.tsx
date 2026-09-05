@@ -5,6 +5,7 @@ import { ChangeEvent, Suspense, useCallback, useEffect, useMemo, useRef, useStat
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Player } from "@remotion/player";
+import { QUIPSLY_TIMELINE_COLORS } from "@/lib/quipsly-palette";
 import { VisualTimeline } from "./VisualTimeline";
 import { InteractiveTimeline } from "./timeline/InteractiveTimeline";
 import { MediaAssetPicker } from "./MediaAssetPicker";
@@ -1098,8 +1099,8 @@ function smartImportedAssetPlacement(asset: ImportedMediaAsset, clips: TimelineC
 }
 
 function importedAssetColor(asset: ImportedMediaAsset) {
-  if (asset.kind === "audio") return "#d97706";
-  if (asset.kind === "video") return "#7c3aed";
+  if (asset.kind === "audio") return QUIPSLY_TIMELINE_COLORS.importedAudio;
+  if (asset.kind === "video") return QUIPSLY_TIMELINE_COLORS.importedVideo;
   return "#64748b";
 }
 
@@ -1570,7 +1571,7 @@ function normalizeTimelineClip(raw: unknown): TimelineClip | null {
     sourceStart: safeSourceStart,
     sourceEnd: roundSeconds(Math.max(safeSourceStart, sourceEnd)),
     name: coerceString(record.name, "Clip"),
-    color: coerceString(record.color, "#2563eb"),
+    color: coerceString(record.color, QUIPSLY_TIMELINE_COLORS.video),
     generatedFrom: coerceOptionalString(record.generatedFrom),
     volume: typeof record.volume === "number" && Number.isFinite(record.volume) ? record.volume : undefined,
     deactivated: coerceBoolean(record.deactivated, false),
@@ -1867,7 +1868,7 @@ function buildSessionTrackClips(session: RecordingSessionPackage): TimelineClip[
         kind: sourceKind,
         trackId,
         name: trackRecord.name || `Track ${trackId}`,
-        color: sourceKind === "audio" ? "#047857" : "#2563eb",
+        color: sourceKind === "audio" ? QUIPSLY_TIMELINE_COLORS.audio : QUIPSLY_TIMELINE_COLORS.video,
         startIn,
         sourceStart: 0,
         sourceEnd: roundSeconds(duration),
@@ -2817,7 +2818,7 @@ function buildSegmentTrackClips(session: RecordingSessionPackage, trackAllocator
       sourceEnd: roundSeconds(sourceEnd),
       kind: segmentKind,
       name: `${cue?.title || event.label || "Watched clip"}${segment?.note ? ` — ${segment.note}` : ""} (${formatClock(sourceStart)}-${formatClock(sourceEnd)})`,
-      color: segmentKind === "video" ? "#7c3aed" : "#a855f7",
+      color: segmentKind === "video" ? QUIPSLY_TIMELINE_COLORS.watchedVideo : QUIPSLY_TIMELINE_COLORS.watchedAudio,
       duration: roundSeconds(duration),
     } satisfies TimelineClip];
   });

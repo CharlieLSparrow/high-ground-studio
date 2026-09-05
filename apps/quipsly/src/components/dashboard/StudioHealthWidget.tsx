@@ -87,8 +87,8 @@ export const StudioHealthWidget = React.memo(() => {
           <svg viewBox="0 0 1000 100" className="w-full h-full overflow-visible preserve-3d" aria-hidden="true">
             <defs>
               <linearGradient id="trafficGradient" x1="0%" y1="0%" x2="0%" y2="100%">
-                <stop offset="0%" stopColor="#10b981" stopOpacity="0.5" />
-                <stop offset="100%" stopColor="#10b981" stopOpacity="0.0" />
+                <stop offset="0%" stopColor="var(--color-quipsly-fern-400)" stopOpacity="0.5" />
+                <stop offset="100%" stopColor="var(--color-quipsly-fern-400)" stopOpacity="0.0" />
               </linearGradient>
             </defs>
             <path
@@ -107,7 +107,7 @@ export const StudioHealthWidget = React.memo(() => {
                 return `${i === 0 ? 'M' : 'L'} ${x},${y}`;
               }).join(' ')}
               fill="none"
-              stroke="#10b981"
+              stroke="var(--color-quipsly-fern-400)"
               strokeWidth="2"
               className="drop-shadow-[0_0_8px_rgba(16,185,129,0.5)] transition-all duration-1000"
             />

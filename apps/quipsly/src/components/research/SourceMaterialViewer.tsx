@@ -139,7 +139,7 @@ export function SourceMaterialViewer() {
                     className={`transition-all duration-200 rounded px-2 -mx-2 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-2 ${
                       block.highlight 
                         ? isSelected 
-                          ? 'bg-[#ffedcc] shadow-[0_0_0_1px_#f59e0b] cursor-pointer' 
+                          ? 'bg-amber-100 shadow-[0_0_0_1px_var(--color-quipsly-brass-400)] cursor-pointer'
                           : 'bg-[#fff7e6] hover:bg-[#ffedcc] cursor-pointer'
                         : ''
                     }`}

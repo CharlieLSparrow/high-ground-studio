@@ -49,17 +49,17 @@ export function ComparativeChartWidget({ type }: Props) {
         {/* Line */}
         <polyline 
           fill="none" 
-          stroke="#3b82f6" 
+          stroke="var(--color-quipsly-lake-500)"
           strokeWidth="3" 
           points="0,80 20,60 40,70 60,30 80,50 100,10" 
           strokeLinejoin="round" 
           strokeLinecap="round" 
         />
         {/* Data points */}
-        <circle cx="20" cy="60" r="2" fill="#fff" stroke="#3b82f6" strokeWidth="1" className="hover:r-3 cursor-pointer transition-all" />
-        <circle cx="40" cy="70" r="2" fill="#fff" stroke="#3b82f6" strokeWidth="1" className="hover:r-3 cursor-pointer transition-all" />
-        <circle cx="60" cy="30" r="2" fill="#fff" stroke="#3b82f6" strokeWidth="1" className="hover:r-3 cursor-pointer transition-all" />
-        <circle cx="80" cy="50" r="2" fill="#fff" stroke="#3b82f6" strokeWidth="1" className="hover:r-3 cursor-pointer transition-all" />
+        <circle cx="20" cy="60" r="2" fill="#fff" stroke="var(--color-quipsly-lake-500)" strokeWidth="1" className="hover:r-3 cursor-pointer transition-all" />
+        <circle cx="40" cy="70" r="2" fill="#fff" stroke="var(--color-quipsly-lake-500)" strokeWidth="1" className="hover:r-3 cursor-pointer transition-all" />
+        <circle cx="60" cy="30" r="2" fill="#fff" stroke="var(--color-quipsly-lake-500)" strokeWidth="1" className="hover:r-3 cursor-pointer transition-all" />
+        <circle cx="80" cy="50" r="2" fill="#fff" stroke="var(--color-quipsly-lake-500)" strokeWidth="1" className="hover:r-3 cursor-pointer transition-all" />
       </svg>
     </div>
   );

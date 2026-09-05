@@ -29,7 +29,7 @@ function InteractivePrimitive(props: any) {
     >
       <boxGeometry args={[2, 2, 2]} />
       <meshStandardMaterial 
-        color={hovered ? "#3b82f6" : "#4ade80"} 
+        color={hovered ? "#42666a" : "#879f62"}
         roughness={0.1}
         metalness={0.8}
       />
@@ -121,7 +121,7 @@ export default function MotionLab() {
                   anchorX="center"
                   anchorY="middle"
                   outlineWidth={0.05}
-                  outlineColor="#3b82f6"
+                  outlineColor="#42666a"
                 >
                   MOTION GRAPHICS
                 </Text>

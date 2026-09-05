@@ -34,7 +34,7 @@ export const StructuralHotspotsWidget = React.memo(({ hotspots }: { hotspots: Ho
           <li 
             key={hotspot.id} 
             className="p-5 bg-white border border-[#e8dcc4] rounded-2xl shadow-sm hover:shadow-md transition-all group border-l-4 focus-within:ring-2 focus-within:ring-indigo-500" 
-            style={{ borderLeftColor: hotspot.severity === 'high' ? '#ef4444' : hotspot.severity === 'medium' ? '#f59e0b' : '#3b82f6' }}
+            style={{ borderLeftColor: hotspot.severity === 'high' ? 'var(--color-quipsly-rosewood-500)' : hotspot.severity === 'medium' ? 'var(--color-quipsly-brass-400)' : 'var(--color-quipsly-lake-500)' }}
           >
             <div className="flex justify-between items-start mb-2">
               <span className="text-sm font-bold text-[#3d3122]">{hotspot.location}</span>

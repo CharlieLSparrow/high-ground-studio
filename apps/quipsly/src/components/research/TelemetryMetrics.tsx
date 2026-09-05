@@ -66,12 +66,12 @@ export function TelemetryMetrics() {
               <AreaChart data={engagementData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                 <defs>
                   <linearGradient id="colorStreams" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3}/>
-                    <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
+                    <stop offset="5%" stopColor="var(--color-quipsly-lake-400)" stopOpacity={0.3}/>
+                    <stop offset="95%" stopColor="var(--color-quipsly-lake-400)" stopOpacity={0}/>
                   </linearGradient>
                   <linearGradient id="colorSaves" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#10b981" stopOpacity={0.3}/>
-                    <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
+                    <stop offset="5%" stopColor="var(--color-quipsly-fern-400)" stopOpacity={0.3}/>
+                    <stop offset="95%" stopColor="var(--color-quipsly-fern-400)" stopOpacity={0}/>
                   </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" stroke="#27272a" vertical={false} />
@@ -81,8 +81,8 @@ export function TelemetryMetrics() {
                   contentStyle={{ backgroundColor: '#18181b', borderColor: '#27272a', borderRadius: '8px', color: '#f4f4f5' }}
                   itemStyle={{ color: '#e4e4e7' }}
                 />
-                <Area type="monotone" dataKey="streams" stroke="#3b82f6" strokeWidth={2} fillOpacity={1} fill="url(#colorStreams)" />
-                <Area type="monotone" dataKey="saves" stroke="#10b981" strokeWidth={2} fillOpacity={1} fill="url(#colorSaves)" />
+                <Area type="monotone" dataKey="streams" stroke="var(--color-quipsly-lake-400)" strokeWidth={2} fillOpacity={1} fill="url(#colorStreams)" />
+                <Area type="monotone" dataKey="saves" stroke="var(--color-quipsly-fern-400)" strokeWidth={2} fillOpacity={1} fill="url(#colorSaves)" />
               </AreaChart>
             </ResponsiveContainer>
           </div>
@@ -104,7 +104,7 @@ export function TelemetryMetrics() {
                   cursor={{fill: '#27272a'}}
                   contentStyle={{ backgroundColor: '#18181b', borderColor: '#27272a', borderRadius: '8px' }}
                 />
-                <Bar dataKey="count" fill="#f59e0b" radius={[0, 4, 4, 0]} barSize={20} />
+                <Bar dataKey="count" fill="var(--color-quipsly-brass-400)" radius={[0, 4, 4, 0]} barSize={20} />
               </BarChart>
             </ResponsiveContainer>
           </div>

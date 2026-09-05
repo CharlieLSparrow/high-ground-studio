@@ -189,12 +189,12 @@ function frequencyRangeLabel(minimumHz: number, maximumHz: number) {
 }
 
 const FREQUENCY_COLORS: Record<FrequencyProfile["bands"][number]["id"], string> = {
-  rumble: "#c084fc",
-  warmth: "#f472b6",
+  rumble: "var(--color-quipsly-inkberry-400)",
+  warmth: "var(--color-quipsly-inkberry-400)",
   body: "var(--color-quipsly-rosewood-400)",
   speech: "var(--color-quipsly-brass-400)",
-  presence: "#34d399",
-  air: "#38bdf8",
+  presence: "var(--color-quipsly-fern-400)",
+  air: "var(--color-quipsly-lake-400)",
 };
 
 export function AudioEvidenceMap({
@@ -337,7 +337,7 @@ export function AudioEvidenceMap({
           const peakHeight = levelHeight(point.samplePeakDbfs, maximumLevelHeight);
           const nearSilent = point.rmsDbfs <= signal.thresholds.nearSilenceDbfs;
           const clipped = point.clippedFrameCount > 0;
-          const fill = clipped ? "#f43f5e" : nearSilent ? "#64748b" : "#0ea5e9";
+          const fill = clipped ? "var(--color-quipsly-rosewood-500)" : nearSilent ? "#64748b" : "var(--color-quipsly-lake-500)";
           return <g key={`${point.startSeconds}-${index}`}>
             {nearSilent || clipped ? <rect x={pointX} y={plotTop} width={pointWidth} height={plotBottom - plotTop} fill={fill} opacity="0.1" /> : null}
             <rect x={pointX} y={center - rmsHeight} width={pointWidth} height={rmsHeight * 2} rx="0.8" fill={fill} opacity="0.78" />
@@ -361,7 +361,7 @@ export function AudioEvidenceMap({
             <text key={`${band.id}-label`} x="6" y={rowTop + Math.min(rowHeight - 2, 11)} fill="#f8fafc" fontSize="8" fontWeight="800" paintOrder="stroke" stroke="#020617" strokeWidth="2">{band.label} · {frequencyRangeLabel(band.minimumHz, band.maximumHz)}</text>,
           ];
         }) : null}
-        {visibleEvents.map((event, index) => <g key={`${event.kind}-${event.startSeconds}-${index}`}><line x1={x(event.startSeconds)} x2={x(event.startSeconds)} y1={plotTop - 3} y2={plotBottom + 3} stroke="#fcd34d" strokeWidth="2" /><circle cx={x(event.startSeconds)} cy={plotTop - 4} r="4" fill="#fcd34d"><title>{`${timestampForSeconds(event.startSeconds)} ${event.kind}`}</title></circle></g>)}
+        {visibleEvents.map((event, index) => <g key={`${event.kind}-${event.startSeconds}-${index}`}><line x1={x(event.startSeconds)} x2={x(event.startSeconds)} y1={plotTop - 3} y2={plotBottom + 3} stroke="var(--color-quipsly-brass-300)" strokeWidth="2" /><circle cx={x(event.startSeconds)} cy={plotTop - 4} r="4" fill="var(--color-quipsly-brass-300)"><title>{`${timestampForSeconds(event.startSeconds)} ${event.kind}`}</title></circle></g>)}
         {visibleObservations.map((observation, index) => {
           const observationStart = Math.max(observation.startSeconds, span.startSeconds);
           const observationEnd = Math.min(Math.max(observation.endSeconds, observation.startSeconds + signal.windowDurationSeconds), span.endSeconds);
@@ -370,7 +370,7 @@ export function AudioEvidenceMap({
           const tone = observation.severity === "warning" ? "var(--color-quipsly-rosewood-400)" : "var(--color-quipsly-brass-400)";
           return <g key={`${observation.kind}-${observation.startSeconds}-${index}`}><rect x={observationX} y={plotTop} width={observationWidth} height={plotBottom - plotTop} fill={tone} opacity="0.12"><title>{`${timestampForSeconds(observation.startSeconds)}–${timestampForSeconds(observation.endSeconds)} ${observation.detail}`}</title></rect><line x1={observationX} x2={observationX} y1={plotTop} y2={plotBottom} stroke={tone} strokeWidth="2" strokeDasharray="5 3" /></g>;
         })}
-        {transcriptEndSeconds !== null && transcriptEndSeconds >= span.startSeconds && transcriptEndSeconds <= span.endSeconds ? <g><line x1={x(transcriptEndSeconds)} x2={x(transcriptEndSeconds)} y1={plotTop - 4} y2={plotBottom + 4} stroke="#6ee7b7" strokeWidth="2" strokeDasharray="4 3" /><text x={clamp(x(transcriptEndSeconds) + 5, 5, width - 95)} y={plotBottom + 16} fill="#a7f3d0" fontSize="9" fontWeight="800">Transcript end</text></g> : null}
+        {transcriptEndSeconds !== null && transcriptEndSeconds >= span.startSeconds && transcriptEndSeconds <= span.endSeconds ? <g><line x1={x(transcriptEndSeconds)} x2={x(transcriptEndSeconds)} y1={plotTop - 4} y2={plotBottom + 4} stroke="var(--color-quipsly-fern-300)" strokeWidth="2" strokeDasharray="4 3" /><text x={clamp(x(transcriptEndSeconds) + 5, 5, width - 95)} y={plotBottom + 16} fill="var(--color-quipsly-fern-200)" fontSize="9" fontWeight="800">Transcript end</text></g> : null}
         {visibleWords.map((word) => {
           const start = Math.max(word.startSeconds, span.startSeconds);
           const end = Math.min(word.endSeconds, span.endSeconds);
@@ -381,7 +381,7 @@ export function AudioEvidenceMap({
           return <rect key={word.id} x={wordX} y={transcriptTop} width={wordWidth} height={transcriptBottom - transcriptTop} rx="1" fill={fill} opacity="0.9"><title>{`${timestampForSeconds(word.startSeconds)} ${word.text} · ${word.reviewState}${word.confidence === null ? " · provider confidence unavailable" : ` · provider confidence ${Math.round(word.confidence * 100)}%`}`}</title></rect>;
         })}
         {transcriptWords.length > 0 && <text x="6" y="198" fill="#94a3b8" fontSize="9" fontWeight="800">{transcriptScopeLabel} · {transcriptSummary.reviewedWordCount}/{transcriptSummary.timedWordCount} words in reviewed segments{transcriptSummary.attentionWordCount === null ? " · no cross-provider confidence threshold" : ` · ${transcriptSummary.attentionWordCount} provider-attention words`}</text>}
-        <line x1={x(selectedSeconds)} x2={x(selectedSeconds)} y1={plotTop - 7} y2={transcriptWords.length > 0 ? transcriptBottom + 7 : plotBottom + 7} stroke="#67e8f9" strokeWidth="2.5" />
+        <line x1={x(selectedSeconds)} x2={x(selectedSeconds)} y1={plotTop - 7} y2={transcriptWords.length > 0 ? transcriptBottom + 7 : plotBottom + 7} stroke="var(--color-quipsly-lake-300)" strokeWidth="2.5" />
       </svg>
     </button>
 
