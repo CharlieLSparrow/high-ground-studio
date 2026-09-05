@@ -85,6 +85,25 @@ enum OnDeviceTranscriptDeliveryPolicy {
         }
     }
 
+    /// A denied Apple Speech permission is unusual among fallback reasons:
+    /// the person can repair it in Settings while the immutable local source
+    /// is still available. Prefer that exact local source when Quipsly returns
+    /// to the foreground, but never race or duplicate a cloud job Nest has
+    /// already accepted.
+    static func shouldRecoverLocallyAfterPermissionChange(
+        fallbackReasonCode: String?,
+        cloudFallbackWasAccepted: Bool,
+        speechRecognitionIsAuthorized: Bool,
+        localSourceIsAvailable: Bool
+    ) -> Bool {
+        guard !cloudFallbackWasAccepted,
+              speechRecognitionIsAuthorized,
+              localSourceIsAvailable else { return false }
+        return fallbackReasonCode?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased() == "apple-speech-permission-denied"
+    }
+
     /// SpeechTranscriber is explicitly designed for long-form meetings and
     /// conversations. A fixed short watchdog incorrectly treats healthy work
     /// on an hour-long source as a provider failure, so the recognition budget

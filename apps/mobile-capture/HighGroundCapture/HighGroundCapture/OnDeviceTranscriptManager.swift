@@ -1417,6 +1417,32 @@ final class OnDeviceTranscriptManager: ObservableObject {
                 continue
             }
 
+            let localFileURL = LocalRecordingLibrary.shared.fileURL(for: recording)
+            if recording.shouldBeginAutomaticOnDeviceTranscript,
+               recording.status.isPlaybackEligible,
+               OnDeviceTranscriptDeliveryPolicy
+                .shouldRecoverLocallyAfterPermissionChange(
+                    fallbackReasonCode: recording.cloudTranscriptFallbackReasonCode,
+                    cloudFallbackWasAccepted: recording.cloudTranscriptFallbackAcceptedAt != nil,
+                    speechRecognitionIsAuthorized:
+                        SFSpeechRecognizer.authorizationStatus() == .authorized,
+                    localSourceIsAvailable: localFileURL != nil
+                ),
+               let localFileURL {
+                // Keep the unaccepted fallback intent durable while local
+                // recognition runs. A successful sidecar takes precedence;
+                // a failed attempt can still submit the same idempotent cloud
+                // request after source verification without losing recovery.
+                phases[recording.id] = .idle
+                beginAutomaticTranscript(
+                    recording: recording,
+                    fileURL: localFileURL
+                )
+                await waitForActiveTask(recordingID: recording.id)
+                processed += 1
+                continue
+            }
+
             if recording.cloudTranscriptFallbackRequestId != nil,
                recording.cloudTranscriptFallbackAcceptedAt == nil {
                 guard recording.status.isVerified else { continue }
@@ -1432,7 +1458,7 @@ final class OnDeviceTranscriptManager: ObservableObject {
                   recording.cloudTranscriptFallbackAcceptedAt == nil else {
                 continue
             }
-            guard let fileURL = LocalRecordingLibrary.shared.fileURL(for: recording) else {
+            guard let fileURL = localFileURL else {
                 guard recording.status.isVerified,
                       recording.serverVerificationStatus?.lowercased() == "verified" else {
                     continue
@@ -1486,6 +1512,17 @@ final class OnDeviceTranscriptManager: ObservableObject {
             }
             if recording.cloudTranscriptFallbackRequestId != nil,
                recording.cloudTranscriptFallbackAcceptedAt == nil {
+                if OnDeviceTranscriptDeliveryPolicy
+                    .shouldRecoverLocallyAfterPermissionChange(
+                        fallbackReasonCode: recording.cloudTranscriptFallbackReasonCode,
+                        cloudFallbackWasAccepted: false,
+                        speechRecognitionIsAuthorized:
+                            SFSpeechRecognizer.authorizationStatus() == .authorized,
+                        localSourceIsAvailable:
+                            LocalRecordingLibrary.shared.fileURL(for: recording) != nil
+                    ) {
+                    return true
+                }
                 return recording.status.isVerified
             }
             if recording.cloudTranscriptFallbackAcceptedAt != nil { return false }

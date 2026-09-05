@@ -3195,6 +3195,11 @@ assert(
 requireIncludes(audioText, "|| speechPermission != .authorized", "Speech denial selects the proven audio recorder instead of blocking source capture");
 requireIncludes(onDeviceTranscriptManagerText, "case waitingForCloudFallback", "cloud transcript delivery has an automatic non-error waiting phase");
 requireIncludes(onDeviceTranscriptManagerText, "phases[recording.id] = .waitingForCloudFallback", "retryable cloud transcript delivery remains visibly queued");
+requireIncludes(
+  onDeviceTranscriptManagerText,
+  "shouldRecoverLocallyAfterPermissionChange(",
+  "returning from Settings retries the exact local source before an unaccepted permission fallback"
+);
 requireIncludes(capturePhoneShellText, 'case .waitingForCloudFallback: return "Transcript queued"', "Capture describes automatic cloud transcript follow-through without an action ritual");
 const providerStartBoundary = audioText.slice(
   audioText.indexOf("if let providerRecorder {"),

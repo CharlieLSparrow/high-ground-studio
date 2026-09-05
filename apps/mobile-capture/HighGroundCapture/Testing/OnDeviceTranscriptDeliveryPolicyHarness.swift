@@ -81,6 +81,51 @@ struct OnDeviceTranscriptDeliveryPolicyHarness {
             ) == [1, 2, 4]
         )
         precondition(
+            OnDeviceTranscriptDeliveryPolicy
+                .shouldRecoverLocallyAfterPermissionChange(
+                    fallbackReasonCode: " apple-speech-permission-denied ",
+                    cloudFallbackWasAccepted: false,
+                    speechRecognitionIsAuthorized: true,
+                    localSourceIsAvailable: true
+                )
+        )
+        precondition(
+            !OnDeviceTranscriptDeliveryPolicy
+                .shouldRecoverLocallyAfterPermissionChange(
+                    fallbackReasonCode: "apple-speech-processing-failed",
+                    cloudFallbackWasAccepted: false,
+                    speechRecognitionIsAuthorized: true,
+                    localSourceIsAvailable: true
+                )
+        )
+        precondition(
+            !OnDeviceTranscriptDeliveryPolicy
+                .shouldRecoverLocallyAfterPermissionChange(
+                    fallbackReasonCode: "apple-speech-permission-denied",
+                    cloudFallbackWasAccepted: true,
+                    speechRecognitionIsAuthorized: true,
+                    localSourceIsAvailable: true
+                )
+        )
+        precondition(
+            !OnDeviceTranscriptDeliveryPolicy
+                .shouldRecoverLocallyAfterPermissionChange(
+                    fallbackReasonCode: "apple-speech-permission-denied",
+                    cloudFallbackWasAccepted: false,
+                    speechRecognitionIsAuthorized: false,
+                    localSourceIsAvailable: true
+                )
+        )
+        precondition(
+            !OnDeviceTranscriptDeliveryPolicy
+                .shouldRecoverLocallyAfterPermissionChange(
+                    fallbackReasonCode: "apple-speech-permission-denied",
+                    cloudFallbackWasAccepted: false,
+                    speechRecognitionIsAuthorized: true,
+                    localSourceIsAvailable: false
+                )
+        )
+        precondition(
             OnDeviceTranscriptDeliveryPolicy.recognitionDeadlineSeconds(
                 sourceDurationSeconds: 30
             ) == 345

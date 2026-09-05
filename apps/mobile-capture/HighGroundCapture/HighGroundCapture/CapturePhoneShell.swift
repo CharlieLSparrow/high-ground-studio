@@ -8671,7 +8671,7 @@ private struct CapturePersonalVoiceNoteTranscriptCard: View {
             if shouldOfferOnDeviceSpeechRecovery {
                 CapturePermissionRecoveryButton(
                     title: "Use on-device transcription",
-                    detail: "Quipsly used its cloud backup for this take. Turn on Speech Recognition once to keep future transcripts on this device when supported."
+                    detail: "Turn on Speech Recognition once, then return to Quipsly. This saved recording will retry automatically on this device before cloud backup starts."
                 )
                 .accessibilityIdentifier("CaptureVoiceNoteSpeechPermissionRecovery")
             }
@@ -22080,7 +22080,7 @@ private struct LocalRecordingRow: View {
             if shouldOfferOnDeviceSpeechRecovery {
                 CapturePermissionRecoveryButton(
                     title: "Use on-device transcription",
-                    detail: "Quipsly used its cloud backup for this take. Turn on Speech Recognition once to keep future transcripts on this device when supported."
+                    detail: "Turn on Speech Recognition once, then return to Quipsly. This saved recording will retry automatically on this device before cloud backup starts."
                 )
                 .accessibilityIdentifier("CaptureLibrarySpeechPermissionRecovery_\(recording.id)")
             }
