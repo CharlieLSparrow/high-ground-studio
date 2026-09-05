@@ -7,8 +7,8 @@ export const QUIPSLY_TIMELINE_COLORS = Object.freeze({
   audio: "#455233",
   video: "#2d5356",
   importedAudio: "#895d28",
-  importedVideo: "#6e4f59",
-  watchedAudio: "#86636b",
-  watchedVideo: "#6e4f59",
+  importedVideo: "#704d4a",
+  watchedAudio: "#8b5d58",
+  watchedVideo: "#704d4a",
   marker: "#6e4724",
 });

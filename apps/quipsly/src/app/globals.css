@@ -56,17 +56,17 @@
   --color-quipsly-brass-900: #4d3222;
   --color-quipsly-brass-950: #2c190f;
 
-  --color-quipsly-inkberry-50: #f6f2ef;
-  --color-quipsly-inkberry-100: #ece2df;
-  --color-quipsly-inkberry-200: #d9c6c5;
-  --color-quipsly-inkberry-300: #bfa3a5;
-  --color-quipsly-inkberry-400: #a27f84;
-  --color-quipsly-inkberry-500: #86636b;
-  --color-quipsly-inkberry-600: #6e4f59;
-  --color-quipsly-inkberry-700: #59414a;
-  --color-quipsly-inkberry-800: #49373f;
-  --color-quipsly-inkberry-900: #3f3137;
-  --color-quipsly-inkberry-950: #241a1f;
+  --color-quipsly-inkberry-50: #f7f1ed;
+  --color-quipsly-inkberry-100: #ede1db;
+  --color-quipsly-inkberry-200: #dcc5bc;
+  --color-quipsly-inkberry-300: #c49b91;
+  --color-quipsly-inkberry-400: #a9776f;
+  --color-quipsly-inkberry-500: #8b5d58;
+  --color-quipsly-inkberry-600: #704d4a;
+  --color-quipsly-inkberry-700: #5c3f3e;
+  --color-quipsly-inkberry-800: #4a3434;
+  --color-quipsly-inkberry-900: #3d2c2c;
+  --color-quipsly-inkberry-950: #241818;
 
   --color-quipsly-rosewood-50: #f8f2ed;
   --color-quipsly-rosewood-100: #f0e4da;
@@ -91,6 +91,24 @@
   --color-quipsly-terracotta-800: #5e3229;
   --color-quipsly-terracotta-900: #502c26;
   --color-quipsly-terracotta-950: #2d1713;
+
+  /*
+   * Warm neutral material for utility-heavy surfaces. Slate, zinc, gray,
+   * neutral, and stone remain valid Tailwind vocabulary, but they should look
+   * like graphite on parchment and walnut in the dark—not like a second,
+   * blue-gray product living inside Quipsly.
+   */
+  --color-quipsly-walnut-50: #f8f4ec;
+  --color-quipsly-walnut-100: #efe8dc;
+  --color-quipsly-walnut-200: #ddd2c2;
+  --color-quipsly-walnut-300: #c4b6a3;
+  --color-quipsly-walnut-400: #a08e78;
+  --color-quipsly-walnut-500: #7f6d59;
+  --color-quipsly-walnut-600: #655443;
+  --color-quipsly-walnut-700: #504235;
+  --color-quipsly-walnut-800: #3a3028;
+  --color-quipsly-walnut-900: #2a211b;
+  --color-quipsly-walnut-950: #17110e;
 
   --color-violet-50: var(--color-quipsly-peacock-50);
   --color-violet-100: var(--color-quipsly-peacock-100);
@@ -296,28 +314,88 @@
   --color-red-900: var(--color-quipsly-rosewood-900);
   --color-red-950: var(--color-quipsly-rosewood-950);
 
+  --color-slate-50: var(--color-quipsly-walnut-50);
+  --color-slate-100: var(--color-quipsly-walnut-100);
+  --color-slate-200: var(--color-quipsly-walnut-200);
+  --color-slate-300: var(--color-quipsly-walnut-300);
+  --color-slate-400: var(--color-quipsly-walnut-400);
+  --color-slate-500: var(--color-quipsly-walnut-500);
+  --color-slate-600: var(--color-quipsly-walnut-600);
+  --color-slate-700: var(--color-quipsly-walnut-700);
+  --color-slate-800: var(--color-quipsly-walnut-800);
+  --color-slate-900: var(--color-quipsly-walnut-900);
+  --color-slate-950: var(--color-quipsly-walnut-950);
+
+  --color-gray-50: var(--color-quipsly-walnut-50);
+  --color-gray-100: var(--color-quipsly-walnut-100);
+  --color-gray-200: var(--color-quipsly-walnut-200);
+  --color-gray-300: var(--color-quipsly-walnut-300);
+  --color-gray-400: var(--color-quipsly-walnut-400);
+  --color-gray-500: var(--color-quipsly-walnut-500);
+  --color-gray-600: var(--color-quipsly-walnut-600);
+  --color-gray-700: var(--color-quipsly-walnut-700);
+  --color-gray-800: var(--color-quipsly-walnut-800);
+  --color-gray-900: var(--color-quipsly-walnut-900);
+  --color-gray-950: var(--color-quipsly-walnut-950);
+
+  --color-zinc-50: var(--color-quipsly-walnut-50);
+  --color-zinc-100: var(--color-quipsly-walnut-100);
+  --color-zinc-200: var(--color-quipsly-walnut-200);
+  --color-zinc-300: var(--color-quipsly-walnut-300);
+  --color-zinc-400: var(--color-quipsly-walnut-400);
+  --color-zinc-500: var(--color-quipsly-walnut-500);
+  --color-zinc-600: var(--color-quipsly-walnut-600);
+  --color-zinc-700: var(--color-quipsly-walnut-700);
+  --color-zinc-800: var(--color-quipsly-walnut-800);
+  --color-zinc-900: var(--color-quipsly-walnut-900);
+  --color-zinc-950: var(--color-quipsly-walnut-950);
+
+  --color-neutral-50: var(--color-quipsly-walnut-50);
+  --color-neutral-100: var(--color-quipsly-walnut-100);
+  --color-neutral-200: var(--color-quipsly-walnut-200);
+  --color-neutral-300: var(--color-quipsly-walnut-300);
+  --color-neutral-400: var(--color-quipsly-walnut-400);
+  --color-neutral-500: var(--color-quipsly-walnut-500);
+  --color-neutral-600: var(--color-quipsly-walnut-600);
+  --color-neutral-700: var(--color-quipsly-walnut-700);
+  --color-neutral-800: var(--color-quipsly-walnut-800);
+  --color-neutral-900: var(--color-quipsly-walnut-900);
+  --color-neutral-950: var(--color-quipsly-walnut-950);
+
+  --color-stone-50: var(--color-quipsly-walnut-50);
+  --color-stone-100: var(--color-quipsly-walnut-100);
+  --color-stone-200: var(--color-quipsly-walnut-200);
+  --color-stone-300: var(--color-quipsly-walnut-300);
+  --color-stone-400: var(--color-quipsly-walnut-400);
+  --color-stone-500: var(--color-quipsly-walnut-500);
+  --color-stone-600: var(--color-quipsly-walnut-600);
+  --color-stone-700: var(--color-quipsly-walnut-700);
+  --color-stone-800: var(--color-quipsly-walnut-800);
+  --color-stone-900: var(--color-quipsly-walnut-900);
+  --color-stone-950: var(--color-quipsly-walnut-950);
+
   --color-studio-ink: #f4f0e8;
-  --color-studio-muted: #afc5c0;
-  --color-studio-dim: #7fa09b;
-  --color-studio-bg: #001615;
-  --color-studio-panel: #032321;
-  --color-studio-panel-soft: #062d2a;
-  --color-studio-line: rgba(218, 246, 241, 0.14);
-  --color-studio-line-strong: rgba(218, 246, 241, 0.24);
+  --color-studio-muted: #c4b79f;
+  --color-studio-dim: #988a73;
+  --color-studio-bg: #17110e;
+  --color-studio-panel: #241a15;
+  --color-studio-panel-soft: #30231b;
+  --color-studio-line: rgba(240, 226, 199, 0.14);
+  --color-studio-line-strong: rgba(240, 226, 199, 0.25);
   --color-studio-tag: #aabe88;
   --color-studio-node: #dbb55c;
-  --color-studio-source: #8dbab7;
-  --color-studio-review: #bfa3a5;
+  --color-studio-source: #96b9b8;
+  --color-studio-review: #c49b91;
   --color-studio-danger: #cda292;
 
   --shadow-studio-panel: 0 18px 54px rgba(0, 0, 0, 0.24);
 
   /* Story Bible colors */
-  --color-void: #051014;
-  --color-void-light: #0A1A20;
+  --color-void: #17110e;
+  --color-void-light: #2a211b;
   --color-subject: #F5EFE6;
-  --color-flare: #FF7A18;
-  --color-flare-glow: #FF9A3D;
+  --color-flare: #c6963e;
+  --color-flare-glow: #dbb55c;
 }
 
 * {
@@ -332,7 +410,10 @@ html {
 body {
   min-height: 100vh;
   margin: 0;
-  background: radial-gradient(circle at 50% 0%, #0a1a18 0%, #030a09 40%, #020505 100%);
+  background:
+    radial-gradient(circle at 18% 0%, rgba(69, 82, 51, 0.2) 0%, transparent 34%),
+    radial-gradient(circle at 82% 2%, rgba(45, 83, 86, 0.18) 0%, transparent 30%),
+    linear-gradient(180deg, #2a211b 0%, #17110e 46%, #100c09 100%);
   background-attachment: fixed;
   color: var(--color-studio-ink);
   font-family: var(--font-inter), ui-sans-serif, system-ui, sans-serif;

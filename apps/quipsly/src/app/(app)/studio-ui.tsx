@@ -19,7 +19,7 @@ export const panelClassName =
   "min-w-0 rounded-xl border border-studio-line/40 bg-studio-panel/60 p-[18px] shadow-studio-panel backdrop-blur-xl transition-all duration-300";
 
 export const cardClassName =
-  "rounded-lg border border-studio-line/30 bg-black/25 backdrop-blur-md transition-all duration-300 hover:bg-black/35";
+  "rounded-lg border border-studio-line/30 bg-studio-panel-soft/55 backdrop-blur-md transition-all duration-300 hover:bg-studio-panel-soft/75";
 
 export const labelClassName =
   "m-0 text-[0.72rem] font-black uppercase leading-tight tracking-normal text-studio-dim";
@@ -51,7 +51,7 @@ export function StudioChip({
   return (
     <span
       className={cn(
-        "inline-flex min-h-7 max-w-full items-center rounded-lg border bg-black/20 px-2 py-[5px] text-[0.72rem] font-extrabold uppercase leading-tight tracking-normal",
+        "inline-flex min-h-7 max-w-full items-center rounded-lg border bg-studio-panel-soft/50 px-2 py-[5px] text-[0.72rem] font-extrabold uppercase leading-tight tracking-normal",
         chipToneClassName[tone],
         className,
       )}

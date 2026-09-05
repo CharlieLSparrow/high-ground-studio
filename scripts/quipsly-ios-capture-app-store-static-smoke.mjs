@@ -349,7 +349,7 @@ requireIncludes(capturePhoneShellText, "static let actionFill = adaptive(", "fil
 requireIncludes(capturePhoneShellText, "static let plumFill = adaptive(", "editor actions have an independent accessible inkberry token");
 requireIncludes(capturePhoneShellText, "static let accentUIColor = adaptiveUIColor(", "system-owned controls receive the same adaptive bookcloth accent");
 requireIncludes(capturePhoneShellText, "func captureProminentButton(fill:", "filled controls share one readable Quipsly action treatment");
-for (const family of ["peacock", "lake", "fern", "brass", "inkberry", "rosewood", "terracotta"]) {
+for (const family of ["peacock", "lake", "fern", "brass", "inkberry", "rosewood", "terracotta", "walnut"]) {
   for (const step of [50, 500, 950]) {
     requireIncludes(
       webGlobalsText,
@@ -366,6 +366,11 @@ for (const [legacyFamily, materialFamily] of [
   ["purple", "inkberry"],
   ["rose", "rosewood"],
   ["orange", "terracotta"],
+  ["slate", "walnut"],
+  ["gray", "walnut"],
+  ["zinc", "walnut"],
+  ["neutral", "walnut"],
+  ["stone", "walnut"],
 ]) {
   requireIncludes(
     webGlobalsText,
@@ -373,6 +378,7 @@ for (const [legacyFamily, materialFamily] of [
     `${legacyFamily} utilities resolve through the ${materialFamily} material`,
   );
 }
+requireIncludes(webGlobalsText, "--color-studio-bg: #17110e;", "heavy web tools use walnut rather than a near-black teal product theme");
 requireExcludes(webNestSignInGateText, "#ffc0c5", "the Session sign-in gate has no bubble-gum border escape hatch");
 requireExcludes(webNestSignInGateText, "#fff1f2", "the Session sign-in gate has no bubble-gum surface escape hatch");
 const captureSwiftSourceDirectory = path.join(
@@ -440,6 +446,7 @@ const mobileVoiceWritingServerText = read(files.mobileVoiceWritingServer);
 const webAppLayoutText = read(files.webAppLayout);
 const webProjectCreateActionText = read(files.webProjectCreateAction);
 const webSidebarText = read(files.webSidebar);
+requireIncludes(webSidebarText, "from-quipsly-peacock-700 to-quipsly-fern-700", "workspace navigation joins peacock bookcloth to fern instead of adding a brown feature brand");
 const webCaptureAppHandoffText = read(files.webCaptureAppHandoff);
 const webRecorderBottomBarText = read(files.webRecorderBottomBar);
 const appStoreTransactionRouteText = read(files.appStoreTransactionRoute);

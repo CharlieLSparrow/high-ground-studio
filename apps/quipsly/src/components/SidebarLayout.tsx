@@ -110,15 +110,15 @@ export function SidebarLayout({
   const isMoreActive = moreNavItems.some((item) => isNavItemActive(item, currentPath));
 
   return (
-    <div className="flex flex-col h-screen w-full bg-[#fdfaf6] overflow-hidden text-[#3d3122] font-sans">
+    <div className="flex h-screen w-full flex-col overflow-hidden bg-[#f3ead9] font-sans text-[#34271c]">
       {/* Sleek Top Header */}
-      <header className="h-[60px] shrink-0 border-b border-[#e8dcc4] px-4 md:px-6 flex items-center justify-between bg-[#fdfaf6]/90 backdrop-blur-md relative z-20">
+      <header className="relative z-20 flex h-[60px] shrink-0 items-center justify-between border-b border-[#deceb4] bg-[#f7efe2]/92 px-4 backdrop-blur-md md:px-6">
         <div className="flex items-center gap-8">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg flex items-center justify-center overflow-hidden mix-blend-multiply bg-[#f8f3e6]">
+            <div className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-lg bg-[#efe4d1] mix-blend-multiply">
               <img src="/quipsly-app-icon.png" alt="Quipsly Character" className="w-full h-full object-cover" />
             </div>
-            <span className="font-bold text-lg tracking-wide text-[#3d3122]">Quipsly</span>
+            <span className="text-lg font-bold tracking-wide text-[#34271c]">Quipsly</span>
           </div>
 
           <nav className="hidden md:flex items-center gap-1" aria-label="Primary workspace">
@@ -131,11 +131,11 @@ export function SidebarLayout({
                   className={cn(
                     "flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg transition-all text-sm font-semibold",
                     isActive
-                      ? "bg-[#8c6b4a] text-white shadow-sm"
-                      : "text-[#5e4b33] hover:text-[#3d3122] hover:bg-[#ebdcc8]"
+                      ? "bg-gradient-to-r from-quipsly-peacock-700 to-quipsly-fern-700 text-white shadow-sm"
+                      : "text-[#5e4b33] hover:bg-[#e7ddc9] hover:text-[#34271c]"
                   )}
                 >
-                  <item.icon className={cn("w-4 h-4", isActive ? "text-amber-100" : "text-[#8c6b4a]")} />
+                  <item.icon className={cn("h-4 w-4", isActive ? "text-quipsly-brass-100" : "text-quipsly-peacock-700")} />
                   {item.name}
                 </Link>
               );
@@ -145,20 +145,20 @@ export function SidebarLayout({
                 className={cn(
                   "flex cursor-pointer list-none items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm font-semibold transition-all",
                   isMoreActive
-                    ? "bg-[#8c6b4a] text-white shadow-sm"
-                    : "text-[#5e4b33] hover:bg-[#ebdcc8] hover:text-[#3d3122]",
+                    ? "bg-gradient-to-r from-quipsly-peacock-700 to-quipsly-fern-700 text-white shadow-sm"
+                    : "text-[#5e4b33] hover:bg-[#e7ddc9] hover:text-[#34271c]",
                 )}
               >
-                <MoreHorizontal className={cn("h-4 w-4", isMoreActive ? "text-amber-100" : "text-[#8c6b4a]")} />
+                <MoreHorizontal className={cn("h-4 w-4", isMoreActive ? "text-quipsly-brass-100" : "text-quipsly-peacock-700")} />
                 More
                 <ChevronDown className="h-3.5 w-3.5 transition group-open:rotate-180" />
               </summary>
-              <nav aria-label="More workspace tools" className="absolute left-0 top-11 z-50 grid w-64 gap-1 rounded-2xl border border-[#ead8ba] bg-white p-2 shadow-2xl shadow-amber-950/15">
+              <nav aria-label="More workspace tools" className="absolute left-0 top-11 z-50 grid w-64 gap-1 rounded-2xl border border-[#deceb4] bg-[#fffaf0] p-2 shadow-2xl shadow-amber-950/15">
                 {moreNavItems.map((item) => {
                   const isActive = isNavItemActive(item, currentPath);
                   return (
-                    <Link key={item.href} href={item.href} className={cn("flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-bold transition", isActive ? "bg-[#8c6b4a] text-white" : "text-[#5e4b33] hover:bg-[#fff8ec]")}>
-                      <item.icon className={cn("h-4 w-4", isActive ? "text-amber-100" : "text-[#8c6b4a]")} />
+                    <Link key={item.href} href={item.href} className={cn("flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-bold transition", isActive ? "bg-gradient-to-r from-quipsly-peacock-700 to-quipsly-fern-700 text-white" : "text-[#5e4b33] hover:bg-[#f2e8d6]")}>
+                      <item.icon className={cn("h-4 w-4", isActive ? "text-quipsly-brass-100" : "text-quipsly-peacock-700")} />
                       {item.name}
                     </Link>
                   );
@@ -171,21 +171,21 @@ export function SidebarLayout({
         <div className="flex items-center gap-3 md:gap-4">
           <a
             href="https://quipsly.com/support"
-            className="hidden rounded-full border border-[#e8dcc4] bg-white px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-[#8c6b4a] shadow-sm transition hover:border-amber-400/50 hover:bg-[#fff8ec] lg:inline-flex"
+            className="hidden rounded-full border border-[#deceb4] bg-[#fffaf0] px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-quipsly-peacock-700 shadow-sm transition hover:border-quipsly-brass-400/50 hover:bg-[#f2e8d6] lg:inline-flex"
           >
             Get support
           </a>
-          <Link href="/settings" className="relative p-2 rounded-full hover:bg-[#ebdcc8] text-[#8c6b4a] hover:text-[#3d3122] transition-colors hidden md:block" aria-label="Settings">
+          <Link href="/settings" className="relative hidden rounded-full p-2 text-quipsly-peacock-700 transition-colors hover:bg-[#e7ddc9] hover:text-[#34271c] md:block" aria-label="Settings">
             <Settings className="w-5 h-5" />
           </Link>
-          <Link href="/find" className="relative rounded-full p-2 text-[#8c6b4a] transition-colors hover:bg-[#ebdcc8] hover:text-[#3d3122]" aria-label="Search all Quipsly"><ScanSearch className="h-5 w-5" /></Link>
-          <Link href="/work?view=attention" className="relative rounded-full p-2 text-[#8c6b4a] transition-colors hover:bg-[#ebdcc8] hover:text-[#3d3122]" aria-label="Open attention queue"><BellRing className="h-5 w-5" /></Link>
+          <Link href="/find" className="relative rounded-full p-2 text-quipsly-peacock-700 transition-colors hover:bg-[#e7ddc9] hover:text-[#34271c]" aria-label="Search all Quipsly"><ScanSearch className="h-5 w-5" /></Link>
+          <Link href="/work?view=attention" className="relative rounded-full p-2 text-quipsly-peacock-700 transition-colors hover:bg-[#e7ddc9] hover:text-[#34271c]" aria-label="Open attention queue"><BellRing className="h-5 w-5" /></Link>
           <AccountSwitcher currentUser={currentUser} currentPath={currentPath} />
         </div>
       </header>
 
       {/* Main Content */}
-      <main className="flex-1 min-h-0 relative overflow-hidden bg-[#fdfaf6]">
+      <main className="relative min-h-0 flex-1 overflow-hidden bg-[#f3ead9]">
         {/* Soft sunlight glow background */}
         <div className="absolute top-0 left-0 w-full h-64 bg-amber-100/30 blur-[100px] pointer-events-none" />
 
@@ -195,7 +195,7 @@ export function SidebarLayout({
       </main>
 
       {/* Mobile Bottom Navigation */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-[#fdfaf6]/95 backdrop-blur-md border-t border-[#e8dcc4] pb-safe">
+      <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-[#deceb4] bg-[#f7efe2]/95 pb-safe backdrop-blur-md md:hidden">
         <div className="flex items-center justify-around h-16 px-2">
           {primaryNavItems.slice(0, 4).map((item) => {
             const isActive = isNavItemActive(item, currentPath);
@@ -206,26 +206,26 @@ export function SidebarLayout({
                 className={cn(
                   "flex flex-col items-center justify-center gap-1 w-full h-full rounded-lg transition-all text-[10px] font-semibold",
                   isActive
-                    ? "text-[#8c6b4a]"
-                    : "text-[#8c6b4a]/60 hover:text-[#8c6b4a] hover:bg-[#ebdcc8]/30"
+                    ? "text-quipsly-peacock-700"
+                    : "text-[#75634e] hover:bg-[#e7ddc9]/50 hover:text-quipsly-peacock-700"
                 )}
               >
-                <item.icon className={cn("w-5 h-5", isActive ? "text-[#8c6b4a]" : "text-[#8c6b4a]/60")} />
+                <item.icon className={cn("h-5 w-5", isActive ? "text-quipsly-peacock-700" : "text-[#75634e]")} />
                 {item.name}
               </Link>
             );
           })}
           <details className="group relative h-full w-full">
-            <summary className={cn("flex h-full w-full cursor-pointer list-none flex-col items-center justify-center gap-1 rounded-lg text-[10px] font-semibold transition", isMoreActive || isNavItemActive(primaryNavItems[4], currentPath) ? "text-[#8c6b4a]" : "text-[#8c6b4a]/60")}>
+            <summary className={cn("flex h-full w-full cursor-pointer list-none flex-col items-center justify-center gap-1 rounded-lg text-[10px] font-semibold transition", isMoreActive || isNavItemActive(primaryNavItems[4], currentPath) ? "text-quipsly-peacock-700" : "text-[#75634e]")}>
               <MoreHorizontal className="h-5 w-5" />
               More
             </summary>
-            <nav aria-label="More mobile tools" className="absolute bottom-[4.5rem] right-0 grid w-[min(92vw,320px)] grid-cols-2 gap-1 rounded-2xl border border-[#ead8ba] bg-white p-2 shadow-2xl shadow-amber-950/20">
+            <nav aria-label="More mobile tools" className="absolute bottom-[4.5rem] right-0 grid w-[min(92vw,320px)] grid-cols-2 gap-1 rounded-2xl border border-[#deceb4] bg-[#fffaf0] p-2 shadow-2xl shadow-amber-950/20">
               {[...primaryNavItems.slice(4), ...moreNavItems, { name: "Settings", href: "/settings", icon: Settings }].map((item) => {
                 const isActive = isNavItemActive(item, currentPath);
                 return (
-                  <Link key={item.href} href={item.href} className={cn("flex items-center gap-2 rounded-xl px-3 py-3 text-xs font-bold", isActive ? "bg-[#8c6b4a] text-white" : "text-[#5e4b33] hover:bg-[#fff8ec]")}>
-                    <item.icon className={cn("h-4 w-4", isActive ? "text-amber-100" : "text-[#8c6b4a]")} />
+                  <Link key={item.href} href={item.href} className={cn("flex items-center gap-2 rounded-xl px-3 py-3 text-xs font-bold", isActive ? "bg-gradient-to-r from-quipsly-peacock-700 to-quipsly-fern-700 text-white" : "text-[#5e4b33] hover:bg-[#f2e8d6]")}>
+                    <item.icon className={cn("h-4 w-4", isActive ? "text-quipsly-brass-100" : "text-quipsly-peacock-700")} />
                     {item.name}
                   </Link>
                 );
