@@ -849,6 +849,8 @@ for (const needle of [
   "OnDeviceTranscriptLedgerPolicy.acceptsCloudHandoff(",
   'recognitionExecution: "quipsly-cloud"',
   "OnDeviceTranscriptStore.saveSubmissionReceipt",
+  'status.uppercased() == "COMPLETED"',
+  "OnDeviceTranscriptBackgroundCoordinator.shared.schedule()",
 ]) {
   requireIncludes(
     onDeviceTranscriptManagerText,

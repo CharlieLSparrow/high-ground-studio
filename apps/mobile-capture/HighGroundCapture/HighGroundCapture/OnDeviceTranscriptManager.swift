@@ -1384,7 +1384,23 @@ final class OnDeviceTranscriptManager: ObservableObject {
             if currentPhase.isBusy { continue }
             if case .failed = currentPhase { continue }
             if case .attached = currentPhase { continue }
-            if case .cloudFallback = currentPhase { continue }
+            if case .cloudFallback(_, let status) = currentPhase {
+                if status.uppercased() == "COMPLETED",
+                   (try? OnDeviceTranscriptStore.load(for: recording.id)) == nil,
+                   let transcriptJobID = recording.cloudTranscriptFallbackJobId?
+                    .trimmingCharacters(in: .whitespacesAndNewlines),
+                   !transcriptJobID.isEmpty {
+                    materializeCompletedCloudTranscript(
+                        recording: recording,
+                        transcriptJobID: transcriptJobID
+                    )
+                    if activeTasks[recording.id] != nil {
+                        await waitForActiveTask(recordingID: recording.id)
+                        processed += 1
+                    }
+                }
+                continue
+            }
 
             if let stored = try? OnDeviceTranscriptStore.load(for: recording.id) {
                 if (try? OnDeviceTranscriptStore.loadSubmissionReceipt(
@@ -1455,7 +1471,10 @@ final class OnDeviceTranscriptManager: ObservableObject {
             let currentPhase = phase(for: recording.id)
             if case .failed = currentPhase { return false }
             if case .attached = currentPhase { return false }
-            if case .cloudFallback = currentPhase { return false }
+            if case .cloudFallback(_, let status) = currentPhase {
+                return status.uppercased() == "COMPLETED"
+                    && (try? OnDeviceTranscriptStore.load(for: recording.id)) == nil
+            }
             if case .modelDownloadRequired = currentPhase { return false }
             if let stored = try? OnDeviceTranscriptStore.load(for: recording.id) {
                 let receipt = try? OnDeviceTranscriptStore.loadSubmissionReceipt(
@@ -2150,11 +2169,13 @@ final class OnDeviceTranscriptManager: ObservableObject {
                     segmentCount: segments.count
                 )
             } catch {
-                if Task.isCancelled || error is CancellationError {
+                if Task.isCancelled || error is CancellationError
+                    || isRetryableDeliveryError(error) {
                     phases[recording.id] = .cloudFallback(
                         transcriptJobId: transcriptJobID,
                         status: "COMPLETED"
                     )
+                    OnDeviceTranscriptBackgroundCoordinator.shared.schedule()
                 } else {
                     phases[recording.id] = .failed(
                         message: "The transcript is ready in Nest, but this device could not save its editable copy yet: \(error.localizedDescription)",
