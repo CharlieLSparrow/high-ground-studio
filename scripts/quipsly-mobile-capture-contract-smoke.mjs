@@ -737,6 +737,7 @@ function checkMeetingSpineContractSources() {
       && capturePhoneShellText.includes("Joining the call never starts a recording. Recording starts only after everyone has allowed it and someone taps Record.")
       && capturePhoneShellText.includes("await model.createSession()")
       && capturePhoneShellText.includes('accessibilityIdentifier("CaptureOpenNextSessionButton")')
+      && capturePhoneShellText.includes('Label("Open session", systemImage: "arrow.right.circle.fill")')
       && capturePhoneShellText.includes("TabView(selection: $visibleTab)")
       && capturePhoneShellText.includes("@Binding var visibleTab: CaptureRootTab")
       && capturePhoneShellText.includes("visibleTab = .record")

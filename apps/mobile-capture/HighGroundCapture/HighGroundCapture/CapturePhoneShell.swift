@@ -18050,7 +18050,7 @@ private struct NextCaptureCard: View {
             }
 
             Button(action: onOpen) {
-                Label(session.entryPrimaryActionLabel, systemImage: "arrow.right.circle.fill")
+                Label("Open session", systemImage: "arrow.right.circle.fill")
                     .font(.headline)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 4)

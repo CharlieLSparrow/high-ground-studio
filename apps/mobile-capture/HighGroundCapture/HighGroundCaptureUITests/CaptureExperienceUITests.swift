@@ -489,15 +489,15 @@ final class CaptureExperienceUITests: XCTestCase {
             "Starting or scheduling a session must remain ahead of passive continuation content on Home."
         )
 
-        let joinSession = app.buttons["CaptureOpenNextSessionButton"]
+        let openSession = app.buttons["CaptureOpenNextSessionButton"]
         XCTAssertEqual(
-            joinSession.label,
-            "Join session",
-            "A ready appointment should lead with the familiar call action, not production terminology."
+            openSession.label,
+            "Open session",
+            "Home should open the Session lobby without implying that tapping the card joins the call."
         )
         XCTAssertTrue(app.staticTexts["Ready to join"].exists)
         XCTAssertFalse(app.staticTexts["Ready to record"].exists)
-        joinSession.tap()
+        openSession.tap()
         openLocalRecorderIfNeeded()
         XCTAssertTrue(app.otherElements["CaptureRecorderHero"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.descendants(matching: .any)["CaptureRecordingModePicker"].exists)
