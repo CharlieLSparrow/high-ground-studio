@@ -213,12 +213,12 @@ export function buildQuipslySessionEntryReadiness(
     };
   } else if (!input.actorAudioConsentGranted) {
     stage = "confirm-consent";
-    label = "One quick choice";
-    detail = "Choose what Quipsly may record and whether it may create a transcript.";
+    label = "Allow recording?";
+    detail = "You can join either way. Your choice is remembered for this Session.";
     primaryAction = {
       id: "confirm-consent",
-      label: "Review and continue",
-      detail: "Your choice is saved for this Session and is not requested again unless you change it.",
+      label: "Allow recording",
+      detail: "Nothing starts until the host presses Record.",
     };
   } else if (canJoinCall) {
     stage = "join-call";

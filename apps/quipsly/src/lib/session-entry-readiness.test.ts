@@ -82,6 +82,11 @@ describe("canonical Session entry readiness", () => {
     });
 
     expect(readiness.stage).toBe("confirm-consent");
+    expect(readiness.primaryAction).toEqual({
+      id: "confirm-consent",
+      label: "Allow recording",
+      detail: "Nothing starts until the host presses Record.",
+    });
     expect(readiness.permissions.canJoinCall).toBe(true);
     expect(readiness.permissions.canStartAudioRecording).toBe(false);
     expect(readiness.assurances.savedSessionConsentIsReused).toBe(true);

@@ -62,7 +62,11 @@ describe("live Session entry readiness", () => {
     global.fetch = fetchMock as typeof fetch;
 
     render(<SessionEntryReadinessLive roomId="room-1" initial={initial} />);
-    expect(screen.getByText("One quick choice")).toBeInTheDocument();
+    expect(screen.getByText("Allow recording?")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Allow recording" })).toHaveAttribute(
+      "href",
+      "#my-session-consent-heading",
+    );
 
     await act(async () => {
       jest.advanceTimersByTime(6_000);

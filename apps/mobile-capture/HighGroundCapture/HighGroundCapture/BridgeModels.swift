@@ -1317,7 +1317,7 @@ struct MobileCaptureSession: Codable, Identifiable, Hashable {
     var entryReadinessLabel: String {
         let value = entryReadiness?.label.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         guard value.isEmpty else { return value }
-        if !hasCurrentRecordingConsent { return "One quick choice" }
+        if !hasCurrentRecordingConsent { return "Allow recording?" }
         if providerCanJoin == true { return "Ready to join" }
         return captureReadinessLabel
     }
@@ -1326,7 +1326,7 @@ struct MobileCaptureSession: Codable, Identifiable, Hashable {
         let value = entryReadiness?.detail.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         guard value.isEmpty else { return value }
         if !hasCurrentRecordingConsent {
-            return "Choose what Quipsly may record, then continue."
+            return "You can join either way. Your choice is remembered for this Session."
         }
         if providerCanJoin == true {
             return "Join when you're ready. Recording starts only after you tap Record."
@@ -1337,7 +1337,7 @@ struct MobileCaptureSession: Codable, Identifiable, Hashable {
     var entryPrimaryActionLabel: String {
         let value = entryReadiness?.primaryAction.label.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         guard value.isEmpty else { return value }
-        if !hasCurrentRecordingConsent { return "Review and continue" }
+        if !hasCurrentRecordingConsent { return "Allow recording" }
         if providerCanJoin == true { return "Join session" }
         return canRecordNow ? "Open recorder" : "Prepare session"
     }
