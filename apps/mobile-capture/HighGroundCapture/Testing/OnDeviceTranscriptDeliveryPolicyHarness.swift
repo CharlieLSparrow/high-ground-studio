@@ -100,6 +100,43 @@ struct OnDeviceTranscriptDeliveryPolicyHarness {
                 sourceDurationSeconds: 24 * 60 * 60
             ) == 21_600
         )
+        let shortWindows = OnDeviceTranscriptDeliveryPolicy
+            .compatibleRecognitionWindows(sourceDurationSeconds: 54)
+        precondition(shortWindows == [OnDeviceTranscriptRecognitionWindow(
+            sourceStartSeconds: 0,
+            sourceEndSeconds: 54,
+            extractionStartSeconds: 0,
+            extractionEndSeconds: 54
+        )])
+        let longWindows = OnDeviceTranscriptDeliveryPolicy
+            .compatibleRecognitionWindows(sourceDurationSeconds: 130)
+        precondition(longWindows == [
+            OnDeviceTranscriptRecognitionWindow(
+                sourceStartSeconds: 0,
+                sourceEndSeconds: 50,
+                extractionStartSeconds: 0,
+                extractionEndSeconds: 50
+            ),
+            OnDeviceTranscriptRecognitionWindow(
+                sourceStartSeconds: 50,
+                sourceEndSeconds: 100,
+                extractionStartSeconds: 49.25,
+                extractionEndSeconds: 100
+            ),
+            OnDeviceTranscriptRecognitionWindow(
+                sourceStartSeconds: 100,
+                sourceEndSeconds: 130,
+                extractionStartSeconds: 99.25,
+                extractionEndSeconds: 130
+            ),
+        ])
+        precondition(longWindows[1].owns(relativeStartSeconds: 0.5, relativeEndSeconds: 1.5))
+        precondition(!longWindows[1].owns(relativeStartSeconds: 0, relativeEndSeconds: 0.5))
+        precondition(
+            OnDeviceTranscriptDeliveryPolicy
+                .compatibleRecognitionWindows(sourceDurationSeconds: .infinity)
+                .isEmpty
+        )
         print("PASS On-device transcript delivery retry policy")
     }
 }

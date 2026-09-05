@@ -1,5 +1,30 @@
 import Foundation
 
+struct OnDeviceTranscriptRecognitionWindow: Equatable, Sendable {
+    let sourceStartSeconds: Double
+    let sourceEndSeconds: Double
+    let extractionStartSeconds: Double
+    let extractionEndSeconds: Double
+
+    var extractionDurationSeconds: Double {
+        max(0, extractionEndSeconds - extractionStartSeconds)
+    }
+
+    /// The overlap belongs to exactly one source window. Midpoint ownership
+    /// keeps a word or phrase that straddles the seam while preventing the
+    /// same recognized phrase from appearing twice in the assembled transcript.
+    func owns(relativeStartSeconds: Double, relativeEndSeconds: Double) -> Bool {
+        guard relativeStartSeconds.isFinite,
+              relativeEndSeconds.isFinite,
+              relativeStartSeconds >= 0,
+              relativeEndSeconds > relativeStartSeconds else { return false }
+        let midpoint = extractionStartSeconds
+            + ((relativeStartSeconds + relativeEndSeconds) / 2)
+        return midpoint >= sourceStartSeconds
+            && midpoint < sourceEndSeconds
+    }
+}
+
 /// Decides whether attaching a durable local transcript should be retried
 /// automatically. Only temporary transport and service-capacity failures are
 /// eligible; account, permission, validation, and ownership failures remain
@@ -79,5 +104,42 @@ enum OnDeviceTranscriptDeliveryPolicy {
             maximumBudget,
             max(minimumBudget, (duration * 1.5) + finalizationAllowance)
         )
+    }
+
+    /// SFSpeechRecognizer documents a one-minute request limit. The modern
+    /// SpeechTranscriber path does not use these windows; they exist only for
+    /// older OS versions and the compatibility fallback. Fifty-second owned
+    /// windows leave headroom for the framework limit, while 750 ms of prior
+    /// context lets recognition recover words that cross a seam.
+    static func compatibleRecognitionWindows(
+        sourceDurationSeconds: Double
+    ) -> [OnDeviceTranscriptRecognitionWindow] {
+        guard sourceDurationSeconds.isFinite,
+              sourceDurationSeconds > 0 else { return [] }
+        let directRequestLimitSeconds = 55.0
+        if sourceDurationSeconds <= directRequestLimitSeconds {
+            return [OnDeviceTranscriptRecognitionWindow(
+                sourceStartSeconds: 0,
+                sourceEndSeconds: sourceDurationSeconds,
+                extractionStartSeconds: 0,
+                extractionEndSeconds: sourceDurationSeconds
+            )]
+        }
+
+        let ownedWindowSeconds = 50.0
+        let priorContextSeconds = 0.75
+        var result: [OnDeviceTranscriptRecognitionWindow] = []
+        var sourceStart = 0.0
+        while sourceStart < sourceDurationSeconds {
+            let sourceEnd = min(sourceDurationSeconds, sourceStart + ownedWindowSeconds)
+            result.append(OnDeviceTranscriptRecognitionWindow(
+                sourceStartSeconds: sourceStart,
+                sourceEndSeconds: sourceEnd,
+                extractionStartSeconds: max(0, sourceStart - priorContextSeconds),
+                extractionEndSeconds: sourceEnd
+            ))
+            sourceStart = sourceEnd
+        }
+        return result
     }
 }

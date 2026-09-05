@@ -806,24 +806,99 @@ private enum AppleCompatibleTranscriptEngine {
             throw OnDeviceTranscriptFailure.unsupportedLocale
         }
 
+        let usesOnDeviceRecognition = recognizer.supportsOnDeviceRecognition
+        let asset = AVURLAsset(url: fileURL)
+        let duration = try await asset.load(.duration).seconds
+        let windows = OnDeviceTranscriptDeliveryPolicy.compatibleRecognitionWindows(
+            sourceDurationSeconds: duration
+        )
+        guard !windows.isEmpty else {
+            throw OnDeviceTranscriptFailure.sourceHasNoAudio
+        }
+
+        let startedAt = Date()
+        var segments: [OnDeviceTranscriptSegment] = []
+        for window in windows {
+            try Task.checkCancellation()
+            let remainingDeadline = recognitionDeadlineSeconds
+                - Date().timeIntervalSince(startedAt)
+            guard remainingDeadline > 0 else {
+                throw OnDeviceTranscriptFailure.recognitionTimedOut
+            }
+
+            let usesWholeSource = windows.count == 1
+                && window.extractionStartSeconds == 0
+                && abs(window.extractionEndSeconds - duration) < 0.001
+            let recognitionURL = usesWholeSource
+                ? fileURL
+                : try await exportAudioWindow(asset: asset, window: window)
+            defer {
+                if recognitionURL != fileURL {
+                    try? FileManager.default.removeItem(at: recognitionURL)
+                }
+            }
+            do {
+                segments.append(contentsOf: try await recognize(
+                    fileURL: recognitionURL,
+                    recognizer: recognizer,
+                    contextualPhrases: contextualPhrases,
+                    usesOnDeviceRecognition: usesOnDeviceRecognition,
+                    window: window,
+                    deadlineSeconds: remainingDeadline
+                ))
+            } catch OnDeviceTranscriptFailure.noFinalizedSpeech {
+                // A quiet compatibility window is not a failed hour-long
+                // transcript. Continue and reject only if the complete source
+                // produces no finalized speech at all.
+                continue
+            }
+        }
+        guard !segments.isEmpty else {
+            throw OnDeviceTranscriptFailure.noFinalizedSpeech
+        }
+
+        return Result(
+            segments: segments.sorted {
+                if $0.startSeconds == $1.startSeconds { return $0.endSeconds < $1.endSeconds }
+                return $0.startSeconds < $1.startSeconds
+            },
+            recognitionExecution: usesOnDeviceRecognition ? "on-device" : "apple-speech-service",
+            language: recognizer.locale.identifier,
+            transcriber: "SFSpeechRecognizer",
+            preset: usesOnDeviceRecognition
+                ? "url-final-time-indexed-on-device-windowed-v2"
+                : "url-final-time-indexed-apple-service-windowed-v2"
+        )
+    }
+
+    private static func recognize(
+        fileURL: URL,
+        recognizer: SFSpeechRecognizer,
+        contextualPhrases: [String],
+        usesOnDeviceRecognition: Bool,
+        window: OnDeviceTranscriptRecognitionWindow,
+        deadlineSeconds: Double
+    ) async throws -> [OnDeviceTranscriptSegment] {
         let request = SFSpeechURLRecognitionRequest(url: fileURL)
         request.shouldReportPartialResults = false
         request.contextualStrings = Array(contextualPhrases.prefix(100))
         if #available(iOS 16.0, *) {
             request.addsPunctuation = true
         }
-        let usesOnDeviceRecognition = recognizer.supportsOnDeviceRecognition
         if usesOnDeviceRecognition {
             request.requiresOnDeviceRecognition = true
         }
 
         let taskBox = LegacySpeechTaskBox()
-        let segments = try await withCheckedThrowingContinuation {
+        return try await withCheckedThrowingContinuation {
             (continuation: CheckedContinuation<[OnDeviceTranscriptSegment], Error>) in
             let gate = LegacySpeechContinuationGate(continuation)
             let recognitionTask = recognizer.recognitionTask(with: request) { result, error in
                 if let result, result.isFinal {
-                    let segments = phraseSegments(from: result.bestTranscription.segments)
+                    let segments = phraseSegments(
+                        from: result.bestTranscription.segments,
+                        window: window
+                    )
                     guard !segments.isEmpty else {
                         gate.resume(throwing: OnDeviceTranscriptFailure.noFinalizedSpeech)
                         return
@@ -834,22 +909,74 @@ private enum AppleCompatibleTranscriptEngine {
                 }
             }
             taskBox.store(recognitionTask)
-            Task {
-                try? await Task.sleep(for: .seconds(recognitionDeadlineSeconds))
+            let timeoutTask = Task {
+                do {
+                    try await Task.sleep(for: .seconds(deadlineSeconds))
+                } catch {
+                    return
+                }
+                guard !Task.isCancelled else { return }
                 taskBox.cancel()
                 gate.resume(throwing: OnDeviceTranscriptFailure.recognitionTimedOut)
             }
+            gate.storeTimeout(timeoutTask)
         }
+    }
 
-        return Result(
-            segments: segments,
-            recognitionExecution: usesOnDeviceRecognition ? "on-device" : "apple-speech-service",
-            language: recognizer.locale.identifier,
-            transcriber: "SFSpeechRecognizer",
-            preset: usesOnDeviceRecognition
-                ? "url-final-time-indexed-on-device-v1"
-                : "url-final-time-indexed-apple-service-v1"
+    private static func exportAudioWindow(
+        asset: AVURLAsset,
+        window: OnDeviceTranscriptRecognitionWindow
+    ) async throws -> URL {
+        let outputURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("quipsly-speech-window-\(UUID().uuidString.lowercased())")
+            .appendingPathExtension("m4a")
+        guard let export = AVAssetExportSession(
+            asset: asset,
+            presetName: AVAssetExportPresetAppleM4A
+        ) else {
+            throw OnDeviceTranscriptFailure.sourceHasNoAudio
+        }
+        export.outputURL = outputURL
+        export.outputFileType = .m4a
+        export.timeRange = CMTimeRange(
+            start: CMTime(
+                seconds: window.extractionStartSeconds,
+                preferredTimescale: 600
+            ),
+            duration: CMTime(
+                seconds: window.extractionDurationSeconds,
+                preferredTimescale: 600
+            )
         )
+        let exportBox = OnDeviceTranscriptExportSessionBox(export)
+        do {
+            try await withCheckedThrowingContinuation {
+                (continuation: CheckedContinuation<Void, Error>) in
+                export.exportAsynchronously {
+                    switch exportBox.value.status {
+                    case .completed:
+                        continuation.resume()
+                    case .failed, .cancelled:
+                        continuation.resume(
+                            throwing: exportBox.value.error
+                                ?? OnDeviceTranscriptFailure.sourceHasNoAudio
+                        )
+                    default:
+                        continuation.resume(
+                            throwing: OnDeviceTranscriptFailure.sourceHasNoAudio
+                        )
+                    }
+                }
+            }
+            try FileManager.default.setAttributes(
+                [.protectionKey: FileProtectionType.complete],
+                ofItemAtPath: outputURL.path
+            )
+            return outputURL
+        } catch {
+            try? FileManager.default.removeItem(at: outputURL)
+            throw error
+        }
     }
 
     private static func speechAuthorization() async -> SFSpeechRecognizerAuthorizationStatus {
@@ -863,7 +990,8 @@ private enum AppleCompatibleTranscriptEngine {
     }
 
     private static func phraseSegments(
-        from words: [SFTranscriptionSegment]
+        from words: [SFTranscriptionSegment],
+        window: OnDeviceTranscriptRecognitionWindow
     ) -> [OnDeviceTranscriptSegment] {
         var output: [OnDeviceTranscriptSegment] = []
         var phraseWords: [String] = []
@@ -889,9 +1017,15 @@ private enum AppleCompatibleTranscriptEngine {
             guard !text.isEmpty,
                   word.timestamp.isFinite,
                   word.duration.isFinite,
-                  word.timestamp >= 0 else { continue }
-            phraseStart = phraseStart ?? word.timestamp
-            phraseEnd = max(phraseEnd, word.timestamp + max(word.duration, 0.01))
+                  word.timestamp >= 0,
+                  window.owns(
+                    relativeStartSeconds: word.timestamp,
+                    relativeEndSeconds: word.timestamp + max(word.duration, 0.01)
+                  ) else { continue }
+            let sourceStart = window.extractionStartSeconds + word.timestamp
+            let sourceEnd = sourceStart + max(word.duration, 0.01)
+            phraseStart = phraseStart ?? sourceStart
+            phraseEnd = max(phraseEnd, sourceEnd)
             phraseWords.append(text)
             let endsSentence = text.last.map { ".!?".contains($0) } == true
             let phraseDuration = phraseEnd - (phraseStart ?? phraseEnd)
@@ -926,9 +1060,21 @@ private final class LegacySpeechTaskBox: @unchecked Sendable {
 private final class LegacySpeechContinuationGate: @unchecked Sendable {
     private let lock = NSLock()
     private var continuation: CheckedContinuation<[OnDeviceTranscriptSegment], Error>?
+    private var timeoutTask: Task<Void, Never>?
 
     init(_ continuation: CheckedContinuation<[OnDeviceTranscriptSegment], Error>) {
         self.continuation = continuation
+    }
+
+    func storeTimeout(_ task: Task<Void, Never>) {
+        lock.lock()
+        if continuation == nil {
+            lock.unlock()
+            task.cancel()
+            return
+        }
+        timeoutTask = task
+        lock.unlock()
     }
 
     func resume(returning value: [OnDeviceTranscriptSegment]) {
@@ -941,9 +1087,12 @@ private final class LegacySpeechContinuationGate: @unchecked Sendable {
 
     private func take() -> CheckedContinuation<[OnDeviceTranscriptSegment], Error>? {
         lock.lock()
-        defer { lock.unlock() }
         let value = continuation
         continuation = nil
+        let timeoutTask = self.timeoutTask
+        self.timeoutTask = nil
+        lock.unlock()
+        timeoutTask?.cancel()
         return value
     }
 }

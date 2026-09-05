@@ -751,10 +751,14 @@ function checkMeetingSpineContractSources() {
   );
   expect(
     onDeviceTranscriptText.includes("recognitionDeadlineSeconds: Double")
-      && onDeviceTranscriptText.includes("Task.sleep(for: .seconds(recognitionDeadlineSeconds))")
+      && onDeviceTranscriptText.includes("Task.sleep(for: .seconds(deadlineSeconds))")
+      && onDeviceTranscriptText.includes("compatibleRecognitionWindows(")
+      && onDeviceTranscriptText.includes("url-final-time-indexed-on-device-windowed-v2")
+      && onDeviceTranscriptText.includes("window.owns(")
+      && onDeviceTranscriptText.includes("gate.storeTimeout(timeoutTask)")
       && !onDeviceTranscriptText.includes("Task.sleep(for: .seconds(45))"),
     "nativeLongFormTranscriptFallbackUsesSourceDeadline",
-    "Every Apple speech path uses the source-duration deadline instead of cancelling long coaching transcription after a fixed short timeout.",
+    "Legacy Apple speech stays below its request limit with overlap-owned source windows, preserves original time, and uses one cancellable source-duration deadline instead of killing long coaching transcription after a fixed timeout.",
   );
   expect(
     sessionsRouteText.includes("coachingEngagements: coachingEngagements.map")
