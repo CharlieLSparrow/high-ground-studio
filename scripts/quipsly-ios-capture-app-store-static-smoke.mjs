@@ -2016,6 +2016,19 @@ for (const needle of [
   );
 }
 for (const needle of [
+  "private func decodeMobileCaptureResponse<Payload: Decodable>(",
+  "Quipsly could not refresh Today. Your saved work is unchanged; try again.",
+  "Quipsly could not load this Nest. Your saved workspace is unchanged; try again.",
+  "Quipsly could not confirm this note update. Your device draft is safe and will retry.",
+  "Quipsly could not load account deletion status. Try again.",
+]) {
+  requireIncludes(
+    bridgeText,
+    needle,
+    "core mobile work surfaces recover safely from auth, gateway, and malformed responses",
+  );
+}
+for (const needle of [
   "Your saved notes and recording are unchanged; try again.",
   "Its device copy is protected and will retry automatically.",
   "Your edit is saved on this device and will retry automatically.",

@@ -29,6 +29,22 @@ func normalizedNestAPIBaseURL(_ value: String) -> String {
     "\(normalizedNestBaseURL(value))/api"
 }
 
+private func decodeMobileCaptureResponse<Payload: Decodable>(
+    _ type: Payload.Type,
+    from data: Data,
+    response: URLResponse,
+    errorDomain: String,
+    malformedResponseMessage: String
+) throws -> Payload {
+    try AuthResponseDecoder.decode(
+        type,
+        from: data,
+        response: response,
+        errorDomain: errorDomain,
+        malformedResponseMessage: malformedResponseMessage
+    ).payload
+}
+
 struct RecorderCommand: Codable {
     let action: ActionType
     let projectSlug: String?
@@ -4578,7 +4594,13 @@ final class AccountDeletionClient: ObservableObject {
             var request = URLRequest(url: url)
             request.httpMethod = "GET"
             let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
-            let payload = try JSONDecoder().decode(AccountDeletionRequestResponse.self, from: data)
+            let payload = try decodeMobileCaptureResponse(
+                AccountDeletionRequestResponse.self,
+                from: data,
+                response: response,
+                errorDomain: "QuipslyCapture.AccountDeletion",
+                malformedResponseMessage: "Quipsly could not load account deletion status. Try again."
+            )
 
             guard response.statusCode < 400, payload.ok else {
                 throw NSError(
@@ -4620,7 +4642,13 @@ final class AccountDeletionClient: ObservableObject {
             ])
 
             let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
-            let payload = try JSONDecoder().decode(AccountDeletionRequestResponse.self, from: data)
+            let payload = try decodeMobileCaptureResponse(
+                AccountDeletionRequestResponse.self,
+                from: data,
+                response: response,
+                errorDomain: "QuipslyCapture.AccountDeletion",
+                malformedResponseMessage: "Quipsly could not confirm the deletion request. Nothing changed; try again."
+            )
 
             guard response.statusCode < 400, payload.ok else {
                 throw NSError(
@@ -5070,7 +5098,13 @@ final class CaptureTodayClient: ObservableObject {
             var request = URLRequest(url: url)
             request.httpMethod = "GET"
             let (data, response) = try await AuthManager.shared.authenticatedData(for: request, allowOfflineRecovery: true)
-            let payload = try JSONDecoder().decode(MobileCaptureTodayResponse.self, from: data)
+            let payload = try decodeMobileCaptureResponse(
+                MobileCaptureTodayResponse.self,
+                from: data,
+                response: response,
+                errorDomain: "QuipslyCapture.Today",
+                malformedResponseMessage: "Quipsly could not refresh Today. Your saved work is unchanged; try again."
+            )
             guard response.statusCode < 400, payload.ok else {
                 throw NSError(domain: "CaptureToday", code: response.statusCode, userInfo: [NSLocalizedDescriptionKey: payload.error ?? "Today work could not be loaded."])
             }
@@ -6561,7 +6595,13 @@ final class CaptureCalendarSubscriptionClient: ObservableObject {
             var request = URLRequest(url: url)
             request.cachePolicy = .reloadIgnoringLocalCacheData
             let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
-            let payload = try JSONDecoder().decode(MobileCalendarFeedListResponse.self, from: data)
+            let payload = try decodeMobileCaptureResponse(
+                MobileCalendarFeedListResponse.self,
+                from: data,
+                response: response,
+                errorDomain: "QuipslyCapture.CalendarSubscriptions",
+                malformedResponseMessage: "Quipsly could not refresh calendar subscriptions. Existing connections are unchanged; try again."
+            )
             guard response.statusCode < 400, payload.ok else {
                 throw NSError(
                     domain: "CaptureCalendarSubscriptions",
@@ -6585,9 +6625,12 @@ final class CaptureCalendarSubscriptionClient: ObservableObject {
             var request = URLRequest(url: url)
             request.cachePolicy = .reloadIgnoringLocalCacheData
             let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
-            let payload = try JSONDecoder().decode(
+            let payload = try decodeMobileCaptureResponse(
                 MobileGoogleCalendarSummaryResponse.self,
-                from: data
+                from: data,
+                response: response,
+                errorDomain: "QuipslyCapture.GoogleCalendar",
+                malformedResponseMessage: "Quipsly could not refresh Google Calendar status. Existing calendar choices are unchanged; try again."
             )
             guard response.statusCode < 400, payload.ok else {
                 throw NSError(
@@ -6846,7 +6889,13 @@ final class CaptureWorkspaceSearchClient: ObservableObject {
             request.cachePolicy = .reloadIgnoringLocalCacheData
             request.setValue("application/json", forHTTPHeaderField: "Accept")
             let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
-            let payload = try JSONDecoder().decode(MobileCaptureSearchResponse.self, from: data)
+            let payload = try decodeMobileCaptureResponse(
+                MobileCaptureSearchResponse.self,
+                from: data,
+                response: response,
+                errorDomain: "QuipslyCapture.WorkspaceSearch",
+                malformedResponseMessage: "Quipsly could not read the Nest search response. Try again."
+            )
             guard requestGeneration == generation else { return }
             guard AuthManager.shared.matchesStableOwnerSnapshot(ownerSnapshot) else {
                 clear()
@@ -7487,7 +7536,13 @@ final class CaptureWorkClient: ObservableObject {
             var request = URLRequest(url: url)
             request.httpMethod = "GET"
             let (data, response) = try await AuthManager.shared.authenticatedData(for: request, allowOfflineRecovery: true)
-            let payload = try JSONDecoder().decode(MobileCaptureWorkResponse.self, from: data)
+            let payload = try decodeMobileCaptureResponse(
+                MobileCaptureWorkResponse.self,
+                from: data,
+                response: response,
+                errorDomain: "QuipslyCapture.Work",
+                malformedResponseMessage: "Quipsly could not load this Nest. Your saved workspace is unchanged; try again."
+            )
             if restoredProtectedSelection,
                response.statusCode == 403 || response.statusCode == 404 {
                 // A removed grant must not strand the app on—or continue
@@ -7582,9 +7637,12 @@ final class CaptureWorkClient: ObservableObject {
                 MobileCaptureWorkNoteEditRequest(edit: edit)
             )
             let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
-            let payload = try JSONDecoder().decode(
+            let payload = try decodeMobileCaptureResponse(
                 MobileCaptureWorkNoteEditResponse.self,
-                from: data
+                from: data,
+                response: response,
+                errorDomain: "QuipslyCapture.Work",
+                malformedResponseMessage: "Quipsly could not confirm this note update. Your device draft is safe and will retry."
             )
             if response.statusCode >= 500
                 || response.statusCode == 408
