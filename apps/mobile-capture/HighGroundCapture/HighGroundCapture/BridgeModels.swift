@@ -8741,7 +8741,12 @@ final class CaptureSessionClient: ObservableObject {
             request.setValue("application/json", forHTTPHeaderField: "Accept")
 
             let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
-            let payload = try JSONDecoder().decode(MobileCaptureSessionContextResponse.self, from: data)
+            let payload = try decodeCaptureSessionResponse(
+                MobileCaptureSessionContextResponse.self,
+                from: data,
+                response: response,
+                malformedResponseMessage: "Nest could not load this Session workspace. Your saved notes and recording are unchanged; try again."
+            )
 
             guard response.statusCode < 400, payload.ok else {
                 throw NSError(
@@ -8783,7 +8788,12 @@ final class CaptureSessionClient: ObservableObject {
             )
 
             let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
-            let payload = try JSONDecoder().decode(MobileCaptureSessionContextResponse.self, from: data)
+            let payload = try decodeCaptureSessionResponse(
+                MobileCaptureSessionContextResponse.self,
+                from: data,
+                response: response,
+                malformedResponseMessage: "Nest could not confirm this Session workspace update. Your device copy is preserved; try again."
+            )
 
             if response.statusCode == 409,
                payload.conflict == true,
@@ -8824,7 +8834,12 @@ final class CaptureSessionClient: ObservableObject {
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
             request.httpBody = try JSONEncoder().encode(MobileQuickEntrySaveRequest(entry: entry))
             let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
-            let payload = try JSONDecoder().decode(MobileQuickEntrySaveResponse.self, from: data)
+            let payload = try decodeCaptureSessionResponse(
+                MobileQuickEntrySaveResponse.self,
+                from: data,
+                response: response,
+                malformedResponseMessage: "Nest could not confirm this saved item. Its device copy is protected and will retry automatically."
+            )
 
             if response.statusCode >= 500 || response.statusCode == 408 || response.statusCode == 429 {
                 return .retryable(message: payload.error ?? "Nest is temporarily unavailable. Your device copy will retry.")
@@ -8869,7 +8884,12 @@ final class CaptureSessionClient: ObservableObject {
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
             request.httpBody = try JSONEncoder().encode(MobileSessionNoteEditRequest(edit: edit))
             let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
-            let payload = try JSONDecoder().decode(MobileSessionNoteEditResponse.self, from: data)
+            let payload = try decodeCaptureSessionResponse(
+                MobileSessionNoteEditResponse.self,
+                from: data,
+                response: response,
+                malformedResponseMessage: "Nest could not confirm this note update. Your edit is saved on this device and will retry automatically."
+            )
             if response.statusCode >= 500 || response.statusCode == 408 || response.statusCode == 429 {
                 return .retryable(
                     message: payload.error ?? "Nest is temporarily unavailable. This note is saved and will retry."
@@ -8951,7 +8971,12 @@ final class CaptureSessionClient: ObservableObject {
             request.httpBody = try JSONSerialization.data(withJSONObject: requestBody)
 
             let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
-            let payload = try JSONDecoder().decode(MobileProviderRecordingResponse.self, from: data)
+            let payload = try decodeCaptureSessionResponse(
+                MobileProviderRecordingResponse.self,
+                from: data,
+                response: response,
+                malformedResponseMessage: "Nest could not confirm the provider recording status. Participant-owned recordings are unchanged; try again."
+            )
 
             guard response.statusCode < 400, payload.ok else {
                 throw NSError(
@@ -9024,7 +9049,12 @@ final class CaptureSessionClient: ObservableObject {
             request.httpBody = try JSONSerialization.data(withJSONObject: requestBody)
 
             let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
-            let payload = try JSONDecoder().decode(MobileCaptureRecordingPromotionResponse.self, from: data)
+            let payload = try decodeCaptureSessionResponse(
+                MobileCaptureRecordingPromotionResponse.self,
+                from: data,
+                response: response,
+                malformedResponseMessage: "Nest could not confirm the media attachment. The exact recording remains safe in Library; try again."
+            )
 
             guard response.statusCode < 400, payload.ok else {
                 throw NSError(
@@ -9080,7 +9110,12 @@ final class CaptureSessionClient: ObservableObject {
             request.httpBody = try JSONSerialization.data(withJSONObject: requestBody)
 
             let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
-            let payload = try JSONDecoder().decode(MobileCaptureTranscriptRunResponse.self, from: data)
+            let payload = try decodeCaptureSessionResponse(
+                MobileCaptureTranscriptRunResponse.self,
+                from: data,
+                response: response,
+                malformedResponseMessage: "Nest could not confirm the transcript request. The recording is unchanged; try again."
+            )
 
             guard response.statusCode < 400, payload.ok else {
                 throw NSError(
@@ -9132,7 +9167,12 @@ final class CaptureSessionClient: ObservableObject {
             ])
 
             let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
-            let payload = try JSONDecoder().decode(MobileCapturePacketBuildResponse.self, from: data)
+            let payload = try decodeCaptureSessionResponse(
+                MobileCapturePacketBuildResponse.self,
+                from: data,
+                response: response,
+                malformedResponseMessage: "Nest could not confirm the Session follow-through update. The transcript and existing work are unchanged; try again."
+            )
 
             guard response.statusCode < 400, payload.ok else {
                 throw NSError(
@@ -9181,7 +9221,12 @@ final class CaptureSessionClient: ObservableObject {
                 "clientRequestId": Self.clientFollowUpOpenRequestID(outputID: followUp.id),
             ])
             let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
-            let payload = try JSONDecoder().decode(MobileCaptureClientFollowUpMutationResponse.self, from: data)
+            let payload = try decodeCaptureSessionResponse(
+                MobileCaptureClientFollowUpMutationResponse.self,
+                from: data,
+                response: response,
+                malformedResponseMessage: "Nest could not confirm that this follow-through was opened. Its contents are unchanged; try again."
+            )
             guard response.statusCode < 400, payload.ok else {
                 throw NSError(
                     domain: "CaptureSessions",
@@ -9235,7 +9280,12 @@ final class CaptureSessionClient: ObservableObject {
                 "clientRequestId": Self.clientFollowUpExportRequestID(output: output),
             ])
             let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
-            let payload = try JSONDecoder().decode(MobileCaptureClientFollowUpMutationResponse.self, from: data)
+            let payload = try decodeCaptureSessionResponse(
+                MobileCaptureClientFollowUpMutationResponse.self,
+                from: data,
+                response: response,
+                malformedResponseMessage: "Nest could not confirm this follow-through export. The in-app copy remains available; try again."
+            )
             guard response.statusCode < 400, payload.ok else {
                 throw NSError(
                     domain: "CaptureSessions",
@@ -9319,7 +9369,12 @@ final class CaptureSessionClient: ObservableObject {
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
             request.httpBody = try JSONSerialization.data(withJSONObject: body)
             let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
-            let payload = try JSONDecoder().decode(MobileCaptureClientFollowUpMutationResponse.self, from: data)
+            let payload = try decodeCaptureSessionResponse(
+                MobileCaptureClientFollowUpMutationResponse.self,
+                from: data,
+                response: response,
+                malformedResponseMessage: "Nest could not confirm this follow-through edit. Your current draft is preserved; try again."
+            )
             guard response.statusCode < 400, payload.ok else {
                 throw NSError(
                     domain: "CaptureSessions",
@@ -9392,7 +9447,12 @@ final class CaptureSessionClient: ObservableObject {
                 ),
             ])
             let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
-            let payload = try JSONDecoder().decode(MobileCaptureClientFollowUpMutationResponse.self, from: data)
+            let payload = try decodeCaptureSessionResponse(
+                MobileCaptureClientFollowUpMutationResponse.self,
+                from: data,
+                response: response,
+                malformedResponseMessage: "Nest could not confirm client sharing. Nothing new was shared; try again."
+            )
             guard response.statusCode < 400, payload.ok else {
                 throw NSError(
                     domain: "CaptureSessions",
@@ -9434,7 +9494,12 @@ final class CaptureSessionClient: ObservableObject {
             request.httpMethod = "GET"
             request.setValue("application/json", forHTTPHeaderField: "Accept")
             let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
-            let payload = try JSONDecoder().decode(MobileCaptureClientFollowUpReadResponse.self, from: data)
+            let payload = try decodeCaptureSessionResponse(
+                MobileCaptureClientFollowUpReadResponse.self,
+                from: data,
+                response: response,
+                malformedResponseMessage: "Nest could not load this client follow-through. Existing Session work is unchanged; try again."
+            )
             if response.statusCode == 404 {
                 guard let currentIndex = sessions.firstIndex(where: { $0.id == sessionID }) else { return }
                 var refreshedSession = sessions[currentIndex]
@@ -9575,7 +9640,12 @@ final class CaptureSessionClient: ObservableObject {
             request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
             let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
-            let payload = try JSONDecoder().decode(MobileCapturePacketBuildResponse.self, from: data)
+            let payload = try decodeCaptureSessionResponse(
+                MobileCapturePacketBuildResponse.self,
+                from: data,
+                response: response,
+                malformedResponseMessage: "Nest could not confirm this transcript correction state. The correction itself is unchanged; try again."
+            )
 
             guard response.statusCode < 400, payload.ok else {
                 throw NSError(

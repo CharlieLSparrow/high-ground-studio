@@ -2016,6 +2016,20 @@ for (const needle of [
   );
 }
 for (const needle of [
+  "Your saved notes and recording are unchanged; try again.",
+  "Its device copy is protected and will retry automatically.",
+  "Your edit is saved on this device and will retry automatically.",
+  "The exact recording remains safe in Library; try again.",
+  "The recording is unchanged; try again.",
+  "Nothing new was shared; try again.",
+]) {
+  requireIncludes(
+    bridgeText,
+    needle,
+    "Session work, recording, transcription, and sharing failures preserve recoverable user state",
+  );
+}
+for (const needle of [
   "localPersonalVoiceNoteSessions",
   "return localPersonalVoiceNoteSessions",
   "sessionClient.sessions.filter",
