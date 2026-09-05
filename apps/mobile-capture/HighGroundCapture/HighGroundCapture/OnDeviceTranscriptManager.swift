@@ -349,6 +349,7 @@ enum OnDeviceTranscriptFailure: LocalizedError {
     case sourceChanged
     case sourceHasNoAudio
     case noFinalizedSpeech
+    case recognitionTimedOut
     case accountUnavailable
     case accountChanged
     case localStorageUnavailable
@@ -375,6 +376,8 @@ enum OnDeviceTranscriptFailure: LocalizedError {
             return "This recording has no readable audio track to transcribe."
         case .noFinalizedSpeech:
             return "Apple Speech returned no finalized speech. The source remains unchanged; try again or use cloud transcription later."
+        case .recognitionTimedOut:
+            return "Apple Speech took too long to finish. The original recording is safe and Quipsly can try another transcription engine."
         case .accountUnavailable:
             return "Sign in online with the recording's owning Quipsly account before attaching its transcript."
         case .accountChanged:
@@ -416,6 +419,8 @@ private extension OnDeviceTranscriptFailure {
             "local-source-changed-after-upload"
         case .noFinalizedSpeech:
             "apple-speech-no-finalized-text"
+        case .recognitionTimedOut:
+            "apple-speech-timeout"
         case .localStorageUnavailable:
             "local-transcript-storage-unavailable"
         case .modelDownloadRequired, .sourceHasNoAudio, .accountUnavailable,
@@ -436,6 +441,82 @@ private enum OnDeviceTranscriptAttemptStage {
 
     var allowsUnknownCloudFallback: Bool {
         self == .recognizingSpeech
+    }
+}
+
+private enum OnDeviceTranscriptDeadline {
+    static func run<Value: Sendable>(
+        seconds: Double,
+        operation: @escaping @Sendable () async throws -> Value
+    ) async throws -> Value {
+        try await withCheckedThrowingContinuation { continuation in
+            let gate = TranscriptDeadlineGate(continuation)
+            let operationTask = Task {
+                do {
+                    gate.resume(returning: try await operation())
+                } catch {
+                    gate.resume(throwing: error)
+                }
+            }
+            gate.store(operationTask)
+            Task {
+                try? await Task.sleep(for: .seconds(seconds))
+                gate.timeout()
+            }
+        }
+    }
+}
+
+/// SpeechAnalyzer has been observed on physical iPadOS to ignore task-group
+/// cancellation while awaiting its result stream. A deadline must therefore
+/// release the caller without structurally waiting for that OS task to finish.
+/// The abandoned task is still cancelled and cannot publish through this
+/// single-resume gate if it eventually wakes up.
+private final class TranscriptDeadlineGate<Value: Sendable>: @unchecked Sendable {
+    private let lock = NSLock()
+    private var continuation: CheckedContinuation<Value, Error>?
+    private var operationTask: Task<Void, Never>?
+
+    init(_ continuation: CheckedContinuation<Value, Error>) {
+        self.continuation = continuation
+    }
+
+    func store(_ task: Task<Void, Never>) {
+        lock.lock()
+        if continuation == nil {
+            lock.unlock()
+            task.cancel()
+            return
+        }
+        operationTask = task
+        lock.unlock()
+    }
+
+    func resume(returning value: Value) {
+        take(cancelOperation: false)?.resume(returning: value)
+    }
+
+    func resume(throwing error: Error) {
+        take(cancelOperation: false)?.resume(throwing: error)
+    }
+
+    func timeout() {
+        take(cancelOperation: true)?.resume(
+            throwing: OnDeviceTranscriptFailure.recognitionTimedOut
+        )
+    }
+
+    private func take(
+        cancelOperation: Bool
+    ) -> CheckedContinuation<Value, Error>? {
+        lock.lock()
+        let continuation = self.continuation
+        self.continuation = nil
+        let operationTask = self.operationTask
+        self.operationTask = nil
+        lock.unlock()
+        if cancelOperation { operationTask?.cancel() }
+        return continuation
     }
 }
 
@@ -730,10 +811,11 @@ private enum AppleCompatibleTranscriptEngine {
             request.requiresOnDeviceRecognition = true
         }
 
+        let taskBox = LegacySpeechTaskBox()
         let segments = try await withCheckedThrowingContinuation {
             (continuation: CheckedContinuation<[OnDeviceTranscriptSegment], Error>) in
             let gate = LegacySpeechContinuationGate(continuation)
-            recognizer.recognitionTask(with: request) { result, error in
+            let recognitionTask = recognizer.recognitionTask(with: request) { result, error in
                 if let result, result.isFinal {
                     let segments = phraseSegments(from: result.bestTranscription.segments)
                     guard !segments.isEmpty else {
@@ -744,6 +826,12 @@ private enum AppleCompatibleTranscriptEngine {
                 } else if let error {
                     gate.resume(throwing: error)
                 }
+            }
+            taskBox.store(recognitionTask)
+            Task {
+                try? await Task.sleep(for: .seconds(45))
+                taskBox.cancel()
+                gate.resume(throwing: OnDeviceTranscriptFailure.recognitionTimedOut)
             }
         }
 
@@ -807,6 +895,25 @@ private enum AppleCompatibleTranscriptEngine {
         }
         flush()
         return output
+    }
+}
+
+private final class LegacySpeechTaskBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var task: SFSpeechRecognitionTask?
+
+    func store(_ task: SFSpeechRecognitionTask) {
+        lock.lock()
+        self.task = task
+        lock.unlock()
+    }
+
+    func cancel() {
+        lock.lock()
+        let task = self.task
+        self.task = nil
+        lock.unlock()
+        task?.cancel()
     }
 }
 
@@ -1277,16 +1384,20 @@ final class OnDeviceTranscriptManager: ObservableObject {
             if #available(iOS 26.0, *) {
                 if recognitionProfile == .speechAdaptation {
                     do {
-                        let prepared = try await AppleSpeechAdaptedTranscriptEngine.prepare(
-                            locale: locale,
-                            allowModelDownload: allowModelDownload
-                        )
-                        segments = try await AppleSpeechAdaptedTranscriptEngine.transcribe(
-                            fileURL: preparedAudio.url,
-                            prepared: prepared,
-                            contextualPhrases: contextualPhrases
-                        )
-                        language = prepared.locale.identifier
+                        let adapted = try await OnDeviceTranscriptDeadline.run(seconds: 30) {
+                            let prepared = try await AppleSpeechAdaptedTranscriptEngine.prepare(
+                                locale: locale,
+                                allowModelDownload: allowModelDownload
+                            )
+                            let segments = try await AppleSpeechAdaptedTranscriptEngine.transcribe(
+                                fileURL: preparedAudio.url,
+                                prepared: prepared,
+                                contextualPhrases: contextualPhrases
+                            )
+                            return (segments, prepared.locale.identifier)
+                        }
+                        segments = adapted.0
+                        language = adapted.1
                         recognitionExecution = "on-device"
                         transcriber = "DictationTranscriber"
                         preset = "atypical-speech-final-time-indexed-v1"
@@ -1461,51 +1572,71 @@ final class OnDeviceTranscriptManager: ObservableObject {
         modelAssetStatus: String
     ) {
         do {
-            let prepared = try await AppleOnDeviceTranscriptEngine.prepare(
-                locale: locale,
-                allowModelDownload: allowModelDownload
-            )
-            return (
-                try await AppleOnDeviceTranscriptEngine.transcribe(
+            let native = try await OnDeviceTranscriptDeadline.run(seconds: 30) {
+                let prepared = try await AppleOnDeviceTranscriptEngine.prepare(
+                    locale: locale,
+                    allowModelDownload: allowModelDownload
+                )
+                let segments = try await AppleOnDeviceTranscriptEngine.transcribe(
                     fileURL: fileURL,
                     prepared: prepared,
                     contextualPhrases: contextualPhrases
-                ),
-                prepared.locale.identifier,
+                )
+                return (segments, prepared.locale.identifier)
+            }
+            return (
+                native.0,
+                native.1,
                 "on-device",
                 "SpeechTranscriber",
                 "custom-final-time-indexed-v1",
                 "installed"
             )
-        } catch OnDeviceTranscriptFailure.unavailable {
-            let result = try await AppleCompatibleTranscriptEngine.transcribe(
-                fileURL: fileURL,
-                locale: locale,
-                contextualPhrases: contextualPhrases
-            )
-            return (
-                result.segments,
-                result.language,
-                result.recognitionExecution,
-                result.transcriber,
-                result.preset,
-                result.recognitionExecution == "on-device" ? "built-in" : "apple-service"
-            )
-        } catch OnDeviceTranscriptFailure.unsupportedLocale {
-            let result = try await AppleCompatibleTranscriptEngine.transcribe(
-                fileURL: fileURL,
-                locale: locale,
-                contextualPhrases: contextualPhrases
-            )
-            return (
-                result.segments,
-                result.language,
-                result.recognitionExecution,
-                result.transcriber,
-                result.preset,
-                result.recognitionExecution == "on-device" ? "built-in" : "apple-service"
-            )
+        } catch let failure as OnDeviceTranscriptFailure {
+            switch failure {
+            case .unavailable, .unsupportedLocale, .modelDownloadRequired,
+                 .modelInstallFailed, .noFinalizedSpeech, .recognitionTimedOut:
+                // SpeechAnalyzer is the preferred long-form engine, but its
+                // model lifecycle and finalized-result behavior must not turn
+                // a healthy saved recording into a dead end. Apple's mature
+                // URL recognizer provides a second source-bound attempt before
+                // Quipsly considers paid cloud ASR.
+                return try await compatibleTranscriptResult(
+                    fileURL: fileURL,
+                    locale: locale,
+                    contextualPhrases: contextualPhrases
+                )
+            default:
+                throw failure
+            }
         }
+    }
+
+    private func compatibleTranscriptResult(
+        fileURL: URL,
+        locale: Locale,
+        contextualPhrases: [String]
+    ) async throws -> (
+        segments: [OnDeviceTranscriptSegment],
+        language: String,
+        recognitionExecution: String,
+        transcriber: String,
+        preset: String,
+        modelAssetStatus: String
+    ) {
+        let result = try await AppleCompatibleTranscriptEngine.transcribe(
+            fileURL: fileURL,
+            locale: locale,
+            contextualPhrases: contextualPhrases
+        )
+        return (
+            result.segments,
+            result.language,
+            result.recognitionExecution,
+            result.transcriber,
+            result.preset,
+            result.recognitionExecution == "on-device" ? "built-in" : "apple-service"
+        )
     }
 
     private func submitCloudFallback(recording: LocalRecording) async {

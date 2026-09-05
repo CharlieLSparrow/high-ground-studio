@@ -12296,6 +12296,7 @@ private struct CaptureRecorderView: View {
             timeoutSeconds: 120
         )
         let transcriptState = physicalVoiceWritingTranscriptState(recordingID: recordingID)
+        let transcriptDetail = physicalVoiceWritingTranscriptDetail(recordingID: recordingID)
         PhysicalVoiceWritingAcceptanceReceiptStore.write(
             attemptID: acceptanceAttemptID,
             phase: .finished,
@@ -12314,7 +12315,7 @@ private struct CaptureRecorderView: View {
             transcriptRecognitionExecution: transcript?.recognitionExecution,
             sourceProfile: savedRecording.sourceProfile,
             saved: true,
-            detail: audioCapture.lastErrorMessage
+            detail: transcriptDetail ?? audioCapture.lastErrorMessage
         )
         print(
             "QUIPSLY_PHYSICAL_VOICE_WRITING_ACCEPTANCE transcript state=\(transcriptState) segments=\(transcript?.segments.count ?? 0) execution=\(transcript?.recognitionExecution ?? "none")"
@@ -12330,6 +12331,14 @@ private struct CaptureRecorderView: View {
                 for: recordingID
             ) {
                 return transcript
+            }
+            switch OnDeviceTranscriptManager.shared.phase(for: recordingID) {
+            case .failed, .modelDownloadRequired, .cloudFallback, .attached:
+                return OnDeviceTranscriptManager.shared.storedTranscript(
+                    for: recordingID
+                )
+            default:
+                break
             }
             do {
                 try await Task.sleep(for: .seconds(1))
@@ -12354,6 +12363,15 @@ private struct CaptureRecorderView: View {
         case .requestingCloudFallback: "requesting-cloud-fallback"
         case .cloudFallback: "cloud-fallback"
         case .failed: "failed"
+        }
+    }
+
+    private func physicalVoiceWritingTranscriptDetail(recordingID: UUID) -> String? {
+        switch OnDeviceTranscriptManager.shared.phase(for: recordingID) {
+        case .failed(let message, _): message
+        case .modelDownloadRequired(let locale):
+            "Apple's \(locale) speech model is not ready on this device."
+        default: nil
         }
     }
     #endif
