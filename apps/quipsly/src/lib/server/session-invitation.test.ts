@@ -151,4 +151,101 @@ describe("Session invitation token policy", () => {
     }));
     expect(findParticipant).toHaveBeenCalledWith({ where: { id: "participant-1" } });
   });
+
+  it("turns a matching fresh-user invitation into active participant access in one transaction", async () => {
+    const { token, tokenHash } = createSessionInvitationToken();
+    const claimed = jest.fn().mockResolvedValue({ count: 1 });
+    const findParticipant = jest.fn().mockResolvedValue(null);
+    const createParticipant = jest.fn().mockResolvedValue({
+      id: "participant-new",
+      userId: "user-new",
+      role: "CLIENT",
+      accessStatus: "ACTIVE",
+    });
+    const attachParticipant = jest.fn().mockResolvedValue({ id: "invite-new" });
+    const transaction = jest.fn(async (operation: (tx: unknown) => unknown) => operation({
+      callRoomInvitation: {
+        updateMany: claimed,
+        update: attachParticipant,
+      },
+      callParticipant: {
+        findFirst: findParticipant,
+        create: createParticipant,
+      },
+    }));
+    const createProductEvent = jest.fn().mockResolvedValue({ id: "event-1" });
+    jest.mocked(getPrismaClient).mockReturnValue({
+      callRoomInvitation: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "invite-new",
+          roomId: "room-new",
+          email: "new.client@example.test",
+          displayName: null,
+          role: "CLIENT",
+          status: "PENDING",
+          tokenHash,
+          acceptedTokenHash: null,
+          acceptedByUserId: null,
+          participantId: null,
+          revokedAt: null,
+          expiresAt: new Date(Date.now() + 60_000),
+          room: {
+            id: "room-new",
+            title: "First coaching Session",
+            purpose: "COACHING",
+            status: "PLANNED",
+          },
+        }),
+      },
+      $transaction: transaction,
+      userEvent: { create: createProductEvent },
+    } as never);
+
+    await expect(acceptSessionInvitation({
+      token,
+      actor: {
+        id: "user-new",
+        email: "NEW.CLIENT@example.test",
+        name: "New Client",
+      },
+    })).resolves.toEqual({
+      roomId: "room-new",
+      roomTitle: "First coaching Session",
+      purpose: "COACHING",
+      participantId: "participant-new",
+      participantRole: "CLIENT",
+      participantCreated: true,
+    });
+    expect(claimed).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ tokenHash, status: "PENDING" }),
+      data: expect.objectContaining({
+        status: "ACCEPTED",
+        acceptedTokenHash: tokenHash,
+        tokenHash: null,
+        acceptedByUserId: "user-new",
+      }),
+    }));
+    expect(createParticipant).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        roomId: "room-new",
+        userId: "user-new",
+        email: "new.client@example.test",
+        role: "CLIENT",
+      }),
+    });
+    expect(attachParticipant).toHaveBeenCalledWith({
+      where: { id: "invite-new" },
+      data: { participantId: "participant-new", participantCreated: true },
+    });
+    expect(transaction).toHaveBeenCalledWith(
+      expect.any(Function),
+      expect.objectContaining({ isolationLevel: "Serializable" }),
+    );
+    expect(createProductEvent).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        userId: "user-new",
+        eventName: "Product: invitation_accepted",
+      }),
+    }));
+  });
 });

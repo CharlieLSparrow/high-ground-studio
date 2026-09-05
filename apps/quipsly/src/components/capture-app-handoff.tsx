@@ -22,9 +22,19 @@ type EntryChoiceMetrics = {
   TESTFLIGHT: number;
 };
 
-function prefersCaptureOnThisDevice() {
+function captureDeviceOnThisBrowser(): "iPhone" | "iPad" | null {
   const userAgent = window.navigator.userAgent;
-  return /iPhone|iPod/i.test(userAgent);
+  if (/iPhone|iPod/i.test(userAgent)) return "iPhone";
+  // iPadOS requests desktop-class sites by default and consequently reports a
+  // Macintosh user agent. Touch capability is the stable discriminator from
+  // an actual Mac, where the browser should remain the conventional default.
+  if (
+    /iPad/i.test(userAgent)
+    || (/Macintosh/i.test(userAgent) && window.navigator.maxTouchPoints > 1)
+  ) {
+    return "iPad";
+  }
+  return null;
 }
 
 export function CaptureAppHandoff({
@@ -46,7 +56,7 @@ export function CaptureAppHandoff({
   const [metrics, setMetrics] = useState<EntryChoiceMetrics | null>(null);
   const [step, setStep] = useState<"choose" | "preferred">("choose");
   const [preferredEntry, setPreferredEntry] = useState<"BROWSER" | "CAPTURE_APP" | null>(null);
-  const [captureRecommended, setCaptureRecommended] = useState(false);
+  const [captureDevice, setCaptureDevice] = useState<"iPhone" | "iPad" | null>(null);
   const [captureFallbackActive, setCaptureFallbackActive] = useState(captureOpenFallback);
   const [interactive, setInteractive] = useState(false);
   const continueInBrowserRef = useRef(onContinueInBrowser);
@@ -97,7 +107,7 @@ export function CaptureAppHandoff({
   }
 
   useEffect(() => {
-    setCaptureRecommended(prefersCaptureOnThisDevice());
+    setCaptureDevice(captureDeviceOnThisBrowser());
     const saved = window.localStorage.getItem(SESSION_ENTRY_PREFERENCE_KEY);
     if (captureOpenFallback) {
       window.localStorage.removeItem(SESSION_ENTRY_PREFERENCE_KEY);
@@ -179,7 +189,7 @@ export function CaptureAppHandoff({
             {sessionTitle || "Choose where to join"}
           </h2>
           <p className="mt-1 text-sm font-semibold leading-5 text-[#765f40] sm:mt-2 sm:leading-6">
-            {captureRecommended
+            {captureDevice
               ? "Open Quipsly Capture or continue in this browser."
               : "Continue here or use Quipsly Capture on iPhone or iPad."}
           </p>
@@ -245,7 +255,7 @@ export function CaptureAppHandoff({
                 <span className="mt-0.5 block text-xs font-semibold leading-5 text-[#765f40]">
                   {preferredEntry === "BROWSER"
                     ? "Your call lobby opens automatically."
-                    : "Open this Session on your iPhone."}
+                    : "Open this Session in Quipsly Capture."}
                 </span>
               </span>
             </div>
@@ -282,10 +292,10 @@ export function CaptureAppHandoff({
         ) : step === "choose" ? (
           <div aria-label="Choose a device for this Session">
             <p className="px-1 text-[10px] font-black uppercase tracking-[0.18em] text-[#765f40]">
-              {captureRecommended ? "Recommended on this iPhone" : "Recommended on this device"}
+              {captureDevice ? `Recommended on this ${captureDevice}` : "Recommended on this device"}
             </p>
             <div className="mt-2 space-y-2 sm:mt-3">
-              {captureRecommended ? (
+              {captureDevice ? (
                 <>
                   <a
                     href={captureURL}

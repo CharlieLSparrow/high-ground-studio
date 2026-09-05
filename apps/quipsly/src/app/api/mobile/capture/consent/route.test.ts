@@ -3,12 +3,14 @@
 import { getPrismaClient } from "@/lib/prisma";
 import {
   MOBILE_CAPTURE_CONSENT_EVIDENCE_VERSION,
+  MOBILE_CAPTURE_CONSENT_PRESENTATION_SURFACES,
   MOBILE_CAPTURE_CONSENT_POLICY_VERSION,
+  MOBILE_CAPTURE_CONSENT_TEXT,
   MOBILE_CAPTURE_CONSENT_TEXT_SHA256,
   isSupportedMobileCaptureConsentPresentationSurface,
 } from "@/lib/server/mobile-capture-consent-readiness.js";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
-import { GET } from "./route";
+import { GET, POST } from "./route";
 
 jest.mock("@/lib/prisma", () => ({ getPrismaClient: jest.fn() }));
 jest.mock("@/lib/server/quipsly-session", () => ({ getQuipslySessionFromRequest: jest.fn() }));
@@ -43,10 +45,7 @@ describe("capture consent readback", () => {
       version: MOBILE_CAPTURE_CONSENT_POLICY_VERSION,
       sha256: MOBILE_CAPTURE_CONSENT_TEXT_SHA256,
       surface: "quipsly-capture-consent-v2",
-      supportedSurfaces: [
-        "quipsly-capture-consent-v2",
-        "quipsly-session-workspace-consent-v1",
-      ],
+      supportedSurfaces: MOBILE_CAPTURE_CONSENT_PRESENTATION_SURFACES,
     });
     expect(findFirst).not.toHaveBeenCalled();
   });
@@ -131,5 +130,148 @@ describe("capture consent readback", () => {
     findFirst.mockResolvedValue(null);
     const response = await GET(new Request("http://localhost/api/mobile/capture/consent?callRoomId=private-room"));
     expect(response.status).toBe(404);
+  });
+
+  test("saves a fresh invited client's one-tap recording choices and reports everyone ready", async () => {
+    const consentCreatedAt = new Date();
+    const hostParticipant = {
+      id: "participant-host",
+      userId: "user-host",
+      role: "COACH",
+      accessStatus: "ACTIVE",
+    };
+    const clientParticipant = {
+      id: "participant-1",
+      userId: "user-1",
+      role: "CLIENT",
+      accessStatus: "ACTIVE",
+    };
+    const hostConsent = {
+      id: "consent-host",
+      roomId: "room-1",
+      participantId: hostParticipant.id,
+      userId: hostParticipant.userId,
+      status: "GRANTED",
+      policyVersion: MOBILE_CAPTURE_CONSENT_POLICY_VERSION,
+      canRecordAudio: true,
+      canRecordVideo: false,
+      canTranscribe: true,
+      consentedAt: consentCreatedAt,
+      declinedAt: null,
+      revokedAt: null,
+      updatedAt: consentCreatedAt,
+      metadataJson: {
+        consentTextHash: MOBILE_CAPTURE_CONSENT_TEXT_SHA256,
+        consentEvidenceVersion: MOBILE_CAPTURE_CONSENT_EVIDENCE_VERSION,
+        recordingChoiceExplicit: true,
+        transcriptionChoiceExplicit: true,
+        allAudibleParticipantsNotifiedAndAgreed: true,
+        presentationEvidence: {
+          surface: "quipsly-capture-consent-v2",
+          version: 1,
+        },
+      },
+    };
+    const room = {
+      id: "room-1",
+      title: "First client Session",
+      purpose: "COACHING",
+      status: "OPEN",
+      provider: "livekit",
+      providerRoomId: "room-1",
+      createdByUserId: "user-host",
+      booking: null,
+      participants: [hostParticipant, clientParticipant],
+      recordingConsents: [hostConsent],
+    };
+    const consentCreate = jest.fn(async ({ data }: { data: Record<string, unknown> }) => ({
+      id: "consent-client",
+      updatedAt: consentCreatedAt,
+      ...data,
+    }));
+    const transaction = jest.fn(async (operation: (tx: unknown) => unknown) => operation({
+      recordingConsent: { create: consentCreate },
+    }));
+    findFirst
+      .mockResolvedValueOnce(room)
+      .mockResolvedValueOnce(null);
+    mockedPrisma.mockReturnValue({
+      callRoom: { findFirst },
+      recordingConsent: { findFirst: jest.fn().mockResolvedValue(null) },
+      $transaction: transaction,
+    } as never);
+
+    const response = await POST(new Request(
+      "http://localhost/api/mobile/capture/consent",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          callRoomId: "room-1",
+          consentAction: "GRANT",
+          canRecordAudio: true,
+          canRecordVideo: false,
+          canTranscribe: true,
+          allAudibleParticipantsNotifiedAndAgreed: true,
+          consentPolicyVersion: MOBILE_CAPTURE_CONSENT_POLICY_VERSION,
+          consentText: MOBILE_CAPTURE_CONSENT_TEXT,
+          consentTextHash: MOBILE_CAPTURE_CONSENT_TEXT_SHA256,
+          clientKind: "web",
+          deviceLabel: "Quipsly Web · MacIntel",
+          presentationEvidence: {
+            version: 1,
+            surface: "quipsly-capture-consent-v2",
+            presentedAt: new Date().toISOString(),
+            recordingChoicePresented: true,
+            transcriptionChoicePresented: true,
+            audibleParticipantAttestationPresented: true,
+          },
+        }),
+      },
+    ));
+    const packet = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(packet).toMatchObject({
+      ok: true,
+      session: {
+        participantId: clientParticipant.id,
+        recordingConsentId: "consent-client",
+        recordingConsentCanRecordAudio: true,
+        recordingConsentCanRecordVideo: false,
+        recordingConsentCanTranscribe: true,
+        consentRequiredParticipantCount: 2,
+        consentGrantedParticipantCount: 2,
+        allRegisteredParticipantConsentGranted: true,
+        transcriptionConsentGrantedParticipantCount: 2,
+        allRegisteredParticipantTranscriptionConsentGranted: true,
+        canControlRoom: false,
+      },
+      effects: {
+        appOwnedConsentMutated: true,
+        recordingStarted: false,
+        providerJoined: false,
+        externalMutated: false,
+      },
+    });
+    expect(consentCreate).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        participantId: clientParticipant.id,
+        userId: "user-1",
+        status: "GRANTED",
+        canRecordAudio: true,
+        canRecordVideo: false,
+        canTranscribe: true,
+        metadataJson: expect.objectContaining({
+          recordingChoiceExplicit: true,
+          transcriptionChoiceExplicit: true,
+          allAudibleParticipantsNotifiedAndAgreed: true,
+        }),
+      }),
+    });
+    expect(transaction).toHaveBeenCalledWith(
+      expect.any(Function),
+      expect.objectContaining({ isolationLevel: "Serializable" }),
+    );
   });
 });

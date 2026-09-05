@@ -5,6 +5,7 @@ import { CaptureAppHandoff } from "./capture-app-handoff";
 
 describe("CaptureAppHandoff", () => {
   const originalUserAgent = window.navigator.userAgent;
+  const originalMaxTouchPoints = window.navigator.maxTouchPoints;
 
   beforeEach(() => {
     window.localStorage.clear();
@@ -12,6 +13,10 @@ describe("CaptureAppHandoff", () => {
     Object.defineProperty(window.navigator, "userAgent", {
       configurable: true,
       value: originalUserAgent,
+    });
+    Object.defineProperty(window.navigator, "maxTouchPoints", {
+      configurable: true,
+      value: originalMaxTouchPoints,
     });
   });
 
@@ -65,6 +70,26 @@ describe("CaptureAppHandoff", () => {
     expect(screen.getByRole("link", { name: "Open Quipsly Capture" })).toHaveAttribute(
       "href",
       "quipsly://session/room-iphone?mode=live",
+    );
+    expect(screen.getByRole("button", { name: "Join in browser" })).toBeInTheDocument();
+  });
+
+  it("recognizes desktop-class iPad Safari and recommends the native iPad app", () => {
+    Object.defineProperty(window.navigator, "userAgent", {
+      configurable: true,
+      value: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15) AppleWebKit/605.1.15 Version/18.0 Mobile/15E148 Safari/604.1",
+    });
+    Object.defineProperty(window.navigator, "maxTouchPoints", {
+      configurable: true,
+      value: 5,
+    });
+
+    render(<CaptureAppHandoff roomId="room-ipad" />);
+
+    expect(screen.getByText("Recommended on this iPad")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Open Quipsly Capture" })).toHaveAttribute(
+      "href",
+      "quipsly://session/room-ipad?mode=live",
     );
     expect(screen.getByRole("button", { name: "Join in browser" })).toBeInTheDocument();
   });
