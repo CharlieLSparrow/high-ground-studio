@@ -11478,6 +11478,7 @@ private struct CaptureRecorderView: View {
                     if recordingMode == .audio {
                         RecorderHero(
                             session: session,
+                            completedVoiceWritingRecordingID: nil,
                             captureState: audioCapture.captureState,
                             duration: audioCapture.currentDuration,
                             averagePowerDB: audioCapture.inputLevelDB,
@@ -12120,6 +12121,9 @@ private struct CaptureRecorderView: View {
 
             RecorderHero(
                 session: session,
+                completedVoiceWritingRecordingID: latestPersonalVoiceRecording(
+                    for: session
+                )?.id,
                 captureState: audioCapture.captureState,
                 duration: audioCapture.currentDuration,
                 averagePowerDB: audioCapture.inputLevelDB,
@@ -19489,6 +19493,10 @@ private struct RecorderHero: View {
     @State private var showsPersistentNoSignalWarning = false
 
     let session: MobileCaptureSession
+    /// The exact saved source currently represented by the writing result
+    /// above this recorder. Room identifiers can legitimately change when a
+    /// local-first thought is promoted to Nest; recording identity cannot.
+    let completedVoiceWritingRecordingID: UUID?
     let captureState: AudioCaptureState
     let duration: TimeInterval
     let averagePowerDB: Float
@@ -19936,6 +19944,16 @@ private struct RecorderHero: View {
     private var completedVoiceWritingIsReady: Bool {
         guard session.isPersonalVoiceNote,
               captureState == .saved else { return false }
+
+        if let completedVoiceWritingRecordingID {
+            return writingStore.draft(
+                for: completedVoiceWritingRecordingID
+            ) != nil
+        }
+
+        // Compatibility for older callers and retained data that predates an
+        // exact local recording association. New voice writing always uses
+        // the source-bound check above.
         let roomID = session.callRoomId.trimmingCharacters(
             in: .whitespacesAndNewlines
         )
@@ -19969,12 +19987,15 @@ private struct RecorderHero: View {
     }
 
     private var primarySystemImage: String {
-        isCaptureActive ? "stop.fill" : "circle.fill"
+        if isCaptureActive { return "stop.fill" }
+        if completedVoiceWritingIsReady { return "mic.fill" }
+        return "circle.fill"
     }
 
     private var primaryAccessibilityLabel: String {
         if isCaptureActive { return "Stop recording, \(formattedDuration) elapsed" }
         if waitingForHost { return "Recording starts when the coach or host presses Record" }
+        if completedVoiceWritingIsReady { return "Record another thought" }
         if session.canRecordNow { return "Start recording" }
         return "Start recording unavailable until session readiness and consent are confirmed"
     }

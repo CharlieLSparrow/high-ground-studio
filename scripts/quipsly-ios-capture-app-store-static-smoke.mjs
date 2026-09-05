@@ -2006,6 +2006,20 @@ for (const needle of [
   requireIncludes(capturePhoneShellText, needle, "new writing inherits the visible Nest before sync");
 }
 for (const needle of [
+  "completedVoiceWritingRecordingID: latestPersonalVoiceRecording(",
+  "writingStore.draft(",
+  "for: completedVoiceWritingRecordingID",
+  'return "Writing ready"',
+  'return "mic.fill"',
+  'return "Record another thought"',
+]) {
+  requireIncludes(
+    capturePhoneShellText,
+    needle,
+    "completed voice writing follows the exact saved source instead of a mutable room identifier",
+  );
+}
+for (const needle of [
   "var preferredProjectID: String? = nil",
   "let destinationProjectId: String?",
   "draft.canonicalDocumentID == nil",
