@@ -59,4 +59,25 @@ enum OnDeviceTranscriptDeliveryPolicy {
         default: 4
         }
     }
+
+    /// SpeechTranscriber is explicitly designed for long-form meetings and
+    /// conversations. A fixed short watchdog incorrectly treats healthy work
+    /// on an hour-long source as a provider failure, so the recognition budget
+    /// scales with the immutable source duration. The floor still catches a
+    /// wedged short note, while the cap prevents a damaged source from holding
+    /// the queue forever.
+    static func recognitionDeadlineSeconds(
+        sourceDurationSeconds: Double
+    ) -> Double {
+        let duration = sourceDurationSeconds.isFinite
+            ? max(0, sourceDurationSeconds)
+            : 0
+        let minimumBudget = 5 * 60.0
+        let finalizationAllowance = 5 * 60.0
+        let maximumBudget = 6 * 60 * 60.0
+        return min(
+            maximumBudget,
+            max(minimumBudget, (duration * 1.5) + finalizationAllowance)
+        )
+    }
 }

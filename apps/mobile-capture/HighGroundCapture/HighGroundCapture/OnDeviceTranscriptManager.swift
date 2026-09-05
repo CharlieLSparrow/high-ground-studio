@@ -1394,14 +1394,24 @@ final class OnDeviceTranscriptManager: ObservableObject {
             let preset: String
             let modelAssetStatus: String
             attemptStage = .recognizingSpeech
+            let recognitionDeadlineSeconds = OnDeviceTranscriptDeliveryPolicy
+                .recognitionDeadlineSeconds(
+                    sourceDurationSeconds: recording.durationSeconds
+                )
             if #available(iOS 26.0, *) {
                 if recognitionProfile == .speechAdaptation {
                     do {
-                        let adapted = try await OnDeviceTranscriptDeadline.run(seconds: 30) {
-                            let prepared = try await AppleSpeechAdaptedTranscriptEngine.prepare(
-                                locale: locale,
-                                allowModelDownload: allowModelDownload
-                            )
+                        // Model installation is system-managed network work and
+                        // is deliberately outside the source-analysis watchdog.
+                        // A slow first asset download must not masquerade as a
+                        // failed hour-long coaching transcription.
+                        let prepared = try await AppleSpeechAdaptedTranscriptEngine.prepare(
+                            locale: locale,
+                            allowModelDownload: allowModelDownload
+                        )
+                        let adapted = try await OnDeviceTranscriptDeadline.run(
+                            seconds: recognitionDeadlineSeconds
+                        ) {
                             let segments = try await AppleSpeechAdaptedTranscriptEngine.transcribe(
                                 fileURL: preparedAudio.url,
                                 prepared: prepared,
@@ -1423,7 +1433,8 @@ final class OnDeviceTranscriptManager: ObservableObject {
                             fileURL: preparedAudio.url,
                             locale: locale,
                             allowModelDownload: allowModelDownload,
-                            contextualPhrases: contextualPhrases
+                            contextualPhrases: contextualPhrases,
+                            recognitionDeadlineSeconds: recognitionDeadlineSeconds
                         )
                         segments = result.segments
                         language = result.language
@@ -1437,7 +1448,8 @@ final class OnDeviceTranscriptManager: ObservableObject {
                         fileURL: preparedAudio.url,
                         locale: locale,
                         allowModelDownload: allowModelDownload,
-                        contextualPhrases: contextualPhrases
+                        contextualPhrases: contextualPhrases,
+                        recognitionDeadlineSeconds: recognitionDeadlineSeconds
                     )
                     segments = result.segments
                     language = result.language
@@ -1572,7 +1584,8 @@ final class OnDeviceTranscriptManager: ObservableObject {
         fileURL: URL,
         locale: Locale,
         allowModelDownload: Bool,
-        contextualPhrases: [String]
+        contextualPhrases: [String],
+        recognitionDeadlineSeconds: Double
     ) async throws -> (
         segments: [OnDeviceTranscriptSegment],
         language: String,
@@ -1582,11 +1595,16 @@ final class OnDeviceTranscriptManager: ObservableObject {
         modelAssetStatus: String
     ) {
         do {
-            let native = try await OnDeviceTranscriptDeadline.run(seconds: 30) {
-                let prepared = try await AppleOnDeviceTranscriptEngine.prepare(
-                    locale: locale,
-                    allowModelDownload: allowModelDownload
-                )
+            // Keep model acquisition separate from source analysis. Asset
+            // Inventory owns its network lifecycle; this deadline is only for
+            // a SpeechAnalyzer operation that stops making useful progress.
+            let prepared = try await AppleOnDeviceTranscriptEngine.prepare(
+                locale: locale,
+                allowModelDownload: allowModelDownload
+            )
+            let native = try await OnDeviceTranscriptDeadline.run(
+                seconds: recognitionDeadlineSeconds
+            ) {
                 let segments = try await AppleOnDeviceTranscriptEngine.transcribe(
                     fileURL: fileURL,
                     prepared: prepared,

@@ -80,6 +80,26 @@ struct OnDeviceTranscriptDeliveryPolicyHarness {
                 )
             ) == [1, 2, 4]
         )
+        precondition(
+            OnDeviceTranscriptDeliveryPolicy.recognitionDeadlineSeconds(
+                sourceDurationSeconds: 30
+            ) == 345
+        )
+        precondition(
+            OnDeviceTranscriptDeliveryPolicy.recognitionDeadlineSeconds(
+                sourceDurationSeconds: 3_600
+            ) == 5_700
+        )
+        precondition(
+            OnDeviceTranscriptDeliveryPolicy.recognitionDeadlineSeconds(
+                sourceDurationSeconds: .infinity
+            ) == 300
+        )
+        precondition(
+            OnDeviceTranscriptDeliveryPolicy.recognitionDeadlineSeconds(
+                sourceDurationSeconds: 24 * 60 * 60
+            ) == 21_600
+        )
         print("PASS On-device transcript delivery retry policy")
     }
 }
