@@ -781,6 +781,56 @@ platform :ios do
     manifest_path
   end
 
+  desc "Merge independently verified exact-source UI shards into complete qualification evidence"
+  lane :merge_ui_evidence do |options|
+    unless ENV["QUIPSLY_CAPTURE_RELEASE_ISOLATED"] == "1"
+      UI.user_error!(
+        "UI evidence merging must use scripts/release/quipsly-capture-release-from-commit.sh from an exact committed revision.",
+      )
+    end
+
+    evidence_list_path = File.expand_path(options[:evidence_list_path].to_s)
+    output_path = File.expand_path(options[:output_path].to_s)
+    UI.user_error!("Set evidence_list_path to an owner-controlled JSON list of shard manifests.") if
+      options[:evidence_list_path].to_s.empty?
+    UI.user_error!("Set output_path to the aggregate UI evidence manifest.") if options[:output_path].to_s.empty?
+    UI.user_error!("UI evidence list is unavailable: #{evidence_list_path}") unless File.file?(evidence_list_path)
+
+    evidence_paths = JSON.parse(File.read(evidence_list_path))
+    UI.user_error!("UI evidence list must be a non-empty JSON array.") unless
+      evidence_paths.is_a?(Array) && !evidence_paths.empty? && evidence_paths.all? { |path| path.is_a?(String) && !path.empty? }
+    source_revision = sh("git", "-C", REPO_ROOT, "rev-parse", "HEAD", log: false).strip
+    manifests = evidence_paths.map do |path|
+      verified_path = verify_ui_test_evidence_path(
+        path,
+        expected_source_revision: source_revision,
+        require_full: false,
+      )
+      JSON.parse(File.read(verified_path))
+    end
+    reference = manifests.fetch(0)
+    consistency_fields = %w[schema sourceRevision sourceLabel suite configuredShardCount testRetryLimit discoveredTestCount]
+    manifests.each do |manifest|
+      UI.user_error!("UI shard evidence is not one consistent exact-source suite.") unless
+        consistency_fields.all? { |field| manifest[field] == reference[field] }
+    end
+
+    shards = manifests.flat_map { |manifest| manifest.fetch("shards") }.sort_by { |shard| Integer(shard.fetch("shard")) }
+    merged = reference.merge(
+      "createdAt" => Time.now.utc.iso8601,
+      "shardCount" => shards.length,
+      "selectedTestCount" => shards.sum { |shard| shard.fetch("selectors").length },
+      "shards" => shards,
+    )
+    FileUtils.mkdir_p(File.dirname(output_path))
+    write_ui_test_evidence_manifest(output_path, merged)
+    verify_ui_test_evidence_path(output_path, expected_source_revision: source_revision, require_full: true)
+    UI.success("Merged complete deterministic Capture UI evidence: #{output_path}")
+    output_path
+  rescue JSON::ParserError => error
+    UI.user_error!("UI evidence list is invalid JSON: #{error.message}")
+  end
+
   desc "Build, export, and inspect the exact committed Capture version"
   lane :release do |options|
     verify

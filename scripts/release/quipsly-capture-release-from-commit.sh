@@ -5,7 +5,7 @@ set -euo pipefail
 usage() {
   cat <<'USAGE'
 Usage:
-  scripts/release/quipsly-capture-release-from-commit.sh <candidate|release|beta|recover_candidate|seal_candidate|upload_qualified> [--revision <commit-ish>] [fastlane options...]
+  scripts/release/quipsly-capture-release-from-commit.sh <ui_test|merge_ui_evidence|candidate|release|beta|recover_candidate|seal_candidate|upload_qualified> [--revision <commit-ish>] [fastlane options...]
   scripts/release/quipsly-capture-release-from-commit.sh recover_candidate --revision <tooling-commit-ish> --candidate-revision <archived-commit> --archive <archive.xcarchive> --ipa <app.ipa>
   scripts/release/quipsly-capture-release-from-commit.sh seal_candidate --revision <tooling-commit-ish> --receipt <release-receipt.json> --evidence <ui-evidence.json>
   scripts/release/quipsly-capture-release-from-commit.sh upload_qualified --revision <commit-ish> --receipt <release-receipt.json> --api-key-path <api-key.json>
@@ -18,6 +18,9 @@ deterministic UI tests followed by signed archive/export verification. `release`
 level archive-only diagnostic lane. `beta` qualifies, uploads, and waits for
 App Store Connect processing. `upload_qualified` re-verifies and uploads an
 existing sealed candidate receipt without repeating qualification or rebuild.
+`ui_test` may run one exact-source shard at a time with `shard:<number>`;
+`merge_ui_evidence` combines their verified manifests from an `evidence_list_path:<json>`
+into `output_path:<json>` so an interrupted qualification can resume safely.
 `seal_candidate` combines independently completed exact-source UI and signed
 artifact proof after re-verifying both, without repeating either expensive lane.
 `recover_candidate` creates the missing unqualified receipt for intact artifacts
@@ -36,14 +39,14 @@ fail() {
 
 lane="${1:-}"
 case "$lane" in
-  candidate | release | beta | recover_candidate | seal_candidate | upload_qualified) ;;
+  ui_test | merge_ui_evidence | candidate | release | beta | recover_candidate | seal_candidate | upload_qualified) ;;
   -h | --help)
     usage
     exit 0
     ;;
   *)
     usage >&2
-    fail "First argument must be candidate, release, beta, recover_candidate, seal_candidate, or upload_qualified."
+    fail "First argument must be ui_test, merge_ui_evidence, candidate, release, beta, recover_candidate, seal_candidate, or upload_qualified."
     ;;
 esac
 shift
@@ -172,11 +175,11 @@ require_free_space() {
     fail "${label} requires at least ${minimum_free_gib} GiB free at ${path}; only $((available_kib / 1024 / 1024)) GiB is available. Remove disposable Xcode/release evidence or set the output directory to a larger volume."
 }
 
-if [[ "$lane" != "upload_qualified" && "$lane" != "seal_candidate" && "$lane" != "recover_candidate" ]]; then
+if [[ "$lane" != "upload_qualified" && "$lane" != "seal_candidate" && "$lane" != "recover_candidate" && "$lane" != "merge_ui_evidence" ]]; then
   require_free_space "$release_root" "Capture release qualification"
 fi
 
-if [[ "$lane" == "candidate" || "$lane" == "beta" ]]; then
+if [[ "$lane" == "ui_test" || "$lane" == "candidate" || "$lane" == "beta" ]]; then
   ui_test_root_input="${QUIPSLY_CAPTURE_UI_TEST_DIR:-/tmp/quipsly-capture-ui-tests}"
   mkdir -p "$ui_test_root_input"
   ui_test_root="$(cd "$ui_test_root_input" && pwd)"
@@ -210,7 +213,7 @@ snapshot_xctest_devices() {
 }
 
 cleanup_created_xctest_devices() {
-  [[ "$lane" == "candidate" || "$lane" == "beta" ]] || return
+  [[ "$lane" == "ui_test" || "$lane" == "candidate" || "$lane" == "beta" ]] || return
   if [[ "${QUIPSLY_CAPTURE_KEEP_XCTEST_DEVICES:-0}" == "1" ]]; then
     echo "Keeping XCTest devices created by this Capture run for diagnostics."
     return
@@ -228,7 +231,7 @@ cleanup_created_xctest_devices() {
   done < <(comm -13 "$xctest_devices_before" "$devices_after")
 }
 
-if [[ "$lane" == "candidate" || "$lane" == "beta" ]]; then
+if [[ "$lane" == "ui_test" || "$lane" == "candidate" || "$lane" == "beta" ]]; then
   snapshot_xctest_devices "$xctest_devices_before"
   export QUIPSLY_CAPTURE_XCTEST_DEVICE_ROOT="$xctest_device_root"
   export QUIPSLY_CAPTURE_XCTEST_BASELINE_PATH="$xctest_devices_before"

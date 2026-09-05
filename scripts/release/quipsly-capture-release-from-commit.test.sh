@@ -118,6 +118,32 @@ grep -Fqx "arguments=<--device><iPhone Test>" "$receipt" ||
   fail "Candidate cleanup retained an XCTest device created by the run."
 
 MOCK_RECEIPT_PATH="$receipt" \
+QUIPSLY_CAPTURE_XCTEST_DEVICE_ROOT="$fixture_xctest_root" \
+QUIPSLY_CAPTURE_RELEASE_DIR="$fixture_release" \
+"${fixture_repo}/scripts/release/quipsly-capture-release-from-commit.sh" \
+  ui_test \
+  --revision "$source_revision" \
+  'shard:2'
+
+grep -Fqx "lane=ui_test" "$receipt" ||
+  fail "Runner did not receive the resumable UI-test lane."
+grep -Fqx "arguments=<shard:2>" "$receipt" ||
+  fail "Runner did not preserve the requested UI shard."
+
+MOCK_RECEIPT_PATH="$receipt" \
+QUIPSLY_CAPTURE_RELEASE_DIR="$fixture_release" \
+"${fixture_repo}/scripts/release/quipsly-capture-release-from-commit.sh" \
+  merge_ui_evidence \
+  --revision "$source_revision" \
+  'evidence_list_path:/tmp/Quipsly Evidence/shards.json' \
+  'output_path:/tmp/Quipsly Evidence/complete.json'
+
+grep -Fqx "lane=merge_ui_evidence" "$receipt" ||
+  fail "Runner did not receive the UI-evidence merge lane."
+grep -Fqx "arguments=<evidence_list_path:/tmp/Quipsly Evidence/shards.json><output_path:/tmp/Quipsly Evidence/complete.json>" "$receipt" ||
+  fail "Runner did not preserve merge-evidence paths."
+
+MOCK_RECEIPT_PATH="$receipt" \
 QUIPSLY_CAPTURE_RELEASE_DIR="$fixture_release" \
 "${fixture_repo}/scripts/release/quipsly-capture-release-from-commit.sh" \
   upload_qualified \
