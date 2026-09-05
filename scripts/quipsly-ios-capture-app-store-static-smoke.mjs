@@ -2931,6 +2931,12 @@ requireIncludes(capturePhoneShellText, "You can keep talking or leave the call w
 requireIncludes(capturePhoneShellText, "Quipsly handles cloud backup and transcription automatically.", "local-only capture explains the automatic post-call path without an approval step or a stale future phase");
 requireIncludes(capturePhoneShellText, "&& !localRecordingWorkspaceIsOpen(for: session)", "completed Sessions retain an in-app edit doorway after the recorder workspace closes");
 requireIncludes(capturePhoneShellText, "session.isCoachingSession && !sessionHasPostCallWork(session)", "pre-call coaching preparation yields to completed-session work after capture or transcription begins");
+requireIncludes(uploadText, 'static let quipslyBackgroundUploadFinished = Notification.Name("BackgroundUploadFinished")', "verified background uploads publish one shared completion signal");
+requireIncludes(capturePhoneShellText, "publisher(for: .quipslyBackgroundUploadFinished)", "shipping Session UI reconciles when a verified background upload finishes");
+requireIncludes(capturePhoneShellText, 'userInfo["success"] as? Bool == true', "failed or held uploads never impersonate playable Session media");
+requireIncludes(capturePhoneShellText, "receiptOwnerAccountID == AuthManager.currentStoredOwnerID()", "late upload receipts cannot refresh another signed-in account's workspace");
+requireIncludes(capturePhoneShellText, "model.refreshSelectedSessionEntryReadiness()", "verified uploads refresh the selected Session without navigation or manual reload");
+requireIncludes(capturePhoneShellText, "model.reviewDigestClient.load()", "verified uploads refresh the post-call review projection without manual reload");
 requireIncludes(runtimeUISmokeTestsText, "The completed take should appear as a new immutable local source.", "runtime iPhone flight proves Stop reaches a new immutable local source row");
 requireIncludes(capturePhoneShellText, "CaptureRehearsalReadinessCard(", "shipping recorder exposes a preflight check");
 requireIncludes(capturePhoneShellText, "CaptureSessionGuardianCard(", "shipping recorder reaches one ranked operational Guardian");

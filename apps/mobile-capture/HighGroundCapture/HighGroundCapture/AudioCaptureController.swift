@@ -441,7 +441,7 @@ final class AudioCaptureController: NSObject, ObservableObject {
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(handleUploadFinished),
-            name: Notification.Name("BackgroundUploadFinished"),
+            name: .quipslyBackgroundUploadFinished,
             object: nil
         )
         NotificationCenter.default.addObserver(

@@ -196,6 +196,31 @@ struct CapturePhoneShell: View {
                 _ = await (calendarRefresh, sessionRefresh, speechProfileRefresh)
             }
         }
+        .onReceive(
+            NotificationCenter.default.publisher(for: .quipslyBackgroundUploadFinished)
+        ) { notification in
+            guard !model.usesPreviewData,
+                  AuthManager.shared.networkActionsAllowed,
+                  let userInfo = notification.userInfo,
+                  userInfo["success"] as? Bool == true,
+                  let receiptOwnerAccountID = userInfo["ownerAccountID"] as? String,
+                  !receiptOwnerAccountID.isEmpty,
+                  receiptOwnerAccountID == AuthManager.currentStoredOwnerID()
+            else { return }
+
+            // Upload finalization has already committed immutable cloud/source
+            // evidence before this receipt is emitted. Reconcile the two
+            // user-facing projections now so a finished take becomes playable
+            // and visible without leaving the Session, relaunching, or pulling
+            // to refresh. The owner check above keeps a late callback from a
+            // previous sign-in out of the active account's workspace.
+            Task {
+                async let sessionRefresh: Void = model
+                    .refreshSelectedSessionEntryReadiness()
+                async let finishRefresh: Void = model.reviewDigestClient.load()
+                _ = await (sessionRefresh, finishRefresh)
+            }
+        }
         .onChange(of: audioCapture.captureState) { _, state in
             // SwiftUI delivers onChange while it is reconciling this view.
             // Reconcile the cross-controller projection on the next actor turn

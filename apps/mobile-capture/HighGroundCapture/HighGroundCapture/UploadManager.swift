@@ -4,6 +4,10 @@ import Foundation
 import Network
 import UIKit
 
+extension Notification.Name {
+    static let quipslyBackgroundUploadFinished = Notification.Name("BackgroundUploadFinished")
+}
+
 final class UploadManager: NSObject, ObservableObject, URLSessionTaskDelegate, URLSessionDataDelegate {
     static let shared = UploadManager()
     static let backgroundSessionIdentifier = "com.quipsly.upload.chunked"
@@ -1773,7 +1777,7 @@ final class UploadManager: NSObject, ObservableObject, URLSessionTaskDelegate, U
 
             uploadCompletions.removeValue(forKey: sessionId)?(false, nil, detail)
             NotificationCenter.default.post(
-                name: Notification.Name("BackgroundUploadFinished"),
+                name: .quipslyBackgroundUploadFinished,
                 object: nil,
                 userInfo: [
                     "success": false,
@@ -1861,7 +1865,7 @@ final class UploadManager: NSObject, ObservableObject, URLSessionTaskDelegate, U
                 error.localizedDescription
             )
             NotificationCenter.default.post(
-                name: Notification.Name("BackgroundUploadFinished"),
+                name: .quipslyBackgroundUploadFinished,
                 object: nil,
                 userInfo: [
                     "success": false,
@@ -1889,7 +1893,7 @@ final class UploadManager: NSObject, ObservableObject, URLSessionTaskDelegate, U
 
         uploadCompletions.removeValue(forKey: sessionId)?(true, session.lastSourceId, nil)
         NotificationCenter.default.post(
-            name: Notification.Name("BackgroundUploadFinished"),
+            name: .quipslyBackgroundUploadFinished,
             object: nil,
             userInfo: completionEvidence
         )
@@ -1970,7 +1974,7 @@ final class UploadManager: NSObject, ObservableObject, URLSessionTaskDelegate, U
         refreshUploadActivity()
         uploadCompletions.removeValue(forKey: sessionId)?(false, nil, recoveryDetail)
         NotificationCenter.default.post(
-            name: Notification.Name("BackgroundUploadFinished"),
+            name: .quipslyBackgroundUploadFinished,
             object: nil,
             userInfo: [
                 "success": false,
