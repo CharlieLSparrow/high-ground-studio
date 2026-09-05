@@ -12,19 +12,28 @@ final class CaptureExperienceUITests: XCTestCase {
     private func allowSystemPermissionIfPresented(timeout: TimeInterval = 4) {
         let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
         let deadline = Date().addingTimeInterval(timeout)
-        var handledPrompt = false
+        // Microphone and Speech Recognition are two separate Apple prompts.
+        // The second alert is sometimes presented more than a second after the
+        // first dismissal while SwiftUI resumes the async start task. Keep a
+        // short quiet window after every handled alert instead of treating the
+        // first empty probe as proof that the sequence is complete.
+        var quietDeadline: Date?
         repeat {
             var handledThisPass = false
             for title in ["Allow", "Allow While Using App"] {
                 let permission = springboard.buttons[title].firstMatch
-                if permission.waitForExistence(timeout: handledPrompt ? 0.75 : min(1, timeout)) {
+                if permission.waitForExistence(timeout: 0.4) {
                     permission.tap()
-                    handledPrompt = true
+                    quietDeadline = Date().addingTimeInterval(2)
                     handledThisPass = true
                     break
                 }
             }
-            if !handledThisPass && handledPrompt { return }
+            if !handledThisPass,
+               let quietDeadline,
+               Date() >= quietDeadline {
+                return
+            }
         } while Date() < deadline
     }
 
