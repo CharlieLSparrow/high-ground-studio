@@ -1029,6 +1029,9 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
     )
 
     private static var previewResults: MobileCaptureTranscriptResults {
+        let speakerLabel = CaptureLaunchConfiguration.usesAppStorePresentation
+            ? "Client"
+            : "Charlie"
         let source = MobileCaptureTranscriptResultSource(
             transcriptJobId: "preview-transcript-job",
             recordingAssetId: "preview-recording-asset",
@@ -1039,7 +1042,7 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
             sourceEndSeconds: 4.84,
             programStartSeconds: 4.16,
             programEndSeconds: 5.34,
-            speakerLabel: "Charlie"
+            speakerLabel: speakerLabel
         )
         return MobileCaptureTranscriptResults(
             automaticallyCreated: true,

@@ -6656,6 +6656,9 @@ final class CaptureAppStoreScreenshotUITests: XCTestCase {
                 .waitForExistence(timeout: 5)
         )
         XCTAssertTrue(app.staticTexts["What I want to explore next"].exists)
+        XCTAssertTrue(app.staticTexts["Coaching reflection"].exists)
+        XCTAssertTrue(app.staticTexts["Research notes · resilient routines"].exists)
+        XCTAssertEqual(app.staticTexts["CaptureLibraryWritingCount"].label, "3 writing items")
         XCTAssertTrue(app.staticTexts["Timed transcript"].exists)
         XCTAssertFalse(
             app.buttons["CaptureLibraryStartVoiceNote"].exists,

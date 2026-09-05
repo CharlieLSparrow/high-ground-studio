@@ -9036,6 +9036,8 @@ private struct CaptureVoiceWritingEditor: View {
                 }
             }
         }
+        .scrollContentBackground(.hidden)
+        .background(CaptureCanvas())
         .modifier(CaptureTopNavigationEdgeEffect())
         .navigationTitle("Writing")
         .navigationBarTitleDisplayMode(.inline)
@@ -16444,7 +16446,7 @@ private struct CaptureLibraryView: View {
 
     private var displayedWritingCount: Int {
         writingItems.count
-            + (model.usesPreviewData && writingStore.drafts.isEmpty && writingScope == .all ? 1 : 0)
+            + (model.usesPreviewData && writingStore.drafts.isEmpty && writingScope == .all ? 3 : 0)
     }
 
     private func scopeMatches(_ draft: VoiceWritingDraft) -> Bool {
@@ -16712,6 +16714,22 @@ private struct CaptureLibraryView: View {
     private var writingContent: some View {
         if model.usesPreviewData && writingStore.drafts.isEmpty {
             CaptureLibraryPreviewWritingCard(tagClient: model.todayClient)
+            CaptureLibraryPreviewWritingSummaryCard(
+                title: "Coaching reflection",
+                excerpt: "The most useful question slowed the conversation down and helped the client name the next step in their own words.",
+                location: "Coaching practice",
+                source: "Voice + transcript",
+                systemImage: "person.2.wave.2.fill",
+                tint: CapturePalette.ink
+            )
+            CaptureLibraryPreviewWritingSummaryCard(
+                title: "Research notes · resilient routines",
+                excerpt: "Connect the evidence on repetition and environmental cues to the opening story, then compare the two frameworks.",
+                location: "My Nest",
+                source: "Tagged Research",
+                systemImage: "books.vertical.fill",
+                tint: CapturePalette.brass
+            )
         }
 
         if writingItems.isEmpty && !model.usesPreviewData {
@@ -17209,6 +17227,60 @@ private struct CaptureLibraryPreviewWritingCard: View {
         .buttonStyle(.plain)
         .accessibilityHint("Opens editable writing with the original timed transcript kept separately.")
         .accessibilityIdentifier("CaptureLibraryPreviewWritingCard")
+    }
+}
+
+private struct CaptureLibraryPreviewWritingSummaryCard: View {
+    let title: String
+    let excerpt: String
+    let location: String
+    let source: String
+    let systemImage: String
+    let tint: Color
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 11) {
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: systemImage)
+                    .font(.title3)
+                    .foregroundStyle(tint)
+                    .frame(width: 42, height: 42)
+                    .background(tint.opacity(0.1), in: Circle())
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(title)
+                        .font(.headline)
+                        .foregroundStyle(.primary)
+                        .multilineTextAlignment(.leading)
+                    Text("Edited this week")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(.tertiary)
+                    .accessibilityHidden(true)
+            }
+
+            Text(excerpt)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .lineLimit(3)
+                .multilineTextAlignment(.leading)
+
+            HStack(spacing: 12) {
+                Label(location, systemImage: "birdhouse.fill")
+                Label(source, systemImage: "tag.fill")
+            }
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(tint)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .captureCard()
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(title). \(excerpt). \(location). \(source).")
+        .accessibilityIdentifier("CaptureLibraryPreviewWritingSummary_\(title)")
     }
 }
 
