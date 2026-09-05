@@ -55,6 +55,7 @@ const files = {
   audioSoundCheckModel: path.join(sourceRoot, "CaptureAudioSoundCheckModel.swift"),
   captureRehearsalReadiness: path.join(sourceRoot, "CaptureRehearsalReadiness.swift"),
   captureSessionGuardian: path.join(sourceRoot, "CaptureSessionGuardian.swift"),
+  captureSessionPreflight: path.join(sourceRoot, "CaptureSessionPreflight.swift"),
   videoCaptureController: path.join(sourceRoot, "VideoCaptureController.swift"),
   videoCaptureService: path.join(sourceRoot, "VideoCaptureService.swift"),
   captureAudioSessionCoordinator: path.join(sourceRoot, "CaptureAudioSessionCoordinator.swift"),
@@ -260,6 +261,7 @@ const captureCoachingHomeText = read(files.captureCoachingHome);
 const mobileCoachingFormAutomationText = read(files.mobileCoachingFormAutomation);
 const mobileCoachingFormsText = read(files.mobileCoachingForms);
 const mobileCoachingSessionPreparationText = read(files.mobileCoachingSessionPreparation);
+const captureSessionPreflightText = read(files.captureSessionPreflight);
 const captureRuntimeEvidenceText = read(files.captureRuntimeEvidence);
 const sessionConversationText = read(files.sessionConversation);
 const uploadText = read(files.uploadManager);
@@ -1261,6 +1263,15 @@ requireIncludes(sessionConversationText, "AuthManager.shared.authenticatedData",
 requireIncludes(sessionConversationText, "FileProtectionType.complete", "Session conversation cache is protected while the iPhone is locked");
 requireIncludes(sessionConversationText, "stableOwnerSnapshot()", "Session conversation cache is partitioned by stable account owner");
 requireIncludes(sessionConversationText, "await load(session: session, forceRefresh: true, quietly: true)", "a Session live hint triggers an authenticated durable read instead of applying provider payload");
+for (const [text, domain, recoveryCopy, label] of [
+  [captureSessionPreflightText, 'errorDomain: "QuipslyCapture.SessionPreflight"', "Your microphone and camera choices are unchanged; try again.", "Session setup check"],
+  [captureRecordingCoordinatorText, 'errorDomain: "QuipslyCapture.RecordingCoordination"', "The recording remains safe on this device and will retry automatically.", "recording coordination"],
+  [sessionConversationText, 'errorDomain: "QuipslyCapture.SessionConversation"', "Your message is preserved for retry.", "Session conversation"],
+]) {
+  requireIncludes(text, "AuthResponseDecoder.decode(", `${label} uses the recoverable response boundary`);
+  requireIncludes(text, domain, `${label} keeps diagnosable response categories`);
+  requireIncludes(text, recoveryCopy, `${label} explains what remains safe`);
+}
 requireIncludes(runtimeUISmokeRunnerText, "session-conversation)", "the native runtime harness retains an explicit Session conversation qualification mode");
 requireIncludes(runtimeUISmokeRunnerText, 'TEST_CASE="testSessionConversationRoundTripsBetweenBrowserAndIPhone"', "the Session conversation qualification mode selects exactly one cross-device native test");
 requireIncludes(runtimeUISmokeTestsText, "testSessionConversationRoundTripsBetweenBrowserAndIPhone", "the compiled native suite reads a browser message and authors an iPhone reply");

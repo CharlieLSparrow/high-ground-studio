@@ -198,10 +198,13 @@ final class MobileSessionConversationClient: ObservableObject {
             request.setValue("application/json", forHTTPHeaderField: "Accept")
             let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
             try validateOrigin(response.url)
-            let payload = try JSONDecoder().decode(
+            let payload = try AuthResponseDecoder.decode(
                 MobileSessionConversationResponse.self,
-                from: data
-            )
+                from: data,
+                response: response,
+                errorDomain: "QuipslyCapture.SessionConversation",
+                malformedResponseMessage: "The Session conversation received an unexpected response. Your saved messages are safe; try again."
+            ).payload
             guard response.statusCode < 400,
                   payload.ok,
                   payload.room?.id == context.roomID,
@@ -446,10 +449,13 @@ final class MobileSessionConversationClient: ObservableObject {
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
         let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
         try validateOrigin(response.url)
-        let payload = try JSONDecoder().decode(
+        let payload = try AuthResponseDecoder.decode(
             MobileSessionConversationResponse.self,
-            from: data
-        )
+            from: data,
+            response: response,
+            errorDomain: "QuipslyCapture.SessionConversation",
+            malformedResponseMessage: "The Session conversation received an unexpected response. Your message is preserved for retry."
+        ).payload
         guard response.statusCode < 400, payload.ok else {
             throw Self.error(
                 payload.error ?? "The Session conversation could not be updated.",

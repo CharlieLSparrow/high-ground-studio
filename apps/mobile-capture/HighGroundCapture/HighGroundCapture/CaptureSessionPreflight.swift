@@ -479,8 +479,13 @@ final class CaptureSessionPreflightClient: ObservableObject {
             let encoder = JSONEncoder()
             request.httpBody = try encoder.encode(receipt.payload)
             let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
-            let decoder = JSONDecoder()
-            let packet = try decoder.decode(ServerResponse.self, from: data)
+            let packet = try AuthResponseDecoder.decode(
+                ServerResponse.self,
+                from: data,
+                response: response,
+                errorDomain: "QuipslyCapture.SessionPreflight",
+                malformedResponseMessage: "Nest could not confirm this setup check. Your microphone and camera choices are unchanged; try again."
+            ).payload
             guard response.statusCode < 400,
                   packet.ok,
                   let preflight = packet.preflight else {

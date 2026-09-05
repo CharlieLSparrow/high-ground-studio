@@ -390,10 +390,13 @@ final class CaptureRecordingCoordinator: ObservableObject {
             let (data, response) = try await AuthManager.shared.authenticatedData(
                 for: request
             )
-            let packet = try JSONDecoder().decode(
+            let packet = try AuthResponseDecoder.decode(
                 CaptureRecordingEndpointResponse.self,
-                from: data
-            )
+                from: data,
+                response: response,
+                errorDomain: "QuipslyCapture.RecordingCoordination",
+                malformedResponseMessage: "Nest could not confirm this recording status. The recording remains safe on this device and will retry automatically."
+            ).payload
             if (200..<300).contains(response.statusCode), packet.ok {
                 return .acknowledged
             }
@@ -444,7 +447,13 @@ final class CaptureRecordingCoordinator: ObservableObject {
 
     private func send<Response: Decodable>(_ request: URLRequest) async throws -> Response {
         let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
-        let decoded = try JSONDecoder().decode(Response.self, from: data)
+        let decoded = try AuthResponseDecoder.decode(
+            Response.self,
+            from: data,
+            response: response,
+            errorDomain: "QuipslyCapture.RecordingCoordination",
+            malformedResponseMessage: "Nest could not coordinate recording right now. Nothing started or stopped unexpectedly; try again."
+        ).payload
         guard (200..<300).contains(response.statusCode) else {
             if let envelope = decoded as? CaptureRecordingDirectiveResponse {
                 throw CoordinatorError.server(envelope.error ?? "Recording coordination returned \(response.statusCode).")
