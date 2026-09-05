@@ -19688,6 +19688,7 @@ private struct RecorderHero: View {
     @ScaledMetric(relativeTo: .largeTitle) private var timerFontSize: CGFloat = 40
     @ObservedObject private var auth = AuthManager.shared
     @ObservedObject private var recognitionPreferences = VoiceWritingRecognitionPreferences.shared
+    @ObservedObject private var transcriptManager = OnDeviceTranscriptManager.shared
     @ObservedObject private var writingStore = VoiceWritingDraftStore.shared
     @State private var showsVoiceWritingTips = false
     @State private var showsSpeechAccuracy = false
@@ -19724,7 +19725,7 @@ private struct RecorderHero: View {
                 Text(stateTitle)
                     .font(.title2.weight(.bold))
                     .accessibilityIdentifier("CaptureRecorderStateLabel")
-                if completedVoiceWritingIsReady {
+                if completedVoiceWritingHasSavedSource {
                     Label("Last take \(formattedDuration)", systemImage: "checkmark.circle.fill")
                         .font(.subheadline.monospacedDigit().weight(.semibold))
                         .foregroundStyle(CapturePalette.success)
@@ -20179,6 +20180,22 @@ private struct RecorderHero: View {
         }
     }
 
+    /// A transcript may still be running or may need a retry after the
+    /// recorder has already closed its immutable source. Treat that as a
+    /// finished take in the recorder itself: the recovery card above owns the
+    /// transcript state, while this hero remains an honest place to start the
+    /// next thought.
+    private var completedVoiceWritingHasSavedSource: Bool {
+        session.isPersonalVoiceNote
+            && captureState == .saved
+            && completedVoiceWritingRecordingID != nil
+    }
+
+    private var completedVoiceWritingTranscriptPhase: OnDeviceTranscriptPhase? {
+        guard let completedVoiceWritingRecordingID else { return nil }
+        return transcriptManager.phase(for: completedVoiceWritingRecordingID)
+    }
+
     private var isCaptureActive: Bool {
         switch captureState {
         case .recording, .paused, .finalizing: true
@@ -20219,14 +20236,14 @@ private struct RecorderHero: View {
 
     private var primarySystemImage: String {
         if isCaptureActive { return "stop.fill" }
-        if completedVoiceWritingIsReady { return "mic.fill" }
+        if completedVoiceWritingHasSavedSource { return "mic.fill" }
         return "circle.fill"
     }
 
     private var primaryAccessibilityLabel: String {
         if isCaptureActive { return "Stop recording, \(formattedDuration) elapsed" }
         if waitingForHost { return "Recording starts when the coach or host presses Record" }
-        if completedVoiceWritingIsReady { return "Record another thought" }
+        if completedVoiceWritingHasSavedSource { return "Record another thought" }
         if session.canRecordNow { return "Start recording" }
         return "Start recording unavailable until session readiness and consent are confirmed"
     }
@@ -20240,9 +20257,15 @@ private struct RecorderHero: View {
             case .paused: return "Listening paused"
             case .finalizing: return "Saving your words…"
             case .saved:
-                return completedVoiceWritingIsReady
-                    ? "Writing ready"
-                    : "Creating your writing…"
+                if completedVoiceWritingIsReady { return "Writing ready" }
+                switch completedVoiceWritingTranscriptPhase {
+                case .some(.failed): return "Audio saved"
+                case .some(.modelDownloadRequired): return "Audio saved · speech tools needed"
+                case .some(.waitingForCloudFallback): return "Audio saved · transcript queued"
+                case .some(.cloudFallback(_, let status)) where status != "COMPLETED":
+                    return "Audio saved · transcript underway"
+                default: return "Creating your writing…"
+                }
             case .failed: return "Recording needs attention"
             }
         }
@@ -20273,9 +20296,19 @@ private struct RecorderHero: View {
         case .finalizing:
             return "Quipsly is closing the original recording before creating its timed transcript."
         case .saved:
-            return completedVoiceWritingIsReady
-                ? "Open your writing above, or tap Record when you want to start another thought."
-                : "The audio is safe. Quipsly is turning it into editable, time-linked writing."
+            if completedVoiceWritingIsReady {
+                return "Open your writing above, or tap Record when you want to start another thought."
+            }
+            switch completedVoiceWritingTranscriptPhase {
+            case .some(.failed):
+                return "Your original recording is safe. Transcript recovery is available above, and you can record another thought now."
+            case .some(.modelDownloadRequired):
+                return "Your original recording is safe. Get the one-time speech tools above, or record another thought now."
+            case .some(.waitingForCloudFallback), .some(.requestingCloudFallback), .some(.cloudFallback):
+                return "Your original recording is safe while Quipsly finishes its timed transcript. You can record another thought now."
+            default:
+                return "The audio is safe. Quipsly is turning it into editable, time-linked writing."
+            }
         case .failed:
             return "Nothing will be discarded. Open Library to review any audio that was saved."
         }

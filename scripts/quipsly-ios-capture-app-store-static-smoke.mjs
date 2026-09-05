@@ -2151,9 +2151,12 @@ for (const needle of [
 }
 for (const needle of [
   "completedVoiceWritingRecordingID: latestPersonalVoiceRecording(",
+  "completedVoiceWritingHasSavedSource",
   "writingStore.draft(",
   "for: completedVoiceWritingRecordingID",
   'return "Writing ready"',
+  'case .some(.failed): return "Audio saved"',
+  "Transcript recovery is available above, and you can record another thought now.",
   'return "mic.fill"',
   'return "Record another thought"',
   "Quipsly handles cloud backup and transcription automatically.",
