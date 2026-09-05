@@ -107,6 +107,11 @@ function completeFixture() {
           id: "review-1",
           attributes: { demoAccountRequired: true },
         },
+        {
+          type: "builds",
+          id: options.buildId,
+          attributes: { version: options.build, processingState: "VALID" },
+        },
       ],
     },
     availabilityDocument: {
@@ -336,6 +341,27 @@ test("requires the 13-inch iPad screenshot set for the universal binary", () => 
   assert.equal(
     receipt.blockers.some(({ code }) => code === "screenshots-incomplete"),
     true,
+  );
+});
+
+test("identifies the exact obsolete build assigned to the App Store version", () => {
+  const fixture = completeFixture();
+  fixture.versionsDocument.data[0].relationships.build.data.id = "older-build-id";
+  fixture.versionsDocument.included.push({
+    type: "builds",
+    id: "older-build-id",
+    attributes: { version: "28", processingState: "VALID" },
+  });
+
+  const receipt = summarizeSubmissionReadiness(fixture);
+
+  assert.equal(receipt.version.assignedBuildId, "older-build-id");
+  assert.equal(receipt.version.assignedBuildNumber, "28");
+  assert.equal(receipt.version.assignedBuildProcessingState, "VALID");
+  assert.equal(receipt.checks.buildAssigned, false);
+  assert.equal(
+    receipt.blockers.find(({ code }) => code === "build-not-assigned")?.message,
+    `App Store version ${options.version} is assigned to Build 28; expected Build ${options.build}.`,
   );
 });
 

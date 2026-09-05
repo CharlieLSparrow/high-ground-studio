@@ -291,6 +291,11 @@ export function summarizeSubmissionReadiness({
   ) || null;
   const providerMacCompatibility =
     buildBundle?.attributes?.isIosBuildMacAppStoreCompatible;
+  const assignedBuildId = relationshipId(version, "build");
+  const assignedBuild = included(versionsDocument, "builds").find(
+    (resource) => resource.id === assignedBuildId,
+  ) || null;
+  const assignedBuildNumber = assignedBuild?.attributes?.version || null;
 
   const wantedDisplayTypes = expectedDisplayTypes(metadata);
   const screenshotSets = screenshotSetDocuments.map((document) => {
@@ -362,7 +367,7 @@ export function summarizeSubmissionReadiness({
     buildBundleReadback: Boolean(buildBundle),
     appInfoEditable: appInfo.attributes?.appStoreState === "PREPARE_FOR_SUBMISSION",
     versionEditable: version.attributes?.appStoreState === "PREPARE_FOR_SUBMISSION",
-    buildAssigned: relationshipId(version, "build") === options.buildId,
+    buildAssigned: assignedBuildId === options.buildId,
     reviewDetailPresent,
     contentRightsDeclared: VALID_CONTENT_RIGHTS.has(contentRightsValue),
     ageRatingComplete: Boolean(appInfo.attributes?.appStoreAgeRating)
@@ -390,7 +395,18 @@ export function summarizeSubmissionReadiness({
   if (!checks.appIdentity) addBlocker(blockers, "app-identity-mismatch", "The provider app identity does not match the release target.");
   if (!checks.buildIdentity) addBlocker(blockers, "build-identity-mismatch", `Provider build ${options.buildId} does not resolve as Build ${options.build}.`);
   if (!checks.buildBundleReadback) addBlocker(blockers, "build-bundle-readback-missing", "Apple did not return the assigned app bundle's computed compatibility metadata.");
-  if (!checks.buildAssigned) addBlocker(blockers, "build-not-assigned", `Build ${options.version} (${options.build}) is not assigned.`);
+  if (!checks.buildAssigned) {
+    const observed = assignedBuildId
+      ? assignedBuildNumber
+        ? `Build ${assignedBuildNumber}`
+        : `another build (${assignedBuildId})`
+      : "no build";
+    addBlocker(
+      blockers,
+      "build-not-assigned",
+      `App Store version ${options.version} is assigned to ${observed}; expected Build ${options.build}.`,
+    );
+  }
   if (!checks.reviewDetailPresent) addBlocker(blockers, "review-detail-missing", "App Review information is missing.");
   if (!checks.contentRightsDeclared) addBlocker(blockers, "content-rights-missing", "The App Store content-rights declaration is unset.", "legal");
   if (!checks.ageRatingComplete) addBlocker(blockers, "age-rating-incomplete", `The current age-rating questionnaire has ${missingAgeRatingFields.length} unanswered field(s).`, "legal");
@@ -510,7 +526,9 @@ export function summarizeSubmissionReadiness({
       versionString: version.attributes?.versionString || null,
       buildNumber: options.build,
       expectedBuildId: options.buildId,
-      assignedBuildId: relationshipId(version, "build"),
+      assignedBuildId,
+      assignedBuildNumber,
+      assignedBuildProcessingState: assignedBuild?.attributes?.processingState || null,
       appStoreState: version.attributes?.appStoreState || null,
       releaseType: version.attributes?.releaseType || null,
       usesIdfa: version.attributes?.usesIdfa ?? null,
