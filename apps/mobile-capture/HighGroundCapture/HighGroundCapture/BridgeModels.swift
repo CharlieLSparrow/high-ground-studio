@@ -3683,7 +3683,13 @@ final class CaptureReadinessClient: ObservableObject {
                 throw NSError(domain: "CaptureReadiness", code: http.statusCode, userInfo: [NSLocalizedDescriptionKey: "Nest returned HTTP \(http.statusCode)."])
             }
 
-            let decoded = try JSONDecoder().decode(MobileCaptureReadinessResponse.self, from: data)
+            let decoded = try decodeMobileCaptureResponse(
+                MobileCaptureReadinessResponse.self,
+                from: data,
+                response: http,
+                errorDomain: "QuipslyCapture.Readiness",
+                malformedResponseMessage: "Quipsly could not read recording readiness. Nothing started; try again."
+            )
             readiness = decoded
             status = decoded.providerLabel
         } catch {
@@ -3855,7 +3861,13 @@ final class CaptureReviewDigestClient: ObservableObject {
             request.setValue("application/json", forHTTPHeaderField: "Accept")
 
             let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
-            let payload = try JSONDecoder().decode(MobileCaptureReviewDigestResponse.self, from: data)
+            let payload = try decodeMobileCaptureResponse(
+                MobileCaptureReviewDigestResponse.self,
+                from: data,
+                response: response,
+                errorDomain: "QuipslyCapture.ReviewDigest",
+                malformedResponseMessage: "Quipsly could not refresh recording health. Recordings and transcripts are unchanged; try again."
+            )
 
             guard AuthManager.shared.matchesStableOwnerSnapshot(ownerSnapshot) else {
                 clear()
@@ -5397,7 +5409,13 @@ final class CaptureTodayClient: ObservableObject {
             requestBody["dueLocal"] = requestedDueLocal ?? NSNull()
             request.httpBody = try JSONSerialization.data(withJSONObject: requestBody)
             let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
-            let payload = try JSONDecoder().decode(MobileCaptureTodayMutationResponse.self, from: data)
+            let payload = try decodeMobileCaptureResponse(
+                MobileCaptureTodayMutationResponse.self,
+                from: data,
+                response: response,
+                errorDomain: "QuipslyCapture.Today",
+                malformedResponseMessage: "Quipsly could not confirm this task edit. Refresh Today before trying again."
+            )
             guard response.statusCode < 400, payload.ok else {
                 throw NSError(
                     domain: "CaptureToday",
@@ -5482,7 +5500,13 @@ final class CaptureTodayClient: ObservableObject {
             requestBody["targetLocalDate"] = requestedTargetLocalDate ?? NSNull()
             request.httpBody = try JSONSerialization.data(withJSONObject: requestBody)
             let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
-            let payload = try JSONDecoder().decode(MobileCaptureTodayMutationResponse.self, from: data)
+            let payload = try decodeMobileCaptureResponse(
+                MobileCaptureTodayMutationResponse.self,
+                from: data,
+                response: response,
+                errorDomain: "QuipslyCapture.Today",
+                malformedResponseMessage: "Quipsly could not confirm this goal edit. Refresh Today before trying again."
+            )
             guard response.statusCode < 400, payload.ok else {
                 throw NSError(
                     domain: "CaptureToday",
@@ -5791,7 +5815,13 @@ final class CaptureTodayClient: ObservableObject {
             additionalFields.forEach { requestBody[$0.key] = $0.value }
             request.httpBody = try JSONSerialization.data(withJSONObject: requestBody)
             let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
-            let payload = try JSONDecoder().decode(MobileCaptureTodayMutationResponse.self, from: data)
+            let payload = try decodeMobileCaptureResponse(
+                MobileCaptureTodayMutationResponse.self,
+                from: data,
+                response: response,
+                errorDomain: "QuipslyCapture.Today",
+                malformedResponseMessage: "Quipsly could not confirm this change. Refresh Today before trying again."
+            )
             guard response.statusCode < 400, payload.ok else {
                 throw NSError(domain: "CaptureToday", code: response.statusCode, userInfo: [NSLocalizedDescriptionKey: payload.error ?? "Today work could not be changed."])
             }
@@ -5842,9 +5872,12 @@ final class CaptureTodayClient: ObservableObject {
                 "expectedUpdatedAt": decision.expectedAnnotationUpdatedAt,
             ])
             let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
-            let payload = try JSONDecoder().decode(
+            let payload = try decodeMobileCaptureResponse(
                 MobileCaptureTodayMutationResponse.self,
-                from: data
+                from: data,
+                response: response,
+                errorDomain: "QuipslyCapture.Today",
+                malformedResponseMessage: "Quipsly could not confirm this writing draft. Its source annotation is unchanged; try again."
             )
             guard response.statusCode < 400, payload.ok else {
                 let message = payload.error ?? "Nest could not create this private writing draft."
@@ -5980,7 +6013,13 @@ final class CaptureTodayClient: ObservableObject {
             body["expectedUpdatedAt"] = decision.expectedUpdatedAt ?? NSNull()
             request.httpBody = try JSONSerialization.data(withJSONObject: body)
             let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
-            let payload = try JSONDecoder().decode(MobileCaptureTodayMutationResponse.self, from: data)
+            let payload = try decodeMobileCaptureResponse(
+                MobileCaptureTodayMutationResponse.self,
+                from: data,
+                response: response,
+                errorDomain: "QuipslyCapture.Today",
+                malformedResponseMessage: "Quipsly could not confirm this weekly plan. Its device copy will retry automatically."
+            )
             guard response.statusCode < 400, payload.ok else {
                 let message = payload.error ?? "Nest could not reconcile this weekly plan."
                 if response.statusCode == 408 || response.statusCode == 429 || response.statusCode >= 500 {
@@ -6069,7 +6108,13 @@ final class CaptureTodayClient: ObservableObject {
                 "clientRequestId": plan.clientRequestID,
             ])
             let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
-            let payload = try JSONDecoder().decode(MobileCaptureTodayMutationResponse.self, from: data)
+            let payload = try decodeMobileCaptureResponse(
+                MobileCaptureTodayMutationResponse.self,
+                from: data,
+                response: response,
+                errorDomain: "QuipslyCapture.Today",
+                malformedResponseMessage: "Quipsly could not confirm this focus plan. Its device copy will retry automatically."
+            )
             guard response.statusCode < 400, payload.ok else {
                 let message = payload.error ?? "Nest could not reconcile this focus plan."
                 if response.statusCode == 408 || response.statusCode == 429 || response.statusCode >= 500 {
@@ -6157,7 +6202,13 @@ final class CaptureTodayClient: ObservableObject {
             }
             request.httpBody = try JSONSerialization.data(withJSONObject: requestBody)
             let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
-            let payload = try JSONDecoder().decode(MobileCaptureTodayMutationResponse.self, from: data)
+            let payload = try decodeMobileCaptureResponse(
+                MobileCaptureTodayMutationResponse.self,
+                from: data,
+                response: response,
+                errorDomain: "QuipslyCapture.Today",
+                malformedResponseMessage: "Quipsly could not confirm this focus update. Its device copy will retry automatically."
+            )
             guard response.statusCode < 400, payload.ok else {
                 let message = payload.error ?? "Nest could not reconcile this focus decision."
                 if response.statusCode == 408 || response.statusCode == 429 || response.statusCode >= 500 {
@@ -6239,7 +6290,13 @@ final class CaptureTodayClient: ObservableObject {
             body["expectedReminderUpdatedAt"] = decision.expectedReminderUpdatedAt ?? NSNull()
             request.httpBody = try JSONSerialization.data(withJSONObject: body)
             let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
-            let payload = try JSONDecoder().decode(MobileCaptureTodayMutationResponse.self, from: data)
+            let payload = try decodeMobileCaptureResponse(
+                MobileCaptureTodayMutationResponse.self,
+                from: data,
+                response: response,
+                errorDomain: "QuipslyCapture.Today",
+                malformedResponseMessage: "Quipsly could not confirm this reminder. Its device copy will retry automatically."
+            )
             guard response.statusCode < 400, payload.ok else {
                 let message = payload.error ?? "Nest could not reconcile this reminder change."
                 if response.statusCode == 408 || response.statusCode == 429 || response.statusCode >= 500 {
@@ -6324,7 +6381,13 @@ final class CaptureTodayClient: ObservableObject {
             }
             request.httpBody = try JSONSerialization.data(withJSONObject: body)
             let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
-            let payload = try JSONDecoder().decode(MobileCaptureWorkTagMutationResponse.self, from: data)
+            let payload = try decodeMobileCaptureResponse(
+                MobileCaptureWorkTagMutationResponse.self,
+                from: data,
+                response: response,
+                errorDomain: "QuipslyCapture.Today",
+                malformedResponseMessage: "Quipsly could not confirm this tag change. Its device copy will retry automatically."
+            )
             guard response.statusCode < 400, payload.ok else {
                 let message = payload.error ?? "Nest could not reconcile this tag change."
                 if response.statusCode == 408 || response.statusCode == 429 || response.statusCode >= 500 {
@@ -6683,7 +6746,13 @@ final class CaptureCalendarSubscriptionClient: ObservableObject {
                 )
             )
             let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
-            let payload = try JSONDecoder().decode(MobileCalendarFeedMutationResponse.self, from: data)
+            let payload = try decodeMobileCaptureResponse(
+                MobileCalendarFeedMutationResponse.self,
+                from: data,
+                response: response,
+                errorDomain: "QuipslyCapture.CalendarSubscriptions",
+                malformedResponseMessage: "Quipsly could not confirm this calendar subscription. Refresh calendar status before trying again."
+            )
             guard response.statusCode < 400, payload.ok, let feed = payload.feed else {
                 throw NSError(
                     domain: "CaptureCalendarSubscriptions",
@@ -6728,7 +6797,13 @@ final class CaptureCalendarSubscriptionClient: ObservableObject {
                 )
             )
             let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
-            let payload = try JSONDecoder().decode(MobileCalendarFeedMutationResponse.self, from: data)
+            let payload = try decodeMobileCaptureResponse(
+                MobileCalendarFeedMutationResponse.self,
+                from: data,
+                response: response,
+                errorDomain: "QuipslyCapture.CalendarSubscriptions",
+                malformedResponseMessage: "Quipsly could not confirm this calendar change. Refresh calendar status before trying again."
+            )
             guard response.statusCode < 400, payload.ok else {
                 throw NSError(
                     domain: "CaptureCalendarSubscriptions",
@@ -7087,7 +7162,13 @@ final class CaptureWorkClient: ObservableObject {
                 "clientRequestId": clientRequestID.uuidString.lowercased(),
             ])
             let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
-            let payload = try JSONDecoder().decode(MobileCaptureProjectCreateResponse.self, from: data)
+            let payload = try decodeMobileCaptureResponse(
+                MobileCaptureProjectCreateResponse.self,
+                from: data,
+                response: response,
+                errorDomain: "QuipslyCapture.Work",
+                malformedResponseMessage: "Quipsly could not confirm the new Nest. Refresh your Nests before trying again."
+            )
             guard response.statusCode < 400,
                   payload.ok,
                   payload.schema == "quipsly-mobile-project-create-v1",
@@ -7170,9 +7251,12 @@ final class CaptureWorkClient: ObservableObject {
                 "label": normalizedLabel,
             ])
             let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
-            let payload = try JSONDecoder().decode(
+            let payload = try decodeMobileCaptureResponse(
                 MobileCaptureWorkTagCreateResponse.self,
-                from: data
+                from: data,
+                response: response,
+                errorDomain: "QuipslyCapture.Work",
+                malformedResponseMessage: "Quipsly could not confirm this shared tag. Refresh the Nest before trying again."
             )
             guard response.statusCode < 400,
                   payload.ok,
@@ -7266,7 +7350,13 @@ final class CaptureWorkClient: ObservableObject {
             }
             request.httpBody = try JSONSerialization.data(withJSONObject: body)
             let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
-            let payload = try JSONDecoder().decode(MobileCaptureWorkTagTaxonomyResponse.self, from: data)
+            let payload = try decodeMobileCaptureResponse(
+                MobileCaptureWorkTagTaxonomyResponse.self,
+                from: data,
+                response: response,
+                errorDomain: "QuipslyCapture.Work",
+                malformedResponseMessage: "Quipsly could not confirm this shared-tag change. Refresh the Nest before trying again."
+            )
             guard response.statusCode < 400,
                   payload.ok,
                   payload.operation == canonicalOperation,

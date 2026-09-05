@@ -2021,6 +2021,11 @@ for (const needle of [
   "Quipsly could not load this Nest. Your saved workspace is unchanged; try again.",
   "Quipsly could not confirm this note update. Your device draft is safe and will retry.",
   "Quipsly could not load account deletion status. Try again.",
+  "Quipsly could not read recording readiness. Nothing started; try again.",
+  "Quipsly could not refresh recording health. Recordings and transcripts are unchanged; try again.",
+  "Quipsly could not confirm this weekly plan. Its device copy will retry automatically.",
+  "Quipsly could not confirm this calendar subscription. Refresh calendar status before trying again.",
+  "Quipsly could not confirm the new Nest. Refresh your Nests before trying again.",
 ]) {
   requireIncludes(
     bridgeText,
