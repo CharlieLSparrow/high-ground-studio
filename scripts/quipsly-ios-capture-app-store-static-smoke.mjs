@@ -1310,6 +1310,18 @@ requireIncludes(episodeChatText, "MobileChatPersistedLiveHint.engagementThreadKe
 requireIncludes(episodeChatText, "payload.engagement?.id.lowercased() == context.scopeKey", "native coaching conversation rejects a mismatched relationship response");
 requireIncludes(episodeChatText, "CaptureCoachingConversationOpenButton", "the iPhone client space exposes its durable relationship conversation");
 requireIncludes(captureCoachingHomeText, "CaptureCoachingSessionContinuity", "the iPhone client space exposes relationship Session continuity");
+for (const needle of [
+  "func remove(entry: MobileCoachingEngagementWorkEntry)",
+  "func restorePendingRemoval()",
+  'request(method: "DELETE"',
+  'request(method: "PUT"',
+  'accessibilityIdentifier("CaptureCoachingRemoveWork")',
+  'accessibilityIdentifier("CaptureCoachingRemovalUndoBar")',
+  'accessibilityIdentifier("CaptureCoachingUndoRemoval")',
+  "You can undo immediately after removing it.",
+]) {
+  requireIncludes(captureCoachingHomeText, needle, "native coaching work supports conventional reversible remove and Undo");
+}
 requireIncludes(runtimeUISmokeTestsText, "Phone coaching conversation", "the fresh compiled iPhone journey authors relationship conversation through product UI");
 requireIncludes(sessionConversationText, "CaptureSessionChatOpenButton", "exact-call Session conversation is reachable beside the primary recorder");
 requireIncludes(sessionConversationText, "QuipslyCapture/SessionConversation", "Session conversation uses a distinct protected cache namespace");

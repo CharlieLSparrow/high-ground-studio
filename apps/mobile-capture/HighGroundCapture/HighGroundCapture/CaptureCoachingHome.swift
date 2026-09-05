@@ -338,11 +338,24 @@ struct MobileCoachingEngagementWorkspace: Codable, Hashable {
     let entries: [MobileCoachingEngagementWorkEntry]
 }
 
+struct MobileCoachingWorkRemoval: Codable, Hashable {
+    let id: String
+    let kind: String
+    let updatedAt: String
+}
+
+struct MobileCoachingWorkUndo: Hashable {
+    let removal: MobileCoachingWorkRemoval
+    let title: String
+}
+
 private struct MobileCoachingEngagementWorkspaceResponse: Codable {
     let ok: Bool
     let error: String?
     let engagement: MobileCoachingEngagementWorkspace?
     let entry: MobileCoachingEngagementWorkEntry?
+    let removal: MobileCoachingWorkRemoval?
+    let undoAvailable: Bool?
 }
 
 @MainActor
@@ -351,6 +364,7 @@ final class MobileCoachingEngagementWorkspaceClient: ObservableObject {
     @Published private(set) var isLoading = false
     @Published private(set) var isSaving = false
     @Published private(set) var errorMessage: String?
+    @Published private(set) var pendingUndo: MobileCoachingWorkUndo?
 
     let engagementID: String
     private let baseURL = normalizedNestBaseURL(
@@ -461,6 +475,57 @@ final class MobileCoachingEngagementWorkspaceClient: ObservableObject {
             guard response.statusCode < 400, payload.ok, payload.entry != nil else {
                 throw coachingClientError(payload.error ?? "That coaching item could not be updated.")
             }
+            await load()
+            return true
+        } catch {
+            errorMessage = error.localizedDescription
+            return false
+        }
+    }
+
+    @discardableResult
+    func remove(entry: MobileCoachingEngagementWorkEntry) async -> Bool {
+        guard !isSaving else { return false }
+        isSaving = true
+        defer { isSaving = false }
+        errorMessage = nil
+        do {
+            let (payload, response) = try await request(method: "DELETE", body: [
+                "id": entry.id,
+                "kind": entry.kind,
+                "expectedUpdatedAt": entry.updatedAt,
+            ])
+            guard response.statusCode < 400,
+                  payload.ok,
+                  payload.undoAvailable == true,
+                  let removal = payload.removal else {
+                throw coachingClientError(payload.error ?? "That coaching item could not be removed.")
+            }
+            pendingUndo = MobileCoachingWorkUndo(removal: removal, title: entry.title)
+            await load()
+            return true
+        } catch {
+            errorMessage = error.localizedDescription
+            return false
+        }
+    }
+
+    @discardableResult
+    func restorePendingRemoval() async -> Bool {
+        guard !isSaving, let pendingUndo else { return false }
+        isSaving = true
+        defer { isSaving = false }
+        errorMessage = nil
+        do {
+            let (payload, response) = try await request(method: "PUT", body: [
+                "id": pendingUndo.removal.id,
+                "kind": pendingUndo.removal.kind,
+                "expectedUpdatedAt": pendingUndo.removal.updatedAt,
+            ])
+            guard response.statusCode < 400, payload.ok, payload.entry != nil else {
+                throw coachingClientError(payload.error ?? "That coaching item could not be restored.")
+            }
+            self.pendingUndo = nil
             await load()
             return true
         } catch {
@@ -3259,6 +3324,31 @@ struct CaptureCoachingEngagementWorkspaceView: View {
                 )
             }
         }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            if let pendingUndo = client.pendingUndo {
+                HStack(spacing: 12) {
+                    Image(systemName: "trash.slash")
+                        .foregroundStyle(CapturePalette.accent)
+                        .accessibilityHidden(true)
+                    Text("\(pendingUndo.title) removed")
+                        .font(.subheadline.weight(.semibold))
+                        .lineLimit(2)
+                    Spacer(minLength: 8)
+                    Button("Undo") {
+                        Task { await client.restorePendingRemoval() }
+                    }
+                    .font(.subheadline.weight(.bold))
+                    .disabled(client.isSaving)
+                    .accessibilityIdentifier("CaptureCoachingUndoRemoval")
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+                .background(.regularMaterial)
+                .overlay(alignment: .top) { Divider() }
+                .accessibilityElement(children: .contain)
+                .accessibilityIdentifier("CaptureCoachingRemovalUndoBar")
+            }
+        }
         .accessibilityIdentifier("CaptureCoachingEngagementWorkspace")
     }
 
@@ -3762,6 +3852,7 @@ private struct MobileCoachingWorkEditorSheet: View {
     @State private var visibility: String
     @State private var ownerUserID: String
     @State private var status: String
+    @State private var isConfirmingRemoval = false
 
     init(
         client: MobileCoachingEngagementWorkspaceClient,
@@ -3854,6 +3945,21 @@ private struct MobileCoachingWorkEditorSheet: View {
                 if let error = client.errorMessage {
                     Section { MobileCoachingInlineWarning(text: error) }
                 }
+
+                if let entry {
+                    Section {
+                        Button(role: .destructive) {
+                            isConfirmingRemoval = true
+                        } label: {
+                            Label("Remove \(entry.kindLabel.lowercased())", systemImage: "trash")
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        .disabled(previewOnly || client.isSaving)
+                        .accessibilityIdentifier("CaptureCoachingRemoveWork")
+                    } footer: {
+                        Text("You can undo immediately after removing it.")
+                    }
+                }
             }
             .navigationTitle(entry == nil ? "Add coaching work" : "Edit \(entry?.kindLabel ?? "item")")
             .navigationBarTitleDisplayMode(.inline)
@@ -3890,6 +3996,22 @@ private struct MobileCoachingWorkEditorSheet: View {
                     .accessibilityIdentifier("CaptureCoachingSaveWork")
                 }
             }
+        }
+        .confirmationDialog(
+            "Remove this \(entry?.kindLabel.lowercased() ?? "item")?",
+            isPresented: $isConfirmingRemoval,
+            titleVisibility: .visible
+        ) {
+            if let entry {
+                Button("Remove \(entry.kindLabel.lowercased())", role: .destructive) {
+                    Task {
+                        if await client.remove(entry: entry) { dismiss() }
+                    }
+                }
+                Button("Cancel", role: .cancel) {}
+            }
+        } message: {
+            Text("It will disappear from this coaching space. Undo is available when you return.")
         }
         .interactiveDismissDisabled(client.isSaving)
         .accessibilityIdentifier("CaptureCoachingWorkEditor")
