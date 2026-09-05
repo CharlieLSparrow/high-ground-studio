@@ -1327,8 +1327,11 @@ for (const needle of [
   'targetAt: entry.dueAt.flatMap(coachingISO8601Date)',
   'accessibilityIdentifier("CaptureCoachingWorkDateToggle")',
   'accessibilityIdentifier("CaptureCoachingWorkDate")',
+  'accessibilityIdentifier("CaptureCoachingWorkEditorForm")',
   'accessibilityIdentifier("CaptureCoachingWorkDate_\\(entry.id)")',
   'kind == "TASK" ? "Add due date" : "Add target date"',
+  '.sheet(item: $newWorkDraft) { draft in',
+  'preferredKind: draft.kind',
 ]) {
   requireIncludes(captureCoachingHomeText, needle, "native coaching work preserves and edits optional task and goal dates");
 }

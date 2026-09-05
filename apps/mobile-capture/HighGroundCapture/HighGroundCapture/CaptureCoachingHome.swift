@@ -3167,6 +3167,11 @@ private enum MobileCoachingWorkFilter: String, CaseIterable, Identifiable {
     }
 }
 
+private struct MobileCoachingWorkDraft: Identifiable {
+    let id = UUID()
+    let kind: String
+}
+
 private struct MobileCoachingInlineWarning: View {
     let text: String
 
@@ -3187,8 +3192,7 @@ struct CaptureCoachingEngagementWorkspaceView: View {
     @StateObject private var client: MobileCoachingEngagementWorkspaceClient
     @StateObject private var conversation: MobileEpisodeChatClient
     @State private var filter: MobileCoachingWorkFilter = .all
-    @State private var isPresentingNewWork = false
-    @State private var newWorkKind = "NOTE"
+    @State private var newWorkDraft: MobileCoachingWorkDraft?
     @State private var editingEntry: MobileCoachingEngagementWorkEntry?
 
     init(
@@ -3277,8 +3281,7 @@ struct CaptureCoachingEngagementWorkspaceView: View {
             if client.workspace?.canWrite == true {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
-                        newWorkKind = "NOTE"
-                        isPresentingNewWork = true
+                        newWorkDraft = MobileCoachingWorkDraft(kind: "NOTE")
                     } label: {
                         Label("Add coaching work", systemImage: "plus")
                     }
@@ -3307,13 +3310,13 @@ struct CaptureCoachingEngagementWorkspaceView: View {
             }
         }
         .onDisappear { conversation.stopPolling() }
-        .sheet(isPresented: $isPresentingNewWork) {
+        .sheet(item: $newWorkDraft) { draft in
             if let workspace = client.workspace {
                 MobileCoachingWorkEditorSheet(
                     client: client,
                     workspace: workspace,
                     entry: nil,
-                    preferredKind: newWorkKind,
+                    preferredKind: draft.kind,
                     previewOnly: previewOnly
                 )
             }
@@ -3375,8 +3378,7 @@ struct CaptureCoachingEngagementWorkspaceView: View {
         systemImage: String
     ) -> some View {
         Button {
-            newWorkKind = kind
-            isPresentingNewWork = true
+            newWorkDraft = MobileCoachingWorkDraft(kind: kind)
         } label: {
             Label(title, systemImage: systemImage)
                 .frame(maxWidth: .infinity, minHeight: 44)
@@ -3436,7 +3438,7 @@ struct CaptureCoachingEngagementWorkspaceView: View {
                         if canonicalPriority?.kind == "REVIEW_OVERDUE_COMMITMENTS" {
                             filter = .tasks
                         } else {
-                            isPresentingNewWork = true
+                            newWorkDraft = MobileCoachingWorkDraft(kind: "NOTE")
                         }
                     } label: {
                         Label(
@@ -4003,6 +4005,7 @@ private struct MobileCoachingWorkEditorSheet: View {
                     }
                 }
             }
+            .accessibilityIdentifier("CaptureCoachingWorkEditorForm")
             .navigationTitle(entry == nil ? "Add coaching work" : "Edit \(entry?.kindLabel ?? "item")")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

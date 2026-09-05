@@ -1630,6 +1630,30 @@ final class CaptureExperienceUITests: XCTestCase {
             "Open Session",
             "Preparation should remain available inside the Session without becoming required paperwork."
         )
+
+        let addTask = app.descendants(matching: .any)["CaptureCoachingQuickAdd_TASK"]
+        addTask.tap()
+        XCTAssertTrue(
+            app.descendants(matching: .any)["CaptureCoachingWorkEditor"]
+                .waitForExistence(timeout: 5)
+        )
+        let dateToggle = app.descendants(matching: .any)["CaptureCoachingWorkDateToggle"]
+        reveal(dateToggle)
+        XCTAssertTrue(
+            dateToggle.exists && dateToggle.isHittable,
+            "A phone-only coach should be able to add an optional due date without leaving the task editor."
+        )
+        dateToggle.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()
+        XCTAssertEqual(dateToggle.value as? String, "1")
+        let editorForm = app.descendants(matching: .any)["CaptureCoachingWorkEditorForm"]
+        XCTAssertTrue(editorForm.exists)
+        editorForm.swipeUp()
+        XCTAssertTrue(
+            app.descendants(matching: .any)["CaptureCoachingWorkDate"]
+                .waitForExistence(timeout: 3),
+            "Turning on a due date should reveal the ordinary platform date picker."
+        )
+        app.buttons["Cancel"].tap()
     }
 
     func testCoachWithoutAppointmentsStartsWithSchedulingInsteadOfAnEmptyDashboard() {
