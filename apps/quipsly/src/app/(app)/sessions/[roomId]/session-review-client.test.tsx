@@ -1144,7 +1144,7 @@ describe("Session review goal candidates", () => {
     expect(screen.getByLabelText("Record audio from this device")).toBeChecked();
     expect(screen.getByLabelText("Record camera video from this device")).toBeChecked();
     expect(screen.getByLabelText("Create a transcript and suggested notes/tasks")).toBeChecked();
-    await user.click(screen.getByRole("button", { name: "Agree and continue" }));
+    await user.click(screen.getByRole("button", { name: "Allow recording" }));
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
     expect(fetchMock).toHaveBeenCalledWith("/api/mobile/capture/consent", expect.objectContaining({ method: "POST" }));

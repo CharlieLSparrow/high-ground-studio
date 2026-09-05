@@ -1101,20 +1101,22 @@ function SessionConsentControl({
           >
             {consent?.recordingReady
               ? "Recording ready"
-              : "Allow recording for this session?"}
+              : "Allow recording?"}
           </h3>
           {!consent?.recordingReady || isEditingConsent ? (
             <p className="mt-2 text-sm font-semibold leading-6 text-[#6b5538]">
-              Choose what this device may record. You can join the call without
-              recording anything.
+              You can join either way. Nothing starts until the host presses
+              Record.
             </p>
           ) : null}
         </div>
-        <span
-          className={`shrink-0 rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-wide ${statusTone(consent?.recordingReady ? "READY" : "HELD")}`}
-        >
-          {consent?.recordingReady ? "Saved" : "Action needed"}
-        </span>
+        {consent?.recordingReady ? (
+          <span
+            className={`shrink-0 rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-wide ${statusTone("READY")}`}
+          >
+            Allowed
+          </span>
+        ) : null}
       </div>
 
       {!actor ? (
@@ -1162,8 +1164,8 @@ function SessionConsentControl({
                 {canTranscribe ? "Transcript on" : "Transcript off"}
               </p>
               <p className="mt-1 text-xs font-semibold leading-5">
-                Continue only after everyone who may be heard or seen has
-                agreed. Recording starts separately.
+                This choice is remembered for this Session. You can change it
+                at any time.
               </p>
             </div>
             <button
@@ -1176,7 +1178,7 @@ function SessionConsentControl({
                 ? "Saving…"
                 : consent?.status === "GRANTED"
                   ? "Save changes"
-                  : "Agree and continue"}
+                  : "Allow recording"}
             </button>
           </div>
 
