@@ -779,6 +779,22 @@ requireIncludes(
   "var needsClearSpeechRetry: Bool",
   "decoded very-low-level sources expose a focused recovery state",
 );
+requireIncludes(
+  localRecordingLibraryText,
+  "var clearSpeechRetryMessage: String?",
+  "decoded very-low-level sources explain the direct record-again recovery",
+);
+for (const needle of [
+  "terminalCloudFailurePhase(",
+  "recording.clearSpeechRetryMessage",
+  "retryable: false",
+]) {
+  requireIncludes(
+    onDeviceTranscriptManagerText,
+    needle,
+    "a terminal cloud result cannot replace a known quiet take with a vague provider error",
+  );
+}
 for (const needle of [
   "SpeechTranscriber.isAvailable",
   "AssetInventory.status(forModules:",

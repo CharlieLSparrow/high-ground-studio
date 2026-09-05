@@ -379,6 +379,11 @@ struct LocalRecording: Codable, Identifiable, Equatable {
             }
     }
 
+    var clearSpeechRetryMessage: String? {
+        guard needsClearSpeechRetry else { return nil }
+        return "No clear speech was found in this take. The original recording is safe; move closer to the microphone or check the selected input, then record again."
+    }
+
     /// Personal voice writing is an explicit transcription action. Shared
     /// Sessions require the separate all-party transcription decision captured
     /// at the same authoritative refresh that allowed recording to start.

@@ -8798,7 +8798,10 @@ private struct CapturePersonalVoiceNoteTranscriptCard: View {
         case .requestingCloudFallback: return "Starting cloud transcript…"
         case .cloudFallback(_, let status):
             return status == "COMPLETED" ? "Transcript ready in Nest" : "Cloud transcript underway"
-        case .failed: return "Transcript needs attention"
+        case .failed:
+            return recording.needsClearSpeechRetry
+                ? "No clear speech found"
+                : "Transcript needs attention"
         }
     }
 
@@ -22330,7 +22333,10 @@ private struct LocalRecordingRow: View {
         case .requestingCloudFallback: return "Starting cloud transcript…"
         case .cloudFallback(_, let status):
             return status == "COMPLETED" ? "Transcript ready" : "Cloud transcript underway"
-        case .failed: return "Transcript needs attention"
+        case .failed:
+            return recording.needsClearSpeechRetry
+                ? "No clear speech found"
+                : "Transcript needs attention"
         }
     }
 

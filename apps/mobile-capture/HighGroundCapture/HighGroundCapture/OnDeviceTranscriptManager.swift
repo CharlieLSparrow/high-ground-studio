@@ -1150,10 +1150,9 @@ final class OnDeviceTranscriptManager: ObservableObject {
            recording.cloudTranscriptFallbackAcceptedAt != nil {
             switch status.uppercased() {
             case "FAILED", "HELD":
-                phases[recording.id] = .failed(
-                    message: recording.cloudTranscriptFallbackError
-                        ?? "The cloud transcript did not finish. The exact recording remains safe and can be tried again.",
-                    retryable: true
+                phases[recording.id] = terminalCloudFailurePhase(
+                    for: recording,
+                    errorMessage: recording.cloudTranscriptFallbackError
                 )
             default:
                 phases[recording.id] = .cloudFallback(
@@ -1201,10 +1200,9 @@ final class OnDeviceTranscriptManager: ObservableObject {
                 )
                 switch status {
                 case "FAILED", "HELD":
-                    phases[recording.id] = .failed(
-                        message: transcript.errorMessage
-                            ?? "The cloud transcript did not finish. The exact recording remains safe and can be tried again.",
-                        retryable: true
+                    phases[recording.id] = terminalCloudFailurePhase(
+                        for: recording,
+                        errorMessage: transcript.errorMessage
                     )
                 default:
                     phases[recording.id] = .cloudFallback(
@@ -1218,6 +1216,23 @@ final class OnDeviceTranscriptManager: ObservableObject {
                 continue
             }
         }
+    }
+
+    private func terminalCloudFailurePhase(
+        for recording: LocalRecording,
+        errorMessage: String?
+    ) -> OnDeviceTranscriptPhase {
+        if let clearSpeechRetryMessage = recording.clearSpeechRetryMessage {
+            return .failed(
+                message: clearSpeechRetryMessage,
+                retryable: false
+            )
+        }
+        return .failed(
+            message: errorMessage
+                ?? "The cloud transcript did not finish. The exact recording remains safe and can be tried again.",
+            retryable: true
+        )
     }
 
     func begin(
