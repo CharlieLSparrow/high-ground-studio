@@ -701,21 +701,17 @@ platform :ios do
           fail_build: true,
           number_of_retries: retry_limit,
         }
-        if execution.fetch(:slug) == "ipad"
-          simulator = capture_simulator_destination(execution.fetch(:device))
-          run_options[:destination] = simulator.fetch(:destination)
-          run_options[:skip_detect_devices] = true
-          # Scan 2.236.1 assumes its name-based device inventory exists when
-          # reinstall_app is enabled, even with an explicit destination. The
-          # exact simulator is erased below, and xcodebuild installs the test
-          # host itself, so avoid that broken and redundant pre-uninstall.
-          run_options[:reinstall_app] = false
-          if suite == "full"
-            system("xcrun", "simctl", "shutdown", simulator.fetch(:udid), out: File::NULL, err: File::NULL)
-            sh("xcrun", "simctl", "erase", simulator.fetch(:udid))
-          end
-        else
-          run_options[:devices] = [execution.fetch(:device)]
+        simulator = capture_simulator_destination(execution.fetch(:device))
+        run_options[:destination] = simulator.fetch(:destination)
+        run_options[:skip_detect_devices] = true
+        # Scan 2.236.1 cannot reliably bind a name-only destination to the
+        # newest installed runtime. Use one exact simulator for both phone and
+        # iPad, and let xcodebuild install the test host instead of asking scan
+        # to pre-uninstall from a potentially different device.
+        run_options[:reinstall_app] = false
+        if suite == "full"
+          system("xcrun", "simctl", "shutdown", simulator.fetch(:udid), out: File::NULL, err: File::NULL)
+          sh("xcrun", "simctl", "erase", simulator.fetch(:udid))
         end
         execution_record = nil
         begin
@@ -739,6 +735,14 @@ platform :ios do
           # cleanup trap runs. Result bundles are already stored separately,
           # so remove only UUID directories absent from the wrapper's baseline.
           cleanup_capture_ui_xctest_devices
+          if suite == "full"
+            # A full shard can grow a simulator by several gigabytes. The
+            # result bundle above is the durable test evidence, so return the
+            # disposable device to its empty state before starting the next
+            # shard instead of retaining four runs of app and test data.
+            system("xcrun", "simctl", "shutdown", simulator.fetch(:udid), out: File::NULL, err: File::NULL)
+            system("xcrun", "simctl", "erase", simulator.fetch(:udid), out: File::NULL, err: File::NULL)
+          end
         end
         execution_record
       end
