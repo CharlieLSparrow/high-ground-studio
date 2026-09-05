@@ -709,8 +709,8 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(sort.label.localizedCaseInsensitiveContains("Recent"))
         XCTAssertEqual(
             app.staticTexts["CaptureLibraryWritingCount"].label,
-            "1 writing item",
-            "The accessible count should describe the visible preview writing instead of an implementation-only backing store."
+            "3 writing items",
+            "The accessible count should describe every visible preview item instead of an implementation-only backing store."
         )
 
         sort.tap()
