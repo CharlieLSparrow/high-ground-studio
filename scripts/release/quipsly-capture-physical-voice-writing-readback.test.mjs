@@ -45,6 +45,11 @@ test("requires exactly one device or previously pulled receipt", () => {
     parseArguments(["--device", "Morbo", "--require-transcript-proof"]).requireTranscriptProof,
     true,
   );
+  assert.equal(
+    parseArguments(["--device", "Morbo", "--require-audible-source-proof"])
+      .requireAudibleSourceProof,
+    true,
+  );
   assert.throws(
     () => parseArguments(["--receipt", "/tmp/latest.json", "--require-capture-proof"]),
     /requires --device/,
@@ -109,6 +114,39 @@ test("strict transcript proof requires exact-source on-device content", () => {
       transcriptCharacterCount: 42,
     }, { requireCaptureProof: true, requireTranscriptProof: true }).transcriptCharacterCount,
     42,
+  );
+});
+
+test("audible-source proof rejects silence and missing level measurements", () => {
+  const base = {
+    captureAcceptanceProven: true,
+    sourceAudioRead: true,
+    sourceAudioPlayable: true,
+    sourceAudioSHA256: sourceSHA256,
+    sourceAudioMeanVolumeDbfs: -28.2,
+    sourceAudioPeakVolumeDbfs: -8.4,
+    sourceAudioLikelySilent: false,
+  };
+  assert.equal(
+    assertRequiredProof(base, { requireAudibleSourceProof: true }),
+    base,
+  );
+  assert.throws(
+    () => assertRequiredProof({
+      ...base,
+      sourceAudioMeanVolumeDbfs: -72.8,
+      sourceAudioPeakVolumeDbfs: -58.9,
+      sourceAudioLikelySilent: true,
+    }, { requireAudibleSourceProof: true }),
+    /audible-source proof is incomplete/,
+  );
+  assert.throws(
+    () => assertRequiredProof({
+      ...base,
+      sourceAudioMeanVolumeDbfs: null,
+      sourceAudioPeakVolumeDbfs: null,
+    }, { requireAudibleSourceProof: true }),
+    /audible-source proof is incomplete/,
   );
 });
 

@@ -106,6 +106,9 @@ test("completion requires playable exact-source on-device text", () => {
     captureAcceptanceProven: true,
     sourceAudioRead: true,
     sourceAudioPlayable: true,
+    sourceAudioMeanVolumeDbfs: -28.2,
+    sourceAudioPeakVolumeDbfs: -8.4,
+    sourceAudioLikelySilent: false,
     transcriptContentRead: true,
     sourceBoundTranscriptProven: true,
     transcriptionRanOnDevice: true,
@@ -123,4 +126,6 @@ test("completion requires playable exact-source on-device text", () => {
     assert.equal(physicalFlightIsComplete({ ...complete, [key]: false }), false);
   }
   assert.equal(physicalFlightIsComplete({ ...complete, transcriptCharacterCount: 0 }), false);
+  assert.equal(physicalFlightIsComplete({ ...complete, sourceAudioLikelySilent: true }), false);
+  assert.equal(physicalFlightIsComplete({ ...complete, sourceAudioMeanVolumeDbfs: null }), false);
 });

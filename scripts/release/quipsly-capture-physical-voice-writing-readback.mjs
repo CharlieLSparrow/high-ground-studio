@@ -67,6 +67,7 @@ export function parseArguments(argv) {
     expectedBuild: "",
     maxAgeMinutes: 30,
     requireCaptureProof: false,
+    requireAudibleSourceProof: false,
     requireTranscriptProof: false,
     help: false,
   };
@@ -79,6 +80,11 @@ export function parseArguments(argv) {
     }
     if (flag === "--require-capture-proof") {
       options.requireCaptureProof = true;
+      continue;
+    }
+    if (flag === "--require-audible-source-proof") {
+      options.requireCaptureProof = true;
+      options.requireAudibleSourceProof = true;
       continue;
     }
     if (flag === "--require-transcript-proof") {
@@ -99,7 +105,9 @@ export function parseArguments(argv) {
   if (Boolean(clean(options.device)) === Boolean(clean(options.receiptPath))) {
     fail("Provide exactly one of --device or --receipt.");
   }
-  if ((options.requireCaptureProof || options.requireTranscriptProof) && !clean(options.device)) {
+  if ((options.requireCaptureProof
+      || options.requireAudibleSourceProof
+      || options.requireTranscriptProof) && !clean(options.device)) {
     fail("Strict physical proof requires --device so source bytes can be read independently.");
   }
   if (!Number.isFinite(options.maxAgeMinutes) || options.maxAgeMinutes <= 0 || options.maxAgeMinutes > 1_440) {
@@ -121,6 +129,9 @@ Options:
   --max-age-minutes <n>   Reject stale device evidence (default 30).
   --require-capture-proof Fail unless the finished receipt names independently
                           readable and playable audio bytes from the device.
+  --require-audible-source-proof
+                          Also reject an effectively silent source and require
+                          independently measured mean and peak signal levels.
   --require-transcript-proof
                           Also require a nonempty on-device transcript bound to
                           the independently read source bytes.
@@ -376,6 +387,7 @@ export function inspectTranscriptSidecar(value, receipt, sourceEvidence) {
 
 export function assertRequiredProof(receipt, {
   requireCaptureProof = false,
+  requireAudibleSourceProof = false,
   requireTranscriptProof = false,
 } = {}) {
   if (requireCaptureProof && !(
@@ -385,6 +397,16 @@ export function assertRequiredProof(receipt, {
     && SHA256_PATTERN.test(clean(receipt?.sourceAudioSHA256))
   )) {
     fail("Physical capture proof is incomplete: a finished, independently readable playable source is required.");
+  }
+  if (requireAudibleSourceProof && !(
+    receipt?.captureAcceptanceProven === true
+    && receipt?.sourceAudioRead === true
+    && receipt?.sourceAudioPlayable === true
+    && Number.isFinite(receipt?.sourceAudioMeanVolumeDbfs)
+    && Number.isFinite(receipt?.sourceAudioPeakVolumeDbfs)
+    && receipt?.sourceAudioLikelySilent === false
+  )) {
+    fail("Physical audible-source proof is incomplete: independently measured audio above the effective-silence threshold is required.");
   }
   if (requireTranscriptProof && !(
     receipt?.sourceBoundTranscriptProven === true

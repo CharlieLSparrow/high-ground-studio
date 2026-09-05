@@ -150,6 +150,9 @@ export function physicalFlightIsComplete(receipt) {
   return receipt?.captureAcceptanceProven === true
     && receipt?.sourceAudioRead === true
     && receipt?.sourceAudioPlayable === true
+    && Number.isFinite(receipt?.sourceAudioMeanVolumeDbfs)
+    && Number.isFinite(receipt?.sourceAudioPeakVolumeDbfs)
+    && receipt?.sourceAudioLikelySilent === false
     && receipt?.transcriptContentRead === true
     && receipt?.sourceBoundTranscriptProven === true
     && receipt?.transcriptionRanOnDevice === true
@@ -178,7 +181,9 @@ async function readback(device, expectedBuild, outputPath = "", strict = false) 
     "5",
   ];
   if (expectedBuild) args.push("--expected-build", expectedBuild);
-  if (strict) args.push("--require-transcript-proof");
+  if (strict) {
+    args.push("--require-audible-source-proof", "--require-transcript-proof");
+  }
   if (outputPath) args.push("--output", outputPath);
   try {
     const { stdout } = await execFileAsync(process.execPath, args, {
