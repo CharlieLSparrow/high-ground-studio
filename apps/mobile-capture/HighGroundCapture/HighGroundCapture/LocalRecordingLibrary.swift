@@ -373,10 +373,14 @@ struct LocalRecording: Codable, Identifiable, Equatable {
     /// status while giving the everyday Library a direct recovery action.
     var needsClearSpeechRetry: Bool {
         guard let audioSignal = sourceProfile?.audioSignal else { return false }
-        return audioSignal.signalStatus.lowercased() == "attention"
-            && audioSignal.observations.contains {
-                $0.kind.lowercased() == "very-low-level"
-            }
+        return audioSignal.observations.contains {
+            ["very-low-level", "near-digital-silence"].contains(
+                $0.kind.lowercased()
+            )
+        } || LocalAudioSignalClassification.isVeryLowLevel(
+            rmsDbfs: audioSignal.rmsDbfs,
+            samplePeakDbfs: audioSignal.samplePeakDbfs
+        )
     }
 
     var clearSpeechRetryMessage: String? {
@@ -2389,7 +2393,10 @@ final class LocalRecordingLibrary: ObservableObject {
         )
         let signalStatus = peak <= thresholds.nearSilenceDbfs
             ? "near-digital-silence"
-            : rms <= -60 && peak <= thresholds.surroundingSignalDbfs
+            : LocalAudioSignalClassification.isVeryLowLevel(
+                rmsDbfs: rms,
+                samplePeakDbfs: peak
+            )
                 ? "attention"
             : !observations.isEmpty
                 ? "attention"
@@ -2437,8 +2444,10 @@ final class LocalRecordingLibrary: ObservableObject {
                     detail: "The decoded source peak stayed at or below the recorded near-silence threshold. Listen before relying on this take."
                 )
             )
-        } else if signalRmsDbfs <= -60,
-                  signalPeakDbfs <= thresholds.surroundingSignalDbfs {
+        } else if LocalAudioSignalClassification.isVeryLowLevel(
+            rmsDbfs: signalRmsDbfs,
+            samplePeakDbfs: signalPeakDbfs
+        ) {
             observations.append(
                 LocalRecordingAudioSignalObservation(
                     kind: "very-low-level",

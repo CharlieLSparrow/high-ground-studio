@@ -88,20 +88,49 @@ enum OnDeviceTranscriptDeliveryPolicy {
     /// A denied Apple Speech permission is unusual among fallback reasons:
     /// the person can repair it in Settings while the immutable local source
     /// is still available. Prefer that exact local source when Quipsly returns
-    /// to the foreground, but never race or duplicate a cloud job Nest has
-    /// already accepted.
+    /// to the foreground. An accepted cloud job owns the source while it is
+    /// queued or running; once that attempt is terminally failed or held, the
+    /// retained device source may safely recover without racing the worker.
     static func shouldRecoverLocallyAfterPermissionChange(
         fallbackReasonCode: String?,
         cloudFallbackWasAccepted: Bool,
+        cloudFallbackStatus: String?,
         speechRecognitionIsAuthorized: Bool,
-        localSourceIsAvailable: Bool
+        localSourceIsAvailable: Bool,
+        sourceNeedsClearSpeechRetry: Bool
     ) -> Bool {
-        guard !cloudFallbackWasAccepted,
-              speechRecognitionIsAuthorized,
-              localSourceIsAvailable else { return false }
-        return fallbackReasonCode?
+        guard speechRecognitionIsAuthorized,
+              localSourceIsAvailable,
+              !sourceNeedsClearSpeechRetry else { return false }
+        guard fallbackReasonCode?
             .trimmingCharacters(in: .whitespacesAndNewlines)
-            .lowercased() == "apple-speech-permission-denied"
+            .lowercased() == "apple-speech-permission-denied" else {
+            return false
+        }
+        guard cloudFallbackWasAccepted else { return true }
+        let status = cloudFallbackStatus?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .uppercased() ?? ""
+        return status == "FAILED" || status == "HELD"
+    }
+
+    /// Recognition is useful only while the immutable source is locally
+    /// playable, transcription was requested, and signal analysis has not
+    /// already established that the take needs to be recorded again. An
+    /// accepted cloud job owns recognition until it reaches a terminal state;
+    /// callers use the permission-recovery policy above for that narrow retry.
+    static func shouldAttemptAutomaticRecognition(
+        transcriptionWasRequested: Bool,
+        sourceIsPlaybackEligible: Bool,
+        localSourceIsAvailable: Bool,
+        sourceNeedsClearSpeechRetry: Bool,
+        cloudFallbackWasAccepted: Bool
+    ) -> Bool {
+        transcriptionWasRequested
+            && sourceIsPlaybackEligible
+            && localSourceIsAvailable
+            && !sourceNeedsClearSpeechRetry
+            && !cloudFallbackWasAccepted
     }
 
     /// SpeechTranscriber is explicitly designed for long-form meetings and

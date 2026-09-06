@@ -325,6 +325,23 @@ if (!accessor) throw new Error("Transcript worker cannot access the provider sec
 NODE
 else
   if [[ "${apply}" == "1" ]]; then
+    gcloud services enable speech.googleapis.com \
+      --project="${project_id}" \
+      --quiet
+  fi
+  speech_api="$(
+    gcloud services list \
+      --project="${project_id}" \
+      --enabled \
+      --filter='config.name=speech.googleapis.com' \
+      --format='value(config.name)' \
+      --limit=1
+  )"
+  if [[ "${speech_api}" != "speech.googleapis.com" ]]; then
+    echo "Speech-to-Text API is disabled. Re-run with APPLY=1." >&2
+    exit 1
+  fi
+  if [[ "${apply}" == "1" ]]; then
     gcloud projects add-iam-policy-binding "${project_id}" \
       --member="serviceAccount:${worker_account}" \
       --role="roles/speech.client" \

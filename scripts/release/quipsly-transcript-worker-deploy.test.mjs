@@ -6,6 +6,10 @@ const deploy = readFileSync(
   "scripts/release/quipsly-transcript-worker-deploy.sh",
   "utf8",
 );
+const access = readFileSync(
+  "scripts/release/quipsly-transcript-worker-access.sh",
+  "utf8",
+);
 
 test("transcript worker releases use one full committed-source image identity", () => {
   assert.match(deploy, /source-\$\{source_sha\}/);
@@ -35,4 +39,14 @@ test("provider readiness remains a pre-build release gate", () => {
   assert.ok(secretGate >= 0);
   assert.ok(buildDecision > secretGate);
   assert.match(deploy, /--set-secrets="DEEPGRAM_API_KEY=\$\{deepgram_secret\}:latest"/);
+});
+
+test("Google Speech activation proves both the API and least-privilege worker role", () => {
+  const apiGate = access.indexOf("gcloud services enable speech.googleapis.com");
+  const roleGrant = access.indexOf('role="roles/speech.client"');
+  assert.ok(apiGate >= 0);
+  assert.ok(roleGrant > apiGate);
+  assert.match(access, /--filter='config\.name=speech\.googleapis\.com'/);
+  assert.match(access, /Speech-to-Text API is disabled\. Re-run with APPLY=1\./);
+  assert.match(access, /if \(!allowed\) throw new Error\("Transcript worker cannot call Speech-to-Text\."\)/);
 });

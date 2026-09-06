@@ -8698,7 +8698,7 @@ private struct CapturePersonalVoiceNoteTranscriptCard: View {
             if shouldOfferOnDeviceSpeechRecovery {
                 CapturePermissionRecoveryButton(
                     title: "Use on-device transcription",
-                    detail: "Turn on Speech Recognition once, then return to Quipsly. This saved recording will retry automatically on this device before cloud backup starts."
+                    detail: "Turn on Speech Recognition once, then return to Quipsly. Quipsly will create timed text from this saved recording on this device."
                 )
                 .accessibilityIdentifier("CaptureVoiceNoteSpeechPermissionRecovery")
             }
@@ -8763,19 +8763,23 @@ private struct CapturePersonalVoiceNoteTranscriptCard: View {
     private var actionLabel: String? {
         switch phase {
         case .modelDownloadRequired:
-            "Download English speech model"
+            recording.needsClearSpeechRetry
+                ? nil
+                : "Download English speech model"
         case .failed(_, let retryable) where !retryable:
             nil
         case .failed:
-            recording.cloudTranscriptFallbackRequestId != nil
-                ? "Try cloud transcript again"
-                : "Try transcription again"
+            canRecoverLocallyAfterSpeechPermission
+                ? "Create transcript on this device"
+                : recording.cloudTranscriptFallbackRequestId != nil
+                    ? "Try cloud transcript again"
+                    : "Try transcription again"
         case .savedLocally, .waitingForVerifiedUpload:
             recording.status.isVerified ? "Retry Nest transcript sync" : nil
         case .waitingForCloudFallback:
             nil
         case .idle:
-            "Transcribe now"
+            recording.needsClearSpeechRetry ? nil : "Transcribe now"
         case .checkingSupport, .installingModel, .transcribing, .submitting,
              .attached, .requestingCloudFallback, .cloudFallback:
             nil
@@ -8786,7 +8790,8 @@ private struct CapturePersonalVoiceNoteTranscriptCard: View {
         switch phase {
         case .savedLocally, .waitingForVerifiedUpload, .waitingForCloudFallback:
             false
-        case .failed where recording.cloudTranscriptFallbackRequestId != nil:
+        case .failed where recording.cloudTranscriptFallbackRequestId != nil
+            && !canRecoverLocallyAfterSpeechPermission:
             false
         default:
             true
@@ -8794,22 +8799,49 @@ private struct CapturePersonalVoiceNoteTranscriptCard: View {
     }
 
     private var shouldOfferOnDeviceSpeechRecovery: Bool {
+        guard !recording.needsClearSpeechRetry else { return false }
         guard recording.cloudTranscriptFallbackReasonCode?
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .lowercased() == "apple-speech-permission-denied" else {
             return false
         }
+        guard recording.cloudTranscriptFallbackAcceptedAt == nil
+            || ["FAILED", "HELD"].contains(
+                recording.cloudTranscriptFallbackStatus?
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                    .uppercased() ?? ""
+            ) else { return false }
         let status = SFSpeechRecognizer.authorizationStatus()
         return status == .denied || status == .restricted
     }
 
+    private var canRecoverLocallyAfterSpeechPermission: Bool {
+        OnDeviceTranscriptDeliveryPolicy
+            .shouldRecoverLocallyAfterPermissionChange(
+                fallbackReasonCode: recording.cloudTranscriptFallbackReasonCode,
+                cloudFallbackWasAccepted: recording.cloudTranscriptFallbackAcceptedAt != nil,
+                cloudFallbackStatus: recording.cloudTranscriptFallbackStatus,
+                speechRecognitionIsAuthorized:
+                    SFSpeechRecognizer.authorizationStatus() == .authorized,
+                localSourceIsAvailable: fileURL != nil,
+                sourceNeedsClearSpeechRetry: recording.needsClearSpeechRetry
+            )
+    }
+
     private func performTranscriptAction() {
+        guard !recording.needsClearSpeechRetry
+            || transcriptManager.storedTranscript(for: recording.id) != nil else {
+            return
+        }
         switch phase {
         case .modelDownloadRequired:
             guard let fileURL else { return }
             transcriptManager.beginVoiceWriting(recording: recording, fileURL: fileURL)
         case .savedLocally, .waitingForVerifiedUpload:
             transcriptManager.submitSavedTranscript(recording: recording)
+        case .failed where canRecoverLocallyAfterSpeechPermission:
+            guard let fileURL else { return }
+            transcriptManager.beginVoiceWriting(recording: recording, fileURL: fileURL)
         case .failed where recording.cloudTranscriptFallbackRequestId != nil:
             transcriptManager.submitPendingCloudFallback(recording: recording)
         default:
@@ -22375,7 +22407,7 @@ private struct LocalRecordingRow: View {
             if shouldOfferOnDeviceSpeechRecovery {
                 CapturePermissionRecoveryButton(
                     title: "Use on-device transcription",
-                    detail: "Turn on Speech Recognition once, then return to Quipsly. This saved recording will retry automatically on this device before cloud backup starts."
+                    detail: "Turn on Speech Recognition once, then return to Quipsly. Quipsly will create timed text from this saved recording on this device."
                 )
                 .accessibilityIdentifier("CaptureLibrarySpeechPermissionRecovery_\(recording.id)")
             }
@@ -22573,7 +22605,8 @@ private struct LocalRecordingRow: View {
             guard recording.status.isVerified else { return nil }
             return { transcriptManager.submitSavedTranscript(recording: recording) }
         case .modelDownloadRequired:
-            guard recording.shouldBeginAutomaticOnDeviceTranscript else { return nil }
+            guard recording.shouldBeginAutomaticOnDeviceTranscript,
+                  !recording.needsClearSpeechRetry else { return nil }
             return {
                 guard let fileURL else { return }
                 transcriptManager.begin(recording: recording, fileURL: fileURL, allowModelDownload: true)
@@ -22582,11 +22615,21 @@ private struct LocalRecordingRow: View {
             return nil
         case .failed where hasSavedTranscript:
             return { transcriptManager.submitSavedTranscript(recording: recording) }
+        case .failed where canRecoverLocallyAfterSpeechPermission:
+            return {
+                guard let fileURL else { return }
+                transcriptManager.begin(
+                    recording: recording,
+                    fileURL: fileURL,
+                    allowModelDownload: true
+                )
+            }
         case .failed where recording.cloudTranscriptFallbackRequestId != nil:
             guard recording.status.isVerified else { return nil }
             return { transcriptManager.submitPendingCloudFallback(recording: recording) }
         case .idle, .failed:
-            guard recording.shouldBeginAutomaticOnDeviceTranscript else { return nil }
+            guard recording.shouldBeginAutomaticOnDeviceTranscript,
+                  !recording.needsClearSpeechRetry else { return nil }
             return {
                 guard let fileURL else { return }
                 transcriptManager.begin(recording: recording, fileURL: fileURL)
@@ -22608,9 +22651,11 @@ private struct LocalRecordingRow: View {
         case .failed:
             return hasSavedTranscript
                 ? "Try syncing again"
-                : recording.cloudTranscriptFallbackRequestId != nil
-                    ? "Try cloud transcript again"
-                    : "Try transcript again"
+                : canRecoverLocallyAfterSpeechPermission
+                    ? "Create transcript on this device"
+                    : recording.cloudTranscriptFallbackRequestId != nil
+                        ? "Try cloud transcript again"
+                        : "Try transcript again"
         default:
             return "Create transcript"
         }
@@ -22620,7 +22665,8 @@ private struct LocalRecordingRow: View {
         switch phase {
         case .savedLocally, .waitingForVerifiedUpload, .waitingForCloudFallback:
             false
-        case .failed where recording.cloudTranscriptFallbackRequestId != nil:
+        case .failed where recording.cloudTranscriptFallbackRequestId != nil
+            && !canRecoverLocallyAfterSpeechPermission:
             false
         default:
             true
@@ -22628,13 +22674,33 @@ private struct LocalRecordingRow: View {
     }
 
     private var shouldOfferOnDeviceSpeechRecovery: Bool {
+        guard !recording.needsClearSpeechRetry else { return false }
         guard recording.cloudTranscriptFallbackReasonCode?
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .lowercased() == "apple-speech-permission-denied" else {
             return false
         }
+        guard recording.cloudTranscriptFallbackAcceptedAt == nil
+            || ["FAILED", "HELD"].contains(
+                recording.cloudTranscriptFallbackStatus?
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                    .uppercased() ?? ""
+            ) else { return false }
         let status = SFSpeechRecognizer.authorizationStatus()
         return status == .denied || status == .restricted
+    }
+
+    private var canRecoverLocallyAfterSpeechPermission: Bool {
+        OnDeviceTranscriptDeliveryPolicy
+            .shouldRecoverLocallyAfterPermissionChange(
+                fallbackReasonCode: recording.cloudTranscriptFallbackReasonCode,
+                cloudFallbackWasAccepted: recording.cloudTranscriptFallbackAcceptedAt != nil,
+                cloudFallbackStatus: recording.cloudTranscriptFallbackStatus,
+                speechRecognitionIsAuthorized:
+                    SFSpeechRecognizer.authorizationStatus() == .authorized,
+                localSourceIsAvailable: fileURL != nil,
+                sourceNeedsClearSpeechRetry: recording.needsClearSpeechRetry
+            )
     }
 
     private func transcriptActionIcon(_ phase: OnDeviceTranscriptPhase) -> String {
@@ -23923,10 +23989,10 @@ struct CaptureCanvas: View {
 
 /// Shared semantic color tokens for the shipping Capture experience.
 ///
-/// Parchment and walnut establish the calm reading canvas. Peacock spruce is
-/// the primary interactive color; fern, inkberry, and aged brass are supporting
-/// materials. That hierarchy keeps the room richly alive without letting every
-/// feature introduce a competing brand color.
+/// Parchment and walnut establish the calm reading canvas. Bottle ivy is the
+/// primary interactive color; moss, rosewood bookcloth, and aged brass are
+/// supporting materials. That hierarchy makes the room feel overgrown and
+/// collected without letting every feature introduce a competing brand color.
 /// Feature screens should consume these tokens instead of inventing a new
 /// brand color for each workflow.
 /// Red, orange, green, and the audio meter remain reserved for familiar
@@ -23969,62 +24035,62 @@ enum CapturePalette {
         dark: UIColor(red: 0.816, green: 0.749, blue: 0.635, alpha: 1)
     )
     static let accentUIColor = adaptiveUIColor(
-        light: UIColor(red: 0.141, green: 0.408, blue: 0.365, alpha: 1),
-        dark: UIColor(red: 0.545, green: 0.812, blue: 0.753, alpha: 1)
+        light: UIColor(red: 0.247, green: 0.376, blue: 0.290, alpha: 1),
+        dark: UIColor(red: 0.655, green: 0.757, blue: 0.600, alpha: 1)
     )
     static let accent = Color(uiColor: accentUIColor)
     static let accentDeep = adaptive(
-        light: UIColor(red: 0.090, green: 0.290, blue: 0.263, alpha: 1),
-        dark: UIColor(red: 0.455, green: 0.702, blue: 0.608, alpha: 1)
+        light: UIColor(red: 0.173, green: 0.278, blue: 0.208, alpha: 1),
+        dark: UIColor(red: 0.533, green: 0.643, blue: 0.482, alpha: 1)
     )
     static let accentSoft = adaptive(
-        light: UIColor(red: 0.847, green: 0.914, blue: 0.871, alpha: 1),
-        dark: UIColor(red: 0.090, green: 0.208, blue: 0.169, alpha: 1)
+        light: UIColor(red: 0.867, green: 0.898, blue: 0.824, alpha: 1),
+        dark: UIColor(red: 0.141, green: 0.200, blue: 0.149, alpha: 1)
     )
     // Filled controls need their own token. The readable foreground accent used
     // for links and icons becomes a washed-out button background in dark mode.
     static let actionFill = adaptive(
-        light: UIColor(red: 0.125, green: 0.365, blue: 0.325, alpha: 1),
-        dark: UIColor(red: 0.137, green: 0.408, blue: 0.373, alpha: 1)
+        light: UIColor(red: 0.212, green: 0.337, blue: 0.247, alpha: 1),
+        dark: UIColor(red: 0.212, green: 0.337, blue: 0.247, alpha: 1)
     )
     static let actionFillRaised = adaptive(
-        light: UIColor(red: 0.255, green: 0.427, blue: 0.239, alpha: 1),
-        dark: UIColor(red: 0.255, green: 0.427, blue: 0.239, alpha: 1)
+        light: UIColor(red: 0.322, green: 0.384, blue: 0.247, alpha: 1),
+        dark: UIColor(red: 0.322, green: 0.384, blue: 0.247, alpha: 1)
     )
     static let brass = adaptive(
-        light: UIColor(red: 0.502, green: 0.357, blue: 0.133, alpha: 1),
-        dark: UIColor(red: 0.847, green: 0.706, blue: 0.392, alpha: 1)
+        light: UIColor(red: 0.478, green: 0.380, blue: 0.196, alpha: 1),
+        dark: UIColor(red: 0.784, green: 0.686, blue: 0.447, alpha: 1)
     )
     static let warningFill = adaptive(
         light: UIColor(red: 0.459, green: 0.271, blue: 0.059, alpha: 1),
         dark: UIColor(red: 0.490, green: 0.306, blue: 0.098, alpha: 1)
     )
     // The historic API names remain stable because feature code uses these as
-    // semantic roles. Visually they are fern and inkberry: one organic
-    // supporting hue and one restrained bookish accent.
+    // semantic roles. Visually they are moss and rosewood bookcloth: one
+    // organic supporting hue and one restrained bookish accent.
     static let ink = adaptive(
-        light: UIColor(red: 0.247, green: 0.380, blue: 0.192, alpha: 1),
-        dark: UIColor(red: 0.659, green: 0.776, blue: 0.518, alpha: 1)
+        light: UIColor(red: 0.349, green: 0.400, blue: 0.255, alpha: 1),
+        dark: UIColor(red: 0.710, green: 0.757, blue: 0.525, alpha: 1)
     )
     static let inkFill = adaptive(
-        light: UIColor(red: 0.212, green: 0.337, blue: 0.169, alpha: 1),
-        dark: UIColor(red: 0.255, green: 0.427, blue: 0.239, alpha: 1)
+        light: UIColor(red: 0.298, green: 0.349, blue: 0.216, alpha: 1),
+        dark: UIColor(red: 0.345, green: 0.420, blue: 0.251, alpha: 1)
     )
     static let plum = adaptive(
-        light: UIColor(red: 0.420, green: 0.325, blue: 0.420, alpha: 1),
-        dark: UIColor(red: 0.757, green: 0.631, blue: 0.729, alpha: 1)
+        light: UIColor(red: 0.439, green: 0.294, blue: 0.322, alpha: 1),
+        dark: UIColor(red: 0.773, green: 0.631, blue: 0.647, alpha: 1)
     )
     static let plumFill = adaptive(
-        light: UIColor(red: 0.349, green: 0.267, blue: 0.337, alpha: 1),
-        dark: UIColor(red: 0.408, green: 0.310, blue: 0.392, alpha: 1)
+        light: UIColor(red: 0.357, green: 0.239, blue: 0.263, alpha: 1),
+        dark: UIColor(red: 0.408, green: 0.286, blue: 0.306, alpha: 1)
     )
     static let success = adaptive(
-        light: UIColor(red: 0.247, green: 0.459, blue: 0.278, alpha: 1),
-        dark: UIColor(red: 0.659, green: 0.776, blue: 0.518, alpha: 1)
+        light: UIColor(red: 0.251, green: 0.424, blue: 0.286, alpha: 1),
+        dark: UIColor(red: 0.561, green: 0.725, blue: 0.557, alpha: 1)
     )
     static let successFill = adaptive(
-        light: UIColor(red: 0.208, green: 0.384, blue: 0.231, alpha: 1),
-        dark: UIColor(red: 0.255, green: 0.427, blue: 0.239, alpha: 1)
+        light: UIColor(red: 0.208, green: 0.357, blue: 0.239, alpha: 1),
+        dark: UIColor(red: 0.322, green: 0.427, blue: 0.314, alpha: 1)
     )
     static let onAccent = adaptive(
         light: UIColor(red: 1.00, green: 0.953, blue: 0.863, alpha: 1),
@@ -24035,7 +24101,7 @@ enum CapturePalette {
         startPoint: .leading,
         endPoint: .trailing
     )
-    static let record = Color(red: 0.627, green: 0.294, blue: 0.259)
+    static let record = Color(red: 0.651, green: 0.325, blue: 0.286)
     static let meterGradient = LinearGradient(
         colors: [accent, CapturePalette.success, CapturePalette.brass, CapturePalette.record],
         startPoint: .leading,
@@ -24054,7 +24120,7 @@ enum CapturePalette {
 }
 
 extension View {
-    /// The standard Quipsly filled action: deep living green with warm paper
+    /// The standard Quipsly filled action: deep bottle ivy with warm paper
     /// type in both appearances. Link/icon accents remain independently
     /// adaptive so a single color is never asked to work as both ink and fill.
     func captureProminentButton(fill: Color = CapturePalette.actionFill) -> some View {

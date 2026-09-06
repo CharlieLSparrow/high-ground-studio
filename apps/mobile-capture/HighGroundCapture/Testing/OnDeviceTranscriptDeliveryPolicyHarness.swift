@@ -85,8 +85,10 @@ struct OnDeviceTranscriptDeliveryPolicyHarness {
                 .shouldRecoverLocallyAfterPermissionChange(
                     fallbackReasonCode: " apple-speech-permission-denied ",
                     cloudFallbackWasAccepted: false,
+                    cloudFallbackStatus: nil,
                     speechRecognitionIsAuthorized: true,
-                    localSourceIsAvailable: true
+                    localSourceIsAvailable: true,
+                    sourceNeedsClearSpeechRetry: false
                 )
         )
         precondition(
@@ -94,26 +96,56 @@ struct OnDeviceTranscriptDeliveryPolicyHarness {
                 .shouldRecoverLocallyAfterPermissionChange(
                     fallbackReasonCode: "apple-speech-processing-failed",
                     cloudFallbackWasAccepted: false,
+                    cloudFallbackStatus: nil,
                     speechRecognitionIsAuthorized: true,
-                    localSourceIsAvailable: true
+                    localSourceIsAvailable: true,
+                    sourceNeedsClearSpeechRetry: false
                 )
         )
         precondition(
-            !OnDeviceTranscriptDeliveryPolicy
+            OnDeviceTranscriptDeliveryPolicy
                 .shouldRecoverLocallyAfterPermissionChange(
                     fallbackReasonCode: "apple-speech-permission-denied",
                     cloudFallbackWasAccepted: true,
+                    cloudFallbackStatus: "FAILED",
                     speechRecognitionIsAuthorized: true,
-                    localSourceIsAvailable: true
+                    localSourceIsAvailable: true,
+                    sourceNeedsClearSpeechRetry: false
                 )
         )
+        precondition(
+            OnDeviceTranscriptDeliveryPolicy
+                .shouldRecoverLocallyAfterPermissionChange(
+                    fallbackReasonCode: "apple-speech-permission-denied",
+                    cloudFallbackWasAccepted: true,
+                    cloudFallbackStatus: " held ",
+                    speechRecognitionIsAuthorized: true,
+                    localSourceIsAvailable: true,
+                    sourceNeedsClearSpeechRetry: false
+                )
+        )
+        for activeStatus in [nil, "QUEUED", "RUNNING", "COMPLETED"] as [String?] {
+            precondition(
+                !OnDeviceTranscriptDeliveryPolicy
+                    .shouldRecoverLocallyAfterPermissionChange(
+                        fallbackReasonCode: "apple-speech-permission-denied",
+                        cloudFallbackWasAccepted: true,
+                        cloudFallbackStatus: activeStatus,
+                        speechRecognitionIsAuthorized: true,
+                        localSourceIsAvailable: true,
+                        sourceNeedsClearSpeechRetry: false
+                    )
+            )
+        }
         precondition(
             !OnDeviceTranscriptDeliveryPolicy
                 .shouldRecoverLocallyAfterPermissionChange(
                     fallbackReasonCode: "apple-speech-permission-denied",
                     cloudFallbackWasAccepted: false,
+                    cloudFallbackStatus: nil,
                     speechRecognitionIsAuthorized: false,
-                    localSourceIsAvailable: true
+                    localSourceIsAvailable: true,
+                    sourceNeedsClearSpeechRetry: false
                 )
         )
         precondition(
@@ -121,10 +153,50 @@ struct OnDeviceTranscriptDeliveryPolicyHarness {
                 .shouldRecoverLocallyAfterPermissionChange(
                     fallbackReasonCode: "apple-speech-permission-denied",
                     cloudFallbackWasAccepted: false,
+                    cloudFallbackStatus: nil,
                     speechRecognitionIsAuthorized: true,
-                    localSourceIsAvailable: false
+                    localSourceIsAvailable: false,
+                    sourceNeedsClearSpeechRetry: false
                 )
         )
+        precondition(
+            !OnDeviceTranscriptDeliveryPolicy
+                .shouldRecoverLocallyAfterPermissionChange(
+                    fallbackReasonCode: "apple-speech-permission-denied",
+                    cloudFallbackWasAccepted: false,
+                    cloudFallbackStatus: nil,
+                    speechRecognitionIsAuthorized: true,
+                    localSourceIsAvailable: true,
+                    sourceNeedsClearSpeechRetry: true
+                ),
+            "a source already classified as needing clear speech must not loop after permission recovery"
+        )
+        precondition(
+            OnDeviceTranscriptDeliveryPolicy.shouldAttemptAutomaticRecognition(
+                transcriptionWasRequested: true,
+                sourceIsPlaybackEligible: true,
+                localSourceIsAvailable: true,
+                sourceNeedsClearSpeechRetry: false,
+                cloudFallbackWasAccepted: false
+            )
+        )
+        for blockedAttempt in [
+            (false, true, true, false, false),
+            (true, false, true, false, false),
+            (true, true, false, false, false),
+            (true, true, true, true, false),
+            (true, true, true, false, true),
+        ] {
+            precondition(
+                !OnDeviceTranscriptDeliveryPolicy.shouldAttemptAutomaticRecognition(
+                    transcriptionWasRequested: blockedAttempt.0,
+                    sourceIsPlaybackEligible: blockedAttempt.1,
+                    localSourceIsAvailable: blockedAttempt.2,
+                    sourceNeedsClearSpeechRetry: blockedAttempt.3,
+                    cloudFallbackWasAccepted: blockedAttempt.4
+                )
+            )
+        }
         precondition(
             OnDeviceTranscriptDeliveryPolicy.recognitionDeadlineSeconds(
                 sourceDurationSeconds: 30

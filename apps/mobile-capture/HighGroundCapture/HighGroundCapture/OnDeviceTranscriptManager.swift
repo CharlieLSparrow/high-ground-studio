@@ -1123,6 +1123,8 @@ final class OnDeviceTranscriptManager: ObservableObject {
 
     func restoreState(for recording: LocalRecording) {
         guard phases[recording.id] == nil else { return }
+        // Signal classification only gates new recognition. Exact-source text
+        // already retained on this device always remains eligible to sync.
         if let stored = try? OnDeviceTranscriptStore.load(for: recording.id) {
             if let receipt = try? OnDeviceTranscriptStore.loadSubmissionReceipt(
                 for: recording.id,
@@ -1140,11 +1142,6 @@ final class OnDeviceTranscriptManager: ObservableObject {
             }
             return
         }
-        if recording.cloudTranscriptFallbackRequestId != nil,
-           recording.cloudTranscriptFallbackAcceptedAt == nil {
-            phases[recording.id] = .waitingForCloudFallback
-            return
-        }
         if let jobId = recording.cloudTranscriptFallbackJobId,
            let status = recording.cloudTranscriptFallbackStatus,
            recording.cloudTranscriptFallbackAcceptedAt != nil {
@@ -1160,6 +1157,19 @@ final class OnDeviceTranscriptManager: ObservableObject {
                     status: status.uppercased()
                 )
             }
+            return
+        }
+        if let clearSpeechRetryMessage = recording.clearSpeechRetryMessage {
+            phases[recording.id] = .failed(
+                message: clearSpeechRetryMessage,
+                retryable: false
+            )
+            return
+        }
+        if recording.cloudTranscriptFallbackRequestId != nil,
+           recording.cloudTranscriptFallbackAcceptedAt == nil {
+            phases[recording.id] = .waitingForCloudFallback
+            return
         }
     }
 
@@ -1293,8 +1303,19 @@ final class OnDeviceTranscriptManager: ObservableObject {
         fileURL: URL,
         locale: Locale = Locale(identifier: "en-US")
     ) {
-        guard recording.shouldBeginAutomaticOnDeviceTranscript else { return }
         guard phase(for: recording.id) == .idle else { return }
+        guard OnDeviceTranscriptDeliveryPolicy.shouldAttemptAutomaticRecognition(
+            transcriptionWasRequested: recording.shouldBeginAutomaticOnDeviceTranscript,
+            sourceIsPlaybackEligible: recording.status.isPlaybackEligible,
+            localSourceIsAvailable: FileManager.default.fileExists(atPath: fileURL.path),
+            sourceNeedsClearSpeechRetry: recording.needsClearSpeechRetry,
+            cloudFallbackWasAccepted: recording.cloudTranscriptFallbackAcceptedAt != nil
+        ) else {
+            if let message = recording.clearSpeechRetryMessage {
+                phases[recording.id] = .failed(message: message, retryable: false)
+            }
+            return
+        }
         begin(
             recording: recording,
             fileURL: fileURL,
@@ -1327,6 +1348,10 @@ final class OnDeviceTranscriptManager: ObservableObject {
             )
             return
         }
+        if let message = recording.clearSpeechRetryMessage {
+            phases[recording.id] = .failed(message: message, retryable: false)
+            return
+        }
         startProtectedWork(
             recordingID: recording.id,
             name: "Request transcript fallback"
@@ -1357,7 +1382,8 @@ final class OnDeviceTranscriptManager: ObservableObject {
         if (try? OnDeviceTranscriptStore.load(for: recording.id)) != nil {
             submitSavedTranscript(recording: recording)
         } else if recording.cloudTranscriptFallbackRequestId != nil,
-                  recording.cloudTranscriptFallbackAcceptedAt == nil {
+                  recording.cloudTranscriptFallbackAcceptedAt == nil,
+                  !recording.needsClearSpeechRetry {
             submitPendingCloudFallback(recording: recording)
         }
     }
@@ -1382,8 +1408,36 @@ final class OnDeviceTranscriptManager: ObservableObject {
             restoreState(for: recording)
             let currentPhase = phase(for: recording.id)
             if currentPhase.isBusy { continue }
-            if case .failed = currentPhase { continue }
             if case .attached = currentPhase { continue }
+            let localFileURL = LocalRecordingLibrary.shared.fileURL(for: recording)
+
+            // A cloud attempt that reached a terminal failure must not strand
+            // a retained source after Speech Recognition is enabled. The old
+            // FAILED/HELD job remains immutable evidence; successful local
+            // text is submitted as a new exact-source transcript version.
+            if recording.shouldBeginAutomaticOnDeviceTranscript,
+               recording.status.isPlaybackEligible,
+               OnDeviceTranscriptDeliveryPolicy
+                .shouldRecoverLocallyAfterPermissionChange(
+                    fallbackReasonCode: recording.cloudTranscriptFallbackReasonCode,
+                    cloudFallbackWasAccepted: recording.cloudTranscriptFallbackAcceptedAt != nil,
+                    cloudFallbackStatus: recording.cloudTranscriptFallbackStatus,
+                    speechRecognitionIsAuthorized:
+                        SFSpeechRecognizer.authorizationStatus() == .authorized,
+                    localSourceIsAvailable: localFileURL != nil,
+                    sourceNeedsClearSpeechRetry: recording.needsClearSpeechRetry
+                ),
+               let localFileURL {
+                phases[recording.id] = .idle
+                beginAutomaticTranscript(
+                    recording: recording,
+                    fileURL: localFileURL
+                )
+                await waitForActiveTask(recordingID: recording.id)
+                processed += 1
+                continue
+            }
+            if case .failed = currentPhase { continue }
             if case .cloudFallback(_, let status) = currentPhase {
                 if status.uppercased() == "COMPLETED",
                    (try? OnDeviceTranscriptStore.load(for: recording.id)) == nil,
@@ -1402,6 +1456,8 @@ final class OnDeviceTranscriptManager: ObservableObject {
                 continue
             }
 
+            // Preserve and deliver exact-source text even if later signal
+            // inspection determines that the take itself should be repeated.
             if let stored = try? OnDeviceTranscriptStore.load(for: recording.id) {
                 if (try? OnDeviceTranscriptStore.loadSubmissionReceipt(
                     for: recording.id,
@@ -1417,29 +1473,11 @@ final class OnDeviceTranscriptManager: ObservableObject {
                 continue
             }
 
-            let localFileURL = LocalRecordingLibrary.shared.fileURL(for: recording)
-            if recording.shouldBeginAutomaticOnDeviceTranscript,
-               recording.status.isPlaybackEligible,
-               OnDeviceTranscriptDeliveryPolicy
-                .shouldRecoverLocallyAfterPermissionChange(
-                    fallbackReasonCode: recording.cloudTranscriptFallbackReasonCode,
-                    cloudFallbackWasAccepted: recording.cloudTranscriptFallbackAcceptedAt != nil,
-                    speechRecognitionIsAuthorized:
-                        SFSpeechRecognizer.authorizationStatus() == .authorized,
-                    localSourceIsAvailable: localFileURL != nil
-                ),
-               let localFileURL {
-                // Keep the unaccepted fallback intent durable while local
-                // recognition runs. A successful sidecar takes precedence;
-                // a failed attempt can still submit the same idempotent cloud
-                // request after source verification without losing recovery.
-                phases[recording.id] = .idle
-                beginAutomaticTranscript(
-                    recording: recording,
-                    fileURL: localFileURL
+            if recording.needsClearSpeechRetry {
+                phases[recording.id] = terminalCloudFailurePhase(
+                    for: recording,
+                    errorMessage: recording.cloudTranscriptFallbackError
                 )
-                await waitForActiveTask(recordingID: recording.id)
-                processed += 1
                 continue
             }
 
@@ -1495,8 +1533,21 @@ final class OnDeviceTranscriptManager: ObservableObject {
                 return false
             }
             let currentPhase = phase(for: recording.id)
-            if case .failed = currentPhase { return false }
             if case .attached = currentPhase { return false }
+            let localFileURL = LocalRecordingLibrary.shared.fileURL(for: recording)
+            if OnDeviceTranscriptDeliveryPolicy
+                .shouldRecoverLocallyAfterPermissionChange(
+                    fallbackReasonCode: recording.cloudTranscriptFallbackReasonCode,
+                    cloudFallbackWasAccepted: recording.cloudTranscriptFallbackAcceptedAt != nil,
+                    cloudFallbackStatus: recording.cloudTranscriptFallbackStatus,
+                    speechRecognitionIsAuthorized:
+                        SFSpeechRecognizer.authorizationStatus() == .authorized,
+                    localSourceIsAvailable: localFileURL != nil,
+                    sourceNeedsClearSpeechRetry: recording.needsClearSpeechRetry
+                ) {
+                return recording.status.isPlaybackEligible
+            }
+            if case .failed = currentPhase { return false }
             if case .cloudFallback(_, let status) = currentPhase {
                 return status.uppercased() == "COMPLETED"
                     && (try? OnDeviceTranscriptStore.load(for: recording.id)) == nil
@@ -1510,16 +1561,19 @@ final class OnDeviceTranscriptManager: ObservableObject {
                 )
                 return receipt == nil && recording.status.isVerified
             }
+            if recording.needsClearSpeechRetry { return false }
             if recording.cloudTranscriptFallbackRequestId != nil,
                recording.cloudTranscriptFallbackAcceptedAt == nil {
                 if OnDeviceTranscriptDeliveryPolicy
                     .shouldRecoverLocallyAfterPermissionChange(
                         fallbackReasonCode: recording.cloudTranscriptFallbackReasonCode,
                         cloudFallbackWasAccepted: false,
+                        cloudFallbackStatus: recording.cloudTranscriptFallbackStatus,
                         speechRecognitionIsAuthorized:
                             SFSpeechRecognizer.authorizationStatus() == .authorized,
                         localSourceIsAvailable:
-                            LocalRecordingLibrary.shared.fileURL(for: recording) != nil
+                            localFileURL != nil,
+                        sourceNeedsClearSpeechRetry: recording.needsClearSpeechRetry
                     ) {
                     return true
                 }
@@ -1527,7 +1581,7 @@ final class OnDeviceTranscriptManager: ObservableObject {
             }
             if recording.cloudTranscriptFallbackAcceptedAt != nil { return false }
             guard recording.status.isPlaybackEligible else { return false }
-            if LocalRecordingLibrary.shared.fileURL(for: recording) != nil {
+            if localFileURL != nil {
                 return true
             }
             return recording.status.isVerified
@@ -2402,10 +2456,12 @@ final class OnDeviceTranscriptManager: ObservableObject {
 
 private extension LocalRecordingAudioSignalProfile {
     var isEffectivelySilentForSpeech: Bool {
-        rmsDbfs <= -60
-            && samplePeakDbfs <= -45
-            && (nearSilentFrameFraction >= 0.5
-                || loudness?.status == "below-absolute-gate")
+        LocalAudioSignalClassification.isEffectivelySilentForSpeech(
+            rmsDbfs: rmsDbfs,
+            samplePeakDbfs: samplePeakDbfs,
+            nearSilentFrameFraction: nearSilentFrameFraction,
+            loudnessStatus: loudness?.status
+        )
     }
 }
 

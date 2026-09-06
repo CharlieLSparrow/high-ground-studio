@@ -97,7 +97,9 @@ const files = {
   transcriptReviewDecisionOutbox: path.join(sourceRoot, "TranscriptReviewDecisionOutbox.swift"),
   captureAudioDecisionOutbox: path.join(sourceRoot, "CaptureAudioDecisionOutbox.swift"),
   onDeviceTranscriptManager: path.join(sourceRoot, "OnDeviceTranscriptManager.swift"),
+  onDeviceTranscriptDeliveryPolicy: path.join(sourceRoot, "OnDeviceTranscriptDeliveryPolicy.swift"),
   onDeviceTranscriptLedgerPolicy: path.join(sourceRoot, "OnDeviceTranscriptLedgerPolicy.swift"),
+  localAudioSignalClassification: path.join(sourceRoot, "LocalAudioSignalClassification.swift"),
   localRecordingLibrary: path.join(sourceRoot, "LocalRecordingLibrary.swift"),
   localRecordingPlayback: path.join(sourceRoot, "LocalRecordingPlaybackController.swift"),
   mobileComponents: path.join(sourceRoot, "QuipslyMobileComponents.swift"),
@@ -317,7 +319,9 @@ const sessionProtectedPlaybackText = read(files.sessionProtectedPlayback);
 const transcriptReviewDecisionOutboxText = read(files.transcriptReviewDecisionOutbox);
 const captureAudioDecisionOutboxText = read(files.captureAudioDecisionOutbox);
 const onDeviceTranscriptManagerText = read(files.onDeviceTranscriptManager);
+const onDeviceTranscriptDeliveryPolicyText = read(files.onDeviceTranscriptDeliveryPolicy);
 const onDeviceTranscriptLedgerPolicyText = read(files.onDeviceTranscriptLedgerPolicy);
+const localAudioSignalClassificationText = read(files.localAudioSignalClassification);
 const localRecordingLibraryText = read(files.localRecordingLibrary);
 const localRecordingPlaybackText = read(files.localRecordingPlayback);
 const mobileText = read(files.mobileComponents);
@@ -882,12 +886,24 @@ for (const needle of [
 for (const needle of [
   'kind: "very-low-level"',
   'signalStatus = peak <= thresholds.nearSilenceDbfs',
-  'rms <= -60 && peak <= thresholds.surroundingSignalDbfs',
+  'LocalAudioSignalClassification.isVeryLowLevel(',
 ]) {
   requireIncludes(
     localRecordingLibraryText,
     needle,
     "source analysis distinguishes an effectively silent speech take from usable input",
+  );
+}
+for (const needle of [
+  "static let veryLowRmsDbfs = -55.0",
+  "static let veryLowPeakDbfs = -35.0",
+  "rmsDbfs <= veryLowRmsDbfs",
+  "samplePeakDbfs <= veryLowPeakDbfs",
+]) {
+  requireIncludes(
+    localAudioSignalClassificationText,
+    needle,
+    "shared source-level analysis retains explicit conservative silence thresholds",
   );
 }
 for (const [source, needle, label] of [
@@ -3235,7 +3251,57 @@ requireIncludes(onDeviceTranscriptManagerText, "phases[recording.id] = .waitingF
 requireIncludes(
   onDeviceTranscriptManagerText,
   "shouldRecoverLocallyAfterPermissionChange(",
-  "returning from Settings retries the exact local source before an unaccepted permission fallback"
+  "returning from Settings retries the exact retained source after a recoverable permission fallback"
+);
+requireIncludes(
+  onDeviceTranscriptManagerText,
+  "cloudFallbackStatus: recording.cloudTranscriptFallbackStatus",
+  "on-device recovery distinguishes a terminal cloud failure from active cloud work"
+);
+requireIncludes(
+  onDeviceTranscriptDeliveryPolicyText,
+  "sourceNeedsClearSpeechRetry",
+  "transcript recovery policy refuses to loop a retained source that needs a clearer take"
+);
+for (const needle of [
+  "shouldAttemptAutomaticRecognition(",
+  "sourceNeedsClearSpeechRetry: recording.needsClearSpeechRetry",
+  "if recording.needsClearSpeechRetry { return false }",
+]) {
+  requireIncludes(
+    onDeviceTranscriptManagerText,
+    needle,
+    "foreground and background transcript schedulers share the source-signal eligibility boundary",
+  );
+}
+const restoreTranscriptStateBoundary = onDeviceTranscriptManagerText.slice(
+  onDeviceTranscriptManagerText.indexOf("func restoreState(for recording: LocalRecording)"),
+  onDeviceTranscriptManagerText.indexOf("func reconcileCanonicalTranscriptSources("),
+);
+assert(
+  restoreTranscriptStateBoundary.indexOf("OnDeviceTranscriptStore.load(for: recording.id)") >= 0
+    && restoreTranscriptStateBoundary.indexOf("OnDeviceTranscriptStore.load(for: recording.id)")
+      < restoreTranscriptStateBoundary.indexOf("if let clearSpeechRetryMessage = recording.clearSpeechRetryMessage"),
+  "Retained exact-source transcript text must be restored before source-signal retry guidance is applied.",
+  { label: "retained transcript text wins over a later low-signal classification" },
+);
+assert(
+  restoreTranscriptStateBoundary.indexOf("recording.cloudTranscriptFallbackAcceptedAt != nil") >= 0
+    && restoreTranscriptStateBoundary.indexOf("recording.cloudTranscriptFallbackAcceptedAt != nil")
+      < restoreTranscriptStateBoundary.indexOf("if let clearSpeechRetryMessage = recording.clearSpeechRetryMessage"),
+  "Accepted cloud transcript work must remain visible before source-signal retry guidance is applied.",
+  { label: "accepted cloud work wins over a later low-signal classification" },
+);
+const resumeTranscriptBoundary = onDeviceTranscriptManagerText.slice(
+  onDeviceTranscriptManagerText.indexOf("func resumeEligibleRecordings("),
+  onDeviceTranscriptManagerText.indexOf("func hasPendingEligibleWork()"),
+);
+assert(
+  resumeTranscriptBoundary.indexOf("if let stored = try? OnDeviceTranscriptStore.load(for: recording.id)") >= 0
+    && resumeTranscriptBoundary.indexOf("if let stored = try? OnDeviceTranscriptStore.load(for: recording.id)")
+      < resumeTranscriptBoundary.indexOf("if recording.needsClearSpeechRetry"),
+  "Background recovery must submit already retained exact-source text before stopping new recognition for a low-signal take.",
+  { label: "background recovery preserves retained text before low-signal gating" },
 );
 requireIncludes(capturePhoneShellText, 'case .waitingForCloudFallback: return "Transcript queued"', "Capture describes automatic cloud transcript follow-through without an action ritual");
 for (const needle of [
