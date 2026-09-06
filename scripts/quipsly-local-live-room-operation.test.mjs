@@ -19,14 +19,20 @@ assert.match(subject, /leave\.click\(\{ timeout: 2_000 \}\)/);
 assert.match(subject, /QUIPSLY_LOCAL_LIVE_ROOM_VIDEO/);
 assert.match(subject, /Call video stage with your preview/);
 assert.match(subject, /cameraTogglePreservedCall/);
+assert.match(subject, /const retainedRunCaptureGroupId = freshContext \? null : randomUUID\(\)/);
+assert.match(subject, /captureGroupId: retainedRunCaptureGroupId/);
+assert.match(subject, /select: \{ action: true, captureGroupId: true \}/);
+assert.match(subject, /captureGroupId: previousDirective\.captureGroupId/);
 
 console.log(
   JSON.stringify({
     ok: true,
-    assertions: 11,
+    assertions: 15,
     receiptIsFreshContextScoped: true,
     receiptIsPrivate: true,
     cleanupDoesNotWaitForAnAbsentLeaveAction: true,
     optionalTwoPartyVideoIsOperated: true,
+    retainedRecordingSessionsUseFreshCaptureGroups: true,
+    interruptedPriorGenerationIsClosedPrecisely: true,
   }),
 );

@@ -74,6 +74,11 @@ const identities = freshContext
   : retainedIdentities;
 const testLane = freshContext?.testLane || "retained-regression";
 const fixtureIdentifiersUsed = freshContext?.fixtureIdentifiersUsed ?? true;
+// Every invocation is one independent recording session. The retained room is
+// deliberately reused so its account and collaboration history survive, but
+// its media must not inherit the previous invocation's capture group. A fresh
+// coaching context already owns a newly created group and must remain untouched.
+const retainedRunCaptureGroupId = freshContext ? null : randomUUID();
 const keepRoomOpenForInterop =
   Boolean(freshContext) ||
   process.env.QUIPSLY_LOCAL_LIVE_ROOM_KEEP_OPEN === "1";
@@ -263,6 +268,7 @@ if (freshContext) {
     where: { id: ROOM_ID },
     create: {
       id: ROOM_ID,
+      captureGroupId: retainedRunCaptureGroupId,
       projectId: sourceRoom.projectId,
       projectSlug: sourceRoom.projectSlug,
       nestSlug: sourceRoom.nestSlug,
@@ -280,6 +286,7 @@ if (freshContext) {
       },
     },
     update: {
+      captureGroupId: retainedRunCaptureGroupId,
       projectId: sourceRoom.projectId,
       projectSlug: sourceRoom.projectSlug,
       nestSlug: sourceRoom.nestSlug,
@@ -343,7 +350,7 @@ assert(
 const previousDirective = await prisma.callRecordingDirective.findFirst({
   where: { roomId: ROOM_ID },
   orderBy: { sequence: "desc" },
-  select: { action: true },
+  select: { action: true, captureGroupId: true },
 });
 if (previousDirective?.action === "START") {
   const controller =
@@ -356,7 +363,10 @@ if (previousDirective?.action === "START") {
     data: {
       requestId,
       roomId: ROOM_ID,
-      captureGroupId: canonicalRoom.captureGroupId,
+      // Close the exact interrupted generation before starting the newly
+      // rotated retained rehearsal. Using the room's current group here would
+      // make the historical STOP appear to govern the new invocation.
+      captureGroupId: previousDirective.captureGroupId,
       actorUserId: controller.userId,
       actorParticipantId: controller.id,
       action: "STOP",
@@ -1530,6 +1540,7 @@ try {
     contextPath: freshContext?.contextPath || null,
     roomId: ROOM_ID,
     providerRoomId: PROVIDER_ROOM_ID,
+    captureGroupId: canonicalRoom.captureGroupId,
     participantsConnected: journeys.length,
     retainedSourceStarted: true,
     providerRecordingStarted: false,

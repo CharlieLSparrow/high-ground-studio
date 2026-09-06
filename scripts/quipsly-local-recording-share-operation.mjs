@@ -78,10 +78,10 @@ const room = await prisma.callRoom.findUnique({
   select: {
     id: true,
     bookingId: true,
+    captureGroupId: true,
     recordingAssets: {
       where: { kind: { in: ["LOCAL_AUDIO", "LOCAL_VIDEO"] }, status: "VERIFIED" },
       orderBy: { createdAt: "desc" },
-      take: 20,
       select: { id: true, checksum: true, localManifestJson: true, participantId: true, createdAt: true, recordedStartedAt: true },
     },
   },
@@ -98,19 +98,21 @@ if (freshContext) {
   await prisma.callRoom.update({ where: { id: ROOM_ID }, data: { bookingId: BOOKING_ID } });
 }
 
-const chronological = room.recordingAssets
-  .filter((asset) => asset.recordedStartedAt)
-  .sort((left, right) => left.recordedStartedAt.getTime() - right.recordedStartedAt.getTime());
-const sourceClusters = [];
-for (const asset of chronological) {
-  const cluster = sourceClusters.at(-1);
-  const previousStart = cluster?.at(-1)?.recordedStartedAt?.getTime() ?? Number.NEGATIVE_INFINITY;
-  if (!cluster || asset.recordedStartedAt.getTime() - previousStart > 30_000) sourceClusters.push([asset]);
-  else cluster.push(asset);
-}
-const latestSources = sourceClusters.at(-1) || [];
-assert(latestSources.length >= 2 && new Set(latestSources.map((asset) => asset.participantId)).size >= 2, "The latest retained capture group needs at least two participant-owned verified sources.");
-const originalHashes = new Map(latestSources.map((asset) => [asset.id, asset.checksum]));
+const currentSources = room.recordingAssets.filter((asset) => {
+  const manifest = asset.localManifestJson && typeof asset.localManifestJson === "object"
+    ? asset.localManifestJson
+    : {};
+  const recordingSync = manifest.recordingSync && typeof manifest.recordingSync === "object"
+    ? manifest.recordingSync
+    : {};
+  return (manifest.captureGroupId || recordingSync.captureGroupId) === room.captureGroupId;
+});
+assert(
+  currentSources.length >= 2 &&
+    new Set(currentSources.map((asset) => asset.participantId)).size >= 2,
+  `The current recording session ${room.captureGroupId} needs at least two participant-owned verified sources. Run pnpm quipsly:local:live-room first.`,
+);
+const originalHashes = new Map(currentSources.map((asset) => [asset.id, asset.checksum]));
 
 const { chromium } = await loadPlaywright();
 const browser = await chromium.launch({ headless: true, args: ["--autoplay-policy=no-user-gesture-required"] });
@@ -152,12 +154,23 @@ try {
       const response = await fetch(`/api/sessions/${roomId}/recording-share`, { cache: "no-store" });
       return response.json();
     }, ROOM_ID);
+    const expectedSourceIds = [...originalHashes.keys()].sort();
+    const availableSourceIds = (preparationSnapshot?.available?.sources || [])
+      .map((source) => source.id)
+      .sort();
+    assert(
+      JSON.stringify(availableSourceIds) === JSON.stringify(expectedSourceIds),
+      `Rendered editor crossed recording-session boundaries. Expected ${expectedSourceIds.length} sources in ${room.captureGroupId}; received ${availableSourceIds.length}.`,
+    );
     const [prepareResponse] = await Promise.all([
       coachPage.waitForResponse((response) => response.request().method() === "POST" && new URL(response.url()).pathname === `/api/sessions/${ROOM_ID}/recording-share`),
       prepareButton.click(),
     ]);
     const preparePacket = await prepareResponse.json().catch(() => null);
-    assert(prepareResponse.ok() && preparePacket?.ok === true, `Private preview request failed (${prepareResponse.status()}): ${JSON.stringify(preparePacket)}. Inputs: ${JSON.stringify(renderedRange)}. Available: ${JSON.stringify(preparationSnapshot?.available)}`);
+    assert(
+      prepareResponse.ok() && preparePacket?.ok === true,
+      `Private preview request failed (${prepareResponse.status()}): ${JSON.stringify(preparePacket)}. Range: ${JSON.stringify(renderedRange)}. Capture group: ${room.captureGroupId}. Sources: ${availableSourceIds.length}.`,
+    );
   }
   await coachCard.getByText("VERIFIED", { exact: true }).waitFor({ timeout: 120_000 });
   results.coachPreview = await decodeAndAdvance(coachCard);
@@ -226,6 +239,7 @@ console.log(JSON.stringify({
   humanAcceptanceSatisfied: false,
   contextPath: freshContext?.contextPath || null,
   roomId: ROOM_ID,
+  captureGroupId: room.captureGroupId,
   sourceAssetIds: [...originalHashes.keys()],
   sourceChecksumsUnchanged: true,
   outputId: results.output.id,
