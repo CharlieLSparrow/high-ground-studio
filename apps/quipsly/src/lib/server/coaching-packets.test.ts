@@ -248,6 +248,56 @@ describe("transcript coaching follow-through", () => {
     });
   });
 
+  it("keeps an explicit task when one transcript turn also states a goal", async () => {
+    const coachingNoteCreate = jest.fn(async ({ data }: any) => ({
+      id: data.kind === "SUMMARY" ? "summary-compound" : `highlight-${data.sourceJson.segmentId}`,
+      ...data,
+    }));
+    const work = automaticWorkStores();
+    const compoundJob = completedTranscriptJob();
+    compoundJob.segments = [
+      {
+        id: "segment-session-agenda",
+        speakerLabel: "Coach",
+        startSeconds: 0,
+        endSeconds: 5,
+        text: "Today we will clarify your goal and choose one next step.",
+        confidence: 0.98,
+      },
+      {
+        id: "segment-compound-goal-task",
+        speakerLabel: "Client",
+        startSeconds: 13.4,
+        endSeconds: 25.68,
+        text: "My goal is to complete the certification practice review by Friday. Please create a task to send the recording to my instructor tomorrow, and note that I want accountability without daily reminders.",
+        confidence: 0.97,
+      },
+    ];
+
+    const result = await buildCoachingPacketFromTranscriptJob({
+      prisma: {
+        transcriptJob: { findUnique: jest.fn().mockResolvedValue(compoundJob) },
+        coachingNote: { findFirst: jest.fn().mockResolvedValue(null), create: coachingNoteCreate },
+        ...work,
+      },
+      transcriptJobId: compoundJob.id,
+      authorUserId: "coach-1",
+    });
+
+    expect(result).toEqual(expect.objectContaining({
+      actionItemCount: 1,
+      goalCount: 1,
+    }));
+    expect(work.actionItem.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        title: "Send the recording to my instructor tomorrow",
+        assignedUserId: "client-1",
+        status: "OPEN",
+      }),
+    });
+    expect(work.goal.create).toHaveBeenCalledTimes(1);
+  });
+
   it("uses a calm, stable recap title", () => {
     expect(sessionRecapTitle("  First coaching   consultation ")).toBe(
       "First coaching consultation recap",

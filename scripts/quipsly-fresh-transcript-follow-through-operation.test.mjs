@@ -25,8 +25,28 @@ assert.match(subject, /mode: 0o600/);
 assert.match(subject, /secretsPrinted: false/);
 
 const packageJson = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
-assert.match(packageJson.scripts["quipsly:fresh:transcript-follow-through"], /register-ts-extension-loader/);
-assert.match(packageJson.scripts["quipsly:fresh:transcript-follow-through"], /--experimental-transform-types/);
-assert.doesNotMatch(packageJson.scripts["quipsly:fresh:transcript-follow-through"], /--import tsx/);
+const TypeScriptOperations = [
+  "quipsly:fresh:transcript-follow-through",
+  "quipsly:fresh:session-conversation",
+  "quipsly:fresh:session-native-conversation",
+  "quipsly:fresh:shared-follow-through-isolation",
+];
+for (const operation of TypeScriptOperations) {
+  assert.match(packageJson.scripts[operation], /register-ts-extension-loader/);
+  assert.match(packageJson.scripts[operation], /--experimental-transform-types/);
+  assert.doesNotMatch(packageJson.scripts[operation], /--import tsx/);
+}
 
-console.log(JSON.stringify({ ok: true, assertions: 18 }));
+const sharedIsolationSubject = await readFile(
+  new URL("./quipsly-fresh-shared-follow-through-isolation-operation.mjs", import.meta.url),
+  "utf8",
+);
+assert.match(sharedIsolationSubject, /visibility: "SESSION_SHARED"/);
+assert.match(sharedIsolationSubject, /clientRead\.payload\?\.packet\?\.summary\?\.id, summary\.id/);
+assert.match(sharedIsolationSubject, /neighborRead\.status, 404/);
+assert.match(sharedIsolationSubject, /visibility: "AUTHOR_PRIVATE"/);
+assert.match(sharedIsolationSubject, /participantPrivateNoteBoundaryPreserved: true/);
+assert.doesNotMatch(sharedIsolationSubject, /clientPrivateSummaryDenied/);
+assert.doesNotMatch(sharedIsolationSubject, /QUIPSLY_FRESH_PRIVATE_PACKET_ISOLATION_OPERATION/);
+
+console.log(JSON.stringify({ ok: true, assertions: 34 }));

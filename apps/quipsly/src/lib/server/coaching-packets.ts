@@ -74,13 +74,17 @@ export function packetCreatesOrdinarySessionWork(value: unknown) {
   );
 }
 
+const EXPLICIT_TASK_PATTERN =
+  /\b(task|todo|to-do|action item|homework|next step)\b/i;
+const GOAL_PATTERN =
+  /\b(goal|objective|commitment)\s+(?:is|was|will be|:)\s*(?:to\s+)?|\blong[- ]term\s+(?:goal|objective)\b|\b(?:i|we)\s+commit(?:ted)?\s+to\b/i;
 const ACTION_PATTERNS = [
-  /\b(i|we|you|they)\s+(need|needs|should|will|can|could|must|have)\s+to\b/i,
-  /\b(i'll|we'll|you'll|let's|follow up|send|schedule|prepare|finish|review|publish|record|write|draft|check)\b/i,
-  /\b(next step|action item|homework|before next time|for next time)\b/i,
-  /\b(goal|commitment|objective)\s+is\s+to\b/i,
+  /\b(i|we|you|they)\s+(need|needs|should|will|can|could|must|have)\s+(?:to\s+)?(?:follow up|send|schedule|prepare|finish|review|publish|record|write|draft|check)\b/i,
+  /\b(i'll|we'll|you'll|let's)\s+(?:follow up|send|schedule|prepare|finish|review|publish|record|write|draft|check)\b/i,
+  /\b(?:please\s+)?(?:create|add|make)\s+(?:me\s+)?(?:a\s+)?(?:task|todo|to-do|action item)\b/i,
+  /\b(?:next step|action item|homework)\s+(?:is|will be|:)\s*(?:to\s+)?/i,
+  GOAL_PATTERN,
 ];
-const GOAL_PATTERN = /\b(goal|objective|long[- ]term|commitment)\b/i;
 
 export type { TranscriptActionCandidate } from "@high-ground/quipsly-domain/coaching-packet";
 
@@ -1262,6 +1266,21 @@ function actionTitle(segment: any) {
     : clipped || "Review this follow-up";
 }
 
+function taskTitle(segment: any) {
+  const text = cleanText(segment.text);
+  const explicitTask = text.match(
+    /\b(?:please\s+)?(?:create|add|make)\s+(?:me\s+)?(?:a\s+)?(?:task|todo|to-do|action item)\s+(?:to\s+)?(.+)$/i,
+  );
+  const taskText = cleanText(explicitTask?.[1])
+    .split(/\s+(?:and\s+)?note that\b/i)[0]
+    ?.replace(/[.,;:]+$/, "")
+    .trim();
+  if (!taskText) return actionTitle(segment);
+  const sentence = taskText.charAt(0).toUpperCase() + taskText.slice(1);
+  const clipped = sentence.slice(0, 96);
+  return clipped.length < sentence.length ? `${clipped}...` : clipped;
+}
+
 function sourceClockSegments(segment: any) {
   const evidenceSegments = Array.isArray(segment.evidenceSegments)
     ? segment.evidenceSegments
@@ -1293,7 +1312,7 @@ function transcriptActionCandidate(input: {
   );
   return createTranscriptActionCandidate({
     id: `${TRANSCRIPT_ACTION_CANDIDATE_KIND}:${input.transcriptJobId}:${segmentId}`,
-    title: actionTitle(input.segment),
+    title: taskTitle(input.segment),
     detail: segmentLine(input.segment),
     transcriptJobId: input.transcriptJobId,
     recordingAssetId: input.recordingAssetId,
@@ -1805,9 +1824,10 @@ export async function buildCoachingPacketFromTranscriptJob(
   const goalSegments = actionSegments.filter((segment: any) =>
     GOAL_PATTERN.test(cleanText(segment.text)),
   );
-  const taskSegments = actionSegments.filter(
-    (segment: any) => !GOAL_PATTERN.test(cleanText(segment.text)),
-  );
+  const taskSegments = actionSegments.filter((segment: any) => {
+    const text = cleanText(segment.text);
+    return !GOAL_PATTERN.test(text) || EXPLICIT_TASK_PATTERN.test(text);
+  });
   const actionCandidates: TranscriptActionCandidate[] = taskSegments.map(
     (segment: any) => {
       const sourceTranscriptJobId =
