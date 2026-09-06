@@ -1215,7 +1215,7 @@ export async function GET(request: Request) {
       )),
   );
   const allPacketActionItems =
-    transcriptProcessingAllowed && canReviewPrivatePacket
+    transcriptProcessingAllowed
       ? actionItems.filter((item: any) => {
           const source = sourceJson(item.sourceJson);
           return (

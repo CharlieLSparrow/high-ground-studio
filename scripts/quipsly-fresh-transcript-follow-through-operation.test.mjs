@@ -42,6 +42,9 @@ const sharedIsolationSubject = await readFile(
   "utf8",
 );
 assert.match(sharedIsolationSubject, /visibility: "SESSION_SHARED"/);
+assert.match(sharedIsolationSubject, /getByRole\("heading", renderedFollowThrough\)/);
+assert.match(sharedIsolationSubject, /Rendered follow-through checkpoint failed/);
+assert.match(sharedIsolationSubject, /Shared Session notes, tasks, and goals are ready to use/);
 assert.match(sharedIsolationSubject, /clientRead\.payload\?\.packet\?\.summary\?\.id, summary\.id/);
 assert.match(sharedIsolationSubject, /neighborRead\.status, 404/);
 assert.match(sharedIsolationSubject, /visibility: "AUTHOR_PRIVATE"/);

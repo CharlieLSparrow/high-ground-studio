@@ -663,8 +663,40 @@ describe("Session review goal candidates", () => {
     render(<SessionReviewClient roomId="room-1" sessionTitle="Coaching review" mode="transcript" consentSnapshot={{ total: 2, granted: 2, transcriptionPermitted: 2 }} />);
 
     expect(await screen.findByRole("heading", { name: "Session results" })).toBeInTheDocument();
+    expect(screen.getByText("Shared Session notes, tasks, and goals are ready to use.")).toBeInTheDocument();
+    expect(screen.getByText("Session work ready")).toBeInTheDocument();
     expect(screen.getAllByRole("link", { name: "Try the reset before Friday" })[0]).toHaveAttribute("href", "/work?task=client-task-1");
     expect(screen.getByRole("link", { name: "Client · 00:44–00:51" })).toHaveAttribute("href", "/sessions/room-1?mode=transcript#transcript-segment-segment-shared");
+    expect(screen.queryByText("Candidate goals")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Review note")).not.toBeInTheDocument();
+  });
+
+  it("renders already shared follow-through even when the legacy results projection is absent", async () => {
+    const shared = participantPacket();
+    shared.packet!.status = "RESULTS_READY";
+    shared.packet!.summary = {
+      id: "summary-shared",
+      title: "Session recap",
+      body: "The client chose one practical next step.",
+      createdAt: "2026-08-26T12:00:00.000Z",
+    };
+    shared.packet!.actionItems = [{
+      id: "client-task-1",
+      title: "Try the reset before Friday",
+      detail: null,
+      status: "OPEN",
+      dueAt: null,
+      source: {},
+    }];
+    delete shared.packet!.results;
+    global.fetch = jest.fn().mockResolvedValue(jsonResponse(shared)) as typeof fetch;
+
+    render(<SessionReviewClient roomId="room-1" sessionTitle="Coaching review" mode="transcript" consentSnapshot={{ total: 2, granted: 2, transcriptionPermitted: 2 }} />);
+
+    expect(await screen.findByRole("heading", { name: "Session recap" })).toBeInTheDocument();
+    expect(screen.getByText("Shared Session notes, tasks, and goals are ready to use.")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Follow-through is ready" })).toBeInTheDocument();
+    expect(screen.getByText("Try the reset before Friday")).toBeInTheDocument();
     expect(screen.queryByText("Candidate goals")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("Review note")).not.toBeInTheDocument();
   });

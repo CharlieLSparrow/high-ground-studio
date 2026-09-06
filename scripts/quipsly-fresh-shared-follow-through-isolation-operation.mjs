@@ -65,7 +65,7 @@ const neighborContext = await browser.newContext({ viewport: { width: 390, heigh
 const coachPage = await coachContext.newPage();
 const clientPage = await clientContext.newPage();
 const neighborPage = await neighborContext.newPage();
-const transcriptPath = `/sessions/${encodeURIComponent(target.roomId)}?mode=transcript`;
+const followThroughPath = `/sessions/${encodeURIComponent(target.roomId)}?mode=transcript`;
 
 function record(value) {
   return value && typeof value === "object" && !Array.isArray(value) ? value : {};
@@ -77,7 +77,7 @@ function sourceIsPacketFor(note, packetBuildId) {
     && source.packetBuildId === packetBuildId;
 }
 
-async function signIn(page, acceptanceContext, identity, callbackPath = transcriptPath) {
+async function signIn(page, acceptanceContext, identity, callbackPath = followThroughPath) {
   const password = readRetainedQAPassword({
     service: acceptanceContext.keychainService,
     account: identity.email,
@@ -94,6 +94,25 @@ async function readPacket(page) {
     );
     return { status: response.status, payload: await response.json() };
   }, target.roomId);
+}
+
+async function waitForRendered(page, locator, label, context = {}) {
+  try {
+    await locator.scrollIntoViewIfNeeded({ timeout: 30_000 });
+    await locator.waitFor({ timeout: 30_000 });
+  } catch (error) {
+    const body = await page.locator("body").innerText().catch(() => "");
+    const diagnostic = {
+      label,
+      url: page.url(),
+      title: await page.title().catch(() => ""),
+      context,
+      visibleText: body.slice(0, 2_000),
+    };
+    throw new Error(`Rendered follow-through checkpoint failed: ${JSON.stringify(diagnostic)}`, {
+      cause: error,
+    });
+  }
 }
 
 async function loadSharedFollowThrough() {
@@ -130,7 +149,7 @@ async function loadSharedFollowThrough() {
         where: {
           roomId: target.roomId,
           noteId: summary.id,
-          sourceJson: { path: ["source"], equals: "transcript-packet-builder" },
+          sourceJson: { path: ["origin"], equals: "quipsly-session-follow-through" },
         },
         orderBy: { createdAt: "asc" },
         select: { id: true, title: true, detail: true, assignedUserId: true },
@@ -144,6 +163,7 @@ async function loadSharedFollowThrough() {
   throw new Error("Shared editable transcript follow-through did not become available within 90 seconds.");
 }
 
+let createdPrivateNoteID = null;
 try {
   const { packetBuildId, transcriptJobId, summary, packetNotes, highlights, acceptedTasks } = await loadSharedFollowThrough();
   const transcript = await prisma.transcriptJob.findUnique({
@@ -152,8 +172,11 @@ try {
   });
   assert.equal(transcript?.status, "COMPLETED", "Shared follow-through must remain bound to a completed transcript.");
   assert(
-    acceptedTasks.every((task) => !task.assignedUserId || task.assignedUserId === target.identities.coach.userId),
-    "Shared follow-through includes a task assigned to an unexpected actor.",
+    acceptedTasks.every((task) => !task.assignedUserId || [
+      target.identities.coach.userId,
+      target.identities.client.userId,
+    ].includes(task.assignedUserId)),
+    "Shared follow-through includes a task assigned outside the coaching relationship.",
   );
   const expectedTaskTitle = process.env.QUIPSLY_EXPECTED_SHARED_TASK_TITLE?.trim();
   if (expectedTaskTitle) {
@@ -162,11 +185,31 @@ try {
       `Expected shared task was not created: ${expectedTaskTitle}`,
     );
   }
-  const privateNote = await prisma.coachingNote.findFirst({
+  let privateNote = await prisma.coachingNote.findFirst({
     where: { roomId: target.roomId, visibility: "AUTHOR_PRIVATE" },
     orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
     select: { id: true, title: true, body: true, authorUserId: true },
   });
+  if (!privateNote) {
+    privateNote = await prisma.coachingNote.create({
+      data: {
+        roomId: target.roomId,
+        engagementId: target.engagementId,
+        authorUserId: target.identities.coach.userId,
+        kind: "SESSION_NOTE",
+        visibility: "AUTHOR_PRIVATE",
+        title: `Private isolation check ${runToken}`,
+        body: "Local acceptance-only private note.",
+        sourceJson: {
+          source: "quipsly-local-acceptance-negative-control",
+          runToken,
+          externalSideEffects: false,
+        },
+      },
+      select: { id: true, title: true, body: true, authorUserId: true },
+    });
+    createdPrivateNoteID = privateNote.id;
+  }
   assert(privateNote?.id, "The fresh Session needs one private-note negative control.");
   const baseline = {
     noteCount: packetNotes.length,
@@ -180,14 +223,38 @@ try {
     signIn(clientPage, target, target.identities.client),
     signIn(neighborPage, neighbor, neighbor.identities.coach, "/coaching"),
   ]);
-  await coachPage.getByText(summary.title, { exact: true }).waitFor({ timeout: 30_000 });
-  await clientPage.getByText(summary.title, { exact: true }).waitFor({ timeout: 30_000 });
-
   const [coachRead, clientRead, neighborRead] = await Promise.all([
     readPacket(coachPage),
     readPacket(clientPage),
     readPacket(neighborPage),
   ]);
+  await Promise.all([
+    coachPage.getByText("Session results and status", { exact: true }).click(),
+    clientPage.getByText("Session results and status", { exact: true }).click(),
+  ]);
+  const renderedFollowThrough = { name: "Follow-through is ready" };
+  await waitForRendered(
+    coachPage,
+    coachPage.getByRole("heading", renderedFollowThrough),
+    "coach follow-through",
+    {
+      status: coachRead.status,
+      packetStatus: coachRead.payload?.packet?.status,
+      reviewAccess: coachRead.payload?.packet?.reviewAccess,
+      summaryID: coachRead.payload?.packet?.summary?.id,
+      resultTaskCount: coachRead.payload?.packet?.results?.tasks?.length ?? null,
+      actionItemCount: coachRead.payload?.packet?.actionItems?.length ?? null,
+    },
+  );
+  await waitForRendered(
+    clientPage,
+    clientPage.getByText(
+      "Shared Session notes, tasks, and goals are ready to use.",
+      { exact: true },
+    ),
+    "client shared follow-up",
+  );
+
   assert.equal(coachRead.status, 200);
   assert.equal(coachRead.payload?.ok, true);
   assert.equal(coachRead.payload?.packet?.summary?.id, summary.id);
@@ -298,5 +365,13 @@ try {
   await clientContext.close();
   await neighborContext.close();
   await browser.close();
+  if (createdPrivateNoteID) {
+    await prisma.coachingNote.deleteMany({
+      where: {
+        id: createdPrivateNoteID,
+        sourceJson: { path: ["source"], equals: "quipsly-local-acceptance-negative-control" },
+      },
+    }).catch(() => undefined);
+  }
   await prisma.$disconnect();
 }

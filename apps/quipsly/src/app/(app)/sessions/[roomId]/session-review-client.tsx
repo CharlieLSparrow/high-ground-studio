@@ -4042,12 +4042,16 @@ export function SessionReviewClient({
     (output) =>
       output.kind === "CLIENT_FOLLOW_UP" && output.status === "RELEASED",
   );
+  const sharedSessionResultsReady =
+    !canReviewPrivatePacket && Boolean(packet?.packet?.summary || sessionResults || tasks.length > 0);
   const followUpReadyForReview =
     canReviewPrivatePacket && Boolean(packet?.packet?.summary) && !packetStale;
   const followUpStatusLabel = !canReviewPrivatePacket
     ? clientFollowUpReady
-      ? "Shared with you"
-      : "Not shared yet"
+      ? "Follow-up shared"
+      : sharedSessionResultsReady
+        ? "Session work ready"
+        : "Not shared yet"
     : followUpReadyForReview
       ? "Ready to use"
       : buildingPacket && canPrepareReviewMaterial
@@ -4683,7 +4687,9 @@ export function SessionReviewClient({
                   {!canReviewPrivatePacket
                     ? clientFollowUpReady
                       ? "A follow-up has been shared with you in this Session."
-                      : "Nothing has been shared yet. Your transcript and shared Session tools remain available."
+                      : sharedSessionResultsReady
+                        ? "Shared Session notes, tasks, and goals are ready to use."
+                        : "Nothing has been shared yet. Your transcript and shared Session tools remain available."
                     : followUpReadyForReview
                       ? "Your recap, notes, tasks, and goals are ready to use."
                       : buildingPacket && canPrepareReviewMaterial
@@ -4693,7 +4699,7 @@ export function SessionReviewClient({
               </div>
             </section>
 
-            {canReviewPrivatePacket || sessionResults ? (
+            {canReviewPrivatePacket || sessionResults || packet.packet?.summary || tasks.length > 0 ? (
               <>
                 <section
                   id="review-material"
