@@ -145,8 +145,7 @@ async function operateLocalInterruptionRepair(recordingAssetId) {
   const { stdout } = await execFileAsync(
     process.execPath,
     [
-      "--import",
-      "tsx",
+      "--experimental-transform-types",
       "--import",
       path.join(repositoryRoot, "scripts/register-ts-extension-loader.mjs"),
       path.join(

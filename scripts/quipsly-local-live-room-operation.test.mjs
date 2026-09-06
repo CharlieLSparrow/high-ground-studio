@@ -23,16 +23,19 @@ assert.match(subject, /const retainedRunCaptureGroupId = freshContext \? null : 
 assert.match(subject, /captureGroupId: retainedRunCaptureGroupId/);
 assert.match(subject, /select: \{ action: true, captureGroupId: true \}/);
 assert.match(subject, /captureGroupId: previousDirective\.captureGroupId/);
+assert.match(subject, /"--experimental-transform-types"/);
+assert.doesNotMatch(subject, /"--import",\s*"tsx"/);
 
 console.log(
   JSON.stringify({
     ok: true,
-    assertions: 15,
+    assertions: 17,
     receiptIsFreshContextScoped: true,
     receiptIsPrivate: true,
     cleanupDoesNotWaitForAnAbsentLeaveAction: true,
     optionalTwoPartyVideoIsOperated: true,
     retainedRecordingSessionsUseFreshCaptureGroups: true,
     interruptedPriorGenerationIsClosedPrecisely: true,
+    interruptionRepairUsesRepositoryNativeTypeScriptRuntime: true,
   }),
 );
