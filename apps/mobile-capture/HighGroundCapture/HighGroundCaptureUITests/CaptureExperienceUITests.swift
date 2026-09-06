@@ -1288,15 +1288,17 @@ final class CaptureExperienceUITests: XCTestCase {
         let savedRow = app.descendants(matching: .any).matching(
             NSPredicate(format: "identifier BEGINSWITH %@", "LocalRecordingRow_")
         ).firstMatch
+        reveal(savedRow, searchAboveFirst: false, requireHittable: false)
         XCTAssertTrue(
             savedRow.waitForExistence(timeout: 12),
-            "The decoded source must remain in Library after derived analysis rejects its payload."
+            "The decoded source must remain in Notes after derived analysis rejects its payload."
         )
         let play = savedRow.buttons["Play"].firstMatch
         XCTAssertTrue(play.exists && play.isEnabled)
         let warning = app.descendants(matching: .any)[
             "CaptureLibraryAnalysisWarning"
         ].firstMatch
+        reveal(warning, searchAboveFirst: false, requireHittable: false)
         XCTAssertTrue(
             warning.waitForExistence(timeout: 5),
             "The app should explain the scoped analysis issue without calling the recording failed."
@@ -4556,10 +4558,10 @@ final class CaptureExperienceUITests: XCTestCase {
         let results = app.descendants(matching: .any)["CaptureTranscriptFollowUpResults"].firstMatch
         revealBelow(results, in: transcriptScroll)
         XCTAssertTrue(results.waitForExistence(timeout: 5))
-        XCTAssertTrue(results.staticTexts["Follow-up ready"].exists)
-        XCTAssertTrue(results.staticTexts["1 notes · 1 tasks · 1 goals"].exists)
+        XCTAssertTrue(app.staticTexts["Follow-up ready"].firstMatch.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["1 notes · 1 tasks · 1 goals"].firstMatch.exists)
         XCTAssertTrue(
-            results.staticTexts.matching(
+            app.staticTexts.matching(
                 NSPredicate(format: "label CONTAINS %@", "ordinary editable Session work")
             ).firstMatch.exists
         )
@@ -4832,6 +4834,7 @@ final class CaptureExperienceUITests: XCTestCase {
         let outboxBoundary = app.descendants(matching: .any)[
             "CaptureTranscriptReviewOutboxBoundary"
         ].firstMatch
+        reveal(outboxBoundary, searchAboveFirst: false, requireHittable: false)
         XCTAssertTrue(
             outboxBoundary.waitForExistence(timeout: 8),
             "The deterministic fixture should publish its protected transcript outbox state."
@@ -4841,9 +4844,12 @@ final class CaptureExperienceUITests: XCTestCase {
         app.launchArguments = ownerArguments
         app.launch()
         openPreviewTranscriptReview()
+        let recoveredOutbox = app.descendants(matching: .any)[
+            "CaptureTranscriptReviewOutboxBoundary"
+        ].firstMatch
+        reveal(recoveredOutbox, searchAboveFirst: false, requireHittable: false)
         XCTAssertTrue(
-            app.descendants(matching: .any)["CaptureTranscriptReviewOutboxBoundary"]
-                .waitForExistence(timeout: 8),
+            recoveredOutbox.waitForExistence(timeout: 8),
             "The same account must recover the outbox summary after process death."
         )
 
@@ -4854,9 +4860,12 @@ final class CaptureExperienceUITests: XCTestCase {
         ]
         app.launch()
         openPreviewTranscriptReview()
+        let otherAccountOutbox = app.descendants(matching: .any)[
+            "CaptureTranscriptReviewOutboxBoundary"
+        ].firstMatch
+        reveal(otherAccountOutbox, searchAboveFirst: false, requireHittable: false)
         XCTAssertFalse(
-            app.descendants(matching: .any)["CaptureTranscriptReviewOutboxBoundary"]
-                .waitForExistence(timeout: 2),
+            otherAccountOutbox.waitForExistence(timeout: 2),
             "A different account must not see another person's protected transcript decision."
         )
 
@@ -4864,9 +4873,12 @@ final class CaptureExperienceUITests: XCTestCase {
         app.launchArguments = ownerArguments
         app.launch()
         openPreviewTranscriptReview()
+        let restoredOutbox = app.descendants(matching: .any)[
+            "CaptureTranscriptReviewOutboxBoundary"
+        ].firstMatch
+        reveal(restoredOutbox, searchAboveFirst: false, requireHittable: false)
         XCTAssertTrue(
-            app.descendants(matching: .any)["CaptureTranscriptReviewOutboxBoundary"]
-                .waitForExistence(timeout: 8)
+            restoredOutbox.waitForExistence(timeout: 8)
         )
     }
 
@@ -6193,26 +6205,27 @@ final class CaptureExperienceUITests: XCTestCase {
             library.tap()
         } else {
             let sidebar = app.collectionViews["CaptureIPadSidebar"].firstMatch
-            let sidebarLibrary = sidebar.cells.element(boundBy: 4)
+            let sidebarNotes = sidebar.cells.element(boundBy: 4)
             XCTAssertTrue(
                 sidebar.waitForExistence(timeout: 12)
-                    && sidebarLibrary.waitForExistence(timeout: 4),
-                "Library should remain a first-class destination in the iPad sidebar."
+                    && sidebarNotes.waitForExistence(timeout: 4),
+                "Notes should remain a first-class destination in the iPad sidebar."
             )
             XCTAssertTrue(
-                sidebarLibrary.staticTexts["Library"].exists,
-                "The stable fourth Quipsly destination must remain Library."
+                sidebarNotes.staticTexts["Notes"].exists,
+                "The stable fourth Quipsly destination must remain Notes."
             )
-            sidebarLibrary.tap()
+            sidebarNotes.tap()
         }
         let compactLibrary = app.descendants(matching: .any)["CaptureLibraryView"]
         let adaptiveWorkspace = app.scrollViews["CaptureIPadWorkspace"]
         XCTAssertTrue(
             compactLibrary.waitForExistence(timeout: 2)
                 || adaptiveWorkspace.waitForExistence(timeout: 8),
-            "Library should open in the compact surface or the iPad workspace."
+            "Notes should open in the compact surface or the iPad workspace."
         )
         let reviewLink = app.buttons["CaptureTranscriptReviewPreviewLink"]
+        reveal(reviewLink, searchAboveFirst: false)
         XCTAssertTrue(reviewLink.waitForExistence(timeout: 8))
         reviewLink.tap()
         XCTAssertTrue(app.scrollViews["CaptureTranscriptReviewView"].waitForExistence(timeout: 8))

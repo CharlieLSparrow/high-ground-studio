@@ -4078,7 +4078,7 @@ struct CaptureTranscriptReviewView: View {
                 }
             }
 
-            Text("These are ordinary editable Session work. Open Session or Work to adjust or remove them; tap a source here to return to the exact participant recording.")
+            Text("These are ordinary editable Session work. Open the Session to adjust or remove them; tap a source here to return to the exact participant recording.")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
