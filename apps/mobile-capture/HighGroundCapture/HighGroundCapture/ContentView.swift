@@ -311,7 +311,8 @@ private struct ProtectedOfflineLibraryShell: View {
                 }
 
             }
-            .navigationTitle("Local Library")
+            .captureFormSurface()
+            .navigationTitle("Offline Notes")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Sign out", role: .destructive) {

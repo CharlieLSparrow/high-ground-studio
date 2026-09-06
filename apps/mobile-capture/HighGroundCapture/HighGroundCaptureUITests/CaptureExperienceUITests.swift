@@ -331,7 +331,7 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Quipsly is offline and cannot reach Nest."].exists)
         XCTAssertFalse(app.alerts["Connection interrupted"].exists)
 
-        let work = app.tabBars.buttons["Work"]
+        let work = app.tabBars.buttons["Nests"]
         XCTAssertTrue(work.waitForExistence(timeout: 5))
         XCTAssertTrue(work.isHittable)
         work.tap()
@@ -354,7 +354,7 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(openLibrary.isHittable)
         openLibrary.tap()
 
-        let compactLibrary = app.scrollViews["CaptureLibraryView"]
+        let compactLibrary = app.descendants(matching: .any)["CaptureLibraryView"]
         let adaptiveWorkspace = app.scrollViews["CaptureIPadWorkspace"]
         XCTAssertTrue(
             compactLibrary.waitForExistence(timeout: 2)
@@ -516,8 +516,8 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(project.exists)
         XCTAssertTrue(project.label.contains("High Ground Odyssey"), "Record should show the canonical Session Nest, not an invented upload destination.")
 
-        tabBar.buttons["Library"].tap()
-        XCTAssertTrue(app.scrollViews["CaptureLibraryView"].waitForExistence(timeout: 5))
+        tabBar.buttons["Notes"].tap()
+        XCTAssertTrue(app.descendants(matching: .any)["CaptureLibraryView"].waitForExistence(timeout: 5))
 
         tabBar.buttons["Account"].tap()
         XCTAssertTrue(app.navigationBars["Account"].waitForExistence(timeout: 5))
@@ -597,8 +597,8 @@ final class CaptureExperienceUITests: XCTestCase {
             "--capture-ui-preview-tab=library",
         ]
         app.launch()
-        XCTAssertTrue(app.navigationBars["Library"].waitForExistence(timeout: 12))
-        XCTAssertTrue(app.scrollViews["CaptureLibraryView"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.navigationBars["Notes"].waitForExistence(timeout: 12))
+        XCTAssertTrue(app.descendants(matching: .any)["CaptureLibraryView"].waitForExistence(timeout: 5))
 
         XCTAssertTrue(
             app.buttons["CaptureLibrarySpeakToWrite"].isHittable,
@@ -628,6 +628,30 @@ final class CaptureExperienceUITests: XCTestCase {
             "A keyboard-first paper should be one obvious tap from adding a real voice source."
         )
         XCTAssertTrue(app.buttons["CaptureVoiceWritingShareMenu"].exists)
+
+        let body = app.descendants(matching: .any)["CaptureVoiceWritingBody"]
+        body.tap()
+        body.typeText("Swipe action test")
+
+        let backToNotes = app.navigationBars["Writing"].buttons["Notes"]
+        XCTAssertTrue(backToNotes.waitForExistence(timeout: 3))
+        backToNotes.tap()
+        let typedDraft = app.descendants(matching: .any)
+            .matching(NSPredicate(
+                format: "identifier BEGINSWITH %@",
+                "CaptureLibraryWriting_"
+            ))
+            .firstMatch
+        reveal(typedDraft)
+        XCTAssertTrue(
+            typedDraft.waitForExistence(timeout: 5),
+            "A newly typed note should return to the same stable Notes list."
+        )
+        typedDraft.swipeRight()
+        XCTAssertTrue(
+            app.buttons["Add voice"].waitForExistence(timeout: 3),
+            "A conventional leading swipe should reveal the note's useful quick action."
+        )
     }
 
     func testHomeStartsKeyboardWritingWithoutALibraryDetour() {
@@ -684,7 +708,7 @@ final class CaptureExperienceUITests: XCTestCase {
             app.descendants(matching: .any)["CapturePreviewModeBadge"]
                 .waitForExistence(timeout: 12)
         )
-        app.tabBars.buttons["Library"].tap()
+        app.tabBars.buttons["Notes"].tap()
         let writingSection = app.buttons["Writing"]
         XCTAssertTrue(writingSection.waitForExistence(timeout: 5))
         writingSection.tap()
@@ -708,7 +732,7 @@ final class CaptureExperienceUITests: XCTestCase {
             "--capture-ui-preview-tab=library",
         ]
         app.launch()
-        XCTAssertTrue(app.navigationBars["Library"].waitForExistence(timeout: 12))
+        XCTAssertTrue(app.navigationBars["Notes"].waitForExistence(timeout: 12))
 
         let filter = app.buttons["CaptureLibraryWritingFilter"]
         let sort = app.buttons["CaptureLibraryWritingSort"]
@@ -755,8 +779,8 @@ final class CaptureExperienceUITests: XCTestCase {
             "Moving cross-Nest follow-through must not remove the capability."
         )
 
-        app.tabBars.buttons["Library"].tap()
-        XCTAssertTrue(app.scrollViews["CaptureLibraryView"].waitForExistence(timeout: 5))
+        app.tabBars.buttons["Notes"].tap()
+        XCTAssertTrue(app.descendants(matching: .any)["CaptureLibraryView"].waitForExistence(timeout: 5))
         app.segmentedControls["CaptureLibrarySectionPicker"].buttons["Recordings"].tap()
         XCTAssertTrue(
             app.descendants(matching: .any)["CaptureFinishQueueCard"]
@@ -873,7 +897,7 @@ final class CaptureExperienceUITests: XCTestCase {
             "All writing should leave the focused recorder without routing through the Sessions workspace."
         )
         XCTAssertTrue(
-            app.navigationBars["Library"].exists,
+            app.navigationBars["Notes"].exists,
             "All writing should open the Library destination, not recordings or Sessions."
         )
     }
@@ -1255,7 +1279,7 @@ final class CaptureExperienceUITests: XCTestCase {
         let allWriting = app.buttons["CaptureVoiceNoteOpenLibrary"]
         XCTAssertTrue(allWriting.waitForExistence(timeout: 5))
         allWriting.tap()
-        XCTAssertTrue(app.navigationBars["Library"].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.navigationBars["Notes"].waitForExistence(timeout: 8))
         let recordings = app.segmentedControls["CaptureLibrarySectionPicker"]
             .buttons["Recordings"]
         XCTAssertTrue(recordings.waitForExistence(timeout: 5))
@@ -1408,7 +1432,7 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(writingSection.waitForExistence(timeout: 5))
         writingSection.tap()
         let previewDraft = app.descendants(matching: .any)["CaptureLibraryPreviewWritingCard"]
-        let library = app.scrollViews["CaptureLibraryView"]
+        let library = app.descendants(matching: .any)["CaptureLibraryView"]
         for _ in 0..<4 where !previewDraft.exists {
             library.swipeUp()
         }
@@ -1443,7 +1467,7 @@ final class CaptureExperienceUITests: XCTestCase {
     }
 
     func testVoiceWritingDeletesTheDraftWithoutDeletingItsSource() {
-        app.tabBars.buttons["Library"].tap()
+        app.tabBars.buttons["Notes"].tap()
         app.buttons["Writing"].tap()
         let previewDraft = app.descendants(matching: .any)["CaptureLibraryPreviewWritingCard"]
         XCTAssertTrue(previewDraft.waitForExistence(timeout: 5))
@@ -2785,7 +2809,7 @@ final class CaptureExperienceUITests: XCTestCase {
     }
 
     func testNestsSearchLabelsPrivateOwnedAndSharedWorkAndOpensWritingInPlace() {
-        app.tabBars.buttons["Work"].tap()
+        app.tabBars.buttons["Nests"].tap()
         let searchField = app.descendants(matching: .any)["CaptureWorkSearchField"]
         XCTAssertTrue(searchField.waitForExistence(timeout: 5))
 
@@ -2815,7 +2839,7 @@ final class CaptureExperienceUITests: XCTestCase {
         let privateNestSelected = expectation(
             for: NSPredicate(
                 format: "value CONTAINS %@",
-                "Charlie Home Nest, Work"
+                "Charlie Home Nest, Nests"
             ),
             evaluatedWith: picker
         )
@@ -2889,7 +2913,7 @@ final class CaptureExperienceUITests: XCTestCase {
         let selected = expectation(
             for: NSPredicate(
                 format: "value == %@",
-                "Doctoral research, Work"
+                "Doctoral research, Nests"
             ),
             evaluatedWith: location
         )
@@ -2897,7 +2921,7 @@ final class CaptureExperienceUITests: XCTestCase {
     }
 
     func testWorkKeepsProjectsTasksGoalsNotesAndTagsTogether() {
-        app.tabBars.buttons["Work"].tap()
+        app.tabBars.buttons["Nests"].tap()
         let workScroll = app.scrollViews["CaptureWorkView"]
         XCTAssertTrue(workScroll.waitForExistence(timeout: 5))
         let newProject = app.buttons["CaptureWorkNewProject"]
@@ -3032,7 +3056,7 @@ final class CaptureExperienceUITests: XCTestCase {
         app.buttons["CaptureQuickEntrySave"].tap()
         XCTAssertTrue(app.staticTexts["Preview only — no note, task, goal, or source was saved."].waitForExistence(timeout: 5))
 
-        app.tabBars.buttons["Work"].tap()
+        app.tabBars.buttons["Nests"].tap()
         let picker = app.buttons["CaptureGlobalWorkLocation"]
         reveal(picker)
         picker.tap()
@@ -3057,7 +3081,7 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(homeNest.waitForExistence(timeout: 3))
         homeNest.tap()
         XCTAssertTrue(
-            (picker.value as? String)?.contains("Charlie Home Nest, Work") == true,
+            (picker.value as? String)?.contains("Charlie Home Nest, Nests") == true,
             "The Nest picker should make the selected private destination clear without repeating its name below."
         )
         XCTAssertEqual(
@@ -3072,7 +3096,7 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(ownedNest.waitForExistence(timeout: 3))
         ownedNest.tap()
         XCTAssertTrue(
-            (picker.value as? String)?.contains("Doctoral research, Work") == true,
+            (picker.value as? String)?.contains("Doctoral research, Nests") == true,
             "A separately owned Nest should not be conflated with a private Home Nest or a space someone else shared."
         )
         XCTAssertEqual(
@@ -3087,7 +3111,7 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(sharedNest.waitForExistence(timeout: 3))
         sharedNest.tap()
         XCTAssertTrue(
-            (picker.value as? String)?.contains("High Ground Odyssey, Work") == true,
+            (picker.value as? String)?.contains("High Ground Odyssey, Nests") == true,
             "Returning to shared work should preserve the same one-control navigation model."
         )
         XCTAssertEqual(app.staticTexts["Access"].value as? String, "Can edit")
@@ -3097,7 +3121,7 @@ final class CaptureExperienceUITests: XCTestCase {
         let retainedWords = " Retained after an ordinary dismissal and relaunch."
 
         func openPreviewNote() {
-            app.tabBars.buttons["Work"].tap()
+            app.tabBars.buttons["Nests"].tap()
             let workScroll = app.scrollViews["CaptureWorkView"]
             XCTAssertTrue(workScroll.waitForExistence(timeout: 5))
             let editNote = app.buttons["CaptureWorkNoteEdit_preview-work-note"]
@@ -3796,8 +3820,8 @@ final class CaptureExperienceUITests: XCTestCase {
     }
 
     func testTodayFinishQueueOpensExactSessionWithoutPerformingAction() {
-        app.tabBars.buttons["Library"].tap()
-        XCTAssertTrue(app.scrollViews["CaptureLibraryView"].waitForExistence(timeout: 5))
+        app.tabBars.buttons["Notes"].tap()
+        XCTAssertTrue(app.descendants(matching: .any)["CaptureLibraryView"].waitForExistence(timeout: 5))
         app.segmentedControls["CaptureLibrarySectionPicker"].buttons["Recordings"].tap()
         let card = app.descendants(matching: .any)["CaptureFinishQueueCard"]
         reveal(card)
@@ -4268,8 +4292,8 @@ final class CaptureExperienceUITests: XCTestCase {
     }
 
     func testOptionalTranscriptIdeaCanBeAddedOrAdjustedWithoutPaperwork() throws {
-        app.tabBars.buttons["Library"].tap()
-        XCTAssertTrue(app.scrollViews["CaptureLibraryView"].waitForExistence(timeout: 5))
+        app.tabBars.buttons["Notes"].tap()
+        XCTAssertTrue(app.descendants(matching: .any)["CaptureLibraryView"].waitForExistence(timeout: 5))
 
         let reviewLink = app.buttons["CapturePacketNoteReviewPreviewLink"]
         reveal(reviewLink)
@@ -4469,8 +4493,8 @@ final class CaptureExperienceUITests: XCTestCase {
     }
 
     func testTranscriptConversationReviewOpensTheExactTimelineSegment() {
-        app.tabBars.buttons["Library"].tap()
-        XCTAssertTrue(app.scrollViews["CaptureLibraryView"].waitForExistence(timeout: 5))
+        app.tabBars.buttons["Notes"].tap()
+        XCTAssertTrue(app.descendants(matching: .any)["CaptureLibraryView"].waitForExistence(timeout: 5))
 
         let reviewLink = app.buttons["CaptureTranscriptReviewPreviewLink"]
         XCTAssertTrue(reviewLink.waitForExistence(timeout: 5))
@@ -4508,8 +4532,8 @@ final class CaptureExperienceUITests: XCTestCase {
     }
 
     func testTranscriptReviewShowsDeviceFirstJointAssembly() {
-        app.tabBars.buttons["Library"].tap()
-        XCTAssertTrue(app.scrollViews["CaptureLibraryView"].waitForExistence(timeout: 5))
+        app.tabBars.buttons["Notes"].tap()
+        XCTAssertTrue(app.descendants(matching: .any)["CaptureLibraryView"].waitForExistence(timeout: 5))
 
         let reviewLink = app.buttons["CaptureTranscriptReviewPreviewLink"]
         XCTAssertTrue(reviewLink.waitForExistence(timeout: 5))
@@ -4576,8 +4600,8 @@ final class CaptureExperienceUITests: XCTestCase {
     }
 
     func testTranscriptPreviewVoiceIdentityStaysDisabled() throws {
-        app.tabBars.buttons["Library"].tap()
-        XCTAssertTrue(app.scrollViews["CaptureLibraryView"].waitForExistence(timeout: 5))
+        app.tabBars.buttons["Notes"].tap()
+        XCTAssertTrue(app.descendants(matching: .any)["CaptureLibraryView"].waitForExistence(timeout: 5))
 
         let reviewLink = app.buttons["CaptureTranscriptReviewPreviewLink"]
         XCTAssertTrue(reviewLink.waitForExistence(timeout: 5))
@@ -4609,8 +4633,8 @@ final class CaptureExperienceUITests: XCTestCase {
     }
 
     func testTranscriptReviewKeepsPreviewAndAIBehindTruthBoundaries() throws {
-        app.tabBars.buttons["Library"].tap()
-        XCTAssertTrue(app.scrollViews["CaptureLibraryView"].waitForExistence(timeout: 5))
+        app.tabBars.buttons["Notes"].tap()
+        XCTAssertTrue(app.descendants(matching: .any)["CaptureLibraryView"].waitForExistence(timeout: 5))
 
         let reviewLink = app.buttons["CaptureTranscriptReviewPreviewLink"]
         XCTAssertTrue(reviewLink.waitForExistence(timeout: 5))
@@ -4991,8 +5015,8 @@ final class CaptureExperienceUITests: XCTestCase {
     }
 
     func testSourceEvidencePreviewShowsTruthBoundariesWithoutCreatingAReceipt() throws {
-        app.tabBars.buttons["Library"].tap()
-        XCTAssertTrue(app.scrollViews["CaptureLibraryView"].waitForExistence(timeout: 5))
+        app.tabBars.buttons["Notes"].tap()
+        XCTAssertTrue(app.descendants(matching: .any)["CaptureLibraryView"].waitForExistence(timeout: 5))
 
         let evidenceLink = app.buttons["CaptureSourceEvidencePreviewLink"]
         XCTAssertTrue(evidenceLink.waitForExistence(timeout: 5))
@@ -6146,7 +6170,7 @@ final class CaptureExperienceUITests: XCTestCase {
         if app.scrollViews["CaptureAcrossNestsFollowThroughView"].exists {
             return
         }
-        let nests = app.tabBars.buttons["Work"]
+        let nests = app.tabBars.buttons["Nests"]
         XCTAssertTrue(nests.waitForExistence(timeout: 8))
         nests.tap()
         XCTAssertTrue(app.scrollViews["CaptureWorkView"].waitForExistence(timeout: 8))
@@ -6164,7 +6188,7 @@ final class CaptureExperienceUITests: XCTestCase {
     }
 
     private func openPreviewTranscriptReview() {
-        let library = app.tabBars.buttons["Library"]
+        let library = app.tabBars.buttons["Notes"]
         if library.waitForExistence(timeout: 2) {
             library.tap()
         } else {
@@ -6181,7 +6205,7 @@ final class CaptureExperienceUITests: XCTestCase {
             )
             sidebarLibrary.tap()
         }
-        let compactLibrary = app.scrollViews["CaptureLibraryView"]
+        let compactLibrary = app.descendants(matching: .any)["CaptureLibraryView"]
         let adaptiveWorkspace = app.scrollViews["CaptureIPadWorkspace"]
         XCTAssertTrue(
             compactLibrary.waitForExistence(timeout: 2)
@@ -6693,14 +6717,13 @@ final class CaptureAppStoreScreenshotUITests: XCTestCase {
         XCTAssertFalse(app.staticTexts["1 retired tag remains preserved for history."].exists)
         keepScreenshot("03-work.png")
 
-        launch(tab: "library", waitingFor: app.navigationBars["Library"])
+        launch(tab: "library", waitingFor: app.navigationBars["Notes"])
         XCTAssertTrue(
             app.descendants(matching: .any)["CaptureLibraryPreviewWritingCard"]
                 .waitForExistence(timeout: 5)
         )
         XCTAssertTrue(app.staticTexts["What I want to explore next"].exists)
         XCTAssertTrue(app.staticTexts["Coaching reflection"].exists)
-        XCTAssertTrue(app.staticTexts["Research notes · resilient routines"].exists)
         XCTAssertEqual(app.staticTexts["CaptureLibraryWritingCount"].label, "3 writing items")
         XCTAssertTrue(app.staticTexts["Timed transcript"].exists)
         XCTAssertFalse(
@@ -6713,7 +6736,15 @@ final class CaptureAppStoreScreenshotUITests: XCTestCase {
         )
         keepScreenshot("04-library.png")
 
+        let researchNotes = app.staticTexts["Research notes · resilient routines"]
+        reveal(researchNotes)
+        XCTAssertTrue(
+            researchNotes.waitForExistence(timeout: 5),
+            "Notes should keep the complete mixed writing collection in its native list."
+        )
+
         let writingDraft = app.descendants(matching: .any)["CaptureLibraryPreviewWritingCard"]
+        reveal(writingDraft)
         XCTAssertTrue(writingDraft.isHittable)
         writingDraft.tap()
         XCTAssertTrue(
@@ -6743,6 +6774,7 @@ final class CaptureAppStoreScreenshotUITests: XCTestCase {
         let openingSection = app.descendants(matching: .any).matching(
             NSPredicate(format: "label == %@", "Jump to heading, Opening story")
         ).firstMatch
+        reveal(openingSection)
         XCTAssertTrue(
             openingSection.waitForExistence(timeout: 5),
             "Opening the outline should reveal the paper's real headings."
@@ -6763,7 +6795,7 @@ final class CaptureAppStoreScreenshotUITests: XCTestCase {
         Thread.sleep(forTimeInterval: 0.8)
         keepScreenshot("05-writing.png")
 
-        launch(tab: "library", waitingFor: app.navigationBars["Library"])
+        launch(tab: "library", waitingFor: app.navigationBars["Notes"])
         let recordingsSection = app.buttons["Recordings"]
         XCTAssertTrue(recordingsSection.waitForExistence(timeout: 5))
         recordingsSection.tap()
@@ -6775,7 +6807,9 @@ final class CaptureAppStoreScreenshotUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Transcript ready"].exists)
         XCTAssertTrue(app.staticTexts["Your recordings"].exists)
         XCTAssertTrue(app.staticTexts["Play, share, and open the transcript for any Session or voice recording."].exists)
-        XCTAssertTrue(app.buttons["Open transcript"].exists)
+        let transcriptReview = app.buttons["CaptureTranscriptReviewPreviewLink"]
+        reveal(transcriptReview)
+        XCTAssertEqual(transcriptReview.label, "Open transcript")
         let storageJargon = app.staticTexts.matching(
             NSPredicate(format: "label CONTAINS[c] %@", "verified")
         ).firstMatch
@@ -6789,7 +6823,6 @@ final class CaptureAppStoreScreenshotUITests: XCTestCase {
             ).firstMatch.exists,
             "File size belongs in Recording details, not the ordinary Library surface."
         )
-        let transcriptReview = app.buttons["CaptureTranscriptReviewPreviewLink"]
         XCTAssertTrue(
             transcriptReview.waitForExistence(timeout: 5),
             "The App Store follow-through story must start from the exact source-linked transcript."

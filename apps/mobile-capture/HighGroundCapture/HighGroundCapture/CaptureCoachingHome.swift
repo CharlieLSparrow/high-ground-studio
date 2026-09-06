@@ -3090,6 +3090,7 @@ private struct MobileCoachingScheduleRequestSheet: View {
                     }
                 }
             }
+            .captureFormSurface()
             .navigationTitle("Request a change")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -4006,6 +4007,7 @@ private struct MobileCoachingWorkEditorSheet: View {
                 }
             }
             .accessibilityIdentifier("CaptureCoachingWorkEditorForm")
+            .captureFormSurface()
             .navigationTitle(entry == nil ? "Add coaching work" : "Edit \(entry?.kindLabel ?? "item")")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -4148,6 +4150,7 @@ private struct MobileCoachingRescheduleSheet: View {
                     Section { Text(error).foregroundStyle(.red) }
                 }
             }
+            .captureFormSurface()
             .navigationTitle("Reschedule")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -4337,6 +4340,7 @@ private struct NewMobileCoachingAppointmentSheet: View {
         Form {
             MobileCoachingAppointmentFields(client: client, draft: $draft)
         }
+        .captureFormSurface()
         .navigationTitle("Schedule coaching")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -4459,6 +4463,7 @@ private struct MobileCoachingAvailabilitySheet: View {
                     Section { Text(error).foregroundStyle(.red) }
                 }
             }
+            .captureFormSurface()
             .navigationTitle("Availability")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

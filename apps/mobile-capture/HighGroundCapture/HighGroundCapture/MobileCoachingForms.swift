@@ -2942,6 +2942,7 @@ private struct MobileCoachingFormOutcomeReviewSheet: View {
                 }
             }
         }
+        .captureFormSurface()
         .navigationTitle("Adjust details")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -3073,6 +3074,7 @@ struct MobileCoachingSendFormView: View {
                 }
             }
         }
+        .captureFormSurface()
         .navigationTitle("Send a form")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {

@@ -311,9 +311,9 @@ struct CapturePhoneShell: View {
                 ?? model.selectedSession?.title.nonempty
                 ?? "Sessions"
         case .work:
-            requestedCoachingEngagement?.title.nonempty ?? "Work"
+            requestedCoachingEngagement?.title.nonempty ?? "Nests"
         case .library:
-            "Library"
+            "Notes"
         case .account:
             "Account"
         }
@@ -6086,6 +6086,7 @@ private struct CaptureWeeklyPlanSheet: View {
                 }
             }
             .accessibilityIdentifier("CaptureWeeklyPlanForm")
+            .captureFormSurface()
             .navigationTitle("This week")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -6170,6 +6171,7 @@ private struct CaptureFocusCompletionSheet: View {
                     .accessibilityIdentifier("CaptureTodayFocusConfirmButton")
                 }
             }
+            .captureFormSurface()
             .navigationTitle("Complete focus")
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } } }
         }
@@ -6240,6 +6242,7 @@ private struct CaptureFocusPlanningSheet: View {
                     .accessibilityIdentifier("CaptureTodayFocusPlanSave")
                 }
             }
+            .captureFormSurface()
             .navigationTitle("Focus time")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -6455,6 +6458,7 @@ private struct CaptureTagVocabularySheet: View {
             }
             .searchable(text: $searchText, prompt: "Name, alias, or slug")
             .scrollDismissesKeyboard(.interactively)
+            .captureFormSurface()
             .navigationTitle("Tag vocabulary")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -6806,6 +6810,7 @@ private struct CaptureSourceFilingSheet: View {
             }
             .accessibilityIdentifier("CaptureSourceFilingForm")
             .scrollDismissesKeyboard(.interactively)
+            .captureFormSurface()
             .navigationTitle("File into Research")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -7232,6 +7237,7 @@ private struct TodayTaskReminderSheet: View {
                         .foregroundStyle(.secondary)
                 }
             }
+            .captureFormSurface()
             .navigationTitle(task.reminder?.status == "ACTIVE" ? "Change reminder" : "Add reminder")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -7505,6 +7511,7 @@ private struct TodayWorkTagSheet: View {
                 .padding(.vertical, 10)
                 .background(.ultraThinMaterial)
             }
+            .captureFormSurface()
             .navigationTitle("Edit tags")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -7643,6 +7650,7 @@ private struct CaptureTaskEditSheet: View {
                     .accessibilityIdentifier("CaptureTaskEditRemove")
                 }
             }
+            .captureFormSurface()
             .navigationTitle("Edit task")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -7800,6 +7808,7 @@ private struct CaptureGoalEditSheet: View {
                     .accessibilityIdentifier("CaptureGoalEditRemove")
                 }
             }
+            .captureFormSurface()
             .navigationTitle("Edit goal")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -7998,6 +8007,7 @@ private struct CaptureRecurrenceEditSheet: View {
                     }
                 }
             }
+            .captureFormSurface()
             .navigationTitle("Edit repeating task")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -8313,6 +8323,7 @@ private struct NewCaptureProjectSheet: View {
                     }
                 }
             }
+            .captureFormSurface()
             .navigationTitle("New Nest")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -10661,6 +10672,7 @@ private struct CaptureVoiceWritingTranscriptCorrectionSheet: View {
                 }
             }
         }
+        .captureFormSurface()
         .navigationTitle("Correct passage")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -14892,6 +14904,7 @@ private struct CaptureSessionNotesWorkspace: View {
                 )
                 .padding(18)
             }
+            .captureFormSurface()
             .navigationTitle("Session Notes")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -15487,6 +15500,7 @@ private struct CaptureSessionNoteEditSheet: View {
                     Text("Earlier versions stay available after you save.")
                 }
             }
+            .captureFormSurface()
             .navigationTitle(protectedEdit == nil ? "Edit note" : "Resolve changes")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -16099,6 +16113,7 @@ struct CaptureQuickEntrySheet: View {
             }
             .accessibilityIdentifier("CaptureQuickEntryForm")
             .scrollDismissesKeyboard(.interactively)
+            .captureFormSurface()
             .navigationTitle("Quick \(kind.title)")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -16203,6 +16218,7 @@ private struct CaptureTimeZonePickerSheet: View {
                     }
                 }
             }
+            .captureFormSurface()
             .navigationTitle("Task timezone")
             .navigationBarTitleDisplayMode(.inline)
             .searchable(text: $searchText, prompt: "City or IANA timezone")
@@ -16343,8 +16359,8 @@ private struct CaptureLibraryView: View {
     @State private var writingSort: CaptureLibraryWritingSort = .recent
 
     var body: some View {
-        ScrollView {
-            LazyVStack(alignment: .leading, spacing: 14) {
+        List {
+            Group {
                 VStack(alignment: .leading, spacing: 6) {
                     Text(selectedSection == .writing ? "Your writing" : "Your recordings")
                         .font(.title2.weight(.bold))
@@ -16390,12 +16406,15 @@ private struct CaptureLibraryView: View {
                     recordingContent
                 }
             }
-            .padding(.horizontal, 18)
-            .padding(.top, 16)
-            .padding(.bottom, 96)
+            .listRowInsets(EdgeInsets(top: 7, leading: 18, bottom: 7, trailing: 18))
+            .listRowSeparator(.hidden)
+            .listRowBackground(Color.clear)
         }
+        .listStyle(.plain)
+        .scrollContentBackground(.hidden)
+        .contentMargins(.bottom, 96, for: .scrollContent)
         .background(CaptureCanvas())
-        .navigationTitle("Library")
+        .navigationTitle("Notes")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .principal) {
@@ -17070,6 +17089,35 @@ private struct CaptureLibraryView: View {
                     },
                     previewOnly: model.usesPreviewData
                 )
+                .swipeActions(edge: .leading, allowsFullSwipe: true) {
+                    Button {
+                        playback.toggle(recording: recording, library: library)
+                    } label: {
+                        Label(
+                            playback.isPlaying(recordingID: recording.id) ? "Pause" : "Play",
+                            systemImage: playback.isPlaying(recordingID: recording.id) ? "pause.fill" : "play.fill"
+                        )
+                    }
+                    .tint(CapturePalette.actionFill)
+                }
+                .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                    if !model.isSessionContextLocked {
+                        Button(role: .destructive) {
+                            playback.stop()
+                            recordingPendingLocalDeletion = recording
+                        } label: {
+                            Label("Delete from device", systemImage: "trash")
+                        }
+                    }
+                    if !recording.status.isVerified {
+                        Button {
+                            model.retryUpload(for: recording)
+                        } label: {
+                            Label("Retry", systemImage: "arrow.clockwise")
+                        }
+                        .tint(CapturePalette.brass)
+                    }
+                }
             }
         }
 
@@ -17185,9 +17233,6 @@ private struct CaptureVoiceWritingLibraryRow: View {
                             .foregroundStyle(.secondary)
                     }
                     Spacer(minLength: 0)
-                    Image(systemName: "chevron.right")
-                        .font(.caption.weight(.bold))
-                        .foregroundStyle(.tertiary)
                 }
 
                 Text(draft.body)
@@ -17218,6 +17263,14 @@ private struct CaptureVoiceWritingLibraryRow: View {
             .captureCard()
         }
         .buttonStyle(.plain)
+        .swipeActions(edge: .leading, allowsFullSwipe: false) {
+            Button {
+                onContinueByVoice(draft, nil)
+            } label: {
+                Label("Add voice", systemImage: "waveform.badge.mic")
+            }
+            .tint(CapturePalette.actionFill)
+        }
         .accessibilityHint(draft.allSources.isEmpty
             ? "Opens editable writing with formatting, voice, organization, and export tools."
             : "Opens editable writing. The timed transcript and original source remain separate.")
@@ -17301,6 +17354,15 @@ private struct CaptureLibraryNoteRow: View {
             .captureCard()
         }
         .buttonStyle(.plain)
+        .swipeActions(edge: .leading, allowsFullSwipe: true) {
+            Button(action: onOpen) {
+                Label(
+                    canEditInCapture ? "Edit" : "Open",
+                    systemImage: canEditInCapture ? "square.and.pencil" : "arrow.up.right"
+                )
+            }
+            .tint(CapturePalette.actionFill)
+        }
         .accessibilityLabel(note.title)
         .accessibilityValue("Note in \(projectName)")
         .accessibilityHint(
@@ -17409,9 +17471,6 @@ private struct CaptureLibraryPreviewWritingCard: View {
                             .fixedSize(horizontal: false, vertical: true)
                     }
                     Spacer()
-                    Image(systemName: "chevron.right")
-                        .font(.caption.weight(.bold))
-                        .foregroundStyle(.tertiary)
                 }
                 Text("The first idea connects the experience I described to the research question. I want to open with the concrete story, then explain why it matters…")
                     .font(.subheadline)
@@ -18097,6 +18156,7 @@ private struct CaptureVoiceWritingVocabularyView: View {
                 }
             }
         }
+        .captureFormSurface()
         .navigationTitle("Words Quipsly knows")
         .navigationBarTitleDisplayMode(.inline)
         .task {
@@ -18191,6 +18251,7 @@ private struct CaptureStorageAndUploadSettingsView: View {
                 Text("Original recordings stay on \(CaptureDeviceVocabulary.thisDevice) until you choose to remove an eligible copy from Library.")
             }
         }
+        .captureFormSurface()
         .navigationTitle("Storage & uploads")
         .navigationBarTitleDisplayMode(.inline)
         .accessibilityIdentifier("CaptureStorageAndUploadSettings")
@@ -18625,6 +18686,7 @@ struct CaptureConsentConfirmationSheet: View {
                 }
 
             }
+            .captureFormSurface()
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 consentActionBar
             }
@@ -23056,6 +23118,7 @@ private struct LocalRecordingDeletionSheet: View {
                     .accessibilityIdentifier("ConfirmDeleteLocalOriginalButton")
                 }
             }
+            .captureFormSurface()
             .navigationTitle("Delete local original?")
             .navigationBarTitleDisplayMode(.inline)
             .interactiveDismissDisabled(isDeleting)
@@ -23182,6 +23245,7 @@ private struct SessionPickerSheet: View {
                 }
             }
             .accessibilityIdentifier("CaptureSessionPickerList")
+            .captureFormSurface()
             .navigationTitle("Choose session")
             .searchable(
                 text: $searchText,
@@ -23320,6 +23384,7 @@ private struct NewCaptureSessionSheet: View {
                         }
                     }
                 }
+                .captureFormSurface()
                 .navigationTitle("New session")
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
@@ -23497,6 +23562,7 @@ private struct AccountDeletionSheet: View {
                 }
             }
             .accessibilityIdentifier("AccountDeletionSheet")
+            .captureFormSurface()
             .navigationTitle("Delete account")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -24139,6 +24205,16 @@ extension View {
                     .stroke(CapturePalette.divider, lineWidth: 1)
                     .allowsHitTesting(false)
             }
+    }
+
+    /// Keeps system Forms and Lists in the same Quipsly reading room as the
+    /// surrounding screen while preserving Apple's native controls, spacing,
+    /// accessibility behavior, and swipe gestures.
+    func captureFormSurface() -> some View {
+        self
+            .scrollContentBackground(.hidden)
+            .background(CaptureCanvas())
+            .tint(CapturePalette.accent)
     }
 }
 
