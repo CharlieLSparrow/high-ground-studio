@@ -492,6 +492,7 @@ export function LiveSessionRoom({
   onExitComplete,
   compact = false,
   narrow = false,
+  showSessionHeading = true,
 }: {
   callRoomId: string;
   captureGroupId?: string | null;
@@ -508,6 +509,7 @@ export function LiveSessionRoom({
   onExitComplete?: () => void;
   compact?: boolean;
   narrow?: boolean;
+  showSessionHeading?: boolean;
 }) {
   const router = useRouter();
   const experience = useMemo(
@@ -2203,17 +2205,17 @@ export function LiveSessionRoom({
   return (
     <section className={`overflow-hidden rounded-[1.75rem] border border-[#d8c7a7] bg-[#fffdf8] shadow-sm ${compact ? "p-4" : "p-5 sm:p-7"}`} aria-labelledby={`live-room-${callRoomId}`}>
       <div className="flex flex-wrap items-start justify-between gap-4">
-        <div className="max-w-3xl">
+        <div className={showSessionHeading ? "max-w-3xl" : "sr-only"}>
           <p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-violet-800"><Radio size={14} aria-hidden="true" /> Call · {experience.label}</p>
           <h2 id={`live-room-${callRoomId}`} className="mt-2 font-serif text-3xl font-black text-[#3d3122]">{sessionTitle}</h2>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className={showSessionHeading || connected ? "flex flex-wrap items-center gap-2" : "sr-only"}>
           {connected ? <span className="rounded-full border border-emerald-200 bg-white px-3 py-1.5 text-[10px] font-black uppercase tracking-wide text-emerald-900">{participants.length} in call</span> : null}
           <span className={`rounded-full border px-3 py-1.5 text-[10px] font-black uppercase tracking-wide ${connected ? "border-emerald-300 bg-emerald-50 text-emerald-900" : status === "error" ? "border-rose-300 bg-rose-50 text-rose-900" : "border-violet-200 bg-violet-50 text-violet-900"}`}>{statusLabel}</span>
         </div>
       </div>
 
-      <div className={`mt-5 grid gap-4 ${narrow ? "" : "xl:grid-cols-[minmax(0,1.25fr)_minmax(280px,0.75fr)]"}`}>
+      <div className={`${showSessionHeading ? "mt-5 " : ""}grid gap-4 ${narrow ? "" : "xl:grid-cols-[minmax(0,1.25fr)_minmax(280px,0.75fr)]"}`}>
         <div className="space-y-4">
           {!connected && callPermanentlyClosed ? (
             <section className="rounded-2xl border border-slate-300 bg-slate-50 p-4" aria-label="Call closed">

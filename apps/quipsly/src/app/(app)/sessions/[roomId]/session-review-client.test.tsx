@@ -6,6 +6,13 @@ import { SessionReviewClient } from "./session-review-client";
 import type { SessionReviewCandidate, SessionReviewGoalCandidate, SessionReviewNoteCandidate, SessionReviewPacket } from "./session-review-model";
 import type { SessionSourceEvidence } from "./session-source-evidence-model";
 import { buildSessionSourceClockAttention } from "./session-source-clock-attention";
+import * as liveSessionDock from "@/components/live-session-dock";
+
+let mockDockValue: ReturnType<typeof liveSessionDock.useLiveSessionDock> | null = null;
+jest.mock("@/components/live-session-dock", () => {
+  const actual = jest.requireActual("@/components/live-session-dock");
+  return { ...actual, useLiveSessionDock: () => mockDockValue ?? actual.useLiveSessionDock() };
+});
 
 jest.mock("./transcript-correction-desk", () => ({ TranscriptCorrectionDesk: () => <div>Exact transcript desk</div> }));
 jest.mock("./session-source-alignment-card", () => ({
@@ -312,6 +319,7 @@ function heldSourceEvidence(): SessionSourceEvidence {
 describe("Session review goal candidates", () => {
   const originalFetch = global.fetch;
   beforeEach(() => {
+    mockDockValue = null;
     jest.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined);
     jest.spyOn(HTMLMediaElement.prototype, "load").mockImplementation(() => undefined);
   });
@@ -1253,6 +1261,32 @@ describe("Session review goal candidates", () => {
     expect(screen.queryByTestId("session-consent-control")).not.toBeInTheDocument();
     expect(screen.getByText(/choose whether to record after you join/i)).toBeInTheDocument();
     expect(screen.queryByText("Recording status")).not.toBeInTheDocument();
+  });
+
+  it.each(["ready", "joining", "connected", "reconnecting"] as const)("renders the real %s connection state instead of assuming an open dock means a call", (connectionStatus) => {
+    global.fetch = jest.fn() as typeof fetch;
+    mockDockValue = {
+      activeCallRoomId: "room-status", connectionStatus, isOpen: false,
+      register: jest.fn(), open: jest.fn(), minimize: jest.fn(),
+    };
+    render(<SessionReviewClient roomId="room-status" sessionTitle="Client session" mode="live" consentSnapshot={{ total: 2, granted: 0, transcriptionPermitted: 0 }} />);
+    expect(screen.getByText(liveSessionDock.liveSessionStatusLabel(connectionStatus))).toBeInTheDocument();
+    expect(screen.queryByText("Session in progress")).not.toBeInTheDocument();
+    if (connectionStatus === "ready" || connectionStatus === "joining") {
+      expect(screen.queryByText("Your call stays connected while you work here.")).not.toBeInTheDocument();
+    }
+  });
+
+  it("does not stack duplicate controls underneath an already focused call lobby", () => {
+    global.fetch = jest.fn() as typeof fetch;
+    mockDockValue = {
+      activeCallRoomId: "room-focused", connectionStatus: "ready", isOpen: true,
+      register: jest.fn(), open: jest.fn(), minimize: jest.fn(),
+    };
+    render(<SessionReviewClient roomId="room-focused" sessionTitle="Client session" mode="live" consentSnapshot={{ total: 2, granted: 0, transcriptionPermitted: 0 }} />);
+    const companion = screen.getByRole("heading", { level: 1, name: "Client session" }).closest("section");
+    expect(companion).toHaveClass("hidden", "2xl:block");
+    expect(screen.queryByText("Session in progress")).not.toBeInTheDocument();
   });
 
   it("keeps saved consent compact until the participant chooses to change it", async () => {

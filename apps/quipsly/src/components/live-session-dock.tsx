@@ -29,10 +29,7 @@ import {
   type LiveSessionRoomStatus,
 } from "@/components/live-session-room";
 import { SessionThread } from "@/components/session-thread";
-import {
-  sessionExperienceForPurpose,
-  type SessionCaptureProfile,
-} from "@/lib/session-experience";
+import type { SessionCaptureProfile } from "@/lib/session-experience";
 
 export type LiveSessionDockConfig = {
   callRoomId: string;
@@ -49,6 +46,7 @@ export type LiveSessionDockConfig = {
 
 type LiveSessionDockContextValue = {
   activeCallRoomId: string | null;
+  connectionStatus: LiveSessionRoomStatus | null;
   isOpen: boolean;
   register: (config: LiveSessionDockConfig, options?: { requestOpen?: boolean }) => void;
   open: (config: LiveSessionDockConfig) => void;
@@ -57,6 +55,7 @@ type LiveSessionDockContextValue = {
 
 const fallbackContext: LiveSessionDockContextValue = {
   activeCallRoomId: null,
+  connectionStatus: null,
   isOpen: false,
   register: () => undefined,
   open: () => undefined,
@@ -67,6 +66,18 @@ const LiveSessionDockContext = createContext<LiveSessionDockContextValue>(fallba
 
 function callIsActive(status: LiveSessionRoomStatus) {
   return status === "connected" || status === "reconnecting" || status === "joining";
+}
+
+export function liveSessionStatusLabel(status: LiveSessionRoomStatus | null) {
+  switch (status) {
+    case "connected": return "In call";
+    case "joining": return "Joining call…";
+    case "reconnecting": return "Reconnecting…";
+    case "checking": return "Checking devices…";
+    case "ended": return "Call ended";
+    case "error": return "Connection needs attention";
+    default: return "Ready to join";
+  }
 }
 
 function sameSession(left: LiveSessionDockConfig | null, right: LiveSessionDockConfig) {
@@ -168,15 +179,13 @@ export function LiveSessionDockProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<LiveSessionDockContextValue>(() => ({
     activeCallRoomId: active?.callRoomId || null,
+    connectionStatus: active ? status : null,
     isOpen,
     register,
     open,
     minimize,
-  }), [active?.callRoomId, isOpen, minimize, open, register]);
+  }), [active?.callRoomId, isOpen, minimize, open, register, status]);
 
-  const experience = active
-    ? sessionExperienceForPurpose(active.purpose)
-    : null;
   const sessionHref = active
     ? `/sessions/${encodeURIComponent(active.callRoomId)}?mode=overview`
     : "#";
@@ -200,10 +209,9 @@ export function LiveSessionDockProvider({ children }: { children: ReactNode }) {
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.18em] text-amber-200">
-                    <Radio size={13} aria-hidden="true" /> {experience?.label || "Live Session"} · {status}
+                    <Radio size={13} aria-hidden="true" /> {liveSessionStatusLabel(status)}
                   </p>
                   <h2 className="mt-1 truncate font-serif text-lg font-black">{active.sessionTitle}</h2>
-                  <p className="mt-1 text-[11px] font-semibold text-[#dfd0b8]">The call stays connected while you open transcript, notes, goals, Watch, or the editor.</p>
                 </div>
                 <div className="flex shrink-0 gap-1">
                   <button type="button" onClick={minimize} className="grid min-h-10 min-w-10 place-items-center rounded-full border border-white/20 hover:bg-white/10" aria-label="Minimize live call"><ChevronDown size={18} /></button>
@@ -211,11 +219,11 @@ export function LiveSessionDockProvider({ children }: { children: ReactNode }) {
                 </div>
               </div>
               <nav aria-label="Live Session work" className="mt-3 flex gap-2 overflow-x-auto pb-1 text-[10px] font-black uppercase tracking-wide">
-                <Link href={sessionHref} className="shrink-0 rounded-full border border-white/20 px-3 py-2 hover:bg-white/10">Overview</Link>
-                <Link href={`${sessionHref.replace("mode=overview", "mode=transcript")}`} className="shrink-0 rounded-full border border-white/20 px-3 py-2 hover:bg-white/10">Transcript</Link>
-                <Link href={`${sessionHref.replace("mode=overview", "mode=notes")}`} className="shrink-0 rounded-full border border-white/20 px-3 py-2 hover:bg-white/10">Notes</Link>
-                <Link href={`${sessionHref.replace("mode=overview", "mode=work")}`} className="shrink-0 rounded-full border border-white/20 px-3 py-2 hover:bg-white/10">Goals & tasks</Link>
-                {active.parentHref ? <Link href={active.parentHref} className="inline-flex shrink-0 items-center gap-1 rounded-full border border-amber-300/40 px-3 py-2 text-amber-100 hover:bg-white/10">{active.parentLabel || "Workspace"}<ExternalLink size={11} /></Link> : null}
+                {callIsActive(status) ? <><Link href={sessionHref} onClick={minimize} className="shrink-0 rounded-full border border-white/20 px-3 py-2 hover:bg-white/10">Overview</Link>
+                <Link href={`${sessionHref.replace("mode=overview", "mode=transcript")}`} onClick={minimize} className="shrink-0 rounded-full border border-white/20 px-3 py-2 hover:bg-white/10">Transcript</Link>
+                <Link href={`${sessionHref.replace("mode=overview", "mode=notes")}`} onClick={minimize} className="shrink-0 rounded-full border border-white/20 px-3 py-2 hover:bg-white/10">Notes</Link>
+                <Link href={`${sessionHref.replace("mode=overview", "mode=work")}`} onClick={minimize} className="shrink-0 rounded-full border border-white/20 px-3 py-2 hover:bg-white/10">Goals & tasks</Link></> : null}
+                {active.parentHref ? <Link href={active.parentHref} onClick={minimize} className="inline-flex shrink-0 items-center gap-1 rounded-full border border-amber-300/40 px-3 py-2 text-amber-100 hover:bg-white/10">{active.parentLabel || "Workspace"}<ExternalLink size={11} /></Link> : null}
               </nav>
             </header>
 
@@ -257,6 +265,7 @@ export function LiveSessionDockProvider({ children }: { children: ReactNode }) {
                 onExitComplete={finishRequestedExit}
                 compact
                 narrow
+                showSessionHeading={false}
               />
               {active.projectSlug ? (
                 <SessionThread
@@ -265,7 +274,7 @@ export function LiveSessionDockProvider({ children }: { children: ReactNode }) {
                   sessionTitle={active.sessionTitle}
                   canPost={active.canPost}
                   scopeLabel="This live Session"
-                  scopeDescription="Durable coordination for this take or conversation. Messages remain after everyone leaves the call."
+                  scopeDescription="Messages stay here after the call."
                 />
               ) : (
                 <section className="rounded-2xl border border-[#d8c7a7] bg-white p-4">
@@ -283,7 +292,7 @@ export function LiveSessionDockProvider({ children }: { children: ReactNode }) {
           <span className={`grid h-10 w-10 shrink-0 place-items-center rounded-full ${callIsActive(status) ? "bg-emerald-400 text-emerald-950" : "bg-amber-200 text-amber-950"}`}><Mic2 size={18} /></span>
           <button type="button" onClick={() => setIsOpen(true)} className="min-w-0 flex-1 text-left">
             <span className="block truncate text-sm font-black">{active.sessionTitle}</span>
-            <span className="block truncate text-[11px] font-semibold text-[#dfd0b8]">{status} · call controls minimized</span>
+            <span className="block truncate text-[11px] font-semibold text-[#dfd0b8]">{liveSessionStatusLabel(status)}</span>
           </button>
           <button type="button" onClick={() => setIsOpen(true)} className="grid min-h-10 min-w-10 place-items-center rounded-full border border-white/20 hover:bg-white/10" aria-label="Open live call"><PanelRightOpen size={18} /></button>
           <button type="button" onClick={requestClose} className="grid min-h-10 min-w-10 place-items-center rounded-full border border-white/20 hover:bg-rose-500/20" aria-label="Leave or close live call"><PanelRightClose size={18} /></button>

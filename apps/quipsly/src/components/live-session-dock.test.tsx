@@ -6,9 +6,12 @@ import {
   LiveSessionDockLauncher,
   LiveSessionDockProvider,
   type LiveSessionDockConfig,
+  useLiveSessionDock,
+  liveSessionStatusLabel,
 } from "./live-session-dock";
 
 const mockRoomLifecycle = {
+  initialStatus: "connected",
   mounted: jest.fn(),
   unmounted: jest.fn(),
   leaveRequested: jest.fn(),
@@ -32,7 +35,7 @@ jest.mock("./live-session-room", () => ({
   }) => {
     const mountedRoomId = useRef(callRoomId).current;
     const handledLeaveRequest = useRef(0);
-    useEffect(() => onStatusChange?.("connected"), [onStatusChange]);
+    useEffect(() => onStatusChange?.(mockRoomLifecycle.initialStatus), [onStatusChange]);
     useEffect(() => onProtectionChange?.(true), [onProtectionChange]);
     useEffect(() => {
       if (leaveRequestVersion <= 0 || leaveRequestVersion === handledLeaveRequest.current) return;
@@ -46,7 +49,7 @@ jest.mock("./live-session-room", () => ({
       mockRoomLifecycle.mounted(mountedRoomId);
       return () => mockRoomLifecycle.unmounted(mountedRoomId);
     }, [mountedRoomId]);
-    return <div data-testid={`live-room-${callRoomId}`}>Mounted LiveKit room {callRoomId} · take {captureGroupId}</div>;
+    return <div data-testid={`live-room-${callRoomId}`}>Mounted LiveKit room {callRoomId} · take {captureGroupId}<button onClick={() => onStatusChange?.("connected")}>Simulate connection</button><button onClick={() => onStatusChange?.("reconnecting")}>Simulate reconnect</button></div>;
   },
 }));
 
@@ -79,9 +82,35 @@ const coachingConfig: LiveSessionDockConfig = {
 
 describe("LiveSessionDockProvider", () => {
   beforeEach(() => {
+    mockRoomLifecycle.initialStatus = "connected";
     mockRoomLifecycle.mounted.mockClear();
     mockRoomLifecycle.unmounted.mockClear();
     mockRoomLifecycle.leaveRequested.mockClear();
+  });
+
+  it("distinguishes an open lobby from an actual call and retains state when minimized", async () => {
+    mockRoomLifecycle.initialStatus = "ready";
+    const user = userEvent.setup();
+    function Status() {
+      const dock = useLiveSessionDock();
+      return <output data-testid="connection-status">{dock.connectionStatus}</output>;
+    }
+    render(<LiveSessionDockProvider><Status /><LiveSessionDockLauncher config={coachingConfig} autoOpen /></LiveSessionDockProvider>);
+    expect(screen.getByTestId("connection-status")).toHaveTextContent("ready");
+    expect(screen.getByText("Ready to join")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Transcript" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Simulate connection" }));
+    expect(screen.getByTestId("connection-status")).toHaveTextContent("connected");
+    expect(screen.getByRole("link", { name: "Transcript" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Simulate reconnect" }));
+    expect(screen.getByTestId("connection-status")).toHaveTextContent("reconnecting");
+    await user.click(screen.getByRole("button", { name: "Minimize live call" }));
+    expect(screen.getByLabelText("Minimized live call")).toHaveTextContent("Reconnecting…");
+    expect(mockRoomLifecycle.unmounted).not.toHaveBeenCalled();
+  });
+
+  it.each(["preflight", "checking", "ready", "joining", "reconnecting", "ended", "error"] as const)("does not label %s as an in-progress connection", (status) => {
+    expect(liveSessionStatusLabel(status)).not.toBe("In call");
   });
 
   it("keeps the real room mounted while the controls are minimized", async () => {
@@ -101,6 +130,16 @@ describe("LiveSessionDockProvider", () => {
     expect(screen.getByTestId("live-room-episode-session-1")).toBeInTheDocument();
     expect(screen.getByLabelText("Minimized live call")).toBeInTheDocument();
     expect(screen.queryByTestId("live-room-coaching-session-2")).not.toBeInTheDocument();
+  });
+
+  it.each(["Notes", "Transcript", "Goals & tasks", "Episode Room"])("reveals %s while retaining the connected room", async (name) => {
+    const user = userEvent.setup();
+    render(<LiveSessionDockProvider><LiveSessionDockLauncher config={episodeConfig} autoOpen /></LiveSessionDockProvider>);
+    await user.click(screen.getByRole("link", { name }));
+    expect(screen.getByLabelText("Minimized live call")).toHaveTextContent("In call");
+    expect(screen.getByTestId("live-room-episode-session-1")).toBeInTheDocument();
+    expect(mockRoomLifecycle.leaveRequested).not.toHaveBeenCalled();
+    expect(mockRoomLifecycle.unmounted).not.toHaveBeenCalled();
   });
 
   it("requires an explicit leave decision instead of treating close like minimize", async () => {

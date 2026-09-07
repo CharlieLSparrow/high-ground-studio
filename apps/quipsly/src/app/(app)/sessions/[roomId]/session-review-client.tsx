@@ -35,6 +35,7 @@ import { CaptureAppHandoff } from "@/components/capture-app-handoff";
 import {
   type LiveSessionDockConfig,
   useLiveSessionDock,
+  liveSessionStatusLabel,
 } from "@/components/live-session-dock";
 import { SessionInvitations } from "@/components/session-invitations";
 import { TranscriptSpeakerEvidenceBadge } from "@/components/transcript-speaker-evidence-badge";
@@ -4100,7 +4101,7 @@ export function SessionReviewClient({
   const liveParentLabel = collaborationContext.episode
     ? "Episode Room"
     : collaborationContext.engagement
-      ? "Coaching engagement"
+      ? "Shared space"
       : liveProjectSlug
         ? "Nest"
         : null;
@@ -4135,16 +4136,17 @@ export function SessionReviewClient({
       <main className="mx-auto flex min-h-[calc(100dvh-8rem)] w-full max-w-4xl items-start px-0 py-3 sm:items-center sm:py-8">
         <div className="w-full">
           {browserCallActive ? (
-            <section className="rounded-[2rem] border border-emerald-200 bg-emerald-50/90 p-5 shadow-xl shadow-[#3d3122]/10 sm:p-7" aria-labelledby="active-session-heading">
+            <section className={`${browserCallFocused ? "hidden 2xl:block " : ""}rounded-[2rem] border border-emerald-200 bg-emerald-50/90 p-5 shadow-xl shadow-[#3d3122]/10 sm:p-7`} aria-labelledby="active-session-heading">
               <p className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-800">
-                Session in progress
+                {liveSessionStatusLabel(liveDock.connectionStatus)}
               </p>
               <h1 id="active-session-heading" className="mt-1 break-words font-serif text-3xl font-black leading-tight text-[#3d3122]">
                 {sessionTitle}
               </h1>
               <p className="mt-2 max-w-2xl text-sm font-semibold leading-6 text-[#5f513e]">
-                Your call stays available while you work with the transcript,
-                notes, goals, and tasks from this Session.
+                {liveDock.connectionStatus === "connected" || liveDock.connectionStatus === "reconnecting"
+                  ? "Your call stays connected while you work here."
+                  : "Open the call controls to check your devices and join when you’re ready."}
               </p>
               <div className="mt-5 flex flex-wrap gap-2">
                 <button
