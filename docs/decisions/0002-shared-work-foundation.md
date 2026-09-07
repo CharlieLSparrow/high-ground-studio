@@ -52,11 +52,27 @@ self-hosted tokens. Restoring membership cancels pending removal work without
 automatically rejoining a device. A concurrent restore during a provider request
 can require one rejoin; PostgreSQL and LiveKit cannot commit atomically.
 
-The local three-browser LiveKit test proves targeted disconnection and restore.
+The local three-browser LiveKit test proves targeted disconnection and restore,
+including actual signed join-webhook delivery from an isolated local provider
+through the application HTTP handler. Concurrent join/removal persistence uses
+bounded retries of aborted database transactions with fresh access checks; it
+does not repeat the external provider action as part of a transaction retry.
 Production completion additionally requires the room-level join webhook and an
 OIDC-authenticated scheduler targeting this route, using
 `SESSION_ACCESS_WORKER_SERVICE_ACCOUNT` and `SESSION_ACCESS_WORKER_AUDIENCE`.
 Those external settings are not established by the implementation or local test.
+The normal preview deployment now supplies the worker identity and service
+audience whenever LiveKit is enabled. After that exact revision is qualified and
+promoted, `EXPECTED_SOURCE_SHA=<commit> node scripts/release/quipsly-session-access-scheduler.mjs`
+reads the serving revision and prints a read-only configuration plan. With
+explicit cost/access approval, add `--apply` to configure the dedicated
+service-scoped invoker and minute scheduler. The command checks readback, never
+treats an API/authentication failure as a missing resource, and does not resume
+paused jobs. Cloud Scheduler must already be enabled. Each scheduled invocation
+is the retry; overlapping exponential retry chains are disabled. Configure the
+global participant webhook separately at the provider, not only an egress
+webhook. Scheduled configuration readback is not proof of successful delivery;
+check an actual invocation and provider disconnection after activation.
 Self-hosted tokens are not invalidated by removal: webhook/periodic enforcement
 is eventual, unlike LiveKit Cloud token revocation. Do not label that boundary
 as instantaneous or imply recorded token expiry covers provider-refreshed tokens.

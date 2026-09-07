@@ -5,6 +5,7 @@ import type { Prisma, PrismaClient } from "@prisma/client";
 import { getPrismaClient } from "@/lib/prisma";
 import { canAccessStudio } from "@/lib/studio-authz";
 import { sessionJoinAccessWhere } from "./session-access";
+import { retryCoachingWorkTransaction } from "./coaching-work-transaction";
 import {
   liveKitAccessAdmin,
   reconcileRemovedParticipantProviderAccess,
@@ -48,29 +49,31 @@ export async function reconcileSessionParticipantAccess(input: {
     });
   if (await allowed()) {
     // Restoration cancels retries. It does not silently rejoin any device.
-    const stillAllowed = await prisma.$transaction(
-      async (tx) => {
-        if (
-          !(await tx.callRoom.findFirst({
-            where: sessionJoinAccessWhere(participant.roomId, actor),
-            select: { id: true },
-          }))
-        )
-          return false;
-        await tx.callParticipant.updateMany({
-          where: {
-            id: participant.id,
-            accessRevision: participant.accessRevision,
-            providerAccessStatus: { in: [...pendingStatuses] },
-          },
-          data: {
-            providerAccessStatus: "NOT_REQUIRED",
-            providerAccessErrorCode: null,
-          },
-        });
-        return true;
-      },
-      { isolationLevel: "Serializable" },
+    const stillAllowed = await retryCoachingWorkTransaction(() =>
+      prisma.$transaction(
+        async (tx) => {
+          if (
+            !(await tx.callRoom.findFirst({
+              where: sessionJoinAccessWhere(participant.roomId, actor),
+              select: { id: true },
+            }))
+          )
+            return false;
+          await tx.callParticipant.updateMany({
+            where: {
+              id: participant.id,
+              accessRevision: participant.accessRevision,
+              providerAccessStatus: { in: [...pendingStatuses] },
+            },
+            data: {
+              providerAccessStatus: "NOT_REQUIRED",
+              providerAccessErrorCode: null,
+            },
+          });
+          return true;
+        },
+        { isolationLevel: "Serializable" },
+      ),
     );
     if (stillAllowed) return { status: "NOT_REQUIRED" as const };
   }
@@ -90,51 +93,59 @@ export async function reconcileSessionParticipantAccess(input: {
     participantId: participant.id,
     grants,
   });
-  await prisma.$transaction(
-    async (tx) => {
-      const current = await tx.callParticipant.findUnique({
-        where: { id: participant.id },
-      });
-      if (!current || current.accessRevision !== participant.accessRevision)
-        return;
-      // A provider request cannot be atomic with PostgreSQL. A concurrent restore
-      // may need one rejoin, but its canonical access must never be overwritten.
-      if (
-        await tx.callRoom.findFirst({
-          where: sessionJoinAccessWhere(participant.roomId, actor),
-          select: { id: true },
-        })
-      )
-        return;
-      await tx.callParticipant.update({
-        where: { id: participant.id },
-        data: {
-          providerAccessStatus: outcome.status,
-          providerAccessErrorCode: outcome.errorCode,
-          providerAccessReconciledAt:
-            outcome.status === "CONVERGED" || outcome.status === "NOT_REQUIRED"
-              ? new Date()
-              : null,
-        },
-      });
-      await tx.callParticipantAccessReceipt.create({
-        data: {
-          requestId: randomUUID(),
-          roomId: participant.roomId,
-          participantId: participant.id,
-          actorUserId: input.actorUserId ?? null,
-          action: "PROVIDER_RECONCILE",
-          accessStatusBefore: participant.accessStatus,
-          accessStatusAfter: participant.accessStatus,
-          accessRevision: participant.accessRevision,
-          providerStatus: outcome.status,
-          providerRoomId: outcome.providerRoomId,
-          providerIdentityCount: outcome.identityCount,
-          providerOutcomeJson: { ...outcome, cause: "CURRENT_SESSION_ACCESS" },
-        },
-      });
-    },
-    { isolationLevel: "Serializable" },
+  // Join webhooks and removal requests can race. Retry the aborted database
+  // transaction with fresh access checks, never the external disconnection.
+  await retryCoachingWorkTransaction(() =>
+    prisma.$transaction(
+      async (tx) => {
+        const current = await tx.callParticipant.findUnique({
+          where: { id: participant.id },
+        });
+        if (!current || current.accessRevision !== participant.accessRevision)
+          return;
+        // A provider request cannot be atomic with PostgreSQL. A concurrent restore
+        // may need one rejoin, but its canonical access must never be overwritten.
+        if (
+          await tx.callRoom.findFirst({
+            where: sessionJoinAccessWhere(participant.roomId, actor),
+            select: { id: true },
+          })
+        )
+          return;
+        await tx.callParticipant.update({
+          where: { id: participant.id },
+          data: {
+            providerAccessStatus: outcome.status,
+            providerAccessErrorCode: outcome.errorCode,
+            providerAccessReconciledAt:
+              outcome.status === "CONVERGED" ||
+              outcome.status === "NOT_REQUIRED"
+                ? new Date()
+                : null,
+          },
+        });
+        await tx.callParticipantAccessReceipt.create({
+          data: {
+            requestId: randomUUID(),
+            roomId: participant.roomId,
+            participantId: participant.id,
+            actorUserId: input.actorUserId ?? null,
+            action: "PROVIDER_RECONCILE",
+            accessStatusBefore: participant.accessStatus,
+            accessStatusAfter: participant.accessStatus,
+            accessRevision: participant.accessRevision,
+            providerStatus: outcome.status,
+            providerRoomId: outcome.providerRoomId,
+            providerIdentityCount: outcome.identityCount,
+            providerOutcomeJson: {
+              ...outcome,
+              cause: "CURRENT_SESSION_ACCESS",
+            },
+          },
+        });
+      },
+      { isolationLevel: "Serializable" },
+    ),
   );
   return outcome;
 }
