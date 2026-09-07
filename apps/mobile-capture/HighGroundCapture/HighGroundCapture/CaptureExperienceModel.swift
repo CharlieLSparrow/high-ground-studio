@@ -2802,8 +2802,8 @@ final class CaptureExperienceModel: ObservableObject {
         )
         audioCapture.handleCommand(command)
 
-        let audioStarted = await audioCapture.waitUntilRecordingOrTerminal()
-        guard audioStarted, audioCapture.captureState == .recording else {
+        let audioStarted = await audioCapture.waitUntilRecordingOrTerminal(includingPausedSource: true)
+        guard audioStarted, [.recording, .paused].contains(audioCapture.captureState) else {
             isChangingCapture = false
             errorMessage = audioCapture.lastErrorMessage ?? "The local recorder did not start. Nothing was recorded."
             if !usesPreviewData && !usesLocalPersonalVoiceNoteAuthority {
@@ -2825,14 +2825,17 @@ final class CaptureExperienceModel: ObservableObject {
         selectedSessionID = session.id
         isChangingCapture = false
         clearSessionEntryNotice(for: session.id)
+        let captureDescription = audioCapture.captureState == .paused
+            ? "Recording paused. Your audio is retained; tap Resume when you’re ready."
+            : "Recording \(CaptureDeviceVocabulary.thisDevicePossessive) microphone."
 
         if usesPreviewData {
-            message = "Recording \(CaptureDeviceVocabulary.thisDevicePossessive) microphone. Preview mode does not contact Nest."
+            message = "\(captureDescription) Preview mode does not contact Nest."
             return
         }
 
         if usesLocalPersonalVoiceNoteAuthority {
-            message = "Recording \(CaptureDeviceVocabulary.thisDevicePossessive) microphone. Your private voice note is safe locally and will sync when Nest reconnects."
+            message = "\(captureDescription) Your private voice note is safe locally and will sync when Nest reconnects."
             return
         }
 
@@ -2840,9 +2843,9 @@ final class CaptureExperienceModel: ObservableObject {
             captureReceiptNotice = persistenceError
         }
         if captureAuthorityBasis == .recentDeviceConsent {
-            message = "Recording safely on \(CaptureDeviceVocabulary.thisDevice) while Nest reconnects. Upload and sharing will resume after Quipsly revalidates this Session."
+            message = "\(captureDescription) The source is safe on \(CaptureDeviceVocabulary.thisDevice) while Nest reconnects. Upload and sharing will resume after Quipsly revalidates this Session."
         } else {
-            message = "Recording \(CaptureDeviceVocabulary.thisDevicePossessive) microphone. Quipsly syncs the Session in the background."
+            message = "\(captureDescription) Quipsly syncs the Session in the background."
         }
         scheduleReceiptFlush()
         startConsentMonitor(captureID: captureID, audioCapture: audioCapture)

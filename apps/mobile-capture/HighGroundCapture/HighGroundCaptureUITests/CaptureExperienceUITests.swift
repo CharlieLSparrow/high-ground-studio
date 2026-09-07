@@ -1204,6 +1204,8 @@ final class CaptureExperienceUITests: XCTestCase {
         // Quipsly deliberately waits for this visible person-owned action.
         sleep(1)
         XCTAssertEqual(resume.label, "Resume")
+        XCTAssertFalse(app.staticTexts["The local recorder did not start. Nothing was recorded."].exists,
+            "An interruption during startup must retain the started source and its resumable context.")
         resume.tap()
         expectation(
             for: NSPredicate(format: "label == %@", "Pause"),

@@ -417,17 +417,30 @@ final class AudioCaptureController: NSObject, ObservableObject {
     /// Waits for the real media callback, not merely recorder construction.
     /// The LiveKit-backed path remains preparing until its first local-input
     /// PCM buffer arrives.
-    func waitUntilRecordingOrTerminal(timeout: TimeInterval = 4) async -> Bool {
+    func waitUntilRecordingOrTerminal(timeout: TimeInterval = 4, includingPausedSource: Bool = false) async -> Bool {
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
             switch captureState {
             case .recording:
+                #if DEBUG && targetEnvironment(simulator)
+                // Make the interruption UI test observe the startup race even
+                // on a fast Mac: the source starts, then pauses before its
+                // owning screen attaches. No shipping or physical path waits.
+                if includingPausedSource && CaptureLaunchConfiguration.usesAudioInterruptionDeterministicUITest {
+                    break
+                }
+                #endif
                 return true
+            case .paused:
+                // Paused implies that source capture actually began. Losing
+                // that fact here strands a retained take without its owner.
+                if includingPausedSource && activeLocalRecordingID != nil { return true }
             case .failed, .idle, .saved:
                 return false
-            case .preparing, .paused, .finalizing:
-                try? await Task.sleep(nanoseconds: 25_000_000)
+            case .preparing, .finalizing:
+                break
             }
+            try? await Task.sleep(nanoseconds: 25_000_000)
         }
         if captureState == .preparing, activeLocalRecordingID != nil {
             finishCaptureFailure(
