@@ -88,6 +88,7 @@ jobs:
         if: matrix.shard == 0 || matrix.shard == 1
         run: |
           bash apps/mobile-capture/HighGroundCapture/scripts/verify-release-source.sh
+          bash scripts/test-capture-session-deep-links.sh
           node scripts/quipsly-ios-capture-app-store-static-smoke.mjs
           node --test scripts/release/quipsly-capture-ui-test-plan.test.mjs
           node --test scripts/release/quipsly-capture-ui-test-runner.test.mjs

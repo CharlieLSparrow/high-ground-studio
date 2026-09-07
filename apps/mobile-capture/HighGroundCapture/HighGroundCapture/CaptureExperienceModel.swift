@@ -286,6 +286,15 @@ enum CaptureLaunchConfiguration {
         #endif
     }
 
+    static var usesCoachingWorkSourcePreview: Bool {
+        #if DEBUG && targetEnvironment(simulator)
+        usesPreviewData
+            && ProcessInfo.processInfo.arguments.contains("--capture-coaching-work-source-preview")
+        #else
+        false
+        #endif
+    }
+
     static var usesCoachingPreparationWorkingDraftPreview: Bool {
         #if DEBUG && targetEnvironment(simulator)
         usesPreviewData

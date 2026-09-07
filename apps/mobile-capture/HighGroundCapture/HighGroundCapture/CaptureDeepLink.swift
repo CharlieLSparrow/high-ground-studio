@@ -7,6 +7,42 @@ enum CaptureDeepLinkMode: String, Equatable {
     case review
 }
 
+/// The same relative source link returned to web and Capture. It only chooses
+/// a native transcript destination; the signed-in API still authorizes its read.
+struct CaptureTranscriptWorkLink: Hashable {
+    let roomID: String
+    let recordingAssetID: String?
+    let sourceSeconds: TimeInterval?
+
+    init?(href: String) {
+        guard href.hasPrefix("/sessions/"),
+              let components = URLComponents(string: href),
+              components.scheme == nil, components.host == nil,
+              components.fragment == nil else { return nil }
+        let parts = components.path.split(separator: "/", omittingEmptySubsequences: true)
+        guard parts.count == 2, parts[0] == "sessions",
+              let roomID = CaptureSessionDeepLink.validatedRoomID(String(parts[1])) else { return nil }
+        let query = components.queryItems ?? []
+        let names = query.map(\.name)
+        guard Set(names).count == names.count,
+              names.allSatisfy({ ["mode", "source", "at"].contains($0) }),
+              query.first(where: { $0.name == "mode" })?.value == "transcript" else { return nil }
+        let asset = query.first(where: { $0.name == "source" })
+        let at = query.first(where: { $0.name == "at" })
+        if asset != nil || at != nil {
+            guard let assetID = CaptureSessionDeepLink.validatedRoomID(asset?.value),
+                  let rawTime = at?.value, let seconds = TimeInterval(rawTime),
+                  seconds.isFinite, seconds >= 0, seconds <= 86_400 else { return nil }
+            self.recordingAssetID = assetID
+            self.sourceSeconds = seconds
+        } else {
+            self.recordingAssetID = nil
+            self.sourceSeconds = nil
+        }
+        self.roomID = roomID
+    }
+}
+
 struct CaptureSessionDeepLink: Equatable {
     let roomID: String
     let mode: CaptureDeepLinkMode

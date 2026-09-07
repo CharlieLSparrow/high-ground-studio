@@ -3265,7 +3265,8 @@ struct CaptureTranscriptReviewView: View {
     let recordingAssetID: String?
     let transcriptJobID: String?
     let previewOnly: Bool
-    let focusSegmentID: String?
+    private let requestedFocusSegmentID: String?
+    let focusSourceSeconds: TimeInterval?
     let canUseProjectTeamNotes: Bool
     let returnLabel: String?
     let onReturn: (() -> Void)?
@@ -3296,6 +3297,7 @@ struct CaptureTranscriptReviewView: View {
         transcriptJobID: String? = nil,
         previewOnly: Bool,
         focusSegmentID: String? = nil,
+        focusSourceSeconds: TimeInterval? = nil,
         canUseProjectTeamNotes: Bool = false,
         returnLabel: String? = nil,
         onReturn: (() -> Void)? = nil
@@ -3306,10 +3308,21 @@ struct CaptureTranscriptReviewView: View {
         self.recordingAssetID = recordingAssetID
         self.transcriptJobID = transcriptJobID
         self.previewOnly = previewOnly
-        self.focusSegmentID = focusSegmentID
+        self.requestedFocusSegmentID = focusSegmentID
+        self.focusSourceSeconds = focusSourceSeconds
         self.canUseProjectTeamNotes = canUseProjectTeamNotes
         self.returnLabel = returnLabel
         self.onReturn = onReturn
+    }
+
+    private var focusSegmentID: String? {
+        if let requestedFocusSegmentID { return requestedFocusSegmentID }
+        guard let seconds = focusSourceSeconds, seconds.isFinite, seconds >= 0,
+              let recordingAssetID, let desk = client.desk else { return nil }
+        return desk.segments.first(where: {
+            ($0.recordingAssetId ?? desk.playback?.recordingAssetId) == recordingAssetID
+                && $0.playbackStartSeconds <= seconds && seconds < $0.playbackEndSeconds
+        })?.id
     }
 
     var body: some View {
@@ -3322,16 +3335,6 @@ struct CaptureTranscriptReviewView: View {
                 // thread on long or richly annotated transcripts.
                 VStack(alignment: .leading, spacing: 16) {
                     header
-
-                    if let focusSegmentID {
-                        reviewNotice(
-                            title: "Opened from linked work",
-                            detail: "Quipsly returned to the exact transcript segment. Press play yourself before making any correction decision.",
-                            tint: CapturePalette.ink,
-                            icon: "link.circle.fill"
-                        )
-                        .accessibilityIdentifier("CaptureTranscriptSourceBoundary_\(focusSegmentID)")
-                    }
 
                     if previewOnly && !CaptureLaunchConfiguration.usesAppStorePresentation {
                         reviewNotice(
@@ -3429,23 +3432,21 @@ struct CaptureTranscriptReviewView: View {
                 .padding(.vertical, 16)
                 .padding(.bottom, 72)
             }
+            .accessibilityIdentifier("CaptureTranscriptReviewView")
             .scrollPosition(id: $scrollTargetSegmentID, anchor: .center)
             .scrollDismissesKeyboard(.immediately)
             .background(CapturePalette.canvas)
             .safeAreaInset(edge: .top, spacing: 0) {
-                if focusSegmentID != nil {
-                    VStack(alignment: .leading, spacing: 2) {
-                        if let focusSegmentID {
-                            Label("Opened from linked work", systemImage: "link.circle.fill")
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(.secondary)
-                                .frame(minHeight: 28)
-                                .accessibilityIdentifier("CaptureTranscriptSourceBoundary_\(focusSegmentID)")
-                        }
-                    }
-                    .padding(.horizontal, 18)
-                    .padding(.vertical, 6)
-                    .background(.bar)
+                if let focusSegmentID {
+                    Label("Opened from linked work", systemImage: "link.circle.fill")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, minHeight: 28, alignment: .leading)
+                        .padding(.horizontal, 18)
+                        .padding(.vertical, 6)
+                        .background(CapturePalette.canvas)
+                        .accessibilityElement(children: .combine)
+                        .accessibilityIdentifier("CaptureTranscriptSourceBoundary_\(focusSegmentID)")
                 }
             }
             .navigationTitle("Transcript")
@@ -3681,7 +3682,6 @@ struct CaptureTranscriptReviewView: View {
                 previousPacketCandidateStates = current
             }
             .onDisappear { playback.pause(resetPosition: true) }
-            .accessibilityIdentifier("CaptureTranscriptReviewView")
         }
     }
 

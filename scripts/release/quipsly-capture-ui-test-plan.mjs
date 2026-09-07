@@ -44,6 +44,8 @@ export const CRITICAL_TESTS = Object.freeze([
   "CaptureExperienceUITests/testConsentNeededNextEpisodeOpensRecorderWithoutCrashing",
   "CaptureExperienceUITests/testConsentNeededNextEpisodeOpensRecorderWithoutCrashingOnRegularWidthIPad",
   "CaptureExperienceUITests/testClientCoachingFormDraftSurvivesRelaunchOnRegularWidthIPad",
+  "CaptureExperienceUITests/testCoachingWorkReturnsToItsNativeTranscriptSource",
+  "CaptureExperienceUITests/testCoachingWorkReturnsToItsNativeTranscriptSourceOnRegularWidthIPad",
   "CaptureExperienceUITests/testRecorderLeadsWithAStandardCallGreenRoom",
   "CaptureExperienceUITests/testRecorderLeadsWithAStandardCallGreenRoomOnRegularWidthIPad",
   "CaptureExperienceUITests/testDisconnectedCallOffersOneTapRejoinWhileKeepingRecordingSafe",

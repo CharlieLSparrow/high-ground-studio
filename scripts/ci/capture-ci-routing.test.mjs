@@ -102,6 +102,13 @@ test("Capture routes committed changes using the manifest and rejects an invalid
   assert.match(runPlan().output, /^capture=true$/m);
   assert.match(runPlan({ PR_BASE_SHA: captureSha }).output, /^capture=false$/m);
 
+  // Editing a standalone Swift/API-shape harness must run the native lane too,
+  // even when no app source or release script changed in that commit.
+  const beforeHarness = git("rev-parse", "HEAD");
+  writeFileSync(path.join(fixture, "scripts/test-capture-session-deep-links.sh"), "#!/bin/bash\nexit 0\n");
+  commit();
+  assert.match(runPlan({ PR_BASE_SHA: beforeHarness }).output, /^capture=true$/m);
+
   result = runPlan({ PR_BASE_SHA: "missing-revision" });
   assert.notEqual(result.status, 0);
   assert.equal(result.output, "");

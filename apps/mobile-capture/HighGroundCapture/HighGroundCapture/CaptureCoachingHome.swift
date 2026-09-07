@@ -295,49 +295,6 @@ private struct MobileCoachingInvitationResponse: Codable {
     let delivery: MobileCoachingInvitationDelivery?
 }
 
-struct MobileCoachingEngagementMember: Codable, Identifiable, Hashable {
-    let id: String
-    let label: String
-    let role: String?
-}
-
-struct MobileCoachingEngagementWorkEntry: Codable, Identifiable, Hashable {
-    let id: String
-    let kind: String
-    let title: String
-    let body: String?
-    let status: String?
-    let owner: MobileCoachingEngagementMember?
-    let visibility: String
-    let dueAt: String?
-    let canEdit: Bool
-    let canChangeVisibility: Bool?
-    let createdAt: String
-    let updatedAt: String
-
-    var isComplete: Bool {
-        status == "DONE" || status == "ACHIEVED"
-    }
-
-    var kindLabel: String {
-        switch kind {
-        case "TASK": "Task"
-        case "GOAL": "Goal"
-        default: "Note"
-        }
-    }
-}
-
-struct MobileCoachingEngagementWorkspace: Codable, Hashable {
-    let id: String
-    let title: String
-    let status: String
-    let canWrite: Bool
-    let currentUserId: String
-    let members: [MobileCoachingEngagementMember]
-    let entries: [MobileCoachingEngagementWorkEntry]
-}
-
 struct MobileCoachingWorkRemoval: Codable, Hashable {
     let id: String
     let kind: String
@@ -376,7 +333,7 @@ final class MobileCoachingEngagementWorkspaceClient: ObservableObject {
         self.engagementID = engagementID
     }
 
-    func loadPreview() {
+    func loadPreview(includeSourceWork: Bool = false) {
         errorMessage = nil
         workspace = MobileCoachingEngagementWorkspace(
             id: engagementID,
@@ -388,7 +345,21 @@ final class MobileCoachingEngagementWorkspaceClient: ObservableObject {
                 MobileCoachingEngagementMember(id: "preview-coach", label: "Charlie Sparrow", role: "COACH"),
                 MobileCoachingEngagementMember(id: "preview-client", label: "Homer", role: "CLIENT"),
             ],
-            entries: []
+            entries: includeSourceWork ? [
+                MobileCoachingEngagementWorkEntry(
+                    id: "preview-linked-task", kind: "TASK", title: "Review the final cut",
+                    body: "Return to what we discussed, then choose the next step.", status: "OPEN",
+                    owner: nil, visibility: "SHARED", dueAt: nil, canEdit: true,
+                    canChangeVisibility: false, createdAt: "2026-09-07T00:00:00Z", updatedAt: "2026-09-07T00:00:00Z",
+                    sourceHref: "/sessions/room-preview-coaching-ready?mode=transcript&source=preview-recording-asset&at=3.66"
+                ),
+                MobileCoachingEngagementWorkEntry(
+                    id: "preview-manual-note", kind: "NOTE", title: "Questions for next time",
+                    body: "What would make this week feel more manageable?", status: nil,
+                    owner: nil, visibility: "SHARED", dueAt: nil, canEdit: true,
+                    canChangeVisibility: false, createdAt: "2026-09-07T00:00:00Z", updatedAt: "2026-09-07T00:00:00Z"
+                ),
+            ] : []
         )
     }
 
@@ -505,7 +476,7 @@ final class MobileCoachingEngagementWorkspaceClient: ObservableObject {
                   let removal = payload.removal else {
                 throw coachingClientError(payload.error ?? "That coaching item could not be removed.")
             }
-            pendingUndo = MobileCoachingWorkUndo(removal: removal, title: entry.title)
+            pendingUndo = MobileCoachingWorkUndo(removal: removal, title: entry.displayTitle)
             await load()
             return true
         } catch {
@@ -3291,6 +3262,10 @@ struct CaptureCoachingEngagementWorkspaceView: View {
             }
         }
         .refreshable {
+            guard !previewOnly else {
+                client.loadPreview(includeSourceWork: CaptureLaunchConfiguration.usesCoachingWorkSourcePreview)
+                return
+            }
             async let workLoad: Void = client.load()
             async let conversationLoad: Void = conversation.load(
                 engagement: engagement,
@@ -3300,7 +3275,7 @@ struct CaptureCoachingEngagementWorkspaceView: View {
         }
         .task(id: "\(engagement.id)|\(previewOnly)") {
             if previewOnly {
-                client.loadPreview()
+                client.loadPreview(includeSourceWork: CaptureLaunchConfiguration.usesCoachingWorkSourcePreview)
             } else {
                 async let workLoad: Void = client.load()
                 async let conversationLoad: Void = conversation.load(
@@ -3691,11 +3666,11 @@ struct CaptureCoachingEngagementWorkspaceView: View {
             guard let dueAt = entry.dueAt.flatMap(coachingISO8601Date) else { return false }
             return dueAt < Date()
         }) {
-            return (overdue.title, overdue.body, "exclamationmark.circle.fill")
+            return (overdue.displayTitle, overdue.body, "exclamationmark.circle.fill")
         }
-        if let task = tasks.first { return (task.title, task.body, "checkmark.circle") }
-        if let goal = goals.first { return (goal.title, goal.body, "scope") }
-        if let note = notes.first { return (note.title, note.body, "note.text") }
+        if let task = tasks.first { return (task.displayTitle, task.body, "checkmark.circle") }
+        if let goal = goals.first { return (goal.displayTitle, goal.body, "scope") }
+        if let note = notes.first { return (note.displayTitle, note.body, "note.text") }
         return nil
     }
 
@@ -3773,7 +3748,7 @@ struct CaptureCoachingEngagementWorkspaceView: View {
                 Spacer()
             }
 
-            Text(entry.title)
+            Text(entry.displayTitle)
                 .font(.headline)
                 .strikethrough(entry.isComplete)
             if entry.visibility == "PRIVATE" {
@@ -3789,10 +3764,29 @@ struct CaptureCoachingEngagementWorkspaceView: View {
                 .padding(.vertical, 7)
                 .background(CapturePalette.brass.opacity(0.12), in: Capsule())
             }
-            if let body = entry.body?.nonemptyCoachingText, body != entry.title {
+            if let body = entry.body?.nonemptyCoachingText, body != entry.displayTitle {
                 Text(body)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
+            }
+            if let source = entry.sourceLink {
+                NavigationLink {
+                    CaptureTranscriptReviewView(
+                        roomID: source.roomID,
+                        sessionTitle: sessions.first(where: { $0.callRoomId == source.roomID })?.title ?? "Session transcript",
+                        recording: nil,
+                        recordingAssetID: source.recordingAssetID,
+                        previewOnly: previewOnly,
+                        focusSourceSeconds: source.sourceSeconds
+                    )
+                } label: {
+                    Label("From recording", systemImage: "waveform.and.magnifyingglass")
+                        .frame(minHeight: 44)
+                }
+                .buttonStyle(.bordered)
+                .tint(CapturePalette.accent)
+                .accessibilityLabel("From recording: \(entry.displayTitle)")
+                .accessibilityIdentifier("CaptureCoachingWorkSource_\(entry.id)")
             }
             if let owner = entry.owner {
                 Text("For \(owner.label)")
@@ -3827,6 +3821,7 @@ struct CaptureCoachingEngagementWorkspaceView: View {
             }
         }
         .captureCard()
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("CaptureCoachingWork_\(entry.id)")
     }
 
@@ -3847,7 +3842,7 @@ struct CaptureCoachingEngagementWorkspaceView: View {
         }
         _ = await client.update(
             entry: entry,
-            title: entry.title,
+            title: entry.displayTitle,
             body: entry.body ?? "",
             visibility: entry.visibility,
             ownerUserID: entry.owner?.id ?? client.workspace?.currentUserId ?? "",

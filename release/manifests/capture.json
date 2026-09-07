@@ -26,6 +26,7 @@
       ],
       "files": [
         "scripts/ci/capture-ci-routing.test.mjs",
+        "scripts/test-capture-session-deep-links.sh",
         "docs/quipsly/xcode-cloud-usage-policy.md",
         "docs/quipsly/hgo-testflight-rehearsal-runbook.md",
         "docs/quipsly/ios-capture-app-review-notes-draft.md",

@@ -28,6 +28,51 @@ struct CaptureDeepLinkHarness {
         expectRejected("quipsly://session/røøm?mode=live")
         expectRejected("quipsly://other/room-safe?mode=live")
 
+        for seconds in [0.0, 3.66, 86_400.0] {
+            let link = CaptureTranscriptWorkLink(href: "/sessions/room-1?mode=transcript&source=asset-1&at=\(seconds)")
+            precondition(link?.roomID == "room-1" && link?.recordingAssetID == "asset-1" && link?.sourceSeconds == seconds,
+                         "A work link must retain its source-local timestamp, including zero.")
+        }
+        let recap = CaptureTranscriptWorkLink(href: "/sessions/room-1?mode=transcript")
+        precondition(recap?.roomID == "room-1" && recap?.recordingAssetID == nil && recap?.sourceSeconds == nil)
+        let workspaceJSON = #"""
+        {"id":"space-1","title":"Our coaching space","status":"ACTIVE","canWrite":false,
+         "currentUserId":"client-1","members":[],"entries":[
+           {"id":"note-1","kind":"NOTE","title":null,"body":"My words","visibility":"SHARED","canEdit":false,
+            "createdAt":"2026-09-07T00:00:00Z","updatedAt":"2026-09-07T00:00:00Z"},
+           {"id":"task-1","kind":"TASK","title":"Next step","status":"DONE","visibility":"SHARED","canEdit":true,
+            "sourceHref":"/sessions/room-1?mode=transcript&source=asset-1&at=3.66",
+            "createdAt":"2026-09-07T00:00:00Z","updatedAt":"2026-09-07T00:00:00Z"}]
+        }
+        """#
+        do {
+            let workspace = try JSONDecoder().decode(MobileCoachingEngagementWorkspace.self, from: Data(workspaceJSON.utf8))
+            precondition(workspace.entries.count == 2 && !workspace.canWrite)
+            precondition(workspace.entries[0].displayTitle == "Untitled note" && workspace.entries[0].sourceLink == nil,
+                         "An untitled or source-less note must not break the whole workspace.")
+            precondition(workspace.entries[1].sourceLink?.sourceSeconds == 3.66 && workspace.entries[1].isComplete,
+                         "API source links must survive native decoding.")
+            let roundTrip = try JSONDecoder().decode(MobileCoachingEngagementWorkspace.self, from: JSONEncoder().encode(workspace))
+            precondition(roundTrip == workspace)
+        } catch { fatalError("Canonical client-space response failed to decode: \(error)") }
+        for invalid in [
+            "https://evil.example/sessions/room-1?mode=transcript",
+            "//evil.example/sessions/room-1?mode=transcript",
+            "/sessions/room%2Fprivate?mode=transcript",
+            "/sessions/room-1?mode=live",
+            "/sessions/room-1?mode=transcript&token=secret",
+            "/sessions/room-1?mode=transcript&source=asset-1",
+            "/sessions/room-1?mode=transcript&at=2",
+            "/sessions/room-1?mode=transcript&source=asset-1&at=-1",
+            "/sessions/room-1?mode=transcript&source=asset-1&at=nan",
+            "/sessions/room-1?mode=transcript&source=asset-1&at=inf",
+            "/sessions/room-1?mode=transcript&source=asset-1&at=86401",
+            "/sessions/room-1?mode=transcript&source=asset-1&at=1&at=5",
+            "/sessions/room-1?mode=transcript#wrong",
+        ] {
+            precondition(CaptureTranscriptWorkLink(href: invalid) == nil, "Malformed work link must not choose another destination: \(invalid)")
+        }
+
         let draftID = UUID(uuidString: "A17F4C12-0000-4000-8000-000000000033")!
         expectWriting(
             "quipsly://writing/\(draftID.uuidString.lowercased())?action=continue",
@@ -88,7 +133,7 @@ struct CaptureDeepLinkHarness {
             fatalError("The router did not consume the new writing request.")
         }
 
-        print("Capture Session and writing deep-link harness passed")
+        print("Capture Session, writing, and transcript work-link harness passed")
     }
 
     private static func expect(

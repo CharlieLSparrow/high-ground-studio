@@ -1682,6 +1682,54 @@ final class CaptureExperienceUITests: XCTestCase {
         app.buttons["Cancel"].tap()
     }
 
+    func testCoachingWorkReturnsToItsNativeTranscriptSource() {
+        exerciseCoachingWorkSourceNavigation()
+    }
+
+    func testCoachingWorkReturnsToItsNativeTranscriptSourceOnRegularWidthIPad() {
+        exerciseCoachingWorkSourceNavigation()
+    }
+
+    private func exerciseCoachingWorkSourceNavigation() {
+        relaunchCoachingPreview(
+            role: "coach",
+            additionalArguments: ["--capture-coaching-work-source-preview"]
+        )
+        openRootDestination("Home")
+        let coaching = app.buttons["CaptureOpenCoachingHome"]
+        XCTAssertTrue(coaching.waitForExistence(timeout: 5))
+        coaching.tap()
+        let relationship = app.descendants(matching: .any)["CaptureCoachingRelationship_preview-engagement"].firstMatch
+        reveal(relationship)
+        relationship.tap()
+        let source = app.descendants(matching: .any)["CaptureCoachingWorkSource_preview-linked-task"].firstMatch
+        reveal(source, searchAboveFirst: false)
+        if !source.exists || !source.isHittable {
+            let tree = XCTAttachment(string: app.debugDescription)
+            tree.name = "shared-work-source-missing.txt"
+            tree.lifetime = .keepAlways
+            add(tree)
+        }
+        XCTAssertTrue(source.isHittable)
+        XCTAssertEqual(source.label, "From recording: Review the final cut")
+        XCTAssertFalse(app.descendants(matching: .any)["CaptureCoachingWorkSource_preview-manual-note"].firstMatch.exists)
+        source.tap()
+        XCTAssertTrue(app.navigationBars["Transcript"].waitForExistence(timeout: 8),
+                      "Shared work should open Capture's native transcript, not a browser handoff.")
+        XCTAssertTrue(app.descendants(matching: .any)["CaptureTranscriptSourceBoundary_preview-segment"].firstMatch.waitForExistence(timeout: 8),
+                      "The source-local timestamp should resolve to the linked passage.")
+        let passage = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "My goal is to publish a thoughtful first episode")).firstMatch
+        XCTAssertTrue(passage.exists && passage.isHittable,
+                      "The linked words must be visible on arrival, not merely present offscreen.")
+        let screenshot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        screenshot.name = "shared-work-native-source.png"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
+        app.navigationBars["Transcript"].buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(app.segmentedControls["CaptureCoachingWorkFilter"].waitForExistence(timeout: 5),
+                      "Back should return to the same ongoing coaching space.")
+    }
+
     func testCoachWithoutAppointmentsStartsWithSchedulingInsteadOfAnEmptyDashboard() {
         relaunchCoachingPreview(
             role: "coach",
