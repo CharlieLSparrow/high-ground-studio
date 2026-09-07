@@ -252,6 +252,7 @@ export function browserSourceCanBegin(input: {
   ) {
     return {
       ok: false as const,
+      blocker: "room-closed" as const,
       reason:
         "This Session is closed. Reopen it before recording another take.",
     };
@@ -259,26 +260,30 @@ export function browserSourceCanBegin(input: {
   if (!input.opfsAvailable)
     return {
       ok: false as const,
+      blocker: "storage" as const,
       reason: "Durable browser storage is unavailable.",
     };
   if (!input.microphoneId)
-    return { ok: false as const, reason: "Choose a microphone." };
+    return { ok: false as const, blocker: "microphone" as const, reason: "Choose a microphone." };
   if (input.sourceType === "video" && !input.cameraId)
-    return { ok: false as const, reason: "Choose a camera." };
+    return { ok: false as const, blocker: "camera" as const, reason: "Choose a camera." };
   if (!input.recordingConsentId) {
     return {
       ok: false as const,
+      blocker: "my-consent" as const,
       reason: "Choose Allow recording before this Session is recorded.",
     };
   }
   if (!input.allPartyConsentReady) {
     return {
       ok: false as const,
+      blocker: "participant-consent" as const,
       reason: "Your choice is saved. Waiting for the other participant.",
     };
   }
   return {
     ok: true as const,
+    blocker: null,
     reason: "Browser source is ready to retain locally.",
   };
 }

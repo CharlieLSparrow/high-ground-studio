@@ -68,12 +68,11 @@ describe("browser retained-source consent", () => {
     expect(source).toContain(
       "const waitingForParticipantConsent =",
     );
-    expect(source).toContain('aria-label="Allow recording before starting"');
     expect(source).toContain('aria-label="Waiting for recording consent"');
     expect(source).toContain(
       "Your choice is saved. Recording starts when everyone is ready.",
     );
-    expect(source.indexOf(") : !myConsentCoversSource ? (")).toBeLessThan(
+    expect(source.indexOf(") : !myConsentCoversSource ? null")).toBeLessThan(
       source.indexOf(") : canControlRoom ? ("),
     );
     expect(source).toContain('data-testid="recording-readiness-message"');

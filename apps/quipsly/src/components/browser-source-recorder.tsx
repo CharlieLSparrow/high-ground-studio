@@ -625,7 +625,10 @@ export function BrowserSourceRecorder({
         setMyVideoConsent(session.recordingConsentCanRecordVideo === true);
         if (!transcriptionChoiceDirtyRef.current) {
           setTranscriptionChoice(
-            session.recordingConsentCanTranscribe === true,
+            browserTranscriptionChoiceAfterConsentReadback({
+              consentStatus: session.recordingConsentStatus,
+              canTranscribe: session.recordingConsentCanTranscribe === true,
+            }),
           );
         }
         setAllPartyAudioReady(
@@ -830,6 +833,7 @@ export function BrowserSourceRecorder({
       preflightStorageIssue?.kind === "storage-critical"
         ? {
             ok: false,
+            blocker: "storage-critical" as const,
             reason: `${preflightStorageIssue.detail} Free local space before recording.`,
           }
         : readiness,
@@ -2848,7 +2852,11 @@ export function BrowserSourceRecorder({
         >
           {conversationEnded
             ? exitSafety.label
-            : browserRetainedRecorderStatusLabel({
+            : status === "ready" && !activeLedger && !recoveryRows.length && !retainedReadiness.ok
+              ? retainedReadiness.blocker === "my-consent" ? "Recording off"
+                : retainedReadiness.blocker === "participant-consent" ? "Waiting for others"
+                : "Needs attention"
+              : browserRetainedRecorderStatusLabel({
                 status,
                 elapsedSeconds,
                 hasProtectedSource: Boolean(activeLedger || recoveryRows.length),
@@ -2876,7 +2884,7 @@ export function BrowserSourceRecorder({
             <button
               type="button"
               onClick={() => void grantConsent()}
-              disabled={!policy || status === "recording"}
+              disabled={!policy || status === "checking" || status === "recording"}
               className="min-h-11 rounded-full bg-emerald-800 px-5 text-xs font-black text-white disabled:opacity-50"
             >
               <ShieldCheck size={14} className="mr-1 inline" /> Allow recording
@@ -2888,7 +2896,7 @@ export function BrowserSourceRecorder({
       {!conversationEnded ? (
         <details className="mt-4 rounded-xl border border-[#e5d8c0] bg-[#fffaf0] p-3">
           <summary className="cursor-pointer text-xs font-black uppercase tracking-wide text-[#5b472f]">
-            Recording settings · {myConsentCoversSource ? "Saved" : "Review"}
+            Recording settings · {myConsentCoversSource ? "Saved" : "Audio, video & transcript"}
           </summary>
           <div className="mt-3 grid gap-3 lg:grid-cols-2">
             <div className="rounded-xl border border-[#e5d8c0] bg-[#fffaf0] p-3">
@@ -3117,16 +3125,7 @@ export function BrowserSourceRecorder({
                 </button>
               ) : null}
             </>
-          ) : !myConsentCoversSource ? (
-            <span
-              className="rounded-xl border border-emerald-300 bg-emerald-50 px-4 py-3 text-xs font-bold text-emerald-950"
-              aria-label="Allow recording before starting"
-              aria-live="polite"
-            >
-              Allow recording above. Quipsly remembers the choice for this
-              Session.
-            </span>
-          ) : waitingForParticipantConsent ? (
+          ) : !myConsentCoversSource ? null : waitingForParticipantConsent ? (
             <span
               className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-xs font-bold text-amber-950"
               aria-label="Waiting for recording consent"
@@ -3186,7 +3185,7 @@ export function BrowserSourceRecorder({
             </span>
           )}
         </div>
-        {status !== "recording" && !retainedReadiness.ok ? (
+        {status !== "recording" && !retainedReadiness.ok && !["my-consent", "participant-consent"].includes(retainedReadiness.blocker ?? "") ? (
           <p
             data-testid="recording-readiness-message"
             role="status"
@@ -3310,13 +3309,13 @@ export function BrowserSourceRecorder({
             </p>
           ) : null}
         </details>
-        <p
+        {status !== "ready" || activeLedger || recoveryRows.length ? <p
           role="status"
-          aria-live="assertive"
+          aria-live={status === "error" || status === "held" ? "assertive" : "polite"}
           className={`mt-3 rounded-xl px-3 py-2 text-xs font-bold leading-5 ${status === "recording" ? "bg-rose-800 text-white" : status === "error" || status === "held" ? "bg-amber-100 text-amber-950" : "bg-violet-50 text-violet-950"}`}
         >
           {message}
-        </p>
+        </p> : null}
 
         {latestRecordingReceipt &&
         activeLedger &&
@@ -3588,7 +3587,7 @@ export function BrowserSourceRecorder({
             <ExternalLink size={15} /> Edit recording
           </a>
         ) : null}
-        <details className="mt-4 rounded-2xl border border-violet-200 bg-violet-50/70 p-4">
+        {activeLedger || recoveryRows.length > 0 || (studioHandoff?.sourceCount ?? 0) > 0 ? <details className="mt-4 rounded-2xl border border-violet-200 bg-violet-50/70 p-4">
           <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-xs font-black text-violet-950">
             <span className="flex items-center gap-2">
               <Layers3 size={14} /> Recording processing
@@ -3598,7 +3597,9 @@ export function BrowserSourceRecorder({
                 ? "Ready"
                 : handoffBusy
                   ? "Finishing…"
-                  : "In progress"}
+                  : studioHandoff?.ready ? "Ready to finish"
+                    : (studioHandoff?.sourceCount ?? 0) > 0 ? "Preparing recordings"
+                      : "Waiting for upload"}
             </span>
           </summary>
           <section
@@ -3780,7 +3781,7 @@ export function BrowserSourceRecorder({
               placement. Local deletion remains unavailable by design.
             </p>
           ) : null}
-        </details>
+        </details> : null}
       </div>
     </section>
   );

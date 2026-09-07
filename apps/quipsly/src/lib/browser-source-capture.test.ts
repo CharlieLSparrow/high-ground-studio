@@ -26,7 +26,7 @@ describe("browser source capture contract", () => {
         allPartyConsentReady: true,
         headphonesAttested: true,
       }),
-    ).toEqual({ ok: false, reason: "Durable browser storage is unavailable." });
+    ).toEqual({ ok: false, blocker: "storage", reason: "Durable browser storage is unavailable." });
 
     expect(
       browserSourceCanBegin({
@@ -40,6 +40,7 @@ describe("browser source capture contract", () => {
     ).toEqual({
       ok: false,
       reason: "Choose Allow recording before this Session is recorded.",
+      blocker: "my-consent",
     });
 
     expect(
@@ -53,6 +54,7 @@ describe("browser source capture contract", () => {
     ).toEqual({
       ok: false,
       reason: "Your choice is saved. Waiting for the other participant.",
+      blocker: "participant-consent",
     });
 
     expect(
@@ -67,6 +69,7 @@ describe("browser source capture contract", () => {
       }),
     ).toEqual({
       ok: false,
+      blocker: "room-closed",
       reason:
         "This Session is closed. Reopen it before recording another take.",
     });
