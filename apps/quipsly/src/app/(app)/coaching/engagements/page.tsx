@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { LockKeyhole, Plus, UsersRound } from "lucide-react";
+import { LockKeyhole } from "lucide-react";
 import { chooseQuipslyCoachingClientPriority } from "@high-ground/quipsly-domain/coaching-client-priority";
 
 import {
@@ -9,6 +9,7 @@ import {
 import { getPrismaClient } from "@/lib/prisma";
 import { coachingEngagementActorAccessWhere } from "@/lib/server/coaching-engagement";
 import { getQuipslySession } from "@/lib/server/quipsly-session";
+import { CoachingClientCreate } from "@/components/coaching-client-create";
 
 export const dynamic = "force-dynamic";
 
@@ -358,38 +359,25 @@ export default async function CoachingEngagementsPage() {
                 Coaching · Clients
               </p>
               <h1 className="mt-2 font-serif text-4xl font-black text-[#34291d] sm:text-5xl">
-                Know who needs you next.
+                {canSchedule ? "Your clients" : "Your coaching spaces"}
               </h1>
               <p className="mt-3 max-w-3xl font-semibold leading-7 text-[#765f40]">
-                Each private client space keeps Sessions, conversation, notes,
-                goals, commitments, recordings, transcripts, and reviewed
-                follow-up together across the whole coaching relationship.
+                Keep conversations, notes, tasks, and sessions together in one private space for each client.
               </p>
             </div>
-            {canSchedule ? (
-              <Link
-                href="/coaching#create-appointment"
-                className="inline-flex min-h-12 items-center justify-center gap-2 rounded-full bg-violet-800 px-5 text-sm font-black text-white shadow-sm transition hover:bg-violet-900"
-              >
-                <Plus size={17} aria-hidden="true" /> Add client & session
-              </Link>
-            ) : null}
           </div>
         </header>
+
+        {canSchedule && <CoachingClientCreate initiallyOpen={clients.length === 0} />}
 
         <div className="mt-6">
           <CoachingClientPortfolio
             clients={clients}
             asOf={new Date(now).toISOString()}
+            canAddClient={canSchedule}
           />
         </div>
 
-        <p className="mt-6 flex items-center gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-semibold leading-6 text-emerald-950">
-          <UsersRound size={18} className="shrink-0" aria-hidden="true" />
-          This portfolio is a projection over canonical private engagements. It
-          does not copy client data, infer access, or expose the surrounding
-          Nest.
-        </p>
       </div>
     </main>
   );

@@ -402,6 +402,7 @@ export default async function CoachingEngagementPage({
           <CoachingRelationshipOverview
             overview={overview}
             canSchedule={canSchedule}
+            engagementId={engagement.id}
           />
         </div>
         <CoachingSpaceTabs

@@ -198,8 +198,8 @@ export async function ensureInvitedStudioUserByEmail(input: {
     // inactive account through its separately audited operation.
     const data: Prisma.UserUpdateInput = {};
     const name = input.name?.trim();
-    if (name) data.name = name;
-    if (input.image) data.image = input.image;
+    if (name && !existing.name) data.name = name;
+    if (input.image && !existing.image) data.image = input.image;
 
     const updated = await prisma.user.update({
       where: { id: existing.id },

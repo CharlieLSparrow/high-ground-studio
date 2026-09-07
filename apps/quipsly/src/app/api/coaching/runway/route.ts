@@ -22,6 +22,7 @@ import {
 } from "@/lib/server/coaching-google-calendar";
 import { getQuipslyLiveKitEgressReadiness } from "@/lib/server/coaching-livekit-egress";
 import { ensureCoachingEngagement, CoachingEngagementError } from "@/lib/server/coaching-engagement";
+import { coachingClientSchedulingContext, CoachingClientSpaceError } from "@/lib/server/coaching-client-space";
 import {
   CoachingBookingSeriesInputError,
   normalizeCoachingBookingSeriesIntent,
@@ -1426,6 +1427,27 @@ export async function POST(request: Request) {
     "convert-booking-hold",
     "update-public-booking",
   ]);
+  if (["create-booking-room", "create-booking-series", "create-booking-hold"].includes(action)) {
+    if (!session.user.isStaff && text(body.coachUserId) && text(body.coachUserId) !== session.user.id) {
+      return NextResponse.json({ ok: false, error: "You can only schedule your own coaching work." }, { status: 403 });
+    }
+    if (text(body.engagementId)) {
+      try {
+        const context = await coachingClientSchedulingContext({ actor: session.user, engagementId: text(body.engagementId), prisma });
+        Object.assign(body, { engagementId: context.engagementId, projectSlug: context.projectSlug,
+          coachUserId: context.coachUserId, clientEmail: context.clientEmail, clientName: context.clientName });
+      } catch (error) {
+        if (error instanceof CoachingClientSpaceError) return NextResponse.json({ ok: false, error: error.message }, { status: error.status });
+        return NextResponse.json({ ok: false, error: "We couldn’t load the selected client space. Please try again." }, { status: 500 });
+      }
+    }
+    if (!session.user.isStaff && text(body.offeringId)) {
+      const offering = await prisma.serviceOffering.findUnique({ where: { id: text(body.offeringId) }, select: { coachProfile: { select: { userId: true } } } });
+      if (!offering || offering.coachProfile?.userId !== session.user.id) {
+        return NextResponse.json({ ok: false, error: "Choose one of your own coaching services." }, { status: 403 });
+      }
+    }
+  }
   if (paidCoachActions.has(action)) {
     const access = await quipslyCoachCapabilityAccess({
       prisma,

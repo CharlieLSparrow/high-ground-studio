@@ -1,10 +1,12 @@
 /** @jest-environment node */
 
 jest.mock("server-only", () => ({}));
+jest.mock("@/auth", () => ({ auth: jest.fn() }));
 
 import { randomUUID } from "node:crypto";
 
 import { getPrismaClient } from "@/lib/prisma";
+import { createCoachingClientSpace, coachingClientSchedulingContext } from "./coaching-client-space";
 import {
   coachingEngagementAccessWhere,
   ensureCoachingEngagement,
@@ -52,6 +54,8 @@ runLocalDatabaseSmoke("private Coaching Engagement collaboration", () => {
   let engagementId = "";
   let roomId = "";
   let bookingId = "";
+  let createdSpaceId = "";
+  let createdHomeId = "";
 
   beforeAll(async () => {
     await prisma.user.createMany({ data: [
@@ -102,6 +106,8 @@ runLocalDatabaseSmoke("private Coaching Engagement collaboration", () => {
 
   afterAll(async () => {
     try {
+      if (createdSpaceId) await prisma.coachingEngagement.deleteMany({ where: { id: createdSpaceId } });
+      if (createdHomeId) await prisma.studioProject.deleteMany({ where: { id: createdHomeId } });
       if (roomId) await prisma.callRoom.deleteMany({ where: { id: roomId } });
       if (bookingId) await prisma.coachingBooking.deleteMany({ where: { id: bookingId } });
       if (engagementId) await prisma.coachingEngagement.deleteMany({ where: { id: engagementId } });
@@ -111,6 +117,38 @@ runLocalDatabaseSmoke("private Coaching Engagement collaboration", () => {
     } finally {
       await prisma.$disconnect();
     }
+  });
+
+  it("creates one private client space without a booking, preserves identity, and safely retries", async () => {
+    const actor = { id: ids.coach, primaryEmail: email("coach") };
+    const [first, second] = await Promise.all([
+      createCoachingClientSpace({ prisma, actor, email: email("client"), name: "My client label" }),
+      createCoachingClientSpace({ prisma, actor, email: email("client"), name: "My client label" }),
+    ]);
+    createdSpaceId = first.id;
+    const saved = await prisma.coachingEngagement.findUniqueOrThrow({
+      where: { id: first.id }, include: { members: true, callRooms: true, bookings: true },
+    });
+    createdHomeId = saved.projectId;
+    expect(second.id).toBe(first.id);
+    expect(saved.members.map((member) => member.userId).sort()).toEqual([ids.client, ids.coach].sort());
+    expect(saved.callRooms).toHaveLength(0);
+    expect(saved.bookings).toHaveLength(0);
+    const context = await coachingClientSchedulingContext({ prisma, actor, engagementId: first.id });
+    expect(context).toMatchObject({ engagementId: first.id, coachUserId: ids.coach, clientEmail: email("client"), clientName: "Client" });
+    await expect(coachingClientSchedulingContext({ prisma, actor: { id: ids.outsider }, engagementId: first.id })).rejects.toMatchObject({ status: 404 });
+    await expect(coachingClientSchedulingContext({ prisma, actor: { id: ids.client }, engagementId: first.id })).rejects.toMatchObject({ status: 404 });
+    expect(await prisma.user.findUnique({ where: { id: ids.client }, select: { name: true, emailVerified: true } })).toEqual({ name: "Client", emailVerified: null });
+    for (const userId of [ids.client, ids.coach]) {
+      expect(await prisma.coachingEngagement.findFirst({ where: coachingEngagementAccessWhere(first.id, { id: userId }, "read") })).not.toBeNull();
+    }
+    expect(await prisma.coachingEngagement.findFirst({ where: coachingEngagementAccessWhere(first.id, { id: ids.outsider }, "read") })).toBeNull();
+  });
+
+  it("rejects client-space creation by a non-coach and rejects self-coaching", async () => {
+    await expect(createCoachingClientSpace({ prisma, actor: { id: ids.outsider }, email: email("client") })).rejects.toMatchObject({ status: 403 });
+    await expect(createCoachingClientSpace({ prisma, actor: { id: ids.coach }, email: email("coach") })).rejects.toMatchObject({ status: 400 });
+    await expect(createCoachingClientSpace({ prisma, actor: { id: ids.coach }, email: "not-an-email" })).rejects.toMatchObject({ status: 400 });
   });
 
   it("admits coach/client but does not inherit Nest editor or viewer access", async () => {

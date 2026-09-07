@@ -81,9 +81,11 @@ function actionStyle(tone: CoachingClientPortfolioItem["nextAction"]["tone"]) {
 export function CoachingClientPortfolio({
   clients,
   asOf,
+  canAddClient = false,
 }: {
   clients: CoachingClientPortfolioItem[];
   asOf: string;
+  canAddClient?: boolean;
 }) {
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<PortfolioFilter>(
@@ -306,19 +308,19 @@ export function CoachingClientPortfolio({
         <section className="mt-5 rounded-[1.75rem] border border-dashed border-[#cdbb9e] bg-[#fffaf0] p-8 text-center">
           <UsersRound className="mx-auto text-violet-800" />
           <h2 className="mt-4 font-serif text-2xl font-black text-[#3d3122]">
-            {clients.length ? "No clients match this view." : "Add your first client."}
+            {clients.length ? "No clients match this view." : canAddClient ? "Add your first client." : "Your shared spaces will appear here."}
           </h2>
           <p className="mx-auto mt-2 max-w-2xl text-[#765f40]">
             {clients.length
               ? "Try another filter or search. Nothing was removed."
-              : "Schedule a Session with their email. Quipsly creates the private client relationship, invitation, call room, and shared follow-through space together."}
+              : canAddClient ? "Start with their email. You can prepare together before scheduling a call." : "Open your coach’s invitation to join your private space."}
           </p>
-          {!clients.length ? (
+          {!clients.length && canAddClient ? (
             <Link
-              href="/coaching#create-appointment"
+              href="#add-client"
               className="mt-5 inline-flex min-h-11 items-center rounded-full bg-violet-800 px-5 text-sm font-black text-white"
             >
-              Schedule the first session
+              Add client
             </Link>
           ) : null}
         </section>

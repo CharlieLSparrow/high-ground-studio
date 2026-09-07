@@ -61,6 +61,10 @@ function overview(
 }
 
 describe("CoachingRelationshipOverview", () => {
+  it("keeps scheduling in the selected client space without putting email in the URL", () => {
+    render(<CoachingRelationshipOverview overview={overview({ nextSession: null })} canSchedule engagementId="client-space" />);
+    expect(screen.getByRole("link", { name: "Schedule next session" })).toHaveAttribute("href", "/coaching?clientSpace=client-space#create-appointment");
+  });
   it("turns a live relationship into one obvious join action and a compact continuity brief", () => {
     render(<><CoachingRelationshipOverview overview={overview()} canSchedule /><CoachingRelationshipBrief overview={overview()} /></>);
 

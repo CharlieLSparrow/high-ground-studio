@@ -5,6 +5,15 @@ jest.mock("@/lib/server/prisma-advisory-lock", () => ({
 }));
 
 describe("ensureInvitedStudioUserByEmail", () => {
+  it("does not let an inviter rename or replace the photo of an existing account", async () => {
+    const existing = { id: "existing", primaryEmail: "client@example.com", name: "Chosen Name", image: "original-photo", aliases: [], roles: [] };
+    const prisma = { user: {
+      findFirst: jest.fn().mockResolvedValue(existing),
+      update: jest.fn().mockResolvedValue(existing),
+    } };
+    await ensureInvitedStudioUserByEmail({ email: existing.primaryEmail, name: "Someone else's label", image: "replacement", prisma: prisma as never });
+    expect(prisma.user.update).toHaveBeenCalledWith(expect.objectContaining({ data: {} }));
+  });
   it("preserves suspension and verification state for an existing person", async () => {
     const existing = {
       id: "user-existing",

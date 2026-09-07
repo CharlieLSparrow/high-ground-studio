@@ -87,9 +87,11 @@ function transcriptLabel(status: string | null) {
 export function CoachingRelationshipOverview({
   overview,
   canSchedule,
+  engagementId,
 }: {
   overview: CoachingRelationshipOverviewItem;
   canSchedule: boolean;
+  engagementId?: string;
 }) {
   const nextIsLive = ["OPEN", "RECORDING"].includes(
     overview.nextSession?.status || "",
@@ -98,7 +100,7 @@ export function CoachingRelationshipOverview({
   const primaryHref = overview.nextSession
     ? `/sessions/${encodeURIComponent(overview.nextSession.id)}?mode=live`
     : canSchedule
-      ? "/coaching#create-appointment"
+      ? `/coaching${engagementId ? `?clientSpace=${encodeURIComponent(engagementId)}` : ""}#create-appointment`
       : "#relationship-conversation";
   const primaryLabel = nextIsLive
     ? "Join session"

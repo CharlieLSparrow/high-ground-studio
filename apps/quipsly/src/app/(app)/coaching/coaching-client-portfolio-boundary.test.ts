@@ -51,7 +51,6 @@ describe("coaching client portfolio boundaries", () => {
       "followUpCount: coachView ? followUpRooms.length : 0",
     );
     expect(portfolio).toContain("const canSchedule = Boolean(");
-    expect(portfolio).toContain("{canSchedule ? (");
     expect(layout).toContain("<CoachingSuiteNav canSchedule={canSchedule} />");
     expect(layout).toContain('role: "COACH"');
   });

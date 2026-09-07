@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import {
   AlertCircle,
   Calendar as CalendarIcon,
@@ -1015,6 +1016,11 @@ function CalendarPacketPanel({
 }
 
 export default function CoachingPage() {
+  return <Suspense fallback={<p role="status" className="p-6">Loading coaching…</p>}><CoachingWorkspace /></Suspense>;
+}
+
+function CoachingWorkspace() {
+  const requestedClientSpaceId = useSearchParams().get("clientSpace");
   const [runway, setRunway] = useState<CoachingRunway | null>(null);
   const [fastPracticeCommand, setFastPracticeCommand] = useState<NonNullable<
     CoachingRunway["practiceCommand"]
@@ -1111,6 +1117,34 @@ export default function CoachingPage() {
     recurrence: "ONCE",
     occurrenceCount: "6",
   });
+  const [clientSpaceContext, setClientSpaceContext] = useState<{
+    engagementId: string; title: string; projectSlug: string; coachUserId: string; clientEmail: string; clientName: string;
+  } | null>(null);
+  const [clientSpaceLoading, setClientSpaceLoading] = useState(false);
+  const [clientSpaceError, setClientSpaceError] = useState("");
+  useEffect(() => {
+    const engagementId = requestedClientSpaceId;
+    setClientSpaceContext(null);
+    setClientSpaceError("");
+    if (!engagementId) {
+      setClientSpaceLoading(false);
+      setCreateForm((current) => ({ ...current, clientEmail: "", clientName: "" }));
+      return;
+    }
+    let cancelled = false;
+    setClientSpaceLoading(true);
+    fetch(`/api/coaching/engagements?engagementId=${encodeURIComponent(engagementId)}`, { cache: "no-store" })
+      .then(async (response) => {
+        const result = await response.json();
+        if (!response.ok || !result.context) throw new Error(result.error || "We couldn’t load this client space.");
+        if (cancelled) return;
+        setClientSpaceContext(result.context);
+        setCreateForm((current) => ({ ...current, clientEmail: result.context.clientEmail, clientName: result.context.clientName }));
+      })
+      .catch((error) => { if (!cancelled) setClientSpaceError(error instanceof Error ? error.message : "We couldn’t load this client space."); })
+      .finally(() => { if (!cancelled) setClientSpaceLoading(false); });
+    return () => { cancelled = true; };
+  }, [requestedClientSpaceId]);
   const [setupStatus, setSetupStatus] = useState<string | null>(null);
   const [isSettingUpCoach, setIsSettingUpCoach] = useState(false);
   const [availabilityStatus, setAvailabilityStatus] = useState<string | null>(
@@ -2325,6 +2359,7 @@ export default function CoachingPage() {
 
   async function createLocalSession(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (clientSpaceLoading || clientSpaceError) return;
     setIsCreating(true);
     setCreateStatus(null);
     setCreatedHandoff(null);
@@ -2366,6 +2401,13 @@ export default function CoachingPage() {
         body: JSON.stringify({
           action: effectiveAction,
           ...createForm,
+          ...(clientSpaceContext ? {
+            engagementId: clientSpaceContext.engagementId,
+            projectSlug: clientSpaceContext.projectSlug,
+            coachUserId: clientSpaceContext.coachUserId,
+            clientEmail: clientSpaceContext.clientEmail,
+            clientName: clientSpaceContext.clientName,
+          } : {}),
           requestId:
             effectiveAction === "create-booking-series"
               ? seriesRequestId.current?.requestId
@@ -2429,8 +2471,8 @@ export default function CoachingPage() {
       }
       setCreateForm((current) => ({
         ...current,
-        clientEmail: "",
-        clientName: "",
+        clientEmail: clientSpaceContext?.clientEmail ?? "",
+        clientName: clientSpaceContext?.clientName ?? "",
         scheduledStart: "",
         recurrence: "ONCE",
         amountDollars:
@@ -4573,11 +4615,15 @@ export default function CoachingPage() {
                   </div>
                 ) : null}
                 <form className="space-y-3" onSubmit={createLocalSession}>
+                  {clientSpaceLoading && <p role="status" className="text-sm">Loading client…</p>}
+                  {clientSpaceError && <p role="alert" className="text-sm text-red-800">{clientSpaceError} <a href="/coaching/engagements" className="underline">Back to clients</a></p>}
+                  {clientSpaceContext && <p className="text-sm text-[#765f40]">In <a href={`/coaching/engagements/${clientSpaceContext.engagementId}`} className="font-bold underline">{clientSpaceContext.title}</a></p>}
                   <label className="block text-xs font-black uppercase tracking-wide text-[#7b5c3b]">
                     Client email
                     <input
                       type="email"
                       value={createForm.clientEmail}
+                      readOnly={Boolean(clientSpaceContext) || clientSpaceLoading || Boolean(clientSpaceError)}
                       onChange={(event) =>
                         setCreateForm((current) => ({
                           ...current,
@@ -4867,6 +4913,7 @@ export default function CoachingPage() {
                     type="submit"
                     disabled={
                       isCreating ||
+                      clientSpaceLoading || Boolean(clientSpaceError) ||
                       !canScheduleCoaching ||
                       selectedSlotIssue !== null
                     }
