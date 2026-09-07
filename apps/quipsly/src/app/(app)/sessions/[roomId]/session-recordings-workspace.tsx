@@ -6,7 +6,7 @@ import type { SessionSourceEvidence } from "./session-source-evidence-model";
 
 // Diagnostics stay reachable through existing source-specific links, including
 // links opened from another screen. Opening details never changes recording data.
-export function RecordingDetails({ children }: { children: ReactNode }) {
+function RecordingDisclosure({ id, label, children }: { id: string; label: string; children: ReactNode }) {
   const ref = useRef<HTMLDetailsElement>(null);
   useEffect(() => {
     function revealTarget() {
@@ -25,10 +25,18 @@ export function RecordingDetails({ children }: { children: ReactNode }) {
     window.addEventListener("hashchange", revealTarget);
     return () => window.removeEventListener("hashchange", revealTarget);
   }, []);
-  return <details ref={ref} id="session-recording-details" className="rounded-2xl border border-[#ddcdaf] bg-[#fffdf8] p-4 sm:p-5">
-    <summary className="min-h-11 cursor-pointer content-center text-sm font-bold text-[#5b472f]">Recording details &amp; troubleshooting</summary>
+  return <details ref={ref} id={id} className="rounded-2xl border border-[#ddcdaf] bg-[#fffdf8] p-4 sm:p-5">
+    <summary className="min-h-11 cursor-pointer content-center text-sm font-bold text-[#5b472f]">{label}</summary>
     <div className="mt-4 space-y-5">{children}</div>
   </details>;
+}
+
+export function RecordingDetails({ children }: { children: ReactNode }) {
+  return <RecordingDisclosure id="session-recording-details" label="Recording details & troubleshooting">{children}</RecordingDisclosure>;
+}
+
+export function OriginalRecordings({ children }: { children: ReactNode }) {
+  return <RecordingDisclosure id="session-original-recordings" label="Original recordings">{children}</RecordingDisclosure>;
 }
 
 export function RecordingUploadStatus({ topology, evidence }: {

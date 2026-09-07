@@ -72,7 +72,7 @@ import { SessionRecordingImportCard } from "./session-recording-import-card";
 import { SessionRecordingHealthCard } from "./session-recording-health-card";
 import { SessionRecordingHealthListeningNavigator } from "./session-recording-health-listening-navigator";
 import { buildSessionRecordingHealth } from "./session-recording-health";
-import { RecordingDetails, RecordingUploadStatus } from "./session-recordings-workspace";
+import { OriginalRecordings, RecordingDetails, RecordingUploadStatus } from "./session-recordings-workspace";
 import { SessionAudioMasteryCard } from "./session-audio-mastery-card";
 import type { SessionSourceEvidence } from "./session-source-evidence-model";
 import { SessionReadinessTopologyCard } from "./session-readiness-topology-card";
@@ -3794,6 +3794,7 @@ export function SessionReviewClient({
   audibleEventSources = [],
   readinessTopology = EMPTY_SESSION_READINESS_TOPOLOGY,
   canManageSourcePlan = false,
+  recordingWorkspaceAudience = "producer",
   canViewEntryChoiceMetrics = false,
   canReleaseHeldMedia = false,
   sessionTaxonomy = null,
@@ -3844,6 +3845,7 @@ export function SessionReviewClient({
   }>;
   readinessTopology?: SessionReadinessTopology;
   canManageSourcePlan?: boolean;
+  recordingWorkspaceAudience?: "producer" | "participant";
   canViewEntryChoiceMetrics?: boolean;
   canReleaseHeldMedia?: boolean;
   sessionTaxonomy?: SessionTaxonomy | null;
@@ -4354,11 +4356,20 @@ export function SessionReviewClient({
 
       {mode === "recordings" ? (
         <>
+          {purpose === "COACHING" && recordingWorkspaceAudience === "participant" ? <SessionRecordingShareCard roomId={roomId} /> : null}
           <RecordingUploadStatus topology={readinessTopology} evidence={sourceEvidence} />
-          <SessionRecordingHealthListeningNavigator roomId={roomId}
-            health={buildSessionRecordingHealth({ topology: readinessTopology, sourceEvidence })}
-            evidence={sourceEvidence} presentation="workspace" />
-          {purpose === "COACHING" ? <SessionRecordingShareCard roomId={roomId} /> : null}
+          {purpose === "COACHING" && recordingWorkspaceAudience === "participant" ? (
+            <OriginalRecordings>
+              <SessionRecordingHealthListeningNavigator roomId={roomId}
+                health={buildSessionRecordingHealth({ topology: readinessTopology, sourceEvidence })}
+                evidence={sourceEvidence} presentation="workspace" />
+            </OriginalRecordings>
+          ) : (
+            <SessionRecordingHealthListeningNavigator roomId={roomId}
+              health={buildSessionRecordingHealth({ topology: readinessTopology, sourceEvidence })}
+              evidence={sourceEvidence} presentation="workspace" />
+          )}
+          {purpose === "COACHING" && recordingWorkspaceAudience === "producer" ? <SessionRecordingShareCard roomId={roomId} /> : null}
           <details className="rounded-2xl border border-[#ddcdaf] bg-[#fffdf8] p-4 sm:p-5">
             <summary className="min-h-11 cursor-pointer content-center text-sm font-bold text-[#5b472f]">Import a recording</summary>
             <div className="mt-4"><SessionRecordingImportCard roomId={roomId} preparation={preparation} /></div>

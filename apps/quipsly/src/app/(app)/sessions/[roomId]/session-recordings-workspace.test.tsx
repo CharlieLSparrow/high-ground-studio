@@ -1,7 +1,7 @@
 /** @jest-environment jsdom */
 import "@testing-library/jest-dom";
 import { fireEvent, render, screen } from "@testing-library/react";
-import { RecordingDetails, RecordingUploadStatus } from "./session-recordings-workspace";
+import { OriginalRecordings, RecordingDetails, RecordingUploadStatus } from "./session-recordings-workspace";
 import { EMPTY_SESSION_READINESS_TOPOLOGY } from "./session-readiness-topology";
 import type { SessionSourceEvidence } from "./session-source-evidence-model";
 
@@ -31,6 +31,18 @@ it("does not open unrelated or malformed deep links", () => {
   expect(screen.getByText("Source diagnostics")).not.toBeVisible();
   window.history.replaceState(null, "", "/#other-panel");
   fireEvent(window, new HashChangeEvent("hashchange"));
+  expect(screen.getByText("Source diagnostics")).not.toBeVisible();
+});
+
+it("keeps originals available on demand and reveals their exact deep link independently", () => {
+  render(<>
+    <OriginalRecordings><h3 id="original-player">Source player</h3></OriginalRecordings>
+    <RecordingDetails><h3 id="source-evidence-heading">Source diagnostics</h3></RecordingDetails>
+  </>);
+  expect(screen.getByText("Source player")).not.toBeVisible();
+  window.history.replaceState(null, "", "/#original-player");
+  fireEvent(window, new HashChangeEvent("hashchange"));
+  expect(screen.getByRole("heading", { name: "Source player" })).toBeVisible();
   expect(screen.getByText("Source diagnostics")).not.toBeVisible();
 });
 

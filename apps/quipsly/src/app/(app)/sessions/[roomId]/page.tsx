@@ -520,10 +520,14 @@ export default async function SessionReviewPage({
       where: sessionMutationAccessWhere(room.id, session.user),
       select: { id: true },
     }));
-    const canViewEntryChoiceMetrics = Boolean(await prisma.callRoom.findFirst({
+    const canManageSessionInvitations = Boolean(await prisma.callRoom.findFirst({
       where: sessionInvitationAccessWhere(room.id, session.user),
       select: { id: true },
     }));
+    const canViewEntryChoiceMetrics = canManageSessionInvitations;
+    // The edit/share service uses this same capability. This selects layout,
+    // not access: each recording and mutation remains independently authorized.
+    const recordingWorkspaceAudience = canManageSessionInvitations ? "producer" : "participant";
     const sessionContinuity = await loadSessionContinuityState({
       prisma,
       actor: session.user,
@@ -837,7 +841,7 @@ export default async function SessionReviewPage({
         publicationEligible: versionedOutputGraph.currentPacket?.publicationEligible ?? false,
       } : undefined,
     };
-    return <main className={`min-h-full bg-transparent ${workspaceMode === "live" ? "px-3 py-3 sm:px-6 sm:py-8 lg:px-10" : "px-6 py-5 sm:py-8 lg:px-10"}`}><div className="mx-auto max-w-[1240px]">{workspaceMode === "live" ? null : <nav aria-label="Session navigation" className="mb-6 hidden text-sm font-bold text-[#765f40] sm:block"><Link href="/schedule" className="hover:underline">Calendar</Link><span aria-hidden="true"> / </span><span>Session workspace</span></nav>}<SessionReviewClient roomId={room.id} sessionTitle={room.title || "Capture session"} mode={workspaceMode} notesView={sessionNoteView} joinedFromInvitation={joinedFromInvitation} captureOpenFallback={captureOpenFallback} preparation={sessionPreparation} consentSnapshot={consentSnapshot} contentReadiness={contentReadiness} sourceEvidence={sourceEvidence} audibleEventSources={audibleEventSources} readinessTopology={sessionReadinessTopology} canManageSourcePlan={canManageSourcePlan} canViewEntryChoiceMetrics={canViewEntryChoiceMetrics} canReleaseHeldMedia={session.user.isStaff} sessionTaxonomy={sessionTaxonomy} studioHandoff={studioHandoff} finishingEvidence={finishingEvidence} versionedOutputGraph={versionedOutputGraph} sourceClockAttention={sourceClockAttention} focusedAttentionId={focusedAttentionId} focusedRecordingAssetId={focusedRecordingAssetId} focusedPlaybackSeconds={focusedPlaybackSeconds} sessionNotes={sessionNotes} canUseProjectTeamNotes={canViewProjectTeamNotes} sessionQuickEntries={sessionQuickEntries} captureReceipts={captureReceipts} sessionContinuity={sessionContinuity} collaborationContext={collaborationContext} /></div></main>;
+    return <main className={`min-h-full bg-transparent ${workspaceMode === "live" ? "px-3 py-3 sm:px-6 sm:py-8 lg:px-10" : "px-6 py-5 sm:py-8 lg:px-10"}`}><div className="mx-auto max-w-[1240px]">{workspaceMode === "live" ? null : <nav aria-label="Session navigation" className="mb-6 hidden text-sm font-bold text-[#765f40] sm:block"><Link href="/schedule" className="hover:underline">Calendar</Link><span aria-hidden="true"> / </span><span>Session workspace</span></nav>}<SessionReviewClient roomId={room.id} sessionTitle={room.title || "Capture session"} mode={workspaceMode} notesView={sessionNoteView} joinedFromInvitation={joinedFromInvitation} captureOpenFallback={captureOpenFallback} preparation={sessionPreparation} consentSnapshot={consentSnapshot} contentReadiness={contentReadiness} sourceEvidence={sourceEvidence} audibleEventSources={audibleEventSources} readinessTopology={sessionReadinessTopology} canManageSourcePlan={canManageSourcePlan} recordingWorkspaceAudience={recordingWorkspaceAudience} canViewEntryChoiceMetrics={canViewEntryChoiceMetrics} canReleaseHeldMedia={session.user.isStaff} sessionTaxonomy={sessionTaxonomy} studioHandoff={studioHandoff} finishingEvidence={finishingEvidence} versionedOutputGraph={versionedOutputGraph} sourceClockAttention={sourceClockAttention} focusedAttentionId={focusedAttentionId} focusedRecordingAssetId={focusedRecordingAssetId} focusedPlaybackSeconds={focusedPlaybackSeconds} sessionNotes={sessionNotes} canUseProjectTeamNotes={canViewProjectTeamNotes} sessionQuickEntries={sessionQuickEntries} captureReceipts={captureReceipts} sessionContinuity={sessionContinuity} collaborationContext={collaborationContext} /></div></main>;
   } catch (error) {
     unstable_rethrow(error);
     console.error("[session-review] failed to load scoped session", error);

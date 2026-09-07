@@ -581,6 +581,35 @@ describe("Session review goal candidates", () => {
     ).toBe(false);
   });
 
+  it.each(["participant", "producer"] as const)("organizes recordings for the %s without removing sources or upload status", async (audience) => {
+    const coach = audience === "producer";
+    global.fetch = jest.fn().mockResolvedValue(jsonResponse({
+      ok: true, role: coach ? "COACH" : "CLIENT", output: null,
+      room: { client: { id: "client", label: "Client" } },
+      available: { sources: [], transcriptSegments: [], programDurationSeconds: 0 },
+      readiness: { canPrepare: coach, localRendererAvailable: true },
+    })) as typeof fetch;
+    render(<SessionReviewClient roomId="room-1" sessionTitle="Coaching"
+      mode="recordings" recordingWorkspaceAudience={audience}
+      consentSnapshot={{ total: 2, granted: 2, transcriptionPermitted: 2 }} />);
+    const shared = await screen.findByRole("heading", { name: coach ? "Trim and share" : "Shared recordings" });
+    const upload = screen.getByRole("region", { name: "Recording upload status" });
+    const source = screen.getByText("No recording ready to play yet");
+    expect(upload).toBeVisible();
+    if (coach) {
+      expect(source).toBeVisible();
+      expect(source.compareDocumentPosition(shared) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      expect(screen.queryByText("Original recordings")).not.toBeInTheDocument();
+    } else {
+      expect(shared.compareDocumentPosition(upload) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      expect(source).not.toBeVisible();
+      await userEvent.click(screen.getByText("Original recordings"));
+      expect(source).toBeVisible();
+    }
+    expect(screen.getByText("Recording details & troubleshooting").closest("details")).not.toHaveAttribute("open");
+    expect((global.fetch as jest.Mock).mock.calls.filter(([url]) => url === "/api/sessions/room-1/recording-share")).toHaveLength(1);
+  });
+
   it("creates explicitly shared canonical Session work from the browser", async () => {
     const createdAt = "2026-08-19T20:30:00.000Z";
     const fetchMock = jest.fn().mockResolvedValue(jsonResponse({
