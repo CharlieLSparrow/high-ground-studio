@@ -37,6 +37,44 @@ test("Capture evaluates every PR and only starts Mac jobs for affected inputs", 
   assert.match(workflow, /name: Capture validation\n    needs: \[changes, deterministic-ui\]\n    if: always\(\)/);
 });
 
+test("both Capture jobs select the repository Node toolchain before running Node commands", () => {
+  for (const job of ["changes", "deterministic-ui"]) {
+    const source = workflow.split(`\n  ${job}:\n`)[1]?.split(/\n  [a-z][a-z-]+:\n/)[0];
+    assert.ok(source, `Missing ${job} job`);
+    const setup = source.indexOf("uses: actions/setup-node@");
+    assert.ok(setup >= 0, `${job} must not depend on the runner image's default Node`);
+    assert.match(source.slice(setup).split("\n      - name:")[0], /node-version-file: \.node-version/);
+    assert.ok(setup < source.search(/\bnode (?:--|scripts\/)/), `${job} runs Node before selecting its version`);
+  }
+});
+
+for (const shard of [0, 3]) {
+  for (const exitCode of [0, 17, 143]) {
+    test(`native CI shard ${shard} preserves runner exit ${exitCode} and diagnostic output`, (t) => {
+      const directory = mkdtempSync(path.join(os.tmpdir(), "quipsly-native-ci-"));
+      t.after(() => rmSync(directory, { recursive: true, force: true }));
+      const script = stepScript("Run bounded deterministic Capture UI lane serially")
+        .replaceAll("${{ matrix.shard }}", String(shard));
+      const suite = shard === 0 ? "critical" : "full";
+      const selected = shard || 1;
+      const result = spawnSync("bash", ["--noprofile", "--norc", "-e", "-o", "pipefail", "-c", `
+        node() {
+          [[ "$1" == scripts/release/quipsly-capture-ui-test-runner.mjs ]] || return 98
+          [[ " $* " == *" --suite=${suite} "* && " $* " == *" --shard=${selected} "* ]] || return 99
+          echo "native test stdout"
+          echo "native test stderr" >&2
+          return "$TEST_EXIT"
+        }
+        ${script}
+      `], { encoding: "utf8", env: { ...process.env, RUNNER_TEMP: directory,
+        TEST_EXIT: String(exitCode), CAPTURE_DESTINATION: "synthetic iPhone", CAPTURE_IPAD_DESTINATION: "synthetic iPad" } });
+      assert.equal(result.status, exitCode, result.stdout + result.stderr);
+      assert.equal(readFileSync(path.join(directory, `capture-ui-${suite}-${selected}/capture-ui-tests.log`), "utf8"),
+        "native test stdout\nnative test stderr\n");
+    });
+  }
+}
+
 test("Capture routes committed changes using the manifest and rejects an invalid comparison", (t) => {
   const fixture = mkdtempSync(path.join(os.tmpdir(), "quipsly-capture-ci-"));
   t.after(() => rmSync(fixture, { recursive: true, force: true }));
