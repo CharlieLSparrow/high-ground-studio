@@ -4274,7 +4274,8 @@ export function SessionReviewClient({
         <SessionCoachingQuickPath
           roomId={roomId}
           preparation={preparation}
-          contentReadiness={contentReadiness}
+          recordingSources={sourceEvidence.sources}
+          audience={recordingWorkspaceAudience}
           finishingEvidence={finishingEvidence}
         />
       ) : null}

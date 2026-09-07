@@ -346,7 +346,7 @@ describe("Session review goal candidates", () => {
     />);
 
     expect(screen.getByRole("heading", { name: "Coaching review" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Your Session, start to finish" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Your session workspace" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Everything stays connected" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Overview" })).toHaveAttribute("aria-current", "page");
     expect(screen.getByRole("link", { name: "Prepare" })).toHaveAttribute("href", "/sessions/room-1?mode=prepare");
@@ -359,6 +359,19 @@ describe("Session review goal candidates", () => {
     expect(screen.queryByText("Transcription permission is incomplete")).not.toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Decide candidate by candidate" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Refresh transcript truth" })).not.toBeInTheDocument();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("does not give a client the coach's invitation or follow-up preparation shortcuts", () => {
+    const fetchMock = jest.fn();
+    global.fetch = fetchMock as typeof fetch;
+    render(<SessionReviewClient roomId="room-1" sessionTitle="My coaching session"
+      mode="overview" recordingWorkspaceAudience="participant"
+      consentSnapshot={{ total: 1, granted: 1, transcriptionPermitted: 1 }} />);
+    expect(screen.getByRole("heading", { name: "Your session workspace" })).toBeVisible();
+    expect(screen.queryByRole("link", { name: "Invite client" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Prepare follow-up" })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Open shared work" })).toHaveAttribute("href", "/sessions/room-1?mode=work");
     expect(fetchMock).not.toHaveBeenCalled();
   });
 

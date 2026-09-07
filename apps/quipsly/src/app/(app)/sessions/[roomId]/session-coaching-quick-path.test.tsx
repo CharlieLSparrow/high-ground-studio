@@ -1,150 +1,82 @@
 import { render, screen } from "@testing-library/react";
+import { buildCoachingQuickPath, SessionCoachingQuickPath } from "./session-coaching-quick-path";
+import type { SessionPreparation } from "./session-preparation-model";
+import type { SessionFinishingEvidence } from "./session-finishing-cockpit";
 
-import {
-  buildCoachingQuickPath,
-  SessionCoachingQuickPath,
-} from "./session-coaching-quick-path";
-
-const preparation = {
-  participants: [{ id: "coach" }, { id: "client" }],
-} as any;
-
-const emptyFinishing = {
-  transcriptJobs: [],
-  outputs: [],
-  analyzedSourceCount: 0,
+const preparation = { participants: [{ id: "coach" }, { id: "client" }] } as SessionPreparation;
+const emptyFinishing: SessionFinishingEvidence = { transcriptJobs: [], outputs: [], analyzedSourceCount: 0 };
+const recording = {
+  recordingAssetId: "short-source", status: "VERIFIED_MATCH" as const,
+  protectedPlayback: { sourceId: "source", url: "/protected/source", kind: "audio" as const, durationSeconds: 11.642 },
 };
+const transcript = {
+  id: "transcript", recordingAssetId: "short-source", status: "COMPLETED", segmentCount: 4,
+  updatedAt: "2026-09-07T10:00:00.000Z",
+};
+const input = { roomId: "room-1", preparation, recordingSources: [], finishingEvidence: emptyFinishing };
 
-describe("SessionCoachingQuickPath", () => {
-  it("routes a not-yet-invited coach to preparation instead of opening the call dock", () => {
-    const steps = buildCoachingQuickPath({
-      roomId: "room-1",
-      preparation: { participants: [{ id: "coach" }] } as any,
-      contentReadiness: { status: "none" },
-      finishingEvidence: emptyFinishing,
-    });
-
-    expect(steps[0]).toMatchObject({
-      action: "Invite client",
-      state: "NEXT",
-      href: "/sessions/room-1?mode=prepare",
-    });
+describe("Coaching Session shortcuts", () => {
+  it("keeps every tool reachable without a required sequence", () => {
+    render(<SessionCoachingQuickPath {...input} />);
+    expect(screen.getByRole("heading", { name: "Your session workspace" })).toBeVisible();
+    expect(screen.getByRole("link", { name: "Open recordings" })).toHaveAttribute("href", "/sessions/room-1?mode=recordings");
+    expect(screen.getByRole("link", { name: "Open transcript" })).toHaveAttribute("href", "/sessions/room-1?mode=transcript");
+    expect(screen.getByRole("link", { name: "Open shared work" })).toHaveAttribute("href", "/sessions/room-1?mode=work");
+    expect(screen.queryByLabelText(/Done|Next|Later/)).not.toBeInTheDocument();
   });
 
-  it("makes recording the next action after both people are attached", () => {
-    const steps = buildCoachingQuickPath({
-      roomId: "room-1",
-      preparation,
-      contentReadiness: { status: "none" },
-      finishingEvidence: emptyFinishing,
-    });
-
-    expect(steps.map((step) => step.state)).toEqual([
-      "DONE",
-      "NEXT",
-      "LATER",
-      "LATER",
-    ]);
-    expect(steps[1]).toMatchObject({
-      action: "Start Session",
-      href: "/sessions/room-1?mode=live",
-    });
+  it.each(["producer", "participant"] as const)("uses the %s's actual capabilities for invitations", (audience) => {
+    render(<SessionCoachingQuickPath {...input} audience={audience}
+      preparation={{ participants: [{ id: "person" }] } as SessionPreparation} />);
+    if (audience === "producer") {
+      expect(screen.getByRole("link", { name: "Invite client" })).toHaveAttribute("href", "/sessions/room-1?mode=prepare");
+      expect(screen.getByRole("link", { name: "Prepare follow-up" })).toBeVisible();
+    } else {
+      expect(screen.queryByRole("link", { name: "Invite client" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("link", { name: "Prepare follow-up" })).not.toBeInTheDocument();
+    }
+    expect(screen.getAllByRole("link", { name: "Join call" }).every(link => link.getAttribute("href") === "/sessions/room-1?mode=live")).toBe(true);
   });
 
-  it("routes a completed transcript to the client-safe follow-up", () => {
-    render(
-      <SessionCoachingQuickPath
-        roomId="room-1"
-        preparation={preparation}
-        contentReadiness={{ status: "substantial" }}
-        finishingEvidence={{
-          ...emptyFinishing,
-          transcriptJobs: [
-            {
-              id: "transcript-1",
-              recordingAssetId: "asset-1",
-              status: "COMPLETED",
-              segmentCount: 12,
-              updatedAt: "2026-08-19T22:00:00.000Z",
-            },
-          ],
-        }}
-      />,
-    );
-
-    expect(
-      screen
-        .getAllByRole("link", { name: /prepare follow-up/i })
-        .every(
-          (link) =>
-            link.getAttribute("href") ===
-            "/sessions/room-1?mode=outputs#client-follow-up",
-        ),
-    ).toBe(true);
-    expect(screen.getAllByLabelText("Done")).toHaveLength(3);
-    expect(screen.getByLabelText("Next")).toBeInTheDocument();
+  it("opens a real short recording instead of sending people back into the call", () => {
+    const cards = buildCoachingQuickPath({ ...input, recordingSources: [recording] });
+    expect(cards.find(card => card.id === "record")).toMatchObject({
+      status: "Available", href: "/sessions/room-1?mode=recordings", action: "Open recordings",
+    });
+    render(<SessionCoachingQuickPath {...input} recordingSources={[recording]} />);
+    expect(screen.getByRole("navigation", { name: "Session actions" })).toHaveTextContent("Open recordings");
   });
 
-  it("does not call historical transcript or follow-up evidence complete before the recording is ready", () => {
-    const steps = buildCoachingQuickPath({
-      roomId: "room-1",
-      preparation,
-      contentReadiness: { status: "capture-proof-only" },
-      finishingEvidence: {
-        ...emptyFinishing,
-        transcriptJobs: [
-          {
-            id: "transcript-1",
-            recordingAssetId: "asset-1",
-            status: "COMPLETED",
-            segmentCount: 12,
-            updatedAt: "2026-08-19T22:00:00.000Z",
-          },
-        ],
-        outputs: [
-          {
-            id: "follow-up-1",
-            kind: "CLIENT_FOLLOW_UP",
-            status: "RELEASED",
-            deliveryCount: 1,
-            updatedAt: "2026-08-19T22:10:00.000Z",
-          },
-        ],
-      },
-    });
-
-    expect(steps.map((step) => step.state)).toEqual([
-      "DONE",
-      "NEXT",
-      "LATER",
-      "LATER",
-    ]);
-    expect(steps[2].detail).toMatch(/matching the transcript/i);
-    expect(steps[3].detail).toMatch(/ready to reconnect/i);
+  it("does not present a held or missing protected source as playable", () => {
+    for (const source of [{ ...recording, status: "HELD" as const }, { ...recording, protectedPlayback: null }]) {
+      expect(buildCoachingQuickPath({ ...input, recordingSources: [source] }).find(card => card.id === "record"))
+        .toMatchObject({ status: "Needs attention", action: "Open recordings" });
+    }
   });
 
-  it("does not advance to follow-up when completed provider text still needs speaker review", () => {
-    const steps = buildCoachingQuickPath({
-      roomId: "room-1",
-      preparation,
-      contentReadiness: { status: "substantial" },
-      finishingEvidence: {
-        ...emptyFinishing,
-        transcriptJobs: [{
-          id: "transcript-1",
-          recordingAssetId: "asset-1",
-          status: "COMPLETED",
-          segmentCount: 12,
-          readiness: {
-            state: "REVIEW_REQUIRED",
-            detail: "Mixed-room speaker labels remain candidates.",
-          } as any,
-          updatedAt: "2026-08-19T22:00:00.000Z",
-        }],
-      },
-    });
+  it("keeps existing text editable while speaker labels need attention", () => {
+    const cards = buildCoachingQuickPath({ ...input, recordingSources: [recording], finishingEvidence: {
+      ...emptyFinishing, transcriptJobs: [{ ...transcript, readiness: {
+        state: "REVIEW_REQUIRED", detail: "Speaker labels may need correction.",
+      } as NonNullable<SessionFinishingEvidence["transcriptJobs"][number]["readiness"]> }],
+    } });
+    expect(cards.find(card => card.id === "transcript")).toMatchObject({ status: "Available", action: "Open transcript" });
+    expect(cards.find(card => card.id === "transcript")?.detail).toMatch(/speaker|timing/i);
+    expect(cards.find(card => card.id === "work")).toMatchObject({ status: "Always available" });
+  });
 
-    expect(steps.map((step) => step.state)).toEqual(["DONE", "DONE", "NEXT", "LATER"]);
-    expect(steps[2].detail).toMatch(/timing or speaker check/i);
+  it("does not let old completed text conceal a newer failed attempt", () => {
+    const cards = buildCoachingQuickPath({ ...input, finishingEvidence: {
+      ...emptyFinishing, transcriptJobs: [transcript, { ...transcript, id: "retry", status: "FAILED", segmentCount: 0, updatedAt: "2026-09-07T11:00:00.000Z" }],
+    } });
+    expect(cards.find(card => card.id === "transcript")).toMatchObject({ status: "Needs attention", action: "Open transcript" });
+  });
+
+  it("links a released follow-up independently of recording length or transcript review", () => {
+    render(<SessionCoachingQuickPath {...input} audience="participant" finishingEvidence={{ ...emptyFinishing, outputs: [{
+      id: "follow-up", kind: "CLIENT_FOLLOW_UP", status: "RELEASED", deliveryCount: 0, updatedAt: "2026-09-07T10:00:00.000Z",
+    }] }} />);
+    expect(screen.getByRole("link", { name: "Shared follow-up" })).toHaveAttribute("href", "/sessions/room-1?mode=outputs#client-follow-up");
+    expect(screen.getByRole("link", { name: "Session notes" })).toHaveAttribute("href", "/sessions/room-1?mode=notes");
   });
 });
