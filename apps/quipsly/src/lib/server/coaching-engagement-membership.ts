@@ -16,6 +16,7 @@ import {
   normalizeEmail,
 } from "@/lib/server/studio-user-identity";
 import { recordQuipslyProductOutcome } from "@/lib/server/product-event";
+import { reconcileCoachingMemberCalls } from "./session-access-reconciliation";
 
 const INVITABLE_ROLES = ["CLIENT", "COACH", "SUPPORT", "OBSERVER"] as const;
 const INVITATION_LIFETIME_MS = 7 * 24 * 60 * 60 * 1_000;
@@ -185,6 +186,10 @@ export async function loadCoachingEngagementMembershipBoundary(input: {
           actor: { select: { name: true } },
         },
       },
+      callRooms: { select: { participants: {
+        where: { providerAccessStatus: { in: ["PENDING", "BLOCKED", "FAILED"] } },
+        select: { userId: true },
+      } } },
     },
   });
   if (!engagement) {
@@ -201,6 +206,8 @@ export async function loadCoachingEngagementMembershipBoundary(input: {
       project: engagement.project,
     },
     members: engagement.members.map(memberProjection),
+    pendingCallDisconnectionUserIds: [...new Set(engagement.callRooms.flatMap((room: any) =>
+      room.participants.map((participant: any) => participant.userId).filter(Boolean)))],
     invitations: engagement.invitations.map(invitationProjection),
     receipts: engagement.memberReceipts.map((receipt: any) => ({
       id: receipt.id,
@@ -477,7 +484,10 @@ export async function changeCoachingEngagementMemberAccess(input: {
       where: { id: member.id },
       include: { user: { select: { name: true, primaryEmail: true } } },
     });
-    return { replayed: true, member: memberProjection(current), receiptId: existingReceipt.id };
+    const calls = input.action === "REMOVE"
+      ? await reconcileCoachingMemberCalls({ ...input, userId: member.userId, actorUserId: input.actor.id, prisma })
+      : null;
+    return { replayed: true, member: memberProjection(current), receiptId: existingReceipt.id, calls };
   }
   const expectedStatus = input.action === "REMOVE" ? "ACTIVE" : "REMOVED";
   const nextStatus = input.action === "REMOVE" ? "REMOVED" : "ACTIVE";
@@ -515,6 +525,14 @@ export async function changeCoachingEngagementMemberAccess(input: {
         "ACCESS_CHANGED",
       );
     }
+    await tx.callParticipant.updateMany({
+      where: { userId: member.userId, room: { coachingEngagementId: input.engagementId, provider: "livekit" },
+        ...(input.action === "RESTORE" ? { accessStatus: "ACTIVE" } : {}) },
+      data: {
+        providerAccessStatus: input.action === "REMOVE" ? "PENDING" : "NOT_REQUIRED",
+        providerAccessReconciledAt: null, providerAccessErrorCode: null,
+      },
+    });
     const receipt = await tx.coachingEngagementMemberReceipt.create({
       data: {
         requestId: input.requestId,
@@ -546,15 +564,19 @@ export async function changeCoachingEngagementMemberAccess(input: {
     });
     return { receipt, current };
   }, { isolationLevel: "Serializable" });
+  const calls = input.action === "REMOVE"
+    ? await reconcileCoachingMemberCalls({ ...input, userId: member.userId, actorUserId: input.actor.id, prisma })
+    : null;
   return {
     replayed: false,
     member: memberProjection(result.current),
     receiptId: result.receipt.id,
+    calls,
     boundaries: {
       canonicalAccessChanged: true,
       historyPreserved: true,
       NestAccessGrantChanged: false,
-      externalSideEffects: false,
+      providerDisconnectionRequested: input.action === "REMOVE",
     },
   };
 }

@@ -42,9 +42,24 @@ Sessions: explicit space members inherit their current role, while a guest
 invited to one Session does not gain the whole relationship. Removed space
 members cannot regain API access through retained bookings, participant rows,
 or Nest grants. This does not yet unify the underlying membership tables.
-Disconnecting already-connected provider clients after a space-level removal
-still needs to be integrated with the existing participant-provider
-reconciliation mechanism; database authorization alone does not prove that.
+Space removal now marks provider disconnection pending in that same database
+transaction, then attempts it through the existing LiveKit administrator client.
+The participant and source records remain intact. A signed participant-join
+webhook and `/api/cron/session-access` reuse the canonical Session join policy;
+they do not maintain another membership table. Pending provider status survives
+process failure, and the maintenance pass also checks active rooms for reused
+self-hosted tokens. Restoring membership cancels pending removal work without
+automatically rejoining a device. A concurrent restore during a provider request
+can require one rejoin; PostgreSQL and LiveKit cannot commit atomically.
+
+The local three-browser LiveKit test proves targeted disconnection and restore.
+Production completion additionally requires the room-level join webhook and an
+OIDC-authenticated scheduler targeting this route, using
+`SESSION_ACCESS_WORKER_SERVICE_ACCOUNT` and `SESSION_ACCESS_WORKER_AUDIENCE`.
+Those external settings are not established by the implementation or local test.
+Self-hosted tokens are not invalidated by removal: webhook/periodic enforcement
+is eventual, unlike LiveKit Cloud token revocation. Do not label that boundary
+as instantaneous or imply recorded token expiry covers provider-refreshed tokens.
 
 ## Decision
 

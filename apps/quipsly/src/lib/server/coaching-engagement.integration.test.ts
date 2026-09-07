@@ -2,8 +2,10 @@
 
 jest.mock("server-only", () => ({}));
 jest.mock("@/auth", () => ({ auth: jest.fn() }));
+jest.mock("livekit-server-sdk", () => ({ ...jest.requireActual("livekit-server-sdk"), RoomServiceClient: jest.fn() }));
 
 import { randomUUID } from "node:crypto";
+import { RoomServiceClient } from "livekit-server-sdk";
 
 import { getPrismaClient } from "@/lib/prisma";
 import { createCoachingClientSpace, coachingClientSchedulingContext } from "./coaching-client-space";
@@ -18,6 +20,7 @@ import {
   sessionInvitationAccessWhere,
 } from "./session-access";
 import { captureRoomAccessWhere } from "./mobile-capture-room-join-diagnostics";
+import { reconcileLiveSessionAccess, reconcileLiveKitParticipantJoin } from "./session-access-reconciliation";
 import {
   acceptCoachingEngagementInvitation,
   changeCoachingEngagementMemberAccess,
@@ -143,6 +146,86 @@ runLocalDatabaseSmoke("private Coaching Engagement collaboration", () => {
       expect(await prisma.coachingEngagement.findFirst({ where: coachingEngagementAccessWhere(first.id, { id: userId }, "read") })).not.toBeNull();
     }
     expect(await prisma.coachingEngagement.findFirst({ where: coachingEngagementAccessWhere(first.id, { id: ids.outsider }, "read") })).toBeNull();
+  });
+
+  it("disconnects removed space members, retries provider outages, rejects token reuse, and preserves other spaces and restoration", async () => {
+    const environment = { ...process.env };
+    const spaces: string[] = [];
+    const rooms: string[] = [];
+    const makeSpace = async () => {
+      const space = await prisma.coachingEngagement.create({ data: {
+        projectId: ids.project, title: "Synthetic call access rehearsal",
+        members: { create: [{ userId: ids.coach, role: "COACH" }, { userId: ids.client, role: "CLIENT" }] },
+      } });
+      spaces.push(space.id);
+      const room = await prisma.callRoom.create({ data: {
+        projectId: ids.project, coachingEngagementId: space.id, title: "Synthetic call",
+        createdByUserId: ids.coach, provider: "livekit", providerRoomId: `test-${randomUUID()}`,
+        participants: { create: [{ userId: ids.client, role: "CLIENT" }, { userId: ids.coach, role: "COACH" }] },
+      }, include: { participants: true } });
+      rooms.push(room.id);
+      return { space, room, client: room.participants.find(p => p.userId === ids.client)! };
+    };
+    try {
+      const first = await makeSpace();
+      const second = await makeSpace();
+      const member = await prisma.coachingEngagementMember.findUniqueOrThrow({ where: {
+        engagementId_userId: { engagementId: first.space.id, userId: ids.client },
+      } });
+      const active = new Map([
+        [first.room.providerRoomId!, new Set([`${first.client.id}:web`, `${first.client.id}:ios`, "unrelated-device"])],
+        [second.room.providerRoomId!, new Set([`${second.client.id}:web`])],
+      ]);
+      for (const suffix of ["web", "ios"]) await prisma.callParticipantProviderGrantReceipt.create({ data: {
+        roomId: first.room.id, participantId: first.client.id, tokenJti: randomUUID(),
+        providerIdentity: `${first.client.id}:${suffix}`, providerRoomId: first.room.providerRoomId!,
+        clientKind: suffix, issuedAt: new Date(Date.now() - 120_000), expiresAt: new Date(Date.now() - 60_000),
+      } });
+      const removeParticipant = jest.fn(async (room: string, identity: string) => { active.get(room)?.delete(identity); });
+      const listParticipants = jest.fn(async (room: string) => [...active.get(room) ?? []].map(identity => ({ identity })));
+      listParticipants.mockRejectedValueOnce(new Error("Synthetic provider outage"));
+      jest.mocked(RoomServiceClient).mockImplementation(() => ({
+        listRooms: jest.fn(async () => [...active.keys()].map(name => ({ name }))),
+        listParticipants, removeParticipant,
+      }) as unknown as RoomServiceClient);
+      process.env.LIVEKIT_URL = "wss://synthetic.livekit.cloud";
+      process.env.LIVEKIT_API_KEY = "synthetic-key";
+      process.env.LIVEKIT_API_SECRET = "synthetic-secret";
+      const request = { prisma, engagementId: first.space.id, memberId: member.id,
+        actor: { id: ids.coach }, action: "REMOVE" as const, expectedRevision: 0, requestId: randomUUID() };
+      await expect(changeCoachingEngagementMemberAccess({ ...request, actor: { id: ids.outsider } })).rejects.toMatchObject({ status: 404 });
+      expect(listParticipants).not.toHaveBeenCalled();
+      const removed = await changeCoachingEngagementMemberAccess(request);
+      expect(removed.calls).toMatchObject({ pending: true });
+      expect(await prisma.callRoom.findFirst({ where: captureRoomAccessWhere(first.room.id, { id: ids.client }) })).toBeNull();
+      expect(await prisma.callParticipant.findUnique({ where: { id: first.client.id } })).toMatchObject({ accessStatus: "ACTIVE", providerAccessStatus: "FAILED" });
+      expect(active.get(first.room.providerRoomId!)!.size).toBe(3);
+
+      expect(await reconcileLiveSessionAccess({ prisma })).toMatchObject({ failed: 0, deferred: 0 });
+      expect(active.get(first.room.providerRoomId!)).toEqual(new Set(["unrelated-device"]));
+      expect(active.get(second.room.providerRoomId!)).toEqual(new Set([`${second.client.id}:web`]));
+      expect(await prisma.callParticipantProviderGrantReceipt.count({ where: { participantId: first.client.id } })).toBe(2);
+      expect(await prisma.callParticipant.findUnique({ where: { id: first.client.id } })).toMatchObject({ accessStatus: "ACTIVE", providerAccessStatus: "CONVERGED" });
+      expect(await prisma.callParticipantAccessReceipt.count({ where: { participantId: first.client.id, action: "PROVIDER_RECONCILE" } })).toBe(2);
+
+      const joined = { eventId: randomUUID(), eventType: "participant_joined", createdAt: null, egress: null,
+        raw: { room: { name: first.room.providerRoomId }, participant: { identity: `${first.client.id}:web` } } };
+      active.get(first.room.providerRoomId!)!.add(`${first.client.id}:web`);
+      expect(await reconcileLiveKitParticipantJoin(joined, prisma)).toMatchObject({ status: "CONVERGED" });
+      expect(active.get(first.room.providerRoomId!)!.has(`${first.client.id}:web`)).toBe(false);
+
+      await changeCoachingEngagementMemberAccess({ ...request, action: "RESTORE", expectedRevision: 1, requestId: randomUUID() });
+      active.get(first.room.providerRoomId!)!.add(`${first.client.id}:web`);
+      const callsBeforeRestoreReadback = removeParticipant.mock.calls.length;
+      expect(await reconcileLiveKitParticipantJoin(joined, prisma)).toEqual({ status: "NOT_REQUIRED" });
+      expect(await changeCoachingEngagementMemberAccess(request)).toMatchObject({ replayed: true, member: { status: "ACTIVE" } });
+      expect(removeParticipant.mock.calls).toHaveLength(callsBeforeRestoreReadback);
+      expect(await prisma.callRoom.findFirst({ where: captureRoomAccessWhere(first.room.id, { id: ids.client }) })).not.toBeNull();
+    } finally {
+      process.env = environment;
+      await prisma.callRoom.deleteMany({ where: { id: { in: rooms } } });
+      await prisma.coachingEngagement.deleteMany({ where: { id: { in: spaces } } });
+    }
   });
 
   it("rejects client-space creation by a non-coach and rejects self-coaching", async () => {
