@@ -6,6 +6,7 @@ import { getPrismaClient } from "@/lib/prisma";
 import { coachingEngagementAccessWhere } from "@/lib/server/coaching-engagement";
 import { sharedCoachingWorkVisibilityWhere } from "@/lib/server/coaching-work-access";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
+import { sessionWorkSourceHref } from "@/lib/session-work-source-link";
 
 export const runtime = "nodejs";
 
@@ -102,6 +103,7 @@ function notePayload(row: any, actorUserId: string, canWrite = true) {
     kind: "NOTE" as const,
     title: row.title,
     body: row.body,
+    sourceHref: sessionWorkSourceHref(row.roomId, row.sourceJson),
     status: null,
     owner: row.authorUser
       ? {
@@ -124,6 +126,7 @@ function taskPayload(row: any, canWrite = true) {
     kind: "TASK" as const,
     title: row.title,
     body: row.detail,
+    sourceHref: sessionWorkSourceHref(row.roomId, row.sourceJson),
     status: String(row.status),
     owner: row.assignedUser
       ? {
@@ -145,6 +148,7 @@ function goalPayload(row: any, canWrite = true) {
     kind: "GOAL" as const,
     title: row.title,
     body: row.description,
+    sourceHref: sessionWorkSourceHref(row.roomId, row.sourceJson),
     status: String(row.status),
     owner: {
       id: row.ownerUserId,
@@ -160,6 +164,7 @@ function goalPayload(row: any, canWrite = true) {
 
 const NOTE_SELECT = {
   id: true,
+  roomId: true,
   authorUserId: true,
   title: true,
   body: true,
@@ -172,6 +177,7 @@ const NOTE_SELECT = {
 
 const TASK_SELECT = {
   id: true,
+  roomId: true,
   assignedUserId: true,
   title: true,
   detail: true,
@@ -185,6 +191,7 @@ const TASK_SELECT = {
 
 const GOAL_SELECT = {
   id: true,
+  roomId: true,
   ownerUserId: true,
   title: true,
   description: true,

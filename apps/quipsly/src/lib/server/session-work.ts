@@ -4,6 +4,7 @@ import { isUnreviewedTranscriptActionItemSource } from "@high-ground/quipsly-dom
 import { sessionActorAccessWhere, type SessionAccessActor } from "./session-access";
 import { coachingTaskCollaborationAccessWhere, personalOrSharedCoachingGoalAccessWhere } from "./coaching-work-access";
 import { personalOrSharedSessionTaskAccessWhere } from "./task-access";
+import { sessionWorkSourceHref } from "../session-work-source-link";
 
 function object(value: unknown): Record<string, any> {
   return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, any> : {};
@@ -53,15 +54,11 @@ export async function loadSessionWork(input: {
     !isUnreviewedTranscriptActionItemSource(row.sourceJson))
     .map((row) => {
       const source = object(row.sourceJson);
-      const fromTranscript = source.origin === "quipsly-session-follow-through";
+      const sourceHref = sessionWorkSourceHref(roomId, source);
+      const fromTranscript = sourceHref !== null;
       const visibility = source.visibility === "engagement-shared"
         ? "ENGAGEMENT_SHARED" as const
         : source.visibility === "SESSION_SHARED" ? "SESSION_SHARED" as const : "AUTHOR_PRIVATE" as const;
-      // Selecting a recording seeks within that source, not the assembled session clock.
-      const at = typeof source.sourceStartSeconds === "number" ? source.sourceStartSeconds : source.startSeconds;
-      const sourceQuery = new URLSearchParams({ mode: "transcript" });
-      if (typeof source.recordingAssetId === "string") sourceQuery.set("source", source.recordingAssetId);
-      if (typeof at === "number" && Number.isFinite(at) && at >= 0) sourceQuery.set("at", String(at));
       return {
         id: row.id, kind: row.kind, title: row.title, body: row.body ?? null, status: String(row.status),
         createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString(),
@@ -69,7 +66,7 @@ export async function loadSessionWork(input: {
         ownedByCurrentActor: row.userId === actor.id,
         ownerLabel: row.user?.name || row.user?.primaryEmail || "Unassigned",
         canEdit: writable.has(row.id), fromTranscript,
-        sourceHref: fromTranscript && source.roomId === roomId ? `/sessions/${encodeURIComponent(roomId)}?${sourceQuery}` : null,
+        sourceHref,
         tags: (row.tagLinks || []).map((link: any) => link.tag)
           .filter((tag: any) => tag.isActive && tag.projectId === room.projectId)
           .map(({ id, label, slug }: any) => ({ id, label, slug })),

@@ -25,6 +25,7 @@ import {
 import { getPrismaClient } from "@/lib/prisma";
 import { coachingEngagementAccessWhere } from "@/lib/server/coaching-engagement";
 import { sharedCoachingWorkVisibilityWhere } from "@/lib/server/coaching-work-access";
+import { sessionWorkSourceHref } from "@/lib/session-work-source-link";
 import { getQuipslySession } from "@/lib/server/quipsly-session";
 
 export const dynamic = "force-dynamic";
@@ -128,6 +129,7 @@ export default async function CoachingEngagementPage({
           body: true,
           visibility: true,
           authorUserId: true,
+          roomId: true,
           sourceJson: true,
           createdAt: true,
           updatedAt: true,
@@ -145,6 +147,7 @@ export default async function CoachingEngagementPage({
           status: true,
           dueAt: true,
           assignedUserId: true,
+          roomId: true,
           sourceJson: true,
           createdAt: true,
           updatedAt: true,
@@ -162,6 +165,7 @@ export default async function CoachingEngagementPage({
           status: true,
           targetAt: true,
           ownerUserId: true,
+          roomId: true,
           sourceJson: true,
           createdAt: true,
           updatedAt: true,
@@ -213,6 +217,7 @@ export default async function CoachingEngagementPage({
       kind: "NOTE" as const,
       title: note.title,
       body: note.body,
+      sourceHref: sessionWorkSourceHref(note.roomId, note.sourceJson),
       status: null,
       owner: note.authorUser
         ? { id: note.authorUserId!, label: personLabel(note.authorUser) }
@@ -235,6 +240,7 @@ export default async function CoachingEngagementPage({
       kind: "TASK" as const,
       title: task.title,
       body: task.detail,
+      sourceHref: sessionWorkSourceHref(task.roomId, task.sourceJson),
       status: String(task.status),
       owner: task.assignedUser
         ? { id: task.assignedUserId!, label: personLabel(task.assignedUser) }
@@ -251,6 +257,7 @@ export default async function CoachingEngagementPage({
       kind: "GOAL" as const,
       title: goal.title,
       body: goal.description,
+      sourceHref: sessionWorkSourceHref(goal.roomId, goal.sourceJson),
       status: String(goal.status),
       owner: { id: goal.ownerUserId, label: personLabel(goal.owner) },
       visibility: "SHARED" as const,

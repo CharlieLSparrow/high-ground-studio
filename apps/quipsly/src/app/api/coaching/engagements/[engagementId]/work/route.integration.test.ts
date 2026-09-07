@@ -67,6 +67,7 @@ if (enabled) {
 
   afterAll(async () => {
     try {
+      await prisma.coachingNote.deleteMany({where: {engagementId}});
       await prisma.actionItem.deleteMany({where: {engagementId}});
       await prisma.goal.deleteMany({where: {engagementId}});
       await prisma.callRoom.deleteMany({where: {id: roomId}});
@@ -92,21 +93,26 @@ if (enabled) {
 
   it.each(["TASK", "GOAL"] as const)("edits, removes, and restores shared %s without losing its recording source", async (kind) => {
     const original = await seed(kind);
+    const sourceHref = `/sessions/${roomId}?mode=transcript&source=retained-source-fixture&at=12`;
+    expect((await act("GET")).body.engagement.entries.find((entry: {id: string}) => entry.id === original.id))
+      .toMatchObject({sourceHref});
     const saved = await act("PATCH", {kind, id: original.id, expectedUpdatedAt: original.updatedAt.toISOString(),
       title: "Clarified together", body: "Same work in the client space and session", ownerUserId: coach!.id,
       status: kind === "TASK" ? "DONE" : "ACHIEVED", targetAt: "2026-09-20T15:30:00.000Z"});
-    expect(saved).toMatchObject({status: 200, body: {ok: true, entry: {id: original.id, title: "Clarified together"}}});
+    expect(saved).toMatchObject({status: 200, body: {ok: true, entry: {id: original.id, title: "Clarified together", sourceHref}}});
     const updated = await row(kind, original.id);
     expect(updated.sourceJson).toMatchObject(original.sourceJson as object);
     const sessionWork = await loadSessionWork({prisma, roomId, actor: coach!});
-    expect(sessionWork.find((entry) => entry.id === original.id)).toMatchObject({title: "Clarified together", status: kind === "TASK" ? "DONE" : "ACHIEVED"});
+    expect(sessionWork.find((entry) => entry.id === original.id)).toMatchObject({title: "Clarified together", status: kind === "TASK" ? "DONE" : "ACHIEVED", sourceHref});
     expect((await act("PATCH", {kind, id: original.id, expectedUpdatedAt: original.updatedAt.toISOString(),
       title: "Stale edit", ownerUserId: coach!.id, status: kind === "TASK" ? "OPEN" : "ACTIVE"})).status).toBe(409);
     const removed = await act("DELETE", {kind, id: original.id, expectedUpdatedAt: updated.updatedAt.toISOString()});
     expect(removed).toMatchObject({status: 200, body: {ok: true, undoAvailable: true}});
     expect((await act("GET")).body.engagement.entries.some((entry: {id: string}) => entry.id === original.id)).toBe(false);
     const restored = await act("PUT", {kind, id: original.id, expectedUpdatedAt: removed.body.removal.updatedAt});
-    expect(restored).toMatchObject({status: 200, body: {entry: {id: original.id, title: "Clarified together", status: kind === "TASK" ? "DONE" : "ACHIEVED"}}});
+    expect(restored).toMatchObject({status: 200, body: {entry: {id: original.id, title: "Clarified together", status: kind === "TASK" ? "DONE" : "ACHIEVED", sourceHref}}});
+    expect((await act("GET")).body.engagement.entries.find((entry: {id: string}) => entry.id === original.id))
+      .toMatchObject({sourceHref});
     expect((await row(kind, original.id)).sourceJson).toMatchObject(original.sourceJson as object);
   });
 
@@ -130,5 +136,23 @@ if (enabled) {
       }
     }
     finally { await prisma.coachingEngagementMember.update({where: {engagementId_userId: {engagementId, userId: client!.id}}, data: {status: "ACTIVE"}}); }
+  });
+
+  it("retains a shared note's source through edits, removal, restore, and a fresh read", async () => {
+    const original = await prisma.coachingNote.create({data: {engagementId, roomId, authorUserId: coach!.id,
+      title: "Shared recording note", body: "Original words", visibility: "SESSION_SHARED",
+      sourceJson: {origin: "quipsly-session-follow-through", roomId, recordingAssetId: "note-source", sourceStartSeconds: 7.25},
+    }});
+    const sourceHref = `/sessions/${roomId}?mode=transcript&source=note-source&at=7.25`;
+    const saved = await act("PATCH", {kind: "NOTE", id: original.id, expectedUpdatedAt: original.updatedAt.toISOString(),
+      title: "Our clearer wording", body: "Written together", visibility: "SHARED"});
+    expect(saved).toMatchObject({status: 200, body: {entry: {id: original.id, sourceHref}}});
+    const removed = await act("DELETE", {kind: "NOTE", id: original.id, expectedUpdatedAt: saved.body.entry.updatedAt});
+    expect(removed.status).toBe(200);
+    const restored = await act("PUT", {kind: "NOTE", id: original.id, expectedUpdatedAt: removed.body.removal.updatedAt});
+    expect(restored).toMatchObject({status: 200, body: {entry: {id: original.id, sourceHref}}});
+    expect((await act("GET")).body.engagement.entries.find((entry: {id: string}) => entry.id === original.id))
+      .toMatchObject({title: "Our clearer wording", body: "Written together", sourceHref});
+    expect((await prisma.coachingNote.findUniqueOrThrow({where: {id: original.id}})).sourceJson).toMatchObject(original.sourceJson as object);
   });
 });

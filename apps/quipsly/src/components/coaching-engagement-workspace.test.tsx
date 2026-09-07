@@ -18,6 +18,7 @@ const sharedTask = {
   id: "dated-task", kind: "TASK" as const, title: "Keep a morning writing habit", body: "Ten minutes",
   status: "OPEN", owner: {id: "client-1", label: "Riley Client"}, visibility: "SHARED" as const,
   dueAt: "2026-09-20T15:30:00.000Z", canEdit: true,
+  sourceHref: "/sessions/room-1?mode=transcript&source=asset-1&at=2.34",
   createdAt: "2026-09-07T00:00:00.000Z", updatedAt: "2026-09-07T00:00:00.000Z",
 };
 
@@ -32,6 +33,17 @@ describe("CoachingEngagementWorkspace", () => {
     render(<CoachingEngagementWorkspace engagementId="engagement-1" initialEntries={[sharedTask]} members={members} currentUserId="client-1" canWrite />);
     await userEvent.click(screen.getByRole("button", {name: "Complete"}));
     expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toMatchObject({status: "DONE", targetAt: sharedTask.dueAt});
+    expect(await screen.findByRole("button", {name: "Reopen"})).toBeInTheDocument();
+    expect(screen.getByRole("link", {name: `From recording: ${sharedTask.title}`})).toHaveAttribute("href", sharedTask.sourceHref);
+  });
+
+  it("makes sources available to read-only members without adding fake links to manual notes", () => {
+    render(<CoachingEngagementWorkspace engagementId="engagement-1" initialEntries={[
+      sharedTask, { ...sharedTask, id: "manual-note", kind: "NOTE", title: "My own words", sourceHref: null },
+    ]} members={members} currentUserId="client-1" canWrite={false} />);
+    expect(screen.getAllByRole("link")).toHaveLength(1);
+    expect(screen.getByRole("link", {name: `From recording: ${sharedTask.title}`})).toHaveAttribute("href", sharedTask.sourceHref);
+    expect(screen.queryByRole("button", {name: "Complete"})).not.toBeInTheDocument();
   });
 
   it("retains an edited draft after a failed save and preserves an unchanged due time", async () => {
@@ -146,6 +158,7 @@ describe("CoachingEngagementWorkspace", () => {
       kind: "TASK" as const,
       title: "Practice reflective listening",
       body: "Try it twice before Friday.",
+      sourceHref: sharedTask.sourceHref,
       status: "OPEN",
       owner: { id: "client-1", label: "Riley Client" },
       visibility: "SHARED" as const,
@@ -204,5 +217,6 @@ describe("CoachingEngagementWorkspace", () => {
       await screen.findByRole("heading", { name: entry.title }),
     ).toBeInTheDocument();
     expect(fetchMock.mock.calls[1][1]).toMatchObject({ method: "PUT" });
+    expect(screen.getByRole("link", {name: `From recording: ${entry.title}`})).toHaveAttribute("href", sharedTask.sourceHref);
   });
 });

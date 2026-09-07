@@ -1673,7 +1673,6 @@ function summarizeSegments(
     ...(duration ? [`Recording span: ${duration}`, ""] : []),
     "Everything here is editable. Change it, complete it, or remove it whenever you like.",
     "",
-    "Timestamps stay linked to the recording so you can return to the source at any time.",
   ].join("\n");
 }
 

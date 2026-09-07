@@ -6,25 +6,30 @@ import { getPrismaClient } from "@/lib/prisma";
 import { getQuipslySession } from "@/lib/server/quipsly-session";
 import { coachingEngagementAccessWhere } from "@/lib/server/coaching-engagement";
 import { sharedCoachingWorkVisibilityWhere } from "@/lib/server/coaching-work-access";
+import type { CoachingEngagementWorkEntry } from "@/components/coaching-engagement-workspace";
 
 jest.mock("@/lib/prisma", () => ({ getPrismaClient: jest.fn() }));
 jest.mock("@/lib/server/quipsly-session", () => ({ getQuipslySession: jest.fn() }));
 jest.mock("next/navigation", () => ({ notFound: jest.fn(() => { throw new Error("NOT_FOUND"); }) }));
 jest.mock("@/components/session-thread", () => ({ CollaborationThread: () => null }));
 jest.mock("@/components/coaching-engagement-member-manager", () => ({ CoachingEngagementMemberManager: () => <h2>Manage people</h2> }));
-jest.mock("@/components/coaching-engagement-workspace", () => ({ CoachingEngagementWorkspace: ({ canWrite }: { canWrite: boolean }) => <button disabled={!canWrite}>Add shared note</button> }));
+jest.mock("@/components/coaching-engagement-workspace", () => ({ CoachingEngagementWorkspace: ({ canWrite, initialEntries }: { canWrite: boolean; initialEntries: CoachingEngagementWorkEntry[] }) => <>
+  <button disabled={!canWrite}>Add shared note</button>
+  {initialEntries.map((entry) => entry.sourceHref ? <a key={entry.id} href={entry.sourceHref}>{entry.title} source</a> : null)}
+</> }));
 jest.mock("@/components/coaching-space-tabs", () => ({ CoachingSpaceTabs: ({ work, people }: { work: ReactNode; people?: ReactNode }) => <>{work}{people}</> }));
 
 const prisma = { coachingEngagement: { findFirst: jest.fn() } };
 const params = Promise.resolve({ engagementId: "space" });
 const person = { id: "person", primaryEmail: "person@example.test", isStaff: false };
-function arrange(role: "COACH" | "CLIENT" | "OBSERVER", canManage = false) {
+function arrange(role: "COACH" | "CLIENT" | "OBSERVER", canManage = false, work: Record<string, unknown> = {}) {
   prisma.coachingEngagement.findFirst.mockResolvedValueOnce({
     id: "space", title: "Our shared work", status: "ACTIVE",
     primaryCoachUserId: "coach", primaryClientUserId: "client",
     project: { id: "project", slug: "private-space", name: "Private space" },
     members: [{ role, userId: person.id, user: { name: "Test person", primaryEmail: person.primaryEmail } }],
     callRooms: [], notes: [], actionItems: [], goals: [], formAssignments: [],
+    ...work,
   }).mockResolvedValueOnce(canManage ? { id: "space" } : null);
 }
 
@@ -60,6 +65,27 @@ describe("client space page behavior", () => {
     expect(screen.getByRole("link", { name: /schedule/i })).toHaveAttribute("href", "/coaching?clientSpace=space#create-appointment");
     expect(screen.getByRole("heading", { name: "Manage people" })).toBeInTheDocument();
     expect(prisma.coachingEngagement.findFirst.mock.calls[1][0].where).toEqual(coachingEngagementAccessWhere("space", person, "manage"));
+  });
+
+  it("projects notes, tasks, and goals back to their stored session without inventing manual-note sources", async () => {
+    const common = {roomId: "room-1", createdAt: new Date(), updatedAt: new Date(),
+      sourceJson: {origin: "quipsly-session-follow-through", roomId: "room-1", recordingAssetId: "asset-1", sourceStartSeconds: 4},
+    };
+    arrange("CLIENT", false, {
+      notes: [{...common, id: "note", title: "Recap", body: "Our session", visibility: "SESSION_SHARED"},
+        {...common, id: "manual", title: "Manual", body: "My words", visibility: "SESSION_SHARED", roomId: null}],
+      actionItems: [{...common, id: "task", title: "Task", status: "OPEN"}],
+      goals: [{...common, id: "goal", title: "Goal", status: "ACTIVE", ownerUserId: person.id, owner: person}],
+    });
+    render(await Page({params}));
+    for (const title of ["Recap", "Task", "Goal"]) {
+      expect(screen.getByRole("link", {name: `${title} source`})).toHaveAttribute("href", "/sessions/room-1?mode=transcript&source=asset-1&at=4");
+    }
+    expect(screen.queryByRole("link", {name: "Manual source"})).not.toBeInTheDocument();
+    const query = prisma.coachingEngagement.findFirst.mock.calls[0][0];
+    for (const relation of ["notes", "actionItems", "goals"]) {
+      expect(query.select[relation].select).toMatchObject({roomId: true, sourceJson: true});
+    }
   });
 
   it("keeps observers read-only", async () => {

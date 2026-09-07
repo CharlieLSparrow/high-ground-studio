@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import {
   Check,
   CheckCircle2,
@@ -20,6 +21,7 @@ export type CoachingEngagementWorkEntry = {
   kind: "NOTE" | "TASK" | "GOAL";
   title: string | null;
   body: string | null;
+  sourceHref?: string | null;
   status: string | null;
   owner: { id: string; label: string } | null;
   visibility: "PRIVATE" | "SHARED";
@@ -495,6 +497,15 @@ export function CoachingEngagementWorkspace({
                       <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-[#765f40]">
                         {entry.body}
                       </p>
+                    ) : null}
+                    {entry.sourceHref ? (
+                      <Link
+                        href={entry.sourceHref}
+                        className="mt-2 inline-flex min-h-11 items-center rounded-md px-1 text-sm font-bold text-[#41624b] underline underline-offset-4 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
+                        aria-label={`From recording: ${entry.title || "Untitled note"}`}
+                      >
+                        From recording
+                      </Link>
                     ) : null}
                     <p className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs font-bold text-[#8a7354]">
                       {entry.owner ? <span>{entry.owner.label}</span> : null}
