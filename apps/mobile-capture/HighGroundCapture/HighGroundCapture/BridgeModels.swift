@@ -5870,7 +5870,10 @@ final class CaptureTodayClient: ObservableObject {
                 "clientRequestId": decision.clientRequestID,
                 "expectedUpdatedAt": decision.expectedAnnotationUpdatedAt,
             ])
-            let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
+            let (data, response) = try await AuthManager.shared.authenticatedData(
+                for: request,
+                expectedOwnerAccountID: decision.ownerAccountID
+            )
             let payload = try decodeMobileCaptureResponse(
                 MobileCaptureTodayMutationResponse.self,
                 from: data,
@@ -6011,7 +6014,10 @@ final class CaptureTodayClient: ObservableObject {
             ]
             body["expectedUpdatedAt"] = decision.expectedUpdatedAt ?? NSNull()
             request.httpBody = try JSONSerialization.data(withJSONObject: body)
-            let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
+            let (data, response) = try await AuthManager.shared.authenticatedData(
+                for: request,
+                expectedOwnerAccountID: decision.ownerAccountID
+            )
             let payload = try decodeMobileCaptureResponse(
                 MobileCaptureTodayMutationResponse.self,
                 from: data,
@@ -6106,7 +6112,10 @@ final class CaptureTodayClient: ObservableObject {
                 "expectedUpdatedAt": plan.expectedTaskUpdatedAt,
                 "clientRequestId": plan.clientRequestID,
             ])
-            let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
+            let (data, response) = try await AuthManager.shared.authenticatedData(
+                for: request,
+                expectedOwnerAccountID: plan.ownerAccountID
+            )
             let payload = try decodeMobileCaptureResponse(
                 MobileCaptureTodayMutationResponse.self,
                 from: data,
@@ -6200,7 +6209,10 @@ final class CaptureTodayClient: ObservableObject {
                 requestBody["actualMinutes"] = actualMinutes
             }
             request.httpBody = try JSONSerialization.data(withJSONObject: requestBody)
-            let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
+            let (data, response) = try await AuthManager.shared.authenticatedData(
+                for: request,
+                expectedOwnerAccountID: decision.ownerAccountID
+            )
             let payload = try decodeMobileCaptureResponse(
                 MobileCaptureTodayMutationResponse.self,
                 from: data,
@@ -6288,7 +6300,10 @@ final class CaptureTodayClient: ObservableObject {
             body["remindAtLocal"] = decision.requestedLocalDateTime ?? NSNull()
             body["expectedReminderUpdatedAt"] = decision.expectedReminderUpdatedAt ?? NSNull()
             request.httpBody = try JSONSerialization.data(withJSONObject: body)
-            let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
+            let (data, response) = try await AuthManager.shared.authenticatedData(
+                for: request,
+                expectedOwnerAccountID: decision.ownerAccountID
+            )
             let payload = try decodeMobileCaptureResponse(
                 MobileCaptureTodayMutationResponse.self,
                 from: data,
@@ -6379,7 +6394,10 @@ final class CaptureTodayClient: ObservableObject {
                 body["expectedTagRevision"] = expectedTagRevision
             }
             request.httpBody = try JSONSerialization.data(withJSONObject: body)
-            let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
+            let (data, response) = try await AuthManager.shared.authenticatedData(
+                for: request,
+                expectedOwnerAccountID: decision.ownerAccountID
+            )
             let payload = try decodeMobileCaptureResponse(
                 MobileCaptureWorkTagMutationResponse.self,
                 from: data,
@@ -7725,7 +7743,10 @@ final class CaptureWorkClient: ObservableObject {
             request.httpBody = try JSONEncoder().encode(
                 MobileCaptureWorkNoteEditRequest(edit: edit)
             )
-            let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
+            let (data, response) = try await AuthManager.shared.authenticatedData(
+                for: request,
+                expectedOwnerAccountID: edit.ownerAccountID
+            )
             let payload = try decodeMobileCaptureResponse(
                 MobileCaptureWorkNoteEditResponse.self,
                 from: data,
@@ -8980,7 +9001,10 @@ final class CaptureSessionClient: ObservableObject {
             request.httpMethod = "POST"
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
             request.httpBody = try JSONEncoder().encode(MobileQuickEntrySaveRequest(entry: entry))
-            let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
+            let (data, response) = try await AuthManager.shared.authenticatedData(
+                for: request,
+                expectedOwnerAccountID: entry.ownerAccountID
+            )
             let payload = try decodeCaptureSessionResponse(
                 MobileQuickEntrySaveResponse.self,
                 from: data,
@@ -9030,7 +9054,10 @@ final class CaptureSessionClient: ObservableObject {
             request.httpMethod = "PATCH"
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
             request.httpBody = try JSONEncoder().encode(MobileSessionNoteEditRequest(edit: edit))
-            let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
+            let (data, response) = try await AuthManager.shared.authenticatedData(
+                for: request,
+                expectedOwnerAccountID: edit.ownerAccountID
+            )
             let payload = try decodeCaptureSessionResponse(
                 MobileSessionNoteEditResponse.self,
                 from: data,
