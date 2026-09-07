@@ -374,6 +374,7 @@ function checkMeetingSpineContractSources() {
   );
   const episodeChatText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/MobileEpisodeChat.swift");
   const coachingHomeText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/CaptureCoachingHome.swift");
+  const coachingScheduleText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/CoachingScheduleUpdate.swift");
   const captureExperienceUITestText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCaptureUITests/CaptureExperienceUITests.swift");
   const nestChatRouteText = sourceText("apps/quipsly/src/app/api/nest-chat/route.ts");
   const sessionConversationText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/MobileSessionConversation.swift");
@@ -403,15 +404,13 @@ function checkMeetingSpineContractSources() {
     "Capture keeps relationship-wide conversation and Session continuity beside private/shared work on the iPhone.",
   );
   expect(
-    coachingHomeText.includes('"action": "reschedule-booking"')
+    coachingScheduleText.includes('"action": "reschedule-booking"')
+      && coachingHomeText.includes("MobileCoachingScheduleChange(")
+      && coachingHomeText.includes("performAction(command.body)")
       && coachingHomeText.includes('"action": "cancel-booking"')
-      && coachingHomeText.includes("CaptureCoachingManage_")
-      && coachingHomeText.includes("CaptureCoachingRescheduleSheet")
-      && coachingHomeText.includes("CaptureCoachingSaveReschedule")
-      && coachingHomeText.includes('["CANCELED", "COMPLETED", "NO_SHOW"]')
-      && coachingHomeText.includes("The client space and its existing work stay available."),
+      && coachingHomeText.includes("payload.result?.bookingId == booking.id"),
     "nativeCoachingSchedulingManagementParity",
-    "Capture lets an authorized coach reschedule or cancel a canonical appointment from the iPhone while preserving the client relationship and existing work.",
+    "Capture scheduling is wired to the canonical command and matching booking response. Operated native and database journeys separately prove usability and retained client work.",
   );
   expect(
     coachingHomeText.includes("MobilePublicCoachingOffering")

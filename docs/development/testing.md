@@ -205,6 +205,12 @@ verifier. CI and Fastlane route tests containing `RegularWidthIPad` to iPad;
 an executable parity test checks all currently discovered selectors, avoiding a
 separate release-only list that can silently omit new iPad coverage.
 
+The signed-in runtime runner uses the same exact-test verifier before reporting
+success, in addition to its summary and runtime-warning checks. Its current
+`voice-writing` mode records audio and saves a **separate typed draft**; it is
+not evidence of source-to-transcript-to-writing continuity. That requires opening
+the recording's own draft and checking its source-linked text and persistence.
+
 Native shared-work save recovery has a local fault-injection lane. Start Nest
 and Firebase Auth emulators, then run the proxy in a separate terminal:
 

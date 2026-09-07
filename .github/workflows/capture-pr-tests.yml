@@ -62,7 +62,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          node --test scripts/quipsly-ios-capture-durability-contract.test.mjs scripts/quipsly-ios-coordinated-podcast-capture.test.mjs scripts/quipsly-ios-capture-account-isolation.test.mjs
+          node --test scripts/quipsly-ios-capture-durability-contract.test.mjs scripts/quipsly-ios-coordinated-podcast-capture.test.mjs scripts/quipsly-ios-capture-account-isolation.test.mjs apps/mobile-capture/HighGroundCapture/scripts/runtime-result-verification.test.mjs
 
   deterministic-ui:
     needs: changes

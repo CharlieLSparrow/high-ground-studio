@@ -116,7 +116,8 @@ case "$TEST_MODE" in
     TEST_CASE="testSignedInCaptureRoomSurfacesAreVisible"
     ;;
   voice-writing)
-    TEST_CASE="testSignedInSpeakToWriteRecordsStopsAndEditorSavesWritingToNest"
+    TEST_CASE="testSignedInRecorderStopsAndSeparateTypedDraftSavesToNest"
+    echo "Coverage: recording plus a separate typed draft; not source-linked transcription." >&2
     if [[ -z "$TEST_VOICE_WRITING_TITLE" || -z "$TEST_VOICE_WRITING_BODY" ]]; then
       echo "Voice-writing mode requires unique exact writing title and body evidence." >&2
       exit 2
@@ -767,6 +768,12 @@ fi
 
 cleanup_smoke_credentials
 trap - EXIT
+
+# Use the same bundle/class/method verification as CI and Fastlane before
+# reporting aggregate success. One passing, but different, test is not proof.
+node "$SCRIPT_DIR/../../../../scripts/release/quipsly-capture-ui-test-runner.mjs" \
+  --verify-result-bundle="$RESULT_BUNDLE_PATH" \
+  --selector="HighGroundCaptureUITests/$TEST_CLASS/$TEST_CASE"
 
 "${XCRUN:-/usr/bin/xcrun}" xcresulttool get test-results summary \
   --path "$RESULT_BUNDLE_PATH" |

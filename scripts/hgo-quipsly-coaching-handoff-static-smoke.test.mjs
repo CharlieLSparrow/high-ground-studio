@@ -6,6 +6,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
+import vm from "node:vm";
 
 const scriptURL = new URL("./hgo-quipsly-coaching-handoff-static-smoke.mjs", import.meta.url);
 
@@ -59,3 +60,56 @@ for (const missingBoundary of [null, "booking authentication", "packet authentic
     }
   });
 }
+
+for (const missingBoundary of [null, "native scheduling command", "calendar update status"]) {
+  test(`scheduling source checks tolerate presentation changes and detect ${missingBoundary || "intact wiring"}`, t => {
+    const fixture = mkdtempSync(path.join(os.tmpdir(), "quipsly-scheduling-source-gates-"));
+    t.after(() => rmSync(fixture, { recursive: true, force: true }));
+    const scheduling = "scripts/quipsly-coaching-scheduling-static-smoke.mjs";
+    const capture = "scripts/quipsly-mobile-capture-contract-smoke.mjs";
+    for (const script of [scheduling, capture]) {
+      const source = readFileSync(path.join(root, script), "utf8");
+      const paths = [script, ...[...source.matchAll(/"((?:apps|packages|prisma|scripts|docs)\/[^"\n]+)"/g)].map(match => match[1])];
+      for (const relative of new Set(paths)) {
+        mkdirSync(path.dirname(path.join(fixture, relative)), { recursive: true });
+        cpSync(path.join(root, relative), path.join(fixture, relative));
+      }
+    }
+    const route = path.join(fixture, "apps/quipsly/src/app/api/coaching/runway/route.ts");
+    writeFileSync(route, readFileSync(route, "utf8")
+      .replaceAll("Session time updated.", "Appointment updated.")
+      .replaceAll("Booking canceled in Quipsly. Cancel external calendar/invite/payment evidence separately", "Canceled here. Provider status is separate.")
+      .replaceAll("externalCalendarUpdated: false", missingBoundary === "calendar update status" ? "calendarFlagRemoved: false" : "externalCalendarUpdated: false"));
+    const native = path.join(fixture, "apps/mobile-capture/HighGroundCapture/HighGroundCapture/CaptureCoachingHome.swift");
+    writeFileSync(native, readFileSync(native, "utf8")
+      .replaceAll("The client space and its existing work stay available.", "Your shared work stays here.")
+      .replaceAll("CaptureCoachingSaveReschedule", "RescheduleButtonRenamed")
+      .replaceAll("performAction(command.body)", missingBoundary === "native scheduling command" ? "disconnectedCommand()" : "performAction(command.body)"));
+    for (const script of [scheduling, capture]) {
+      const result = spawnSync(process.execPath, [path.join(fixture, script), "--source-only", "--json"], {
+        cwd: fixture, encoding: "utf8", timeout: 15_000,
+      });
+      const expectedFailure = (script === scheduling && missingBoundary === "calendar update status")
+        || (script === capture && missingBoundary === "native scheduling command");
+      assert.equal(result.status, expectedFailure ? 1 : 0, result.stdout + result.stderr);
+      const report = JSON.parse(result.stdout);
+      assert.deepEqual(report.checks.filter(check => check.status === "fail").map(check => check.id ?? check.name),
+        expectedFailure ? [script === scheduling ? "rescheduleAndCancelAreQuipslyFirst" : "nativeCoachingSchedulingManagementParity"] : []);
+    }
+  });
+}
+
+test("release gate reports the underlying failed assertion without dumping raw provider output", () => {
+  const source = readFileSync(path.join(root, "scripts/hgo-quipsly-release-readiness.mjs"), "utf8");
+  const body = source.split("  for (const check of checks) {\n")[1]?.split("  if (report.deployBlocked)")[0];
+  assert.ok(body);
+  const lines = [];
+  vm.runInNewContext(`for (const check of checks) {\n${body}`, {
+    console: { log: line => lines.push(line) },
+    checks: [{ id: "source-gate", status: "fail", summary: "Source contract", command: "node scripts/source-gate.mjs",
+      stdout: "private output must not be dumped", stderr: "private provider data",
+      payload: { checks: [{ id: "unchanged", status: "pass", summary: "Already passed" },
+        { name: "missingBoundary", status: "fail", summary: "Canonical command missing" }] } }],
+  });
+  assert.deepEqual(lines, ["FAIL source-gate: Source contract", "  - missingBoundary: Canonical command missing", "  Reproduce: node scripts/source-gate.mjs"]);
+});

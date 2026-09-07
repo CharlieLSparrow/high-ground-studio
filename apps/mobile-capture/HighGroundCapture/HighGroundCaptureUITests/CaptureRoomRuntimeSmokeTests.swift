@@ -4508,7 +4508,9 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         XCTAssertFalse(app.otherElements["GlobalCaptureBanner"].firstMatch.exists, "A recording-in-progress banner must not appear before a take starts.")
     }
 
-    func testSignedInSpeakToWriteRecordsStopsAndEditorSavesWritingToNest() throws {
+    // This exercises recording and a separate typed draft. It does not prove
+    // source-linked transcription or continuing to write from that transcript.
+    func testSignedInRecorderStopsAndSeparateTypedDraftSavesToNest() throws {
         let credentials = try runtimeSmokeCredentials()
         guard let proofTitle = credentials.voiceWritingTitle,
               !proofTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
@@ -4586,7 +4588,7 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         XCTAssertEqual(app.state, .runningForeground)
         attachRecordingIdentity(
             "\(proofTitle)|\(proofBody)|\(syncStatus.label)",
-            name: "Signed-in voice-writing Nest save"
+            name: "Signed-in separate typed-draft Nest save"
         )
         attachRuntimeScreenshot(app, name: "Signed-in writing saved to Nest")
     }
