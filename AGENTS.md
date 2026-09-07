@@ -54,6 +54,12 @@ Sessions, notes/documents, tasks/goals/calendar, sources/media, and agent
 activity. Coaching, podcasting, writing, and training are workflows composed
 from those primitives rather than separate islands.
 
+Shared spaces and conversations are foundational, not an optional feature
+layer. A client relationship, episode, book, or course needs one ongoing place
+for its people, discussion, and work before and after any call. Follow the
+replacement direction in `docs/decisions/0002-shared-work-foundation.md`; do not
+add another independent membership or message system for a new vertical.
+
 Keep global navigation small: Home, Sessions, Nests, Notes, Account, and one
 obvious contextual Create/Capture action. Put chat, transcript, media, tasks,
 goals, editing, research, and publishing inside the person, Nest, Session,

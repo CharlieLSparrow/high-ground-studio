@@ -1,25 +1,81 @@
 # Product and repository map
 
-Status: maintained architecture entrypoint
+Status: maintained architecture entrypoint. Revised 2026-09-06.
 
 ## Product flow
 
-Capture preserves raw intent and media. Nest owns durable knowledge-work
-records. Studio turns selected sources and decisions into production output.
-High Ground Odyssey is the first public consumer.
+Quipsly is a shared work home, not a suite of separate feature demos. A person
+can speak or import material, work alone or with others, and turn that material
+into a coaching outcome, document, episode, lesson, or published work.
+
+The web app and Capture must both support complete everyday workflows. Studio
+adds professional editing and local compute; it is not a required handoff for
+basic trimming, transcript correction, notes, tasks, or sharing. These are
+client surfaces over shared application services, not separate product silos.
 
 | Boundary | Owns | Must not silently own |
 | --- | --- | --- |
-| Capture | offline capture, recording, upload recovery, mobile context | canonical task/project knowledge, publication |
-| Nest | notes, tasks, goals, tags, projects, sessions, transcripts, research, source links | destructive media editing, App Store delivery |
+| Capture | native capture, calls, writing, shared spaces, everyday editing and delivery | independent copies of server identity or access rules |
+| Nest web | browser workflows and the current HTTP application boundary | direct UI-specific database policy or a second mobile data model |
+| Shared application services | identity, membership, spaces, conversation, notes, tasks, sessions, source links, commands and jobs | browser-only state or platform-specific UI |
 | Document kernel | document identity, blocks, annotations, source-aware transforms | user accounts or deployment |
-| Studio | reversible editorial decisions, timelines, render/export preparation | source truth or public publication receipts |
+| Studio | professional editing, local processing/rendering, shared timeline operations | a competing canonical timeline or required basic-editing handoff |
 | HGO web | public presentation, discovery, coaching acquisition | private Nest records or editor state |
 | Prisma | canonical relational persistence and migrations | local caches and external object bytes |
 
 Nest knowledge-work recovery follows the owner-operated
 [Nest portability contract](quipsly-nest-portability.md). It is an inspectable,
 no-overwrite package boundary, not a database dump or media archive.
+
+## Shared-work foundation
+
+The target is one collaboration model. This is a replacement direction, not a
+claim that the current schema already implements it. Details and tradeoffs are
+in [Shared spaces and conversations](../decisions/0002-shared-work-foundation.md).
+
+```text
+Person (stable identity; multiple verified login methods)
+  Membership → Nest (personal home or team/business home)
+                 Space (client relationship, episode, book, course)
+                   Conversation + linked work
+                   Sessions, documents, tasks, sources, timelines, outputs
+```
+
+Spaces are ongoing places to work, not aliases for calls. A call belongs to a
+space and its discussion remains available before and after the call. Threads
+can reference a note, transcript range, task, clip, or edit without copying it
+into a second source of truth. A course can later organize the same documents,
+media, sessions, and assignments; it does not need a parallel user system.
+
+Membership controls audience. A client invited to their space must not gain
+access to other clients or private coach notes. The UI makes the current space,
+people, and visibility understandable without permission questionnaires.
+Personal work starts immediately in a personal home; organizing or inviting
+someone must not be a prerequisite to writing or recording.
+
+Conversation is a first-class collaboration tool, not the only way to work.
+Documents, timelines, boards, and calendars remain direct-manipulation surfaces.
+AI can create and revise those actual objects through the same commands as a
+person, with source links, ordinary editing, and undo; not a queue of proposals.
+
+## Technology position
+
+Retain Swift for native clients, TypeScript for the web/application boundary,
+PostgreSQL for relational records, and object storage for media for this first
+replacement slice. Retain Next.js as a web host, not as the owner of business
+rules. Existing LiveKit, document-collaboration, and media-worker integrations
+are reuse candidates that still require workflow proof.
+
+These choices are revisable. Replace a technology when an observed constraint
+justifies its cost: a measured failure, an unsupported required capability,
+operating cost, or an ownership/deployment problem. Changing the web framework
+does not itself unify membership, conversation, or documents. Start there.
+
+The intended server shape is a modular monolith with separate long-running
+media/realtime processes where their workloads require it. Avoid a microservice
+per feature. Extract commands/queries from routes into application modules with
+explicit actor and resource scope; native, web, and agent clients use those
+same contracts.
 
 ## Source layout
 
