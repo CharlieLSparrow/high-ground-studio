@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { Temporal } from "@js-temporal/polyfill";
 import { buildQuipslyCoachingLifecycle } from "@high-ground/quipsly-domain/coaching-lifecycle";
 import { buildQuipslyCoachingPracticeCommand } from "@high-ground/quipsly-domain/coaching-practice-command";
+import { coachingHoldDetails } from "@/lib/coaching-hold";
 import {
   isTranscriptPacketSource,
   isUnreviewedTranscriptActionItemSource,
@@ -654,15 +655,17 @@ function availabilityLabel(window: any) {
 }
 
 function nextHoldAction(hold: any, now = new Date()) {
-  if (hold.status === "CONVERTED") return "Converted to a booking. Preserve the hold as scheduling evidence.";
-  if (hold.status === "CANCELED") return "Released. Keep the history, but do not treat this as reserved time.";
+  if (hold.status === "CONVERTED") return "This time is now booked.";
+  if (hold.status === "CANCELED") return "This time is no longer reserved.";
   if (hold.status === "EXPIRED" || new Date(hold.expiresAt).getTime() < now.getTime()) {
     return "Expired. Refresh or release before promising this slot.";
   }
   if (!hold.clientUserId && !hold.contactEmail) {
     return "Held without a client. Attach a person or release the slot.";
   }
-  return "Active hold. Convert to a booking only when the human confirms.";
+  return coachingHoldDetails(hold).isClientRequest
+    ? "Time requested. Schedule the session or release this time."
+    : "Time reserved. Schedule the session when ready, or release the hold.";
 }
 
 export async function GET(request: Request) {
@@ -1201,7 +1204,8 @@ export async function GET(request: Request) {
     contactEmail: hold.contactEmail,
     client: person(hold.clientUser),
     coach: person(hold.coachProfile?.user),
-    offeringTitle: hold.offering?.title || null,
+    offeringTitle: coachingHoldDetails(hold).title,
+    isClientRequest: coachingHoldDetails(hold).isClientRequest,
     convertedBookingId: hold.convertedBookingId || null,
     nextAction: nextHoldAction(hold, now),
   }));
@@ -1229,14 +1233,14 @@ export async function GET(request: Request) {
               booking.sessionPreparation?.coachPreparedAt?.toISOString() || null,
           })),
         timeRequests: bookingHolds
-          .filter((hold: any) => hold.coachProfile?.user?.id === userId)
+          .filter((hold: any) => hold.coachProfile?.user?.id === userId && coachingHoldDetails(hold).isClientRequest)
           .map((hold: any) => ({
             id: hold.id,
             status: hold.status,
             expiresAt: hold.expiresAt.toISOString(),
             scheduledStart: hold.scheduledStart.toISOString(),
             scheduledEnd: hold.scheduledEnd?.toISOString() || null,
-            title: hold.offering?.title || null,
+            title: coachingHoldDetails(hold).title,
             clientLabel:
               hold.clientUser?.name || hold.clientUser?.primaryEmail || hold.contactEmail || null,
           })),
@@ -2544,7 +2548,7 @@ export async function POST(request: Request) {
         scheduledEnd: hold.scheduledEnd,
         excludeHoldId: hold.id,
       });
-      const title = text(body.title) || offering?.title || "Quipsly coaching session";
+      const title = text(body.title) || coachingHoldDetails(hold).title || "Quipsly coaching session";
       const paymentPolicy = text(body.paymentPolicy) || offering?.paymentPolicy || "MANUAL";
       const amountCents = integer(body.amountCents) ?? offering?.priceCents ?? null;
       const purpose = normalizePurpose(body.purpose || offering?.kind);
@@ -2835,6 +2839,7 @@ export async function POST(request: Request) {
           metadataJson: {
             source: "quipsly-coaching-runway",
             createdByUserId: session.user.id,
+            title,
             externalCalendarCreated: false,
             externalInviteSent: false,
             stripeCheckoutCreated: false,
@@ -2850,7 +2855,7 @@ export async function POST(request: Request) {
         scheduledStart: hold.scheduledStart,
         scheduledEnd: hold.scheduledEnd,
         expiresAt: hold.expiresAt,
-        nextAction: "Hold created. Convert to a booking only when the human confirms the session.",
+        nextAction: "Time reserved. No invitation has been sent. Schedule the session when ready, or release the hold.",
       };
       });
 

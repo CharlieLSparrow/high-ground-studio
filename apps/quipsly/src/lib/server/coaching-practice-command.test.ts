@@ -61,6 +61,7 @@ describe("loadCoachingPracticeCommandForActor", () => {
     prisma.bookingHold.findMany.mockResolvedValue([
       {
         id: "request-1",
+        metadataJson: { source: "quipsly-client-self-scheduling" },
         status: "ACTIVE",
         expiresAt: new Date("2026-08-27T18:00:00.000Z"),
         scheduledStart: new Date("2026-08-28T17:00:00.000Z"),
@@ -68,6 +69,15 @@ describe("loadCoachingPracticeCommandForActor", () => {
         contactEmail: "grace@example.test",
         clientUser: { name: "Grace", primaryEmail: "grace@example.test" },
         offering: { title: "Coaching Session" },
+      },
+      {
+        id: "coach-reservation",
+        metadataJson: { source: "quipsly-coaching-runway", title: "My held time" },
+        status: "ACTIVE",
+        expiresAt: new Date("2026-08-27T18:00:00.000Z"),
+        scheduledStart: new Date("2026-08-28T19:00:00.000Z"),
+        scheduledEnd: new Date("2026-08-28T20:00:00.000Z"),
+        clientUser: { name: "Grace" },
       },
     ]);
     prisma.callRoom.findMany.mockResolvedValue([

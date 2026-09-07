@@ -276,6 +276,7 @@ type CoachingRunway = {
   }>;
   bookingHolds?: Array<{
     id: string;
+    isClientRequest?: boolean;
     status: string;
     scheduledStart: string;
     scheduledEnd: string;
@@ -2516,8 +2517,12 @@ export default function CoachingPage() {
   );
   const incomingClientHolds = bookingHolds.filter(
     (hold) =>
+      hold.isClientRequest &&
       hold.status === "ACTIVE" &&
       new Date(hold.expiresAt).getTime() > Date.now(),
+  );
+  const activeBookingHolds = bookingHolds.filter(
+    (hold) => hold.status === "ACTIVE" && new Date(hold.expiresAt).getTime() > Date.now(),
   );
   const journeyAction = (() => {
     if (needsCoachSubscription) {
@@ -2553,10 +2558,10 @@ export default function CoachingPage() {
     }
     if (isClientOnly && nextClientHold) {
       return {
-        eyebrow: "Time requested",
+        eyebrow: nextClientHold.isClientRequest ? "Time requested" : "Time on hold",
         title: nextClientHold.offeringTitle || "Coaching session",
-        detail: `${formatDateTime(nextClientHold.scheduledStart)} · ${nextClientHold.timezone}. Your coach confirms next; you do not need to configure anything yet.`,
-        label: "View my request",
+        detail: `${formatDateTime(nextClientHold.scheduledStart)} · ${nextClientHold.timezone}. This time is reserved but not booked yet.`,
+        label: "View time",
         href: "#my-time-requests",
       };
     }
@@ -2801,11 +2806,11 @@ export default function CoachingPage() {
               className="scroll-mt-6 rounded-[1.7rem] border border-violet-200 bg-violet-50/85 p-6 shadow-sm"
             >
               <h2 className="flex items-center gap-2 text-2xl font-black text-violet-950">
-                <Clock className="text-violet-700" /> My time requests
+                <Clock className="text-violet-700" /> Proposed times
               </h2>
               <p className="mt-2 text-sm leading-6 text-violet-900/75">
-                Your coach sees the same request. A private Session appears
-                after they confirm it.
+                These times are reserved but not booked yet. Your Session appears
+                here once it is scheduled.
               </p>
               <div className="mt-4 space-y-3">
                 {bookingHolds.slice(0, 8).map((hold) => (
@@ -2859,21 +2864,20 @@ export default function CoachingPage() {
               </div>
             </div>
           ) : null}
-          {canManageCoaching && incomingClientHolds.length > 0 ? (
+          {canManageCoaching && activeBookingHolds.length > 0 ? (
             <div
               id="incoming-time-requests"
               className="scroll-mt-6 rounded-[1.7rem] border border-emerald-200 bg-emerald-50/85 p-6 shadow-sm"
             >
               <h2 className="flex items-center gap-2 text-2xl font-black text-emerald-950">
-                <CalendarIcon className="text-emerald-700" /> Incoming time
-                requests
+                <CalendarIcon className="text-emerald-700" />
+                {incomingClientHolds.length === 0 ? "Time on hold" : incomingClientHolds.length === activeBookingHolds.length ? "Incoming time requests" : "Time requests and holds"}
               </h2>
               <p className="mt-2 text-sm leading-6 text-emerald-900/75">
-                Confirm to create the private Session, then send its invitation.
-                Decline to make the time available again.
+                Schedule a Session from a reserved time, or release it to make the time available again.
               </p>
               <div className="mt-4 space-y-3">
-                {incomingClientHolds.slice(0, 8).map((hold) => (
+                {activeBookingHolds.slice(0, 8).map((hold) => (
                   <div
                     key={hold.id}
                     className="rounded-2xl border border-emerald-200 bg-white p-4"
@@ -2883,6 +2887,7 @@ export default function CoachingPage() {
                         <h3 className="font-black text-[#3d3122]">
                           {hold.offeringTitle || "Coaching session"}
                         </h3>
+                        <p className="text-xs text-[#7b5c3b]">{hold.isClientRequest ? "Requested by client" : "Held time"}</p>
                         <p className="mt-1 text-sm font-semibold text-[#6f5c42]">
                           {formatDateTime(hold.scheduledStart)} ·{" "}
                           {hold.timezone}
@@ -2900,7 +2905,7 @@ export default function CoachingPage() {
                         >
                           {holdBusyById[hold.id]
                             ? "Working…"
-                            : "Confirm Session"}
+                            : hold.isClientRequest ? "Confirm Session" : "Schedule Session"}
                         </button>
                         <button
                           type="button"
@@ -2908,7 +2913,7 @@ export default function CoachingPage() {
                           disabled={holdBusyById[hold.id]}
                           className="rounded-xl border border-stone-300 bg-white px-4 py-2.5 text-xs font-black text-stone-700 disabled:opacity-50"
                         >
-                          Decline
+                          {hold.isClientRequest ? "Decline" : "Release hold"}
                         </button>
                       </div>
                     </div>

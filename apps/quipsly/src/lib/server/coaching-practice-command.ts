@@ -1,4 +1,5 @@
 import { buildQuipslyCoachingPracticeCommand } from "@high-ground/quipsly-domain/coaching-practice-command";
+import { coachingHoldDetails } from "@/lib/coaching-hold";
 
 type PrismaLike = {
   coachProfile: { findFirst(args: unknown): Promise<any> };
@@ -113,6 +114,7 @@ export async function loadCoachingPracticeCommandForActor({
         scheduledStart: true,
         scheduledEnd: true,
         contactEmail: true,
+        metadataJson: true,
         clientUser: { select: { name: true, primaryEmail: true } },
         offering: { select: { title: true } },
       },
@@ -190,13 +192,13 @@ export async function loadCoachingPracticeCommandForActor({
       coachPreparedAt:
         booking.sessionPreparation?.coachPreparedAt?.toISOString() || null,
     })),
-    timeRequests: timeRequests.map((request) => ({
+    timeRequests: timeRequests.filter((request) => coachingHoldDetails(request).isClientRequest).map((request) => ({
       id: request.id,
       status: request.status,
       expiresAt: request.expiresAt.toISOString(),
       scheduledStart: request.scheduledStart.toISOString(),
       scheduledEnd: request.scheduledEnd?.toISOString() || null,
-      title: request.offering?.title || null,
+      title: coachingHoldDetails(request).title,
       clientLabel: label(request.clientUser) || request.contactEmail || null,
     })),
     rooms: rooms.map((room) => {
