@@ -453,7 +453,7 @@ final class CaptureExperienceUITests: XCTestCase {
         let tabBar = app.tabBars.firstMatch
         XCTAssertTrue(tabBar.waitForExistence(timeout: 5))
 
-        for tab in ["Home", "Sessions", "Work", "Library", "Account"] {
+        for tab in ["Home", "Sessions", "Nests", "Notes", "Account"] {
             XCTAssertTrue(tabBar.buttons[tab].exists, "Expected the \(tab) capture destination.")
         }
 
@@ -1314,7 +1314,7 @@ final class CaptureExperienceUITests: XCTestCase {
     }
 
     func testVoiceWritingOffersStructureAndSourceWithoutLeavingCapture() {
-        openRootDestination("Library")
+        openRootDestination("Notes")
         let writingSection = app.buttons["Writing"]
         XCTAssertTrue(writingSection.waitForExistence(timeout: 5))
         writingSection.tap()
@@ -1429,7 +1429,7 @@ final class CaptureExperienceUITests: XCTestCase {
         ]
         app.launch()
 
-        openRootDestination("Library", timeout: 12)
+        openRootDestination("Notes", timeout: 12)
         let writingSection = app.buttons["Writing"]
         XCTAssertTrue(writingSection.waitForExistence(timeout: 5))
         writingSection.tap()
@@ -1515,7 +1515,7 @@ final class CaptureExperienceUITests: XCTestCase {
     }
 
     func testVoiceWritingKeepsTimedSourceBesideEditableText() {
-        openRootDestination("Library")
+        openRootDestination("Notes")
         app.buttons["Writing"].tap()
         let previewDraft = app.descendants(matching: .any)["CaptureLibraryPreviewWritingCard"]
         XCTAssertTrue(previewDraft.waitForExistence(timeout: 5))
@@ -5674,8 +5674,8 @@ final class CaptureExperienceUITests: XCTestCase {
 
         let destinations: [(tab: String, root: XCUIElement)] = [
             ("Home", app.staticTexts["CaptureTodayCreateHeading"]),
-            ("Work", app.descendants(matching: .any)["CaptureWorkProjectSummary"]),
-            ("Library", app.descendants(matching: .any)["CaptureLibrarySectionPicker"]),
+            ("Nests", app.descendants(matching: .any)["CaptureWorkProjectSummary"]),
+            ("Notes", app.descendants(matching: .any)["CaptureLibrarySectionPicker"]),
             ("Account", app.navigationBars["Account"]),
         ]
 
@@ -6607,8 +6607,8 @@ final class CaptureExperienceUITests: XCTestCase {
             let rawValue = switch title {
             case "Home": "today"
             case "Sessions": "record"
-            case "Work": "work"
-            case "Library": "library"
+            case "Nests": "work"
+            case "Notes": "library"
             case "Account": "account"
             default: ""
             }
