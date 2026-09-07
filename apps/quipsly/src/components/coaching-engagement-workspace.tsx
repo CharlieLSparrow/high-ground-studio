@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import {
   Check,
@@ -8,13 +8,14 @@ import {
   CircleDot,
   LockKeyhole,
   NotebookPen,
-  Pencil,
   Plus,
+  RefreshCw,
   RotateCcw,
   Target,
   Trash2,
   UsersRound,
 } from "lucide-react";
+import { CoachingWorkEditor } from "./coaching-work-editor";
 
 export type CoachingEngagementWorkEntry = {
   id: string;
@@ -50,10 +51,6 @@ function statusLabel(value: string | null) {
   return (value || "saved").toLowerCase().replaceAll("_", " ");
 }
 
-function inputDate(value: string | null) {
-  return value ? value.slice(0, 10) : "";
-}
-
 function entryIcon(kind: CoachingEngagementWorkEntry["kind"]) {
   if (kind === "NOTE") return NotebookPen;
   if (kind === "TASK") return CheckCircle2;
@@ -82,10 +79,18 @@ export function CoachingEngagementWorkspace(
 function CoachingEngagementWorkspaceContent({
   engagementId,
   initialEntries,
-  members,
+  members: initialMembers,
   currentUserId,
-  canWrite,
+  canWrite: initialCanWrite,
 }: CoachingEngagementWorkspaceProps) {
+  const [members, setMembers] = useState(initialMembers);
+  const [canWrite, setCanWrite] = useState(initialCanWrite);
+  const [accessUnavailable, setAccessUnavailable] = useState(false);
+  const [refreshError, setRefreshError] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const refreshController = useRef<AbortController | null>(null);
+  const mutationRevision = useRef(0);
+  const workspace = useRef<HTMLElement>(null);
   const defaultOwner =
     members.find((member) => member.role === "CLIENT")?.id ||
     members.find((member) => member.id === currentUserId)?.id ||
@@ -124,6 +129,77 @@ function CoachingEngagementWorkspaceContent({
     (entry) => workFilter === "ALL" || entry.kind === workFilter,
   );
 
+  const refreshEntries = useCallback(async () => {
+    if (refreshController.current || pendingIds.current.size) return;
+    const controller = new AbortController();
+    refreshController.current = controller;
+    const revision = mutationRevision.current;
+    const timeout = window.setTimeout(() => controller.abort(), 10_000);
+    setRefreshing(true);
+    try {
+      const response = await fetch(`/api/coaching/engagements/${encodeURIComponent(engagementId)}/work`, {
+        cache: "no-store", signal: controller.signal,
+      });
+      if (refreshController.current !== controller) return;
+      if ([401, 403, 404].includes(response.status)) {
+        setAccessUnavailable(true);
+        setEntries([]);
+        setNotice(null);
+        setLastRemoved(null);
+        return;
+      }
+      const payload = await response.json().catch(() => null);
+      if (refreshController.current !== controller) return;
+      if (!response.ok || !payload?.ok || !Array.isArray(payload.engagement?.entries) || !Array.isArray(payload.engagement?.members)) throw new Error("Read unavailable");
+      if (payload.engagement.id !== engagementId || payload.engagement.currentUserId !== currentUserId) {
+        setAccessUnavailable(true);
+        setEntries([]);
+        setNotice(null);
+        setLastRemoved(null);
+        return;
+      }
+      // A snapshot requested before a local save must not put the old item
+      // back, undo a completion, or resurrect something just removed.
+      if (mutationRevision.current !== revision) return;
+      setEntries(payload.engagement.entries);
+      setMembers(payload.engagement.members);
+      setCanWrite(payload.engagement.canWrite === true);
+      setAccessUnavailable(false);
+      setRefreshError(null);
+    } catch {
+      if (refreshController.current === controller) {
+        setRefreshError("Updates paused. Your loaded work is still here. Try refreshing when you’re connected.");
+      }
+    } finally {
+      window.clearTimeout(timeout);
+      if (refreshController.current === controller) {
+        refreshController.current = null;
+        setRefreshing(false);
+      }
+    }
+  }, [engagementId, currentUserId]);
+
+  useEffect(() => {
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === "visible" && navigator.onLine && !workspace.current?.closest("[hidden]")) {
+        void refreshEntries();
+      }
+    };
+    const interval = window.setInterval(refreshWhenVisible, 15_000);
+    window.addEventListener("focus", refreshWhenVisible);
+    window.addEventListener("online", refreshWhenVisible);
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener("focus", refreshWhenVisible);
+      window.removeEventListener("online", refreshWhenVisible);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+      const controller = refreshController.current;
+      refreshController.current = null;
+      controller?.abort();
+    };
+  }, [refreshEntries]);
+
   function replaceEntry(entry: CoachingEngagementWorkEntry) {
     setEntries((current) =>
       [entry, ...current.filter((candidate) => candidate.id !== entry.id)].sort(
@@ -134,12 +210,14 @@ function CoachingEngagementWorkspaceContent({
 
   function beginOperation(id: string) {
     if (pendingIds.current.has(id)) return false;
+    mutationRevision.current += 1;
     pendingIds.current.add(id);
     setBusyIds(new Set(pendingIds.current));
     return true;
   }
 
   function endOperation(id: string) {
+    mutationRevision.current += 1;
     pendingIds.current.delete(id);
     setBusyIds(new Set(pendingIds.current));
   }
@@ -220,7 +298,8 @@ function CoachingEngagementWorkspaceContent({
       status?: string;
     },
   ) {
-    if (!beginOperation(entry.id)) return;
+    if (!beginOperation(entry.id)) return null;
+    let needsRefresh = false;
     setNotice(null);
     setLastRemoved(null);
     try {
@@ -248,18 +327,22 @@ function CoachingEngagementWorkspaceContent({
         entry?: CoachingEngagementWorkEntry;
       };
       if (!response.ok || !payload.ok || !payload.entry) {
+        needsRefresh = [401, 403, 404, 409].includes(response.status);
         throw new Error(payload.error || "The coaching work was not updated.");
       }
       replaceEntry(payload.entry);
       setNotice(`${payload.entry.title || "Item"} is up to date.`);
+      return payload.entry;
     } catch (error) {
       setNotice(
         error instanceof Error
           ? error.message
           : "The coaching work was not updated.",
       );
+      return null;
     } finally {
       endOperation(entry.id);
+      if (needsRefresh) void refreshEntries();
     }
   }
 
@@ -339,8 +422,18 @@ function CoachingEngagementWorkspaceContent({
     }
   }
 
+  if (accessUnavailable) {
+    return (
+      <section ref={workspace} id="relationship-work" className="rounded-2xl border border-[#dfcfb4] bg-[#fffdf8] p-5">
+        <p role="alert" className="text-[#3d3122]">This space is no longer available with your current sign-in.</p>
+        <Link href="/coaching/engagements" className="mt-3 inline-flex min-h-11 items-center font-bold text-[#41624b] underline">Open my coaching spaces</Link>
+      </section>
+    );
+  }
+
   return (
     <section
+      ref={workspace}
       id="relationship-work"
       className="min-w-0 rounded-[1.75rem] border border-[#dfcfb4] bg-[#fffdf8] p-4 sm:p-6"
       aria-labelledby="engagement-work-heading"
@@ -370,7 +463,10 @@ function CoachingEngagementWorkspaceContent({
         </div>
       </div>
 
-      <div role="group" aria-label="Filter work" className="mt-4 grid grid-cols-4 gap-1 rounded-xl bg-[#f1eadb] p-1">
+      {refreshError ? <p role="status" className="mt-3 max-w-xl text-sm text-[#765f40]">{refreshError}</p> : null}
+
+      <div className="mt-4 flex items-center gap-2">
+      <div role="group" aria-label="Filter work" className="grid min-w-0 flex-1 grid-cols-4 gap-1 rounded-xl bg-[#f1eadb] p-1">
         {([
           ["ALL", "All"], ["NOTE", "Notes"], ["TASK", "Tasks"], ["GOAL", "Goals"],
         ] as const).map(([value, label]) => (
@@ -380,6 +476,12 @@ function CoachingEngagementWorkspaceContent({
             {label}
           </button>
         ))}
+      </div>
+      <button type="button" onClick={() => void refreshEntries()} disabled={refreshing || busyIds.size > 0}
+        aria-label={refreshing ? "Refreshing work" : "Refresh work"} title="Refresh work"
+        className="inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-lg text-[#41624b] disabled:opacity-50">
+        <RefreshCw size={18} aria-hidden="true" className={refreshing ? "animate-spin" : ""} />
+      </button>
       </div>
 
       {notice ? (
@@ -530,6 +632,7 @@ function CoachingEngagementWorkspaceContent({
             return (
               <article
                 key={entry.id}
+                data-work-id={entry.id}
                 hidden={workFilter !== "ALL" && entry.kind !== workFilter}
                 className={`rounded-2xl border bg-white p-4 ${isActive ? "border-[#eadfc9]" : "border-emerald-200 opacity-80"}`}
               >
@@ -602,105 +705,12 @@ function CoachingEngagementWorkspaceContent({
                 </div>
                 {canWrite && entry.canEdit ? (
                   <div className="mt-4 border-t border-[#eee4d1] pt-3">
-                    <details>
-                      <summary className="flex min-h-11 cursor-pointer items-center gap-2 text-xs font-black uppercase tracking-wide text-violet-900">
-                        <Pencil size={14} aria-hidden="true" /> Edit
-                      </summary>
-                      <form
-                        onSubmit={(event) => {
-                          event.preventDefault();
-                          const formData = new FormData(event.currentTarget);
-                          const targetDate = String(formData.get("targetAt") || "");
-                          void updateEntry(entry, {
-                            title: String(formData.get("title") || ""),
-                            body: String(formData.get("body") || ""),
-                            ownerUserId: String(
-                              formData.get("ownerUserId") ||
-                                entry.owner?.id ||
-                                currentUserId,
-                            ),
-                            targetAt: targetDate === inputDate(entry.dueAt) ? undefined : targetDate,
-                            visibility: String(
-                              formData.get("visibility") || entry.visibility,
-                            ),
-                            status: String(
-                              formData.get("status") || entry.status || "",
-                            ),
-                          });
-                        }}
-                        className="mt-3 grid gap-3"
-                      >
-                        <fieldset disabled={busyIds.has(entry.id)} className="min-w-0 grid gap-3">
-                        <input
-                          name="title"
-                          defaultValue={entry.title || ""}
-                          required
-                          className="min-h-11 rounded-xl border border-[#d8c7a7] px-3 text-sm"
-                          aria-label={`${entry.kind.toLowerCase()} name`}
-                        />
-                        <textarea
-                          name="body"
-                          defaultValue={entry.body || ""}
-                          rows={3}
-                          className="rounded-xl border border-[#d8c7a7] px-3 py-2 text-sm"
-                          aria-label={`${entry.kind.toLowerCase()} details`}
-                        />
-                        <div className="grid gap-3 sm:grid-cols-2">
-                          {entry.kind !== "NOTE" ? (
-                            <select
-                              name="ownerUserId"
-                              defaultValue={entry.owner?.id || defaultOwner}
-                              className="min-h-11 rounded-xl border border-[#d8c7a7] bg-white px-3 text-sm"
-                              aria-label="Owner"
-                            >
-                              {members.map((member) => (
-                                <option key={member.id} value={member.id}>
-                                  {member.label}
-                                </option>
-                              ))}
-                            </select>
-                          ) : (
-                            entry.canChangeVisibility ? (
-                              <select
-                                name="visibility"
-                                defaultValue={entry.visibility}
-                                className="min-h-11 rounded-xl border border-[#d8c7a7] bg-white px-3 text-sm"
-                                aria-label="Note privacy"
-                              >
-                                <option value="SHARED">Shared</option>
-                                <option value="PRIVATE">Only me</option>
-                              </select>
-                            ) : (
-                              <input type="hidden" name="visibility" value="SHARED" />
-                            )
-                          )}
-                          {entry.kind !== "NOTE" ? (
-                            <input
-                              name="targetAt"
-                              type="date"
-                              defaultValue={inputDate(entry.dueAt)}
-                              className="min-h-11 rounded-xl border border-[#d8c7a7] px-3 text-sm"
-                              aria-label="Target date"
-                            />
-                          ) : null}
-                        </div>
-                        {entry.kind !== "NOTE" ? (
-                          <input
-                            type="hidden"
-                            name="status"
-                            value={entry.status || ""}
-                          />
-                        ) : null}
-                        <button
-                          type="submit"
-                          disabled={busyIds.has(entry.id)}
-                          className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-violet-800 px-4 py-2 text-sm font-black text-white disabled:opacity-50"
-                        >
-                          <Check size={15} aria-hidden="true" /> {busyIds.has(entry.id) ? "Saving…" : "Save changes"}
-                        </button>
-                        </fieldset>
-                      </form>
-                    </details>
+                    <CoachingWorkEditor
+                      entry={entry}
+                      members={members}
+                      busy={busyIds.has(entry.id)}
+                      onSave={updateEntry}
+                    />
                     <button
                       type="button"
                       disabled={busyIds.has(entry.id)}
