@@ -218,7 +218,7 @@ async function automaticSession(tx: Prisma.TransactionClient, f: Awaited<ReturnT
       sourceTopology: "participant-isolated", speakerAuthority: "source-binding", participantLabel: "Other participant" } },
   } } });
   const words = ["My goal is to write every morning.", "Tomorrow I will draft one page.", "I learned that small steps help me start."];
-  const segments = [];
+  const segments: typeof f.segments = [];
   for (const [index, segment] of f.segments.entries()) {
     segments.push(await tx.transcriptSegment.update({ where: { id: segment.id }, data: {
       text: words[index], speakerLabel: "Other participant", speakerUserId: f.member.id,
@@ -226,7 +226,16 @@ async function automaticSession(tx: Prisma.TransactionClient, f: Awaited<ReturnT
   }
   const build = () => buildCoachingPacketFromTranscriptJob({ prisma: tx, transcriptJobId: f.job.id, authorUserId: f.owner.id });
   const read = (user: typeof f.owner) => loadSessionWork({ prisma: tx, roomId: f.room.id, actor: { id: user.id, primaryEmail: user.primaryEmail } });
-  return { engagement, segments, build, read };
+  const removeCommitments = async () => {
+    for (const segment of segments.slice(0, 2)) {
+      await tx.transcriptCorrection.create({ data: { roomId: f.room.id, transcriptJobId: f.job.id, segmentId: segment.id,
+        createdByUserId: f.member.id, clientRequestId: randomUUID(), status: "accepted", baseTextSha256: sha(segment.text),
+        expectedText: segment.text, expectedSpeakerLabel: segment.speakerLabel,
+        startSecondsSnapshot: segment.startSeconds, endSecondsSnapshot: segment.endSeconds,
+        correctedText: "We spoke about the weather.", reviewedAt: new Date() } });
+    }
+  };
+  return { engagement, segments, build, read, removeCommitments };
 }
 
 (enabled ? describe : describe.skip)("transcript work against a fresh database fixture", () => {
@@ -288,6 +297,126 @@ async function automaticSession(tx: Prisma.TransactionClient, f: Awaited<ReturnT
       expect(await tx.goal.count({ where: { roomId: f.room.id } })).toBe(1);
       expect(await tx.transcriptSegment.findUniqueOrThrow({ where: { id: segment.id } })).toEqual(segment);
       expect((await tx.recordingAsset.findUniqueOrThrow({ where: { id: f.asset.id } })).checksum).toBe(f.asset.checksum);
+    });
+  });
+
+  it.each([
+    "task-deadline", "task-reminder", "task-recurrence", "task-tag", "task-plan", "task-evidence",
+    "goal-target", "goal-progress", "goal-tag", "goal-plan", "goal-child", "goal-task-link",
+  ])("keeps adopted work and its %s after a correction removes the original commitment", async (scenario) => {
+    await withFixture(async (tx, f) => {
+      const session = await automaticSession(tx, f);
+      expect(await session.build()).toMatchObject({ ok: true });
+      const task = await tx.actionItem.findFirstOrThrow({ where: { roomId: f.room.id } });
+      const goal = await tx.goal.findFirstOrThrow({ where: { roomId: f.room.id } });
+      const date = new Date("2027-01-01T12:00:00Z");
+      const isTask = scenario.startsWith("task-");
+      if (scenario === "task-deadline") await tx.actionItem.update({ where: { id: task.id }, data: { dueAt: date } });
+      if (scenario === "goal-target") await tx.goal.update({ where: { id: goal.id }, data: { targetAt: date } });
+      if (scenario === "task-reminder") await tx.taskReminder.create({ data: { id: randomUUID(), actionItemId: task.id, ownerUserId: f.member.id, remindAt: date } });
+      if (scenario === "task-recurrence") await tx.taskOccurrence.create({ data: { actionItem: { connect: { id: task.id } },
+        occurrenceKey: "2027-01-01", scheduledLocalDate: "2027-01-01", scheduledFor: date,
+        series: { create: { ownerUserId: f.member.id, title: task.title, cadence: "FIXED", frequency: "WEEKLY",
+          timezone: "America/Denver", localTimeMinutes: 600, anchorLocalDate: "2027-01-01", anchorDayOfMonth: 1 } } } });
+      if (scenario.endsWith("-tag")) {
+        const tag = await tx.studioTag.create({ data: { projectId: session.engagement.projectId, slug: randomUUID(), label: "My priority" } });
+        if (isTask) await tx.actionItemTagLink.create({ data: { actionItemId: task.id, tagId: tag.id } });
+        else await tx.goalTagLink.create({ data: { goalId: goal.id, tagId: tag.id } });
+      }
+      if (scenario.endsWith("-plan")) await tx.workPlanBlock.create({ data: { ownerUserId: f.member.id,
+        ...(isTask ? { actionItemId: task.id } : { goalId: goal.id }), startsAt: date,
+        endsAt: new Date(date.getTime() + 30 * 60_000), timezone: "America/Denver" } });
+      if (scenario === "task-evidence") await tx.actionItemEvidenceReceipt.create({ data: { id: randomUUID(),
+        actionItemId: task.id, actorUserId: f.member.id, kind: "PERSONAL_OBSERVATION", note: "I have started", occurredAt: date } });
+      if (scenario === "goal-progress") await tx.goalProgressReceipt.create({ data: { goalId: goal.id,
+        actorUserId: f.member.id, kind: "PROGRESS_UPDATED", progressPercent: 35, occurredAt: date } });
+      if (scenario === "goal-child") await tx.goal.create({ data: { ownerUserId: f.member.id,
+        parentGoalId: goal.id, roomId: f.room.id, title: "My first milestone" } });
+      if (scenario === "goal-task-link") await tx.goalTaskLink.create({ data: { goalId: goal.id, actionItemId: task.id } });
+      const readTarget = () => isTask
+        ? tx.actionItem.findUnique({ where: { id: task.id }, include: { reminder: true, recurrenceOccurrence: true,
+          tagLinks: true, planBlocks: true, evidenceReceipts: true, goalLinks: true } })
+        : tx.goal.findUnique({ where: { id: goal.id }, include: { progressReceipts: true, tagLinks: true,
+          planBlocks: true, children: true, taskLinks: true } });
+      const before = await readTarget();
+      await session.removeCommitments();
+      expect(await session.build()).toMatchObject({ ok: true });
+      expect(await readTarget()).toEqual(before);
+      expect((await session.read(f.member)).some(item => item.id === (isTask ? task.id : goal.id))).toBe(true);
+    });
+  });
+
+  it("still cleans up untouched generated tasks and goals after the source commitment disappears", async () => {
+    await withFixture(async (tx, f) => {
+      const session = await automaticSession(tx, f);
+      expect(await session.build()).toMatchObject({ ok: true, actionItemCount: 1, goalCount: 1 });
+      await session.removeCommitments();
+      expect(await session.build()).toMatchObject({ ok: true, actionItemCount: 0, goalCount: 0 });
+      expect(await tx.actionItem.count({ where: { roomId: f.room.id } })).toBe(0);
+      expect(await tx.goal.count({ where: { roomId: f.room.id } })).toBe(0);
+    });
+  });
+
+  it.each(["task-reminder", "goal-progress"])("rechecks related %s at deletion even when the parent version did not change", async (scenario) => {
+    await withFixture(async (tx, f) => {
+      const session = await automaticSession(tx, f);
+      expect(await session.build()).toMatchObject({ ok: true });
+      const isTask = scenario === "task-reminder";
+      const model = isTask ? "actionItem" : "goal";
+      const row = isTask ? await tx.actionItem.findFirstOrThrow({ where: { roomId: f.room.id } })
+        : await tx.goal.findFirstOrThrow({ where: { roomId: f.room.id } });
+      await session.removeCommitments();
+      let interleaved = false;
+      const prisma = new Proxy(tx, { get(target, property) {
+        if (property !== model) return Reflect.get(target, property);
+        return new Proxy(Reflect.get(target, property), { get(table, method) {
+          if (method !== "delete") return Reflect.get(table, method);
+          return async (args: { where: { id: string } }) => {
+            if (args.where.id === row.id && !interleaved) {
+              interleaved = true;
+              if (isTask) await tx.taskReminder.create({ data: { id: randomUUID(), actionItemId: row.id,
+                ownerUserId: f.member.id, remindAt: new Date("2027-01-01T12:00:00Z") } });
+              else await tx.goalProgressReceipt.create({ data: { goalId: row.id, actorUserId: f.member.id,
+                kind: "PROGRESS_UPDATED", progressPercent: 35, occurredAt: new Date() } });
+            }
+            return Reflect.apply(Reflect.get(table, "delete"), table, [args]);
+          };
+        } });
+      } });
+      await expect(buildCoachingPacketFromTranscriptJob({ prisma, transcriptJobId: f.job.id, authorUserId: f.owner.id }))
+        .rejects.toMatchObject({ code: "P2034" });
+      expect(interleaved).toBe(true);
+      expect(isTask ? await tx.actionItem.findUnique({ where: { id: row.id } })
+        : await tx.goal.findUnique({ where: { id: row.id } })).toEqual(row);
+      expect(isTask ? await tx.taskReminder.count({ where: { actionItemId: row.id } })
+        : await tx.goalProgressReceipt.count({ where: { goalId: row.id } })).toBe(1);
+    });
+  });
+
+  it.each(["tag", "linked-task", "private", "revision", "untouched"])("handles a superseded highlight with %s without losing adopted notes", async (scenario) => {
+    await withFixture(async (tx, f) => {
+      const session = await automaticSession(tx, f);
+      expect(await session.build()).toMatchObject({ ok: true });
+      const highlight = await tx.coachingNote.findFirstOrThrow({ where: { roomId: f.room.id, kind: "HIGHLIGHT" } });
+      // Model a superseded generated copy from an earlier packet version.
+      // Current source text/media are unchanged, and the newer copy wins the projection.
+      const old = await tx.coachingNote.create({ data: { roomId: f.room.id, authorUserId: f.owner.id,
+        engagementId: session.engagement.id, kind: "HIGHLIGHT", title: highlight.title, body: highlight.body,
+        visibility: scenario === "private" ? "AUTHOR_PRIVATE" : "SESSION_SHARED",
+        sourceJson: highlight.sourceJson as Prisma.InputJsonValue, createdAt: new Date("2000-01-01T00:00:00Z") } });
+      if (scenario === "tag") {
+        const tag = await tx.studioTag.create({ data: { projectId: session.engagement.projectId, slug: randomUUID(), label: "Important" } });
+        await tx.coachingNoteTagLink.create({ data: { noteId: old.id, tagId: tag.id } });
+      }
+      if (scenario === "linked-task") await tx.actionItem.create({ data: { roomId: f.room.id, noteId: old.id,
+        assignedUserId: f.member.id, title: "Remember this moment" } });
+      if (scenario === "revision") await tx.coachingNoteRevision.create({ data: { noteId: old.id, actorUserId: f.owner.id,
+        revision: 1, operation: "edited", snapshotJson: { body: old.body } } });
+      const read = () => tx.coachingNote.findUnique({ where: { id: old.id }, include: { tagLinks: true, actionItems: true, revisions: true } });
+      const before = await read();
+      expect(await buildCoachingPacketFromTranscriptJob({ prisma: tx, transcriptJobId: f.job.id, authorUserId: f.owner.id, force: true }))
+        .toMatchObject({ ok: true });
+      expect(await read()).toEqual(scenario === "untouched" ? null : before);
     });
   });
 

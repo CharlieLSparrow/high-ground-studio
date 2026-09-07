@@ -1511,8 +1511,28 @@ describe("transcript coaching follow-through", () => {
     await expect(buildCoachingPacketFromTranscriptJob({ prisma, transcriptJobId: job.id, authorUserId: "coach-1" }))
       .rejects.toMatchObject({ code: "P2034" });
     expect(work[model][operation]).toHaveBeenCalledWith(expect.objectContaining({
-      where: { id: existing.id, updatedAt: existing.updatedAt },
+      where: expect.objectContaining({ id: existing.id, updatedAt: existing.updatedAt }),
     }));
+  });
+
+  it.each(["actionItem", "goal"] as const)("retains a person's %s edit history even when wording matches the generated default", async (model) => {
+    const job = completedTranscriptJob();
+    job.segments[0]!.text = "My goal is to write every morning. Tomorrow I will draft one page.";
+    const work = automaticWorkStores();
+    const prisma = { transcriptJob: { findUnique: jest.fn(async () => job) },
+      coachingNote: { findFirst: jest.fn(async () => null),
+        create: jest.fn(async ({ data }: any) => ({ id: "summary", ...data })) }, ...work };
+    const build = () => buildCoachingPacketFromTranscriptJob({ prisma, transcriptJobId: job.id, authorUserId: "coach-1" });
+    await build();
+    const existing = (await work[model].findMany())[0];
+    const edited = await work[model].update({ where: { id: existing.id }, data: {
+      sourceJson: { ...existing.sourceJson, editReceipts: [{ id: "personal-edit", actorUserId: "coach-1" }] },
+    } });
+    await build();
+    expect(await work[model].findUnique({ where: { id: existing.id } })).toEqual(edited);
+    job.segments[0]!.text = "The sky is blue today.";
+    await build();
+    expect(await work[model].findUnique({ where: { id: existing.id } })).toEqual(edited);
   });
 
   it("removes untouched generated follow-through when a correction removes the commitment", async () => {
@@ -1564,7 +1584,8 @@ describe("transcript coaching follow-through", () => {
     expect(rebuilt.actionItemIds).toEqual([]);
     expect(rebuilt.removedActionItemIds).toEqual(first.actionItemIds);
     expect(work.actionItem.delete).toHaveBeenCalledWith({
-      where: { id: first.actionItemIds[0], updatedAt: expect.any(Date) },
+      where: expect.objectContaining({ id: first.actionItemIds[0], updatedAt: expect.any(Date),
+        dueAt: null, reminder: { is: null }, recurrenceOccurrence: { is: null } }),
     });
     expect(
       await work.actionItem.findUnique({
@@ -1894,7 +1915,8 @@ describe("transcript coaching follow-through", () => {
     expect(rebuilt.goalIds).toEqual([]);
     expect(rebuilt.removedGoalIds).toEqual(first.goalIds);
     expect(work.goal.delete).toHaveBeenCalledWith({
-      where: { id: first.goalIds[0], updatedAt: expect.any(Date) },
+      where: expect.objectContaining({ id: first.goalIds[0], updatedAt: expect.any(Date),
+        targetAt: null, progressReceipts: { none: {} }, taskLinks: { none: {} } }),
     });
   });
 

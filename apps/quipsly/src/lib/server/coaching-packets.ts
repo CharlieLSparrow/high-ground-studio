@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import type { Prisma } from "@prisma/client";
 import {
   TRANSCRIPT_ACTION_CANDIDATE_KIND,
   TRANSCRIPT_PACKET_SOURCE,
@@ -303,6 +304,7 @@ function generatedFollowThroughCanRefresh(input: {
       : {};
   return (
     source.automaticallyCreated === true &&
+    !(Array.isArray(source.editReceipts) && source.editReceipts.length > 0) &&
     generated.schema === GENERATED_FOLLOW_THROUGH_SNAPSHOT_SCHEMA &&
     input.existing.title === generated.title &&
     (input.existing[input.detailField] ?? null) === (generated.detail ?? null)
@@ -386,6 +388,28 @@ export function generatedPacketNoteCanRefresh(existing: any) {
   );
 }
 
+// A generated title can be unchanged while its task/goal has become real work.
+// Use these predicates both when selecting cleanup candidates and at deletion:
+// related rows do not necessarily advance their parent's updatedAt timestamp.
+const unusedGeneratedWork = {
+  actionItem: {
+    dueAt: null, completedAt: null,
+    reminder: { is: null }, recurrenceOccurrence: { is: null },
+    goalLinks: { none: {} }, planBlocks: { none: {} },
+    tagLinks: { none: {} }, evidenceReceipts: { none: {} },
+  } satisfies Prisma.ActionItemWhereInput,
+  goal: {
+    targetAt: null, achievedAt: null, parentGoalId: null, stageId: null,
+    taskLinks: { none: {} }, progressReceipts: { none: {} },
+    planBlocks: { none: {} }, tagLinks: { none: {} },
+    children: { none: {} }, chatMessages: { none: {} },
+  } satisfies Prisma.GoalWhereInput,
+  coachingNote: {
+    visibility: "SESSION_SHARED", actionItems: { none: {} },
+    tagLinks: { none: {} }, revisions: { none: {} },
+  } satisfies Prisma.CoachingNoteWhereInput,
+};
+
 async function mutatePacketWork(
   prisma: any,
   model: "coachingNote" | "actionItem" | "goal",
@@ -395,7 +419,9 @@ async function mutatePacketWork(
 ) {
   try {
     return await prisma[model][operation]({
-      where: { id: existing.id, ...(existing.updatedAt ? { updatedAt: existing.updatedAt } : {}) },
+      where: { id: existing.id, ...(existing.updatedAt ? { updatedAt: existing.updatedAt } : {}),
+        ...(operation === "delete" ? unusedGeneratedWork[model] : {}),
+      },
       ...(data ? { data } : {}),
     });
   } catch (error) {
@@ -2205,10 +2231,10 @@ export async function buildCoachingPacketFromTranscriptJob(
   const [previouslyGeneratedActionItems, previouslyGeneratedGoals] =
     await Promise.all([
       args.prisma.actionItem.findMany({
-        where: { roomId: job.roomId },
+        where: { roomId: job.roomId, ...unusedGeneratedWork.actionItem },
       }),
       args.prisma.goal.findMany({
-        where: { roomId: job.roomId },
+        where: { roomId: job.roomId, ...unusedGeneratedWork.goal },
       }),
     ]);
   const removableActionItems = previouslyGeneratedActionItems.filter(
@@ -2362,6 +2388,7 @@ export async function buildCoachingPacketFromTranscriptJob(
             roomId: job.roomId,
             authorUserId: args.authorUserId || null,
             kind: "HIGHLIGHT",
+            ...unusedGeneratedWork.coachingNote,
             sourceJson: {
               path: ["origin"],
               equals: "quipsly-session-follow-through",

@@ -86,6 +86,10 @@ tasks/goals and shared notes appear without review, both coaching members can
 work with them, outsiders cannot, retries reuse them, and transcript corrections
 preserve personal edits. Controlled SQL interleavings check row-version guards
 on automatic task/goal refresh and removal; this is not a two-connection race test.
+Cleanup also retains work with deadlines, reminders, tags, planned time, progress,
+or dependent work, and notes with private visibility, revisions, or linked work.
+Late reminder/progress insertion exercises deletion predicates even when the
+parent row version has not changed. Unused generated output still clears automatically.
 This replaces the retired retained-account, mandatory-playback-review merge
 harnesses. It does not claim login, audio playback, native merge/relaunch, or
 concurrent-transaction proof; those remain separate runtime acceptance work.
