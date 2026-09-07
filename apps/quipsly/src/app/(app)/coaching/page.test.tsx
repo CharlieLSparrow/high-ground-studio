@@ -25,6 +25,31 @@ describe("Coaching home loading and recovery", () => {
     });
   });
 
+  afterEach(() => jest.restoreAllMocks());
+
+  it("lets a client cancel their proposed time and reloads the remaining work", async () => {
+    const hold = {id: "hold/client-1", status: "ACTIVE", isClientRequest: true,
+      client: user, coach: booking.coach, offeringTitle: "Requested coaching time",
+      scheduledStart: booking.scheduledStart, scheduledEnd: booking.scheduledEnd,
+      timezone: booking.timezone};
+    runwayFetch.mockResolvedValueOnce(response({...loaded, bookingHolds: [hold]}))
+      .mockResolvedValue(response({...loaded, bookingHolds: []}));
+    const originalFetch = jest.mocked(globalThis.fetch).getMockImplementation()!;
+    jest.mocked(globalThis.fetch).mockImplementation((url, init) =>
+      String(url).startsWith("/api/coaching/booking-requests?")
+        ? Promise.resolve(response({ok: true}) as Response)
+        : originalFetch(url, init));
+    jest.spyOn(window, "confirm").mockReturnValue(true);
+    render(<CoachingPage />);
+    fireEvent.click(await screen.findByRole("button", {name: "Cancel request"}));
+    await waitFor(() => expect(globalThis.fetch).toHaveBeenCalledWith(
+      "/api/coaching/booking-requests?holdId=hold%2Fclient-1", {method: "DELETE"}));
+    await waitFor(() => expect(screen.queryByRole("heading", {name: hold.offeringTitle})).not.toBeInTheDocument());
+    expect(screen.getByRole("link", {name: "Open my session"})).toHaveAttribute("href", booking.liveSessionPath);
+    expect(screen.queryByRole("button", {name: "Refresh operations"})).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", {name: "Schedule and send invite"})).not.toBeInTheDocument();
+  });
+
   it("does not invent an empty coach account while the client data is loading", () => {
     runwayFetch.mockReturnValue(new Promise(() => {}));
     render(<CoachingPage />);
