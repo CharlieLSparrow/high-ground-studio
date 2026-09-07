@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 
 import { getPrismaClient } from "@/lib/prisma";
 import { coachingEngagementAccessWhere } from "@/lib/server/coaching-engagement";
+import { sharedCoachingWorkVisibilityWhere } from "@/lib/server/coaching-work-access";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 
 export const runtime = "nodejs";
@@ -255,23 +256,13 @@ export async function GET(
             select: NOTE_SELECT,
           },
           actionItems: {
-            where: {
-              sourceJson: {
-                path: ["visibility"],
-                equals: "engagement-shared",
-              },
-            },
+            where: sharedCoachingWorkVisibilityWhere(),
             orderBy: [{ status: "asc" }, { dueAt: "asc" }],
             take: 100,
             select: TASK_SELECT,
           },
           goals: {
-            where: {
-              sourceJson: {
-                path: ["visibility"],
-                equals: "engagement-shared",
-              },
-            },
+            where: sharedCoachingWorkVisibilityWhere(),
             orderBy: [{ status: "asc" }, { updatedAt: "desc" }],
             take: 100,
             select: GOAL_SELECT,
@@ -741,11 +732,11 @@ export async function PATCH(
         const current =
           workKind === "TASK"
             ? await tx.actionItem.findFirst({
-                where: { id, engagementId, updatedAt: expectedUpdatedAt },
+                where: { id, engagementId, updatedAt: expectedUpdatedAt, ...sharedCoachingWorkVisibilityWhere() },
                 select: { ...TASK_SELECT, sourceJson: true },
               })
             : await tx.goal.findFirst({
-                where: { id, engagementId, updatedAt: expectedUpdatedAt },
+                where: { id, engagementId, updatedAt: expectedUpdatedAt, ...sharedCoachingWorkVisibilityWhere() },
                 select: { ...GOAL_SELECT, sourceJson: true },
               });
         if (!current) return { kind: "conflict" as const };
@@ -918,11 +909,11 @@ export async function DELETE(
               })
             : workKind === "TASK"
               ? await tx.actionItem.findFirst({
-                  where: { id, engagementId, updatedAt: expectedUpdatedAt },
+                  where: { id, engagementId, updatedAt: expectedUpdatedAt, ...sharedCoachingWorkVisibilityWhere() },
                   select: TASK_SELECT,
                 })
               : await tx.goal.findFirst({
-                  where: { id, engagementId, updatedAt: expectedUpdatedAt },
+                  where: { id, engagementId, updatedAt: expectedUpdatedAt, ...sharedCoachingWorkVisibilityWhere() },
                   select: GOAL_SELECT,
                 });
         if (!current || activeRemoval(current.sourceJson)) {
@@ -1070,11 +1061,11 @@ export async function PUT(
               })
             : workKind === "TASK"
               ? await tx.actionItem.findFirst({
-                  where: { id, engagementId, updatedAt: expectedUpdatedAt },
+                  where: { id, engagementId, updatedAt: expectedUpdatedAt, ...sharedCoachingWorkVisibilityWhere() },
                   select: TASK_SELECT,
                 })
               : await tx.goal.findFirst({
-                  where: { id, engagementId, updatedAt: expectedUpdatedAt },
+                  where: { id, engagementId, updatedAt: expectedUpdatedAt, ...sharedCoachingWorkVisibilityWhere() },
                   select: GOAL_SELECT,
                 });
         const removal = current ? activeRemoval(current.sourceJson) : null;

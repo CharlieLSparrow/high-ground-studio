@@ -5,6 +5,7 @@ import Page from "./page";
 import { getPrismaClient } from "@/lib/prisma";
 import { getQuipslySession } from "@/lib/server/quipsly-session";
 import { coachingEngagementAccessWhere } from "@/lib/server/coaching-engagement";
+import { sharedCoachingWorkVisibilityWhere } from "@/lib/server/coaching-work-access";
 
 jest.mock("@/lib/prisma", () => ({ getPrismaClient: jest.fn() }));
 jest.mock("@/lib/server/quipsly-session", () => ({ getQuipslySession: jest.fn() }));
@@ -48,7 +49,7 @@ describe("client space page behavior", () => {
     expect(query.select.notes.where).toEqual({ OR: [
       { visibility: { in: ["SESSION_SHARED", "CLIENT_SAFE"] } }, { authorUserId: person.id },
     ] });
-    expect(query.select.actionItems.where).toEqual({ sourceJson: { path: ["visibility"], equals: "engagement-shared" } });
+    expect(query.select.actionItems.where).toEqual(sharedCoachingWorkVisibilityWhere());
     expect(query.select.goals.where).toEqual(query.select.actionItems.where);
   });
 

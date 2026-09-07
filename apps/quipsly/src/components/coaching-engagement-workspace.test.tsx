@@ -5,6 +5,7 @@ import {
   waitFor,
   within,
 } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 
 import { CoachingEngagementWorkspace } from "./coaching-engagement-workspace";
 
@@ -13,9 +14,37 @@ const members = [
   { id: "client-1", label: "Riley Client", role: "CLIENT" },
 ];
 
+const sharedTask = {
+  id: "dated-task", kind: "TASK" as const, title: "Keep a morning writing habit", body: "Ten minutes",
+  status: "OPEN", owner: {id: "client-1", label: "Riley Client"}, visibility: "SHARED" as const,
+  dueAt: "2026-09-20T15:30:00.000Z", canEdit: true,
+  createdAt: "2026-09-07T00:00:00.000Z", updatedAt: "2026-09-07T00:00:00.000Z",
+};
+
 describe("CoachingEngagementWorkspace", () => {
   beforeEach(() => {
     jest.restoreAllMocks();
+  });
+
+  it("completes a task without silently changing its due time", async () => {
+    const fetchMock = jest.fn().mockResolvedValue({ok: true, json: async () => ({ok: true, entry: {...sharedTask, status: "DONE"}})});
+    Object.defineProperty(globalThis, "fetch", {value: fetchMock, writable: true, configurable: true});
+    render(<CoachingEngagementWorkspace engagementId="engagement-1" initialEntries={[sharedTask]} members={members} currentUserId="client-1" canWrite />);
+    await userEvent.click(screen.getByRole("button", {name: "Complete"}));
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toMatchObject({status: "DONE", targetAt: sharedTask.dueAt});
+  });
+
+  it("retains an edited draft after a failed save and preserves an unchanged due time", async () => {
+    const fetchMock = jest.fn().mockResolvedValue({ok: false, json: async () => ({ok: false, error: "Connection interrupted. Try saving again."})});
+    Object.defineProperty(globalThis, "fetch", {value: fetchMock, writable: true, configurable: true});
+    render(<CoachingEngagementWorkspace engagementId="engagement-1" initialEntries={[sharedTask]} members={members} currentUserId="client-1" canWrite />);
+    await userEvent.click(screen.getByText("Edit"));
+    await userEvent.clear(screen.getByRole("textbox", {name: "task name"}));
+    await userEvent.type(screen.getByRole("textbox", {name: "task name"}), "A carefully rewritten commitment");
+    await userEvent.click(screen.getByRole("button", {name: "Save changes"}));
+    expect(await screen.findByText("Connection interrupted. Try saving again.")).toBeInTheDocument();
+    expect(screen.getByRole("textbox", {name: "task name"})).toHaveValue("A carefully rewritten commitment");
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body).targetAt).toBe(sharedTask.dueAt);
   });
 
   it("shows only the choices needed for the selected kind of work", () => {

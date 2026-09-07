@@ -24,6 +24,7 @@ import {
 } from "@/components/coaching-relationship-overview";
 import { getPrismaClient } from "@/lib/prisma";
 import { coachingEngagementAccessWhere } from "@/lib/server/coaching-engagement";
+import { sharedCoachingWorkVisibilityWhere } from "@/lib/server/coaching-work-access";
 import { getQuipslySession } from "@/lib/server/quipsly-session";
 
 export const dynamic = "force-dynamic";
@@ -134,9 +135,7 @@ export default async function CoachingEngagementPage({
         },
       },
       actionItems: {
-        where: {
-          sourceJson: { path: ["visibility"], equals: "engagement-shared" },
-        },
+        where: sharedCoachingWorkVisibilityWhere(),
         orderBy: [{ status: "asc" }, { dueAt: "asc" }],
         take: 100,
         select: {
@@ -153,9 +152,7 @@ export default async function CoachingEngagementPage({
         },
       },
       goals: {
-        where: {
-          sourceJson: { path: ["visibility"], equals: "engagement-shared" },
-        },
+        where: sharedCoachingWorkVisibilityWhere(),
         orderBy: [{ status: "asc" }, { updatedAt: "desc" }],
         take: 100,
         select: {

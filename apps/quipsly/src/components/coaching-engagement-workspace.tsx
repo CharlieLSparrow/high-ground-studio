@@ -188,7 +188,7 @@ export function CoachingEngagementWorkspace({
             title: values.title ?? entry.title ?? "",
             body: values.body ?? entry.body ?? "",
             ownerUserId: values.ownerUserId ?? entry.owner?.id ?? currentUserId,
-            targetAt: values.targetAt ?? inputDate(entry.dueAt),
+            targetAt: values.targetAt ?? entry.dueAt ?? "",
             visibility: values.visibility ?? entry.visibility,
             status: values.status ?? entry.status,
             expectedUpdatedAt: entry.updatedAt,
@@ -511,7 +511,7 @@ export function CoachingEngagementWorkspace({
                       ) : null}
                     </p>
                   </div>
-                  {canWrite && entry.kind !== "NOTE" ? (
+                  {canWrite && entry.canEdit && entry.kind !== "NOTE" ? (
                     <button
                       type="button"
                       disabled={busyId === entry.id}
@@ -538,7 +538,10 @@ export function CoachingEngagementWorkspace({
                         <Pencil size={14} aria-hidden="true" /> Edit
                       </summary>
                       <form
-                        action={(formData) =>
+                        onSubmit={(event) => {
+                          event.preventDefault();
+                          const formData = new FormData(event.currentTarget);
+                          const targetDate = String(formData.get("targetAt") || "");
                           void updateEntry(entry, {
                             title: String(formData.get("title") || ""),
                             body: String(formData.get("body") || ""),
@@ -547,15 +550,15 @@ export function CoachingEngagementWorkspace({
                                 entry.owner?.id ||
                                 currentUserId,
                             ),
-                            targetAt: String(formData.get("targetAt") || ""),
+                            targetAt: targetDate === inputDate(entry.dueAt) ? undefined : targetDate,
                             visibility: String(
                               formData.get("visibility") || entry.visibility,
                             ),
                             status: String(
                               formData.get("status") || entry.status || "",
                             ),
-                          })
-                        }
+                          });
+                        }}
                         className="mt-3 grid gap-3"
                       >
                         <input
