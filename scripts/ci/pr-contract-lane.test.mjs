@@ -23,6 +23,30 @@ test("every filtered validation command rejects an unmatched package", () => {
 
 // Run the checked-in workflow shell, replacing only pnpm. A passing tee must
 // never turn a failed test process into a successful required check.
+for (const failure of ["none", "update", "install", "ffmpeg", "ffprobe"]) {
+  test(`media test dependencies fail at ${failure} instead of silently skipping real media tests`, () => {
+    const source = step("Install and verify media test tools");
+    assert.ok(source);
+    assert.match(source, /if: steps.changes.outputs.quipsly == 'true' \|\| steps.changes.outputs.web == 'true'/);
+    assert.ok(workflow.indexOf("Install and verify media test tools") < workflow.indexOf("Run committed Quipsly contract suite"));
+    const script = source.split("        run: |\n")[1]?.split("\n")
+      .filter(line => line.startsWith("          ")).map(line => line.slice(10)).join("\n");
+    const result = spawnSync("bash", ["-c", `
+      sudo() {
+        [[ "$1" == apt-get ]] || return 99
+        echo "$2"
+        [[ "$2" != "$FAILURE" ]] || return 37
+      }
+      ffmpeg() { echo ffmpeg; [[ "$FAILURE" != ffmpeg ]] || return 37; }
+      ffprobe() { echo ffprobe; [[ "$FAILURE" != ffprobe ]] || return 37; }
+      ${script}
+    `], { encoding: "utf8", env: { ...process.env, FAILURE: failure } });
+    assert.equal(result.status, failure === "none" ? 0 : 37, result.stdout + result.stderr);
+    const commands = ["update", "install", "ffmpeg", "ffprobe"];
+    assert.deepEqual(result.stdout.trim().split("\n"), failure === "none" ? commands : commands.slice(0, commands.indexOf(failure) + 1));
+  });
+}
+
 for (const exitCode of [0, 1, 17]) {
   test(`contract runner exit ${exitCode} is preserved with stdout and stderr`, (t) => {
     const root = mkdtempSync(path.join(os.tmpdir(), "quipsly-contract-ci-"));
