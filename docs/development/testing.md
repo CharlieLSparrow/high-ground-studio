@@ -36,9 +36,21 @@ truth.
 
 ```bash
 pnpm --filter quipsly typecheck
+pnpm --filter quipsly test --maxWorkers=2
 pnpm quipsly:contracts:test
 pnpm quipsly:release:local
 ```
+
+The Jest application suite is a required PR check for Nest changes, separate
+from the script-based source contracts. CI retains its JSON result even when it
+fails, and preserves the process log if the runner crashes before writing JSON.
+The full suite uses two workers with an absolute 512 MB idle recycle threshold;
+focused debugging can still use `--runInBand`. Database integration tests explicitly opt in with
+`QUIPSLY_LOCAL_DB_SMOKE=1` and `QUIPSLY_LOCAL_DATABASE_URL`; the ordinary Jest PR
+step does not claim those integration tests ran. The contracts runner uses
+Node's TypeScript transform mode because production worker classes use
+parameter properties; strip-only mode cannot load them. Do not remove worker
+coverage or rewrite working production syntax just to hide a runner failure.
 
 The release gate runs the Nest and HGO production builds plus their shared
 capture, coaching, public-route, App Store static, and schema contracts. When

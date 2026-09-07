@@ -7,6 +7,7 @@ import { PrismaClient } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { initializeApp, getApps } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
+import { isGeneratedSmokeEmail, redactEmailList } from "./lib/generated-smoke-identities.mjs";
 
 const repoRoot = process.cwd();
 const apply = process.argv.includes("--apply");
@@ -72,12 +73,6 @@ function requiredEnv(env, name) {
   return value;
 }
 
-export function isGeneratedSmokeEmail(email) {
-  return /^codex-(invite|signup|admin|native|mobile-capture)-[a-f0-9]{8}@dev\.test$/i.test(
-    String(email || "").trim(),
-  );
-}
-
 function slugifyEmailForHomeNest(email) {
   return email
     .toLowerCase()
@@ -86,15 +81,6 @@ function slugifyEmailForHomeNest(email) {
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
     .slice(0, 72);
-}
-
-export function redactEmailList(emails) {
-  return emails.map((email) =>
-    email.replace(
-      /^codex-(invite|signup|admin|native|mobile-capture)-([a-f0-9]{4})[a-f0-9]{4}/i,
-      "codex-$1-$2****",
-    ),
-  );
 }
 
 async function main() {

@@ -4,7 +4,7 @@ import test from "node:test";
 import {
   isGeneratedSmokeEmail,
   redactEmailList,
-} from "./quipsly-clean-generated-smoke-artifacts.mjs";
+} from "./lib/generated-smoke-identities.mjs";
 
 test("accepts every exact disposable smoke identity family", () => {
   for (const family of [

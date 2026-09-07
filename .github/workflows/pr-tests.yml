@@ -71,6 +71,27 @@ jobs:
         if: steps.changes.outputs.quipsly == 'true' || steps.changes.outputs.web == 'true' || steps.changes.outputs.media_verifier == 'true' || steps.changes.outputs.media_processor == 'true' || steps.changes.outputs.transcript_worker == 'true'
         run: pnpm install --frozen-lockfile
 
+      - name: Test Quipsly application behavior
+        if: steps.changes.outputs.quipsly == 'true'
+        timeout-minutes: 10
+        env:
+          QUIPSLY_LOCAL_DB_SMOKE: '0'
+        run: |
+          node --test apps/quipsly/scripts/typescript-config.test.mjs
+          set -o pipefail
+          pnpm --filter quipsly test --maxWorkers=2 --json --outputFile="${RUNNER_TEMP}/quipsly-jest-results.json" 2>&1 | tee "${RUNNER_TEMP}/quipsly-jest.log"
+
+      - name: Preserve application test results
+        if: always() && steps.changes.outputs.quipsly == 'true'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: quipsly-application-tests-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/quipsly-jest-results.json
+            ${{ runner.temp }}/quipsly-jest.log
+          if-no-files-found: warn
+          retention-days: 7
+
       - name: Typecheck High Ground web with pinned TypeScript 7
         if: steps.changes.outputs.web == 'true'
         run: pnpm --filter web typecheck

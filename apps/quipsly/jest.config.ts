@@ -8,6 +8,9 @@ const createJestConfig = nextJest({
 
 // Add any custom config to be passed to Jest
 const config: Config = {
+  // Recycle workers between files instead of retaining hundreds of React/Next
+  // module graphs in one process during the complete application suite.
+  workerIdleMemoryLimit: '512MB',
   coverageProvider: 'v8',
   testEnvironment: 'jsdom',
   // Browser journeys use Playwright's runner. Keeping Jest on explicit

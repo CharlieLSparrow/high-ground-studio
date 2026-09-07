@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
+import { typescriptConfigForBuild } from "../apps/quipsly/scripts/typescript-config.mjs";
 
 const quipslyConfig = readFileSync("apps/quipsly/next.config.mjs", "utf8");
 const webConfig = readFileSync("apps/web/next.config.mjs", "utf8");
@@ -53,13 +54,21 @@ test("local release verification can disable only rebuild caching on constrained
   );
 });
 
-test("TypeScript includes both developer and isolated release route types", () => {
-  for (const config of [quipslyTypeScript, webTypeScript]) {
-    assert.ok(config.include.includes(".next/types/**/*.ts"));
-    assert.ok(config.include.includes(".next/dev/types/**/*.ts"));
-    assert.ok(config.include.includes(".next-release/types/**/*.ts"));
-    assert.ok(config.include.includes(".next-release/dev/types/**/*.ts"));
+test("Nest validates active-lane routes without importing stale sibling builds", () => {
+  assert.deepEqual(quipslyTypeScript.include.filter((entry) => entry.startsWith(".next")), []);
+  for (const lane of [".next", ".next-release", ".next-recovery-lab"]) {
+    const config = typescriptConfigForBuild(lane);
+    assert.deepEqual(config.include.filter((entry) => entry.startsWith(".next")), [
+      `${lane}/types/**/*.ts`, `${lane}/dev/types/**/*.ts`,
+    ]);
   }
+});
+
+test("HGO still includes its developer and release route types", () => {
+  assert.ok(webTypeScript.include.includes(".next/types/**/*.ts"));
+  assert.ok(webTypeScript.include.includes(".next/dev/types/**/*.ts"));
+  assert.ok(webTypeScript.include.includes(".next-release/types/**/*.ts"));
+  assert.ok(webTypeScript.include.includes(".next-release/dev/types/**/*.ts"));
 });
 
 test("Quipsly request logging excludes only bearer calendar subscription paths", async () => {
