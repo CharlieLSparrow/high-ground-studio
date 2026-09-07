@@ -158,12 +158,14 @@ tokens, cookies, passwords, or database credentials.
 
 ## Capture
 
-The native UI runner checks the selected simulator against Xcode's eligible
-project destinations before starting tests. A successful Safari launch alone
-does not establish this. It permits one bounded refresh when discovery returns
-only placeholders, retains discovery output in the normal CI log, and never
-substitutes devices or retries failed app tests. Missing device coverage remains
-a failure even if the other platform passes.
+The native UI runner resolves build settings for the requested simulator before
+starting tests, verifies the app target's simulator platform and device ID, and
+uses that exact ID for the test invocation. A successful Safari launch or a
+generic entry in Xcode's destination list does not establish this. Resolution
+has a bounded timeout; ambiguous, missing, or substituted destinations fail
+without retry. Only the resolved identity is logged, not inherited build-setting
+values. Failed app tests are never retried into green. Missing device coverage
+remains a failure even if the other platform passes.
 
 Capture evaluates PRs into every branch. A lightweight Linux job uses the same
 release-manifest planner as local validation to decide whether Mac tests are

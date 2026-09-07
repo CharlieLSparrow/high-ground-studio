@@ -105,7 +105,7 @@ export function createXcodeArguments(plan, options) {
   ];
 }
 
-export function inspectDestinationDiscovery(output, destination) {
+export function resolvedSimulatorDestination(output, destination) {
   const requested = Object.fromEntries(destination.split(",").map((part) => {
     const separator = part.indexOf("=");
     return [part.slice(0, separator).trim(), part.slice(separator + 1).trim()];
@@ -114,53 +114,50 @@ export function inspectDestinationDiscovery(output, destination) {
     || Object.keys(requested).some((key) => !["platform", "id", "name", "OS", "arch"].includes(key))) {
     throw new Error(`Unsupported simulator destination: ${destination}`);
   }
-  // A device mentioned in an error or in the ineligible section is not ready.
-  const available = output.split(/Available destinations for[^\n]*:\s*/).at(1)
-    ?.split(/Ineligible destinations for/)[0] ?? "";
-  const devices = [...available.matchAll(/\{([^{}]+)\}/g)].map((match) =>
-    Object.fromEntries(match[1].split(",").map((part) => {
-      const separator = part.indexOf(":");
-      return [part.slice(0, separator).trim(), part.slice(separator + 1).trim()];
-    })),
-  ).filter((device) => device.platform === "iOS Simulator"
-    && /^[0-9a-f-]{36}$/i.test(device.id ?? "") && !device.error);
-  const matches = devices.filter((device) => Object.entries(requested).every(([key, value]) =>
-    (key === "OS" && value === "latest") || device[key] === value,
-  ));
-  const identities = new Set(matches.map((device) => device.id));
-  if (identities.size > 1) throw new Error(`Ambiguous simulator destination: ${destination}`);
-  return { ready: identities.size === 1, discoveryEmpty: devices.length === 0 };
+  const targets = JSON.parse(output);
+  const appTargets = Array.isArray(targets)
+    ? targets.filter((entry) => entry.target === "HighGroundCapture") : [];
+  const settings = appTargets.length === 1 ? appTargets[0].buildSettings : null;
+  const id = settings?.TARGET_DEVICE_IDENTIFIER;
+  if (!/^[0-9a-f-]{36}$/i.test(id ?? "")
+    || settings.PLATFORM_NAME !== "iphonesimulator"
+    || settings.TARGET_DEVICE_PLATFORM_NAME !== "iphonesimulator"
+    || (requested.id && requested.id.toLowerCase() !== id.toLowerCase())
+    || (requested.OS && requested.OS !== "latest" && requested.OS !== settings.TARGET_DEVICE_OS_VERSION)
+    || (requested.arch && !String(settings.ARCHS ?? "").split(/\s+/).includes(requested.arch))) {
+    throw new Error(`Xcode did not resolve the requested simulator; no tests started on ${destination}`);
+  }
+  // A name/OS request has now been resolved by Xcode. Use that same identity
+  // for testing instead of doing a second potentially different lookup.
+  return `platform=iOS Simulator,id=${id}`;
 }
 
 export async function ensureXcodeDestination(options, {
-  discover = async () => {
+  resolve = async () => {
     try {
       const result = await promisify(execFile)("xcodebuild", [
         "-project", PROJECT, "-scheme", "HighGroundCapture",
-        "-derivedDataPath", options.derivedDataPath, "-showdestinations",
+        "-derivedDataPath", options.derivedDataPath,
+        "-destination", options.destination, "-destination-timeout", "30",
+        "-showBuildSettings", "-json",
       ], { encoding: "utf8", timeout: 180_000, maxBuffer: 4 * 1024 * 1024 });
-      process.stdout.write(result.stdout);
       process.stderr.write(result.stderr);
+      if (/multiple matching destinations/i.test(result.stderr)) {
+        throw new Error(`Ambiguous simulator destination: ${options.destination}`);
+      }
+      // Build settings can contain inherited environment values. Do not dump
+      // them into shared CI logs; report only the verified device below.
       return result.stdout;
     } catch (error) {
-      process.stdout.write(error.stdout ?? "");
       process.stderr.write(error.stderr ?? "");
       throw error;
     }
   },
-  settle = () => new Promise((resolve) => setTimeout(resolve, 1000)),
 } = {}) {
-  // Safari/simctl liveness does not prove the selected Xcode project sees the
-  // device. One empty-discovery refresh accommodates first-driver startup;
-  // unavailable or ambiguous devices and failed commands are not retried.
-  for (let attempt = 1; attempt <= 2; attempt += 1) {
-    process.stdout.write(`Xcode destination discovery ${attempt}/2: ${options.destination}\n`);
-    const state = inspectDestinationDiscovery(await discover(), options.destination);
-    if (state.ready) return;
-    if (!state.discoveryEmpty || attempt === 2) break;
-    await settle();
-  }
-  throw new Error(`Xcode did not make the selected simulator available; no tests started on ${options.destination}`);
+  process.stdout.write(`Resolving Xcode simulator: ${options.destination}\n`);
+  const resolved = resolvedSimulatorDestination(await resolve(), options.destination);
+  process.stdout.write(`Xcode resolved ${resolved}\n`);
+  return resolved;
 }
 
 export function resultBundlePath(evidenceRoot, platformName) {
@@ -314,12 +311,12 @@ async function main() {
       `Running ${execution.selectors.length} ${execution.name} contracts on ${execution.destination}\n`,
     );
     try {
-      await ensureXcodeDestination({ ...options, destination: execution.destination });
+      const resolvedDestination = await ensureXcodeDestination({ ...options, destination: execution.destination });
       const result = await runXcodebuild(createXcodeArguments(
         { selectors: execution.selectors },
         {
           ...options,
-          destination: execution.destination,
+          destination: resolvedDestination,
           resultBundlePath: bundlePath,
         },
       ));
