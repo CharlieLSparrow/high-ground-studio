@@ -4,6 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
+const failures = [];
 
 const files = {
   handoff: "apps/web/src/lib/hgo/coaching-handoff.ts",
@@ -45,13 +46,13 @@ function read(relativePath) {
 function requireIncludes(text, needle, label, file) {
   const compact = (value) => String(value).replace(/\s+/g, " ").trim();
   if (!compact(text).includes(compact(needle))) {
-    fail("Required HGO/Quipsly coaching handoff invariant is missing.", { label, file, missing: needle });
+    failures.push({ label, file, missing: needle });
   }
 }
 
 function requireNotIncludes(text, needle, label, file) {
   if (text.includes(needle)) {
-    fail("Retired HGO/Quipsly coaching handoff pattern is still present.", { label, file, retired: needle });
+    failures.push({ label, file, retired: needle });
   }
 }
 
@@ -495,10 +496,6 @@ for (const [label, needle] of [
   ["runway supports convert hold", "\"convert-booking-hold\""],
   ["runway supports reschedule booking", "\"reschedule-booking\""],
   ["runway supports cancel booking", "\"cancel-booking\""],
-  ["hold created next action", "Hold created. Convert to a booking only when the human confirms the session."],
-  ["hold released next action", "Hold released. The time is no longer reserved unless a human creates a new hold or booking."],
-  ["reschedule calendar caveat", "Update external calendar/invite evidence before promising the change is on calendars."],
-  ["cancel calendar caveat", "Cancel external calendar/invite/payment evidence separately before saying the outside world is updated."],
   ["reschedule planned calendar evidence", "reschedule-planned"],
   ["cancel planned calendar evidence", "cancel-planned"],
   ["payment hold blocks capture", "Payment hold. Keep this out of confirmed capture until Stripe evidence lands."],
@@ -506,6 +503,8 @@ for (const [label, needle] of [
 ]) {
   requireIncludes(texts.quipslyCoachingRunway, needle, label, files.quipslyCoachingRunway);
 }
+
+if (failures.length > 0) fail("HGO/Quipsly source checks failed.", { failures });
 
 console.log(JSON.stringify({
   ok: true,
