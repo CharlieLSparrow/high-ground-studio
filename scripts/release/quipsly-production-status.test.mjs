@@ -29,7 +29,8 @@ test("production readback fails closed on the complete mobile contract", () => {
   assert.match(script, /JSON\.parse\(fs\.readFileSync\(process\.argv\[1\], "utf8"\)\)/);
   assert.doesNotMatch(script, /require\(process\.argv\[1\]\)/);
   assert.match(script, /statusCounts\?\.fail/);
-  assert.match(script, /fail "Production mobile Capture contract failed/);
+  assert.match(script, /fail "Capture validation failed/);
+  assert.match(script, /source checks and runtime probes are separate evidence/);
 });
 
 test("production readback remains non-mutating", () => {

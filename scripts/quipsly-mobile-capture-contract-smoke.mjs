@@ -39,13 +39,14 @@ const jsonOutput = args.get("json") === "1" || process.env.QUIPSLY_MOBILE_CAPTUR
 const sourceOnly = args.get("source-only") === "1" || process.env.QUIPSLY_MOBILE_CAPTURE_SOURCE_ONLY === "1";
 
 const checks = [];
+let checkPhase = "source";
 
 function normalizeBaseUrl(value) {
   return String(value || "").trim().replace(/\/+$/, "");
 }
 
 function addCheck(name, status, summary, details = undefined) {
-  checks.push({ name, status, summary, details });
+  checks.push({ name, phase: checkPhase, status, summary, details });
 }
 
 function isObject(value) {
@@ -3107,6 +3108,7 @@ async function main() {
   checkNativeUnifiedWritingLibrarySources();
   checkNativeSessionSchedulingSources();
   if (!sourceOnly) {
+    checkPhase = "runtime";
     await checkReadiness();
     await checkProtectedRoutes();
     await checkAuthenticatedSessionLifecycle();
@@ -3130,6 +3132,10 @@ async function main() {
     authenticated: Boolean(bearerToken),
     sourceOnly,
     statusCounts,
+    phaseCounts: Object.fromEntries(["source", "runtime"].map((phase) => [phase, {
+      pass: checks.filter((check) => check.phase === phase && check.status === "pass").length,
+      fail: checks.filter((check) => check.phase === phase && check.status === "fail").length,
+    }])),
     checks,
   };
 
@@ -3142,7 +3148,7 @@ async function main() {
     console.log(`Source-only mode: ${sourceOnly ? "enabled" : "disabled"}`);
     for (const check of checks) {
       const marker = check.status === "pass" ? "✓" : "✗";
-      console.log(`${marker} ${check.name}: ${check.summary}`);
+      console.log(`${marker} [${check.phase}] ${check.name}: ${check.summary}`);
       if (check.status !== "pass" && check.details) {
         console.log(`  details: ${JSON.stringify(check.details)}`);
       }

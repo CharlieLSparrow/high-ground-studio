@@ -113,7 +113,22 @@ check_mobile_contract() {
         + `${Number(report?.statusCounts?.fail || 0)} fail`,
       );
     ' "${report}" 2>/dev/null || true)"
-    fail "Production mobile Capture contract failed (${summary:-unreadable report})."
+    fail "Capture validation failed (${summary:-unreadable report}); source checks and runtime probes are separate evidence."
+    node -e '
+      const fs = require("node:fs");
+      const report = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+      for (const phase of ["source", "runtime"]) {
+        const counts = report.phaseCounts?.[phase];
+        if (counts) console.error(`${phase}: ${counts.pass} pass, ${counts.fail} fail`);
+      }
+      for (const check of report.checks || []) {
+        if (check.status !== "fail") continue;
+        // Print controlled check identifiers, never response bodies or tokens.
+        const phase = ["source", "runtime"].includes(check.phase) ? check.phase : "unknown";
+        const name = String(check.name || "unnamed").replace(/[^a-zA-Z0-9_.-]/g, "_").slice(0, 120);
+        console.error(`FAIL [${phase}] ${name}`);
+      }
+    ' "${report}" || true
   fi
   rm -f "${report}"
 }
