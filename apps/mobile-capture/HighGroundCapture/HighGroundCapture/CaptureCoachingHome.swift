@@ -106,6 +106,7 @@ struct MobileCoachingBooking: Codable, Identifiable, Hashable {
     let callRoomId: String?
     let callRoomStatus: String?
     let clientInvitationDelivery: MobileCoachingInvitationDelivery?
+    var scheduleNotification: MobileCoachingScheduleNotification? = nil
     let clientEntryPath: String?
     let engagementPath: String?
     let liveSessionPath: String?
@@ -1345,7 +1346,8 @@ final class MobileCoachingRunwayClient: ObservableObject {
     func rescheduleBooking(
         _ booking: MobileCoachingBooking,
         scheduledStart: Date,
-        durationMinutes: Int
+        durationMinutes: Int,
+        notifyClient: Bool
     ) async -> Bool {
         guard !isMutating else { return false }
         guard scheduledStart > Date() else {
@@ -1375,19 +1377,17 @@ final class MobileCoachingRunwayClient: ObservableObject {
         errorMessage = nil
 
         do {
-            let payload = try await performAction([
-                "action": "reschedule-booking",
-                "bookingId": booking.id,
-                "scheduledStart": ISO8601DateFormatter().string(from: scheduledStart),
-                "durationMinutes": max(15, durationMinutes),
-                "timezone": TimeZone.current.identifier,
-                "reason": "Rescheduled from Quipsly Capture on \(CaptureDeviceVocabulary.deviceName).",
-            ])
+            let command = MobileCoachingScheduleChange(
+                bookingID: booking.id, scheduledStart: scheduledStart,
+                durationMinutes: durationMinutes, timezone: TimeZone.current.identifier,
+                notifyClient: notifyClient
+            )
+            let payload = try await performAction(command.body)
             guard payload.ok, payload.result?.bookingId == booking.id else {
                 throw coachingClientError(payload.error ?? "This Session could not be rescheduled.")
             }
             await load()
-            status = "Session rescheduled"
+            status = payload.result?.nextAction ?? "Session rescheduled"
             return true
         } catch {
             status = "Rescheduling needs attention"
@@ -2191,9 +2191,10 @@ struct CaptureCoachingHomeView: View {
             MobileCoachingRescheduleSheet(
                 client: client,
                 booking: booking,
-                preferredStart: requestedRescheduleStart
+                preferredStart: requestedRescheduleStart,
+                previewOnly: model.usesPreviewData
             )
-                .presentationDetents([.medium])
+                .presentationDetents([.large])
         }
         .sheet(item: $bookingToRequestChange) { booking in
             if let engagement = engagement(for: booking) {
@@ -2592,9 +2593,7 @@ struct CaptureCoachingHomeView: View {
                         }
                         .captureProminentButton()
                         .accessibilityIdentifier("CaptureCoachingOpen_Handoff_\(roomID)")
-                        if !model.usesPreviewData {
-                            appointmentManagementMenu(for: booking)
-                        }
+                        appointmentManagementMenu(for: booking)
                     }
                 }
                 invitationActions(for: booking)
@@ -2669,9 +2668,7 @@ struct CaptureCoachingHomeView: View {
                                     .captureProminentButton()
                                     .accessibilityIdentifier("CaptureCoachingOpen_\(booking.id)")
                                 }
-                                if !model.usesPreviewData {
-                                    appointmentManagementMenu(for: booking)
-                                }
+                                appointmentManagementMenu(for: booking)
                             }
                             if let engagement = engagement(for: booking) {
                                 MobileCoachingScheduleRequestReviewCard(
@@ -2744,6 +2741,7 @@ struct CaptureCoachingHomeView: View {
                         systemImage: "envelope"
                     )
                 }
+                .disabled(model.usesPreviewData)
             }
             Button {
                 bookingToReschedule = booking
@@ -2755,6 +2753,7 @@ struct CaptureCoachingHomeView: View {
             } label: {
                 Label("Cancel Session", systemImage: "calendar.badge.minus")
             }
+            .disabled(model.usesPreviewData)
         } label: {
             Image(systemName: "ellipsis.circle")
                 .frame(width: 44, height: 44)
@@ -2774,6 +2773,12 @@ struct CaptureCoachingHomeView: View {
 
     @ViewBuilder
     private func invitationActions(for booking: MobileCoachingBooking) -> some View {
+        if let notification = booking.scheduleNotification {
+            Label(notification.label, systemImage: notification.needsAttention ? "exclamationmark.triangle" : "envelope")
+                .font(.caption)
+                .foregroundStyle(notification.needsAttention ? CapturePalette.brass : CapturePalette.secondaryText)
+                .accessibilityIdentifier("CaptureCoachingScheduleNotification_\(booking.id)")
+        }
         if let roomID = booking.callRoomId,
            let recipientEmail = booking.client?.email?.nonemptyCoachingText {
             VStack(alignment: .leading, spacing: 8) {
@@ -4234,6 +4239,8 @@ private struct MobileCoachingRescheduleSheet: View {
     let booking: MobileCoachingBooking
     @State private var scheduledStart: Date
     @State private var durationMinutes: Int
+    @State private var notifyClient = true
+    let previewOnly: Bool
 
     private var scheduleConflict: MobileCoachingBooking? {
         client.scheduleConflict(
@@ -4253,10 +4260,12 @@ private struct MobileCoachingRescheduleSheet: View {
     init(
         client: MobileCoachingRunwayClient,
         booking: MobileCoachingBooking,
-        preferredStart: Date? = nil
+        preferredStart: Date? = nil,
+        previewOnly: Bool = false
     ) {
         self.client = client
         self.booking = booking
+        self.previewOnly = previewOnly
         _scheduledStart = State(
             initialValue: max(preferredStart ?? booking.scheduledDate ?? Date(), Date())
         )
@@ -4307,10 +4316,16 @@ private struct MobileCoachingRescheduleSheet: View {
                     }
                 }
 
+                Section {
+                    Toggle("Email client about the new time", isOn: $notifyClient)
+                        .accessibilityIdentifier("CaptureCoachingRescheduleNotifyClient")
+                }
+
                 if let error = client.errorMessage {
                     Section { Text(error).foregroundStyle(.red) }
                 }
             }
+            .accessibilityIdentifier("CaptureCoachingRescheduleForm")
             .captureFormSurface()
             .navigationTitle("Reschedule")
             .navigationBarTitleDisplayMode(.inline)
@@ -4324,7 +4339,8 @@ private struct MobileCoachingRescheduleSheet: View {
                             if await client.rescheduleBooking(
                                 booking,
                                 scheduledStart: scheduledStart,
-                                durationMinutes: durationMinutes
+                                durationMinutes: durationMinutes,
+                                notifyClient: notifyClient
                             ) {
                                 dismiss()
                             }
@@ -4332,12 +4348,14 @@ private struct MobileCoachingRescheduleSheet: View {
                     }
                     .disabled(
                         client.isMutating
+                            || previewOnly
                             || client.isUsingProtectedCache
                             || scheduledStart <= Date()
                             || scheduleConflict != nil
                             || isOutsideWorkingHours
                     )
                     .accessibilityIdentifier("CaptureCoachingSaveReschedule")
+                    .accessibilityLabel(notifyClient ? "Save and notify client" : "Save new time")
                 }
             }
         }

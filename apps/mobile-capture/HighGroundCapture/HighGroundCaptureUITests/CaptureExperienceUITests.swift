@@ -1582,6 +1582,46 @@ final class CaptureExperienceUITests: XCTestCase {
         )
     }
 
+    func testCoachingRescheduleMakesEmailChoiceExplicit() {
+        exerciseCoachingRescheduleEmailChoice()
+    }
+
+    func testCoachingRescheduleMakesEmailChoiceExplicitOnRegularWidthIPad() {
+        exerciseCoachingRescheduleEmailChoice()
+    }
+
+    private func exerciseCoachingRescheduleEmailChoice() {
+        relaunchCoachingPreview(role: "coach")
+        let coaching = app.buttons["CaptureOpenCoachingHome"]
+        XCTAssertTrue(coaching.waitForExistence(timeout: 5))
+        coaching.tap()
+        let manage = app.buttons["CaptureCoachingManage_preview-booking"]
+        reveal(manage, searchAboveFirst: false)
+        XCTAssertTrue(manage.waitForExistence(timeout: 5))
+        manage.tap()
+        app.buttons["Reschedule"].tap()
+        let form = app.descendants(matching: .any)["CaptureCoachingRescheduleForm"].firstMatch
+        XCTAssertTrue(form.waitForExistence(timeout: 5))
+        let notice = app.switches["CaptureCoachingRescheduleNotifyClient"]
+        for _ in 0..<4 {
+            if notice.exists && notice.isHittable { break }
+            form.swipeUp()
+        }
+        XCTAssertTrue(notice.waitForExistence(timeout: 5))
+        XCTAssertTrue(notice.isHittable)
+        XCTAssertEqual(notice.value as? String, "1")
+        let save = app.buttons["CaptureCoachingSaveReschedule"]
+        XCTAssertEqual(save.label, "Save and notify client")
+        notice.coordinate(withNormalizedOffset: CGVector(dx: 0.92, dy: 0.5)).tap()
+        expectation(for: NSPredicate(format: "value == %@", "0"), evaluatedWith: notice)
+        waitForExpectations(timeout: 3)
+        XCTAssertEqual(notice.value as? String, "0")
+        XCTAssertEqual(save.label, "Save new time")
+        XCTAssertFalse(save.isEnabled, "Preview exercises the real form without sending external messages.")
+        app.buttons["Cancel"].tap()
+        XCTAssertTrue(app.scrollViews["CaptureCoachingHome"].waitForExistence(timeout: 5))
+    }
+
     func testCoachingHomeMakesThePhoneOnlyWorkflowConcrete() {
         relaunchCoachingPreview(role: "coach")
         let coaching = app.buttons["CaptureOpenCoachingHome"]

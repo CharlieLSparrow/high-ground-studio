@@ -6,6 +6,7 @@ test_dir="$(mktemp -d /private/tmp/quipsly-coaching-work-save.XXXXXX)"
 trap 'rm -rf "$test_dir"' EXIT
 xcrun swiftc \
   "$capture_root/HighGroundCapture/CaptureCoachingWorkSave.swift" \
+  "$capture_root/HighGroundCapture/CoachingScheduleUpdate.swift" \
   "$capture_root/Testing/CaptureCoachingWorkSaveTests.swift" \
   -o "$test_dir/CoachingWorkSaveTests"
 "$test_dir/CoachingWorkSaveTests"
