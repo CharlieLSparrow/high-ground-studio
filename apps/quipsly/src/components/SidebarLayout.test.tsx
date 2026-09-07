@@ -3,6 +3,7 @@ import { fireEvent, render, screen, within, waitFor } from "@testing-library/rea
 import { usePathname, useRouter } from "next/navigation";
 import { SidebarLayout } from "./SidebarLayout";
 import { createPersonalNote } from "./workspace-create-actions";
+import { CoachingSuiteNav } from "./coaching-suite-nav";
 
 jest.mock("next/navigation", () => ({ usePathname: jest.fn(() => "/today"), useRouter: jest.fn() }));
 jest.mock("@/lib/firebase/firebase", () => ({ auth: {} }));
@@ -43,6 +44,18 @@ describe("Quipsly workspace navigation", () => {
     expect(screen.getByRole("navigation", { name: "Notes tools" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Research" })).toHaveAttribute("href", "/research");
     expect(screen.queryByRole("link", { name: "Tasks & goals" })).not.toBeInTheDocument();
+  });
+
+  it("lets a client space own its local navigation without stacking two extra toolbars", () => {
+    jest.mocked(usePathname).mockReturnValue("/coaching/engagements/client-1");
+    const { rerender } = render(<SidebarLayout><CoachingSuiteNav canSchedule />Client workspace</SidebarLayout>);
+    expect(screen.queryByRole("navigation", { name: "Sessions tools" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("navigation", { name: "Coaching" })).not.toBeInTheDocument();
+    expect(screen.getByRole("navigation", { name: "Mobile workspace" })).toBeInTheDocument();
+    jest.mocked(usePathname).mockReturnValue("/coaching/engagements");
+    rerender(<SidebarLayout><CoachingSuiteNav canSchedule />Client list</SidebarLayout>);
+    expect(screen.getByRole("navigation", { name: "Sessions tools" })).toBeInTheDocument();
+    expect(screen.getByRole("navigation", { name: "Coaching" })).toBeInTheDocument();
   });
 
   it("creates a note from any surface and opens the canonical document", async () => {

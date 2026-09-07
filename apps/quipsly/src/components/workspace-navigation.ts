@@ -57,6 +57,10 @@ export function pathIsWithin(pathname: string, root: string): boolean {
   return pathname === root || pathname.startsWith(`${root}/`);
 }
 
+export function isClientSpacePath(pathname: string): boolean {
+  return /^\/coaching\/engagements\/[^/]+(?:\/|$)/.test(pathname);
+}
+
 export function workspaceSectionForPath(pathname: string): WorkspaceSection {
   return workspaceSections.find((section) => section.paths.some((root) => pathIsWithin(pathname, root)))
     ?? workspaceSections[0];

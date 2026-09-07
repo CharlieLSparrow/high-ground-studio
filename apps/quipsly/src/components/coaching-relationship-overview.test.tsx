@@ -1,9 +1,10 @@
 import "@testing-library/jest-dom";
 
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 
 import {
   CoachingRelationshipOverview,
+  CoachingRelationshipBrief,
   type CoachingRelationshipOverviewItem,
 } from "./coaching-relationship-overview";
 
@@ -61,12 +62,14 @@ function overview(
 
 describe("CoachingRelationshipOverview", () => {
   it("turns a live relationship into one obvious join action and a compact continuity brief", () => {
-    render(<CoachingRelationshipOverview overview={overview()} canSchedule />);
+    render(<><CoachingRelationshipOverview overview={overview()} canSchedule /><CoachingRelationshipBrief overview={overview()} /></>);
 
     expect(screen.getByRole("link", { name: "Join session" })).toHaveAttribute(
       "href",
       "/sessions/room-live?mode=live",
     );
+    expect(screen.getByText("Practice the opening question")).not.toBeVisible();
+    fireEvent.click(screen.getByText("Session brief"));
     expect(screen.getByText("Practice the opening question")).toBeVisible();
     expect(screen.getByText("Lead a confident session")).toBeVisible();
     expect(

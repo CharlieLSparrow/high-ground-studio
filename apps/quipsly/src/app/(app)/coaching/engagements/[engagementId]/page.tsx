@@ -12,12 +12,14 @@ import { notFound } from "next/navigation";
 
 import { CollaborationThread } from "@/components/session-thread";
 import { CoachingEngagementMemberManager } from "@/components/coaching-engagement-member-manager";
+import { CoachingSpaceTabs } from "@/components/coaching-space-tabs";
 import {
   CoachingEngagementWorkspace,
   type CoachingEngagementWorkEntry,
 } from "@/components/coaching-engagement-workspace";
 import {
   CoachingRelationshipOverview,
+  CoachingRelationshipBrief,
   type CoachingRelationshipOverviewItem,
 } from "@/components/coaching-relationship-overview";
 import { getPrismaClient } from "@/lib/prisma";
@@ -374,39 +376,62 @@ export default async function CoachingEngagementPage({
         >
           <ArrowLeft size={16} /> All clients
         </Link>
-        <header className="mt-5 min-w-0 rounded-[2rem] border border-[#dfcfb4] bg-[#fffdf8] p-5 shadow-sm sm:p-7">
+        <header className="mt-3 min-w-0 px-1 pb-1">
           <div className="flex flex-wrap items-start justify-between gap-6">
             <div>
               <p className="text-xs font-black uppercase tracking-[0.22em] text-violet-800">
                 Coaching ·{" "}
                 {viewerRole === "COACH" ? "Client space" : "My coaching space"}
               </p>
-              <h1 className="mt-2 break-words font-serif text-4xl font-black text-[#34291d] sm:text-5xl">
+              <h1 className="mt-2 break-words font-serif text-2xl font-black text-[#34291d] sm:text-4xl">
                 {engagement.title}
               </h1>
-              <p className="mt-4 flex flex-wrap items-center gap-3 text-sm font-bold text-[#765f40]">
-                <UsersRound size={17} />{" "}
+              <p className="mt-2 flex items-start gap-2 text-xs text-[#765f40]">
+                <UsersRound size={15} className="shrink-0" aria-hidden="true" /><span>
                 {engagement.members
                   .map(
                     (member) =>
                       `${personLabel(member.user)} · ${member.role.toLowerCase()}`,
                   )
-                  .join("  /  ")}
+                  .join("  /  ")}</span>
               </p>
             </div>
-            <p className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-4 py-2 text-xs font-black text-emerald-900">
-              <LockKeyhole size={15} aria-hidden="true" /> Private to the people
-              shown here
-            </p>
           </div>
         </header>
-        <div className="mt-6">
+        <div className="mt-4">
           <CoachingRelationshipOverview
             overview={overview}
             canSchedule={canSchedule}
           />
         </div>
-        <section className="mt-6 flex flex-wrap items-center justify-between gap-5 rounded-[1.75rem] border border-violet-200 bg-violet-50 p-5 shadow-sm">
+        <CoachingSpaceTabs
+          work={<CoachingEngagementWorkspace
+            engagementId={engagement.id}
+            initialEntries={workEntries}
+            members={engagement.members.map((member) => ({
+              id: member.userId,
+              label: personLabel(member.user),
+              role: member.role,
+            }))}
+            currentUserId={session.user.id}
+            canWrite={canPost}
+          />}
+          conversation={<div id="relationship-conversation" className="min-w-0">
+            <CollaborationThread
+              projectSlug={engagement.project.slug}
+              threadKey={`engagement:${engagement.id}`}
+              collaborationTitle={engagement.title}
+              heading="Conversation"
+              clientSurface="engagement-room-web"
+              canPost={canPost}
+              scopeLabel="Shared conversation"
+              scopeDescription="Keep in touch and plan together between sessions."
+            />
+          </div>}
+          people={canManage ? <CoachingEngagementMemberManager engagementId={engagement.id} /> : undefined}
+          sessions={<div id="relationship-sessions" className="space-y-4">
+        <CoachingRelationshipBrief overview={overview} />
+        <section className="flex flex-wrap items-center justify-between gap-4 rounded-[1.75rem] border border-[#dfcfb4] bg-[#fffdf8] p-4">
           <div className="flex items-start gap-3">
             <span className="rounded-2xl bg-white p-3 text-violet-800 shadow-sm">
               <ClipboardList size={22} aria-hidden="true" />
@@ -415,13 +440,13 @@ export default async function CoachingEngagementPage({
               <p className="text-xs font-black uppercase tracking-[0.17em] text-violet-800">
                 Reflections and intake
               </p>
-              <h2 className="mt-1 font-serif text-2xl font-black text-[#34291d]">
+              <h2 className="mt-1 font-serif text-xl font-black text-[#34291d]">
                 {engagement.formAssignments.length
                   ? `${engagement.formAssignments.filter((item) => item.status === "SUBMITTED").length} shared · ${engagement.formAssignments.filter((item) => item.status !== "SUBMITTED").length} waiting`
-                  : "No forms assigned yet"}
+                  : "Forms"}
               </h2>
               <p className="mt-1 text-sm font-semibold leading-6 text-[#765f40]">
-                Complete or send short forms without leaving this private coaching relationship.
+                Prepare for a session or share a reflection.
               </p>
             </div>
           </div>
@@ -432,13 +457,6 @@ export default async function CoachingEngagementPage({
             Open forms
           </Link>
         </section>
-        {canManage ? (
-          <div className="mt-6">
-            <CoachingEngagementMemberManager engagementId={engagement.id} />
-          </div>
-        ) : null}
-        <div className="mt-6 grid min-w-0 gap-6 xl:grid-cols-[minmax(0,1.4fr)_minmax(22rem,0.8fr)]">
-          <div className="min-w-0 space-y-6">
             <section className="min-w-0 rounded-[1.75rem] border border-[#dfcfb4] bg-[#fffdf8] p-4 sm:p-6">
               <p className="text-[10px] font-black uppercase tracking-[0.2em] text-violet-800">
                 Your history
@@ -529,31 +547,8 @@ export default async function CoachingEngagementPage({
                 </p>
               )}
             </section>
-            <CoachingEngagementWorkspace
-              engagementId={engagement.id}
-              initialEntries={workEntries}
-              members={engagement.members.map((member) => ({
-                id: member.userId,
-                label: personLabel(member.user),
-                role: member.role,
-              }))}
-              currentUserId={session.user.id}
-              canWrite={canPost}
-            />
-          </div>
-          <div id="relationship-conversation" className="min-w-0">
-            <CollaborationThread
-              projectSlug={engagement.project.slug}
-              threadKey={`engagement:${engagement.id}`}
-              collaborationTitle={engagement.title}
-              heading="Conversation"
-              clientSurface="engagement-room-web"
-              canPost={canPost}
-              scopeLabel="Across this coaching relationship"
-              scopeDescription="Use this conversation between calls. Messages about one specific Session remain with that Session."
-            />
-          </div>
-        </div>
+          </div>}
+        />
       </div>
     </main>
   );

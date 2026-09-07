@@ -301,19 +301,14 @@ export function CoachingEngagementWorkspace({
     >
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-violet-800">
-            Work between sessions
-          </p>
           <h2
             id="engagement-work-heading"
-            className="mt-2 font-serif text-3xl font-black text-[#3d3122]"
+            className="font-serif text-2xl font-bold text-[#3d3122]"
           >
             Notes, tasks, and goals
           </h2>
           <p className="mt-2 max-w-3xl text-sm font-semibold leading-6 text-[#765f40]">
-            Keep the relationship moving without hunting through old calls.
-            Shared work stays here across every Session; private notes stay with
-            their author.
+            Shared notes and next steps. Choose “Only me” for a private note.
           </p>
         </div>
         <div className="flex flex-wrap gap-2 text-[10px] font-black uppercase tracking-wide">

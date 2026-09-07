@@ -10,6 +10,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { usePathname } from "next/navigation";
+import { isClientSpacePath } from "./workspace-navigation";
 
 const coachItems: ReadonlyArray<{
   href: string;
@@ -36,6 +37,9 @@ const clientItems = coachItems
 export function CoachingSuiteNav({ canSchedule }: { canSchedule: boolean }) {
   const pathname = usePathname();
   const items = canSchedule ? coachItems : clientItems;
+  // A client space owns its own tabs and return link. Do not stack another
+  // navigation bar above them, especially on a phone.
+  if (isClientSpacePath(pathname)) return null;
 
   return (
     <nav

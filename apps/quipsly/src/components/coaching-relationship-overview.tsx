@@ -118,21 +118,21 @@ export function CoachingRelationshipOverview({
   return (
     <section
       aria-labelledby="relationship-overview-heading"
-      className="rounded-[1.75rem] border border-[#dfcfb4] bg-[#fffdf8] p-5 shadow-sm sm:p-6"
+      className="rounded-2xl border border-[#dfcfb4] bg-[#fffdf8] p-4 shadow-sm"
     >
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(20rem,0.85fr)]">
-        <div className="rounded-2xl border border-violet-200 bg-gradient-to-br from-violet-50 to-white p-5">
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div className="min-w-0 basis-full sm:flex-1 sm:basis-auto">
           <p className="text-[10px] font-black uppercase tracking-[0.18em] text-violet-800">
-            {nextIsLive ? "Happening now" : "Next step"}
+            {nextIsLive ? "Happening now" : "Next session"}
           </p>
           <h2
             id="relationship-overview-heading"
-            className="mt-2 font-serif text-3xl font-black text-[#34291d]"
+            className="mt-1 break-words font-serif text-xl font-bold text-[#34291d]"
           >
             {overview.nextSession?.title ||
               (canSchedule
-                ? "Keep the relationship moving"
-                : "Stay connected between sessions")}
+                ? "No session scheduled"
+                : "Your shared coaching space")}
           </h2>
           {overview.nextSession ? (
             <p className="mt-2 flex items-center gap-2 text-sm font-black text-[#5f4d37]">
@@ -144,23 +144,31 @@ export function CoachingRelationshipOverview({
           ) : (
             <p className="mt-2 max-w-2xl text-sm font-semibold leading-6 text-[#765f40]">
               {canSchedule
-                ? "Choose a time, invite your client, and Quipsly will keep the room, shared work, and follow-up together here."
-                : "Use this space for shared notes, commitments, goals, and a message whenever you need to reconnect."}
+                ? "Your notes and conversation are ready whenever you are."
+                : "Keep notes and stay in touch between calls."}
             </p>
           )}
-          <Link
+        </div>
+        <Link
             href={primaryHref}
-            className={`mt-5 inline-flex min-h-12 items-center justify-center gap-2 rounded-full px-5 text-sm font-black text-white shadow-sm transition ${
+            className={`inline-flex min-h-12 items-center justify-center gap-2 rounded-full px-5 text-sm font-black text-white shadow-sm transition ${
               nextIsLive
                 ? "bg-rose-700 hover:bg-rose-800"
                 : "bg-violet-800 hover:bg-violet-900"
             }`}
           >
             <PrimaryIcon size={17} aria-hidden="true" /> {primaryLabel}
-          </Link>
-        </div>
+        </Link>
+      </div>
+    </section>
+  );
+}
 
-        <div className="grid grid-cols-2 gap-3">
+export function CoachingRelationshipBrief({ overview }: { overview: CoachingRelationshipOverviewItem }) {
+  return (
+      <details className="rounded-2xl border border-[#dfcfb4] bg-[#fffdf8] p-4">
+        <summary className="min-h-11 cursor-pointer content-center text-sm font-semibold text-[#765f40]">Session brief</summary>
+        <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
           {(
             [
               ["Open commitments", overview.openTaskCount, CheckCircle2],
@@ -183,8 +191,6 @@ export function CoachingRelationshipOverview({
             </a>
           ))}
         </div>
-      </div>
-
       <div className="mt-5 grid gap-4 lg:grid-cols-3">
         <section className="rounded-2xl border border-[#eadfc9] bg-white p-4">
           <p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-wide text-[#806747]">
@@ -319,6 +325,6 @@ export function CoachingRelationshipOverview({
           only to you.
         </p>
       ) : null}
-    </section>
+      </details>
   );
 }
