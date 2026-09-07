@@ -9146,7 +9146,7 @@ private struct CaptureVoiceWritingEditor: View {
                         .font(.caption)
                         .foregroundStyle(CapturePalette.brass)
                     Button("Try saving again") {
-                        saveImmediately()
+                        guard saveImmediately() != nil else { return }
                         writingSync.syncNow(draftID: draftID)
                     }
                     .frame(minHeight: 44)
@@ -9950,7 +9950,7 @@ private struct CaptureVoiceWritingEditor: View {
         titleIsFocused = false
         bodyIsFocused = false
         saveTask?.cancel()
-        saveImmediately()
+        guard saveImmediately() != nil else { return }
         do {
             try await writingSync.move(draftID: draftID, to: destination)
         } catch {
@@ -9968,7 +9968,7 @@ private struct CaptureVoiceWritingEditor: View {
         titleIsFocused = false
         bodyIsFocused = false
         saveTask?.cancel()
-        saveImmediately()
+        guard saveImmediately() != nil else { return }
         do {
             try await writingSync.move(
                 draftID: draftID,
@@ -9984,7 +9984,10 @@ private struct CaptureVoiceWritingEditor: View {
     @ViewBuilder
     private var syncStatus: some View {
         Group {
-            if writingSync.syncingDraftIDs.contains(draftID) {
+            if localSaveError != nil {
+                Label("Not saved", systemImage: "exclamationmark.icloud")
+                    .foregroundStyle(CapturePalette.brass)
+            } else if writingSync.syncingDraftIDs.contains(draftID) {
                 Label("Saving…", systemImage: "icloud.and.arrow.up")
             } else if currentDraft?.pendingRemote != nil {
                 Label("Two copies", systemImage: "arrow.triangle.branch")
@@ -10035,8 +10038,7 @@ private struct CaptureVoiceWritingEditor: View {
         let insertionUtf16 = voiceContinuationInsertionUtf16
         titleIsFocused = false
         bodyIsFocused = false
-        saveImmediately()
-        guard let draft = currentDraft else { return }
+        guard let draft = saveImmediately() else { return }
         onContinueByVoice(draft, insertionUtf16)
         dismiss()
     }
@@ -10436,7 +10438,8 @@ private struct CaptureVoiceWritingEditor: View {
         }
     }
 
-    private func saveImmediately() {
+    @discardableResult
+    private func saveImmediately() -> VoiceWritingDraft? {
         do {
             let draft = try writingStore.update(
                 draftID: draftID,
@@ -10446,8 +10449,10 @@ private struct CaptureVoiceWritingEditor: View {
             )
             localSaveError = nil
             writingSync.schedule(draft)
+            return draft
         } catch {
             localSaveError = "Couldn’t save this edit. Keep this note open and try again."
+            return nil
         }
     }
 

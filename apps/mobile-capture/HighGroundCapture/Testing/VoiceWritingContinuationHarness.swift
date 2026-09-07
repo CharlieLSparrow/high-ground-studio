@@ -41,6 +41,41 @@ final class TestWritingFileManager: FileManager, @unchecked Sendable {
     }
 }
 
+@MainActor final class WritingSyncProbe {
+    var scheduled: [VoiceWritingDraft] = []
+    func schedule(_ draft: VoiceWritingDraft) { scheduled.append(draft) }
+}
+
+@MainActor final class WritingEditorActionProbe {
+    let writingStore: VoiceWritingDraftStore
+    let writingSync = WritingSyncProbe()
+    let draftID: UUID
+    var title: String
+    var bodyText: String
+    var richText: VoiceWritingRichText?
+    var titleIsFocused = false
+    var bodyIsFocused = true
+    var localSaveError: String?
+    var voiceContinuationInsertionUtf16: Int? = 5
+    var dismissed = false
+    var continuedDraft: VoiceWritingDraft?
+    var continuedInsertion: Int?
+
+    init(store: VoiceWritingDraftStore, draft: VoiceWritingDraft) {
+        writingStore = store
+        draftID = draft.id
+        title = draft.title
+        bodyText = draft.body
+        richText = draft.richText
+    }
+
+    func onContinueByVoice(_ draft: VoiceWritingDraft, _ insertion: Int?) {
+        continuedDraft = draft
+        continuedInsertion = insertion
+    }
+    func dismiss() { dismissed = true }
+}
+
 @main
 struct VoiceWritingContinuationHarness {
     @MainActor static func main() throws {
@@ -88,6 +123,38 @@ struct VoiceWritingContinuationHarness {
             print("PASS \(uploadedFirst ? "upload before transcription" : "transcription before upload"): one continued document, insertion, account isolation, idempotence, and disk recovery")
         }
         try exerciseSaveRecovery(support: temporary.appendingPathComponent("save-recovery"))
+        try exerciseEditorContinuationRecovery(support: temporary.appendingPathComponent("editor-recovery"))
+    }
+
+    @MainActor static func exerciseEditorContinuationRecovery(support: URL) throws {
+        AuthManager.ownerAccountID = "writer-a"
+        let manager = TestWritingFileManager(support: support)
+        let store = VoiceWritingDraftStore(fileManager: manager)
+        let blank = try store.createTypedDraft()
+        let original = try store.update(draftID: blank.id, title: "My chapter", body: "Saved paragraph.")
+        let editor = WritingEditorActionProbe(store: store, draft: original)
+        editor.title = "My revised chapter"
+        editor.bodyText = "The paragraph I just wrote."
+        editor.richText = VoiceWritingRichText(text: editor.bodyText)
+        try withWritingDiskUnavailable(support: support) {
+            editor.tapContinue()
+            precondition(!editor.dismissed && editor.continuedDraft == nil,
+                "Keep talking must not dismiss unsaved edits and continue from stale writing")
+            precondition(editor.writingSync.scheduled.isEmpty)
+            precondition(editor.localSaveError != nil)
+            precondition(store.draft(id: original.id) == original)
+            precondition(editor.bodyText == "The paragraph I just wrote.")
+        }
+        editor.tapContinue()
+        precondition(editor.dismissed && editor.localSaveError == nil)
+        precondition(editor.continuedDraft?.id == original.id)
+        precondition(editor.continuedDraft?.body == editor.bodyText)
+        precondition(editor.continuedDraft?.title == editor.title)
+        precondition(editor.continuedInsertion == 5)
+        precondition(editor.writingSync.scheduled.count == 1)
+        let relaunched = VoiceWritingDraftStore(fileManager: manager).draft(id: original.id)
+        precondition(relaunched?.body == editor.bodyText && relaunched?.title == editor.title)
+        print("PASS Keep talking: failed save retains visible edits; retry saves the current text before syncing, continuing, and dismissing")
     }
 
     @MainActor static func exerciseSaveRecovery(support: URL) throws {
