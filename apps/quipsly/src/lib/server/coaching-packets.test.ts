@@ -1402,6 +1402,11 @@ describe("transcript coaching follow-through", () => {
     const editedSummaryID = latestSummary.id;
     latestSummary.title = "My own recap title";
     notes.set(editedSummaryID, latestSummary);
+    const editedHighlight = Array.from(notes.values()).find((note) => note.kind === "HIGHLIGHT" && note.sourceJson.segmentId === provider.id)!;
+    editedHighlight.title = "My own reflection";
+    editedHighlight.body = "This is what the session means to me, in my own words.";
+    editedHighlight.visibility = "AUTHOR_PRIVATE";
+    const editedHighlightSource = structuredClone(editedHighlight.sourceJson);
     notes.set("stale-generated-highlight", {
       id: "stale-generated-highlight",
       kind: "HIGHLIGHT",
@@ -1441,6 +1446,14 @@ describe("transcript coaching follow-through", () => {
     expect(notes.get(editedSummaryID).title).toBe("My own recap title");
     expect(notes.has("stale-generated-highlight")).toBe(false);
     expect(summaries).toHaveLength(2);
+    const retainedHighlight = notes.get(editedHighlight.id);
+    expect(retainedHighlight).toMatchObject({
+      title: "My own reflection", body: "This is what the session means to me, in my own words.", visibility: "AUTHOR_PRIVATE",
+      sourceJson: { ...editedHighlightSource, includedInPacketBuildId: secondRebuild.packetBuildId },
+    });
+    expect(secondRebuild.highlightNoteIds).toContain(editedHighlight.id);
+    expect(selectLatestCorrelatedPacketNotes(Array.from(notes.values())).highlights.map((note) => note.id)).toContain(editedHighlight.id);
+    expect(Array.from(notes.values()).filter((note) => note.kind === "HIGHLIGHT" && note.sourceJson.segmentId === provider.id)).toHaveLength(1);
     expect(
       coachingNoteCreate.mock.calls.filter(
         ([{ data }]: any[]) => data.kind === "HIGHLIGHT",
@@ -1454,6 +1467,28 @@ describe("transcript coaching follow-through", () => {
         })
       ).title,
     ).toBe("My own follow-up wording");
+  });
+
+  it("retries a packet refresh when a person changes the note after it was read", async () => {
+    const updatedAt = new Date("2026-09-07T19:00:00Z");
+    const existing = {
+      id: "summary-raced", title: "Old recap", body: "Old recap body", updatedAt,
+      sourceJson: {
+        origin: "quipsly-session-follow-through", automaticallyCreated: true,
+        generatedNoteSnapshot: { schema: "quipsly-generated-packet-note-snapshot-v1", title: "Old recap", body: "Old recap body" },
+      },
+    };
+    const update = jest.fn().mockRejectedValue(Object.assign(new Error("Row changed"), { code: "P2025" }));
+    const create = jest.fn();
+    await expect(buildCoachingPacketFromTranscriptJob({
+      prisma: {
+        transcriptJob: { findUnique: jest.fn().mockResolvedValue(completedTranscriptJob()) },
+        coachingNote: { findFirst: jest.fn().mockResolvedValue(existing), update, create },
+      },
+      transcriptJobId: "transcript-1", authorUserId: "coach-1",
+    })).rejects.toMatchObject({ code: "P2034" });
+    expect(update).toHaveBeenCalledWith(expect.objectContaining({ where: { id: existing.id, updatedAt } }));
+    expect(create).not.toHaveBeenCalled();
   });
 
   it("removes untouched generated follow-through when a correction removes the commitment", async () => {

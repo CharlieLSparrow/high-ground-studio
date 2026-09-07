@@ -386,6 +386,22 @@ export function generatedPacketNoteCanRefresh(existing: any) {
   );
 }
 
+async function updatePacketNote(prisma: any, existing: any, data: Record<string, unknown>) {
+  try {
+    return await prisma.coachingNote.update({
+      where: { id: existing.id, ...(existing.updatedAt ? { updatedAt: existing.updatedAt } : {}) },
+      data,
+    });
+  } catch (error) {
+    // A person may edit/remove this note after the packet reads it. Retry the
+    // enclosing transaction from fresh rows instead of replacing that edit.
+    if (error && typeof error === "object" && "code" in error && error.code === "P2025") {
+      throw Object.assign(new Error("A coaching note changed while follow-through was refreshing.", { cause: error }), { code: "P2034" });
+    }
+    throw error;
+  }
+}
+
 export function generatedPacketHighlightCanRemove(input: {
   existing: any;
   retainedNoteIds: Set<string>;
@@ -1260,7 +1276,9 @@ export function selectLatestCorrelatedPacketNotes(packetNotes: any[]) {
           typeof note?.sourceJson === "object" && note.sourceJson !== null
             ? (note.sourceJson as Record<string, unknown>)
             : {};
-        return cleanText(source.packetBuildId) === packetBuildId;
+        // Edited notes keep the evidence they were written from. Inclusion in
+        // a refreshed packet must not pretend their source text was refreshed.
+        return cleanText(source.includedInPacketBuildId || source.packetBuildId) === packetBuildId;
       })
     : allHighlights;
 
@@ -1982,16 +2000,10 @@ export async function buildCoachingPacketFromTranscriptJob(
     typeof args.prisma.coachingNote.update === "function",
   );
   const summaryNote = summaryRefreshedInPlace
-    ? await args.prisma.coachingNote.update({
-        where: { id: existing.id },
-        data: {
-          title: packetTitle,
-          body: summaryBody,
-          sourceJson: preserveActiveRelationshipWorkRemoval(
-            existing.sourceJson,
-            summarySourceJson,
-          ),
-        },
+    ? await updatePacketNote(args.prisma, existing, {
+        title: packetTitle,
+        body: summaryBody,
+        sourceJson: preserveActiveRelationshipWorkRemoval(existing.sourceJson, summarySourceJson),
       })
     : await args.prisma.coachingNote.create({
         data: {
@@ -2313,18 +2325,18 @@ export async function buildCoachingPacketFromTranscriptJob(
       typeof args.prisma.coachingNote.update === "function",
     );
     const note = refreshHighlight
-      ? await args.prisma.coachingNote.update({
-          where: { id: existingHighlight.id },
-          data: {
-            title,
-            body,
-            sourceJson: preserveActiveRelationshipWorkRemoval(
-              existingHighlight.sourceJson,
-              highlightSourceJson,
-            ),
-          },
+      ? await updatePacketNote(args.prisma, existingHighlight, {
+          title,
+          body,
+          sourceJson: preserveActiveRelationshipWorkRemoval(existingHighlight.sourceJson, highlightSourceJson),
         })
-      : await args.prisma.coachingNote.create({
+      : existingHighlight
+        ? await updatePacketNote(args.prisma, existingHighlight, {
+            // Preserve the person's words, audience, removal choice, and
+            // original source snapshots; don't manufacture a second note.
+            sourceJson: { ...existingHighlightSource, includedInPacketBuildId: packetBuildId },
+          })
+        : await args.prisma.coachingNote.create({
           data: {
             roomId: job.roomId,
             bookingId: job.room?.bookingId ?? null,
