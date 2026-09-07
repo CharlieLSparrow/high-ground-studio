@@ -53,6 +53,8 @@ test("cheap Capture source checks run in Linux planning and preserve failures be
   const changes = workflow.split("\n  changes:\n")[1]?.split("\n  deterministic-ui:\n")[0];
   assert.ok(changes?.includes(`- name: ${name}`));
   assert.match(changes, /if: steps.plan.outputs.capture == 'true'/);
+  assert.match(stepScript(name), /quipsly-ios-capture-app-store-static-smoke\.test\.mjs/);
+  assert.doesNotMatch(stepScript("Validate Capture release source"), /quipsly-ios-capture-app-store-static-smoke/);
   const result = runStep(name, {});
   assert.equal(result.status, 0, result.stdout + result.stderr);
   for (const exitCode of [17, 143]) {

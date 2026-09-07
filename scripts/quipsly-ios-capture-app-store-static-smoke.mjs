@@ -2388,9 +2388,9 @@ for (const needle of [
   ".onChange(of: scenePhase)",
   "saveTask?.cancel()",
   "saveImmediately()",
-  "Try saving on \\(CaptureDeviceVocabulary.thisDevice) again",
+  "CaptureVoiceWritingRetryEditSave",
 ]) {
-  requireIncludes(capturePhoneShellText, needle, "writing flushes its protected local copy at app lifecycle boundaries");
+  requireIncludes(capturePhoneShellText, needle, "writing lifecycle flush and retry controls remain wired");
 }
 for (const needle of [
   "let restoredProtectedSelection = brief == nil && restoreProtectedCache()",

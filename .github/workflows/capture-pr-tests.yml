@@ -63,6 +63,8 @@ jobs:
         run: |
           set -euo pipefail
           node --test scripts/quipsly-ios-capture-durability-contract.test.mjs scripts/quipsly-ios-coordinated-podcast-capture.test.mjs scripts/quipsly-ios-capture-account-isolation.test.mjs apps/mobile-capture/HighGroundCapture/scripts/runtime-result-verification.test.mjs
+          node --test scripts/lib/source-check-report.test.mjs scripts/quipsly-ios-capture-app-store-static-smoke.test.mjs
+          node scripts/quipsly-ios-capture-app-store-static-smoke.mjs --summary
 
   deterministic-ui:
     needs: changes
@@ -113,8 +115,6 @@ jobs:
           bash scripts/test-capture-voice-writing-continuation.sh
           node --test scripts/quipsly-ios-capture-account-isolation.test.mjs
           node apps/mobile-capture/HighGroundCapture/scripts/test-recording-content-summary.mjs
-          node --test scripts/lib/source-check-report.test.mjs scripts/quipsly-ios-capture-app-store-static-smoke.test.mjs
-          node scripts/quipsly-ios-capture-app-store-static-smoke.mjs --summary
           node --test scripts/release/quipsly-capture-ui-test-plan.test.mjs
           node --test scripts/release/quipsly-capture-ui-test-runner.test.mjs
           node --test scripts/release/quipsly-app-store-connect-readback.test.mjs
