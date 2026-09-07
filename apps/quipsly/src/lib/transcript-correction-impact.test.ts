@@ -4,6 +4,68 @@ import {
 } from "./transcript-correction-impact";
 
 describe("transcript correction impact", () => {
+  const impactFor = (evidence: unknown[], overrides: Record<string, unknown> = {}) =>
+    buildTranscriptCorrectionImpact({
+      transcriptJobId: "job-1",
+      segments: [{ id: "segment-1", acceptedCorrectionId: "correction-new", text: "Write a page.", speakerLabel: "Charlie", ...overrides }],
+      artifacts: [{ id: "task-1", kind: "task", label: "Writing", status: "OPEN", href: "/tasks/task-1", updatedAt: "2026-09-07T00:00:00Z", canAcknowledge: true, evidence }],
+    }).get("segment-1")?.[0];
+  const snapshot = (overrides: Record<string, unknown> = {}) => ({
+    transcriptJobId: "job-1", segmentId: "segment-1", acceptedCorrectionId: "correction-old",
+    effectiveTextSnapshot: "Write a page.", effectiveSpeakerLabelSnapshot: "Charlie", ...overrides,
+  });
+
+  it("does not turn identical words and speaker into work when only receipt history changes", () => {
+    expect(impactFor([snapshot()])).toMatchObject({
+      state: "current", evidenceCorrectionId: "correction-old", currentCorrectionId: "correction-new",
+      changes: { text: "unchanged", speaker: "unchanged", correctionReceipt: "changed" },
+    });
+  });
+
+  it("does not let a matching receipt hide changed text or speaker", () => {
+    expect(impactFor([snapshot({ acceptedCorrectionId: "correction-new", effectiveTextSnapshot: "Write two pages." })]))
+      .toMatchObject({ state: "needs-review", changes: { text: "changed", correctionReceipt: "unchanged" } });
+    expect(impactFor([snapshot({ acceptedCorrectionId: "correction-new", effectiveSpeakerLabelSnapshot: "Scott" })]))
+      .toMatchObject({ state: "needs-review", changes: { speaker: "changed", correctionReceipt: "unchanged" } });
+  });
+
+  it("distinguishes an explicitly unnamed speaker from missing speaker evidence", () => {
+    expect(impactFor([snapshot({ effectiveSpeakerLabelSnapshot: null })], { speakerLabel: null }))
+      .toMatchObject({ state: "current", changes: { speaker: "unchanged", correctionReceipt: "changed" } });
+    expect(impactFor([snapshot({ effectiveSpeakerLabelSnapshot: null })]))
+      .toMatchObject({ state: "needs-review", changes: { speaker: "changed" } });
+    const incomplete: Record<string, unknown> = snapshot();
+    delete incomplete.effectiveSpeakerLabelSnapshot;
+    expect(impactFor([incomplete])).toMatchObject({ state: "needs-review", changes: { speaker: "unknown" } });
+  });
+
+  it("prefers exact source snapshots over a matching span-summary receipt", () => {
+    const summary = { transcriptJobId: "job-1", segmentIds: ["segment-1", "segment-2"], acceptedCorrectionId: "correction-new" };
+    for (const evidence of [[summary, snapshot({ effectiveTextSnapshot: "Old words." })], [snapshot({ effectiveTextSnapshot: "Old words." }), summary]]) {
+      expect(impactFor(evidence)).toMatchObject({ state: "needs-review", priorTextSnapshot: "Old words." });
+    }
+  });
+
+  it("does not compare combined span wording or speaker labels to an individual passage", () => {
+    const summary = {
+      transcriptJobId: "job-1", segmentIds: ["segment-1", "segment-2"], acceptedCorrectionId: "correction-new",
+      effectiveTextSnapshot: "Write a page. Then call Scott.", effectiveSpeakerLabelSnapshot: null,
+    };
+    expect(impactFor([summary])).toMatchObject({
+      state: "current", changes: { text: "unknown", speaker: "unknown", correctionReceipt: "unchanged" },
+    });
+    expect(impactFor([{ ...summary, acceptedCorrectionId: "correction-old" }])).toMatchObject({
+      state: "needs-review", changes: { text: "unknown", speaker: "unknown", correctionReceipt: "changed" },
+    });
+  });
+
+  it("finds a matching source among historical revisions without changing those snapshots", () => {
+    const evidence = [snapshot({ effectiveTextSnapshot: "Earlier words." }), snapshot()];
+    const original = JSON.stringify(evidence);
+    expect(impactFor(evidence)).toMatchObject({ state: "current", priorTextSnapshot: "Write a page." });
+    expect(JSON.stringify(evidence)).toBe(original);
+  });
+
   it("collects anchors only beneath the selected transcript job", () => {
     const snapshots = transcriptCorrectionSnapshots({
       transcriptJobId: "job-current",

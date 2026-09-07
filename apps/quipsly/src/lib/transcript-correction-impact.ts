@@ -42,6 +42,7 @@ type CorrectionSnapshot = {
   correctionSnapshotPresent: boolean;
   effectiveTextSnapshot: string | null;
   effectiveSpeakerLabelSnapshot: string | null;
+  speakerSnapshotPresent: boolean;
   specificity: "exact-segment" | "span-summary";
 };
 
@@ -103,6 +104,7 @@ export function transcriptCorrectionSnapshots(
           correctionSnapshotPresent,
           effectiveTextSnapshot,
           effectiveSpeakerLabelSnapshot,
+          speakerSnapshotPresent: Object.prototype.hasOwnProperty.call(row, "effectiveSpeakerLabelSnapshot"),
           specificity,
         });
       }
@@ -142,14 +144,32 @@ export function buildTranscriptCorrectionImpact(input: {
       const currentSegment = currentSegmentById.get(segmentId)!;
       const currentCorrectionId = currentSegment.acceptedCorrectionId;
       const versioned = segmentSnapshots.filter((snapshot) => snapshot.correctionSnapshotPresent);
+      // Exact passage snapshots outrank aggregate span summaries. A changed
+      // receipt is useful history, not evidence that the source words changed.
+      const exact = versioned.filter((snapshot) => snapshot.specificity === "exact-segment");
+      const candidates = exact.length ? exact : versioned;
+      const current = candidates.filter((snapshot) => {
+        // A span's combined wording cannot be compared to one passage. Its
+        // nested exact snapshots, when present, are selected above instead.
+        if (snapshot.specificity === "span-summary") {
+          return snapshot.acceptedCorrectionId === currentCorrectionId;
+        }
+        const wordsMatch = snapshot.effectiveTextSnapshot === currentSegment.text;
+        const speakerMatches = snapshot.speakerSnapshotPresent
+          && snapshot.effectiveSpeakerLabelSnapshot === currentSegment.speakerLabel;
+        if (snapshot.specificity === "exact-segment" && wordsMatch && speakerMatches) return true;
+        // Legacy receipt-only snapshots can still identify an unchanged source,
+        // but a matching receipt must never hide contradictory source content.
+        return snapshot.acceptedCorrectionId === currentCorrectionId
+          && (snapshot.effectiveTextSnapshot == null || wordsMatch)
+          && (!snapshot.speakerSnapshotPresent || speakerMatches);
+      });
       const state: TranscriptImpactState = versioned.length === 0
         ? "snapshot-unavailable"
-        : versioned.some((snapshot) => snapshot.acceptedCorrectionId === currentCorrectionId)
+        : current.length > 0
           ? "current"
           : "needs-review";
-      const comparisonCandidates = state === "current"
-        ? versioned.filter((snapshot) => snapshot.acceptedCorrectionId === currentCorrectionId)
-        : versioned;
+      const comparisonCandidates = state === "current" ? current : candidates;
       const comparison = [...comparisonCandidates].sort((left, right) =>
         snapshotComparisonRank(left) - snapshotComparisonRank(right))[0] ?? null;
       const priorTextSnapshot = comparison?.effectiveTextSnapshot ?? null;
@@ -173,8 +193,12 @@ export function buildTranscriptCorrectionImpact(input: {
           : null,
         currentCorrectionId,
         changes: {
-          text: comparisonState(priorTextSnapshot, currentSegment.text),
-          speaker: comparisonState(priorSpeakerLabelSnapshot, currentSegment.speakerLabel),
+          text: comparison?.specificity === "exact-segment"
+            ? comparisonState(priorTextSnapshot, currentSegment.text)
+            : "unknown",
+          speaker: comparison?.specificity === "exact-segment" && comparison.speakerSnapshotPresent
+            ? priorSpeakerLabelSnapshot === currentSegment.speakerLabel ? "unchanged" : "changed"
+            : "unknown",
           correctionReceipt: comparison
             ? comparison.acceptedCorrectionId === currentCorrectionId
               ? "unchanged"

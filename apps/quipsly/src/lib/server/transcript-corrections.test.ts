@@ -311,6 +311,39 @@ function impactReviewHarness(options: { artifactUpdatedAt?: Date; artifact?: any
 }
 
 describe("transcript correction desk", () => {
+  it.each([
+    { name: "receipt-only change", priorReceipt: "earlier-receipt", priorText: providerText, priorSpeaker: providerSpeakerLabel, state: "current" },
+    { name: "word change with matching receipt", priorReceipt: "correction-current", priorText: "Different words.", priorSpeaker: providerSpeakerLabel, state: "needs-review" },
+    { name: "speaker change with matching receipt", priorReceipt: "correction-current", priorText: providerText, priorSpeaker: "Scott", state: "needs-review" },
+  ])("keeps the desk and Session summary consistent for $name without changing linked work", async ({ priorReceipt, priorText, priorSpeaker, state }) => {
+    const accepted = correctionRecord({
+      id: "correction-current", segmentId: "segment-1", origin: "human", status: "accepted",
+      correctedText: providerText, correctedSpeakerLabel: providerSpeakerLabel,
+    });
+    const note = {
+      id: "note-1", title: "My own editable note", visibility: "SESSION_SHARED", authorUserId: actor.id,
+      updatedAt: new Date("2026-09-07T00:00:00Z"), revisions: [],
+      sourceJson: {
+        transcriptJobId: "job-1", segmentId: "segment-1", acceptedCorrectionId: priorReceipt,
+        effectiveTextSnapshot: priorText, effectiveSpeakerLabelSnapshot: priorSpeaker,
+      },
+    };
+    const before = JSON.stringify(note);
+    const prisma = {
+      callRoom: {
+        findFirst: jest.fn(async () => ({ ...accessibleRoom({ corrections: [accepted] }), notes: [note], actionItems: [], goals: [], outputs: [] })),
+        findUnique: jest.fn(async () => ({ id: "room-1", participants: [], recordingConsents: [] })),
+      },
+      mobileCaptureFinalizationReceipt: { findMany: jest.fn(async () => [{ id: "receipt-1" }]) },
+    };
+    const desk = await readTranscriptCorrectionDesk({ prisma, roomId: "room-1", actor });
+    const summary = await readTranscriptCorrectionImpactSummary({ prisma, roomId: "room-1", actor });
+    expect(desk.segments[0].downstreamImpacts).toEqual([expect.objectContaining({ artifactId: "note-1", state })]);
+    expect(summary.counts).toMatchObject({ current: state === "current" ? 1 : 0, needsReview: state === "current" ? 0 : 1 });
+    expect(summary.items).toHaveLength(state === "current" ? 0 : 1);
+    expect(JSON.stringify(note)).toBe(before);
+  });
+
   it("projects bounded downstream correction impact for the Session finishing cockpit", async () => {
     const accepted = {
       id: "correction-current",
