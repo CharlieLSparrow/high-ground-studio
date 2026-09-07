@@ -205,19 +205,19 @@ export function NestQuickCapture({
             className="mt-1 min-h-24 w-full resize-y rounded-xl border-2 border-[#dfcba6] bg-white px-4 py-3 text-sm font-semibold normal-case tracking-normal text-[#3d3122] outline-none focus:border-sky-600 focus:ring-4 focus:ring-sky-100"
           />
         </label>
-        <fieldset className="mt-4 rounded-2xl border border-sky-200 bg-sky-50/45 p-4">
-          <legend className="px-1 text-[10px] font-black uppercase tracking-[0.16em] text-sky-900">
-            <span className="inline-flex items-center gap-1.5"><Tags size={14} aria-hidden="true" />Tag it now · optional</span>
-          </legend>
+        <details className="mt-4 rounded-2xl border border-border bg-card p-4">
+          <summary className="cursor-pointer text-sm font-semibold">
+            <span className="inline-flex items-center gap-1.5"><Tags size={14} aria-hidden="true" />Tags{selectedTagIds.length ? ` · ${selectedTagIds.length} selected` : " (optional)"}</span>
+          </summary>
           <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
             <p className="max-w-2xl text-xs font-semibold leading-5 text-sky-950">
-              Reuse {projectName}&apos;s canonical vocabulary while the context is still fresh. These same tags navigate Work, Search, Calendar, writing, and iPhone Capture.
+              Find related work with tags from {projectName}.
             </p>
             <Link
               href={`/work?manage=tags&project=${encodeURIComponent(projectId)}`}
               className="inline-flex min-h-11 shrink-0 items-center text-[10px] font-black uppercase tracking-wide text-sky-900 underline"
             >
-              Manage vocabulary
+              Manage tags
             </Link>
           </div>
           {tags.length > 8 ? (
@@ -261,29 +261,28 @@ export function NestQuickCapture({
             </div>
           ) : (
             <p className="mt-3 text-xs font-semibold text-sky-900">
-              {tags.length > 0 ? "No active tag matches that search." : "This Nest has no active tags yet. Name the first reusable tag below."}
+              {tags.length > 0 ? "No tags match that search." : "No tags yet. Add one below if it helps."}
             </p>
           )}
           <div className="mt-4 border-t border-sky-200 pt-4">
             <label className="block text-[10px] font-black uppercase tracking-wide text-sky-900">
-              New reusable tag
+              New tag
               <input
                 value={newTagLabel}
                 onChange={(event) => setNewTagLabel(event.target.value)}
                 maxLength={80}
-                placeholder="Only when the existing vocabulary does not fit"
+                placeholder="e.g. Research, Follow-up, Chapter 1"
                 className="mt-1 min-h-11 w-full rounded-xl border border-sky-200 bg-white px-3 text-sm font-semibold normal-case tracking-normal text-sky-950 outline-none focus:border-sky-600 focus:ring-4 focus:ring-sky-100"
               />
             </label>
             <p className="mt-2 text-[11px] font-semibold leading-5 text-sky-800">
-              Exact and former-name matches reuse the canonical tag. Ambiguous or archived names fail closed; nothing merges silently.
-              {selectedTagIds.length > 0 ? ` ${selectedTagIds.length} existing tag${selectedTagIds.length === 1 ? "" : "s"} selected.` : ""}
+              You can change these tags later.
             </p>
           </div>
-        </fieldset>
+        </details>
         <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <p className="max-w-2xl text-[11px] font-semibold leading-5 text-[#806a4d]">
-            This creates one canonical private record and applies the selected reusable tags atomically. Dates, reminders, recurrence, and links stay editable on the record; nothing is sent, scheduled, or published.
+            Private to you. Editable anytime.
           </p>
           <button
             type="submit"

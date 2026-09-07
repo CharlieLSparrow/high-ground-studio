@@ -64,9 +64,10 @@ describe("Nest project quick capture", () => {
     await user.click(screen.getByRole("tab", { name: "Task" }));
     await user.type(screen.getByLabelText("Action"), "Prepare the Episode 8 proof listen");
     await user.type(screen.getByLabelText("Useful detail · optional"), "Return to the canonical session and media.");
+    await user.click(screen.getByText("Tags (optional)"));
     await user.type(screen.getByPlaceholderText("Find a tag"), "Episode 8");
     await user.click(screen.getByRole("checkbox", { name: "#Episode 8" }));
-    await user.type(screen.getByLabelText("New reusable tag"), "Next recording");
+    await user.type(screen.getByLabelText("New tag"), "Next recording");
     await user.click(screen.getByRole("button", { name: "Save task" }));
 
     await waitFor(() => expect(createNestQuickWorkAction).toHaveBeenCalledWith({
@@ -100,6 +101,7 @@ describe("Nest project quick capture", () => {
 
     await user.type(screen.getByLabelText("Note title"), "Episode 8 opening thought");
     await user.type(screen.getByLabelText("Note"), "The cold open needs the exact source clip beside it.");
+    await user.click(screen.getByText("Tags (optional)"));
     await user.type(screen.getByPlaceholderText("Find a tag"), "Proof");
     await user.click(screen.getByRole("checkbox", { name: "#Proof listen" }));
     await user.click(screen.getByRole("button", { name: "Save note" }));
@@ -115,13 +117,13 @@ describe("Nest project quick capture", () => {
     expect(push).toHaveBeenCalledWith("/notes/document-1#note-block-block-1");
   });
 
-  it("keeps the destination and no-side-effects boundary visible beside tag capture", () => {
-    renderCapture();
+  it("keeps the destination and privacy clear without expanding optional tag setup", () => {
+    const { container } = renderCapture();
 
     expect(screen.getByText("Saved to High Ground")).toBeInTheDocument();
-    expect(screen.getByText(/applies the selected reusable tags atomically/i)).toBeInTheDocument();
-    expect(screen.getByText(/nothing is sent, scheduled, or published/i)).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Manage vocabulary" })).toHaveAttribute(
+    expect(screen.getByText(/Private to you. Editable anytime/i)).toBeInTheDocument();
+    expect(container.querySelector("details")).not.toHaveAttribute("open");
+    expect(screen.getByRole("link", { name: "Manage tags" })).toHaveAttribute(
       "href",
       "/work?manage=tags&project=project-1",
     );

@@ -49,7 +49,7 @@ focused debugging can still use `--runInBand`. Database integration tests explic
 `QUIPSLY_LOCAL_DB_SMOKE=1` and `QUIPSLY_LOCAL_DATABASE_URL`; the ordinary Jest PR
 step does not claim those integration tests ran. A separate PR step applies all
 migrations to a fresh disposable PostgreSQL 15/pgvector service and executes the
-project-access, project-command, canonical-note-edit, conversation, and follow-through database
+Nest-creation, project-access, project-command, canonical-note-edit, conversation, and follow-through database
 suites. It checks real membership, revocation, private-goal visibility,
 cross-project IDs, transactions, message retry deduplication, complete paginated
 history, and persistence; only the request identity and

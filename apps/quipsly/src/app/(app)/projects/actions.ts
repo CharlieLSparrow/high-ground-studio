@@ -12,9 +12,6 @@ import { getQuipslySession } from "@/lib/server/quipsly-session";
 import { quipslyCoachCapabilityAccess } from "@/lib/server/subscription-entitlements";
 import { normalizeAccessEmail } from "@/lib/server/studio-project-access";
 import {
-  normalizeNestKind,
-} from "@/lib/studio/project-registry";
-import {
   isCreatableNestKind,
   starterTitleForNestKind,
 } from "./nest-creation-templates";
@@ -39,7 +36,7 @@ export async function createNestAction(
 ): Promise<CreateNestFormState> {
   const name = field(formData, "name");
   const description = field(formData, "description");
-  const template = field(formData, "template") || "writing";
+  const template = field(formData, "template") || "mixed";
   const documentTitle = field(formData, "documentTitle");
   const clientRequestId = field(formData, "clientRequestId").toLowerCase();
 
@@ -56,7 +53,7 @@ export async function createNestAction(
   }
   if (!UUID_PATTERN.test(clientRequestId)) {
     return {
-      error: "This creation form lost its protected retry identity. Refresh the page before trying again.",
+      error: "This form has expired. Refresh the page and try again.",
     };
   }
 
@@ -77,10 +74,10 @@ export async function createNestAction(
     redirect("/settings?reason=private-nest#subscription");
   }
 
-  const nestKind = normalizeNestKind(template);
-  if (!isCreatableNestKind(nestKind)) {
+  if (!isCreatableNestKind(template)) {
     return { error: "Choose one of the available starting shapes." };
   }
+  const nestKind = template;
   let nestSlug: string;
   try {
     const { nest } = await createNestWithOwner({

@@ -10,51 +10,51 @@ export type NestCreationTemplate = {
 export const nestCreationTemplates: NestCreationTemplate[] = [
   {
     value: "writing",
-    label: "Original content document",
+    label: "Writing",
     description: "Books, articles, talks, scripts, and episode manuscripts you are actively authoring.",
-    starterTitle: "Welcome to your Writing Nest",
+    starterTitle: "Draft",
   },
   {
     value: "study",
-    label: "Study document",
+    label: "Study",
     description: "Imported books, course pages, research sources, highlights, notes, and analysis layered over source text.",
-    starterTitle: "Study Document: Source Notes and Questions",
+    starterTitle: "Source notes",
   },
   {
     value: "production",
-    label: "Media production",
+    label: "Podcast and video",
     description: "Audio, video, clips, transcripts, publish packets, and episode production rooms.",
-    starterTitle: "Production Nest: Episode Control Room",
+    starterTitle: "Production notes",
   },
   {
     value: "research",
     label: "Research library",
     description: "A source-first Nest for Quipslys to organize references, examples, quotes, and packets.",
-    starterTitle: "Research Library: Examples, Sources, and Receipts",
+    starterTitle: "Research notes",
   },
   {
     value: "fiction",
-    label: "Fiction world",
+    label: "Fiction",
     description: "Characters, places, scenes, story maps, romance chaos, and continuity notes.",
-    starterTitle: "Story Bible: World, Characters, and Scenes",
+    starterTitle: "Story bible",
   },
   {
     value: "course",
-    label: "Course / lesson package",
+    label: "Course or training",
     description: "SCORM-ready lessons, quizzes, flashcards, and mobile-friendly learning flows.",
-    starterTitle: "Course Source: Lessons, Checks, and Learner Flow",
+    starterTitle: "Course notes",
   },
   {
     value: "gallery",
-    label: "Photo client gallery",
+    label: "Photography",
     description: "Photo groups, comments, selects, client review, and publishable galleries.",
-    starterTitle: "Gallery Review: Client Selection Notes",
+    starterTitle: "Gallery notes",
   },
   {
     value: "mixed",
-    label: "Mixed media lab",
+    label: "General",
     description: "A flexible sandbox when you are not ready to choose one shape yet.",
-    starterTitle: "Quipsly Mixed Nest: Start Anywhere",
+    starterTitle: "Notes",
   },
 ];
 
@@ -62,6 +62,6 @@ export function starterTitleForNestKind(kind: StudioNestKind) {
   return nestCreationTemplates.find((template) => template.value === kind)?.starterTitle;
 }
 
-export function isCreatableNestKind(kind: StudioNestKind) {
+export function isCreatableNestKind(kind: unknown): kind is StudioNestKind {
   return nestCreationTemplates.some((template) => template.value === kind);
 }

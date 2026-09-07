@@ -329,7 +329,7 @@ export async function createNestWithOwner(input: {
         projectId: project.id,
         stableId: `doc-${slug}`,
         title,
-        sourceLabel: `nest-kind:${kind};document-kind:living`,
+        sourceLabel: `nest-kind:${kind};document-kind:${kind === "mixed" ? "note" : "living"}`,
         isPrivate: true,
       },
     });
@@ -338,14 +338,8 @@ export async function createNestWithOwner(input: {
         {
           documentId: document.id,
           stableId: crypto.randomUUID(),
-          body: `# ${title}`,
+          body: "",
           order: 0,
-        },
-        {
-          documentId: document.id,
-          stableId: crypto.randomUUID(),
-          body: "Welcome to your new Nest! This is the primary living document.\n\nWrite notes, script lines, or chapters here. Try typing `/` to add media, insert a scene tag, or drop a quote from your research.",
-          order: 1000,
         },
       ],
     });

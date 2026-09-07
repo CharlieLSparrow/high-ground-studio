@@ -4,23 +4,12 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import {
-  ArrowRight,
   BookOpen,
-  Clock,
-  FileText,
   Folder,
-  GraduationCap,
   Images,
-  MessageCircle,
-  PackageCheck,
   Plus,
-  Video,
   Users,
 } from "lucide-react";
-import {
-  getOutputFamilyLabel,
-  listOutputsForNestKind,
-} from "@high-ground/quipsly-domain/output-catalog";
 
 import { auth } from "@/auth";
 import {
@@ -40,26 +29,16 @@ import {
   HGO_PROJECT_SLUG,
   listStudioProjectOptions,
   NEST_KIND_LABELS,
-  WORKFLOW_SYSTEM_DESCRIPTIONS,
-  WORKFLOW_SYSTEM_LABELS,
   workflowSystemForNestKind,
-  normalizeNestKind,
   nestKindFromSourceLabel,
   type StudioNestKind,
   type QuipslyWorkflowSystem,
 } from "@/lib/studio/project-registry";
 import { NestRegistryUnavailableState } from "./NestRegistryUnavailableState";
 import { CreateNestForm } from "./CreateNestForm";
-import { nestCreationTemplates } from "./nest-creation-templates";
 
 export const dynamic = "force-dynamic";
 
-const WORKFLOW_SYSTEM_ORDER: QuipslyWorkflowSystem[] = [
-  "data-ingestion",
-  "knowledge-processing",
-  "content-creation",
-  "content-publishing",
-];
 
 function CollaboratorAvatars({ collaborators }: { collaborators?: { email: string; role: string }[] }) {
   if (!collaborators || collaborators.length === 0) return null;
@@ -71,13 +50,13 @@ function CollaboratorAvatars({ collaborators }: { collaborators?: { email: strin
         <div
           key={c.email}
           title={`${c.email} (${c.role})`}
-          className="flex h-6 w-6 items-center justify-center rounded-full border-2 border-white bg-[#e8dcc4] text-[9px] font-bold text-[#3d3122]"
+          className="flex h-6 w-6 items-center justify-center rounded-full border-2 border-white bg-[#e8dcc4] text-[9px] font-bold text-foreground"
         >
           {c.email.charAt(0).toUpperCase()}
         </div>
       ))}
       {extra > 0 && (
-        <div className="flex h-6 w-6 items-center justify-center rounded-full border-2 border-white bg-[#fdfaf6] text-[9px] font-bold text-[#8c6b4a]">
+        <div className="flex h-6 w-6 items-center justify-center rounded-full border-2 border-white bg-background text-[9px] font-bold text-muted-foreground">
           +{extra}
         </div>
       )}
@@ -97,12 +76,6 @@ type CollaborationRow = {
   collaborators?: { email: string; role: string }[];
 };
 
-function workflowChipColor(system: QuipslyWorkflowSystem) {
-  if (system === "data-ingestion") return "border-cyan-200 bg-cyan-50 text-cyan-900";
-  if (system === "knowledge-processing") return "border-purple-200 bg-purple-50 text-purple-900";
-  if (system === "content-creation") return "border-amber-200 bg-amber-50 text-amber-900";
-  return "border-rose-200 bg-rose-50 text-rose-900";
-}
 
 function hasWritingDesk(kind: StudioNestKind | undefined) {
   return ["writing", "study", "research", "fiction", "course", "mixed"].includes(kind ?? "");
@@ -110,19 +83,19 @@ function hasWritingDesk(kind: StudioNestKind | undefined) {
 
 function ProjectCard({ project }: { project: CollaborationRow }) {
   return (
-    <div className="flex flex-col justify-between rounded-3xl border border-[#eadfca] bg-white p-5 shadow-sm transition hover:shadow-md">
+    <div className="flex flex-col justify-between rounded-3xl border border-border bg-card p-5 shadow-sm transition hover:shadow-md">
       <div>
         <div className="mb-3 flex items-center justify-between">
-          <div className="text-[10px] font-black uppercase tracking-[0.18em] text-[#a36f2e]">
+          <div className="text-[10px] font-black uppercase tracking-[0.18em] text-muted-foreground">
             {project.label}
           </div>
           <CollaboratorAvatars collaborators={project.collaborators} />
         </div>
-        <h3 className="font-serif text-xl font-black text-[#3d3122]">
+        <h3 className="font-serif text-xl font-black text-foreground">
           {project.name}
         </h3>
         {project.description && (
-          <p className="mt-2 line-clamp-2 text-sm leading-6 text-[#7d6a50]">
+          <p className="mt-2 line-clamp-2 text-sm leading-6 text-muted-foreground">
             {project.description}
           </p>
         )}
@@ -130,7 +103,7 @@ function ProjectCard({ project }: { project: CollaborationRow }) {
       <div className="mt-6 flex flex-wrap items-center gap-2">
         <Link
           href={`/nests/${encodeURIComponent(project.slug)}`}
-          className="rounded-full bg-[#3d3122] px-4 py-2 text-[11px] font-black uppercase tracking-[0.14em] text-[#fffaf3] transition hover:-translate-y-0.5"
+          className="rounded-full bg-primary px-4 py-2 text-[11px] font-black uppercase tracking-[0.14em] text-primary-foreground transition hover:-translate-y-0.5"
         >
           Open
         </Link>
@@ -144,40 +117,17 @@ function ProjectCard({ project }: { project: CollaborationRow }) {
         ) : null}
         <Link
           href={`/nests/${encodeURIComponent(project.slug)}/access`}
-          className="rounded-full border border-[#eadfca] bg-[#fffaf3] px-4 py-2 text-[11px] font-black uppercase tracking-[0.14em] text-[#8c6b4a] transition hover:bg-[#fff8eb]"
+          className="rounded-full border border-border bg-card px-4 py-2 text-[11px] font-black uppercase tracking-[0.14em] text-muted-foreground transition hover:bg-[#fff8eb]"
         >
-          Access
+          People
         </Link>
-        <div className="ml-auto flex items-center">
-          <span className={`rounded-full border px-2 py-1 text-[9px] font-black uppercase tracking-[0.14em] ${workflowChipColor(project.workflowSystem)}`}>
-            {WORKFLOW_SYSTEM_LABELS[project.workflowSystem]}
-          </span>
-        </div>
+
       </div>
     </div>
   );
 }
 
-function iconForNestKind(kind: StudioNestKind) {
-  if (kind === "home") return Images;
-  if (kind === "study" || kind === "research") return GraduationCap;
-  if (kind === "production") return Video;
-  if (kind === "gallery") return Images;
-  if (kind === "course") return BookOpen;
-  if (kind === "fiction") return FileText;
-  return Folder;
-}
 
-function colorForNestKind(kind: StudioNestKind) {
-  if (kind === "home") return "border-emerald-200 bg-emerald-50 text-emerald-900";
-  if (kind === "study" || kind === "research") return "border-cyan-200 bg-cyan-50 text-cyan-900";
-  if (kind === "production") return "border-rose-200 bg-rose-50 text-rose-900";
-  if (kind === "gallery") return "border-emerald-200 bg-emerald-50 text-emerald-900";
-  if (kind === "course") return "border-violet-200 bg-violet-50 text-violet-900";
-  if (kind === "fiction") return "border-fuchsia-200 bg-fuchsia-50 text-fuchsia-900";
-  if (kind === "mixed") return "border-amber-200 bg-amber-50 text-amber-900";
-  return "border-[#eadfca] bg-[#fffaf3] text-[#3d3122]";
-}
 
 function canManageRole(role: string | undefined) {
   const normalized = String(role || "").toUpperCase();
@@ -336,34 +286,27 @@ export default async function ProjectsHub({
     }),
   ];
 
-  const workflowSummary = WORKFLOW_SYSTEM_ORDER.map((system) => ({
-    system,
-    count: collaborationRows.filter((project) => project.workflowSystem === system).length,
-  }));
   const homeNestRow =
     collaborationRows.find(p => p.id === actorHomeNestId)
     ?? collaborationRows.find(p => p.nestKind === 'home' && canManageRole(p.role));
   const myNests = collaborationRows.filter(p => p.id !== homeNestRow?.id && canManageRole(p.role));
   const sharedNests = collaborationRows.filter(p => !canManageRole(p.role));
 
-  const firstAccessibleNest = collaborationRows[0];
-  const firstAccessibleNestCanManage = canManageRole(firstAccessibleNest?.role);
 
   return (
-    <main className="min-h-full bg-[#fdfaf6] px-4 py-6 text-[#3d3122] md:px-8 md:py-10">
+    <main className="min-h-full bg-background px-4 py-6 text-foreground md:px-8 md:py-10">
       <div className="mx-auto max-w-7xl">
-        <header className="mb-8 rounded-3xl border border-[#e8dcc4] bg-white/90 p-6 shadow-sm md:p-8">
+        <header className="mb-8 rounded-3xl border border-border bg-card p-6 shadow-sm md:p-8">
           <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
             <div>
-              <div className="text-xs font-black uppercase tracking-[0.24em] text-[#a36f2e]">
-                Quipsly Nest System
+              <div className="text-xs font-black uppercase tracking-[0.24em] text-muted-foreground">
+                Your workspace
               </div>
               <h1 className="mt-3 font-serif text-4xl font-black tracking-tight md:text-5xl">
-                Nests hold the work. Documents hold the text.
+                Your Nests
               </h1>
-              <p className="mt-4 max-w-3xl text-sm leading-7 text-[#6b5b45] md:text-base">
-                A Nest is the project container: one book, course, client gallery, research library, podcast season, or fiction world.
-                Inside it, Quipsly can keep writing documents, study documents, media, publishing packets, and assistant context connected without turning them into five disconnected tools.
+              <p className="mt-4 max-w-3xl text-sm leading-7 text-muted-foreground md:text-base">
+                Keep notes, conversations, sessions, and projects together. Work on your own or with the people you invite.
               </p>
             </div>
             {canManageLiveNests && !projectRegistryUnavailable ? (
@@ -427,21 +370,21 @@ export default async function ProjectsHub({
           <div className="space-y-8">
             {homeNestRow && (
               <section>
-                <h2 className="mb-4 flex items-center gap-3 font-serif text-2xl font-black text-[#1c3a2a]">
+                <h2 className="mb-4 flex items-center gap-3 font-serif text-2xl font-black text-foreground">
                   <Images size={28} className="text-emerald-600" />
-                  Home Vault
+                  Personal Nest
                 </h2>
                 <div className="rounded-3xl border-2 border-emerald-100 bg-emerald-50/50 p-2 shadow-sm">
                   <ProjectCard project={homeNestRow} />
                   <p className="mt-3 px-3 text-xs font-bold text-emerald-800">
-                    Unsorted uploads and raw assets land here first.
+                    A place for your notes, recordings, and ideas.
                   </p>
                 </div>
               </section>
             )}
 
             <section>
-              <h2 className="mb-4 font-serif text-2xl font-black text-[#3d3122]">My Nests</h2>
+              <h2 className="mb-4 font-serif text-2xl font-black text-foreground">My Nests</h2>
               {myNests.length > 0 || canOpenPrivateFictionNest ? (
                 <div className="grid gap-4 md:grid-cols-2">
                   {canOpenPrivateFictionNest && !myNests.some((p) => p.slug === PRIVATE_FICTION_PROJECT_SLUG) && (
@@ -474,15 +417,15 @@ export default async function ProjectsHub({
                   ))}
                 </div>
               ) : (
-                <div className="flex flex-col items-center justify-center rounded-3xl border border-dashed border-[#eadfca] bg-[#fffaf3] p-10 text-center text-sm leading-6 text-[#7d6a50]">
+                <div className="flex flex-col items-center justify-center rounded-3xl border border-dashed border-border bg-card p-10 text-center text-sm leading-6 text-muted-foreground">
                   <Folder size={32} className="mb-4 text-[#c8a66b]" />
-                  <p>You have not created any Nests yet.<br />Choose a template on the right to start.</p>
+                  <p>You have not created any Nests yet.<br />Create one for your next project.</p>
                 </div>
               )}
             </section>
 
             <section>
-              <h2 className="mb-4 font-serif text-2xl font-black text-[#3d3122]">Shared with me</h2>
+              <h2 className="mb-4 font-serif text-2xl font-black text-foreground">Shared with me</h2>
               {sharedNests.length > 0 ? (
                 <div className="grid gap-4 md:grid-cols-2">
                   {sharedNests.map((p) => (
@@ -490,7 +433,7 @@ export default async function ProjectsHub({
                   ))}
                 </div>
               ) : (
-                <div className="flex flex-col items-center justify-center rounded-3xl border border-dashed border-[#eadfca] bg-[#fffaf3] p-10 text-center text-sm leading-6 text-[#7d6a50]">
+                <div className="flex flex-col items-center justify-center rounded-3xl border border-dashed border-border bg-card p-10 text-center text-sm leading-6 text-muted-foreground">
                   <Users size={32} className="mb-4 text-[#c8a66b]" />
                   <p>No shared Nests yet.<br />When collaborators invite you to their Nests, they will appear here.</p>
                 </div>
@@ -498,100 +441,13 @@ export default async function ProjectsHub({
             </section>
           </div>
 
-          <aside className="rounded-3xl border border-[#e8dcc4] bg-white p-5 shadow-sm md:p-6 lg:sticky lg:top-6 lg:self-start">
+          <aside className="rounded-3xl border border-border bg-card p-5 shadow-sm md:p-6 lg:sticky lg:top-6 lg:self-start">
             <h2 className="font-serif text-2xl font-black">Create a Nest</h2>
-            <p className="mt-2 text-sm leading-6 text-[#6b5b45]">
-              Start with the closest shape. You can still use the same tagging, lenses, media, and publishing tools.
+            <p className="mt-2 text-sm leading-6 text-muted-foreground">
+              Give your next project a home. A name is all you need.
             </p>
 
-            <CreateNestForm clientRequestId={randomUUID()}>
-              <div>
-                <label htmlFor="name" className="block text-xs font-black uppercase tracking-[0.16em] text-[#8a7659]">
-                  Nest name
-                </label>
-                <input
-                  type="text"
-                  id="name"
-                  name="name"
-                  required
-                  maxLength={120}
-                  autoComplete="off"
-                  placeholder="High Ground Odyssey Book, Udacity Study, Melissa Fiction Lab..."
-                  className="mt-2 w-full rounded-xl border border-[#d9c7a5] bg-[#fffdf9] px-4 py-3 text-sm outline-none transition focus:border-[#a36f2e] focus:ring-2 focus:ring-amber-500/20"
-                />
-              </div>
-
-              <div>
-                <label htmlFor="description" className="block text-xs font-black uppercase tracking-[0.16em] text-[#8a7659]">
-                  What belongs here?
-                </label>
-                <textarea
-                  id="description"
-                  name="description"
-                  maxLength={2000}
-                  rows={3}
-                  placeholder="A short purpose helps collaborators understand this Nest."
-                  className="mt-2 w-full resize-y rounded-xl border border-[#d9c7a5] bg-[#fffdf9] px-4 py-3 text-sm leading-6 outline-none transition focus:border-[#a36f2e] focus:ring-2 focus:ring-amber-500/20"
-                />
-              </div>
-
-              <div>
-                <label htmlFor="documentTitle" className="block text-xs font-black uppercase tracking-[0.16em] text-[#8a7659]">
-                  First document title
-                </label>
-                <input
-                  type="text"
-                  id="documentTitle"
-                  name="documentTitle"
-                  maxLength={240}
-                  placeholder="Optional. Quipsly will make a sensible one."
-                  className="mt-2 w-full rounded-xl border border-[#d9c7a5] bg-[#fffdf9] px-4 py-3 text-sm outline-none transition focus:border-[#a36f2e] focus:ring-2 focus:ring-amber-500/20"
-                />
-              </div>
-
-              <fieldset>
-                <legend className="block text-xs font-black uppercase tracking-[0.16em] text-[#8a7659]">
-                  Starting shape
-                </legend>
-                <div className="mt-2 grid gap-2">
-                  {nestCreationTemplates.map((template) => {
-                    const Icon = iconForNestKind(template.value);
-                    return (
-                      <label
-                        key={template.value}
-                        className="group flex cursor-pointer gap-3 rounded-2xl border border-[#eadfca] bg-[#fffdf9] p-3 transition hover:border-[#d5b77d] hover:bg-[#fff8eb]"
-                      >
-                        <input
-                          type="radio"
-                          name="template"
-                          value={template.value}
-                          defaultChecked={template.value === "writing"}
-                          className="mt-1 accent-[#8c6b4a]"
-                        />
-                        <span className={`mt-0.5 h-9 w-9 shrink-0 rounded-xl border p-2 ${colorForNestKind(template.value)}`}>
-                          <Icon size={18} />
-                        </span>
-                        <span>
-                          <span className="block text-sm font-black text-[#3d3122]">{template.label}</span>
-                          <span className="mt-1 block text-xs leading-5 text-[#7d6a50]">{template.description}</span>
-                          <span className="mt-2 block rounded-xl border border-[#eadfca] bg-white px-2 py-1 text-[11px] font-bold leading-5 text-[#8a7659]">
-                            Starts with: {template.starterTitle}
-                          </span>
-                        </span>
-                      </label>
-                    );
-                  })}
-                </div>
-              </fieldset>
-
-              <div className="rounded-2xl border border-[#eadfca] bg-[#fffaf3] p-3">
-                <div className="text-xs font-black uppercase tracking-[0.16em] text-[#8c6b4a]">Writing vs study</div>
-                <p className="mt-2 text-xs leading-5 text-[#6b5b45]">
-                  Writing documents are for authoring original content. Study documents keep source material intact while you highlight, tag, summarize, question, and add your own notes on top.
-                </p>
-              </div>
-
-            </CreateNestForm>
+            <CreateNestForm clientRequestId={randomUUID()} />
           </aside>
           </div>
         )}

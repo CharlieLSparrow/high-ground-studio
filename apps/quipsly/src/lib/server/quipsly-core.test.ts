@@ -136,6 +136,9 @@ describe("createNestWithOwner ownership and replay boundary", () => {
       createdByEmail: "owner@example.com",
     }));
     expect(acquirePrismaAdvisoryTransactionLock).toHaveBeenCalledTimes(2);
+    expect(transaction.studioDocumentBlock.createMany).toHaveBeenCalledWith({
+      data: [expect.objectContaining({ body: "", order: 0 })],
+    });
   });
 
   it("returns the original project for an exact client retry without another write", async () => {

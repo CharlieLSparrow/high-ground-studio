@@ -156,9 +156,11 @@ describe("Nest registry degraded-state UX", () => {
 
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Create a Nest" })).toBeInTheDocument();
-    expect(screen.getByRole("textbox", { name: "What belongs here?" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Create and open Nest" })).toBeEnabled();
-    expect(screen.getByText(/Private by default\. You become the owner/i)).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Name" })).toBeRequired();
+    expect(screen.getByRole("textbox", { name: /Description/ })).not.toBeRequired();
+    expect(container.querySelector("details")).not.toHaveAttribute("open");
+    expect(screen.getByRole("button", { name: "Create Nest" })).toBeEnabled();
+    expect(screen.getByText(/Only you can access this Nest until you invite someone/i)).toBeInTheDocument();
     expect(
       container.querySelector('input[name="clientRequestId"]'),
     ).toHaveAttribute(

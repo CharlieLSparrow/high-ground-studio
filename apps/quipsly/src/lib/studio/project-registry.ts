@@ -155,7 +155,7 @@ export const NEST_KIND_LABELS: Record<StudioNestKind, string> = {
   course: "Course Nest",
   gallery: "Gallery Nest",
   fiction: "Fiction Nest",
-  mixed: "Mixed Nest",
+  mixed: "General Nest",
 };
 
 export function normalizeNestKind(input?: string | null): StudioNestKind {

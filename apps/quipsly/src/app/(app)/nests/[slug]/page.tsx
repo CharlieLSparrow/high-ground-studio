@@ -454,7 +454,6 @@ export default async function NestDashboardPage({ params, searchParams }: NestDa
                     <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#8a653d]">Continue</p>
                     <h2 id="continue-heading" className="mt-1 font-serif text-3xl font-black">Pick up the thread</h2>
                   </div>
-                  <p className="text-xs font-semibold text-[#806a4d]">These are links to canonical records, never copies.</p>
                 </div>
                 <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                   {activeEpisode ? (
@@ -532,7 +531,7 @@ export default async function NestDashboardPage({ params, searchParams }: NestDa
                     ))}
                   </div>
                 ) : (
-                  <p className="mt-4 text-sm font-semibold leading-6 text-sky-950">No intentional tags yet. Create a small reusable vocabulary when repeated themes emerge.</p>
+                  <p className="mt-4 text-sm font-semibold leading-6 text-sky-950">Add tags as you work to make related ideas easier to find.</p>
                 )}
               </section>
             </>
@@ -599,7 +598,6 @@ export default async function NestDashboardPage({ params, searchParams }: NestDa
                     ) : null}
                   </div>
                 </div>
-                <p className="mt-4 text-[11px] font-semibold leading-5 text-[#806a4d]">Opening work only navigates. This page cannot complete work, schedule time, send a message, alter an external calendar, or publish.</p>
               </section>
             </>
           ) : null}

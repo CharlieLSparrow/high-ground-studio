@@ -83,17 +83,17 @@ describe("createNestAction", () => {
       { error: null },
       form({ clientRequestId: "not-a-uuid" }),
     )).resolves.toEqual({
-      error: expect.stringContaining("protected retry identity"),
+      error: expect.stringContaining("Refresh the page"),
     });
 
     expect(getQuipslySession).not.toHaveBeenCalled();
     expect(createNestWithOwner).not.toHaveBeenCalled();
   });
 
-  it("does not allow a forged Home Nest template through the public creation form", async () => {
+  it.each(["home", "misspelled-template"])("rejects unsupported Nest type %s instead of silently choosing another", async (template) => {
     await expect(createNestAction(
       { error: null },
-      form({ template: "home" }),
+      form({ template }),
     )).resolves.toEqual({
       error: "Choose one of the available starting shapes.",
     });
@@ -115,12 +115,22 @@ describe("createNestAction", () => {
       name: "High Ground Odyssey",
       description: "Podcast episodes and production work.",
       nestKind: "production",
-      documentTitle: "Production Nest: Episode Control Room",
+      documentTitle: "Production notes",
       ownerEmail: "owner@example.com",
       clientRequestId: requestId,
     });
     expect(revalidatePath).toHaveBeenCalledWith("/projects");
     expect(redirect).toHaveBeenCalledWith("/nests/high-ground-odyssey");
+  });
+
+  it("creates a general Nest and a Notes page when the user only supplies a name", async () => {
+    const input = new FormData();
+    input.set("name", "My next project");
+    input.set("clientRequestId", requestId);
+    await expect(createNestAction({ error: null }, input)).rejects.toThrow("NEXT_REDIRECT");
+    expect(createNestWithOwner).toHaveBeenCalledWith(expect.objectContaining({
+      name: "My next project", nestKind: "mixed", documentTitle: "Notes", description: null,
+    }));
   });
 
   it("routes an unpaid coach directly to the plan instead of a beta gate", async () => {

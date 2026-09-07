@@ -21,6 +21,9 @@ if (process.env.QUIPSLY_LOCAL_DB_SMOKE === "1") {
       "QUIPSLY_LOCAL_DATABASE_URL is required for the canonical Nest creation smoke.",
     );
   }
+  if (!["localhost", "127.0.0.1", "[::1]"].includes(new URL(process.env.QUIPSLY_LOCAL_DATABASE_URL).hostname)) {
+    throw new Error("Nest creation tests require a local disposable database.");
+  }
   process.env.DATABASE_URL = process.env.QUIPSLY_LOCAL_DATABASE_URL;
 }
 
@@ -42,6 +45,22 @@ runLocalDatabaseSmoke("canonical Nest creation local database smoke", () => {
     } finally {
       await prisma.$disconnect();
     }
+  });
+
+  it("opens a general Nest's blank first page in the note editor without demo content", async () => {
+    const created = await createNestWithOwner({
+      prisma, name: `General workspace ${nonce}`, nestKind: "mixed", documentTitle: "Notes",
+      ownerEmail, clientRequestId: randomUUID(),
+    });
+    projectIds.add(created.nest.id);
+    const document = await prisma.studioDocument.findUniqueOrThrow({
+      where: { id: created.document.id }, include: { blocks: true },
+    });
+    expect(document.sourceLabel).toBe("nest-kind:mixed;document-kind:note");
+    expect(document.title).toBe("Notes");
+    expect(document.blocks).toHaveLength(1);
+    expect(document.blocks[0].body).toBe("");
+    expect(document.isPrivate).toBe(true);
   });
 
   it("persists a private owner-scoped Nest, starter document, and immutable creation receipt", async () => {
@@ -105,11 +124,7 @@ runLocalDatabaseSmoke("canonical Nest creation local database smoke", () => {
     expect(stored.documents[0].blocks).toEqual([
       expect.objectContaining({
         order: 0,
-        body: `# ${created.document.title}`,
-        isPrivate: true,
-      }),
-      expect.objectContaining({
-        order: 1000,
+        body: "",
         isPrivate: true,
       }),
     ]);
