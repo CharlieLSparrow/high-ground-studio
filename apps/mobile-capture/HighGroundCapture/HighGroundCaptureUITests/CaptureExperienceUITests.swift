@@ -4630,14 +4630,81 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(review.isHittable)
         review.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
 
-        let exactTimelineEditor = app.buttons["CaptureTranscriptCorrectButton_preview-segment"].firstMatch
+        let exactTimelineEditor = app.textFields["CaptureTranscriptCorrectWordsField"].firstMatch
         if !exactTimelineEditor.waitForExistence(timeout: 5) {
             revealBelow(exactTimelineEditor, in: transcriptScroll)
         }
         XCTAssertTrue(
             exactTimelineEditor.waitForExistence(timeout: 5),
-            "Reviewing a conversation turn should disclose the exact source-bound timeline segment, not a separate editor handoff."
+            "Edit text should open the exact passage's words directly, without a second Edit tap."
         )
+    }
+
+    func testTranscriptPassagesKeepDetailsOptionalAndCreationReachable() {
+        exerciseCompactTranscriptPassage()
+    }
+
+    func testTranscriptPassagesKeepDetailsOptionalAndCreationReachableOnRegularWidthIPad() {
+        exerciseCompactTranscriptPassage()
+    }
+
+    private func openTranscriptPassageCreationMenu() {
+        let create = app.buttons["CaptureTranscriptCreateFromPassage_preview-segment"].firstMatch
+        reveal(create)
+        XCTAssertTrue(create.waitForExistence(timeout: 5))
+        create.tap()
+    }
+
+    private func exerciseCompactTranscriptPassage() {
+        openPreviewTranscriptReview()
+        let controls = app.descendants(matching: .any)["CaptureTranscriptPresentationControls"].firstMatch
+        reveal(controls)
+        controls.buttons["Timeline"].firstMatch.tap()
+        let edit = app.buttons["CaptureTranscriptCorrectButton_preview-segment"].firstMatch
+        reveal(edit)
+        XCTAssertTrue(edit.waitForExistence(timeout: 5))
+        let confidence = app.descendants(matching: .any)["CaptureTranscriptConfidenceAttention_preview-segment"].firstMatch
+        XCTAssertFalse(confidence.exists, "Reading must not expand diagnostic details for every passage.")
+        XCTAssertFalse(app.staticTexts["CaptureTranscriptAIProposal"].exists)
+        XCTAssertFalse(app.buttons["CaptureTranscriptMakeNoteButton"].exists)
+        XCTAssertTrue(app.buttons["CaptureTranscriptPlayButton_preview-segment"].exists)
+        edit.tap()
+        let words = app.textFields["CaptureTranscriptCorrectWordsField"].firstMatch
+        XCTAssertTrue(words.waitForExistence(timeout: 5))
+        XCTAssertFalse((words.value as? String ?? "").isEmpty)
+        XCTAssertFalse(confidence.exists, "Correcting words must not require opening source diagnostics.")
+        let keepDraft = app.buttons["Keep draft"].firstMatch
+        reveal(keepDraft)
+        keepDraft.tap()
+
+        for kind in ["Note", "Task", "Goal"] {
+            openTranscriptPassageCreationMenu()
+            let action = app.buttons["CaptureTranscriptMake\(kind)Button"].firstMatch
+            XCTAssertTrue(action.waitForExistence(timeout: 5))
+            action.tap()
+            let field = app.textFields["CaptureTranscript\(kind)TitleField"].firstMatch
+            XCTAssertTrue(field.waitForExistence(timeout: 5))
+            XCTAssertFalse((field.value as? String ?? "").isEmpty, "The passage should seed useful work, not an empty form.")
+            let save = app.buttons["CaptureTranscriptCreate\(kind)Button"].firstMatch
+            XCTAssertFalse(save.isEnabled, "Preview must not write to a real account.")
+            let cancel = kind == "Note"
+                ? app.buttons["CaptureTranscriptCancelNoteButton"].firstMatch
+                : app.buttons["Cancel"].firstMatch
+            reveal(cancel)
+            cancel.tap()
+        }
+        let details = app.buttons["CaptureTranscriptSegmentDetails_preview-segment"].firstMatch
+        reveal(details)
+        XCTAssertTrue(details.waitForExistence(timeout: 5))
+        details.tap()
+        XCTAssertTrue(confidence.waitForExistence(timeout: 5), "Source details remain available on demand.")
+        reveal(details)
+        details.tap()
+        XCTAssertFalse(confidence.exists)
+        let screenshot = XCTAttachment(screenshot: app.screenshot())
+        screenshot.name = "Compact transcript passage"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
     }
 
     func testTranscriptReviewShowsDeviceFirstJointAssembly() {
@@ -4906,6 +4973,9 @@ final class CaptureExperienceUITests: XCTestCase {
                 .waitForExistence(timeout: 5),
             "Timeline selection should publish the source-bound segment without hiding its controls behind a container accessibility node."
         )
+        let passageDetails = app.buttons["CaptureTranscriptSegmentDetails_preview-segment"].firstMatch
+        reveal(passageDetails)
+        passageDetails.tap()
         let aiProposal = app.staticTexts["CaptureTranscriptAIProposal"]
         reveal(aiProposal)
         let downstreamImpact = app.descendants(matching: .any)["CaptureTranscriptImpact_task_preview-task"]
@@ -4929,6 +4999,7 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(app.textFields["CaptureTranscriptCorrectWordsField"].exists)
         XCTAssertFalse(app.buttons["Save correction"].isEnabled)
 
+        openTranscriptPassageCreationMenu()
         let makeNote = app.buttons["CaptureTranscriptMakeNoteButton"]
         reveal(makeNote)
         XCTAssertTrue(makeNote.isEnabled, "Preview may inspect deliberate note capture without creating canonical state.")
@@ -4944,6 +5015,7 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(noteBoundary.label.contains("link back to this transcript moment"))
         app.buttons["CaptureTranscriptCancelNoteButton"].tap()
 
+        openTranscriptPassageCreationMenu()
         let makeTask = app.buttons["CaptureTranscriptMakeTaskButton"]
         reveal(makeTask)
         XCTAssertTrue(makeTask.isEnabled, "Preview may inspect explicit task capture without creating work.")
@@ -4956,6 +5028,7 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertFalse(app.buttons["CaptureTranscriptCreateTaskButton"].isEnabled)
         app.buttons["Cancel"].tap()
 
+        openTranscriptPassageCreationMenu()
         let makeGoal = app.buttons["CaptureTranscriptMakeGoalButton"]
         reveal(makeGoal)
         XCTAssertTrue(makeGoal.isEnabled, "Preview may inspect explicit goal capture without creating work.")

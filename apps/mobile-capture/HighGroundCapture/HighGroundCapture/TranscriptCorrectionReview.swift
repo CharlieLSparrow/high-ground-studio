@@ -3315,6 +3315,7 @@ struct CaptureTranscriptReviewView: View {
     @State private var workToEdit: TranscriptWorkEditDestination?
     @State private var expandedWorkKinds: Set<String> = []
     @State private var scrollTargetSegmentID: String?
+    @State private var requestedEditingSegmentID: String?
     @State private var packetCandidateFilter = CapturePacketCandidateReviewFilter.open
     @State private var showsAdditionalSuggestions = false
     @State private var recentPacketDecisionID: String?
@@ -4065,6 +4066,7 @@ struct CaptureTranscriptReviewView: View {
                             previewOnly: previewOnly,
                             decisionsLocked: client.isUsingProtectedCache,
                             canUseProjectTeamNotes: canUseProjectTeamNotes,
+                            requestedEditingSegmentID: $requestedEditingSegmentID,
                             client: client,
                             playback: playback,
                             protectedSource: segment.sourcePlayback ?? desk.playback,
@@ -4367,8 +4369,8 @@ struct CaptureTranscriptReviewView: View {
             }
             Text(
                 transcriptPresentationMode == .conversation
-                    ? "Read the Session like a conversation. Tap Edit to correct words, change a speaker, or make a cut."
-                    : "Listen at exact timestamps, correct words or speakers, and create source-backed notes, tasks, and goals."
+                    ? "Read the conversation. Edit text to correct the words without changing the recording."
+                    : "Play a passage, edit its text, or create a note, task, or goal. Recording edits are separate."
             )
             .font(.caption)
             .foregroundStyle(.secondary)
@@ -4423,6 +4425,7 @@ struct CaptureTranscriptReviewView: View {
                         .foregroundStyle(.secondary)
                 }
                 Text(segment.text)
+                    .textSelection(.enabled)
                     .font(.body)
                     .fixedSize(horizontal: false, vertical: true)
                 HStack(spacing: 8) {
@@ -4448,10 +4451,10 @@ struct CaptureTranscriptReviewView: View {
                                     ?? desk.playback?.recordingAssetId
                             ) {
                             Label("Preparing…", systemImage: "arrow.down.circle")
-                                .frame(minHeight: 36)
+                                .frame(minHeight: 44)
                         } else {
                             Label("Play", systemImage: "play.fill")
-                                .frame(minHeight: 36)
+                                .frame(minHeight: 44)
                         }
                     }
                     .buttonStyle(.bordered)
@@ -4461,7 +4464,8 @@ struct CaptureTranscriptReviewView: View {
                             desk: desk
                         ) || client.isMutating || protectedSessionPlayback.isPreparing
                     )
-                    Button("Edit") {
+                    Button("Edit text") {
+                        requestedEditingSegmentID = segment.id
                         transcriptPresentationMode = .timeline
                         // The conversation row and precision editor intentionally
                         // share the source segment ID. Give SwiftUI one render turn
@@ -4479,7 +4483,7 @@ struct CaptureTranscriptReviewView: View {
                         }
                     }
                     .buttonStyle(.bordered)
-                    .frame(minHeight: 36)
+                    .frame(minHeight: 44)
                     .accessibilityIdentifier("CaptureTranscriptConversationReview_\(segment.id)")
                 }
             }
@@ -6881,6 +6885,7 @@ private struct CaptureTranscriptSegmentCard: View {
     let previewOnly: Bool
     let decisionsLocked: Bool
     let canUseProjectTeamNotes: Bool
+    @Binding var requestedEditingSegmentID: String?
     @ObservedObject var client: CaptureTranscriptCorrectionClient
     @ObservedObject var playback: CaptureTranscriptPlaybackController
     let protectedSource: CaptureTranscriptPlayback?
@@ -6888,6 +6893,7 @@ private struct CaptureTranscriptSegmentCard: View {
     let library: LocalRecordingLibrary
 
     @State private var isEditing = false
+    @State private var showsDetails = false
     @State private var correctedText = ""
     @State private var correctedSpeaker = ""
     @State private var reason = ""
@@ -6921,9 +6927,6 @@ private struct CaptureTranscriptSegmentCard: View {
                         authority: segment.speakerAuthority,
                         identifier: "CaptureTranscriptSegmentSpeakerEvidence_\(segment.id)"
                     )
-                    Text(segment.text)
-                        .font(.body)
-                        .fixedSize(horizontal: false, vertical: true)
                 }
                 Spacer(minLength: 12)
                 Button {
@@ -6952,17 +6955,177 @@ private struct CaptureTranscriptSegmentCard: View {
                 .accessibilityIdentifier("CaptureTranscriptPlayButton_\(segment.id)")
             }
 
-            if isEditing {
-                correctionEditor
-            } else {
-                Button(segment.acceptedCorrection == nil ? "Edit transcript" : "Revise correction") {
-                    beginEditing()
-                }
-                .captureProminentButton(fill: CapturePalette.inkFill)
-                .disabled(client.isMutating || pendingDecision != nil)
-                .accessibilityIdentifier("CaptureTranscriptCorrectButton_\(segment.id)")
+            if !isEditing {
+                Text(segment.text)
+                    .textSelection(.enabled)
+                    .font(.body)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
+            HStack {
+                if !isEditing {
+                    Button("Edit text") { beginEditing() }
+                        .buttonStyle(.bordered)
+                        .frame(minHeight: 44)
+                        .disabled(client.isMutating || pendingDecision != nil)
+                        .accessibilityIdentifier("CaptureTranscriptCorrectButton_\(segment.id)")
+                }
+                Spacer(minLength: 8)
+                segmentCreationMenu
+            }
+            if isEditing { correctionEditor }
+
+            if let pendingDecision {
+                VStack(alignment: .leading, spacing: 7) {
+                    Label(
+                        pendingDecision.disposition == .held
+                            ? "Transcript change needs attention"
+                            : "Transcript change saved on \(CaptureDeviceVocabulary.thisDevice)",
+                        systemImage: pendingDecision.disposition == .held
+                            ? "exclamationmark.shield.fill"
+                            : "arrow.triangle.2.circlepath"
+                    )
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(
+                        pendingDecision.disposition == .held ? CapturePalette.brass : CapturePalette.ink
+                    )
+                    Text(
+                        pendingDecision.lastErrorMessage
+                            ?? "The edit and its exact transcript source are protected until Nest finishes syncing."
+                    )
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    if pendingDecision.disposition == .held {
+                        Button("Retry sync") {
+                            Task {
+                                await client.retryHeldDecision(
+                                    pendingDecision.id,
+                                    roomID: roomID
+                                )
+                            }
+                        }
+                        .buttonStyle(.bordered)
+                        .disabled(client.isMutating || !AuthManager.shared.networkActionsAllowed)
+                        .frame(minHeight: 44)
+                        .accessibilityIdentifier("CaptureTranscriptDecisionRetry_\(segment.id)")
+                    }
+                }
+                .padding(12)
+                .background(
+                    (pendingDecision.disposition == .held ? CapturePalette.brass : CapturePalette.ink)
+                        .opacity(0.08),
+                    in: RoundedRectangle(cornerRadius: 12)
+                )
+                .accessibilityElement(children: .contain)
+                .accessibilityIdentifier("CaptureTranscriptDecisionPending_\(segment.id)")
+                .accessibilityValue(
+                    pendingDecision.disposition == .held ? "Held" : "Queued"
+                )
+            }
+
+            if !previewOnly, let transcriptJobID {
+                NavigationLink {
+                    CaptureRecordingEditScreen(
+                        roomID: roomID,
+                        sessionTitle: sessionTitle,
+                        focus: CaptureRecordingEditorFocus(
+                            transcriptJobID: transcriptJobID,
+                            segmentID: segment.id
+                        )
+                    )
+                } label: {
+                    Label("Edit recording here", systemImage: "scissors")
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                }
+                .buttonStyle(.bordered)
+                .accessibilityHint("Opens this exact transcript passage in the private recording editor. It does not remove words or change the original.")
+                .accessibilityIdentifier("CaptureTranscriptEditRecording_\(segment.id)")
+            }
+
+            if isCreatingNote { transcriptNoteComposer }
+            if isCreatingTask { transcriptTaskComposer }
+            if isCreatingGoal { transcriptGoalComposer }
+
+            Button {
+                showsDetails.toggle()
+            } label: {
+                HStack {
+                    Text("Details and history")
+                    Spacer(minLength: 8)
+                    Image(systemName: showsDetails ? "chevron.down" : "chevron.right")
+                        .accessibilityHidden(true)
+                }
+                .font(.subheadline)
+                .frame(minHeight: 44)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityValue(showsDetails ? "Expanded" : "Collapsed")
+            .accessibilityIdentifier("CaptureTranscriptSegmentDetails_\(segment.id)")
+            if showsDetails { segmentDetails }
+        }
+        .reviewCard()
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("CaptureTranscriptSegment_\(segment.id)")
+        .onChange(of: requestedEditingSegmentID, initial: true) { _, requestedID in
+            guard requestedID == segment.id else { return }
+            beginEditing()
+            requestedEditingSegmentID = nil
+        }
+        .onChange(of: correctedText) { _, _ in scheduleDraftSave() }
+        .onChange(of: correctedSpeaker) { _, _ in scheduleDraftSave() }
+        .onChange(of: reason) { _, _ in scheduleDraftSave() }
+        .onDisappear {
+            draftSaveTask?.cancel()
+            persistDraftIfNeeded()
+        }
+    }
+
+    private var segmentCreationMenu: some View {
+        Menu {
+            Button {
+                noteTitle = "Note — \(defaultTaskTitle)"
+                noteBody = segment.text
+                noteKind = .sessionNote
+                noteVisibility = .authorPrivate
+                isCreatingNote = true
+            } label: {
+                Label("New note", systemImage: "note.text.badge.plus")
+            }
+            .disabled(client.isMutating || decisionsLocked)
+            .accessibilityIdentifier("CaptureTranscriptMakeNoteButton")
+            .accessibilityHint("Opens a note with this transcript moment ready to adjust.")
+            Button {
+                taskTitle = defaultTaskTitle
+                taskDetail = "From \(segment.sessionStartSeconds.captureTranscriptTimestamp)–\(segment.sessionEndSeconds.captureTranscriptTimestamp) on the Session timeline: \(segment.text)"
+                isCreatingTask = true
+            } label: {
+                Label("New task", systemImage: "checklist")
+            }
+            .disabled(client.isMutating || decisionsLocked)
+            .accessibilityIdentifier("CaptureTranscriptMakeTaskButton")
+            .accessibilityHint("Opens a task with the transcript wording ready to adjust.")
+            Button {
+                goalTitle = defaultTaskTitle
+                goalDescription = "Source commitment at \(segment.sessionStartSeconds.captureTranscriptTimestamp)–\(segment.sessionEndSeconds.captureTranscriptTimestamp) on the Session timeline: \(segment.text)"
+                isCreatingGoal = true
+            } label: {
+                Label("New goal", systemImage: "target")
+            }
+            .disabled(client.isMutating || decisionsLocked)
+            .accessibilityIdentifier("CaptureTranscriptMakeGoalButton")
+            .accessibilityHint("Opens a goal with the transcript wording ready to adjust.")
+        } label: {
+            Label("Create", systemImage: "plus")
+                .frame(minHeight: 44)
+        }
+        .accessibilityLabel("Create from this passage")
+        .accessibilityIdentifier("CaptureTranscriptCreateFromPassage_\(segment.id)")
+    }
+
+    private var segmentDetails: some View {
+        VStack(alignment: .leading, spacing: 12) {
             if !hasExactLocalSource && protectedSource?.kind == "video" {
                 Label(
                     "Quipsly will not download the full video just to review this sentence. Prepare an audio source or review the protected recording explicitly.",
@@ -7037,55 +7200,6 @@ private struct CaptureTranscriptSegmentCard: View {
                 proposalReview(proposal)
             }
 
-            if let pendingDecision {
-                VStack(alignment: .leading, spacing: 7) {
-                    Label(
-                        pendingDecision.disposition == .held
-                            ? "Transcript change needs attention"
-                            : "Transcript change saved on \(CaptureDeviceVocabulary.thisDevice)",
-                        systemImage: pendingDecision.disposition == .held
-                            ? "exclamationmark.shield.fill"
-                            : "arrow.triangle.2.circlepath"
-                    )
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(
-                        pendingDecision.disposition == .held ? CapturePalette.brass : CapturePalette.ink
-                    )
-                    Text(
-                        pendingDecision.lastErrorMessage
-                            ?? "The edit and its exact transcript source are protected until Nest finishes syncing."
-                    )
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                    if pendingDecision.disposition == .held {
-                        Button("Review state and retry") {
-                            Task {
-                                await client.retryHeldDecision(
-                                    pendingDecision.id,
-                                    roomID: roomID
-                                )
-                            }
-                        }
-                        .buttonStyle(.bordered)
-                        .disabled(client.isMutating || !AuthManager.shared.networkActionsAllowed)
-                        .frame(minHeight: 44)
-                        .accessibilityIdentifier("CaptureTranscriptDecisionRetry_\(segment.id)")
-                    }
-                }
-                .padding(12)
-                .background(
-                    (pendingDecision.disposition == .held ? CapturePalette.brass : CapturePalette.ink)
-                        .opacity(0.08),
-                    in: RoundedRectangle(cornerRadius: 12)
-                )
-                .accessibilityElement(children: .contain)
-                .accessibilityIdentifier("CaptureTranscriptDecisionPending_\(segment.id)")
-                .accessibilityValue(
-                    pendingDecision.disposition == .held ? "Held" : "Queued"
-                )
-            }
-
             if !isEditing {
                 if segment.acceptedCorrection == nil,
                    segment.acceptedVerification == nil {
@@ -7112,44 +7226,11 @@ private struct CaptureTranscriptSegmentCard: View {
                 }
             }
 
-            if !previewOnly, let transcriptJobID {
-                NavigationLink {
-                    CaptureRecordingEditScreen(
-                        roomID: roomID,
-                        sessionTitle: sessionTitle,
-                        focus: CaptureRecordingEditorFocus(
-                            transcriptJobID: transcriptJobID,
-                            segmentID: segment.id
-                        )
-                    )
-                } label: {
-                    Label("Edit recording here", systemImage: "scissors")
-                        .frame(maxWidth: .infinity, minHeight: 44)
-                }
-                .buttonStyle(.bordered)
-                .accessibilityHint("Opens this exact transcript passage in the private recording editor. It does not remove words or change the original.")
-                .accessibilityIdentifier("CaptureTranscriptEditRecording_\(segment.id)")
-            }
-
-            transcriptNoteComposer
-            transcriptTaskComposer
-            transcriptGoalComposer
-
             if !segment.correctionHistory.isEmpty {
                 Label("\(segment.correctionHistory.count) correction record(s) preserved", systemImage: "clock.arrow.circlepath")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
-        }
-        .reviewCard()
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("CaptureTranscriptSegment_\(segment.id)")
-        .onChange(of: correctedText) { _, _ in scheduleDraftSave() }
-        .onChange(of: correctedSpeaker) { _, _ in scheduleDraftSave() }
-        .onChange(of: reason) { _, _ in scheduleDraftSave() }
-        .onDisappear {
-            draftSaveTask?.cancel()
-            persistDraftIfNeeded()
         }
     }
 
@@ -7348,6 +7429,9 @@ private struct CaptureTranscriptSegmentCard: View {
 
     private var correctionEditor: some View {
         VStack(alignment: .leading, spacing: 10) {
+            Text("Changes the transcript, not the recording.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
             TextField("Correct speaker", text: $correctedSpeaker)
                 .textFieldStyle(.roundedBorder)
                 .accessibilityIdentifier("CaptureTranscriptCorrectSpeakerField")
@@ -7461,18 +7545,6 @@ private struct CaptureTranscriptSegmentCard: View {
                 Text("Assigned to you with a link back to this transcript moment.")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
-            } else {
-                Button {
-                    taskTitle = defaultTaskTitle
-                    taskDetail = "From \(segment.sessionStartSeconds.captureTranscriptTimestamp)–\(segment.sessionEndSeconds.captureTranscriptTimestamp) on the Session timeline: \(segment.text)"
-                    isCreatingTask = true
-                } label: {
-                    Label("Make this my task", systemImage: "checklist")
-                }
-                .buttonStyle(.bordered)
-                .disabled(client.isMutating || decisionsLocked)
-                .accessibilityIdentifier("CaptureTranscriptMakeTaskButton")
-                .accessibilityHint("Opens a task with the transcript wording ready to adjust.")
             }
         }
         .padding(12)
@@ -7524,18 +7596,6 @@ private struct CaptureTranscriptSegmentCard: View {
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                     .accessibilityIdentifier("CaptureTranscriptGoalBoundary")
-            } else {
-                Button {
-                    goalTitle = defaultTaskTitle
-                    goalDescription = "Source commitment at \(segment.sessionStartSeconds.captureTranscriptTimestamp)–\(segment.sessionEndSeconds.captureTranscriptTimestamp) on the Session timeline: \(segment.text)"
-                    isCreatingGoal = true
-                } label: {
-                    Label("Make this my goal", systemImage: "target")
-                }
-                .buttonStyle(.bordered)
-                .disabled(client.isMutating || decisionsLocked)
-                .accessibilityIdentifier("CaptureTranscriptMakeGoalButton")
-                .accessibilityHint("Opens a goal with the transcript wording ready to adjust.")
             }
         }
         .padding(12)
@@ -7610,20 +7670,6 @@ private struct CaptureTranscriptSegmentCard: View {
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                     .accessibilityIdentifier("CaptureTranscriptNoteBoundary")
-            } else {
-                Button {
-                    noteTitle = "Note — \(defaultTaskTitle)"
-                    noteBody = segment.text
-                    noteKind = .sessionNote
-                    noteVisibility = .authorPrivate
-                    isCreatingNote = true
-                } label: {
-                    Label("Save as Session note", systemImage: "note.text.badge.plus")
-                }
-                .buttonStyle(.bordered)
-                .disabled(client.isMutating || decisionsLocked)
-                .accessibilityIdentifier("CaptureTranscriptMakeNoteButton")
-                .accessibilityHint("Opens a note with this transcript moment ready to adjust.")
             }
         }
         .padding(12)
