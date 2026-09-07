@@ -216,20 +216,6 @@ case "$TEST_MODE" in
       exit 2
     fi
     ;;
-  transcript-packet-goal-evidence-merge)
-    TEST_CASE="testReviewedTranscriptPacketAddsEvidenceToExactExistingGoalAndReturnsToSource"
-    if [[ -z "$TEST_SESSION_ID" || -z "$TEST_SESSION_TITLE" || -z "$TEST_TRANSCRIPT_SEGMENT_IDS" || -z "$TEST_EXPECTED_PACKET_GOAL_TITLE" || -z "$TEST_GOAL_ID" || -z "$TEST_GOAL_EDIT_SOURCE_TITLE" || -z "$TEST_RECORDING_FIXTURE_PATH" || -z "$TEST_RECORDING_FIXTURE_LOCAL_ID" || -z "$TEST_RECORDING_FIXTURE_ASSET_ID" || -z "$TEST_RECORDING_FIXTURE_ROOM_ID" || -z "$TEST_RECORDING_FIXTURE_PARTICIPANT_ID" || -z "$TEST_RECORDING_FIXTURE_CONSENT_ID" || -z "$TEST_RECORDING_FIXTURE_OWNER_ACCOUNT_ID" || -z "$TEST_RECORDING_FIXTURE_SHA256" ]]; then
-      echo "Transcript packet goal-evidence merge mode requires exact Session, three-segment source, existing goal identity, account, consent, asset, checksum, and retained-source fixture identities." >&2
-      exit 2
-    fi
-    ;;
-  transcript-packet-task-evidence-merge)
-    TEST_CASE="testReviewedTranscriptPacketAddsEvidenceToExactExistingTaskAndReturnsToSource"
-    if [[ -z "$TEST_SESSION_ID" || -z "$TEST_SESSION_TITLE" || -z "$TEST_TRANSCRIPT_SEGMENT_IDS" || -z "$TEST_EXPECTED_PACKET_TASK_TITLE" || -z "$TEST_TASK_ID" || -z "$TEST_TASK_EDIT_SOURCE_TITLE" || -z "$TEST_RECORDING_FIXTURE_PATH" || -z "$TEST_RECORDING_FIXTURE_LOCAL_ID" || -z "$TEST_RECORDING_FIXTURE_ASSET_ID" || -z "$TEST_RECORDING_FIXTURE_ROOM_ID" || -z "$TEST_RECORDING_FIXTURE_PARTICIPANT_ID" || -z "$TEST_RECORDING_FIXTURE_CONSENT_ID" || -z "$TEST_RECORDING_FIXTURE_OWNER_ACCOUNT_ID" || -z "$TEST_RECORDING_FIXTURE_SHA256" ]]; then
-      echo "Transcript packet task-evidence merge mode requires exact Session, source span, existing task identity, account, consent, asset, checksum, and retained-source fixture identities." >&2
-      exit 2
-    fi
-    ;;
   transcript-text-edit)
     TEST_CASE="testTranscriptWordsSaveWithoutListeningAndPersistAfterRelaunch"
     if [[ -z "$TEST_SESSION_ID" || -z "$TEST_SESSION_TITLE" || -z "$TEST_TRANSCRIPT_SEGMENT_IDS" || "$TEST_TRANSCRIPT_SEGMENT_IDS" == *,* || -z "$TEST_TRANSCRIPT_PHONE_CORRECTION_TEXT" ]]; then
@@ -434,7 +420,7 @@ case "$TEST_MODE" in
     fi
     ;;
   *)
-    echo "Unknown QUIPSLY_CAPTURE_UI_TEST_MODE: $TEST_MODE (expected google-handoff, surface, voice-writing, session-deep-link, today-client-follow-up, weekly-plan-preview, weekly-plan-operation, session-create-surface, coaching-phone-start, transcript-follow-through, transcript-task-readback, transcript-task-isolation, transcript-packet-span, transcript-packet-materialization, transcript-packet-goal-evidence-merge, transcript-packet-task-evidence-merge, transcript-review-offline-reconcile, client-follow-up, coach-follow-up-authoring, coaching-continuity, coaching-follow-through-work, account-identity, account-isolation, room-join, capture-recovery, reminder, task-edit, goal-edit, note-edit, annotation-review, annotation-writing, source-inbox-filing, recurrence, recurrence-authoring, recurrence-offline-authoring, recurrence-edit, recurrence-missed, tag-authoring, tag-edit, tag-edit-offline, project-work, project-create, nest-portability, or session-note-edit)" >&2
+    echo "Unknown QUIPSLY_CAPTURE_UI_TEST_MODE: $TEST_MODE (expected google-handoff, surface, voice-writing, session-deep-link, today-client-follow-up, weekly-plan-preview, weekly-plan-operation, session-create-surface, coaching-phone-start, transcript-follow-through, transcript-task-readback, transcript-task-isolation, transcript-packet-span, transcript-packet-materialization, transcript-review-offline-reconcile, client-follow-up, coach-follow-up-authoring, coaching-continuity, coaching-follow-through-work, account-identity, account-isolation, room-join, capture-recovery, reminder, task-edit, goal-edit, note-edit, annotation-review, annotation-writing, source-inbox-filing, recurrence, recurrence-authoring, recurrence-offline-authoring, recurrence-edit, recurrence-missed, tag-authoring, tag-edit, tag-edit-offline, project-work, project-create, nest-portability, or session-note-edit)" >&2
     exit 2
     ;;
 esac

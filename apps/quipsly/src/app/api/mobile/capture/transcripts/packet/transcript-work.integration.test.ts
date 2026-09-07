@@ -8,7 +8,9 @@ import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 import { transcriptPacketSnapshot } from "@/lib/server/coaching-packets";
 import { MOBILE_CAPTURE_CONSENT_EVIDENCE_VERSION, MOBILE_CAPTURE_CONSENT_POLICY_VERSION,
   MOBILE_CAPTURE_CONSENT_TEXT, MOBILE_CAPTURE_CONSENT_TEXT_SHA256 } from "@/lib/mobile-capture-consent-policy.js";
-import { POST } from "./route";
+import { POST } from "../notes/route";
+import { POST as mergeTask } from "./actions/route";
+import { POST as mergeGoal } from "./goals/route";
 
 jest.mock("@/lib/prisma", () => ({ getPrismaClient: jest.fn() }));
 jest.mock("@/lib/server/quipsly-session", () => ({ getQuipslySessionFromRequest: jest.fn() }));
@@ -18,7 +20,7 @@ if (enabled) {
   const url = new URL(process.env.QUIPSLY_LOCAL_DATABASE_URL || "invalid:");
   if (!["postgres:", "postgresql:"].includes(url.protocol)
       || !["127.0.0.1", "localhost", "[::1]"].includes(url.hostname)
-      || url.pathname === "/") throw new Error("Transcript note integration requires an explicit loopback database.");
+      || url.pathname === "/") throw new Error("Transcript work integration requires an explicit loopback database.");
   process.env.DATABASE_URL = url.toString();
 }
 const actualPrisma = jest.requireActual<typeof import("@/lib/prisma")>("@/lib/prisma");
@@ -93,7 +95,84 @@ async function fixture(tx: Prisma.TransactionClient) {
     }));
     return { status: response.status, body: await response.json() };
   };
-  return { owner, member, outsider, room, asset, job, segments, sourceText, target, request, submit, actAs };
+  return { owner, member, outsider, room, asset, job, segments, sourceText, summary, build, target, request, submit, actAs };
+}
+
+async function existingWork(tx: Prisma.TransactionClient, f: Awaited<ReturnType<typeof fixture>>, kind: "task" | "goal") {
+  const project = await tx.studioProject.create({ data: { slug: randomUUID(), name: "Writing",
+    workspace: { create: { slug: randomUUID(), name: "Synthetic Nest" } } } });
+  await tx.callRoom.update({ where: { id: f.room.id }, data: { projectId: project.id } });
+  const goal = await tx.goal.create({ data: { roomId: f.room.id, projectId: project.id, ownerUserId: f.owner.id,
+    title: "Write my book", description: "My own definition of success", status: "PAUSED",
+    targetAt: new Date("2027-01-01T12:00:00Z"), sourceJson: { manual: true } } });
+  const task = await tx.actionItem.create({ data: { roomId: f.room.id, projectId: project.id, assignedUserId: f.owner.id,
+    title: "Draft the introduction", detail: "My own next step", dueAt: new Date("2026-12-01T12:00:00Z"),
+    noteId: f.target.id, sourceJson: { manual: true } } });
+  const link = await tx.goalTaskLink.create({ data: { goalId: goal.id, actionItemId: task.id, createdByUserId: f.owner.id } });
+  const reminder = await tx.taskReminder.create({ data: { id: randomUUID(), actionItemId: task.id,
+    ownerUserId: f.owner.id, remindAt: new Date("2026-11-30T12:00:00Z") } });
+  const tag = await tx.studioTag.create({ data: { projectId: project.id, slug: "writing", label: "Writing" } });
+  const taskTag = await tx.actionItemTagLink.create({ data: { actionItemId: task.id, tagId: tag.id } });
+  const goalTag = await tx.goalTagLink.create({ data: { goalId: goal.id, tagId: tag.id } });
+  const series = await tx.taskRecurrenceSeries.create({ data: { ownerUserId: f.owner.id, projectId: project.id,
+    title: task.title, cadence: "FIXED", frequency: "WEEKLY", timezone: "America/Denver",
+    localTimeMinutes: 600, anchorLocalDate: "2026-12-01", anchorDayOfMonth: 1 } });
+  const occurrence = await tx.taskOccurrence.create({ data: { seriesId: series.id, actionItemId: task.id,
+    occurrenceKey: "2026-12-01T10:00[America/Denver]", scheduledLocalDate: "2026-12-01",
+    scheduledFor: new Date("2026-12-01T17:00:00Z") } });
+  const plan = await tx.workPlanBlock.create({ data: { ownerUserId: f.owner.id,
+    ...(kind === "task" ? { actionItemId: task.id } : { goalId: goal.id }),
+    startsAt: new Date("2026-12-01T17:00:00Z"), endsAt: new Date("2026-12-01T17:30:00Z"),
+    timezone: "America/Denver" } });
+  const progress = await tx.goalProgressReceipt.create({ data: { goalId: goal.id, actorUserId: f.owner.id,
+    kind: "PROGRESS_UPDATED", progressPercent: 35, note: "My assessment", occurredAt: new Date() } });
+  const actionCandidateId = `quipsly-transcript-action-candidate-v1:${f.job.id}:${f.segments[0]!.id}`;
+  const goalCandidateId = `packet-goal-${f.build}-${f.segments[0]!.id}`;
+  const span = { segmentId: f.segments[0]!.id, segmentIds: f.segments.map((segment) => segment.id),
+    sourceTextSha256: sha(f.sourceText), text: f.sourceText };
+  await tx.coachingNote.update({ where: { id: f.summary.id }, data: { sourceJson: {
+    ...(f.summary.sourceJson as Prisma.JsonObject),
+    actionCandidates: [{ ...span, id: actionCandidateId, kind: "quipsly-transcript-action-candidate-v1",
+      reviewStatus: "READY_FOR_HUMAN_REVIEW", title: "Write every morning", detail: f.sourceText,
+      sourceText: f.sourceText, transcriptJobId: f.job.id, recordingAssetId: f.asset.id,
+      roomId: f.room.id, packetBuildId: f.build, speakerLabel: "Note author", startSeconds: 0, endSeconds: 12,
+      humanApprovalRequired: false, committedActionItemId: null }],
+    // Historical packets still support adding evidence to existing work.
+    // These old projection flags must not require a playback/review ceremony.
+    // Current automatic packets expose their already-created ordinary goals.
+    packetBrief: { kind: "quipsly-transcript-packet-brief-v1", candidateOnly: true,
+      humanApprovalRequired: true, sections: [{ id: "goals", items: [span] }] },
+  } as Prisma.InputJsonValue } });
+  const target = kind === "task" ? task : goal;
+  const request = { callRoomId: f.room.id, transcriptJobId: f.job.id, recordingAssetId: f.asset.id,
+    summaryNoteId: f.summary.id, packetBuildId: f.build, decision: "MERGE",
+    mergeExpectedUpdatedAt: target.updatedAt.toISOString(),
+    ...(kind === "task" ? { actionCandidateId, mergeTargetTaskId: task.id } : { goalCandidateId, mergeTargetGoalId: goal.id }) };
+  const submit = async () => {
+    const response = await (kind === "task" ? mergeTask : mergeGoal)(new Request(
+      `http://localhost/api/mobile/capture/transcripts/packet/${kind === "task" ? "actions" : "goals"}`,
+      { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(request) },
+    ));
+    return { status: response.status, body: await response.json() };
+  };
+  const evidence = () => kind === "task"
+    ? tx.actionItemEvidenceReceipt.findMany({ where: { actionItemId: task.id } })
+    : tx.goalProgressReceipt.findMany({ where: { goalId: goal.id, kind: "TRANSCRIPT_CANDIDATE_MERGED" } });
+  const assertUnchanged = async () => {
+    expect(await tx.actionItem.findUniqueOrThrow({ where: { id: task.id } })).toEqual(task);
+    expect(await tx.goal.findUniqueOrThrow({ where: { id: goal.id } })).toEqual(goal);
+    expect(await tx.goalTaskLink.findMany({ where: { goalId: goal.id } })).toEqual([link]);
+    expect(await tx.taskReminder.findUniqueOrThrow({ where: { id: reminder.id } })).toEqual(reminder);
+    expect(await tx.actionItemTagLink.findMany({ where: { actionItemId: task.id } })).toEqual([taskTag]);
+    expect(await tx.goalTagLink.findMany({ where: { goalId: goal.id } })).toEqual([goalTag]);
+    expect(await tx.taskRecurrenceSeries.findUniqueOrThrow({ where: { id: series.id } })).toEqual(series);
+    expect(await tx.taskOccurrence.findUniqueOrThrow({ where: { id: occurrence.id } })).toEqual(occurrence);
+    expect(await tx.workPlanBlock.findUniqueOrThrow({ where: { id: plan.id } })).toEqual(plan);
+    expect(await tx.goalProgressReceipt.findUniqueOrThrow({ where: { id: progress.id } })).toEqual(progress);
+    expect(await tx.transcriptSegment.findMany({ where: { transcriptJobId: f.job.id }, orderBy: { startSeconds: "asc" } })).toEqual(f.segments);
+    expect(await tx.deliveryEvent.count({ where: { roomId: f.room.id } })).toBe(0);
+  };
+  return { task, goal, submit, evidence, assertUnchanged };
 }
 
 async function withFixture(run: (tx: Prisma.TransactionClient, f: Awaited<ReturnType<typeof fixture>>) => Promise<void>) {
@@ -122,7 +201,7 @@ async function withFixture(run: (tx: Prisma.TransactionClient, f: Awaited<Return
   }
 }
 
-(enabled ? describe : describe.skip)("transcript note merging against a fresh database fixture", () => {
+(enabled ? describe : describe.skip)("transcript work against a fresh database fixture", () => {
   afterAll(async () => { if (enabled) await actualPrisma.getPrismaClient().$disconnect(); });
 
   it("merges an unreviewed three-passage source, retains prior content, and retries without duplication", async () => {
@@ -191,6 +270,101 @@ async function withFixture(run: (tx: Prisma.TransactionClient, f: Awaited<Return
       await tx.recordingConsent.updateMany({ where: { roomId: f.room.id, userId: f.member.id }, data: { [permission]: false } });
       expect(await f.submit()).toMatchObject({ status: 409, body: { code } });
       expect(await tx.coachingNoteRevision.count({ where: { noteId: f.target.id } })).toBe(1);
+    });
+  });
+
+  describe.each(["task", "goal"] as const)("existing %s evidence", (kind) => {
+    const prefix = kind === "task" ? "ACTION" : "GOAL";
+
+    it("appends the whole unreviewed passage exactly once without rewriting existing work", async () => {
+      await withFixture(async (tx, f) => {
+        const work = await existingWork(tx, f, kind);
+        const saved = await work.submit();
+        if (saved.status !== 200) throw new Error(JSON.stringify(saved));
+        expect(saved.body).toMatchObject({ ok: true, idempotentReplay: false,
+          boundaries: { sourceReviewState: "provider-transcript" } });
+        const evidence = await work.evidence();
+        expect(evidence).toHaveLength(1);
+        expect(evidence[0]).toMatchObject({ actorUserId: f.owner.id, kind: "TRANSCRIPT_CANDIDATE_MERGED",
+          evidenceJson: { candidateSource: { recordingAssetId: f.asset.id,
+            segmentIds: f.segments.map((segment) => segment.id), effectiveTextSnapshot: f.sourceText,
+            startSeconds: 0, endSeconds: 12, sourceReviewState: "provider-transcript" } } });
+        expect(await work.submit()).toMatchObject({ status: 200, body: { ok: true, idempotentReplay: true } });
+        expect(await work.evidence()).toEqual(evidence);
+        const activity = await tx.governedAction.findMany({ where: {
+          targetObjectId: kind === "task" ? work.task.id : work.goal.id,
+        }, include: { attempts: true } });
+        expect(activity).toHaveLength(1);
+        expect(activity[0]).toMatchObject({ status: "SUCCEEDED", attempts: [{ status: "SUCCEEDED" }] });
+        expect(await tx.transcriptSegmentVerification.count({ where: { roomId: f.room.id } })).toBe(0);
+        await work.assertUnchanged();
+      });
+    });
+
+    it("rejects a stale target rather than silently applying to changed work", async () => {
+      await withFixture(async (tx, f) => {
+        const work = await existingWork(tx, f, kind);
+        const title = "My newer wording";
+        if (kind === "task") await tx.actionItem.update({ where: { id: work.task.id },
+          data: { title, updatedAt: new Date(work.task.updatedAt.getTime() + 1000) } });
+        else await tx.goal.update({ where: { id: work.goal.id },
+          data: { title, updatedAt: new Date(work.goal.updatedAt.getTime() + 1000) } });
+        expect(await work.submit()).toMatchObject({ status: 409, body: { errorCode: `${prefix}_CANDIDATE_MERGE_TARGET_CHANGED` } });
+        expect(await work.evidence()).toHaveLength(0);
+        const row = kind === "task" ? await tx.actionItem.findUniqueOrThrow({ where: { id: work.task.id } })
+          : await tx.goal.findUniqueOrThrow({ where: { id: work.goal.id } });
+        expect(row.title).toBe(title);
+      });
+    });
+
+    it.each(["member", "outsider"] as const)("does not let another %s append to private work", async (identity) => {
+      await withFixture(async (tx, f) => {
+        const work = await existingWork(tx, f, kind);
+        f.actAs(f[identity]);
+        const result = await work.submit();
+        expect(result).toMatchObject(identity === "outsider"
+          ? { status: 404, body: { ok: false, errorCode: "ROOM_ACCESS_DENIED" } }
+          : { status: 409, body: { ok: false, errorCode: `${prefix}_CANDIDATE_MERGE_TARGET_UNAVAILABLE` } });
+        expect(await work.evidence()).toHaveLength(0);
+        await work.assertUnchanged();
+      });
+    });
+
+    it("rejects another Nest's target even when the requesting user owns it", async () => {
+      await withFixture(async (tx, f) => {
+        const work = await existingWork(tx, f, kind);
+        const project = await tx.studioProject.create({ data: { slug: randomUUID(), name: "Other project",
+          workspace: { create: { slug: randomUUID(), name: "Other Nest" } } } });
+        if (kind === "task") await tx.actionItem.update({ where: { id: work.task.id }, data: { projectId: project.id } });
+        else await tx.goal.update({ where: { id: work.goal.id }, data: { projectId: project.id } });
+        expect(await work.submit()).toMatchObject({ status: 409,
+          body: { errorCode: `${prefix}_CANDIDATE_MERGE_TARGET_UNAVAILABLE` } });
+        expect(await work.evidence()).toHaveLength(0);
+      });
+    });
+
+    it("rejects a changed passage instead of attaching outdated source evidence", async () => {
+      await withFixture(async (tx, f) => {
+        const work = await existingWork(tx, f, kind);
+        await tx.transcriptSegment.update({ where: { id: f.segments[2]!.id }, data: { text: "Different source wording." } });
+        expect(await work.submit()).toMatchObject({ status: 409, body: { errorCode: "TRANSCRIPT_REVIEW_CHANGED" } });
+        expect(await work.evidence()).toHaveLength(0);
+        expect(await tx.actionItem.findUniqueOrThrow({ where: { id: work.task.id } })).toEqual(work.task);
+        expect(await tx.goal.findUniqueOrThrow({ where: { id: work.goal.id } })).toEqual(work.goal);
+      });
+    });
+
+    it.each([
+      ["canRecordAudio", "CURRENT_ALL_PARTY_SOURCE_CONSENT_REQUIRED"],
+      ["canTranscribe", "CURRENT_ALL_PARTY_TRANSCRIPTION_CONSENT_REQUIRED"],
+    ] as const)("honors changed %s permission without touching existing work", async (permission, errorCode) => {
+      await withFixture(async (tx, f) => {
+        const work = await existingWork(tx, f, kind);
+        await tx.recordingConsent.updateMany({ where: { roomId: f.room.id, userId: f.member.id }, data: { [permission]: false } });
+        expect(await work.submit()).toMatchObject({ status: 409, body: { errorCode } });
+        expect(await work.evidence()).toHaveLength(0);
+        await work.assertUnchanged();
+      });
     });
   });
 });
