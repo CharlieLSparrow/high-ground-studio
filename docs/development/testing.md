@@ -47,7 +47,17 @@ fails, and preserves the process log if the runner crashes before writing JSON.
 The full suite uses two workers with an absolute 512 MB idle recycle threshold;
 focused debugging can still use `--runInBand`. Database integration tests explicitly opt in with
 `QUIPSLY_LOCAL_DB_SMOKE=1` and `QUIPSLY_LOCAL_DATABASE_URL`; the ordinary Jest PR
-step does not claim those integration tests ran. The contracts runner uses
+step does not claim those integration tests ran. A separate PR step applies all
+migrations to a fresh disposable PostgreSQL 15/pgvector service and executes the
+project-access, project-command, canonical-note-edit, and follow-through database
+suites. It checks real membership, revocation, private-goal visibility,
+cross-project IDs, transactions, and persistence; only the request identity and
+Next.js cache adapter are mocked for the command tests. It does not prove the
+Firebase login flow or deployed permissions. No production database or cloud
+credentials are available to that step. Migration and test logs are retained.
+This follows GitHub's [PostgreSQL service-container pattern](https://docs.github.com/en/actions/tutorials/use-containerized-services/create-postgresql-service-containers)
+using the same [pgvector image family](https://github.com/pgvector/pgvector) as local development.
+The contracts runner uses
 Node's TypeScript transform mode because production worker classes use
 parameter properties; strip-only mode cannot load them. Do not remove worker
 coverage or rewrite working production syntax just to hide a runner failure.
