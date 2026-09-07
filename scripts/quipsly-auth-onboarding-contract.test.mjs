@@ -6,14 +6,12 @@ const [
   identitySource,
   onboardingSource,
   homeNestSource,
-  sessionRouteSource,
   localUpSource,
   localIntegrationSource,
 ] = await Promise.all([
   readFile("apps/quipsly/src/lib/server/studio-user-identity.ts", "utf8"),
   readFile("apps/quipsly/src/lib/server/quipsly-onboarding.ts", "utf8"),
   readFile("apps/quipsly/src/lib/server/home-nest.ts", "utf8"),
-  readFile("apps/quipsly/src/app/api/auth/session/route.ts", "utf8"),
   readFile("scripts/dev/quipsly-local-up.sh", "utf8"),
   readFile(
     "apps/quipsly/src/app/api/auth/session/local-onboarding.integration.test.ts",
@@ -41,13 +39,9 @@ test("the ordinary local lane applies every committed migration before Nest star
   );
 });
 
-test("schema drift is recoverable and concurrent onboarding is acceptance-tested", () => {
-  assert.match(sessionRouteSource, /errorHasCode\(error, "P2021"\)/);
-  assert.match(sessionRouteSource, /errorHasCode\(error, "P2022"\)/);
-  assert.match(
-    sessionRouteSource,
-    /Quipsly database schema unavailable[\s\S]*status: 503/,
-  );
+// Schema failures are injected through POST in api/auth/session/route.test.ts,
+// including nested P2021/P2022 errors, status, retry header, and no auth cookie.
+test("concurrent onboarding has a retained database integration scenario", () => {
   assert.match(localIntegrationSource, /Array\.from\(\{ length: 4 \}/);
   assert.match(localIntegrationSource, /activeStarterMemberships: 1/);
   assert.match(localIntegrationSource, /homeProjects: 1/);

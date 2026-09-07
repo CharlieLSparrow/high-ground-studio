@@ -52,6 +52,27 @@ describe("Quipsly session creation error boundaries", () => {
     jest.restoreAllMocks();
   });
 
+  it.each([
+    { code: "P2021" },
+    { code: "P2022" },
+    { cause: { code: "P2021" } },
+    { errors: [{ cause: { code: "P2022" } }] },
+  ])("reports schema unavailability as retryable rather than bad credentials: %p", async (error) => {
+    jest.mocked(ensureStudioUserFromFirebaseIdentity).mockRejectedValue(error);
+    const response = await POST(new Request("http://localhost/api/auth/session", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ idToken: "redacted-id-token" }),
+    }));
+    expect(response.status).toBe(503);
+    expect(response.headers.get("retry-after")).toBe("10");
+    await expect(response.json()).resolves.toEqual({
+      error: "Quipsly is temporarily unavailable. Try signing in again shortly.",
+      code: "SESSION_SCHEMA_UNAVAILABLE",
+    });
+    expect(adminAuth.createSessionCookie).not.toHaveBeenCalled();
+  });
+
   it("reports transaction-pool unavailability as service unavailable, not bad credentials", async () => {
     jest.mocked(ensureStudioUserFromFirebaseIdentity).mockRejectedValue({
       code: "P2028",

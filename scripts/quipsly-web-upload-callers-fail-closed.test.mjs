@@ -20,15 +20,12 @@ test("legacy server-buffered mobile ingress has no Quipsly web callers", () => {
     assert.equal(source.includes("/api/ingest/mobile"), false, `${surface} must not send bytes through legacy ingress`);
     assert.equal(source.includes("/api/upload/presigned"), false, `${surface} must not claim success after an unregistered raw PUT`);
     assert.equal(source.includes("useCloudStorageUpload"), false, `${surface} must not bypass capture finalization or media registration`);
-    assert.ok(source.includes("resumable-v2"), `${surface} must explain the migration boundary`);
   }
 });
 
-test("live call fails closed without silently recording", () => {
-  assert.equal(callers.call.includes("new MediaRecorder"), false);
-  assert.ok(callers.call.includes("creates no recording file or recording upload"));
-  assert.ok(callers.call.includes("No recording is created."));
-});
+// Call entry and destination are executed by the call page Jest suite. The
+// current Session recorder has its own behavior tests; do not freeze a retired
+// page's "no recording" limitation or require migration jargon in customer UI.
 
 test("recorder keeps sources local and the Vault cannot select or send a file", () => {
   assert.ok(callers.recorder.includes('uploadState: "local-only"'));

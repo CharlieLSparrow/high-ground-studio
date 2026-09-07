@@ -198,6 +198,17 @@ function blockersFor(session: MobileCaptureSession) {
   ].filter((value, index, array) => value && array.indexOf(value) === index);
 }
 
+function attentionFor(session: MobileCaptureSession) {
+  const attention: string[] = [];
+  if (!sessionIsCompleted(session)) {
+    if (paymentRequiredFor(session) && !paymentResolvedFor(session)) attention.push("Payment is needed before this session.");
+    if (session.providerCanJoin === false) attention.push("Open the session to check call setup.");
+  }
+  if (["FAILED", "ERROR"].includes(session.latestTranscriptStatus || "")) attention.push("Transcription needs a retry.");
+  if (["FAILED", "ERROR"].includes(session.latestRecordingAssetStatus || "")) attention.push("A recording needs help finishing its upload.");
+  return attention;
+}
+
 function sessionIsCompleted(session: MobileCaptureSession) {
   const state = String(session.bookingStatus || session.status || "").toUpperCase();
   return state === "COMPLETED" || state === "ENDED" || state === "CANCELED";
@@ -211,6 +222,7 @@ function sessionIsReady(session: MobileCaptureSession) {
 
 function SessionCard({ session }: { session: MobileCaptureSession }) {
   const blockers = blockersFor(session);
+  const attention = attentionFor(session);
   const workspaceHref = `/sessions/${encodeURIComponent(session.callRoomId)}`;
 
   return (
@@ -220,7 +232,7 @@ function SessionCard({ session }: { session: MobileCaptureSession }) {
           <div className="mb-2 flex flex-wrap gap-2">
             <Pill label={titleCase(session.purpose || "COACHING")} tone="blue" />
             <Pill label={session.captureReadiness?.label || titleCase(session.journeySummary?.stage) || "Session"} tone={toneForSession(session)} />
-            {blockers.length > 0 ? <Pill label={`${blockers.length} item${blockers.length === 1 ? "" : "s"} need attention`} tone="warn" /> : null}
+            {attention.length > 0 ? <Pill label="Needs attention" tone="warn" /> : null}
           </div>
           <h2 className="text-2xl font-black leading-tight text-[#3d3122]">{session.title}</h2>
           <p className="mt-2 text-sm font-bold text-[#7b5c3b]">
@@ -232,20 +244,23 @@ function SessionCard({ session }: { session: MobileCaptureSession }) {
           <p className="mt-3 max-w-3xl text-sm font-semibold leading-relaxed text-[#5b472f]">
             {session.nextAction || session.actionPacket?.nextAction || session.captureReadiness?.nextAction || "Open the session to join or choose recording options."}
           </p>
-          {blockers.length > 0 ? (
-            <div className="mt-3 flex flex-wrap gap-2" aria-label="Current blockers">
-              {blockers.slice(0, 3).map((blocker) => <Pill key={blocker} label={normalize(blocker)} tone="warn" />)}
-              {blockers.length > 3 ? <Pill label={`+${blockers.length - 3} more in workspace`} tone="warm" /> : null}
-            </div>
+          {attention.length > 0 ? (
+            <ul className="mt-3 space-y-1 text-sm text-[#6d4b22]" aria-label="Next steps">
+              {attention.map((message) => <li key={message}>{message}</li>)}
+            </ul>
           ) : null}
         </div>
         <div className="w-full rounded-2xl border border-[#ead8b4] bg-[#fffaf1] p-4 text-sm text-[#6b5538] lg:w-72">
-          <dl className="grid grid-cols-2 gap-x-4 gap-y-2">
+          <details>
+            <summary className="min-h-11 cursor-pointer py-2 font-bold">Session details</summary>
+            <dl className="grid grid-cols-2 gap-x-4 gap-y-2">
             <div><dt className="text-[10px] font-black uppercase tracking-wide">Status</dt><dd className="font-bold">{titleCase(session.bookingStatus || session.status)}</dd></div>
             <div><dt className="text-[10px] font-black uppercase tracking-wide">Consent</dt><dd className="font-bold">{titleCase(session.recordingConsentStatus || "not created")}</dd></div>
             <div><dt className="text-[10px] font-black uppercase tracking-wide">Recording</dt><dd className="font-bold">{session.canRecordNow ? "Allowed" : "Off"}</dd></div>
             <div><dt className="text-[10px] font-black uppercase tracking-wide">Transcript</dt><dd className="font-bold">{titleCase(session.latestTranscriptStatus || "not started")}</dd></div>
           </dl>
+            {blockers.length > 0 ? <details className="mt-3"><summary className="cursor-pointer py-2 text-xs">Technical details</summary><ul className="space-y-1 break-words text-xs">{blockers.map((code) => <li key={code}>{code}</li>)}</ul></details> : null}
+          </details>
           <div className="mt-4 grid gap-2">
             {session.providerCanJoin ? <Link href={`${workspaceHref}?mode=live`} className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-full bg-[#4f6f52] px-4 py-2 text-xs font-black uppercase tracking-wide text-white hover:bg-[#3f5c43]"><Video size={15} aria-hidden="true" /> Join call</Link> : null}
             <Link href={workspaceHref} className="inline-flex min-h-11 w-full items-center justify-center rounded-full bg-[#3d3122] px-4 py-2 text-xs font-black uppercase tracking-wide text-white hover:bg-[#5a472f]">
@@ -264,7 +279,7 @@ function SessionCard({ session }: { session: MobileCaptureSession }) {
 export default function CoachingSessionsPage() {
   const [payload, setPayload] = useState<SessionsResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [sessionQuery, setSessionQuery] = useState("");
   const [purposeFilter, setPurposeFilter] = useState<SessionPurposeFilter>("ALL");
   const [viewFilter, setViewFilter] = useState<SessionViewFilter>("ACTIVE");
@@ -354,7 +369,7 @@ export default function CoachingSessionsPage() {
         || (viewFilter === "ACTIVE" && !sessionIsCompleted(session))
         || (viewFilter === "COMPLETED" && sessionIsCompleted(session))
         || (viewFilter === "READY" && sessionIsReady(session))
-        || (viewFilter === "ATTENTION" && blockersFor(session).length > 0);
+        || (viewFilter === "ATTENTION" && attentionFor(session).length > 0);
       if (!viewMatches) return false;
       if (!query) return true;
 
@@ -406,7 +421,7 @@ export default function CoachingSessionsPage() {
           </div>
           {error && (
             <div className="mt-5 rounded-2xl border border-[#d8bb82] bg-[#f7eed9] p-4 text-sm font-bold text-[#6d4b22]">
-              {error} If you expected a Session here, sign in with the invited email or ask your coach to resend the invitation.
+              {error} Try Refresh to load your sessions again.
             </div>
           )}
         </div>
@@ -418,7 +433,7 @@ export default function CoachingSessionsPage() {
             <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
               <div>
                 <p className="text-xs font-black uppercase tracking-[0.2em] text-[#2c5148]">{isEmptyCreator ? "Start with the right path" : "New Session"}</p>
-                <h2 id="new-session-heading" className="mt-1 text-2xl font-black text-[#3d3122]">{isEmptyCreator ? "Schedule coaching—or plan another kind of Session" : "Plan a real session"}</h2>
+                <h2 id="new-session-heading" className="mt-1 text-2xl font-black text-[#3d3122]">{isEmptyCreator ? "Schedule coaching—or plan another kind of Session" : "Plan a session"}</h2>
                 <p className="mt-2 max-w-3xl text-sm font-semibold leading-6 text-[#6f5a3d]">{isEmptyCreator ? "Coaching uses the simple client-and-time scheduler. The flexible planner remains here for podcasts, interviews, and internal meetings." : "Create a podcast, coaching, interview, or internal Session when you need one."}</p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
@@ -510,7 +525,9 @@ export default function CoachingSessionsPage() {
           </section>
         ) : null}
 
-        {sessions.length === 0 && !error && !isEmptyCreator ? (
+        {!payload && isLoading ? (
+          <p role="status" className="px-2 py-8 text-sm text-[#6f5a3d]">Loading your sessions…</p>
+        ) : sessions.length === 0 && !error && !isEmptyCreator ? (
           <div className="rounded-[1.8rem] border border-dashed border-[#d6c5a5] bg-white/75 p-8 text-[#7b5c3b] shadow-sm">
             <div className="mb-3 flex items-center gap-2 text-[#3d3122]">
               <Clock size={20} />

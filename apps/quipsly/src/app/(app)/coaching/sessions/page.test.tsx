@@ -50,6 +50,63 @@ describe("CoachingSessionsPage", () => {
     });
   });
 
+  it("shows loading rather than telling an invited person they have no sessions", () => {
+    jest.mocked(globalThis.fetch).mockReturnValue(new Promise(() => {}));
+    render(<CoachingSessionsPage />);
+    expect(screen.getByRole("status")).toHaveTextContent("Loading your sessions");
+    expect(screen.queryByRole("heading", { name: "No sessions are visible yet." })).not.toBeInTheDocument();
+    expect(screen.queryByText(/ask your coach to resend/i)).not.toBeInTheDocument();
+  });
+
+  it("keeps a ready call clear of proof-only warnings, with diagnostics available on demand", async () => {
+    const user = userEvent.setup();
+    jest.mocked(globalThis.fetch).mockImplementation(() => jsonResponse({
+      ok: true, sessions: [{
+        id: "ready", callRoomId: "ready", title: "Ready coaching call", status: "PLANNED",
+        providerCanJoin: true, canRecordNow: true, recordingConsentGranted: true,
+        captureReadiness: { label: "Ready to join", blockers: ["substantial-recording-evidence-needed"] },
+        journeySummary: { blockers: ["calendar-receipt:missing"] },
+      }],
+    }));
+    render(<CoachingSessionsPage />);
+    expect(await screen.findByRole("heading", { name: "Ready coaching call" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Join call" })).toHaveAttribute("href", "/sessions/ready?mode=live");
+    expect(screen.queryByLabelText("Next steps")).not.toBeInTheDocument();
+    expect(screen.getByText("substantial-recording-evidence-needed").closest("details")).not.toHaveAttribute("open");
+    await user.selectOptions(screen.getByLabelText("View"), "ATTENTION");
+    expect(screen.queryByTestId("session-index-card")).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "No Sessions match these filters." })).toBeInTheDocument();
+  });
+
+  it("keeps failed transcription actionable after a call ends", async () => {
+    const user = userEvent.setup();
+    jest.mocked(globalThis.fetch).mockImplementation(() => jsonResponse({
+      ok: true, sessions: [{ id: "ended", callRoomId: "ended", title: "Finished coaching call", status: "ENDED",
+        providerCanJoin: false, latestTranscriptStatus: "FAILED" }],
+    }));
+    render(<CoachingSessionsPage />);
+    await screen.findByLabelText("View");
+    await user.selectOptions(screen.getByLabelText("View"), "ATTENTION");
+    expect(screen.getByText("Transcription needs a retry.")).toBeInTheDocument();
+    expect(screen.queryByText("Open the session to check call setup.")).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Open session" })).toHaveAttribute("href", "/sessions/ended");
+  });
+
+  it("keeps loaded sessions during a refresh failure without blaming the account or invitation", async () => {
+    const user = userEvent.setup();
+    jest.mocked(globalThis.fetch)
+      .mockImplementationOnce(() => jsonResponse({ ok: true, sessions: [
+        { id: "saved", callRoomId: "saved", title: "My scheduled call", providerCanJoin: true },
+      ] }))
+      .mockImplementationOnce(() => jsonResponse({ ok: false, error: "Temporarily unavailable." }, 503));
+    render(<CoachingSessionsPage />);
+    await screen.findByRole("heading", { name: "My scheduled call" });
+    await user.click(screen.getByRole("button", { name: "Refresh" }));
+    expect(await screen.findByText(/Temporarily unavailable\. Try Refresh/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Join call" })).toHaveAttribute("href", "/sessions/saved?mode=live");
+    expect(screen.queryByText(/sign in with the invited email|ask your coach to resend/i)).not.toBeInTheDocument();
+  });
+
   it("routes first-time coaching to the canonical scheduler and keeps the generic planner secondary", async () => {
     const user = userEvent.setup();
     render(<CoachingSessionsPage />);
