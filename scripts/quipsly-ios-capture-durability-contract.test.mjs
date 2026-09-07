@@ -104,7 +104,8 @@ check(
 );
 // This is a source-wiring check, not PCM or interruption proof. The native
 // testAudioInterruptionPausesAndRequiresExplicitResume test forces the source
-// to pause before the owning screen observes startup, then resumes and saves.
+// to pause before a deliberately late startup observer wakes past its deadline,
+// then resumes and saves. Do not substitute this string check for that runtime test.
 check(
   "provider start failure takes the terminal media cleanup path",
   audio.includes("if activeLocalRecordingID != nil {")

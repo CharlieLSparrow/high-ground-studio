@@ -1202,7 +1202,9 @@ final class CaptureExperienceUITests: XCTestCase {
 
         // The simulated system end notification carries shouldResume, but
         // Quipsly deliberately waits for this visible person-owned action.
-        sleep(1)
+        // Also let the deliberately delayed startup observer finish. Checking
+        // only the paused UI can miss a later, contradictory failure banner.
+        sleep(5)
         XCTAssertEqual(resume.label, "Resume")
         XCTAssertFalse(app.staticTexts["The local recorder did not start. Nothing was recorded."].exists,
             "An interruption during startup must retain the started source and its resumable context.")

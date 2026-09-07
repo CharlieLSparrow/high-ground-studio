@@ -419,17 +419,17 @@ final class AudioCaptureController: NSObject, ObservableObject {
     /// PCM buffer arrives.
     func waitUntilRecordingOrTerminal(timeout: TimeInterval = 4, includingPausedSource: Bool = false) async -> Bool {
         let deadline = Date().addingTimeInterval(timeout)
+        #if DEBUG && targetEnvironment(simulator)
+        // Reproduce a busy executor observing startup only after the deadline:
+        // real capture and the injected system interruption continue meanwhile.
+        // This must not turn an already-started source into a startup failure.
+        if includingPausedSource && CaptureLaunchConfiguration.usesAudioInterruptionDeterministicUITest {
+            try? await Task.sleep(nanoseconds: UInt64(max(0, timeout + 0.1) * 1_000_000_000))
+        }
+        #endif
         while Date() < deadline {
             switch captureState {
             case .recording:
-                #if DEBUG && targetEnvironment(simulator)
-                // Make the interruption UI test observe the startup race even
-                // on a fast Mac: the source starts, then pauses before its
-                // owning screen attaches. No shipping or physical path waits.
-                if includingPausedSource && CaptureLaunchConfiguration.usesAudioInterruptionDeterministicUITest {
-                    break
-                }
-                #endif
                 return true
             case .paused:
                 // Paused implies that source capture actually began. Losing
@@ -442,10 +442,22 @@ final class AudioCaptureController: NSObject, ObservableObject {
             }
             try? await Task.sleep(nanoseconds: 25_000_000)
         }
-        if captureState == .preparing, activeLocalRecordingID != nil {
-            finishCaptureFailure(
-                "The provider microphone pipeline did not deliver local PCM in time. Quipsly closed and preserved the armed source instead of claiming a recording."
-            )
+        // A suspended observer can resume after its deadline even though the
+        // source callback already succeeded. The deadline bounds waiting, not
+        // the truth of the state we have now; preserve a started source owner.
+        switch captureState {
+        case .recording:
+            return true
+        case .paused:
+            return includingPausedSource && activeLocalRecordingID != nil
+        case .preparing:
+            if activeLocalRecordingID != nil {
+                finishCaptureFailure(
+                    "The provider microphone pipeline did not deliver local PCM in time. Quipsly closed and preserved the armed source instead of claiming a recording."
+                )
+            }
+        case .failed, .idle, .saved, .finalizing:
+            break
         }
         return false
     }
