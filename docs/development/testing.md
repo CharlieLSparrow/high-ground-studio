@@ -158,6 +158,13 @@ tokens, cookies, passwords, or database credentials.
 
 ## Capture
 
+The native UI runner checks the selected simulator against Xcode's eligible
+project destinations before starting tests. A successful Safari launch alone
+does not establish this. It permits one bounded refresh when discovery returns
+only placeholders, retains discovery output in the normal CI log, and never
+substitutes devices or retries failed app tests. Missing device coverage remains
+a failure even if the other platform passes.
+
 Capture evaluates PRs into every branch. A lightweight Linux job uses the same
 release-manifest planner as local validation to decide whether Mac tests are
 needed; there is no separate workflow path allowlist. Manual runs always test
