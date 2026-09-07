@@ -4495,13 +4495,7 @@ final class CaptureExperienceUITests: XCTestCase {
     }
 
     func testTranscriptConversationReviewOpensTheExactTimelineSegment() {
-        app.tabBars.buttons["Notes"].tap()
-        XCTAssertTrue(app.descendants(matching: .any)["CaptureLibraryView"].waitForExistence(timeout: 5))
-
-        let reviewLink = app.buttons["CaptureTranscriptReviewPreviewLink"]
-        XCTAssertTrue(reviewLink.waitForExistence(timeout: 5))
-        reviewLink.tap()
-        XCTAssertTrue(app.scrollViews["CaptureTranscriptReviewView"].waitForExistence(timeout: 5))
+        openPreviewTranscriptReview()
 
         let presentationControls = app.descendants(matching: .any)["CaptureTranscriptPresentationControls"].firstMatch
         reveal(presentationControls)
@@ -4534,13 +4528,7 @@ final class CaptureExperienceUITests: XCTestCase {
     }
 
     func testTranscriptReviewShowsDeviceFirstJointAssembly() {
-        app.tabBars.buttons["Notes"].tap()
-        XCTAssertTrue(app.descendants(matching: .any)["CaptureLibraryView"].waitForExistence(timeout: 5))
-
-        let reviewLink = app.buttons["CaptureTranscriptReviewPreviewLink"]
-        XCTAssertTrue(reviewLink.waitForExistence(timeout: 5))
-        reviewLink.tap()
-        XCTAssertTrue(app.scrollViews["CaptureTranscriptReviewView"].waitForExistence(timeout: 5))
+        openPreviewTranscriptReview()
 
         let assembly = app.descendants(matching: .any)["CaptureTranscriptAssemblyStatus"]
         XCTAssertTrue(assembly.waitForExistence(timeout: 5))
