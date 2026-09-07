@@ -1,5 +1,15 @@
 import type { Config } from 'jest';
 import nextJest from 'next/jest.js';
+import domainPackage from '../../packages/quipsly-domain/package.json' with { type: 'json' };
+
+// Exercise the actual public domain modules in API tests. A hand-maintained
+// subset silently made some routes untestable as package exports grew.
+const domainSourceMappings = Object.fromEntries(
+  Object.entries(domainPackage.exports).map(([subpath, target]) => [
+    `^@high-ground/quipsly-domain${subpath === '.' ? '' : subpath.slice(1)}$`,
+    `<rootDir>/../../packages/quipsly-domain/${target.import.slice(2)}`,
+  ]),
+);
 
 const createJestConfig = nextJest({
   // Provide the path to your Next.js app to load next.config.js and .env files in your test environment
@@ -30,11 +40,7 @@ const config: Config = {
     '^react-dom$': '<rootDir>/../../node_modules/react-dom',
     '^react-dom/(.*)$': '<rootDir>/../../node_modules/react-dom/$1',
     '^@/(.*)$': '<rootDir>/src/$1',
-    '^@high-ground/quipsly-domain$': '<rootDir>/../../packages/quipsly-domain/src/index.ts',
-    '^@high-ground/quipsly-domain/coaching-client-priority$': '<rootDir>/../../packages/quipsly-domain/src/coaching-client-priority.ts',
-    '^@high-ground/quipsly-domain/coaching-practice-command$': '<rootDir>/../../packages/quipsly-domain/src/coaching-practice-command.ts',
-    '^@high-ground/quipsly-domain/coaching-forms$': '<rootDir>/../../packages/quipsly-domain/src/coaching-forms.ts',
-    '^@high-ground/quipsly-domain/session-entry-readiness$': '<rootDir>/../../packages/quipsly-domain/src/session-entry-readiness.ts',
+    ...domainSourceMappings,
     '^@high-ground/quipsly-document-kernel$': '<rootDir>/../../packages/quipsly-document-kernel/src/index.ts',
     '^@high-ground/quipsly-media-processing$': '<rootDir>/../../packages/quipsly-media-processing/src/index.ts',
     '^@high-ground/quipsly-media-processing/external-source-proxy-identity$': '<rootDir>/../../packages/quipsly-media-processing/src/external-source-proxy-identity.ts',
@@ -42,16 +48,6 @@ const config: Config = {
     '^@high-ground/quipsly-media-processing/google-drive-provider-credential$': '<rootDir>/../../packages/quipsly-media-processing/src/google-drive-provider-credential.ts',
     '^@high-ground/quipsly-media-processing/local-executor-identity$': '<rootDir>/../../packages/quipsly-media-processing/src/local-executor-identity.ts',
     '^@high-ground/quipsly-capture-verification$': '<rootDir>/../../packages/quipsly-capture-verification/src/index.ts',
-    '^@high-ground/quipsly-domain/art-recipes$': '<rootDir>/../../packages/quipsly-domain/src/art-recipes.ts',
-    '^@high-ground/quipsly-domain/generated-art$': '<rootDir>/../../packages/quipsly-domain/src/generated-art.ts',
-    '^@high-ground/quipsly-domain/output-catalog$': '<rootDir>/../../packages/quipsly-domain/src/output-catalog.ts',
-    '^@high-ground/quipsly-domain/coaching-meeting-spine$': '<rootDir>/../../packages/quipsly-domain/src/coaching-meeting-spine.ts',
-    '^@high-ground/quipsly-domain/coaching-packet$': '<rootDir>/../../packages/quipsly-domain/src/coaching-packet.ts',
-    '^@high-ground/quipsly-domain/transcript-derived-task$': '<rootDir>/../../packages/quipsly-domain/src/transcript-derived-task.ts',
-    '^@high-ground/quipsly-domain/weekly-review$': '<rootDir>/../../packages/quipsly-domain/src/weekly-review.ts',
-    '^@high-ground/quipsly-domain/governed-actions$': '<rootDir>/../../packages/quipsly-domain/src/governed-actions.ts',
-    '^@high-ground/quipsly-domain/recording$': '<rootDir>/../../packages/quipsly-domain/src/recording.ts',
-    '^@high-ground/quipsly-domain/retrieval$': '<rootDir>/../../packages/quipsly-domain/src/retrieval.ts',
   },
   modulePathIgnorePatterns: [
     // Development, release, recovery, and one-off validation bundles all carry

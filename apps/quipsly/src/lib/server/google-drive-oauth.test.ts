@@ -129,8 +129,14 @@ describe("Google Drive user OAuth", () => {
     expect(decryptGoogleDriveRefreshToken(encrypted, key)).toBe(
       "durable-refresh-secret",
     );
-    expect(() =>
-      decryptGoogleDriveRefreshToken(`${encrypted.slice(0, -1)}x`, key),
-    ).toThrow("could not be read");
+    // Changing a Base64 character can leave the decoded bytes unchanged (or
+    // replace x with x). Flip an actual byte in every authenticated component.
+    for (const component of [1, 2, 3]) {
+      const parts = encrypted.split(".");
+      const bytes = Buffer.from(parts[component], "base64url");
+      bytes[0] ^= 1;
+      parts[component] = bytes.toString("base64url");
+      expect(() => decryptGoogleDriveRefreshToken(parts.join("."), key)).toThrow("could not be read");
+    }
   });
 });
