@@ -271,6 +271,12 @@ describe("TranscriptCorrectionDesk", () => {
   });
 
   beforeEach(() => {
+    // jsdom has no layout/scrolling implementation; real-browser coverage checks
+    // the visible position, while these tests verify focus and the scroll call.
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+      configurable: true,
+      value: jest.fn(),
+    });
     Object.defineProperty(HTMLMediaElement.prototype, "play", {
       configurable: true,
       value: jest.fn(async () => undefined),
@@ -312,6 +318,69 @@ describe("TranscriptCorrectionDesk", () => {
     expect(HTMLMediaElement.prototype.play).not.toHaveBeenCalled();
   });
 
+  it("reveals and focuses the cited source passage without autoplay or opening audio tools", async () => {
+    const sourceDesk = desk(true);
+    sourceDesk.segments = [
+      { ...segment, id: "other-source", recordingAssetId: "asset-other", text: "A different participant." },
+      { ...segment, recordingAssetId: "asset-1", sourceStartSeconds: 3.66, sourceEndSeconds: 4.84, startSeconds: 103.66, endSeconds: 104.84 },
+    ];
+    global.fetch = jest.fn(async () => ({ ok: true, json: async () => sourceDesk })) as unknown as typeof fetch;
+    render(<TranscriptCorrectionDesk roomId="room-1" recordingAssetId="asset-1" initialPlaybackSeconds={4} />);
+    await waitFor(() => expect(document.activeElement).toBe(document.getElementById("transcript-segment-segment-1")));
+    expect(HTMLElement.prototype.scrollIntoView).toHaveBeenCalledWith({ behavior: "auto", block: "center" });
+    expect(document.activeElement).not.toBe(document.getElementById("transcript-segment-other-source"));
+    expect(screen.getByRole("button", { name: /audio, timing, and accuracy/i })).toHaveAttribute("aria-expanded", "false");
+    expect(HTMLMediaElement.prototype.play).not.toHaveBeenCalled();
+  });
+
+  it("reveals a zero-second source link but never substitutes an unrelated passage", async () => {
+    const sourceDesk = desk(true);
+    sourceDesk.segments = [{ ...segment, startSeconds: 0, endSeconds: 2 }];
+    global.fetch = jest.fn(async () => ({ ok: true, json: async () => sourceDesk })) as unknown as typeof fetch;
+    const { rerender } = render(<TranscriptCorrectionDesk roomId="room-1" recordingAssetId="asset-1" initialPlaybackSeconds={0} />);
+    await waitFor(() => expect(document.activeElement?.id).toBe("transcript-segment-segment-1"));
+    const edit = screen.getByRole("button", { name: "Edit transcript" });
+    edit.focus();
+    rerender(<TranscriptCorrectionDesk roomId="room-1" recordingAssetId="asset-1" initialPlaybackSeconds={80} />);
+    await act(async () => { await new Promise((resolve) => requestAnimationFrame(resolve)); });
+    expect(document.activeElement).toBe(edit);
+  });
+
+  it("responds to passage hash navigation without stealing focus on same-source updates", async () => {
+    global.fetch = jest.fn(async () => ({ ok: true, json: async () => desk(true) })) as unknown as typeof fetch;
+    const { rerender } = render(<TranscriptCorrectionDesk roomId="room-1" recordingAssetId="asset-1" initialPlaybackSeconds={4} />);
+    await waitFor(() => expect(document.activeElement?.id).toBe("transcript-segment-segment-1"));
+    const edit = screen.getByRole("button", { name: "Edit transcript" });
+    edit.focus();
+    rerender(<TranscriptCorrectionDesk roomId="room-1" recordingAssetId="asset-1" initialPlaybackSeconds={4} sessionTitle="Updated session" />);
+    expect(document.activeElement).toBe(edit);
+    act(() => {
+      window.history.replaceState(null, "", "#transcript-correction-review");
+      window.dispatchEvent(new HashChangeEvent("hashchange"));
+    });
+    await waitFor(() => expect(document.activeElement?.id).toBe("transcript-correction-review"));
+  });
+
+  it("shows corrected wording once and keeps original wording and history in optional details", async () => {
+    const correctedDesk = desk(true);
+    correctedDesk.segments = [{
+      ...segment, text: "Welcome to our session.", words: [],
+      acceptedCorrection: { id: "correction-1", correctedText: "Welcome to our session.", reason: "Corrected greeting", revisions: [{ revision: 1 }] },
+    }];
+    global.fetch = jest.fn(async () => ({ ok: true, json: async () => correctedDesk })) as unknown as typeof fetch;
+    render(<TranscriptCorrectionDesk roomId="room-1" />);
+    await screen.findByText("Welcome to our session.");
+    expect(screen.getAllByText("Welcome to our session.")).toHaveLength(1);
+    expect(screen.getByText("Edited")).toBeVisible();
+    const history = screen.getByLabelText("Transcript correction history");
+    expect(history).not.toBeVisible();
+    fireEvent.click(screen.getByText("More"));
+    expect(history).toBeVisible();
+    expect(history).toHaveTextContent("Original transcript: Welcome, everybody.");
+    expect(history).toHaveTextContent("Corrected greeting");
+    expect(screen.getByRole("button", { name: "Revise transcript" })).toBeEnabled();
+  });
+
   it("saves a source-anchored transcript edit without forcing playback first", async () => {
     const directEditDesk = desk(false);
     directEditDesk.recording.eligibleForProtectedPlaybackPreparation = false;
@@ -326,6 +395,7 @@ describe("TranscriptCorrectionDesk", () => {
     expect(document.getElementById("transcript-segment-segment-1")).toBeInTheDocument();
     await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Edit transcript" })); });
     expect(await screen.findByText(/save directly, or play the passage first when the audio will help/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/correct transcript words/i)).toHaveFocus();
     fireEvent.change(screen.getByLabelText(/correct speaker/i), { target: { value: "Charlie" } });
     fireEvent.click(screen.getByRole("button", { name: /save transcript correction/i }));
 
@@ -942,7 +1012,9 @@ describe("TranscriptCorrectionDesk", () => {
       confirmedAgainstPlayback: true,
       playbackPositionSeconds: 3.66,
     });
-    expect(await screen.findByText(/reviewed as heard/i)).toBeInTheDocument();
+    expect(await screen.findByText(/original transcript checked against this recording/i)).not.toBeVisible();
+    fireEvent.click(screen.getByText("More"));
+    expect(screen.getByText(/original transcript checked against this recording/i)).toBeVisible();
     expect(screen.queryByRole("button", { name: /mark correct/i })).not.toBeInTheDocument();
   });
 

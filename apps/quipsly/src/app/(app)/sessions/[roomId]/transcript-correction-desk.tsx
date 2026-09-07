@@ -1476,7 +1476,7 @@ function CorrectionEditor({
   );
 
   return (
-    <li id={`transcript-segment-${encodeURIComponent(segment.id)}`} tabIndex={-1} className="scroll-mt-24 border-b border-[#eadfc9] bg-white px-4 py-5 outline-none first:rounded-t-2xl last:rounded-b-2xl last:border-b-0 target:bg-sky-50 target:ring-2 target:ring-inset target:ring-sky-300 sm:px-5">
+    <li id={`transcript-segment-${encodeURIComponent(segment.id)}`} tabIndex={-1} className="scroll-mt-24 border-b border-[#eadfc9] bg-white px-4 py-5 outline-none first:rounded-t-2xl last:rounded-b-2xl last:border-b-0 focus:bg-[#f5f0e5] focus:ring-2 focus:ring-inset focus:ring-[#9b8762] target:bg-[#f5f0e5] target:ring-2 target:ring-inset target:ring-[#9b8762] sm:px-5">
       <div>
         <div>
           <p className="text-xs font-black uppercase tracking-wide text-sky-800">
@@ -1485,33 +1485,11 @@ function CorrectionEditor({
           {segment.programStartSeconds !== undefined && segment.sourceStartSeconds !== undefined ? <p className="mt-1 text-[10px] font-bold uppercase tracking-wide text-sky-700">Session time · protected source {timestampForSeconds(segment.sourceStartSeconds)}</p> : null}
           <TranscriptSpeakerEvidenceBadge authority={segment.speakerAuthority} />
           <p className="mt-2 text-[0.95rem] font-semibold leading-7 text-[#4f402f]">{segment.text}</p>
+          {segment.acceptedCorrection ? <p className="mt-1 text-xs text-[#765f40]">Edited</p> : null}
         </div>
       </div>
 
-      {segment.acceptedCorrection && (
-        <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4">
-          <p className="flex items-center gap-2 text-xs font-black uppercase tracking-wide text-emerald-800"><ShieldCheck size={15} aria-hidden="true" />Transcript correction · revision {segment.acceptedCorrection.revisions.length}</p>
-          {segment.acceptedCorrection.correctedSpeakerLabel && segment.providerSpeakerLabel !== segment.speakerLabel && <p className="mt-2 text-sm font-bold text-emerald-950">Speaker: {segment.providerSpeakerLabel || "Unlabelled"} → {segment.speakerLabel || "Unlabelled"}</p>}
-          {segment.providerText !== segment.text && <p className="mt-2 text-sm font-semibold leading-relaxed text-emerald-950">{segment.text}</p>}
-          {segment.acceptedCorrection.reason && <p className="mt-2 text-xs font-bold text-emerald-800">Reason: {segment.acceptedCorrection.reason}</p>}
-        </div>
-      )}
-
-      {!segment.acceptedCorrection && segment.acceptedVerification && (
-        <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4">
-          <p className="flex items-center gap-2 text-xs font-black uppercase tracking-wide text-emerald-800"><ShieldCheck size={15} aria-hidden="true" />Reviewed as heard · provider text confirmed</p>
-          <p className="mt-2 text-sm font-semibold leading-relaxed text-emerald-950">A person played this exact timestamp and confirmed the provider words and speaker without inventing a no-op correction.</p>
-        </div>
-      )}
-
-      {!segment.acceptedCorrection && segment.speakerAttribution && (
-        <div className="mt-4 rounded-xl border border-indigo-200 bg-indigo-50/60 p-4">
-          <p className="flex items-center gap-2 text-xs font-black uppercase tracking-wide text-indigo-800"><ShieldCheck size={15} aria-hidden="true" />Voice identified from Session samples</p>
-          <p className="mt-2 text-sm font-semibold leading-relaxed text-indigo-950">Provider {segment.providerSpeakerLabel} is displayed as {segment.speakerAttribution.attributedLabel}. This speaker identity does not claim the words in this turn were playback-reviewed.</p>
-        </div>
-      )}
-
-      {(segment.words.length > 0 || (segment.downstreamImpacts?.length ?? 0) > 0) && (
+      {(segment.words.length > 0 || (segment.downstreamImpacts?.length ?? 0) > 0 || segment.acceptedCorrection || segment.acceptedVerification || segment.speakerAttribution) && (
         <details className="mt-3 rounded-xl border border-[#e5d5b7] bg-[#fffaf1] px-3 py-2">
           <summary className="cursor-pointer text-xs font-black uppercase tracking-wide text-[#6b573d]">
             More
@@ -1521,6 +1499,16 @@ function CorrectionEditor({
               {(segment.downstreamImpacts?.length ?? 0) > 0 ? `${segment.downstreamImpacts?.length} linked item${segment.downstreamImpacts?.length === 1 ? "" : "s"}` : ""}
             </span>
           </summary>
+          {segment.acceptedCorrection && (
+            <section className="mt-3 border-t border-[#eadfc9] pt-3" aria-label="Transcript correction history">
+              <p className="text-xs font-bold text-[#765f40]">Transcript correction · revision {segment.acceptedCorrection.revisions.length}</p>
+              {segment.providerText !== segment.text && <p className="mt-2 text-sm text-[#765f40]">Original transcript: {segment.providerText}</p>}
+              {segment.acceptedCorrection.correctedSpeakerLabel && segment.providerSpeakerLabel !== segment.speakerLabel && <p className="mt-2 text-sm text-[#765f40]">Speaker: {segment.providerSpeakerLabel || "Unlabelled"} → {segment.speakerLabel || "Unlabelled"}</p>}
+              {segment.acceptedCorrection.reason && <p className="mt-2 text-xs text-[#765f40]">Reason: {segment.acceptedCorrection.reason}</p>}
+            </section>
+          )}
+          {!segment.acceptedCorrection && segment.acceptedVerification && <p className="mt-3 text-xs text-[#765f40]">Original transcript checked against this recording.</p>}
+          {!segment.acceptedCorrection && segment.speakerAttribution && <p className="mt-3 text-xs text-[#765f40]">Speaker identified from session samples: {segment.providerSpeakerLabel} → {segment.speakerAttribution.attributedLabel}.</p>}
           {segment.words.length > 0 && (
             <section className="mt-3 border-t border-sky-100 pt-3">
               <h4 className="text-xs font-black uppercase tracking-wide text-sky-900">Precise word timing · {segment.words.length} anchors</h4>
@@ -1622,7 +1610,7 @@ function CorrectionEditor({
             <input value={correctedSpeaker} disabled={saving} onChange={(event) => setCorrectedSpeaker(event.target.value)} maxLength={160} className="mt-1 block w-full rounded-lg border border-amber-200 bg-white px-3 py-2 text-sm font-semibold text-[#3d3122]" />
           </label>
           <label className="block text-xs font-black uppercase tracking-wide text-amber-950">Correct transcript words
-            <textarea value={correctedText} disabled={saving} onChange={(event) => setCorrectedText(event.target.value)} maxLength={10000} rows={4} className="mt-1 block w-full rounded-lg border border-amber-200 bg-white px-3 py-2 text-sm font-semibold leading-relaxed text-[#3d3122]" />
+            <textarea autoFocus value={correctedText} disabled={saving} onChange={(event) => setCorrectedText(event.target.value)} maxLength={10000} rows={4} className="mt-1 block w-full rounded-lg border border-amber-200 bg-white px-3 py-2 text-sm font-semibold leading-relaxed text-[#3d3122]" />
           </label>
           <label className="block text-xs font-black uppercase tracking-wide text-amber-950">Why this changed <span className="normal-case tracking-normal text-amber-800">(optional)</span>
             <input value={reason} disabled={saving} onChange={(event) => setReason(event.target.value)} maxLength={1000} placeholder="Name, wording, crosstalk, diarization…" className="mt-1 block w-full rounded-lg border border-amber-200 bg-white px-3 py-2 text-sm font-semibold text-[#3d3122]" />
@@ -1793,6 +1781,7 @@ function TranscriptCorrectionDeskContent({
   const pendingInitialSeekRef = useRef<number | null>(normalizedInitialPlaybackSeconds > 0 ? normalizedInitialPlaybackSeconds : null);
   const automaticPlaybackPreparationRef = useRef<string | null>(null);
   const speakerNamingPromptedRef = useRef(false);
+  const revealedSourceLinkRef = useRef<string | null>(null);
   const currentPlayback = activePlayback ?? desk?.playback ?? null;
   const currentSessionSource = desk?.sessionTranscript?.sources.find(
     (source) => source.playback?.sourceId === currentPlayback?.sourceId,
@@ -1903,17 +1892,42 @@ function TranscriptCorrectionDeskContent({
   }, []);
 
   useEffect(() => {
-    if (!desk || typeof window === "undefined") return;
-    const targetId = window.location.hash.slice(1);
-    if (targetId !== "speaker-attribution-review" && targetId !== "transcript-correction-review" && targetId !== "transcript-audio-review" && !targetId.startsWith("transcript-segment-")) return;
-    const frame = window.requestAnimationFrame(() => {
-      const target = document.getElementById(targetId);
-      if (!target) return;
-      target.scrollIntoView({ behavior: "smooth", block: "center" });
-      target.focus({ preventScroll: true });
-    });
-    return () => window.cancelAnimationFrame(frame);
-  }, [desk, showQualityDetails]);
+    if (!desk || loading) return;
+    let frame: number | null = null;
+    const revealSourceLink = () => {
+      if (frame !== null) window.cancelAnimationFrame(frame);
+      let targetId = window.location.hash.slice(1);
+      if (!targetId && recordingAssetId && typeof initialPlaybackSeconds === "number"
+        && Number.isFinite(initialPlaybackSeconds) && initialPlaybackSeconds >= 0) {
+        const passage = desk.segments.find((segment) => {
+          const sourceId = segment.recordingAssetId ?? desk.recording?.id;
+          const start = segment.sourceStartSeconds ?? segment.startSeconds;
+          const end = segment.sourceEndSeconds ?? segment.endSeconds;
+          return sourceId === recordingAssetId && start <= initialPlaybackSeconds && initialPlaybackSeconds < end;
+        });
+        if (passage) targetId = `transcript-segment-${encodeURIComponent(passage.id)}`;
+      }
+      if (targetId !== "speaker-attribution-review" && targetId !== "transcript-correction-review" && targetId !== "transcript-audio-review" && !targetId.startsWith("transcript-segment-")) {
+        revealedSourceLinkRef.current = null;
+        return;
+      }
+      const linkKey = JSON.stringify([recordingAssetId, initialPlaybackSeconds, targetId]);
+      if (revealedSourceLinkRef.current === linkKey) return;
+      frame = window.requestAnimationFrame(() => {
+        const target = document.getElementById(targetId);
+        if (!target) return;
+        target.scrollIntoView({ behavior: "auto", block: "center" });
+        target.focus({ preventScroll: true });
+        revealedSourceLinkRef.current = linkKey;
+      });
+    };
+    revealSourceLink();
+    window.addEventListener("hashchange", revealSourceLink);
+    return () => {
+      if (frame !== null) window.cancelAnimationFrame(frame);
+      window.removeEventListener("hashchange", revealSourceLink);
+    };
+  }, [desk, loading, recordingAssetId, initialPlaybackSeconds, showQualityDetails]);
 
   useEffect(() => {
     if (speakerNamingPromptedRef.current || !desk?.gate.allowed) return;
