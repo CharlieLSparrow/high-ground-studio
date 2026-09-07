@@ -1015,6 +1015,13 @@ function distinctWorkSpans(
     const key = JSON.stringify([
       speaker, span.speakerLabel, cleanText(textForWork(span)).toLowerCase(),
     ]);
+    const workText = cleanText(textForWork(span)).toLowerCase();
+    if (/(?:\.{3}|…)\s*$/.test(span.text) && spans.some((other) => {
+      const otherSpeaker = other.attributedParticipantId || other.sourceBoundParticipantId ||
+        `${other.transcriptJobId || ""}:${other.speakerLabel || other.id}`;
+      return otherSpeaker === speaker && other.speakerLabel === span.speakerLabel &&
+        cleanText(textForWork(other)).toLowerCase().startsWith(`${workText} `);
+    })) return false;
     if (seen.has(key)) return false;
     seen.add(key);
     return true;

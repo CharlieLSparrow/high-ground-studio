@@ -490,13 +490,15 @@ try {
       `The source-bound transcript did not recover the known speech (${matchedWords.length}/${expectedWords.length} key words).`,
     );
   }
-  const workWhere = { roomId, sourceJson: { path: ["transcriptJobId"], equals: transcript.id } };
+  // A retained Session assembles multiple source transcripts. Identical work
+  // may retain an earlier valid anchor rather than duplicate the newest take.
+  const workWhere = { roomId, sourceJson: { path: ["origin"], equals: "quipsly-session-follow-through" } };
   let followThrough;
   const workDeadline = Date.now() + 30_000;
   do {
     const [tasks, goals] = await Promise.all([
-      prisma.actionItem.findMany({ where: workWhere, select: { id: true, title: true, assignedUserId: true, engagementId: true } }),
-      prisma.goal.findMany({ where: workWhere, select: { id: true, title: true, ownerUserId: true, engagementId: true } }),
+      prisma.actionItem.findMany({ where: { ...workWhere, title: { contains: "draft one page", mode: "insensitive" } }, select: { id: true, title: true, assignedUserId: true, engagementId: true } }),
+      prisma.goal.findMany({ where: { ...workWhere, title: { startsWith: "My coaching goal is to write", mode: "insensitive" } }, select: { id: true, title: true, ownerUserId: true, engagementId: true } }),
     ]);
     followThrough = { tasks, goals };
     if (tasks.length && goals.length) break;

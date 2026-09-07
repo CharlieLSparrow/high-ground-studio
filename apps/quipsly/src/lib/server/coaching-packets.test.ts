@@ -148,6 +148,8 @@ describe("transcript coaching follow-through", () => {
       { id: `task-${offset}`, speakerLabel: "Charlie", startSeconds: offset + 4, endSeconds: offset + 8,
         text: "Tomorrow I will draft one page.", confidence: 0.98 },
     ]);
+    job.segments.push({ id: "clipped-repeat", speakerLabel: "Charlie", startSeconds: 20, endSeconds: 22,
+      text: "My goal is to write every...", confidence: 0.98 });
     const work = automaticWorkStores();
     const prisma = {
       transcriptJob: { findUnique: jest.fn().mockResolvedValue(job) },
@@ -159,7 +161,7 @@ describe("transcript coaching follow-through", () => {
     expect(result).toMatchObject({ actionItemCount: 1, goalCount: 1 });
     expect(work.actionItem.create).toHaveBeenCalledWith({ data: expect.objectContaining({ assignedUserId: "coach-1" }) });
     expect(work.goal.create).toHaveBeenCalledWith({ data: expect.objectContaining({ ownerUserId: "coach-1" }) });
-    expect(job.segments).toHaveLength(4);
+    expect(job.segments).toHaveLength(5);
 
     const task = (await work.actionItem.findMany())[0];
     await work.actionItem.update({where: {id: task.id}, data: {assignedUserId: "client-1"}});
