@@ -4178,6 +4178,7 @@ export function SessionReviewClient({
               captureOpenFallback={captureOpenFallback}
               canViewChoiceMetrics={canViewEntryChoiceMetrics}
               onContinueInBrowser={() => liveDock.open(liveDockConfig)}
+              allowAutomaticBrowserEntry={liveDock.dismissedCallRoomId !== roomId}
             />
           )}
 

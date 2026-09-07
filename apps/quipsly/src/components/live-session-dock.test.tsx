@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from "react";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { CaptureAppHandoff } from "./capture-app-handoff";
 
 import {
   LiveSessionDockLauncher,
@@ -157,6 +158,46 @@ describe("LiveSessionDockProvider", () => {
 
     await user.click(screen.getByRole("button", { name: "Keep call & minimize" }));
     expect(screen.getByTestId("live-room-episode-session-1")).toBeInTheDocument();
+  });
+
+  it("respects leaving the call when the remembered browser entry screen remounts", async () => {
+    const user = userEvent.setup();
+    const previousFetch = global.fetch;
+    global.fetch = jest.fn(async () => ({ ok: true, json: async () => ({ ok: true }) })) as unknown as typeof fetch;
+    localStorage.setItem("quipsly.session-entry-preference.v1", "BROWSER");
+    function Entrance() {
+      const dock = useLiveSessionDock();
+      return dock.activeCallRoomId ? null : <CaptureAppHandoff roomId={coachingConfig.callRoomId}
+        allowAutomaticBrowserEntry={dock.dismissedCallRoomId !== coachingConfig.callRoomId}
+        onContinueInBrowser={() => dock.open(coachingConfig)} />;
+    }
+    try {
+      render(<LiveSessionDockProvider><Entrance /></LiveSessionDockProvider>);
+      expect(await screen.findByTestId("live-room-coaching-session-2")).toBeInTheDocument();
+      await user.click(screen.getByRole("button", { name: "Close live call" }));
+      await user.click(screen.getByRole("button", { name: "Leave & close" }));
+      expect(screen.queryByTestId("live-room-coaching-session-2")).not.toBeInTheDocument();
+      expect(screen.getByText("Open the lobby whenever you’re ready to join.")).toBeInTheDocument();
+      expect(localStorage.getItem("quipsly.session-entry-preference.v1")).toBe("BROWSER");
+      await user.click(screen.getByRole("button", { name: "Open call lobby" }));
+      expect(await screen.findByTestId("live-room-coaching-session-2")).toBeInTheDocument();
+    } finally {
+      global.fetch = previousFetch;
+      localStorage.removeItem("quipsly.session-entry-preference.v1");
+    }
+  });
+
+  it("does not start device preparation merely because a call launcher is present", async () => {
+    const user = userEvent.setup();
+    render(<LiveSessionDockProvider><LiveSessionDockLauncher config={coachingConfig} label="Open coaching call" /></LiveSessionDockProvider>);
+    expect(mockRoomLifecycle.mounted).not.toHaveBeenCalled();
+    expect(screen.queryByLabelText("Minimized live call")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Open coaching call" }));
+    expect(await screen.findByTestId("live-room-coaching-session-2")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Close live call" }));
+    await user.click(screen.getByRole("button", { name: "Leave & close" }));
+    expect(screen.queryByTestId("live-room-coaching-session-2")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Minimized live call")).not.toBeInTheDocument();
   });
 
   it("does not silently replace an active call when another Session is opened", async () => {

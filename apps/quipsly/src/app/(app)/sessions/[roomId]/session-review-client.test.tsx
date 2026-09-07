@@ -1267,6 +1267,7 @@ describe("Session review goal candidates", () => {
     global.fetch = jest.fn() as typeof fetch;
     mockDockValue = {
       activeCallRoomId: "room-status", connectionStatus, isOpen: false,
+      dismissedCallRoomId: null,
       register: jest.fn(), open: jest.fn(), minimize: jest.fn(),
     };
     render(<SessionReviewClient roomId="room-status" sessionTitle="Client session" mode="live" consentSnapshot={{ total: 2, granted: 0, transcriptionPermitted: 0 }} />);
@@ -1281,6 +1282,7 @@ describe("Session review goal candidates", () => {
     global.fetch = jest.fn() as typeof fetch;
     mockDockValue = {
       activeCallRoomId: "room-focused", connectionStatus: "ready", isOpen: true,
+      dismissedCallRoomId: null,
       register: jest.fn(), open: jest.fn(), minimize: jest.fn(),
     };
     render(<SessionReviewClient roomId="room-focused" sessionTitle="Client session" mode="live" consentSnapshot={{ total: 2, granted: 0, transcriptionPermitted: 0 }} />);

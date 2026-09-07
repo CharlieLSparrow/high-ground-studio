@@ -44,6 +44,7 @@ export function CaptureAppHandoff({
   captureOpenFallback = false,
   canViewChoiceMetrics = false,
   onContinueInBrowser,
+  allowAutomaticBrowserEntry = true,
 }: {
   roomId: string;
   sessionTitle?: string;
@@ -51,6 +52,7 @@ export function CaptureAppHandoff({
   captureOpenFallback?: boolean;
   canViewChoiceMetrics?: boolean;
   onContinueInBrowser?: () => void;
+  allowAutomaticBrowserEntry?: boolean;
 }) {
   const captureURL = captureAppDeepLink(roomId);
   const [metrics, setMetrics] = useState<EntryChoiceMetrics | null>(null);
@@ -144,24 +146,29 @@ export function CaptureAppHandoff({
   useEffect(() => {
     const current = new URL(window.location.href);
     if (current.searchParams.get("entry") !== "browser") return;
+    if (!allowAutomaticBrowserEntry) {
+      clearBrowserEntryIntent();
+      return;
+    }
     if (window.localStorage.getItem(SESSION_ENTRY_PREFERENCE_KEY) === "BROWSER") {
       clearBrowserEntryIntent();
       return;
     }
     continueInBrowserRef.current?.();
     clearBrowserEntryIntent();
-  }, []);
+  }, [allowAutomaticBrowserEntry]);
 
   useEffect(() => {
     if (
       !interactive
+      || !allowAutomaticBrowserEntry
       || preferredEntry !== "BROWSER"
       || step !== "preferred"
       || openedRememberedBrowserRef.current
     ) return;
     openedRememberedBrowserRef.current = true;
     continueInBrowserRef.current?.();
-  }, [interactive, preferredEntry, step]);
+  }, [allowAutomaticBrowserEntry, interactive, preferredEntry, step]);
 
   return (
     <section
@@ -254,7 +261,7 @@ export function CaptureAppHandoff({
                 </span>
                 <span className="mt-0.5 block text-xs font-semibold leading-5 text-[#765f40]">
                   {preferredEntry === "BROWSER"
-                    ? "Your call lobby opens automatically."
+                    ? allowAutomaticBrowserEntry ? "Your call lobby opens automatically." : "Open the lobby whenever you’re ready to join."
                     : "Open this Session in Quipsly Capture."}
                 </span>
               </span>

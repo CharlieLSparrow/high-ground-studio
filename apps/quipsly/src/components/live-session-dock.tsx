@@ -46,6 +46,7 @@ export type LiveSessionDockConfig = {
 
 type LiveSessionDockContextValue = {
   activeCallRoomId: string | null;
+  dismissedCallRoomId: string | null;
   connectionStatus: LiveSessionRoomStatus | null;
   isOpen: boolean;
   register: (config: LiveSessionDockConfig, options?: { requestOpen?: boolean }) => void;
@@ -55,6 +56,7 @@ type LiveSessionDockContextValue = {
 
 const fallbackContext: LiveSessionDockContextValue = {
   activeCallRoomId: null,
+  dismissedCallRoomId: null,
   connectionStatus: null,
   isOpen: false,
   register: () => undefined,
@@ -90,6 +92,7 @@ export function useLiveSessionDock() {
 
 export function LiveSessionDockProvider({ children }: { children: ReactNode }) {
   const [active, setActive] = useState<LiveSessionDockConfig | null>(null);
+  const [dismissedCallRoomId, setDismissedCallRoomId] = useState<string | null>(null);
   const [pending, setPending] = useState<LiveSessionDockConfig | null>(null);
   const [isOpen, setIsOpen] = useState(false);
   const [status, setStatus] = useState<LiveSessionRoomStatus>("preflight");
@@ -100,6 +103,7 @@ export function LiveSessionDockProvider({ children }: { children: ReactNode }) {
 
   const requestSession = useCallback((config: LiveSessionDockConfig, requestOpen: boolean) => {
     setActive((current) => {
+      if (!current && !requestOpen) return current;
       if (!current || sameSession(current, config)) return config;
       if (!requestOpen) return current;
       if (callIsActive(status) || sourceProtected) {
@@ -118,6 +122,7 @@ export function LiveSessionDockProvider({ children }: { children: ReactNode }) {
   }, [requestSession]);
 
   const open = useCallback((config: LiveSessionDockConfig) => {
+    setDismissedCallRoomId(null);
     requestSession(config, true);
   }, [requestSession]);
 
@@ -132,9 +137,10 @@ export function LiveSessionDockProvider({ children }: { children: ReactNode }) {
       setShowLeaveDecision(true);
       return;
     }
+    setDismissedCallRoomId(active?.callRoomId ?? null);
     setActive(null);
     setIsOpen(false);
-  }, [sourceProtected, status]);
+  }, [active?.callRoomId, sourceProtected, status]);
 
   const leaveAndClose = useCallback(() => {
     setShowLeaveDecision(false);
@@ -158,6 +164,7 @@ export function LiveSessionDockProvider({ children }: { children: ReactNode }) {
       setSourceProtected(false);
       setIsOpen(true);
     } else {
+      setDismissedCallRoomId(active?.callRoomId ?? null);
       setPending(null);
       setActive(null);
       setIsOpen(false);
@@ -165,7 +172,7 @@ export function LiveSessionDockProvider({ children }: { children: ReactNode }) {
       setSourceProtected(false);
     }
     setExitIntent(null);
-  }, [exitIntent, pending]);
+  }, [active?.callRoomId, exitIntent, pending]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -179,12 +186,13 @@ export function LiveSessionDockProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<LiveSessionDockContextValue>(() => ({
     activeCallRoomId: active?.callRoomId || null,
+    dismissedCallRoomId,
     connectionStatus: active ? status : null,
     isOpen,
     register,
     open,
     minimize,
-  }), [active?.callRoomId, isOpen, minimize, open, register, status]);
+  }), [active?.callRoomId, dismissedCallRoomId, isOpen, minimize, open, register, status]);
 
   const sessionHref = active
     ? `/sessions/${encodeURIComponent(active.callRoomId)}?mode=overview`
