@@ -30,15 +30,10 @@ const episodeRoom = read(
 );
 const dockerfile = read("apps/quipsly-media-processor/Dockerfile");
 
-test("released verified videos durably queue only after canonical finalization", () => {
-  const transaction = finalization.indexOf(
-    "serializableFinalizationTransaction",
-  );
-  const queueCall = finalization.lastIndexOf(
-    "ensureCaptureProxyProcessingQueued",
-  );
-  assert.ok(transaction >= 0);
-  assert.ok(queueCall > transaction);
+// Actual commit/queue ordering, failed commit, held/audio sources, and dispatch
+// failure execute in mobile-capture-resumable-finalization.test.ts. A function's
+// name or textual position cannot prove transaction behavior.
+test("proxy dispatch retains source binding and reconciliation wiring", () => {
   for (const evidence of [
     "bucketName",
     "objectName",

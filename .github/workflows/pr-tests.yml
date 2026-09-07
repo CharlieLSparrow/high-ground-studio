@@ -70,6 +70,7 @@ jobs:
       - name: Verify collaborator and documentation contract
         run: |
           node --test scripts/ci/audit-repository-contract.test.mjs
+          node --test scripts/ci/pr-contract-lane.test.mjs
           node scripts/ci/audit-repository-contract.mjs
           node --test scripts/ci/audit-tracked-artifacts.test.mjs
           node scripts/ci/audit-tracked-artifacts.mjs
@@ -199,7 +200,19 @@ jobs:
 
       - name: Run committed Quipsly contract suite
         if: steps.changes.outputs.quipsly == 'true' || steps.changes.outputs.web == 'true'
-        run: pnpm quipsly:contracts:test
+        timeout-minutes: 5
+        run: |
+          set -o pipefail
+          pnpm quipsly:contracts:test 2>&1 | tee "${RUNNER_TEMP}/quipsly-contracts.log"
+
+      - name: Preserve contract test results
+        if: always() && (steps.changes.outputs.quipsly == 'true' || steps.changes.outputs.web == 'true')
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: quipsly-contract-tests-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/quipsly-contracts.log
+          if-no-files-found: warn
+          retention-days: 7
 
       - name: Run source and production-build release gate
         if: steps.changes.outputs.quipsly == 'true' || steps.changes.outputs.web == 'true'

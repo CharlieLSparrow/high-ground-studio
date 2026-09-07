@@ -4,9 +4,94 @@ import type {
   MobileCaptureObjectEvidence,
   MobileCaptureResumableManifest,
 } from "./mobile-capture-resumable-store";
-import { attachCaptureMediaWithoutLostUpdate } from "./mobile-capture-resumable-finalization";
+import { attachCaptureMediaWithoutLostUpdate, finalizeMobileCaptureDatabaseEvidence } from "./mobile-capture-resumable-finalization";
+import { ensureCaptureProxyProcessingQueued } from "./capture-proxy-processing";
+import { ensureMobileCaptureTranscriptAutoqueued } from "./mobile-capture-transcript-autoqueue";
 
 jest.mock("server-only", () => ({}));
+jest.mock("./capture-proxy-processing", () => ({ ensureCaptureProxyProcessingQueued: jest.fn() }));
+jest.mock("./mobile-capture-transcript-autoqueue", () => ({ ensureMobileCaptureTranscriptAutoqueued: jest.fn() }));
+jest.mock("./capture-audio-readiness", () => ({ ensureCaptureAudioReadinessQueued: jest.fn() }));
+
+describe("post-commit Capture processing", () => {
+  const committed = {
+    recordingAssetId: "recording-1", mediaAssetId: "media-1", sourceId: "source-1",
+    roomId: "room_coaching_001", processingDisposition: "RELEASED", transcriptDisposition: "RELEASED",
+  };
+  const input = (prisma: any) => ({
+    prisma, manifest: manifest({ sourceType: "video", contentType: "video/mp4",
+      fileName: "coaching-session.mp4", objectName: "capture/coaching-session.mp4" }),
+    object: { ...objectEvidence, contentType: "video/mp4", objectName: "capture/coaching-session.mp4" }, actorIsStaff: false,
+    processingDecision: { disposition: "RELEASED", transcriptDisposition: "RELEASED", reasonCode: null, reason: null,
+      startReceiptId: null, consentVersion: null, transcriptReasonCode: null, transcriptReason: null } as const,
+  });
+
+  beforeEach(() => jest.clearAllMocks());
+
+  it("does not queue transcription or a proxy until database commit resolves", async () => {
+    let commit!: (evidence: typeof committed) => void;
+    const prisma = { $transaction: jest.fn(() => new Promise((resolve) => { commit = resolve; })) };
+    const args = input(prisma);
+    const result = finalizeMobileCaptureDatabaseEvidence(args);
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+    expect(ensureCaptureProxyProcessingQueued).not.toHaveBeenCalled();
+    expect(ensureMobileCaptureTranscriptAutoqueued).not.toHaveBeenCalled();
+    commit(committed);
+    await expect(result).resolves.toEqual(committed);
+    expect(ensureCaptureProxyProcessingQueued).toHaveBeenCalledWith({
+      prisma, manifest: args.manifest, object: args.object, finalization: committed,
+    });
+    expect(ensureMobileCaptureTranscriptAutoqueued).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not queue processing after a failed commit", async () => {
+    const prisma = { $transaction: jest.fn().mockRejectedValue(new Error("commit failed")) };
+    await expect(finalizeMobileCaptureDatabaseEvidence(input(prisma))).rejects.toThrow("commit failed");
+    expect(ensureCaptureProxyProcessingQueued).not.toHaveBeenCalled();
+    expect(ensureMobileCaptureTranscriptAutoqueued).not.toHaveBeenCalled();
+  });
+
+  it("queues once after a transient transaction conflict is retried successfully", async () => {
+    const prisma = { $transaction: jest.fn()
+      .mockRejectedValueOnce(Object.assign(new Error("write conflict"), { code: "P2034" }))
+      .mockResolvedValueOnce(committed) };
+    await expect(finalizeMobileCaptureDatabaseEvidence(input(prisma))).resolves.toEqual(committed);
+    expect(prisma.$transaction).toHaveBeenCalledTimes(2);
+    expect(ensureCaptureProxyProcessingQueued).toHaveBeenCalledTimes(1);
+    expect(ensureMobileCaptureTranscriptAutoqueued).toHaveBeenCalledTimes(1);
+  });
+
+  it("stops repeated transaction conflicts without dispatching uncommitted work", async () => {
+    const conflict = Object.assign(new Error("write conflict"), { code: "P2034" });
+    const prisma = { $transaction: jest.fn().mockRejectedValue(conflict) };
+    await expect(finalizeMobileCaptureDatabaseEvidence(input(prisma))).rejects.toBe(conflict);
+    expect(prisma.$transaction).toHaveBeenCalledTimes(4);
+    expect(ensureCaptureProxyProcessingQueued).not.toHaveBeenCalled();
+    expect(ensureMobileCaptureTranscriptAutoqueued).not.toHaveBeenCalled();
+  });
+
+  it.each(["held", "audio", "missing-media"])("does not queue a video proxy for %s evidence", async (mode) => {
+    const evidence = { ...committed, ...(mode === "held" ? { processingDisposition: "HELD" } : {}),
+      ...(mode === "missing-media" ? { mediaAssetId: null } : {}) };
+    const args = input({ $transaction: jest.fn().mockResolvedValue(evidence) });
+    if (mode === "audio") {
+      args.manifest = manifest();
+      args.object = objectEvidence;
+    }
+    await finalizeMobileCaptureDatabaseEvidence(args);
+    expect(ensureCaptureProxyProcessingQueued).not.toHaveBeenCalled();
+  });
+
+  it("keeps committed source success when downstream proxy dispatch fails", async () => {
+    const logger = jest.spyOn(console, "error").mockImplementation(() => {});
+    jest.mocked(ensureCaptureProxyProcessingQueued).mockRejectedValueOnce(new Error("worker unavailable"));
+    try {
+      await expect(finalizeMobileCaptureDatabaseEvidence(input({ $transaction: jest.fn().mockResolvedValue(committed) })))
+        .resolves.toEqual(committed);
+      expect(logger).toHaveBeenCalledWith("[Capture Proxy] Unable to queue verified video", expect.objectContaining({ mediaAssetId: "media-1", reason: "worker unavailable" }));
+    } finally { logger.mockRestore(); }
+  });
+});
 
 function manifest(overrides: Partial<MobileCaptureResumableManifest> = {}) {
   return {

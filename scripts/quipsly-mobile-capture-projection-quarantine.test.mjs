@@ -25,9 +25,10 @@ assert.doesNotMatch(
 );
 assert.match(runway, /buildMobileCaptureConsentVersions/);
 assert.match(runway, /mobileCaptureAllPartiesReady/);
-assert.match(runway, /Await reviewed transcript release/i);
-assert.match(sessions, /canRunTranscript =\s*\n\s*input\.transcriptProcessingAllowed/);
-assert.match(sessions, /canBuildPacket =\s*\n\s*input\.transcriptProcessingAllowed/);
-assert.match(sessions, /canReviewPacket = input\.transcriptProcessingAllowed/);
+// Check the processing boundary, not customer-facing copy about manual approval.
+// Consent/source restrictions must survive UX changes; a mandatory review step must not.
+assert.match(sessions, /canRunTranscript =\s*input\.transcriptProcessingAllowed/);
+assert.match(sessions, /canBuildPacket =\s*input\.transcriptProcessingAllowed/);
+assert.match(sessions, /canReviewPacket =\s*input\.transcriptProcessingAllowed/);
 
 console.log("PASS: sessions, digest, and coaching runway quarantine held capture/transcript projections.");

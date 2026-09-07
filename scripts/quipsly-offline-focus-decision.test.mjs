@@ -83,11 +83,10 @@ test("Nest makes mobile focus replay idempotent beyond bounded receipt history",
   assert.ok(routeTests.includes("rejects reuse of one focus request identity for different actual time"));
 });
 
-test("the iPhone exposes protected state, retry, held discard, and relaunch recovery", () => {
+test("the iPhone wires offline focus recovery controls and its relaunch scenario", () => {
+  // Presentation and relaunch behavior belong to the executable XCTest below,
+  // not duplicate source-string checks that freeze obsolete customer wording.
   for (const required of [
-    "Protected focus outbox",
-    "Saved on this iPhone · waiting for Nest",
-    "actual minute\\(minutes == 1 ? \"\" : \"s\") · linked work unchanged",
     "CaptureTodayFocusDecisionRetry_",
     "CaptureTodayFocusDecisionDiscard_",
   ]) {
