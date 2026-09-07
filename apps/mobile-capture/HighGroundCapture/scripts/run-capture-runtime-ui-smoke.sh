@@ -237,6 +237,13 @@ case "$TEST_MODE" in
       exit 2
     fi
     ;;
+  transcript-text-edit)
+    TEST_CASE="testTranscriptWordsSaveWithoutListeningAndPersistAfterRelaunch"
+    if [[ -z "$TEST_SESSION_ID" || -z "$TEST_SESSION_TITLE" || -z "$TEST_TRANSCRIPT_SEGMENT_IDS" || "$TEST_TRANSCRIPT_SEGMENT_IDS" == *,* || -z "$TEST_TRANSCRIPT_PHONE_CORRECTION_TEXT" ]]; then
+      echo "Transcript text editing requires one exact Session, one segment ID, and corrected text." >&2
+      exit 2
+    fi
+    ;;
   transcript-review-offline-reconcile)
     TEST_CASE="testOfflineTranscriptReviewQueuesSurvivesRelaunchReconcilesAndHoldsConflict"
     IFS=',' read -r -a transcript_review_segment_ids <<< "$TEST_TRANSCRIPT_SEGMENT_IDS"

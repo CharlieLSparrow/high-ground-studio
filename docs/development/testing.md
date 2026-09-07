@@ -196,6 +196,15 @@ startup routes before launch; authentication errors are expected for protected
 warm-up requests, but missing routes, redirects, and server failures stop the
 run. Neither check substitutes for authenticated runtime or device evidence.
 
+For ordinary transcript correction, use the native runtime runner's
+`transcript-text-edit` mode with a synthetic account, Session ID/title, one
+`QUIPSLY_CAPTURE_UI_TEST_TRANSCRIPT_SEGMENT_IDS` value, and
+`QUIPSLY_CAPTURE_UI_TEST_TRANSCRIPT_PHONE_CORRECTION_TEXT`. It edits through the
+real UI without listening or marking the passage reviewed, then relaunches and
+reads the saved correction. No local-media fixture is required. Independently
+read the corrections API afterward and verify the original provider text,
+timing, recording identity, and participant-derived speaker remain intact.
+
 Use the checked-in toolchain runner so a collaborator and release operator use
 the same Ruby, Bundler, Fastlane, Gemfile, lock, and lane:
 

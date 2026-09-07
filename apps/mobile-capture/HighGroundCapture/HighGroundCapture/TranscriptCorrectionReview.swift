@@ -6894,6 +6894,7 @@ private struct CaptureTranscriptSegmentCard: View {
 
     @State private var isEditing = false
     @State private var showsDetails = false
+    @FocusState private var correctionTextFocused: Bool
     @State private var correctedText = ""
     @State private var correctedSpeaker = ""
     @State private var reason = ""
@@ -7436,6 +7437,7 @@ private struct CaptureTranscriptSegmentCard: View {
                 .textFieldStyle(.roundedBorder)
                 .accessibilityIdentifier("CaptureTranscriptCorrectSpeakerField")
             TextField("Correct words", text: $correctedText, axis: .vertical)
+                .focused($correctionTextFocused)
                 .lineLimit(3...8)
                 .textFieldStyle(.roundedBorder)
                 .accessibilityIdentifier("CaptureTranscriptCorrectWordsField")
@@ -7821,6 +7823,11 @@ private struct CaptureTranscriptSegmentCard: View {
             draftStatus = nil
         }
         isEditing = true
+        Task { @MainActor in
+            await Task.yield()
+            guard isEditing else { return }
+            correctionTextFocused = true
+        }
     }
 
     private func scheduleDraftSave() {

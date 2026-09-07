@@ -4638,6 +4638,9 @@ final class CaptureExperienceUITests: XCTestCase {
             exactTimelineEditor.waitForExistence(timeout: 5),
             "Edit text should open the exact passage's words directly, without a second Edit tap."
         )
+        exactTimelineEditor.typeText(" Writing feels easier.")
+        XCTAssertTrue((exactTimelineEditor.value as? String ?? "").contains("Writing feels easier."),
+            "The disclosed words field must accept typing immediately, not merely exist underneath navigation chrome.")
     }
 
     func testTranscriptPassagesKeepDetailsOptionalAndCreationReachable() {

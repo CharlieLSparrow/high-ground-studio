@@ -2830,6 +2830,51 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         attachRuntimeScreenshot(app, name: "One shared task after two lost save replies")
     }
 
+    func testTranscriptWordsSaveWithoutListeningAndPersistAfterRelaunch() throws {
+        let credentials = try runtimeSmokeCredentials()
+        guard let sessionID = credentials.sessionID, !sessionID.isEmpty,
+              credentials.transcriptSegmentIDs.count == 1,
+              let correctedText = credentials.transcriptPhoneCorrectionText, !correctedText.isEmpty else {
+            throw XCTSkip("Transcript editing requires one exact Session, segment, and corrected text.")
+        }
+        let segmentID = credentials.transcriptSegmentIDs[0]
+
+        func openPassage(in app: XCUIApplication) {
+            selectRequestedSession(in: app, credentials: credentials)
+            let transcript = app.descendants(matching: .any)["CaptureSessionTranscriptReviewLink_\(sessionID)"].firstMatch
+            XCTAssertTrue(waitForRuntimeElement(transcript, in: app, timeout: 30, swipeAttempts: 12))
+            transcript.tap()
+            XCTAssertTrue(app.scrollViews["CaptureTranscriptReviewView"].waitForExistence(timeout: 30))
+            let controls = app.descendants(matching: .any)["CaptureTranscriptPresentationControls"].firstMatch
+            XCTAssertTrue(waitForRuntimeElement(controls, in: app, timeout: 30, swipeAttempts: 12))
+            controls.buttons["Timeline"].firstMatch.tap()
+            let edit = app.buttons["CaptureTranscriptCorrectButton_\(segmentID)"].firstMatch
+            XCTAssertTrue(waitForRuntimeElement(edit, in: app, timeout: 30, swipeAttempts: 14))
+            edit.tap()
+            XCTAssertTrue(app.textFields["CaptureTranscriptCorrectWordsField"].waitForExistence(timeout: 15))
+        }
+
+        var app = try launchSignedInCaptureApp(initialTab: "record")
+        openPassage(in: app)
+        replaceText(in: app.textFields["CaptureTranscriptCorrectWordsField"].firstMatch, with: correctedText, app: app)
+        let save = app.buttons["CaptureTranscriptAcceptCorrectionButton_\(segmentID)"].firstMatch
+        XCTAssertTrue(waitForRuntimeElement(save, in: app, timeout: 15, swipeAttempts: 8))
+        XCTAssertTrue(save.isEnabled, "Correcting text must not require playing audio or marking it reviewed first.")
+        save.tap()
+        XCTAssertTrue(app.textFields["CaptureTranscriptCorrectWordsField"].waitForNonExistence(timeout: 30))
+        let segment = app.descendants(matching: .any)["CaptureTranscriptSegment_\(segmentID)"].firstMatch
+        XCTAssertTrue(waitForRuntimeElement(segment.staticTexts[correctedText].firstMatch, in: app, timeout: 30, swipeAttempts: 12))
+        attachRuntimeScreenshot(app, name: "Transcript words saved without review steps")
+
+        app.terminate()
+        app = try launchSignedInCaptureApp(initialTab: "record")
+        openPassage(in: app)
+        XCTAssertEqual(app.textFields["CaptureTranscriptCorrectWordsField"].firstMatch.value as? String, correctedText)
+        XCTAssertFalse(app.descendants(matching: .any)["CaptureTranscriptProtectedCacheBoundary"].exists,
+            "The relaunch must read the online Session, not only a retained offline draft.")
+        attachRuntimeScreenshot(app, name: "Transcript correction retained after relaunch")
+    }
+
     func testTranscriptEditsCanonicalClientTaskAndReadsItBackAfterRelaunch() throws {
         let credentials = try runtimeSmokeCredentials()
         guard let sessionID = credentials.sessionID, !sessionID.isEmpty,
