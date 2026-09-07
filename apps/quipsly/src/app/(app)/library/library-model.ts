@@ -1,4 +1,5 @@
 import { presentVoiceWritingTitle } from "@/lib/voice-writing-title";
+import { documentWorkspaceHref } from "@/lib/document-destination";
 
 export type LibraryKind = "SESSION" | "NOTE" | "SOURCE" | "DOCUMENT" | "MEDIA" | "SAVED";
 
@@ -224,11 +225,9 @@ export function buildLibraryEntries(input: {
       projectSlug: document.project.slug,
       href: voiceWritingDraftId && voiceWritingOwned
         ? `/writing/${encode(voiceWritingDraftId)}`
-        : writingNote
-        ? `/notes/${encode(document.id)}`
-        : episode
+        : episode && !writingNote
         ? `/read?projectSlug=${encode(document.project.slug)}&episodeSlug=${encode(episode.slug)}`
-        : `/create?project=${encode(document.project.slug)}&document=${encode(document.id)}`,
+        : documentWorkspaceHref({ documentId: document.id, projectSlug: document.project.slug, sourceLabel: document.sourceLabel }),
       updatedAt: iso(document.updatedAt),
       actionLabel: voiceWritingDraftId ? "Continue writing" : undefined,
       stateLabel: voiceWriting

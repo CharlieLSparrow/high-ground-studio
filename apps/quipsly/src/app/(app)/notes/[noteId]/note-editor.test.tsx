@@ -19,6 +19,7 @@ describe("focused note editor", () => {
   it("saves the existing block and title, then clears its local recovery copy", async () => {
     jest.mocked(fetch).mockResolvedValue(response() as Response);
     render(<NoteEditor initial={initial} actorId="actor" />);
+    expect(screen.getByLabelText("Note text")).toHaveAttribute("id", "note-block-block");
     fireEvent.change(screen.getByLabelText("Note title"), { target: { value: "A useful idea" } });
     fireEvent.change(screen.getByLabelText("Note text"), { target: { value: "Start with what the client wants to change." } });
     expect(JSON.parse(localStorage.getItem(key)!).draft.blocks[0].body).toContain("client");

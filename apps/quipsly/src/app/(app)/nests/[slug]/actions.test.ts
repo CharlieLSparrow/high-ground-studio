@@ -90,7 +90,7 @@ describe("project quick note capture", () => {
       documentId: "document-1",
       blockId: `project-note:user-1:${requestId}:body`,
       projectSlug: "project",
-      href: `/create?project=project&document=document-1&block=project-note%3Auser-1%3A${requestId}%3Abody`,
+      href: `/notes/document-1#note-block-project-note%3Auser-1%3A${requestId}%3Abody`,
       idempotentReplay: false,
       externalSideEffects: false,
     });

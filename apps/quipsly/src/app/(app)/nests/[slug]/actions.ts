@@ -7,6 +7,7 @@ import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { getPrismaClient } from "@/lib/prisma";
+import { documentWorkspaceHref } from "@/lib/document-destination";
 import { resolveQuickEntryTags, type QuickEntryTag } from "@/lib/server/quick-entry-tags";
 import { resolveStudioProjectAccess } from "@/lib/server/studio-project-access";
 import { normalizeWorkTagLabel } from "@/lib/server/work-tag-normalization";
@@ -392,7 +393,7 @@ export async function createNestQuickNoteAction(input: {
     revalidatePath(`/nests/${projectSlug}`);
     revalidatePath("/library");
     revalidatePath("/find");
-    const href = `/create?project=${encodeURIComponent(projectSlug)}&document=${encodeURIComponent(result.documentId)}&block=${encodeURIComponent(result.blockId)}`;
+    const href = documentWorkspaceHref({ documentId: result.documentId, projectSlug, sourceLabel: "document-kind:note", blockId: result.blockId });
     return {
       ok: true,
       documentId: result.documentId,
@@ -428,7 +429,7 @@ export async function createNestQuickNoteAction(input: {
           documentId: replay.id,
           blockId: replay.blocks[0].id,
           projectSlug,
-          href: `/create?project=${encodeURIComponent(projectSlug)}&document=${encodeURIComponent(replay.id)}&block=${encodeURIComponent(replay.blocks[0].id)}`,
+          href: documentWorkspaceHref({ documentId: replay.id, projectSlug, sourceLabel: "document-kind:note", blockId: replay.blocks[0].id }),
           idempotentReplay: true,
           externalSideEffects: false,
         };
@@ -902,7 +903,7 @@ export async function createDocumentInNest(projectSlug: string, kind: CreateNest
   revalidatePath(`/nests/${projectSlug}`);
   revalidatePath(`/create`);
   revalidatePath("/library");
-  return { documentId: document.id, href: kind === "note" ? `/notes/${encodeURIComponent(document.id)}` : `/create?project=${encodeURIComponent(project.slug)}&document=${encodeURIComponent(document.id)}` };
+  return { documentId: document.id, href: documentWorkspaceHref({ documentId: document.id, projectSlug: project.slug, sourceLabel: preset.sourceLabel }) };
 }
 
 export async function createDocumentAction(projectSlug: string, kind: CreateNestDocumentKind = "note") {

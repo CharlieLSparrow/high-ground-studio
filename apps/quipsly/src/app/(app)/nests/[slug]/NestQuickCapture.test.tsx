@@ -92,7 +92,7 @@ describe("Nest project quick capture", () => {
       documentId: "document-1",
       blockId: "block-1",
       projectSlug: "high-ground",
-      href: "/create?project=high-ground&document=document-1&block=block-1",
+      href: "/notes/document-1#note-block-block-1",
       idempotentReplay: false,
       externalSideEffects: false,
     });
@@ -112,7 +112,7 @@ describe("Nest project quick capture", () => {
       tagIds: ["tag-proof"],
       newTagLabels: [],
     }));
-    expect(push).toHaveBeenCalledWith("/create?project=high-ground&document=document-1&block=block-1");
+    expect(push).toHaveBeenCalledWith("/notes/document-1#note-block-block-1");
   });
 
   it("keeps the destination and no-side-effects boundary visible beside tag capture", () => {

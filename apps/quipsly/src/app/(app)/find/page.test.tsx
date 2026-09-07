@@ -43,7 +43,7 @@ describe("Search All page", () => {
     expect(screen.getByRole("link", { name: "Episode quality active · High Ground" })).toHaveAttribute("href", "/work?goal=goal-1");
     expect(screen.getByRole("link", { name: "Episode review podcast · ended · High Ground" })).toHaveAttribute("href", "/sessions/room-1");
     expect(screen.getByRole("link", { name: "Episode insight Keep the opening honest. Episode review · session note · author private Tags: Episode seed" })).toHaveAttribute("href", "/sessions/room-1?mode=notes#session-note-note-1");
-    expect(screen.getByRole("link", { name: "Episode outline The opening needs a human proof-listen. High Ground · note · private Tags: Episode seed" })).toHaveAttribute("href", "/create?project=high-ground&document=document-1&block=block-1");
+    expect(screen.getByRole("link", { name: "Episode outline The opening needs a human proof-listen. High Ground · note · private Tags: Episode seed" })).toHaveAttribute("href", "/notes/document-1#note-block-block-1");
     expect(screen.getByRole("link", { name: "Episode transcript High Ground · transcript · Charlie" })).toHaveAttribute("href", "/research?query=Episode%20transcript");
     expect(screen.getByRole("link", { name: "Episode exact words Episode transcript · High Ground · private" })).toHaveAttribute("href", "/research?query=Episode%20exact%20words");
     expect(screen.getByRole("link", { name: "Episode seed High Ground · source · private taxonomy Material for a future episode" })).toHaveAttribute("href", "/find?tag=tag-1");

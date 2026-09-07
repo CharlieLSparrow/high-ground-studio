@@ -26,6 +26,33 @@ jest.mock("./NestQuickCapture", () => ({ NestQuickCapture: () => <div>Quick capt
 describe("Nest project follow-through", () => {
   beforeEach(() => jest.clearAllMocks());
 
+  it.each([
+    { view: "overview", kind: "home" },
+    { view: "notes", kind: "home" },
+    { view: "overview", kind: "production" },
+  ])("opens the note from $kind/$view without leaking development fixtures", async ({ view, kind }) => {
+    jest.mocked(auth).mockResolvedValue({ user: { id: "user-1", primaryEmail: "person@example.com" } } as any);
+    jest.mocked(resolveStudioProjectAccess).mockResolvedValue({ allowed: true, role: "OWNER", source: "grant" } as any);
+    jest.mocked(findStudioProjectForAccess).mockResolvedValue({ id: "project-1", slug: "high-ground", name: "High Ground", sourceLabel: `nest-kind:${kind}` } as any);
+    jest.mocked(listStudioProjectAccessGrants).mockResolvedValue([] as any);
+    jest.mocked(getPrismaClient).mockReturnValue({
+      studioDocument: { findMany: jest.fn().mockResolvedValue([{ id: "note-1", title: "Session preparation", sourceLabel: "document-kind:note", updatedAt: new Date(), blocks: [{ id: "block-1", body: "An idea to explore" }], _count: { blocks: 1 } }]) },
+      studioMediaAsset: { findMany: jest.fn().mockResolvedValue([]) },
+      mediaBin: { findMany: jest.fn().mockResolvedValue([]) },
+      studioTag: { findMany: jest.fn().mockResolvedValue([]) },
+      callRoom: { findMany: jest.fn().mockResolvedValue([]) },
+      studioEpisodeProduction: { findMany: jest.fn().mockResolvedValue([]) },
+      goal: { findMany: jest.fn().mockResolvedValue([]) },
+      actionItem: { findMany: jest.fn().mockResolvedValue([]) },
+    } as any);
+    render(await NestDashboardPage({ params: Promise.resolve({ slug: "high-ground" }), searchParams: Promise.resolve({ view }) }));
+    expect(screen.getByRole("link", { name: /Session preparation/ })).toHaveAttribute("href", "/notes/note-1");
+    expect(screen.queryByRole("heading", { name: /Storyboard NLE Sandbox/ })).not.toBeInTheDocument();
+    expect(screen.queryByText("Intro_Shot_01.mp4")).not.toBeInTheDocument();
+    if (kind === "production") expect(screen.getByRole("heading", { name: "Episode Rooms" })).toBeInTheDocument();
+    else expect(screen.queryByRole("heading", { name: "Episode Rooms" })).not.toBeInTheDocument();
+  });
+
   it("shows only actor-scoped canonical goals and accepted tasks with exact return links", async () => {
     jest.mocked(auth).mockResolvedValue({ user: { id: "user-1", primaryEmail: "person@example.com" } } as any);
     jest.mocked(resolveStudioProjectAccess).mockResolvedValue({ allowed: true, role: "OWNER", source: "grant" } as any);

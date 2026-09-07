@@ -2,6 +2,7 @@ import Link from "next/link";
 import { BookOpen, CalendarDays, FileText, Film, Highlighter, ListChecks, Search, StickyNote, Tags, Target } from "lucide-react";
 
 import { auth } from "@/auth";
+import { documentWorkspaceHref } from "@/lib/document-destination";
 import { tagFocusHref } from "@/components/tag-search-chips";
 import { getPrismaClient } from "@/lib/prisma";
 import { listProjectsVisibleToEmail } from "@/lib/server/home-nest";
@@ -29,10 +30,8 @@ function researchHref(value: string) {
   return `/research?query=${encodeURIComponent(value.trim().replace(/\s+/g, " ").slice(0, 160))}`;
 }
 
-function documentHref(item: { id: string; project: { slug: string }; blocks: Array<{ id: string }> }) {
-  const params = new URLSearchParams({ project: item.project.slug, document: item.id });
-  if (item.blocks[0]?.id) params.set("block", item.blocks[0].id);
-  return `/create?${params.toString()}`;
+function documentHref(item: { id: string; sourceLabel: string | null; project: { slug: string }; blocks: Array<{ id: string }> }) {
+  return documentWorkspaceHref({ documentId: item.id, projectSlug: item.project.slug, sourceLabel: item.sourceLabel, blockId: item.blocks[0]?.id });
 }
 
 function documentKind(sourceLabel: string | null) {

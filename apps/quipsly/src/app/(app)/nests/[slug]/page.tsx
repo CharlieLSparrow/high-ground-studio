@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { documentWorkspaceHref } from "@/lib/document-destination";
 import { notFound, redirect } from "next/navigation";
 import type { ReactNode } from "react";
 import {
@@ -56,7 +57,6 @@ import {
   type EpisodeRoomDirectoryEpisode,
   type EpisodeRoomSourceCandidate,
 } from "./EpisodeRoomDirectory";
-import { NLETimeline } from "@/components/nle/NLETimeline";
 import {
   sourceEpisodeNumber,
   suggestedEpisodeSlug,
@@ -465,7 +465,7 @@ export default async function NestDashboardPage({ params, searchParams }: NestDa
                     </Link>
                   ) : null}
                   {latestDocument ? (
-                    <Link href={`/create?project=${encodeURIComponent(project.slug)}&document=${encodeURIComponent(latestDocument.id)}`} className="rounded-2xl border border-amber-200 bg-amber-50/60 p-4 outline-none hover:border-amber-400 focus-visible:ring-4 focus-visible:ring-amber-100">
+                    <Link href={documentWorkspaceHref({ documentId: latestDocument.id, projectSlug: project.slug, sourceLabel: latestDocument.sourceLabel })} className="rounded-2xl border border-amber-200 bg-amber-50/60 p-4 outline-none hover:border-amber-400 focus-visible:ring-4 focus-visible:ring-amber-100">
                       <FileText className="text-amber-800" size={19} aria-hidden="true" />
                       <span className="mt-3 block text-[10px] font-black uppercase tracking-wide text-amber-800">Recent note</span>
                       <span className="mt-1 block font-black">{latestDocument.title}</span>
@@ -504,25 +504,13 @@ export default async function NestDashboardPage({ params, searchParams }: NestDa
                 </div>
               </section>
 
-              <section aria-labelledby="nle-timeline-heading" className="rounded-3xl border border-neutral-800 bg-[#1e1e1e] shadow-xl overflow-hidden mb-8 h-[600px] flex flex-col">
-                <div className="p-4 border-b border-neutral-800 flex items-center justify-between bg-[#252526]">
-                  <div>
-                    <h2 id="nle-timeline-heading" className="text-sm font-black tracking-wide text-neutral-300">Storyboard NLE Sandbox</h2>
-                    <p className="text-xs text-neutral-500 mt-1">Experimental core timeline rendering engine (Phase 5 Slice)</p>
-                  </div>
-                </div>
-                <div className="flex-1 overflow-hidden relative">
-                  <NLETimeline projectId={project.id} />
-                </div>
-              </section>
-
-              <EpisodeRoomDirectory
+              {nestKind === "production" || episodeDirectory.length > 0 ? <EpisodeRoomDirectory
                 projectSlug={project.slug}
                 episodes={episodeDirectory}
                 sourceCandidates={episodeSourceCandidates}
                 canManage={canManage}
                 collaboratorCount={activeCollaborators.length}
-              />
+              /> : null}
 
               <section aria-labelledby="project-tags-heading" className="rounded-3xl border border-sky-200 bg-[linear-gradient(135deg,#f7fcff,#fffdf9)] p-5 shadow-sm md:p-6">
                 <div className="flex flex-wrap items-center justify-between gap-3">
@@ -555,7 +543,7 @@ export default async function NestDashboardPage({ params, searchParams }: NestDa
                 <div>
                   <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#8a653d]">Project memory</p>
                   <h2 id="notes-heading" className="mt-1 font-serif text-3xl font-black">Notes & documents</h2>
-                  <p className="mt-2 max-w-3xl text-sm font-semibold leading-6 text-[#765f40]">Private living documents, ordered by the last real edit.</p>
+                  <p className="mt-2 max-w-3xl text-sm font-semibold leading-6 text-[#765f40]">Notes and documents for this space, recently edited first.</p>
                 </div>
                 {canWrite ? <CreateDocumentButton projectSlug={project.slug} /> : null}
               </div>
@@ -563,10 +551,10 @@ export default async function NestDashboardPage({ params, searchParams }: NestDa
                 <ul className="mt-5 grid gap-3 md:grid-cols-2">
                   {documents.map((document) => (
                     <li key={document.id}>
-                      <Link href={`/create?project=${encodeURIComponent(project.slug)}&document=${encodeURIComponent(document.id)}`} className="block h-full rounded-2xl border border-[#e3d4b9] bg-[#fffdf9] p-5 outline-none hover:border-[#bd9d68] focus-visible:ring-4 focus-visible:ring-amber-100">
+                      <Link href={documentWorkspaceHref({ documentId: document.id, projectSlug: project.slug, sourceLabel: document.sourceLabel })} className="block h-full rounded-2xl border border-[#e3d4b9] bg-[#fffdf9] p-5 outline-none hover:border-[#bd9d68] focus-visible:ring-4 focus-visible:ring-amber-100">
                         <span className="font-serif text-xl font-black">{document.title}</span>
                         {document.blocks[0]?.body ? <span className="mt-2 line-clamp-3 block text-sm font-semibold leading-6 text-[#715f48]">{document.blocks[0].body}</span> : null}
-                        <span className="mt-4 block text-[10px] font-black uppercase tracking-wide text-[#8a653d]">{document._count.blocks} blocks · updated {document.updatedAt.toLocaleDateString()}</span>
+                        <span className="mt-4 block text-[10px] font-black uppercase tracking-wide text-[#8a653d]">Updated {document.updatedAt.toLocaleDateString()}</span>
                       </Link>
                     </li>
                   ))}
