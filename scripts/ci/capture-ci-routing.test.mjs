@@ -84,7 +84,7 @@ for (const failureDevice of ["none", "iPhone 17 Pro", "iPad Air 13-inch (M3)"]) 
     const directory = mkdtempSync(path.join(os.tmpdir(), "quipsly-native-prewarm-"));
     t.after(() => rmSync(directory, { recursive: true, force: true }));
     const step = workflow.split("      - name: Prewarm deterministic simulator services\n")[1]?.split("\n      - name:")[0];
-    assert.match(step, /timeout-minutes: 8/);
+    assert.match(step, /timeout-minutes: 15/);
     assert.match(workflow, /\$\{\{ runner.temp \}\}\/capture-prewarm-\*\.log/);
     const result = spawnSync("bash", ["-c", `
       bash() {

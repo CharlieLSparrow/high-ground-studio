@@ -120,7 +120,9 @@ jobs:
           node scripts/release/quipsly-capture-privacy-questionnaire.mjs --strict
 
       - name: Prewarm deterministic simulator services
-        timeout-minutes: 8
+        # Both cold destinations took 10m37s on the hosted Xcode 26.2 runner.
+        # Leave headroom without letting startup consume the whole test job.
+        timeout-minutes: 15
         shell: bash
         run: |
           set -euo pipefail
