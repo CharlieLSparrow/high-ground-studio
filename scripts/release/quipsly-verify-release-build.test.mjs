@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -18,8 +19,13 @@ function fixture(t) {
   mkdirSync(path.join(context, "scripts"), { recursive: true });
   mkdirSync(bin);
   writeFileSync(path.join(context, ".quipsly-release-context"), "");
-  writeFileSync(path.join(context, "quipsly-release-source.json"), JSON.stringify({ sourceSha: "a".repeat(40) }));
   writeFileSync(path.join(context, "scripts/sync-prisma-pnpm-clients.mjs"), "");
+  const digest = (value) => createHash("sha1").update(value).digest("hex");
+  writeFileSync(path.join(context, "quipsly-release-source.json"), JSON.stringify({
+    schemaVersion: 1, releaseId: "nest", releaseManifest: "release/manifests/nest.json",
+    sourceSha: "a".repeat(40),
+    inventorySha1: digest(`${digest("")}  ./scripts/sync-prisma-pnpm-clients.mjs\n`),
+  }));
   const tool = path.join(bin, "corepack");
   writeFileSync(tool, `#!/bin/bash
 set -euo pipefail
@@ -106,3 +112,34 @@ test("an unmarked or receipt-less directory never reaches the toolchain", (t) =>
   assert.equal(f.run().status, 2);
   assert.deepEqual(f.commands(), []);
 });
+
+for (const change of ["changed", "added", "removed", "symlink", "missing inventory", "wrong release", "invalid source SHA", "malformed receipt"]) {
+  test(`${change} release inputs never reach installation, tests, or build`, (t) => {
+    const f = fixture(t);
+    const source = path.join(f.context, "scripts/sync-prisma-pnpm-clients.mjs");
+    const receiptPath = path.join(f.context, "quipsly-release-source.json");
+    if (change === "changed") writeFileSync(source, "throw new Error('unexpected source');");
+    if (change === "added") writeFileSync(path.join(f.context, ".env.local"), "UNEXPECTED=local-value");
+    if (change === "removed") rmSync(source);
+    if (change === "symlink") {
+      rmSync(source);
+      const external = path.join(f.root, "external.mjs");
+      writeFileSync(external, "");
+      symlinkSync(external, source);
+    }
+    if (change === "malformed receipt") writeFileSync(receiptPath, "not JSON");
+    if (["missing inventory", "wrong release", "invalid source SHA"].includes(change)) {
+      const receipt = JSON.parse(readFileSync(receiptPath, "utf8"));
+      if (change === "missing inventory") delete receipt.inventorySha1;
+      if (change === "wrong release") receipt.releaseId = "hgo-web";
+      if (change === "invalid source SHA") receipt.sourceSha = "HEAD";
+      writeFileSync(receiptPath, JSON.stringify(receipt));
+    }
+    const result = f.run();
+    assert.equal(result.status, 1, result.stdout + result.stderr);
+    assert.deepEqual(f.commands(), []);
+    assert.doesNotMatch(result.stdout, /PASS Exact committed/);
+    assert.doesNotMatch(result.stderr, /UNEXPECTED=local-value|unexpected source/,
+      "Integrity errors report the problem without dumping file contents.");
+  });
+}

@@ -18,6 +18,9 @@ if [[ ! -f "${release_context}/quipsly-release-source.json" ]]; then
   exit 2
 fi
 
+script_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+bash "${script_directory}/quipsly-verify-release-context.sh" "${release_context}"
+
 echo "Installing the exact committed Nest release context."
 (
   cd "${release_context}"

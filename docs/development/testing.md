@@ -85,7 +85,14 @@ run while the local Nest dev server continues using `.next`; a release check
 must not require restarting the dogfood app.
 
 The manual Nest deployment preflight also runs the full application Jest suite
-from its materialized commit before the production build. A failed test prevents
+from its materialized commit before the production build. Before installing
+dependencies it recomputes the materializer's source-file inventory and checks
+the receipt's release identity. Modified, added, missing, or symlinked inputs
+stop before installation; the ordinary preflight automatically creates a fresh
+context each time. For a direct retry, materialize the commit again rather than
+reuse a directory containing generated dependencies and build outputs. This is
+an accidental-drift check, not an independently signed provenance attestation.
+A failed test prevents
 the build from starting; stdout and JSON results remain in the printed temporary
 results directory outside the upload context. This does not opt into database
 tests or substitute for the separate database and operated-workflow checks.

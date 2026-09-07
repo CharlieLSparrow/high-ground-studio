@@ -53,6 +53,9 @@ for release_id in "${release_ids[@]}"; do
   [[ ! -e "${context}/node_modules" ]]
 
   if [[ "${release_id}" == "nest" ]]; then
+    # Exercise the actual inventory verifier against a git-archive context, not
+    # just a hand-built fixture or the presence of a source-SHA field.
+    bash "${repo_root}/scripts/release/quipsly-verify-release-context.sh" "${context}"
     node - "${context}" "${context}/apps/quipsly/Dockerfile" <<'NODE'
 const fs = require("node:fs");
 const path = require("node:path");
