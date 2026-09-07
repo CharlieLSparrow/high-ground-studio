@@ -1296,7 +1296,11 @@ export async function readSessionRecordingShare(
             status: { in: ["DRAFT", "RELEASED"] },
           }
         : { id: "recording-share-not-visible-to-collaborator" },
-    orderBy: [{ releasedAt: "desc" }, { updatedAt: "desc" }],
+    // Keep the coach on their latest work after sharing. PostgreSQL sorts
+    // NULL releasedAt first in DESC order, which otherwise revives old drafts.
+    orderBy: isRecipient
+      ? [{ releasedAt: "desc" }, { updatedAt: "desc" }, { id: "desc" }]
+      : [{ updatedAt: "desc" }, { id: "desc" }],
     select: OUTPUT_SELECT,
   });
   if (canPrepare && output?.status === "DRAFT")

@@ -705,7 +705,7 @@ export function SessionRecordingShareCard({
       {output ? <div className="mt-5 space-y-4 rounded-2xl border border-sky-200 bg-white p-4 sm:p-5"><div className="flex flex-wrap items-center justify-between gap-3"><div><p className="font-black text-sky-950">{output.title}</p><p className="text-xs font-bold text-sky-700">Revision {output.revision} · {output.status === "DRAFT" ? "Private coach draft" : output.status === "RELEASED" ? `Visible to ${output.recipient.label}` : "Access revoked"}</p></div><span className="rounded-full bg-sky-100 px-3 py-1 text-[10px] font-black uppercase tracking-wide text-sky-900">{output.render.status}</span></div>
         {output.render.status === "VERIFIED" && output.mediaUrl ? <>{output.render.mediaKind === "video" ? <video
           ref={(node) => { previewMediaRef.current = node; }}
-          aria-label="Private video preview"
+          aria-label={output.status === "RELEASED" ? "Shared video recording" : "Private video preview"}
           className="aspect-video w-full rounded-xl bg-black"
           controls playsInline preload="metadata" src={output.mediaUrl}
           onPlay={(event) => { previewLastPlaybackTimeRef.current = event.currentTarget.currentTime; }}
@@ -715,7 +715,7 @@ export function SessionRecordingShareCard({
           onEnded={(event) => observePreviewPlayback(event.currentTarget, true)}
         >Your browser cannot play this private video.</video> : <audio
           ref={(node) => { previewMediaRef.current = node; }}
-          aria-label="Private recording preview"
+          aria-label={output.status === "RELEASED" ? "Shared recording" : "Private recording preview"}
           className="w-full" controls preload="metadata" src={output.mediaUrl}
           onPlay={(event) => { previewLastPlaybackTimeRef.current = event.currentTarget.currentTime; }}
           onPause={() => { previewLastPlaybackTimeRef.current = null; }}
@@ -734,7 +734,9 @@ export function SessionRecordingShareCard({
         {coach && !editing ? <button type="button" disabled={Boolean(busy)} onClick={() => { setSelected(new Set(outputSourceIds(output, snapshot.available?.sources || []))); setTitle(output.title); setStartSeconds(Number(output.body.edit?.startSeconds) || 0); setEndSeconds(Number(output.body.edit?.endSeconds) || duration); setExcludedTranscriptKeys(transcriptExclusionKeys(output)); setOutputMediaKind(output.render.mediaKind === "video" ? "video" : "audio"); setPrimaryVideoSourceId(output.render.primaryVideoSourceId || ""); setEditing(true); }} className="rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-xs font-black text-sky-900"><Scissors className="mr-1.5 inline" size={14} />{output.render.status === "FAILED" ? "Review trim and try again" : output.status === "DRAFT" ? "Edit private preview" : "Create new private edit"}</button> : null}
       </div> : null}
 
-      {coach ? <p className="mt-4 text-[11px] font-semibold leading-5 text-sky-800"><LockKeyhole className="mr-1 inline" size={13} />Only you can see the preview. Sharing gives the named client access inside this Session; it does not create a public link or change the original recordings.</p> : null}
+      {coach ? <p className="mt-4 text-[11px] font-semibold leading-5 text-sky-800"><LockKeyhole className="mr-1 inline" size={13} />{output?.status === "RELEASED"
+        ? `This recording is shared with ${output.recipient.label} inside this Session. New edits stay private until you share them. The original recordings remain unchanged.`
+        : "Only you can see the preview. Sharing gives the named client access inside this Session; it does not create a public link or change the original recordings."}</p> : null}
     </section>
   );
 }

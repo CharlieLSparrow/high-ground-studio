@@ -461,10 +461,14 @@ describe("SessionRecordingShareCard", () => {
       body: { edit: { startSeconds: 0, endSeconds: 30, transcriptExclusions: [] } },
     };
     const draft = { ...snapshot, output };
+    let current = draft;
     const requests: Array<Record<string, unknown>> = [];
     global.fetch = jest.fn(async (_url, init) => {
-      if (init?.method === "POST") requests.push(JSON.parse(String(init.body)));
-      return response(draft);
+      if (init?.method === "POST") {
+        requests.push(JSON.parse(String(init.body)));
+        current = { ...draft, output: { ...output, status: "RELEASED", revision: 3 } };
+      }
+      return response(current);
     }) as jest.MockedFunction<typeof fetch>;
 
     render(<SessionRecordingShareCard roomId="session_room_0001" />);
@@ -478,6 +482,11 @@ describe("SessionRecordingShareCard", () => {
       outputId: output.id,
       expectedRevision: 2,
     }));
+    expect(await screen.findByLabelText("Shared recording")).toBeInTheDocument();
+    expect(screen.getByText(/This recording is shared with Client inside this Session/)).toBeInTheDocument();
+    expect(screen.queryByText(/Only you can see the preview/)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Private recording preview")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Create new private edit" })).toBeInTheDocument();
   });
 
   it("records optional listening evidence without turning it into a share gate", async () => {

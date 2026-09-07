@@ -20,6 +20,33 @@ import {
 } from "./session-recording-share";
 import { buildSessionTranscriptReadiness } from "@/lib/session-transcript-readiness";
 
+describe("Recording workspace current output selection", () => {
+  it.each(["coach", "client"])("keeps the %s on the latest relevant edit", async (role) => {
+    const actor = { id: role, primaryEmail: `${role}@example.test`, isStaff: false };
+    const room = {
+      id: "room", title: "Coaching", captureGroupId: null,
+      booking: { coachUserId: "coach", clientUserId: "client", coachUser: { id: "coach" }, clientUser: { id: "client" } },
+    };
+    const client: any = {
+      callRoom: { findFirst: jest.fn().mockResolvedValueOnce(room).mockResolvedValueOnce(role === "coach" ? room : null) },
+      sessionOutput: { findFirst: jest.fn().mockResolvedValue(null) },
+      recordingAsset: { findMany: jest.fn().mockResolvedValue([]) },
+    };
+    const result = await readSessionRecordingShare(client, { roomId: room.id, actor });
+    expect(result.role).toBe(role.toUpperCase());
+    expect(client.sessionOutput.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: role === "client"
+        ? { roomId: "room", kind: "RECORDING_SHARE", recipientUserId: "client", status: "RELEASED" }
+        : { roomId: "room", kind: "RECORDING_SHARE", status: { in: ["DRAFT", "RELEASED"] } },
+      // PostgreSQL DESC sorts NULL releasedAt first. Ordering a coach's mixed
+      // drafts/releases by that field resurrects an old draft after sharing.
+      orderBy: role === "client"
+        ? [{ releasedAt: "desc" }, { updatedAt: "desc" }, { id: "desc" }]
+        : [{ updatedAt: "desc" }, { id: "desc" }],
+    }));
+  });
+});
+
 describe("Recording editor transcript correction readback", () => {
   const providerText = "My coaching goal is to write every morning.";
   const digest = (text: string) => createHash("sha256").update(text, "utf8").digest("hex");
