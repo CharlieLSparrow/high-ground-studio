@@ -133,7 +133,7 @@ jobs:
             src/app/api/mobile/capture/transcripts/packet/transcript-work.integration.test.ts
             'src/app/api/coaching/engagements/[engagementId]/work/route.integration.test.ts'
           )
-          pnpm --filter quipsly test --runInBand --json --outputFile="${RUNNER_TEMP}/quipsly-db-tests.json" --runTestsByPath "${suites[@]}" \
+          pnpm --filter quipsly --fail-if-no-match test --runInBand --json --outputFile="${RUNNER_TEMP}/quipsly-db-tests.json" --runTestsByPath "${suites[@]}" \
             2>&1 | tee "${RUNNER_TEMP}/quipsly-db-tests.log"
           node scripts/ci/verify-required-jest-results.mjs "${RUNNER_TEMP}/quipsly-db-tests.json" apps/quipsly "${suites[@]}" \
             2>&1 | tee -a "${RUNNER_TEMP}/quipsly-db-tests.log"
@@ -158,7 +158,7 @@ jobs:
         run: |
           node --test apps/quipsly/scripts/typescript-config.test.mjs
           set -o pipefail
-          pnpm --filter quipsly test --maxWorkers=2 --json --outputFile="${RUNNER_TEMP}/quipsly-jest-results.json" 2>&1 | tee "${RUNNER_TEMP}/quipsly-jest.log"
+          pnpm --filter quipsly --fail-if-no-match test --maxWorkers=2 --json --outputFile="${RUNNER_TEMP}/quipsly-jest-results.json" 2>&1 | tee "${RUNNER_TEMP}/quipsly-jest.log"
 
       - name: Preserve application test results
         if: always() && steps.changes.outputs.quipsly == 'true'
@@ -173,11 +173,11 @@ jobs:
 
       - name: Typecheck High Ground web with pinned TypeScript 7
         if: steps.changes.outputs.web == 'true'
-        run: pnpm --filter web typecheck
+        run: pnpm --filter web --fail-if-no-match typecheck
 
       - name: Typecheck Quipsly with pinned TypeScript 7
         if: steps.changes.outputs.quipsly == 'true'
-        run: pnpm --filter quipsly typecheck
+        run: pnpm --filter quipsly --fail-if-no-match typecheck
 
       - name: Verify Session recording evidence
         if: steps.changes.outputs.quipsly == 'true'
@@ -186,21 +186,21 @@ jobs:
       - name: Build and fault-test Quipsly media verifier
         if: steps.changes.outputs.media_verifier == 'true'
         run: |
-          pnpm --filter @high-ground/quipsly-capture-verification typecheck
+          pnpm --filter @high-ground/quipsly-capture-verification --fail-if-no-match typecheck
           pnpm quipsly:media-verifier:build
           pnpm quipsly:media-verifier:test
 
       - name: Build and fault-test Quipsly media processor
         if: steps.changes.outputs.media_processor == 'true'
         run: |
-          pnpm --filter @high-ground/quipsly-media-processing typecheck
+          pnpm --filter @high-ground/quipsly-media-processing --fail-if-no-match typecheck
           pnpm quipsly:media-processor:build
           pnpm quipsly:media-processor:test
 
       - name: Build and fault-test Quipsly transcript worker
         if: steps.changes.outputs.transcript_worker == 'true'
         run: |
-          pnpm --filter @high-ground/quipsly-media-processing typecheck
+          pnpm --filter @high-ground/quipsly-media-processing --fail-if-no-match typecheck
           pnpm quipsly:transcript-worker:build
           pnpm quipsly:transcript-worker:test
 
