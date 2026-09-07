@@ -20,6 +20,7 @@ import {
   sessionInvitationAccessWhere,
 } from "./session-access";
 import { captureRoomAccessWhere } from "./mobile-capture-room-join-diagnostics";
+import { loadCoachingSessionHighlights } from "./coaching-session-highlights";
 import { reconcileLiveSessionAccess, reconcileLiveKitParticipantJoin } from "./session-access-reconciliation";
 import {
   acceptCoachingEngagementInvitation,
@@ -119,6 +120,50 @@ runLocalDatabaseSmoke("private Coaching Engagement collaboration", () => {
       await prisma.user.deleteMany({ where: { id: { in: [ids.coach, ids.client, ids.observer, ids.outsider, ids.editor, ids.viewer, ids.invitee, ids.revoked] } } });
     } finally {
       await prisma.$disconnect();
+    }
+  });
+
+  it("selects the real next appointment beyond history limits without exposing another client space", async () => {
+    const now = new Date("2026-09-07T18:00:00Z");
+    const space = await prisma.coachingEngagement.create({ data: {
+      projectId: ids.project, title: "Session priority rehearsal",
+      members: { create: [{ userId: ids.coach, role: "COACH" }, { userId: ids.client, role: "CLIENT" }] },
+    } });
+    const rowId = (name: string) => `highlight-${nonce}-${name}`;
+    const base = { projectId: ids.project, coachingEngagementId: space.id, createdByUserId: ids.coach };
+    const read = (actorId = ids.client) => loadCoachingSessionHighlights({ prisma, engagementId: space.id, actor: { id: actorId, primaryEmail: email(actorId === ids.client ? "client" : "editor") }, now });
+    try {
+      await prisma.callRoom.createMany({ data: [
+        { ...base, id: rowId("stale"), status: "OPEN", scheduledStart: new Date("2026-08-01T18:00:00Z"), scheduledEnd: new Date("2026-08-01T19:00:00Z") },
+        { ...base, id: rowId("late"), status: "PLANNED", scheduledStart: new Date("2026-09-06T18:00:00Z"), scheduledEnd: new Date("2026-09-06T19:00:00Z") },
+        { ...base, id: rowId("next"), status: "PLANNED", scheduledStart: new Date("2026-09-08T18:00:00Z"), scheduledEnd: new Date("2026-09-08T19:00:00Z") },
+        ...Array.from({ length: 105 }, (_, index) => ({ ...base, id: rowId(`later-${index}`), status: "PLANNED" as const,
+          scheduledStart: new Date(now.getTime() + (index + 2) * 86400_000), scheduledEnd: new Date(now.getTime() + (index + 2) * 86400_000 + 3600_000) })),
+      ] });
+      expect((await read()).next?.id).toBe(rowId("next"));
+      expect((await read(ids.coach)).next?.id).toBe(rowId("next"));
+      for (const actorId of [ids.outsider, ids.editor, ids.viewer]) {
+        expect(await read(actorId)).toEqual({ next: null, last: null, overdue: false });
+      }
+      // A session-only guest does not gain the surrounding client's highlights.
+      await prisma.callParticipant.create({ data: { roomId: rowId("next"), userId: ids.invitee, role: "CLIENT" } });
+      expect(await read(ids.invitee)).toEqual({ next: null, last: null, overdue: false });
+      await prisma.callRoom.create({ data: { ...base, id: rowId("current"), status: "OPEN", scheduledStart: now, scheduledEnd: new Date(now.getTime() + 3600_000) } });
+      expect((await read()).next?.id).toBe(rowId("current"));
+      await prisma.callRoom.create({ data: { ...base, id: rowId("recording"), status: "RECORDING" } });
+      expect((await read()).next?.id).toBe(rowId("recording"));
+      await prisma.callRoom.updateMany({ where: { id: { in: [rowId("recording"), rowId("current")] } }, data: { status: "ENDED", endedAt: now } });
+      expect((await read()).next?.id).toBe(rowId("next"));
+      expect((await read()).last?.endedAt).toEqual(now);
+      await prisma.callRoom.updateMany({ where: { coachingEngagementId: space.id, scheduledStart: { gt: now } }, data: { status: "CANCELED" } });
+      expect(await read()).toMatchObject({ next: { id: rowId("late") }, overdue: true });
+      await prisma.callRoom.create({ data: { ...base, id: rowId("unscheduled"), status: "OPEN" } });
+      expect((await read()).next?.id).toBe(rowId("unscheduled"));
+      await prisma.coachingEngagementMember.update({ where: { engagementId_userId: { engagementId: space.id, userId: ids.client } }, data: { status: "REMOVED" } });
+      expect(await read()).toEqual({ next: null, last: null, overdue: false });
+    } finally {
+      await prisma.callRoom.deleteMany({ where: { coachingEngagementId: space.id } });
+      await prisma.coachingEngagement.delete({ where: { id: space.id } });
     }
   });
 

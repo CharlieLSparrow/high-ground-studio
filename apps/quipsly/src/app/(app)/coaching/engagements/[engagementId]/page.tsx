@@ -11,6 +11,8 @@ import {
 import { notFound } from "next/navigation";
 
 import { CollaborationThread } from "@/components/session-thread";
+import LocalDateTime from "@/components/LocalDateTime";
+import { coachingSessionSummarySelect, loadCoachingSessionHighlights } from "@/lib/server/coaching-session-highlights";
 import { CoachingEngagementMemberManager } from "@/components/coaching-engagement-member-manager";
 import { CoachingSpaceTabs } from "@/components/coaching-space-tabs";
 import {
@@ -94,27 +96,7 @@ export default async function CoachingEngagementPage({
       callRooms: {
         orderBy: [{ scheduledStart: "desc" }, { createdAt: "desc" }],
         take: 100,
-        select: {
-          id: true,
-          title: true,
-          purpose: true,
-          status: true,
-          scheduledStart: true,
-          scheduledEnd: true,
-          endedAt: true,
-          createdAt: true,
-          transcriptJobs: {
-            orderBy: { createdAt: "desc" },
-            take: 1,
-            select: { status: true },
-          },
-          outputs: {
-            where: { status: "RELEASED" },
-            take: 1,
-            select: { id: true },
-          },
-          _count: { select: { recordingAssets: true } },
-        },
+        select: coachingSessionSummarySelect,
       },
       notes: {
         where: {
@@ -274,41 +256,9 @@ export default async function CoachingEngagementPage({
   const initialWork = workPage.result(workEntries);
 
   const now = Date.now();
-  const liveRoom = engagement.callRooms.find((room) =>
-    ["OPEN", "RECORDING"].includes(room.status),
-  );
-  const lateRoom = engagement.callRooms
-    .filter(
-      (room) =>
-        room.status === "PLANNED" &&
-        room.scheduledStart &&
-        room.scheduledStart.getTime() < now,
-    )
-    .sort(
-      (left, right) =>
-        (right.scheduledStart?.getTime() || 0) -
-        (left.scheduledStart?.getTime() || 0),
-    )[0];
-  const upcomingRoom = engagement.callRooms
-    .filter(
-      (room) =>
-        room.status === "PLANNED" &&
-        room.scheduledStart &&
-        room.scheduledStart.getTime() >= now,
-    )
-    .sort(
-      (left, right) =>
-        (left.scheduledStart?.getTime() || 0) -
-        (right.scheduledStart?.getTime() || 0),
-    )[0];
-  const nextRoom = liveRoom || lateRoom || upcomingRoom || null;
-  const lastRoom = engagement.callRooms
-    .filter((room) => room.status === "ENDED")
-    .sort(
-      (left, right) =>
-        (right.endedAt ?? right.scheduledStart ?? right.createdAt).getTime() -
-        (left.endedAt ?? left.scheduledStart ?? left.createdAt).getTime(),
-    )[0];
+  const highlights = await loadCoachingSessionHighlights({ prisma, engagementId, actor: session.user, now: new Date(now) });
+  const nextRoom = highlights.next;
+  const lastRoom = highlights.last;
   const overview: CoachingRelationshipOverviewItem = {
     nextSession: nextRoom
       ? {
@@ -316,7 +266,7 @@ export default async function CoachingEngagementPage({
           title: nextRoom.title || "Coaching Session",
           startsAt: nextRoom.scheduledStart?.toISOString() ?? null,
           status:
-            nextRoom === lateRoom && nextRoom.status === "PLANNED"
+            highlights.overdue && nextRoom.status === "PLANNED"
               ? "PLANNED_LATE"
               : nextRoom.status,
         }
@@ -471,9 +421,19 @@ export default async function CoachingEngagementPage({
               <p className="text-[10px] font-black uppercase tracking-[0.2em] text-violet-800">
                 Your history
               </p>
-              <h2 className="mt-2 flex items-center gap-2 font-serif text-3xl font-black text-[#3d3122]">
-                <CalendarDays size={22} /> Session history
-              </h2>
+              <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
+                <h2 className="flex items-center gap-2 font-serif text-3xl font-black text-[#3d3122]">
+                  <CalendarDays size={22} /> Sessions
+                </h2>
+                {canSchedule ? (
+                  <Link
+                    href={`/coaching?clientSpace=${encodeURIComponent(engagement.id)}#create-appointment`}
+                    className="inline-flex min-h-11 items-center justify-center rounded-full bg-primary px-4 text-sm font-semibold text-primary-foreground"
+                  >
+                    Schedule session
+                  </Link>
+                ) : null}
+              </div>
               <p className="mt-2 max-w-3xl text-sm font-semibold leading-6 text-[#765f40]">
                 Every call returns to the same client space, so the recording,
                 transcript, follow-up, and work between Sessions stay easy to
@@ -514,10 +474,7 @@ export default async function CoachingEngagementPage({
                             </p>
                             <p className="mt-1 text-xs font-semibold uppercase tracking-wide text-[#8a7354]">
                               {room.scheduledStart
-                                ? new Intl.DateTimeFormat("en", {
-                                    dateStyle: "medium",
-                                    timeStyle: "short",
-                                  }).format(room.scheduledStart)
+                                ? <LocalDateTime value={room.scheduledStart.toISOString()} mode="appointment" />
                                 : "Time not set"}
                             </p>
                           </div>

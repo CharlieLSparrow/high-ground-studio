@@ -1,7 +1,8 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import CoachingPage from "./page";
+import { useSearchParams } from "next/navigation";
 
-jest.mock("next/navigation", () => ({useSearchParams: () => new URLSearchParams()}));
+jest.mock("next/navigation", () => ({useSearchParams: jest.fn(() => new URLSearchParams())}));
 
 const user = {id: "client-1", name: "Riley", email: "riley@example.test", isClient: true, isCoach: false, isStaff: false};
 const booking = {id: "booking-1", title: "My retained coaching session", status: "CONFIRMED",
@@ -17,6 +18,7 @@ function response(body: unknown, status = 200) {
 describe("Coaching home loading and recovery", () => {
   let runwayFetch: jest.Mock;
   beforeEach(() => {
+    jest.mocked(useSearchParams).mockReturnValue(new URLSearchParams() as never);
     runwayFetch = jest.fn();
     Object.defineProperty(globalThis, "fetch", {configurable: true, writable: true,
       value: jest.fn((url) => String(url) === "/api/coaching/runway"
@@ -26,6 +28,30 @@ describe("Coaching home loading and recovery", () => {
   });
 
   afterEach(() => jest.restoreAllMocks());
+
+  it("schedules from the selected client space with the edited time, not the default time", async () => {
+    jest.mocked(useSearchParams).mockReturnValue(new URLSearchParams("clientSpace=space-1") as never);
+    const context = { engagementId: "space-1", title: "Riley coaching", projectSlug: "coach-home", coachUserId: "coach-1", clientEmail: user.email, clientName: user.name };
+    const coachView = {...loaded, user: {...user, id: "coach-1", isCoach: true, isClient: false}, upcomingBookings: []};
+    runwayFetch.mockResolvedValue(response(coachView));
+    const originalFetch = jest.mocked(globalThis.fetch).getMockImplementation()!;
+    jest.mocked(globalThis.fetch).mockImplementation((url, init) => {
+      if (String(url).startsWith("/api/coaching/engagements?")) return Promise.resolve(response({context}) as Response);
+      if (init?.method === "POST" && String(url) === "/api/coaching/runway") return Promise.resolve(response({ok: true, result: {nextAction: "Session created."}}) as Response);
+      return originalFetch(url, init);
+    });
+    render(<CoachingPage />);
+    const email = await screen.findByRole("textbox", {name: "Client email"});
+    await waitFor(() => expect(email).toHaveValue(user.email));
+    expect(email).toHaveAttribute("readonly");
+    const scheduling = within(screen.getByRole("region", {name: "Schedule a Session"}));
+    fireEvent.change(scheduling.getByLabelText("Start"), {target: {value: "2026-09-09T10:00"}});
+    fireEvent.change(scheduling.getByLabelText("Session name"), {target: {value: "Writing follow-up"}});
+    fireEvent.click(screen.getByRole("button", {name: "Schedule and send invite"}));
+    await waitFor(() => expect(globalThis.fetch).toHaveBeenCalledWith("/api/coaching/runway", expect.objectContaining({method: "POST"})));
+    const submission = jest.mocked(globalThis.fetch).mock.calls.find(([url, init]) => url === "/api/coaching/runway" && init?.method === "POST")!;
+    expect(JSON.parse(submission[1]!.body as string)).toMatchObject({engagementId: "space-1", clientEmail: user.email, clientName: user.name, scheduledStart: "2026-09-09T10:00", title: "Writing follow-up"});
+  });
 
   it("lets a client cancel their proposed time and reloads the remaining work", async () => {
     const hold = {id: "hold/client-1", status: "ACTIVE", isClientRequest: true,

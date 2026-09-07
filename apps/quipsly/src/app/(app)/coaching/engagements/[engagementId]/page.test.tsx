@@ -17,9 +17,9 @@ jest.mock("@/components/coaching-engagement-workspace", () => ({ CoachingEngagem
   <button disabled={!canWrite}>Add shared note</button>
   {initialEntries.map((entry) => entry.sourceHref ? <a key={entry.id} href={entry.sourceHref}>{entry.title} source</a> : null)}
 </> }));
-jest.mock("@/components/coaching-space-tabs", () => ({ CoachingSpaceTabs: ({ work, people }: { work: ReactNode; people?: ReactNode }) => <>{work}{people}</> }));
+jest.mock("@/components/coaching-space-tabs", () => ({ CoachingSpaceTabs: ({ work, people, sessions }: { work: ReactNode; people?: ReactNode; sessions?: ReactNode }) => <>{work}{sessions}{people}</> }));
 
-const prisma = { coachingEngagement: { findFirst: jest.fn() } };
+const prisma = { coachingEngagement: { findFirst: jest.fn() }, callRoom: { findFirst: jest.fn() } };
 const params = Promise.resolve({ engagementId: "space" });
 const person = { id: "person", primaryEmail: "person@example.test", isStaff: false };
 function arrange(role: "COACH" | "CLIENT" | "OBSERVER", canManage = false, work: Record<string, unknown> = {}) {
@@ -37,6 +37,7 @@ describe("client space page behavior", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     prisma.coachingEngagement.findFirst.mockReset();
+    prisma.callRoom.findFirst.mockResolvedValue(null);
     jest.mocked(getPrismaClient).mockReturnValue(prisma as never);
     jest.mocked(getQuipslySession).mockResolvedValue({ user: person } as never);
   });
@@ -62,9 +63,20 @@ describe("client space page behavior", () => {
     arrange("COACH", true);
     render(await Page({ params }));
     expect(screen.getByRole("link", { name: "All clients" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /schedule/i })).toHaveAttribute("href", "/coaching?clientSpace=space#create-appointment");
+    for (const link of screen.getAllByRole("link", { name: /schedule/i })) {
+      expect(link).toHaveAttribute("href", "/coaching?clientSpace=space#create-appointment");
+    }
     expect(screen.getByRole("heading", { name: "Manage people" })).toBeInTheDocument();
     expect(prisma.coachingEngagement.findFirst.mock.calls[1][0].where).toEqual(coachingEngagementAccessWhere("space", person, "manage"));
+  });
+
+  it("keeps scheduling available in Sessions even when a client already has an appointment", async () => {
+    const room = { id: "next-room", title: "Next appointment", status: "PLANNED", scheduledStart: new Date("2026-09-09T16:00:00Z"), scheduledEnd: new Date("2026-09-09T17:00:00Z"), createdAt: new Date(), transcriptJobs: [], outputs: [], _count: { recordingAssets: 0 } };
+    arrange("COACH", true, { callRooms: [room] });
+    prisma.callRoom.findFirst.mockResolvedValueOnce(null).mockResolvedValueOnce(null).mockResolvedValueOnce(room);
+    render(await Page({ params }));
+    expect(screen.getByRole("link", { name: "Schedule session" })).toHaveAttribute("href", "/coaching?clientSpace=space#create-appointment");
+    expect(screen.getAllByRole("link", { name: /Prepare session/i }).length).toBeGreaterThan(0);
   });
 
   it("projects notes, tasks, and goals back to their stored session without inventing manual-note sources", async () => {
