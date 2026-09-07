@@ -133,7 +133,36 @@ struct CaptureDeepLinkHarness {
             fatalError("The router did not consume the new writing request.")
         }
 
-        print("Capture Session, writing, and transcript work-link harness passed")
+        var history = MobileCoachingWorkHistory()
+        guard history.request(search: nil, including: nil) == [nil] else { fatalError("History must start at its first page") }
+        history.didLoad(history.request(search: nil, including: "older-page"))
+        guard history.request(search: nil, including: nil) == [nil, "older-page"],
+              history.request(search: nil, including: "older-page") == [nil, "older-page"] else {
+            fatalError("Refresh must retain loaded history without duplicating a page")
+        }
+        _ = history.request(search: "  listening  ", including: nil)
+        // Simulate a network failure: didLoad is intentionally not called.
+        guard history.query == "listening", history.request(search: nil, including: nil) == [nil] else {
+            fatalError("A failed search must not reuse cursors from a different query")
+        }
+        history.didLoad(history.request(search: nil, including: "search-page"))
+        guard history.request(search: "", including: nil) == [nil] else { fatalError("Clearing search must reset history") }
+        history.didLoad(history.request(search: nil, including: "all-kind-page"))
+        guard history.request(search: nil, kind: "TASK", including: nil) == [nil], history.kind == "TASK" else {
+            fatalError("Changing the work type must not reuse the all-work cursor")
+        }
+        let historyWorkspaceJSON = #"{"id":"space","title":"Our work","status":"ACTIVE","canWrite":true,"currentUserId":"client","members":[],"entries":[]}"#
+        do {
+            let old = try JSONDecoder().decode(MobileCoachingEngagementWorkspace.self, from: Data(historyWorkspaceJSON.utf8))
+            guard old.page == nil else { fatalError("Existing responses need no page metadata") }
+            let page = MobileCoachingWorkPage(nextCursor: "next-page", pageSize: 100, query: "listening", kind: "ALL")
+            var current = old
+            current.page = page
+            let roundTrip = try JSONDecoder().decode(MobileCoachingEngagementWorkspace.self, from: JSONEncoder().encode(current))
+            guard roundTrip.page == page, roundTrip.id == "space" else { fatalError("Native history metadata was lost") }
+        } catch { fatalError("Native workspace decoding failed: \(error)") }
+
+        print("Capture Session, writing, transcript work-link, and coaching history harness passed")
     }
 
     private static func expect(

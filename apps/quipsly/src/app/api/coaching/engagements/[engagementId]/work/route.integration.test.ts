@@ -29,9 +29,9 @@ if (enabled) {
   const roomId = `space-session-${nonce}`;
   const handlers = {GET, PATCH, POST, DELETE, PUT};
 
-  async function act(method: keyof typeof handlers, body: Record<string, unknown> = {}, actor = client!) {
+  async function act(method: keyof typeof handlers, body: Record<string, unknown> = {}, actor = client!, query = "") {
     jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({user: actor} as never);
-    const response = await handlers[method](new Request(`http://localhost/api/coaching/engagements/${engagementId}/work`, {
+    const response = await handlers[method](new Request(`http://localhost/api/coaching/engagements/${engagementId}/work${query ? `?${query}` : ""}`, {
       method, ...(method === "GET" ? {} : {headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)}),
     }), {params: Promise.resolve({engagementId})});
     return {status: response.status, body: await response.json()};
@@ -109,6 +109,21 @@ if (enabled) {
     }
   });
 
+  it("saves a burst of independent collaboration work and deduplicates concurrent retries", async () => {
+    const commands = Array.from({length: 6}, (_, index) => ({
+      kind: ["NOTE", "TASK", "GOAL"][index % 3], clientRequestId: randomUUID(),
+      title: `Simultaneous collaboration ${index}`, body: "No manual retry needed", ownerUserId: client!.id,
+      visibility: "SHARED", targetAt: "",
+    }));
+    const responses = await Promise.all(commands.map(command => act("POST", command)));
+    expect(responses.map(result => result.status)).toEqual(Array(6).fill(200));
+    const command = {...commands[0]!, clientRequestId: randomUUID(), title: "One shared command"};
+    const retries = await Promise.all(Array.from({length: 5}, () => act("POST", command)));
+    expect(retries.map(result => result.status)).toEqual(Array(5).fill(200));
+    expect(new Set(retries.map(result => result.body.entry.id)).size).toBe(1);
+    expect(await prisma.coachingNote.count({where: {engagementId, title: command.title}})).toBe(1);
+  });
+
   it.each(["TASK", "GOAL"] as const)("edits, removes, and restores shared %s without losing its recording source", async (kind) => {
     const original = await seed(kind);
     const sourceHref = `/sessions/${roomId}?mode=transcript&source=retained-source-fixture&at=12`;
@@ -154,6 +169,77 @@ if (enabled) {
       }
     }
     finally { await prisma.coachingEngagementMember.update({where: {engagementId_userId: {engagementId, userId: client!.id}}, data: {status: "ACTIVE"}}); }
+  });
+
+  it("searches beyond the first hundred records and excludes removed and private matches before paging", async () => {
+    const at = new Date("2026-01-01T00:00:00Z");
+    const records = Array.from({length: 125}, (_, index) => ({
+      id: `history-${nonce}-${String(index).padStart(3, "0")}`, engagementId, authorUserId: coach!.id,
+      title: `History example ${index}`, body: "An enduring reflection about listening", visibility: "SESSION_SHARED" as const,
+      updatedAt: at, sourceJson: {},
+    }));
+    await prisma.coachingNote.createMany({data: records});
+    await prisma.coachingNote.createMany({data: Array.from({length: 110}, (_, index) => ({
+      engagementId, authorUserId: coach!.id, title: "History example removed", body: "An enduring reflection about listening",
+      visibility: "SESSION_SHARED" as const, sourceJson: {relationshipWorkRemoval: {active: true}},
+    }))});
+    const privateNote = await prisma.coachingNote.create({data: {engagementId, authorUserId: coach!.id, title: "History example secret",
+      body: "An enduring reflection about listening", visibility: "AUTHOR_PRIVATE"}});
+    const seen: string[] = [];
+    let cursor: string | null = null;
+    let requests = 0;
+    do {
+      const query = new URLSearchParams({q: "enduring listening", pageSize: "20", kind: "NOTE"});
+      if (cursor) query.set("cursor", cursor);
+      const page = await act("GET", {}, client!, query.toString());
+      expect(page.status).toBe(200);
+      seen.push(...page.body.engagement.entries.map((entry: {id: string}) => entry.id));
+      cursor = page.body.engagement.page.nextCursor;
+      expect(++requests).toBeLessThan(10);
+    } while (cursor);
+    expect(seen).toEqual(records.map((entry) => entry.id).reverse());
+    expect(new Set(seen).size).toBe(125);
+    const exact = await act("GET", {}, client!, new URLSearchParams({item: records[0]!.id}).toString());
+    expect(exact.body.engagement.entries.map((entry: {id: string}) => entry.id)).toEqual([records[0]!.id]);
+    expect((await act("GET", {}, client!, new URLSearchParams({item: privateNote.id}).toString())).body.engagement.entries).toEqual([]);
+    expect((await act("GET", {}, coach!, new URLSearchParams({item: privateNote.id}).toString())).body.engagement.entries).toHaveLength(1);
+    const outsiderRead = await act("GET", {}, outsider!, "q=enduring");
+    expect(outsiderRead.status).toBe(404);
+    const first = await act("GET", {}, client!, "q=enduring&pageSize=20");
+    expect((await act("GET", {}, client!, new URLSearchParams({q: "different", cursor: first.body.engagement.page.nextCursor}).toString())).status).toBe(400);
+  });
+
+  it("pages one mixed history across model and timestamp boundaries without omissions or repeats", async () => {
+    const stamp = new Date("2026-02-01T00:00:00Z");
+    const tasks = await Promise.all(Array.from({length: 11}, (_, i) => prisma.actionItem.create({data: {
+      engagementId, title: `Mixed-history specimen ${i}`, assignedUserId: client!.id, updatedAt: stamp, sourceJson: {},
+    }})));
+    const goals = await Promise.all(Array.from({length: 9}, (_, i) => prisma.goal.create({data: {
+      engagementId, title: `Mixed-history specimen ${i}`, ownerUserId: client!.id, updatedAt: stamp, sourceJson: {},
+    }})));
+    const notes = await Promise.all(Array.from({length: 13}, (_, i) => prisma.coachingNote.create({data: {
+      engagementId, title: `Mixed-history specimen ${i}`, body: "Same-time example", authorUserId: client!.id,
+      visibility: "SESSION_SHARED", updatedAt: stamp, sourceJson: {},
+    }})));
+    const seen: Array<{id: string; kind: string}> = [];
+    let cursor: string | null = null;
+    let iterations = 0;
+    do {
+      const query = new URLSearchParams({q: "mixed-history specimen", pageSize: "7"});
+      if (cursor) query.set("cursor", cursor);
+      const page = await act("GET", {}, client!, query.toString());
+      expect(page.status).toBe(200);
+      expect(page.body.engagement.entries.length).toBeLessThanOrEqual(7);
+      seen.push(...page.body.engagement.entries);
+      cursor = page.body.engagement.page.nextCursor;
+      if (iterations === 0) {
+        expect((await act("GET", {}, coach!, new URLSearchParams({q: "mixed-history specimen", cursor: cursor!}).toString())).status).toBe(400);
+      }
+      expect(++iterations).toBeLessThan(10);
+    } while (cursor);
+    const ids = [...tasks, ...goals, ...notes].map((entry) => entry.id);
+    expect(seen.map((entry) => entry.id).sort()).toEqual(ids.sort());
+    expect(seen.map((entry) => entry.kind)).toEqual([...Array(11).fill("TASK"), ...Array(13).fill("NOTE"), ...Array(9).fill("GOAL")]);
   });
 
   it("retains a shared note's source through edits, removal, restore, and a fresh read", async () => {

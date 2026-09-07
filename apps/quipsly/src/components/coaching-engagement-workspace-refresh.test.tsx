@@ -20,6 +20,92 @@ describe("client-space live refresh", () => {
   });
   afterEach(() => {cleanup(); jest.useRealTimers(); jest.restoreAllMocks();});
 
+  it("finds older tasks even when the initial page is filled with notes", async () => {
+    fetchMock.mockResolvedValue(response(snapshot([original], {page: {nextCursor: null}})));
+    render(<CoachingEngagementWorkspace {...props} initialEntries={[{...original, id: "new-note", kind: "NOTE", title: "A new reflection"}]}
+      initialPage={{nextCursor: "all-work-page"}} />);
+    fireEvent.click(screen.getByRole("button", {name: "Tasks"}));
+    await act(async () => {jest.advanceTimersByTime(300);});
+    expect(fetchMock.mock.calls[0][0]).toContain("kind=TASK");
+    expect(fetchMock.mock.calls[0][0]).not.toContain("cursor=");
+    expect(screen.getByRole("button", {name: `Open task: ${original.title}`})).toBeVisible();
+  });
+
+  it("opens an older saved link without fetching the whole history and rechecks its access during refresh", async () => {
+    const older = {...original, id: "older-link", title: "Our first note"};
+    const url = window.location.href;
+    window.history.replaceState({}, "", "/coaching/engagements/space?work=older-link");
+    fetchMock.mockResolvedValueOnce(response(snapshot([older])))
+      .mockResolvedValueOnce(response(snapshot([original])))
+      .mockResolvedValueOnce(response(snapshot([older])))
+      .mockResolvedValueOnce(response(snapshot([original])))
+      .mockResolvedValueOnce(response(snapshot([])));
+    try {
+      await act(async () => {render(<CoachingEngagementWorkspace {...props} />);});
+      expect(fetchMock.mock.calls[0][0]).toContain("item=older-link");
+      expect(screen.getByRole("heading", {name: older.title})).toBeVisible();
+      await act(async () => fireEvent.click(screen.getByRole("button", {name: "Refresh work"})));
+      expect(fetchMock.mock.calls[2][0]).toContain("item=older-link");
+      expect(screen.getByRole("heading", {name: older.title})).toBeVisible();
+      await act(async () => fireEvent.click(screen.getByRole("button", {name: "Refresh work"})));
+      expect(screen.queryByRole("heading", {name: older.title})).not.toBeInTheDocument();
+    } finally {window.history.replaceState({}, "", url);}
+  });
+
+  it("searches older authorized work on the server and retains an unfinished edit when search is cleared", async () => {
+    const older = {...original, id: "older", title: "An early reflection", kind: "NOTE" as const};
+    fetchMock.mockResolvedValueOnce(response(snapshot([older])))
+      .mockResolvedValueOnce(response(snapshot([original])));
+    render(<CoachingEngagementWorkspace {...props} />);
+    fireEvent.click(screen.getByRole("button", {name: `Open task: ${original.title}`}));
+    fireEvent.click(screen.getByText("Edit"));
+    fireEvent.change(screen.getByLabelText("task details"), {target: {value: "My unfinished thought"}});
+    fireEvent.click(screen.getByRole("button", {name: "Back to work"}));
+    fireEvent.change(screen.getByRole("searchbox"), {target: {value: "riley@example.test"}});
+    await act(async () => {jest.advanceTimersByTime(300);});
+    expect(fetchMock.mock.calls[0][0]).toContain("q=riley%40example.test");
+    expect(screen.getByRole("button", {name: `Open note: ${older.title}`})).toBeVisible();
+    expect(screen.queryByRole("button", {name: `Open task: ${original.title}`})).not.toBeInTheDocument();
+    fireEvent.change(screen.getByRole("searchbox"), {target: {value: ""}});
+    await act(async () => {jest.advanceTimersByTime(300);});
+    fireEvent.click(screen.getByRole("button", {name: `Open task: ${original.title}`}));
+    expect(screen.getByLabelText("task details")).toHaveValue("My unfinished thought");
+  });
+
+  it("loads more history and rechecks all loaded pages on refresh, including revoked older work", async () => {
+    const older = {...original, id: "older", title: "Our first commitment"};
+    const page = {nextCursor: "next-page"};
+    fetchMock.mockResolvedValueOnce(response(snapshot([original], {page})))
+      .mockResolvedValueOnce(response(snapshot([older], {page: {nextCursor: null}})))
+      .mockResolvedValueOnce(response(snapshot([next], {page})))
+      .mockResolvedValueOnce(response(snapshot([older], {page: {nextCursor: null}})))
+      .mockResolvedValueOnce(response(snapshot([next], {page})))
+      .mockResolvedValueOnce(response(snapshot([], {page: {nextCursor: null}})));
+    render(<CoachingEngagementWorkspace {...props} initialPage={page} />);
+    await act(async () => fireEvent.click(screen.getByRole("button", {name: "Show more work"})));
+    expect(screen.getByRole("button", {name: `Open task: ${older.title}`})).toBeVisible();
+    expect(fetchMock.mock.calls[1][0]).toContain("cursor=next-page");
+    await act(async () => fireEvent.click(screen.getByRole("button", {name: "Refresh work"})));
+    expect(screen.getByRole("button", {name: `Open task: ${older.title}`})).toBeVisible();
+    expect(fetchMock.mock.calls[3][0]).toContain("cursor=next-page");
+    await act(async () => fireEvent.click(screen.getByRole("button", {name: "Refresh work"})));
+    expect(screen.queryByRole("button", {name: `Open task: ${older.title}`})).not.toBeInTheDocument();
+  });
+
+  it("ignores an old search reply arriving after the new query", async () => {
+    let finishOld!: (value: unknown) => void;
+    fetchMock.mockReturnValueOnce(new Promise((resolve) => {finishOld = resolve;}))
+      .mockResolvedValueOnce(response(snapshot([next])));
+    render(<CoachingEngagementWorkspace {...props} />);
+    fireEvent.change(screen.getByRole("searchbox"), {target: {value: "old query"}});
+    await act(async () => {jest.advanceTimersByTime(300);});
+    fireEvent.change(screen.getByRole("searchbox"), {target: {value: "new query"}});
+    await act(async () => {jest.advanceTimersByTime(300);});
+    await act(async () => finishOld(response(snapshot([{...original, id: "stale", title: "Wrong search result"}]))));
+    expect(screen.queryByRole("button", {name: "Open task: Wrong search result"})).not.toBeInTheDocument();
+    expect(screen.getByRole("button", {name: `Open task: ${next.title}`})).toBeVisible();
+  });
+
   it("refreshes visible work without remounting an unfinished edit, then merges a different field", async () => {
     fetchMock.mockResolvedValueOnce(response(snapshot([next])))
       .mockResolvedValueOnce(response({ok: true, entry: {...next, title: "My clearer title"}}));

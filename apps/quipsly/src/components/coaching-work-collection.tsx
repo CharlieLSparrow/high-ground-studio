@@ -4,21 +4,29 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { ArrowLeft, CheckCircle2, Circle, LockKeyhole, NotebookPen, Search, Target } from "lucide-react";
 import type { CoachingEngagementWorkEntry } from "./coaching-engagement-workspace";
 
-export function CoachingWorkCollection({ entries, selectedId, onSelect, onToggleTask, busyIds, children }: {
+export function CoachingWorkCollection({ entries, selectedId, onSelect, onToggleTask, busyIds, search, onSearch, loading, hasMore, onLoadMore, children }: {
   entries: CoachingEngagementWorkEntry[];
   selectedId: string | null;
   onSelect: (id: string | null) => void;
   onToggleTask?: (entry: CoachingEngagementWorkEntry) => void;
   busyIds?: ReadonlySet<string>;
+  search?: string;
+  onSearch?: (value: string) => void;
+  loading?: boolean;
+  hasMore?: boolean;
+  onLoadMore?: () => void;
   children: ReactNode;
 }) {
-  const [query, setQuery] = useState("");
+  const [localQuery, setLocalQuery] = useState("");
+  const query = search ?? localQuery;
   const detailHeading = useRef<HTMLHeadingElement>(null);
   const list = useRef<HTMLDivElement>(null);
   const previousSelection = useRef<string | null>(null);
   const selected = entries.find((entry) => entry.id === selectedId);
   const terms = query.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
-  const matches = entries.filter((entry) => {
+  // Controlled results have already been searched by the authorized server,
+  // including fields (such as a member's email) not repeated in the UI label.
+  const matches = onSearch ? entries : entries.filter((entry) => {
     const searchable = [entry.title, entry.body, entry.owner?.label].filter(Boolean).join(" ").toLocaleLowerCase();
     return terms.every((term) => searchable.includes(term));
   });
@@ -44,8 +52,8 @@ export function CoachingWorkCollection({ entries, selectedId, onSelect, onToggle
       <div ref={list} className={`min-w-0 ${selected ? "hidden lg:block" : ""}`}>
         <label className="flex min-h-11 items-center gap-2 rounded-xl border border-[#d8c7a7] bg-white px-3 text-[#765f40]">
           <Search size={17} aria-hidden="true" />
-          <input type="search" aria-label="Search this work" placeholder="Find a note, task, or goal" value={query}
-            onChange={(event) => setQuery(event.target.value)} className="min-w-0 flex-1 bg-transparent py-3 text-sm text-[#3d3122] outline-none" />
+          <input type="search" maxLength={200} aria-label="Search this work" placeholder="Find a note, task, or goal" value={query}
+            onChange={(event) => onSearch ? onSearch(event.target.value) : setLocalQuery(event.target.value)} className="min-w-0 flex-1 bg-transparent py-3 text-sm text-[#3d3122] outline-none" />
         </label>
         <div aria-label="Work items" className="mt-3 space-y-1 lg:max-h-[65dvh] lg:overflow-y-auto lg:overscroll-contain">
           {matches.map((entry) => {
@@ -73,7 +81,10 @@ export function CoachingWorkCollection({ entries, selectedId, onSelect, onToggle
               </span>
             </button></div>;
           })}
-          {query && !matches.length ? <p role="status" className="px-3 py-6 text-sm text-[#765f40]">No matching work. Try another word.</p> : null}
+          {loading ? <p role="status" className="px-3 py-3 text-sm text-[#765f40]">Finding your work…</p> : null}
+          {query && !matches.length && !loading ? <p role="status" className="px-3 py-6 text-sm text-[#765f40]">No matching work. Try another word.</p> : null}
+          {hasMore ? <button type="button" onClick={onLoadMore} disabled={loading}
+            className="my-2 min-h-11 w-full rounded-xl border border-[#d8c7a7] px-4 text-sm font-bold text-[#41624b] disabled:opacity-50">Show more work</button> : null}
         </div>
       </div>
       <div className={`min-w-0 ${selected ? "" : "hidden lg:block"}`}>

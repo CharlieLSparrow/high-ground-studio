@@ -140,7 +140,7 @@ describe("coaching engagement work", () => {
         authorPrivateNotesFilteredServerSide: true,
       },
     });
-    expect(findFirst.mock.calls[0][0].select.notes.where).toEqual({
+    expect(findFirst.mock.calls[0][0].select.notes.where).toMatchObject({
       OR: [
         { visibility: { in: ["SESSION_SHARED", "CLIENT_SAFE"] } },
         { authorUserId: actor.id },

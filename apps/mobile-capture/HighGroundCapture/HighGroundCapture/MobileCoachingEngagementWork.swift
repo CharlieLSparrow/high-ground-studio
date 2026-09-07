@@ -42,6 +42,35 @@ struct MobileCoachingEngagementWorkEntry: Codable, Identifiable, Hashable {
     }
 }
 
+struct MobileCoachingWorkPage: Codable, Hashable {
+    let nextCursor: String?
+    let pageSize: Int
+    let query: String
+    let kind: String
+}
+
+/// Only completed reads extend the history. Changing search immediately drops
+/// the old cursor chain, including when the new request subsequently fails.
+struct MobileCoachingWorkHistory {
+    static func normalizedSearch(_ value: String) -> String {
+        value.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+    }
+    private(set) var query = ""
+    private(set) var kind = "ALL"
+    private(set) var cursors: [String?] = [nil]
+
+    mutating func request(search: String?, kind nextKind: String? = nil, including cursor: String?) -> [String?] {
+        let nextQuery = search.map(Self.normalizedSearch) ?? query
+        let kind = nextKind ?? self.kind
+        if nextQuery != query || kind != self.kind { query = nextQuery; self.kind = kind; cursors = [nil] }
+        var requested = cursors
+        if let cursor, !requested.contains(cursor) { requested.append(cursor) }
+        return requested
+    }
+
+    mutating func didLoad(_ requested: [String?]) { cursors = requested }
+}
+
 struct MobileCoachingEngagementWorkspace: Codable, Hashable {
     let id: String
     let title: String
@@ -50,4 +79,5 @@ struct MobileCoachingEngagementWorkspace: Codable, Hashable {
     let currentUserId: String
     let members: [MobileCoachingEngagementMember]
     let entries: [MobileCoachingEngagementWorkEntry]
+    var page: MobileCoachingWorkPage? = nil
 }

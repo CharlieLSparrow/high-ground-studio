@@ -57,3 +57,15 @@ it("allows completing a task from the list without opening its editor", () => {
   rerender(<CoachingWorkCollection entries={[task]} selectedId={null} onSelect={select} onToggleTask={toggle} busyIds={new Set([task.id])}>{null}</CoachingWorkCollection>);
   expect(screen.getByRole("button", {name: `Reopen task: ${task.title}`})).toBeDisabled();
 });
+
+it("retains authorized server results that match a member email rather than the displayed name", () => {
+  const search = jest.fn();
+  const more = jest.fn();
+  render(<CoachingWorkCollection entries={[note]} selectedId={null} onSelect={jest.fn()}
+    search="riley@example.test" onSearch={search} hasMore onLoadMore={more}>{null}</CoachingWorkCollection>);
+  expect(screen.getByRole("button", {name: `Open note: ${note.title}`})).toBeVisible();
+  fireEvent.change(screen.getByRole("searchbox"), {target: {value: "older reflection"}});
+  expect(search).toHaveBeenCalledWith("older reflection");
+  fireEvent.click(screen.getByRole("button", {name: "Show more work"}));
+  expect(more).toHaveBeenCalledTimes(1);
+});

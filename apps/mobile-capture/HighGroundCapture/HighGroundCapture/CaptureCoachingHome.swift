@@ -323,6 +323,10 @@ final class MobileCoachingEngagementWorkspaceClient: ObservableObject {
     @Published private(set) var errorMessage: String?
     @Published private(set) var pendingUndo: MobileCoachingWorkUndo?
     private var createAttempts: [String: CaptureCoachingCreateAttempt] = [:]
+    private var history = MobileCoachingWorkHistory()
+    private var loadGeneration = 0
+    var searchQuery: String { history.query }
+    var searchKind: String { history.kind }
 
     let engagementID: String
     private let baseURL = normalizedNestBaseURL(
@@ -364,21 +368,38 @@ final class MobileCoachingEngagementWorkspaceClient: ObservableObject {
         )
     }
 
-    func load() async {
-        guard !isLoading else { return }
+    func load(search: String? = nil, kind: String? = nil, including nextCursor: String? = nil, force: Bool = false) async {
+        let query = search.map(MobileCoachingWorkHistory.normalizedSearch) ?? history.query
+        let kind = kind ?? history.kind
+        guard force || !isLoading || query != history.query || kind != history.kind else { return }
+        let cursors = history.request(search: query, kind: kind, including: nextCursor)
+        loadGeneration += 1
+        let generation = loadGeneration
         isLoading = true
-        defer { isLoading = false }
+        defer { if loadGeneration == generation { isLoading = false } }
         errorMessage = nil
         do {
-            let (payload, response) = try await request(method: "GET")
-            guard response.statusCode < 400, payload.ok, let engagement = payload.engagement,
-                  engagement.id == engagementID else {
-                if response.statusCode < 400 { workspace = nil; pendingUndo = nil }
-                throw coachingClientError(payload.error ?? "This coaching space could not load.")
+            var latest: MobileCoachingEngagementWorkspace?
+            var collected: [String: MobileCoachingEngagementWorkEntry] = [:]
+            for cursor in cursors {
+                let (payload, response) = try await request(method: "GET", query: query, kind: kind, cursor: cursor)
+                guard generation == loadGeneration else { return }
+                guard response.statusCode < 400, payload.ok, let engagement = payload.engagement,
+                      engagement.id == engagementID,
+                      latest == nil || latest?.currentUserId == engagement.currentUserId else {
+                    if response.statusCode < 400 { workspace = nil; pendingUndo = nil }
+                    throw coachingClientError(payload.error ?? "This coaching space could not load.")
+                }
+                latest = engagement
+                for entry in engagement.entries { collected[entry.id] = entry }
             }
-            workspace = engagement
+            guard let latest else { return }
+            history.didLoad(cursors)
+            workspace = MobileCoachingEngagementWorkspace(id: latest.id, title: latest.title, status: latest.status,
+                canWrite: latest.canWrite, currentUserId: latest.currentUserId, members: latest.members,
+                entries: collected.values.sorted { $0.updatedAt > $1.updatedAt }, page: latest.page)
         } catch {
-            errorMessage = error.localizedDescription
+            if generation == loadGeneration { errorMessage = error.localizedDescription }
         }
     }
 
@@ -442,7 +463,7 @@ final class MobileCoachingEngagementWorkspaceClient: ObservableObject {
                 }
             }
             createAttempts[clientRequestID] = nil
-            await load()
+            await load(force: true)
             return true
         } catch {
             errorMessage = error.localizedDescription
@@ -487,7 +508,7 @@ final class MobileCoachingEngagementWorkspaceClient: ObservableObject {
             guard response.statusCode < 400, payload.ok, payload.entry != nil else {
                 throw coachingClientError(payload.error ?? "That coaching item could not be updated.")
             }
-            await load()
+            await load(force: true)
             return true
         } catch {
             errorMessage = error.localizedDescription
@@ -514,7 +535,7 @@ final class MobileCoachingEngagementWorkspaceClient: ObservableObject {
                 throw coachingClientError(payload.error ?? "That coaching item could not be removed.")
             }
             pendingUndo = MobileCoachingWorkUndo(removal: removal, title: entry.displayTitle)
-            await load()
+            await load(force: true)
             return true
         } catch {
             errorMessage = error.localizedDescription
@@ -538,7 +559,7 @@ final class MobileCoachingEngagementWorkspaceClient: ObservableObject {
                 throw coachingClientError(payload.error ?? "That coaching item could not be restored.")
             }
             self.pendingUndo = nil
-            await load()
+            await load(force: true)
             return true
         } catch {
             errorMessage = error.localizedDescription
@@ -548,12 +569,21 @@ final class MobileCoachingEngagementWorkspaceClient: ObservableObject {
 
     private func request(
         method: String,
-        body: [String: Any]? = nil
+        body: [String: Any]? = nil,
+        query: String = "",
+        kind: String = "ALL",
+        cursor: String? = nil
     ) async throws -> (MobileCoachingEngagementWorkspaceResponse, HTTPURLResponse) {
         guard let encodedID = engagementID.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed),
-              let url = URL(string: "\(baseURL)/api/coaching/engagements/\(encodedID)/work") else {
+              var components = URLComponents(string: "\(baseURL)/api/coaching/engagements/\(encodedID)/work") else {
             throw coachingClientError("The configured Nest URL is not valid.")
         }
+        var items: [URLQueryItem] = []
+        if !query.isEmpty { items.append(URLQueryItem(name: "q", value: query)) }
+        if kind != "ALL" { items.append(URLQueryItem(name: "kind", value: kind)) }
+        if let cursor { items.append(URLQueryItem(name: "cursor", value: cursor)) }
+        if !items.isEmpty { components.queryItems = items }
+        guard let url = components.url else { throw coachingClientError("This work list could not be opened.") }
         var request = URLRequest(url: url)
         request.httpMethod = method
         request.cachePolicy = .reloadIgnoringLocalCacheData
@@ -3170,6 +3200,15 @@ private enum MobileCoachingWorkFilter: String, CaseIterable, Identifiable {
 
     var id: String { rawValue }
 
+    var apiKind: String {
+        switch self {
+        case .all: "ALL"
+        case .notes: "NOTE"
+        case .tasks: "TASK"
+        case .goals: "GOAL"
+        }
+    }
+
     func includes(_ entry: MobileCoachingEngagementWorkEntry) -> Bool {
         switch self {
         case .all: true
@@ -3209,6 +3248,7 @@ struct CaptureCoachingEngagementWorkspaceView: View {
     @State private var filter: MobileCoachingWorkFilter = .all
     @State private var newWorkDraft: MobileCoachingWorkDraft?
     @State private var editingEntry: MobileCoachingEngagementWorkEntry?
+    @State private var workSearch = ""
 
     init(
         engagement: MobileCaptureCoachingEngagement,
@@ -3272,6 +3312,19 @@ struct CaptureCoachingEngagementWorkspaceView: View {
                     }
                 }
 
+                if let page = client.workspace?.page, let cursor = page.nextCursor,
+                   page.kind == filter.apiKind, page.query == MobileCoachingWorkHistory.normalizedSearch(workSearch) {
+                    Button {
+                        Task { await client.load(including: cursor) }
+                    } label: {
+                        Label("Show more work", systemImage: "chevron.down")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(client.isLoading)
+                    .accessibilityIdentifier("CaptureCoachingWorkLoadMore")
+                }
+
                 MobileEngagementChatCard(
                     client: conversation,
                     engagement: engagement,
@@ -3289,6 +3342,12 @@ struct CaptureCoachingEngagementWorkspaceView: View {
         }
         .background(CaptureCanvas())
         .navigationTitle(client.workspace?.title ?? engagement.title)
+        .searchable(text: $workSearch, prompt: "Find notes, tasks, or goals")
+        .task(id: "\(workSearch)|\(filter.apiKind)") {
+            guard !previewOnly, MobileCoachingWorkHistory.normalizedSearch(workSearch) != client.searchQuery || filter.apiKind != client.searchKind else { return }
+            do { try await Task.sleep(for: .milliseconds(300)) } catch { return }
+            await client.load(search: workSearch, kind: filter.apiKind)
+        }
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(CapturePalette.canvas, for: .navigationBar)
         .toolbarBackground(.visible, for: .navigationBar)

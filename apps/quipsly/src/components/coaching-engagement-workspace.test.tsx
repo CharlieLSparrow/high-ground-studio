@@ -70,7 +70,7 @@ describe("CoachingEngagementWorkspace", () => {
     expect(screen.getByRole("heading", {name: note.title})).toBeVisible();
     expect(screen.queryByRole("heading", {name: sharedTask.title})).not.toBeInTheDocument();
     fireEvent.click(filters.getByRole("button", {name: "Goals"}));
-    expect(screen.getByText("No goals yet.")).toBeVisible();
+    expect(screen.getByText("Finding your work…")).toBeVisible();
     fireEvent.click(filters.getByRole("button", {name: "Tasks"}));
     fireEvent.click(screen.getByRole("button", {name: `Open task: ${sharedTask.title}`}));
     expect(task.getByRole("textbox", {name: "task details"})).toHaveValue("Keep my unfinished thought");

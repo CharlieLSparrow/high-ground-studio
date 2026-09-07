@@ -51,10 +51,10 @@ describe("client space page behavior", () => {
     expect(screen.getByRole("button", { name: "Add shared note" })).toBeEnabled();
     const query = prisma.coachingEngagement.findFirst.mock.calls[0][0];
     expect(query.where).toEqual(coachingEngagementAccessWhere("space", person, "read"));
-    expect(query.select.notes.where).toEqual({ OR: [
+    expect(query.select.notes.where).toMatchObject({ OR: [
       { visibility: { in: ["SESSION_SHARED", "CLIENT_SAFE"] } }, { authorUserId: person.id },
     ] });
-    expect(query.select.actionItems.where).toEqual(sharedCoachingWorkVisibilityWhere());
+    expect(query.select.actionItems.where).toMatchObject(sharedCoachingWorkVisibilityWhere());
     expect(query.select.goals.where).toEqual(query.select.actionItems.where);
   });
 

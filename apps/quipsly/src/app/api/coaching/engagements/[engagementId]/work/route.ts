@@ -7,6 +7,8 @@ import { coachingEngagementAccessWhere } from "@/lib/server/coaching-engagement"
 import { sharedCoachingWorkVisibilityWhere } from "@/lib/server/coaching-work-access";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 import { sessionWorkSourceHref } from "@/lib/session-work-source-link";
+import { coachingWorkPage } from "@/lib/server/coaching-work-page";
+import { retryCoachingWorkTransaction } from "@/lib/server/coaching-work-transaction";
 
 export const runtime = "nodejs";
 
@@ -229,6 +231,9 @@ export async function GET(
   }
 
   const { engagementId } = await context.params;
+  let paging: ReturnType<typeof coachingWorkPage>;
+  try { paging = coachingWorkPage(new URL(request.url).searchParams, engagementId, session.user.id); }
+  catch { return privateJson({ok: false, code: "INVALID_WORK_QUERY", error: "Refresh this work list and try again."}, 400); }
   const prisma = getPrismaClient() as any;
   try {
     const [engagement, writable] = await Promise.all([
@@ -253,25 +258,26 @@ export async function GET(
           },
           notes: {
             where: {
+              ...paging.where("NOTE"),
               OR: [
                 { visibility: { in: ["SESSION_SHARED", "CLIENT_SAFE"] } },
                 { authorUserId: session.user.id },
               ],
             },
-            orderBy: { updatedAt: "desc" },
-            take: 100,
+            orderBy: paging.orderBy,
+            take: paging.take,
             select: NOTE_SELECT,
           },
           actionItems: {
-            where: sharedCoachingWorkVisibilityWhere(),
-            orderBy: [{ status: "asc" }, { dueAt: "asc" }],
-            take: 100,
+            where: { ...sharedCoachingWorkVisibilityWhere(), ...paging.where("TASK") },
+            orderBy: paging.orderBy,
+            take: paging.take,
             select: TASK_SELECT,
           },
           goals: {
-            where: sharedCoachingWorkVisibilityWhere(),
-            orderBy: [{ status: "asc" }, { updatedAt: "desc" }],
-            take: 100,
+            where: { ...sharedCoachingWorkVisibilityWhere(), ...paging.where("GOAL") },
+            orderBy: paging.orderBy,
+            take: paging.take,
             select: GOAL_SELECT,
           },
         },
@@ -305,6 +311,7 @@ export async function GET(
         .map((row: any) => goalPayload(row, Boolean(writable))),
     ].sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
 
+    const page = paging.result(entries);
     return privateJson({
       ok: true,
       engagement: {
@@ -318,7 +325,8 @@ export async function GET(
           label: member.user?.name || member.user?.primaryEmail || "Member",
           role: member.role,
         })),
-        entries,
+        entries: page.entries,
+        page: page.page,
       },
       boundaries: {
         canonicalEngagementRecords: true,
@@ -376,7 +384,7 @@ export async function POST(
     );
   }
 
-  const prisma = getPrismaClient() as any;
+  const prisma = getPrismaClient();
   const id = stableId(session.user.id, clientRequestId, workKind);
   const fingerprint = createHash("sha256")
     .update(
@@ -393,7 +401,7 @@ export async function POST(
     .digest("hex");
 
   try {
-    const result = await prisma.$transaction(
+    const result = await retryCoachingWorkTransaction(() => prisma.$transaction(
       async (tx: any) => {
         const engagement = await tx.coachingEngagement.findFirst({
           where: coachingEngagementAccessWhere(
@@ -555,7 +563,7 @@ export async function POST(
         };
       },
       { isolationLevel: "Serializable" },
-    );
+    ));
 
     if (result.kind === "unavailable") {
       return NextResponse.json(

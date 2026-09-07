@@ -26,6 +26,7 @@ import { getPrismaClient } from "@/lib/prisma";
 import { coachingEngagementAccessWhere } from "@/lib/server/coaching-engagement";
 import { sharedCoachingWorkVisibilityWhere } from "@/lib/server/coaching-work-access";
 import { sessionWorkSourceHref } from "@/lib/session-work-source-link";
+import { coachingWorkPage } from "@/lib/server/coaching-work-page";
 import { getQuipslySession } from "@/lib/server/quipsly-session";
 
 export const dynamic = "force-dynamic";
@@ -71,6 +72,7 @@ export default async function CoachingEngagementPage({
     );
   }
   const prisma = getPrismaClient();
+  const workPage = coachingWorkPage(new URLSearchParams(), engagementId, session.user.id);
   const engagement = await prisma.coachingEngagement.findFirst({
     where: coachingEngagementAccessWhere(engagementId, session.user, "read"),
     select: {
@@ -116,13 +118,14 @@ export default async function CoachingEngagementPage({
       },
       notes: {
         where: {
+          ...workPage.where("NOTE"),
           OR: [
             { visibility: { in: ["SESSION_SHARED", "CLIENT_SAFE"] } },
             { authorUserId: session.user.id },
           ],
         },
-        orderBy: { updatedAt: "desc" },
-        take: 100,
+        orderBy: workPage.orderBy,
+        take: workPage.take,
         select: {
           id: true,
           title: true,
@@ -137,9 +140,9 @@ export default async function CoachingEngagementPage({
         },
       },
       actionItems: {
-        where: sharedCoachingWorkVisibilityWhere(),
-        orderBy: [{ status: "asc" }, { dueAt: "asc" }],
-        take: 100,
+        where: {...sharedCoachingWorkVisibilityWhere(), ...workPage.where("TASK")},
+        orderBy: workPage.orderBy,
+        take: workPage.take,
         select: {
           id: true,
           title: true,
@@ -155,9 +158,9 @@ export default async function CoachingEngagementPage({
         },
       },
       goals: {
-        where: sharedCoachingWorkVisibilityWhere(),
-        orderBy: [{ status: "asc" }, { updatedAt: "desc" }],
-        take: 100,
+        where: {...sharedCoachingWorkVisibilityWhere(), ...workPage.where("GOAL")},
+        orderBy: workPage.orderBy,
+        take: workPage.take,
         select: {
           id: true,
           title: true,
@@ -268,6 +271,7 @@ export default async function CoachingEngagementPage({
       updatedAt: goal.updatedAt.toISOString(),
     })),
   ].sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+  const initialWork = workPage.result(workEntries);
 
   const now = Date.now();
   const liveRoom = engagement.callRooms.find((room) =>
@@ -412,7 +416,8 @@ export default async function CoachingEngagementPage({
         <CoachingSpaceTabs
           work={<CoachingEngagementWorkspace
             engagementId={engagement.id}
-            initialEntries={workEntries}
+            initialEntries={initialWork.entries}
+            initialPage={initialWork.page}
             members={engagement.members.map((member) => ({
               id: member.userId,
               label: personLabel(member.user),

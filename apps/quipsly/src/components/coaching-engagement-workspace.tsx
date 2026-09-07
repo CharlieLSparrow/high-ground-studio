@@ -64,6 +64,7 @@ type CoachingEngagementWorkspaceProps = {
   members: CoachingEngagementWorkMember[];
   currentUserId: string;
   canWrite: boolean;
+  initialPage?: { nextCursor: string | null };
 };
 
 export function CoachingEngagementWorkspace(
@@ -83,6 +84,7 @@ function CoachingEngagementWorkspaceContent({
   members: initialMembers,
   currentUserId,
   canWrite: initialCanWrite,
+  initialPage,
 }: CoachingEngagementWorkspaceProps) {
   const [members, setMembers] = useState(initialMembers);
   const [canWrite, setCanWrite] = useState(initialCanWrite);
@@ -98,6 +100,11 @@ function CoachingEngagementWorkspaceContent({
     members[0]?.id ||
     currentUserId;
   const [entries, setEntries] = useState(initialEntries);
+  const [search, setSearch] = useState("");
+  const searchRef = useRef("");
+  const [nextCursor, setNextCursor] = useState(initialPage?.nextCursor ?? null);
+  const history = useRef<{query: string; kind: string; cursors: Array<string | null>; ids: Set<string>}>({query: "", kind: "ALL", cursors: [null], ids: new Set(initialEntries.map((entry) => entry.id))});
+  const [resultIds, setResultIds] = useState<Set<string> | null>(null);
   const [createOpen, setCreateOpen] = useState(initialEntries.length === 0);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const selection = useRef(selectedId);
@@ -139,21 +146,49 @@ function CoachingEngagementWorkspaceContent({
   const createForm = useRef<HTMLFormElement>(null);
   const counts = useMemo(
     () => ({
-      notes: entries.filter((entry) => entry.kind === "NOTE").length,
+      notes: entries.filter((entry) => (!resultIds || resultIds.has(entry.id)) && entry.kind === "NOTE").length,
       tasks: entries.filter(
-        (entry) => entry.kind === "TASK" && entry.status === "OPEN",
+        (entry) => (!resultIds || resultIds.has(entry.id)) && entry.kind === "TASK" && entry.status === "OPEN",
       ).length,
       goals: entries.filter(
-        (entry) => entry.kind === "GOAL" && activeStatus(entry),
+        (entry) => (!resultIds || resultIds.has(entry.id)) && entry.kind === "GOAL" && activeStatus(entry),
       ).length,
     }),
-    [entries],
+    [entries, resultIds],
   );
   const visibleEntries = entries.filter(
-    (entry) => workFilter === "ALL" || entry.kind === workFilter,
+    (entry) => (!resultIds || resultIds.has(entry.id)) && (workFilter === "ALL" || entry.kind === workFilter),
   );
+  const queryPending = !refreshError && (history.current.query !== search || history.current.kind !== workFilter);
 
-  const refreshEntries = useCallback(async () => {
+  // A saved link can point beyond the loaded history. Resolve that one item
+  // through the same authorized read API, rather than downloading every page.
+  useEffect(() => {
+    if (!selectedId || entries.some((entry) => entry.id === selectedId)) return;
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 10_000);
+    void (async () => {
+      try {
+        const params = new URLSearchParams({item: selectedId});
+        const response = await fetch(`/api/coaching/engagements/${encodeURIComponent(engagementId)}/work?${params}`, {cache: "no-store", signal: controller.signal});
+        const payload = await response.json();
+        if (controller.signal.aborted) return;
+        if ([401, 403, 404].includes(response.status)) {
+          setAccessUnavailable(true); setEntries([]); setNotice(null); setLastRemoved(null); return;
+        }
+        if (!response.ok || !payload?.ok || payload.engagement?.id !== engagementId || payload.engagement?.currentUserId !== currentUserId) return;
+        const entry = payload.engagement.entries?.find((candidate: CoachingEngagementWorkEntry) => candidate.id === selectedId);
+        if (entry) {
+          setEntries((current) => current.some((candidate) => candidate.id === entry.id) ? current : [...current, entry]);
+          setResultIds((current) => current ? new Set([...current, entry.id]) : null);
+        } else setRefreshError("This item is no longer available here.");
+      } catch { if (!controller.signal.aborted) setRefreshError("This item could not load. Try Refresh work when you’re connected."); }
+      finally { window.clearTimeout(timeout); }
+    })();
+    return () => {controller.abort(); window.clearTimeout(timeout);};
+  }, [selectedId, engagementId, currentUserId]);
+
+  const refreshEntries = useCallback(async (moreCursor?: string) => {
     if (refreshController.current || pendingIds.current.size) return;
     const controller = new AbortController();
     refreshController.current = controller;
@@ -161,33 +196,56 @@ function CoachingEngagementWorkspaceContent({
     const timeout = window.setTimeout(() => controller.abort(), 10_000);
     setRefreshing(true);
     try {
-      const response = await fetch(`/api/coaching/engagements/${encodeURIComponent(engagementId)}/work`, {
-        cache: "no-store", signal: controller.signal,
-      });
-      if (refreshController.current !== controller) return;
-      if ([401, 403, 404].includes(response.status)) {
-        setAccessUnavailable(true);
-        setEntries([]);
-        setNotice(null);
-        setLastRemoved(null);
-        return;
+      const changedQuery = history.current.query !== search || history.current.kind !== workFilter;
+      const cursors = changedQuery ? [null] : [...history.current.cursors];
+      if (moreCursor && !cursors.includes(moreCursor)) cursors.push(moreCursor);
+      const collected = new Map<string, CoachingEngagementWorkEntry>();
+      let latest: {members: CoachingEngagementWorkMember[]; canWrite: boolean; page?: {nextCursor?: string | null}} | undefined;
+      for (let index = 0; index <= cursors.length; index++) {
+        const focusedItem = index === cursors.length ? selection.current : null;
+        if (index === cursors.length && (search || !focusedItem || collected.has(focusedItem))) break;
+        const cursor = cursors[index];
+        const params = new URLSearchParams();
+        if (search.trim()) params.set("q", search.trim());
+        if (workFilter !== "ALL") params.set("kind", workFilter);
+        if (cursor) params.set("cursor", cursor);
+        if (focusedItem) params.set("item", focusedItem);
+        const response = await fetch(`/api/coaching/engagements/${encodeURIComponent(engagementId)}/work${params.size ? `?${params}` : ""}`, {
+          cache: "no-store", signal: controller.signal,
+        });
+        if (refreshController.current !== controller || searchRef.current !== search) return;
+        if ([401, 403, 404].includes(response.status)) {
+          setAccessUnavailable(true);
+          setEntries([]);
+          setNotice(null);
+          setLastRemoved(null);
+          return;
+        }
+        const payload = await response.json().catch(() => null);
+        if (refreshController.current !== controller) return;
+        if (!response.ok || !payload?.ok || !Array.isArray(payload.engagement?.entries) || !Array.isArray(payload.engagement?.members)) throw new Error("Read unavailable");
+        if (payload.engagement.id !== engagementId || payload.engagement.currentUserId !== currentUserId) {
+          setAccessUnavailable(true);
+          setEntries([]);
+          setNotice(null);
+          setLastRemoved(null);
+          return;
+        }
+        // A snapshot requested before a local save must not put the old item
+        // back, undo a completion, or resurrect something just removed.
+        if (mutationRevision.current !== revision) return;
+        if (!focusedItem) latest = payload.engagement;
+        for (const entry of payload.engagement.entries) collected.set(entry.id, entry);
       }
-      const payload = await response.json().catch(() => null);
-      if (refreshController.current !== controller) return;
-      if (!response.ok || !payload?.ok || !Array.isArray(payload.engagement?.entries) || !Array.isArray(payload.engagement?.members)) throw new Error("Read unavailable");
-      if (payload.engagement.id !== engagementId || payload.engagement.currentUserId !== currentUserId) {
-        setAccessUnavailable(true);
-        setEntries([]);
-        setNotice(null);
-        setLastRemoved(null);
-        return;
-      }
-      // A snapshot requested before a local save must not put the old item
-      // back, undo a completion, or resurrect something just removed.
-      if (mutationRevision.current !== revision) return;
-      setEntries(payload.engagement.entries);
-      setMembers(payload.engagement.members);
-      setCanWrite(payload.engagement.canWrite === true);
+      if (!latest) throw new Error("Read unavailable");
+      const previousIds = history.current.ids;
+      setEntries((current) => [...current.filter((entry) => !collected.has(entry.id) && (changedQuery || !previousIds.has(entry.id))), ...collected.values()]
+        .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)));
+      history.current = {query: search, kind: workFilter, cursors, ids: new Set(collected.keys())};
+      setResultIds(new Set(collected.keys()));
+      setNextCursor(latest?.page?.nextCursor ?? null);
+      setMembers(latest.members);
+      setCanWrite(latest.canWrite === true);
       setAccessUnavailable(false);
       setRefreshError(null);
     } catch {
@@ -201,7 +259,21 @@ function CoachingEngagementWorkspaceContent({
         setRefreshing(false);
       }
     }
-  }, [engagementId, currentUserId]);
+  }, [engagementId, currentUserId, search, workFilter]);
+
+  const searchInitialized = useRef(false);
+  useEffect(() => {
+    if (!searchInitialized.current) { searchInitialized.current = true; return; }
+    const timer = window.setTimeout(() => { void refreshEntries(); }, 300);
+    return () => window.clearTimeout(timer);
+  }, [search, refreshEntries]);
+
+  function searchWork(value: string) {
+    searchRef.current = value;
+    setRefreshError(null);
+    setSearch(value);
+    setNextCursor(null);
+  }
 
   useEffect(() => {
     const refreshWhenVisible = () => {
@@ -225,6 +297,8 @@ function CoachingEngagementWorkspaceContent({
   }, [refreshEntries]);
 
   function replaceEntry(entry: CoachingEngagementWorkEntry) {
+    history.current.ids.add(entry.id);
+    setResultIds((current) => current ? new Set([...current, entry.id]) : null);
     setEntries((current) =>
       [entry, ...current.filter((candidate) => candidate.id !== entry.id)].sort(
         (left, right) => right.updatedAt.localeCompare(left.updatedAt),
@@ -475,7 +549,8 @@ function CoachingEngagementWorkspaceContent({
             Notes, tasks, and goals
           </h2>
         </div>
-        <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-[#765f40]">
+        <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-[#765f40]" aria-label="Loaded work">
+          <span>Loaded:</span>
           <span>
             {counts.notes} notes
           </span>
@@ -496,7 +571,7 @@ function CoachingEngagementWorkspaceContent({
           ["ALL", "All"], ["NOTE", "Notes"], ["TASK", "Tasks"], ["GOAL", "Goals"],
         ] as const).map(([value, label]) => (
           <button key={value} type="button" aria-pressed={workFilter === value}
-            onClick={() => setWorkFilter(value)}
+            onClick={() => {setRefreshError(null); setWorkFilter(value);}}
             className={`min-h-11 rounded-lg px-2 text-sm font-bold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#41624b] ${workFilter === value ? "bg-[#41624b] text-white shadow-sm" : "text-[#5e503c] hover:bg-[#e6dcc7]"}`}>
             {label}
           </button>
@@ -650,6 +725,9 @@ function CoachingEngagementWorkspaceContent({
       )}
 
       <CoachingWorkCollection entries={visibleEntries} selectedId={selectedId} onSelect={selectEntry}
+        search={search} onSearch={searchWork} loading={refreshing || queryPending}
+        hasMore={Boolean(nextCursor) && history.current.kind === workFilter && history.current.query === search}
+        onLoadMore={() => { if (nextCursor) void refreshEntries(nextCursor); }}
         busyIds={busyIds} onToggleTask={canWrite ? (entry) => void updateEntry(entry, {status: entry.status === "DONE" ? "OPEN" : "DONE"}) : undefined}>
         {entries.map((entry) => {
             const Icon = entryIcon(entry.kind);
@@ -660,7 +738,7 @@ function CoachingEngagementWorkspaceContent({
               <article
                 key={entry.id}
                 data-work-id={entry.id}
-                hidden={entry.id !== selectedId || (workFilter !== "ALL" && entry.kind !== workFilter)}
+                hidden={entry.id !== selectedId || !visibleEntries.some((visible) => visible.id === entry.id)}
                 className={`rounded-2xl border bg-white p-4 ${isActive ? "border-[#eadfc9]" : "border-[#c8d3bd] opacity-80"}`}
               >
                 <div className="flex flex-wrap items-start justify-between gap-4">
@@ -755,7 +833,7 @@ function CoachingEngagementWorkspaceContent({
             );
           })}
       </CoachingWorkCollection>
-        {visibleEntries.length === 0 ? (
+        {visibleEntries.length === 0 && !queryPending && !refreshing ? (
           <div className="rounded-2xl border border-dashed border-[#d8c7a7] bg-white p-6 text-center">
             <CircleDot className="mx-auto text-[#41624b]" aria-hidden="true" />
             <p className="mt-3 font-black text-[#3d3122]">
