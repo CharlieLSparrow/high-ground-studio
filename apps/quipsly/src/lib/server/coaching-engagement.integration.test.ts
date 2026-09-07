@@ -151,6 +151,21 @@ runLocalDatabaseSmoke("private Coaching Engagement collaboration", () => {
     await expect(createCoachingClientSpace({ prisma, actor: { id: ids.coach }, email: "not-an-email" })).rejects.toMatchObject({ status: 400 });
   });
 
+  it("returns a normal space link for an existing member without changing access", async () => {
+    const before = await prisma.coachingEngagementMember.findUniqueOrThrow({ where: { engagementId_userId: { engagementId: createdSpaceId, userId: ids.client } } });
+    const result = await inviteCoachingEngagementMember({ prisma, engagementId: createdSpaceId,
+      actor: { id: ids.coach }, email: email("client"), role: "COACH",
+      requestId: randomUUID(), origin: "http://127.0.0.1:3012" });
+    expect(result).toMatchObject({ alreadyMember: true, invitation: null, delivered: false,
+      invitationPath: `/coaching/engagements/${createdSpaceId}` });
+    expect(await prisma.coachingEngagementMember.findUnique({ where: { id: before.id } })).toEqual(before);
+    expect(await prisma.coachingEngagementInvitation.count({ where: { engagementId: createdSpaceId } })).toBe(0);
+    expect(await prisma.coachingEngagementMemberReceipt.count({ where: { engagementId: createdSpaceId } })).toBe(0);
+    await expect(inviteCoachingEngagementMember({ prisma, engagementId: createdSpaceId,
+      actor: { id: ids.outsider }, email: email("client"), role: "CLIENT", requestId: randomUUID(),
+      origin: "http://127.0.0.1:3012" })).rejects.toMatchObject({ status: 404 });
+  });
+
   it("admits coach/client but does not inherit Nest editor or viewer access", async () => {
     const actors = {
       coach: { id: ids.coach, primaryEmail: email("coach") },
@@ -282,6 +297,12 @@ runLocalDatabaseSmoke("private Coaching Engagement collaboration", () => {
       prisma,
     });
     expect(invited.invitationUrl).toContain("/coaching/engagements/join#token=");
+    const recovered = await inviteCoachingEngagementMember({ engagementId, actor: coach,
+      email: email("invitee"), role: "COACH", requestId: randomUUID(),
+      origin: "http://127.0.0.1:3012", prisma });
+    expect(recovered).toMatchObject({ replayed: true, delivered: false,
+      invitationUrl: invited.invitationUrl, invitation: { role: "CLIENT", status: "PENDING" } });
+    expect(await prisma.coachingEngagementInvitation.count({ where: { engagementId, invitedUserId: ids.invitee } })).toBe(1);
     const token = decodeURIComponent(invited.invitationUrl.split("#token=")[1]);
     await expect(prisma.coachingEngagement.findFirst({
       where: coachingEngagementAccessWhere(engagementId, { id: ids.invitee, primaryEmail: email("invitee") }, "read"),
@@ -359,7 +380,7 @@ runLocalDatabaseSmoke("private Coaching Engagement collaboration", () => {
     const revokedToken = decodeURIComponent(revokedInvite.invitationUrl.split("#token=")[1]);
     await revokeCoachingEngagementInvitation({
       engagementId,
-      invitationId: revokedInvite.invitation.id,
+      invitationId: revokedInvite.invitation!.id,
       actor: coach,
       requestId: randomUUID(),
       prisma,

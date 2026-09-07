@@ -83,7 +83,7 @@ export async function POST(request: Request, context: Context) {
         requestId,
         origin: new URL(request.url).origin,
       });
-      return privateJson({ ok: true, result }, 201);
+      return privateJson({ ok: true, result }, result.replayed || "alreadyMember" in result ? 200 : 201);
     }
     if (action === "REMOVE" || action === "RESTORE") {
       const expectedRevision = Number(input.expectedRevision);

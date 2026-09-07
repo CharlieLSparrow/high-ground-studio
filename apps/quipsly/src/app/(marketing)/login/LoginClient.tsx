@@ -84,7 +84,14 @@ export function LoginClient({
   initialError?: string;
 }) {
   const safeCallbackUrl = cleanQuipslyCallbackUrl(callbackUrl);
-  const loginContext = safeCallbackUrl.startsWith("/sessions/")
+  const isSharedSpaceEntry = safeCallbackUrl.startsWith("/coaching/engagements/");
+  const loginContext = isSharedSpaceEntry
+    ? {
+        eyebrow: "Quipsly",
+        signInTitle: "Open your shared space",
+        description: "Sign in to continue your conversation, notes, tasks, and sessions together.",
+      }
+    : safeCallbackUrl.startsWith("/sessions/")
     ? {
         eyebrow: "Private Quipsly Session",
         signInTitle: "Open your Session",
@@ -292,7 +299,9 @@ export function LoginClient({
   }
 
   const busy = isGoogleSigningIn || isPasswordSigningIn || isRecoveringPassword;
-  const createAccountDescription = safeCallbackUrl.startsWith("/sessions/")
+  const createAccountDescription = isSharedSpaceEntry
+    ? "Create your account to join the shared space and work together."
+    : safeCallbackUrl.startsWith("/sessions/")
     ? "Create your account to open this Session and keep its shared work together."
     : safeCallbackUrl.startsWith("/coaching")
       ? "Start scheduling Sessions, inviting clients, and keeping your coaching work together."

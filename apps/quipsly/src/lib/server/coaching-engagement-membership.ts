@@ -291,11 +291,16 @@ export async function inviteCoachingEngagementMember(input: {
     },
   });
   if (existingMember?.status === "ACTIVE") {
-    throw new CoachingEngagementMembershipError(
-      "That account is already an active member.",
-      409,
-      "ALREADY_MEMBER",
-    );
+    const invitationPath = `/coaching/engagements/${encodeURIComponent(input.engagementId)}`;
+    return {
+      replayed: false,
+      alreadyMember: true,
+      invitation: null,
+      invitationPath,
+      invitationUrl: `${input.origin}${invitationPath}`,
+      delivered: false,
+      message: `This person already has ${String(existingMember.role).toLowerCase()} access. Share this space link with them; their role has not changed.`,
+    };
   }
   if (existingMember?.status === "REMOVED") {
     throw new CoachingEngagementMembershipError(
@@ -313,11 +318,27 @@ export async function inviteCoachingEngagementMember(input: {
     },
   });
   if (pending) {
-    throw new CoachingEngagementMembershipError(
-      "A current invitation already exists. Revoke it before creating a replacement link.",
-      409,
-      "INVITATION_PENDING",
-    );
+    const receipt = await prisma.coachingEngagementMemberReceipt.findFirst({
+      where: { invitationId: pending.id, action: "INVITE" },
+      select: { requestId: true },
+    });
+    const token = receipt ? invitationToken({ requestId: receipt.requestId,
+      engagementId: input.engagementId, invitedUserId: invitedUser.id }) : null;
+    if (!token || tokenHash(token) !== pending.tokenHash) {
+      throw new CoachingEngagementMembershipError(
+        "This invitation’s link is no longer available. Revoke it and create a new invitation.",
+        409, "INVITATION_UNAVAILABLE",
+      );
+    }
+    const invitationPath = `/coaching/engagements/join#token=${encodeURIComponent(token)}`;
+    return {
+      replayed: true,
+      invitation: invitationProjection(pending),
+      invitationPath,
+      invitationUrl: `${input.origin}${invitationPath}`,
+      delivered: false,
+      message: `Their existing ${String(pending.role).toLowerCase()} invitation is ready to share.`,
+    };
   }
 
   const token = invitationToken({

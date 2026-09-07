@@ -157,6 +157,14 @@ describe("Quipsly direct login", () => {
     expect(screen.getByText(/join your private Session/)).toBeInTheDocument();
   });
 
+  it.each(["/coaching/engagements/client-space", "/coaching/engagements/join"])("does not sell a coaching practice to a client opening %s", (callbackUrl) => {
+    render(<LoginClient callbackUrl={callbackUrl} />);
+    expect(screen.getByRole("heading", { name: "Open your shared space" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Create account" }));
+    expect(screen.getByText("Create your account to join the shared space and work together.")).toBeInTheDocument();
+    expect(screen.queryByText(/Start scheduling Sessions/)).not.toBeInTheDocument();
+  });
+
   it("opens an invited new account directly instead of creating an email-verification errand", async () => {
     const sessionInviteToken = `qsinv_${"a".repeat(32)}`;
     const user = { uid: "new-client" };

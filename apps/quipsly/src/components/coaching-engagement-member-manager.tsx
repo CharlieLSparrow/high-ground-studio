@@ -47,6 +47,9 @@ export function CoachingEngagementMemberManager({ engagementId }: { engagementId
   const [copied, setCopied] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [linkMessage, setLinkMessage] = useState("");
+  const [spaceLink, setSpaceLink] = useState("");
+  const [spaceCopied, setSpaceCopied] = useState(false);
 
   const refresh = useCallback(async () => {
     const response = await fetch(`/api/coaching/engagements/${encodeURIComponent(engagementId)}/members`, { cache: "no-store" });
@@ -80,8 +83,8 @@ export function CoachingEngagementMemberManager({ engagementId }: { engagementId
     }
   }
 
-  async function invite() {
-    const result = await mutate({ action: "INVITE", email, name, role, reason });
+  async function invite(person = { email, name, role, reason }) {
+    const result = await mutate({ action: "INVITE", ...person });
     if (!result?.invitationUrl) return;
     setInviteUrl(result.invitationPath
       ? `${window.location.origin}${result.invitationPath}`
@@ -90,6 +93,7 @@ export function CoachingEngagementMemberManager({ engagementId }: { engagementId
     setName("");
     setReason("");
     setCopied(false);
+    setLinkMessage(result.message || "They can sign in or create an account using their invited email.");
   }
 
   async function change(member: Member) {
@@ -99,24 +103,46 @@ export function CoachingEngagementMemberManager({ engagementId }: { engagementId
   }
 
   async function copyInvite() {
-    await navigator.clipboard.writeText(inviteUrl);
-    setCopied(true);
+    try {
+      await navigator.clipboard.writeText(inviteUrl);
+      setCopied(true);
+    } catch {
+      setError("Copy the link from the field below. Your browser couldn’t copy it automatically.");
+    }
+  }
+
+  async function copySpaceLink() {
+    const url = `${window.location.origin}/coaching/engagements/${encodeURIComponent(engagementId)}`;
+    setSpaceLink(url);
+    setError("");
+    try {
+      await navigator.clipboard.writeText(url);
+      setSpaceCopied(true);
+    } catch {
+      setSpaceCopied(false);
+      setError("Copy the space link from the field below. Your browser couldn’t copy it automatically.");
+    }
   }
 
   return <section className="rounded-[1.75rem] border border-violet-200 bg-[#fffdf8] p-6 shadow-sm" aria-labelledby="engagement-access-heading">
     <div className="flex flex-wrap items-start justify-between gap-4">
       <div><h2 id="engagement-access-heading" className="flex items-center gap-2 font-serif text-3xl font-black text-[#3d3122]"><ShieldCheck size={22} aria-hidden="true" /> People</h2><p className="mt-2 max-w-2xl text-sm leading-6 text-[#765f40]">Invite someone to this private space. Your other spaces stay private.</p></div>
+      <button type="button" disabled={!boundary} onClick={copySpaceLink} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-[#dfcfb4] px-4 py-2 text-sm font-bold text-[#354b36] disabled:opacity-50"><Link2 size={16} aria-hidden="true" />{spaceCopied ? "Space link copied" : "Copy space link"}</button>
     </div>
 
     {error ? <p role="alert" className="mt-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-bold text-red-800">{error}</p> : null}
+    {spaceLink ? <div className="mt-4"><label className="text-sm text-[#765f40]">Space link<input readOnly value={spaceLink} className="mt-1 block min-h-11 w-full rounded-xl border border-[#dfcfb4] px-3 text-sm" /></label><p role="status" className="mt-2 text-xs text-[#765f40]">Only people with access can open this link. They’ll sign in with their own account.</p></div> : null}
+    <details className="mt-5"><summary className="min-h-11 cursor-pointer content-center font-bold text-[#354b36]">Add a person</summary>
     <div className="mt-5 grid gap-3 md:grid-cols-2">
       <label className="text-xs font-black uppercase tracking-wide text-[#765f40]">Account email<input value={email} onChange={(event) => setEmail(event.target.value)} type="email" autoComplete="email" placeholder="client@example.com" className="mt-2 w-full rounded-xl border border-[#dfcfb4] bg-white px-4 py-3 text-sm font-semibold normal-case tracking-normal text-[#3d3122]" /></label>
       <label className="text-xs font-black uppercase tracking-wide text-[#765f40]">Name (optional)<input value={name} onChange={(event) => setName(event.target.value)} autoComplete="name" className="mt-2 w-full rounded-xl border border-[#dfcfb4] bg-white px-4 py-3 text-sm font-semibold normal-case tracking-normal text-[#3d3122]" /></label>
       <label className="text-xs font-black uppercase tracking-wide text-[#765f40]">Role<select value={role} onChange={(event) => setRole(event.target.value)} className="mt-2 w-full rounded-xl border border-[#dfcfb4] bg-white px-4 py-3 text-sm font-semibold normal-case tracking-normal text-[#3d3122]"><option value="CLIENT">Client</option><option value="COACH">Coach</option><option value="SUPPORT">Support</option><option value="OBSERVER">Observer (read only)</option></select></label>
     </div>
     <details className="mt-3"><summary className="min-h-11 cursor-pointer content-center text-sm text-[#765f40]">Add an access note</summary><label className="block text-sm text-[#765f40]">Access note (optional)<input value={reason} onChange={(event) => setReason(event.target.value)} placeholder="A note for the access history" className="mt-2 w-full rounded-xl border border-[#dfcfb4] bg-white px-4 py-3 text-sm text-[#3d3122]" /></label></details>
-    <button type="button" disabled={busy || !email.trim()} onClick={invite} className="mt-4 inline-flex items-center gap-2 rounded-full bg-violet-800 px-5 py-3 text-sm font-black text-white disabled:cursor-not-allowed disabled:opacity-50"><UserPlus size={17} /> Create private invite link</button>
+    <button type="button" disabled={busy || !email.trim()} onClick={() => invite()} className="mt-4 inline-flex items-center gap-2 rounded-full bg-violet-800 px-5 py-3 text-sm font-black text-white disabled:cursor-not-allowed disabled:opacity-50"><UserPlus size={17} /> Create private invite link</button>
     <p className="mt-2 text-xs font-semibold text-[#8a7354]">Copy the link and send it to them. They’ll sign in with the email above.</p>
+    </details>
+    {inviteUrl && linkMessage ? <p role="status" className="mt-4 text-sm text-[#765f40]">{linkMessage}</p> : null}
 
     {inviteUrl ? <div className="mt-5 rounded-2xl border border-amber-300 bg-amber-50 p-4"><div className="flex items-center gap-2 font-black text-amber-950"><Link2 size={18} /> Invitation ready</div><div className="mt-3 flex gap-2"><input readOnly value={inviteUrl} aria-label="Private invitation URL" className="min-w-0 flex-1 rounded-xl border border-amber-300 bg-white px-3 py-2 text-xs" /><button type="button" onClick={copyInvite} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-amber-900 px-4 py-2 text-xs font-black text-white">{copied ? <Check size={15} /> : <Clipboard size={15} />}{copied ? "Copied" : "Copy"}</button><button type="button" aria-label="Dismiss invitation link" onClick={() => setInviteUrl("")} className="min-h-11 min-w-11 rounded-xl border border-amber-300 p-2 text-amber-900"><X size={17} /></button></div></div> : null}
 
@@ -124,7 +150,16 @@ export function CoachingEngagementMemberManager({ engagementId }: { engagementId
       {boundary?.members.map((member) => <article key={member.id} className={`rounded-2xl border p-4 ${member.status === "ACTIVE" ? "border-[#eadfc9] bg-white" : "border-slate-200 bg-slate-50"}`}><div className="flex items-start justify-between gap-3"><div><p className="font-black text-[#3d3122]">{label(member)}</p><p className="mt-1 text-xs text-[#8a7354]">{member.role.toLowerCase()}{member.status === "REMOVED" ? " · access removed" : ""}</p></div><button disabled={busy} onClick={() => change(member)} type="button" className={`inline-flex min-h-11 items-center gap-1 rounded-full px-3 py-2 text-xs font-bold ${member.status === "ACTIVE" ? "border border-red-200 text-red-800" : "border border-emerald-300 text-emerald-900"}`}>{member.status === "ACTIVE" ? <UserMinus size={14} /> : <RotateCcw size={14} />}{member.status === "ACTIVE" ? "Remove" : "Restore"}</button></div></article>)}
     </div>
 
-    {boundary?.invitations.length ? <div className="mt-7"><h3 className="font-serif text-xl font-black text-[#3d3122]">Invitations</h3><div className="mt-3 space-y-2">{boundary.invitations.map((invitation) => <div key={invitation.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#eadfc9] bg-white p-3 text-sm"><div><span className="font-black text-[#3d3122]">{invitation.invitedEmail}</span><span className="ml-2 text-xs font-bold uppercase text-[#8a7354]">{invitation.role.toLowerCase()} · {invitation.status.toLowerCase()}</span></div>{invitation.status === "PENDING" ? <button disabled={busy} onClick={() => mutate({ action: "REVOKE_INVITE", invitationId: invitation.id, reason })} className="text-xs font-black text-red-800">Revoke link</button> : null}</div>)}</div></div> : null}
+    {boundary?.invitations.length ? <div className="mt-7">
+      <h3 className="font-serif text-xl font-black text-[#3d3122]">Invitations</h3>
+      <div className="mt-3 space-y-2">{boundary.invitations.map((invitation) => <div key={invitation.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#eadfc9] bg-white p-3 text-sm">
+        <div><span className="font-black text-[#3d3122]">{invitation.invitedEmail}</span><span className="ml-2 text-xs font-bold uppercase text-[#8a7354]">{invitation.role.toLowerCase()} · {invitation.status.toLowerCase()}</span></div>
+        {invitation.status === "PENDING" ? <div className="flex gap-3">
+          <button type="button" disabled={busy} onClick={() => invite({ email: invitation.invitedEmail, name: "", role: invitation.role, reason: "" })} className="min-h-11 text-xs font-bold text-[#354b36]">Get invite link</button>
+          <button type="button" disabled={busy} onClick={() => mutate({ action: "REVOKE_INVITE", invitationId: invitation.id, reason })} className="min-h-11 text-xs font-bold text-red-800">Revoke link</button>
+        </div> : null}
+      </div>)}</div>
+    </div> : null}
 
     {boundary?.receipts.length ? <details className="mt-7 rounded-2xl border border-[#eadfc9] bg-white p-4"><summary className="flex cursor-pointer list-none items-center gap-2 font-black text-[#3d3122]"><History size={17} /> Access history ({boundary.receipts.length})</summary><ol className="mt-4 space-y-3">{boundary.receipts.map((receipt) => <li key={receipt.id} className="border-l-2 border-violet-200 pl-3 text-xs leading-5 text-[#765f40]"><span className="font-black text-[#3d3122]">{receipt.action.toLowerCase().replace("_", " ")}</span> · {receipt.subjectLabel} · by {receipt.actorLabel}<br />{new Intl.DateTimeFormat("en", { dateStyle: "medium", timeStyle: "short" }).format(new Date(receipt.createdAt))}{receipt.reason ? ` · ${receipt.reason}` : ""}</li>)}</ol></details> : null}
   </section>;

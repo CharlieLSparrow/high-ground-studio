@@ -374,7 +374,7 @@ export default async function CoachingEngagementPage({
           href="/coaching/engagements"
           className="inline-flex items-center gap-2 text-sm font-black text-[#765f40]"
         >
-          <ArrowLeft size={16} /> All clients
+          <ArrowLeft size={16} /> {viewerRole === "COACH" ? "All clients" : "My coaching spaces"}
         </Link>
         <header className="mt-3 min-w-0 px-1 pb-1">
           <div className="flex flex-wrap items-start justify-between gap-6">
