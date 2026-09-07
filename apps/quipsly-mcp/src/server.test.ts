@@ -2,11 +2,47 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
+import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import { fileURLToPath } from "node:url";
 import { createQuipslyServer } from "./server.js";
 import { QuipslyApiError, type ApiRequest } from "./quipsly-api.js";
 
 const requestId = "12345678-1234-4123-8123-123456789012";
 const version = "2026-09-07T12:00:00.000Z";
+
+test("the real stdio entrypoint exposes tools without inventing a signed-in user", async () => {
+  const client = new Client({ name: "stdio-rehearsal", version: "1" });
+  const transport = new StdioClientTransport({
+    command: process.execPath,
+    args: [
+      "--import",
+      "tsx",
+      fileURLToPath(new URL("./index.ts", import.meta.url)),
+    ],
+    cwd: fileURLToPath(new URL("../", import.meta.url)),
+    env: {
+      QUIPSLY_API_BASE_URL: "http://127.0.0.1:1",
+      QUIPSLY_SESSION_TOKEN_FILE:
+        "/does-not-exist/quipsly-synthetic-session.jwt",
+    },
+    stderr: "pipe",
+  });
+  try {
+    await client.connect(transport);
+    assert.equal((await client.listTools()).tools.length, 9);
+    const result = await client.callTool({
+      name: "get_coaching_home",
+      arguments: {},
+    });
+    assert.equal(result.isError, true);
+    assert.equal(
+      (result.structuredContent as Record<string, unknown>)?.code,
+      "SESSION_REQUIRED",
+    );
+  } finally {
+    await client.close();
+  }
+});
 async function connected(
   request: (input: ApiRequest) => Promise<Record<string, unknown>>,
 ) {
