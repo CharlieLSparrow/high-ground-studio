@@ -1,6 +1,7 @@
 import "server-only";
 
 import type { Prisma } from "@prisma/client";
+import { coachingEngagementActorAccessWhere } from "./coaching-engagement";
 
 export type SessionAccessActor = {
   id: string;
@@ -33,7 +34,7 @@ function deniedSessionActorAccess(): Prisma.CallRoomWhereInput {
 
 function sessionActorAccessConditions(
   actor: SessionAccessActor,
-  projectGrant: "read" | "collaborate" | "mutate",
+  projectGrant: "read" | "collaborate" | "mutate" | "join",
 ) {
   const email = normalizedEmail(actor);
   return [
@@ -51,9 +52,10 @@ function sessionActorAccessConditions(
     },
     { booking: { clientUserId: actor.id } },
     { booking: { coachUserId: actor.id } },
-    ...(email
+    ...(email && projectGrant !== "join"
       ? [
           {
+            coachingEngagementId: null,
             project: {
               accessGrants: {
                 some: {
@@ -71,10 +73,36 @@ function sessionActorAccessConditions(
   ];
 }
 
+/** A room invitation is session-scoped; it does not join the whole client space.
+ * Existing space members keep their current space role, including revocation,
+ * even when old bookings or room-participant records still reference them.
+ */
+function coachingSessionScope(
+  actor: SessionAccessActor,
+  action: "read" | "write" | "manage",
+): Prisma.CallRoomWhereInput {
+  return { OR: [
+    { coachingEngagementId: null },
+    { coachingEngagement: { members: { none: { userId: actor.id } } } },
+    { coachingEngagement: coachingEngagementActorAccessWhere(actor, action) },
+  ] };
+}
+
+function scopedSessionConditions(
+  actor: SessionAccessActor,
+  conditions: Prisma.CallRoomWhereInput[],
+  action: "read" | "write" | "manage",
+): Prisma.CallRoomWhereInput {
+  return {
+    OR: [...conditions, { coachingEngagement: coachingEngagementActorAccessWhere(actor, action) }],
+    AND: [coachingSessionScope(actor, action)],
+  };
+}
+
 /**
  * Shared actor boundary for every canonical Nest Session projection.
  *
- * Project access deliberately grants access to the Session shell, but every
+ * Project access grants access to non-client-space Session shells, but every
  * actor-owned note, task, goal, reminder, and brief query must still scope its
  * rows to the current actor. This keeps collaboration and private follow-through
  * separate instead of treating Nest membership as ownership of personal work.
@@ -82,9 +110,7 @@ function sessionActorAccessConditions(
 export function sessionActorAccessWhere(actor: SessionAccessActor) {
   if (!hasStableActorId(actor)) return deniedSessionActorAccess();
   if (actor.isStaff) return {};
-  return {
-    OR: sessionActorAccessConditions(actor, "read"),
-  };
+  return scopedSessionConditions(actor, sessionActorAccessConditions(actor, "read"), "read");
 }
 
 /**
@@ -93,14 +119,13 @@ export function sessionActorAccessWhere(actor: SessionAccessActor) {
  * A project VIEWER may inspect the Session shell, but that alone never grants
  * access to a meeting's conversation. Registered participants (including an
  * observer), booked coach/client, the creator, staff, and active project
- * OWNER/EDITOR collaborators may read the Session thread.
+ * OWNER/EDITOR collaborators may read non-client-space Session threads.
+ * Private coaching spaces use their explicit membership instead.
  */
 export function sessionConversationActorAccessWhere(actor: SessionAccessActor) {
   if (!hasStableActorId(actor)) return deniedSessionActorAccess();
   if (actor.isStaff) return {};
-  return {
-    OR: sessionActorAccessConditions(actor, "collaborate"),
-  };
+  return scopedSessionConditions(actor, sessionActorAccessConditions(actor, "collaborate"), "read");
 }
 
 /**
@@ -113,9 +138,7 @@ export function sessionConversationActorAccessWhere(actor: SessionAccessActor) {
 export function sessionMutationActorAccessWhere(actor: SessionAccessActor) {
   if (!hasStableActorId(actor)) return deniedSessionActorAccess();
   if (actor.isStaff) return {};
-  return {
-    OR: sessionActorAccessConditions(actor, "mutate"),
-  };
+  return scopedSessionConditions(actor, sessionActorAccessConditions(actor, "mutate"), "write");
 }
 
 /**
@@ -134,6 +157,7 @@ export function sessionInvitationActorAccessWhere(actor: SessionAccessActor): Pr
     { booking: { coachUserId: actor.id } },
   ];
   if (email) conditions.push({
+    coachingEngagementId: null,
     project: {
       accessGrants: {
         some: {
@@ -144,15 +168,27 @@ export function sessionInvitationActorAccessWhere(actor: SessionAccessActor): Pr
       },
     },
   });
-  return {
-    OR: conditions,
-  };
+  return scopedSessionConditions(actor, conditions, "manage");
 }
 
 export function sessionAccessWhere(roomId: string, actor: SessionAccessActor) {
   return {
     id: roomId,
     ...sessionActorAccessWhere(actor),
+  };
+}
+
+/** Live entry requires a room invitation, booking, or creator identity, not
+ * just permission to browse a Nest or client relationship. Reuse the same
+ * client-space revocation policy as recordings, notes, and conversations.
+ */
+export function sessionJoinAccessWhere(roomId: string, actor: SessionAccessActor): Prisma.CallRoomWhereInput {
+  if (!hasStableActorId(actor)) return { id: roomId, ...deniedSessionActorAccess() };
+  if (actor.isStaff) return { id: roomId };
+  return {
+    id: roomId,
+    OR: sessionActorAccessConditions(actor, "join"),
+    AND: [coachingSessionScope(actor, "read")],
   };
 }
 

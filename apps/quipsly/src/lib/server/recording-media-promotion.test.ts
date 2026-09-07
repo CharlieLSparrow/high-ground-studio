@@ -409,9 +409,10 @@ describe("capture Session to Studio handoff boundary", () => {
       expect.objectContaining({
         where: {
           roomId: "room-1",
-          room: {
+          room: expect.objectContaining({
             OR: expect.arrayContaining([
               {
+                coachingEngagementId: null,
                 project: {
                   accessGrants: {
                     some: {
@@ -422,7 +423,8 @@ describe("capture Session to Studio handoff boundary", () => {
                 },
               },
             ]),
-          },
+            AND: expect.any(Array),
+          }),
         },
       }),
     );

@@ -36,6 +36,16 @@ Evidence: `prisma/schema.prisma`, `src/lib/server/studio-project-access.ts`,
 These are maintainability and consistency findings, not claims of a verified
 customer-data breach.
 
+The existing client-space boundary now uses active user-ID membership rather
+than inherited Nest owner/editor access. That policy also applies to its linked
+Sessions: explicit space members inherit their current role, while a guest
+invited to one Session does not gain the whole relationship. Removed space
+members cannot regain API access through retained bookings, participant rows,
+or Nest grants. This does not yet unify the underlying membership tables.
+Disconnecting already-connected provider clients after a space-level removal
+still needs to be integrated with the existing participant-provider
+reconciliation mechanism; database authorization alone does not prove that.
+
 ## Decision
 
 1. Use an immutable user ID as the principal. Verified provider identities and

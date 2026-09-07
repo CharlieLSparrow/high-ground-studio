@@ -483,7 +483,7 @@ describe("scoped Nest chat threads", () => {
       where: expect.objectContaining({
         id: "engagement-1",
         project: { is: { slug: "coaching-home" } },
-        OR: expect.any(Array),
+        AND: [{ OR: [{ members: { some: { userId: "user-1", status: "ACTIVE" } } }] }],
       }),
       select: expect.any(Object),
     });

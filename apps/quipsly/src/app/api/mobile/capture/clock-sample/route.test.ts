@@ -83,6 +83,11 @@ describe("mobile capture clock sample", () => {
           { booking: { clientUserId: "user-1" } },
           { booking: { coachUserId: "user-1" } },
         ],
+        AND: [{ OR: [
+          { coachingEngagementId: null },
+          { coachingEngagement: { members: { none: { userId: "user-1" } } } },
+          { coachingEngagement: { OR: [{ members: { some: { userId: "user-1", status: "ACTIVE" } } }] } },
+        ] }],
       },
       select: { id: true },
     });

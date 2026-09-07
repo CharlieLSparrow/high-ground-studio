@@ -137,6 +137,7 @@ describe("Session conversation route", () => {
           id: roomId,
           OR: expect.arrayContaining([
             {
+              coachingEngagementId: null,
               project: {
                 accessGrants: {
                   some: {

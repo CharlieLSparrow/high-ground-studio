@@ -17,6 +17,9 @@ if (process.env.QUIPSLY_LOCAL_DB_SMOKE === "1") {
       "QUIPSLY_LOCAL_DATABASE_URL is required for the Session access smoke.",
     );
   }
+  if (!["localhost", "127.0.0.1", "[::1]"].includes(new URL(process.env.QUIPSLY_LOCAL_DATABASE_URL).hostname)) {
+    throw new Error("Session access tests require a local disposable database.");
+  }
   process.env.DATABASE_URL = process.env.QUIPSLY_LOCAL_DATABASE_URL;
 }
 

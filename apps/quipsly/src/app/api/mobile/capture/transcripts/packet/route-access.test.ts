@@ -40,6 +40,7 @@ function activeGrantWhere() {
   return expect.objectContaining({
     OR: expect.arrayContaining([
       {
+        coachingEngagementId: null,
         project: {
           accessGrants: {
             some: {

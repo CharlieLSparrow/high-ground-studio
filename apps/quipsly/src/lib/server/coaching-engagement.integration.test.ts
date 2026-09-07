@@ -10,6 +10,13 @@ import {
   ensureCoachingEngagement,
 } from "./coaching-engagement";
 import {
+  sessionAccessWhere,
+  sessionConversationAccessWhere,
+  sessionMutationAccessWhere,
+  sessionInvitationAccessWhere,
+} from "./session-access";
+import { captureRoomAccessWhere } from "./mobile-capture-room-join-diagnostics";
+import {
   acceptCoachingEngagementInvitation,
   changeCoachingEngagementMemberAccess,
   inviteCoachingEngagementMember,
@@ -20,6 +27,9 @@ import {
 const runLocalDatabaseSmoke = process.env.QUIPSLY_LOCAL_DB_SMOKE === "1" ? describe : describe.skip;
 if (process.env.QUIPSLY_LOCAL_DB_SMOKE === "1") {
   if (!process.env.QUIPSLY_LOCAL_DATABASE_URL) throw new Error("QUIPSLY_LOCAL_DATABASE_URL is required.");
+  if (!["localhost", "127.0.0.1", "[::1]"].includes(new URL(process.env.QUIPSLY_LOCAL_DATABASE_URL).hostname)) {
+    throw new Error("Coaching membership tests require a local disposable database.");
+  }
   process.env.DATABASE_URL = process.env.QUIPSLY_LOCAL_DATABASE_URL;
 }
 
@@ -40,6 +50,8 @@ runLocalDatabaseSmoke("private Coaching Engagement collaboration", () => {
   };
   const email = (role: string) => `engagement-${role}-${nonce}@example.test`;
   let engagementId = "";
+  let roomId = "";
+  let bookingId = "";
 
   beforeAll(async () => {
     await prisma.user.createMany({ data: [
@@ -57,6 +69,8 @@ runLocalDatabaseSmoke("private Coaching Engagement collaboration", () => {
     await prisma.studioProjectAccessGrant.createMany({ data: [
       { projectId: ids.project, email: email("editor"), role: "EDITOR", status: "ACTIVE" },
       { projectId: ids.project, email: email("viewer"), role: "VIEWER", status: "ACTIVE" },
+      { projectId: ids.project, email: email("observer"), role: "EDITOR", status: "ACTIVE" },
+      { projectId: ids.project, email: email("client"), role: "EDITOR", status: "ACTIVE" },
     ] });
     const engagement = await prisma.$transaction((tx) => ensureCoachingEngagement({
       prisma: tx,
@@ -67,6 +81,17 @@ runLocalDatabaseSmoke("private Coaching Engagement collaboration", () => {
       clientLabel: "Client",
     }));
     engagementId = engagement.id;
+    const booking = await prisma.coachingBooking.create({ data: {
+      clientUserId: ids.client, coachUserId: ids.coach, engagementId,
+      scheduledStart: new Date("2026-09-10T10:00:00Z"), scheduledEnd: new Date("2026-09-10T11:00:00Z"),
+    } });
+    bookingId = booking.id;
+    const room = await prisma.callRoom.create({ data: {
+      projectId: ids.project, coachingEngagementId: engagementId, bookingId,
+      createdByUserId: ids.coach, title: "Private client Session",
+    } });
+    roomId = room.id;
+    await prisma.callParticipant.create({ data: { roomId, userId: ids.client, role: "CLIENT", displayName: "Client" } });
     await prisma.coachingEngagementMember.create({ data: {
       engagementId,
       userId: ids.observer,
@@ -77,6 +102,8 @@ runLocalDatabaseSmoke("private Coaching Engagement collaboration", () => {
 
   afterAll(async () => {
     try {
+      if (roomId) await prisma.callRoom.deleteMany({ where: { id: roomId } });
+      if (bookingId) await prisma.coachingBooking.deleteMany({ where: { id: bookingId } });
       if (engagementId) await prisma.coachingEngagement.deleteMany({ where: { id: engagementId } });
       await prisma.studioProject.deleteMany({ where: { id: ids.project } });
       await prisma.studioWorkspace.deleteMany({ where: { id: ids.workspace } });
@@ -86,7 +113,7 @@ runLocalDatabaseSmoke("private Coaching Engagement collaboration", () => {
     }
   });
 
-  it("admits coach/client and a Nest editor while denying outsiders and project viewers", async () => {
+  it("admits coach/client but does not inherit Nest editor or viewer access", async () => {
     const actors = {
       coach: { id: ids.coach, primaryEmail: email("coach") },
       client: { id: ids.client, primaryEmail: email("client") },
@@ -99,10 +126,59 @@ runLocalDatabaseSmoke("private Coaching Engagement collaboration", () => {
     )));
     expect(coach).toEqual({ id: engagementId });
     expect(client).toEqual({ id: engagementId });
-    expect(editor).toEqual({ id: engagementId });
+    expect(editor).toBeNull();
     expect(outsider).toBeNull();
     expect(viewer).toBeNull();
-    await expect(prisma.studioProjectAccessGrant.findUnique({ where: { projectId_email: { projectId: ids.project, email: email("client") } } })).resolves.toBeNull();
+  });
+
+  it("does not let Nest owners or editors read, edit, or invite into private client spaces or Sessions", async () => {
+    const actor = { id: ids.editor, primaryEmail: email("editor") };
+    for (const role of ["OWNER", "EDITOR"] as const) {
+      await prisma.studioProjectAccessGrant.update({ where: { projectId_email: { projectId: ids.project, email: email("editor") } }, data: { role } });
+      for (const action of ["read", "write", "manage"] as const) {
+        await expect(prisma.coachingEngagement.findFirst({ where: coachingEngagementAccessWhere(engagementId, actor, action) })).resolves.toBeNull();
+      }
+      for (const boundary of [sessionAccessWhere, sessionConversationAccessWhere, sessionMutationAccessWhere, sessionInvitationAccessWhere, captureRoomAccessWhere]) {
+        await expect(prisma.callRoom.findFirst({ where: boundary(roomId, actor) })).resolves.toBeNull();
+      }
+    }
+    await expect(inviteCoachingEngagementMember({
+      engagementId, actor, email: email("outsider"), role: "OBSERVER", requestId: randomUUID(),
+      origin: "http://127.0.0.1:3012", prisma,
+    })).rejects.toMatchObject({ code: "NOT_FOUND" });
+  });
+
+  it("carries space membership into Sessions without granting observers write or invite access", async () => {
+    for (const person of ["coach", "client", "observer"] as const) {
+      const actor = { id: ids[person], primaryEmail: email(person) };
+      await expect(prisma.callRoom.findFirst({ where: sessionAccessWhere(roomId, actor), select: { id: true } })).resolves.toEqual({ id: roomId });
+      await expect(prisma.callRoom.findFirst({ where: sessionConversationAccessWhere(roomId, actor), select: { id: true } })).resolves.toEqual({ id: roomId });
+      const mutation = await prisma.callRoom.findFirst({ where: sessionMutationAccessWhere(roomId, actor), select: { id: true } });
+      expect(mutation).toEqual(person === "observer" ? null : { id: roomId });
+      const invitation = await prisma.callRoom.findFirst({ where: sessionInvitationAccessWhere(roomId, actor), select: { id: true } });
+      expect(invitation).toEqual(person === "coach" ? { id: roomId } : null);
+      const join = await prisma.callRoom.findFirst({ where: captureRoomAccessWhere(roomId, actor), select: { id: true } });
+      expect(join).toEqual(person === "observer" ? null : { id: roomId });
+    }
+    await expect(prisma.coachingEngagement.findFirst({
+      where: coachingEngagementAccessWhere(engagementId, { id: ids.client, primaryEmail: "changed@example.test" }), select: { id: true },
+    })).resolves.toEqual({ id: engagementId });
+  });
+
+  it("allows an explicitly invited Session guest without exposing the whole client relationship", async () => {
+    const actor = { id: ids.outsider, primaryEmail: email("outsider") };
+    const guest = await prisma.callParticipant.create({ data: { roomId, userId: ids.outsider, role: "GUEST", displayName: "Session guest" } });
+    try {
+      await expect(prisma.callRoom.findFirst({ where: sessionAccessWhere(roomId, actor), select: { id: true } })).resolves.toEqual({ id: roomId });
+      await expect(prisma.callRoom.findFirst({ where: captureRoomAccessWhere(roomId, actor), select: { id: true } })).resolves.toEqual({ id: roomId });
+      await expect(prisma.callRoom.findFirst({ where: sessionMutationAccessWhere(roomId, actor), select: { id: true } })).resolves.toEqual({ id: roomId });
+      await expect(prisma.callRoom.findFirst({ where: sessionInvitationAccessWhere(roomId, actor) })).resolves.toBeNull();
+      await expect(prisma.coachingEngagement.findFirst({ where: coachingEngagementAccessWhere(engagementId, actor) })).resolves.toBeNull();
+      await prisma.callParticipant.update({ where: { id: guest.id }, data: { accessStatus: "REMOVED" } });
+      await expect(prisma.callRoom.findFirst({ where: sessionAccessWhere(roomId, actor) })).resolves.toBeNull();
+    } finally {
+      await prisma.callParticipant.delete({ where: { id: guest.id } });
+    }
   });
 
   it("keeps observers read-only and reuses one exact active engagement", async () => {
@@ -136,6 +212,9 @@ runLocalDatabaseSmoke("private Coaching Engagement collaboration", () => {
       where: coachingEngagementAccessWhere(engagementId, { id: ids.client, primaryEmail: email("client") }, "read"),
       select: { id: true },
     })).resolves.toBeNull();
+    for (const boundary of [sessionAccessWhere, sessionConversationAccessWhere, sessionMutationAccessWhere, sessionInvitationAccessWhere, captureRoomAccessWhere]) {
+      await expect(prisma.callRoom.findFirst({ where: boundary(roomId, { id: ids.client, primaryEmail: email("client") }) })).resolves.toBeNull();
+    }
     await expect(prisma.coachingEngagement.count({ where: { id: engagementId } })).resolves.toBe(1);
     await expect(prisma.$transaction((tx) => ensureCoachingEngagement({
       prisma: tx,

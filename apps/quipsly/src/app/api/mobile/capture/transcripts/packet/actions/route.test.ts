@@ -328,6 +328,7 @@ describe("action candidate review route", () => {
       expect(input.where).toEqual(expect.objectContaining({
         id: ROOM_ID,
         OR: expect.arrayContaining([{
+          coachingEngagementId: null,
           project: {
             accessGrants: {
               some: {

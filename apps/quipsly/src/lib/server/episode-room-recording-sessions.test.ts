@@ -69,6 +69,7 @@ describe("Episode Room recording-session projection", () => {
           expect.objectContaining({
             OR: expect.arrayContaining([
               {
+                coachingEngagementId: null,
                 project: {
                   accessGrants: {
                     some: {

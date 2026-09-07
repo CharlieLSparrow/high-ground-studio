@@ -1,6 +1,7 @@
 import "server-only";
 
 import { buildQuipslySessionEntryReadiness } from "@high-ground/quipsly-domain/session-entry-readiness";
+import { sessionJoinAccessWhere } from "./session-access";
 
 import {
   buildMobileCaptureConsentVersions,
@@ -139,17 +140,7 @@ export function buildCaptureRoomSessionEntryProjection(args: {
 }
 
 export function captureRoomAccessWhere(callRoomId: string, user: CaptureRoomAccessUser) {
-  if (user.isStaff) return { id: callRoomId };
-
-  return {
-    id: callRoomId,
-    OR: [
-      { createdByUserId: user.id },
-      { participants: { some: { userId: user.id, accessStatus: "ACTIVE" as const } } },
-      { booking: { clientUserId: user.id } },
-      { booking: { coachUserId: user.id } },
-    ],
-  };
+  return sessionJoinAccessWhere(callRoomId, user);
 }
 
 function participantRoleForUser(room: any, userId: string) {

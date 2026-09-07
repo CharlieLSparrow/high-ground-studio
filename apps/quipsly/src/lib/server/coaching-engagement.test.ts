@@ -6,10 +6,17 @@ import {
 describe("coaching engagement boundary", () => {
   it("lets an active client read without granting project access", () => {
     expect(coachingEngagementActorAccessWhere({ id: "client-1", primaryEmail: "client@example.test" }, "read")).toEqual({
-      OR: expect.arrayContaining([
+      OR: [
         { members: { some: { userId: "client-1", status: "ACTIVE" } } },
-      ]),
+      ],
     });
+  });
+
+  it("uses the same user membership after an email change and rejects missing IDs", () => {
+    expect(coachingEngagementActorAccessWhere({ id: "client-1", primaryEmail: "new@example.test" }))
+      .toEqual(coachingEngagementActorAccessWhere({ id: "client-1", primaryEmail: "old@example.test" }));
+    expect(coachingEngagementActorAccessWhere({ id: "", isStaff: true }))
+      .toEqual({ id: { in: [] } });
   });
 
   it("reserves membership management for coaches and support collaborators", () => {

@@ -4,20 +4,15 @@ import type { Prisma } from "@prisma/client";
 
 import type { SessionAccessActor } from "./session-access";
 
-const COLLABORATOR_PROJECT_ROLES = ["OWNER", "EDITOR"] as const;
 const WRITING_MEMBER_ROLES = ["CLIENT", "COACH", "SUPPORT"] as const;
 const MANAGING_MEMBER_ROLES = ["COACH", "SUPPORT"] as const;
-
-function actorEmail(actor: SessionAccessActor) {
-  return String(actor.primaryEmail || actor.email || "").trim().toLowerCase();
-}
 
 export function coachingEngagementActorAccessWhere(
   actor: SessionAccessActor,
   action: "read" | "write" | "manage" = "read",
 ): Prisma.CoachingEngagementWhereInput {
+  if (typeof actor.id !== "string" || !actor.id.trim()) return { id: { in: [] } };
   if (actor.isStaff) return {};
-  const email = actorEmail(actor);
   const allowedRoles = action === "read"
     ? null
     : action === "manage"
@@ -28,21 +23,9 @@ export function coachingEngagementActorAccessWhere(
     status: "ACTIVE" as const,
     ...(allowedRoles ? { role: { in: [...allowedRoles] } } : {}),
   };
-  const conditions: Prisma.CoachingEngagementWhereInput[] = [
-    { members: { some: member } },
-  ];
-  if (email) conditions.push({
-    project: {
-      accessGrants: {
-        some: {
-          email,
-          status: "ACTIVE",
-          role: { in: [...COLLABORATOR_PROJECT_ROLES] },
-        },
-      },
-    },
-  });
-  return { OR: conditions };
+  // A Nest role never implicitly shares a private client relationship.
+  // Membership follows the stable user ID, not their current email address.
+  return { OR: [{ members: { some: member } }] };
 }
 
 export function coachingEngagementAccessWhere(
@@ -50,7 +33,7 @@ export function coachingEngagementAccessWhere(
   actor: SessionAccessActor,
   action: "read" | "write" | "manage" = "read",
 ): Prisma.CoachingEngagementWhereInput {
-  return { id: engagementId, ...coachingEngagementActorAccessWhere(actor, action) };
+  return { id: engagementId, AND: [coachingEngagementActorAccessWhere(actor, action)] };
 }
 
 export class CoachingEngagementError extends Error {

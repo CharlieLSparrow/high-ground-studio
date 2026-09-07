@@ -12,17 +12,18 @@ import {
 } from "./session-access";
 
 describe("canonical Session access", () => {
-  it("includes active Nest collaborators in every Session projection", () => {
+  it("includes active Nest collaborators only outside private client spaces", () => {
     expect(
       sessionActorAccessWhere({
         id: "editor-2",
         email: " Editor-2@Example.Test ",
       }),
-    ).toEqual({
+    ).toEqual(expect.objectContaining({
       OR: expect.arrayContaining([
         { createdByUserId: "editor-2" },
         { participants: { some: { userId: "editor-2", accessStatus: "ACTIVE" } } },
         {
+          coachingEngagementId: null,
           project: {
             accessGrants: {
               some: {
@@ -33,7 +34,7 @@ describe("canonical Session access", () => {
           },
         },
       ]),
-    });
+    }));
   });
 
   it("adds the exact room identity without changing the shared actor policy", () => {
@@ -56,9 +57,10 @@ describe("canonical Session access", () => {
         id: "editor-2",
         primaryEmail: " Editor-2@Example.Test ",
       }),
-    ).toEqual({
+    ).toEqual(expect.objectContaining({
       OR: expect.arrayContaining([
         {
+          coachingEngagementId: null,
           project: {
             accessGrants: {
               some: {
@@ -79,7 +81,7 @@ describe("canonical Session access", () => {
           },
         },
       ]),
-    });
+    }));
   });
 
   it("keeps staff mutation access exact-room scoped", () => {
