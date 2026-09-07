@@ -659,6 +659,7 @@ printf "PASS  %-24s container %s\n" "PostgreSQL" "${database_container}"
 
 echo "Generating the Prisma client from the current worktree schema..."
 DATABASE_URL="${local_database_url}" pnpm db:generate
+node scripts/sync-prisma-pnpm-clients.mjs
 printf "PASS  %-24s current worktree schema\n" "Prisma client"
 
 echo "Applying committed local database migrations..."

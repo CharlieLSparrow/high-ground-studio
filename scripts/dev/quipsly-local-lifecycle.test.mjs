@@ -676,6 +676,7 @@ test("local LiveKit is an owned, health-checked lifecycle dependency", () => {
 
 test("the local lane generates the Prisma client before applying migrations", () => {
   const generateIndex = up.indexOf("pnpm db:generate");
+  const synchronizeIndex = up.indexOf("node scripts/sync-prisma-pnpm-clients.mjs");
   const migrateIndex = up.indexOf("pnpm exec prisma migrate deploy");
 
   assert.ok(
@@ -683,6 +684,8 @@ test("the local lane generates the Prisma client before applying migrations", ()
     "local startup must generate the Prisma client",
   );
   assert.ok(migrateIndex >= 0, "local startup must apply committed migrations");
+  assert.ok(generateIndex < synchronizeIndex && synchronizeIndex < migrateIndex,
+    "every app-resolved client must match the current schema before migration and startup");
   assert.ok(
     generateIndex < migrateIndex,
     "the current schema client must exist before migrations and Nest startup",

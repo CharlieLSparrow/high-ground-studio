@@ -86,6 +86,7 @@ jobs:
           node --test scripts/ci/audit-repository-contract.test.mjs
           node --test scripts/ci/pr-contract-lane.test.mjs
           node --test scripts/ci/verify-required-jest-results.test.mjs
+          node --test scripts/sync-prisma-pnpm-clients.test.mjs
           node scripts/ci/audit-repository-contract.mjs
           node --test scripts/ci/audit-tracked-artifacts.test.mjs
           node scripts/ci/audit-tracked-artifacts.mjs
