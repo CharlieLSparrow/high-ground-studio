@@ -1,4 +1,15 @@
-import type { Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
+
+/** Membership is not permission to read or change explicitly personal work. */
+export function sharedCoachingWorkVisibilityWhere() {
+  return { OR: [
+    ...["engagement-shared", "SESSION_SHARED", "SHARED"].map((visibility) => ({
+      sourceJson: { path: ["visibility"], equals: visibility },
+    })),
+    // Older engagement-owned records predate per-item visibility.
+    { sourceJson: { path: ["visibility"], equals: Prisma.AnyNull } },
+  ] };
+}
 
 /**
  * A coaching engagement is the durable private collaboration boundary. Primary
@@ -29,8 +40,8 @@ export function coachingTaskCollaborationAccessWhere(
   access: "read" | "write" = "read",
 ): Prisma.ActionItemWhereInput[] {
   return [
-    { engagement: { is: activeCoachingEngagementParticipantWhere(userId, access) } },
-    { engagementId: null, booking: { is: coachingBookingParticipantWhere(userId) } },
+    { AND: [sharedCoachingWorkVisibilityWhere(), { engagement: { is: activeCoachingEngagementParticipantWhere(userId, access) } }] },
+    { AND: [sharedCoachingWorkVisibilityWhere(), { engagementId: null, booking: { is: coachingBookingParticipantWhere(userId) } }] },
   ];
 }
 
@@ -40,7 +51,7 @@ export function personalOrSharedCoachingGoalAccessWhere(
 ): Prisma.GoalWhereInput[] {
   return [
     { ownerUserId: userId },
-    { engagement: { is: activeCoachingEngagementParticipantWhere(userId, access) } },
-    { engagementId: null, booking: { is: coachingBookingParticipantWhere(userId) } },
+    { AND: [sharedCoachingWorkVisibilityWhere(), { engagement: { is: activeCoachingEngagementParticipantWhere(userId, access) } }] },
+    { AND: [sharedCoachingWorkVisibilityWhere(), { engagementId: null, booking: { is: coachingBookingParticipantWhere(userId) } }] },
   ];
 }

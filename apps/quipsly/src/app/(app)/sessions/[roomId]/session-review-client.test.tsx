@@ -1,4 +1,9 @@
 import React from "react";
+
+jest.mock("../../work/actions", () => ({
+  editWorkGoal: jest.fn(), editWorkTask: jest.fn(),
+  updateWorkGoalStatus: jest.fn(), updateWorkTaskStatus: jest.fn(),
+}));
 import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 

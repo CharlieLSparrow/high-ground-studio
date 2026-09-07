@@ -3,6 +3,7 @@
 import {
   activeCoachingEngagementParticipantWhere,
   personalOrSharedCoachingGoalAccessWhere,
+  sharedCoachingWorkVisibilityWhere,
 } from "./coaching-work-access";
 
 describe("coaching work collaboration access", () => {
@@ -28,8 +29,8 @@ describe("coaching work collaboration access", () => {
     const where = personalOrSharedCoachingGoalAccessWhere("user-1");
     expect(where).toEqual([
       { ownerUserId: "user-1" },
-      { engagement: { is: activeCoachingEngagementParticipantWhere("user-1") } },
-      { engagementId: null, booking: { is: { OR: [{ clientUserId: "user-1" }, { coachUserId: "user-1" }] } } },
+      { AND: [sharedCoachingWorkVisibilityWhere(), { engagement: { is: activeCoachingEngagementParticipantWhere("user-1") } }] },
+      { AND: [sharedCoachingWorkVisibilityWhere(), { engagementId: null, booking: { is: { OR: [{ clientUserId: "user-1" }, { coachUserId: "user-1" }] } } }] },
     ]);
     expect(JSON.stringify(where)).not.toContain("projectId");
   });

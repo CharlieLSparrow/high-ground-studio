@@ -3,6 +3,7 @@ import { revalidatePath } from "next/cache";
 import { getPrismaClient } from "@/lib/prisma";
 import { listProjectsVisibleToEmail } from "@/lib/server/home-nest";
 import { getQuipslySession } from "@/lib/server/quipsly-session";
+import { personalOrSharedSessionTaskAccessWhere } from "@/lib/server/task-access";
 
 import { createWorkGoal, createWorkTask, editWorkGoal, editWorkTask, linkWorkGoalTask, recordWorkGoalProgress, saveWeeklyCommitment, setWorkTaskReminder, updateTaskRecurrenceStatus, updateWorkGoalStatus, updateWorkTaskStatus } from "./actions";
 
@@ -107,11 +108,7 @@ describe("Work Queue task decisions", () => {
     expect(tx.actionItem.updateMany).toHaveBeenCalledWith(expect.objectContaining({
       where: expect.objectContaining({
         id: "task-1",
-        OR: expect.arrayContaining([
-          { assignedUserId: "user-1" },
-          expect.objectContaining({ engagement: expect.any(Object) }),
-          expect.objectContaining({ booking: expect.any(Object) }),
-        ]),
+        OR: personalOrSharedSessionTaskAccessWhere("user-1", "write"),
         status: "OPEN",
         updatedAt: expected,
       }),

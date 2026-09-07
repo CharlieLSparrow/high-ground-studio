@@ -1,5 +1,7 @@
 "use client";
 
+import { SessionWorkControls } from "./session-work-controls";
+
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -576,8 +578,13 @@ export type SessionQuickEntry = {
   createdAt: string;
   updatedAt: string;
   tags: Array<{ id: string; label: string; slug: string }>;
-  visibility?: "AUTHOR_PRIVATE" | "SESSION_SHARED";
+  visibility?: "AUTHOR_PRIVATE" | "SESSION_SHARED" | "ENGAGEMENT_SHARED";
   ownedByCurrentActor?: boolean;
+  canEdit?: boolean;
+  ownerLabel?: string;
+  dueAt?: string | null;
+  fromTranscript?: boolean;
+  sourceHref?: string | null;
 };
 
 export type SessionCaptureReceipts = {
@@ -2742,13 +2749,15 @@ function SessionQuickEntryCard({
                     )}
                     <p className="mt-3 text-[10px] font-black uppercase tracking-wide text-[#8a7354]">
                       {humanize(entry.kind)} ·{" "}
-                      {entry.visibility === "SESSION_SHARED"
+                      {entry.visibility === "ENGAGEMENT_SHARED"
+                        ? "Shared client space"
+                        : entry.visibility === "SESSION_SHARED"
                         ? "Everyone in this Session"
                         : "Only me"}{" "}
                       ·{" "}
-                      {entry.ownedByCurrentActor === false
+                      {entry.ownerLabel || (entry.ownedByCurrentActor === false
                         ? "Created by another participant"
-                        : "Mine"}{" "}
+                        : "Mine")}{" "}
                       · {new Date(entry.createdAt).toLocaleString()}
                     </p>
                     {href && (
@@ -2765,6 +2774,8 @@ function SessionQuickEntryCard({
                   tags={entry.tags}
                   label={`${entry.title || entry.kind} tags`}
                 />
+                {entry.sourceHref && <Link href={entry.sourceHref} className="mt-3 inline-flex min-h-11 items-center text-sm font-semibold text-[#435847] underline">From recording</Link>}
+                <SessionWorkControls entry={entry} onUpdate={(update) => updateEntry(entry.id, update)} />
                 {entry.kind === "NOTE" && (
                   <details className="mt-3 rounded-xl border border-emerald-100 bg-emerald-50/40 p-3">
                     <summary className="cursor-pointer text-xs font-black text-emerald-950">

@@ -1,6 +1,8 @@
 /** @jest-environment node */
 
 import { getPrismaClient } from "@/lib/prisma";
+import { personalOrSharedSessionTaskAccessWhere } from "@/lib/server/task-access";
+import { personalOrSharedCoachingGoalAccessWhere } from "@/lib/server/coaching-work-access";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 import {
   createWritingDraftFromSourceAnnotation,
@@ -543,11 +545,7 @@ describe("mobile Capture Today contract", () => {
     expect(tx.actionItem.updateMany).toHaveBeenCalledWith(expect.objectContaining({
       where: expect.objectContaining({
         id: "task-1",
-        OR: expect.arrayContaining([
-          { assignedUserId: "user-1" },
-          expect.objectContaining({ engagement: expect.any(Object) }),
-          expect.objectContaining({ booking: expect.any(Object) }),
-        ]),
+        OR: personalOrSharedSessionTaskAccessWhere("user-1", "write"),
         status: "OPEN",
         updatedAt: expected,
       }),
@@ -814,11 +812,7 @@ describe("mobile Capture Today contract", () => {
     expect(tx.goal.updateMany).toHaveBeenCalledWith(expect.objectContaining({
       where: expect.objectContaining({
         id: "goal-1",
-        OR: expect.arrayContaining([
-          { ownerUserId: "user-1" },
-          expect.objectContaining({ engagement: expect.any(Object) }),
-          expect.objectContaining({ booking: expect.any(Object) }),
-        ]),
+        OR: personalOrSharedCoachingGoalAccessWhere("user-1", "write"),
         updatedAt: expected,
       }),
       data: {
@@ -1499,11 +1493,7 @@ describe("mobile Capture Today contract", () => {
     expect(tx.goal.updateMany).toHaveBeenCalledWith(expect.objectContaining({
       where: expect.objectContaining({
         id: "goal-1",
-        OR: expect.arrayContaining([
-          { ownerUserId: "user-1" },
-          expect.objectContaining({ engagement: expect.any(Object) }),
-          expect.objectContaining({ booking: expect.any(Object) }),
-        ]),
+        OR: personalOrSharedCoachingGoalAccessWhere("user-1", "write"),
         updatedAt: expected,
       }),
       data: { sourceJson: expect.objectContaining({

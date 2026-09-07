@@ -4,6 +4,7 @@ import {
   personalOrSharedSessionTaskAccessWhere,
   personalOrSharedWorkspaceTaskAccessWhere,
 } from "./task-access";
+import { sharedCoachingWorkVisibilityWhere } from "./coaching-work-access";
 
 describe("canonical task visibility", () => {
   const engagementAccess = {
@@ -20,8 +21,8 @@ describe("canonical task visibility", () => {
   it("shares assigned coaching work only through an explicit engagement or booking", () => {
     expect(personalOrSharedSessionTaskAccessWhere("user-1")).toEqual([
       { assignedUserId: "user-1" },
-      engagementAccess,
-      bookingAccess,
+      { AND: [sharedCoachingWorkVisibilityWhere(), engagementAccess] },
+      { AND: [sharedCoachingWorkVisibilityWhere(), bookingAccess] },
       {
         assignedUserId: null,
         engagementId: null,
@@ -42,7 +43,7 @@ describe("canonical task visibility", () => {
 
   it("does not give an observer write controls for coaching tasks", () => {
     const where = personalOrSharedSessionTaskAccessWhere("user-1", "write");
-    expect(where).toContainEqual({
+    expect(where).toContainEqual({ AND: [sharedCoachingWorkVisibilityWhere(), {
       engagement: { is: {
         status: "ACTIVE",
         members: { some: {
@@ -51,15 +52,15 @@ describe("canonical task visibility", () => {
           role: { in: ["CLIENT", "COACH", "SUPPORT"] },
         } },
       } },
-    });
+    }] });
     expect(JSON.stringify(where)).not.toContain("OBSERVER");
   });
 
   it("shares unassigned project work without exposing another assignee", () => {
     expect(personalOrSharedWorkspaceTaskAccessWhere("user-1", ["project-1"])).toEqual([
       { assignedUserId: "user-1" },
-      engagementAccess,
-      bookingAccess,
+      { AND: [sharedCoachingWorkVisibilityWhere(), engagementAccess] },
+      { AND: [sharedCoachingWorkVisibilityWhere(), bookingAccess] },
       { assignedUserId: null, engagementId: null, projectId: { in: ["project-1"] } },
       {
         assignedUserId: null,
