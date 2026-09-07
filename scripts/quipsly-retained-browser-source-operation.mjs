@@ -490,6 +490,22 @@ try {
       `The source-bound transcript did not recover the known speech (${matchedWords.length}/${expectedWords.length} key words).`,
     );
   }
+  const workWhere = { roomId, sourceJson: { path: ["transcriptJobId"], equals: transcript.id } };
+  let followThrough;
+  const workDeadline = Date.now() + 30_000;
+  do {
+    const [tasks, goals] = await Promise.all([
+      prisma.actionItem.findMany({ where: workWhere, select: { id: true, title: true, assignedUserId: true, engagementId: true } }),
+      prisma.goal.findMany({ where: workWhere, select: { id: true, title: true, ownerUserId: true, engagementId: true } }),
+    ]);
+    followThrough = { tasks, goals };
+    if (tasks.length && goals.length) break;
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  } while (Date.now() < workDeadline);
+  if (followThrough.tasks.length !== 1 || followThrough.goals.length !== 1 ||
+      followThrough.tasks[0].assignedUserId !== actor.id || followThrough.goals[0].ownerUserId !== actor.id) {
+    throw new Error(`Known first-person speech must create one task and goal for the recording speaker, without duplicates: ${JSON.stringify(followThrough)}`);
+  }
   const manifest =
     recording.localManifestJson &&
     typeof recording.localManifestJson === "object" &&
@@ -511,6 +527,7 @@ try {
         syntheticMedia: true,
         syntheticSpeech: true,
         transcriptContentCheck: { expectedWords, matchedWords, minimumMatches: 4 },
+        followThrough,
         externalSideEffects: false,
         roomId,
         recording: {

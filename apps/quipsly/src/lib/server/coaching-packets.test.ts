@@ -36,6 +36,14 @@ function completedTranscriptJob() {
     assetId: "asset-1",
     provider: "test-provider",
     status: "COMPLETED",
+    resultJson: {
+      processingControl: { routing: {
+        schema: "quipsly-transcript-routing-summary-v1",
+        sourceTopology: "participant-isolated",
+        speakerAuthority: "source-binding",
+        participantLabel: "Charlie",
+      } },
+    },
     asset: {
       id: "asset-1",
       roomId: "room-1",
@@ -49,6 +57,7 @@ function completedTranscriptJob() {
       projectId: "project-1",
       coachingEngagementId: "engagement-1",
       coachingEngagement: { primaryClientUserId: "client-1" },
+      participants: [{ id: "participant-charlie", userId: "client-1", accessStatus: "ACTIVE" }],
     },
     segments: [
       {
@@ -128,6 +137,66 @@ describe("transcript coaching follow-through", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockedTranscriptGate.mockResolvedValue({ allowed: true, receipt: null });
+  });
+
+  it("assigns repeated first-person commitments to their recording speaker, not the primary client", async () => {
+    const job = completedTranscriptJob();
+    job.room.participants[0]!.userId = "coach-1";
+    job.segments = [0, 10].flatMap((offset) => [
+      { id: `goal-${offset}`, speakerLabel: "Charlie", startSeconds: offset, endSeconds: offset + 3,
+        text: "My goal is to write every morning.", confidence: 0.98 },
+      { id: `task-${offset}`, speakerLabel: "Charlie", startSeconds: offset + 4, endSeconds: offset + 8,
+        text: "Tomorrow I will draft one page.", confidence: 0.98 },
+    ]);
+    const work = automaticWorkStores();
+    const prisma = {
+      transcriptJob: { findUnique: jest.fn().mockResolvedValue(job) },
+      coachingNote: { findFirst: jest.fn().mockResolvedValue(null),
+        create: jest.fn(async ({data}: any) => ({ id: `note-${data.kind}-${data.sourceJson.segmentId || "summary"}`, ...data })) },
+      ...work,
+    };
+    const result = await buildCoachingPacketFromTranscriptJob({ prisma, transcriptJobId: job.id, authorUserId: "coach-1" });
+    expect(result).toMatchObject({ actionItemCount: 1, goalCount: 1 });
+    expect(work.actionItem.create).toHaveBeenCalledWith({ data: expect.objectContaining({ assignedUserId: "coach-1" }) });
+    expect(work.goal.create).toHaveBeenCalledWith({ data: expect.objectContaining({ ownerUserId: "coach-1" }) });
+    expect(job.segments).toHaveLength(4);
+
+    const task = (await work.actionItem.findMany())[0];
+    await work.actionItem.update({where: {id: task.id}, data: {assignedUserId: "client-1"}});
+    await buildCoachingPacketFromTranscriptJob({ prisma, transcriptJobId: job.id, authorUserId: "coach-1", force: true });
+    expect((await work.actionItem.findMany())[0].assignedUserId).toBe("client-1");
+  });
+
+  it("extracts both the goal and commitment from a single provider passage without inventing tighter timing", async () => {
+    const job = completedTranscriptJob();
+    job.segments = [{ id: "combined", speakerLabel: "Charlie", startSeconds: 0, endSeconds: 10.18,
+      text: "morning. Tomorrow I will draft one page and share it with my coach. My coaching goal is to write every morning.", confidence: 0.98 }];
+    const work = automaticWorkStores();
+    await buildCoachingPacketFromTranscriptJob({
+      prisma: { transcriptJob: {findUnique: jest.fn().mockResolvedValue(job)},
+        coachingNote: {findFirst: jest.fn().mockResolvedValue(null), create: jest.fn(async ({data}: any) => ({id: "summary", ...data}))}, ...work },
+      transcriptJobId: job.id, authorUserId: "coach-1",
+    });
+    expect(work.actionItem.create).toHaveBeenCalledWith({data: expect.objectContaining({
+      title: "Tomorrow I will draft one page and share it with my coach",
+      sourceJson: expect.objectContaining({startSeconds: 0, endSeconds: 10.18}),
+    })});
+    expect(work.goal.create).toHaveBeenCalledWith({data: expect.objectContaining({title: "My coaching goal is to write every morning"})});
+  });
+
+  it.each(["unresolved", "revoked", "other-room", "second-person"])("does not guess a task owner for %s identity", async (mode) => {
+    const job = completedTranscriptJob();
+    if (mode === "unresolved") job.resultJson.processingControl.routing.speakerAuthority = "provider";
+    if (mode === "revoked") job.room.participants[0]!.accessStatus = "REVOKED";
+    if (mode === "other-room") job.room.participants = [];
+    if (mode === "second-person") job.segments[0]!.text = "You will send the outline before next time.";
+    const work = automaticWorkStores();
+    await buildCoachingPacketFromTranscriptJob({
+      prisma: { transcriptJob: {findUnique: jest.fn().mockResolvedValue(job)},
+        coachingNote: {findFirst: jest.fn().mockResolvedValue(null), create: jest.fn(async ({data}: any) => ({id: "summary", ...data}))}, ...work },
+      transcriptJobId: job.id, authorUserId: "coach-1",
+    });
+    expect(work.actionItem.create).toHaveBeenCalledWith({data: expect.objectContaining({assignedUserId: null})});
   });
 
   it("creates editable shared notes and ordinary open tasks from transcript follow-through", async () => {
@@ -1845,6 +1914,10 @@ describe("transcript coaching follow-through", () => {
       projectId: "project-1",
       coachingEngagementId: "engagement-1",
       coachingEngagement: { primaryClientUserId: "client-1" },
+      participants: [
+        { id: "participant-coach", userId: "coach-1", accessStatus: "ACTIVE" },
+        { id: "participant-client", userId: "client-1", accessStatus: "ACTIVE" },
+      ],
     };
     const anchor = {
       ...coachJob,

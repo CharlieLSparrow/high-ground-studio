@@ -325,7 +325,27 @@ function generatedFollowThroughCanRemove(input: {
     source.origin === "quipsly-session-follow-through" &&
     input.transcriptJobIds.has(cleanText(source.transcriptJobId)) &&
     input.existing.status === input.activeStatus &&
+    generatedOwnerCanRefresh(
+      input.existing,
+      input.detailField === "detail" ? "assignedUserId" : "ownerUserId",
+    ) &&
     generatedFollowThroughCanRefresh(input)
+  );
+}
+
+function generatedOwnerCanRefresh(
+  existing: any,
+  field: "assignedUserId" | "ownerUserId",
+) {
+  const snapshot = existing?.sourceJson?.generatedSnapshot;
+  if (snapshot && Object.hasOwn(snapshot, field))
+    return (existing[field] ?? null) === snapshot[field];
+  // Older generated work did not record its initial owner. Only repair an
+  // untouched row; never guess whether a later reassignment was intentional.
+  return (
+    existing?.sourceJson?.automaticallyCreated === true &&
+    existing.createdAt != null && existing.updatedAt != null &&
+    new Date(existing.createdAt).getTime() === new Date(existing.updatedAt).getTime()
   );
 }
 
@@ -414,6 +434,7 @@ export type PacketTranscriptSegment = {
     | "provider"
     | "unresolved";
   sourceBoundParticipantId: string | null;
+  attributedParticipantId?: string | null;
   transcriptJobId?: string;
   recordingAssetId?: string;
   sourceStartSeconds?: number;
@@ -615,6 +636,7 @@ export function projectTranscriptSegmentsForPacket(
       acceptedSpeakerAttributionId: cleanText(speakerAttribution?.id) || null,
       speakerAuthority,
       sourceBoundParticipantId: exactSourceParticipantId,
+      attributedParticipantId: cleanText(speakerAttribution?.participantId) || null,
     };
   });
 }
@@ -979,6 +1001,42 @@ export function buildTranscriptEvidenceSpans(
   return spans;
 }
 
+// Keep every spoken occurrence in the transcript, but do not turn repetition
+// into duplicate work. Never merge identical statements by different speakers.
+function distinctWorkSpans(
+  spans: PacketTranscriptEvidenceSpan[],
+  textForWork: (span: PacketTranscriptEvidenceSpan) => string = (span) => span.text,
+) {
+  const seen = new Set<string>();
+  return spans.filter((span) => {
+    const speaker = span.attributedParticipantId ||
+      span.sourceBoundParticipantId ||
+      `${span.transcriptJobId || ""}:${span.speakerLabel || span.id}`;
+    const key = JSON.stringify([
+      speaker, span.speakerLabel, cleanText(textForWork(span)).toLowerCase(),
+    ]);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function followThroughSpeakerUserId(
+  segment: PacketTranscriptSegment | undefined,
+  participants: Array<{ id: string; userId: string | null; accessStatus: string }>,
+) {
+  if (!segment) return null;
+  const participantId = segment.speakerAuthority === "attribution"
+    ? segment.attributedParticipantId
+    : segment.speakerAuthority === "source-binding"
+      ? segment.sourceBoundParticipantId
+      : null;
+  // A provider label or edited display name is not an authenticated identity.
+  return participants.find((participant) =>
+    participant.id === participantId && participant.accessStatus === "ACTIVE",
+  )?.userId || null;
+}
+
 /** Resolves and validates an immutable packet item against the current ordered transcript projection. */
 export function resolvePacketEvidenceSpan(
   item: unknown,
@@ -1068,6 +1126,7 @@ export function transcriptPacketSnapshotFromProjected(
     acceptedSpeakerAttributionId: segment.acceptedSpeakerAttributionId,
     speakerAuthority: segment.speakerAuthority,
     sourceBoundParticipantId: segment.sourceBoundParticipantId,
+    attributedParticipantId: segment.attributedParticipantId || null,
     reviewStatus: segment.reviewStatus,
     startSeconds: segment.startSeconds,
     endSeconds: segment.endSeconds,
@@ -1252,14 +1311,21 @@ function titleFromSegment(segment: any) {
     : clipped || "Session highlight";
 }
 
-function actionTitle(segment: any) {
+function actionSentence(segment: any, kind: "goal" | "task") {
   const text = cleanText(segment.text);
   const normalized = text.replace(/^(so|okay|ok|yeah|well|and|but)\s+/i, "");
-  const sentence =
-    normalized
-      .split(/[.!?]/)
-      .map((part) => part.trim())
-      .find(Boolean) || normalized;
+  const sentences = normalized
+    .split(/[.!?]/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  return sentences.find((part) => kind === "goal"
+    ? GOAL_PATTERN.test(part)
+    : ACTION_PATTERNS.slice(0, -1).some((pattern) => pattern.test(part)),
+  ) || sentences[0] || normalized;
+}
+
+function actionTitle(segment: any, kind: "goal" | "task" = "goal") {
+  const sentence = actionSentence(segment, kind);
   const clipped = sentence.slice(0, 96);
   return clipped.length < sentence.length
     ? `${clipped}...`
@@ -1275,7 +1341,7 @@ function taskTitle(segment: any) {
     .split(/\s+(?:and\s+)?note that\b/i)[0]
     ?.replace(/[.,;:]+$/, "")
     .trim();
-  if (!taskText) return actionTitle(segment);
+  if (!taskText) return actionTitle(segment, "task");
   const sentence = taskText.charAt(0).toUpperCase() + taskText.slice(1);
   const clipped = sentence.slice(0, 96);
   return clipped.length < sentence.length ? `${clipped}...` : clipped;
@@ -1605,6 +1671,7 @@ export async function buildCoachingPacketFromTranscriptJob(
       room: {
         include: {
           booking: true,
+          participants: { select: { id: true, userId: true, accessStatus: true } },
           coachingEngagement: {
             select: {
               id: true,
@@ -1766,7 +1833,7 @@ export async function buildCoachingPacketFromTranscriptJob(
     };
   }
 
-  const packetSpans = buildTranscriptEvidenceSpans(packetSegments);
+  const packetSpans = distinctWorkSpans(buildTranscriptEvidenceSpans(packetSegments));
   const highlights = [...packetSpans]
     .map((segment: any) => ({ segment, score: scoreHighlight(segment) }))
     .sort((left, right) => right.score - left.score)
@@ -1821,13 +1888,14 @@ export async function buildCoachingPacketFromTranscriptJob(
     highlights,
     actionSegments,
   );
-  const goalSegments = actionSegments.filter((segment: any) =>
+  const goalSegments = distinctWorkSpans(actionSegments.filter((segment: any) =>
     GOAL_PATTERN.test(cleanText(segment.text)),
-  );
-  const taskSegments = actionSegments.filter((segment: any) => {
+  ), (segment) => actionSentence(segment, "goal"));
+  const taskSegments = distinctWorkSpans(actionSegments.filter((segment: any) => {
     const text = cleanText(segment.text);
-    return !GOAL_PATTERN.test(text) || EXPLICIT_TASK_PATTERN.test(text);
-  });
+    return !GOAL_PATTERN.test(text) || EXPLICIT_TASK_PATTERN.test(text) ||
+      ACTION_PATTERNS.slice(0, -1).some((pattern) => pattern.test(text));
+  }), (segment) => actionSentence(segment, "task"));
   const actionCandidates: TranscriptActionCandidate[] = taskSegments.map(
     (segment: any) => {
       const sourceTranscriptJobId =
@@ -1924,19 +1992,18 @@ export async function buildCoachingPacketFromTranscriptJob(
         },
       });
 
-  const defaultOwnerUserId =
-    job.room?.coachingEngagement?.primaryClientUserId ||
-    args.authorUserId ||
-    job.room?.createdByUserId ||
-    null;
+  const participants = job.room?.participants || [];
   const actionItems = [];
   for (const candidate of actionCandidates) {
-    const programSegment = packetSegments.find(
+    const programSegment = packetSpans.find(
       (segment) =>
         segment.id === candidate.segmentId &&
         (cleanText(segment.transcriptJobId) || job.id) ===
           candidate.transcriptJobId,
     );
+    const assignedUserId = /\b(?:i\b|i['’]ll\b|my\b|me\b)/i.test(programSegment?.text || "")
+      ? followThroughSpeakerUserId(programSegment, participants)
+      : null;
     const sourceJson = {
       schema: "quipsly-transcript-follow-through-v1",
       origin: "quipsly-session-follow-through",
@@ -1964,14 +2031,14 @@ export async function buildCoachingPacketFromTranscriptJob(
       speakerLabel: candidate.speakerLabel,
       visibility: "engagement-shared",
       externalSideEffects: false,
-      generatedSnapshot: generatedFollowThroughSnapshot({
+      generatedSnapshot: { ...generatedFollowThroughSnapshot({
         title: candidate.title,
         detail: candidate.detail || null,
         sourceTextSha256:
           cleanText(candidate.sourceTextSha256) ||
           packetSha256(candidate.detail || candidate.title),
         packetBuildId,
-      }),
+      }), assignedUserId },
     };
     const existing = await args.prisma.actionItem.findUnique({
       where: { id: candidate.committedActionItemId },
@@ -1985,6 +2052,7 @@ export async function buildCoachingPacketFromTranscriptJob(
               noteId: summaryNote.id,
               title: candidate.title,
               detail: candidate.detail || null,
+              ...(generatedOwnerCanRefresh(existing, "assignedUserId") ? { assignedUserId } : {}),
               sourceJson: preserveActiveRelationshipWorkRemoval(
                 existing.sourceJson,
                 sourceJson,
@@ -2000,7 +2068,7 @@ export async function buildCoachingPacketFromTranscriptJob(
               projectId: job.room?.projectId ?? null,
               engagementId: job.room?.coachingEngagementId ?? null,
               noteId: summaryNote.id,
-              assignedUserId: defaultOwnerUserId,
+              assignedUserId,
               title: candidate.title,
               detail: candidate.detail || null,
               status: "OPEN",
@@ -2011,8 +2079,12 @@ export async function buildCoachingPacketFromTranscriptJob(
   }
 
   const goals = [];
-  if (defaultOwnerUserId) {
+  {
     for (const output of goalOutputs) {
+      const ownerUserId = followThroughSpeakerUserId(output.segment, participants);
+      // An unattributed goal remains in the editable shared recap, rather than
+      // silently becoming the client's personal goal.
+      if (!ownerUserId) continue;
       const sourceAnchor = buildTranscriptSourceAnchorFields(
         sourceClockSegments(output.segment),
       );
@@ -2046,12 +2118,12 @@ export async function buildCoachingPacketFromTranscriptJob(
         speakerLabel: output.segment.speakerLabel,
         visibility: "engagement-shared",
         externalSideEffects: false,
-        generatedSnapshot: generatedFollowThroughSnapshot({
+        generatedSnapshot: { ...generatedFollowThroughSnapshot({
           title: output.title,
           detail: goalDescription,
           sourceTextSha256: output.segment.sourceTextSha256,
           packetBuildId,
-        }),
+        }), ownerUserId },
       };
       const existing = await args.prisma.goal.findUnique({
         where: { id: output.id },
@@ -2067,6 +2139,7 @@ export async function buildCoachingPacketFromTranscriptJob(
               data: {
                 title: output.title,
                 description: goalDescription,
+                ...(generatedOwnerCanRefresh(existing, "ownerUserId") ? { ownerUserId } : {}),
                 sourceJson: preserveActiveRelationshipWorkRemoval(
                   existing.sourceJson,
                   sourceJson,
@@ -2077,7 +2150,7 @@ export async function buildCoachingPacketFromTranscriptJob(
             (await args.prisma.goal.create({
               data: {
                 id: output.id,
-                ownerUserId: defaultOwnerUserId,
+                ownerUserId,
                 roomId: job.roomId,
                 bookingId: job.room?.bookingId ?? null,
                 projectId: job.room?.projectId ?? null,
