@@ -1,0 +1,125 @@
+/** @jest-environment node */
+jest.mock("@/auth", () => ({ auth: jest.fn() }));
+jest.mock("@/lib/server/quipsly-session", () => ({ getQuipslySessionFromRequest: jest.fn() }));
+jest.mock("@/lib/server/subscription-entitlements", () => ({ quipslyCoachCapabilityAccess: jest.fn(async () => ({ allowed: true })) }));
+
+import { randomUUID } from "node:crypto";
+import { getPrismaClient } from "@/lib/prisma";
+import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
+import { ensureCoachingEngagement } from "@/lib/server/coaching-engagement";
+import { homeNestSlugForEmail } from "@/lib/server/home-nest";
+import { POST } from "./route";
+
+const enabled = process.env.QUIPSLY_LOCAL_DB_SMOKE === "1";
+if (enabled) {
+  const target = process.env.QUIPSLY_LOCAL_DATABASE_URL;
+  if (!target || !["localhost", "127.0.0.1", "[::1]"].includes(new URL(target).hostname)) {
+    throw new Error("Booking workflow tests require an explicit disposable local database.");
+  }
+  process.env.DATABASE_URL = target;
+}
+
+(enabled ? describe : describe.skip)("client-space scheduling through the real application endpoint", () => {
+  const prisma = getPrismaClient();
+  const nonce = randomUUID().slice(0, 8);
+  const coach = { id: `schedule-coach-${nonce}`, primaryEmail: `schedule-coach-${nonce}@example.test`, name: "Coach" };
+  const client = { id: `schedule-client-${nonce}`, primaryEmail: `schedule-client-${nonce}@example.test`, name: "Client" };
+  const outsider = { id: `schedule-outsider-${nonce}`, primaryEmail: `schedule-outsider-${nonce}@example.test`, name: "Other coach" };
+  const workspaceId = `schedule-workspace-${nonce}`;
+  const projectId = `schedule-project-${nonce}`;
+  let engagementId = "";
+  let offset = 0;
+
+  async function act(body: Record<string, unknown>, actor = coach) {
+    jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({ user: actor } as never);
+    const response = await POST(new Request("http://localhost/api/coaching/runway", {
+      method: "POST", body: JSON.stringify(body), headers: { "Content-Type": "application/json" },
+    }));
+    return { status: response.status, body: await response.json() };
+  }
+
+  async function hold() {
+    // Different future days keep tests independent without consulting a cloud calendar.
+    const scheduledStart = new Date(Date.now() + (++offset + 2) * 86_400_000).toISOString();
+    const result = await act({ action: "create-booking-hold", engagementId,
+      clientEmail: "untrusted-body@example.test", projectSlug: "untrusted-project",
+      title: "Prepare together", notes: "Questions prepared in the shared space.", scheduledStart, durationMinutes: 60, timezone: "UTC", purpose: "COACHING" });
+    expect(result).toMatchObject({ status: 200, body: { ok: true } });
+    return result.body.result.holdId as string;
+  }
+
+  beforeAll(async () => {
+    await prisma.user.createMany({ data: [coach, client, outsider] });
+    await prisma.coachProfile.createMany({ data: [{ userId: coach.id, isActive: true }, { userId: outsider.id, isActive: true }] });
+    await prisma.studioWorkspace.create({ data: { id: workspaceId, slug: workspaceId, name: "Scheduling QA" } });
+    await prisma.studioProject.create({ data: { id: projectId, workspaceId, slug: projectId, name: "Client work outside Home Nest" } });
+    const engagement = await prisma.$transaction((tx) => ensureCoachingEngagement({ prisma: tx,
+      projectId, actorUserId: coach.id, coachUserId: coach.id, clientUserId: client.id, clientLabel: client.name }));
+    engagementId = engagement.id;
+  });
+
+  afterAll(async () => {
+    try {
+      await prisma.bookingHold.deleteMany({ where: { coachProfile: { userId: coach.id } } });
+      await prisma.callRoom.deleteMany({ where: { projectId } });
+      await prisma.coachingBooking.deleteMany({ where: { coachUserId: coach.id } });
+      await prisma.appointment.deleteMany({ where: { coachUserId: coach.id } });
+      await prisma.coachingEngagement.deleteMany({ where: { id: engagementId } });
+      await prisma.studioProject.deleteMany({ where: { id: projectId } });
+      await prisma.studioWorkspace.deleteMany({ where: { id: workspaceId } });
+      await prisma.user.deleteMany({ where: { id: { in: [coach.id, client.id, outsider.id] } } });
+    } finally { await prisma.$disconnect(); }
+  });
+
+  it("keeps held time, booking, room, and participant identities in the original space", async () => {
+    const holdId = await hold();
+    const saved = await prisma.bookingHold.findUniqueOrThrow({ where: { id: holdId } });
+    expect(saved).toMatchObject({ clientUserId: client.id, contactEmail: client.primaryEmail,
+      metadataJson: { engagementId, projectSlug: projectId, purpose: "COACHING", externalInviteSent: false } });
+    const [result, concurrent] = await Promise.all([
+      act({ action: "convert-booking-hold", holdId }),
+      act({ action: "convert-booking-hold", holdId }),
+    ]);
+    expect(result).toMatchObject({ status: 200, body: { ok: true, result: { engagementId, clientUserId: client.id } } });
+    expect(concurrent).toMatchObject({ status: 200, body: { result: {
+      bookingId: result.body.result.bookingId, callRoomId: result.body.result.callRoomId, engagementId,
+    } } });
+    const booking = await prisma.coachingBooking.findUniqueOrThrow({ where: { id: result.body.result.bookingId } });
+    expect(booking).toMatchObject({ coachUserId: coach.id, clientUserId: client.id, engagementId, notes: "Questions prepared in the shared space." });
+    const room = await prisma.callRoom.findUniqueOrThrow({ where: { id: result.body.result.callRoomId }, include: { participants: true } });
+    expect(room).toMatchObject({ projectId, coachingEngagementId: engagementId, bookingId: booking.id, purpose: "COACHING", status: "PLANNED" });
+    expect(room.participants.map((person) => person.userId).sort()).toEqual([coach.id, client.id].sort());
+    const replay = await act({ action: "convert-booking-hold", holdId });
+    expect(replay).toMatchObject({ status: 200, body: { result: { bookingId: booking.id, callRoomId: room.id, engagementId, replayed: true } } });
+    expect(await prisma.coachingBooking.count({ where: { coachUserId: coach.id } })).toBe(1);
+  });
+
+  it("rejects another coach before creating a Nest or touching the hold", async () => {
+    const holdId = await hold();
+    expect((await act({ action: "convert-booking-hold", holdId }, outsider)).status).toBe(403);
+    expect(await prisma.bookingHold.findUnique({ where: { id: holdId } })).toMatchObject({ status: "ACTIVE", convertedBookingId: null });
+    expect(await prisma.studioProject.findFirst({ where: { slug: homeNestSlugForEmail(outsider.primaryEmail) } })).toBeNull();
+  });
+
+  it("rechecks space membership instead of treating a held-time ID as access", async () => {
+    const holdId = await hold();
+    await prisma.coachingEngagementMember.updateMany({ where: { engagementId, userId: coach.id }, data: { status: "REMOVED" } });
+    try {
+      expect((await act({ action: "convert-booking-hold", holdId })).status).toBe(404);
+      expect(await prisma.bookingHold.findUnique({ where: { id: holdId } })).toMatchObject({ status: "ACTIVE", convertedBookingId: null });
+    } finally {
+      await prisma.coachingEngagementMember.updateMany({ where: { engagementId, userId: coach.id }, data: { status: "ACTIVE" } });
+    }
+  });
+
+  it("does not silently move reserved time to a different space", async () => {
+    const holdId = await hold();
+    expect((await act({ action: "convert-booking-hold", holdId, engagementId: "another-space" })).status).toBe(409);
+    expect(await prisma.bookingHold.findUnique({ where: { id: holdId } })).toMatchObject({ status: "ACTIVE", convertedBookingId: null });
+  });
+
+  it("returns not found without manufacturing a Home Nest", async () => {
+    expect((await act({ action: "convert-booking-hold", holdId: `missing-${nonce}` })).status).toBe(404);
+    expect(await prisma.studioProject.findFirst({ where: { slug: homeNestSlugForEmail(coach.primaryEmail) } })).toBeNull();
+  });
+});

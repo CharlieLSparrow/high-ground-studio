@@ -2133,7 +2133,7 @@ function CoachingWorkspace() {
     setHoldBusyById((current) => ({ ...current, [holdId]: true }));
     setHoldStatusById((current) => ({
       ...current,
-      [holdId]: "Converting hold into booking and capture room...",
+      [holdId]: "Scheduling session…",
     }));
 
     try {
@@ -2143,7 +2143,6 @@ function CoachingWorkspace() {
         body: JSON.stringify({
           action: "convert-booking-hold",
           holdId,
-          notes: "Converted from the coaching runway UI.",
         }),
       });
       const payload = await response.json();
@@ -2161,7 +2160,7 @@ function CoachingWorkspace() {
       }
       setHoldStatusById((current) => ({
         ...current,
-        [holdId]: payload.result?.nextAction || "Hold converted to booking.",
+        [holdId]: payload.result?.nextAction || "Session scheduled.",
       }));
       await loadRunway();
     } catch (cause) {

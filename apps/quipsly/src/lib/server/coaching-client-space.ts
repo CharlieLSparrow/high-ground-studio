@@ -1,6 +1,6 @@
 import "server-only";
 
-import type { PrismaClient } from "@prisma/client";
+import type { Prisma, PrismaClient } from "@prisma/client";
 import { getPrismaClient } from "@/lib/prisma";
 import { ensureCoachingEngagement, coachingEngagementAccessWhere } from "./coaching-engagement";
 import { ensureHomeNestForEmailInTransaction } from "./home-nest";
@@ -15,17 +15,17 @@ export class CoachingClientSpaceError extends Error {
 export async function coachingClientSchedulingContext(input: {
   actor: SessionAccessActor;
   engagementId: string;
-  prisma?: PrismaClient;
+  prisma?: PrismaClient | Prisma.TransactionClient;
 }) {
   const prisma = input.prisma ?? getPrismaClient();
   const space = await prisma.coachingEngagement.findFirst({
     where: { AND: [coachingEngagementAccessWhere(input.engagementId, input.actor, "manage"),
       ...(input.actor.isStaff ? [] : [{ primaryCoachUserId: input.actor.id }])], status: { in: ["ACTIVE", "PAUSED"] } },
-    select: { id: true, title: true, primaryCoachUserId: true, primaryClientUserId: true, project: { select: { slug: true } } },
+    select: { id: true, title: true, projectId: true, primaryCoachUserId: true, primaryClientUserId: true, project: { select: { slug: true } } },
   });
   if (!space?.primaryClientUserId || !space.primaryCoachUserId) throw new CoachingClientSpaceError("This client space is not available for scheduling.", 404);
   const client = await prisma.user.findUniqueOrThrow({ where: { id: space.primaryClientUserId }, select: { name: true, primaryEmail: true } });
-  return { engagementId: space.id, title: space.title, projectSlug: space.project.slug, coachUserId: space.primaryCoachUserId, clientEmail: client.primaryEmail, clientName: client.name || "" };
+  return { engagementId: space.id, title: space.title, projectId: space.projectId, projectSlug: space.project.slug, coachUserId: space.primaryCoachUserId, clientUserId: space.primaryClientUserId, clientEmail: client.primaryEmail, clientName: client.name || "" };
 }
 
 export async function createCoachingClientSpace(input: {

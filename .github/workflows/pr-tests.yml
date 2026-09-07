@@ -125,6 +125,7 @@ jobs:
             src/app/api/nest-chat/route.integration.test.ts \
             src/lib/server/quipsly-core.integration.test.ts \
             src/lib/server/coaching-engagement.integration.test.ts \
+            src/app/api/coaching/runway/route.integration.test.ts \
             src/lib/server/session-access.integration.test.ts \
             2>&1 | tee "${RUNNER_TEMP}/quipsly-db-tests.log"
 

@@ -61,7 +61,12 @@ cross-project IDs, transactions, message retry deduplication, complete paginated
 history, private-client isolation from Nest owners/editors, single-Session guest
 access, membership revocation over retained bookings, and persistence; only the request identity and
 Next.js cache adapter are mocked for the command tests. It does not prove the
-Firebase login flow or deployed permissions. No production database or cloud
+Firebase login flow or deployed permissions. The scheduling endpoint suite also
+converts held time into a booking and room in the original client space, checks
+participant identities and retained notes, races duplicate submissions, and
+rejects removed members and other coaches. Only request identity and subscription
+eligibility are mocked there; scheduling and persistence use the real database.
+No production database or cloud
 credentials are available to that step. Migration and test logs are retained.
 This follows GitHub's [PostgreSQL service-container pattern](https://docs.github.com/en/actions/tutorials/use-containerized-services/create-postgresql-service-containers)
 using the same [pgvector image family](https://github.com/pgvector/pgvector) as local development.

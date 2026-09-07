@@ -25,7 +25,7 @@ describe("client space creation adapter", () => {
   });
   it("loads scheduling context through the signed-in actor, never a query-string identity", async () => {
     jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({ user: actor } as never);
-    const context = { engagementId: "space", title: "Client", projectSlug: "nest", coachUserId: actor.id, clientEmail: "client@example.test", clientName: "Client" };
+    const context = { engagementId: "space", title: "Client", projectId: "project", projectSlug: "nest", coachUserId: actor.id, clientUserId: "client", clientEmail: "client@example.test", clientName: "Client" };
     jest.mocked(coachingClientSchedulingContext).mockResolvedValue(context);
     const response = await GET(new Request("http://localhost/api/coaching/engagements?engagementId=space&actor=victim"));
     expect(response.status).toBe(200);

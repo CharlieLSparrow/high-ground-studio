@@ -28,7 +28,7 @@ import {
   normalizeCoachingBookingSeriesIntent,
 } from "@/lib/server/coaching-booking-series";
 import { createCoachingBookingSeriesInTransaction } from "@/lib/server/coaching-booking-series-operation";
-import { ensureHomeNestForEmail } from "@/lib/server/home-nest";
+import { ensureHomeNestForEmail, ensureHomeNestForEmailInTransaction } from "@/lib/server/home-nest";
 import { projectClientInvitationDeliveryForViewer } from "@/lib/server/coaching-invitation-delivery-projection";
 import {
   buildMobileCaptureConsentVersions,
@@ -157,7 +157,7 @@ function runwayActionErrorResponse(error: unknown) {
       { status: 400 },
     );
   }
-  if (error instanceof RunwayActionError) {
+  if (error instanceof RunwayActionError || error instanceof CoachingClientSpaceError) {
     return NextResponse.json({ ok: false, error: error.message }, { status: error.status });
   }
   throw error;
@@ -181,7 +181,9 @@ async function resolveCoachingProject(input: {
     }
     return { id: access.projectId, slug: requestedProjectSlug };
   }
-  const home = await ensureHomeNestForEmail(input.actorEmail, input.prisma);
+  const home = typeof input.prisma.$transaction === "function"
+    ? await ensureHomeNestForEmail(input.actorEmail, input.prisma)
+    : await ensureHomeNestForEmailInTransaction(input.actorEmail, input.prisma);
   if (!home?.id || !home.slug) {
     throw new RunwayActionError("Quipsly could not create an actor-owned Nest for this coaching engagement.", 409);
   }
@@ -2489,24 +2491,12 @@ export async function POST(request: Request) {
 
   if (action === "convert-booking-hold") {
     const holdId = text(body.holdId);
-    const notes = text(body.notes) || null;
 
     if (!holdId) {
       return NextResponse.json(
         { ok: false, error: "A hold ID is required before converting a booking hold." },
         { status: 400 },
       );
-    }
-
-    let coachingProject;
-    try {
-      coachingProject = await resolveCoachingProject({
-        prisma,
-        requestedProjectSlug: body.projectSlug,
-        actorEmail: text(session.user.primaryEmail || session.user.email).toLowerCase(),
-      });
-    } catch (error) {
-      return runwayActionErrorResponse(error);
     }
 
     try {
@@ -2524,7 +2514,7 @@ export async function POST(request: Request) {
         },
       });
 
-      if (!hold) throw new Error("That booking hold was not found.");
+      if (!hold) throw new RunwayActionError("That held time was not found.", 404);
       const assignedCoachUserId =
         hold.offering?.coachProfile?.userId || hold.coachProfile?.userId || null;
       if (!canManageCoachingBookingHold({
@@ -2538,11 +2528,29 @@ export async function POST(request: Request) {
         );
       }
       if (hold.convertedBookingId || hold.status === "CONVERTED") {
+        const booking = hold.convertedBookingId
+          ? await tx.coachingBooking.findUnique({
+            where: { id: hold.convertedBookingId },
+            include: { callRoom: { select: { id: true } } },
+          }) : null;
+        if (!booking?.callRoom) {
+          throw new RunwayActionError("The session for this held time is no longer available.", 409);
+        }
+        if (booking.engagementId) {
+          await coachingClientSchedulingContext({ actor: session.user, engagementId: booking.engagementId, prisma: tx });
+        }
         return {
           holdId: hold.id,
-          bookingId: hold.convertedBookingId,
+          appointmentId: booking.appointmentId,
+          bookingId: booking.id,
+          callRoomId: booking.callRoom.id,
+          engagementId: booking.engagementId,
+          ...coachingClientEntryPaths({ roomId: booking.callRoom.id, engagementId: booking.engagementId }),
+          clientUserId: booking.clientUserId,
+          paymentRecordId: booking.paymentRecordId,
           status: "CONVERTED",
-          nextAction: "Hold was already converted. Open the existing booking and capture room.",
+          replayed: true,
+          nextAction: "This session is already scheduled. Open it to continue.",
         };
       }
       if (hold.status === "CANCELED") throw new Error("Released holds cannot be converted. Create a fresh hold or booking.");
@@ -2563,6 +2571,26 @@ export async function POST(request: Request) {
       const coachUserId = session.user.isStaff
         ? text(body.coachUserId) || assignedCoachUserId || session.user.id
         : session.user.id;
+      const holdMetadata = sourceJson(hold.metadataJson);
+      const notes = text(body.notes) || text(holdMetadata.notes) || null;
+      const heldEngagementId = text(holdMetadata.engagementId);
+      if (heldEngagementId && text(body.engagementId) && heldEngagementId !== text(body.engagementId)) {
+        throw new RunwayActionError("This time is held in another client space. Schedule it there or release the hold.", 409);
+      }
+      const engagementId = heldEngagementId || text(body.engagementId);
+      const context = engagementId
+        ? await coachingClientSchedulingContext({ actor: session.user, engagementId, prisma: tx })
+        : null;
+      if (context && (context.clientUserId !== client.id || context.coachUserId !== coachUserId)) {
+        throw new RunwayActionError("This held time no longer matches the people in its client space.", 409);
+      }
+      const coachingProject = context
+        ? { id: context.projectId, slug: context.projectSlug }
+        : await resolveCoachingProject({
+          prisma: tx,
+          requestedProjectSlug: holdMetadata.projectSlug || body.projectSlug,
+          actorEmail: text(session.user.primaryEmail || session.user.email).toLowerCase(),
+        });
       await assertCoachingScheduleAvailable({
         tx,
         coachUserId,
@@ -2573,8 +2601,8 @@ export async function POST(request: Request) {
       const title = text(body.title) || coachingHoldDetails(hold).title || "Quipsly coaching session";
       const paymentPolicy = text(body.paymentPolicy) || offering?.paymentPolicy || "MANUAL";
       const amountCents = integer(body.amountCents) ?? offering?.priceCents ?? null;
-      const purpose = normalizePurpose(body.purpose || offering?.kind);
-      if (purpose !== "COACHING" && text(body.engagementId)) {
+      const purpose = normalizePurpose(holdMetadata.purpose || body.purpose || offering?.kind);
+      if (purpose !== "COACHING" && engagementId) {
         throw new RunwayActionError("Only coaching Sessions can join a Coaching Engagement.", 409);
       }
       const engagement = purpose === "COACHING" ? await ensureCoachingEngagement({
@@ -2584,7 +2612,7 @@ export async function POST(request: Request) {
         clientUserId: client.id,
         coachUserId,
         clientLabel: client.name || client.primaryEmail,
-        requestedEngagementId: text(body.engagementId) || null,
+        requestedEngagementId: engagementId || null,
       }) : null;
 
       const appointment = await tx.appointment.create({
@@ -2862,6 +2890,9 @@ export async function POST(request: Request) {
             source: "quipsly-coaching-runway",
             createdByUserId: session.user.id,
             title,
+            engagementId: text(body.engagementId) || null,
+            projectSlug,
+            purpose: normalizePurpose(body.purpose || offering?.kind),
             externalCalendarCreated: false,
             externalInviteSent: false,
             stripeCheckoutCreated: false,
