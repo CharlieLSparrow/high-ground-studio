@@ -100,7 +100,7 @@ export function SessionFinishingCockpitCard(props: Props) {
   const recordingDetail = sourceJourney.counts.attention > 0
     ? "Quipsly preserved everything it received. Open the next action to recover or review the affected source."
     : sourceJourney.counts.inProgress > 0
-      ? "You can leave this page. Quipsly will keep checking the recordings and prepare the transcript automatically."
+      ? "Quipsly prepares saved recordings and transcripts automatically. Keep recording devices open while they are still uploading; processing continues after the upload finishes."
       : protectedSourceCount > 0
         ? `${playbackReadyCount} of ${protectedSourceCount} participant-owned ${protectedSourceCount === 1 ? "source is" : "sources are"} verified, decoded, and ready in the protected player. Originals remain unchanged.`
         : "Record this Session when everyone is ready. Missing expected participants remain visible.";

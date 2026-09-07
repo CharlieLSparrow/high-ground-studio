@@ -75,8 +75,8 @@ function planGate(expectation: SessionReadinessExpectedSource | null): SessionRe
   if (!expectation) return {
     id: "plan",
     label: "Source plan",
-    state: "REVIEW",
-    detail: "Retained media exists, but no source-plan item owns its intended role.",
+    state: "READY",
+    detail: "No extra source was requested. A source plan is optional for this recording.",
   };
   if (expectation.fulfillment === "fulfilled" || expectation.fulfillment === "bound-source-pending") return {
     id: "plan",

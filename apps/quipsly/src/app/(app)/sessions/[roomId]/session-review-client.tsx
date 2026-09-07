@@ -70,6 +70,9 @@ import type { SessionFinishingEvidence } from "./session-finishing-cockpit";
 import type { SessionPreparation } from "./session-preparation-model";
 import { SessionRecordingImportCard } from "./session-recording-import-card";
 import { SessionRecordingHealthCard } from "./session-recording-health-card";
+import { SessionRecordingHealthListeningNavigator } from "./session-recording-health-listening-navigator";
+import { buildSessionRecordingHealth } from "./session-recording-health";
+import { RecordingDetails, RecordingUploadStatus } from "./session-recordings-workspace";
 import { SessionAudioMasteryCard } from "./session-audio-mastery-card";
 import type { SessionSourceEvidence } from "./session-source-evidence-model";
 import { SessionReadinessTopologyCard } from "./session-readiness-topology-card";
@@ -4351,6 +4354,16 @@ export function SessionReviewClient({
 
       {mode === "recordings" ? (
         <>
+          <RecordingUploadStatus topology={readinessTopology} evidence={sourceEvidence} />
+          <SessionRecordingHealthListeningNavigator roomId={roomId}
+            health={buildSessionRecordingHealth({ topology: readinessTopology, sourceEvidence })}
+            evidence={sourceEvidence} presentation="workspace" />
+          {purpose === "COACHING" ? <SessionRecordingShareCard roomId={roomId} /> : null}
+          <details className="rounded-2xl border border-[#ddcdaf] bg-[#fffdf8] p-4 sm:p-5">
+            <summary className="min-h-11 cursor-pointer content-center text-sm font-bold text-[#5b472f]">Import a recording</summary>
+            <div className="mt-4"><SessionRecordingImportCard roomId={roomId} preparation={preparation} /></div>
+          </details>
+          <RecordingDetails>
           <SessionFinishingCockpitCard
             roomId={roomId}
             topology={readinessTopology}
@@ -4363,10 +4376,6 @@ export function SessionReviewClient({
             roomId={roomId}
             topology={readinessTopology}
             canManageSourcePlan={canManageSourcePlan}
-          />
-          <SessionRecordingImportCard
-            roomId={roomId}
-            preparation={preparation}
           />
           {contentReadiness ? (
             <SessionContentReadinessCard readiness={contentReadiness} />
@@ -4381,6 +4390,7 @@ export function SessionReviewClient({
             roomId={roomId}
             topology={readinessTopology}
             sourceEvidence={sourceEvidence}
+            showPlayer={false}
           />
           <SessionSourceAlignmentCard
             roomId={roomId}
@@ -4398,6 +4408,7 @@ export function SessionReviewClient({
             evidence={sourceEvidence}
             canReleaseHeldMedia={canReleaseHeldMedia}
           />
+          </RecordingDetails>
         </>
       ) : null}
 

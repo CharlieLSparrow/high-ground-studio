@@ -12,6 +12,7 @@ type Props = {
   roomId: string;
   topology: SessionReadinessTopology;
   sourceEvidence: SessionSourceEvidence;
+  showPlayer?: boolean;
 };
 
 function stateTone(state: SessionRecordingHealthState) {
@@ -38,7 +39,7 @@ function actionForGate(roomId: string, gate: SessionRecordingHealthGate, recordi
   return { label: "Inspect source evidence", href: `/sessions/${room}?mode=recordings#source-evidence-heading` };
 }
 
-export function SessionRecordingHealthCard({ roomId, topology, sourceEvidence }: Props) {
+export function SessionRecordingHealthCard({ roomId, topology, sourceEvidence, showPlayer = true }: Props) {
   const health = buildSessionRecordingHealth({ topology, sourceEvidence });
   return <section className="rounded-3xl border border-sky-200 bg-gradient-to-br from-sky-50 via-white to-violet-50 p-5 shadow-sm sm:p-6" aria-labelledby="audio-flight-deck-heading" data-session-recording-health={health.state}>
     <div className="flex flex-wrap items-start justify-between gap-4">
@@ -87,10 +88,10 @@ export function SessionRecordingHealthCard({ roomId, topology, sourceEvidence }:
           </div>
         </li>;
       })}
-    </ol> : <p className="mt-5 rounded-2xl border border-dashed border-slate-300 bg-white/80 p-4 text-sm font-bold text-slate-700">No active planned or retained source is available. Declare the intended microphone, camera, sync, and backup sources before recording so a device that never starts cannot disappear from review.</p>}
+    </ol> : <p className="mt-5 rounded-2xl border border-dashed border-slate-300 bg-white/80 p-4 text-sm font-bold text-slate-700">Recorded and imported sources appear here automatically. Source planning is optional and useful when you expect extra cameras or backup recordings.</p>}
 
-    <div className="mt-5">
+    {showPlayer ? <div className="mt-5">
       <SessionRecordingHealthListeningNavigator roomId={roomId} health={health} evidence={sourceEvidence} />
-    </div>
+    </div> : null}
   </section>;
 }

@@ -568,6 +568,11 @@ describe("Session review goal candidates", () => {
         followUp.compareDocumentPosition(advancedEvidence) & Node.DOCUMENT_POSITION_FOLLOWING,
       ).toBeTruthy();
       expect(advancedEvidence.closest("details")).not.toHaveAttribute("open");
+    } else if (mode === "recordings") {
+      await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/sessions/room-1/recording-share", { cache: "no-store" }));
+      const diagnostics = screen.getByText("Recording details & troubleshooting").closest("details")!;
+      expect(diagnostics).not.toHaveAttribute("open");
+      expect(screen.getByText("No recording ready to play yet").compareDocumentPosition(diagnostics) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     } else {
       expect(fetchMock).not.toHaveBeenCalled();
     }
@@ -1847,6 +1852,7 @@ describe("Session review goal candidates", () => {
       canReleaseHeldMedia
     />);
 
+    await user.click(screen.getByText("Recording details & troubleshooting"));
     const releaseButton = screen.getByRole("button", { name: "Release exact source" });
     expect(releaseButton).toBeDisabled();
     await user.type(screen.getByLabelText(/why is this exact source safe to release/i), "All three participants consented and I reviewed these exact bytes.");
@@ -1855,18 +1861,17 @@ describe("Session review goal candidates", () => {
     expect(releaseButton).toBeEnabled();
     await user.click(releaseButton);
 
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(fetchMock.mock.calls.filter(([url]) => url === "/api/mobile/capture/uploads/resumable/release")).toHaveLength(1));
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/mobile/capture/uploads/resumable/release",
       expect.objectContaining({ method: "POST" }),
     );
-    const request = fetchMock.mock.calls[0][1] as RequestInit;
+    const request = fetchMock.mock.calls.find(([url]) => url === "/api/mobile/capture/uploads/resumable/release")![1] as RequestInit;
     expect(JSON.parse(String(request.body))).toEqual({
       uploadSessionId: "aba9da45-c487-488d-99ae-13ffbf27f7bc",
       reason: "All three participants consented and I reviewed these exact bytes.",
     });
-    expect(await screen.findByRole("status")).toHaveTextContent("Released processing · Held transcript");
-    expect(screen.getByRole("status")).not.toHaveTextContent(/transcript released/i);
+    expect(await screen.findByText(/Released processing · Held transcript/)).not.toHaveTextContent(/transcript released/i);
     expect(mockRouterRefresh).toHaveBeenCalledTimes(1);
   });
 

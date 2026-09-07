@@ -55,6 +55,6 @@ describe("Session recording health card", () => {
 
     const flightDeck = screen.getByRole("region", { name: "Recording health is not yet known" });
     expect(flightDeck).toHaveAttribute("data-session-recording-health", "UNKNOWN");
-    expect(within(flightDeck).getByText(/No active planned or retained source/)).toBeInTheDocument();
+    expect(within(flightDeck).getByText(/Recorded and imported sources appear here automatically/)).toBeInTheDocument();
   });
 });

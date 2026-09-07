@@ -341,15 +341,15 @@ describe("Session recording health", () => {
     ]));
   });
 
-  it("surfaces an unplanned retained source for review instead of silently blessing it", () => {
+  it("does not require a source plan for an otherwise healthy standard recording", () => {
     const inputTopology = topology();
     inputTopology.expectedSources = [];
     const health = buildSessionRecordingHealth({ topology: inputTopology, sourceEvidence: sourceEvidence() });
 
-    expect(health.state).toBe("REVIEW");
+    expect(health.state).toBe("READY");
     expect(health.sources[0]).toMatchObject({ expectedSourceId: null, retentionRole: "unplanned" });
     expect(health.sources[0]?.gates).toEqual(expect.arrayContaining([
-      expect.objectContaining({ id: "plan", state: "REVIEW" }),
+      expect.objectContaining({ id: "plan", state: "READY" }),
     ]));
   });
 });

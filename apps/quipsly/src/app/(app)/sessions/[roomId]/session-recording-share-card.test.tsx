@@ -50,6 +50,25 @@ describe("SessionRecordingShareCard", () => {
     Reflect.deleteProperty(global, "fetch");
   });
 
+  it("shows loading rather than a permission failure while the workspace is being read", () => {
+    global.fetch = jest.fn(() => new Promise<Response>(() => {}));
+    render(<SessionRecordingShareCard roomId="session_room_0001" />);
+    expect(screen.getByRole("status")).toHaveTextContent("Loading recording tools");
+    expect(screen.queryByText(/unavailable|recipient boundary/i)).not.toBeInTheDocument();
+  });
+
+  it("recovers a failed read through Try again without mutating or sharing the recording", async () => {
+    const fetchMock = jest.fn().mockRejectedValueOnce(new Error("Connection interrupted"))
+      .mockResolvedValue(response(snapshot));
+    global.fetch = fetchMock;
+    render(<SessionRecordingShareCard roomId="session_room_0001" />);
+    expect(await screen.findByText("Connection interrupted")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    expect(await screen.findByRole("heading", { name: "Trim and share" })).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    for (const args of fetchMock.mock.calls) expect(args).toEqual(["/api/sessions/session_room_0001/recording-share", { cache: "no-store" }]);
+  });
+
   it("explains the client's empty shared-recording space without showing coach instructions", async () => {
     global.fetch = jest.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => response({ ...snapshot, role: "CLIENT", available: undefined,
       readiness: undefined })) as jest.MockedFunction<typeof fetch>;

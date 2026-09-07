@@ -248,7 +248,7 @@ export function SessionRecordingShareCard({
   const requestIds = useRef<Partial<Record<"PREPARE" | "REVIEW" | "RELEASE" | "REVOKE", string>>>({});
 
   const load = useCallback(async (quiet = false) => {
-    if (!quiet) setBusy("LOAD");
+    if (!quiet) { setBusy("LOAD"); setNotice(null); }
     try {
       const response = await fetch(`/api/sessions/${encodeURIComponent(roomId)}/recording-share`, { cache: "no-store" });
       const payload = await response.json() as Snapshot;
@@ -516,8 +516,11 @@ export function SessionRecordingShareCard({
     }
   }
 
+  if (!snapshot && !notice) {
+    return <section className="rounded-2xl border border-[#ddcdaf] bg-[#fffdf8] p-5" role="status"><p className="flex items-center gap-2 text-sm font-semibold text-[#5b472f]"><RefreshCw size={16} className="animate-spin" aria-hidden="true" />Loading recording tools…</p></section>;
+  }
   if (!snapshot?.role || !snapshot.room) {
-    return <section className="rounded-3xl border border-amber-200 bg-amber-50 p-5" role="status"><LockKeyhole className="text-amber-800" /><h2 className="mt-3 font-serif text-2xl font-black text-amber-950">Private recording unavailable</h2><p className="mt-2 text-sm font-semibold text-amber-900">{notice || "Loading the recipient boundary…"}</p></section>;
+    return <section className="rounded-3xl border border-amber-200 bg-amber-50 p-5" role="status"><LockKeyhole className="text-amber-800" /><h2 className="mt-3 font-serif text-2xl font-black text-amber-950">Recording tools unavailable</h2><p className="mt-2 text-sm font-semibold text-amber-900">{notice || "Quipsly could not load this recording workspace."}</p><button type="button" onClick={() => void load()} className="mt-3 min-h-11 rounded-full border border-amber-300 bg-white px-4 text-sm font-bold text-amber-950">Try again</button></section>;
   }
 
   const output = snapshot.output;

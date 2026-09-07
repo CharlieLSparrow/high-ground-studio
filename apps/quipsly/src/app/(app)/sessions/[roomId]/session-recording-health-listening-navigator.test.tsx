@@ -135,6 +135,16 @@ describe("SessionRecordingHealthListeningNavigator", () => {
     );
   });
 
+  it("puts the same source-bound player in the ordinary recording workspace without approval jargon", () => {
+    render(<SessionRecordingHealthListeningNavigator roomId="room-1" health={health()} evidence={evidence()} presentation="workspace" />);
+    expect(screen.getByRole("heading", { name: "Listen to your recording" })).toBeVisible();
+    expect(screen.getByLabelText("Protected source MV7i master.wav")).toHaveAttribute("src", "/api/ingest/media/source-master");
+    expect(screen.getByRole("img", { name: "Complete-decode waveform overview" })).toBeVisible();
+    expect(screen.queryByText(/no heard\/approved claim|proof-listen receipt/)).not.toBeInTheDocument();
+    fireEvent.change(screen.getByRole("slider", { name: "Selected source time" }), { target: { value: "7.25" } });
+    expect(screen.getByRole("link", { name: "Open in Transcript at 00:07" })).toHaveAttribute("href", "/sessions/room-1?mode=transcript&source=master&at=7.25#transcript-audio-review");
+  });
+
   it("switches source identity and plays exact-time observations without claiming playback review", async () => {
     render(<SessionRecordingHealthListeningNavigator roomId="room-1" health={health()} evidence={evidence()} />);
 

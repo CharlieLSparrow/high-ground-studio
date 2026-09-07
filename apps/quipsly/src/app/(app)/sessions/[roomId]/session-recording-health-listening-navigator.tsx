@@ -56,11 +56,14 @@ export function SessionRecordingHealthListeningNavigator({
   roomId,
   health,
   evidence,
+  presentation = "technical",
 }: {
   roomId: string;
   health: SessionRecordingHealth;
   evidence: SessionSourceEvidence;
+  presentation?: "technical" | "workspace";
 }) {
+  const workspace = presentation === "workspace";
   const sources = useMemo<AuditionSource[]>(() => {
     const evidenceByAsset = new Map(evidence.sources.map((source) => [source.recordingAssetId, source]));
     return health.sources.flatMap((source) => {
@@ -164,25 +167,25 @@ export function SessionRecordingHealthListeningNavigator({
   }
 
   if (!sources.length) return <section className="rounded-2xl border border-dashed border-slate-300 bg-white/70 p-5" data-flight-deck-listening="unavailable" aria-labelledby="flight-deck-listening-heading">
-    <p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.18em] text-slate-700"><AudioLines size={16} aria-hidden="true" />Source audition</p>
-    <h3 id="flight-deck-listening-heading" className="mt-1 font-serif text-2xl font-black text-[#3d3122]">Protected playback is not attached</h3>
-    <p className="mt-2 text-sm font-semibold leading-6 text-[#765f40]">Health evidence remains inspectable, but Quipsly will not turn a private storage locator into browser playback. Promote or repair an authorized protected source first.</p>
+    <p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.18em] text-slate-700"><AudioLines size={16} aria-hidden="true" />{workspace ? "Recordings" : "Source audition"}</p>
+    <h3 id="flight-deck-listening-heading" className="mt-1 font-serif text-2xl font-black text-[#3d3122]">{workspace ? "No recording ready to play yet" : "Protected playback is not attached"}</h3>
+    <p className="mt-2 text-sm font-semibold leading-6 text-[#765f40]">{workspace ? "Your recordings will appear here once they finish uploading and processing." : "Health evidence remains inspectable, but Quipsly will not turn a private storage locator into browser playback. Promote or repair an authorized protected source first."}</p>
   </section>;
 
-  return <section className="rounded-2xl border border-cyan-200 bg-white/90 p-4 sm:p-5" data-flight-deck-listening="ready" aria-labelledby="flight-deck-listening-heading">
+  return <section className="min-w-0 rounded-2xl border border-[#ddcdaf] bg-[#fffdf8] p-4 sm:p-5" data-flight-deck-listening="ready" aria-labelledby="flight-deck-listening-heading">
     <div className="flex flex-wrap items-start justify-between gap-3">
       <div className="max-w-3xl">
-        <p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.18em] text-cyan-800"><AudioLines size={16} aria-hidden="true" />Source audition</p>
-        <h3 id="flight-deck-listening-heading" className="mt-1 font-serif text-2xl font-black text-[#3d3122]">Open the actual master</h3>
-        <p className="mt-2 text-sm font-semibold leading-6 text-[#765f40]">Choose an independently identified source, scrub its complete-decode clock, or run a bounded ten-second check. Playback navigation creates no proof-listen receipt and changes no media.</p>
+        <p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.18em] text-[#41624b]"><AudioLines size={16} aria-hidden="true" />{workspace ? "Your recordings" : "Source audition"}</p>
+        <h3 id="flight-deck-listening-heading" className="mt-1 font-serif text-2xl font-black text-[#3d3122]">{workspace ? "Listen to your recording" : "Open the actual master"}</h3>
+        <p className="mt-2 text-sm font-semibold leading-6 text-[#765f40]">{workspace ? "Choose a track, listen, or jump to the same moment in the transcript." : "Choose an independently identified source, scrub its complete-decode clock, or run a bounded ten-second check. Playback navigation creates no proof-listen receipt and changes no media."}</p>
       </div>
-      <span className="inline-flex items-center gap-2 rounded-full border border-cyan-200 bg-cyan-50 px-3 py-1.5 text-[9px] font-black uppercase tracking-wide text-cyan-900"><ShieldCheck size={13} aria-hidden="true" />Protected route</span>
+      <span className="inline-flex items-center gap-2 rounded-full border border-[#ccd4bf] bg-[#f3f5eb] px-3 py-1.5 text-[9px] font-black uppercase tracking-wide text-[#41624b]"><ShieldCheck size={13} aria-hidden="true" />{workspace ? "Original recording" : "Protected route"}</span>
     </div>
 
     <ul className="mt-4 flex gap-2 overflow-x-auto pb-2" aria-label="Protected recording sources">
       {sources.map((source) => <li key={source.recordingAssetId}><button type="button" aria-pressed={selected?.recordingAssetId === source.recordingAssetId} onClick={() => choose(source.recordingAssetId)} data-flight-deck-audition-source={source.recordingAssetId} className={`min-h-16 min-w-52 rounded-xl border px-3 py-2 text-left transition ${stateTone(source.state)} ${selected?.recordingAssetId === source.recordingAssetId ? "ring-2 ring-cyan-500 ring-offset-2" : ""}`}>
-        <span className="block text-[9px] font-black uppercase tracking-wide">{source.state} · {source.participantLabel}</span>
-        <span className="mt-1 block truncate text-xs font-black">{source.label}</span>
+        <span className="block text-[9px] font-black uppercase tracking-wide">{workspace ? source.participantLabel : `${source.state} · ${source.participantLabel}`}</span>
+        <span className="mt-1 block max-w-64 truncate text-xs font-black">{source.label}</span>
         <span className="mt-1 block font-mono text-[9px] font-bold">{timestampForSeconds(source.durationSeconds)}</span>
       </button></li>)}
     </ul>
@@ -205,7 +208,7 @@ export function SessionRecordingHealthListeningNavigator({
           {transcriptHref ? <Link href={transcriptHref} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-violet-300 bg-violet-100 px-4 text-xs font-black text-violet-950">Open in Transcript at {timestampForSeconds(selectedSeconds)}</Link> : null}
         </div>
         {message ? <p role="status" className="mt-3 rounded-lg border border-slate-700 bg-slate-900 p-3 text-xs font-bold text-cyan-100">{message}</p> : null}
-        <p className="mt-3 text-[9px] font-black uppercase tracking-wide text-slate-500">Client playback is navigation only · no heard/approved claim is written</p>
+        {!workspace ? <p className="mt-3 text-[9px] font-black uppercase tracking-wide text-slate-500">Client playback is navigation only · no heard/approved claim is written</p> : null}
       </div>
 
       <aside className="rounded-xl border border-cyan-200 bg-cyan-50/50 p-4" aria-label="Signal observations for selected source">
