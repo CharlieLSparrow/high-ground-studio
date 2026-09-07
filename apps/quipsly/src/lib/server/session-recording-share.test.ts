@@ -2,11 +2,14 @@
 
 jest.mock("server-only", () => ({}));
 
+import { createHash } from "node:crypto";
+
 import {
   applyRecordingShareTranscriptReadiness,
   buildSessionRecordingShareEdit,
   classifyRecordingShareTranscriptCutSafety,
   newestCoherentRecordingTake,
+  readSessionRecordingShare,
   recordSessionRecordingSharePlaybackReview,
   sessionRecordingShareAudioMixSourceIds,
   sessionRecordingShareProgramClock,
@@ -16,6 +19,65 @@ import {
   transitionSessionRecordingShare,
 } from "./session-recording-share";
 import { buildSessionTranscriptReadiness } from "@/lib/session-transcript-readiness";
+
+describe("Recording editor transcript correction readback", () => {
+  const providerText = "My coaching goal is to write every morning.";
+  const digest = (text: string) => createHash("sha256").update(text, "utf8").digest("hex");
+
+  async function readCorrection(baseTextSha256: string) {
+    const actor = { id: "coach", primaryEmail: "coach@example.test", isStaff: false };
+    const sourceSha256 = "f".repeat(64);
+    const source = {
+      id: "source", roomId: "room", participantId: "participant", kind: "LOCAL_AUDIO",
+      fileName: "coaching.m4a", contentType: "audio/mp4", byteSize: 1000,
+      checksum: sourceSha256, recordedStartedAt: new Date("2026-09-07T12:00:00Z"),
+      recordedStoppedAt: new Date("2026-09-07T12:00:10Z"),
+      localManifestJson: { exactBytesVerified: true, storageGeneration: "9" },
+      participant: { displayName: "Coach" },
+    };
+    const client: any = {
+      callRoom: { findFirst: jest.fn().mockResolvedValue({
+        id: "room", title: "Coaching", captureGroupId: null,
+        booking: { coachUserId: actor.id, clientUserId: "client", coachUser: actor, clientUser: { id: "client", name: "Client" } },
+      }) },
+      sessionOutput: { findFirst: jest.fn().mockResolvedValue(null) },
+      recordingAsset: { findMany: jest.fn().mockResolvedValue([source]) },
+      transcriptJob: { findMany: jest.fn().mockResolvedValue([{
+        id: "job", assetId: source.id, sourceSha256, sourceGeneration: "9",
+        processingManifestObject: "transcripts/jobs/job/manifest.json",
+        processingResultObject: "transcripts/jobs/job/result.json",
+        providerRequestId: "provider-request", providerResponseObject: "transcripts/jobs/job/provider.json",
+        workerBuildId: "worker-build", speakerAttributions: [],
+        resultJson: { processingControl: { routing: { schema: "quipsly-transcript-routing-summary-v1", sourceTopology: "participant-isolated", participantLabel: "Coach", speakerAuthority: "source-binding", timingGranularity: "word", manifestBacked: true } } },
+        segments: [{
+          id: "segment", text: providerText, speakerLabel: "Coach", startSeconds: 0, endSeconds: 2,
+          words: [{ id: "word", providerWordIndex: 0, word: "My", startSeconds: 0, endSeconds: 0.3 }],
+          corrections: [{ baseTextSha256, correctedText: "My coaching goal is to write every morning!", correctedSpeakerLabel: "Charlie" }],
+        }],
+      }]) },
+    };
+    const result = await readSessionRecordingShare(client, { roomId: "room", actor });
+    expect(client.transcriptJob.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { roomId: "room", status: "COMPLETED", assetId: { in: ["source"] } },
+    }));
+    return result.available.transcriptSegments[0];
+  }
+
+  it("shows persisted raw-text-bound corrections without changing the audio cut identity", async () => {
+    const corrected = await readCorrection(digest(providerText));
+    const stale = await readCorrection(digest("A different provider transcript"));
+    expect(corrected).toMatchObject({ text: "My coaching goal is to write every morning!", speakerLabel: "Charlie", sourceRecordingAssetId: "source" });
+    expect(corrected.providerTextSha256).toBe(digest(JSON.stringify(providerText)));
+    expect(corrected.timingFingerprint).toBe(stale.timingFingerprint);
+    expect([corrected.cutStartSeconds, corrected.cutEndSeconds]).toEqual([0, 0.3]);
+  });
+
+  it("ignores a correction bound to different provider text", async () => {
+    expect(await readCorrection(digest("A different provider transcript"))).toMatchObject({
+      text: providerText, speakerLabel: "Coach",
+    });
+  });
+});
 
 describe("Session recording share take selection", () => {
   const alignment = (

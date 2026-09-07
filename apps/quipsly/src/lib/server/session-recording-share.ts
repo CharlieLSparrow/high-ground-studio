@@ -851,8 +851,13 @@ async function loadTranscriptEditSegments(
     const offsetSeconds = timingBySourceId.get(binding.source.id) ?? 0;
     for (const segment of job.segments) {
       const providerTextSha256 = sha256(segment.text);
+      // Corrections bind to raw UTF-8 provider text, not the canonical-JSON
+      // digest used by this editor's existing cut identity and render receipts.
+      const correctionBaseTextSha256 = createHash("sha256")
+        .update(segment.text, "utf8")
+        .digest("hex");
       const correction =
-        segment.corrections[0]?.baseTextSha256 === providerTextSha256
+        segment.corrections[0]?.baseTextSha256 === correctionBaseTextSha256
           ? segment.corrections[0]
           : null;
       const startSeconds = offsetSeconds + Number(segment.startSeconds);
