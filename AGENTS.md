@@ -1,132 +1,154 @@
-# AGENTS.md
+# Quipsly Agent and Contributor Guide
 
-This repo is a real active monorepo for High Ground Studio / High Ground Odyssey.
+This is the command deck for Quipsly. Read it before changing the repository.
+The product and its tests are the primary record; do not create routine plan,
+handoff, worklog, evidence-ledger, or status documents.
 
-Use this file as the top-level command deck before making changes.
+## Product mission
 
-## Start Here
+Quipsly is an AI work home for coaches, writers, researchers, trainers,
+podcasters, and content creators who should not have to become systems experts.
+The first commercial vertical is coaching.
 
-Read these files first:
-- `docs/project-context/current-state.md`
-- `docs/architecture/system-overview.md`
-- `docs/architecture/domain-model.md`
-- `docs/runbooks/local-dev.md`
-- `docs/agents/codex-handoff.md`
+The product should do useful internal work by default and leave results easy to
+understand, edit, undo, restore, and retry. Do not turn ordinary actions into
+proposals, approvals, review queues, or governance chores. Ask before external
+publication or communication, spending money, irreversible destruction, or
+crossing a privacy/access boundary.
 
-Recent stabilization history lives in:
-- `docs/sessions/stripe-recovery-result.md`
-- `docs/sessions/episodes-build-investigation-result.md`
-- `docs/sessions/episodes-loader-guard-result.md`
+## Canonical product surfaces
 
-## Repo Shape
+| Surface | Path | Responsibility |
+| --- | --- | --- |
+| Capture | `apps/mobile-capture/HighGroundCapture` | Native iPhone and iPad capture, calls, notes, and mobile work |
+| Nest | `apps/quipsly` | Canonical signed-in web workspace and HTTP application boundary |
+| Domain | `packages/quipsly-domain` | Shared domain types and behavior |
+| Documents | `packages/quipsly-document-kernel` | Shared document semantics |
+| Media services | `packages/quipsly-media-*`, `apps/quipsly-media-*`, `apps/quipsly-transcript-worker` | Durable media, audio, and transcript processing |
+| Studio | `apps/QuipslyStudio` | Native professional production and local rendering |
+| HGO | `apps/web` | High Ground Odyssey public site and legacy surfaces; it is not Quipsly Nest |
+| Data | `prisma` | Shared schema and forward-only migrations |
 
-- `apps/web`: main Next.js app
-- `apps/motion-lab`: Vite playground for motion work
-- `packages/motion-engine`: shared Three.js/GSAP engine package
-- `prisma/schema.prisma`: canonical app data model
-- `apps/web/content/publish`: current published MDX content set
-- `apps/web/content/_staging`: large staging/content-prep area
-- `apps/web/content/_inbox`: large raw manuscript/research inbox
+Do not introduce a second representation of a user, membership, Nest, Session,
+document, task, goal, recording, transcript, or access rule merely because a
+new surface needs it. Extend the canonical model or add a documented projection.
 
-## Current Product Reality
+## Product model and interface
 
-- Google/NextAuth sign-in is wired and promotes/updates app users in Prisma.
-- Users support primary email, alias emails, roles, client profiles, memberships, manual coaching feature grants, and appointments.
-- `/dashboard` is a working signed-in client dashboard backed by Prisma.
-- `/dashboard?intent=coaching` lets signed-in users submit a coaching request.
-- `/dashboard` shows recent coaching requests and converted appointment summaries.
-- `/team/clients`, `/team/coaching-requests`, and `/team/appointments` are working internal operations screens backed by server actions.
-- `/team/clients` can seed a manual coaching tool catalog and enable, pause, or disable client-specific coaching feature grants outside subscription tiers.
-- `/dashboard` shows enabled client-visible coaching tools from manual grants.
-- `/team/coaching-requests` is the internal queue for request management and request-to-appointment conversion.
-- `/team/worldhub` is the internal provider readiness, provider event, cart/order, fulfillment, and calendar-sync command center.
-- `/team/growth` is the internal SEO, analytics snapshot, ad slot, affiliate link, book recommendation, sponsor placement, and monetization research desk.
-- `/coaching` is a public offer/front-door page and sign-in handoff, not a completed Stripe checkout flow.
-- Coaching donation support is an external pay-what-you-can link via `HGO_COACHING_DONATION_URL`.
-- Google Calendar event-template links remain the fallback. `/team/worldhub`
-  can queue or run server-side calendar sync when dedicated
-  `GOOGLE_CALENDAR_*` credentials are configured.
-- New coaching request email notifications are best-effort Resend emails to active internal users with `OWNER`, `TEAM_SCHEDULER`, or `COACH`.
-- SMS/Twilio notification sending is not wired into the current coaching request flow.
-- Google Analytics and AdSense are runtime-gated by env values; `/ads.txt` is
-  generated only when AdSense config is present.
-- `/episodes/[[...slug]]` currently uses a guarded Fumadocs loader path.
-- The repo currently builds under both:
-  - `pnpm --filter web build`
-  - `pnpm --filter web exec next build --webpack`
+The stable product primitives are people and relationships, Nests and access,
+Sessions, notes/documents, tasks/goals/calendar, sources/media, and agent
+activity. Coaching, podcasting, writing, and training are workflows composed
+from those primitives rather than separate islands.
 
-## Important Constraints
+Keep global navigation small: Home, Sessions, Nests, Notes, Account, and one
+obvious contextual Create/Capture action. Put chat, transcript, media, tasks,
+goals, editing, research, and publishing inside the person, Nest, Session,
+document, or project where the work belongs. Expert depth is welcome; expose it
+progressively. Familiar call, permission, sign-in, scheduling, and sharing
+behavior outranks novelty.
 
-- Do not assume Stripe checkout is active. It was intentionally rolled back to a clean non-broken state.
-- Do not remove the episodes loader guard casually. It exists because the Fumadocs collection import was implicated in earlier build instability.
-- Treat the build-success state as current truth, and the earlier Turbopack/session instability as historical context documented under `docs/sessions/`.
-- Treat `apps/web/src/app/schedule/page.backup.tsx`, `pnpm-workspace.yaml.save`, `prisma.config.ts.bak`, and scattered `.DS_Store` files as signs of a repo that needs careful reading before cleanup.
-- The product and its tests are the primary durable record. Update documentation only when an architecture contract, operator procedure, public behavior, or non-obvious recovery fact would otherwise be lost.
+Web, iPhone, iPad, and Mac share data and application behavior but use
+platform-native interaction and layout. Do not stretch an iPhone screen onto an
+iPad or make every platform visually identical.
 
-## Standard Commands
+## Architecture boundaries
 
-Repo root:
+- UI code calls scoped application commands/queries; it does not invent direct
+  database workflows.
+- Every read and mutation is authorized for the current principal and Nest or
+  resource. A valid ID is never proof of access.
+- Agent tools use the same authorized application boundary as people. Never
+  expose unscoped Prisma access or a hard-coded agent identity.
+- Source media is immutable. Derived media, transcripts, corrections, edits,
+  and generated work retain provenance and are recoverable.
+- Long capture, upload, transcription, analysis, and render work is resumable,
+  observable, idempotent, and safe to retry.
+- Technical receipts and audit data stay unobtrusive unless they help a person
+  recover, understand, edit, or undo work.
+- Schema changes are allowed when they improve the canonical model. Use
+  forward-only migrations, compatible rollout order, backfills where needed,
+  and explicit rollback or roll-forward plans.
+
+Large refactors are welcome when they produce a complete user outcome and a
+clearer ownership boundary. Preserve customer data and proven behavior, not
+obsolete file shapes. Prefer replacing a giant component behind tested seams
+over indefinitely adding another conditional to it.
+
+## Required proof
+
+Match evidence to the claim:
+
+- pure logic: focused unit tests;
+- API/data work: authorization, tenant-isolation, persistence, and retry tests;
+- web workflow: operate it in a browser with a fresh persona and reload/readback;
+- native workflow: simulator automation plus physical-device proof for release
+  claims involving capture, permissions, backgrounding, cameras, or audio;
+- media: inspect/play the materialized artifact and verify source lineage;
+- release: build from a committed SHA, deploy/upload, then read back the served
+  revision or App Store Connect state.
+
+A green build is not proof of UX, authentication, physical hardware, durable
+storage, deployment, or publication. Missing human/device evidence should be
+reported accurately but does not block unrelated work.
+
+For identity or collaboration changes, test at least two accounts plus a fresh
+uninvited account. Prove both intended visibility and negative isolation.
+
+## Repository and Git
+
+- Work from one declared integration trunk and short-lived, scoped branches.
+- Build and release committed SHAs, never ambient files.
+- Before editing, inspect status and preserve unrelated dirty work.
+- Never mix generated media, caches, derived data, credentials, production
+  exports, or private client/session content into Git.
+- Avoid parallel implementations. If another branch owns the same domain or
+  route, coordinate or stop before coding.
+- A merge should leave one obvious source of truth and delete superseded code
+  once migration/read compatibility is proved.
+- Repository extraction is earned by a stable API, ownership, release cadence,
+  and dependency boundary. Do not split the monorepo just to make it look tidy.
+
+External agents and contractors receive an explicit package/route boundary,
+acceptance tests, and forbidden areas. Their work is merged only after tenant
+isolation, canonical-model, and workflow tests pass. Do not ask an agent to
+"redesign Quipsly" in an unbounded branch.
+
+## Start and validate
+
+Read only the documents relevant to the work:
+
+- `README.md`
+- `CONTRIBUTING.md`
+- `docs/architecture/product-and-repository-map.md`
+- `docs/development/testing.md`
+- the applicable runbook under `docs/runbooks/`
+
+Common commands:
 
 ```bash
-pnpm --filter web dev
-pnpm --filter web build
-pnpm --filter web exec next build --webpack
-pnpm motion
-pnpm engine:build
-pnpm db:generate
-pnpm db:push
-pnpm db:migrate
-pnpm db:studio
+corepack enable
+pnpm install --frozen-lockfile
+pnpm quipsly:local:up
+pnpm quipsly:local:doctor
+pnpm quipsly:local:smoke
+pnpm quipsly:release:local
+pnpm repo:health
 ```
 
-## Expected Env Surface
+Use the narrowest existing workflow test that proves the changed outcome.
+Search `package.json` before adding another root script; the repository already
+has many specialized operations that should be consolidated rather than
+duplicated.
 
-Documented from source usage:
-- `DATABASE_URL`
-- `GOOGLE_CLIENT_ID`
-- `GOOGLE_CLIENT_SECRET`
-- `AUTH_SECRET`
-- `NEXTAUTH_SECRET`
-- `HGO_OWNER_EMAILS`
-- `HGO_TEAM_SCHEDULER_EMAILS`
-- `HGO_COACH_EMAILS`
-- `HGO_COACHING_DONATION_URL`
-- `HGO_COMPANY_FAMILY_SUPPORT_URL`
-- `RESEND_API_KEY`
-- `HGO_EMAIL_FROM`
-- `HGO_SITE_URL`
-- `HGO_GA_MEASUREMENT_ID`
-- `GOOGLE_ANALYTICS_PROPERTY_ID`
-- `GOOGLE_SEARCH_CONSOLE_SITE_URL`
-- `GOOGLE_ADSENSE_CLIENT`
-- `GOOGLE_ADSENSE_ADS_TXT_ACCOUNT`
-- `GOOGLE_ADSENSE_ADS_TXT_AUTHORITY`
-- `GOOGLE_ADSENSE_ADS_TXT_RELATIONSHIP`
-- `HGO_ADSENSE_AUTO_ADS_ENABLED`
-- `AMAZON_ASSOCIATES_TAG`
-- `BOOKSHOP_AFFILIATE_ID`
-- `HGO_AFFILIATE_DISCLOSURE_TEXT`
-- `HGO_SPONSOR_INQUIRY_URL`
-- `HGO_SPONSOR_MEDIA_KIT_URL`
-- `ENABLE_EPISODES_FUMADOCS`
+## Working style
 
-Dormant/non-required for the current coaching flow:
-- `apps/web/src/lib/server/sms.ts` still contains a Twilio REST helper, but no active coaching action imports or calls it.
-
-Current auth-secret reality:
-- the code prefers `AUTH_SECRET`
-- `NEXTAUTH_SECRET` is only a fallback if `AUTH_SECRET` is unset
-
-Checked-in setup example:
-- `.env.example`
-
-Keep `.env.example` synchronized with `docs/runbooks/local-dev.md` if env usage changes.
-
-## Agent Working Style For This Repo
-
-- Verify from files before asserting product state.
-- Prefer narrow changes that preserve current working paths.
-- Prefer user-visible product capability and focused verification over plans, reports, ledgers, or process artifacts.
-- Do not create a new plan, report, handoff, or session note for routine implementation work. Git history, tests, and clear code are sufficient.
-- Update an existing operator or architecture document only when auth, schema, deployment, or recovery behavior actually changes and a future operator needs the information.
-- Ordinary reversible product work should use sensible defaults plus visible edit, remove, undo, and recovery. Do not add an approval or proposal workflow merely because AI helped create it.
+- Start with the user outcome and the canonical source of truth.
+- Make useful defaults and complete vertical workflows, not isolated screens.
+- Prefer visible capability and operated proof over commentary or paperwork.
+- Use plain product language. Keep fixtures, internal state names, provenance
+  jargon, and operational controls out of normal user navigation.
+- Treat accessibility, recovery, observability, cost, supportability, and
+  security as product quality rather than end-stage checklists.
+- When blocked by one integration, credential, provider, device, or tester,
+  retain the missing evidence briefly and advance the highest-value independent
+  lane.
