@@ -206,6 +206,14 @@ for installation on a physical iPhone.
 
 ## Evidence safety
 
+`quipsly-mobile-capture-contract-smoke.mjs` separates `source` checks from
+`runtime` probes in its JSON and text reports. `--source-only` never claims
+network proof; `--runtime-only` requires no source checkout. Production status
+uses runtime-only mode so local code or UI wording cannot masquerade as a live
+server failure. Neither mode proves a recorded artifact or physical device.
+Navigation and recording-activity placement belong to rendered `SidebarLayout`
+tests and `CaptureExperienceUITests`, not duplicate source-string expectations.
+
 Shared logs and screenshots must use synthetic or approved data. Never attach
 credentials, auth tokens, production database rows, private recordings,
 transcripts, coaching details, or unpublished source material to CI or issues.

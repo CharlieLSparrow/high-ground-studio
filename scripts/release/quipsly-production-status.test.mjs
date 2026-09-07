@@ -23,7 +23,7 @@ test("production readback proves support and policy routes at canonical HTTPS UR
   assert.match(script, /url_effective/);
 });
 
-test("production readback fails closed on the complete mobile contract", () => {
+test("production readback probes runtime contracts rather than unrelated local source text", () => {
   assert.match(script, /quipsly-mobile-capture-contract-smoke\.mjs/);
   assert.match(script, /"--base-url=\$\{PRODUCTION_BASE_URL%\/\}"/);
   assert.match(script, /JSON\.parse\(fs\.readFileSync\(process\.argv\[1\], "utf8"\)\)/);
@@ -31,6 +31,8 @@ test("production readback fails closed on the complete mobile contract", () => {
   assert.match(script, /statusCounts\?\.fail/);
   assert.match(script, /fail "Capture validation failed/);
   assert.match(script, /source checks and runtime probes are separate evidence/);
+  assert.match(script, /--runtime-only --json/);
+  assert.match(script, /this is not recording or device proof/);
 });
 
 test("production readback remains non-mutating", () => {

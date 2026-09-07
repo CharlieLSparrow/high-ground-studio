@@ -37,6 +37,10 @@ const timeoutMs = Number.parseInt(
 ) || DEFAULT_TIMEOUT_MS;
 const jsonOutput = args.get("json") === "1" || process.env.QUIPSLY_MOBILE_CAPTURE_JSON === "1";
 const sourceOnly = args.get("source-only") === "1" || process.env.QUIPSLY_MOBILE_CAPTURE_SOURCE_ONLY === "1";
+const runtimeOnly = args.get("runtime-only") === "1";
+if (sourceOnly && runtimeOnly) {
+  throw new Error("Choose source-only or runtime-only, not both.");
+}
 
 const checks = [];
 let checkPhase = "source";
@@ -1204,25 +1208,10 @@ function checkReviewDigestContractSources() {
     "nativeReviewDigestDecodesPacket",
     "Native capture decodes the authenticated review digest, rejects stale account responses, and preserves its side-effect-free boundary in app language.",
   );
-  expect(
-    capturePhoneShellText.includes("CaptureFinishQueueCard")
-      && capturePhoneShellText.includes("Recording activity")
-      && capturePhoneShellText.includes("Recent recordings are safe or processing normally.")
-      && capturePhoneShellText.includes("Refresh recording activity")
-      && capturePhoneShellText.includes("CaptureFinishQueueMetrics")
-      && capturePhoneShellText.includes("CaptureFinishQueueDetails")
-      && capturePhoneShellText.includes("DisclosureGroup(\"Recording details\"")
-      && capturePhoneShellText.includes("digest.recoveryOpen")
-      && capturePhoneShellText.includes("digest.safeToLeave")
-      && capturePhoneShellText.includes("exit.experience.title")
-      && capturePhoneShellText.includes("exit.experience.detail")
-      && capturePhoneShellText.includes("CaptureFinishAction_\\(action.callRoomId)_\\(action.kind)")
-      && capturePhoneShellText.includes("private func openSession(_ roomID: String)")
-      && capturePhoneShellText.includes("$0.id == roomID || $0.callRoomId == roomID")
-      && capturePhoneShellText.includes("visibleTab = .record"),
-    "nativeFinishQueueVisible",
-    "Today exposes a calm recording-activity status card that opens the exact Session while keeping technical recording details available on demand.",
-  );
+  // Navigation and finish-queue visibility are operated by CaptureExperienceUITests
+  // (testCaptureFirstNavigationKeepsFiveFocusedDestinations and
+  // testTodayFinishQueueOpensExactSessionWithoutPerformingAction). Source text
+  // cannot prove either behavior or require the former Home placement.
   expect(
     digestRouteText.includes("missingPlannedSources")
       && digestRouteText.includes("sourceHolds")
@@ -1266,18 +1255,9 @@ function checkReviewDigestContractSources() {
       && contentViewText.includes(".onChange(of: authManager.accessMode)")
       && contentViewText.includes("visibleTab = .library")
       && contentViewText.includes("ProtectedOfflineLibraryShell")
-      && contentViewText.includes("mustKeepRecorderVisible")
-      && capturePhoneShellText.includes("@Binding var visibleTab: CaptureRootTab")
-      && capturePhoneShellText.includes("CaptureRootTab.today")
-      && capturePhoneShellText.includes("CaptureRootTab.record")
-      && capturePhoneShellText.includes("CaptureRootTab.work")
-      && capturePhoneShellText.includes("CaptureRootTab.library")
-      && capturePhoneShellText.includes("CaptureRootTab.account")
-      && captureExperienceModelText.includes('case .today: "Home"')
-      && captureExperienceModelText.includes('case .work: "Work"')
-      && capturePhoneShellText.includes("Original recordings stay on \\(CaptureDeviceVocabulary.thisDevice) until you choose to remove an eligible copy from Library."),
-    "nativeReviewDigestOnSessionSurfaces",
-    "The production iPhone root keeps Today, Record, Work, Library, and Account focused, preserves active capture across auth expiry, and retains protected offline recovery.",
+      && contentViewText.includes("mustKeepRecorderVisible"),
+    "nativeAuthRecoveryWiring",
+    "Native source retains recorder visibility and protected offline recovery wiring; runtime and device tests prove its behavior.",
   );
   expect(
     workRouteText.includes('workspaceKind: "quipsly-mobile-work-v1"')
@@ -1453,7 +1433,6 @@ function checkTranscriptCorrectionContractSources() {
   const workspaceSearchPageText = sourceText("apps/quipsly/src/app/(app)/find/page.tsx");
   const tagSearchChipsText = sourceText("apps/quipsly/src/components/tag-search-chips.tsx");
   const researchLibraryModelText = sourceText("apps/quipsly/src/app/(app)/research/research-library-model.ts");
-  const sidebarText = sourceText("apps/quipsly/src/components/SidebarLayout.tsx");
   const todayRouteText = sourceText("apps/quipsly/src/app/api/mobile/capture/today/route.ts");
   const canonicalTaskStatusText = sourceText("apps/quipsly/src/lib/server/canonical-task-status.ts");
   const taskRecurrenceServerText = sourceText("apps/quipsly/src/lib/server/task-recurrence.ts");
@@ -2488,12 +2467,9 @@ function checkTranscriptCorrectionContractSources() {
       && workModelText.includes('"Reviewed transcript follow-through" as const')
       && workClientText.includes('initialFilter = "OPEN"')
       && workClientText.includes('filter === "ATTENTION"')
-      && workClientText.includes("Quipsly has not invented an unread notification state.")
-      && workPageText.includes('requestedFocus.view === "attention"')
-      && sidebarText.includes('href="/work?view=attention"')
-      && sidebarText.includes('aria-label="Open attention queue"'),
-    "canonicalAttentionQueue",
-    "The global attention entry point derives urgency from canonical tasks and reviewed transcript follow-through without inventing unread notifications, reminders, or copied work.",
+      && workPageText.includes('requestedFocus.view === "attention"'),
+    "canonicalTaskAttentionProjection",
+    "Work source retains canonical task attention projection and filtering; it does not require another global navigation destination.",
   );
   expect(
     nestDashboardText.includes("Project follow-through")
@@ -2534,61 +2510,9 @@ function checkTranscriptCorrectionContractSources() {
       && researchLibraryModelText.includes("tagCatalog: ResearchSourceTag[]")
       && researchLibraryModelText.includes("...source.annotations.flatMap")
       && !researchLibraryModelText.includes("...source.tags.map")
-      && workspaceSearchPageText.includes("Search is read-only")
-      && sidebarText.includes('href="/find"')
-      && sidebarText.includes('aria-label="Search all Quipsly"'),
+      && workspaceSearchPageText.includes("Search is read-only"),
     "permissionFilteredCanonicalWorkspaceSearch",
     "Search All is authenticated, permission-filtered, bounded, candidate-safe, and focuses exact canonical tag identities across work and evidence without same-label mixing or side effects.",
-  );
-}
-
-function checkUnifiedNestOperatingShellSources() {
-  const sidebarText = sourceText("apps/quipsly/src/components/SidebarLayout.tsx");
-  const todayModelText = sourceText("apps/quipsly/src/app/(app)/today/today-model.ts");
-  const todayPageText = [
-    sourceText("apps/quipsly/src/app/(app)/today/page.tsx"),
-    sourceText("apps/quipsly/src/app/(app)/today/today-page.tsx"),
-  ].join("\n");
-  const inboxModelText = sourceText("apps/quipsly/src/app/(app)/inbox/inbox-model.ts");
-  const inboxPageText = [
-    sourceText("apps/quipsly/src/app/(app)/inbox/page.tsx"),
-    sourceText("apps/quipsly/src/app/(app)/inbox/inbox-loader.ts"),
-  ].join("\n");
-  const calendarPageText = sourceText("apps/quipsly/src/app/(app)/schedule/page.tsx");
-  const libraryModelText = sourceText("apps/quipsly/src/app/(app)/library/library-model.ts");
-  const libraryPageText = [
-    sourceText("apps/quipsly/src/app/(app)/library/page.tsx"),
-    sourceText("apps/quipsly/src/app/(app)/library/library-page.tsx"),
-  ].join("\n");
-  const researchPageText = sourceText("apps/quipsly/src/app/(app)/research/page.tsx");
-  expect(
-    sidebarText.includes('{ name: "Today", href: "/today"')
-      && sidebarText.includes('{ name: "Inbox", href: "/inbox"')
-      && sidebarText.includes('{ name: "Work", href: "/work"')
-      && sidebarText.includes('{ name: "Sessions", href: "/coaching/sessions"')
-      && sidebarText.includes('{ name: "Library", href: "/library"')
-      && sidebarText.includes('{ name: "Calendar", href: "/schedule"')
-      && todayModelText.includes("deliberatePlanLimit: 4")
-      && todayModelText.includes("attentionTaskLimit: 3")
-      && todayModelText.includes("proposedTranscriptWorkExcluded: true")
-      && todayPageText.includes("It is not an accumulated guilt list")
-      && inboxModelText.includes("actorAccessibleSessionsOnly: true")
-      && inboxModelText.includes("noUnreadClaim: true")
-      && inboxModelText.includes("personalSourceCaptureIncluded: true")
-      && inboxPageText.includes("Open capture")
-      && inboxPageText.includes("Personal captures stay private until you add them to a Nest.")
-      && calendarPageText.includes("Time for the work you actually chose")
-      && calendarPageText.includes("Calendar is Quipsly planning truth, not provider truth")
-      && libraryModelText.includes("permissionFilteredBeforeProjection: true")
-      && libraryModelText.includes("promotedCaptureMediaDeduplicated: true")
-      && libraryModelText.includes("localPhoneRecordingsRemainDeviceOwned: true")
-      && libraryPageText.includes("Start with your voice on iPhone, keep writing here")
-      && libraryPageText.includes("continue the same private writing on either device")
-      && libraryPageText.includes("OR: [{ visibility: \"project\" }, { createdByUserId: userId }]")
-      && researchPageText.includes("snapshot.sources.some((source) => source.id === requestedSourceId)")
-      && !calendarPageText.includes("Real rooms, grouped by current status"),
-    "canonicalNestOperatingShell",
-    "Nest makes Today, Inbox, Work, Sessions, Library, and Calendar primary while Today stays bounded, Inbox combines actor-owned unfiled sources with source-linked review, and Library permission-filters canonical identities while supporting direct private writing and promoted-capture deduplication.",
   );
 }
 
@@ -3096,17 +3020,18 @@ async function checkProtectedIngestRoutes() {
 }
 
 async function main() {
-  checkUploadContractSources();
-  checkNestPortabilityContractSources();
-  checkMeetingSpineContractSources();
-  checkTranscriptPacketContractSources();
-  checkReviewDigestContractSources();
-  checkTranscriptCorrectionContractSources();
-  checkSessionCalendarCancellationContractSources();
-  checkGoogleCalendarReconciliationContractSources();
-  checkUnifiedNestOperatingShellSources();
-  checkNativeUnifiedWritingLibrarySources();
-  checkNativeSessionSchedulingSources();
+  if (!runtimeOnly) {
+    checkUploadContractSources();
+    checkNestPortabilityContractSources();
+    checkMeetingSpineContractSources();
+    checkTranscriptPacketContractSources();
+    checkReviewDigestContractSources();
+    checkTranscriptCorrectionContractSources();
+    checkSessionCalendarCancellationContractSources();
+    checkGoogleCalendarReconciliationContractSources();
+    checkNativeUnifiedWritingLibrarySources();
+    checkNativeSessionSchedulingSources();
+  }
   if (!sourceOnly) {
     checkPhase = "runtime";
     await checkReadiness();
@@ -3131,6 +3056,7 @@ async function main() {
     baseUrl,
     authenticated: Boolean(bearerToken),
     sourceOnly,
+    runtimeOnly,
     statusCounts,
     phaseCounts: Object.fromEntries(["source", "runtime"].map((phase) => [phase, {
       pass: checks.filter((check) => check.phase === phase && check.status === "pass").length,

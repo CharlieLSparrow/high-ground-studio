@@ -46,6 +46,15 @@ describe("Quipsly workspace navigation", () => {
     expect(screen.queryByRole("link", { name: "Tasks & goals" })).not.toBeInTheDocument();
   });
 
+  it("keeps global search reachable from both a client space and a note", () => {
+    jest.mocked(usePathname).mockReturnValue("/coaching/engagements/client-1");
+    const { rerender } = render(<SidebarLayout>Client work</SidebarLayout>);
+    expect(screen.getByRole("link", { name: "Search Quipsly" })).toHaveAttribute("href", "/find");
+    jest.mocked(usePathname).mockReturnValue("/notes/note-1");
+    rerender(<SidebarLayout>Note</SidebarLayout>);
+    expect(screen.getByRole("link", { name: "Search Quipsly" })).toHaveAttribute("href", "/find");
+  });
+
   it("lets a client space own its local navigation without stacking two extra toolbars", () => {
     jest.mocked(usePathname).mockReturnValue("/coaching/engagements/client-1");
     const { rerender } = render(<SidebarLayout><CoachingSuiteNav canSchedule />Client workspace</SidebarLayout>);

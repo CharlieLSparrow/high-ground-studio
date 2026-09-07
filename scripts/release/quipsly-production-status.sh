@@ -90,7 +90,7 @@ check_mobile_contract() {
   report="$(mktemp)"
   if node "${REPO_ROOT}/scripts/quipsly-mobile-capture-contract-smoke.mjs" \
     "--base-url=${PRODUCTION_BASE_URL%/}" \
-    --json >"${report}"; then
+    --runtime-only --json >"${report}"; then
     summary="$(node -e '
       const fs = require("node:fs");
       const report = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
@@ -100,7 +100,7 @@ check_mobile_contract() {
       process.stdout.write(String(report?.statusCounts?.pass || 0));
     ' "${report}" 2>/dev/null || true)"
     if [[ -n "${summary}" ]]; then
-      pass "Production mobile Capture contract passed ${summary} checks."
+      pass "Production Capture HTTP contract passed ${summary} runtime checks; this is not recording or device proof."
     else
       fail "Production mobile Capture contract returned an invalid success report."
     fi
