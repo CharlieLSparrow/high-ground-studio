@@ -1032,7 +1032,8 @@ function CoachingWorkspace() {
   } | null>(null);
   const [status, setStatus] = useState("Loading coaching runway...");
   const [error, setError] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
+  const [runwayLoadError, setRunwayLoadError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
   const [createStatus, setCreateStatus] = useState<string | null>(null);
   const [createdHandoff, setCreatedHandoff] =
     useState<CoachingCreatedHandoff | null>(null);
@@ -1195,15 +1196,24 @@ function CoachingWorkspace() {
 
   async function loadRunway({ refreshCommand = true } = {}) {
     setIsLoading(true);
+    setRunwayLoadError(null);
     setError(null);
     try {
       const response = await fetch("/api/coaching/runway", {
         cache: "no-store",
       });
-      const payload = (await response.json()) as CoachingRunway;
-      if (!response.ok || !payload.ok)
+      const payload = (await response.json().catch(() => null)) as CoachingRunway | null;
+      if (response.status === 401 || response.status === 403) {
+        setRunway(null);
+        setFastPracticeCommand(null);
+        setFastPracticeActor(null);
+        setSubscriptionPrompt(null);
+      }
+      if (!response.ok || !payload?.ok || !payload.user)
         throw new Error(
-          payload.error || `Runway returned HTTP ${response.status}.`,
+          response.status === 401
+            ? "Sign in again to open your coaching space."
+            : "We couldn’t load your coaching space. Please try again.",
         );
       setRunway(payload);
       setSubscriptionPrompt(
@@ -1265,11 +1275,9 @@ function CoachingWorkspace() {
       }));
       setStatus("Coaching runway ready");
     } catch (cause) {
-      setError(
-        cause instanceof Error
-          ? cause.message
-          : "Coaching runway could not load.",
-      );
+      setRunwayLoadError(cause instanceof Error && cause.message === "Sign in again to open your coaching space."
+        ? cause.message
+        : "We couldn’t load your coaching space. Please try again.");
       setStatus("Needs attention");
     } finally {
       setIsLoading(false);
@@ -2664,6 +2672,26 @@ function CoachingWorkspace() {
     };
   })();
 
+  if (!runway?.user) {
+    return (
+      <section className="mx-auto max-w-3xl p-6 sm:p-8" aria-labelledby="coaching-load-heading">
+        <h1 id="coaching-load-heading" className="font-serif text-3xl font-bold text-[#3d3122]">Coaching</h1>
+        {runwayLoadError ? (
+          <div role="alert" className="mt-4 rounded-2xl border border-[#dfcfb4] bg-[#fffdf8] p-5 text-[#3d3122]">
+            <p>{runwayLoadError}</p>
+            {runwayLoadError === "Sign in again to open your coaching space." ? (
+              <a href="/login?callbackUrl=%2Fcoaching" className="mt-4 inline-flex min-h-11 items-center rounded-xl bg-[#41624b] px-5 py-2 font-bold text-white">Sign in</a>
+            ) : <button type="button" onClick={() => void loadRunway()} disabled={isLoading}
+              className="mt-4 min-h-11 rounded-xl bg-[#41624b] px-5 py-2 font-bold text-white disabled:opacity-50">
+              Try again
+            </button>}
+          </div>
+        ) : <p role="status" className="mt-4 text-[#765f40]">Loading your coaching space…</p>}
+        <a href="/coaching/sessions" className="mt-4 inline-flex min-h-11 items-center font-bold text-[#41624b] underline">Open my sessions</a>
+      </section>
+    );
+  }
+
   return (
     <div className="min-h-full w-full overflow-y-auto bg-[radial-gradient(circle_at_top_left,#fff7df,transparent_35%),linear-gradient(135deg,#fffaf1,#f7efe2_45%,#eef8f0)]">
       <header className="mx-auto max-w-7xl px-4 pb-3 pt-4 sm:px-8 sm:pb-4 sm:pt-8">
@@ -2717,6 +2745,13 @@ function CoachingWorkspace() {
               ) : null}
             </div>
           </div>
+          {runwayLoadError && (
+            <div role="alert" className="mt-5 flex flex-wrap items-center gap-3 rounded-2xl border border-[#dfcfb4] bg-[#fffdf8] p-4 text-sm text-[#3d3122]">
+              <p>{runwayLoadError} Your last loaded sessions are still shown below.</p>
+              <button type="button" onClick={() => void loadRunway()} disabled={isLoading}
+                className="min-h-11 rounded-xl border border-[#41624b] px-4 py-2 font-bold text-[#41624b] disabled:opacity-50">Try again</button>
+            </div>
+          )}
           {error && (
             <div className="mt-5 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm font-bold text-rose-700">
               {error}

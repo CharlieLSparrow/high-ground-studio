@@ -60,30 +60,48 @@ function entryIcon(kind: CoachingEngagementWorkEntry["kind"]) {
   return Target;
 }
 
-export function CoachingEngagementWorkspace({
-  engagementId,
-  initialEntries,
-  members,
-  currentUserId,
-  canWrite,
-}: {
+type CoachingEngagementWorkspaceProps = {
   engagementId: string;
   initialEntries: CoachingEngagementWorkEntry[];
   members: CoachingEngagementWorkMember[];
   currentUserId: string;
   canWrite: boolean;
-}) {
+};
+
+export function CoachingEngagementWorkspace(
+  props: CoachingEngagementWorkspaceProps,
+) {
+  return (
+    <CoachingEngagementWorkspaceContent
+      key={JSON.stringify([props.engagementId, props.currentUserId])}
+      {...props}
+    />
+  );
+}
+
+function CoachingEngagementWorkspaceContent({
+  engagementId,
+  initialEntries,
+  members,
+  currentUserId,
+  canWrite,
+}: CoachingEngagementWorkspaceProps) {
   const defaultOwner =
     members.find((member) => member.role === "CLIENT")?.id ||
     members.find((member) => member.id === currentUserId)?.id ||
     members[0]?.id ||
     currentUserId;
   const [entries, setEntries] = useState(initialEntries);
+  const [workFilter, setWorkFilter] = useState<
+    "ALL" | CoachingEngagementWorkEntry["kind"]
+  >("ALL");
   const [createKind, setCreateKind] = useState<"NOTE" | "TASK" | "GOAL">(
     "NOTE",
   );
   const [createOwnerUserId, setCreateOwnerUserId] = useState(defaultOwner);
-  const [busyId, setBusyId] = useState<string | null>(null);
+  const pendingIds = useRef(new Set<string>());
+  const [busyIds, setBusyIds] = useState<ReadonlySet<string>>(new Set());
+  const createRequest = useRef<{ fingerprint: string; body: string } | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [lastRemoved, setLastRemoved] = useState<{
     entry: CoachingEngagementWorkEntry;
@@ -102,6 +120,9 @@ export function CoachingEngagementWorkspace({
     }),
     [entries],
   );
+  const visibleEntries = entries.filter(
+    (entry) => workFilter === "ALL" || entry.kind === workFilter,
+  );
 
   function replaceEntry(entry: CoachingEngagementWorkEntry) {
     setEntries((current) =>
@@ -111,25 +132,46 @@ export function CoachingEngagementWorkspace({
     );
   }
 
+  function beginOperation(id: string) {
+    if (pendingIds.current.has(id)) return false;
+    pendingIds.current.add(id);
+    setBusyIds(new Set(pendingIds.current));
+    return true;
+  }
+
+  function endOperation(id: string) {
+    pendingIds.current.delete(id);
+    setBusyIds(new Set(pendingIds.current));
+  }
+
   async function createEntry(formData: FormData) {
-    setBusyId("create");
+    if (!beginOperation("create")) return;
     setNotice(null);
     setLastRemoved(null);
     try {
+      const values = {
+        kind: String(formData.get("kind") || "NOTE"),
+        title: String(formData.get("title") || ""),
+        body: String(formData.get("body") || ""),
+        ownerUserId: String(formData.get("ownerUserId") || defaultOwner),
+        targetAt: String(formData.get("targetAt") || ""),
+        visibility: String(formData.get("visibility") || "SHARED"),
+      };
+      const fingerprint = JSON.stringify(values);
+      // A lost response does not mean the server failed to save. Retry the
+      // same draft with its original identity; a changed draft is new work.
+      if (createRequest.current?.fingerprint !== fingerprint) {
+        createRequest.current = {
+          fingerprint,
+          body: JSON.stringify({ clientRequestId: crypto.randomUUID(), ...values }),
+        };
+      }
       const response = await fetch(
         `/api/coaching/engagements/${encodeURIComponent(engagementId)}/work`,
         {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            clientRequestId: crypto.randomUUID(),
-            kind: String(formData.get("kind") || "NOTE"),
-            title: String(formData.get("title") || ""),
-            body: String(formData.get("body") || ""),
-            ownerUserId: String(formData.get("ownerUserId") || defaultOwner),
-            targetAt: String(formData.get("targetAt") || ""),
-            visibility: String(formData.get("visibility") || "SHARED"),
-          }),
+          body: createRequest.current.body,
         },
       );
       const payload = (await response.json()) as {
@@ -141,6 +183,9 @@ export function CoachingEngagementWorkspace({
         throw new Error(payload.error || "The coaching work was not saved.");
       }
       replaceEntry(payload.entry);
+      const savedKind = payload.entry.kind;
+      setWorkFilter((current) => current === "ALL" ? current : savedKind);
+      createRequest.current = null;
       createForm.current?.reset();
       const itemLabel =
         payload.entry.kind === "NOTE"
@@ -160,7 +205,7 @@ export function CoachingEngagementWorkspace({
           : "The coaching work was not saved.",
       );
     } finally {
-      setBusyId(null);
+      endOperation("create");
     }
   }
 
@@ -175,7 +220,7 @@ export function CoachingEngagementWorkspace({
       status?: string;
     },
   ) {
-    setBusyId(entry.id);
+    if (!beginOperation(entry.id)) return;
     setNotice(null);
     setLastRemoved(null);
     try {
@@ -214,12 +259,12 @@ export function CoachingEngagementWorkspace({
           : "The coaching work was not updated.",
       );
     } finally {
-      setBusyId(null);
+      endOperation(entry.id);
     }
   }
 
   async function removeEntry(entry: CoachingEngagementWorkEntry) {
-    setBusyId(entry.id);
+    if (!beginOperation(entry.id)) return;
     setNotice(null);
     try {
       const response = await fetch(
@@ -255,13 +300,12 @@ export function CoachingEngagementWorkspace({
         error instanceof Error ? error.message : "The item was not removed.",
       );
     } finally {
-      setBusyId(null);
+      endOperation(entry.id);
     }
   }
 
   async function restoreLastRemoved() {
-    if (!lastRemoved) return;
-    setBusyId(lastRemoved.entry.id);
+    if (!lastRemoved || !beginOperation(lastRemoved.entry.id)) return;
     try {
       const response = await fetch(
         `/api/coaching/engagements/${encodeURIComponent(engagementId)}/work`,
@@ -291,7 +335,7 @@ export function CoachingEngagementWorkspace({
         error instanceof Error ? error.message : "The item was not restored.",
       );
     } finally {
-      setBusyId(null);
+      endOperation(lastRemoved.entry.id);
     }
   }
 
@@ -321,9 +365,21 @@ export function CoachingEngagementWorkspace({
             {counts.tasks} open tasks
           </span>
           <span className="rounded-full bg-emerald-100 px-3 py-1.5 text-emerald-900">
-            {counts.goals} active goals
+            {counts.goals} active {counts.goals === 1 ? "goal" : "goals"}
           </span>
         </div>
+      </div>
+
+      <div role="group" aria-label="Filter work" className="mt-4 grid grid-cols-4 gap-1 rounded-xl bg-[#f1eadb] p-1">
+        {([
+          ["ALL", "All"], ["NOTE", "Notes"], ["TASK", "Tasks"], ["GOAL", "Goals"],
+        ] as const).map(([value, label]) => (
+          <button key={value} type="button" aria-pressed={workFilter === value}
+            onClick={() => setWorkFilter(value)}
+            className={`min-h-11 rounded-lg px-2 text-sm font-bold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#41624b] ${workFilter === value ? "bg-[#41624b] text-white shadow-sm" : "text-[#5e503c] hover:bg-[#e6dcc7]"}`}>
+            {label}
+          </button>
+        ))}
       </div>
 
       {notice ? (
@@ -335,7 +391,7 @@ export function CoachingEngagementWorkspace({
           {lastRemoved ? (
             <button
               type="button"
-              disabled={busyId === lastRemoved.entry.id}
+              disabled={busyIds.has(lastRemoved.entry.id)}
               onClick={() => void restoreLastRemoved()}
               className="inline-flex min-h-9 items-center gap-2 rounded-full bg-violet-800 px-4 text-xs font-black text-white disabled:opacity-50"
             >
@@ -361,6 +417,7 @@ export function CoachingEngagementWorkspace({
             }}
             className="mt-4 grid gap-3"
           >
+            <fieldset disabled={busyIds.has("create")} className="min-w-0 grid gap-3">
             <div className="grid gap-3 sm:grid-cols-2">
               <label className="text-xs font-black uppercase tracking-wide text-[#765f40]">
                 Type
@@ -448,12 +505,13 @@ export function CoachingEngagementWorkspace({
             ) : null}
             <button
               type="submit"
-              disabled={busyId === "create"}
+              disabled={busyIds.has("create")}
               className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-violet-800 px-4 py-3 text-sm font-black text-white disabled:cursor-wait disabled:opacity-50"
             >
               <Plus size={16} aria-hidden="true" />
-              {busyId === "create" ? "Saving…" : "Save to coaching home"}
+              {busyIds.has("create") ? "Saving…" : "Save to coaching home"}
             </button>
+            </fieldset>
           </form>
         </details>
       ) : (
@@ -464,8 +522,7 @@ export function CoachingEngagementWorkspace({
       )}
 
       <div className="mt-5 grid gap-3">
-        {entries.length ? (
-          entries.map((entry) => {
+        {entries.map((entry) => {
             const Icon = entryIcon(entry.kind);
             const isActive = activeStatus(entry);
             const completedStatus = entry.kind === "TASK" ? "DONE" : "ACHIEVED";
@@ -473,6 +530,7 @@ export function CoachingEngagementWorkspace({
             return (
               <article
                 key={entry.id}
+                hidden={workFilter !== "ALL" && entry.kind !== workFilter}
                 className={`rounded-2xl border bg-white p-4 ${isActive ? "border-[#eadfc9]" : "border-emerald-200 opacity-80"}`}
               >
                 <div className="flex flex-wrap items-start justify-between gap-4">
@@ -525,7 +583,7 @@ export function CoachingEngagementWorkspace({
                   {canWrite && entry.canEdit && entry.kind !== "NOTE" ? (
                     <button
                       type="button"
-                      disabled={busyId === entry.id}
+                      disabled={busyIds.has(entry.id)}
                       onClick={() =>
                         void updateEntry(entry, {
                           status: isActive ? completedStatus : reopenStatus,
@@ -572,6 +630,7 @@ export function CoachingEngagementWorkspace({
                         }}
                         className="mt-3 grid gap-3"
                       >
+                        <fieldset disabled={busyIds.has(entry.id)} className="min-w-0 grid gap-3">
                         <input
                           name="title"
                           defaultValue={entry.title || ""}
@@ -634,16 +693,17 @@ export function CoachingEngagementWorkspace({
                         ) : null}
                         <button
                           type="submit"
-                          disabled={busyId === entry.id}
+                          disabled={busyIds.has(entry.id)}
                           className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-violet-800 px-4 py-2 text-sm font-black text-white disabled:opacity-50"
                         >
-                          <Check size={15} aria-hidden="true" /> Save changes
+                          <Check size={15} aria-hidden="true" /> {busyIds.has(entry.id) ? "Saving…" : "Save changes"}
                         </button>
+                        </fieldset>
                       </form>
                     </details>
                     <button
                       type="button"
-                      disabled={busyId === entry.id}
+                      disabled={busyIds.has(entry.id)}
                       onClick={() => void removeEntry(entry)}
                       className="mt-2 inline-flex min-h-10 items-center gap-2 rounded-full px-3 text-xs font-black text-rose-800 hover:bg-rose-50 disabled:opacity-50"
                     >
@@ -653,19 +713,20 @@ export function CoachingEngagementWorkspace({
                 ) : null}
               </article>
             );
-          })
-        ) : (
+          })}
+        {visibleEntries.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-[#d8c7a7] bg-white p-6 text-center">
             <CircleDot className="mx-auto text-violet-700" aria-hidden="true" />
             <p className="mt-3 font-black text-[#3d3122]">
-              Nothing to chase down yet.
+              {workFilter === "ALL" ? "Nothing to chase down yet." : `No ${workFilter === "NOTE" ? "notes" : workFilter === "TASK" ? "tasks" : "goals"} yet.`}
             </p>
             <p className="mt-1 text-sm text-[#765f40]">
-              Add the first note, task, or goal above. It will still be here for
-              the next Session.
+              {canWrite
+                ? "Add a note, task, or goal above. It will still be here for the next session."
+                : "Shared work will appear here when someone in this space adds it."}
             </p>
           </div>
-        )}
+        ) : null}
       </div>
     </section>
   );

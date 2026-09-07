@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { getPrismaClient } from "@/lib/prisma";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 import { loadSessionWork } from "@/lib/server/session-work";
-import { DELETE, GET, PATCH, PUT } from "./route";
+import { DELETE, GET, PATCH, POST, PUT } from "./route";
 
 jest.mock("@/lib/server/quipsly-session", () => ({ getQuipslySessionFromRequest: jest.fn() }));
 
@@ -27,7 +27,7 @@ if (enabled) {
   const projectId = `space-project-${nonce}`;
   const engagementId = `space-relationship-${nonce}`;
   const roomId = `space-session-${nonce}`;
-  const handlers = {GET, PATCH, DELETE, PUT};
+  const handlers = {GET, PATCH, POST, DELETE, PUT};
 
   async function act(method: keyof typeof handlers, body: Record<string, unknown> = {}, actor = client!) {
     jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({user: actor} as never);
@@ -76,6 +76,24 @@ if (enabled) {
       await prisma.studioWorkspace.deleteMany({where: {id: workspaceId}});
       await prisma.user.deleteMany({where: {id: {in: people.map((person) => person.id)}}});
     } finally { await prisma.$disconnect(); }
+  });
+
+  it.each(["NOTE", "TASK", "GOAL"] as const)("replays a saved %s after a lost response without creating duplicate work", async (kind) => {
+    const command = {kind, clientRequestId: randomUUID(), title: `A retryable ${kind.toLowerCase()}`,
+      body: "Useful work should only appear once", ownerUserId: client!.id, visibility: "SHARED", targetAt: ""};
+    const first = await act("POST", command);
+    expect(first).toMatchObject({status: 200, body: {ok: true, idempotentReplay: false, entry: {kind, title: command.title}}});
+    const retry = await act("POST", command);
+    expect(retry).toMatchObject({status: 200, body: {ok: true, idempotentReplay: true, entry: first.body.entry}});
+    const read = await act("GET");
+    expect(read.body.engagement.entries.filter((entry: {title: string}) => entry.title === command.title))
+      .toHaveLength(1);
+    expect((await act("POST", {...command, title: "Different content with the same key"})).status).toBe(409);
+    expect((await act("GET")).body.engagement.entries.find((entry: {id: string}) => entry.id === first.body.entry.id))
+      .toMatchObject({title: command.title, body: command.body});
+    for (const actor of [observer!, guest!, outsider!]) {
+      expect((await act("POST", command, actor)).status).toBe(404);
+    }
   });
 
   it.each(["TASK", "GOAL"] as const)("cannot change, remove, or restore a known private %s ID", async (kind) => {

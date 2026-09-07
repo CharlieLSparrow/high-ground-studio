@@ -1,4 +1,5 @@
 import {
+  act,
   fireEvent,
   render,
   screen,
@@ -25,6 +26,141 @@ const sharedTask = {
 describe("CoachingEngagementWorkspace", () => {
   beforeEach(() => {
     jest.restoreAllMocks();
+  });
+
+  it("finds tasks without scrolling through notes and keeps drafts when switching work filters", async () => {
+    const note = {...sharedTask, id: "note-1", kind: "NOTE" as const, title: "Our conversation", status: null};
+    render(<CoachingEngagementWorkspace engagementId="engagement-1" initialEntries={[note, sharedTask]} members={members} currentUserId="client-1" canWrite />);
+    const filters = within(screen.getByRole("group", {name: "Filter work"}));
+    fireEvent.click(filters.getByRole("button", {name: "Tasks"}));
+    expect(screen.queryByRole("heading", {name: note.title})).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", {name: sharedTask.title})).toBeVisible();
+    const task = within(screen.getByRole("heading", {name: sharedTask.title}).closest("article")!);
+    fireEvent.click(task.getByText("Edit"));
+    fireEvent.change(task.getByRole("textbox", {name: "task details"}), {target: {value: "Keep my unfinished thought"}});
+    fireEvent.click(filters.getByRole("button", {name: "Notes"}));
+    expect(screen.getByRole("heading", {name: note.title})).toBeVisible();
+    expect(screen.queryByRole("heading", {name: sharedTask.title})).not.toBeInTheDocument();
+    fireEvent.click(filters.getByRole("button", {name: "Goals"}));
+    expect(screen.getByText("No goals yet.")).toBeVisible();
+    fireEvent.click(filters.getByRole("button", {name: "Tasks"}));
+    expect(task.getByRole("textbox", {name: "task details"})).toHaveValue("Keep my unfinished thought");
+    expect(filters.getByRole("button", {name: "Tasks"})).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("reveals newly created work even when a different type was being viewed", async () => {
+    const note = {...sharedTask, id: "created-note", kind: "NOTE", title: "A newly saved note", status: null};
+    const fetchMock = jest.fn().mockResolvedValue({ok: true, json: async () => ({ok: true, entry: note})});
+    Object.defineProperty(globalThis, "fetch", {value: fetchMock, writable: true, configurable: true});
+    render(<CoachingEngagementWorkspace engagementId="engagement-1" initialEntries={[sharedTask]} members={members} currentUserId="client-1" canWrite />);
+    const filters = within(screen.getByRole("group", {name: "Filter work"}));
+    fireEvent.click(filters.getByRole("button", {name: "Tasks"}));
+    fireEvent.click(screen.getByText("Add note, task, or goal"));
+    fireEvent.change(screen.getByLabelText("Name"), {target: {value: note.title}});
+    fireEvent.click(screen.getByRole("button", {name: "Save to coaching home"}));
+    expect(await screen.findByRole("heading", {name: note.title})).toBeVisible();
+    expect(filters.getByRole("button", {name: "Notes"})).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("retries a lost create response with the same request, then gives deliberate new work a new identity", async () => {
+    const savedNote = {...sharedTask, id: "new-note", kind: "NOTE", title: "A useful thought", status: null};
+    const fetchMock = jest.fn()
+      .mockRejectedValueOnce(new Error("Connection interrupted"))
+      .mockResolvedValue({ok: true, json: async () => ({ok: true, entry: savedNote})});
+    Object.defineProperty(globalThis, "fetch", {value: fetchMock, writable: true, configurable: true});
+    render(<CoachingEngagementWorkspace engagementId="engagement-1" initialEntries={[]} members={members} currentUserId="client-1" canWrite />);
+    fireEvent.change(screen.getByLabelText("Name"), {target: {value: savedNote.title}});
+    fireEvent.change(screen.getByLabelText("Details"), {target: {value: "Remember this tomorrow"}});
+    const submit = screen.getByRole("button", {name: "Save to coaching home"});
+    fireEvent.click(submit);
+    expect(await screen.findByText("Connection interrupted")).toBeInTheDocument();
+    expect(screen.getByLabelText("Name")).toHaveValue(savedNote.title);
+    fireEvent.click(submit);
+    expect(await screen.findByRole("heading", {name: savedNote.title})).toBeInTheDocument();
+    expect(fetchMock.mock.calls[1][1].body).toBe(fetchMock.mock.calls[0][1].body);
+    // The same words can intentionally be saved again after a confirmed save.
+    fireEvent.click(screen.getByText("Add note, task, or goal"));
+    fireEvent.change(screen.getByLabelText("Name"), {target: {value: savedNote.title}});
+    fireEvent.change(screen.getByLabelText("Details"), {target: {value: "Remember this tomorrow"}});
+    fireEvent.click(screen.getByRole("button", {name: "Save to coaching home"}));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+    expect(JSON.parse(fetchMock.mock.calls[2][1].body).clientRequestId)
+      .not.toBe(JSON.parse(fetchMock.mock.calls[0][1].body).clientRequestId);
+  });
+
+  it("gives an altered draft a new request identity after a failed save", async () => {
+    const fetchMock = jest.fn().mockRejectedValue(new Error("Connection interrupted"));
+    Object.defineProperty(globalThis, "fetch", {value: fetchMock, writable: true, configurable: true});
+    render(<CoachingEngagementWorkspace engagementId="engagement-1" initialEntries={[]} members={members} currentUserId="client-1" canWrite />);
+    fireEvent.change(screen.getByLabelText("Name"), {target: {value: "First thought"}});
+    fireEvent.click(screen.getByRole("button", {name: "Save to coaching home"}));
+    await screen.findByText("Connection interrupted");
+    fireEvent.change(screen.getByLabelText("Name"), {target: {value: "A different thought"}});
+    fireEvent.click(screen.getByRole("button", {name: "Save to coaching home"}));
+    await screen.findByText("Connection interrupted");
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toMatchObject({title: "A different thought"});
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body).clientRequestId)
+      .not.toBe(JSON.parse(fetchMock.mock.calls[0][1].body).clientRequestId);
+  });
+
+  it("holds creation fields while saving and rejects repeated submissions before React rerenders", async () => {
+    let finish!: (response: unknown) => void;
+    const fetchMock = jest.fn(() => new Promise((resolve) => {finish = resolve;}));
+    Object.defineProperty(globalThis, "fetch", {value: fetchMock, writable: true, configurable: true});
+    render(<CoachingEngagementWorkspace engagementId="engagement-1" initialEntries={[]} members={members} currentUserId="client-1" canWrite />);
+    fireEvent.change(screen.getByLabelText("Name"), {target: {value: "Keep this"}});
+    const form = screen.getByLabelText("Name").closest("form")!;
+    act(() => {fireEvent.submit(form); fireEvent.submit(form);});
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(screen.getByLabelText("Name")).toBeDisabled();
+    expect(screen.getByLabelText("Type")).toBeDisabled();
+    expect(screen.getByLabelText("Details")).toBeDisabled();
+    await act(async () => finish({ok: false, json: async () => ({error: "Try again"})}));
+    expect(screen.getByLabelText("Name")).toBeEnabled();
+    expect(screen.getByLabelText("Name")).toHaveValue("Keep this");
+  });
+
+  it("keeps each pending item locked while other items save independently", async () => {
+    const finishes: Array<(response: unknown) => void> = [];
+    const fetchMock = jest.fn(() => new Promise((resolve) => finishes.push(resolve)));
+    Object.defineProperty(globalThis, "fetch", {value: fetchMock, writable: true, configurable: true});
+    const otherTask = {...sharedTask, id: "other-task", title: "Another commitment"};
+    render(<CoachingEngagementWorkspace engagementId="engagement-1" initialEntries={[sharedTask, otherTask]} members={members} currentUserId="client-1" canWrite />);
+    const first = within(screen.getByRole("heading", {name: sharedTask.title}).closest("article")!);
+    const second = within(screen.getByRole("heading", {name: otherTask.title}).closest("article")!);
+    fireEvent.click(first.getByText("Edit"));
+    const firstForm = first.getByLabelText("task name").closest("form")!;
+    act(() => {fireEvent.submit(firstForm); fireEvent.submit(firstForm);});
+    fireEvent.click(second.getByRole("button", {name: "Complete"}));
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(first.getByLabelText("task name")).toBeDisabled();
+    expect(first.getByRole("button", {name: "Remove"})).toBeDisabled();
+    expect(second.getByRole("button", {name: "Complete"})).toBeDisabled();
+    await act(async () => finishes[1]!({ok: true, json: async () => ({ok: true, entry: {...otherTask, status: "DONE"}})}));
+    expect(second.getByRole("button", {name: "Reopen"})).toBeEnabled();
+    expect(first.getByRole("button", {name: "Complete"})).toBeDisabled();
+    await act(async () => finishes[0]!({ok: true, json: async () => ({ok: true, entry: sharedTask})}));
+    expect(first.getByLabelText("task name")).toBeEnabled();
+  });
+
+  it.each(["relationship", "account"])("does not carry entries or a pending draft into another %s", async (scope) => {
+    let finish!: (response: unknown) => void;
+    const fetchMock = jest.fn(() => new Promise((resolve) => {finish = resolve;}));
+    Object.defineProperty(globalThis, "fetch", {value: fetchMock, writable: true, configurable: true});
+    const props = {engagementId: "engagement-1", initialEntries: [sharedTask], members, currentUserId: "client-1", canWrite: true};
+    const {rerender} = render(<CoachingEngagementWorkspace {...props} />);
+    fireEvent.click(screen.getByText("Add note, task, or goal"));
+    fireEvent.change(screen.getByLabelText("Name"), {target: {value: "Private draft for the old space"}});
+    fireEvent.click(screen.getByRole("button", {name: "Save to coaching home"}));
+    rerender(<CoachingEngagementWorkspace {...props} initialEntries={[]}
+      engagementId={scope === "relationship" ? "engagement-2" : props.engagementId}
+      currentUserId={scope === "account" ? "coach-1" : props.currentUserId} />);
+    expect(screen.queryByRole("heading", {name: sharedTask.title})).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Name")).toHaveValue("");
+    expect(screen.getByRole("button", {name: "Save to coaching home"})).toBeEnabled();
+    await act(async () => finish({ok: true, json: async () => ({ok: true, entry: sharedTask})}));
+    expect(screen.queryByRole("heading", {name: sharedTask.title})).not.toBeInTheDocument();
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
   });
 
   it("completes a task without silently changing its due time", async () => {
