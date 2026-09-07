@@ -71,6 +71,7 @@ jobs:
         run: |
           node --test scripts/ci/audit-repository-contract.test.mjs
           node --test scripts/ci/pr-contract-lane.test.mjs
+          node --test scripts/ci/verify-required-jest-results.test.mjs
           node scripts/ci/audit-repository-contract.mjs
           node --test scripts/ci/audit-tracked-artifacts.test.mjs
           node scripts/ci/audit-tracked-artifacts.mjs
@@ -118,19 +119,23 @@ jobs:
         run: |
           set -o pipefail
           pnpm exec prisma migrate deploy 2>&1 | tee "${RUNNER_TEMP}/quipsly-db-migrations.log"
-          pnpm --filter quipsly test --runInBand --json --outputFile="${RUNNER_TEMP}/quipsly-db-tests.json" --runTestsByPath \
-            src/lib/server/project-actions-access.integration.test.ts \
-            src/lib/server/studio-project-access.integration.test.ts \
-            src/lib/server/canonical-document-note-edit.integration.test.ts \
-            src/lib/server/nest-project-follow-through.integration.test.ts \
-            src/app/api/nest-chat/route.integration.test.ts \
-            src/lib/server/quipsly-core.integration.test.ts \
-            src/lib/server/coaching-engagement.integration.test.ts \
-            src/app/api/coaching/runway/route.integration.test.ts \
-            src/lib/server/session-access.integration.test.ts \
-            src/lib/server/session-work.integration.test.ts \
-            'src/app/api/coaching/engagements/[engagementId]/work/route.integration.test.ts' \
+          suites=(
+            src/lib/server/project-actions-access.integration.test.ts
+            src/lib/server/studio-project-access.integration.test.ts
+            src/lib/server/canonical-document-note-edit.integration.test.ts
+            src/lib/server/nest-project-follow-through.integration.test.ts
+            src/app/api/nest-chat/route.integration.test.ts
+            src/lib/server/quipsly-core.integration.test.ts
+            src/lib/server/coaching-engagement.integration.test.ts
+            src/app/api/coaching/runway/route.integration.test.ts
+            src/lib/server/session-access.integration.test.ts
+            src/lib/server/session-work.integration.test.ts
+            'src/app/api/coaching/engagements/[engagementId]/work/route.integration.test.ts'
+          )
+          pnpm --filter quipsly test --runInBand --json --outputFile="${RUNNER_TEMP}/quipsly-db-tests.json" --runTestsByPath "${suites[@]}" \
             2>&1 | tee "${RUNNER_TEMP}/quipsly-db-tests.log"
+          node scripts/ci/verify-required-jest-results.mjs "${RUNNER_TEMP}/quipsly-db-tests.json" apps/quipsly "${suites[@]}" \
+            2>&1 | tee -a "${RUNNER_TEMP}/quipsly-db-tests.log"
 
       - name: Preserve database test results
         if: always() && steps.changes.outputs.quipsly == 'true'

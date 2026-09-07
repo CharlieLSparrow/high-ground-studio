@@ -53,6 +53,8 @@ for (const scenario of [
   { lane: "database", failedCommand: "none", exitCode: 0, reachesTests: true },
   { lane: "database", failedCommand: "tests", exitCode: 17, reachesTests: true },
   { lane: "database", failedCommand: "migration", exitCode: 29, reachesTests: false },
+  { lane: "database", failedCommand: "skipped-proof", exitCode: 1, reachesTests: true },
+  { lane: "database", failedCommand: "missing-proof", exitCode: 1, reachesTests: true },
 ]) {
   test(`${scenario.lane} lane preserves ${scenario.failedCommand} exit ${scenario.exitCode}`, (t) => {
     const root = mkdtempSync(path.join(os.tmpdir(), "quipsly-app-ci-"));
@@ -64,6 +66,10 @@ for (const scenario of [
     assert.ok(script);
     const result = spawnSync("bash", ["--noprofile", "--norc", "-e", "-o", "pipefail", "-c", `
       node() {
+        if [[ "$1" == scripts/ci/verify-required-jest-results.mjs ]]; then
+          command node "$@"
+          return $?
+        fi
         [[ "$*" == "--test apps/quipsly/scripts/typescript-config.test.mjs" ]] || return 98
         [[ "$FAILED_COMMAND" != config ]] || return "$TEST_EXIT"
       }
@@ -75,6 +81,19 @@ for (const scenario of [
           echo "application tests ran"
           echo "test stderr" >&2
           [[ "$FAILED_COMMAND" != tests ]] || return "$TEST_EXIT"
+          if [[ "$*" == *--runTestsByPath* && "$FAILED_COMMAND" != missing-proof ]]; then
+            command node -e '
+              const fs = require("node:fs"), path = require("node:path");
+              const args = process.argv.slice(1);
+              const suites = args.slice(args.indexOf("--runTestsByPath") + 1);
+              const output = args.find(value => value.startsWith("--outputFile=")).slice(13);
+              fs.writeFileSync(output, JSON.stringify({ success: true, wasInterrupted: false,
+                testResults: suites.map(name => ({ name: path.resolve("apps/quipsly", name), status: "passed",
+                  assertionResults: [{ status: process.env.FAILED_COMMAND === "skipped-proof" ? "pending" : "passed" }]
+                }))
+              }));
+            ' -- "$@"
+          fi
         else
           return 99
         fi
@@ -85,7 +104,12 @@ for (const scenario of [
     assert.equal(result.stdout.includes("application tests ran"), scenario.reachesTests);
     if (scenario.reachesTests) {
       const log = scenario.lane === "app" ? "quipsly-jest.log" : "quipsly-db-tests.log";
-      assert.equal(readFileSync(path.join(root, log), "utf8"), "application tests ran\ntest stderr\n");
+      const content = readFileSync(path.join(root, log), "utf8");
+      assert.ok(content.startsWith("application tests ran\ntest stderr\n"));
+      if (scenario.lane === "database" && scenario.failedCommand === "none") {
+        assert.match(content, /PASS Required Jest results: ([1-9]\d*) suites, \1 executed tests, no skips/);
+      }
+      if (scenario.failedCommand.endsWith("-proof")) assert.match(content, /FAIL /);
     }
     if (scenario.failedCommand === "migration") {
       assert.equal(readFileSync(path.join(root, "quipsly-db-migrations.log"), "utf8"), "migration output\n");

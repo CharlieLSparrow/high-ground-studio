@@ -68,6 +68,10 @@ rejects removed members and other coaches. Only request identity and subscriptio
 eligibility are mocked there; scheduling and persistence use the real database.
 No production database or cloud
 credentials are available to that step. Migration and test logs are retained.
+The same selected-suite list is passed to Jest and its result verifier. Each
+selected file must report executed passing assertions; skipped, empty, missing,
+substituted, or duplicated suites fail even if Jest exits successfully. This
+checks execution, not the completeness of the assertions or real login behavior.
 This follows GitHub's [PostgreSQL service-container pattern](https://docs.github.com/en/actions/tutorials/use-containerized-services/create-postgresql-service-containers)
 using the same [pgvector image family](https://github.com/pgvector/pgvector) as local development.
 The contracts runner uses
