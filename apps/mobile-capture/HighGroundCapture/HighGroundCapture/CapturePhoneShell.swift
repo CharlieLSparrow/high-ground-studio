@@ -1439,6 +1439,7 @@ private struct CaptureFinishQueueCard: View {
                 VStack(alignment: .leading, spacing: 3) {
                     Text(needsDeviceAttention ? attentionTitle : "Recording activity")
                         .font(.headline)
+                        .fixedSize(horizontal: false, vertical: true)
                     Text(
                         needsDeviceAttention
                             ? "Quipsly keeps trying automatically. Keep the named recording device open until it finishes."
@@ -1479,6 +1480,7 @@ private struct CaptureFinishQueueCard: View {
                                     VStack(alignment: .leading, spacing: 2) {
                                         Text(action.titleLabel)
                                             .font(.subheadline.weight(.bold))
+                                            .fixedSize(horizontal: false, vertical: true)
                                             .foregroundStyle(.primary)
                                         if let exit = action.sourceExitReadiness {
                                             Text(exit.experience.title)
@@ -1522,7 +1524,7 @@ private struct CaptureFinishQueueCard: View {
                 }
 
                 if let boundary = client.response?.boundaries {
-                    DisclosureGroup("Recording details", isExpanded: $showsDetails) {
+                    DisclosureGroup(isExpanded: $showsDetails) {
                         Text(
                             "\(digest.recoveryOpen ?? 0) still saving · "
                                 + "\(digest.safeToLeave ?? 0) backed up · "
@@ -1539,6 +1541,10 @@ private struct CaptureFinishQueueCard: View {
                             .font(.caption2.weight(.semibold))
                             .foregroundStyle(.secondary)
                             .padding(.top, 6)
+                    } label: {
+                        Text("Recording details")
+                            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                            .contentShape(Rectangle())
                     }
                     .font(.caption.weight(.semibold))
                     .accessibilityIdentifier("CaptureFinishQueueDetails")
@@ -23898,12 +23904,18 @@ private struct CaptureStatusPill: View {
     let tint: Color
 
     var body: some View {
-        Label(label, systemImage: systemImage)
+        HStack(spacing: 6) {
+            Image(systemName: systemImage)
+                .accessibilityHidden(true)
+            Text(label)
+                .fixedSize(horizontal: false, vertical: true)
+        }
             .font(.caption2.weight(.bold))
             .foregroundStyle(tint)
             .padding(.horizontal, 9)
             .padding(.vertical, 5)
             .background(tint.opacity(0.11), in: Capsule())
+            .accessibilityElement(children: .combine)
     }
 }
 
