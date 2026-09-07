@@ -195,8 +195,8 @@ if (enabled) {
       { requestTimeout: 5 },
     );
     const { chromium } = jest.requireActual(
-      "playwright",
-    ) as typeof import("playwright");
+      "@playwright/test",
+    ) as typeof import("@playwright/test");
     const browser = await chromium
       .launch({ headless: true })
       .catch(async (error) => {
