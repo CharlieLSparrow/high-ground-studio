@@ -166,6 +166,63 @@ runLocalDatabaseSmoke("private Coaching Engagement collaboration", () => {
       origin: "http://127.0.0.1:3012" })).rejects.toMatchObject({ status: 404 });
   });
 
+  it.each(["INVITE", "REMOVE", "RESTORE", "REVOKE_INVITE"] as const)(
+    "rejects %s when the manager is removed after preflight but before the write transaction",
+    async (action) => {
+      const secret = process.env.AUTH_SECRET;
+      process.env.AUTH_SECRET = "integration-only-membership-race-secret-1234567890";
+      const space = await prisma.coachingEngagement.create({ data: {
+        projectId: ids.project, title: `Membership race ${action}`,
+        createdByUserId: ids.coach, primaryCoachUserId: ids.coach,
+        primaryClientUserId: ids.client,
+        members: { create: [
+          { userId: ids.coach, role: "COACH", status: "ACTIVE" },
+          { userId: ids.client, role: "CLIENT", status: action === "RESTORE" ? "REMOVED" : "ACTIVE" },
+        ] },
+      }, include: { members: true } });
+      const actor = { id: ids.coach, primaryEmail: email("coach") };
+      const target = space.members.find(member => member.userId === ids.client)!;
+      const manager = space.members.find(member => member.userId === ids.coach)!;
+      const requestId = randomUUID();
+      try {
+        const invitation = action === "REVOKE_INVITE"
+          ? await inviteCoachingEngagementMember({ prisma, engagementId: space.id, actor,
+            email: email("invitee"), role: "OBSERVER", requestId: randomUUID(), origin: "http://127.0.0.1:3012" })
+          : null;
+        const beforeInvites = await prisma.coachingEngagementInvitation.findMany({ where: { engagementId: space.id } });
+        let crossedBoundary = false;
+        // Real database interleaving: preflight passes, then revocation commits
+        // before the mutation transaction starts. No query results are mocked.
+        const interleaved = new Proxy(prisma, { get(client, key) {
+          if (key !== "$transaction") return Reflect.get(client, key);
+          return async (callback: (tx: any) => Promise<unknown>, options: any) => {
+            crossedBoundary = true;
+            await prisma.coachingEngagementMember.update({ where: { id: manager.id },
+              data: { status: "REMOVED", accessRevision: { increment: 1 } } });
+            return prisma.$transaction(callback, options);
+          };
+        } });
+        const operation = action === "INVITE"
+          ? inviteCoachingEngagementMember({ prisma: interleaved, engagementId: space.id, actor,
+            email: email("invitee"), role: "OBSERVER", requestId, origin: "http://127.0.0.1:3012" })
+          : action === "REVOKE_INVITE"
+            ? revokeCoachingEngagementInvitation({ prisma: interleaved, engagementId: space.id, actor,
+              invitationId: invitation!.invitation!.id, requestId })
+            : changeCoachingEngagementMemberAccess({ prisma: interleaved, engagementId: space.id, actor,
+              memberId: target.id, action, expectedRevision: target.accessRevision, requestId });
+        await expect(operation).rejects.toMatchObject({ code: "ACCESS_CHANGED", status: 403 });
+        expect(crossedBoundary).toBe(true);
+        expect(await prisma.coachingEngagementMember.findUnique({ where: { id: target.id } })).toEqual(target);
+        expect(await prisma.coachingEngagementInvitation.findMany({ where: { engagementId: space.id } })).toEqual(beforeInvites);
+        expect(await prisma.coachingEngagementMemberReceipt.count({ where: { requestId } })).toBe(0);
+      } finally {
+        await prisma.coachingEngagement.delete({ where: { id: space.id } });
+        if (secret === undefined) delete process.env.AUTH_SECRET;
+        else process.env.AUTH_SECRET = secret;
+      }
+    },
+  );
+
   it("admits coach/client but does not inherit Nest editor or viewer access", async () => {
     const actors = {
       coach: { id: ids.coach, primaryEmail: email("coach") },

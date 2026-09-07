@@ -219,6 +219,27 @@ export async function loadCoachingEngagementMembershipBoundary(input: {
   };
 }
 
+async function requireCurrentManagementAccess(
+  tx: Prisma.TransactionClient,
+  engagementId: string,
+  actor: SessionAccessActor,
+) {
+  // Preflight powers the UI, but it is not a write authorization snapshot.
+  // Read membership again inside the same serializable transaction as the
+  // change, so a revocation committed before the write cannot be bypassed.
+  const current = await tx.coachingEngagement.findFirst({
+    where: coachingEngagementAccessWhere(engagementId, actor, "manage"),
+    select: { id: true },
+  });
+  if (!current) {
+    throw new CoachingEngagementMembershipError(
+      "Your access to manage this space changed. Refresh to see your current access.",
+      403,
+      "ACCESS_CHANGED",
+    );
+  }
+}
+
 export async function inviteCoachingEngagementMember(input: {
   engagementId: string;
   actor: SessionAccessActor;
@@ -349,6 +370,7 @@ export async function inviteCoachingEngagementMember(input: {
   const hash = tokenHash(token);
   const expiresAt = new Date(Date.now() + INVITATION_LIFETIME_MS);
   const invitation = await prisma.$transaction(async (tx: any) => {
+    await requireCurrentManagementAccess(tx, input.engagementId, input.actor);
     const created = await tx.coachingEngagementInvitation.create({
       data: {
         engagementId: input.engagementId,
@@ -469,6 +491,7 @@ export async function changeCoachingEngagementMemberAccess(input: {
   const nextRevision = input.expectedRevision + 1;
   const now = new Date();
   const result = await prisma.$transaction(async (tx: any) => {
+    await requireCurrentManagementAccess(tx, input.engagementId, input.actor);
     const guarded = await tx.coachingEngagementMember.updateMany({
       where: {
         id: member.id,
@@ -589,6 +612,7 @@ export async function revokeCoachingEngagementInvitation(input: {
   }
   const now = new Date();
   const result = await prisma.$transaction(async (tx: any) => {
+    await requireCurrentManagementAccess(tx, input.engagementId, input.actor);
     const guarded = await tx.coachingEngagementInvitation.updateMany({
       where: { id: invitation.id, status: "PENDING" },
       data: { status: "REVOKED", revokedAt: now },
