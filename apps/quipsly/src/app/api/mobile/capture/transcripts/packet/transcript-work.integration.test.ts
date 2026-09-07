@@ -5,7 +5,8 @@ import { SESSION_PACKET_TEMPLATE_VERSION } from "@high-ground/quipsly-domain/coa
 import { transcriptPacketNoteCandidateId } from "@high-ground/quipsly-domain/coaching-packet";
 import { getPrismaClient } from "@/lib/prisma";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
-import { transcriptPacketSnapshot } from "@/lib/server/coaching-packets";
+import { buildCoachingPacketFromTranscriptJob, transcriptPacketSnapshot } from "@/lib/server/coaching-packets";
+import { loadSessionWork } from "@/lib/server/session-work";
 import { MOBILE_CAPTURE_CONSENT_EVIDENCE_VERSION, MOBILE_CAPTURE_CONSENT_POLICY_VERSION,
   MOBILE_CAPTURE_CONSENT_TEXT, MOBILE_CAPTURE_CONSENT_TEXT_SHA256 } from "@/lib/mobile-capture-consent-policy.js";
 import { POST } from "../notes/route";
@@ -201,8 +202,142 @@ async function withFixture(run: (tx: Prisma.TransactionClient, f: Awaited<Return
   }
 }
 
+async function automaticSession(tx: Prisma.TransactionClient, f: Awaited<ReturnType<typeof fixture>>) {
+  const engagement = await tx.coachingEngagement.create({ data: {
+    title: "Writing practice", primaryCoach: { connect: { id: f.owner.id } }, primaryClient: { connect: { id: f.member.id } },
+    project: { create: { slug: randomUUID(), name: "Coaching",
+      workspace: { create: { slug: randomUUID(), name: "Synthetic coaching Nest" } } } },
+    members: { create: [{ userId: f.owner.id, role: "COACH" }, { userId: f.member.id, role: "CLIENT" }] },
+  } });
+  await tx.callRoom.update({ where: { id: f.room.id }, data: { purpose: "COACHING",
+    projectId: engagement.projectId, coachingEngagementId: engagement.id } });
+  const participant = await tx.callParticipant.findFirstOrThrow({ where: { roomId: f.room.id, userId: f.member.id } });
+  await tx.recordingAsset.update({ where: { id: f.asset.id }, data: { participantId: participant.id } });
+  await tx.transcriptJob.update({ where: { id: f.job.id }, data: { resultJson: {
+    processingControl: { routing: { schema: "quipsly-transcript-routing-summary-v1",
+      sourceTopology: "participant-isolated", speakerAuthority: "source-binding", participantLabel: "Other participant" } },
+  } } });
+  const words = ["My goal is to write every morning.", "Tomorrow I will draft one page.", "I learned that small steps help me start."];
+  const segments = [];
+  for (const [index, segment] of f.segments.entries()) {
+    segments.push(await tx.transcriptSegment.update({ where: { id: segment.id }, data: {
+      text: words[index], speakerLabel: "Other participant", speakerUserId: f.member.id,
+    } }));
+  }
+  const build = () => buildCoachingPacketFromTranscriptJob({ prisma: tx, transcriptJobId: f.job.id, authorUserId: f.owner.id });
+  const read = (user: typeof f.owner) => loadSessionWork({ prisma: tx, roomId: f.room.id, actor: { id: user.id, primaryEmail: user.primaryEmail } });
+  return { engagement, segments, build, read };
+}
+
 (enabled ? describe : describe.skip)("transcript work against a fresh database fixture", () => {
   afterAll(async () => { if (enabled) await actualPrisma.getPrismaClient().$disconnect(); });
+
+  it("creates useful shared work automatically, attributes it to the speaker, and reuses it on retry", async () => {
+    await withFixture(async (tx, f) => {
+      const session = await automaticSession(tx, f);
+      const result = await session.build();
+      expect(result).toMatchObject({ ok: true, actionItemCount: 1, goalCount: 1, humanReviewedSegmentCount: 0 });
+      const tasks = await tx.actionItem.findMany({ where: { roomId: f.room.id } });
+      const goals = await tx.goal.findMany({ where: { roomId: f.room.id } });
+      expect(tasks).toHaveLength(1);
+      expect(goals).toHaveLength(1);
+      expect(tasks[0]).toMatchObject({ assignedUserId: f.member.id, status: "OPEN", engagementId: session.engagement.id,
+        title: "Tomorrow I will draft one page", sourceJson: { recordingAssetId: f.asset.id, automaticallyCreated: true } });
+      expect(goals[0]).toMatchObject({ ownerUserId: f.member.id, status: "ACTIVE", engagementId: session.engagement.id,
+        title: "My goal is to write every morning", sourceJson: { recordingAssetId: f.asset.id, automaticallyCreated: true } });
+      const notes = await tx.coachingNote.findMany({ where: { roomId: f.room.id, engagementId: session.engagement.id } });
+      expect(notes.some(note => note.kind === "SUMMARY")).toBe(true);
+      expect(notes.some(note => note.kind === "HIGHLIGHT")).toBe(true);
+      expect(notes.every(note => note.visibility === "SESSION_SHARED")).toBe(true);
+      for (const user of [f.owner, f.member]) {
+        const work = await session.read(user);
+        expect(work.map(item => item.id).sort()).toEqual([tasks[0]!.id, goals[0]!.id].sort());
+        expect(work.every(item => item.canEdit && item.fromTranscript && item.sourceHref?.includes(f.asset.id))).toBe(true);
+      }
+      expect(await session.read(f.outsider)).toEqual([]);
+      expect(await session.build()).toMatchObject({ ok: true, reusedExistingPacket: true });
+      expect(await tx.actionItem.findMany({ where: { roomId: f.room.id } })).toEqual(tasks);
+      expect(await tx.goal.findMany({ where: { roomId: f.room.id } })).toEqual(goals);
+      expect(await tx.coachingNote.count({ where: { roomId: f.room.id, engagementId: session.engagement.id } })).toBe(notes.length);
+      expect(await tx.transcriptSegment.findMany({ where: { transcriptJobId: f.job.id }, orderBy: { startSeconds: "asc" } })).toEqual(session.segments);
+      expect(await tx.transcriptSegmentVerification.count({ where: { roomId: f.room.id } })).toBe(0);
+      expect(await tx.deliveryEvent.count({ where: { roomId: f.room.id } })).toBe(0);
+    });
+  });
+
+  it("preserves a person's edited work when a corrected transcript refreshes the automatic results", async () => {
+    await withFixture(async (tx, f) => {
+      const session = await automaticSession(tx, f);
+      expect(await session.build()).toMatchObject({ ok: true });
+      const task = await tx.actionItem.findFirstOrThrow({ where: { roomId: f.room.id } });
+      const goal = await tx.goal.findFirstOrThrow({ where: { roomId: f.room.id } });
+      const summary = await tx.coachingNote.findFirstOrThrow({ where: { roomId: f.room.id, engagementId: session.engagement.id, kind: "SUMMARY" } });
+      const taskEdited = await tx.actionItem.update({ where: { id: task.id }, data: { title: "My chosen next step", assignedUserId: f.owner.id } });
+      const goalEdited = await tx.goal.update({ where: { id: goal.id }, data: { title: "My longer-term direction", status: "PAUSED" } });
+      const summaryEdited = await tx.coachingNote.update({ where: { id: summary.id }, data: { body: "My own reflection", visibility: "AUTHOR_PRIVATE" } });
+      const segment = session.segments[1]!;
+      await tx.transcriptCorrection.create({ data: { roomId: f.room.id, transcriptJobId: f.job.id, segmentId: segment.id,
+        createdByUserId: f.member.id, clientRequestId: randomUUID(), status: "accepted", baseTextSha256: sha(segment.text),
+        expectedText: segment.text, expectedSpeakerLabel: segment.speakerLabel, startSecondsSnapshot: segment.startSeconds,
+        endSecondsSnapshot: segment.endSeconds, correctedText: "Tomorrow I will draft two pages.", reviewedAt: new Date() } });
+      expect(await session.build()).toMatchObject({ ok: true, reusedExistingPacket: false });
+      expect(await tx.actionItem.findUniqueOrThrow({ where: { id: task.id } })).toEqual(taskEdited);
+      expect(await tx.goal.findUniqueOrThrow({ where: { id: goal.id } })).toEqual(goalEdited);
+      expect(await tx.coachingNote.findUniqueOrThrow({ where: { id: summary.id } })).toEqual(summaryEdited);
+      expect(await tx.actionItem.count({ where: { roomId: f.room.id } })).toBe(1);
+      expect(await tx.goal.count({ where: { roomId: f.room.id } })).toBe(1);
+      expect(await tx.transcriptSegment.findUniqueOrThrow({ where: { id: segment.id } })).toEqual(segment);
+      expect((await tx.recordingAsset.findUniqueOrThrow({ where: { id: f.asset.id } })).checksum).toBe(f.asset.checksum);
+    });
+  });
+
+  it.each([
+    ["actionItem", "update"], ["goal", "update"],
+    ["actionItem", "delete"], ["goal", "delete"],
+  ] as const)("uses a real row-version predicate when %s %s races a personal edit", async (model, operation) => {
+    await withFixture(async (tx, f) => {
+      const session = await automaticSession(tx, f);
+      expect(await session.build()).toMatchObject({ ok: true });
+      const row = model === "actionItem"
+        ? await tx.actionItem.findFirstOrThrow({ where: { roomId: f.room.id } })
+        : await tx.goal.findFirstOrThrow({ where: { roomId: f.room.id } });
+      if (operation === "delete") {
+        for (const segment of session.segments.slice(0, 2)) {
+          await tx.transcriptCorrection.create({ data: { roomId: f.room.id, transcriptJobId: f.job.id, segmentId: segment.id,
+            createdByUserId: f.member.id, clientRequestId: randomUUID(), status: "accepted", baseTextSha256: sha(segment.text),
+            expectedText: segment.text, expectedSpeakerLabel: segment.speakerLabel,
+            startSecondsSnapshot: segment.startSeconds, endSecondsSnapshot: segment.endSeconds,
+            correctedText: "We spoke about the weather.", reviewedAt: new Date() } });
+        }
+      }
+      let interleaved = false;
+      const title = "Edited while the refresh was working";
+      const prisma = new Proxy(tx, { get(target, property) {
+        if (property !== model) return Reflect.get(target, property);
+        const delegate = Reflect.get(target, property);
+        return new Proxy(delegate, { get(table, method) {
+          if (method !== operation) return Reflect.get(table, method);
+          return async (args: { where: { id: string } }) => {
+            // Interleave a real SQL edit after the builder inspected this row.
+            // This proves its SQL predicate, not two-connection scheduling.
+            if (args.where.id === row.id && !interleaved) {
+              interleaved = true;
+              await Reflect.apply(Reflect.get(table, "update"), table, [{ where: { id: row.id },
+                data: { title, updatedAt: new Date(row.updatedAt.getTime() + 1000) } }]);
+            }
+            return Reflect.apply(Reflect.get(table, operation), table, [args]);
+          };
+        } });
+      } });
+      await expect(buildCoachingPacketFromTranscriptJob({ prisma, transcriptJobId: f.job.id, authorUserId: f.owner.id, force: true }))
+        .rejects.toMatchObject({ code: "P2034" });
+      expect(interleaved).toBe(true);
+      const retained = model === "actionItem"
+        ? await tx.actionItem.findUniqueOrThrow({ where: { id: row.id } })
+        : await tx.goal.findUniqueOrThrow({ where: { id: row.id } });
+      expect(retained.title).toBe(title);
+    });
+  });
 
   it("merges an unreviewed three-passage source, retains prior content, and retries without duplication", async () => {
     await withFixture(async (tx, f) => {

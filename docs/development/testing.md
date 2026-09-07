@@ -81,6 +81,11 @@ rollback. Existing task/goal definitions, dates, progress, reminders, recurrence
 tags, links, and planned time must survive evidence additions unchanged. The
 goal-evidence fixture exercises a historical packet without requiring human
 verification; current automatic packets expose already-created ordinary goals.
+The same suite runs the automatic builder against real tables: speaker-owned
+tasks/goals and shared notes appear without review, both coaching members can
+work with them, outsiders cannot, retries reuse them, and transcript corrections
+preserve personal edits. Controlled SQL interleavings check row-version guards
+on automatic task/goal refresh and removal; this is not a two-connection race test.
 This replaces the retired retained-account, mandatory-playback-review merge
 harnesses. It does not claim login, audio playback, native merge/relaunch, or
 concurrent-transaction proof; those remain separate runtime acceptance work.

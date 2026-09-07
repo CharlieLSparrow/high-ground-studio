@@ -1378,7 +1378,7 @@ describe("transcript coaching follow-through", () => {
       ),
     ).toHaveLength(2);
     expect(work.actionItem.update).toHaveBeenCalledWith({
-      where: { id: first.actionItemIds[0] },
+      where: { id: first.actionItemIds[0], updatedAt: expect.any(Date) },
       data: expect.objectContaining({
         title: expect.stringMatching(/send the finished outline/i),
         detail: expect.stringContaining(
@@ -1491,6 +1491,30 @@ describe("transcript coaching follow-through", () => {
     expect(create).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ["actionItem", "update"], ["goal", "update"],
+    ["actionItem", "delete"], ["goal", "delete"],
+  ] as const)("retries rather than losing a person's concurrent %s edit during %s", async (model, operation) => {
+    const job = completedTranscriptJob();
+    job.segments[0]!.text = "My goal is to write every morning. Tomorrow I will draft one page.";
+    const work = automaticWorkStores();
+    const prisma = { transcriptJob: { findUnique: jest.fn(async () => job) },
+      coachingNote: { findFirst: jest.fn(async () => null),
+        create: jest.fn(async ({ data }: any) => ({ id: "summary", ...data })) }, ...work };
+    await buildCoachingPacketFromTranscriptJob({ prisma, transcriptJobId: job.id, authorUserId: "coach-1" });
+    const existing = (await work[model].findMany())[0];
+    expect(existing).toBeDefined();
+    // Model the database's compare-and-swap rejection after another writer
+    // changes the selected row. The real SQL predicate is covered separately.
+    work[model][operation].mockRejectedValue(Object.assign(new Error("Row changed"), { code: "P2025" }));
+    if (operation === "delete") job.segments[0]!.text = "The sky is blue today.";
+    await expect(buildCoachingPacketFromTranscriptJob({ prisma, transcriptJobId: job.id, authorUserId: "coach-1" }))
+      .rejects.toMatchObject({ code: "P2034" });
+    expect(work[model][operation]).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: existing.id, updatedAt: existing.updatedAt },
+    }));
+  });
+
   it("removes untouched generated follow-through when a correction removes the commitment", async () => {
     const job = completedTranscriptJob();
     const work = automaticWorkStores();
@@ -1540,7 +1564,7 @@ describe("transcript coaching follow-through", () => {
     expect(rebuilt.actionItemIds).toEqual([]);
     expect(rebuilt.removedActionItemIds).toEqual(first.actionItemIds);
     expect(work.actionItem.delete).toHaveBeenCalledWith({
-      where: { id: first.actionItemIds[0] },
+      where: { id: first.actionItemIds[0], updatedAt: expect.any(Date) },
     });
     expect(
       await work.actionItem.findUnique({
@@ -1870,7 +1894,7 @@ describe("transcript coaching follow-through", () => {
     expect(rebuilt.goalIds).toEqual([]);
     expect(rebuilt.removedGoalIds).toEqual(first.goalIds);
     expect(work.goal.delete).toHaveBeenCalledWith({
-      where: { id: first.goalIds[0] },
+      where: { id: first.goalIds[0], updatedAt: expect.any(Date) },
     });
   });
 
@@ -2173,7 +2197,7 @@ describe("transcript coaching follow-through", () => {
       reviewStatus: "human-reviewed",
     });
     expect(work.goal.update).toHaveBeenCalledWith({
-      where: { id: first.goalIds[0] },
+      where: { id: first.goalIds[0], updatedAt: expect.any(Date) },
       data: expect.objectContaining({
         title: expect.stringMatching(/pause and breathe/i),
         description: expect.stringContaining(
