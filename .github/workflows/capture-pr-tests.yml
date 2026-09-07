@@ -110,6 +110,7 @@ jobs:
           bash apps/mobile-capture/HighGroundCapture/scripts/test-coaching-work-save.sh
           bash scripts/test-capture-document-note-edits.sh
           bash scripts/test-capture-task-reminders.sh
+          bash scripts/test-capture-voice-writing-continuation.sh
           node --test scripts/quipsly-ios-capture-account-isolation.test.mjs
           node apps/mobile-capture/HighGroundCapture/scripts/test-recording-content-summary.mjs
           node --test scripts/lib/source-check-report.test.mjs scripts/quipsly-ios-capture-app-store-static-smoke.test.mjs

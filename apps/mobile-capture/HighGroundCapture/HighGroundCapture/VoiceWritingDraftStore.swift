@@ -360,7 +360,9 @@ final class VoiceWritingDraftStore: ObservableObject {
         let body = composedWriting.text
         guard !body.isEmpty else { return nil }
 
-        if let roomID = recording.callRoomId?.trimmingCharacters(in: .whitespacesAndNewlines),
+        // Materialization replaces callRoomId while transcription may still be
+        // running. Continuations were staged against the stable local identity.
+        if let roomID = recording.voiceWritingCallRoomId,
            let continuation = pendingContinuations.first(where: {
                $0.ownerAccountID == owner && $0.callRoomID == roomID
            }),
