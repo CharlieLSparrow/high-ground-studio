@@ -32,6 +32,35 @@ const generatedMobileDogfoodPath = fileURLToPath(
 
 const stateHelper = readFileSync(stateHelperPath, "utf8");
 const up = readFileSync(upPath, "utf8");
+const nestReadinessProbe = up.match(/check_nest_readiness\(\) \{[\s\S]*?\n\}/)?.[0];
+
+test("Nest readiness tolerates cold route compilation without restarting services", () => {
+  assert.ok(nestReadinessProbe);
+  const dir = mkdtempSync(join(tmpdir(), "quipsly-nest-readiness-"));
+  try {
+    for (const [mode, expectedExit, expectedCalls] of [["warm", 0, 4], ["stalled", 1, 12], ["broken-login", 1, 12]]) {
+      const counter = join(dir, `${mode}-calls`);
+      writeFileSync(counter, "0");
+      const result = spawnSync("bash", ["-c", `
+        nest_url=http://127.0.0.1:3012
+        http_status() {
+          n=$(<"$counter"); n=$((n + 1)); printf '%s' "$n" > "$counter"
+          if [[ "$mode" == warm && "$n" -gt 2 ]]; then printf 200
+          elif [[ "$mode" == broken-login && $((n % 2)) -eq 1 ]]; then printf 200
+          else printf 000; fi
+        }
+        sleep() { :; }
+        ${nestReadinessProbe}
+        check_nest_readiness 6
+      `], { encoding: "utf8", env: { ...process.env, counter, mode } });
+      assert.equal(result.status, expectedExit, result.stderr);
+      assert.equal(Number(readFileSync(counter, "utf8")), expectedCalls);
+    }
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+  assert.doesNotMatch(nestReadinessProbe, /start_macos_job|launchctl|kill/);
+  assert.match(up, /quipsly_local_process_cwd "\$\{nest_listener\}".*\$\{repo_root\}\/apps\/quipsly/);
+  assert.match(up, /launchctl_job_exists "\$\{nest_label\}"; then\n\s+printf "WAIT/);
+});
 const nestLauncher = readFileSync(nestLauncherPath, "utf8");
 const down = readFileSync(downPath, "utf8");
 const doctor = readFileSync(doctorPath, "utf8");

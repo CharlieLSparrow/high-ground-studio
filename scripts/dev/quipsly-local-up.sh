@@ -417,6 +417,19 @@ http_status() {
   curl -sS --max-time 3 -o /dev/null -w "%{http_code}" "$1" 2>/dev/null || true
 }
 
+check_nest_readiness() {
+  local attempts="${1:-1}" attempt
+  for attempt in $(seq 1 "${attempts}"); do
+    nest_status="$(http_status "${nest_url%/}/api/health")"
+    login_status="$(http_status "${nest_url%/}/login?callbackUrl=%2Fprojects")"
+    if [[ "${nest_status}" == "200" && "${login_status}" == "200" ]]; then
+      return 0
+    fi
+    if [[ "${attempt}" -lt "${attempts}" ]]; then sleep 1; fi
+  done
+  return 1
+}
+
 wait_for_http() {
   local label="$1"
   local url="$2"
@@ -831,8 +844,18 @@ else
     "${state_dir}/firebase.log"
 fi
 
-nest_status="$(http_status "${nest_url%/}/api/health")"
-login_status="$(http_status "${nest_url%/}/login?callbackUrl=%2Fprojects")"
+if ! check_nest_readiness; then
+  # Next's dev server may be compiling these routes after a source edit. Give
+  # only this checkout's owned server a bounded warm-up before reporting failure.
+  nest_listener="$(quipsly_local_port_listener_pid 3012)"
+  if [[ -n "${nest_listener}" && "$(uname -s)" == "Darwin" ]] \
+    && [[ "$(quipsly_local_process_cwd "${nest_listener}")" == "${repo_root}/apps/quipsly" ]] \
+    && [[ "$(sed -n '1p' "${state_dir}/nest.label" 2>/dev/null || true)" == "${nest_label}" ]] \
+    && launchctl_job_exists "${nest_label}"; then
+    printf "WAIT  %-24s allowing local routes to finish compiling\n" "Quipsly Nest"
+    check_nest_readiness 6 || true
+  fi
+fi
 if [[ "${nest_status}" == "200" && "${login_status}" == "200" ]]; then
   nest_listener="$(quipsly_local_port_listener_pid 3012)"
   nest_cwd=""
