@@ -24,6 +24,15 @@ const sharedTask = {
 };
 
 describe("CoachingEngagementWorkspace", () => {
+  it.each(["TASK", "GOAL"] as const)("keeps the saved %s calendar day identical in the card and date editor", (kind) => {
+    const item = {...sharedTask, kind, dueAt: "2026-09-10T00:00:00.000Z"};
+    render(<CoachingEngagementWorkspace engagementId="engagement-1" initialEntries={[item]} members={members} currentUserId="client-1" canWrite />);
+    const card = within(screen.getByRole("heading", {name: item.title}).closest("article")!);
+    expect(card.getByText(`${kind === "TASK" ? "Due" : "Target"} Sep 10, 2026`)).toBeVisible();
+    fireEvent.click(card.getByText("Edit"));
+    expect(card.getByLabelText(kind === "TASK" ? "Due date" : "Target date")).toHaveValue("2026-09-10");
+  });
+
   beforeEach(() => {
     jest.restoreAllMocks();
   });
@@ -215,7 +224,7 @@ describe("CoachingEngagementWorkspace", () => {
     });
 
     expect(screen.getByLabelText("Who owns it?")).toBeInTheDocument();
-    expect(screen.getByLabelText(/Target date/)).toBeInTheDocument();
+    expect(screen.getByLabelText(/Due date/)).toBeInTheDocument();
     expect(screen.queryByLabelText("Who can read it?")).not.toBeInTheDocument();
   });
 

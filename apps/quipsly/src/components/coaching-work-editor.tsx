@@ -129,7 +129,7 @@ export function CoachingWorkEditor({entry, members, busy, onSave}: {
             {entry.kind !== "NOTE" ? (
               <input name="targetAt" type="date" value={draft.targetAt.slice(0, 10)}
                 onChange={(event) => change("targetAt", event.target.value === base.dueAt?.slice(0, 10) ? base.dueAt ?? "" : event.target.value)}
-                className="min-h-11 rounded-xl border border-[#d8c7a7] px-3 text-sm" aria-label="Target date" />
+                className="min-h-11 rounded-xl border border-[#d8c7a7] px-3 text-sm" aria-label={entry.kind === "TASK" ? "Due date" : "Target date"} />
             ) : null}
           </div>
           <div className="flex flex-wrap gap-2">

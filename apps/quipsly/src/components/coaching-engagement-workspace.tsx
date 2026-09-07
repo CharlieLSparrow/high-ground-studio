@@ -594,7 +594,7 @@ function CoachingEngagementWorkspaceContent({
             </label>
             {createKind !== "NOTE" ? (
               <label className="text-xs font-black uppercase tracking-wide text-[#765f40]">
-                Target date
+                {createKind === "TASK" ? "Due date" : "Target date"}
                 <input
                   name="targetAt"
                   type="date"
@@ -675,9 +675,12 @@ function CoachingEngagementWorkspaceContent({
                       ) : null}
                       {entry.dueAt ? (
                         <span>
-                          Target{" "}
+                          {entry.kind === "TASK" ? "Due" : "Target"}{" "}
                           {new Intl.DateTimeFormat(undefined, {
                             dateStyle: "medium",
+                            // Date-only inputs are serialized at UTC midnight.
+                            // Match the editor's ISO day, not the viewer's prior evening.
+                            timeZone: "UTC",
                           }).format(new Date(entry.dueAt))}
                         </span>
                       ) : null}
