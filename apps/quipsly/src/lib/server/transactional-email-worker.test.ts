@@ -64,6 +64,7 @@ function harness(input?: { suppressedClient?: boolean; oldFingerprint?: string }
     return row;
   };
   const models = {
+    callRoom: { findFirst: jest.fn(async () => ({id: "room-1"})) },
     coachingBooking: {
       findMany: jest.fn(async () => [booking]),
     },
@@ -160,6 +161,16 @@ function harness(input?: { suppressedClient?: boolean; oldFingerprint?: string }
 }
 
 describe("transactional email worker", () => {
+  it("cancels queued mail when recipient access is removed without calling the provider", async () => {
+    const state = harness();
+    state.models.callRoom.findFirst.mockResolvedValue(null as never);
+    const send = jest.fn();
+    const result = await runTransactionalEmailMaintenance({prisma: state.prisma, now: NOW, send});
+    expect(result).toMatchObject({canceled: 2, sent: 0});
+    expect(send).not.toHaveBeenCalled();
+    expect([...state.rows.values()].filter(row => row.errorCode === "RECIPIENT_ACCESS_REMOVED")).toHaveLength(2);
+  });
+
   it("authorizes only the configured OIDC scheduler identity", async () => {
     const environment = {
       QUIPSLY_TRANSACTIONAL_EMAIL_SERVICE_ACCOUNT: "worker@example.iam.gserviceaccount.com",

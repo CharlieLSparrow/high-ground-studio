@@ -10,6 +10,7 @@ import type {
 
 import { authorizeGoogleOidcWorker } from "@/lib/server/google-oidc-worker-auth";
 import { normalizeEmail } from "@/lib/server/studio-user-identity";
+import { sessionJoinAccessWhere } from "@/lib/server/session-access";
 import {
   sendTransactionalEmail,
   type TransactionalEmailSendResult,
@@ -343,6 +344,48 @@ async function cancelClaim(prisma: WorkerPrisma, email: any, now: Date, code: st
   });
 }
 
+/** Delivery runs as the recipient, not as the scheduler's service account.
+ * Retained bookings and participant rows must not revive removed access. */
+export async function transactionalEmailRecipientHasAccess(input: {
+  prisma: Pick<PrismaClient, "callRoom">;
+  roomId: string;
+  bookingId: string;
+  recipientUserId: string;
+  recipientEmail: string;
+  recipientRole: string;
+}) {
+  if (!["COACH", "CLIENT"].includes(input.recipientRole)) return false;
+  const recipient = {
+    id: input.recipientUserId,
+    isActive: true,
+    primaryEmail: { equals: normalizeEmail(input.recipientEmail), mode: "insensitive" as const },
+  };
+  return Boolean(await input.prisma.callRoom.findFirst({
+    where: {
+      AND: [
+        sessionJoinAccessWhere(input.roomId, {
+          id: input.recipientUserId,
+          primaryEmail: input.recipientEmail,
+        }),
+        {
+          status: { in: ["PLANNED", "OPEN", "RECORDING"] },
+          participants: { none: { userId: input.recipientUserId, accessStatus: "REMOVED" } },
+          booking: {
+            is: {
+              id: input.bookingId,
+              status: "CONFIRMED",
+              ...(input.recipientRole === "COACH"
+                ? { coachUser: { is: recipient } }
+                : { clientUser: { is: recipient } }),
+            },
+          },
+        },
+      ],
+    },
+    select: { id: true },
+  }));
+}
+
 async function dispatchClaim(input: {
   prisma: WorkerPrisma;
   email: any;
@@ -412,6 +455,17 @@ async function dispatchClaim(input: {
   const counterpart = email.recipientRole === "COACH"
     ? email.booking.clientUser
     : email.booking.coachUser;
+  if (!await transactionalEmailRecipientHasAccess({
+    prisma,
+    roomId: email.roomId,
+    bookingId: email.bookingId,
+    recipientUserId: email.recipientUserId,
+    recipientEmail,
+    recipientRole: email.recipientRole,
+  })) {
+    await cancelClaim(prisma, email, now, "RECIPIENT_ACCESS_REMOVED", "This person no longer has access to this session or is no longer its assigned recipient.");
+    return "canceled" as const;
+  }
   const result = await input.send({
     recipientEmail,
     recipientName: email.recipient.name,

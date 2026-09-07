@@ -21,6 +21,7 @@ import {
 } from "./session-access";
 import { captureRoomAccessWhere } from "./mobile-capture-room-join-diagnostics";
 import { loadCoachingSessionHighlights } from "./coaching-session-highlights";
+import { transactionalEmailRecipientHasAccess } from "./transactional-email-worker";
 import { reconcileLiveSessionAccess, reconcileLiveKitParticipantJoin } from "./session-access-reconciliation";
 import {
   acceptCoachingEngagementInvitation,
@@ -164,6 +165,31 @@ runLocalDatabaseSmoke("private Coaching Engagement collaboration", () => {
     } finally {
       await prisma.callRoom.deleteMany({ where: { coachingEngagementId: space.id } });
       await prisma.coachingEngagement.delete({ where: { id: space.id } });
+    }
+  });
+
+  it("stops session email after client-space revocation even with retained booking and participant records", async () => {
+    const original = await prisma.coachingBooking.findUniqueOrThrow({where: {id: bookingId}, select: {status: true}});
+    const check = (userId: string, role: string, recipientEmail: string) => transactionalEmailRecipientHasAccess({prisma, roomId, bookingId, recipientUserId: userId, recipientRole: role, recipientEmail});
+    await prisma.coachingBooking.update({where: {id: bookingId}, data: {status: "CONFIRMED"}});
+    try {
+      expect(await check(ids.client, "CLIENT", email("client"))).toBe(true);
+      expect(await check(ids.coach, "COACH", email("coach"))).toBe(true);
+      expect(await check(ids.editor, "CLIENT", email("editor"))).toBe(false);
+      expect(await check(ids.client, "COACH", email("client"))).toBe(false);
+      expect(await check(ids.client, "CLIENT", email("outsider"))).toBe(false);
+      await prisma.callParticipant.updateMany({where: {roomId, userId: ids.client}, data: {accessStatus: "REMOVED"}});
+      expect(await check(ids.client, "CLIENT", email("client"))).toBe(false);
+      await prisma.callParticipant.updateMany({where: {roomId, userId: ids.client}, data: {accessStatus: "ACTIVE"}});
+      await prisma.coachingEngagementMember.update({where: {engagementId_userId: {engagementId, userId: ids.client}}, data: {status: "REMOVED"}});
+      expect(await check(ids.client, "CLIENT", email("client"))).toBe(false);
+      expect(await check(ids.coach, "COACH", email("coach"))).toBe(true);
+      expect(await prisma.callParticipant.count({where: {roomId, userId: ids.client, accessStatus: "ACTIVE"}})).toBe(1);
+      expect((await prisma.coachingBooking.findUniqueOrThrow({where: {id: bookingId}})).clientUserId).toBe(ids.client);
+    } finally {
+      await prisma.callParticipant.updateMany({where: {roomId, userId: ids.client}, data: {accessStatus: "ACTIVE"}});
+      await prisma.coachingEngagementMember.update({where: {engagementId_userId: {engagementId, userId: ids.client}}, data: {status: "ACTIVE"}});
+      await prisma.coachingBooking.update({where: {id: bookingId}, data: {status: original.status}});
     }
   });
 
