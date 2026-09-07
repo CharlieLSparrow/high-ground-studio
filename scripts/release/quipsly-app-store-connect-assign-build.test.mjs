@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { QUIPSLY_CAPTURE_RELEASE_TARGET } from "./quipsly-capture-release-target.mjs";
 
 import {
   buildAssignmentBody,
@@ -35,9 +36,9 @@ const buildDocument = {
 
 test("defaults internal assignment to the canonical current release build", () => {
   const parsed = parseAssignmentArguments([]);
-  assert.equal(parsed.appId, "6780995957");
-  assert.equal(parsed.marketingVersion, "1.0");
-  assert.equal(parsed.buildNumber, "67");
+  assert.equal(parsed.appId, QUIPSLY_CAPTURE_RELEASE_TARGET.appId);
+  assert.equal(parsed.marketingVersion, QUIPSLY_CAPTURE_RELEASE_TARGET.marketingVersion);
+  assert.equal(parsed.buildNumber, QUIPSLY_CAPTURE_RELEASE_TARGET.buildNumber);
   assert.equal(parsed.groupName, "Quipsly Capture Internal");
 });
 

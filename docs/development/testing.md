@@ -171,8 +171,18 @@ pnpm quipsly:capture:app-store-metadata
 pnpm quipsly:capture:app-store-metadata --submission
 ```
 
-The final mode requires every declared screenshot to exist at its recorded
-dimensions, be approved, and have no remaining submission blockers.
+The source mode validates historical configuration without claiming it qualifies
+a newer binary. The final mode additionally requires provider/aggregate privacy
+evidence to match the current release target, every declared screenshot to exist
+at its recorded dimensions and be approved, and no remaining submission blockers.
+Never change an old audit's build number to satisfy that check.
+
+The Capture static checker reports all assertion failures together and exits
+unsuccessfully if any fail. Its regression test removes permission declarations
+in a disposable source-only copy and verifies the actual CLI reports both
+failures; missing required files also fail. These are source checks, not
+runtime evidence. Exact colors and superseded navigation labels do not belong
+in App Store validation.
 
 Draft composition evidence has its own app-owned unit contract and simulator
 journey:

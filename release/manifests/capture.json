@@ -26,6 +26,8 @@
       ],
       "files": [
         "scripts/ci/capture-ci-routing.test.mjs",
+        "scripts/lib/source-check-report.mjs",
+        "scripts/lib/source-check-report.test.mjs",
         "scripts/test-capture-session-deep-links.sh",
         "docs/quipsly/xcode-cloud-usage-policy.md",
         "docs/quipsly/hgo-testflight-rehearsal-runbook.md",
@@ -38,6 +40,7 @@
         "scripts/quipsly-hgo-rehearsal-preflight.mjs",
         "scripts/quipsly-hgo-rehearsal-preflight.test.mjs",
         "scripts/quipsly-ios-capture-app-store-static-smoke.mjs",
+        "scripts/quipsly-ios-capture-app-store-static-smoke.test.mjs",
         "scripts/quipsly-mobile-provider-room-static-smoke.mjs",
         "scripts/release/quipsly-app-store-connect-assign-build.mjs",
         "scripts/release/quipsly-app-store-connect-assign-build.test.mjs",

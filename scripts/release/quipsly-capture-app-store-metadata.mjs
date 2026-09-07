@@ -359,11 +359,21 @@ export function validateAppStoreMetadata(
     if (
       target.appId !== QUIPSLY_CAPTURE_RELEASE_TARGET.appId
       || target.version !== QUIPSLY_CAPTURE_RELEASE_TARGET.marketingVersion
-      || target.build !== QUIPSLY_CAPTURE_RELEASE_TARGET.buildNumber
+      || typeof target.build !== "string"
+      || !/^[1-9]\d*$/.test(target.build)
+      || typeof target.auditedAt !== "string"
       || !Number.isFinite(Date.parse(target.auditedAt))
     ) {
-      errors.push(`compliance.providerTarget must bind provider readback to exact Quipsly Capture Build ${QUIPSLY_CAPTURE_RELEASE_TARGET.buildNumber} with a valid audit timestamp.`);
+      errors.push("compliance.providerTarget must identify the Quipsly Capture app/version, an exact positive build number, and a valid audit timestamp.");
     }
+  }
+  // Historical configuration remains useful source evidence. It cannot qualify
+  // a newer binary for submission: keep its original build identity intact.
+  if (
+    requireSubmissionReady
+    && compliance.providerTarget?.build !== QUIPSLY_CAPTURE_RELEASE_TARGET.buildNumber
+  ) {
+    errors.push(`Submission requires provider and aggregate privacy evidence for exact Quipsly Capture Build ${QUIPSLY_CAPTURE_RELEASE_TARGET.buildNumber}; historical configuration readback is not current-build proof.`);
   }
   const contentRightsReadback = compliance.contentRights?.providerReadback;
   if (

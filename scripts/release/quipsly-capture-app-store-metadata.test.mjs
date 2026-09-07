@@ -68,10 +68,54 @@ test("provider-complete status fails closed without exact readback evidence", ()
   assert.equal(result.ok, false);
   assert.match(
     result.errors.join("\n"),
-    new RegExp(`exact Quipsly Capture Build ${QUIPSLY_CAPTURE_RELEASE_TARGET.buildNumber}`),
+    /privacy questionnaire target build must match compliance\.providerTarget\.build/,
   );
+  assert.match(result.errors.join("\n"), /archiveAggregateValidatedBuild must match/);
   assert.match(result.errors.join("\n"), /prove USES_THIRD_PARTY_CONTENT/);
   assert.match(result.errors.join("\n"), /prove Free pricing/);
+});
+
+test("historical configuration is valid source evidence but cannot qualify a new submission", () => {
+  const metadata = canonicalMetadata();
+  // Use an explicit historical fixture even after the canonical audit advances.
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "quipsly-historical-metadata-"));
+  try {
+    metadata.compliance.providerTarget.build = "24";
+    metadata.privacy.archiveAggregateValidatedBuild = "24";
+    for (const file of [metadata.privacy.sourceManifest, metadata.privacy.questionnaireFile, metadata.review.notesFile]) {
+      fs.mkdirSync(path.dirname(path.join(root, file)), { recursive: true });
+      fs.copyFileSync(path.join(repositoryRoot, file), path.join(root, file));
+    }
+    const questionnairePath = path.join(root, metadata.privacy.questionnaireFile);
+    const questionnaire = JSON.parse(fs.readFileSync(questionnairePath, "utf8"));
+    const pinFile = questionnaire.sourceContracts.packageResolvedPath;
+    fs.mkdirSync(path.dirname(path.join(root, pinFile)), { recursive: true });
+    fs.copyFileSync(path.join(repositoryRoot, pinFile), path.join(root, pinFile));
+    questionnaire.target.build = "24";
+    fs.writeFileSync(questionnairePath, JSON.stringify(questionnaire));
+    const source = validateAppStoreMetadata(metadata, { root });
+    assert.equal(source.ok, true, source.errors.join("\n"));
+    const submission = validateAppStoreMetadata(metadata, { root, requireSubmissionReady: true });
+    assert.equal(submission.ok, false);
+    assert.match(submission.errors.join("\n"), new RegExp(`exact Quipsly Capture Build ${QUIPSLY_CAPTURE_RELEASE_TARGET.buildNumber}`));
+    assert.equal(metadata.compliance.providerTarget.build, "24", "Validation must not relabel old evidence");
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("historical evidence still requires the correct app, version, build, and audit time", () => {
+  for (const [field, value] of [
+    ["appId", "another-app"], ["version", "0.0"], ["build", ""],
+    ["build", "0"], ["build", "74junk"], ["build", 74],
+    ["auditedAt", "not-a-date"], ["auditedAt", null],
+  ]) {
+    const metadata = canonicalMetadata();
+    metadata.compliance.providerTarget[field] = value;
+    const result = validateAppStoreMetadata(metadata, { root: repositoryRoot });
+    assert.equal(result.ok, false, `${field}: ${value}`);
+    assert.match(result.errors.join("\n"), /providerTarget must identify the Quipsly Capture app\/version/);
+  }
 });
 
 test("universal compatibility completion fails closed without saved provider evidence", () => {

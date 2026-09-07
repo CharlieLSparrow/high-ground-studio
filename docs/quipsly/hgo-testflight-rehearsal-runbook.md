@@ -1,55 +1,41 @@
 # High Ground Odyssey TestFlight Rehearsal
 
-Last verified: 2026-09-04
-
 This is the operator runbook for the first Charlie-and-Homer Quipsly Capture
-rehearsal. It distinguishes what is ready now from what the rehearsal still
-needs to prove.
+rehearsal. Check the current release before using the historical rehearsal
+setup below.
 
 ## Current release state
 
-- App: **Quipsly Capture 1.0 (74)**
-- Exact native source:
-  `3c4be440e54bb6914b8bf339c1a16de4a693e24b`
-- App Store Connect build ID: `cbe5e793-5d42-439f-80bb-7136b9539d13`
+The distributed build number, exact source revision, App Store Connect build
+ID, group, and installation link live in
+[`quipsly-capture-release-target.mjs`](../../scripts/release/quipsly-capture-release-target.mjs).
+Do not copy that changing identity into this runbook or infer it from the
+development branch. From the repository root, verify Apple's current state:
+
+```bash
+node scripts/release/quipsly-app-store-connect-readback.mjs
+node scripts/release/quipsly-testflight-public-link-readback.mjs
+```
+
+The first command uses the private read-only API credential and checks that
+the exact target build is processed and assigned to the external group. The
+second checks the public installation page. Neither establishes that recording
+works on a physical device; install the identified build and operate the
+rehearsal workflow below for that proof.
+
 - External TestFlight group: **Quipsly Capture Rehearsal**
 - TestFlight Apple Account: `shomers@icloud.com`
 - Quipsly Google identity: `shomers@gmail.com`
-- Apple state: `IN_BETA_TESTING` / `APPROVED`
 - Public installation link:
   `https://testflight.apple.com/join/XwRRcYUm`
-- Public-link capacity: limited to 100 testers
-- Automatic tester notification: enabled
 - Installation mode: public-link-only; neither a named-tester email nor a
   redemption code is required
-- Build 74 is the current approved public beta identified by the canonical
-  release ledger and Apple readback. It includes recording-start and
-  interruption recovery, local-first Speak to write, episode script and
-  conversation access beside the recorder, shared Watch controls, simpler
-  scheduling and account creation, durable Session note drafts, searchable
-  Sessions, clearer call recovery, native iPad workspace behavior, automatic
-  delivery of on-device transcripts after reconnect, an isolated personal
-  recorder layout that remains responsive when a recording is saved, and the
-  repaired crash-open Session boundary, protected idempotent transcript
-  receipts, bounded physical-device speech recognition, healthier media
-  analysis queues, and the unified overgrown-library palette.
-  All four
-  iPhone and iPad UI qualification shards passed; one keyboard-focus check
-  passed on its bounded automatic retry, leaving zero final failures. The exact signed
-  archive and IPA passed packaged metadata, entitlement, provisioning,
-  privacy-manifest, and nested-signature inspection before upload. App Store
-  Connect independently reports `VALID`, `IN_BETA_TESTING`, `APPROVED`, and
-  inclusion in both the internal and public-link rehearsal groups; Apple's
-  public installation page and TestFlight handoff are open. Morbo's directly
-  installed development Build 73 saved and independently decoded a fresh
-  human-speech source; installing and operating TestFlight Build 74 on Morbo
-  and an iPhone remains required candidate-level physical evidence.
-- Build 28 passed all 63 serialized iPhone and Share Extension journeys,
-  exact-source preflight, signed archive/export inspection, Apple processing,
-  external beta review, external-group readback, and an anonymous HTTP 200 read
-  of Apple's page naming **Quipsly Capture**. This does not claim a physical
-  install or recording. It contains the Episode-workspace crash correction;
-  physical Episode 9 acceptance remains required.
+
+## Historical rehearsal setup
+
+The following is retained setup evidence, not a live readiness report. Verify
+the room, access, and sources again before a new recording.
+
 - Private Nest:
   `https://nest.quipsly.com/nests/high-ground-odyssey-rehearsal/episodes/testflight-rehearsal`
 - Session: **High Ground Odyssey TestFlight Rehearsal**

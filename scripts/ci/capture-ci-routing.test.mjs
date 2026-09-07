@@ -109,6 +109,13 @@ test("Capture routes committed changes using the manifest and rejects an invalid
   commit();
   assert.match(runPlan({ PR_BASE_SHA: beforeHarness }).output, /^capture=true$/m);
 
+  for (const file of ["scripts/lib/source-check-report.mjs", "scripts/lib/source-check-report.test.mjs"]) {
+    const beforeReporter = git("rev-parse", "HEAD");
+    writeFileSync(path.join(fixture, file), "// changed source-check reporter\n");
+    commit();
+    assert.match(runPlan({ PR_BASE_SHA: beforeReporter }).output, /^capture=true$/m);
+  }
+
   result = runPlan({ PR_BASE_SHA: "missing-revision" });
   assert.notEqual(result.status, 0);
   assert.equal(result.output, "");

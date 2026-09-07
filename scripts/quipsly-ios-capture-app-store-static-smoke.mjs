@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import fs from "node:fs";
 import path from "node:path";
+import { createSourceCheckReport } from "./lib/source-check-report.mjs";
 
 import { parseXmlPropertyList } from "./lib/parse-xml-property-list.mjs";
 import {
@@ -162,10 +163,11 @@ const files = {
   envExample: path.join(root, ".env.example"),
 };
 
-const checks = [];
+const sourceReport = createSourceCheckReport();
+const checks = sourceReport.checks;
 
 function fail(message, details = {}) {
-  console.error(JSON.stringify({ ok: false, error: message, ...details }, null, 2));
+  console.error(JSON.stringify({ ...sourceReport.summary(), ok: false, error: message, ...details }, null, 2));
   process.exit(1);
 }
 
@@ -184,13 +186,7 @@ function read(file) {
 }
 
 function assert(condition, message, details = {}) {
-  if (!condition) fail(message, details);
-  checks.push({
-    status: "pass",
-    label: passLabelFor(message, details),
-    message,
-    details,
-  });
+  sourceReport.assert(condition, message, details, passLabelFor(message, details));
 }
 
 function requireIncludes(text, needle, label) {
@@ -456,7 +452,6 @@ const mobileVoiceWritingServerText = read(files.mobileVoiceWritingServer);
 const webAppLayoutText = read(files.webAppLayout);
 const webProjectCreateActionText = read(files.webProjectCreateAction);
 const webSidebarText = read(files.webSidebar);
-requireIncludes(webSidebarText, "from-quipsly-peacock-700 to-quipsly-fern-600", "workspace navigation joins peacock spruce to living fern instead of adding an unrelated feature brand");
 const webCaptureAppHandoffText = read(files.webCaptureAppHandoff);
 const webRecorderBottomBarText = read(files.webRecorderBottomBar);
 const appStoreTransactionRouteText = read(files.appStoreTransactionRoute);
@@ -643,21 +638,6 @@ requireRegex(projectText, /SUPPORTS_MACCATALYST = NO;/, "Mac Catalyst is not acc
 requireRegex(projectText, /SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;/, "Designed-for-iPhone Mac compatibility is disabled in source");
 requireRegex(projectText, /SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;/, "Designed-for-iPhone visionOS compatibility is disabled in source");
 requireIncludes(appInfoText, "<string>Quipsly Capture</string>", "customer-facing app name");
-requireIncludes(
-  rehearsalRunbookText,
-  `App: **${QUIPSLY_CAPTURE_RELEASE_TARGET.appName} ${QUIPSLY_CAPTURE_RELEASE_TARGET.marketingVersion} (${QUIPSLY_CAPTURE_RELEASE_TARGET.buildNumber})**`,
-  "operator runbook identifies the canonical current external build",
-);
-requireIncludes(
-  rehearsalRunbookText,
-  QUIPSLY_CAPTURE_RELEASE_TARGET.sourceRevision,
-  "operator runbook identifies the exact current external source",
-);
-requireIncludes(
-  rehearsalRunbookText,
-  QUIPSLY_CAPTURE_RELEASE_TARGET.buildId,
-  "operator runbook identifies the exact App Store Connect build",
-);
 requireIncludes(
   rehearsalRunbookText,
   QUIPSLY_CAPTURE_RELEASE_TARGET.publicLink,
@@ -2294,11 +2274,6 @@ for (const needle of [
   requireIncludes(capturePhoneShellText, needle, "persistent two-level Nest and Space location UX");
 }
 for (const needle of [
-  'case .work: "Work"',
-]) {
-  requireIncludes(captureExperienceModelText, needle, "familiar task-oriented primary navigation label");
-}
-for (const needle of [
   "let titleBeforeRefresh = title",
   "let bodyBeforeRefresh = bodyText",
   "let richTextBeforeRefresh = richText",
@@ -3910,11 +3885,7 @@ requireIncludes(envExampleText, "COACHING_DEFAULT_TIMEZONE=\"America/Los_Angeles
 requireIncludes(envExampleText, "GOOGLE_CALENDAR_INCLUDE_ATTENDEES=\"false\"", "env example calendar attendee default");
 
 const report = {
-  ok: true,
-  checkCount: checks.length,
-  statusCounts: {
-    pass: checks.length,
-  },
+  ...sourceReport.summary(),
   checks,
   checked: Object.fromEntries(
     Object.entries(files).map(([key, value]) => [key, path.relative(root, value)]),
@@ -3942,9 +3913,11 @@ if (process.argv.includes("--summary")) {
     ok: report.ok,
     checkCount: report.checkCount,
     statusCounts: report.statusCounts,
+    failures: report.failures,
     invariants: report.invariants,
     note: report.note,
   }, null, 2));
 } else {
   console.log(JSON.stringify(report, null, 2));
 }
+process.exitCode = report.ok ? 0 : 1;
