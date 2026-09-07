@@ -8630,6 +8630,7 @@ private struct CapturePersonalVoiceNoteTranscriptCard: View {
     @ObservedObject private var transcriptManager = OnDeviceTranscriptManager.shared
     @ObservedObject private var writingStore = VoiceWritingDraftStore.shared
     @ObservedObject private var writingSync = VoiceWritingDraftSyncClient.shared
+    @Environment(\.scenePhase) private var scenePhase
 
     let recording: LocalRecording
     let fileURL: URL?
@@ -8742,6 +8743,14 @@ private struct CapturePersonalVoiceNoteTranscriptCard: View {
                 Label(error, systemImage: "exclamationmark.triangle.fill")
                     .font(.caption)
                     .foregroundStyle(CapturePalette.brass)
+                if transcriptManager.storedTranscript(for: recording.id) != nil {
+                    Button("Retry saving writing") {
+                        seedWritingIfAvailable()
+                        openFreshWritingIfReady()
+                    }
+                    .frame(minHeight: 44)
+                    .accessibilityIdentifier("CaptureVoiceWritingRetryLocalSave")
+                }
             }
         }
         .captureCard()
@@ -8762,6 +8771,12 @@ private struct CapturePersonalVoiceNoteTranscriptCard: View {
         .onChange(of: transcriptManager.phases[recording.id]) { _, _ in
             seedWritingIfAvailable()
             openFreshWritingIfReady()
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active, writingStore.persistenceError != nil {
+                seedWritingIfAvailable()
+                openFreshWritingIfReady()
+            }
         }
         .navigationDestination(isPresented: $opensWriting) {
             if let draft {
@@ -8882,6 +8897,10 @@ private struct CapturePersonalVoiceNoteTranscriptCard: View {
 
     private var statusTitle: String {
         if draft != nil { return "Writing ready" }
+        if writingStore.persistenceError != nil,
+           transcriptManager.storedTranscript(for: recording.id) != nil {
+            return "Writing hasn’t saved yet"
+        }
         switch phase {
         case .idle, .checkingSupport: return "Preparing transcript…"
         case .modelDownloadRequired: return "One-time speech download"
@@ -8906,6 +8925,10 @@ private struct CapturePersonalVoiceNoteTranscriptCard: View {
             return draft.isSynced
                 ? "Edit this like a note on \(CaptureDeviceVocabulary.yourDevice) or continue on the web. The timed transcript and original audio stay connected."
                 : "Your editable draft is saved on \(CaptureDeviceVocabulary.thisDevice). Quipsly will keep syncing it privately to its Nest."
+        }
+        if writingStore.persistenceError != nil,
+           transcriptManager.storedTranscript(for: recording.id) != nil {
+            return "Your transcript is available. Retry saving the editable note."
         }
         switch phase {
         case .idle, .checkingSupport:
@@ -9135,10 +9158,11 @@ private struct CaptureVoiceWritingEditor: View {
                     Label(localSaveError, systemImage: "externaldrive.badge.exclamationmark")
                         .font(.caption)
                         .foregroundStyle(CapturePalette.brass)
-                    Button("Try saving on \(CaptureDeviceVocabulary.thisDevice) again") {
+                    Button("Retry save") {
                         saveImmediately()
                     }
                     .frame(minHeight: 44)
+                    .accessibilityIdentifier("CaptureVoiceWritingRetryEditSave")
                 }
             }
         }
@@ -9229,7 +9253,10 @@ private struct CaptureVoiceWritingEditor: View {
         .onChange(of: bodyText) { _, _ in scheduleSave() }
         .onChange(of: richText) { _, _ in scheduleSave() }
         .onChange(of: scenePhase) { _, phase in
-            guard phase != .active else { return }
+            if phase == .active {
+                if localSaveError != nil { saveImmediately() }
+                return
+            }
             // onDisappear is not guaranteed when iOS suspends or terminates
             // the process. Flush the protected local copy at the lifecycle
             // boundary so a phone call, app switch, or memory pressure cannot
@@ -10420,7 +10447,7 @@ private struct CaptureVoiceWritingEditor: View {
             localSaveError = nil
             writingSync.schedule(draft)
         } catch {
-            localSaveError = "This edit is still open, but \(CaptureDeviceVocabulary.deviceName) storage has not confirmed it yet. \(error.localizedDescription)"
+            localSaveError = "Couldn’t save this edit. Keep this note open and try again."
         }
     }
 

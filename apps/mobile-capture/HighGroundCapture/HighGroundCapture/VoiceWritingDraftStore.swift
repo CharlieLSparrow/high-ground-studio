@@ -160,6 +160,7 @@ final class VoiceWritingDraftStore: ObservableObject {
     private let lastKnownGoodURL: URL
     private var storedDrafts: [VoiceWritingDraft] = []
     private var pendingContinuations: [PendingContinuation] = []
+    private var persistedLedger = Ledger(schemaVersion: 3, drafts: [], pendingContinuations: [])
     private var activeOwnerAccountID: String?
     private var accountObserver: NSObjectProtocol?
 
@@ -189,6 +190,7 @@ final class VoiceWritingDraftStore: ObservableObject {
             )
             storedDrafts = ledger.drafts.filter { !$0.isUntouchedTypedDraft }
             pendingContinuations = ledger.pendingContinuations ?? []
+            persistedLedger = Ledger(schemaVersion: 3, drafts: storedDrafts, pendingContinuations: pendingContinuations)
             publishActiveDrafts()
         } catch {
             persistenceError = VoiceWritingDraftStoreError.protectedStorageUnavailable.localizedDescription
@@ -397,7 +399,7 @@ final class VoiceWritingDraftStore: ObservableObject {
             pendingContinuations.removeAll {
                 $0.ownerAccountID == owner && $0.callRoomID == roomID
             }
-            commitBestEffort()
+            guard commitBestEffort() else { return nil }
             return storedDrafts[index]
         }
 
@@ -441,7 +443,7 @@ final class VoiceWritingDraftStore: ObservableObject {
             pendingRemote: nil
         )
         storedDrafts.append(draft)
-        commitBestEffort()
+        guard commitBestEffort() else { return nil }
         return draft
     }
 
@@ -724,12 +726,13 @@ final class VoiceWritingDraftStore: ObservableObject {
             .sorted { $0.updatedAt > $1.updatedAt }
     }
 
-    private func commitBestEffort() {
+    @discardableResult
+    private func commitBestEffort() -> Bool {
         do {
             try commit()
-            persistenceError = nil
+            return true
         } catch {
-            persistenceError = VoiceWritingDraftStoreError.protectedStorageUnavailable.localizedDescription
+            return false
         }
     }
 
@@ -737,22 +740,36 @@ final class VoiceWritingDraftStore: ObservableObject {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
         encoder.dateEncodingStrategy = .iso8601
-        let data = try encoder.encode(Ledger(
+        let nextLedger = Ledger(
             schemaVersion: 3,
             drafts: storedDrafts,
             pendingContinuations: pendingContinuations
-        ))
-        try data.write(to: ledgerURL, options: [.atomic, .completeFileProtectionUnlessOpen])
-        try data.write(to: lastKnownGoodURL, options: [.atomic, .completeFileProtectionUnlessOpen])
-        try fileManager.setAttributes(
-            [.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication],
-            ofItemAtPath: ledgerURL.path
         )
-        try fileManager.setAttributes(
-            [.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication],
-            ofItemAtPath: lastKnownGoodURL.path
-        )
-        publishActiveDrafts()
+        do {
+            let data = try encoder.encode(nextLedger)
+            try data.write(to: ledgerURL, options: [.atomic, .completeFileProtectionUnlessOpen])
+            try data.write(to: lastKnownGoodURL, options: [.atomic, .completeFileProtectionUnlessOpen])
+            try fileManager.setAttributes(
+                [.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication],
+                ofItemAtPath: ledgerURL.path
+            )
+            try fileManager.setAttributes(
+                [.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication],
+                ofItemAtPath: lastKnownGoodURL.path
+            )
+            persistedLedger = nextLedger
+            persistenceError = nil
+            publishActiveDrafts()
+        } catch {
+            // Do not let a failed mutation satisfy an idempotence check on the
+            // next retry. This also retains the continuation's insertion point
+            // until both its source reference and text have been persisted.
+            storedDrafts = persistedLedger.drafts
+            pendingContinuations = persistedLedger.pendingContinuations ?? []
+            persistenceError = VoiceWritingDraftStoreError.protectedStorageUnavailable.localizedDescription
+            publishActiveDrafts()
+            throw VoiceWritingDraftStoreError.protectedStorageUnavailable
+        }
     }
 
     private static func loadLedger(

@@ -2,6 +2,9 @@ import XCTest
 
 final class CaptureExperienceUITests: XCTestCase {
     private var app: XCUIApplication!
+    // Writing previews use the real local draft store. Keep one owner through
+    // this test's relaunches without inheriting notes from another test/run.
+    private let writingPreviewOwner = "writing-ui-\(UUID().uuidString.lowercased())"
 
     /// Permission alerts belong to SpringBoard, and their animation can finish
     /// after the first app-side tap that normally wakes an interruption
@@ -101,6 +104,10 @@ final class CaptureExperienceUITests: XCTestCase {
         }
         #endif
         app.launchArguments = ["--capture-ui-preview"]
+        if name.contains("testLibraryOffersPrivateKeyboardWritingBesideVoiceWriting")
+            || name.contains("testVoiceWritingOffersStructureAndSourceWithoutLeavingCapture") {
+            app.launchArguments.append("--capture-share-owner-ui-preview=\(writingPreviewOwner)")
+        }
         let clientPreview = name.contains("testClientCanSeePublishedTimesAndOwnPendingRequest")
             || name.contains("testOfflineCoachingSnapshotIsClearlyReadOnly")
             || name.contains("testClientCoachingFormDraftSurvivesRelaunch")
@@ -614,6 +621,7 @@ final class CaptureExperienceUITests: XCTestCase {
             "--capture-ui-preview",
             "--capture-app-store-presentation",
             "--capture-ui-preview-tab=library",
+            "--capture-share-owner-ui-preview=\(writingPreviewOwner)",
         ]
         app.launch()
         XCTAssertTrue(app.navigationBars["Notes"].waitForExistence(timeout: 12))
