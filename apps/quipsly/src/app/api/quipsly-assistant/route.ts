@@ -13,13 +13,13 @@ import {
   createOutputCapabilityPlan,
   createOutputPacketSkeleton,
   getOutputDefinition,
-  listOutputsForNestKind,
 } from "@high-ground/quipsly-domain/output-catalog";
 import {
   createGovernedAssistantProposalRun,
   governedActionSha256,
 } from "@/lib/server/governed-action-runtime";
 import { governedCapabilityForAssistantToolKind } from "@high-ground/quipsly-domain/governed-actions";
+import { applyAssistantDocumentEditAction, type AssistantDocumentApplyReceipt } from "@/app/(app)/create/actions";
 
 type AssistantBlockContext = {
   id?: string;
@@ -178,118 +178,6 @@ function cleanDocuments(value: unknown) {
   }).filter(doc => doc.id && doc.title);
 }
 
-function inferOutputCandidates(context: {
-  message: string;
-  activeBoundary: AssistantBoundaryContext | null;
-  recentTags: string[];
-  visibleBlocks: AssistantBlockContext[];
-}) {
-  const haystack = [
-    context.message,
-    context.activeBoundary?.label ?? "",
-    context.activeBoundary?.kind ?? "",
-    context.recentTags.join(" "),
-    context.visibleBlocks.slice(0, 5).map((block) => `${block.text} ${(block.tags ?? []).join(" ")}`).join(" "),
-  ].join(" ").toLowerCase();
-
-  const explicitOutputIds = [
-    haystack.includes("youtube") || haystack.includes("video") ? "youtube-video-package" : "",
-    haystack.includes("podcast") || haystack.includes("audio") || haystack.includes("rss") ? "podcast-rss-episode" : "",
-    haystack.includes("quote") || haystack.includes("quiplore") ? "quote-feed" : "",
-    haystack.includes("course") || haystack.includes("scorm") || haystack.includes("lesson") ? "scorm-course" : "",
-    haystack.includes("gallery") || haystack.includes("photo") || haystack.includes("client") ? "photo-gallery-review" : "",
-    haystack.includes("patreon") || haystack.includes("supporter") ? "patreon-post" : "",
-    haystack.includes("book") || haystack.includes("kindle") ? "book-export" : "",
-    haystack.includes("episode") || context.activeBoundary?.kind === "episode" ? "hgo-episode-page" : "",
-  ].filter(Boolean);
-
-  const fallbackOutputs = listOutputsForNestKind("writing").map((output) => output.id);
-  return Array.from(new Set([...explicitOutputIds, ...fallbackOutputs])).slice(0, 3)
-    .map((outputId) => getOutputDefinition(outputId))
-    .filter(Boolean);
-}
-
-function localAssistantFallback(context: Required<Pick<AssistantRequestBody, "message" | "projectSlug" | "documentTitle" | "activeViewName">> & {
-  activeBoundary: AssistantBoundaryContext | null;
-  visibleBlocks: AssistantBlockContext[];
-  recentTags: string[];
-}) {
-  const boundaryLabel = context.activeBoundary?.label;
-  const hasStructure = context.visibleBlocks.some((block) =>
-    (block.tags ?? []).includes("chapter") || (block.tags ?? []).includes("episode")
-  );
-  const outputCandidates = inferOutputCandidates(context);
-  const primaryOutput = outputCandidates[0];
-  const isOutputContext = !!primaryOutput;
-
-  return {
-    source: "local-fallback",
-    assistantMessage: isOutputContext
-      ? "I can help prepare output packets, draft outlines, or organize the project. Ask me to draft a new scene, find related material, suggest tags, or summarize a selected block."
-      : "I can help draft, rewrite, or organize this project. Ask me to draft a new scene, find related material, suggest tags, or summarize a selected block.",
-    suggestions: [
-      {
-        title: hasStructure ? "Use the outline as the spine" : "Start with structure",
-        detail: hasStructure
-          ? "Chapter and Episode tags are already present, so the safest next move is to use those boundaries for retrieval and production context."
-          : "Create heading blocks and tag them Chapter or Episode so Quipsly can reason from the manuscript spine.",
-        confidence: 0.78,
-      },
-      {
-        title: "Keep the work easy to steer",
-        detail: "Quipsly can collect sources, compare examples, and show organization ideas immediately. A document edit happens only through its visible Apply action and remains undoable.",
-        confidence: 0.92,
-      },
-      primaryOutput
-        ? {
-            title: `Possible output: ${primaryOutput.title}`,
-            detail: `This context may be able to project into ${primaryOutput.title}. Review the output plan before building or publishing any packet.`,
-            confidence: 0.74,
-          }
-        : null,
-    ].filter(Boolean),
-    toolIntents: [
-      {
-        kind: "find-examples",
-        label: boundaryLabel ? `Find related material for ${boundaryLabel}` : "Find related manuscript material",
-        explanation: "Why this suggestion? Searching the visible manuscript context for blocks that appear related to the current writing focus helps build consistent lore.",
-        riskLevel: "low",
-        payload: {
-          query: context.message,
-          projectSlug: context.projectSlug,
-          documentTitle: context.documentTitle,
-          activeBoundary: context.activeBoundary,
-          visibleBlockIds: context.visibleBlocks.map((block) => block.id).filter(Boolean).slice(0, 12),
-        },
-      },
-      {
-        kind: "suggest-tags",
-        label: "Suggest Chapter/Episode Tags",
-        explanation: "Why this suggestion? Tagging blocks with chapter or episode structures helps Quipsly accurately organize your manuscript.",
-        riskLevel: "low",
-        payload: {
-          recentTags: context.recentTags,
-        },
-      },
-      ...(primaryOutput ? [
-        {
-          kind: "propose-output-plan",
-          label: `Review capability definition: ${primaryOutput.title}`,
-          explanation: "Why this suggestion? Capability definitions map how the current writing context could become a reviewed packet without claiming that the packet or publication already exists.",
-          riskLevel: "low" as const,
-          payload: {
-            outputId: primaryOutput.id,
-            title: primaryOutput.title,
-            href: `/outputs/${primaryOutput.id}`,
-            capabilityPlan: createOutputCapabilityPlan(primaryOutput),
-            packetSkeleton: createOutputPacketSkeleton(primaryOutput),
-          },
-        },
-      ] : []),
-    ],
-  };
-}
-
 function normalizeAssistantPayload(raw: unknown) {
   const payload = asRecord(raw);
   const suggestions = Array.isArray(payload.suggestions) ? payload.suggestions : [];
@@ -297,7 +185,7 @@ function normalizeAssistantPayload(raw: unknown) {
 
   return {
     source: "gemini",
-    assistantMessage: cleanText(payload.assistantMessage, 1400) || "I found a few safe ways to help organize this project.",
+    assistantMessage: cleanText(payload.assistantMessage, 1400) || "Here is the result of your request.",
     suggestions: suggestions.slice(0, 6).map((item) => {
       const record = asRecord(item);
       return {
@@ -728,32 +616,12 @@ export async function POST(request: Request) {
     const providerDisabled = process.env.QUIPSLY_DISABLE_AI_PROVIDER === "true";
     const apiKey = providerDisabled ? undefined : process.env.GEMINI_API_KEY;
     if (!apiKey) {
-      try {
-        const fallback = localAssistantFallback(context);
-        const normalizedFallback = normalizeAssistantPayload(fallback);
-        const toolIntents = await persistAssistantToolIntents(
-          prisma,
-          sessionId!,
-          normalizedFallback.toolIntents,
-          governanceFor("local-fallback", null),
-        );
-        return NextResponse.json({
-          ok: true,
-          sessionId,
-          ...normalizedFallback,
-          source: "local-fallback",
-          toolIntents,
-          warning: providerDisabled
-            ? "AI provider access is disabled for this environment, so Quipsly used local guidance. Results and actions still retain transparent receipts."
-            : "GEMINI_API_KEY is not configured, so Quipsly used local guidance. Results and actions still retain transparent receipts.",
-        });
-      } catch (dbError) {
-        console.error("[quipsly-assistant] Failed to persist local fallback actions:", dbError);
-        return NextResponse.json({
-          ok: false,
-          error: "Quipsly prepared local guidance but could not safely retain its action receipts, so it returned no actions.",
-        }, { status: 503 });
-      }
+      return NextResponse.json({
+        ok: false,
+        sessionId,
+        code: "AI_UNAVAILABLE",
+        error: "AI writing is unavailable right now. Your page is unchanged. You can keep writing and try again later.",
+      }, { status: 503 });
     }
 
     const ai = new GoogleGenAI({ apiKey });
@@ -782,7 +650,27 @@ export async function POST(request: Request) {
           ORDER BY embedding <=> ${vectorString}::vector
           LIMIT 5;
         `;
-        ragContextChunks = relevantChunks;
+        // An embedding is a search hint, not current authorization or current
+        // source text. Rehydrate each hit through the actor-scoped live model.
+        const [blocks, quotes] = await Promise.all([
+          prisma.studioDocumentBlock.findMany({ where: {
+            id: { in: relevantChunks.filter((chunk) => chunk.sourceOrigin === "studio-document-block").map((chunk) => chunk.sourceId) },
+            archivedAt: null,
+            document: { projectId: project.id, ...personalWritingDocumentVisibilityWhere(actorUserId) },
+          }, select: { id: true, body: true } }),
+          prisma.quipLoreQuote.findMany({ where: {
+            projectId: project.id,
+            id: { in: relevantChunks.filter((chunk) => chunk.sourceOrigin === "quipsly-lore-quote").map((chunk) => chunk.sourceId) },
+          }, select: { id: true, text: true } }),
+        ]);
+        const sourceText = new Map<string, string>([
+          ...blocks.map((block) => [`studio-document-block:${block.id}`, block.body] as const),
+          ...quotes.map((quote) => [`quipsly-lore-quote:${quote.id}`, quote.text] as const),
+        ]);
+        ragContextChunks = relevantChunks.flatMap((chunk) => {
+          const text = sourceText.get(`${chunk.sourceOrigin}:${chunk.sourceId}`);
+          return text === undefined ? [] : [{ ...chunk, contentSnapshot: text.slice(0, 8000) }];
+        });
         if (ragContextChunks.length === 0) {
           ragWarning = "No semantic Nest matches were found. This response used only the authorized current document context.";
         }
@@ -799,7 +687,7 @@ export async function POST(request: Request) {
       "You are a Quipsly: a creative research and organization assistant for writers, authors, academics, podcasters, and creators.",
       "You prioritize empowering human writers by gathering sources, checking continuity, and organizing lore.",
       "However, you ARE allowed to act as a co-writer or ghostwriter when requested. You can draft rough scenes or propose full rewrites.",
-      "CRITICAL: Never silently mutate the manuscript. Return read-only findings immediately. Represent drafts and rewrites as PROPOSE_DRAFT or PROPOSE_REWRITE tool intents; the product gives each mutation one visible Apply action and undo.",
+      "Fulfill the user's request directly. When asked to write, rewrite, or fix continuity, return the corresponding writing tool intent: the product saves it automatically and shows the result with undo. Do not rewrite text when the user only asks a question, requests analysis, or asks for a preview. Original transcript and research evidence is read-only; create editable writing alongside it.",
       "Never claim a manuscript change happened until the product returns its persisted result.",
       "",
       "Safe tool kinds:",
@@ -844,39 +732,18 @@ export async function POST(request: Request) {
       config: {
         responseMimeType: "application/json",
         responseSchema: assistantResponseSchema,
-        systemInstruction: "Be an empowering research and drafting assistant. Return structured JSON only. Return useful read-only results immediately. You may draft or rewrite content, but represent document mutations as clear tool intents that are applied only through the product's visible action.",
+        systemInstruction: "Help the user complete their creative work. Return structured JSON only. Requested drafts and rewrites execute through the authorized writing service, with visible results and undo. Answer questions without unsolicited rewrites. Never claim a save before the product confirms it.",
         temperature: 0.25,
       },
     });
 
     if (!response.text) {
-      try {
-        const normalizedFallback = normalizeAssistantPayload(localAssistantFallback(context));
-        const toolIntents = await persistAssistantToolIntents(
-          prisma,
-          sessionId!,
-          normalizedFallback.toolIntents,
-          governanceFor("local-fallback", null, ragContextChunks.map((chunk) => ({
-            objectType: chunk.sourceOrigin,
-            objectId: chunk.sourceId,
-            contentSha256: governedActionSha256(chunk.contentSnapshot),
-          }))),
-        );
-        return NextResponse.json({
-          ok: true,
-          sessionId,
-          ...normalizedFallback,
-          source: "local-fallback",
-          toolIntents,
-          warning: "Gemini returned an empty response, so Quipsly used local guidance with transparent action receipts.",
-        });
-      } catch (dbError) {
-        console.error("[quipsly-assistant] Failed to persist empty-provider fallback actions:", dbError);
-        return NextResponse.json({
-          ok: false,
-          error: "Quipsly prepared fallback guidance but could not safely retain its action receipts, so it returned no actions.",
-        }, { status: 503 });
-      }
+      return NextResponse.json({
+        ok: false,
+        sessionId,
+        code: "AI_EMPTY_RESPONSE",
+        error: "Quipsly did not receive an answer. Your page is unchanged. Please try again.",
+      }, { status: 502 });
     }
 
     const payload = normalizeAssistantPayload(JSON.parse(response.text));
@@ -909,15 +776,38 @@ export async function POST(request: Request) {
       }
     }
 
+    const documentEdits: AssistantDocumentApplyReceipt[] = [];
+    const writeWarnings: string[] = [];
+    for (const intent of payload.toolIntents) {
+      if (!["PROPOSE_DRAFT", "PROPOSE_REWRITE", "PROPOSE_CONTINUITY_FIX"].includes(intent.kind)) continue;
+      const action = intent as typeof intent & { id?: string; status?: string; governance?: { status: string; decisionStatus: string } };
+      if (!action.id) continue;
+      const result = await applyAssistantDocumentEditAction(action.id);
+      if (result.ok) {
+        action.status = "applied";
+        if (action.governance) {
+          action.governance.status = "SUCCEEDED";
+          action.governance.decisionStatus = "NOT_REQUIRED";
+        }
+        documentEdits.push(result.receipt);
+      } else {
+        // Preserve a retriable ordinary action, not an approval requirement.
+        action.status = "proposed";
+        await prisma.studioAssistantAction.update({ where: { id: action.id }, data: { status: "proposed" } });
+        writeWarnings.push(result.error);
+      }
+    }
+
     return NextResponse.json({
       ok: true,
       sessionId,
       ...payload,
       actions: [],
-      warning: ragWarning,
+      documentEdits,
+      warning: [ragWarning, ...writeWarnings].filter(Boolean).join(" ") || undefined,
     });
   } catch (error) {
     console.error("[quipsly-assistant] failed", error);
-    return NextResponse.json({ ok: false, error: "Quipsly assistant failed safely before changing anything." }, { status: 500 });
+    return NextResponse.json({ ok: false, error: "Quipsly could not finish this request. Any saved writing is still available; reload the page to see its latest state." }, { status: 500 });
   }
 }

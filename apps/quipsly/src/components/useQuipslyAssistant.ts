@@ -84,7 +84,7 @@ export function useQuipslyAssistant({
 }) {
   const [sessionId, setSessionId] = useState<string | undefined>(undefined);
   const [message, setMessage] = useState("What should I notice in this section?");
-  const [assistantMessage, setAssistantMessage] = useState("Ask Quipsly to find related material, summarize a block, check continuity, or help shape the work. Read-only results appear immediately; edits always have a clear Apply action and undo.");
+  const [assistantMessage, setAssistantMessage] = useState("Ask Quipsly to write, rewrite, find related material, or help shape your work. Requested writing is saved directly; you can edit it or undo.");
   const [suggestions, setSuggestions] = useState<AssistantSuggestion[]>([]);
   const [actions, setActions] = useState<AssistantAction[]>([]);
   const [previews, setPreviews] = useState<AssistantPreviewCard[]>([]);
@@ -137,6 +137,9 @@ export function useQuipslyAssistant({
         createdAt,
       }));
       setActions((current) => [...proposedActions, ...current].slice(0, 20));
+      for (const receipt of data.documentEdits ?? []) {
+        window.dispatchEvent(new CustomEvent("quipsly:assistant-edit-applied", { detail: receipt }));
+      }
       setStatus("idle");
     } catch (error) {
       setStatus("error");

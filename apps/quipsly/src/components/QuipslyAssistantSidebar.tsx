@@ -376,7 +376,7 @@ export function QuipslyAssistantSidebar({
                     Assistant work
                   </div>
                   <p className="mt-1 text-xs leading-5 text-[#8a7356]">
-                    Searches and analysis run immediately. Anything that changes saved work has one clear action and can be undone.
+                    Requested writing is saved to your page. You can keep editing it or undo the change.
                   </p>
                   <div className="mt-3 space-y-3">
                     {visibleActions.map((action) => (
@@ -527,7 +527,7 @@ export function QuipslyAssistantSidebar({
                               >
                                 <Check className="h-3.5 w-3.5" />
                                 {action.kind === "PROPOSE_DRAFT" || action.kind === "PROPOSE_REWRITE" || action.kind === "PROPOSE_CONTINUITY_FIX"
-                                    ? "Apply persisted edit"
+                                    ? action.governance?.decisionPolicy === "DELEGATED" ? "Retry writing" : "Apply edit"
                                     : action.kind === "PROPOSE_ENTITY"
                                       ? "Add to Story Bible"
                                       : action.kind === "PROPOSE_ENTITY_UPDATE"
@@ -591,14 +591,14 @@ export function QuipslyAssistantSidebar({
                             </div>
                           ) : action.status === "applied" ? (
                             <div className="mt-3 flex flex-wrap items-center gap-2">
-                              <p className="text-xs font-bold text-emerald-800">Persisted manuscript edit · reversible operation recorded.</p>
+                              <p className="text-xs font-bold text-emerald-800">Saved to your writing.</p>
                               <button
                                 type="button"
                                 onClick={() => undoAction(action)}
                                 className="flex items-center gap-1 rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-bold text-amber-900 hover:bg-amber-100"
                               >
                                 <RotateCcw className="h-3.5 w-3.5" />
-                                Undo persisted edit
+                                Undo edit
                               </button>
                             </div>
                           ) : action.status === "committed" ? (
@@ -626,7 +626,7 @@ export function QuipslyAssistantSidebar({
                       Results
                     </div>
                     <p className="mt-1 text-xs leading-5 text-[#8a7356]">
-                      Read-only results are shown as soon as they are ready. Saved writing changes only through a visible action above.
+                      Results appear here. Saved writing stays editable, with undo available above.
                     </p>
                     <div className="mt-3 space-y-3">
                       {previews.map((preview) => {
@@ -751,20 +751,20 @@ export function QuipslyAssistantSidebar({
                   </div>
                 </details>
 
-                <section className="rounded-2xl border border-[#e8dcc4] bg-[#3d3122] p-4 text-white shadow-sm">
+                {patreonHref ? <section className="rounded-2xl border border-[#e8dcc4] bg-[#3d3122] p-4 text-white shadow-sm">
                   <div className="text-sm font-black">Help keep the flock fed</div>
                   <p className="mt-2 text-xs leading-5 text-amber-100">
-                    Temporary support rail: donations stay external for now. Later, Patreon events can reconcile into app-owned memberships.
+                    Support Quipsly on Patreon.
                   </p>
                   <a
-                    href={patreonHref || "https://www.patreon.com/"}
+                    href={patreonHref}
                     target="_blank"
                     rel="noreferrer"
                     className="mt-3 inline-flex rounded-xl bg-amber-200 px-3 py-2 text-xs font-black text-[#342618] hover:bg-amber-100"
                   >
                     Open support page
                   </a>
-                </section>
+                </section> : null}
               </div>
             </>
           ) : (

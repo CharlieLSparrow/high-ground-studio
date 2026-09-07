@@ -6,9 +6,12 @@ import { getPrismaClient } from "@/lib/prisma";
 import { requireProjectAccess } from "@/lib/server/access";
 import { createGovernedAssistantProposalRun } from "@/lib/server/governed-action-runtime";
 import { POST } from "./route";
+import { applyAssistantDocumentEditAction } from "@/app/(app)/create/actions";
+import { QUIPSLY_EMBEDDING_DIMENSIONS } from "@/lib/retrieval/embeddings";
 
 const mockEmbedContent = jest.fn();
 const mockGenerateContent = jest.fn();
+jest.mock("@/app/(app)/create/actions", () => ({ applyAssistantDocumentEditAction: jest.fn() }));
 
 jest.mock("@google/genai", () => ({
   GoogleGenAI: jest.fn(() => ({ models: { embedContent: mockEmbedContent, generateContent: mockGenerateContent } })),
@@ -37,6 +40,9 @@ const prisma = {
   studioProject: { findFirst: jest.fn() },
   studioDocument: { findMany: jest.fn(), findFirst: jest.fn() },
   studioAssistantSession: { findFirst: jest.fn(), create: jest.fn() },
+  studioAssistantAction: { update: jest.fn() },
+  studioDocumentBlock: { findMany: jest.fn() },
+  quipLoreQuote: { findMany: jest.fn() },
   $queryRaw: jest.fn(),
   $transaction: jest.fn(),
 };
@@ -64,6 +70,9 @@ describe("Quipsly assistant authorization and proposal persistence", () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    prisma.studioAssistantAction.update.mockResolvedValue({});
+    prisma.studioDocumentBlock.findMany.mockResolvedValue([]);
+    prisma.quipLoreQuote.findMany.mockResolvedValue([]);
     process.env.DATABASE_URL = "postgresql://disposable.test/quipsly";
     process.env.GEMINI_API_KEY = "test-key";
     delete process.env.QUIPSLY_DISABLE_AI_PROVIDER;
@@ -135,6 +144,54 @@ describe("Quipsly assistant authorization and proposal persistence", () => {
     expect(GoogleGenAI).not.toHaveBeenCalled();
   });
 
+  it("executes requested writing through the canonical command and returns only confirmed save receipts", async () => {
+    mockGenerateContent.mockResolvedValue({ text: JSON.stringify({ assistantMessage: "Here is your opening.", suggestions: [],
+      toolIntents: [{ kind: "PROPOSE_DRAFT", label: "Write an opening", explanation: "The user requested a new paragraph.",
+        riskLevel: "medium", payload: { draftText: "A clear beginning." } }] }) });
+    const receipt = { actionId: "action-1", operationId: "operation-1", projectId: "project-1", documentId: "document-1",
+      blockId: "new-block", kind: "draft" as const, text: "A clear beginning.", insertAfterBlockId: null };
+    jest.mocked(applyAssistantDocumentEditAction).mockResolvedValue({ ok: true, state: "persisted", replay: false, receipt });
+    const response = await POST(request({ message: "Write an opening paragraph in this page." }));
+    expect(response.status).toBe(200);
+    expect(applyAssistantDocumentEditAction).toHaveBeenCalledWith("action-1");
+    const body = await response.json();
+    expect(body.documentEdits).toEqual([receipt]);
+    expect(body.toolIntents[0].status).toBe("applied");
+  });
+
+  it("rehydrates semantic hits through current visibility and never sends private or obsolete snapshots to generation", async () => {
+    mockEmbedContent.mockResolvedValue({ embeddings: [{ values: Array(QUIPSLY_EMBEDDING_DIMENSIONS).fill(0.01) }] });
+    prisma.$queryRaw.mockResolvedValue([
+      { sourceOrigin: "studio-document-block", sourceId: "now-private", contentSnapshot: "PRIVATE SNAPSHOT" },
+      { sourceOrigin: "studio-document-block", sourceId: "allowed", contentSnapshot: "OBSOLETE SNAPSHOT" },
+    ]);
+    prisma.studioDocumentBlock.findMany.mockResolvedValue([{ id: "allowed", body: "Current authorized writing." }]);
+    const response = await POST(request());
+    expect(response.status).toBe(200);
+    expect(prisma.studioDocumentBlock.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: {
+      id: { in: ["now-private", "allowed"] }, archivedAt: null,
+      document: { projectId: "project-1", OR: [{ personalOwnerUserId: null }, { personalOwnerUserId: "user-1" }, { isPrivate: false }] },
+    } }));
+    const prompt = mockGenerateContent.mock.calls[0][0].contents;
+    expect(prompt).toContain("Current authorized writing.");
+    expect(prompt).not.toContain("PRIVATE SNAPSHOT");
+    expect(prompt).not.toContain("OBSOLETE SNAPSHOT");
+    expect(applyAssistantDocumentEditAction).not.toHaveBeenCalled();
+  });
+
+  it("reports a writing conflict without claiming a save or discarding the retry", async () => {
+    mockGenerateContent.mockResolvedValue({ text: JSON.stringify({ assistantMessage: "A rewrite.", suggestions: [],
+      toolIntents: [{ kind: "PROPOSE_REWRITE", label: "Clarify", explanation: "Requested clarity.", riskLevel: "medium",
+        payload: { blockId: "block-1", originalText: "Canonical manuscript evidence.", rewriteText: "Clearer writing." } }] }) });
+    jest.mocked(applyAssistantDocumentEditAction).mockResolvedValue({ ok: false, state: "rejected", code: "STALE_SOURCE", error: "Your newer writing was kept." });
+    const response = await POST(request({ message: "Rewrite my paragraph for clarity." }));
+    const body = await response.json();
+    expect(body.documentEdits).toEqual([]);
+    expect(body.warning).toContain("Your newer writing was kept.");
+    expect(body.toolIntents[0].status).toBe("proposed");
+    expect(prisma.studioAssistantAction.update).toHaveBeenCalledWith({ where: { id: "action-1" }, data: { status: "proposed" } });
+  });
+
   it("rejects a session that does not belong to the authorized Nest and document", async () => {
     prisma.studioAssistantSession.findFirst.mockResolvedValueOnce(null);
 
@@ -151,6 +208,7 @@ describe("Quipsly assistant authorization and proposal persistence", () => {
       sourceId: "quote-1",
       contentSnapshot: "A cited research quote about courage.",
     }]);
+    prisma.quipLoreQuote.findMany.mockResolvedValueOnce([{ id: "quote-1", text: "A cited research quote about courage." }]);
     mockGenerateContent.mockResolvedValueOnce({
       text: JSON.stringify({
         assistantMessage: "Review these exact-source proposals.",
@@ -289,21 +347,18 @@ describe("Quipsly assistant authorization and proposal persistence", () => {
     expect(body.assistantMessage).toBe("Two proposals.");
   });
 
-  it("gives local fallback controls durable IDs instead of browser-only actions", async () => {
+  it("reports unavailable AI without inventing unrelated work or success", async () => {
     delete process.env.GEMINI_API_KEY;
 
     const response = await POST(request());
     const body = await response.json();
 
-    expect(response.status).toBe(200);
-    expect(body.source).toBe("local-fallback");
-    expect(body.toolIntents).toHaveLength(2);
-    expect(body.toolIntents[0]).toMatchObject({
-      kind: "find-examples",
-      payload: { query: "Find the courage theme." },
-    });
-    expect(body.toolIntents.every((intent: any) => /^action-\d+$/.test(intent.id))).toBe(true);
-    expect(tx.studioAssistantLedger.create).toHaveBeenCalledTimes(2);
+    expect(response.status).toBe(503);
+    expect(body).toMatchObject({ ok: false, code: "AI_UNAVAILABLE" });
+    expect(body.error).toMatch(/page is unchanged/i);
+    expect(body.toolIntents).toBeUndefined();
+    expect(tx.studioAssistantAction.create).not.toHaveBeenCalled();
+    expect(applyAssistantDocumentEditAction).not.toHaveBeenCalled();
     expect(GoogleGenAI).not.toHaveBeenCalled();
   });
 
@@ -313,9 +368,21 @@ describe("Quipsly assistant authorization and proposal persistence", () => {
     const response = await POST(request());
     const body = await response.json();
 
-    expect(response.status).toBe(200);
-    expect(body.source).toBe("local-fallback");
-    expect(body.warning).toMatch(/provider access is disabled/i);
+    expect(response.status).toBe(503);
+    expect(body.code).toBe("AI_UNAVAILABLE");
+    expect(tx.studioAssistantAction.create).not.toHaveBeenCalled();
     expect(GoogleGenAI).not.toHaveBeenCalled();
+  });
+
+  it("makes an empty provider response retryable without substituting generic suggestions", async () => {
+    mockGenerateContent.mockResolvedValue({ text: "" });
+    const response = await POST(request({ message: "Write an opening paragraph." }));
+    const body = await response.json();
+    expect(response.status).toBe(502);
+    expect(body).toMatchObject({ ok: false, code: "AI_EMPTY_RESPONSE" });
+    expect(body.error).toMatch(/page is unchanged/i);
+    expect(body.toolIntents).toBeUndefined();
+    expect(tx.studioAssistantAction.create).not.toHaveBeenCalled();
+    expect(applyAssistantDocumentEditAction).not.toHaveBeenCalled();
   });
 });

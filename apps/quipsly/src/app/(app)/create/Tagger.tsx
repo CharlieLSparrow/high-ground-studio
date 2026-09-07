@@ -2,6 +2,7 @@
 
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { DocumentBoundary, ViewDefinition } from "./types";
+import { keepLocalWriting } from "./assistant-writing-reconciliation";
 import {
   archiveBlock,
   mergeBlockWithPrevious,
@@ -580,6 +581,15 @@ export default function Tagger({
     const handleAssistantEditApplied = (event: Event) => {
       const receipt = (event as CustomEvent<AssistantDocumentApplyReceipt>).detail;
       if (!receipt || receipt.documentId !== documentId) return;
+
+      const local = blocksRef.current.find((block) => block.id === receipt.blockId);
+      if (receipt.kind === "rewrite" && local && keepLocalWriting(local.text, committedSnapshotsRef.current[local.id]?.text, receipt.text)) {
+        // The server result is real, but newer local typing still belongs to
+        // the writer. Keep it dirty; normal autosave records it with undo back
+        // to this assistant version rather than discarding either version.
+        committedSnapshotsRef.current[local.id] = snapshotFromBlock({ ...local, text: receipt.text });
+        return;
+      }
 
       setBlocks((current) => {
         if (receipt.kind === "rewrite") {

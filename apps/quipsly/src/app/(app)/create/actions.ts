@@ -3399,7 +3399,7 @@ export async function applyAssistantDocumentEditAction(
       if (action.status === "applied" && priorReceipt) {
         return { replay: true, receipt: priorReceipt };
       }
-      if (!["proposed", "approved"].includes(action.status)) {
+      if (!["ready", "proposed", "approved"].includes(action.status)) {
         throw new AssistantMutationError("STALE_SOURCE", "This proposal has already been decided. Reload before applying it again.");
       }
 
@@ -3410,7 +3410,7 @@ export async function applyAssistantDocumentEditAction(
         select: {
           id: true,
           projectId: true,
-          blocks: { select: { id: true, stableId: true, order: true, body: true }, orderBy: { order: "asc" } },
+          blocks: { select: { id: true, stableId: true, order: true, body: true, externalId: true, updatedAt: true }, orderBy: { order: "asc" } },
         },
       });
       if (!document) throw new AssistantMutationError("ACTION_NOT_FOUND", "The proposal's document is unavailable.");
@@ -3419,7 +3419,7 @@ export async function applyAssistantDocumentEditAction(
       const isRewrite = ["PROPOSE_REWRITE", "PROPOSE_CONTINUITY_FIX"].includes(action.kind);
       const isDraft = action.kind === "PROPOSE_DRAFT";
       if (!isRewrite && !isDraft) {
-        throw new AssistantMutationError("UNSUPPORTED_ACTION", "Only reviewed draft and rewrite proposals can change manuscript blocks.");
+        throw new AssistantMutationError("UNSUPPORTED_ACTION", "This action does not contain a writing edit.");
       }
 
       let operationId = "";
@@ -3436,11 +3436,20 @@ export async function applyAssistantDocumentEditAction(
         }
         const block = document.blocks.find((candidate) => candidate.id === blockId);
         if (!block) throw new AssistantMutationError("ACTION_NOT_FOUND", "The rewrite's source block is unavailable.");
+        if (isImmutableSourceEvidenceExternalId(block.externalId)) {
+          throw new AssistantMutationError("UNSUPPORTED_ACTION", "Original source text stays unchanged. Write in the linked draft instead.");
+        }
         if (block.body !== expectedText) {
-          throw new AssistantMutationError("STALE_SOURCE", "The manuscript changed after this rewrite was proposed. Review a fresh diff; nothing was overwritten.");
+          throw new AssistantMutationError("STALE_SOURCE", "Your writing changed while Quipsly was working. The newer text was kept; ask for a fresh rewrite.");
         }
 
-        await tx.studioDocumentBlock.update({ where: { id: block.id }, data: { body: text } });
+        const rewritten = await tx.studioDocumentBlock.updateMany({
+          where: { id: block.id, documentId: document.id, body: expectedText, updatedAt: block.updatedAt, externalId: block.externalId },
+          data: { body: text },
+        });
+        if (rewritten.count !== 1) {
+          throw new AssistantMutationError("STALE_SOURCE", "Your writing changed while Quipsly was working. The newer text was kept; ask for a fresh rewrite.");
+        }
         const operation = await tx.studioDocumentOperation.create({
           data: {
             projectId: document.projectId,
@@ -3624,22 +3633,35 @@ export async function undoAppliedAssistantDocumentEditAction(
         const appliedBody = typeof after.body === "string" ? after.body : null;
         const block = await tx.studioDocumentBlock.findFirst({
           where: { id: receipt.blockId, documentId: receipt.documentId },
-          select: { id: true, body: true, stableId: true },
+          select: { id: true, body: true, stableId: true, externalId: true, updatedAt: true },
         });
         if (!block || priorBody === null || appliedBody === null || block.body !== appliedBody || block.stableId !== after.stableId) {
           throw new AssistantMutationError("STALE_SOURCE", "The manuscript changed after this rewrite was applied. Undo refused to overwrite the newer work.");
         }
-        await tx.studioDocumentBlock.update({ where: { id: block.id }, data: { body: priorBody } });
+        if (isImmutableSourceEvidenceExternalId(block.externalId)) {
+          throw new AssistantMutationError("UNSUPPORTED_ACTION", "This block is now original source evidence and cannot be rewritten by undo.");
+        }
+        const restored = await tx.studioDocumentBlock.updateMany({
+          where: { id: block.id, documentId: receipt.documentId, body: appliedBody, stableId: block.stableId, updatedAt: block.updatedAt, externalId: block.externalId },
+          data: { body: priorBody },
+        });
+        if (restored.count !== 1) throw new AssistantMutationError("STALE_SOURCE", "Your writing changed during undo. The newer text was kept.");
       } else if (receipt.kind === "draft") {
         const appliedBody = typeof after.body === "string" ? after.body : null;
         const block = await tx.studioDocumentBlock.findFirst({
           where: { id: receipt.blockId, documentId: receipt.documentId },
-          select: { id: true, body: true, stableId: true, order: true },
+          select: { id: true, body: true, stableId: true, order: true, externalId: true, updatedAt: true },
         });
         if (!block || appliedBody === null || block.body !== appliedBody || block.stableId !== after.stableId) {
           throw new AssistantMutationError("STALE_SOURCE", "The inserted draft changed after it was applied. Undo refused to delete the newer work.");
         }
-        await tx.studioDocumentBlock.delete({ where: { id: block.id } });
+        if (isImmutableSourceEvidenceExternalId(block.externalId)) {
+          throw new AssistantMutationError("UNSUPPORTED_ACTION", "This block is now original source evidence and cannot be removed by undo.");
+        }
+        const removed = await tx.studioDocumentBlock.deleteMany({
+          where: { id: block.id, documentId: receipt.documentId, body: appliedBody, stableId: block.stableId, updatedAt: block.updatedAt, externalId: block.externalId },
+        });
+        if (removed.count !== 1) throw new AssistantMutationError("STALE_SOURCE", "Your writing changed during undo. The newer text was kept.");
         await tx.studioDocumentBlock.updateMany({
           where: { documentId: receipt.documentId, order: { gt: block.order } },
           data: { order: { decrement: 1 } },

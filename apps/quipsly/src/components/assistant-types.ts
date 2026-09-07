@@ -72,6 +72,7 @@ export type AssistantResponse = {
   suggestions?: AssistantSuggestion[];
   toolIntents?: Array<Omit<AssistantAction, "createdAt"> & { createdAt?: string }>;
   actions?: AssistantAction[];
+  documentEdits?: import("@/app/(app)/create/actions").AssistantDocumentApplyReceipt[];
   warning?: string;
   error?: string;
 };

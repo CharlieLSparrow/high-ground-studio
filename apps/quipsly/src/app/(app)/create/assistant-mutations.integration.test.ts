@@ -1,6 +1,7 @@
 /** @jest-environment node */
 
 import { randomUUID } from "node:crypto";
+import { GoogleGenAI } from "@google/genai";
 
 import { auth } from "@/auth";
 import { getPrismaClient } from "@/lib/prisma";
@@ -23,10 +24,13 @@ jest.mock("../manuscript/manuscript-editor-model", () => ({
 }));
 jest.mock("./starterDocuments", () => ({ createStarterBlocks: jest.fn(() => []) }));
 
-const runLocalDatabaseSmoke = process.env.QUIPSLY_ASSISTANT_DB_SMOKE === "1" ? describe : describe.skip;
-if (process.env.QUIPSLY_ASSISTANT_DB_SMOKE === "1") {
+const databaseEnabled = process.env.QUIPSLY_ASSISTANT_DB_SMOKE === "1" || process.env.QUIPSLY_LOCAL_DB_SMOKE === "1";
+const runLocalDatabaseSmoke = databaseEnabled ? describe : describe.skip;
+if (databaseEnabled) {
   if (!process.env.QUIPSLY_LOCAL_DATABASE_URL) throw new Error("QUIPSLY_LOCAL_DATABASE_URL is required for the assistant mutation smoke.");
-  process.env.DATABASE_URL = process.env.QUIPSLY_LOCAL_DATABASE_URL;
+  const target = new URL(process.env.QUIPSLY_LOCAL_DATABASE_URL);
+  if (!["localhost", "127.0.0.1", "[::1]"].includes(target.hostname)) throw new Error("Assistant integration tests require a local disposable database.");
+  process.env.DATABASE_URL = target.href;
 }
 
 runLocalDatabaseSmoke("assistant mutation disposable database", () => {
@@ -291,15 +295,14 @@ runLocalDatabaseSmoke("assistant mutation disposable database", () => {
     })).resolves.toMatchObject({
       runId: governedRewriteRunId,
       capabilityId: "quipsly.writing.rewrite.propose",
-      decisionPolicy: "EXPLICIT_APPROVAL",
-      decisionStatus: "APPROVED",
+      decisionPolicy: "DELEGATED",
+      decisionStatus: "NOT_REQUIRED",
       status: "UNDONE",
       attempts: [
         { attemptNumber: 1, status: "SUCCEEDED", executorKind: "quipsly-writing-domain-service" },
         { attemptNumber: 2, status: "SUCCEEDED", executorKind: "quipsly-writing-recovery-domain-service" },
       ],
       receipts: [
-        { kind: "PROPOSAL_RECORDED", newStatus: "PROPOSED" },
         { kind: "EXECUTION_SUCCEEDED", newStatus: "SUCCEEDED" },
         { kind: "RECOVERY_COMPLETED", newStatus: "UNDONE" },
       ],
@@ -470,5 +473,123 @@ runLocalDatabaseSmoke("assistant mutation disposable database", () => {
         aliases: ["Host"],
         attributes: { sourceExcerpt: "Homer asks the opening question.", role: "host" },
       });
+  });
+
+  let fixtureOrder = 1000;
+  async function isolatedRewrite(externalId: string | null = null) {
+    signedInAs(writerEmail);
+    const block = await prisma.studioDocumentBlock.create({ data: {
+      documentId, stableId: randomUUID(), order: fixtureOrder++, body: "Keep the original thought.", externalId,
+    } });
+    const action = await prisma.studioAssistantAction.create({ data: {
+      sessionId, kind: "PROPOSE_REWRITE", label: "Clarify my paragraph", riskLevel: "MEDIUM",
+      payloadJson: { blockId: block.id, originalText: block.body, rewriteText: "A clearer thought." },
+    } });
+    return { block, action };
+  }
+
+  it.each(["transcript:job:segment", "annotation-evidence:quote"])("never rewrites original evidence through the assistant: %s", async (prefix) => {
+    const { block, action } = await isolatedRewrite(`${prefix}:${nonce}`);
+    const result = await applyAssistantDocumentEditAction(action.id);
+    expect(result).toMatchObject({ ok: false, code: "UNSUPPORTED_ACTION" });
+    expect((await prisma.studioDocumentBlock.findUniqueOrThrow({ where: { id: block.id } })).body).toBe(block.body);
+    expect(await prisma.studioAssistantLedger.count({ where: { actionId: action.id, newStatus: "applied" } })).toBe(0);
+  });
+
+  it("does not overwrite a human edit committed after the assistant read its source", async () => {
+    const { block, action } = await isolatedRewrite();
+    const transaction = prisma.$transaction.bind(prisma);
+    let changed = false;
+    const spy = jest.spyOn(prisma, "$transaction").mockImplementation(((work: any) => transaction(async (tx) => {
+      const findDocument = tx.studioDocument.findFirst.bind(tx.studioDocument);
+      tx.studioDocument.findFirst = (async (...args: any[]) => {
+        const snapshot = await (findDocument as any)(...args);
+        if (!changed) {
+          changed = true;
+          // A separate connection commits between the source read and write.
+          await prisma.studioDocumentBlock.update({ where: { id: block.id }, data: { body: "My newer human edit." } });
+        }
+        return snapshot;
+      }) as typeof tx.studioDocument.findFirst;
+      return work(tx);
+    })) as any);
+    let result;
+    try { result = await applyAssistantDocumentEditAction(action.id); }
+    finally { spy.mockRestore(); }
+    expect(changed).toBe(true);
+    expect(result).toMatchObject({ ok: false, code: "STALE_SOURCE" });
+    expect((await prisma.studioDocumentBlock.findUniqueOrThrow({ where: { id: block.id } })).body).toBe("My newer human edit.");
+    expect(await prisma.studioAssistantLedger.count({ where: { actionId: action.id, newStatus: "applied" } })).toBe(0);
+  });
+
+  it.each(["rewrite", "draft"])("keeps human typing committed during %s undo", async (kind) => {
+    const fixture = await isolatedRewrite();
+    if (kind === "draft") {
+      await prisma.studioAssistantAction.update({ where: { id: fixture.action.id }, data: {
+        kind: "PROPOSE_DRAFT", payloadJson: { draftText: "A new paragraph." },
+      } });
+    }
+    const applied = await applyAssistantDocumentEditAction(fixture.action.id);
+    expect(applied.ok).toBe(true);
+    if (!applied.ok) throw new Error(applied.error);
+    const blockId = applied.receipt.blockId;
+    const transaction = prisma.$transaction.bind(prisma);
+    let changed = false;
+    const spy = jest.spyOn(prisma, "$transaction").mockImplementation(((work: any) => transaction(async (tx) => {
+      const findBlock = tx.studioDocumentBlock.findFirst.bind(tx.studioDocumentBlock);
+      tx.studioDocumentBlock.findFirst = (async (...args: any[]) => {
+        const snapshot = await (findBlock as any)(...args);
+        if (!changed && snapshot?.id === blockId) {
+          changed = true;
+          await prisma.studioDocumentBlock.update({ where: { id: blockId }, data: { body: "Typing during undo." } });
+        }
+        return snapshot;
+      }) as typeof tx.studioDocumentBlock.findFirst;
+      return work(tx);
+    })) as any);
+    let result;
+    try { result = await undoAppliedAssistantDocumentEditAction(fixture.action.id); }
+    finally { spy.mockRestore(); }
+    expect(changed).toBe(true);
+    expect(result).toMatchObject({ ok: false, code: "STALE_SOURCE" });
+    expect((await prisma.studioDocumentBlock.findUniqueOrThrow({ where: { id: blockId } })).body).toBe("Typing during undo.");
+    expect(await prisma.studioAssistantLedger.count({ where: { actionId: fixture.action.id, newStatus: "undone" } })).toBe(0);
+  });
+
+  it("fulfills a writing request through POST, saves an editable block, and supports undo without approval", async () => {
+    signedInAs(writerEmail);
+    const { POST } = await import("@/app/api/quipsly-assistant/route");
+    const originalKey = process.env.GEMINI_API_KEY;
+    const originalDisabled = process.env.QUIPSLY_DISABLE_AI_PROVIDER;
+    process.env.GEMINI_API_KEY = "synthetic-provider-not-called";
+    delete process.env.QUIPSLY_DISABLE_AI_PROVIDER;
+    jest.mocked(GoogleGenAI).mockImplementation(() => ({ models: {
+      embedContent: async () => ({ embeddings: [] }),
+      generateContent: async () => ({ text: JSON.stringify({ assistantMessage: "Here is the opening.", suggestions: [],
+        toolIntents: [{ kind: "PROPOSE_DRAFT", label: "Write an opening", explanation: "The writer requested a paragraph.", riskLevel: "medium",
+          payload: { draftText: "A small beginning can become a useful conversation." } }] }) }),
+    } }) as unknown as GoogleGenAI);
+    try {
+      const response = await POST(new Request("http://localhost/api/quipsly-assistant", { method: "POST",
+        headers: { "Content-Type": "application/json" }, body: JSON.stringify({
+          projectSlug: `assistant-project-${nonce}`, documentId, sessionId,
+          message: "Write an opening paragraph in this page.", visibleBlocks: [{ id: firstBlockId, text: originalText }],
+        }),
+      }));
+      expect(response.status).toBe(200);
+      const body = await response.json();
+      expect(body.documentEdits).toHaveLength(1);
+      const receipt = body.documentEdits[0];
+      expect(body.toolIntents[0].status).toBe("applied");
+      expect((await prisma.studioDocumentBlock.findUniqueOrThrow({ where: { id: receipt.blockId } })).body)
+        .toBe("A small beginning can become a useful conversation.");
+      const action = await prisma.studioAssistantAction.findUniqueOrThrow({ where: { id: receipt.actionId }, include: { governedAction: true } });
+      expect(action.governedAction).toMatchObject({ decisionPolicy: "DELEGATED", decisionStatus: "NOT_REQUIRED", status: "SUCCEEDED" });
+      expect(await undoAppliedAssistantDocumentEditAction(receipt.actionId)).toMatchObject({ ok: true });
+      expect(await prisma.studioDocumentBlock.findUnique({ where: { id: receipt.blockId } })).toBeNull();
+    } finally {
+      if (originalKey === undefined) delete process.env.GEMINI_API_KEY; else process.env.GEMINI_API_KEY = originalKey;
+      if (originalDisabled === undefined) delete process.env.QUIPSLY_DISABLE_AI_PROVIDER; else process.env.QUIPSLY_DISABLE_AI_PROVIDER = originalDisabled;
+    }
   });
 });
