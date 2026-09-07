@@ -305,3 +305,65 @@ test("GitHub CI uses the skip-intolerant platform runner and preserves both resu
   assert.match(captureWorkflow, /capture-ui-\*\/\*\.xcresult/);
   assert.doesNotMatch(captureWorkflow, /only_testing_args=/);
 });
+
+for (const failure of ["none", "iPhone-exit", "iPad-exit", "both-exit", "iPhone-substitution", "iPhone-unreadable"]) {
+  test(`the real runner collects both platforms and reports ${failure} without a second cloud run`, (t) => {
+    const fixture = mkdtempSync(path.join(os.tmpdir(), "capture-platform-results-"));
+    t.after(() => rmSync(fixture, { recursive: true, force: true }));
+    // Only Apple subprocesses are substituted. The real CLI discovers the
+    // current plan, runs each destination, and verifies structured identities.
+    writeFileSync(path.join(fixture, "xcodebuild"), `#!/usr/bin/env node
+const fs = require("node:fs"), path = require("node:path");
+const args = process.argv.slice(2);
+const destination = args[args.indexOf("-destination") + 1];
+const platform = destination.includes("iPad") ? "iPad" : "iPhone";
+const result = args[args.indexOf("-resultBundlePath") + 1];
+const selectors = args.filter(arg => arg.startsWith("-only-testing:")).map(arg => arg.slice(14));
+fs.appendFileSync(process.env.CAPTURE_CALL_LOG, platform + "\\n");
+const cases = selectors.map(selector => {
+  const [bundle, suite, method] = selector.split("/");
+  return {nodeType: "UI test bundle", name: bundle, children: [{nodeType: "Test Case",
+    nodeIdentifier: suite + "/" + method + "()", result: "Passed"}]};
+});
+if (platform === "iPhone" && process.env.CAPTURE_FAILURE === "iPhone-substitution") {
+  cases[0].children[0].nodeIdentifier = "CaptureExperienceUITests/testNotInThePlan()";
+}
+fs.mkdirSync(result, {recursive: true});
+fs.writeFileSync(path.join(result, "test-results.json"), JSON.stringify({testNodes: cases}));
+console.log("Executed " + selectors.length + " tests");
+if (process.env.CAPTURE_FAILURE === platform + "-exit" || process.env.CAPTURE_FAILURE === "both-exit") process.exit(65);
+`, { mode: 0o700 });
+    writeFileSync(path.join(fixture, "xcrun"), `#!/usr/bin/env node
+const fs = require("node:fs"), path = require("node:path");
+const args = process.argv.slice(2), bundle = args[args.indexOf("--path") + 1];
+if (bundle.includes("iphone") && process.env.CAPTURE_FAILURE === "iPhone-unreadable") process.exit(1);
+process.stdout.write(fs.readFileSync(path.join(bundle, "test-results.json")));
+`, { mode: 0o700 });
+    const evidence = path.join(fixture, "evidence with spaces");
+    const callLog = path.join(fixture, "platforms.log");
+    const result = spawnSync(process.execPath, [
+      path.join(root, "scripts/release/quipsly-capture-ui-test-runner.mjs"),
+      "--suite=critical", `--evidence-root=${evidence}`,
+      "--destination=platform=iOS Simulator,name=iPhone test",
+      "--ipad-destination=platform=iOS Simulator,name=iPad test",
+      `--derived-data=${path.join(fixture, "derived")}`,
+    ], { encoding: "utf8", timeout: 30_000, env: {
+      ...process.env, PATH: `${fixture}${path.delimiter}${process.env.PATH}`,
+      CAPTURE_FAILURE: failure, CAPTURE_CALL_LOG: callLog,
+    } });
+    assert.equal(result.status, failure === "none" ? 0 : 1, result.stdout + result.stderr);
+    assert.equal(readFileSync(callLog, "utf8"), "iPhone\niPad\n", result.stdout + result.stderr);
+    for (const platform of ["iphone", "ipad"]) {
+      assert.ok(JSON.parse(readFileSync(path.join(evidence, `capture-ui-tests-${platform}.xcresult/test-results.json`), "utf8")).testNodes.length);
+    }
+    if (failure === "none") assert.match(result.stdout, /PASS: executed all .* across 2 platform destinations/);
+    else {
+      assert.doesNotMatch(result.stdout, /PASS: executed all/);
+      assert.match(result.stderr, /FAIL: Capture UI validation failed/);
+      if (failure === "both-exit") {
+        assert.match(result.stderr, /iPhone: xcodebuild failed with exit code 65/);
+        assert.match(result.stderr, /iPad: xcodebuild failed with exit code 65/);
+      }
+    }
+  });
+}

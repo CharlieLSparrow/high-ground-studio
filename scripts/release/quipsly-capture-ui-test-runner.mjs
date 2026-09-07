@@ -249,24 +249,36 @@ async function main() {
       + `${plan.shards > 1 ? ` · shard ${plan.shard}/${plan.shards}` : ""}\n`,
   );
   let executedCount = 0;
+  const failures = [];
   for (const execution of executionGroups) {
     const bundlePath = resultBundlePath(options.evidenceRoot, execution.name);
     process.stdout.write(
       `Running ${execution.selectors.length} ${execution.name} contracts on ${execution.destination}\n`,
     );
-    const result = await runXcodebuild(createXcodeArguments(
-      { selectors: execution.selectors },
-      {
-        ...options,
-        destination: execution.destination,
-        resultBundlePath: bundlePath,
-      },
-    ));
-    verifyExecution({
-      ...result,
-      expectedCount: execution.selectors.length,
-    });
-    executedCount += await verifyResultBundle(bundlePath, execution.selectors);
+    try {
+      const result = await runXcodebuild(createXcodeArguments(
+        { selectors: execution.selectors },
+        {
+          ...options,
+          destination: execution.destination,
+          resultBundlePath: bundlePath,
+        },
+      ));
+      verifyExecution({
+        ...result,
+        expectedCount: execution.selectors.length,
+      });
+      executedCount += await verifyResultBundle(bundlePath, execution.selectors);
+    } catch (error) {
+      // Platform failures are independent. Retain their evidence and exercise
+      // the other destination once; do not retry failures into a green result.
+      const failure = `${execution.name}: ${error instanceof Error ? error.message : String(error)}`;
+      failures.push(failure);
+      process.stderr.write(`${failure}\nResults (if produced): ${bundlePath}\n`);
+    }
+  }
+  if (failures.length) {
+    throw new Error(`Capture UI validation failed on ${failures.length} platform destination(s):\n${failures.join("\n")}`);
   }
   if (executedCount !== plan.selectedTestCount) {
     throw new Error(
