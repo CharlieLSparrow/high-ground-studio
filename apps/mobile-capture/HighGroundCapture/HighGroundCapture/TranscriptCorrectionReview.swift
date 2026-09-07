@@ -3587,6 +3587,7 @@ struct CaptureTranscriptReviewView: View {
                         }
                         if let firstNote = packetCandidateQueue.first(where: { $0.kind == .note }) {
                             Button {
+                                packetCandidateFilter = .all
                                 showsAdditionalSuggestions = true
                                 revealTranscriptTools(
                                     at: firstNote.id,
@@ -3599,6 +3600,7 @@ struct CaptureTranscriptReviewView: View {
                         }
                         if let firstGoal = packetCandidateQueue.first(where: { $0.kind == .goal }) {
                             Button {
+                                packetCandidateFilter = .all
                                 showsAdditionalSuggestions = true
                                 revealTranscriptTools(
                                     at: firstGoal.id,
@@ -3611,6 +3613,7 @@ struct CaptureTranscriptReviewView: View {
                         }
                         if let firstTask = packetCandidateQueue.first(where: { $0.kind == .task }) {
                             Button {
+                                packetCandidateFilter = .all
                                 showsAdditionalSuggestions = true
                                 revealTranscriptTools(
                                     at: firstTask.id,

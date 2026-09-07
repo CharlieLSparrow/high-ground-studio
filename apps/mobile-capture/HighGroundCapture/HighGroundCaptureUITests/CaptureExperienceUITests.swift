@@ -4867,6 +4867,51 @@ final class CaptureExperienceUITests: XCTestCase {
         )
     }
 
+    func testTranscriptSectionJumpRevealsSuggestionsHiddenByFilter() {
+        assertTranscriptSectionJumpRevealsSuggestionsHiddenByFilter()
+    }
+
+    func testTranscriptSectionJumpRevealsSuggestionsHiddenByFilterOnRegularWidthIPad() {
+        assertTranscriptSectionJumpRevealsSuggestionsHiddenByFilter()
+    }
+
+    private func assertTranscriptSectionJumpRevealsSuggestionsHiddenByFilter() {
+        openPreviewTranscriptReview()
+        let jump = app.buttons["CaptureTranscriptJumpMenu"].firstMatch
+        XCTAssertTrue(jump.waitForExistence(timeout: 8))
+        jump.tap()
+        app.buttons["CaptureTranscriptJumpToGoals"].tap()
+
+        let filter = app.segmentedControls["CapturePacketCandidateReviewFilter"].firstMatch
+        reveal(filter)
+        XCTAssertTrue(filter.waitForExistence(timeout: 5))
+        let handled = filter.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Handled")).firstMatch
+        XCTAssertTrue(handled.isHittable)
+        handled.tap()
+        XCTAssertTrue(app.staticTexts["Nothing is in this view."].waitForExistence(timeout: 5))
+
+        // Explicit navigation must reveal its destination even when the prior
+        // filter hides it. Otherwise the jump silently scrolls to no content.
+        for (destination, sourcePrefix) in [
+            ("CaptureTranscriptJumpToGoals", "CapturePacketGoalSource_preview-segment"),
+            ("CaptureTranscriptJumpToTasks", "CapturePacketTaskSource_preview-segment"),
+            ("CaptureTranscriptJumpToNotes", "CapturePacketNoteSourceButton_"),
+        ] {
+            jump.tap()
+            app.buttons[destination].tap()
+            let source = app.buttons.matching(
+                NSPredicate(format: "identifier BEGINSWITH %@", sourcePrefix)
+            ).firstMatch
+            reveal(source)
+            XCTAssertTrue(source.waitForExistence(timeout: 5))
+            XCTAssertTrue(source.isHittable, "The requested suggestion's source must be reachable.")
+            reveal(filter)
+            let all = filter.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "All")).firstMatch
+            XCTAssertTrue(all.isSelected, "An explicit section jump must reveal the destination outside the previous filter.")
+            handled.tap()
+        }
+    }
+
     func testTranscriptReviewKeepsPreviewAndAIBehindTruthBoundaries() throws {
         openPreviewTranscriptReview()
         let previewBoundary = app.descendants(matching: .any)["CaptureTranscriptPreviewBoundary"].firstMatch
