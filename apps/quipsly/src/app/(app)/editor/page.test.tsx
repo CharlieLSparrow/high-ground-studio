@@ -1,6 +1,6 @@
 import React from "react";
 import { createHash, webcrypto } from "node:crypto";
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useSearchParams } from "next/navigation";
 
@@ -243,7 +243,10 @@ describe("CloudEditor production truth UX", () => {
     jest.spyOn(console, "error").mockImplementation(() => undefined);
   });
 
-  afterEach(() => jest.restoreAllMocks());
+  afterEach(() => {
+    jest.useRealTimers();
+    jest.restoreAllMocks();
+  });
 
   it("renders the current editor modes and source/program distinction after access resolves", async () => {
     render(<CloudEditor />);
@@ -255,7 +258,10 @@ describe("CloudEditor production truth UX", () => {
     expect(screen.getByRole("button", { name: "Program Monitor" })).toBeInTheDocument();
   });
 
-  it("configures, assembles, receipts, and persists a wide-aware camera policy", async () => {
+  it.each(["manual", "auto"] as const)("configures, assembles, receipts, and persists a wide-aware camera policy through %s save", async (saveMode) => {
+    // Wall-clock speed must not decide whether the manual Save button still
+    // exists. Exercise both paths explicitly, including the real debounce.
+    jest.useFakeTimers();
     mockEpisodeProduction({
       timelineJson: {
         payloadVersion: 5,
@@ -280,7 +286,7 @@ describe("CloudEditor production truth UX", () => {
         savedAt: "2026-08-07T00:00:00.000Z",
       },
     });
-    const user = userEvent.setup();
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
     render(<CloudEditor />);
 
     expect(await screen.findByText(/Loaded Current Episode from saved timeline/i)).toBeInTheDocument();
@@ -302,7 +308,11 @@ describe("CloudEditor production truth UX", () => {
       }),
     }));
 
-    await user.click(screen.getByRole("button", { name: "Save Episode Timeline" }));
+    if (saveMode === "manual") {
+      await user.click(screen.getByRole("button", { name: "Save Episode Timeline" }));
+    } else {
+      await act(async () => { await jest.advanceTimersByTimeAsync(900); });
+    }
     await waitFor(() => {
       const saveCall = jest.mocked(globalThis.fetch).mock.calls.find(([, init]) => {
         const body = JSON.parse(String(init?.body ?? "{}"));
@@ -310,6 +320,7 @@ describe("CloudEditor production truth UX", () => {
       });
       expect(saveCall).toBeDefined();
       const saved = JSON.parse(String(saveCall?.[1]?.body)).timelineJson;
+      expect(JSON.parse(String(saveCall?.[1]?.body)).editReviewSaveMode).toBe(saveMode);
       expect(saved.payloadVersion).toBe(6);
       expect(saved.cameraAssemblyPolicy).toEqual(expect.objectContaining({ style: "natural-conversation", wideClipId: "wide-cam" }));
       expect(saved.cameraSwitchDecisions).toEqual(expect.arrayContaining([expect.objectContaining({ source: "deterministic-assembly", evidence: expect.objectContaining({ policyId: "camera-assembly-policy" }) })]));
