@@ -1721,10 +1721,20 @@ final class CaptureExperienceUITests: XCTestCase {
         let passage = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "My goal is to publish a thoughtful first episode")).firstMatch
         XCTAssertTrue(passage.exists && passage.isHittable,
                       "The linked words must be visible on arrival, not merely present offscreen.")
+        XCTAssertTrue(app.buttons["CaptureTranscriptCorrectButton_preview-segment"].isHittable,
+                      "Editing the linked words must not require scrolling through confidence and history.")
         let screenshot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
         screenshot.name = "shared-work-native-source.png"
         screenshot.lifetime = .keepAlways
         add(screenshot)
+        let viewPicker = app.segmentedControls["CaptureTranscriptPresentationMode"].firstMatch
+        reveal(viewPicker)
+        viewPicker.buttons["Conversation"].tap()
+        let earlier = app.staticTexts["We started with the purpose of the episode."].firstMatch
+        reveal(earlier)
+        XCTAssertTrue(earlier.exists && passage.exists)
+        XCTAssertLessThan(earlier.frame.minY, passage.frame.minY,
+                          "Returning to a linked passage must not move it before the earlier conversation.")
         app.navigationBars["Transcript"].buttons.element(boundBy: 0).tap()
         XCTAssertTrue(app.segmentedControls["CaptureCoachingWorkFilter"].waitForExistence(timeout: 5),
                       "Back should return to the same ongoing coaching space.")
@@ -4607,8 +4617,25 @@ final class CaptureExperienceUITests: XCTestCase {
     }
 
     func testTranscriptReviewShowsDeviceFirstJointAssembly() {
-        openPreviewTranscriptReview()
+        exerciseTranscriptReadingAndRecordingDetails()
+    }
 
+    func testTranscriptReadingAndRecordingDetailsOnRegularWidthIPad() {
+        exerciseTranscriptReadingAndRecordingDetails()
+    }
+
+    private func exerciseTranscriptReadingAndRecordingDetails() {
+        openPreviewTranscriptReview()
+        let picker = app.segmentedControls["CaptureTranscriptPresentationMode"].firstMatch
+        XCTAssertTrue(picker.isHittable, "Reading controls should be available without scrolling past recording diagnostics.")
+        picker.buttons["Conversation"].tap()
+        let words = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "My goal is to publish a thoughtful first episode")).firstMatch
+        XCTAssertTrue(words.exists && words.isHittable)
+        XCTAssertTrue(app.buttons["CaptureTranscriptConversationReview_preview-segment"].isHittable)
+        XCTAssertFalse(app.descendants(matching: .any)["CaptureTranscriptAssemblyStatus"].exists,
+                       "Technical assembly details belong behind Recording details, not before the conversation.")
+        app.buttons["CaptureTranscriptJumpMenu"].tap()
+        app.buttons["CaptureTranscriptJumpToSourceTruth"].tap()
         let assembly = app.descendants(matching: .any)["CaptureTranscriptAssemblyStatus"]
         XCTAssertTrue(assembly.waitForExistence(timeout: 5))
         XCTAssertTrue(assembly.label.contains("2 participant recordings"))
@@ -4616,6 +4643,12 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(assembly.label.contains("1 Apple speech service"))
         XCTAssertTrue(assembly.label.contains("0 Quipsly cloud ASR"))
         XCTAssertTrue(assembly.label.contains("Provisional sync"))
+        let details = XCTAttachment(screenshot: app.screenshot())
+        details.name = "transcript-recording-details.png"
+        details.lifetime = .keepAlways
+        add(details)
+        app.buttons["Done"].tap()
+        XCTAssertTrue(words.isHittable, "Dismissing details should retain the reading position.")
     }
 
     func testTranscriptReviewShowsOrdinaryFollowUpAndReturnsToExactParticipantSource() {
@@ -4819,6 +4852,7 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertFalse(app.buttons["CaptureTranscriptRejectAIButton"].isEnabled)
         XCTAssertTrue(app.staticTexts["Use this now or listen first. The original words and timing stay underneath, so you can change or undo it later."].exists)
         let correct = app.buttons["CaptureTranscriptCorrectButton_preview-segment"]
+        reveal(correct)
         XCTAssertTrue(correct.isEnabled, "Preview may inspect the editor while every save path remains disabled.")
         correct.tap()
         XCTAssertTrue(app.textFields["CaptureTranscriptCorrectSpeakerField"].exists)
@@ -6253,29 +6287,11 @@ final class CaptureExperienceUITests: XCTestCase {
     }
 
     private func openPreviewTranscriptReview() {
-        let library = app.tabBars.buttons["Notes"]
-        if library.waitForExistence(timeout: 2) {
-            library.tap()
-        } else {
-            let sidebar = app.collectionViews["CaptureIPadSidebar"].firstMatch
-            let sidebarNotes = sidebar.cells.element(boundBy: 4)
-            XCTAssertTrue(
-                sidebar.waitForExistence(timeout: 12)
-                    && sidebarNotes.waitForExistence(timeout: 4),
-                "Notes should remain a first-class destination in the iPad sidebar."
-            )
-            XCTAssertTrue(
-                sidebarNotes.staticTexts["Notes"].exists,
-                "The stable fourth Quipsly destination must remain Notes."
-            )
-            sidebarNotes.tap()
-        }
-        let compactLibrary = app.descendants(matching: .any)["CaptureLibraryView"]
-        let adaptiveWorkspace = app.scrollViews["CaptureIPadWorkspace"]
+        openRootDestination("Notes", timeout: 12)
+        let library = app.descendants(matching: .any)["CaptureLibraryView"].firstMatch
         XCTAssertTrue(
-            compactLibrary.waitForExistence(timeout: 2)
-                || adaptiveWorkspace.waitForExistence(timeout: 8),
-            "Notes should open in the compact surface or the iPad workspace."
+            library.waitForExistence(timeout: 8),
+            "Notes must expose its Library content independently of the outer workspace container."
         )
         let reviewLink = app.buttons["CaptureTranscriptReviewPreviewLink"]
         reveal(reviewLink, searchAboveFirst: false)

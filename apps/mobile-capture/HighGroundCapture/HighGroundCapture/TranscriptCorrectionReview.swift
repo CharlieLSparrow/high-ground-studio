@@ -392,7 +392,7 @@ struct CaptureTranscriptCorrectionDesk: Codable, Equatable {
             speakerGroups: [
                 .init(
                     providerSpeakerLabel: speakerLabel,
-                    turnCount: 1,
+                    turnCount: CaptureLaunchConfiguration.usesCoachingWorkSourcePreview ? 3 : 1,
                     providerSnapshotSha256: String(repeating: "a", count: 64),
                     attribution: nil,
                     staleAttribution: false,
@@ -406,13 +406,30 @@ struct CaptureTranscriptCorrectionDesk: Codable, Equatable {
                     ]
                 ),
             ],
-            segments: [segment],
+            segments: CaptureLaunchConfiguration.usesCoachingWorkSourcePreview
+                ? [
+                    .init(
+                        id: "preview-earlier-segment", speakerLabel: speakerLabel, providerSpeakerLabel: speakerLabel,
+                        speakerAuthority: "source-binding", startSeconds: 0, endSeconds: 2,
+                        text: "We started with the purpose of the episode.", providerText: "We started with the purpose of the episode.",
+                        providerTextSha256: "preview-earlier-sha", confidence: nil, acceptedCorrection: nil,
+                        acceptedVerification: nil, speakerAttribution: nil, proposals: [], correctionHistory: []
+                    ),
+                    segment,
+                    .init(
+                        id: "preview-later-segment", speakerLabel: speakerLabel, providerSpeakerLabel: speakerLabel,
+                        speakerAuthority: "source-binding", startSeconds: 6, endSeconds: 8,
+                        text: "Then we agreed on the next conversation.", providerText: "Then we agreed on the next conversation.",
+                        providerTextSha256: "preview-later-sha", confidence: nil, acceptedCorrection: nil,
+                        acceptedVerification: nil, speakerAttribution: nil, proposals: [], correctionHistory: []
+                    ),
+                ] : [segment],
             evidence: .init(
                 schema: "quipsly-audio-transcript-evidence-v1",
                 transcript: .init(
                     provider: "deepgram",
                     providerModel: "nova-3",
-                    segmentCount: 1,
+                    segmentCount: CaptureLaunchConfiguration.usesCoachingWorkSourcePreview ? 3 : 1,
                     wordCount: appStorePresentation ? 15 : 17,
                     confidenceWordCount: appStorePresentation ? 15 : 17,
                     meanWordConfidence: 0.86,
@@ -1229,7 +1246,7 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
             packetProviderOnlySegmentCount = 0
             packetSnapshotStale = false
             isUsingProtectedCache = false
-            message = appStorePresentation ? nil : "Preview only — no recording is played and no correction can be saved."
+            message = nil
             if !CaptureLaunchConfiguration.usesTranscriptReviewOutboxUITest {
                 errorMessage = nil
             }
@@ -3337,12 +3354,9 @@ struct CaptureTranscriptReviewView: View {
                     header
 
                     if previewOnly && !CaptureLaunchConfiguration.usesAppStorePresentation {
-                        reviewNotice(
-                            title: "Preview data — no server actions",
-                            detail: "This demonstrates the review workflow without claiming playback or saving a correction.",
-                            tint: CapturePalette.brass,
-                            icon: "hammer.fill"
-                        )
+                        Label("Preview · playback and saving are unavailable", systemImage: "hammer.fill")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                         .accessibilityIdentifier("CaptureTranscriptPreviewBoundary")
                     }
 
@@ -3406,7 +3420,6 @@ struct CaptureTranscriptReviewView: View {
                         ProgressView("Loading protected transcript…")
                             .frame(maxWidth: .infinity, minHeight: 120)
                     } else if let desk = client.desk {
-                        sessionTranscriptAssemblyStatus(desk)
                         transcriptSegments(desk, scrollProxy: scrollProxy)
                         if let results = client.packetResults {
                             sessionFollowUpResults(
@@ -3433,7 +3446,7 @@ struct CaptureTranscriptReviewView: View {
                 .padding(.bottom, 72)
             }
             .accessibilityIdentifier("CaptureTranscriptReviewView")
-            .scrollPosition(id: $scrollTargetSegmentID, anchor: .center)
+            .scrollPosition(id: $scrollTargetSegmentID, anchor: .top)
             .scrollDismissesKeyboard(.immediately)
             .background(CapturePalette.canvas)
             .safeAreaInset(edge: .top, spacing: 0) {
@@ -3515,7 +3528,7 @@ struct CaptureTranscriptReviewView: View {
                             Button {
                                 showsRecordingSource = true
                             } label: {
-                                Label("Recording source", systemImage: "waveform.badge.magnifyingglass")
+                                Label("Recording details", systemImage: "info.circle")
                             }
                             .accessibilityIdentifier("CaptureTranscriptJumpToSourceTruth")
                         }
@@ -3627,15 +3640,18 @@ struct CaptureTranscriptReviewView: View {
                 NavigationStack {
                     ScrollView {
                         if let desk = client.desk {
-                            sourceTruth(desk)
-                                .padding(18)
+                            VStack(alignment: .leading, spacing: 16) {
+                                sourceTruth(desk)
+                                sessionTranscriptAssemblyStatus(desk)
+                            }
+                            .padding(18)
                         } else {
                             ProgressView("Loading recording source…")
                                 .frame(maxWidth: .infinity, minHeight: 180)
                         }
                     }
                     .background(CapturePalette.canvas)
-                    .navigationTitle("Recording source")
+                    .navigationTitle("Recording details")
                     .navigationBarTitleDisplayMode(.inline)
                     .toolbar {
                         ToolbarItem(placement: .confirmationAction) {
@@ -3643,7 +3659,7 @@ struct CaptureTranscriptReviewView: View {
                         }
                     }
                 }
-                .presentationDetents([.medium, .large])
+                .presentationDetents([.large])
             }
             .task {
                 await client.load(
@@ -3655,18 +3671,16 @@ struct CaptureTranscriptReviewView: View {
                 guard let focusSegmentID,
                       client.desk?.segments.contains(where: { $0.id == focusSegmentID }) == true else { return }
                 transcriptPresentationMode = .timeline
-                // A linked-work destination can arrive while the remembered
-                // conversation view is still on screen. Let SwiftUI replace
-                // that hierarchy before resolving the stable transcript-start
-                // target, then drive the reader directly so the exact source
-                // is visible rather than merely present below the speaker card.
+                // Keep canonical conversation order. Jump to the linked row
+                // after replacing the remembered presentation; never move the
+                // passage to the beginning of the conversation to reveal it.
                 scrollTargetSegmentID = nil
                 await Task.yield()
                 withAnimation(
                     reduceMotion ? nil : .easeOut(duration: 0.3)
                 ) {
-                    scrollTargetSegmentID = linkedTranscriptScrollTargetID
-                    scrollProxy.scrollTo(linkedTranscriptScrollTargetID, anchor: .top)
+                    scrollTargetSegmentID = focusSegmentID
+                    scrollProxy.scrollTo(focusSegmentID, anchor: .top)
                 }
                 accessibilityFocusedSegmentID = focusSegmentID
             }
@@ -3965,11 +3979,11 @@ struct CaptureTranscriptReviewView: View {
             )
         } else {
             transcriptPresentationPicker(desk, scrollProxy: scrollProxy)
-                .id(linkedTranscriptScrollTargetID)
+                .id("transcript-presentation")
             LazyVStack(alignment: .leading, spacing: 16) {
                 if transcriptPresentationMode == .conversation {
                     let speakers = conversationSpeakerLabels(in: desk)
-                    ForEach(orderedSegments(in: desk)) { segment in
+                    ForEach(desk.segments) { segment in
                         transcriptConversationTurn(
                             segment,
                             desk: desk,
@@ -3980,7 +3994,7 @@ struct CaptureTranscriptReviewView: View {
                             .accessibilityFocused($accessibilityFocusedSegmentID, equals: segment.id)
                     }
                 } else {
-                    ForEach(orderedSegments(in: desk)) { segment in
+                    ForEach(desk.segments) { segment in
                         CaptureTranscriptSegmentCard(
                             roomID: roomID,
                             sessionTitle: sessionTitle,
@@ -4277,11 +4291,6 @@ struct CaptureTranscriptReviewView: View {
         .accessibilityIdentifier("CaptureTranscriptPresentationControls")
     }
 
-    private var linkedTranscriptScrollTargetID: String {
-        guard let focusSegmentID else { return "transcript-presentation" }
-        return "linked-transcript-\(focusSegmentID)"
-    }
-
     private func transcriptConversationTurn(
         _ segment: CaptureTranscriptSegment,
         desk: CaptureTranscriptCorrectionDesk,
@@ -4375,7 +4384,7 @@ struct CaptureTranscriptReviewView: View {
     }
 
     private func conversationSpeakerLabels(in desk: CaptureTranscriptCorrectionDesk) -> [String] {
-        orderedSegments(in: desk).reduce(into: [String]()) { labels, candidate in
+        desk.segments.reduce(into: [String]()) { labels, candidate in
             let label = captureTranscriptNonempty(candidate.speakerLabel) ?? "Unlabelled speaker"
             if !labels.contains(label) { labels.append(label) }
         }
@@ -4414,14 +4423,6 @@ struct CaptureTranscriptReviewView: View {
                 && $0.status.isPlaybackEligible
                 && library.fileURL(for: $0) != nil
         }
-    }
-
-    private func orderedSegments(in desk: CaptureTranscriptCorrectionDesk) -> [CaptureTranscriptSegment] {
-        guard let focusSegmentID,
-              let focusedSegment = desk.segments.first(where: { $0.id == focusSegmentID }) else {
-            return desk.segments
-        }
-        return [focusedSegment] + desk.segments.filter { $0.id != focusSegmentID }
     }
 
     private func transcriptEvidenceSummary(
@@ -4688,22 +4689,21 @@ struct CaptureTranscriptReviewView: View {
             expectedRecordingAssetID: desk.playback?.recordingAssetId
         )
         let exactMatch = exactRecording != nil
-        let appStorePresentation = CaptureLaunchConfiguration.usesAppStorePresentation
+        let downloadableAudio = ([desk.playback].compactMap { $0 } + desk.segments.compactMap(\.sourcePlayback))
+            .contains { $0.kind == "audio" && $0.mobileProtectedSource != nil }
         return VStack(alignment: .leading, spacing: 10) {
             Label(
-                appStorePresentation
-                    ? "Recording and transcript stay linked"
-                    : (exactMatch ? "Recording ready to play" : "Transcript ready"),
-                systemImage: appStorePresentation ? "waveform.and.magnifyingglass" : (exactMatch ? "checkmark.circle.fill" : "text.bubble")
+                exactMatch ? "Recording ready to play" : (downloadableAudio ? "Recording available to download" : "Transcript ready"),
+                systemImage: exactMatch ? "checkmark.circle.fill" : (downloadableAudio ? "arrow.down.circle" : "text.bubble")
             )
                 .font(.headline)
-                .foregroundStyle(appStorePresentation || exactMatch ? CapturePalette.success : CapturePalette.brass)
+                .foregroundStyle(exactMatch || downloadableAudio ? CapturePalette.success : CapturePalette.brass)
             Text(
-                appStorePresentation
-                    ? "Play the session, correct any word, or make a basic cut from the words you said."
-                    : (exactMatch
-                        ? "Quipsly found the matching recording on \(CaptureDeviceVocabulary.thisDevice)."
-                        : "\(CaptureDeviceVocabulary.thisDeviceCapitalized) does not have the matching recording, so playback and source-confirmed corrections remain available in Nest.")
+                exactMatch
+                    ? "The matching recording is saved on \(CaptureDeviceVocabulary.thisDevice)."
+                    : (downloadableAudio
+                        ? "Tap Play beside a passage to download and listen to its matching audio here."
+                        : "You can read and edit the transcript. Matching audio is not available for playback on this device yet.")
             )
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -6840,6 +6840,17 @@ private struct CaptureTranscriptSegmentCard: View {
                 .accessibilityIdentifier("CaptureTranscriptPlayButton_\(segment.id)")
             }
 
+            if isEditing {
+                correctionEditor
+            } else {
+                Button(segment.acceptedCorrection == nil ? "Edit transcript" : "Revise correction") {
+                    beginEditing()
+                }
+                .captureProminentButton(fill: CapturePalette.inkFill)
+                .disabled(client.isMutating || pendingDecision != nil)
+                .accessibilityIdentifier("CaptureTranscriptCorrectButton_\(segment.id)")
+            }
+
             if !hasExactLocalSource && protectedSource?.kind == "video" {
                 Label(
                     "Quipsly will not download the full video just to review this sentence. Prepare an audio source or review the protected recording explicitly.",
@@ -6963,16 +6974,7 @@ private struct CaptureTranscriptSegmentCard: View {
                 )
             }
 
-            if isEditing {
-                correctionEditor
-            } else {
-                Button(segment.acceptedCorrection == nil ? "Edit transcript" : "Revise correction") {
-                    beginEditing()
-                }
-                .captureProminentButton(fill: CapturePalette.inkFill)
-                .disabled(client.isMutating || pendingDecision != nil)
-                .accessibilityIdentifier("CaptureTranscriptCorrectButton_\(segment.id)")
-
+            if !isEditing {
                 if segment.acceptedCorrection == nil,
                    segment.acceptedVerification == nil {
                     Button("Mark checked") {

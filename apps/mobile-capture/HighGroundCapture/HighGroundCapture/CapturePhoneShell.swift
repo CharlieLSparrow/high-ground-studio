@@ -536,6 +536,7 @@ struct CapturePhoneShell: View {
                 captureDestination(for: visibleTab)
             }
             .background(CaptureCanvas())
+            .accessibilityElement(children: .contain)
             .accessibilityIdentifier("CaptureIPadWorkspace")
         }
         .navigationSplitViewStyle(.balanced))
