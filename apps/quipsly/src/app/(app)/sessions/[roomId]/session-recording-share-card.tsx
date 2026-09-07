@@ -528,7 +528,13 @@ export function SessionRecordingShareCard({
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="flex items-start gap-3">
           <span className="rounded-2xl bg-white p-3 text-sky-800 shadow-sm"><FileAudio aria-hidden="true" size={22} /></span>
-          <div><p className="text-[10px] font-black uppercase tracking-[0.2em] text-sky-700">Session recording</p><h2 id="recording-share-heading" className="font-serif text-2xl font-black text-sky-950">Trim and share</h2><p className="mt-1 max-w-2xl text-sm font-semibold leading-6 text-sky-900">Recipient: <strong>{snapshot.room.client.label}</strong>. A draft stays coach-only until you share it.</p></div>
+          <div>
+            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-sky-700">Session recording</p>
+            <h2 id="recording-share-heading" className="font-serif text-2xl font-black text-sky-950">{coach ? "Trim and share" : "Shared recordings"}</h2>
+            <p className="mt-1 max-w-2xl text-sm font-semibold leading-6 text-sky-900">
+              {coach ? <>Recipient: <strong>{snapshot.room.client.label}</strong>. A draft stays coach-only until you share it.</> : output ? "Play or download the recording shared with you." : "When your coach shares an edited recording, it will appear here."}
+            </p>
+          </div>
         </div>
         <button type="button" onClick={() => void load()} disabled={Boolean(busy)} className="rounded-xl border border-sky-200 bg-white px-3 py-2 text-xs font-black text-sky-900 disabled:opacity-50"><RefreshCw className={`mr-1.5 inline ${busy === "LOAD" ? "animate-spin" : ""}`} size={14} />Refresh</button>
       </div>
@@ -725,7 +731,7 @@ export function SessionRecordingShareCard({
         {coach && !editing ? <button type="button" disabled={Boolean(busy)} onClick={() => { setSelected(new Set(outputSourceIds(output, snapshot.available?.sources || []))); setTitle(output.title); setStartSeconds(Number(output.body.edit?.startSeconds) || 0); setEndSeconds(Number(output.body.edit?.endSeconds) || duration); setExcludedTranscriptKeys(transcriptExclusionKeys(output)); setOutputMediaKind(output.render.mediaKind === "video" ? "video" : "audio"); setPrimaryVideoSourceId(output.render.primaryVideoSourceId || ""); setEditing(true); }} className="rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-xs font-black text-sky-900"><Scissors className="mr-1.5 inline" size={14} />{output.render.status === "FAILED" ? "Review trim and try again" : output.status === "DRAFT" ? "Edit private preview" : "Create new private edit"}</button> : null}
       </div> : null}
 
-      <p className="mt-4 text-[11px] font-semibold leading-5 text-sky-800"><LockKeyhole className="mr-1 inline" size={13} />Only you can see the preview. Sharing gives the named client access inside this Session; it does not create a public link or change the original recordings.</p>
+      {coach ? <p className="mt-4 text-[11px] font-semibold leading-5 text-sky-800"><LockKeyhole className="mr-1 inline" size={13} />Only you can see the preview. Sharing gives the named client access inside this Session; it does not create a public link or change the original recordings.</p> : null}
     </section>
   );
 }

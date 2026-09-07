@@ -50,6 +50,17 @@ describe("SessionRecordingShareCard", () => {
     Reflect.deleteProperty(global, "fetch");
   });
 
+  it("explains the client's empty shared-recording space without showing coach instructions", async () => {
+    global.fetch = jest.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => response({ ...snapshot, role: "CLIENT", available: undefined,
+      readiness: undefined })) as jest.MockedFunction<typeof fetch>;
+    render(<SessionRecordingShareCard roomId="session_room_0001" />);
+    expect(await screen.findByRole("heading", { name: "Shared recordings" })).toBeInTheDocument();
+    expect(screen.getByText("When your coach shares an edited recording, it will appear here.")).toBeInTheDocument();
+    expect(screen.queryByText(/A draft stays coach-only/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Only you can see the preview/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Create private preview" })).not.toBeInTheDocument();
+  });
+
   it("shows automatic sync quality without making it another required workflow", async () => {
     global.fetch = jest.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => response(snapshot)) as jest.MockedFunction<typeof fetch>;
 
