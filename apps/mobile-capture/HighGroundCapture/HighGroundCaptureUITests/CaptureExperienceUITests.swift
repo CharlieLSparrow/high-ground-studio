@@ -205,6 +205,9 @@ final class CaptureExperienceUITests: XCTestCase {
         if name.contains("testCoachFollowUpHoldsReleaseWhenCanonicalSourceChanged") {
             app.launchArguments.append("--capture-follow-up-source-changed-preview")
         }
+        if name.contains("testTranscriptFollowUpExpandsAllNotesTasksAndGoals") {
+            app.launchArguments.append("--capture-follow-up-many-items-preview")
+        }
         if name.contains("testReadyParticipantSeesWaitingStatusInsteadOfDisabledRecord") {
             app.launchArguments.append("--capture-waiting-for-host-ui-test")
         }
@@ -4659,10 +4662,10 @@ final class CaptureExperienceUITests: XCTestCase {
         revealBelow(results, in: transcriptScroll)
         XCTAssertTrue(results.waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["Follow-up ready"].firstMatch.waitForExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts["1 notes · 1 tasks · 1 goals"].firstMatch.exists)
+        XCTAssertTrue(app.staticTexts["1 note · 1 task · 1 goal"].firstMatch.exists)
         XCTAssertTrue(
             app.staticTexts.matching(
-                NSPredicate(format: "label CONTAINS %@", "ordinary editable Session work")
+                NSPredicate(format: "label CONTAINS %@", "Edit here or continue in your client space")
             ).firstMatch.exists
         )
 
@@ -4699,6 +4702,52 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(moreSuggestions.label.contains("optional"))
         XCTAssertTrue(moreSuggestions.label.contains("Use, edit, or dismiss"))
         XCTAssertFalse(moreSuggestions.label.contains("Review packet"))
+    }
+
+    func testTranscriptFollowUpOpensTheSameNoteTaskAndGoalEditorWithoutLeavingTheTranscript() {
+        openPreviewTranscriptReview()
+        for (kind, id, expectedTitle) in [
+            ("NOTE", "preview-note", "What matters now"),
+            ("TASK", "preview-task", "Block 30 minutes for the first step"),
+            ("GOAL", "preview-goal", "Build a repeatable weekly practice"),
+        ] {
+            let edit = app.buttons["CaptureTranscriptEditWork_\(kind)_\(id)"].firstMatch
+            reveal(edit, searchAboveFirst: false)
+            XCTAssertTrue(edit.waitForExistence(timeout: 8))
+            edit.tap()
+            let editor = app.descendants(matching: .any)["CaptureCoachingWorkEditor"].firstMatch
+            XCTAssertTrue(editor.waitForExistence(timeout: 8), "Each result opens the existing client-space editor.")
+            let title = app.textFields["CaptureCoachingWorkTitle"].firstMatch
+            XCTAssertEqual(title.value as? String, expectedTitle)
+            XCTAssertFalse(app.descendants(matching: .any)["CaptureCoachingWorkKind"].firstMatch.exists,
+                "Editing an existing item should not present a disabled type chooser.")
+            title.tap()
+            title.typeText(" adjusted")
+            XCTAssertTrue((title.value as? String ?? "").contains("adjusted"))
+            XCTAssertFalse(app.buttons["CaptureCoachingSaveWork"].isEnabled,
+                "A presentation fixture must not make a network mutation.")
+            app.buttons["Cancel"].firstMatch.tap()
+            XCTAssertTrue(app.scrollViews["CaptureTranscriptReviewView"].firstMatch.waitForExistence(timeout: 8))
+        }
+    }
+
+    func testTranscriptFollowUpExpandsAllNotesTasksAndGoals() {
+        openPreviewTranscriptReview()
+        for (kind, noun) in [("NOTE", "note"), ("TASK", "task"), ("GOAL", "goal")] {
+            let showAll = app.buttons["CaptureTranscriptShowAllWork_\(kind)"].firstMatch
+            reveal(showAll, searchAboveFirst: false)
+            XCTAssertTrue(showAll.waitForExistence(timeout: 8))
+            XCTAssertEqual(showAll.label, "Show all 4 \(noun)s")
+            let fourth = app.buttons["CaptureTranscriptEditWork_\(kind)_preview-\(noun)-3"].firstMatch
+            XCTAssertFalse(fourth.exists)
+            showAll.tap()
+            reveal(fourth, searchAboveFirst: false)
+            XCTAssertTrue(fourth.waitForExistence(timeout: 8), "Every result can be reached, not just the first three.")
+            reveal(showAll, searchAboveFirst: false)
+            XCTAssertEqual(showAll.label, "Show fewer")
+            showAll.tap()
+            XCTAssertFalse(fourth.exists)
+        }
     }
 
     func testTranscriptPreviewVoiceIdentityStaysDisabled() throws {

@@ -174,6 +174,13 @@ case "$TEST_MODE" in
       exit 2
     fi
     ;;
+  transcript-work-edit)
+    TEST_CASE="testTranscriptEditsCanonicalClientTaskAndReadsItBackAfterRelaunch"
+    if [[ -z "$TEST_SESSION_ID" || -z "$TEST_TASK_ID" || -z "$TEST_TASK_EDIT_SOURCE_TITLE" || -z "$TEST_TASK_EDIT_UPDATED_TITLE" ]]; then
+      echo "Transcript work editing requires an exact Session, task, original title, and replacement title." >&2
+      exit 2
+    fi
+    ;;
   transcript-task-readback)
     TEST_CASE="testReviewedTranscriptTaskAppearsInTodayAndReturnsToExactSourceOnIPhone"
     if [[ -z "$TEST_SESSION_ID" || -z "$TEST_TASK_ID" || -z "$TEST_EXPECTED_PACKET_TASK_TITLE" ]]; then
@@ -468,6 +475,8 @@ echo "Result:      $RESULT_BUNDLE_PATH"
 if [[ -n "$DERIVED_DATA_PATH" ]]; then
   echo "DerivedData: $DERIVED_DATA_PATH"
 fi
+
+node "$SCRIPT_DIR/warm-local-runtime.mjs" "$BASE_URL"
 
 SMOKE_CREDENTIALS_FILE=""
 SMOKE_CREDENTIALS_LOCK=""

@@ -1046,6 +1046,7 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
     )
 
     private static var previewResults: MobileCaptureTranscriptResults {
+        let itemCount = ProcessInfo.processInfo.arguments.contains("--capture-follow-up-many-items-preview") ? 4 : 1
         let speakerLabel = CaptureLaunchConfiguration.usesAppStorePresentation
             ? "Client"
             : "Charlie"
@@ -1070,38 +1071,38 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
                 title: "Session recap",
                 body: "The client chose one clear next move and named the support that will make it easier to follow through."
             ),
-            notes: [
+            notes: (0..<itemCount).map { index in
                 .init(
-                    id: "preview-note",
-                    title: "What matters now",
+                    id: index == 0 ? "preview-note" : "preview-note-\(index)",
+                    title: index == 0 ? "What matters now" : "Additional note \(index + 1)",
                     body: "Protect time for the first concrete step before the next Session.",
                     source: source
-                ),
-            ],
-            tasks: [
+                )
+            },
+            tasks: (0..<itemCount).map { index in
                 .init(
-                    id: "preview-task",
-                    title: "Block 30 minutes for the first step",
+                    id: index == 0 ? "preview-task" : "preview-task-\(index)",
+                    title: index == 0 ? "Block 30 minutes for the first step" : "Additional task \(index + 1)",
                     detail: "Put the first attempt on the calendar this week.",
                     status: "OPEN",
                     assignedUserId: "preview-client",
                     dueAt: nil,
                     completedAt: nil,
                     source: source
-                ),
-            ],
-            goals: [
+                )
+            },
+            goals: (0..<itemCount).map { index in
                 .init(
-                    id: "preview-goal",
-                    title: "Build a repeatable weekly practice",
+                    id: index == 0 ? "preview-goal" : "preview-goal-\(index)",
+                    title: index == 0 ? "Build a repeatable weekly practice" : "Additional goal \(index + 1)",
                     description: "Start small enough to keep the commitment consistently.",
                     status: "ACTIVE",
                     ownerUserId: "preview-client",
                     targetAt: nil,
                     achievedAt: nil,
                     source: source
-                ),
-            ]
+                )
+            }
         )
     }
 
@@ -2094,7 +2095,12 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
         }
     }
 
-    private func loadPacketCandidates(roomID: String) async {
+    func refreshFollowUp(roomID: String) async {
+        guard activeRoomID == roomID, !isUsingProtectedCache else { return }
+        await loadPacketCandidates(roomID: roomID, preserveOnFailure: true)
+    }
+
+    private func loadPacketCandidates(roomID: String, preserveOnFailure: Bool = false) async {
         guard AuthManager.shared.networkActionsAllowed,
               var components = URLComponents(string: "\(baseURL)/api/mobile/capture/transcripts/packet") else {
             packetGoalCandidates = []
@@ -2113,11 +2119,13 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
         }
         components.queryItems = [URLQueryItem(name: "callRoomId", value: roomID)]
         guard let url = components.url else { return }
+        var responseStatus: Int?
         do {
             var request = URLRequest(url: url)
             request.cachePolicy = .reloadIgnoringLocalCacheData
             request.setValue("no-cache", forHTTPHeaderField: "Cache-Control")
             let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
+            responseStatus = response.statusCode
             guard response.statusCode < 400 else {
                 throw captureTranscriptError(data: data, fallback: "Packet goal candidates could not load.")
             }
@@ -2155,6 +2163,10 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
                 followUpPreparationFailed = false
             }
         } catch {
+            if preserveOnFailure, ![401, 403, 404].contains(responseStatus ?? 0) {
+                packetReviewError = "Updates paused. Your loaded work is still here; refresh when you're connected."
+                return
+            }
             packetGoalCandidates = []
             packetGoalMergeTargets = []
             packetNoteCandidates = []
@@ -3299,6 +3311,9 @@ struct CaptureTranscriptReviewView: View {
     @StateObject private var playback = CaptureTranscriptPlaybackController()
     @StateObject private var protectedSessionPlayback = CaptureSessionProtectedPlaybackController()
     @StateObject private var library = LocalRecordingLibrary.shared
+    @StateObject private var followUpSessions = CaptureSessionClient()
+    @State private var workToEdit: TranscriptWorkEditDestination?
+    @State private var expandedWorkKinds: Set<String> = []
     @State private var scrollTargetSegmentID: String?
     @State private var packetCandidateFilter = CapturePacketCandidateReviewFilter.open
     @State private var showsAdditionalSuggestions = false
@@ -3312,6 +3327,25 @@ struct CaptureTranscriptReviewView: View {
         rawValue: UserDefaults.standard.string(forKey: transcriptPresentationModeKey) ?? ""
     ) ?? .conversation
     @AccessibilityFocusState private var accessibilityFocusedSegmentID: String?
+
+    private struct TranscriptWorkEditDestination: Identifiable {
+        let engagementID: String
+        let entryID: String
+        let kind: String
+        let previewEntry: MobileCoachingEngagementWorkEntry?
+        var id: String { "\(engagementID)|\(kind)|\(entryID)" }
+    }
+
+    private var followUpEngagementID: String? {
+        if previewOnly { return "preview-engagement" }
+        guard !followUpSessions.isUsingCachedSessions,
+              followUpSessions.lastAuthoritativeLoadAt != nil,
+              followUpSessions.errorMessage == nil,
+              let session = followUpSessions.sessions.first(where: { $0.callRoomId == roomID }),
+              let id = session.coachingEngagementId,
+              followUpSessions.coachingEngagements.contains(where: { $0.id == id }) else { return nil }
+        return id
+    }
 
     init(
         roomID: String,
@@ -3667,6 +3701,21 @@ struct CaptureTranscriptReviewView: View {
                     }
                 }
                 .presentationDetents([.large])
+            }
+            .sheet(item: $workToEdit, onDismiss: {
+                guard !previewOnly else { return }
+                Task { await client.refreshFollowUp(roomID: roomID) }
+            }) { destination in
+                CaptureCoachingWorkItemEditor(
+                    engagementID: destination.engagementID,
+                    entryID: destination.entryID,
+                    kind: destination.kind,
+                    previewEntry: destination.previewEntry
+                )
+            }
+            .task(id: client.packetResults != nil) {
+                guard client.packetResults != nil, !previewOnly else { return }
+                _ = await followUpSessions.load(authoritativeSessionID: roomID)
             }
             .task {
                 await client.load(
@@ -4048,7 +4097,7 @@ struct CaptureTranscriptReviewView: View {
                 VStack(alignment: .leading, spacing: 3) {
                     Text("Follow-up ready")
                         .font(.headline)
-                    Text("\(results.notes.count) notes · \(results.tasks.count) tasks · \(results.goals.count) goals")
+                    Text("\(workCount(results.notes.count, singular: "note")) · \(workCount(results.tasks.count, singular: "task")) · \(workCount(results.goals.count, singular: "goal"))")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -4061,8 +4110,9 @@ struct CaptureTranscriptReviewView: View {
 
             if !results.notes.isEmpty {
                 followUpResultSection(title: "Notes", systemImage: "note.text", tint: CapturePalette.accent) {
-                    ForEach(Array(results.notes.prefix(3))) { note in
+                    ForEach(Array(results.notes.prefix(expandedWorkKinds.contains("NOTE") ? results.notes.count : 3))) { note in
                         followUpResultRow(
+                            entryID: note.id, kind: "NOTE", status: nil,
                             title: captureTranscriptNonempty(note.title) ?? "Session note",
                             detail: note.body,
                             source: note.source,
@@ -4070,12 +4120,14 @@ struct CaptureTranscriptReviewView: View {
                             scrollProxy: scrollProxy
                         )
                     }
+                    showMoreWork(kind: "NOTE", count: results.notes.count, label: "notes")
                 }
             }
             if !results.tasks.isEmpty {
                 followUpResultSection(title: "Tasks", systemImage: "checklist", tint: CapturePalette.brass) {
-                    ForEach(Array(results.tasks.prefix(3))) { task in
+                    ForEach(Array(results.tasks.prefix(expandedWorkKinds.contains("TASK") ? results.tasks.count : 3))) { task in
                         followUpResultRow(
+                            entryID: task.id, kind: "TASK", status: task.status,
                             title: task.title,
                             detail: task.detail,
                             source: task.source,
@@ -4083,12 +4135,14 @@ struct CaptureTranscriptReviewView: View {
                             scrollProxy: scrollProxy
                         )
                     }
+                    showMoreWork(kind: "TASK", count: results.tasks.count, label: "tasks")
                 }
             }
             if !results.goals.isEmpty {
                 followUpResultSection(title: "Goals", systemImage: "target", tint: CapturePalette.plum) {
-                    ForEach(Array(results.goals.prefix(3))) { goal in
+                    ForEach(Array(results.goals.prefix(expandedWorkKinds.contains("GOAL") ? results.goals.count : 3))) { goal in
                         followUpResultRow(
+                            entryID: goal.id, kind: "GOAL", status: goal.status,
                             title: goal.title,
                             detail: goal.description,
                             source: goal.source,
@@ -4096,17 +4150,46 @@ struct CaptureTranscriptReviewView: View {
                             scrollProxy: scrollProxy
                         )
                     }
+                    showMoreWork(kind: "GOAL", count: results.goals.count, label: "goals")
                 }
             }
 
-            Text("These are ordinary editable Session work. Open the Session to adjust or remove them; tap a source here to return to the exact participant recording.")
+            Text(followUpEngagementID != nil
+                ? "Edit here or continue in your client space. Source links return to the recording."
+                : "Continue with these notes, tasks, and goals in the Session. Source links return to the recording.")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
+            if let error = client.packetReviewError {
+                Text(error)
+                    .font(.caption)
+                    .foregroundStyle(CapturePalette.brass)
+                Button("Retry updates") {
+                    Task { await client.refreshFollowUp(roomID: roomID) }
+                }
+                .disabled(previewOnly)
+                .frame(minHeight: 44)
+            }
         }
         .reviewCard()
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("CaptureTranscriptFollowUpResults")
+    }
+
+    private func workCount(_ count: Int, singular: String) -> String {
+        "\(count) \(singular)\(count == 1 ? "" : "s")"
+    }
+
+    @ViewBuilder
+    private func showMoreWork(kind: String, count: Int, label: String) -> some View {
+        if count > 3 {
+            Button(expandedWorkKinds.contains(kind) ? "Show fewer" : "Show all \(count) \(label)") {
+                if expandedWorkKinds.contains(kind) { expandedWorkKinds.remove(kind) }
+                else { expandedWorkKinds.insert(kind) }
+            }
+            .frame(minHeight: 44)
+            .accessibilityIdentifier("CaptureTranscriptShowAllWork_\(kind)")
+        }
     }
 
     private func followUpResultSection<Content: View>(
@@ -4128,27 +4211,49 @@ struct CaptureTranscriptReviewView: View {
 
     @ViewBuilder
     private func followUpResultRow(
+        entryID: String,
+        kind: String,
+        status: String?,
         title: String,
         detail: String?,
         source: MobileCaptureTranscriptResultSource?,
         desk: CaptureTranscriptCorrectionDesk,
         scrollProxy: ScrollViewProxy
     ) -> some View {
-        if let source,
-           let segment = transcriptSegment(for: source, in: desk) {
-            Button {
-                openFollowUpSource(
-                    segment,
-                    scrollProxy: scrollProxy
-                )
-            } label: {
+        VStack(alignment: .leading, spacing: 6) {
+            if let source,
+               let segment = transcriptSegment(for: source, in: desk) {
+                Button {
+                    openFollowUpSource(segment, scrollProxy: scrollProxy)
+                } label: {
+                    followUpResultLabel(title: title, detail: detail, source: source)
+                }
+                .buttonStyle(.plain)
+                .accessibilityHint("Opens the exact participant recording and transcript segment.")
+                .accessibilityIdentifier("CaptureTranscriptFollowUpSource_\(source.segmentId ?? segment.id)")
+            } else {
                 followUpResultLabel(title: title, detail: detail, source: source)
             }
-            .buttonStyle(.plain)
-            .accessibilityHint("Opens the exact participant recording and transcript segment.")
-            .accessibilityIdentifier("CaptureTranscriptFollowUpSource_\(source.segmentId ?? segment.id)")
-        } else {
-            followUpResultLabel(title: title, detail: detail, source: source)
+            if let engagementID = followUpEngagementID, client.packetResults?.editable == true {
+                Button {
+                    let previewEntry: MobileCoachingEngagementWorkEntry? = previewOnly ? .init(
+                        id: entryID, kind: kind, title: title, body: detail, status: status,
+                        owner: nil, visibility: "SHARED", dueAt: nil, canEdit: true,
+                        canChangeVisibility: false,
+                        createdAt: "2026-09-07T00:00:00Z", updatedAt: "2026-09-07T00:00:00Z"
+                    ) : nil
+                    workToEdit = .init(
+                        engagementID: engagementID, entryID: entryID,
+                        kind: kind, previewEntry: previewEntry
+                    )
+                } label: {
+                    Label("Edit", systemImage: "pencil")
+                        .frame(minHeight: 44)
+                }
+                .buttonStyle(.bordered)
+                .accessibilityLabel("Edit \(kind.lowercased()): \(title)")
+                .accessibilityIdentifier("CaptureTranscriptEditWork_\(kind)_\(entryID)")
+            }
         }
     }
 

@@ -370,7 +370,9 @@ final class MobileCoachingEngagementWorkspaceClient: ObservableObject {
         errorMessage = nil
         do {
             let (payload, response) = try await request(method: "GET")
-            guard response.statusCode < 400, payload.ok, let engagement = payload.engagement else {
+            guard response.statusCode < 400, payload.ok, let engagement = payload.engagement,
+                  engagement.id == engagementID else {
+                if response.statusCode < 400 { workspace = nil; pendingUndo = nil }
                 throw coachingClientError(payload.error ?? "This coaching space could not load.")
             }
             workspace = engagement
@@ -526,6 +528,10 @@ final class MobileCoachingEngagementWorkspaceClient: ObservableObject {
             request.httpBody = try JSONSerialization.data(withJSONObject: body)
         }
         let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
+        if [401, 403, 404].contains(response.statusCode) {
+            workspace = nil
+            pendingUndo = nil
+        }
         let payload = try decodeCoachingResponse(
             MobileCoachingEngagementWorkspaceResponse.self,
             from: data,
@@ -3852,12 +3858,68 @@ struct CaptureCoachingEngagementWorkspaceView: View {
     }
 }
 
-private struct MobileCoachingWorkEditorSheet: View {
+/// Reuses the client-space editor from a source transcript. The entry is loaded
+/// by canonical ID and kind; transcript wording is never a second work record.
+struct CaptureCoachingWorkItemEditor: View {
+    @Environment(\.dismiss) private var dismiss
+    @StateObject private var client: MobileCoachingEngagementWorkspaceClient
+    let entryID: String
+    let kind: String
+    let previewEntry: MobileCoachingEngagementWorkEntry?
+
+    init(engagementID: String, entryID: String, kind: String,
+         previewEntry: MobileCoachingEngagementWorkEntry? = nil) {
+        self.entryID = entryID
+        self.kind = kind
+        self.previewEntry = previewEntry
+        _client = StateObject(wrappedValue: MobileCoachingEngagementWorkspaceClient(engagementID: engagementID))
+    }
+
+    var body: some View {
+        Group {
+            if let workspace = client.workspace,
+               let entry = previewEntry ?? workspace.entries.first(where: { $0.id == entryID && $0.kind == kind }),
+               workspace.canWrite, entry.canEdit {
+                MobileCoachingWorkEditorSheet(
+                    client: client, workspace: workspace, entry: entry,
+                    // Removal stays beside the client-space undo banner.
+                    previewOnly: previewEntry != nil, allowsRemoval: false
+                )
+            } else {
+                NavigationStack {
+                    Group {
+                        if client.isLoading {
+                            ProgressView("Loading item…")
+                        } else {
+                            ContentUnavailableView {
+                                Label("Item unavailable", systemImage: "doc.text.magnifyingglass")
+                            } description: {
+                                Text(client.errorMessage ?? "This item is no longer available to edit in this client space.")
+                            } actions: {
+                                Button("Try again") { Task { await client.load() } }
+                            }
+                        }
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(CapturePalette.canvas)
+                    .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Close") { dismiss() } } }
+                }
+            }
+        }
+        .task {
+            if previewEntry != nil { client.loadPreview() }
+            else { await client.load() }
+        }
+    }
+}
+
+struct MobileCoachingWorkEditorSheet: View {
     @Environment(\.dismiss) private var dismiss
     @ObservedObject var client: MobileCoachingEngagementWorkspaceClient
     let workspace: MobileCoachingEngagementWorkspace
     let entry: MobileCoachingEngagementWorkEntry?
     let previewOnly: Bool
+    let allowsRemoval: Bool
 
     @State private var kind: String
     @State private var title: String
@@ -3874,12 +3936,14 @@ private struct MobileCoachingWorkEditorSheet: View {
         workspace: MobileCoachingEngagementWorkspace,
         entry: MobileCoachingEngagementWorkEntry?,
         preferredKind: String = "NOTE",
-        previewOnly: Bool = false
+        previewOnly: Bool = false,
+        allowsRemoval: Bool = true
     ) {
         self.client = client
         self.workspace = workspace
         self.entry = entry
         self.previewOnly = previewOnly
+        self.allowsRemoval = allowsRemoval
         _kind = State(initialValue: entry?.kind ?? preferredKind)
         _title = State(initialValue: entry?.title ?? "")
         _detail = State(initialValue: entry?.body ?? "")
@@ -3903,15 +3967,16 @@ private struct MobileCoachingWorkEditorSheet: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("What is it?") {
-                    Picker("Type", selection: $kind) {
-                        Text("Note").tag("NOTE")
-                        Text("Task").tag("TASK")
-                        Text("Goal").tag("GOAL")
+                Section(entry == nil ? "New item" : "Details") {
+                    if entry == nil {
+                        Picker("Type", selection: $kind) {
+                            Text("Note").tag("NOTE")
+                            Text("Task").tag("TASK")
+                            Text("Goal").tag("GOAL")
+                        }
+                        .pickerStyle(.segmented)
+                        .accessibilityIdentifier("CaptureCoachingWorkKind")
                     }
-                    .pickerStyle(.segmented)
-                    .disabled(entry != nil)
-                    .accessibilityIdentifier("CaptureCoachingWorkKind")
 
                     TextField(kind == "NOTE" ? "Note title" : kind == "TASK" ? "Task title" : "Goal title", text: $title)
                         .accessibilityIdentifier("CaptureCoachingWorkTitle")
@@ -3986,7 +4051,7 @@ private struct MobileCoachingWorkEditorSheet: View {
                     Section { MobileCoachingInlineWarning(text: error) }
                 }
 
-                if let entry {
+                if let entry, allowsRemoval {
                     Section {
                         Button(role: .destructive) {
                             isConfirmingRemoval = true

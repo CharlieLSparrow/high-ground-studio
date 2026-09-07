@@ -2792,6 +2792,62 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
 
     }
 
+    func testTranscriptEditsCanonicalClientTaskAndReadsItBackAfterRelaunch() throws {
+        let credentials = try runtimeSmokeCredentials()
+        guard let sessionID = credentials.sessionID, !sessionID.isEmpty,
+              let taskID = credentials.taskID, !taskID.isEmpty,
+              let originalTitle = credentials.taskEditSourceTitle, !originalTitle.isEmpty,
+              let updatedTitle = credentials.taskEditUpdatedTitle, !updatedTitle.isEmpty else {
+            throw XCTSkip("Transcript work editing requires exact Session, task, and title identities.")
+        }
+
+        func openTranscript(in app: XCUIApplication) {
+            selectRequestedSession(in: app, credentials: credentials)
+            let transcript = app.descendants(matching: .any)["CaptureSessionTranscriptReviewLink_\(sessionID)"].firstMatch
+            XCTAssertTrue(waitForRuntimeElement(transcript, in: app, timeout: 30, swipeAttempts: 12))
+            transcript.tap()
+            XCTAssertTrue(app.scrollViews["CaptureTranscriptReviewView"].waitForExistence(timeout: 30))
+            let menu = app.buttons["CaptureTranscriptJumpMenu"].firstMatch
+            XCTAssertTrue(menu.waitForExistence(timeout: 20))
+            menu.tap()
+            let followUp = app.buttons["CaptureTranscriptJumpToFollowUp"].firstMatch
+            XCTAssertTrue(followUp.waitForExistence(timeout: 15))
+            followUp.tap()
+        }
+
+        var app = try launchSignedInCaptureApp(initialTab: "record")
+        openTranscript(in: app)
+        var edit = app.buttons["CaptureTranscriptEditWork_TASK_\(taskID)"].firstMatch
+        XCTAssertTrue(waitForRuntimeElement(edit, in: app, timeout: 30, swipeAttempts: 12))
+        edit.tap()
+        var title = app.textFields["CaptureCoachingWorkTitle"].firstMatch
+        XCTAssertTrue(title.waitForExistence(timeout: 20))
+        XCTAssertEqual(title.value as? String, originalTitle)
+        replaceText(in: title, with: updatedTitle, app: app)
+        let save = app.buttons["CaptureCoachingSaveWork"].firstMatch
+        XCTAssertTrue(save.isEnabled)
+        save.tap()
+        XCTAssertTrue(app.descendants(matching: .any)["CaptureCoachingWorkEditor"].firstMatch.waitForNonExistence(timeout: 30))
+        XCTAssertTrue(app.scrollViews["CaptureTranscriptReviewView"].firstMatch.exists)
+        XCTAssertTrue(waitForRuntimeElement(
+            app.staticTexts[updatedTitle].firstMatch, in: app, timeout: 30, swipeAttempts: 10
+        ), "The source transcript should read back the edited canonical task without reopening the Session.")
+        attachRuntimeScreenshot(app, name: "Canonical task edited from its transcript")
+
+        app.terminate()
+        app = try launchSignedInCaptureApp(initialTab: "record")
+        openTranscript(in: app)
+        edit = app.buttons["CaptureTranscriptEditWork_TASK_\(taskID)"].firstMatch
+        XCTAssertTrue(waitForRuntimeElement(edit, in: app, timeout: 30, swipeAttempts: 12))
+        edit.tap()
+        title = app.textFields["CaptureCoachingWorkTitle"].firstMatch
+        XCTAssertTrue(title.waitForExistence(timeout: 20))
+        XCTAssertEqual(title.value as? String, updatedTitle,
+            "A new app process must load the same task identity and saved title from Nest.")
+        app.buttons["Cancel"].firstMatch.tap()
+        attachRuntimeScreenshot(app, name: "Canonical transcript task retained after relaunch")
+    }
+
     func testTranscriptFollowThroughReturnsToExactSourceOnIPhone() throws {
         let credentials = try runtimeSmokeCredentials()
         guard let taskID = credentials.taskID, !taskID.isEmpty,

@@ -39,7 +39,7 @@ jobs:
           node-version-file: .node-version
 
       - name: Test Capture CI routing
-        run: node --experimental-strip-types --test scripts/ci/capture-ci-routing.test.mjs scripts/ci/plan-changed-surfaces.test.mjs packages/repository-governance/src/release-manifest.test.ts
+        run: node --experimental-strip-types --test scripts/ci/capture-ci-routing.test.mjs scripts/ci/plan-changed-surfaces.test.mjs packages/repository-governance/src/release-manifest.test.ts apps/mobile-capture/HighGroundCapture/scripts/warm-local-runtime.test.mjs
 
       - name: Plan Capture validation
         id: plan
