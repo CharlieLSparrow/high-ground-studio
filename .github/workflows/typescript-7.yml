@@ -59,3 +59,6 @@ jobs:
 
       - name: Test TypeScript repository governance tooling
         run: pnpm --filter @high-ground/repository-governance test
+
+      - name: Test authenticated Quipsly agent tools
+        run: pnpm --filter quipsly-mcp test

@@ -593,15 +593,12 @@ importers:
 
   apps/quipsly-mcp:
     dependencies:
-      '@high-ground/quipsly-domain':
-        specifier: workspace:*
-        version: link:../../packages/quipsly-domain
       '@modelcontextprotocol/sdk':
-        specifier: latest
+        specifier: 1.30.0
         version: 1.30.0(zod@4.4.3)
-      '@prisma/client':
-        specifier: ^7.7.0
-        version: 7.7.0(@typescript/typescript6@6.0.2)(prisma@7.7.0(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(@typescript/typescript6@6.0.2)(react-dom@19.2.7(react@19.2.7))(react@19.2.7))
+      zod:
+        specifier: 4.4.3
+        version: 4.4.3
     devDependencies:
       '@types/node':
         specifier: ^22.0.0
