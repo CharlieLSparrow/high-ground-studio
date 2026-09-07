@@ -58,6 +58,7 @@ test("watch source types are deliberately limited to browser-playable video", ()
 
 test("only the exact generated rehearsal checklist is replaceable", () => {
   const seed = {
+    episode: { title: "High Ground Odyssey TestFlight Rehearsal" },
     textBlocks: [
       {
         order: 0,
@@ -78,6 +79,8 @@ test("only the exact generated rehearsal checklist is replaceable", () => {
     ],
   };
   assert.equal(isCanonicalSyntheticSeed(seed), true);
+  assert.equal(isCanonicalSyntheticSeed({ ...seed, episode: undefined }), false);
+  assert.equal(isCanonicalSyntheticSeed({ ...seed, episode: { title: "Another episode" } }), false);
   seed.textBlocks[1].body += "\nHuman edit";
   assert.equal(isCanonicalSyntheticSeed(seed), false);
 });

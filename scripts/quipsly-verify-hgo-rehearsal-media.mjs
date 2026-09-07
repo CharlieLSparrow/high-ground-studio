@@ -6,12 +6,11 @@ import { chmod, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
-import { applicationDefault, initializeApp } from "firebase-admin/app";
-import { getAuth } from "firebase-admin/auth";
-
 const requireFromQuipsly = createRequire(
   new URL("../apps/quipsly/package.json", import.meta.url),
 );
+const { applicationDefault, initializeApp } = requireFromQuipsly("firebase-admin/app");
+const { getAuth } = requireFromQuipsly("firebase-admin/auth");
 const { PrismaClient } = requireFromQuipsly("@prisma/client");
 const { PrismaPg } = requireFromQuipsly("@prisma/adapter-pg");
 

@@ -11,8 +11,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
-
-import { Storage } from "@google-cloud/storage";
+import { createRequire } from "node:module";
 
 import {
   CAPTURE_PROXY_QUEUE_KIND,
@@ -26,6 +25,8 @@ import {
 } from "../../packages/quipsly-media-processing/src/index.ts";
 
 const execute = promisify(execFile);
+const requireFromQuipsly = createRequire(new URL("../../apps/quipsly/package.json", import.meta.url));
+const { Storage } = requireFromQuipsly("@google-cloud/storage");
 const projectId = requiredEnvironment("PROJECT_ID", /^[a-z][a-z0-9-]{4,62}$/);
 const bucketName = requiredEnvironment(
   "QUIPSLY_MEDIA_BUCKET",
