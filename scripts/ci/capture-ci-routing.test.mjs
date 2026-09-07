@@ -48,6 +48,37 @@ test("both Capture jobs select the repository Node toolchain before running Node
   }
 });
 
+test("native preflight executes every command and stops at each injected failure", () => {
+  // No Xcode, network, or cloud spend: substitute only command execution while
+  // running the actual workflow shell, including its checked-in error policy.
+  const script = `
+    calls=0
+    invoke() {
+      calls=$((calls + 1))
+      printf '%s\\n' "$*"
+      if [[ "$calls" == "$TEST_FAIL_AT" ]]; then return 37; fi
+    }
+    bash() { invoke bash "$@"; }
+    node() { invoke node "$@"; }
+    ${stepScript("Validate Capture release source")}
+  `;
+  const run = (failure) => spawnSync("bash", ["--noprofile", "--norc", "-c", script], {
+    encoding: "utf8", env: { ...process.env, TEST_FAIL_AT: String(failure) },
+  });
+  const successful = run(0);
+  assert.equal(successful.status, 0, successful.stdout + successful.stderr);
+  const commands = successful.stdout.trim().split("\n");
+  assert.ok(commands.length > 10, "Native preflight unexpectedly lost its checks");
+  assert.equal(commands[0], "bash apps/mobile-capture/HighGroundCapture/scripts/verify-release-source.sh");
+  assert.equal(commands.at(-1), "node scripts/release/quipsly-capture-privacy-questionnaire.mjs --strict");
+  for (let failure = 1; failure <= commands.length; failure += 1) {
+    const result = run(failure);
+    assert.equal(result.status, 37, `Failure was swallowed: ${commands[failure - 1]}`);
+    assert.deepEqual(result.stdout.trim().split("\n"), commands.slice(0, failure),
+      `Commands continued after failure: ${commands[failure - 1]}`);
+  }
+});
+
 for (const shard of [0, 3]) {
   for (const exitCode of [0, 17, 143]) {
     test(`native CI shard ${shard} preserves runner exit ${exitCode} and diagnostic output`, (t) => {

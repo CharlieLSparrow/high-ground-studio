@@ -91,7 +91,9 @@ jobs:
 
       - name: Validate Capture release source
         if: matrix.shard == 0 || matrix.shard == 1
+        shell: bash
         run: |
+          set -euo pipefail
           bash apps/mobile-capture/HighGroundCapture/scripts/verify-release-source.sh
           bash scripts/test-capture-session-deep-links.sh
           bash apps/mobile-capture/HighGroundCapture/scripts/test-coaching-work-save.sh
