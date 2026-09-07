@@ -1,5 +1,9 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import os from "node:os";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import test from "node:test";
 
 import {
@@ -10,7 +14,18 @@ import {
   resultBundlePath,
   skippedTestCount,
   verifyExecution,
+  verifyResultTests,
 } from "./quipsly-capture-ui-test-runner.mjs";
+import { createPlan, discoverDeterministicTests } from "./quipsly-capture-ui-test-plan.mjs";
+
+const root = fileURLToPath(new URL("../../", import.meta.url));
+const fastfile = readFileSync(path.join(root, "apps/mobile-capture/HighGroundCapture/fastlane/Fastfile"), "utf8");
+function rubyMethod(name) {
+  const start = fastfile.indexOf(`\ndef ${name}(`);
+  assert.ok(start >= 0, `Missing Fastlane method ${name}`);
+  const end = fastfile.indexOf("\ndef ", start + 1);
+  return fastfile.slice(start, end < 0 ? undefined : end);
+}
 
 const captureWorkflow = readFileSync(
   new URL("../../.github/workflows/capture-pr-tests.yml", import.meta.url),
@@ -114,6 +129,132 @@ test("rejects a partial or unexpectedly broad execution", () => {
     }),
     /executed 16 of 15 planned tests/,
   );
+});
+
+// Shape emitted by Xcode 26's `xcresulttool get test-results tests`.
+const resultReport = (cases, bundle = "HighGroundCaptureUITests") => ({
+  testNodes: [{
+    nodeType: "Test Plan", name: "HighGroundCapture", children: [{
+      nodeType: "UI test bundle", name: bundle, children: [{
+        nodeType: "Test Suite", name: "CaptureExperienceUITests",
+        children: cases.map(([name, result = "Passed"]) => ({
+          nodeType: "Test Case", name: `${name}()`,
+          nodeIdentifier: `CaptureExperienceUITests/${name}()`, result,
+        })),
+      }],
+    }],
+  }],
+});
+const planned = [
+  "HighGroundCaptureUITests/CaptureExperienceUITests/testFirst",
+  "HighGroundCaptureUITests/CaptureExperienceUITests/testSecond",
+];
+
+test("structured results prove each planned identity regardless of execution order", () => {
+  assert.equal(verifyResultTests(resultReport([["testSecond"], ["testFirst"]]), planned), 2);
+});
+
+test("equal counts cannot hide a substituted, renamed, or wrong-target test", () => {
+  assert.throws(
+    () => verifyResultTests(resultReport([["testFirst"], ["testUnrelated"]]), planned),
+    /missing: .*testSecond; unexpected: .*testUnrelated/,
+  );
+  assert.throws(
+    () => verifyResultTests(resultReport([["testFirst"], ["testSecond"]], "OtherTests"), planned),
+    /missing: .*HighGroundCaptureUITests.*unexpected: OtherTests/,
+  );
+});
+
+test("structured results reject partial, empty, broad, and repeated executions", () => {
+  for (const cases of [[], [["testFirst"]]]) {
+    assert.throws(() => verifyResultTests(resultReport(cases), planned), /missing:/);
+  }
+  assert.throws(
+    () => verifyResultTests(resultReport([["testFirst"], ["testSecond"], ["testExtra"]]), planned),
+    /unexpected: .*testExtra/,
+  );
+  assert.throws(
+    () => verifyResultTests(resultReport([["testFirst"], ["testFirst"]]), planned),
+    /repeated planned test/,
+  );
+});
+
+test("a console success cannot override skipped, failed, expected-failure, or unknown results", () => {
+  for (const result of ["Skipped", "Failed", "Expected Failure", "Not Run", "", null]) {
+    assert.throws(
+      () => verifyResultTests(resultReport([["testFirst"], ["testSecond", result]]), planned),
+      /not passed: .*testSecond/,
+    );
+  }
+});
+
+test("missing structured evidence or malformed test identities cannot pass", () => {
+  for (const report of [null, {}, { testNodes: {} }]) {
+    assert.throws(() => verifyResultTests(report, planned), /no testNodes/);
+  }
+  assert.throws(
+    () => verifyResultTests({ testNodes: [{ nodeType: "Test Case", result: "Passed" }] }, planned),
+    /missing its bundle or test identity/,
+  );
+  for (const selectors of [[], [planned[0], planned[0]]]) {
+    assert.throws(() => verifyResultTests(resultReport([]), selectors), /nonempty, unique test plan/);
+  }
+});
+
+test("Fastlane and CI route every current test to the same phone or iPad platform", () => {
+  const source = readFileSync(path.join(root, "apps/mobile-capture/HighGroundCapture/HighGroundCaptureUITests/CaptureExperienceUITests.swift"), "utf8");
+  const plan = createPlan(discoverDeterministicTests(source), { suite: "full", shard: 1, shards: 1 });
+  const result = spawnSync("ruby", ["-rjson", "-e", `
+    ${rubyMethod("capture_ui_execution_groups")}
+    puts JSON.generate(capture_ui_execution_groups(JSON.parse(ARGV[0]), default_device: "iPhone"))
+  `, JSON.stringify(plan.selectors)], { encoding: "utf8" });
+  assert.equal(result.status, 0, result.stderr);
+  const rubyGroups = JSON.parse(result.stdout);
+  const nodeGroups = createExecutionGroups(plan, { destination: "iPhone", ipadDestination: "iPad" });
+  assert.deepEqual(rubyGroups.map((group) => group.selectors), nodeGroups.map((group) => group.selectors));
+});
+
+test("the real CLI and Fastlane reject wrong-name results even with a passing aggregate", (t) => {
+  const fixture = mkdtempSync(path.join(os.tmpdir(), "capture-result-verifier-"));
+  t.after(() => rmSync(fixture, { recursive: true, force: true }));
+  // Only the Xcode subprocess is substituted. Both checked-in entry points and
+  // the shared verifier execute normally without building or uploading an app.
+  writeFileSync(path.join(fixture, "xcrun"), `#!/usr/bin/env node
+if (process.env.CAPTURE_RESULT_UNREADABLE === "1") process.exit(1);
+process.stdout.write(process.env.CAPTURE_RESULT_FIXTURE);
+`, { mode: 0o700 });
+  const ruby = `
+    module UI
+      def self.user_error!(message); raise message; end
+      def self.message(message); puts message; end
+    end
+    REPO_ROOT = ARGV[0]
+    def capture_ui_xcresult_summary(path)
+      {result: "Passed", totalTestCount: 2, passedTests: 2, failedTests: 0, skippedTests: 0, expectedFailures: 0}
+    end
+    ${rubyMethod("verify_capture_ui_xcresult")}
+    verify_capture_ui_xcresult(ARGV[1], JSON.parse(ARGV[2]))
+  `;
+  for (const [cases, unreadable, passes] of [
+    [[["testFirst"], ["testSecond"]], false, true],
+    [[["testFirst"], ["testWrong"]], false, false],
+    [[["testFirst"], ["testSecond", "Skipped"]], false, false],
+    [[["testFirst"], ["testSecond"]], true, false],
+  ]) {
+    const env = {
+      ...process.env, PATH: `${fixture}${path.delimiter}${process.env.PATH}`,
+      CAPTURE_RESULT_FIXTURE: JSON.stringify(resultReport(cases)),
+      CAPTURE_RESULT_UNREADABLE: unreadable ? "1" : "0",
+    };
+    const bundle = path.join(fixture, "bundle with spaces.xcresult");
+    const cli = spawnSync(process.execPath, [
+      path.join(root, "scripts/release/quipsly-capture-ui-test-runner.mjs"),
+      `--verify-result-bundle=${bundle}`, ...planned.map((selector) => `--selector=${selector}`),
+    ], { encoding: "utf8", env });
+    assert.equal(cli.status === 0, passes, cli.stderr);
+    const release = spawnSync("ruby", ["-rjson", "-ropen3", "-e", ruby, root, bundle, JSON.stringify(planned)], { encoding: "utf8", env });
+    assert.equal(release.status === 0, passes, release.stderr);
+  }
 });
 
 test("preserves spaces in a destination as one spawned argument", () => {

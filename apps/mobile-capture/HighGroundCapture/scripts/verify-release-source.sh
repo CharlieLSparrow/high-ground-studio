@@ -120,7 +120,8 @@ require_absent_text "$fastfile" "HighGroundCapture.xcworkspace" "Fastlane no lon
 require_absent_text "$fastfile" "increment_build_number" "Fastlane does not silently mutate the committed build number"
 require_text "$fastfile" "UI_TEST_PLANNER" "Capture UI selection comes from the coverage-tested planner"
 require_text "$fastfile" 'only_testing: execution.fetch(:selectors)' "Capture UI runs each platform execution with exact test-method selectors instead of a monolithic class suite"
-require_text "$fastfile" 'IPAD_UI_TEST_SELECTOR' "Capture UI identifies the regular-width iPad contract as a dedicated platform execution"
+# Platform routing and exact result identities are exercised by
+# quipsly-capture-ui-test-runner.test.mjs; source spelling is not that proof.
 require_text "$fastfile" 'capture_simulator_destination(execution.fetch(:device))' "Capture UI resolves every phone and iPad simulator to an exact available device"
 require_text "$fastfile" 'run_options[:destination] = simulator.fetch(:destination)' "Capture UI pins every platform qualification to the exact simulator destination string accepted by scan"
 require_text "$fastfile" 'system("xcrun", "simctl", "erase", simulator.fetch(:udid)' "Capture UI returns each disposable simulator to an empty state after retaining its result evidence"
@@ -132,7 +133,6 @@ require_text "$fastfile" 'schema: "quipsly-capture-ui-test-evidence-v1"' "Captur
 require_text "$fastfile" 'selected_tests.uniq.length == selected_tests.length' "Qualified UI evidence rejects duplicate or omitted selectors"
 require_text "$fastfile" 'selected_tests.sort == expected_tests.sort' "Qualified UI evidence matches the exact source-derived full plan"
 require_text "$fastfile" 'Legacy direct result bundles cannot authorize sealed upload' "Sealed upload rejects source-unbound legacy UI bundles"
-require_text "$fastfile" 'verify_capture_ui_xcresult(result_bundle_path, shard.fetch("selectors").length)' "Qualified UI evidence independently reads every native result"
 require_text "$fastfile" 'summary[:result] == "Passed"' "Qualified UI evidence requires a passed native result"
 require_text "$fastfile" 'summary[:totalTestCount] == expected_test_count && summary[:passedTests] == expected_test_count' "Qualified UI evidence requires the exact planned test count"
 require_text "$fastfile" "parallel_testing: false" "Capture UI tests run serially to avoid cloned Simulator launch noise"

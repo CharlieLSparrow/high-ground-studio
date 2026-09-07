@@ -24,18 +24,8 @@ BUILD_NUMBER_AVAILABILITY = File.join(
   "quipsly-app-store-connect-build-number-availability.mjs",
 )
 DEFAULT_FULL_UI_TEST_SHARDS = 4
-IPAD_UI_TEST_SELECTORS = [
-  "HighGroundCaptureUITests/CaptureExperienceUITests/testRegularWidthIPadUsesANativeWorkspaceSidebar",
-  "HighGroundCaptureUITests/CaptureExperienceUITests/testPrivateVoiceNoteOpensCaptureWithoutMeetingPaperworkOnRegularWidthIPad",
-  "HighGroundCaptureUITests/CaptureExperienceUITests/testConsentNeededNextEpisodeOpensRecorderWithoutCrashingOnRegularWidthIPad",
-  "HighGroundCaptureUITests/CaptureExperienceUITests/testClientCoachingFormDraftSurvivesRelaunchOnRegularWidthIPad",
-  "HighGroundCaptureUITests/CaptureExperienceUITests/testRecorderLeadsWithAStandardCallGreenRoomOnRegularWidthIPad",
-  "HighGroundCaptureUITests/CaptureExperienceUITests/testVoiceWritingRecordsAndStopsThroughTheSourceFirstPathOnRegularWidthIPad",
-  "HighGroundCaptureUITests/CaptureExperienceUITests/testAudioInterruptionPausesAndRequiresExplicitResumeOnRegularWidthIPad",
-].freeze
-
 def capture_ui_execution_groups(selectors, default_device:)
-  ipad_selectors, iphone_selectors = selectors.partition { |selector| IPAD_UI_TEST_SELECTORS.include?(selector) }
+  ipad_selectors, iphone_selectors = selectors.partition { |selector| selector.include?("RegularWidthIPad") }
   groups = []
   groups << { slug: "iphone", device: default_device, selectors: iphone_selectors } unless iphone_selectors.empty?
   groups << {
@@ -153,14 +143,23 @@ rescue JSON::ParserError, KeyError, ArgumentError => error
   UI.user_error!("Capture UI result summary is invalid: #{error.message}")
 end
 
-def verify_capture_ui_xcresult(path, expected_test_count = nil)
+def verify_capture_ui_xcresult(path, selectors = nil)
   summary = capture_ui_xcresult_summary(path)
   UI.user_error!("Capture UI result bundle did not pass.") unless summary[:result] == "Passed"
   UI.user_error!("Capture UI result bundle contains failed, skipped, or expected-failure tests.") unless
     summary[:failedTests].zero? && summary[:skippedTests].zero? && summary[:expectedFailures].zero?
-  if expected_test_count
+  if selectors
+    expected_test_count = selectors.length
     UI.user_error!("Capture UI result bundle test count does not match its planned selectors.") unless
       summary[:totalTestCount] == expected_test_count && summary[:passedTests] == expected_test_count
+    stdout, stderr, status = Open3.capture3(
+      "node",
+      File.join(REPO_ROOT, "scripts", "release", "quipsly-capture-ui-test-runner.mjs"),
+      "--verify-result-bundle=#{path}",
+      *selectors.map { |selector| "--selector=#{selector}" },
+    )
+    UI.user_error!("Capture UI planned tests were not verified: #{stderr.strip}") unless status.success?
+    UI.message(stdout.strip)
   end
   summary
 end
@@ -235,7 +234,7 @@ def verify_ui_test_evidence_path(path, expected_source_revision: nil, require_fu
         result_bundle_path = File.expand_path(execution.fetch("resultBundlePath"), File.dirname(expanded_path))
         UI.user_error!("UI shard #{shard.fetch("shard")} execution result bundle is unavailable.") unless
           File.directory?(result_bundle_path) && File.file?(File.join(result_bundle_path, "Info.plist"))
-        summary = verify_capture_ui_xcresult(result_bundle_path, execution.fetch("selectors").length)
+        summary = verify_capture_ui_xcresult(result_bundle_path, execution.fetch("selectors"))
         UI.user_error!("UI shard #{shard.fetch("shard")} execution result summary changed.") unless
           execution.fetch("resultSummary") == summary.transform_keys(&:to_s)
       end
@@ -243,7 +242,7 @@ def verify_ui_test_evidence_path(path, expected_source_revision: nil, require_fu
       result_bundle_path = File.expand_path(shard.fetch("resultBundlePath"), File.dirname(expanded_path))
       UI.user_error!("UI shard #{shard.fetch("shard")} result bundle is unavailable.") unless
         File.directory?(result_bundle_path) && File.file?(File.join(result_bundle_path, "Info.plist"))
-      summary = verify_capture_ui_xcresult(result_bundle_path, shard.fetch("selectors").length)
+      summary = verify_capture_ui_xcresult(result_bundle_path, shard.fetch("selectors"))
       recorded_summary = shard.fetch("resultSummary")
       UI.user_error!("UI shard #{shard.fetch("shard")} recorded result summary changed.") unless
         recorded_summary == summary.transform_keys(&:to_s)
@@ -721,7 +720,7 @@ platform :ios do
             "Expected exactly one UI result bundle in #{execution_root}; found #{result_bundles.length}.",
           ) unless result_bundles.length == 1
           result_bundle_path = File.expand_path(result_bundles.fetch(0))
-          result_summary = verify_capture_ui_xcresult(result_bundle_path, execution.fetch(:selectors).length)
+          result_summary = verify_capture_ui_xcresult(result_bundle_path, execution.fetch(:selectors))
           execution_record = {
             device: execution.fetch(:device),
             selectors: execution.fetch(:selectors),

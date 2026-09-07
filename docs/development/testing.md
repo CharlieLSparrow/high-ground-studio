@@ -161,6 +161,17 @@ claims additionally require:
 4. TestFlight-installed smoke;
 5. App Store Connect processing and compliance readback.
 
+The shared UI runner checks both console execution/skip counts and every test's
+bundle, class, method, and passing result in Xcode's structured `.xcresult`.
+Matching counts alone are insufficient: substituted, missing, skipped, failed,
+or repeated tests fail the run. Results are retained in the requested evidence
+directory, or a printed temporary directory for local runs. Missing or unreadable
+result bundles fail rather than falling back to a console-only success.
+Fastlane qualification and pre-upload evidence readback use this same identity
+verifier. CI and Fastlane route tests containing `RegularWidthIPad` to iPad;
+an executable parity test checks all currently discovered selectors, avoiding a
+separate release-only list that can silently omit new iPad coverage.
+
 Native shared-work save recovery has a local fault-injection lane. Start Nest
 and Firebase Auth emulators, then run the proxy in a separate terminal:
 

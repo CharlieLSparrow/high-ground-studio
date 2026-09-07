@@ -1,9 +1,11 @@
 #!/usr/bin/env node
 
-import { spawn } from "node:child_process";
-import { readFile } from "node:fs/promises";
+import { execFile, spawn } from "node:child_process";
+import { mkdir, mkdtemp, readFile } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
 
 import {
   createPlan,
@@ -146,6 +148,56 @@ export function verifyExecution({ output, expectedCount, exitCode }) {
   return executedCount;
 }
 
+// An aggregate count can be green even when selectors drift and the wrong
+// journeys run. Match every planned identity against Xcode's result bundle.
+export function verifyResultTests(report, selectors) {
+  if (!Array.isArray(selectors) || selectors.length === 0
+    || new Set(selectors).size !== selectors.length) {
+    throw new Error("result verification requires a nonempty, unique test plan");
+  }
+  if (!Array.isArray(report?.testNodes)) {
+    throw new Error("Xcode result report has no testNodes");
+  }
+  const actual = new Map();
+  const visit = (nodes, bundle) => {
+    for (const node of nodes) {
+      const target = ["UI test bundle", "Unit test bundle"].includes(node.nodeType)
+        ? node.name : bundle;
+      if (node.nodeType === "Test Case") {
+        const identifier = node.nodeIdentifier?.replace(/\(\)$/, "");
+        if (!target || !identifier || !/^[^/]+\/[^/]+$/.test(identifier)) {
+          throw new Error("Xcode test case is missing its bundle or test identity");
+        }
+        const selector = `${target}/${identifier}`;
+        if (actual.has(selector)) throw new Error(`Xcode repeated planned test ${selector}`);
+        actual.set(selector, node.result);
+      }
+      if (node.children) visit(node.children, target);
+    }
+  };
+  visit(report.testNodes);
+  const planned = new Set(selectors);
+  const missing = selectors.filter((selector) => !actual.has(selector));
+  const unexpected = [...actual.keys()].filter((selector) => !planned.has(selector));
+  const unsuccessful = [...actual].filter(([, result]) => result !== "Passed");
+  const problems = [
+    missing.length ? `missing: ${missing.join(", ")}` : null,
+    unexpected.length ? `unexpected: ${unexpected.join(", ")}` : null,
+    unsuccessful.length
+      ? `not passed: ${unsuccessful.map(([selector, result]) => `${selector} (${result ?? "unknown"})`).join(", ")}`
+      : null,
+  ].filter(Boolean);
+  if (problems.length) throw new Error(`Xcode result identities do not satisfy the plan; ${problems.join("; ")}`);
+  return actual.size;
+}
+
+export async function verifyResultBundle(bundlePath, selectors) {
+  const { stdout } = await promisify(execFile)("xcrun", [
+    "xcresulttool", "get", "test-results", "tests", "--path", bundlePath, "--compact",
+  ], { maxBuffer: 16 * 1024 * 1024, timeout: 60_000 });
+  return verifyResultTests(JSON.parse(stdout), selectors);
+}
+
 async function runXcodebuild(arguments_) {
   return new Promise((resolve, reject) => {
     const child = spawn("xcodebuild", arguments_, {
@@ -173,10 +225,24 @@ async function runXcodebuild(arguments_) {
 }
 
 async function main() {
-  const options = parseRunnerArguments(process.argv.slice(2));
+  const argv = process.argv.slice(2);
+  if (argv[0]?.startsWith("--verify-result-bundle=")) {
+    const bundlePath = argv[0].slice("--verify-result-bundle=".length);
+    if (!bundlePath || argv.slice(1).some((arg) => !arg.startsWith("--selector="))) {
+      throw new Error("result verification requires a bundle and --selector arguments");
+    }
+    const selectors = argv.slice(1).map((arg) => arg.slice("--selector=".length));
+    const count = await verifyResultBundle(bundlePath, selectors);
+    process.stdout.write(`PASS: verified all ${count} planned test identities in ${bundlePath}\n`);
+    return;
+  }
+  const options = parseRunnerArguments(argv);
   const tests = discoverDeterministicTests(await readFile(SOURCE, "utf8"));
   const plan = createPlan(tests, options);
   const executionGroups = createExecutionGroups(plan, options);
+  options.evidenceRoot ??= await mkdtemp(path.join(os.tmpdir(), "quipsly-capture-ui-"));
+  await mkdir(options.evidenceRoot, { recursive: true });
+  process.stdout.write(`Xcode results: ${options.evidenceRoot}\n`);
 
   process.stdout.write(
     `Quipsly Capture ${plan.suite} UI suite: ${plan.selectedTestCount} tests`
@@ -184,6 +250,7 @@ async function main() {
   );
   let executedCount = 0;
   for (const execution of executionGroups) {
+    const bundlePath = resultBundlePath(options.evidenceRoot, execution.name);
     process.stdout.write(
       `Running ${execution.selectors.length} ${execution.name} contracts on ${execution.destination}\n`,
     );
@@ -192,13 +259,14 @@ async function main() {
       {
         ...options,
         destination: execution.destination,
-        resultBundlePath: resultBundlePath(options.evidenceRoot, execution.name),
+        resultBundlePath: bundlePath,
       },
     ));
-    executedCount += verifyExecution({
+    verifyExecution({
       ...result,
       expectedCount: execution.selectors.length,
     });
+    executedCount += await verifyResultBundle(bundlePath, execution.selectors);
   }
   if (executedCount !== plan.selectedTestCount) {
     throw new Error(
