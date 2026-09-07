@@ -10,6 +10,7 @@ import {
 } from "@high-ground/quipsly-domain/coaching-packet";
 
 import { coachingClientEntryPaths } from "@/lib/coaching-client-entry";
+import { coachingBookingActorAccessWhere, coachingScheduleRoomActorAccessWhere } from "@/lib/server/coaching-booking-access";
 import { coachingSetupPaymentPolicy } from "@/lib/coaching-setup";
 import { projectProviderRecordingState } from "@/lib/provider-recording-state";
 import { getPrismaClient } from "@/lib/prisma";
@@ -686,11 +687,7 @@ export async function GET(request: Request) {
   const prisma = getPrismaClient() as any;
   const userId = session.user.id;
   const now = new Date();
-  const userBookingWhere = session.user.isStaff
-    ? {}
-    : {
-        OR: [{ clientUserId: userId }, { coachUserId: userId }],
-      };
+  const userBookingWhere = coachingBookingActorAccessWhere(session.user);
   const userRoomWhere = session.user.isStaff
     ? {}
     : {
@@ -700,6 +697,7 @@ export async function GET(request: Request) {
           { booking: { clientUserId: userId } },
           { booking: { coachUserId: userId } },
         ],
+        AND: [coachingScheduleRoomActorAccessWhere(session.user)],
       };
 
   const [scheduleAccess, coachProfiles, offerings, upcomingBookings, bookingHolds, recentRooms, openRequests] =

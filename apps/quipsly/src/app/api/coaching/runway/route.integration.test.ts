@@ -12,7 +12,8 @@ import { getPrismaClient } from "@/lib/prisma";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 import { ensureCoachingEngagement } from "@/lib/server/coaching-engagement";
 import { homeNestSlugForEmail } from "@/lib/server/home-nest";
-import { POST } from "./route";
+import { GET, POST } from "./route";
+import { GET as calendarGET } from "../bookings/[bookingId]/calendar/route";
 import * as emailQueue from "@/lib/server/transactional-email-worker";
 
 const enabled = process.env.QUIPSLY_LOCAL_DB_SMOKE === "1";
@@ -141,6 +142,44 @@ if (enabled) {
     } finally {
       await prisma.coachingEngagementMember.updateMany({ where: { engagementId, userId: coach.id }, data: { status: "ACTIVE" } });
     }
+  });
+
+  it("revokes overview and calendar reads despite retained booking and room identities", async () => {
+    const converted = await act({ action: "convert-booking-hold", holdId: await hold() });
+    const bookingId = converted.body.result.bookingId;
+    const roomId = converted.body.result.callRoomId;
+    async function read(actor = client) {
+      jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({
+        user: { ...actor, isStaff: false, roles: [actor.id === client.id ? "CLIENT" : "COACH"] },
+      } as never);
+      const overview = await GET(new Request("http://localhost/api/coaching/runway"));
+      expect(overview.status).toBe(200);
+      const body = await overview.json();
+      const calendar = await calendarGET(new Request(`http://localhost/api/coaching/bookings/${bookingId}/calendar`), {
+        params: Promise.resolve({ bookingId }),
+      });
+      const visible = body.upcomingBookings.some((booking: {id: string}) => booking.id === bookingId);
+      expect(body.captureRooms.some((room: {id: string}) => room.id === roomId)).toBe(visible);
+      return { visible, calendar };
+    }
+    expect(await read()).toMatchObject({ visible: true, calendar: { status: 200 } });
+    expect(await read(outsider)).toMatchObject({ visible: false, calendar: { status: 404 } });
+    await prisma.coachingEngagementMember.updateMany({ where: { engagementId, userId: client.id }, data: { status: "REMOVED" } });
+    try {
+      expect(await read()).toMatchObject({ visible: false, calendar: { status: 404 } });
+      expect(await read(coach)).toMatchObject({ visible: true, calendar: { status: 200 } });
+    } finally {
+      await prisma.coachingEngagementMember.updateMany({ where: { engagementId, userId: client.id }, data: { status: "ACTIVE" } });
+    }
+    await prisma.callParticipant.updateMany({ where: { roomId, userId: client.id }, data: { accessStatus: "REMOVED" } });
+    try {
+      expect(await read()).toMatchObject({ visible: false, calendar: { status: 404 } });
+      expect(await read(coach)).toMatchObject({ visible: true, calendar: { status: 200 } });
+    } finally {
+      await prisma.callParticipant.updateMany({ where: { roomId, userId: client.id }, data: { accessStatus: "ACTIVE" } });
+    }
+    expect(await read()).toMatchObject({ visible: true, calendar: { status: 200 } });
+    expect(await prisma.coachingBooking.findUnique({ where: { id: bookingId } })).toMatchObject({ clientUserId: client.id });
   });
 
   it("does not silently move reserved time to a different space", async () => {
