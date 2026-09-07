@@ -671,6 +671,9 @@ describe("packet source selection", () => {
       explicitlySelected: true,
     });
     expect(payload.transcriptJob).toBeNull();
+    expect(payload.packet.status).toBe("NOT_READY");
+    expect(payload.packet.nextAction).toBe("Transcribe this recording to create a recap, notes, tasks, and goals.");
+    expect(payload.packet.reviewAccess).toMatchObject({ canReviewPrivatePacket: false, boundary: null });
     expect(payload.packet.safeActions).toEqual(expect.arrayContaining([
       expect.objectContaining({ id: "repair-transcript-first", label: "Start source-bound transcript", enabled: true }),
     ]));
@@ -686,5 +689,43 @@ describe("packet source selection", () => {
     expect(response.status).toBe(404);
     expect(await response.json()).toMatchObject({ ok: false, error: expect.stringMatching(/not part of the accessible Session/i) });
     expect(mobileCaptureTranscriptProcessingGate).not.toHaveBeenCalled();
+  });
+
+  it("a Session with no recording or transcript invites capture instead of claiming private-review restrictions", async () => {
+    const prisma = packetReadPrisma(null);
+    jest.mocked(getPrismaClient).mockReturnValue(prisma as any);
+    const response = await GET(new Request("http://localhost/api/mobile/capture/transcripts/packet?callRoomId=room-1"));
+    const payload = await response.json();
+    expect(response.status).toBe(200);
+    expect(payload.packet).toMatchObject({
+      status: "NOT_READY",
+      nextAction: "Record or import audio to get a transcript and editable follow-up.",
+      reviewAccess: { canReviewPrivatePacket: false, boundary: null },
+      noteCandidates: [], actionCandidates: [], goalCandidates: [],
+    });
+  });
+
+  it.each([
+    ["QUEUED", "NOT_READY", "Your transcript is processing"],
+    ["RUNNING", "NOT_READY", "Your transcript is processing"],
+    ["FAILED", "NOT_READY", "Transcription could not finish"],
+    ["HELD", "TRANSCRIPT_HELD", "Transcription is paused"],
+  ])("reports %s accurately to a participant without granting private access", async (status, expectedStatus, message) => {
+    const prisma = packetReadPrisma(recording);
+    prisma.transcriptJob.findFirst.mockResolvedValue({
+      id: "job-other-author", roomId: "room-1", assetId: recording.id,
+      requestedBy: "other-participant", room: { createdByUserId: "other-participant", booking: null },
+      status, asset: recording, segments: [], _count: { segments: 0, words: 0 },
+    } as never);
+    jest.mocked(getPrismaClient).mockReturnValue(prisma as any);
+    const response = await GET(new Request("http://localhost/api/mobile/capture/transcripts/packet?callRoomId=room-1"));
+    const payload = await response.json();
+    expect(response.status).toBe(200);
+    expect(payload.packet).toMatchObject({
+      status: expectedStatus,
+      nextAction: expect.stringContaining(message),
+      reviewAccess: { canReviewPrivatePacket: false },
+      noteCandidates: [], actionCandidates: [], goalCandidates: [],
+    });
   });
 });

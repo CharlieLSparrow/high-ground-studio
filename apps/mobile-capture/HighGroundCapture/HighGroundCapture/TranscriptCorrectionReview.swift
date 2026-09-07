@@ -3473,7 +3473,8 @@ struct CaptureTranscriptReviewView: View {
                         }
                         sourceTruth(desk)
                             .id("source-truth")
-                        if !client.canReviewPrivatePacket && client.packetResults == nil {
+                        if !client.canReviewPrivatePacket && client.packetResults == nil
+                            && client.packetStatus == "PRIVATE_REVIEWER_ONLY" {
                             participantFollowUpBoundary
                                 .id("shared-follow-up")
                         }
@@ -5302,17 +5303,10 @@ struct CaptureTranscriptReviewView: View {
                 .foregroundStyle(CapturePalette.plum)
             Text("Nothing has been shared yet")
                 .font(.headline)
-            Text("Your timed transcript remains available here. The coach's private review stays private unless they deliberately share a follow-up with you.")
+            Text("Use the transcript now. Shared notes, tasks, and goals will appear here when available.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
-            if let boundary = client.privatePacketBoundary?.trimmingCharacters(in: .whitespacesAndNewlines),
-               !boundary.isEmpty {
-                Text(boundary)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
         }
         .reviewCard()
         .accessibilityElement(children: .combine)

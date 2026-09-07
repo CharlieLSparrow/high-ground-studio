@@ -1499,9 +1499,11 @@ export async function GET(request: Request) {
         role: canReviewPrivatePacket
           ? "CANONICAL_REVIEWER"
           : "SESSION_PARTICIPANT",
-        boundary: canReviewPrivatePacket
-          ? "Private transcript follow-up is visible only to its canonical reviewer."
-          : "Session access does not include another participant's private transcript follow-up.",
+        boundary: !packetAuthorUserId
+          ? null
+          : canReviewPrivatePacket
+            ? "Private transcript follow-up is visible only to its author."
+            : "Session access does not include another participant's private transcript follow-up.",
       },
       build: summary
         ? {
@@ -1509,19 +1511,19 @@ export async function GET(request: Request) {
             correlationMode: selectedPacketBuild.correlationMode,
           }
         : null,
-      status: transcriptHeld
+      status: transcriptHeld || latestTranscriptJob?.status === "HELD"
         ? "TRANSCRIPT_HELD"
-        : !canReviewPrivatePacket
-          ? transcriptResults
-            ? "RESULTS_READY"
-            : "PRIVATE_REVIEWER_ONLY"
-          : packetStale
-            ? "TRANSCRIPT_REVIEW_CHANGED"
-            : summary
+        : !latestTranscriptJob || latestTranscriptJob.status !== "COMPLETED"
+          ? "NOT_READY"
+          : !canReviewPrivatePacket
+            ? transcriptResults
               ? "RESULTS_READY"
-              : latestTranscriptJob?.status === "COMPLETED"
-                ? "PACKET_READY_TO_BUILD"
-                : "NOT_READY",
+              : "PRIVATE_REVIEWER_ONLY"
+            : packetStale
+              ? "TRANSCRIPT_REVIEW_CHANGED"
+              : summary
+                ? "RESULTS_READY"
+                : "PACKET_READY_TO_BUILD",
       summary: summary
         ? {
             id: summary.id,
@@ -1637,17 +1639,23 @@ export async function GET(request: Request) {
           }
         : null,
       reviewLanes,
-      nextAction: transcriptHeld
-        ? "Await reviewed transcript release before building, reading, or reviewing packet projections."
-        : !canReviewPrivatePacket
-          ? "Continue using the Session transcript and shared follow-up. Private review remains with the canonical reviewer."
-          : packetStale
-            ? "Transcript review changed after this packet was built. Build a new packet before accepting any note, goal, or task candidate."
-            : summary
-              ? "Use or adjust the summary, highlights, tasks, and goals Quipsly created from this Session."
-              : latestTranscriptJob?.status === "COMPLETED"
-                ? "Build a packet from the completed transcript."
-                : "Finish transcription before packet review.",
+      nextAction: transcriptHeld || latestTranscriptJob?.status === "HELD"
+        ? "Transcription is paused. Check this Session's recording settings to continue."
+        : !latestTranscriptJob
+          ? selectedTranscriptAsset
+            ? "Transcribe this recording to create a recap, notes, tasks, and goals."
+            : "Record or import audio to get a transcript and editable follow-up."
+          : latestTranscriptJob.status === "FAILED"
+            ? "Transcription could not finish. Try transcribing this recording again."
+            : latestTranscriptJob.status !== "COMPLETED"
+              ? "Your transcript is processing. Notes, tasks, and goals will appear when it is ready."
+              : !canReviewPrivatePacket
+                ? "Use the Session transcript and any shared notes, tasks, and goals."
+                : packetStale
+                  ? "The transcript changed. Refresh the suggestions to use the latest words."
+                  : summary
+                    ? "Use or adjust the summary, highlights, tasks, and goals Quipsly created from this Session."
+                    : "Prepare notes, tasks, and goals from the completed transcript.",
       safeActions,
     },
   });
