@@ -4,6 +4,20 @@ This is the command deck for Quipsly. Read it before changing the repository.
 The product and its tests are the primary record; do not create routine plan,
 handoff, worklog, evidence-ledger, or status documents.
 
+## Prelaunch reality
+
+Quipsly does not yet hold production customer work. Existing routes, fixtures,
+test accounts, schema shapes, and internal workflows are not compatibility
+contracts. Treat the repository as a parts library: keep strong subsystems and
+replace weak product structure directly. Do not add compatibility layers or
+migration ceremony for synthetic data.
+
+Before destructive cleanup, inventory credentials, provider configuration,
+source recordings, original assets, and anything costly or impossible to
+recreate. Those deserve deliberate retention. Disposable fixtures and failed
+prototypes do not. Once real customers are admitted, switch to compatible
+rollouts and customer-data preservation as non-negotiable defaults.
+
 ## Product mission
 
 Quipsly is an AI work home for coaches, writers, researchers, trainers,
@@ -70,9 +84,9 @@ iPad or make every platform visually identical.
   and explicit rollback or roll-forward plans.
 
 Large refactors are welcome when they produce a complete user outcome and a
-clearer ownership boundary. Preserve customer data and proven behavior, not
-obsolete file shapes. Prefer replacing a giant component behind tested seams
-over indefinitely adding another conditional to it.
+clearer ownership boundary. Preserve valuable sources and proven behavior, not
+obsolete file or database shapes. Before launch, prefer direct replacement of a
+failed workflow over indefinitely adding conditionals or compatibility shims.
 
 ## Required proof
 
