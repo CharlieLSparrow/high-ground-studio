@@ -3771,7 +3771,7 @@ function CloudEditorContent() {
       return;
     }
     const subjectId = "proposalId" in edit ? edit.proposalId : edit.candidateId;
-    const receipt = await recordEditReviewAction({
+    const receiptPromise = recordEditReviewAction({
       action: reviewMode === "listen" ? "PROOF_LISTENED" : "PROOF_WATCHED",
       subjectId,
       subjectKind: "proposalId" in edit ? "proposal" : "candidate",
@@ -3796,7 +3796,12 @@ function CloudEditorContent() {
       setIsPreviewPlaying(false);
       setAiProofWatchEndSeconds(null);
       setCurrentTime(boundProof.playbackPositionSeconds);
-      setAiEditMessage(`Proof-listened through the exact protected ${boundProof.mediaAssetKind === "studio-media" ? "Studio media" : "Capture recording"} at ${formatClock(boundProof.playbackPositionSeconds)}.${receipt ? " Review receipt saved." : " Playback was operated, but the durable receipt failed and is visibly flagged."}`);
+      const message = `Proof-listened through the exact protected ${boundProof.mediaAssetKind === "studio-media" ? "Studio media" : "Capture recording"} at ${formatClock(boundProof.playbackPositionSeconds)}.`;
+      setAiEditMessage(message);
+      const receipt = await receiptPromise;
+      setAiEditMessage((current) => current === message
+        ? `${message}${receipt ? " Review receipt saved." : " Playback was operated, but the durable receipt failed and is visibly flagged."}`
+        : current);
       return;
     }
     const start = Math.max(0, edit.sourceRange.startSeconds - 1.5);
@@ -3805,7 +3810,14 @@ function CloudEditorContent() {
     setCurrentTime(start);
     setAiProofWatchEndSeconds(Math.max(start + 0.1, end));
     setIsPreviewPlaying(true);
-    setAiEditMessage(`${reviewMode === "listen" ? "Proof-listening to" : "Proof-watching"} untouched source from ${formatClock(start)} to ${formatClock(end)}. Nothing has been applied.${receipt ? " Review receipt saved." : " Playback is available, but the durable receipt failed and is visibly flagged."}`);
+    const message = `${reviewMode === "listen" ? "Proof-listening to" : "Proof-watching"} untouched source from ${formatClock(start)} to ${formatClock(end)}. Nothing has been applied.`;
+    setAiEditMessage(message);
+    // Preview does not mutate a draft. Activity logging must not delay playback
+    // or overwrite feedback from a newer user action when its request finishes.
+    const receipt = await receiptPromise;
+    setAiEditMessage((current) => current === message
+      ? `${message}${receipt ? " Review receipt saved." : " Playback is available, but the durable receipt failed and is visibly flagged."}`
+      : current);
   };
 
   const applyAiEditSuggestion = async (edit: AiEditSuggestion, index: number) => {

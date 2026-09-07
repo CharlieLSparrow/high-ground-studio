@@ -488,14 +488,25 @@ describe("CloudEditor production truth UX", () => {
     expect(screen.getByRole("button", { name: /Proof-watch source for proposal/i })).toBeInTheDocument();
     expect(screen.getByText(/source 00:00–00:08 · original unchanged/i)).toBeInTheDocument();
 
+    const priorFetch = jest.mocked(globalThis.fetch).getMockImplementation()!;
+    let releasePlaybackReceipt!: () => void;
+    const playbackReceiptPending = new Promise<void>((resolve) => { releasePlaybackReceipt = resolve; });
+    jest.mocked(globalThis.fetch).mockImplementation(async (input, init) => {
+      if (String(input).includes("/api/editor/edit-review") && init?.method === "POST"
+        && JSON.parse(String(init.body)).action === "PROOF_WATCHED") {
+        await playbackReceiptPending;
+      }
+      return priorFetch(input, init);
+    });
     await user.click(screen.getByRole("button", { name: /Proof-watch source for proposal/i }));
-    expect(await screen.findByRole("status")).toHaveTextContent(/Proof-watching untouched source/i);
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent(/Proof-watching untouched source/i));
     expect(screen.getByRole("status")).toHaveTextContent(/00:00 to 00:08/i);
     expect(screen.getByRole("status")).toHaveTextContent(/Nothing has been applied/i);
-    expect(screen.getByRole("region", { name: "Durable edit review history" })).toHaveTextContent(/PROOF WATCHED/i);
-
     await user.click(screen.getByRole("button", { name: "Apply proposal" }));
-    expect(await screen.findByRole("status")).toHaveTextContent(/Transcript cut applied to the editable timeline/i);
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent(/Transcript cut applied to the editable timeline/i));
+    releasePlaybackReceipt();
+    await waitFor(() => expect(screen.getByRole("region", { name: "Durable edit review history" })).toHaveTextContent(/PROOF WATCHED/i));
+    expect(screen.getByRole("status")).toHaveTextContent(/Transcript cut applied to the editable timeline/i);
     await user.click(screen.getByRole("button", { name: "Undo" }));
     expect(screen.getByRole("status")).toHaveTextContent(/Timeline undo completed/i);
     expect(screen.getByRole("status")).toHaveTextContent(/source media was never changed/i);
