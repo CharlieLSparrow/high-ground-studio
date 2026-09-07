@@ -240,8 +240,14 @@ fi
 local_livekit_version="$(${local_livekit_bin} --version 2>/dev/null | head -1)"
 local_livekit_secret_revision="$(printf '%s' "${local_livekit_secret}" | shasum -a 256 | awk '{print $1}')"
 worker_source_paths=(
+  # The workers execute canonical server/domain code too, not just their entrypoints.
+  apps/quipsly/src/lib
+  apps/quipsly/package.json
   apps/quipsly-media-processor
-  packages/quipsly-media-processing
+  packages
+  prisma
+  package.json
+  pnpm-lock.yaml
   scripts/dev/quipsly-local-up.sh
   scripts/dev/quipsly-local-state.sh
   scripts/dev/quipsly-local-transcript-worker.mjs

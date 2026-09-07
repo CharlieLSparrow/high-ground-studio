@@ -543,6 +543,38 @@ test("source fingerprints ignore unrelated commits but detect executable input d
   }
 });
 
+test("worker fingerprint changes when imported follow-through or domain code changes", () => {
+  const fixtureRoot = mkdtempSync(join(tmpdir(), "quipsly-worker-imports-"));
+  const sourcePaths = up.match(/worker_source_paths=\([\s\S]*?\n\)/)?.[0];
+  assert.ok(sourcePaths);
+  const run = (command, args) => spawnSync(command, args, {cwd: fixtureRoot, encoding: "utf8"});
+  const fingerprint = () => {
+    const result = run("bash", ["-c", `source "$1"; ${sourcePaths}; quipsly_local_git_source_revision "$2" "\u0024{worker_source_paths[@]}"`, "worker-import-test", stateHelperPath, fixtureRoot]);
+    assert.equal(result.status, 0, result.stderr);
+    return result.stdout;
+  };
+  try {
+    assert.equal(run("git", ["init", "--quiet"]).status, 0);
+    for (const directory of ["apps/quipsly/src/lib/server", "packages/quipsly-domain/src", "docs"])
+      mkdirSync(join(fixtureRoot, directory), {recursive: true});
+    const server = join(fixtureRoot, "apps/quipsly/src/lib/server/coaching-packets.ts");
+    const domain = join(fixtureRoot, "packages/quipsly-domain/src/coaching-packet.ts");
+    writeFileSync(server, "export const owner = 'client';\n");
+    writeFileSync(domain, "export const version = 1;\n");
+    const initial = fingerprint();
+    writeFileSync(server, "export const owner = 'speaker';\n");
+    const serverChanged = fingerprint();
+    assert.notEqual(serverChanged, initial);
+    writeFileSync(domain, "export const version = 2;\n");
+    const domainChanged = fingerprint();
+    assert.notEqual(domainChanged, serverChanged);
+    writeFileSync(join(fixtureRoot, "docs/readme.md"), "Documentation only\n");
+    assert.equal(fingerprint(), domainChanged);
+  } finally {
+    rmSync(fixtureRoot, {recursive: true, force: true});
+  }
+});
+
 test("local workers reload when executable source or runtime configuration changes", () => {
   assert.match(up, /local_worker_source_revision/);
   assert.match(
