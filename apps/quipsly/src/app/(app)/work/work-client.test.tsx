@@ -104,7 +104,7 @@ describe("Work Queue interactions", () => {
   it("returns a reviewed transcript task to its exact segment", () => {
     render(<WorkClient initialSnapshot={snapshot} />);
     const link = screen.getByRole("link", { name: "Return to 0:03–0:04" });
-    expect(link).toHaveAttribute("href", "/sessions/room-1#transcript-segment-segment-1");
+    expect(link).toHaveAttribute("href", "/sessions/room-1?mode=transcript&source=asset-1&at=3.66#transcript-segment-segment-1");
     expect(screen.getByText(/Charlie: Welcome, everybody/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/Participant recording\. This speaker comes from that participant's isolated recording\./i)).toBeInTheDocument();
     expect(screen.getByText((_, element) => (
@@ -264,7 +264,7 @@ describe("Work Queue interactions", () => {
     };
     render(<WorkClient initialSnapshot={goalSnapshot} />);
     const link = screen.getByRole("link", { name: "Return to 0:12–0:17" });
-    expect(link).toHaveAttribute("href", "/sessions/room-2#transcript-segment-segment-2");
+    expect(link).toHaveAttribute("href", "/sessions/room-2?mode=transcript&source=asset-2&at=12.4#transcript-segment-segment-2");
     expect(screen.getByText("Homer: Build a repeatable coaching review habit.")).toBeInTheDocument();
   });
 
@@ -325,7 +325,7 @@ describe("Work Queue interactions", () => {
     expect(screen.getByText("Scott: The Friday review is helping me follow through.")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Return to 1:03–1:11" })).toHaveAttribute(
       "href",
-      "/sessions/room-coaching#transcript-segment-segment-3",
+      "/sessions/room-coaching?mode=transcript&source=asset-coaching&at=63.2#transcript-segment-segment-3",
     );
     expect(screen.getByText(/Evidence was appended without changing this goal’s definition/i)).toBeInTheDocument();
   });

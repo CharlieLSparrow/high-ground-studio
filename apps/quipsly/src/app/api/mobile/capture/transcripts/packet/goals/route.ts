@@ -548,7 +548,7 @@ export async function POST(request: Request) {
         });
         if (
           resolvedEvidence.desk.transcriptJobId !== transcriptJobId
-          || resolvedEvidence.playback.recordingAssetId !== recordingAssetId
+          || resolvedEvidence.workSource.recordingAssetId !== recordingAssetId
           || (authorizedRoom.projectId && resolvedEvidence.desk.projectId !== authorizedRoom.projectId)
         ) {
           throw new GoalReviewBoundaryError(
@@ -565,7 +565,7 @@ export async function POST(request: Request) {
           sourceReviewState,
           automaticallySuggested: true,
           recordingAssetId,
-          playbackSourceId: resolvedEvidence.playback.sourceId,
+          playbackSourceId: resolvedEvidence.workSource.playbackSourceId,
         };
         goalProgressReceiptId = randomUUID();
         const mergedEvidence = {

@@ -1894,7 +1894,7 @@ struct MobileCaptureTodayTranscriptSourceAnchor: Codable, Hashable, Identifiable
     var sourceBoundParticipantId: String? = nil
     let acceptedCorrectionId: String?
     let recordingAssetId: String
-    let playbackSourceId: String
+    let playbackSourceId: String?
     var sourceSpan: MobileCaptureTranscriptSourceSpan? = nil
 
     var id: String { "\(roomId)|\(transcriptJobId)|\(segmentId)" }

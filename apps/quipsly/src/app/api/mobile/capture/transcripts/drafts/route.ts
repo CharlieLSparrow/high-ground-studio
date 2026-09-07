@@ -1,3 +1,4 @@
+import { transcriptWorkSource } from "@/lib/server/transcript-work-source";
 import { createHash } from "node:crypto";
 
 import { NextResponse } from "next/server";
@@ -76,7 +77,8 @@ export async function POST(request: Request) {
   try {
     const result = await prisma.$transaction(async (tx: any) => {
       const desk = await readTranscriptCorrectionDesk({ prisma: tx, roomId, actor, segmentId });
-      if (!desk.gate.allowed || !desk.playback) {
+      const workSource = transcriptWorkSource(desk);
+      if (!workSource) {
         throw new TranscriptCorrectionError(
           desk.gate.error || "The selected recording-backed transcript is unavailable.",
           409,
@@ -195,8 +197,8 @@ export async function POST(request: Request) {
             speakerAuthority: segment.speakerAuthority,
             sourceBoundParticipantId: segment.sourceBoundParticipantId,
             acceptedCorrectionId: segment.acceptedCorrection?.id ?? null,
-            recordingAssetId: desk.playback.recordingAssetId,
-            playbackSourceId: desk.playback.sourceId,
+            recordingAssetId: workSource.recordingAssetId,
+            playbackSourceId: workSource.playbackSourceId,
             sourceMutated: false,
             externalSideEffects: false,
             boundaries: boundaries(),

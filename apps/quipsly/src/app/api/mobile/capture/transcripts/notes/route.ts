@@ -1,3 +1,4 @@
+import { transcriptWorkSource } from "@/lib/server/transcript-work-source";
 import { createHash, randomUUID } from "node:crypto";
 import {
   isTranscriptNoteReviewDecision,
@@ -531,7 +532,8 @@ export async function POST(request: Request) {
       }
 
       const desk = await readTranscriptCorrectionDesk({ prisma: tx, roomId, actor, segmentId });
-      if (!desk.gate.allowed || !desk.playback) {
+      const workSource = transcriptWorkSource(desk);
+      if (!workSource) {
         throw new TranscriptCorrectionError(
           desk.gate.error || "Released recording-backed transcript evidence is required.",
           409,
@@ -741,8 +743,8 @@ export async function POST(request: Request) {
           ...sourceAnchor,
           sourceReviewState,
           automaticallySuggested: true,
-          recordingAssetId: desk.playback.recordingAssetId,
-          playbackSourceId: desk.playback.sourceId,
+          recordingAssetId: workSource.recordingAssetId,
+          playbackSourceId: workSource.playbackSourceId,
         };
         const mergeTargetBefore = canonicalNoteState(mergeTarget);
         const mergeTargetAfter = canonicalNoteState({
@@ -885,8 +887,8 @@ export async function POST(request: Request) {
             objectType: "TranscriptSegmentSpan",
             roomId,
             transcriptJobId: desk.transcriptJobId,
-            recordingAssetId: desk.playback.recordingAssetId,
-            playbackSourceId: desk.playback.sourceId,
+            recordingAssetId: workSource.recordingAssetId,
+            playbackSourceId: workSource.playbackSourceId,
             transcriptSnapshotSha256: packetTranscriptSnapshotSha256,
             ...sourceAnchor,
           },
@@ -962,8 +964,8 @@ export async function POST(request: Request) {
         transcriptJobId: desk.transcriptJobId,
         ...sourceAnchor,
         sourceReviewState,
-        recordingAssetId: desk.playback.recordingAssetId,
-        playbackSourceId: desk.playback.sourceId,
+        recordingAssetId: workSource.recordingAssetId,
+        playbackSourceId: workSource.playbackSourceId,
         initialTitle: title,
         initialBody: noteBody,
         initialKind: kind,
@@ -1047,8 +1049,8 @@ export async function POST(request: Request) {
             objectType: "TranscriptSegmentSpan",
             roomId,
             transcriptJobId: desk.transcriptJobId,
-            recordingAssetId: desk.playback.recordingAssetId,
-            playbackSourceId: desk.playback.sourceId,
+            recordingAssetId: workSource.recordingAssetId,
+            playbackSourceId: workSource.playbackSourceId,
             transcriptSnapshotSha256: packetTranscriptSnapshotSha256,
             ...sourceAnchor,
           },

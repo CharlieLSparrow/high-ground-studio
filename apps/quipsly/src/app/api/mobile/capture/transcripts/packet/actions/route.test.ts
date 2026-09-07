@@ -270,7 +270,7 @@ describe("action candidate review route", () => {
     mockedTranscriptGate.mockResolvedValue({ allowed: true, receipt: null });
     mockedResolveTranscriptEvidence.mockResolvedValue({
       desk: { transcriptJobId: TRANSCRIPT_JOB_ID, projectId: "project-1" },
-      playback: { recordingAssetId: RECORDING_ASSET_ID, sourceId: "protected-source-1" },
+      workSource: { recordingAssetId: RECORDING_ASSET_ID, playbackSourceId: "protected-source-1" },
       sourceAnchor: {
         segmentId: "segment-1",
         segmentIds: ["segment-1"],

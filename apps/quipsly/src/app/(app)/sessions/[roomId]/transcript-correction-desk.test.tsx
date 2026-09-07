@@ -1071,25 +1071,32 @@ describe("TranscriptCorrectionDesk", () => {
     expect(screen.getByText(/waveform and drift review still required/i)).toBeInTheDocument();
   });
 
-  it("creates an explicit self-owned task with the exact provider segment identity", async () => {
-    const fetchMock = jest.fn()
-      .mockResolvedValueOnce({ ok: true, json: async () => desk(true) })
-      .mockResolvedValueOnce({ ok: true, json: async () => ({ ok: true, idempotentReplay: false, task: { id: "task-1", title: "Prepare the opening", status: "OPEN" } }) })
-      .mockResolvedValueOnce({ ok: true, json: async () => desk(true) });
+  it.each([true, false])("creates a self-owned task with exact source identity when playback availability is %s", async (hasPlayback) => {
+    const fetchMock = jest.fn(async (url: string, _options?: RequestInit) => {
+      if (url === "/api/mobile/capture/recordings/promote") {
+        return { ok: false, json: async () => ({ error: "Audio is still unavailable." }) };
+      }
+      if (url === "/api/mobile/capture/transcripts/tasks") {
+        return { ok: true, json: async () => ({ ok: true, idempotentReplay: false, task: { id: "task-1", title: "Prepare the opening", status: "OPEN" } }) };
+      }
+      return { ok: true, json: async () => desk(hasPlayback) };
+    });
     global.fetch = fetchMock as unknown as typeof fetch;
 
     render(<TranscriptCorrectionDesk roomId="room-1" />);
     await screen.findByText("Welcome, everybody.");
-    await markProtectedPlaybackReady();
+    if (hasPlayback) await markProtectedPlaybackReady();
     fireEvent.click(screen.getByText("Create from this moment"));
     fireEvent.click(screen.getByRole("button", { name: /make this my task/i }));
     fireEvent.change(screen.getByLabelText(/task title/i), { target: { value: "Prepare the opening" } });
     fireEvent.click(screen.getByRole("button", { name: /create my task/i }));
 
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
-    const request = fetchMock.mock.calls[1];
+    await screen.findByText("Task created in Today and Work: Prepare the opening");
+    const requests = fetchMock.mock.calls.filter(([url]) => url === "/api/mobile/capture/transcripts/tasks");
+    expect(requests).toHaveLength(1);
+    const request = requests[0]!;
     expect(request[0]).toBe("/api/mobile/capture/transcripts/tasks");
-    expect(JSON.parse(request[1].body)).toMatchObject({
+    expect(JSON.parse(request[1]!.body as string)).toMatchObject({
       roomId: "room-1",
       segmentId: "segment-1",
       expectedProviderTextSha256: "a".repeat(64),

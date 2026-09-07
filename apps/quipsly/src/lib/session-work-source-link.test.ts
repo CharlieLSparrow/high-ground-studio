@@ -16,11 +16,23 @@ describe("work-to-recording navigation", () => {
       transcriptJobId: "job-1", segmentId: "segment-1", startSeconds: 3.5, endSeconds: 6,
       providerTextSha256: "a".repeat(64), effectiveTextSnapshot: "I will write tomorrow.",
       recordingAssetId: "asset-1", playbackSourceId: "playback-1",
-    })).toBe("/sessions/room-1?mode=transcript&source=asset-1&at=3.5");
+    })).toBe("/sessions/room-1?mode=transcript&source=asset-1&at=3.5#transcript-segment-segment-1");
   });
 
   it("opens the combined transcript for a recap without fabricating a timestamp", () => {
     expect(sessionWorkSourceHref("room-1", generated)).toBe("/sessions/room-1?mode=transcript");
+  });
+
+  it.each(["note", "task", "goal"])("keeps a %s source link when its audio player is not ready", (kind) => {
+    const source = {
+      schema: `quipsly-transcript-derived-${kind}-v1`, roomId: "room-1",
+      transcriptJobId: "job-1", segmentId: "segment-1", startSeconds: 3.5, endSeconds: 6,
+      providerTextSha256: "a".repeat(64), effectiveTextSnapshot: "I will write tomorrow.",
+      recordingAssetId: "asset-1", playbackSourceId: null,
+    };
+    expect(sessionWorkSourceHref("room-1", source)).toBe("/sessions/room-1?mode=transcript&source=asset-1&at=3.5#transcript-segment-segment-1");
+    expect(sessionWorkSourceHref("room-1", { ...source, recordingAssetId: null })).toBeNull();
+    expect(sessionWorkSourceHref("another-room", source)).toBeNull();
   });
 
   it.each([NaN, Infinity, -1])("does not manufacture a seek for invalid source time %s", (at) => {

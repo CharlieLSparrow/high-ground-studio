@@ -57,7 +57,7 @@ export type TranscriptDerivedTaskSourceAnchor = {
   sourceBoundParticipantId?: string | null;
   acceptedCorrectionId: string | null;
   recordingAssetId: string;
-  playbackSourceId: string;
+  playbackSourceId: string | null;
   sourceSpan?: TranscriptSourceSpanEvidence | null;
 };
 
@@ -226,10 +226,10 @@ export function readTranscriptDerivedTaskSource(value: unknown): TranscriptDeriv
   const providerTextSha256 = text(source.providerTextSha256, 64).toLowerCase();
   const effectiveTextSnapshot = text(source.effectiveTextSnapshot, 10_000);
   const recordingAssetId = text(source.recordingAssetId, 200);
-  const playbackSourceId = text(source.playbackSourceId, 200);
+  const playbackSourceId = nullableText(source.playbackSourceId, 200);
   if (!roomId || !transcriptJobId || !segmentId || startSeconds === null || endSeconds === null
       || endSeconds < startSeconds || !/^[a-f0-9]{64}$/.test(providerTextSha256)
-      || !effectiveTextSnapshot || !recordingAssetId || !playbackSourceId) {
+      || !effectiveTextSnapshot || !recordingAssetId) {
     return null;
   }
   const span = optionalSourceSpan(source, { segmentId, startSeconds, endSeconds, providerTextSha256, effectiveTextSnapshot });
@@ -267,10 +267,10 @@ export function readTranscriptDerivedGoalSource(value: unknown): TranscriptDeriv
   const providerTextSha256 = text(source.providerTextSha256, 64).toLowerCase();
   const effectiveTextSnapshot = text(source.effectiveTextSnapshot, 10_000);
   const recordingAssetId = text(source.recordingAssetId, 200);
-  const playbackSourceId = text(source.playbackSourceId, 200);
+  const playbackSourceId = nullableText(source.playbackSourceId, 200);
   if (!roomId || !transcriptJobId || !segmentId || startSeconds === null || endSeconds === null
       || endSeconds < startSeconds || !/^[a-f0-9]{64}$/.test(providerTextSha256)
-      || !effectiveTextSnapshot || !recordingAssetId || !playbackSourceId) return null;
+      || !effectiveTextSnapshot || !recordingAssetId) return null;
   const span = optionalSourceSpan(source, { segmentId, startSeconds, endSeconds, providerTextSha256, effectiveTextSnapshot });
   if (!span.valid) return null;
   const provenance = speakerProvenance(source);
@@ -306,10 +306,10 @@ export function readTranscriptDerivedNoteSource(value: unknown): TranscriptDeriv
   const providerTextSha256 = text(source.providerTextSha256, 64).toLowerCase();
   const effectiveTextSnapshot = text(source.effectiveTextSnapshot, 10_000);
   const recordingAssetId = text(source.recordingAssetId, 200);
-  const playbackSourceId = text(source.playbackSourceId, 200);
+  const playbackSourceId = nullableText(source.playbackSourceId, 200);
   if (!roomId || !transcriptJobId || !segmentId || startSeconds === null || endSeconds === null
       || endSeconds < startSeconds || !/^[a-f0-9]{64}$/.test(providerTextSha256)
-      || !effectiveTextSnapshot || !recordingAssetId || !playbackSourceId) return null;
+      || !effectiveTextSnapshot || !recordingAssetId) return null;
   const span = optionalSourceSpan(source, { segmentId, startSeconds, endSeconds, providerTextSha256, effectiveTextSnapshot });
   if (!span.valid) return null;
   const provenance = speakerProvenance(source);

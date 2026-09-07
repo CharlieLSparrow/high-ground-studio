@@ -246,6 +246,39 @@ async function automaticSession(tx: Prisma.TransactionClient, f: Awaited<ReturnT
 (enabled ? describe : describe.skip)("transcript work against a fresh database fixture", () => {
   afterAll(async () => { if (enabled) await actualPrisma.getPrismaClient().$disconnect(); });
 
+  it.each(["task", "goal", "note", "draft"] as const)("creates and retries a %s from a known transcript before playback is available", async (kind) => {
+    await withFixture(async (tx, f) => {
+      await tx.recordingAsset.update({ where: { id: f.asset.id }, data: { localManifestJson: {} } });
+      const { readTranscriptCorrectionDesk } = await import("@/lib/server/transcript-corrections");
+      const desk = await readTranscriptCorrectionDesk({ prisma: tx, roomId: f.room.id,
+        actor: { id: f.owner.id, email: f.owner.primaryEmail, isStaff: false }, segmentId: f.segments[0]!.id });
+      expect(desk).toMatchObject({ gate: { allowed: true }, recording: { id: f.asset.id }, playback: null });
+      const handler = { task: createTask, goal: createGoal, note: POST, draft: createDraft }[kind];
+      const body = { roomId: f.room.id, segmentId: f.segments[0]!.id,
+        expectedProviderTextSha256: sha(f.segments[0]!.text), clientRequestId: randomUUID(),
+        title: "Keep writing while audio prepares", body: f.sourceText,
+        kind: "SESSION_NOTE", visibility: "AUTHOR_PRIVATE" };
+      const submit = () => handler(new Request(`http://localhost/api/mobile/capture/transcripts/${kind}s`, {
+        method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
+      }));
+      const response = await submit();
+      const payload = await response.json();
+      expect({ status: response.status, error: payload.error }).toEqual({ status: 200, error: undefined });
+      const saved = kind === "draft" ? await tx.studioDocumentOperation.findFirstOrThrow({ where: { documentId: payload.document.id } })
+        : kind === "task" ? await tx.actionItem.findUniqueOrThrow({ where: { id: payload.task.id } })
+          : kind === "goal" ? await tx.goal.findUniqueOrThrow({ where: { id: payload.goal.id } })
+            : await tx.coachingNote.findUniqueOrThrow({ where: { id: payload.note.id } });
+      const source = "payloadJson" in saved ? saved.payloadJson : saved.sourceJson;
+      expect(source).toMatchObject({ transcriptJobId: f.job.id, recordingAssetId: f.asset.id,
+        segmentId: f.segments[0]!.id, playbackSourceId: null });
+      const retry = await submit();
+      expect(retry.status).toBe(200);
+      expect(await retry.json()).toMatchObject({ idempotentReplay: true });
+      expect(await tx.recordingAsset.findUniqueOrThrow({ where: { id: f.asset.id } }))
+        .toMatchObject({ localManifestJson: {}, checksum: f.asset.checksum });
+    });
+  });
+
   it.each(["task", "goal", "note", "draft"] as const)("creates a %s from the selected older recording while a newer recording is processing", async (kind) => {
     await withFixture(async (tx, f) => {
       await existingWork(tx, f, "task");

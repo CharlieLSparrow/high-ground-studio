@@ -955,7 +955,7 @@ export async function POST(request: Request) {
         });
         if (
           resolvedEvidence.desk.transcriptJobId !== transcriptJobId
-          || resolvedEvidence.playback.recordingAssetId !== recordingAssetId
+          || resolvedEvidence.workSource.recordingAssetId !== recordingAssetId
           || (projectId && resolvedEvidence.desk.projectId !== projectId)
         ) {
           throw new ReviewBoundaryError(
@@ -972,7 +972,7 @@ export async function POST(request: Request) {
           sourceReviewState,
           automaticallySuggested: true,
           recordingAssetId,
-          playbackSourceId: resolvedEvidence.playback.sourceId,
+          playbackSourceId: resolvedEvidence.workSource.playbackSourceId,
         };
         taskEvidenceReceiptId = randomUUID();
         const mergedEvidence = {

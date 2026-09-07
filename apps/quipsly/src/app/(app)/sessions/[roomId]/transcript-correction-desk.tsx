@@ -2110,7 +2110,7 @@ function TranscriptCorrectionDeskContent({
     lastPlaybackTimeRef.current = null;
     setPlaybackState("error");
     setListenedSecondBins(new Set());
-    setMessage("Protected source bytes could not be loaded. Review, correction, notes, tasks, goals, and drafts are held until the original is restored or re-imported.");
+    setMessage("The recording could not be loaded. You can still edit the transcript and create notes, tasks, goals, or writing pages.");
   }
 
   async function saved(nextMessage: string) {

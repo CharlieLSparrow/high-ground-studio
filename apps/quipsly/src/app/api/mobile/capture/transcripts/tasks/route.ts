@@ -1,3 +1,4 @@
+import { transcriptWorkSource } from "@/lib/server/transcript-work-source";
 import { createHash } from "node:crypto";
 import { TRANSCRIPT_TASK_MATERIALIZE_CAPABILITY_ID } from "@high-ground/quipsly-domain/governed-actions";
 import { TRANSCRIPT_DERIVED_TASK_SCHEMA } from "@high-ground/quipsly-domain/transcript-derived-task";
@@ -70,11 +71,12 @@ export async function POST(request: Request) {
   const id = taskIdentity(actor.id, clientRequestId);
   try {
     const result = await prisma.$transaction(async (tx: any) => {
-      // Access, consent/release evidence, playback promotion, and the current
+      // Access, source identity, and the current
       // correction overlay are re-read inside the same transaction that creates
       // committed work. A stale client snapshot cannot sever the source anchor.
       const desk = await readTranscriptCorrectionDesk({ prisma: tx, roomId, actor, segmentId });
-      if (!desk.gate.allowed || !desk.playback) {
+      const workSource = transcriptWorkSource(desk);
+      if (!workSource) {
         throw new TranscriptCorrectionError(
           desk.gate.error || "Released recording-backed transcript evidence is required.",
           409,
@@ -133,8 +135,8 @@ export async function POST(request: Request) {
           endSeconds: segment.endSeconds,
           providerTextSha256: segment.providerTextSha256,
           acceptedCorrectionId: segment.acceptedCorrection?.id ?? null,
-          recordingAssetId: desk.playback.recordingAssetId,
-          playbackSourceId: desk.playback.sourceId,
+          recordingAssetId: workSource.recordingAssetId,
+          playbackSourceId: workSource.playbackSourceId,
         },
         result: { targetObjectType: "ActionItem", targetObjectId: id, status: "OPEN" },
         boundaries: workBoundaries,
@@ -168,8 +170,8 @@ export async function POST(request: Request) {
             speakerAuthority: segment.speakerAuthority,
             sourceBoundParticipantId: segment.sourceBoundParticipantId,
             acceptedCorrectionId: segment.acceptedCorrection?.id ?? null,
-            recordingAssetId: desk.playback.recordingAssetId,
-            playbackSourceId: desk.playback.sourceId,
+            recordingAssetId: workSource.recordingAssetId,
+            playbackSourceId: workSource.playbackSourceId,
             governance,
             boundaries: workBoundaries,
           },

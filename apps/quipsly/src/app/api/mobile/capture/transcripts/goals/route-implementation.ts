@@ -1,3 +1,4 @@
+import { transcriptWorkSource } from "@/lib/server/transcript-work-source";
 import { createHash } from "node:crypto";
 import { TRANSCRIPT_DERIVED_GOAL_SCHEMA } from "@high-ground/quipsly-domain/transcript-derived-task";
 import { TRANSCRIPT_GOAL_MATERIALIZE_CAPABILITY_ID } from "@high-ground/quipsly-domain/governed-actions";
@@ -117,8 +118,8 @@ export async function resolveTranscriptEvidenceInTransaction(input: {
     actor: input.actor,
     segmentId: input.segmentId,
   });
-  const playback = desk.playback;
-  if (!desk.gate.allowed || !playback) {
+  const workSource = transcriptWorkSource(desk);
+  if (!workSource) {
     throw new TranscriptCorrectionError(
       desk.gate.error || "Released recording-backed transcript evidence is required.",
       409,
@@ -156,12 +157,12 @@ export async function resolveTranscriptEvidenceInTransaction(input: {
       "STALE_TRANSCRIPT_SPAN_EVIDENCE",
     );
   }
-  return { desk, playback, sourceAnchor, sourceReviewState: transcriptSpanReviewState(evidenceSegments) };
+  return { desk, workSource, sourceAnchor, sourceReviewState: transcriptSpanReviewState(evidenceSegments) };
 }
 
 // Compatibility alias for the existing goal routes. New evidence consumers
 // should use the entity-neutral name because this resolver only reads and
-// verifies released transcript/playback evidence; it does not mutate a Goal.
+// verifies accessible transcript evidence; it does not mutate a Goal.
 export const resolveTranscriptGoalEvidenceInTransaction = resolveTranscriptEvidenceInTransaction;
 
 export async function createTranscriptDerivedGoalInTransaction(input: {
@@ -183,7 +184,7 @@ export async function createTranscriptDerivedGoalInTransaction(input: {
 }) {
   const { tx, actor, goal: request } = input;
   const id = goalIdentity(actor.id, request.clientRequestId);
-  const { desk, playback, sourceAnchor, sourceReviewState } = await resolveTranscriptGoalEvidenceInTransaction({
+  const { desk, workSource, sourceAnchor, sourceReviewState } = await resolveTranscriptGoalEvidenceInTransaction({
     tx,
     actor,
     roomId: request.roomId,
@@ -295,8 +296,8 @@ export async function createTranscriptDerivedGoalInTransaction(input: {
       objectType: "TranscriptSegmentSpan",
       roomId: request.roomId,
       transcriptJobId: desk.transcriptJobId,
-      recordingAssetId: playback.recordingAssetId,
-      playbackSourceId: playback.sourceId,
+      recordingAssetId: workSource.recordingAssetId,
+      playbackSourceId: workSource.playbackSourceId,
       ...sourceAnchor,
     },
     result: { targetObjectType: "Goal", targetObjectId: id, status: "ACTIVE" },
@@ -324,8 +325,8 @@ export async function createTranscriptDerivedGoalInTransaction(input: {
         ...sourceAnchor,
         sourceReviewState,
         automaticallySuggested: true,
-        recordingAssetId: playback.recordingAssetId,
-        playbackSourceId: playback.sourceId,
+        recordingAssetId: workSource.recordingAssetId,
+        playbackSourceId: workSource.playbackSourceId,
         materializationIntent: requestedIntent,
         appliedTags: acceptedTags,
         governance,
