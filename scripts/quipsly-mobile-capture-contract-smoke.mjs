@@ -347,7 +347,6 @@ function checkMeetingSpineContractSources() {
   const sessionsRouteText = sourceText("apps/quipsly/src/app/api/mobile/capture/sessions/route.ts");
   const meetingSpineText = sourceText("packages/quipsly-domain/src/coaching-meeting-spine.ts");
   const sessionsText = sourceText("apps/quipsly/src/lib/server/mobile-capture-sessions.ts");
-  const contentReadinessText = sourceText("apps/quipsly/src/lib/server/mobile-capture-content-readiness.ts");
   const lifecycleText = sourceText("packages/quipsly-domain/src/coaching-lifecycle.ts");
   const bridgeText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/BridgeModels.swift");
   const onDeviceTranscriptText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/OnDeviceTranscriptManager.swift");
@@ -869,19 +868,8 @@ function checkMeetingSpineContractSources() {
     "mobileSessionsExposeActionPacket",
     "Mobile capture sessions expose one compact action packet for native, reviewer, and agent controls without hidden provider or recording side effects.",
   );
-  expect(
-    sessionsText.includes("recordingContentReadiness")
-      && contentReadinessText.includes("capture-proof-only")
-      && sessionsText.includes("substantialRecordingEvidence")
-      && sessionsText.includes("substantial-recording-evidence-needed")
-      && bridgeText.includes("struct MobileCaptureContentReadiness")
-      && bridgeText.includes("let substantialRecordingCount: Int?")
-      && capturePhoneShellText.includes("session.contentReadiness")
-      && capturePhoneShellText.includes("Proof only")
-      && capturePhoneShellText.includes("content.evidenceLine"),
-    "capturePlumbingDoesNotImplyProductionContent",
-    "Nest and native Capture distinguish receipt/upload plumbing from substantial non-simulator source content without changing consent or processing gates.",
-  );
+  // Recording availability is exercised by the server Jest suite and the compiled
+  // Swift wire-model check, not source-string assertions about QA classifications.
   expect(
     lifecycleText.includes("QUIPSLY_COACHING_LIFECYCLE_KIND")
       && lifecycleText.includes("quipsly-coaching-capture-lifecycle-v2")
@@ -1132,8 +1120,8 @@ function checkReviewDigestContractSources() {
       && digestRouteText.includes("providerJoinReady")
       && digestRouteText.includes("localFallbackReady")
       && digestRouteText.includes("recordingEvidence")
-      && digestRouteText.includes("capturePlumbingEvidence")
-      && digestRouteText.includes("substantialRecordingEvidence")
+      && digestRouteText.includes("recordingAssetsPresent")
+      && digestRouteText.includes("uploadedRecordingEvidence")
       && digestRouteText.includes("joinableProviderRooms")
       && digestRouteText.includes("locallyRecordableRooms")
       && digestRouteText.includes("transcriptRunnableRooms")

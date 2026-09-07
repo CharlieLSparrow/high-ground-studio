@@ -1,8 +1,13 @@
-const SUBSTANTIAL_RECORDING_SECONDS = 60;
+import { isOriginalSessionRecordingAsset } from "../session-recording-sources";
 
-function text(value: unknown) {
-  return typeof value === "string" ? value : null;
-}
+type RecordingInput = {
+  kind?: unknown;
+  status?: unknown;
+  verifiedAt?: unknown;
+  durationSeconds?: unknown;
+  segmentsJson?: unknown;
+  localManifestJson?: unknown;
+};
 
 function object(value: unknown): Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : {};
@@ -12,132 +17,60 @@ function positiveSeconds(value: unknown) {
   return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : null;
 }
 
-function recordingSegments(value: unknown) {
-  return Array.isArray(value) ? value.map(object) : [];
-}
-
-function recordingDurationSeconds(asset: any) {
-  const assetDuration = positiveSeconds(asset?.durationSeconds);
-  if (assetDuration !== null) return assetDuration;
-  const segmentDurations = recordingSegments(asset?.segmentsJson)
-    .map((segment) => positiveSeconds(segment.durationSeconds))
-    .filter((duration): duration is number => duration !== null);
-  return segmentDurations.length > 0
-    ? segmentDurations.reduce((total, duration) => total + duration, 0)
-    : null;
-}
-
-function simulatorRecordingAsset(asset: any) {
-  const manifest = object(asset?.localManifestJson);
-  const deviceLabels = [
-    ...recordingSegments(asset?.segmentsJson).flatMap((segment) => [segment.deviceKind, segment.deviceName]),
-    manifest.deviceKind,
-    manifest.deviceName,
-    manifest.deviceModel,
-  ].filter((value): value is string => typeof value === "string");
-  if (manifest.simulator === true || manifest.isSimulator === true) return true;
-  return deviceLabels.some((value) => /\bsimulator\b/i.test(value) || /^clone\s+\d+\s+of\s+iphone\b/i.test(value.trim()));
-}
-
-function sourceMediaRecordingAsset(asset: any) {
-  return ["LOCAL_AUDIO", "LOCAL_VIDEO", "SERVER_MIX"].includes(text(asset?.kind)?.toUpperCase() || "");
-}
-
-function providerRecordingReceiptSlot(asset: any) {
-  return asset?.kind === "SERVER_MIX" && object(asset?.localManifestJson).source === "provider-recording-receipt-slot";
+function durationSeconds(asset: RecordingInput) {
+  const duration = positiveSeconds(asset.durationSeconds);
+  if (duration !== null) return duration;
+  const segments = Array.isArray(asset.segmentsJson) ? asset.segmentsJson : [];
+  const durations = segments.map(segment => positiveSeconds(object(segment).durationSeconds));
+  // A partial set of segment durations cannot establish the total length.
+  return durations.length > 0 && durations.every((value): value is number => value !== null)
+    ? durations.reduce((total, value) => total + value, 0) : null;
 }
 
 /**
- * Product-readiness evidence only. This deliberately does not alter consent,
- * upload-integrity, media-processing, or transcription policy gates.
+ * Uploaded-source summary, not a judgment of content value or release qualification.
+ * Byte availability does not bypass protected playback, consent, or processing checks.
  */
-export function recordingContentReadiness(recordingAssets: any[], purpose?: string | null) {
-  const assets = (Array.isArray(recordingAssets) ? recordingAssets : [])
-    .filter((asset) => !providerRecordingReceiptSlot(asset) && sourceMediaRecordingAsset(asset));
-  const evidence = assets.map((asset) => ({
-    durationSeconds: recordingDurationSeconds(asset),
-    simulator: simulatorRecordingAsset(asset),
-    verified: Boolean(
-      asset?.verifiedAt
-      && object(asset?.localManifestJson).exactBytesVerified === true
-      && ["VERIFIED", "HELD"].includes(text(asset?.status)?.toUpperCase() || ""),
-    ),
-  }));
-  const knownDurations = evidence.flatMap((item) => item.durationSeconds === null ? [] : [item.durationSeconds]);
-  const knownDurationSeconds = knownDurations.reduce((total, duration) => total + duration, 0);
-  const longestKnownDurationSeconds = knownDurations.length > 0 ? Math.max(...knownDurations) : null;
-  const simulatorCaptureCount = evidence.filter((item) => item.simulator).length;
-  const shortCaptureCount = evidence.filter((item) => item.durationSeconds !== null && item.durationSeconds < SUBSTANTIAL_RECORDING_SECONDS).length;
-  const unknownDurationCount = evidence.filter((item) => item.durationSeconds === null).length;
-  const verifiedCaptureCount = evidence.filter((item) => item.verified).length;
-  const substantialRecordingCount = evidence.filter((item) => (
-    item.verified
-    && !item.simulator
-    && item.durationSeconds !== null
-    && item.durationSeconds >= SUBSTANTIAL_RECORDING_SECONDS
-  )).length;
-  const isPodcast = text(purpose)?.toUpperCase() === "PODCAST";
-  const contentNoun = isPodcast ? "episode" : "session";
-
-  if (assets.length === 0) {
-    return {
-      status: "none" as const,
-      label: "No uploaded recording",
-      tone: "attention",
-      detail: `No source-media recording exists yet. Quipsly cannot claim usable ${contentNoun} content from a room or capture receipt alone.`,
-      nextAction: `Record a consented ${contentNoun} take, keep the local source, and finish a verified upload.`,
-      captureAssetCount: 0,
-      knownDurationSeconds: 0,
-      longestKnownDurationSeconds: null,
-      shortCaptureCount: 0,
-      simulatorCaptureCount: 0,
-      unknownDurationCount: 0,
-      verifiedCaptureCount: 0,
-      substantialRecordingCount: 0,
-      substantialThresholdSeconds: SUBSTANTIAL_RECORDING_SECONDS,
-    };
-  }
-
-  if (substantialRecordingCount === 0) {
-    const evidenceDetail = verifiedCaptureCount === 0
-      ? "None of the source-media records has verified uploaded bytes."
-      : simulatorCaptureCount === assets.length
-        ? "All source-media assets are marked as simulator captures."
-        : shortCaptureCount + unknownDurationCount === assets.length
-          ? "Every known take is under one minute or has no trustworthy duration."
-          : "No non-simulator take reaches the minimum substantial-content threshold.";
-    return {
-      status: "capture-proof-only" as const,
-      label: "Capture plumbing proven",
-      tone: "attention",
-      detail: `${assets.length} source-media asset${assets.length === 1 ? "" : "s"} reached Nest, but this is not usable ${contentNoun} evidence. ${evidenceDetail}`,
-      nextAction: `Record a consented production ${contentNoun} take on a physical device before treating this workflow as content-ready.`,
-      captureAssetCount: assets.length,
-      knownDurationSeconds,
-      longestKnownDurationSeconds,
-      shortCaptureCount,
-      simulatorCaptureCount,
-      unknownDurationCount,
-      verifiedCaptureCount,
-      substantialRecordingCount: 0,
-      substantialThresholdSeconds: SUBSTANTIAL_RECORDING_SECONDS,
-    };
-  }
+export function recordingContentReadiness(recordingAssets: readonly RecordingInput[], _purpose?: string | null) {
+  const assets = recordingAssets.filter(isOriginalSessionRecordingAsset);
+  const evidence = assets.map(asset => {
+    const status = String(asset.status).toUpperCase();
+    const verified = Boolean(asset.verifiedAt && object(asset.localManifestJson).exactBytesVerified === true
+      && ["VERIFIED", "HELD"].includes(status));
+    return { duration: durationSeconds(asset), verified, uploaded: verified && status === "VERIFIED",
+      attention: ["HELD", "FAILED", "CORRUPTED", "QUARANTINED"].includes(status) };
+  });
+  const durations = evidence.flatMap(item => item.duration === null ? [] : [item.duration]);
+  const uploadedRecordingCount = evidence.filter(item => item.uploaded).length;
+  const attentionRecordingCount = evidence.filter(item => item.attention).length;
+  const pendingRecordingCount = evidence.filter(item => !item.uploaded && !item.attention).length;
+  const status: "none" | "uploaded" | "uploading" | "attention" = uploadedRecordingCount > 0
+    ? "uploaded" : attentionRecordingCount > 0 ? "attention" : assets.length > 0 ? "uploading" : "none";
 
   return {
-    status: "substantial" as const,
-    label: "Substantial recording found",
-    tone: "ready",
-    detail: `${substantialRecordingCount} non-simulator source recording${substantialRecordingCount === 1 ? "" : "s"} has at least one minute of known content. This proves substantial capture, not editorial or release readiness.`,
-    nextAction: "Review playback and consent release, then continue transcription or Studio handoff from the exact source.",
+    status,
+    label: status === "uploaded" ? "Uploaded recordings"
+      : status === "attention" ? "Recording needs attention"
+        : status === "uploading" ? "Recording upload in progress" : "No uploaded recording",
+    tone: status === "uploaded" ? "ready" : "attention",
+    detail: status === "uploaded"
+      ? `${uploadedRecordingCount} recording${uploadedRecordingCount === 1 ? " has" : "s have"} verified uploaded bytes. Short recordings are welcome.${attentionRecordingCount ? ` ${attentionRecordingCount} more need attention.` : ""}${pendingRecordingCount ? ` ${pendingRecordingCount} are still uploading or being verified.` : ""}`
+      : status === "attention" ? "Recorded media is retained, but an upload or processing problem needs attention. Check the recording details."
+        : status === "uploading" ? "The recording has not finished uploading and verification. Keep the recording device open until its upload finishes."
+          : "Record or import audio or video to add it to this session.",
+    nextAction: status === "uploaded" ? "Open recordings to listen, edit, or check individual upload and processing details."
+      : status === "attention" ? "Open recording details to recover or retry."
+        : status === "uploading" ? "Check upload progress on the recording device."
+          : "Join the call, start a recording, or import an existing file.",
     captureAssetCount: assets.length,
-    knownDurationSeconds,
-    longestKnownDurationSeconds,
-    shortCaptureCount,
-    simulatorCaptureCount,
-    unknownDurationCount,
-    verifiedCaptureCount,
-    substantialRecordingCount,
-    substantialThresholdSeconds: SUBSTANTIAL_RECORDING_SECONDS,
+    knownDurationSeconds: durations.reduce((total, duration) => total + duration, 0),
+    longestKnownDurationSeconds: durations.length > 0 ? Math.max(...durations) : null,
+    unknownDurationCount: evidence.filter(item => item.duration === null).length,
+    verifiedCaptureCount: evidence.filter(item => item.verified).length,
+    uploadedRecordingCount,
+    attentionRecordingCount,
+    pendingRecordingCount,
   };
 }
+
+export type RecordingContentReadiness = ReturnType<typeof recordingContentReadiness>;

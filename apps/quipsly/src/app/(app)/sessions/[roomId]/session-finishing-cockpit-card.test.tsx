@@ -135,7 +135,7 @@ describe("Session finishing cockpit card", () => {
       roomId="episode-9-room"
       topology={topology}
       sourceEvidence={sourceEvidence}
-      contentReadiness={{ status: "substantial", captureAssetCount: 1, substantialRecordingCount: 1 }}
+      contentReadiness={{ status: "uploaded", captureAssetCount: 1, uploadedRecordingCount: 1 }}
       studioHandoff={{ recordings: [{ status: "ATTACHED" }] }}
       finishingEvidence={{
         transcriptJobs: [{
@@ -228,7 +228,7 @@ describe("Session finishing cockpit card", () => {
       roomId="episode-9-room"
       topology={topology}
       sourceEvidence={sourceEvidence}
-      contentReadiness={{ status: "substantial", captureAssetCount: 1, substantialRecordingCount: 1 }}
+      contentReadiness={{ status: "uploaded", captureAssetCount: 1, uploadedRecordingCount: 1 }}
       studioHandoff={{ recordings: [{ status: "ATTACHED" }] }}
       finishingEvidence={{
         transcriptJobs: [],

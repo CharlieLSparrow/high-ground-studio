@@ -1,3 +1,4 @@
+import { isOriginalSessionRecordingAsset } from "@/lib/session-recording-sources";
 import { parseAudioSignalEvidence, type AudioTranscriptEvidence } from "@/lib/transcript-evidence";
 import { verifyCaptureRecoveryLineage } from "@/lib/episode-production/capture-recovery-lineage";
 import {
@@ -478,20 +479,6 @@ function appliedBoundary(
   return row && occurredAt ? { row, occurredAt } : null;
 }
 
-function isProviderReceiptSlot(row: RecordingAssetEvidenceRow) {
-  const manifest = object(row.localManifestJson);
-  return String(row.kind) === "SERVER_MIX"
-    && manifest.source === "provider-recording-receipt-slot";
-}
-
-function isDerivedSessionOutput(row: RecordingAssetEvidenceRow) {
-  const manifest = object(row.localManifestJson);
-  const share = object(manifest.sessionRecordingShare);
-  return manifest.source === "session-recording-share"
-    && share.originalsRemainImmutable === true
-    && Boolean(text(share.outputId));
-}
-
 function isNestExternalRecordingImport(manifest: UnknownRecord) {
   const profile = object(manifest.reportedSourceProfile);
   return profile.kind === "quipsly-nest-external-recording-import-v1"
@@ -508,7 +495,7 @@ export function buildSessionSourceEvidence(input: {
   audioSignalProfileJobs?: AudioSignalProfileJobRow[];
 }): SessionSourceEvidence {
   const sources = input.recordingAssets
-    .filter((row) => !isProviderReceiptSlot(row) && !isDerivedSessionOutput(row))
+    .filter(isOriginalSessionRecordingAsset)
     .map((recording) => {
       const manifest = object(recording.localManifestJson);
       const finalization = latestFinalization(input.finalizationReceipts, recording.id);

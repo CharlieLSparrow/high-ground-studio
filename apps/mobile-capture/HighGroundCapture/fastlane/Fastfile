@@ -596,12 +596,13 @@ platform :ios do
     ENV["DEVELOPER_DIR"] ||= "/Applications/Xcode.app/Contents/Developer"
   end
 
-  desc "Validate source-level privacy and Capture release invariants"
+  desc "Validate source privacy, Capture release invariants, and recording wire models"
   lane :verify do
     # Pass the verifier as an argv element instead of a shell command string.
     # Release worktrees and external artifact volumes may legitimately contain
     # spaces; string-form `sh` truncates such paths before process launch.
     sh("bash", SOURCE_VERIFIER)
+    sh("node", File.join(CAPTURE_ROOT, "scripts", "test-recording-content-summary.mjs"))
   end
 
   desc "Independently verify a Capture UI evidence manifest or legacy result bundle"

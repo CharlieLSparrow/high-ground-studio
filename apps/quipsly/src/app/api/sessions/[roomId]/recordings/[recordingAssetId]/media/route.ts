@@ -2,6 +2,7 @@ import { createReadStream as createFileReadStream } from "node:fs";
 import { Readable } from "node:stream";
 
 import { getPrismaClient } from "@/lib/prisma";
+import { isOriginalSessionRecordingAsset } from "@/lib/session-recording-sources";
 import { getMediaBucket, requireMediaBucketName } from "@/lib/server/gcs";
 import {
   loadLocalMobileCaptureObject,
@@ -98,6 +99,7 @@ async function protectedSessionMediaResponse(
           select: {
             id: true,
             roomId: true,
+            kind: true,
             status: true,
             contentType: true,
             byteSize: true,
@@ -111,7 +113,7 @@ async function protectedSessionMediaResponse(
       },
     });
     const asset = room?.recordingAssets?.[0];
-    if (!room || !asset || asset.roomId !== room.id) {
+    if (!room || !asset || asset.roomId !== room.id || !isOriginalSessionRecordingAsset(asset)) {
       return privateJson(
         404,
         "SOURCE_NOT_FOUND",

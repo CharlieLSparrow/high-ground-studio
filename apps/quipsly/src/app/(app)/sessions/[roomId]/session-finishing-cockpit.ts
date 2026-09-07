@@ -50,11 +50,8 @@ export type SessionFinishingEvidence = {
   };
 };
 
-type ContentReadiness = {
-  status: "none" | "capture-proof-only" | "substantial";
-  captureAssetCount: number;
-  substantialRecordingCount: number;
-};
+type ContentReadiness = Pick<import("@/lib/server/mobile-capture-content-readiness").RecordingContentReadiness,
+  "status" | "captureAssetCount" | "uploadedRecordingCount">;
 
 type StudioHandoff = {
   recordings: Array<{
@@ -118,13 +115,13 @@ export function buildSessionFinishingCockpit(input: {
     detail: `${sourceEvidence.counts.HELD} held · ${sourceEvidence.counts.DRIFT} drift · ${sourceEvidence.counts.INCOMPLETE} incomplete.`,
     consequence: "Editor, transcript, or delivery work could attach to incomplete or mismatched provenance.",
   });
-  if (contentReadiness && contentReadiness.status !== "substantial") attention.push({
+  if (contentReadiness && contentReadiness.status !== "uploaded") attention.push({
     id: "production-content",
     severity: "HIGH",
     lane: "recordings",
-    title: contentReadiness.status === "capture-proof-only" ? "Only capture-test content is retained" : "No substantial recording is retained",
-    detail: `${contentReadiness.substantialRecordingCount} substantial take${contentReadiness.substantialRecordingCount === 1 ? "" : "s"} across ${contentReadiness.captureAssetCount} capture asset${contentReadiness.captureAssetCount === 1 ? "" : "s"}.`,
-    consequence: "A technically verified test file is not a production spine for editing or publishing.",
+    title: contentReadiness.status === "none" ? "No uploaded recording" : "Recording upload needs attention",
+    detail: `${contentReadiness.uploadedRecordingCount} uploaded recordings across ${contentReadiness.captureAssetCount} source assets.`,
+    consequence: "Check upload progress or recover the recording before using its cloud copy.",
   });
   const handoffHolds = studioHandoff?.recordings.filter((recording) => recording.status === "RECEIPT_MISSING" || recording.status === "PROJECT_CONFLICT").length ?? 0;
   const readyForHandoff = studioHandoff?.recordings.filter((recording) => recording.status === "READY_FOR_HANDOFF").length ?? 0;

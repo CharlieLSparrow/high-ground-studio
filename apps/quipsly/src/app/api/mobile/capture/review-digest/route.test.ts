@@ -116,7 +116,7 @@ describe("mobile Capture review digest", () => {
     );
   });
 
-  it("preserves substantial recording evidence in the iPhone digest", async () => {
+  it("preserves uploaded recording evidence in the iPhone digest", async () => {
     jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({
       user: {
         id: "user-1",
@@ -136,9 +136,9 @@ describe("mobile Capture review digest", () => {
         title: "Episode review",
         recordingCount: 1,
         contentReadiness: {
-          status: "substantial",
+          status: "uploaded",
           captureAssetCount: 1,
-          substantialRecordingCount: 1,
+          uploadedRecordingCount: 1,
         },
       },
     ] as any);
@@ -151,14 +151,14 @@ describe("mobile Capture review digest", () => {
     expect(response.status).toBe(200);
     expect(payload.digest).toMatchObject({
       sessionCount: 1,
-      capturePlumbingEvidence: 1,
-      substantialRecordingEvidence: 1,
+      recordingAssetsPresent: 1,
+      uploadedRecordingEvidence: 1,
       sessions: [
         {
           callRoomId: "room-1",
           contentReadiness: {
-            status: "substantial",
-            substantialRecordingCount: 1,
+            status: "uploaded",
+            uploadedRecordingCount: 1,
           },
         },
       ],

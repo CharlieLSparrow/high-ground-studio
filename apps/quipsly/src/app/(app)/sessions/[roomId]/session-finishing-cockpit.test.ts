@@ -53,7 +53,7 @@ describe("Session finishing cockpit", () => {
         drainedEndpointCount: 1,
       }),
       sourceEvidence: sourceEvidence({ DRIFT: 1 }),
-      contentReadiness: { status: "capture-proof-only", captureAssetCount: 2, substantialRecordingCount: 0 },
+      contentReadiness: { status: "attention", captureAssetCount: 2, uploadedRecordingCount: 0 },
       studioHandoff: { recordings: [{ status: "READY_FOR_HANDOFF" }] },
       finishingEvidence,
     });
@@ -67,7 +67,7 @@ describe("Session finishing cockpit", () => {
     const cockpit = buildSessionFinishingCockpit({
       topology: topology(),
       sourceEvidence: sourceEvidence(),
-      contentReadiness: { status: "substantial", captureAssetCount: 2, substantialRecordingCount: 2 },
+      contentReadiness: { status: "uploaded", captureAssetCount: 2, uploadedRecordingCount: 2 },
       studioHandoff: { recordings: [{ status: "ATTACHED" }, { status: "ATTACHED" }] },
       finishingEvidence: { ...finishingEvidence, analyzedSourceCount: 2 },
     });
@@ -83,7 +83,7 @@ describe("Session finishing cockpit", () => {
     const cockpit = buildSessionFinishingCockpit({
       topology: topology(),
       sourceEvidence: sourceEvidence(),
-      contentReadiness: { status: "substantial", captureAssetCount: 2, substantialRecordingCount: 2 },
+      contentReadiness: { status: "uploaded", captureAssetCount: 2, uploadedRecordingCount: 2 },
       studioHandoff: { recordings: [{ status: "ATTACHED" }, { status: "ATTACHED" }] },
       finishingEvidence: {
         ...finishingEvidence,
@@ -102,7 +102,7 @@ describe("Session finishing cockpit", () => {
     const cockpit = buildSessionFinishingCockpit({
       topology: topology(),
       sourceEvidence: sourceEvidence(),
-      contentReadiness: { status: "substantial", captureAssetCount: 2, substantialRecordingCount: 2 },
+      contentReadiness: { status: "uploaded", captureAssetCount: 2, uploadedRecordingCount: 2 },
       studioHandoff: { recordings: [{ status: "ATTACHED" }, { status: "ATTACHED" }] },
       finishingEvidence: {
         ...finishingEvidence,
@@ -142,7 +142,7 @@ describe("Session finishing cockpit", () => {
     const cockpit = buildSessionFinishingCockpit({
       topology: topology(),
       sourceEvidence: sourceEvidence(),
-      contentReadiness: { status: "substantial", captureAssetCount: 2, substantialRecordingCount: 2 },
+      contentReadiness: { status: "uploaded", captureAssetCount: 2, uploadedRecordingCount: 2 },
       studioHandoff: { recordings: [{ status: "ATTACHED" }, { status: "ATTACHED" }] },
       finishingEvidence: {
         ...finishingEvidence,
@@ -170,7 +170,7 @@ describe("Session finishing cockpit", () => {
     const cockpit = buildSessionFinishingCockpit({
       topology: topology(),
       sourceEvidence: sourceEvidence(),
-      contentReadiness: { status: "substantial", captureAssetCount: 2, substantialRecordingCount: 2 },
+      contentReadiness: { status: "uploaded", captureAssetCount: 2, uploadedRecordingCount: 2 },
       studioHandoff: { recordings: [{ status: "ATTACHED" }, { status: "ATTACHED" }] },
       finishingEvidence: {
         ...finishingEvidence,
@@ -198,7 +198,7 @@ describe("Session finishing cockpit", () => {
     const cockpit = buildSessionFinishingCockpit({
       topology: topology(),
       sourceEvidence: sourceEvidence(),
-      contentReadiness: { status: "substantial", captureAssetCount: 2, substantialRecordingCount: 2 },
+      contentReadiness: { status: "uploaded", captureAssetCount: 2, uploadedRecordingCount: 2 },
       studioHandoff: { recordings: [{ status: "ATTACHED" }, { status: "ATTACHED" }] },
       finishingEvidence: {
         ...finishingEvidence,
@@ -216,7 +216,7 @@ describe("Session finishing cockpit", () => {
     const cockpit = buildSessionFinishingCockpit({
       topology: topology(),
       sourceEvidence: sourceEvidence(),
-      contentReadiness: { status: "substantial", captureAssetCount: 2, substantialRecordingCount: 2 },
+      contentReadiness: { status: "uploaded", captureAssetCount: 2, uploadedRecordingCount: 2 },
       studioHandoff: { recordings: [{ status: "ATTACHED" }, { status: "ATTACHED" }] },
       finishingEvidence: {
         ...finishingEvidence,
@@ -271,7 +271,7 @@ describe("Session finishing cockpit", () => {
     const cockpit = buildSessionFinishingCockpit({
       topology: topology(),
       sourceEvidence: sourceEvidence(),
-      contentReadiness: { status: "substantial", captureAssetCount: 2, substantialRecordingCount: 2 },
+      contentReadiness: { status: "uploaded", captureAssetCount: 2, uploadedRecordingCount: 2 },
       studioHandoff: { recordings: [{ status: "ATTACHED" }, { status: "ATTACHED" }] },
       finishingEvidence: {
         ...finishingEvidence,

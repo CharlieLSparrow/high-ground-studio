@@ -603,22 +603,7 @@ export type SessionCaptureReceipts = {
   }>;
 };
 
-export type SessionContentReadiness = {
-  status: "none" | "capture-proof-only" | "substantial";
-  label: string;
-  tone: string;
-  detail: string;
-  nextAction: string;
-  captureAssetCount: number;
-  knownDurationSeconds: number;
-  longestKnownDurationSeconds: number | null;
-  shortCaptureCount: number;
-  simulatorCaptureCount: number;
-  unknownDurationCount: number;
-  verifiedCaptureCount: number;
-  substantialRecordingCount: number;
-  substantialThresholdSeconds: number;
-};
+export type SessionContentReadiness = import("@/lib/server/mobile-capture-content-readiness").RecordingContentReadiness;
 
 function durationLabel(seconds: number | null) {
   if (seconds === null) return "unknown";
@@ -642,7 +627,7 @@ function SessionContentReadinessCard({
 }: {
   readiness: SessionContentReadiness;
 }) {
-  const ready = readiness.status === "substantial";
+  const ready = readiness.status === "uploaded";
   return (
     <section
       className={`rounded-2xl border p-5 ${ready ? "border-emerald-200 bg-emerald-50/45" : "border-orange-200 bg-orange-50/55"}`}
@@ -659,7 +644,7 @@ function SessionContentReadinessCard({
             <p
               className={`text-[10px] font-black uppercase tracking-[0.18em] ${ready ? "text-emerald-800" : "text-orange-800"}`}
             >
-              Production content truth
+              Recording status
             </p>
             <h2
               id="recording-content-readiness-heading"
@@ -708,10 +693,10 @@ function SessionContentReadinessCard({
         </div>
         <div className="rounded-xl border border-white/80 bg-white/80 p-3">
           <dt className="text-[10px] font-black uppercase tracking-wide text-[#8a7354]">
-            Simulator / short
+            Uploading / needs attention
           </dt>
           <dd className="mt-1 text-lg font-black text-[#3d3122]">
-            {readiness.simulatorCaptureCount} / {readiness.shortCaptureCount}
+            {readiness.pendingRecordingCount} / {readiness.attentionRecordingCount}
           </dd>
         </div>
       </dl>
@@ -2898,10 +2883,8 @@ function SessionQuickEntryCard({
 
 function SessionStudioHandoffCard({
   handoff,
-  contentReadiness,
 }: {
   handoff: SessionStudioHandoff;
-  contentReadiness?: SessionContentReadiness | null;
 }) {
   const attached = handoff.recordings.filter(
     (recording) => recording.status === "ATTACHED",
@@ -2911,7 +2894,6 @@ function SessionStudioHandoffCard({
       recording.status === "RECEIPT_MISSING" ||
       recording.status === "PROJECT_CONFLICT",
   );
-  const captureProofOnly = contentReadiness?.status === "capture-proof-only";
   return (
     <section
       className="rounded-2xl border border-violet-200 bg-violet-50/45 p-5"
@@ -2934,8 +2916,7 @@ function SessionStudioHandoffCard({
           </h2>
           <p className="mt-1 text-xs font-semibold leading-5 text-[#765f40]">
             The source RecordingAsset stays immutable. A unique Nest attachment
-            is a provenance receipt—not proof that the take is substantial,
-            editorially chosen, or release-ready.
+            keeps its link to the original recording. You can edit short or long takes.
           </p>
         </div>
       </div>
@@ -2948,16 +2929,6 @@ function SessionStudioHandoffCard({
           {integrityHolds.length === 1 ? " is" : "s are"} held because its
           project binding or durable attachment receipt does not match this
           Session.
-        </p>
-      )}
-      {captureProofOnly && (
-        <p
-          role="alert"
-          className="mt-4 rounded-xl border border-orange-200 bg-orange-50 px-3 py-2 text-xs font-black leading-5 text-orange-950"
-        >
-          These attachment receipts point to capture-test media. The current
-          source set is still “capture proof only,” so Quipsly does not call any
-          attached file a production spine.
         </p>
       )}
       <div className="mt-4 grid gap-3 lg:grid-cols-2">
@@ -2974,10 +2945,7 @@ function SessionStudioHandoffCard({
                 <p className="mt-1 text-[10px] font-black uppercase tracking-wide text-[#8a7354]">
                   {humanize(recording.kind)} ·{" "}
                   {humanize(
-                    captureProofOnly &&
-                      recording.importRole === "spine-audio-candidate"
-                      ? "historical-spine-candidate-label"
-                      : recording.importRole || recording.recordingStatus,
+                    recording.importRole || recording.recordingStatus,
                   )}
                 </p>
               </div>
@@ -3003,12 +2971,6 @@ function SessionStudioHandoffCard({
               <p className="mt-3 text-xs font-bold leading-5 text-violet-900">
                 Verified bytes are ready for an explicit source attachment. This
                 is not a production-content or editorial-readiness verdict.
-              </p>
-            ) : null}
-            {recording.status === "ATTACHED" && captureProofOnly ? (
-              <p className="mt-3 text-xs font-black leading-5 text-orange-900">
-                Attachment receipt verified; production-spine status withheld
-                because this Session contains only capture-test evidence.
               </p>
             ) : null}
             {recording.status === "NOT_READY" ? (
@@ -3591,9 +3553,9 @@ function SessionWorkspaceOverview({
     studioHandoff?.recordings.filter(
       (recording) => recording.status === "ATTACHED",
     ).length ?? 0;
-  const substantialRecording = contentReadiness?.status === "substantial";
+  const uploadedRecording = contentReadiness?.status === "uploaded";
   const attention = [
-    ...(!substantialRecording
+    ...(!uploadedRecording
       ? [
           {
             id: "recording",
@@ -3663,9 +3625,9 @@ function SessionWorkspaceOverview({
     {
       mode: "transcript" as const,
       title: modeLabel("transcript"),
-      value: substantialRecording
-        ? "Source ready; inspect gate"
-        : "Held by source truth",
+      value: uploadedRecording
+        ? "Open transcript"
+        : "Transcript status",
       detail: consentSnapshot.total
         ? `${consentSnapshot.transcriptionPermitted} of ${consentSnapshot.total} standalone consent records permit transcription; Transcript enforces the complete release gate`
         : "No standalone consent rows are projected here; Transcript verifies the complete release receipt before review",
@@ -4495,7 +4457,6 @@ export function SessionReviewClient({
                 {studioHandoff ? (
                   <SessionStudioHandoffCard
                     handoff={studioHandoff}
-                    contentReadiness={contentReadiness}
                   />
                 ) : (
                   <WorkspaceEmptyState
@@ -4521,7 +4482,6 @@ export function SessionReviewClient({
               {studioHandoff ? (
                 <SessionStudioHandoffCard
                   handoff={studioHandoff}
-                  contentReadiness={contentReadiness}
                 />
               ) : (
                 <WorkspaceEmptyState

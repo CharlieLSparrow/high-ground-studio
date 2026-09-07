@@ -14,7 +14,6 @@ jest.mock(
   { virtual: true },
 );
 
-import { recordingContentReadiness } from "./mobile-capture-content-readiness";
 import {
   afterCaptureNextAction,
   captureReadinessForMobileSession,
@@ -647,164 +646,13 @@ describe("mobile Session source-specific consent projection", () => {
   });
 });
 
-describe("mobile Session recording content readiness", () => {
-  it("does not infer content from an empty recording list", () => {
-    expect(recordingContentReadiness([], "PODCAST")).toMatchObject({
-      status: "none",
-      captureAssetCount: 0,
-      substantialRecordingCount: 0,
-    });
-  });
-
-  it("labels short simulator artifacts as capture plumbing proof only", () => {
-    expect(
-      recordingContentReadiness(
-        [
-          {
-            kind: "LOCAL_AUDIO",
-            status: "VERIFIED",
-            verifiedAt: "2026-08-02T18:00:00.000Z",
-            durationSeconds: null,
-            segmentsJson: [
-              { deviceKind: "Clone 1 of iPhone 17 Pro", durationSeconds: 3.75 },
-              { deviceKind: "Clone 1 of iPhone 17 Pro", durationSeconds: 1.57 },
-            ],
-            localManifestJson: { exactBytesVerified: true },
-          },
-          {
-            kind: "LOCAL_AUDIO",
-            status: "VERIFIED",
-            verifiedAt: "2026-08-02T18:00:00.000Z",
-            durationSeconds: 5,
-            segmentsJson: [
-              { deviceKind: "iPhone 17 Pro Simulator", durationSeconds: 5 },
-            ],
-            localManifestJson: { exactBytesVerified: true },
-          },
-        ],
-        "PODCAST",
-      ),
-    ).toMatchObject({
-      status: "capture-proof-only",
-      label: "Capture plumbing proven",
-      captureAssetCount: 2,
-      knownDurationSeconds: 10.32,
-      longestKnownDurationSeconds: 5.32,
-      shortCaptureCount: 2,
-      simulatorCaptureCount: 2,
-      substantialRecordingCount: 0,
-    });
-  });
-
-  it("requires known duration before calling an asset substantial", () => {
-    expect(
-      recordingContentReadiness(
-        [
-          {
-            kind: "LOCAL_AUDIO",
-            status: "VERIFIED",
-            verifiedAt: "2026-08-02T18:00:00.000Z",
-            durationSeconds: null,
-            segmentsJson: [],
-            localManifestJson: { exactBytesVerified: true },
-          },
-        ],
-        "COACHING",
-      ),
-    ).toMatchObject({
-      status: "capture-proof-only",
-      unknownDurationCount: 1,
-      substantialRecordingCount: 0,
-    });
-  });
-
-  it("recognizes a non-simulator take without claiming editorial readiness", () => {
-    const result = recordingContentReadiness(
-      [
-        {
-          kind: "LOCAL_AUDIO",
-          status: "VERIFIED",
-          verifiedAt: "2026-08-02T18:00:00.000Z",
-          durationSeconds: 120,
-          segmentsJson: [
-            { deviceKind: "Wall-E’s iPhone", durationSeconds: 120 },
-          ],
-          localManifestJson: { exactBytesVerified: true },
-        },
-      ],
-      "PODCAST",
-    );
-    expect(result).toMatchObject({
-      status: "substantial",
-      captureAssetCount: 1,
-      knownDurationSeconds: 120,
-      substantialRecordingCount: 1,
-    });
-    expect(result.detail).toContain("not editorial or release readiness");
-  });
-
-  it("does not count provider receipt slots or transcript references as source media", () => {
-    expect(
-      recordingContentReadiness(
-        [
-          {
-            kind: "SERVER_MIX",
-            localManifestJson: { source: "provider-recording-receipt-slot" },
-            durationSeconds: 3600,
-          },
-          { kind: "TRANSCRIPT_SOURCE", durationSeconds: 3600 },
-        ],
-        "PODCAST",
-      ),
-    ).toMatchObject({ status: "none", captureAssetCount: 0 });
-  });
-
-  it("does not call local-only metadata substantial before uploaded bytes are verified", () => {
-    expect(
-      recordingContentReadiness(
-        [
-          {
-            kind: "LOCAL_AUDIO",
-            status: "LOCAL_READY",
-            durationSeconds: 600,
-            segmentsJson: [
-              { deviceKind: "Wall-E’s iPhone", durationSeconds: 600 },
-            ],
-          },
-        ],
-        "PODCAST",
-      ),
-    ).toMatchObject({
-      status: "capture-proof-only",
-      verifiedCaptureCount: 0,
-      substantialRecordingCount: 0,
-    });
-  });
-
-  it("counts independently verified bytes even when processing remains held", () => {
-    expect(
-      recordingContentReadiness(
-        [
-          {
-            kind: "LOCAL_AUDIO",
-            status: "HELD",
-            verifiedAt: "2026-08-02T18:00:00.000Z",
-            durationSeconds: null,
-            segmentsJson: [],
-            localManifestJson: { exactBytesVerified: true },
-          },
-        ],
-        "COACHING",
-      ),
-    ).toMatchObject({
-      status: "capture-proof-only",
-      verifiedCaptureCount: 1,
-      substantialRecordingCount: 0,
-    });
-  });
-});
-
 describe("mobile Session canonical capture sources", () => {
+  it("does not expose derived share outputs through the original capture source list", () => {
+    expect(captureSourceSummaries({ id: "room-1", recordingAssets: [{
+      id: "private-edit", kind: "SERVER_MIX", status: "VERIFIED",
+      localManifestJson: { source: "session-recording-share", exactBytesVerified: true },
+    }] }, [], [])).toEqual([]);
+  });
   it("projects exact verification, proxy, transcript, and take identity together", () => {
     const [source] = captureSourceSummaries(
       {

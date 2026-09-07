@@ -18,6 +18,7 @@ import {
 import { mobileCaptureProcessingGateFromEvidence } from "./mobile-capture-processing-policy.js";
 import { parseCaptureDeviceTranscriptExpectation } from "./capture-device-transcript-expectation";
 import { recordingContentReadiness } from "./mobile-capture-content-readiness";
+import { isOriginalSessionRecordingAsset } from "../session-recording-sources";
 import {
   addCaptureGroupAlignmentOffsets,
   buildCaptureSourceAlignmentProposal,
@@ -398,7 +399,7 @@ export function captureSourceSummaries(
   const sources = (
     Array.isArray(room?.recordingAssets) ? room.recordingAssets : []
   )
-    .filter((asset: any) => !isProviderRecordingReceiptSlot(asset))
+    .filter(isOriginalSessionRecordingAsset)
     .map((asset: any) => {
       const receipt =
         receiptsForRecordingAsset(receipts, asset.id).sort(
@@ -646,7 +647,7 @@ function transcribableRecordingAssets(room: any, receipts: any[]) {
   return Array.isArray(room?.recordingAssets)
     ? room.recordingAssets.filter(
         (asset: any) =>
-          !isProviderRecordingReceiptSlot(asset) &&
+          isOriginalSessionRecordingAsset(asset) &&
           captureProcessingGate(room, asset, receipts, true).allowed,
       )
     : [];
@@ -993,9 +994,9 @@ function mobileSessionJourneySummary(input: {
       providerJoinReady: input.provider.providerCanJoin === true,
       localFallbackReady: input.captureReadiness.safeToRecordLocally === true,
       recordingEvidence: input.recordingCount > 0,
-      capturePlumbingEvidence: input.contentReadiness.captureAssetCount > 0,
-      substantialRecordingEvidence:
-        input.contentReadiness.status === "substantial",
+      recordingAssetsPresent: input.contentReadiness.captureAssetCount > 0,
+      uploadedRecordingEvidence:
+        input.contentReadiness.status === "uploaded",
       transcriptEvidence: Boolean(input.latestTranscriptJob?.id),
       transcriptCompleted:
         input.transcriptProcessingAllowed &&
@@ -1005,10 +1006,6 @@ function mobileSessionJourneySummary(input: {
     },
     blockers: uniqueText([
       input.captureReadiness.blockers || [],
-      input.contentReadiness.captureAssetCount > 0 &&
-      input.contentReadiness.status !== "substantial"
-        ? ["substantial-recording-evidence-needed"]
-        : [],
       input.transcriptProcessingAllowed
         ? []
         : [
@@ -1229,7 +1226,7 @@ export function mapMobileCaptureSessionsForUser(input: {
     const receiptSlot = providerRecordingReceiptSlot(room);
     const allRecordingAssets = Array.isArray(room.recordingAssets)
       ? room.recordingAssets.filter(
-          (asset: any) => !isProviderRecordingReceiptSlot(asset),
+          isOriginalSessionRecordingAsset,
         )
       : [];
     const recordingAssetsForTranscript = transcribableRecordingAssets(

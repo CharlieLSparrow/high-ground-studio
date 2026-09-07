@@ -376,13 +376,13 @@ function buildDigest(
       sessions,
       (session) => Number(session.recordingCount || 0) > 0,
     ),
-    capturePlumbingEvidence: countWhere(
+    recordingAssetsPresent: countWhere(
       sessions,
       (session) => Number(session.contentReadiness?.captureAssetCount || 0) > 0,
     ),
-    substantialRecordingEvidence: countWhere(
+    uploadedRecordingEvidence: countWhere(
       sessions,
-      (session) => session.contentReadiness?.status === "substantial",
+      (session) => session.contentReadiness?.status === "uploaded",
     ),
     recordingPromotionReady: countWhere(
       sessions,

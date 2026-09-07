@@ -14,7 +14,7 @@ type Props = {
   roomId: string;
   topology: SessionReadinessTopology;
   sourceEvidence: SessionSourceEvidence;
-  contentReadiness: { status: "none" | "capture-proof-only" | "substantial"; captureAssetCount: number; substantialRecordingCount: number } | null;
+  contentReadiness: Parameters<typeof buildSessionFinishingCockpit>[0]["contentReadiness"];
   studioHandoff: { recordings: Array<{ status: "READY_FOR_HANDOFF" | "NOT_READY" | "ATTACHED" | "RECEIPT_MISSING" | "PROJECT_CONFLICT" }> } | null;
   finishingEvidence: SessionFinishingEvidence;
 };

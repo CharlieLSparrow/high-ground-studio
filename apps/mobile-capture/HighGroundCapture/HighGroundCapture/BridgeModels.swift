@@ -293,15 +293,14 @@ struct MobileCaptureContentReadiness: Codable, Hashable {
     let captureAssetCount: Int?
     let knownDurationSeconds: Double?
     let longestKnownDurationSeconds: Double?
-    let shortCaptureCount: Int?
-    let simulatorCaptureCount: Int?
     let unknownDurationCount: Int?
     let verifiedCaptureCount: Int?
-    let substantialRecordingCount: Int?
-    let substantialThresholdSeconds: Double?
+    let uploadedRecordingCount: Int?
+    let attentionRecordingCount: Int?
+    let pendingRecordingCount: Int?
 
-    var isSubstantial: Bool {
-        status?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "substantial"
+    var hasUploadedRecordings: Bool {
+        status?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "uploaded"
     }
 
     var evidenceLine: String {
@@ -309,7 +308,7 @@ struct MobileCaptureContentReadiness: Codable, Hashable {
             if seconds < 60 { return String(format: "%.1f sec known", seconds) }
             return String(format: "%.1f min known", seconds / 60)
         } ?? "duration unknown"
-        return "\(captureAssetCount ?? 0) source media · \(verifiedCaptureCount ?? 0) verified · \(duration) · \(simulatorCaptureCount ?? 0) simulator · \(shortCaptureCount ?? 0) short"
+        return "\(captureAssetCount ?? 0) recordings · \(verifiedCaptureCount ?? 0) uploaded and verified · \(duration)"
     }
 }
 
@@ -1241,8 +1240,8 @@ struct MobileCaptureSession: Codable, Identifiable, Hashable {
             "consentGranted",
             "providerJoinReady",
             "localFallbackReady",
-            "capturePlumbingEvidence",
-            "substantialRecordingEvidence",
+            "recordingAssetsPresent",
+            "uploadedRecordingEvidence",
             "transcriptCompleted",
             "packetEvidence",
         ]
@@ -3420,8 +3419,8 @@ struct MobileCaptureReviewDigest: Codable {
     let providerJoinReady: Int?
     let localFallbackReady: Int?
     let recordingEvidence: Int?
-    let capturePlumbingEvidence: Int?
-    let substantialRecordingEvidence: Int?
+    let recordingAssetsPresent: Int?
+    let uploadedRecordingEvidence: Int?
     let recordingPromotionReady: Int?
     let recordingPromotedToMedia: Int?
     let joinableProviderRooms: Int?
@@ -3787,8 +3786,8 @@ final class CaptureReviewDigestClient: ObservableObject {
                 providerJoinReady: 1,
                 localFallbackReady: 1,
                 recordingEvidence: 2,
-                capturePlumbingEvidence: 2,
-                substantialRecordingEvidence: 2,
+                recordingAssetsPresent: 2,
+                uploadedRecordingEvidence: 2,
                 recordingPromotionReady: 1,
                 recordingPromotedToMedia: 1,
                 joinableProviderRooms: 1,

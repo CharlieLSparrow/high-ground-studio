@@ -424,20 +424,19 @@ describe("Session review goal candidates", () => {
       preparation={{ purpose: "PODCAST", participants: [] } as any}
       consentSnapshot={{ total: 0, granted: 0, transcriptionPermitted: 0 }}
       contentReadiness={{
-        status: "substantial",
-        label: "Substantial recording ready",
+        status: "uploaded",
+        label: "Uploaded recordings",
         tone: "ready",
         detail: "One verified source recording is ready for gated review.",
         nextAction: "Open Transcript to verify the complete release receipt.",
         captureAssetCount: 1,
         knownDurationSeconds: 3600,
         longestKnownDurationSeconds: 3600,
-        shortCaptureCount: 0,
-        simulatorCaptureCount: 0,
         unknownDurationCount: 0,
         verifiedCaptureCount: 1,
-        substantialRecordingCount: 1,
-        substantialThresholdSeconds: 60,
+        uploadedRecordingCount: 1,
+        attentionRecordingCount: 0,
+        pendingRecordingCount: 0,
       }}
     />);
 
@@ -1543,7 +1542,7 @@ describe("Session review goal candidates", () => {
     expect(await screen.findByRole("heading", { name: "1 immutable source attachment" })).toBeInTheDocument();
     expect(screen.getByText("Episode 4 room mix.wav")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Open Episode 4 in Studio" })).toHaveAttribute("href", "/editor?project=high-ground&episode=episode-4");
-    expect(screen.getByText(/provenance receipt—not proof that the take is substantial/i)).toBeInTheDocument();
+    expect(screen.getByText(/keeps its link to the original recording/i)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /promote|attach|send/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Client follow-up unavailable" })).not.toBeInTheDocument();
   });
@@ -1956,7 +1955,7 @@ describe("Session review goal candidates", () => {
     expect(screen.queryByRole("button", { name: "Release exact source" })).not.toBeInTheDocument();
   });
 
-  it("shows simulator uploads as plumbing proof rather than usable production content", async () => {
+  it("shows short uploaded recordings without treating their length as a problem", async () => {
     global.fetch = jest.fn().mockResolvedValue(jsonResponse(packet())) as typeof fetch;
     render(<SessionReviewClient
       roomId="room-1"
@@ -1964,20 +1963,19 @@ describe("Session review goal candidates", () => {
       mode="recordings"
       consentSnapshot={{ total: 1, granted: 1, transcriptionPermitted: 0 }}
       contentReadiness={{
-        status: "capture-proof-only",
-        label: "Capture plumbing proven",
-        tone: "attention",
-        detail: "8 source-media assets reached Nest, but this is not usable episode evidence. All source-media assets are marked as simulator captures.",
-        nextAction: "Record a consented production episode take on a physical device before treating this workflow as content-ready.",
+        status: "uploaded",
+        label: "Uploaded recordings",
+        tone: "ready",
+        detail: "8 recordings have verified uploaded bytes. Short recordings are welcome.",
+        nextAction: "Open recordings to listen or edit.",
         captureAssetCount: 8,
         knownDurationSeconds: 42.6,
         longestKnownDurationSeconds: 5.32,
-        shortCaptureCount: 8,
-        simulatorCaptureCount: 8,
         unknownDurationCount: 0,
         verifiedCaptureCount: 8,
-        substantialRecordingCount: 0,
-        substantialThresholdSeconds: 60,
+        uploadedRecordingCount: 8,
+        attentionRecordingCount: 0,
+        pendingRecordingCount: 0,
       }}
       studioHandoff={{
         project: { id: "project-1", name: "High Ground Odyssey", slug: "high-ground" },
@@ -1996,16 +1994,16 @@ describe("Session review goal candidates", () => {
         }],
       }}
     />);
-    expect(await screen.findByRole("heading", { name: "Capture plumbing proven" })).toBeInTheDocument();
-    expect(screen.getByText(/not usable episode evidence/i)).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Uploaded recordings" })).toBeInTheDocument();
+    expect(screen.getByText(/Short recordings are welcome/i)).toBeInTheDocument();
     expect(screen.getByText("43 sec")).toBeInTheDocument();
     expect(screen.getByText("5.3 sec")).toBeInTheDocument();
-    expect(screen.getByText("8 / 8")).toBeInTheDocument();
-    expect(screen.getByText(/record a consented production episode take on a physical device/i)).toBeInTheDocument();
+    expect(screen.getByText("0 / 0")).toBeInTheDocument();
+    expect(screen.queryByText(/record a consented production episode take on a physical device/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/episode ready/i)).not.toBeInTheDocument();
   });
 
-  it("withholds production-spine output status for simulator-only media", async () => {
+  it("retains editing attachments without inventing a minimum recording length", async () => {
     global.fetch = jest.fn().mockResolvedValue(jsonResponse(packet())) as typeof fetch;
     render(<SessionReviewClient
       roomId="room-1"
@@ -2013,20 +2011,19 @@ describe("Session review goal candidates", () => {
       mode="outputs"
       consentSnapshot={{ total: 1, granted: 1, transcriptionPermitted: 0 }}
       contentReadiness={{
-        status: "capture-proof-only",
-        label: "Capture plumbing proven",
-        tone: "attention",
-        detail: "The sources are simulator captures.",
-        nextAction: "Record on a physical device.",
+        status: "uploaded",
+        label: "Uploaded recordings",
+        tone: "ready",
+        detail: "One recording has verified uploaded bytes.",
+        nextAction: "Open recordings to listen or edit.",
         captureAssetCount: 1,
         knownDurationSeconds: 5,
         longestKnownDurationSeconds: 5,
-        shortCaptureCount: 1,
-        simulatorCaptureCount: 1,
         unknownDurationCount: 0,
         verifiedCaptureCount: 1,
-        substantialRecordingCount: 0,
-        substantialThresholdSeconds: 60,
+        uploadedRecordingCount: 1,
+        attentionRecordingCount: 0,
+        pendingRecordingCount: 0,
       }}
       studioHandoff={{
         project: { id: "project-1", name: "High Ground Odyssey", slug: "high-ground" },
@@ -2045,8 +2042,8 @@ describe("Session review goal candidates", () => {
         }],
       }}
     />);
-    expect(screen.getByText(/does not call any attached file a production spine/i)).toBeInTheDocument();
-    expect(screen.getByText(/production-spine status withheld/i)).toBeInTheDocument();
+    expect(screen.queryByText(/does not call any attached file a production spine/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/production-spine status withheld/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/episode ready/i)).not.toBeInTheDocument();
     expect(await screen.findByRole("heading", { name: "Client follow-up unavailable" })).toBeInTheDocument();
   });

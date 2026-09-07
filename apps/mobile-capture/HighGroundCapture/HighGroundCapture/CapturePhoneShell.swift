@@ -13981,11 +13981,11 @@ private struct CaptureSessionTruthPanel: View {
 
             if let content = session.contentReadiness {
                 truthSection(
-                    title: "Source quality",
+                    title: "Recording status",
                     systemImage: "waveform.badge.magnifyingglass",
-                    status: content.label ?? (content.isSubstantial ? "Production source" : "Proof only"),
-                    detail: "\(content.detail ?? content.nextAction ?? "Review the retained source before transcription.") \(content.evidenceLine)",
-                    tint: content.isSubstantial ? CapturePalette.success : CapturePalette.brass
+                    status: content.label ?? (content.hasUploadedRecordings ? "Uploaded recording" : "Check recording"),
+                    detail: "\(content.detail ?? content.nextAction ?? "Open recordings to check upload and processing details.") \(content.evidenceLine)",
+                    tint: content.hasUploadedRecordings ? CapturePalette.success : CapturePalette.brass
                 )
             }
 

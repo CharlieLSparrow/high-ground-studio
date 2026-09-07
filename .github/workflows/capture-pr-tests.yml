@@ -90,6 +90,7 @@ jobs:
           bash apps/mobile-capture/HighGroundCapture/scripts/verify-release-source.sh
           bash scripts/test-capture-session-deep-links.sh
           bash apps/mobile-capture/HighGroundCapture/scripts/test-coaching-work-save.sh
+          node apps/mobile-capture/HighGroundCapture/scripts/test-recording-content-summary.mjs
           node --test scripts/lib/source-check-report.test.mjs scripts/quipsly-ios-capture-app-store-static-smoke.test.mjs
           node scripts/quipsly-ios-capture-app-store-static-smoke.mjs --summary
           node --test scripts/release/quipsly-capture-ui-test-plan.test.mjs

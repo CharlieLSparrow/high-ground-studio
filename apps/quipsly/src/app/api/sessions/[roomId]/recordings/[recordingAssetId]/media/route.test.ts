@@ -65,6 +65,7 @@ function accessibleRoom() {
       {
         id: recordingAssetId,
         roomId,
+        kind: "LOCAL_AUDIO",
         status: "VERIFIED",
         contentType: "audio/mp4",
         byteSize: BigInt(bytes.length),
@@ -157,6 +158,18 @@ describe("Session protected recording media", () => {
       prisma.mobileCaptureFinalizationReceipt.findFirst,
     ).not.toHaveBeenCalled();
     expect(getMediaBucket).not.toHaveBeenCalled();
+  });
+
+  it("does not expose a derived share draft through the room's original-media endpoint", async () => {
+    const room = accessibleRoom();
+    room.recordingAssets[0].kind = "SERVER_MIX";
+    Object.assign(room.recordingAssets[0].localManifestJson, { source: "session-recording-share" });
+    prisma.callRoom.findFirst.mockResolvedValue(room);
+    prisma.mobileCaptureFinalizationReceipt.findFirst.mockResolvedValue(releasedReceipt());
+    const response = await GET(request(), context());
+    expect(response.status).toBe(404);
+    expect(prisma.mobileCaptureFinalizationReceipt.findFirst).not.toHaveBeenCalled();
+    expect(file.createReadStream).not.toHaveBeenCalled();
   });
 
   it("does not stream a held source", async () => {
