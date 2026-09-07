@@ -4294,8 +4294,16 @@ final class CaptureExperienceUITests: XCTestCase {
     }
 
     func testOptionalTranscriptIdeaCanBeAddedOrAdjustedWithoutPaperwork() throws {
-        app.tabBars.buttons["Notes"].tap()
-        XCTAssertTrue(app.descendants(matching: .any)["CaptureLibraryView"].waitForExistence(timeout: 5))
+        try exerciseOptionalTranscriptNoteAudience()
+    }
+
+    func testOptionalTranscriptIdeaCanBeAddedOrAdjustedWithoutPaperworkOnRegularWidthIPad() throws {
+        try exerciseOptionalTranscriptNoteAudience()
+    }
+
+    private func exerciseOptionalTranscriptNoteAudience() throws {
+        openRootDestination("Notes")
+        XCTAssertTrue(app.descendants(matching: .any)["CaptureLibrarySectionPicker"].waitForExistence(timeout: 5))
 
         let reviewLink = app.buttons["CapturePacketNoteReviewPreviewLink"]
         reveal(reviewLink)
@@ -4336,15 +4344,38 @@ final class CaptureExperienceUITests: XCTestCase {
         let packetNoteBoundary = app.staticTexts["CapturePacketNoteBoundary"]
         reveal(packetNoteBoundary)
         XCTAssertTrue(packetNoteBoundary.label.contains("private, editable note"))
+        let audience = app.descendants(matching: .any)["CapturePacketNoteVisibilityPicker"].firstMatch
+        reveal(audience)
+        audience.tap()
+        let sessionAudience = app.buttons["Session"].firstMatch
+        XCTAssertTrue(sessionAudience.waitForExistence(timeout: 5))
+        sessionAudience.tap()
+        XCTAssertEqual(app.staticTexts["CapturePacketNoteAudienceBoundary"].label, "Everyone in this Session.")
+        reveal(packetNoteBoundary)
+        XCTAssertTrue(packetNoteBoundary.label.contains("selected audience"))
+        XCTAssertFalse(packetNoteBoundary.label.contains("private"))
+        XCTAssertFalse(packetNoteBoundary.label.contains("Nothing is sent or shared"))
+        XCTAssertFalse(app.buttons["CapturePacketCreateNoteButton_\(candidateKey)"].isEnabled,
+                       "Inspecting a shared audience in preview must still never save or share anything.")
+        reveal(audience)
+        audience.tap()
+        let privateAudience = app.buttons["Only me"].firstMatch
+        XCTAssertTrue(privateAudience.waitForExistence(timeout: 5))
+        privateAudience.tap()
+        XCTAssertEqual(app.staticTexts["CapturePacketNoteAudienceBoundary"].label, "Only you.")
+        reveal(packetNoteBoundary)
+        XCTAssertTrue(packetNoteBoundary.label.contains("private, editable note"))
         let packetNoteScreenshot = XCTAttachment(screenshot: app.screenshot())
         packetNoteScreenshot.name = "Transcript note materialization review"
         packetNoteScreenshot.lifetime = .keepAlways
         add(packetNoteScreenshot)
+        let hidSidebar = hideIPadSidebarForAccessibilityAuditIfNeeded()
         try app.performAccessibilityAudit(for: [
             .hitRegion,
             .sufficientElementDescription,
             .textClipped,
         ])
+        if hidSidebar { restoreIPadSidebarAfterAccessibilityAudit() }
     }
 
     func testCoachFollowUpPreservesExactSourceWithoutReleasingPreview() throws {

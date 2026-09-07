@@ -5554,7 +5554,9 @@ private struct CapturePacketNoteCandidateCard: View {
                 }
                 Text(reviewMode == .merge
                         ? "Adds this source to the selected note. Its previous version stays recoverable."
-                        : "Adds a private, editable note with this source attached. Nothing is sent or shared.")
+                        : visibility == .authorPrivate
+                            ? "Adds a private, editable note with this source attached. Nothing is sent or shared."
+                            : "Adds an editable note for the selected audience, with this source attached.")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)

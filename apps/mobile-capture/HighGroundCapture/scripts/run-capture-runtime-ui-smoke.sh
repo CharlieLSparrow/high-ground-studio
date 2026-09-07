@@ -182,7 +182,7 @@ case "$TEST_MODE" in
     fi
     ;;
   transcript-task-isolation)
-    TEST_CASE="testReviewedTranscriptTaskStaysPrivateFromOtherSessionParticipant"
+    TEST_CASE="testAssignedTranscriptTaskStaysOutOfAnotherParticipantsTodayButAppearsInSharedSession"
     if [[ -z "$TEST_SESSION_ID" || -z "$TEST_SESSION_TITLE" || -z "$TEST_TASK_ID" || -z "$TEST_EXPECTED_PACKET_TASK_TITLE" ]]; then
       echo "Transcript isolation mode requires exact Session, task, and title identities." >&2
       exit 2

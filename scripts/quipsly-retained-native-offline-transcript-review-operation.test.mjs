@@ -23,13 +23,14 @@ assert.match(operation, /canonicalMaterialization: \{ notes: 0, tasks: 0, goals:
 assert.match(runner, /transcript-review-offline-reconcile\)/);
 assert.match(runner, /distinct phone\/concurrent correction text/);
 assert.match(contentView, /CaptureOfflineTranscriptReviewLink_/);
-assert.match(contentView, /Exact local-source transcript review/);
 assert.match(reviewView, /CaptureTranscriptAcceptCorrectionButton_/);
 assert.match(reviewView, /CaptureTranscriptSpeakerPending_/);
-assert.match(reviewView, /activeRoomID = roomID\.trimmingCharacters/);
+assert.match(reviewView, /let normalizedRoomID = roomID\.trimmingCharacters/);
+assert.match(reviewView, /activeRoomID = normalizedRoomID/);
 assert.match(reviewView, /reviewDecisionOutbox\.entries\.filter \{ \$0\.roomID == activeRoomID \}/);
 assert.match(reviewView, /speakerAttributionOutbox\.entries\.filter \{ \$0\.roomID == activeRoomID \}/);
-assert.match(reviewView, /word decisions and voice identities can be queued safely/);
+// UI wording belongs to the compiled rehearsal. Keep source checks about room
+// partitioning and recovery wiring, not the former technical explanation text.
 assert.match(runtimeTests, /testOfflineTranscriptReviewQueuesSurvivesRelaunchReconcilesAndHoldsConflict/);
 assert.match(runtimeTests, /CaptureTranscriptProtectedCacheBoundary/);
 assert.match(runtimeTests, /injectConcurrentTranscriptCorrection/);
@@ -39,4 +40,4 @@ assert.match(runtimeTests, /CaptureTranscriptDecisionPending_/);
 assert.match(runtimeTests, /CaptureTranscriptSpeakerUseSample_/);
 assert.match(runtimeTests, /CaptureTranscriptSpeakerPending_/);
 
-console.log("PASS retained native offline transcript-review operation contract");
+console.log("PASS retained native offline transcript-review source wiring (runtime rehearsal is separate)");

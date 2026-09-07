@@ -180,6 +180,26 @@ describe("explicit transcript-derived Session note", () => {
     expect(tx.coachingNote.create).not.toHaveBeenCalled();
   });
 
+  it.each(["AUTHOR_PRIVATE", "SESSION_SHARED", "CLIENT_SAFE", "PROJECT_TEAM"])(
+    "preserves the explicitly selected %s audience in the note and its source history",
+    async (visibility) => {
+      const tx = transaction(
+        { id: "room-1", bookingId: "booking-1", project: { accessGrants: [{ role: "OWNER" }] } },
+        null,
+        note({ visibility }),
+      );
+      const response = await POST(request({ visibility }));
+      expect(response.status).toBe(200);
+      expect(await response.json()).toMatchObject({ ok: true, note: { visibility } });
+      expect(tx.coachingNote.create).toHaveBeenCalledWith(expect.objectContaining({
+        data: expect.objectContaining({
+          visibility,
+          sourceJson: expect.objectContaining({ initialVisibility: visibility }),
+        }),
+      }));
+    },
+  );
+
   it("requires owner, editor, or staff authority for production-team notes", async () => {
     const tx = transaction({ id: "room-1", bookingId: null, project: { accessGrants: [{ role: "VIEWER" }] } });
     const response = await POST(request({ kind: "PRODUCTION", visibility: "PROJECT_TEAM" }));
