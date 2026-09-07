@@ -12,7 +12,7 @@ import {
   cloneRetainedFixture,
   COACH_EMAIL,
   KEYCHAIN_SERVICE,
-} from "./quipsly-retained-native-reviewed-packet-materialization-operation.mjs";
+} from "./lib/retained-transcript-fixture.mjs";
 
 const requireFromQuipsly = createRequire(new URL("../apps/quipsly/package.json", import.meta.url));
 const { PrismaClient } = requireFromQuipsly("@prisma/client");

@@ -6778,7 +6778,9 @@ source upload verified` blocked `Rough cut ready for review` until complete;
   physical-iPhone capture/failure-recovery, second real coaching workflow,
   production Nest, provider Calendar, TestFlight, or App Store gates. Full
   evidence is in
-  `docs/coordination/2026-08-02-native-reviewed-packet-materialization.md`.
+  the historical `docs/coordination/2026-08-02-native-reviewed-packet-materialization.md`
+  at commit `c7b0ecc9`. Its mandatory-review workflow and operator are retired;
+  current automatic-work behavior is covered by the transcript-work database suite.
 
 ### Cloud release cost-control follow-up — 2026-08-02
 

@@ -91,7 +91,8 @@ or dependent work, and notes with private visibility, revisions, or linked work.
 Late reminder/progress insertion exercises deletion predicates even when the
 parent row version has not changed. Unused generated output still clears automatically.
 This replaces the retired retained-account, mandatory-playback-review merge
-harnesses. It does not claim login, audio playback, native merge/relaunch, or
+and materialization harnesses. The retained audio fixture helper remains for
+the separate offline recovery rehearsal. It does not claim login, audio playback, native merge/relaunch, or
 concurrent-transaction proof; those remain separate runtime acceptance work.
 This follows GitHub's [PostgreSQL service-container pattern](https://docs.github.com/en/actions/tutorials/use-containerized-services/create-postgresql-service-containers)
 using the same [pgvector image family](https://github.com/pgvector/pgvector) as local development.
