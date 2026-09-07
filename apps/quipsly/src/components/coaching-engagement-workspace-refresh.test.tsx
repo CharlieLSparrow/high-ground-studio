@@ -24,6 +24,7 @@ describe("client-space live refresh", () => {
     fetchMock.mockResolvedValueOnce(response(snapshot([next])))
       .mockResolvedValueOnce(response({ok: true, entry: {...next, title: "My clearer title"}}));
     render(<CoachingEngagementWorkspace {...props} />);
+    fireEvent.click(screen.getByRole("button", {name: `Open task: ${original.title}`}));
     fireEvent.click(screen.getByText("Edit"));
     fireEvent.change(screen.getByLabelText("task name"), {target: {value: "My clearer title"}});
     await act(async () => {jest.advanceTimersByTime(15_000);});
@@ -40,6 +41,7 @@ describe("client-space live refresh", () => {
     fetchMock.mockReturnValueOnce(new Promise((resolve) => {finishRead = resolve;}))
       .mockResolvedValueOnce(response({ok: true, entry: {...next, status: "DONE"}}));
     render(<CoachingEngagementWorkspace {...props} />);
+    fireEvent.click(screen.getByRole("button", {name: `Open task: ${original.title}`}));
     fireEvent.click(screen.getByRole("button", {name: "Refresh work"}));
     await act(async () => fireEvent.click(screen.getByRole("button", {name: "Complete"})));
     expect(screen.getByRole("button", {name: "Reopen"})).toBeVisible();
@@ -55,6 +57,7 @@ describe("client-space live refresh", () => {
     await act(async () => {jest.advanceTimersByTime(30_000);});
     expect(fetchMock).not.toHaveBeenCalled();
     rerender(<div><CoachingEngagementWorkspace {...props} /></div>);
+    fireEvent.click(screen.getByRole("button", {name: `Open task: ${original.title}`}));
     await act(async () => {jest.advanceTimersByTime(15_000);});
     await act(async () => {window.dispatchEvent(new Event("focus")); window.dispatchEvent(new Event("online"));});
     expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -66,6 +69,7 @@ describe("client-space live refresh", () => {
     fetchMock.mockRejectedValueOnce(new TypeError("Failed to fetch"))
       .mockResolvedValue(response(snapshot([next])));
     render(<CoachingEngagementWorkspace {...props} />);
+    fireEvent.click(screen.getByRole("button", {name: `Open task: ${original.title}`}));
     await act(async () => fireEvent.click(screen.getByRole("button", {name: "Refresh work"})));
     expect(screen.getByRole("heading", {name: original.title})).toBeVisible();
     expect(screen.getByRole("status")).toHaveTextContent("Updates paused");
@@ -79,6 +83,7 @@ describe("client-space live refresh", () => {
       init.signal.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")), {once: true});
     })).mockResolvedValue(response(snapshot([next])));
     render(<CoachingEngagementWorkspace {...props} />);
+    fireEvent.click(screen.getByRole("button", {name: `Open task: ${original.title}`}));
     fireEvent.click(screen.getByRole("button", {name: "Refresh work"}));
     await act(async () => {jest.advanceTimersByTime(10_000);});
     expect(screen.getByRole("status")).toHaveTextContent("Updates paused");
@@ -91,6 +96,7 @@ describe("client-space live refresh", () => {
     const online = jest.spyOn(navigator, "onLine", "get").mockReturnValue(false);
     fetchMock.mockResolvedValue(response(snapshot([next])));
     render(<CoachingEngagementWorkspace {...props} />);
+    fireEvent.click(screen.getByRole("button", {name: `Open task: ${original.title}`}));
     await act(async () => {jest.advanceTimersByTime(30_000); window.dispatchEvent(new Event("focus"));});
     expect(fetchMock).not.toHaveBeenCalled();
     online.mockReturnValue(true);
@@ -101,6 +107,7 @@ describe("client-space live refresh", () => {
   it.each([401, 403, 404])("removes protected work and drafts when access is lost (%s)", async (status) => {
     fetchMock.mockResolvedValue(response({ok: false}, status));
     render(<CoachingEngagementWorkspace {...props} />);
+    fireEvent.click(screen.getByRole("button", {name: `Open task: ${original.title}`}));
     fireEvent.click(screen.getByText("Edit"));
     fireEvent.change(screen.getByLabelText("task details"), {target: {value: "My old-space draft"}});
     await act(async () => fireEvent.click(screen.getByRole("button", {name: "Refresh work"})));
@@ -112,6 +119,7 @@ describe("client-space live refresh", () => {
   it.each([{currentUserId: "other-account"}, {id: "other-space"}])("does not accept a snapshot from another account or space: %j", async (identity) => {
     fetchMock.mockResolvedValue(response(snapshot([{...next, title: "Other private work"}], identity)));
     render(<CoachingEngagementWorkspace {...props} />);
+    fireEvent.click(screen.getByRole("button", {name: `Open task: ${original.title}`}));
     await act(async () => fireEvent.click(screen.getByRole("button", {name: "Refresh work"})));
     expect(screen.queryByRole("heading", {name: "Other private work"})).not.toBeInTheDocument();
     expect(screen.queryByRole("heading", {name: original.title})).not.toBeInTheDocument();
@@ -121,6 +129,7 @@ describe("client-space live refresh", () => {
   it("updates write permissions and drops entries no longer included in the authorized snapshot", async () => {
     fetchMock.mockResolvedValue(response(snapshot([{...next, canEdit: false}], {canWrite: false})));
     render(<CoachingEngagementWorkspace {...props} initialEntries={[original, {...original, id: "gone", title: "No longer shared"}]} />);
+    fireEvent.click(screen.getByRole("button", {name: `Open task: ${original.title}`}));
     await act(async () => fireEvent.click(screen.getByRole("button", {name: "Refresh work"})));
     expect(screen.queryByRole("heading", {name: "No longer shared"})).not.toBeInTheDocument();
     expect(screen.getByText(next.body, {selector: "p"})).toBeVisible();
@@ -133,6 +142,7 @@ describe("client-space live refresh", () => {
       .mockResolvedValueOnce(response(snapshot([next])))
       .mockResolvedValueOnce(response({ok: true, entry: {...next, body: "My new details"}}));
     render(<CoachingEngagementWorkspace {...props} />);
+    fireEvent.click(screen.getByRole("button", {name: `Open task: ${original.title}`}));
     fireEvent.click(screen.getByText("Edit"));
     fireEvent.change(screen.getByLabelText("task details"), {target: {value: "My new details"}});
     await act(async () => fireEvent.click(screen.getByRole("button", {name: "Save changes"})));
@@ -148,6 +158,7 @@ describe("client-space live refresh", () => {
     let finishRead!: (value: unknown) => void;
     fetchMock.mockReturnValue(new Promise((resolve) => {finishRead = resolve;}));
     const {rerender} = render(<CoachingEngagementWorkspace {...props} />);
+    fireEvent.click(screen.getByRole("button", {name: `Open task: ${original.title}`}));
     fireEvent.click(screen.getByRole("button", {name: "Refresh work"}));
     const signal = fetchMock.mock.calls[0][1].signal;
     rerender(<CoachingEngagementWorkspace {...props} engagementId="next-space" initialEntries={[]} />);

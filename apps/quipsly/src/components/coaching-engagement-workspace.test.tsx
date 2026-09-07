@@ -24,9 +24,26 @@ const sharedTask = {
 };
 
 describe("CoachingEngagementWorkspace", () => {
+  it("restores a selected item from its space URL without exposing an unknown item", () => {
+    const originalUrl = window.location.href;
+    window.history.replaceState({}, "", `/coaching/engagements/engagement-1?work=${sharedTask.id}#relationship-work`);
+    try {
+      render(<CoachingEngagementWorkspace engagementId="engagement-1" initialEntries={[sharedTask]} members={members} currentUserId="client-1" canWrite />);
+      expect(screen.getByRole("heading", {name: sharedTask.title})).toBeVisible();
+      fireEvent.click(screen.getByRole("button", {name: "Back to work"}));
+      expect(new URL(window.location.href).searchParams.has("work")).toBe(false);
+      fireEvent.click(screen.getByRole("button", {name: `Open task: ${sharedTask.title}`}));
+      expect(new URL(window.location.href).searchParams.get("work")).toBe(sharedTask.id);
+      window.history.replaceState({}, "", "/coaching/engagements/engagement-1?work=another-accounts-note#relationship-work");
+      fireEvent(window, new PopStateEvent("popstate"));
+      expect(screen.queryByRole("heading", {name: sharedTask.title})).not.toBeInTheDocument();
+      expect(screen.queryByRole("textbox", {name: "task details"})).not.toBeInTheDocument();
+    } finally { window.history.replaceState({}, "", originalUrl); }
+  });
   it.each(["TASK", "GOAL"] as const)("keeps the saved %s calendar day identical in the card and date editor", (kind) => {
     const item = {...sharedTask, kind, dueAt: "2026-09-10T00:00:00.000Z"};
     render(<CoachingEngagementWorkspace engagementId="engagement-1" initialEntries={[item]} members={members} currentUserId="client-1" canWrite />);
+    fireEvent.click(screen.getByRole("button", {name: `Open ${kind.toLowerCase()}: ${item.title}`}));
     const card = within(screen.getByRole("heading", {name: item.title}).closest("article")!);
     expect(card.getByText(`${kind === "TASK" ? "Due" : "Target"} Sep 10, 2026`)).toBeVisible();
     fireEvent.click(card.getByText("Edit"));
@@ -43,16 +60,19 @@ describe("CoachingEngagementWorkspace", () => {
     const filters = within(screen.getByRole("group", {name: "Filter work"}));
     fireEvent.click(filters.getByRole("button", {name: "Tasks"}));
     expect(screen.queryByRole("heading", {name: note.title})).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", {name: `Open task: ${sharedTask.title}`}));
     expect(screen.getByRole("heading", {name: sharedTask.title})).toBeVisible();
     const task = within(screen.getByRole("heading", {name: sharedTask.title}).closest("article")!);
     fireEvent.click(task.getByText("Edit"));
     fireEvent.change(task.getByRole("textbox", {name: "task details"}), {target: {value: "Keep my unfinished thought"}});
     fireEvent.click(filters.getByRole("button", {name: "Notes"}));
+    fireEvent.click(screen.getByRole("button", {name: `Open note: ${note.title}`}));
     expect(screen.getByRole("heading", {name: note.title})).toBeVisible();
     expect(screen.queryByRole("heading", {name: sharedTask.title})).not.toBeInTheDocument();
     fireEvent.click(filters.getByRole("button", {name: "Goals"}));
     expect(screen.getByText("No goals yet.")).toBeVisible();
     fireEvent.click(filters.getByRole("button", {name: "Tasks"}));
+    fireEvent.click(screen.getByRole("button", {name: `Open task: ${sharedTask.title}`}));
     expect(task.getByRole("textbox", {name: "task details"})).toHaveValue("Keep my unfinished thought");
     expect(filters.getByRole("button", {name: "Tasks"})).toHaveAttribute("aria-pressed", "true");
   });
@@ -135,18 +155,21 @@ describe("CoachingEngagementWorkspace", () => {
     Object.defineProperty(globalThis, "fetch", {value: fetchMock, writable: true, configurable: true});
     const otherTask = {...sharedTask, id: "other-task", title: "Another commitment"};
     render(<CoachingEngagementWorkspace engagementId="engagement-1" initialEntries={[sharedTask, otherTask]} members={members} currentUserId="client-1" canWrite />);
+    fireEvent.click(screen.getByRole("button", {name: `Open task: ${sharedTask.title}`}));
     const first = within(screen.getByRole("heading", {name: sharedTask.title}).closest("article")!);
-    const second = within(screen.getByRole("heading", {name: otherTask.title}).closest("article")!);
     fireEvent.click(first.getByText("Edit"));
     const firstForm = first.getByLabelText("task name").closest("form")!;
     act(() => {fireEvent.submit(firstForm); fireEvent.submit(firstForm);});
+    fireEvent.click(screen.getByRole("button", {name: `Open task: ${otherTask.title}`}));
+    const second = within(screen.getByRole("heading", {name: otherTask.title}).closest("article")!);
     fireEvent.click(second.getByRole("button", {name: "Complete"}));
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(first.getByLabelText("task name")).toBeDisabled();
-    expect(first.getByRole("button", {name: "Remove"})).toBeDisabled();
+    expect(first.getByRole("button", {name: "Remove", hidden: true})).toBeDisabled();
     expect(second.getByRole("button", {name: "Complete"})).toBeDisabled();
     await act(async () => finishes[1]!({ok: true, json: async () => ({ok: true, entry: {...otherTask, status: "DONE"}})}));
     expect(second.getByRole("button", {name: "Reopen"})).toBeEnabled();
+    fireEvent.click(screen.getByRole("button", {name: `Open task: ${sharedTask.title}`}));
     expect(first.getByRole("button", {name: "Complete"})).toBeDisabled();
     await act(async () => finishes[0]!({ok: true, json: async () => ({ok: true, entry: sharedTask})}));
     expect(first.getByLabelText("task name")).toBeEnabled();
@@ -176,6 +199,7 @@ describe("CoachingEngagementWorkspace", () => {
     const fetchMock = jest.fn().mockResolvedValue({ok: true, json: async () => ({ok: true, entry: {...sharedTask, status: "DONE"}})});
     Object.defineProperty(globalThis, "fetch", {value: fetchMock, writable: true, configurable: true});
     render(<CoachingEngagementWorkspace engagementId="engagement-1" initialEntries={[sharedTask]} members={members} currentUserId="client-1" canWrite />);
+    await userEvent.click(screen.getByRole("button", {name: `Open task: ${sharedTask.title}`}));
     await userEvent.click(screen.getByRole("button", {name: "Complete"}));
     expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toMatchObject({status: "DONE", targetAt: sharedTask.dueAt});
     expect(await screen.findByRole("button", {name: "Reopen"})).toBeInTheDocument();
@@ -186,6 +210,7 @@ describe("CoachingEngagementWorkspace", () => {
     render(<CoachingEngagementWorkspace engagementId="engagement-1" initialEntries={[
       sharedTask, { ...sharedTask, id: "manual-note", kind: "NOTE", title: "My own words", sourceHref: null },
     ]} members={members} currentUserId="client-1" canWrite={false} />);
+    fireEvent.click(screen.getByRole("button", {name: `Open task: ${sharedTask.title}`}));
     expect(screen.getAllByRole("link")).toHaveLength(1);
     expect(screen.getByRole("link", {name: `From recording: ${sharedTask.title}`})).toHaveAttribute("href", sharedTask.sourceHref);
     expect(screen.queryByRole("button", {name: "Complete"})).not.toBeInTheDocument();
@@ -195,6 +220,7 @@ describe("CoachingEngagementWorkspace", () => {
     const fetchMock = jest.fn().mockResolvedValue({ok: false, json: async () => ({ok: false, error: "Connection interrupted. Try saving again."})});
     Object.defineProperty(globalThis, "fetch", {value: fetchMock, writable: true, configurable: true});
     render(<CoachingEngagementWorkspace engagementId="engagement-1" initialEntries={[sharedTask]} members={members} currentUserId="client-1" canWrite />);
+    await userEvent.click(screen.getByRole("button", {name: `Open task: ${sharedTask.title}`}));
     await userEvent.click(screen.getByText("Edit"));
     await userEvent.clear(screen.getByRole("textbox", {name: "task name"}));
     await userEvent.type(screen.getByRole("textbox", {name: "task name"}), "A carefully rewritten commitment");
@@ -348,6 +374,7 @@ describe("CoachingEngagementWorkspace", () => {
       />,
     );
 
+    fireEvent.click(screen.getByRole("button", {name: `Open task: ${entry.title}`}));
     fireEvent.click(screen.getByRole("button", { name: "Remove" }));
     await waitFor(() =>
       expect(

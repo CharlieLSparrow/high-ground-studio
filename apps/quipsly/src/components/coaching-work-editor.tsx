@@ -93,7 +93,7 @@ export function CoachingWorkEditor({entry, members, busy, onSave}: {
 
   return (
     <details ref={details}>
-      <summary className="flex min-h-11 cursor-pointer items-center gap-2 text-xs font-black uppercase tracking-wide text-violet-900">
+      <summary className="flex min-h-11 cursor-pointer items-center gap-2 text-xs font-black uppercase tracking-wide text-[#41624b]">
         <Pencil size={14} aria-hidden="true" /> Edit
       </summary>
       <form onSubmit={(event) => {event.preventDefault(); void save();}} className="mt-3 grid gap-3">
@@ -133,7 +133,7 @@ export function CoachingWorkEditor({entry, members, busy, onSave}: {
             ) : null}
           </div>
           <div className="flex flex-wrap gap-2">
-            <button type="submit" disabled={busy} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-violet-800 px-4 py-2 text-sm font-black text-white disabled:opacity-50">
+            <button type="submit" disabled={busy} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-[#41624b] px-4 py-2 text-sm font-black text-white disabled:opacity-50">
               <Check size={15} aria-hidden="true" /> {busy ? "Saving…" : "Save changes"}
             </button>
             <button type="button" onClick={() => useLatest(true)} className="min-h-11 rounded-xl px-4 py-2 text-sm font-bold text-[#765f40]">Cancel</button>

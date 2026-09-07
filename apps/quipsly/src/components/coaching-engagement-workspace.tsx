@@ -16,6 +16,7 @@ import {
   UsersRound,
 } from "lucide-react";
 import { CoachingWorkEditor } from "./coaching-work-editor";
+import { CoachingWorkCollection } from "./coaching-work-collection";
 
 export type CoachingEngagementWorkEntry = {
   id: string;
@@ -97,6 +98,29 @@ function CoachingEngagementWorkspaceContent({
     members[0]?.id ||
     currentUserId;
   const [entries, setEntries] = useState(initialEntries);
+  const [createOpen, setCreateOpen] = useState(initialEntries.length === 0);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const selection = useRef(selectedId);
+  selection.current = selectedId;
+  useEffect(() => {
+    const restoreSelection = () => {
+      if (window.location.pathname !== `/coaching/engagements/${engagementId}`) return;
+      setSelectedId(new URL(window.location.href).searchParams.get("work"));
+    };
+    restoreSelection();
+    window.addEventListener("popstate", restoreSelection);
+    return () => window.removeEventListener("popstate", restoreSelection);
+  }, [engagementId]);
+
+  function selectEntry(id: string | null) {
+    selection.current = id;
+    setSelectedId(id);
+    if (window.location.pathname !== `/coaching/engagements/${engagementId}`) return;
+    const url = new URL(window.location.href);
+    if (id) url.searchParams.set("work", id);
+    else url.searchParams.delete("work");
+    window.history.replaceState(window.history.state, "", url);
+  }
   const [workFilter, setWorkFilter] = useState<
     "ALL" | CoachingEngagementWorkEntry["kind"]
   >("ALL");
@@ -262,9 +286,11 @@ function CoachingEngagementWorkspaceContent({
       }
       replaceEntry(payload.entry);
       const savedKind = payload.entry.kind;
+      selectEntry(payload.entry.id);
       setWorkFilter((current) => current === "ALL" ? current : savedKind);
       createRequest.current = null;
       createForm.current?.reset();
+      setCreateOpen(false);
       const itemLabel =
         payload.entry.kind === "NOTE"
           ? "Note"
@@ -373,6 +399,7 @@ function CoachingEngagementWorkspaceContent({
       setEntries((current) =>
         current.filter((candidate) => candidate.id !== entry.id),
       );
+      if (selection.current === entry.id) selectEntry(null);
       setLastRemoved({
         entry,
         removalUpdatedAt: payload.removal.updatedAt,
@@ -412,6 +439,7 @@ function CoachingEngagementWorkspaceContent({
       }
       replaceEntry(payload.entry);
       setLastRemoved(null);
+      selectEntry(payload.entry.id);
       setNotice(`${payload.entry.title || "Item"} restored.`);
     } catch (error) {
       setNotice(
@@ -442,22 +470,19 @@ function CoachingEngagementWorkspaceContent({
         <div>
           <h2
             id="engagement-work-heading"
-            className="font-serif text-2xl font-bold text-[#3d3122]"
+            className="font-serif text-xl font-bold text-[#3d3122]"
           >
             Notes, tasks, and goals
           </h2>
-          <p className="mt-2 max-w-3xl text-sm font-semibold leading-6 text-[#765f40]">
-            Shared notes and next steps. Choose “Only me” for a private note.
-          </p>
         </div>
-        <div className="flex flex-wrap gap-2 text-[10px] font-black uppercase tracking-wide">
-          <span className="rounded-full bg-orange-100 px-3 py-1.5 text-orange-900">
+        <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-[#765f40]">
+          <span>
             {counts.notes} notes
           </span>
-          <span className="rounded-full bg-sky-100 px-3 py-1.5 text-sky-900">
+          <span>
             {counts.tasks} open tasks
           </span>
-          <span className="rounded-full bg-emerald-100 px-3 py-1.5 text-emerald-900">
+          <span>
             {counts.goals} active {counts.goals === 1 ? "goal" : "goals"}
           </span>
         </div>
@@ -487,7 +512,7 @@ function CoachingEngagementWorkspaceContent({
       {notice ? (
         <div
           role="status"
-          className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-violet-200 bg-violet-50 px-4 py-3 text-xs font-bold leading-5 text-violet-950"
+          className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#d8c7a7] bg-[#edf1e6] px-4 py-3 text-xs font-bold leading-5 text-[#354332]"
         >
           <span>{notice}</span>
           {lastRemoved ? (
@@ -495,7 +520,7 @@ function CoachingEngagementWorkspaceContent({
               type="button"
               disabled={busyIds.has(lastRemoved.entry.id)}
               onClick={() => void restoreLastRemoved()}
-              className="inline-flex min-h-9 items-center gap-2 rounded-full bg-violet-800 px-4 text-xs font-black text-white disabled:opacity-50"
+              className="inline-flex min-h-9 items-center gap-2 rounded-full bg-[#41624b] px-4 text-xs font-black text-white disabled:opacity-50"
             >
               <RotateCcw size={14} aria-hidden="true" /> Undo
             </button>
@@ -505,10 +530,11 @@ function CoachingEngagementWorkspaceContent({
 
       {canWrite ? (
         <details
-          className="mt-5 rounded-2xl border border-violet-200 bg-white p-4"
-          open={entries.length === 0}
+          className="mt-3 rounded-xl"
+          open={createOpen}
+          onToggle={(event) => setCreateOpen(event.currentTarget.open)}
         >
-          <summary className="flex min-h-11 cursor-pointer items-center gap-2 text-sm font-black text-violet-950">
+          <summary className="inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-xl bg-[#41624b] px-4 text-sm font-bold text-white">
             <Plus size={17} aria-hidden="true" /> Add note, task, or goal
           </summary>
           <form
@@ -517,7 +543,7 @@ function CoachingEngagementWorkspaceContent({
               event.preventDefault();
               void createEntry(new FormData(event.currentTarget));
             }}
-            className="mt-4 grid gap-3"
+            className="mt-3 grid gap-3 rounded-xl border border-[#d8c7a7] bg-white p-4"
           >
             <fieldset disabled={busyIds.has("create")} className="min-w-0 grid gap-3">
             <div className="grid gap-3 sm:grid-cols-2">
@@ -608,7 +634,7 @@ function CoachingEngagementWorkspaceContent({
             <button
               type="submit"
               disabled={busyIds.has("create")}
-              className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-violet-800 px-4 py-3 text-sm font-black text-white disabled:cursor-wait disabled:opacity-50"
+              className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-[#41624b] px-4 py-3 text-sm font-black text-white disabled:cursor-wait disabled:opacity-50"
             >
               <Plus size={16} aria-hidden="true" />
               {busyIds.has("create") ? "Saving…" : "Save to coaching home"}
@@ -623,7 +649,8 @@ function CoachingEngagementWorkspaceContent({
         </p>
       )}
 
-      <div className="mt-5 grid gap-3">
+      <CoachingWorkCollection entries={visibleEntries} selectedId={selectedId} onSelect={selectEntry}
+        busyIds={busyIds} onToggleTask={canWrite ? (entry) => void updateEntry(entry, {status: entry.status === "DONE" ? "OPEN" : "DONE"}) : undefined}>
         {entries.map((entry) => {
             const Icon = entryIcon(entry.kind);
             const isActive = activeStatus(entry);
@@ -633,8 +660,8 @@ function CoachingEngagementWorkspaceContent({
               <article
                 key={entry.id}
                 data-work-id={entry.id}
-                hidden={workFilter !== "ALL" && entry.kind !== workFilter}
-                className={`rounded-2xl border bg-white p-4 ${isActive ? "border-[#eadfc9]" : "border-emerald-200 opacity-80"}`}
+                hidden={entry.id !== selectedId || (workFilter !== "ALL" && entry.kind !== workFilter)}
+                className={`rounded-2xl border bg-white p-4 ${isActive ? "border-[#eadfc9]" : "border-[#c8d3bd] opacity-80"}`}
               >
                 <div className="flex flex-wrap items-start justify-between gap-4">
                   <div className="min-w-0 flex-1">
@@ -642,11 +669,11 @@ function CoachingEngagementWorkspaceContent({
                       <Icon size={15} aria-hidden="true" />{" "}
                       {entry.kind.toLowerCase()}
                       {entry.visibility === "PRIVATE" ? (
-                        <span className="inline-flex items-center gap-1 text-violet-800">
+                        <span className="inline-flex items-center gap-1 text-[#41624b]">
                           <LockKeyhole size={12} aria-hidden="true" /> only me
                         </span>
                       ) : (
-                        <span className="inline-flex items-center gap-1 text-emerald-800">
+                        <span className="inline-flex items-center gap-1 text-[#41624b]">
                           <UsersRound size={12} aria-hidden="true" /> shared
                         </span>
                       )}
@@ -695,7 +722,7 @@ function CoachingEngagementWorkspaceContent({
                           status: isActive ? completedStatus : reopenStatus,
                         })
                       }
-                      className="inline-flex min-h-11 items-center gap-2 rounded-full border border-emerald-300 px-4 py-2 text-xs font-black uppercase tracking-wide text-emerald-900 disabled:opacity-50"
+                      className="inline-flex min-h-11 items-center gap-2 rounded-full border border-[#a6b696] px-4 py-2 text-xs font-black uppercase tracking-wide text-[#354332] disabled:opacity-50"
                     >
                       {isActive ? <Check size={15} /> : <RotateCcw size={15} />}
                       {isActive
@@ -727,9 +754,10 @@ function CoachingEngagementWorkspaceContent({
               </article>
             );
           })}
+      </CoachingWorkCollection>
         {visibleEntries.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-[#d8c7a7] bg-white p-6 text-center">
-            <CircleDot className="mx-auto text-violet-700" aria-hidden="true" />
+            <CircleDot className="mx-auto text-[#41624b]" aria-hidden="true" />
             <p className="mt-3 font-black text-[#3d3122]">
               {workFilter === "ALL" ? "Nothing to chase down yet." : `No ${workFilter === "NOTE" ? "notes" : workFilter === "TASK" ? "tasks" : "goals"} yet.`}
             </p>
@@ -740,7 +768,6 @@ function CoachingEngagementWorkspaceContent({
             </p>
           </div>
         ) : null}
-      </div>
     </section>
   );
 }
