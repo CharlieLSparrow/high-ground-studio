@@ -1,7 +1,7 @@
 "use server";
 
 import { getPrismaClient } from "@/lib/prisma";
-import { requireProjectAccess } from "@/lib/studio-authz";
+import { requireProjectAccessById } from "@/lib/server/access";
 import { revalidatePath } from "next/cache";
 import { StudioTagCategory, StudioTagUICategory } from "@prisma/client";
 
@@ -15,7 +15,7 @@ export async function createWorkflowStageAction(
   hexColor: string,
   order: number
 ) {
-  await requireProjectAccess(projectId, "write");
+  await requireProjectAccessById(projectId, "write");
   const prisma = getPrismaClient();
 
   const stage = await prisma.studioWorkflowStage.create({
@@ -39,7 +39,7 @@ export async function updateWorkflowStageAction(
   hexColor: string,
   order: number
 ) {
-  await requireProjectAccess(projectId, "write");
+  await requireProjectAccessById(projectId, "write");
   const prisma = getPrismaClient();
 
   const stage = await prisma.studioWorkflowStage.update({
@@ -57,19 +57,19 @@ export async function deleteWorkflowStageAction(
   stageId: string,
   fallbackStageId: string | null = null
 ) {
-  await requireProjectAccess(projectId, "write");
+  await requireProjectAccessById(projectId, "write");
   const prisma = getPrismaClient();
 
-  // If a fallback stage is provided, migrate existing goals to it
-  if (fallbackStageId) {
-    await prisma.goal.updateMany({
-      where: { stageId, projectId },
-      data: { stageId: fallbackStageId },
-    });
-  }
-
-  await prisma.studioWorkflowStage.delete({
-    where: { id: stageId, projectId },
+  await prisma.$transaction(async (tx) => {
+    if (!await tx.studioWorkflowStage.findFirst({ where: { id: stageId, projectId }, select: { id: true } })) {
+      throw new Error("NOT_FOUND: Stage is not in this project");
+    }
+    if (fallbackStageId === stageId) throw new Error("INVALID_INPUT: Choose a different fallback stage");
+    if (fallbackStageId && !await tx.studioWorkflowStage.findFirst({ where: { id: fallbackStageId, projectId }, select: { id: true } })) {
+      throw new Error("NOT_FOUND: Fallback stage is not in this project");
+    }
+    await tx.goal.updateMany({ where: { stageId, projectId }, data: { stageId: fallbackStageId } });
+    await tx.studioWorkflowStage.delete({ where: { id: stageId, projectId } });
   });
 
   revalidatePath(`/app/nests/[slug]/settings`, "page");
@@ -84,7 +84,7 @@ export async function createTagAction(
   category: StudioTagCategory,
   uiCategory?: StudioTagUICategory
 ) {
-  await requireProjectAccess(projectId, "write");
+  await requireProjectAccessById(projectId, "write");
   const prisma = getPrismaClient();
 
   const tag = await prisma.studioTag.create({
@@ -106,7 +106,7 @@ export async function deleteTagAction(
   projectId: string,
   tagId: string
 ) {
-  await requireProjectAccess(projectId, "write");
+  await requireProjectAccessById(projectId, "write");
   const prisma = getPrismaClient();
 
   await prisma.studioTag.update({

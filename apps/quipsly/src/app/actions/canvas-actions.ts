@@ -1,7 +1,7 @@
 "use server";
 
 import { getPrismaClient } from "@/lib/prisma";
-import { requireProjectAccess } from "../../lib/studio-authz";
+import { requireProjectAccessById } from "@/lib/server/access";
 import { revalidatePath } from "next/cache";
 import { auth } from "@/auth";
 import { normalizeAccessEmail } from "@/lib/server/studio-project-access";
@@ -61,7 +61,7 @@ export async function saveCanvasForm(
   fields: CanvasFieldPayload[]
 ) {
   // Ensure the user has write access to this project
-  await requireProjectAccess(projectId, "write");
+  await requireProjectAccessById(projectId, "write");
   const actor = await getActor();
   const prisma = getPrismaClient();
 

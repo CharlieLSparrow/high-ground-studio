@@ -1,7 +1,7 @@
 "use server";
 
 import { getPrismaClient } from "@/lib/prisma";
-import { requireProjectAccess } from "../../lib/studio-authz";
+import { requireProjectAccessById } from "@/lib/server/access";
 import { revalidatePath } from "next/cache";
 import { GoogleGenAI, Type } from "@google/genai";
 import {
@@ -21,7 +21,7 @@ export async function saveQuoteToLore(
   context?: string,
   sourceTitle?: string
 ) {
-  await requireProjectAccess(projectId, "write");
+  await requireProjectAccessById(projectId, "write");
 
   const prisma = getPrismaClient();
 
@@ -169,7 +169,7 @@ async function simulateCloudTaskAutoCurate(projectId: string, quoteId: string, t
  * Performs a semantic nearest-neighbor search for quotes in a project.
  */
 export async function searchSemanticQuotes(projectId: string, query: string, limit: number = 10) {
-  await requireProjectAccess(projectId, "read");
+  await requireProjectAccessById(projectId, "read");
 
   const prisma = getPrismaClient();
   const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;

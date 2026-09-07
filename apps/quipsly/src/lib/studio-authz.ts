@@ -33,27 +33,3 @@ export function canAccessQuipslyProduct(
     QUIPSLY_PRODUCT_ACCESS_ROLES.some((role) => roles.includes(role))
   );
 }
-
-/**
- * Validates that the current execution context has access to a specific project.
- * 
- * @param projectId The target project ID
- * @param requiredAction The action type requested (read or write)
- * @throws {Error} if authorization fails or project does not exist
- */
-export async function requireProjectAccess(
-  projectId: string,
-  requiredAction: "read" | "write" = "read"
-): Promise<void> {
-  if (!projectId) {
-    throw new Error("Authorization failed: A valid projectId is required.");
-  }
-  
-  // NOTE: Project-level access should flow through the Firebase-backed
-  // Quipsly session actor and app-owned membership/access rows. This legacy
-  // helper only validates that the project exists for older Studio paths.
-  
-  const prisma = await import("@/lib/prisma").then(m => m.getPrismaClient());
-  const project = await prisma.studioProject.findUnique({ where: { id: projectId } });
-  if (!project) throw new Error(`Authorization failed: Project not found.`);
-}

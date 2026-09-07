@@ -1,121 +1,86 @@
 "use server";
 
-import { getPrismaClient } from "@/lib/prisma";
-import { requireProjectAccess } from "../../lib/studio-authz";
+import type { Prisma } from "@prisma/client";
 import { revalidatePath } from "next/cache";
-import { auth } from "@/auth";
+import { getPrismaClient } from "@/lib/prisma";
+import { requireProjectAccessById } from "@/lib/server/access";
+import { personalOrSharedCoachingGoalAccessWhere } from "@/lib/server/coaching-work-access";
 
-/**
- * Transforms a chat message into a tracked Kanban Goal.
- * This powers the Bi-Directional HybridStream sync.
- */
-export async function createGoalFromMessage(
-  projectId: string,
-  threadId: string,
-  messageId: string,
-  title: string,
-  stageId?: string
-) {
-  // Ensure the user has write access to this project
-  await requireProjectAccess(projectId, "write");
+async function requireStage(tx: Prisma.TransactionClient, projectId: string, stageId?: string | null) {
+  if (!stageId) return;
+  const stage = await tx.studioWorkflowStage.findFirst({ where: { id: stageId, projectId }, select: { id: true } });
+  if (!stage) throw new Error("NOT_FOUND: Stage is not in this project");
+}
 
-  const session = await auth();
-  if (!session?.user?.id) {
-    throw new Error("UNAUTHORIZED: Sign in before creating goals.");
-  }
+function refresh(projectSlug: string) {
+  revalidatePath(`/nests/${projectSlug}`);
+  revalidatePath(`/nests/${projectSlug}/workspace`);
+}
 
+export async function createGoalFromMessage(projectId: string, threadId: string, messageId: string, title: string, stageId?: string) {
+  const access = await requireProjectAccessById(projectId, "write");
+  const normalizedTitle = title.trim();
+  if (!normalizedTitle || normalizedTitle.length > 240) throw new Error("INVALID_INPUT: Give the goal a title of up to 240 characters");
   const prisma = getPrismaClient();
-
-  // 1. Create the Goal
-  const goal = await prisma.goal.create({
-    data: {
-      projectId,
-      ownerUserId: session.user.id,
-      title,
-      stageId: stageId || null,
-      sourceJson: {
-        origin: "HybridStream",
-        threadId,
-        messageId,
-      },
-    },
+  const goal = await prisma.$transaction(async (tx) => {
+    // This action serves the Nest's shared board, not private client/session
+    // threads, which have their own narrower membership boundary.
+    const message = await tx.studioNestChatMessage.findFirst({
+      where: { id: messageId, projectId, threadId, thread: { projectId, key: "default" } },
+      select: { id: true, linkedGoalId: true },
+    });
+    if (!message) throw new Error("NOT_FOUND: Message is not in this Nest conversation");
+    await requireStage(tx, projectId, stageId);
+    if (message.linkedGoalId) {
+      const existing = await tx.goal.findFirst({ where: { id: message.linkedGoalId, projectId, ownerUserId: access.user.id } });
+      if (existing && existing.title === normalizedTitle && existing.stageId === (stageId || null)) return existing;
+      throw new Error("CONFLICT: This message already has a linked goal");
+    }
+    const created = await tx.goal.create({ data: {
+      projectId, ownerUserId: access.user.id, title: normalizedTitle, stageId: stageId || null,
+      sourceJson: { origin: "HybridStream", threadId, messageId },
+    } });
+    const linked = await tx.studioNestChatMessage.updateMany({
+      where: { id: messageId, projectId, threadId, linkedGoalId: null },
+      data: { linkedGoalId: created.id },
+    });
+    if (linked.count !== 1) throw new Error("CONFLICT: This message already has a linked goal");
+    return created;
   });
-
-  // 2. Link the original Chat Message to this Goal
-  await prisma.studioNestChatMessage.update({
-    where: { id: messageId },
-    data: { linkedGoalId: goal.id },
-  });
-
-  // 3. Trigger UI cache invalidation so Next.js optimistic UI fetches the new data
-  revalidatePath(`/nests/${projectId}`);
-  revalidatePath(`/nests/${projectId}/chat`);
-  
+  refresh(access.project.slug);
   return goal;
 }
 
-/**
- * Moves a Goal to a different Kanban stage.
- * Used primarily by the drag-and-drop virtualized board.
- */
-export async function updateGoalStage(
-  projectId: string,
-  goalId: string,
-  newStageId: string | null
-) {
-  // Ensure the user has write access to this project
-  await requireProjectAccess(projectId, "write");
-
+export async function updateGoalStage(projectId: string, goalId: string, newStageId: string | null) {
+  const access = await requireProjectAccessById(projectId, "write");
   const prisma = getPrismaClient();
-
-  // Update the Goal's stage
-  const updatedGoal = await prisma.goal.update({
-    where: { id: goalId, projectId }, // projectId ensures security scoping
-    data: { stageId: newStageId },
-    include: {
-      stage: true // include the new stage data (hexColor) for the frontend
-    }
+  const goal = await prisma.$transaction(async (tx) => {
+    await requireStage(tx, projectId, newStageId);
+    return tx.goal.update({
+      where: { id: goalId, projectId, OR: personalOrSharedCoachingGoalAccessWhere(access.user.id, "write") },
+      data: { stageId: newStageId }, include: { stage: true },
+    });
   });
-
-  // Trigger UI cache invalidation so Next.js optimistic UI fetches the new data.
-  // This causes any Tiptap React nodes listening to this data to re-render with the new stage color!
-  revalidatePath(`/nests/${projectId}`);
-  revalidatePath(`/nests/${projectId}/chat`);
-
-  return updatedGoal;
+  refresh(access.project.slug);
+  return goal;
 }
 
-/**
- * Fetches the live data for a Goal to hydrate the TaskNode component.
- */
 export async function getGoalData(projectId: string, goalId: string) {
-  await requireProjectAccess(projectId, "read");
-  const prisma = getPrismaClient();
-  return prisma.goal.findUnique({
-    where: { id: goalId },
-    include: { stage: true }
+  const access = await requireProjectAccessById(projectId, "read");
+  return getPrismaClient().goal.findFirst({
+    where: { id: goalId, projectId, OR: personalOrSharedCoachingGoalAccessWhere(access.user.id) },
+    include: { stage: true },
   });
 }
 
-/**
- * Deletes a Kanban stage. Because of onDelete: SetNull in Prisma (if configured)
- * or via an explicit update here, all Goals in this stage fall back to Uncategorized.
- */
 export async function deleteGoalStage(projectId: string, stageId: string) {
-  await requireProjectAccess(projectId, "write");
+  const access = await requireProjectAccessById(projectId, "write");
   const prisma = getPrismaClient();
-
-  // First gracefully fallback any Goals that were in this stage
-  await prisma.goal.updateMany({
-    where: { projectId, stageId },
-    data: { stageId: null },
+  await prisma.$transaction(async (tx) => {
+    await requireStage(tx, projectId, stageId);
+    await tx.goal.updateMany({ where: { projectId, stageId }, data: { stageId: null } });
+    await tx.studioWorkflowStage.delete({ where: { id: stageId, projectId } });
   });
-
-  // Then delete the stage itself
-  await prisma.studioWorkflowStage.delete({
-    where: { id: stageId, projectId },
-  });
-
-  revalidatePath(`/nests/${projectId}`);
+  refresh(access.project.slug);
   return true;
 }

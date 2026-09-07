@@ -1,7 +1,7 @@
 "use server";
 
 import { getPrismaClient } from "@/lib/prisma";
-import { requireProjectAccess } from "../../lib/studio-authz";
+import { requireProjectAccessById } from "@/lib/server/access";
 import { revalidatePath } from "next/cache";
 import { auth } from "@/auth";
 import { normalizeAccessEmail } from "@/lib/server/studio-project-access";
@@ -54,8 +54,19 @@ export async function addClipToTimeline(
   durationFrames: number,
   colorHex: string | null
 ) {
-  await requireProjectAccess(projectId, "write");
+  await requireProjectAccessById(projectId, "write");
   const prisma = getPrismaClient();
+
+  const track = await prisma.studioNLETrack.findFirst({
+    where: { id: trackId, nleProject: { projectId } }, select: { id: true },
+  });
+  if (!track) throw new Error("NOT_FOUND: Track is not in this project");
+  if (assetId && !await prisma.studioMediaAsset.findFirst({
+    where: { id: assetId, projects: { some: { id: projectId } } }, select: { id: true },
+  })) throw new Error("NOT_FOUND: Media is not in this project");
+  if (!Number.isSafeInteger(startFrame) || startFrame < 0 || !Number.isSafeInteger(durationFrames) || durationFrames <= 0) {
+    throw new Error("INVALID_INPUT: Clip timing must use nonnegative whole frames and a positive duration");
+  }
 
   const clip = await prisma.studioNLEClip.create({
     data: {
@@ -84,7 +95,7 @@ export async function updateClip(
     colorHex?: string;
   }
 ) {
-  await requireProjectAccess(projectId, "write");
+  await requireProjectAccessById(projectId, "write");
   const prisma = getPrismaClient();
 
   // Verify the clip belongs to this project (via track -> nleProject -> project)
@@ -112,7 +123,7 @@ export async function updateClip(
 }
 
 export async function deleteClip(projectId: string, clipId: string) {
-  await requireProjectAccess(projectId, "write");
+  await requireProjectAccessById(projectId, "write");
   const prisma = getPrismaClient();
 
   const existing = await prisma.studioNLEClip.findUnique({
@@ -132,7 +143,7 @@ export async function deleteClip(projectId: string, clipId: string) {
 }
 
 export async function splitClip(projectId: string, clipId: string, splitFrame: number) {
-  await requireProjectAccess(projectId, "write");
+  await requireProjectAccessById(projectId, "write");
   const prisma = getPrismaClient();
 
   const existing = await prisma.studioNLEClip.findUnique({

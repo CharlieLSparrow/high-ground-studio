@@ -50,10 +50,10 @@ function toStudioProjectAccessAction(action: ProjectAccessAction): StudioProject
  * workspace; customer Nests must not be forced through the legacy Studio
  * workspace registry.
  */
-export async function requireProjectAccess(
-  projectSlug: string,
+async function requireAuthorizedProject(
+  locator: { projectSlug: string } | { projectId: string },
   action: ProjectAccessAction,
-): Promise<ProjectAccessResult> {
+) {
   const session = await auth();
   if (!session?.user?.id) {
     throw new Error("UNAUTHORIZED: Not signed in");
@@ -65,21 +65,44 @@ export async function requireProjectAccess(
   }
 
   const prisma = getPrismaClient();
-  const project = await findStudioProjectForAccess(projectSlug, prisma);
+  const projectId = "projectId" in locator ? locator.projectId.trim() : undefined;
+  if (projectId === "") throw new Error("NOT_FOUND: Project access target was not found");
+  const projectSlug = "projectSlug" in locator ? locator.projectSlug : (await prisma.studioProject.findUnique({
+    where: { id: projectId }, select: { slug: true },
+  }))?.slug;
+  if (!projectSlug) throw new Error("NOT_FOUND: Project access target was not found");
+  const project = await findStudioProjectForAccess(projectSlug, prisma, projectId);
   if (!project) {
     throw new Error("NOT_FOUND: Project access target was not found");
   }
 
   const access = await resolveStudioProjectAccess({
     projectSlug,
+    projectId: project.id,
     email,
     action: toStudioProjectAccessAction(action),
     prisma,
   });
-  if (!access.allowed) {
+  if (!access.allowed || access.projectId !== project.id) {
     throw new Error(`FORBIDDEN: Insufficient permissions to perform ${action} on this project`);
   }
 
+  return { session, prisma, project, email, access };
+}
+
+/** ID-based application actions use the same authority as slug-based pages.
+ * An empty workspace is valid: access never requires a document to exist.
+ */
+export async function requireProjectAccessById(projectId: string, action: ProjectAccessAction = "read") {
+  const { session, project, access } = await requireAuthorizedProject({ projectId }, action);
+  return { user: session.user, project, role: access.role, workspace: project.workspace };
+}
+
+export async function requireProjectAccess(
+  projectSlug: string,
+  action: ProjectAccessAction,
+): Promise<ProjectAccessResult> {
+  const { session, prisma, project, email } = await requireAuthorizedProject({ projectSlug }, action);
   const [document, user] = await Promise.all([
     prisma.studioDocument.findFirst({
       where: {
@@ -89,13 +112,7 @@ export async function requireProjectAccess(
       orderBy: { updatedAt: "desc" },
     }),
     prisma.user.findFirst({
-      where: {
-        OR: [
-          { id: session.user.id },
-          { primaryEmail: email },
-          { aliases: { some: { email } } },
-        ],
-      },
+      where: { id: session.user.id },
       include: { roles: true },
     }),
   ]);
