@@ -39,7 +39,7 @@ jobs:
           node-version-file: .node-version
 
       - name: Test Capture CI routing
-        run: node --experimental-strip-types --test scripts/ci/capture-ci-routing.test.mjs scripts/ci/plan-changed-surfaces.test.mjs packages/repository-governance/src/release-manifest.test.ts apps/mobile-capture/HighGroundCapture/scripts/warm-local-runtime.test.mjs
+        run: node --experimental-strip-types --test scripts/ci/capture-ci-routing.test.mjs scripts/ci/plan-changed-surfaces.test.mjs packages/repository-governance/src/release-manifest.test.ts apps/mobile-capture/HighGroundCapture/scripts/warm-local-runtime.test.mjs apps/mobile-capture/HighGroundCapture/scripts/prepare-ci-simulator.test.mjs
 
       - name: Plan Capture validation
         id: plan
@@ -85,6 +85,7 @@ jobs:
           set -euo pipefail
           test -d "${DEVELOPER_DIR}"
           xcodebuild -version
+          xcrun simctl list runtimes
           xcrun simctl list devices available
 
       - name: Setup Node.js
@@ -129,8 +130,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          bash apps/mobile-capture/HighGroundCapture/scripts/prepare-ci-simulator.sh "iPhone 17 Pro" "26.2" 2>&1 | tee "${RUNNER_TEMP}/capture-prewarm-iphone.log"
-          bash apps/mobile-capture/HighGroundCapture/scripts/prepare-ci-simulator.sh "iPad Air 13-inch (M3)" "26.2" 2>&1 | tee "${RUNNER_TEMP}/capture-prewarm-ipad.log"
+          CAPTURE_SIMULATOR_DESTINATION_VARIABLE=CAPTURE_DESTINATION bash apps/mobile-capture/HighGroundCapture/scripts/prepare-ci-simulator.sh "iPhone 17 Pro" "26.2" 2>&1 | tee "${RUNNER_TEMP}/capture-prewarm-iphone.log"
+          CAPTURE_SIMULATOR_DESTINATION_VARIABLE=CAPTURE_IPAD_DESTINATION bash apps/mobile-capture/HighGroundCapture/scripts/prepare-ci-simulator.sh "iPad Air 13-inch (M3)" "26.2" 2>&1 | tee "${RUNNER_TEMP}/capture-prewarm-ipad.log"
 
       - name: Run bounded deterministic Capture UI lane serially
         timeout-minutes: 55

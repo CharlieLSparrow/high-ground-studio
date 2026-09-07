@@ -89,6 +89,11 @@ for (const failureDevice of ["none", "iPhone 17 Pro", "iPad Air 13-inch (M3)"]) 
     const result = spawnSync("bash", ["-c", `
       bash() {
         [[ "$1" == apps/mobile-capture/HighGroundCapture/scripts/prepare-ci-simulator.sh ]] || return 98
+        if [[ "$2" == "iPhone 17 Pro" ]]; then
+          [[ "$CAPTURE_SIMULATOR_DESTINATION_VARIABLE" == CAPTURE_DESTINATION ]] || return 99
+        else
+          [[ "$CAPTURE_SIMULATOR_DESTINATION_VARIABLE" == CAPTURE_IPAD_DESTINATION ]] || return 99
+        fi
         echo "Preparing $2"
         echo "Simulator diagnostics" >&2
         [[ "$2" != "$FAILURE_DEVICE" ]] || return 37
