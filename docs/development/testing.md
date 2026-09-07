@@ -44,6 +44,11 @@ pnpm quipsly:release:local
 The Jest application suite is a required PR check for Nest changes, separate
 from the script-based source contracts. CI retains its JSON result even when it
 fails, and preserves the process log if the runner crashes before writing JSON.
+The workflow accepts PRs into integration branches as well as the main branch.
+It can also be run manually against a selected branch and comparison ref; the
+manual path checks changes since their merge base, not just the latest commit.
+Pushes alone do not run this workflow. Confirm a workflow run for the exact
+commit before calling it CI-validated; local results are separate evidence.
 The full suite uses two workers with an absolute 512 MB idle recycle threshold;
 focused debugging can still use `--runInBand`. Database integration tests explicitly opt in with
 `QUIPSLY_LOCAL_DB_SMOKE=1` and `QUIPSLY_LOCAL_DATABASE_URL`; the ordinary Jest PR

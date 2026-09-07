@@ -2,9 +2,13 @@ name: PR Tests
 
 on:
   pull_request:
-    branches:
-      - main
-      - master
+  workflow_dispatch:
+    inputs:
+      base_ref:
+        description: Git ref to compare with the selected branch (for example origin/main).
+        required: true
+        default: origin/main
+        type: string
 
 concurrency:
   group: quipsly-pr-tests-${{ github.event.pull_request.number || github.ref }}
@@ -37,6 +41,23 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Resolve validation comparison
+        id: comparison
+        shell: bash
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          MANUAL_BASE_REF: ${{ inputs.base_ref }}
+        run: |
+          set -euo pipefail
+          if [[ -n "${PR_BASE_SHA}" ]]; then
+            base=$(git rev-parse --verify --end-of-options "${PR_BASE_SHA}^{commit}")
+          else
+            requested=$(git rev-parse --verify --end-of-options "${MANUAL_BASE_REF}^{commit}")
+            base=$(git merge-base "${requested}" HEAD)
+          fi
+          echo "base_sha=${base}" >> "${GITHUB_OUTPUT}"
+          echo "Validating $(git rev-parse HEAD) against ${base}"
+
       - name: Setup pnpm
         uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
 
@@ -59,21 +80,21 @@ jobs:
 
       - name: Reject added secret material
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          BASE_SHA: ${{ steps.comparison.outputs.base_sha }}
         run: |
           node --test scripts/ci/audit-changed-secrets.test.mjs
           node scripts/ci/audit-changed-secrets.mjs --base "${BASE_SHA}" --head HEAD
 
       - name: Enforce binary asset budgets
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          BASE_SHA: ${{ steps.comparison.outputs.base_sha }}
         run: node scripts/ci/audit-binary-assets.mjs --base "${BASE_SHA}" --head HEAD
 
       - name: Detect Quipsly release-slice changes
         id: changes
         shell: bash
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          BASE_SHA: ${{ steps.comparison.outputs.base_sha }}
         run: |
           set -euo pipefail
           node --experimental-strip-types scripts/ci/plan-changed-surfaces.mjs \
