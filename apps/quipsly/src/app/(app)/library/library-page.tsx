@@ -18,7 +18,7 @@ import { buildLibraryEntries, filterLibraryEntries, type LibraryEntry, type Libr
 export const dynamic = "force-dynamic";
 
 export const metadata = {
-  title: "Library - Quipsly",
+  title: "Notes - Quipsly",
   description: "Find and continue your writing, notes, recordings, transcripts, research, and media.",
 };
 
@@ -273,9 +273,8 @@ export default async function LibraryPage({ searchParams }: { searchParams?: Pro
     const entries = filterLibraryEntries(library.entries, { query, kind });
     return <main className="mx-auto max-w-[1420px] space-y-7 px-2 py-2 text-[#3d3122]">
       <header className="overflow-hidden rounded-[2rem] border border-[#dfcba6] bg-[radial-gradient(circle_at_top_right,_#d7eadf,_transparent_42%),linear-gradient(135deg,#fffaf0,#f8edda)] p-6 shadow-sm md:p-8">
-        <p className="text-xs font-black uppercase tracking-[0.22em] text-[#76522c]">Library</p>
-        <h1 className="mt-2 max-w-4xl font-serif text-4xl font-black tracking-tight md:text-5xl">Your ideas, recordings, and writing—ready when you are.</h1>
-        <p className="mt-3 max-w-3xl text-sm font-semibold leading-6 text-[#715a3e]">Start with your voice on iPhone, keep writing here, or return to a Session, source, or recording without hunting through different tools.</p>
+        <h1 className="max-w-4xl font-serif text-4xl font-bold tracking-tight md:text-5xl">Notes</h1>
+        <p className="mt-3 max-w-3xl text-sm leading-6 text-[#715a3e]">Write something new, capture a thought, or pick up where you left off.</p>
         {library.homeNest ? <div className="mt-5">
           <div className="flex flex-wrap gap-3">
             <form action={createDocumentAction.bind(null, library.homeNest.slug, "note")}>
@@ -285,9 +284,6 @@ export default async function LibraryPage({ searchParams }: { searchParams?: Pro
           </div>
           <p className="mt-2 text-xs font-semibold text-[#715a3e]">Start here or on iPhone, then continue the same private writing on either device.</p>
         </div> : null}
-        <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-6" aria-label="Library counts">{[
-          ["Notes", library.counts.notes], ["Writing", library.counts.documents], ["Sessions", library.counts.sessions], ["Research", library.counts.sources], ["Media", library.counts.media], ["Saved", library.counts.saved],
-        ].map(([label, value]) => <div key={label} className="rounded-2xl border border-white/80 bg-white/75 p-4"><p className="text-3xl font-black">{value}</p><p className="text-[10px] font-black uppercase tracking-wide text-[#806a4d]">{label}</p></div>)}</div>
       </header>
 
       <section aria-label="Library filters" className="rounded-3xl border border-[#e5d5b7] bg-white p-4 shadow-sm md:p-5">

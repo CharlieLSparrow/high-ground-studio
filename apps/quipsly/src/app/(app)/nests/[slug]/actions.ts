@@ -64,10 +64,7 @@ const DOCUMENT_PRESETS: Record<CreateNestDocumentKind, {
   note: {
     title: "New Note",
     sourceLabel: "document-kind:note",
-    blocks: [
-      "Note Title",
-      "Capture the thought here. Notes can be tagged, linked, summarized, or pulled into drafts later without pretending they are manuscript truth.",
-    ],
+    blocks: [""],
   },
   "study-source": {
     title: "New Study Source",
@@ -855,7 +852,7 @@ export async function createNestQuickWorkAction(input: {
   }
 }
 
-export async function createDocumentAction(projectSlug: string, kind: CreateNestDocumentKind = "note") {
+export async function createDocumentInNest(projectSlug: string, kind: CreateNestDocumentKind = "note") {
   const session = await auth();
   const actorEmail = session?.user?.primaryEmail || session?.user?.email;
 
@@ -904,7 +901,13 @@ export async function createDocumentAction(projectSlug: string, kind: CreateNest
 
   revalidatePath(`/nests/${projectSlug}`);
   revalidatePath(`/create`);
-  redirect(`/create?project=${encodeURIComponent(project.slug)}&document=${encodeURIComponent(document.id)}`);
+  revalidatePath("/library");
+  return { documentId: document.id, href: kind === "note" ? `/notes/${encodeURIComponent(document.id)}` : `/create?project=${encodeURIComponent(project.slug)}&document=${encodeURIComponent(document.id)}` };
+}
+
+export async function createDocumentAction(projectSlug: string, kind: CreateNestDocumentKind = "note") {
+  const document = await createDocumentInNest(projectSlug, kind);
+  redirect(document.href);
 }
 
 export async function renameDocumentAction(projectSlug: string, documentId: string, nextTitle: string) {

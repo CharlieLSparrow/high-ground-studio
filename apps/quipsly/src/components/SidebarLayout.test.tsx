@@ -1,65 +1,92 @@
 import React from "react";
-import { render, screen } from "@testing-library/react";
-
+import { fireEvent, render, screen, within, waitFor } from "@testing-library/react";
+import { usePathname, useRouter } from "next/navigation";
 import { SidebarLayout } from "./SidebarLayout";
+import { createPersonalNote } from "./workspace-create-actions";
 
-jest.mock("next/navigation", () => ({
-  usePathname: jest.fn(() => "/today"),
-  useRouter: jest.fn(() => ({ push: jest.fn(), refresh: jest.fn() })),
-}));
+jest.mock("next/navigation", () => ({ usePathname: jest.fn(() => "/today"), useRouter: jest.fn() }));
 jest.mock("@/lib/firebase/firebase", () => ({ auth: {} }));
 jest.mock("firebase/auth", () => ({ signOut: jest.fn() }));
 jest.mock("@/components/NestChatPanel", () => ({ NestChatPanel: () => null }));
+jest.mock("./workspace-create-actions", () => ({ createPersonalNote: jest.fn() }));
 
 describe("Quipsly workspace navigation", () => {
-  it("puts the six daily operating surfaces in the primary workflow", () => {
-    render(<SidebarLayout><div>Current work</div></SidebarLayout>);
+  const push = jest.fn();
+  beforeEach(() => {
+    jest.clearAllMocks();
+    jest.mocked(usePathname).mockReturnValue("/today");
+    jest.mocked(useRouter).mockReturnValue({ push, refresh: jest.fn() } as any);
+  });
+  function openMenu(label: string) {
+    const trigger = screen.getByLabelText(label);
+    trigger.closest("details")!.setAttribute("open", "");
+    return trigger.closest("details")!;
+  }
 
-    expect(screen.getAllByRole("link", { name: "Today" })[0]).toHaveAttribute("href", "/today");
-    expect(screen.getAllByRole("link", { name: "Inbox" })[0]).toHaveAttribute("href", "/inbox");
-    expect(screen.getAllByRole("link", { name: "Work" })[0]).toHaveAttribute("href", "/work");
-    expect(screen.getAllByRole("link", { name: "Sessions" })[0]).toHaveAttribute("href", "/coaching/sessions");
-    expect(screen.getAllByRole("link", { name: "Library" })[0]).toHaveAttribute("href", "/library");
-    expect(screen.getAllByRole("link", { name: "Calendar" })[0]).toHaveAttribute("href", "/schedule");
-    expect(screen.getByRole("navigation", { name: "More workspace tools" })).toBeInTheDocument();
-    expect(screen.getAllByRole("link", { name: "Nests" })[0]).toHaveAttribute("href", "/projects");
-    expect(screen.getAllByRole("link", { name: "Audio Studio" })[0]).toHaveAttribute("href", "/audio");
-    expect(screen.getAllByRole("link", { name: "Podcast desk" })[0]).toHaveAttribute("href", "/podcast");
-    expect(screen.getAllByRole("link", { name: "Publishing" }).some((link) => link.getAttribute("href") === "/publishing")).toBe(true);
-    expect(screen.getByRole("link", { name: "Get support" })).toHaveAttribute("href", "https://quipsly.com/support");
-    expect(screen.queryByText(/support beta/i)).not.toBeInTheDocument();
+  it("keeps the same five destinations on desktop and mobile", () => {
+    render(<SidebarLayout>Current work</SidebarLayout>);
+    for (const name of ["Primary workspace", "Mobile workspace"]) {
+      const links = within(screen.getByRole("navigation", { name })).getAllByRole("link");
+      expect(links.map((link) => link.textContent)).toEqual(["Home", "Sessions", "Nests", "Notes", "Account"]);
+      expect(links.map((link) => link.getAttribute("href"))).toEqual(["/today", "/coaching/sessions", "/projects", "/library", "/settings"]);
+    }
+    expect(screen.queryByText("More")).not.toBeInTheDocument();
+    expect(screen.queryByText("Transcription lab")).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Tasks & goals" })).toHaveAttribute("href", "/work");
+    expect(screen.getByRole("link", { name: "Calendar" })).toHaveAttribute("href", "/schedule");
   });
 
-  it("advertises Search All and a canonical attention queue without inventing unread notifications", () => {
-    render(<SidebarLayout><div>Current work</div></SidebarLayout>);
-
-    expect(screen.queryByPlaceholderText("Search assets...")).not.toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Search all Quipsly" })).toHaveAttribute("href", "/find");
-    expect(screen.getAllByRole("link", { name: "Search all" }).every((link) => link.getAttribute("href") === "/find")).toBe(true);
-    expect(screen.getByRole("link", { name: "Open attention queue" })).toHaveAttribute("href", "/work?view=attention");
-    expect(screen.queryByRole("button", { name: /notifications/i })).not.toBeInTheDocument();
+  it("keeps Notes selected while editing a document and shows related tools", () => {
+    jest.mocked(usePathname).mockReturnValue("/writing/my-draft");
+    render(<SidebarLayout>Draft</SidebarLayout>);
+    for (const link of screen.getAllByRole("link", { name: "Notes" })) expect(link).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("navigation", { name: "Notes tools" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Research" })).toHaveAttribute("href", "/research");
+    expect(screen.queryByRole("link", { name: "Tasks & goals" })).not.toBeInTheDocument();
   });
 
-  it("keeps the mobile bar to four destinations plus an explicit More menu", () => {
-    render(<SidebarLayout><div>Current work</div></SidebarLayout>);
-
-    expect(screen.getAllByRole("link", { name: "Today" })).toHaveLength(2);
-    expect(screen.getAllByRole("link", { name: "Inbox" })).toHaveLength(2);
-    expect(screen.getAllByRole("link", { name: "Work" })).toHaveLength(2);
-    expect(screen.getAllByRole("link", { name: "Sessions" })).toHaveLength(2);
-    expect(screen.getByRole("navigation", { name: "More mobile tools" })).toBeInTheDocument();
-    expect(screen.getAllByText("More")).toHaveLength(2);
+  it("creates a note from any surface and opens the canonical document", async () => {
+    jest.mocked(createPersonalNote).mockResolvedValue({ documentId: "note", href: "/create?project=home&document=note" });
+    render(<SidebarLayout>Work</SidebarLayout>);
+    openMenu("Create");
+    fireEvent.click(screen.getByRole("button", { name: /New note/ }));
+    await waitFor(() => expect(push).toHaveBeenCalledWith("/create?project=home&document=note"));
+    expect(createPersonalNote).toHaveBeenCalledTimes(1);
   });
 
-  it("shows only the back-office destinations granted to a staff role", () => {
-    const { rerender } = render(<SidebarLayout showSupportTools><div>Support work</div></SidebarLayout>);
-    expect(screen.getAllByRole("link", { name: "Customer support" })[0]).toHaveAttribute("href", "/admin/support");
+  it("keeps creation failure recoverable in place", async () => {
+    jest.mocked(createPersonalNote).mockRejectedValue(new Error("offline"));
+    render(<SidebarLayout>Work</SidebarLayout>);
+    openMenu("Create");
+    fireEvent.click(screen.getByRole("button", { name: /New note/ }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("We couldn't create your note");
+    expect(push).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: /New note/ })).toBeEnabled();
+  });
+
+  it("dismisses popovers with Escape, outside interaction, and navigation", () => {
+    const { rerender } = render(<SidebarLayout>Work</SidebarLayout>);
+    const menu = openMenu("Create");
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(menu).not.toHaveAttribute("open");
+    expect(screen.getByLabelText("Create")).toHaveFocus();
+    openMenu("Create");
+    fireEvent.pointerDown(document.body);
+    expect(menu).not.toHaveAttribute("open");
+    openMenu("Create");
+    jest.mocked(usePathname).mockReturnValue("/library");
+    rerender(<SidebarLayout>Notes</SidebarLayout>);
+    expect(menu).not.toHaveAttribute("open");
+  });
+
+  it("exposes only granted administration destinations in the account menu", () => {
+    const { rerender } = render(<SidebarLayout showSupportTools>Support</SidebarLayout>);
+    openMenu("Your account");
+    expect(screen.getByRole("link", { name: "Customer support" })).toHaveAttribute("href", "/admin/support");
+    expect(screen.queryByRole("link", { name: "Users" })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Product operations" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "Users" })).not.toBeInTheDocument();
-
-    rerender(<SidebarLayout showProductOperations><div>Product work</div></SidebarLayout>);
-    expect(screen.getAllByRole("link", { name: "Product operations" })[0]).toHaveAttribute("href", "/admin/product-ops");
+    rerender(<SidebarLayout showProductOperations>Product</SidebarLayout>);
+    expect(screen.getByRole("link", { name: "Product operations" })).toHaveAttribute("href", "/admin/product-ops");
     expect(screen.queryByRole("link", { name: "Customer support" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "Users" })).not.toBeInTheDocument();
   });
 });

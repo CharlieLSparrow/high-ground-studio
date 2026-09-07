@@ -75,7 +75,7 @@ describe("source-first Library model", () => {
       id: "document:doc-note",
       kind: "NOTE",
       detail: "Protect one honest editing block before Thursday.",
-      href: "/create?project=home-person&document=doc-note&block=block-insight",
+      href: "/notes/doc-note",
       stateLabel: "Note",
       badges: ["Writing", "2 sections"],
     });
@@ -141,7 +141,7 @@ describe("source-first Library model", () => {
     });
 
     expect(result.entries[0]).toMatchObject({
-      href: "/create?project=research-lab&document=voice-writing-7a9b10f0-97bd-4bbb-a7dd-0b93fbc5918b&block=voice-body",
+      href: "/notes/voice-writing-7a9b10f0-97bd-4bbb-a7dd-0b93fbc5918b",
       actionLabel: "Continue writing",
       stateLabel: "Shared writing",
       badges: ["From iPhone", "Nest members"],

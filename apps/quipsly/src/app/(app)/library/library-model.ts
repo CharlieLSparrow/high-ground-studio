@@ -225,7 +225,7 @@ export function buildLibraryEntries(input: {
       href: voiceWritingDraftId && voiceWritingOwned
         ? `/writing/${encode(voiceWritingDraftId)}`
         : writingNote
-        ? `/create?project=${encode(document.project.slug)}&document=${encode(document.id)}${previewBlock ? `&block=${encode(previewBlock.id)}` : ""}`
+        ? `/notes/${encode(document.id)}`
         : episode
         ? `/read?projectSlug=${encode(document.project.slug)}&episodeSlug=${encode(episode.slug)}`
         : `/create?project=${encode(document.project.slug)}&document=${encode(document.id)}`,

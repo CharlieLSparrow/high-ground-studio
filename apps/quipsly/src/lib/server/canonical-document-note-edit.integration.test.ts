@@ -8,6 +8,7 @@ import {
   canonicalDocumentNoteSelect,
   editCanonicalDocumentNoteInTransaction,
   projectCanonicalDocumentNote,
+  readCanonicalDocumentNoteForActor,
 } from "./canonical-document-note-edit";
 
 jest.mock("@/auth", () => ({ auth: jest.fn() }));
@@ -241,6 +242,23 @@ runLocalDatabaseSmoke("canonical document note editing local database smoke", ()
       knowledgeNodeId: knowledgeNode.id,
     };
   }
+
+  it("opens an authorized note and hides the same identifier from a neighboring account", async () => {
+    const document = await prisma.studioDocument.create({ data: {
+      projectId, stableId: randomUUID(), title: "Blank writing space", sourceLabel: "document-kind:note",
+      blocks: { create: { stableId: randomUUID(), order: 0, body: "", sourceLabel: "document-kind:note" } },
+    } });
+    const own = await readCanonicalDocumentNoteForActor({ userId: actorUserId, email: actorEmail }, document.id, prisma);
+    expect(own?.title).toBe("Blank writing space");
+    expect(own?.canEditContent).toBe(true);
+    expect(await readCanonicalDocumentNoteForActor({ userId: outsiderUserId, email: outsiderEmail }, document.id, prisma)).toBeNull();
+    const saved = await editCanonicalDocumentNoteInTransaction({
+      actorUserId, actorEmail, documentId: document.id, expectedContentRevision: own!.contentRevision,
+      clientRequestId: randomUUID(), title: "A title before the words", blocks: own!.blocks,
+    }, prisma);
+    expect(saved.ok).toBe(true);
+    expect((await readCanonicalDocumentNoteForActor({ userId: actorUserId, email: actorEmail }, document.id, prisma))?.title).toBe("A title before the words");
+  });
 
   async function loadSnapshot(documentId: string) {
     const record = await prisma.studioDocument.findUniqueOrThrow({

@@ -290,6 +290,22 @@ export function projectCanonicalDocumentNote(
   };
 }
 
+export async function readCanonicalDocumentNoteForActor(
+  actor: { userId: string; email: string },
+  documentId: string,
+  prisma: PrismaClient = getPrismaClient(),
+) {
+  const record = await prisma.studioDocument.findUnique({
+    where: { id: documentId }, select: canonicalDocumentNoteSelect,
+  });
+  if (!record || !isDocumentNote(record) || !canReadPersonalWritingDocument(record.personalOwnerUserId, actor.userId, record.isPrivate)) return null;
+  const readAccess = await resolveStudioProjectAccess({ projectSlug: record.project.slug, email: actor.email, action: "read", prisma });
+  if (!readAccess.allowed || readAccess.projectId !== record.projectId) return null;
+  const writeAccess = await resolveStudioProjectAccess({ projectSlug: record.project.slug, email: actor.email, action: "write", prisma });
+  const note = projectCanonicalDocumentNote(record);
+  return { ...note, canEditContent: note.canEditContent && writeAccess.allowed && writeAccess.projectId === record.projectId, projectName: record.project.name };
+}
+
 function commonTextBoundary(previous: string, next: string) {
   let prefix = 0;
   while (
@@ -498,8 +514,7 @@ function serializableInput(input: CanonicalDocumentNoteEditInput) {
       && block.body.length <= MAX_BLOCK_LENGTH)
     && new Set(blocks.map((block) => block.id)).size === blocks.length
     && new Set(blocks.map((block) => block.stableId)).size === blocks.length
-    && totalLength <= MAX_TOTAL_LENGTH
-    && blocks.some((block) => block.body.trim().length > 0),
+    && totalLength <= MAX_TOTAL_LENGTH,
   );
 
   return {
