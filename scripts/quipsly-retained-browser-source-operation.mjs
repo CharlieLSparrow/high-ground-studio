@@ -2,16 +2,19 @@
 
 import { execFileSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
+import { createRequire } from "node:module";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-import { deleteApp, initializeApp } from "firebase-admin/app";
-import { getAuth } from "firebase-admin/auth";
+const requireFromNest = createRequire(new URL("../apps/quipsly/package.json", import.meta.url));
+const { deleteApp, initializeApp } = requireFromNest("firebase-admin/app");
+const { getAuth } = requireFromNest("firebase-admin/auth");
 
 import {
   assertNoHorizontalOverflow,
   loadPlaywright,
+  requireLoopbackOrigin,
   signInThroughRenderedLogin,
 } from "./lib/retained-qa-browser.mjs";
 
@@ -31,34 +34,44 @@ if (
   throw new Error("The retained browser-source operation is loopback-only.");
 }
 
-const roomId = "retained-coaching-follow-up-20260731";
-const email = "quipsly-coach-retained-20260731@example.test";
+const roomId = process.env.QUIPSLY_BROWSER_SOURCE_QA_ROOM_ID || "retained-coaching-follow-up-20260731";
+const email = process.env.QUIPSLY_BROWSER_SOURCE_QA_EMAIL || "quipsly-coach-retained-20260731@example.test";
+if (!/^[^@\s]+@[^@\s]+\.test$/.test(email)) {
+  throw new Error("Browser-source regression requires a synthetic .test account.");
+}
 const password = `Qp-${randomBytes(18).toString("base64url")}!26`;
 const authEmulatorHost =
   process.env.FIREBASE_AUTH_EMULATOR_HOST || "127.0.0.1:9099";
+requireLoopbackOrigin(`http://${authEmulatorHost}`, "FIREBASE_AUTH_EMULATOR_HOST");
 process.env.FIREBASE_AUTH_EMULATOR_HOST = authEmulatorHost;
 process.env.GCLOUD_PROJECT = "quipsly-reef";
 process.env.GOOGLE_CLOUD_PROJECT = "quipsly-reef";
 process.env.DATABASE_URL =
   process.env.QUIPSLY_LOCAL_DATABASE_URL ||
   "postgresql://postgres:postgres@127.0.0.1:5432/high_ground_studio";
+if (!["localhost", "127.0.0.1", "[::1]"].includes(new URL(process.env.DATABASE_URL).hostname)) {
+  throw new Error("Browser-source regression requires a loopback database.");
+}
 
 const fixtureDirectory = await mkdtemp(
   path.join(tmpdir(), "quipsly-browser-source-"),
 );
 const fakeAudioPath = path.join(fixtureDirectory, "coaching-rehearsal.wav");
+const speechPath = path.join(fixtureDirectory, "coaching-rehearsal.aiff");
+const fixtureText = "My coaching goal is to write every morning. Tomorrow I will draft one page and share it with my coach.";
+execFileSync("say", ["-v", "Samantha", "-r", "140", "-o", speechPath, fixtureText], {
+  stdio: "inherit",
+});
 execFileSync(
   "ffmpeg",
   [
     "-hide_banner",
     "-loglevel",
     "error",
-    "-f",
-    "lavfi",
     "-i",
-    "sine=frequency=330:sample_rate=48000:duration=14",
-    "-af",
-    "volume=0.08",
+    speechPath,
+    "-ar",
+    "48000",
     "-ac",
     "1",
     "-c:a",
@@ -88,7 +101,7 @@ const actor = await prisma.user.findUniqueOrThrow({
 });
 const canonicalRoom = await prisma.callRoom.findUniqueOrThrow({
   where: { id: roomId },
-  select: { id: true, projectId: true, captureGroupId: true },
+  select: { id: true, title: true, projectId: true, captureGroupId: true },
 });
 const participant = await prisma.callParticipant.findFirstOrThrow({
   where: { roomId, userId: actor.id, accessStatus: "ACTIVE" },
@@ -122,14 +135,14 @@ try {
   });
 
   await page
-    .getByRole("heading", { name: "Retained coaching follow-up rehearsal" })
+    .getByRole("heading", { name: canonicalRoom.title, exact: true }).first()
     .waitFor();
   const liveDock = page.locator('aside[aria-label$="live call dock"]');
   await liveDock.waitFor({ timeout: 3_000 }).catch(() => undefined);
   if (!(await liveDock.isVisible().catch(() => false))) {
     const browserEntry = page
       .getByRole("button", {
-        name: /^(?:Open call lobby|Join in browser|Join call)$/,
+        name: /^(?:Open call lobby|Join in (?:this )?browser|Continue in this browser|Join call)$/,
       })
       .filter({ visible: true })
       .first();
@@ -248,19 +261,21 @@ try {
   await recordButton.waitFor();
   if (!(await recordButton.isEnabled())) {
     throw new Error(
-      `The rendered record action stayed held: ${await recorder.getByRole("status").innerText()}`,
+      `The rendered record action stayed held: ${await recorder.innerText({ timeout: 2_000 }).catch(() => "Recorder unavailable")}`,
     );
   }
   await recordButton.click();
   const stopButton = recorder.getByRole("button", {
-    name: "Stop recording",
+    name: /^Stop (?:my )?recording$/,
   });
   await stopButton.waitFor({ timeout: 30_000 }).catch(async () => {
     throw new Error(
-      `The retained source did not enter recording: ${await recorder.getByRole("status").first().innerText()}`,
+      `The retained source did not enter recording: ${await recorder.innerText({ timeout: 2_000 }).catch(() => "Recorder unavailable")}`,
     );
   });
-  await page.waitForTimeout(8_000);
+  // Longer than one complete loop of the known speech, even if the shared
+  // microphone stream was already running during the lobby sound check.
+  await page.waitForTimeout(14_000);
   await stopButton.click();
   await recorder
     .getByText(/Recording saved(?: and verified in Quipsly|\. Quipsly is preparing it for reliable playback)/i)
@@ -430,6 +445,7 @@ try {
       sourceGeneration: true,
       sourceSha256: true,
       errorMessage: true,
+      segments: { select: { text: true }, orderBy: { startSeconds: "asc" } },
       _count: { select: { segments: true } },
     },
   });
@@ -449,6 +465,7 @@ try {
         sourceGeneration: true,
         sourceSha256: true,
         errorMessage: true,
+        segments: { select: { text: true }, orderBy: { startSeconds: "asc" } },
         _count: { select: { segments: true } },
       },
     });
@@ -461,6 +478,16 @@ try {
   ) {
     throw new Error(
       `Source-bound transcript did not complete: ${JSON.stringify(transcript)}`,
+    );
+  }
+  const recognizedWords = new Set(
+    transcript.segments.map((segment) => segment.text).join(" ").toLowerCase().match(/[a-z]+/g) || [],
+  );
+  const expectedWords = ["coaching", "goal", "write", "morning", "draft", "page"];
+  const matchedWords = expectedWords.filter((word) => recognizedWords.has(word));
+  if (matchedWords.length < 4) {
+    throw new Error(
+      `The source-bound transcript did not recover the known speech (${matchedWords.length}/${expectedWords.length} key words).`,
     );
   }
   const manifest =
@@ -482,6 +509,8 @@ try {
         humanAcceptanceSatisfied: false,
         fixtureIdentifiersUsed: true,
         syntheticMedia: true,
+        syntheticSpeech: true,
+        transcriptContentCheck: { expectedWords, matchedWords, minimumMatches: 4 },
         externalSideEffects: false,
         roomId,
         recording: {
@@ -534,6 +563,17 @@ try {
     ),
   );
   await context.close();
+} catch (error) {
+  const page = browser.contexts()[0]?.pages()[0];
+  if (page) {
+    const evidenceDirectory = await mkdtemp(path.join(tmpdir(), "quipsly-browser-source-evidence-"));
+    const screenshotPath = path.join(evidenceDirectory, "failure.png");
+    await page.screenshot({ path: screenshotPath, fullPage: true }).then(
+      () => console.error(`Browser failure screenshot: ${screenshotPath}`),
+      () => undefined,
+    );
+  }
+  throw error;
 } finally {
   await browser.close();
   await prisma.$disconnect();
