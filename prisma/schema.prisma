@@ -451,6 +451,7 @@ enum EmailRecipientDeliveryStatus {
 
 enum TransactionalEmailKind {
   BOOKING_CONFIRMED
+  BOOKING_RESCHEDULED
   SESSION_REMINDER_24H
   SESSION_REMINDER_1H
 }

@@ -42,7 +42,7 @@ function hash(value: string) {
   return createHash("sha256").update(value).digest("hex");
 }
 
-function scheduleFingerprint(input: {
+export function scheduleFingerprint(input: {
   scheduledStart: Date;
   scheduledEnd: Date;
   timezone: string;
@@ -120,7 +120,9 @@ function buildPlans(booking: any, now: Date): PlannedEmail[] {
     "SESSION_REMINDER_24H",
     "SESSION_REMINDER_1H",
   ];
-  if (booking.createdAt.getTime() >= now.getTime() - CONFIRMATION_LOOKBACK_MS) {
+  const scheduleEvents = booking.metadataJson?.scheduleEvents;
+  const wasRescheduled = Array.isArray(scheduleEvents) && scheduleEvents.some((event: any) => event?.kind === "reschedule");
+  if (!wasRescheduled && booking.createdAt.getTime() >= now.getTime() - CONFIRMATION_LOOKBACK_MS) {
     kinds.unshift("BOOKING_CONFIRMED");
   }
   return uniqueRecipients.flatMap(({ user, role }) => {
@@ -164,6 +166,7 @@ async function planUpcomingEmail(input: {
       scheduledEnd: true,
       timezone: true,
       createdAt: true,
+      metadataJson: true,
       callRoom: { select: { id: true } },
       clientUser: {
         select: { id: true, primaryEmail: true, isActive: true },
@@ -271,6 +274,36 @@ async function planUpcomingEmail(input: {
   };
 }
 
+/** Called in the same transaction as a schedule change. No provider calls. */
+export async function queueCoachingRescheduleEmail(input: {
+  prisma: Prisma.TransactionClient;
+  bookingId: string;
+  changeId: string;
+  now: Date;
+}) {
+  const booking = await input.prisma.coachingBooking.findUniqueOrThrow({
+    where: {id: input.bookingId},
+    select: {id: true, status: true, scheduledStart: true, scheduledEnd: true, timezone: true,
+      callRoom: {select: {id: true}},
+      clientUser: {select: {id: true, primaryEmail: true, isActive: true}}},
+  });
+  if (booking.status !== "CONFIRMED" || !booking.callRoom || !booking.clientUser?.isActive) return null;
+  const recipientEmail = normalizeEmail(booking.clientUser.primaryEmail);
+  if (!recipientEmail) return null;
+  const idempotencyKey = `txn-email/${hash([booking.id, input.changeId, booking.clientUser.id, recipientEmail, "BOOKING_RESCHEDULED"].join("|"))}`;
+  return input.prisma.transactionalEmail.upsert({
+    where: {idempotencyKey}, update: {},
+    create: {
+      idempotencyKey, bookingId: booking.id, roomId: booking.callRoom.id,
+      recipientUserId: booking.clientUser.id, recipientEmail, recipientRole: "CLIENT",
+      kind: "BOOKING_RESCHEDULED", scheduleFingerprint: scheduleFingerprint(booking),
+      scheduledFor: input.now, nextAttemptAt: input.now, templateVersion: TEMPLATE_VERSION,
+      metadataJson: {source: "quipsly-schedule-change", changeId: input.changeId, bodyPersisted: false},
+    },
+    select: {id: true, status: true},
+  });
+}
+
 async function recoverExpiredLeases(prisma: WorkerPrisma, now: Date) {
   const recovered = await prisma.transactionalEmail.updateMany({
     where: {
@@ -353,6 +386,7 @@ export async function transactionalEmailRecipientHasAccess(input: {
   recipientUserId: string;
   recipientEmail: string;
   recipientRole: string;
+  schedule?: {scheduledStart: Date; scheduledEnd: Date; timezone: string};
 }) {
   if (!["COACH", "CLIENT"].includes(input.recipientRole)) return false;
   const recipient = {
@@ -374,6 +408,7 @@ export async function transactionalEmailRecipientHasAccess(input: {
             is: {
               id: input.bookingId,
               status: "CONFIRMED",
+              ...(input.schedule ?? {}),
               ...(input.recipientRole === "COACH"
                 ? { coachUser: { is: recipient } }
                 : { clientUser: { is: recipient } }),
@@ -412,7 +447,10 @@ async function dispatchClaim(input: {
     );
     return "canceled" as const;
   }
-  if (now.getTime() > latestSendAt(email.kind, email.booking.scheduledStart).getTime()) {
+  const sendDeadline = email.kind === "BOOKING_RESCHEDULED"
+    ? new Date(email.scheduledFor.getTime() + 23 * 60 * 60 * 1_000)
+    : latestSendAt(email.kind, email.booking.scheduledStart);
+  if (now.getTime() > sendDeadline.getTime()) {
     await cancelClaim(
       prisma,
       email,
@@ -462,6 +500,7 @@ async function dispatchClaim(input: {
     recipientUserId: email.recipientUserId,
     recipientEmail,
     recipientRole: email.recipientRole,
+    schedule: {scheduledStart: email.booking.scheduledStart, scheduledEnd: email.booking.scheduledEnd, timezone: email.booking.timezone},
   })) {
     await cancelClaim(prisma, email, now, "RECIPIENT_ACCESS_REMOVED", "This person no longer has access to this session or is no longer its assigned recipient.");
     return "canceled" as const;

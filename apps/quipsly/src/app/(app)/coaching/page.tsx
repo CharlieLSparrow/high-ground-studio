@@ -308,6 +308,7 @@ type CoachingRunway = {
     coach: Person;
     callRoomId: string | null;
     callRoomStatus: string | null;
+    scheduleNotification?: {id: string; status: string; errorCode: string | null} | null;
     clientInvitationDelivery?: {
       id: string;
       channel: string;
@@ -1097,6 +1098,7 @@ function CoachingWorkspace() {
   const [packetBusyByRoom, setPacketBusyByRoom] = useState<
     Record<string, boolean>
   >({});
+  const [notifyClientByBooking, setNotifyClientByBooking] = useState<Record<string, boolean>>({});
   const [bookingScheduleDrafts, setBookingScheduleDrafts] = useState<
     Record<
       string,
@@ -1690,6 +1692,7 @@ function CoachingWorkspace() {
         body: JSON.stringify({
           action: "reschedule-booking",
           bookingId: booking.id,
+          notifyClient: notifyClientByBooking[booking.id] !== false,
           scheduledStart,
           durationMinutes: Number.parseInt(draft.durationMinutes, 10) || 60,
           reason: draft.reason || "Rescheduled from the coaching runway UI.",
@@ -3414,8 +3417,23 @@ function CoachingWorkspace() {
                             {booking.timezone}
                           </p>
                           <p className="mt-2 text-sm font-bold text-[#3d3122]">
-                            {booking.nextAction}
+                          {booking.nextAction}
                           </p>
+                          {booking.scheduleNotification ? (
+                            <p role="status" className="mt-2 text-sm text-[#5a472f]">
+                              {booking.scheduleNotification.errorCode === "LOCAL_TEST_RECIPIENT"
+                                ? "Local test: the email update was retained without sending."
+                                : ["PLANNED", "SENDING"].includes(booking.scheduleNotification.status)
+                                  ? "Client email update queued."
+                                  : booking.scheduleNotification.status === "DELIVERED"
+                                    ? "Client email update delivered."
+                                    : ["SENT", "DELIVERY_DELAYED"].includes(booking.scheduleNotification.status)
+                                      ? "Client email update sent; delivery is pending."
+                                      : booking.scheduleNotification.status === "FAILED"
+                                        ? "The email update hasn’t been sent yet. Quipsly will retry."
+                                        : "The client email update was not sent. Check the client’s email or contact them directly."}
+                            </p>
+                          ) : null}
                           {booking.paymentPolicy === "PAID_ONE_TO_ONE" ? (
                             <p className="mt-1 text-xs font-bold text-[#7b5c3b]">
                               {booking.paymentNextAction}
@@ -3846,6 +3864,12 @@ function CoachingWorkspace() {
                                 className="mt-1 w-full rounded-xl border border-[#d6c5a5] bg-white px-3 py-2 text-sm normal-case tracking-normal text-[#3d3122] outline-none focus:border-[#b98036] disabled:opacity-50"
                               />
                             </label>
+                            <label className="mt-3 flex min-h-11 items-center gap-2 text-sm text-[#3d3122]">
+                              <input type="checkbox" checked={notifyClientByBooking[booking.id] !== false}
+                                onChange={(event) => setNotifyClientByBooking((current) => ({...current, [booking.id]: event.target.checked}))}
+                                disabled={!canChangeSchedule || bookingBusyById[booking.id]} />
+                              Email client about the new time
+                            </label>
                             <div className="mt-3 grid gap-2 sm:grid-cols-2">
                               <button
                                 type="button"
@@ -3856,7 +3880,7 @@ function CoachingWorkspace() {
                                 }
                                 className="inline-flex items-center justify-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-black uppercase tracking-wide text-amber-700 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-50"
                               >
-                                <Clock size={14} /> Save new time
+                                <Clock size={14} /> {notifyClientByBooking[booking.id] !== false ? "Save and notify client" : "Save new time"}
                               </button>
                               {cancelArmedById[booking.id] ? (
                                 <div

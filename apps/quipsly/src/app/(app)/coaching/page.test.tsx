@@ -29,6 +29,33 @@ describe("Coaching home loading and recovery", () => {
 
   afterEach(() => jest.restoreAllMocks());
 
+  it("offers a standard notify-client choice when moving an existing appointment", async () => {
+    const coachView = {...loaded, user: {...user, id: "coach-1", isCoach: true, isClient: false}};
+    runwayFetch.mockResolvedValue(response(coachView));
+    const originalFetch = jest.mocked(globalThis.fetch).getMockImplementation()!;
+    jest.mocked(globalThis.fetch).mockImplementation((url, init) => {
+      if (String(url) === "/api/coaching/runway" && init?.method === "POST") {
+        runwayFetch.mockResolvedValue(response({...coachView, upcomingBookings: [{...booking, scheduleNotification: {id: "notice", status: "PLANNED", errorCode: null}}]}));
+        return Promise.resolve(response({ok: true, result: {nextAction: "Session time updated."}}) as Response);
+      }
+      return originalFetch(url, init);
+    });
+    render(<CoachingPage />);
+    await screen.findByRole("heading", {name: booking.title, level: 3});
+    fireEvent.click(screen.getByText("Change appointment"));
+    const notify = screen.getByLabelText("Email client about the new time");
+    expect(notify).toBeChecked();
+    fireEvent.click(notify);
+    expect(screen.getByRole("button", {name: "Save new time"})).toBeInTheDocument();
+    fireEvent.click(notify);
+    fireEvent.change(screen.getByLabelText("New date and time"), {target: {value: "2026-09-21T10:00"}});
+    fireEvent.click(screen.getByRole("button", {name: "Save and notify client"}));
+    await waitFor(() => expect(globalThis.fetch).toHaveBeenCalledWith("/api/coaching/runway", expect.objectContaining({method: "POST"})));
+    const submission = jest.mocked(globalThis.fetch).mock.calls.find(([url, init]) => url === "/api/coaching/runway" && init?.method === "POST")!;
+    expect(JSON.parse(submission[1]!.body as string)).toMatchObject({action: "reschedule-booking", bookingId: booking.id, notifyClient: true});
+    expect(await screen.findByText("Client email update queued.")).toBeInTheDocument();
+  });
+
   it("schedules from the selected client space with the edited time, not the default time", async () => {
     jest.mocked(useSearchParams).mockReturnValue(new URLSearchParams("clientSpace=space-1") as never);
     const context = { engagementId: "space-1", title: "Riley coaching", projectSlug: "coach-home", coachUserId: "coach-1", clientEmail: user.email, clientName: user.name };

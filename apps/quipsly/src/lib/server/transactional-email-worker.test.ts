@@ -157,10 +157,25 @@ function harness(input?: { suppressedClient?: boolean; oldFingerprint?: string }
           : null),
     },
   };
-  return { prisma: models, models, rows };
+  return { prisma: models, models, rows, booking };
 }
 
 describe("transactional email worker", () => {
+  it("retries a queued reschedule update without inventing another booking confirmation", async () => {
+    const state = harness();
+    await runTransactionalEmailMaintenance({prisma: state.prisma, now: NOW, send: jest.fn(async () => ({ok: true as const, provider: "resend" as const, providerMessageId: "initial"}))});
+    const confirmed = [...state.rows.values()].find(row => row.recipientRole === "CLIENT" && row.kind === "BOOKING_CONFIRMED");
+    state.rows.set("changed-time", {...confirmed, id: "changed-time", idempotencyKey: "change-key", kind: "BOOKING_RESCHEDULED", status: "PLANNED", scheduledFor: NOW, nextAttemptAt: NOW, attemptCount: 0, maxAttempts: 5, completedAt: null});
+    Object.assign(state.booking, {metadataJson: {scheduleEvents: [{kind: "reschedule"}]}});
+    const send = jest.fn().mockResolvedValueOnce({ok: false, provider: "resend", code: "PROVIDER_UNAVAILABLE", message: "Temporary outage", retryAfterSeconds: 30})
+      .mockResolvedValue({ok: true, provider: "resend", providerMessageId: "updated-time"});
+    expect(await runTransactionalEmailMaintenance({prisma: state.prisma, now: NOW, send})).toMatchObject({failed: 1, sent: 0, planned: 0});
+    expect(await runTransactionalEmailMaintenance({prisma: state.prisma, now: new Date(NOW.getTime() + 31_000), send})).toMatchObject({sent: 1, planned: 0});
+    expect(send.mock.calls.map(([message]) => ({kind: message.kind, key: message.idempotencyKey}))).toEqual([
+      {kind: "BOOKING_RESCHEDULED", key: "change-key"}, {kind: "BOOKING_RESCHEDULED", key: "change-key"},
+    ]);
+  });
+
   it("cancels queued mail when recipient access is removed without calling the provider", async () => {
     const state = harness();
     state.models.callRoom.findFirst.mockResolvedValue(null as never);

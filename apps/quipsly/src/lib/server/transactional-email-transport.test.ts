@@ -79,6 +79,21 @@ describe("transactional email transport", () => {
     expect(body).not.toHaveProperty("bcc");
   });
 
+  it("clearly identifies a reschedule and sends the new local time with the same session link", async () => {
+    const fetchMock = jest.spyOn(global, "fetch").mockResolvedValue(new Response(JSON.stringify({id: "changed-time"}), {status: 200}));
+    await expect(sendTransactionalEmail({
+      recipientEmail: "client@example.com", roomId: "retained-room", roomTitle: "Writing together",
+      scheduledStart: new Date("2026-09-10T16:00:00Z"), timezone: "America/Denver",
+      kind: "BOOKING_RESCHEDULED", idempotencyKey: "txn-email/time-change",
+    })).resolves.toMatchObject({ok: true, providerMessageId: "changed-time"});
+    const body = JSON.parse(String(fetchMock.mock.calls[0]![1]?.body));
+    expect(body.subject).toContain("Your Quipsly session time has changed");
+    expect(body.text).toContain("Your session has a new time.");
+    expect(body.text).toContain("10:00");
+    expect(body.text).toContain("https://nest.quipsly.com/sessions/retained-room?mode=live");
+    expect(fetchMock.mock.calls[0]![1]?.headers).toMatchObject({"idempotency-key": "txn-email/time-change"});
+  });
+
   it("never sends synthetic local recipients", async () => {
     const fetchMock = jest.spyOn(global, "fetch");
     await expect(sendTransactionalEmail({

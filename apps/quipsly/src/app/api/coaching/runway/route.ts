@@ -50,6 +50,8 @@ import {
 import { acquirePrismaAdvisoryTransactionLock } from "@/lib/server/prisma-advisory-lock";
 import { parseCoachingScheduleDate } from "@/lib/server/coaching-schedule-time";
 import { canManageCoachingBookingHold } from "@/lib/server/coaching-booking-hold-authz";
+import { queueCoachingRescheduleEmail, scheduleFingerprint } from "@/lib/server/transactional-email-worker";
+import { sessionInvitationAccessWhere } from "@/lib/server/session-access";
 
 export const runtime = "nodejs";
 
@@ -779,6 +781,7 @@ export async function GET(request: Request) {
             },
           },
           calendarLinks: { orderBy: { createdAt: "desc" }, take: 3 },
+          transactionalEmails: {where: {kind: "BOOKING_RESCHEDULED", recipientRole: "CLIENT"}, orderBy: {createdAt: "desc"}, take: 1, select: {id: true, status: true, errorCode: true, scheduleFingerprint: true}},
           callRoom: {
             include: {
               calendarLinks: { orderBy: { createdAt: "desc" }, take: 3 },
@@ -1144,6 +1147,9 @@ export async function GET(request: Request) {
       callRoomId: booking.callRoom?.id || null,
       callRoomStatus: booking.callRoom?.status || null,
       clientInvitationDelivery,
+      scheduleNotification: canManageClientInvitation && booking.transactionalEmails?.[0]?.scheduleFingerprint === scheduleFingerprint(booking)
+        ? {id: booking.transactionalEmails[0].id, status: booking.transactionalEmails[0].status, errorCode: booking.transactionalEmails[0].errorCode}
+        : null,
       ...coachingClientEntryPaths({
         roomId: booking.callRoom?.id,
         engagementId: booking.engagementId || booking.callRoom?.coachingEngagementId,
@@ -2119,6 +2125,7 @@ export async function POST(request: Request) {
 
     try {
       const result = await prisma.$transaction(async (tx: any) => {
+        await acquirePrismaAdvisoryTransactionLock(tx, `coaching-reschedule:${bookingId}`);
         const booking = await tx.coachingBooking.findUnique({
           where: { id: bookingId },
           include: {
@@ -2143,6 +2150,9 @@ export async function POST(request: Request) {
             409,
           );
         }
+        if (booking.callRoom && !await tx.callRoom.findFirst({where: sessionInvitationAccessWhere(booking.callRoom.id, session.user), select: {id: true}})) {
+          throw new RunwayActionError("This session is no longer available for you to manage.", 403);
+        }
         if (booking.status === "COMPLETED") {
           throw new RunwayActionError(
             "Completed bookings should stay immutable. Create a follow-up booking if more time is needed.",
@@ -2166,6 +2176,9 @@ export async function POST(request: Request) {
         }
         const durationMinutes = integer(body.durationMinutes) || minutesBetween(booking.scheduledStart, booking.scheduledEnd);
         const scheduledEnd = parseCoachingScheduleDate(body.scheduledEnd, timezone) || addMinutes(scheduledStart, durationMinutes);
+        if (scheduledStart.getTime() === booking.scheduledStart.getTime() && scheduledEnd.getTime() === booking.scheduledEnd.getTime() && timezone === booking.timezone) {
+          return {bookingId: booking.id, callRoomId: booking.callRoom?.id || null, status: booking.status, replayed: true, nextAction: "The session already has this time. No duplicate notification was created."};
+        }
         if (!booking.coachUserId) {
           throw new RunwayActionError("Assign a coach before rescheduling this session.", 409);
         }
@@ -2176,7 +2189,9 @@ export async function POST(request: Request) {
           scheduledEnd,
           excludeBookingId: booking.id,
         });
+        const changeId = randomUUID();
         const auditEvent = {
+          changeId,
           at: new Date().toISOString(),
           byUserId: session.user.id,
           reason,
@@ -2253,6 +2268,12 @@ export async function POST(request: Request) {
           },
         });
 
+        const notification = body.notifyClient === true
+          ? await queueCoachingRescheduleEmail({prisma: tx, bookingId: booking.id, changeId, now: new Date(auditEvent.at)}).catch((error: unknown) => {
+            console.error("[coaching] Could not queue schedule update", {bookingId: booking.id, errorType: error instanceof Error ? error.name : "unknown"});
+            throw new RunwayActionError("We couldn’t save the time change and email update. The session time hasn’t changed. Please try again.", 500);
+          })
+          : null;
         return {
           bookingId: updatedBooking.id,
           callRoomId: updatedRoom?.id || null,
@@ -2261,7 +2282,10 @@ export async function POST(request: Request) {
           scheduledStart: updatedBooking.scheduledStart,
           scheduledEnd: updatedBooking.scheduledEnd,
           calendarStatus: "reschedule-planned",
-          nextAction: "Booking rescheduled in Quipsly. Update external calendar/invite evidence before promising the change is on calendars.",
+          notification,
+          nextAction: notification
+            ? "Session time updated. The client’s email update is queued. External calendars have not been updated yet."
+            : "Session time updated. The client has not been emailed and external calendars have not been updated yet.",
         };
       });
 
