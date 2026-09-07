@@ -221,6 +221,11 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
 
+      - name: Test CI and coaching release-gate behavior
+        if: steps.changes.outputs.quipsly == 'true' || steps.changes.outputs.web == 'true'
+        run: |
+          node --test scripts/ci/pr-contract-lane.test.mjs scripts/ci/verify-required-jest-results.test.mjs scripts/hgo-quipsly-coaching-handoff-static-smoke.test.mjs
+
       - name: Run source and production-build release gate
         if: steps.changes.outputs.quipsly == 'true' || steps.changes.outputs.web == 'true'
         run: pnpm quipsly:release:local
