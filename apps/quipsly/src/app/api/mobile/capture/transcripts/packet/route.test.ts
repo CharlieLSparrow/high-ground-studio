@@ -671,6 +671,13 @@ describe("packet source selection", () => {
       explicitlySelected: true,
     });
     expect(payload.transcriptJob).toBeNull();
+    expect(payload.boundaries).toMatchObject({
+      sideEffectFreeRead: false,
+      readMayRefreshEditableSessionWork: true,
+      buildCreatesEditableSessionWork: true,
+      noTranscriptProviderRunFromPacketRead: true,
+      noExternalDelivery: true,
+    });
     expect(payload.packet.status).toBe("NOT_READY");
     expect(payload.packet.nextAction).toBe("Transcribe this recording to create a recap, notes, tasks, and goals.");
     expect(payload.packet.reviewAccess).toMatchObject({ canReviewPrivatePacket: false, boundary: null });

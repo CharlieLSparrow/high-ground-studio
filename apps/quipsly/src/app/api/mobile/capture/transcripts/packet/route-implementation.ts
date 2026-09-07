@@ -632,7 +632,10 @@ async function readJson(request: Request) {
 
 function packetBoundaries() {
   return {
-    sideEffectFreeRead: true,
+    // GET can reconcile completed transcript work before returning its projection.
+    // Consumers must not treat this endpoint as a read-only diagnostic probe.
+    sideEffectFreeRead: false,
+    readMayRefreshEditableSessionWork: true,
     buildCreatesEditableSessionWork: true,
     noRecordingStarted: true,
     noTranscriptProviderRunFromPacketRead: true,

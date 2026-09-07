@@ -69,7 +69,9 @@ async function main() {
     const second = await readPacket(baseURL, idToken, RECORDING_ASSET_ID);
     assert(first.status === 200 && first.body?.ok === true, `Exact-source packet read failed (${first.status}).`);
     assert(second.status === 200 && second.body?.ok === true, `Exact-source packet replay failed (${second.status}).`);
-    assert(first.body?.boundaries?.sideEffectFreeRead === true, "Packet read lost its explicit side-effect-free boundary.");
+    assert(first.body?.boundaries?.noTranscriptProviderRunFromPacketRead === true
+      && first.body?.boundaries?.noExternalDelivery === true,
+    "Packet inspection must not start transcript providers or external delivery.");
     assert(first.body?.selectedRecordingAsset?.id === RECORDING_ASSET_ID, "Packet read returned a different RecordingAsset.");
     assert(first.body?.selectedRecordingAsset?.explicitlySelected === true, "Packet read did not preserve explicit source focus.");
     assert(first.body?.transcriptJob?.asset?.id === RECORDING_ASSET_ID || first.body?.transcriptJob == null, "Packet read selected a transcript from another source.");

@@ -12,6 +12,7 @@ import { MOBILE_CAPTURE_CONSENT_EVIDENCE_VERSION, MOBILE_CAPTURE_CONSENT_POLICY_
 import { POST } from "../notes/route";
 import { POST as mergeTask } from "./actions/route";
 import { POST as mergeGoal } from "./goals/route";
+import { GET as readPacket } from "./route";
 
 jest.mock("@/lib/prisma", () => ({ getPrismaClient: jest.fn() }));
 jest.mock("@/lib/server/quipsly-session", () => ({ getQuipslySessionFromRequest: jest.fn() }));
@@ -297,6 +298,34 @@ async function automaticSession(tx: Prisma.TransactionClient, f: Awaited<ReturnT
       expect(await tx.goal.count({ where: { roomId: f.room.id } })).toBe(1);
       expect(await tx.transcriptSegment.findUniqueOrThrow({ where: { id: segment.id } })).toEqual(segment);
       expect((await tx.recordingAsset.findUniqueOrThrow({ where: { id: f.asset.id } })).checksum).toBe(f.asset.checksum);
+    });
+  });
+
+  it("refreshes automatic work through the real packet endpoint and accurately describes the write", async () => {
+    await withFixture(async (tx, f) => {
+      await automaticSession(tx, f);
+      const read = async (user: typeof f.owner) => {
+        jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({ user } as never);
+        return readPacket(new Request(`http://localhost/api/mobile/capture/transcripts/packet?callRoomId=${f.room.id}`));
+      };
+      expect((await read(f.outsider)).status).toBe(404);
+      expect(await tx.actionItem.count({ where: { roomId: f.room.id } })).toBe(0);
+      expect(await tx.goal.count({ where: { roomId: f.room.id } })).toBe(0);
+      const response = await read(f.owner);
+      expect(response.status).toBe(200);
+      expect(await response.json()).toMatchObject({ ok: true, boundaries: {
+        sideEffectFreeRead: false, readMayRefreshEditableSessionWork: true,
+        noTranscriptProviderRunFromPacketRead: true, noExternalDelivery: true,
+      } });
+      const tasks = await tx.actionItem.findMany({ where: { roomId: f.room.id } });
+      const goals = await tx.goal.findMany({ where: { roomId: f.room.id } });
+      expect(tasks).toHaveLength(1);
+      expect(goals).toHaveLength(1);
+      for (const user of [f.owner, f.member]) expect((await read(user)).status).toBe(200);
+      expect(await tx.actionItem.findMany({ where: { roomId: f.room.id } })).toEqual(tasks);
+      expect(await tx.goal.findMany({ where: { roomId: f.room.id } })).toEqual(goals);
+      expect(await tx.transcriptSegmentVerification.count({ where: { roomId: f.room.id } })).toBe(0);
+      expect(await tx.deliveryEvent.count({ where: { roomId: f.room.id } })).toBe(0);
     });
   });
 

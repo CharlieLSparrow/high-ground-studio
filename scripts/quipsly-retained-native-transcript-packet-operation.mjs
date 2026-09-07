@@ -58,7 +58,9 @@ async function authenticate({ email, password }) {
 export function packetEvidence(body) {
   const packet = body?.packet;
   assert(body?.ok === true && packet, "Nest did not return the canonical transcript packet.");
-  assert(body?.boundaries?.sideEffectFreeRead === true, "Packet GET lost its side-effect-free read boundary.");
+  assert(body?.boundaries?.noTranscriptProviderRunFromPacketRead === true
+    && body?.boundaries?.noExternalDelivery === true,
+  "Packet inspection must not run a transcript provider or deliver work externally.");
   assert(packet?.status === "RESULTS_READY", `The retained fixture has no accessible current transcript results (${packet?.status ?? "missing status"}). Restore or replace the local fixture; this is not native UI evidence.`);
   assert(packet?.summary?.source?.packetTemplateVersion === "quipsly-session-packet-v4", "The retained packet is not v4.");
 
@@ -69,8 +71,8 @@ export function packetEvidence(body) {
   assert(completeGoal, "The v4 packet lost the expected complete goal thought.");
   assert(completeGoal.segmentIds?.length === 3, "The expected goal is not anchored to three transcript segments.");
   assert(completeGoal.sourceSpan?.segments?.length === 3, "The expected goal lost its immutable source-span receipt.");
-  // Existing generated or manually saved work is valid. This operation must not
-  // change it, rather than requiring that useful work has never been created.
+  // The first GET can reconcile generated work. Subsequent unchanged reads must
+  // be stable, including existing personal edits; do not require an empty packet.
 
   const reviewProjection = {
     packetBuildId: packet?.build?.packetBuildId ?? null,

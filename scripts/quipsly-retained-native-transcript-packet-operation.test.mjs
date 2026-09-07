@@ -12,7 +12,8 @@ function packetFixture() {
   const segmentIds = ["passage-1", "passage-2", "passage-3"];
   return {
     ok: true,
-    boundaries: { sideEffectFreeRead: true },
+    boundaries: { sideEffectFreeRead: false, readMayRefreshEditableSessionWork: true,
+      noTranscriptProviderRunFromPacketRead: true, noExternalDelivery: true },
     packet: {
       status: "RESULTS_READY",
       build: { packetBuildId: "build-1" },
@@ -73,13 +74,14 @@ for (const status of ["PRIVATE_REVIEWER_ONLY", "NOT_READY", "TRANSCRIPT_HELD", "
   });
 }
 
-test("missing source text, truncated spans, obsolete versions, and mutating reads fail", () => {
+test("missing source text, truncated spans, obsolete versions, and external effects fail", () => {
   for (const change of [
     (b) => { b.packet.goalCandidates[0].sourceText = "Only part of the thought"; },
     (b) => { b.packet.goalCandidates[0].segmentIds.pop(); },
     (b) => { b.packet.goalCandidates[0].sourceSpan.segments.pop(); },
     (b) => { b.packet.summary.source.packetTemplateVersion = "old-version"; },
-    (b) => { b.boundaries.sideEffectFreeRead = false; },
+    (b) => { b.boundaries.noTranscriptProviderRunFromPacketRead = false; },
+    (b) => { b.boundaries.noExternalDelivery = false; },
   ]) {
     const body = packetFixture();
     change(body);
