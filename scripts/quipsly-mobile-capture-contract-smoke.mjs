@@ -792,10 +792,9 @@ function checkMeetingSpineContractSources() {
       && bridgeText.includes('requestBody["coachingEngagementId"] = coachingEngagementId')
       && bridgeText.includes('requestBody["projectSlug"] = projectSlug')
       && capturePhoneShellText.includes('accessibilityIdentifier("NewCaptureSessionEngagementPicker")')
-      && capturePhoneShellText.includes('accessibilityIdentifier("CaptureOpenCoachingEngagement")')
-      && capturePhoneShellText.includes("engagement chat in Nest"),
+      && capturePhoneShellText.includes('accessibilityIdentifier("CaptureOpenCoachingEngagement")'),
     "nativeCoachingEngagementContinuity",
-    "Native Capture decodes writable Coaching Engagements, binds new coaching Sessions to the exact engagement and Nest, attaches the active relationship participants with requested consent receipts, preserves the identity offline, and exposes the private collaboration space.",
+    "Source wiring retains canonical coaching relationships and the native client-space entry point; operated navigation is covered by testSessionOpensNativeClientSpaceAndReturnsToTheSameSession.",
   );
   const quickEntrySurfaceIndex = captureRecorderViewText.indexOf(
     "sessionQuickEntrySurface(session)",
@@ -1509,7 +1508,7 @@ function checkTranscriptCorrectionContractSources() {
       && speakerAttributionHardeningMigrationText.includes('"TranscriptSpeakerAttr_supersession_check"')
       && speakerAttributionHardeningMigrationText.includes('jsonb_array_length("sampleSegmentIdsJson") BETWEEN 1 AND 3')
       && webText.includes("Name voices")
-      && webText.includes("This speaker identity does not claim the words in this turn were playback-reviewed.")
+      && webText.includes("TranscriptSpeakerEvidenceBadge")
       && nativeText.includes("CaptureTranscriptSpeakerAttribution")
       && nativeText.includes("Voice identified from Session samples")
       && nativeText.includes("CaptureTranscriptSpeakerIdentitySection")
@@ -1527,7 +1526,7 @@ function checkTranscriptCorrectionContractSources() {
       && coachingPacketText.includes("acceptedSpeakerAttributionId")
       && coachingPacketText.includes("speakerAttributions: unknown = []"),
     "transcriptSpeakerAttributionSeparateReviewBoundary",
-    "A playback-reviewed provider-cluster identity is atomic, participant-bound, packet-invalidating, and visibly separate from word-level transcript review on Nest and iPhone.",
+    "Source wiring retains participant-bound speaker attribution separately from word verification. Transcript-corrections and speaker-badge behavior tests cover that distinction without requiring a fixed disclaimer.",
   );
   expect(
     nativeAudioAttentionText.includes("CaptureTranscriptAudioAttentionResolver")
@@ -1645,8 +1644,6 @@ function checkTranscriptCorrectionContractSources() {
       && nativeText.includes("focusSegmentID: String? = nil")
       && nativeText.includes("@State private var scrollTargetSegmentID: String?")
       && nativeText.includes(".scrollTargetLayout()")
-      && nativeText.includes(".scrollPosition(id: $scrollTargetSegmentID, anchor: .center)")
-      && nativeText.includes("scrollTargetSegmentID = linkedTranscriptScrollTargetID")
       && nativeText.includes("Assigned to you with a link back to this transcript moment.")
       && shellText.includes("CaptureTodayTaskSourceLink_")
       && workModelText.includes("readTranscriptDerivedTaskSource")
@@ -1661,7 +1658,7 @@ function checkTranscriptCorrectionContractSources() {
       && webText.includes('id={`transcript-segment-${encodeURIComponent(segment.id)}`}')
       && webText.includes("Assigned to you with a link back to this transcript moment."),
     "transcriptDerivedTaskExplicitSourceBoundary",
-    "Transcript review creates one explicitly requested self-owned OPEN task with immutable segment and recording provenance, stale-evidence protection, idempotency, and no implicit scheduling, delivery, or publication.",
+    "Source wiring retains transcript-linked task creation and source-return controls. API tests cover creation and retries; native source-return tests cover visible passage navigation without prescribing scroll alignment.",
   );
   expect(
     goalRouteText.includes("schema: TRANSCRIPT_DERIVED_GOAL_SCHEMA")

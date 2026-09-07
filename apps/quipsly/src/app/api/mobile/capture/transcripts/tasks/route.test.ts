@@ -2,7 +2,7 @@
 
 import { getPrismaClient } from "@/lib/prisma";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
-import { readTranscriptCorrectionDesk } from "@/lib/server/transcript-corrections";
+import { readTranscriptCorrectionDesk, TranscriptCorrectionError } from "@/lib/server/transcript-corrections";
 import { recordSucceededTranscriptWorkAction } from "@/lib/server/governed-action-runtime";
 
 import { POST } from "./route";
@@ -81,6 +81,44 @@ describe("explicit transcript-derived task", () => {
     }));
     expect(response.status).toBe(409);
     expect(tx.actionItem.create).not.toHaveBeenCalled();
+  });
+
+  it("creates useful work from an unreviewed transcript without requesting review or playback confirmation", async () => {
+    jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({ user: { id: "user-1" } } as any);
+    jest.mocked(readTranscriptCorrectionDesk).mockResolvedValue({
+      ...desk,
+      segments: [{ ...desk.segments[0], acceptedCorrection: null, speakerAuthority: "source-binding", sourceBoundParticipantId: "participant-1" }],
+    } as any);
+    const tx = { actionItem: {
+      findUnique: jest.fn().mockResolvedValue(null),
+      create: jest.fn().mockImplementation(({ data }) => ({ ...data, createdAt: new Date() })),
+    } };
+    jest.mocked(getPrismaClient).mockReturnValue({ $transaction: jest.fn((callback: any) => callback(tx)) } as any);
+    const response = await POST(new Request("http://localhost/api/mobile/capture/transcripts/tasks", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ roomId: "room-1", segmentId: "segment-1", clientRequestId: "unreviewed-task", expectedProviderTextSha256: "a".repeat(64), title: "Write the introduction" }),
+    }));
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ task: { title: "Write the introduction", status: "OPEN" } });
+    expect(tx.actionItem.create).toHaveBeenCalledWith({ data: expect.objectContaining({
+      sourceJson: expect.objectContaining({ acceptedCorrectionId: null, speakerAuthority: "source-binding", sourceBoundParticipantId: "participant-1", recordingAssetId: "asset-1" }),
+    }) });
+  });
+
+  it("does not turn a guessed room ID into access to another person's transcript or task", async () => {
+    jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({ user: { id: "outsider" } } as any);
+    jest.mocked(readTranscriptCorrectionDesk).mockRejectedValue(new TranscriptCorrectionError("Session not found.", 404, "SESSION_NOT_FOUND"));
+    const tx = { actionItem: { findUnique: jest.fn(), create: jest.fn() } };
+    jest.mocked(getPrismaClient).mockReturnValue({ $transaction: jest.fn((callback: any) => callback(tx)) } as any);
+    const response = await POST(new Request("http://localhost/api/mobile/capture/transcripts/tasks", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ roomId: "room-1", segmentId: "segment-1", clientRequestId: "guessed-task", expectedProviderTextSha256: "a".repeat(64), title: "Unauthorized task" }),
+    }));
+    expect(response.status).toBe(404);
+    expect(readTranscriptCorrectionDesk).toHaveBeenCalledWith({ prisma: tx, roomId: "room-1", actor: expect.objectContaining({ id: "outsider" }) });
+    expect(tx.actionItem.findUnique).not.toHaveBeenCalled();
+    expect(tx.actionItem.create).not.toHaveBeenCalled();
+    expect(recordSucceededTranscriptWorkAction).not.toHaveBeenCalled();
   });
 
   it("replays the same actor request without creating a duplicate task", async () => {
