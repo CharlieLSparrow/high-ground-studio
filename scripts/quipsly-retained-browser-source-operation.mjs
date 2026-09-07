@@ -17,6 +17,7 @@ import {
   requireLoopbackOrigin,
   signInThroughRenderedLogin,
 } from "./lib/retained-qa-browser.mjs";
+import { assertRetainedSpeechWork, selectRetainedSpeechWork } from "./lib/retained-speech-work.mjs";
 
 if (process.env.QUIPSLY_RETAINED_BROWSER_SOURCE_OPERATION !== "1") {
   throw new Error(
@@ -99,6 +100,15 @@ const actor = await prisma.user.findUniqueOrThrow({
   where: { primaryEmail: email },
   select: { id: true },
 });
+const workWhere = { roomId, sourceJson: { path: ["origin"], equals: "quipsly-session-follow-through" } };
+async function readRehearsalWork() {
+  const [tasks, goals] = await Promise.all([
+    prisma.actionItem.findMany({ where: workWhere }),
+    prisma.goal.findMany({ where: workWhere }),
+  ]);
+  return selectRetainedSpeechWork({ tasks, goals });
+}
+const workBeforeRecording = await readRehearsalWork();
 const canonicalRoom = await prisma.callRoom.findUniqueOrThrow({
   where: { id: roomId },
   select: { id: true, title: true, projectId: true, captureGroupId: true },
@@ -492,7 +502,6 @@ try {
   }
   // A retained Session assembles multiple source transcripts. Identical work
   // may retain an earlier valid anchor rather than duplicate the newest take.
-  const workWhere = { roomId, sourceJson: { path: ["origin"], equals: "quipsly-session-follow-through" } };
   let followThrough = { tasks: [], goals: [] };
   const workDeadline = Date.now() + 30_000;
   do {
@@ -505,18 +514,11 @@ try {
       await new Promise((resolve) => setTimeout(resolve, 500));
       continue;
     }
-    const [tasks, goals] = await Promise.all([
-      prisma.actionItem.findMany({ where: { ...workWhere, title: { contains: "draft one page", mode: "insensitive" } }, select: { id: true, title: true, assignedUserId: true, engagementId: true } }),
-      prisma.goal.findMany({ where: { ...workWhere, title: { startsWith: "My coaching goal is to write", mode: "insensitive" } }, select: { id: true, title: true, ownerUserId: true, engagementId: true } }),
-    ]);
-    followThrough = { tasks, goals };
-    if (tasks.length && goals.length) break;
+    followThrough = await readRehearsalWork();
+    if (followThrough.tasks.length && followThrough.goals.length) break;
     await new Promise((resolve) => setTimeout(resolve, 500));
   } while (Date.now() < workDeadline);
-  if (followThrough.tasks.length !== 1 || followThrough.goals.length !== 1 ||
-      followThrough.tasks[0].assignedUserId !== actor.id || followThrough.goals[0].ownerUserId !== actor.id) {
-    throw new Error(`Known first-person speech must create one task and goal for the recording speaker, without duplicates: ${JSON.stringify(followThrough)}`);
-  }
+  assertRetainedSpeechWork({ before: workBeforeRecording, after: followThrough, actorId: actor.id });
   const manifest =
     recording.localManifestJson &&
     typeof recording.localManifestJson === "object" &&
@@ -538,7 +540,11 @@ try {
         syntheticMedia: true,
         syntheticSpeech: true,
         transcriptContentCheck: { expectedWords, matchedWords, minimumMatches: 4 },
-        followThrough,
+        followThrough: {
+          tasks: followThrough.tasks.map(({ id, title, assignedUserId, engagementId }) => ({ id, title, assignedUserId, engagementId })),
+          goals: followThrough.goals.map(({ id, title, ownerUserId, engagementId }) => ({ id, title, ownerUserId, engagementId })),
+          retainedEditsAndSourceAnchorsPreserved: true,
+        },
         externalSideEffects: false,
         roomId,
         recording: {

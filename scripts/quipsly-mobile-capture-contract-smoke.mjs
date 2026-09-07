@@ -1066,7 +1066,7 @@ function checkTranscriptPacketContractSources() {
       && packetBuilderText.includes("deterministic: true")
       && packetBuilderText.includes("reviewRequired: false")
       && packetBuilderText.includes("reusedExistingPacket")
-      && coachingPacketVersionText.includes('SESSION_PACKET_TEMPLATE_VERSION = "quipsly-session-packet-v4"')
+      && /SESSION_PACKET_TEMPLATE_VERSION = "quipsly-session-packet-v\d+"/.test(coachingPacketVersionText)
       && packetBuilderText.includes("SESSION_PACKET_TEMPLATE_VERSION")
       && packetBuilderText.includes('"quipsly-transcript-packet-snapshot-v2"')
       && packetBuilderText.includes("projectTranscriptSegmentsForPacket")

@@ -1,6 +1,7 @@
 /** @jest-environment node */
 
 import { createHash } from "node:crypto";
+import { SESSION_PACKET_TEMPLATE_VERSION } from "@high-ground/quipsly-domain/coaching-packet-version";
 
 import { getPrismaClient } from "@/lib/prisma";
 import { mobileCaptureTranscriptProcessingGate } from "@/lib/server/mobile-capture-processing-gates";
@@ -89,7 +90,7 @@ function createPrismaHarness() {
     updatedAt: new Date("2026-07-18T12:00:00.000Z"),
     sourceJson: {
       source: "transcript-packet-builder",
-      packetTemplateVersion: "quipsly-session-packet-v4",
+      packetTemplateVersion: SESSION_PACKET_TEMPLATE_VERSION,
       transcriptJobId: TRANSCRIPT_JOB_ID,
       recordingAssetId: RECORDING_ASSET_ID,
       roomId: ROOM_ID,

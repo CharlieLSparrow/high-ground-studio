@@ -1015,7 +1015,7 @@ function distinctWorkSpans(
     const key = JSON.stringify([
       speaker, span.speakerLabel, cleanText(textForWork(span)).toLowerCase(),
     ]);
-    const workText = cleanText(textForWork(span)).toLowerCase();
+    const workText = cleanText(textForWork(span)).toLowerCase().replace(/(?:\.{3}|…)\s*$/, "").trim();
     if (/(?:\.{3}|…)\s*$/.test(span.text) && spans.some((other) => {
       const otherSpeaker = other.attributedParticipantId || other.sourceBoundParticipantId ||
         `${other.transcriptJobId || ""}:${other.speakerLabel || other.id}`;
@@ -1307,11 +1307,9 @@ function scoreHighlight(segment: any) {
 
 function titleFromSegment(segment: any) {
   const text = cleanText(segment.text);
+  const sentences = text.split(/[.!?]/).map((part) => part.trim()).filter(Boolean);
   const sentence =
-    text
-      .split(/[.!?]/)
-      .map((part) => part.trim())
-      .find(Boolean) || text;
+    sentences.find((part) => part.split(/\s+/).length >= 4) || sentences[0] || text;
   const clipped = sentence.slice(0, 82);
   return clipped.length < sentence.length
     ? `${clipped}...`
@@ -1337,6 +1335,16 @@ function actionTitle(segment: any, kind: "goal" | "task" = "goal") {
   return clipped.length < sentence.length
     ? `${clipped}...`
     : clipped || "Review this follow-up";
+}
+
+function actionExcerpt(segment: PacketTranscriptEvidenceSpan, kind: "goal" | "task") {
+  const sentence = actionSentence(segment, kind);
+  const source = cleanText(segment.text);
+  const start = source.indexOf(sentence);
+  if (start < 0) return sentence;
+  const end = start + sentence.length;
+  const punctuation = source.charAt(end);
+  return sentence + (/[.!?]/.test(punctuation) ? punctuation : "");
 }
 
 function taskTitle(segment: any) {
@@ -1890,11 +1898,6 @@ export async function buildCoachingPacketFromTranscriptJob(
     highlights,
     actionSegments,
   );
-  const packetBrief = buildTranscriptPacketBrief(
-    packetSpans,
-    highlights,
-    actionSegments,
-  );
   const goalSegments = distinctWorkSpans(actionSegments.filter((segment: any) =>
     GOAL_PATTERN.test(cleanText(segment.text)),
   ), (segment) => actionSentence(segment, "goal"));
@@ -1903,6 +1906,12 @@ export async function buildCoachingPacketFromTranscriptJob(
     return !GOAL_PATTERN.test(text) || EXPLICIT_TASK_PATTERN.test(text) ||
       ACTION_PATTERNS.slice(0, -1).some((pattern) => pattern.test(text));
   }), (segment) => actionSentence(segment, "task"));
+  const packetBrief = buildTranscriptPacketBrief(
+    packetSpans,
+    highlights,
+    taskSegments.map((segment) => ({ ...segment, displayText: actionExcerpt(segment, "task") })),
+    goalSegments.map((segment) => ({ ...segment, displayText: actionExcerpt(segment, "goal") })),
+  );
   const actionCandidates: TranscriptActionCandidate[] = taskSegments.map(
     (segment: any) => {
       const sourceTranscriptJobId =

@@ -18,6 +18,7 @@ import {
   reviewLaneDefinitionsForPurpose,
   selectLatestCorrelatedPacketNotes,
   sessionRecapTitle,
+  SESSION_PACKET_TEMPLATE_VERSION,
   transcriptPacketSnapshot,
   transcriptJobPacketSnapshot,
 } from "./coaching-packets";
@@ -162,6 +163,13 @@ describe("transcript coaching follow-through", () => {
     expect(work.actionItem.create).toHaveBeenCalledWith({ data: expect.objectContaining({ assignedUserId: "coach-1" }) });
     expect(work.goal.create).toHaveBeenCalledWith({ data: expect.objectContaining({ ownerUserId: "coach-1" }) });
     expect(job.segments).toHaveLength(5);
+    const generatedNotes = prisma.coachingNote.create.mock.calls.map(([call]) => call.data);
+    expect(generatedNotes.filter((note) => note.kind === "HIGHLIGHT")).toHaveLength(2);
+    expect(generatedNotes.some((note) => note.body.includes("every..."))).toBe(false);
+    const brief = generatedNotes.find((note) => note.kind === "SUMMARY").sourceJson.packetBrief;
+    expect(brief.sections.find((section: any) => section.id === "goals").itemCount).toBe(1);
+    expect(brief.sections.find((section: any) => section.id === "commitments").itemCount).toBe(1);
+    expect(brief.sections.find((section: any) => section.id === "key-moments").itemCount).toBe(0);
 
     const task = (await work.actionItem.findMany())[0];
     await work.actionItem.update({where: {id: task.id}, data: {assignedUserId: "client-1"}});
@@ -174,9 +182,10 @@ describe("transcript coaching follow-through", () => {
     job.segments = [{ id: "combined", speakerLabel: "Charlie", startSeconds: 0, endSeconds: 10.18,
       text: "morning. Tomorrow I will draft one page and share it with my coach. My coaching goal is to write every morning.", confidence: 0.98 }];
     const work = automaticWorkStores();
+    const noteCreate = jest.fn(async ({data}: any) => ({id: "summary", ...data}));
     await buildCoachingPacketFromTranscriptJob({
       prisma: { transcriptJob: {findUnique: jest.fn().mockResolvedValue(job)},
-        coachingNote: {findFirst: jest.fn().mockResolvedValue(null), create: jest.fn(async ({data}: any) => ({id: "summary", ...data}))}, ...work },
+        coachingNote: {findFirst: jest.fn().mockResolvedValue(null), create: noteCreate}, ...work },
       transcriptJobId: job.id, authorUserId: "coach-1",
     });
     expect(work.actionItem.create).toHaveBeenCalledWith({data: expect.objectContaining({
@@ -184,6 +193,13 @@ describe("transcript coaching follow-through", () => {
       sourceJson: expect.objectContaining({startSeconds: 0, endSeconds: 10.18}),
     })});
     expect(work.goal.create).toHaveBeenCalledWith({data: expect.objectContaining({title: "My coaching goal is to write every morning"})});
+    const brief = noteCreate.mock.calls.find(([call]) => call.data.kind === "SUMMARY")![0].data.sourceJson.packetBrief;
+    expect(brief.sections.find((section: any) => section.id === "goals").items[0]).toMatchObject({
+      text: "My coaching goal is to write every morning.", startSeconds: 0, endSeconds: 10.18,
+    });
+    expect(brief.sections.find((section: any) => section.id === "commitments").items[0]).toMatchObject({
+      text: "Tomorrow I will draft one page and share it with my coach.", startSeconds: 0, endSeconds: 10.18,
+    });
   });
 
   it.each(["unresolved", "revoked", "other-room", "second-person"])("does not guess a task owner for %s identity", async (mode) => {
@@ -274,7 +290,7 @@ describe("transcript coaching follow-through", () => {
     });
     expect(summaryWrite?.sourceJson).toMatchObject({
       packetPurpose: "COACHING",
-      packetTemplateVersion: "quipsly-session-packet-v4",
+      packetTemplateVersion: SESSION_PACKET_TEMPLATE_VERSION,
     });
     expect(summaryWrite?.sourceJson.packetBrief).toMatchObject({
       kind: "quipsly-transcript-packet-brief-v1",
@@ -925,7 +941,7 @@ describe("transcript coaching follow-through", () => {
       goals: ["goal"],
       questions: ["question"],
       commitments: ["commitment"],
-      "key-moments": ["decision"],
+      "key-moments": [],
     });
   });
 

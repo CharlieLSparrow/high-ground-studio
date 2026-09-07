@@ -134,18 +134,20 @@ export type TranscriptPacketBriefSegment = {
   startSeconds: number;
   endSeconds: number;
   text: string;
+  /** Optional concise quotation; source text, hash, and timing stay unchanged. */
+  displayText?: string;
 };
 
 const TRANSCRIPT_PACKET_BRIEF_SECTIONS = [
   {
     id: "decisions",
-    label: "Candidate decisions",
+    label: "Decisions",
     pattern:
       /\b(decid(?:e|ed|ing)|decision|choose|chose|choice|going with|settled on|agreed)\b/i,
   },
   {
     id: "goals",
-    label: "Candidate goals",
+    label: "Goals",
     pattern:
       /\b(goal|aim|want to|working toward|trying to|success looks like|outcome)\b/i,
   },
@@ -166,7 +168,7 @@ function briefTime(seconds: number) {
 }
 
 function briefSegment(segment: TranscriptPacketBriefSegment) {
-  const text = briefText(segment.text);
+  const text = briefText(segment.displayText) || briefText(segment.text);
   return {
     segmentId: segment.id,
     segmentIds:
@@ -186,6 +188,7 @@ export function buildTranscriptPacketBrief(
   segments: TranscriptPacketBriefSegment[],
   highlights: TranscriptPacketBriefSegment[],
   actionSegments: TranscriptPacketBriefSegment[],
+  selectedGoals?: TranscriptPacketBriefSegment[],
 ) {
   const section = (
     id: string,
@@ -208,10 +211,14 @@ export function buildTranscriptPacketBrief(
       section(
         definition.id,
         definition.label,
-        segments.filter((segment) =>
+        definition.id === "goals" && selectedGoals ? selectedGoals : segments.filter((segment) =>
           definition.pattern.test(briefText(segment.text)),
         ),
       ),
+  );
+  const commitments = section("commitments", "Commitments", actionSegments);
+  const coveredSegments = new Set(
+    [...structuredSections, commitments].flatMap((entry) => entry.items.map((item) => item.segmentId)),
   );
   return {
     kind: "quipsly-transcript-packet-brief-v1" as const,
@@ -245,8 +252,8 @@ export function buildTranscriptPacketBrief(
     },
     sections: [
       ...structuredSections,
-      section("commitments", "Commitments", actionSegments),
-      section("key-moments", "Key moments", highlights),
+      commitments,
+      section("key-moments", "Key moments", highlights.filter((segment) => !coveredSegments.has(segment.id))),
     ],
   };
 }

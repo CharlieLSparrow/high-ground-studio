@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 
+import { SESSION_PACKET_TEMPLATE_VERSION } from "../packages/quipsly-domain/src/coaching-packet-version.ts";
+
 const baseUrl = String(process.env.QUIPSLY_PACKET_SMOKE_BASE_URL || "https://nest.quipsly.com")
   .trim()
   .replace(/\/+$/, "");
@@ -199,7 +201,7 @@ async function operatePacket(origin, idToken, roomId, purpose) {
     { roomId, status: after.body?.packet?.status || null },
   );
   assert(
-    source.packetPurpose === purpose && source.packetTemplateVersion === "quipsly-session-packet-v4",
+    source.packetPurpose === purpose && source.packetTemplateVersion === SESSION_PACKET_TEMPLATE_VERSION,
     `${purpose} packet did not preserve its purpose and v3 template stamp.`,
     { roomId, packetPurpose: source.packetPurpose || null, packetTemplateVersion: source.packetTemplateVersion || null },
   );

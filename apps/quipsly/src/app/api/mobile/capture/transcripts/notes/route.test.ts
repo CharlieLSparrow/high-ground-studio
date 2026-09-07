@@ -1,6 +1,7 @@
 /** @jest-environment node */
 
 import { createHash } from "node:crypto";
+import { SESSION_PACKET_TEMPLATE_VERSION } from "@high-ground/quipsly-domain/coaching-packet-version";
 import { getPrismaClient } from "@/lib/prisma";
 import { transcriptPacketSnapshot } from "@/lib/server/coaching-packets";
 import { mobileCaptureTranscriptProcessingGate } from "@/lib/server/mobile-capture-processing-gates";
@@ -239,7 +240,7 @@ describe("explicit transcript-derived Session note", () => {
       kind: "SUMMARY",
       sourceJson: {
         source: "transcript-packet-builder",
-        packetTemplateVersion: "quipsly-session-packet-v4",
+        packetTemplateVersion: SESSION_PACKET_TEMPLATE_VERSION,
         roomId: "room-1",
         transcriptJobId: "job-1",
         recordingAssetId: "asset-1",
@@ -411,7 +412,7 @@ describe("explicit transcript-derived Session note", () => {
       kind: "SUMMARY",
       sourceJson: {
         source: "transcript-packet-builder",
-        packetTemplateVersion: "quipsly-session-packet-v4",
+        packetTemplateVersion: SESSION_PACKET_TEMPLATE_VERSION,
         roomId: "room-1",
         transcriptJobId: "job-1",
         recordingAssetId: "asset-1",
@@ -577,7 +578,7 @@ describe("explicit transcript-derived Session note", () => {
       kind: "SUMMARY",
       sourceJson: {
         source: "transcript-packet-builder",
-        packetTemplateVersion: "quipsly-session-packet-v4",
+        packetTemplateVersion: SESSION_PACKET_TEMPLATE_VERSION,
         roomId: "room-1",
         transcriptJobId: "job-1",
         recordingAssetId: "asset-1",
@@ -670,7 +671,7 @@ describe("explicit transcript-derived Session note", () => {
       id: "summary-1",
       kind: "SUMMARY",
       sourceJson: {
-        source: "transcript-packet-builder", packetTemplateVersion: "quipsly-session-packet-v4", roomId: "room-1", transcriptJobId: "job-1", recordingAssetId: "asset-1", packetBuildId: "build-1",
+        source: "transcript-packet-builder", packetTemplateVersion: SESSION_PACKET_TEMPLATE_VERSION, roomId: "room-1", transcriptJobId: "job-1", recordingAssetId: "asset-1", packetBuildId: "build-1",
         transcriptSnapshot: transcriptPacketSnapshot(oldSegments),
         reviewLanes: [{ id: "coaching-insights", label: "Insights", status: "READY_FOR_HUMAN_REVIEW", items: [{ segmentId: "segment-1" }] }],
       },
