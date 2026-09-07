@@ -62,7 +62,10 @@ jobs:
     if: needs.changes.outputs.capture == 'true'
     name: Deterministic Apple UX (${{ matrix.shard == 0 && 'critical' || format('full {0}/4', matrix.shard) }})
     runs-on: macos-26
-    timeout-minutes: 45
+    # Hosted baseline: ~11m simulator startup + ~10m build/launch, then
+    # 41 critical journeys across two devices. The old 45m limit terminated
+    # active tests and lost the second-device result. Reserve artifact time.
+    timeout-minutes: 75
     strategy:
       fail-fast: false
       matrix:
@@ -130,6 +133,7 @@ jobs:
           bash apps/mobile-capture/HighGroundCapture/scripts/prepare-ci-simulator.sh "iPad Air 13-inch (M3)" "26.2" 2>&1 | tee "${RUNNER_TEMP}/capture-prewarm-ipad.log"
 
       - name: Run bounded deterministic Capture UI lane serially
+        timeout-minutes: 55
         run: |
           set -euo pipefail
           if [[ "${{ matrix.shard }}" == "0" ]]; then

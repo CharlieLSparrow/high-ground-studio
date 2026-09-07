@@ -37,6 +37,22 @@ final class CaptureExperienceUITests: XCTestCase {
         } while Date() < deadline
     }
 
+    /// Cold hosted simulators can present Speech Recognition well after the
+    /// microphone prompt. Keep handling system prompts until the requested UI
+    /// actually appears, rather than spending the entire assertion timeout
+    /// behind a second alert. Never tap Start again to conceal a failed start.
+    private func waitForElementAfterSystemPermissions(
+        _ element: XCUIElement,
+        timeout: TimeInterval = 30
+    ) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            allowSystemPermissionIfPresented(timeout: 1)
+            if element.exists { return true }
+        }
+        return element.exists
+    }
+
     #if !targetEnvironment(simulator)
     /// Keep the target process alive through Apple's bounded post-capture
     /// speech work. A saved microphone source is necessary but not sufficient
@@ -1170,7 +1186,7 @@ final class CaptureExperienceUITests: XCTestCase {
 
         let resume = app.buttons["CaptureVoiceWritingPauseResumeButton"]
         XCTAssertTrue(
-            resume.waitForExistence(timeout: 15),
+            waitForElementAfterSystemPermissions(resume),
             "The retained source should expose an ordinary pause/resume control after capture starts."
         )
         expectation(

@@ -131,6 +131,17 @@ for (const shard of [0, 3]) {
   }
 }
 
+test("the native execution budget leaves time to upload evidence after timeout", () => {
+  const job = workflow.split("  deterministic-ui:\n")[1]?.split("  validation:\n")[0];
+  const testStep = job.split("      - name: Run bounded deterministic Capture UI lane serially\n")[1]?.split("\n      - name:")[0];
+  const prewarm = job.split("      - name: Prewarm deterministic simulator services\n")[1]?.split("\n      - name:")[0];
+  const minutes = (source) => Number(source?.match(/timeout-minutes: (\d+)/)?.[1]);
+  assert.ok(minutes(testStep) > 0 && minutes(prewarm) > 0);
+  assert.ok(minutes(job) >= minutes(testStep) + minutes(prewarm) + 3,
+    "Startup and test timeouts must leave at least three minutes for setup and retained evidence");
+  assert.match(job, /name: Preserve native test evidence\n\s+if: always\(\)/);
+});
+
 test("Capture routes committed changes using the manifest and rejects an invalid comparison", (t) => {
   const fixture = mkdtempSync(path.join(os.tmpdir(), "quipsly-capture-ci-"));
   t.after(() => rmSync(fixture, { recursive: true, force: true }));
