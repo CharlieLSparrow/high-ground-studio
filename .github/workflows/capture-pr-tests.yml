@@ -57,6 +57,13 @@ jobs:
               --base "${base}" --head HEAD --github-output "${GITHUB_OUTPUT}"
           fi
 
+      - name: Check Capture source wiring before Mac startup
+        if: steps.plan.outputs.capture == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test scripts/quipsly-ios-capture-durability-contract.test.mjs scripts/quipsly-ios-coordinated-podcast-capture.test.mjs
+
   deterministic-ui:
     needs: changes
     if: needs.changes.outputs.capture == 'true'

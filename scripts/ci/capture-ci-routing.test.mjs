@@ -48,6 +48,22 @@ test("both Capture jobs select the repository Node toolchain before running Node
   }
 });
 
+test("cheap Capture source checks run in Linux planning and preserve failures before Mac startup", () => {
+  const name = "Check Capture source wiring before Mac startup";
+  const changes = workflow.split("\n  changes:\n")[1]?.split("\n  deterministic-ui:\n")[0];
+  assert.ok(changes?.includes(`- name: ${name}`));
+  assert.match(changes, /if: steps.plan.outputs.capture == 'true'/);
+  const result = runStep(name, {});
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  for (const exitCode of [17, 143]) {
+    const failed = spawnSync("bash", ["-c", `
+      node() { return ${exitCode}; }
+      ${stepScript(name)}
+    `], { encoding: "utf8" });
+    assert.equal(failed.status, exitCode, "Planning must fail instead of starting the costly native job");
+  }
+});
+
 test("native preflight executes every command and stops at each injected failure", () => {
   // No Xcode, network, or cloud spend: substitute only command execution while
   // running the actual workflow shell, including its checked-in error policy.
