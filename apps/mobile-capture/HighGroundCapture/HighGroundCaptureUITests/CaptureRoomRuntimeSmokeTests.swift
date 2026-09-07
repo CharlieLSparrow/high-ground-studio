@@ -1666,13 +1666,12 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             waitForRuntimeElement(share, in: app, timeout: 20, swipeAttempts: 10),
             "The newly scheduled Session should expose a working system share invitation from the same phone."
         )
-        let send = app.buttons.matching(
-            NSPredicate(
-                format: "identifier BEGINSWITH %@ OR label == %@",
-                "CaptureCoachingSendInvite_",
-                "Send invitation email"
-            )
+        let invitationOptions = app.buttons.matching(
+            NSPredicate(format: "identifier BEGINSWITH %@", "CaptureCoachingManage_")
         ).firstMatch
+        XCTAssertTrue(invitationOptions.waitForExistence(timeout: 5))
+        invitationOptions.tap()
+        let send = app.buttons["Email invite"].firstMatch
         if send.exists {
             XCTAssertTrue(send.isEnabled)
             send.tap()
@@ -1690,12 +1689,10 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
                 "Configured email delivery must produce visible sent-or-not-sent truth; a tap may not disappear into silent state."
             )
         } else {
-            let shareOnly = app.descendants(matching: .any).matching(
-                NSPredicate(format: "identifier BEGINSWITH %@", "CaptureCoachingInvitationShareOnly_")
-            ).firstMatch
+            app.navigationBars["Coaching"].tap()
             XCTAssertTrue(
-                shareOnly.exists,
-                "When email is unavailable, Capture should lead with the working share path instead of an error-producing email action."
+                share.exists && share.isHittable,
+                "When email is unavailable, the ordinary share invitation must remain available without an error-producing email action."
             )
         }
         attachRuntimeScreenshot(app, name: "Phone-first invitation outcome")
@@ -1858,6 +1855,9 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         let fortyFiveMinutes = app.buttons["45 minutes"].firstMatch
         XCTAssertTrue(fortyFiveMinutes.waitForExistence(timeout: 5))
         fortyFiveMinutes.tap()
+        let notifyClient = app.switches["CaptureCoachingRescheduleNotifyClient"].firstMatch
+        XCTAssertTrue(notifyClient.waitForExistence(timeout: 5))
+        XCTAssertEqual(notifyClient.value as? String, "1")
         let saveReschedule = app.buttons["CaptureCoachingSaveReschedule"].firstMatch
         XCTAssertTrue(saveReschedule.waitForExistence(timeout: 5))
         XCTAssertTrue(saveReschedule.isEnabled)
@@ -1865,6 +1865,14 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         XCTAssertTrue(
             rescheduleSheet.waitForNonExistence(timeout: 30),
             "A standard iPhone reschedule must persist and return to the same coaching home."
+        )
+        let bookingID = manage.identifier.replacingOccurrences(of: "CaptureCoachingManage_", with: "")
+        let scheduleNotification = app.descendants(matching: .any)[
+            "CaptureCoachingScheduleNotification_\(bookingID)"
+        ].firstMatch
+        XCTAssertTrue(
+            waitForRuntimeElement(scheduleNotification, in: app, timeout: 20, swipeAttempts: 8),
+            "The saved appointment must show the server's delivery state, not silently drop the email choice."
         )
         attachRuntimeScreenshot(app, name: "Phone-first canonical appointment rescheduled")
 

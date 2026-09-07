@@ -993,6 +993,7 @@ final class MobileCoachingRunwayClient: ObservableObject {
 
     func load() async {
         guard !isLoading else { return }
+        guard let owner = AuthManager.shared.stableOwnerSnapshot() else { return }
         guard let url = URL(string: "\(baseURL)/api/coaching/runway") else {
             errorMessage = "The configured Nest URL is not valid."
             return
@@ -1015,6 +1016,7 @@ final class MobileCoachingRunwayClient: ObservableObject {
                 for: request,
                 allowOfflineRecovery: true
             )
+            guard AuthManager.shared.matchesStableOwnerSnapshot(owner), !Task.isCancelled else { return }
             let payload = try? JSONDecoder().decode(MobileCoachingRunwayResponse.self, from: data)
 
             if httpResponse.statusCode == 401 || httpResponse.statusCode == 403 {
@@ -1048,11 +1050,13 @@ final class MobileCoachingRunwayClient: ObservableObject {
                 }
             )
             await loadPublicOfferings()
+            guard AuthManager.shared.matchesStableOwnerSnapshot(owner), !Task.isCancelled else { return }
             persistProtectedSnapshot(payload)
             status = payload.user?.isCoach == true
                 ? "Coaching ready"
                 : payload.user?.isClient == true ? "Your coaching is ready" : "Coaching ready"
         } catch {
+            guard AuthManager.shared.matchesStableOwnerSnapshot(owner), !Task.isCancelled else { return }
             if Self.isTransportUnavailable(error) {
                 AuthManager.shared.suspendNetworkActionsForCachedFallback(
                     reason: error.localizedDescription
