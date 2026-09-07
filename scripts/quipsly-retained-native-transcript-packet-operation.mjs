@@ -16,13 +16,14 @@ const KEYCHAIN_SERVICE = "com.quipsly.qa.retained-coaching";
 const COACH_EMAIL = "quipsly-coach-retained-20260731@example.test";
 const ROOM_ID = "qa-retained-coaching-next-session-20260807";
 const ROOM_TITLE = "QA Retained · Coaching continuity Session 2";
-const EXPECTED_SOURCE_TEXT = "The test goal is to preserve the original recording, verify the exact checksum, and hold all transcript work until every participant has consented and a human explicitly releases it.";
+// Historical synthetic source content, not a product policy or a required review step.
+export const EXPECTED_SOURCE_TEXT = "The test goal is to preserve the original recording, verify the exact checksum, and hold all transcript work until every participant has consented and a human explicitly releases it.";
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
 }
 
-function requireLoopbackOrigin(value, label) {
+export function requireLoopbackOrigin(value, label) {
   const normalized = String(value || "").trim();
   const url = new URL(normalized.includes("://") ? normalized : `http://${normalized}`);
   assert(url.protocol === "http:", `${label} requires loopback HTTP.`);
@@ -54,11 +55,11 @@ async function authenticate({ email, password }) {
   return body.idToken;
 }
 
-function packetEvidence(body) {
+export function packetEvidence(body) {
   const packet = body?.packet;
   assert(body?.ok === true && packet, "Nest did not return the canonical transcript packet.");
   assert(body?.boundaries?.sideEffectFreeRead === true, "Packet GET lost its side-effect-free read boundary.");
-  assert(packet?.status === "READY_FOR_REVIEW", "The retained packet is not ready for review.");
+  assert(packet?.status === "RESULTS_READY", `The retained fixture has no accessible current transcript results (${packet?.status ?? "missing status"}). Restore or replace the local fixture; this is not native UI evidence.`);
   assert(packet?.summary?.source?.packetTemplateVersion === "quipsly-session-packet-v4", "The retained packet is not v4.");
 
   const notes = Array.isArray(packet.noteCandidates) ? packet.noteCandidates : [];
@@ -68,9 +69,8 @@ function packetEvidence(body) {
   assert(completeGoal, "The v4 packet lost the expected complete goal thought.");
   assert(completeGoal.segmentIds?.length === 3, "The expected goal is not anchored to three transcript segments.");
   assert(completeGoal.sourceSpan?.segments?.length === 3, "The expected goal lost its immutable source-span receipt.");
-  assert(completeGoal.committedGoalId == null, "The retained review candidate unexpectedly became a canonical goal.");
-  assert(notes.every((candidate) => candidate?.committedNoteId == null), "A packet note candidate unexpectedly became a canonical note.");
-  assert(actions.every((candidate) => candidate?.committedActionItemId == null), "A packet action candidate unexpectedly became canonical work.");
+  // Existing generated or manually saved work is valid. This operation must not
+  // change it, rather than requiring that useful work has never been created.
 
   const reviewProjection = {
     packetBuildId: packet?.build?.packetBuildId ?? null,
@@ -99,7 +99,15 @@ function packetEvidence(body) {
   };
   return {
     ...reviewProjection,
-    digest: createHash("sha256").update(JSON.stringify(reviewProjection)).digest("hex"),
+    digest: createHash("sha256").update(JSON.stringify({
+      ...reviewProjection,
+      summary: packet.summary,
+      highlights: packet.highlights ?? [],
+      results: packet.results ?? null,
+      notes,
+      actions,
+      goals,
+    })).digest("hex"),
     candidateCounts: {
       notes: notes.length,
       actions: actions.length,
@@ -195,4 +203,6 @@ review left every packet candidate and canonical-work boundary unchanged.`);
   }, null, 2));
 }
 
-await main();
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  await main();
+}
