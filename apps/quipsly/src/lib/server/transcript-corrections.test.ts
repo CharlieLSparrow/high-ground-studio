@@ -1461,4 +1461,25 @@ describe("transcript correction desk", () => {
     })).rejects.toMatchObject<Partial<TranscriptCorrectionError>>({ status: 409, code: "UNCHANGED_CORRECTION_OVERLAY" });
     expect(tx.transcriptCorrection.create).not.toHaveBeenCalled();
   });
+
+  it("can return a redundant manual speaker name to automatic attribution without changing the words", async () => {
+    const active = {
+      id: "manual-speaker-override",
+      correctedText: "We should ship the proof-watch tomorrow.",
+      correctedSpeakerLabel: providerSpeakerLabel,
+    };
+    const { prisma, tx } = mutationHarness({ active });
+    const result = await createTranscriptCorrection({
+      prisma, actor, roomId: "room-1", segmentId: "segment-1", clientRequestId: "restore-automatic-speaker",
+      origin: "human", expectedText: providerText, expectedSpeakerLabel: providerSpeakerLabel,
+      expectedAcceptedCorrectionId: active.id, correctedText: active.correctedText, correctedSpeakerLabel: null,
+    });
+    expect(result.ok).toBe(true);
+    expect(tx.transcriptCorrection.update).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: active.id }, data: { status: "superseded" },
+    }));
+    expect(tx.transcriptCorrection.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ correctedText: active.correctedText, correctedSpeakerLabel: null }),
+    }));
+  });
 });

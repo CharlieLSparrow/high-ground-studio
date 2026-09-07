@@ -115,7 +115,7 @@ function sourceEvidence(routeName: string) {
 
 async function markProtectedPlaybackReady() {
   const media = await screen.findByLabelText("Protected session recording");
-  fireEvent.loadedMetadata(media);
+  await act(async () => { fireEvent.loadedMetadata(media); });
   return media as HTMLMediaElement;
 }
 
@@ -342,6 +342,159 @@ describe("TranscriptCorrectionDesk", () => {
       confirmedAgainstPlayback: false,
       playbackPositionSeconds: null,
     });
+  });
+
+  it("plays and pauses the exact participant source without leaving an active correction", async () => {
+    const current: any = desk(true);
+    current.segments = [{ ...segment, programStartSeconds: 31.25, sourceStartSeconds: 1.25,
+      sourcePlayback: { ...current.playback, sourceId: "client-source", recordingAssetId: "client-asset", url: "/api/ingest/media/client-source" } }];
+    global.fetch = jest.fn(async () => ({ ok: true, json: async () => current })) as unknown as typeof fetch;
+    render(<TranscriptCorrectionDesk roomId="room-1" />);
+    await markProtectedPlaybackReady();
+    fireEvent.click(screen.getByRole("button", { name: "Edit transcript" }));
+    const input = screen.getByLabelText(/correct transcript words/i);
+    fireEvent.change(input, { target: { value: "Welcome to coaching." } });
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: /Play transcript segment from Session time 00:31/i })); });
+    const media = await markProtectedPlaybackReady();
+    expect(media).toHaveAttribute("src", "/api/ingest/media/client-source");
+    expect(media.currentTime).toBe(1.25);
+    expect(HTMLMediaElement.prototype.play).toHaveBeenCalled();
+    fireEvent.play(media);
+    fireEvent.click(screen.getByRole("button", { name: "Pause recording" }));
+    expect(HTMLMediaElement.prototype.pause).toHaveBeenCalled();
+    expect(screen.getByLabelText(/correct transcript words/i)).toBe(input);
+    expect(input).toHaveValue("Welcome to coaching.");
+    expect(screen.getByRole("button", { name: /save transcript correction/i })).toBeEnabled();
+  });
+
+  it("preserves an active draft across refresh and submits the revision it was based on", async () => {
+    const initial: any = desk(true);
+    const updated = { ...initial, segments: [{ ...segment, text: "Another writer's correction.", acceptedCorrection: { id: "new-revision", revisions: [] } }] };
+    const fetchMock = jest.fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => initial })
+      .mockResolvedValueOnce({ ok: true, json: async () => updated })
+      .mockResolvedValueOnce({ ok: false, status: 409, json: async () => ({ error: "The source changed. Your draft has not been saved." }) });
+    global.fetch = fetchMock as unknown as typeof fetch;
+    render(<TranscriptCorrectionDesk roomId="room-1" />);
+    await screen.findByText("Welcome, everybody.");
+    fireEvent.click(screen.getByRole("button", { name: "Edit transcript" }));
+    const input = screen.getByLabelText(/correct transcript words/i);
+    fireEvent.change(input, { target: { value: "My unsaved correction." } });
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Refresh" })); });
+    expect(screen.getByLabelText(/correct transcript words/i)).toBe(input);
+    expect(input).toHaveValue("My unsaved correction.");
+    fireEvent.click(screen.getByRole("button", { name: /save transcript correction/i }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(/source changed/i);
+    expect(JSON.parse(fetchMock.mock.calls[2][1].body)).toMatchObject({
+      expectedAcceptedCorrectionId: null, expectedText: segment.providerText, correctedText: "My unsaved correction.",
+    });
+    expect(input).toHaveValue("My unsaved correction.");
+  });
+
+  it("keeps other passages seekable while the selected passage offers pause", async () => {
+    const current: any = desk(true);
+    current.segments.push({ ...segment, id: "later-segment", startSeconds: 8, endSeconds: 10, text: "A later passage." });
+    global.fetch = jest.fn(async () => ({ ok: true, json: async () => current })) as unknown as typeof fetch;
+    render(<TranscriptCorrectionDesk roomId="room-1" />);
+    const media = await markProtectedPlaybackReady();
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Play transcript segment from Session time 00:03" })); });
+    fireEvent.play(media);
+    expect(screen.getAllByRole("button", { name: "Pause recording" })).toHaveLength(1);
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Play transcript segment from Session time 00:08" })); });
+    expect(media.currentTime).toBe(8);
+    expect(screen.getByRole("button", { name: "Play transcript segment from Session time 00:03" })).toBeEnabled();
+    expect(screen.getAllByRole("button", { name: "Pause recording" })).toHaveLength(1);
+  });
+
+  it("keeps drafts through a transient refresh error but removes content after access is revoked", async () => {
+    const fetchMock = jest.fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => desk(true) })
+      .mockRejectedValueOnce(new Error("Temporarily offline"))
+      .mockResolvedValueOnce({ ok: false, status: 403, json: async () => ({ error: "Session access removed" }) });
+    global.fetch = fetchMock as unknown as typeof fetch;
+    render(<TranscriptCorrectionDesk roomId="room-1" />);
+    await screen.findByText("Welcome, everybody.");
+    fireEvent.click(screen.getByRole("button", { name: "Edit transcript" }));
+    const input = screen.getByLabelText(/correct transcript words/i);
+    fireEvent.change(input, { target: { value: "Keep this draft while reconnecting." } });
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Refresh" })); });
+    expect(input).toHaveValue("Keep this draft while reconnecting.");
+    expect(screen.getByLabelText(/correct transcript words/i)).toBe(input);
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Refresh" })); });
+    expect(screen.queryByLabelText(/correct transcript words/i)).not.toBeInTheDocument();
+    expect(screen.queryByText("Welcome, everybody.")).not.toBeInTheDocument();
+    expect(screen.getByText(/Session access removed/)).toBeInTheDocument();
+  });
+
+  it("retries an ambiguous correction with the same command and prevents double submission", async () => {
+    let rejectSave!: (error: Error) => void;
+    const pendingSave = new Promise((_resolve, reject) => { rejectSave = reject; });
+    const fetchMock = jest.fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => desk(true) })
+      .mockReturnValueOnce(pendingSave)
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ ok: true, idempotentReplay: true }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => desk(true) });
+    global.fetch = fetchMock as unknown as typeof fetch;
+    render(<TranscriptCorrectionDesk roomId="room-1" />);
+    const media = await markProtectedPlaybackReady();
+    fireEvent.click(screen.getByRole("button", { name: "Edit transcript" }));
+    fireEvent.change(screen.getByLabelText(/correct transcript words/i), { target: { value: "Welcome to coaching." } });
+    const save = screen.getByRole("button", { name: /save transcript correction/i });
+    fireEvent.click(save);
+    fireEvent.click(save);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(save).toBeDisabled();
+    expect(screen.getByLabelText(/correct transcript words/i)).toBeDisabled();
+    await act(async () => { rejectSave(new Error("Connection interrupted")); });
+    expect(await screen.findByRole("alert")).toHaveTextContent("Connection interrupted");
+    media.currentTime = 4.2;
+    fireEvent.timeUpdate(media);
+    fireEvent.click(screen.getByRole("button", { name: /save transcript correction/i }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(4));
+    expect(fetchMock.mock.calls[2][1].body).toEqual(fetchMock.mock.calls[1][1].body);
+    expect(screen.queryByLabelText(/correct transcript words/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/already saved; no duplicate/i)).toBeInTheDocument();
+  });
+
+  it("does not carry transcript content or drafts into a different Session", async () => {
+    let resolveNext!: (response: unknown) => void;
+    const fetchMock = jest.fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => desk(true) })
+      .mockReturnValueOnce(new Promise((resolve) => { resolveNext = resolve; }));
+    global.fetch = fetchMock as unknown as typeof fetch;
+    const view = render(<TranscriptCorrectionDesk roomId="room-1" />);
+    await screen.findByText("Welcome, everybody.");
+    fireEvent.click(screen.getByRole("button", { name: "Edit transcript" }));
+    fireEvent.change(screen.getByLabelText(/correct transcript words/i), { target: { value: "Private draft in room one." } });
+    view.rerender(<TranscriptCorrectionDesk roomId="room-2" />);
+    expect(screen.queryByLabelText(/correct transcript words/i)).not.toBeInTheDocument();
+    expect(screen.queryByText("Welcome, everybody.")).not.toBeInTheDocument();
+    expect(screen.getByText(/Loading transcript and recording/)).toBeInTheDocument();
+    await act(async () => { resolveNext({ ok: true, json: async () => ({ ...desk(true), roomId: "room-2", segments: [{ ...segment, id: "room-two-passage", text: "Different Session." }] }) }); });
+    expect(await screen.findByText("Different Session.")).toBeInTheDocument();
+  });
+
+  it.each([null, "Previously corrected name"])("does not invent a speaker correction when only words change (prior override: %s)", async (priorName) => {
+    const current: any = desk(true);
+    current.segments = [{ ...segment, speakerLabel: priorName || "Coach from participant identity", providerSpeakerLabel: null,
+      acceptedCorrection: priorName ? { id: "existing-correction", correctedSpeakerLabel: priorName, revisions: [] } : null }];
+    const saved = { ...current, segments: [{ ...current.segments[0], text: "Welcome, everyone.",
+      acceptedCorrection: { id: "saved-correction", correctedSpeakerLabel: priorName, revisions: [{ revision: 1 }] } }] };
+    const fetchMock = jest.fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => current })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ ok: true }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => saved });
+    global.fetch = fetchMock as unknown as typeof fetch;
+    render(<TranscriptCorrectionDesk roomId="room-1" />);
+    await screen.findByRole("button", { name: priorName ? "Revise transcript" : "Edit transcript" });
+    fireEvent.click(screen.getByRole("button", { name: priorName ? "Revise transcript" : "Edit transcript" }));
+    fireEvent.change(screen.getByLabelText(/correct transcript words/i), { target: { value: "Welcome, everyone." } });
+    fireEvent.click(screen.getByRole("button", { name: /save transcript correction/i }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toMatchObject({
+      correctedText: "Welcome, everyone.", correctedSpeakerLabel: priorName,
+    });
+    if (!priorName) expect(screen.queryByText(/^Speaker: Unlabelled/)).not.toBeInTheDocument();
   });
 
   it("explains source identity, model movement, diarization, and vocabulary from the manifest receipt", async () => {

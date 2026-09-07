@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { AudioLines, Check, CircleAlert, Download, FilePenLine, Gauge, History, ListTodo, LoaderCircle, NotebookPen, Play, RefreshCw, Scissors, ShieldCheck, Share2, Sparkles, Target, TriangleAlert, X } from "lucide-react";
+import { AudioLines, Check, CircleAlert, Download, FilePenLine, Gauge, History, ListTodo, LoaderCircle, NotebookPen, Pause, Play, RefreshCw, Scissors, ShieldCheck, Share2, Sparkles, Target, TriangleAlert, X } from "lucide-react";
 
 import { AudioEvidenceMap, type AudioEvidenceTranscriptWord } from "@/components/audio/AudioEvidenceMap";
 import { AudibleEventQualificationLab } from "@/components/audio/AudibleEventQualificationLab";
@@ -1201,6 +1201,8 @@ function CorrectionEditor({
   currentPlaybackPosition,
   busy,
   onPlay,
+  isPlaying,
+  onPause,
   onPlayAt,
   onEditRecording,
   onSaved,
@@ -1215,6 +1217,8 @@ function CorrectionEditor({
   currentPlaybackPosition: () => number | null;
   busy: boolean;
   onPlay: () => Promise<void>;
+  isPlaying: boolean;
+  onPause: () => void;
   onPlayAt: (seconds: number) => Promise<void>;
   onEditRecording?: (segment: Segment) => void;
   onSaved: (message: string) => Promise<void>;
@@ -1222,6 +1226,10 @@ function CorrectionEditor({
   const programStartSeconds = segment.programStartSeconds ?? segment.startSeconds;
   const programEndSeconds = segment.programEndSeconds ?? segment.endSeconds;
   const [editing, setEditing] = useState(false);
+  const editingSource = useRef(segment);
+  const savingRef = useRef(false);
+  const [saving, setSaving] = useState(false);
+  const correctionRequest = useRef<{ content: string; body: string } | null>(null);
   const [correctedText, setCorrectedText] = useState(segment.text);
   const [correctedSpeaker, setCorrectedSpeaker] = useState(segment.speakerLabel || "");
   const [reason, setReason] = useState("");
@@ -1248,37 +1256,66 @@ function CorrectionEditor({
   const [draftHref, setDraftHref] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!editing) {
+      setCorrectedText(segment.text);
+      setCorrectedSpeaker(segment.speakerLabel || "");
+    }
+    if (!creatingDraft) {
+      setDraftTitle(`Draft — ${segment.text}`.slice(0, 180));
+      setDraftOpeningNote("");
+    }
+    if (!creatingNote) {
+      setNoteTitle(`Note — ${segment.text}`.slice(0, 180));
+      setNoteBody(segment.text);
+    }
+  }, [segment.id, segment.text, segment.speakerLabel, segment.acceptedCorrection?.id, editing, creatingDraft, creatingNote]);
+
+  function beginEditing() {
+    editingSource.current = segment;
+    correctionRequest.current = null;
     setCorrectedText(segment.text);
     setCorrectedSpeaker(segment.speakerLabel || "");
-    setDraftTitle(`Draft — ${segment.text}`.slice(0, 180));
-    setDraftOpeningNote("");
-    setDraftHref(null);
-    setNoteTitle(`Note — ${segment.text}`.slice(0, 180));
-    setNoteBody(segment.text);
-    setNoteHref(null);
-  }, [segment.id, segment.text, segment.speakerLabel, segment.acceptedCorrection?.id]);
+    setReason("");
+    setError(null);
+    setEditing(true);
+  }
 
   async function save() {
+    if (savingRef.current || busy) return;
+    savingRef.current = true;
+    setSaving(true);
     setError(null);
     const position = currentPlaybackPosition();
+    const source = editingSource.current;
+    const payload = {
+      operation: "accept-human-correction",
+      roomId,
+      segmentId: source.id,
+      expectedText: source.providerText,
+      expectedSpeakerLabel: source.providerSpeakerLabel,
+      expectedAcceptedCorrectionId: source.acceptedCorrection?.id ?? null,
+      correctedText,
+      // An unchanged participant-derived display name is not a manual label.
+      // Preserve an existing explicit override, but do not invent one when
+      // someone only corrects the words.
+      correctedSpeakerLabel: correctedSpeaker.trim() === (source.speakerLabel || "").trim()
+        ? source.acceptedCorrection?.correctedSpeakerLabel ?? null
+        : correctedSpeaker,
+      reason,
+      confirmedAgainstPlayback: playbackReviewed,
+      playbackPositionSeconds: reviewedPlaybackPositionSeconds ?? position,
+    };
+    // Retrying unchanged words is the same command, even if playback advances.
+    // Keep the first submitted listening evidence and request identity together.
+    const content = JSON.stringify({ ...payload, confirmedAgainstPlayback: false, playbackPositionSeconds: null });
+    if (correctionRequest.current?.content !== content) {
+      correctionRequest.current = { content, body: JSON.stringify({ ...payload, clientRequestId: requestId(source.id) }) };
+    }
     try {
       const response = await fetch("/api/mobile/capture/transcripts/corrections", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          operation: "accept-human-correction",
-          roomId,
-          segmentId: segment.id,
-          clientRequestId: requestId(segment.id),
-          expectedText: segment.providerText,
-          expectedSpeakerLabel: segment.providerSpeakerLabel,
-          expectedAcceptedCorrectionId: segment.acceptedCorrection?.id ?? null,
-          correctedText,
-          correctedSpeakerLabel: correctedSpeaker,
-          reason,
-          confirmedAgainstPlayback: playbackReviewed,
-          playbackPositionSeconds: reviewedPlaybackPositionSeconds ?? position,
-        }),
+        body: correctionRequest.current.body,
       });
       const body = await response.json() as { ok?: boolean; error?: string; idempotentReplay?: boolean };
       if (!response.ok || !body.ok) throw new Error(body.error || "The correction was not saved.");
@@ -1289,6 +1326,9 @@ function CorrectionEditor({
         : "Transcript correction saved. The original words and media timing remain recoverable underneath it.");
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : "The correction was not saved.");
+    } finally {
+      savingRef.current = false;
+      setSaving(false);
     }
   }
 
@@ -1429,6 +1469,12 @@ function CorrectionEditor({
     }
   }
 
+  const passagePlayback = (
+    <button type="button" onClick={() => isPlaying ? onPause() : void onPlay()} disabled={!playbackReady || busy} className="inline-flex min-h-11 items-center justify-center gap-1 rounded-full border border-sky-200 bg-sky-50 px-3 py-2 text-xs font-black text-sky-900 disabled:cursor-not-allowed disabled:opacity-50" aria-label={isPlaying ? "Pause recording" : `Play transcript segment from Session time ${timestampForSeconds(programStartSeconds)}`}>
+      {isPlaying ? <Pause size={14} fill="currentColor" aria-hidden="true" /> : <Play size={14} fill="currentColor" aria-hidden="true" />}{isPlaying ? "Pause" : "Play"}
+    </button>
+  );
+
   return (
     <li id={`transcript-segment-${encodeURIComponent(segment.id)}`} tabIndex={-1} className="scroll-mt-24 border-b border-[#eadfc9] bg-white px-4 py-5 outline-none first:rounded-t-2xl last:rounded-b-2xl last:border-b-0 target:bg-sky-50 target:ring-2 target:ring-inset target:ring-sky-300 sm:px-5">
       <div>
@@ -1445,7 +1491,7 @@ function CorrectionEditor({
       {segment.acceptedCorrection && (
         <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4">
           <p className="flex items-center gap-2 text-xs font-black uppercase tracking-wide text-emerald-800"><ShieldCheck size={15} aria-hidden="true" />Transcript correction · revision {segment.acceptedCorrection.revisions.length}</p>
-          {segment.providerSpeakerLabel !== segment.speakerLabel && <p className="mt-2 text-sm font-bold text-emerald-950">Speaker: {segment.providerSpeakerLabel || "Unlabelled"} → {segment.speakerLabel || "Unlabelled"}</p>}
+          {segment.acceptedCorrection.correctedSpeakerLabel && segment.providerSpeakerLabel !== segment.speakerLabel && <p className="mt-2 text-sm font-bold text-emerald-950">Speaker: {segment.providerSpeakerLabel || "Unlabelled"} → {segment.speakerLabel || "Unlabelled"}</p>}
           {segment.providerText !== segment.text && <p className="mt-2 text-sm font-semibold leading-relaxed text-emerald-950">{segment.text}</p>}
           {segment.acceptedCorrection.reason && <p className="mt-2 text-xs font-bold text-emerald-800">Reason: {segment.acceptedCorrection.reason}</p>}
         </div>
@@ -1568,14 +1614,18 @@ function CorrectionEditor({
 
       {editing ? (
         <div className="mt-4 space-y-3 rounded-xl border border-amber-200 bg-amber-50/70 p-4">
+          <div className="flex items-center gap-3">
+            {passagePlayback}
+            <span className="text-xs font-semibold text-amber-950">Listen while you edit</span>
+          </div>
           <label className="block text-xs font-black uppercase tracking-wide text-amber-950">Correct speaker
-            <input value={correctedSpeaker} onChange={(event) => setCorrectedSpeaker(event.target.value)} maxLength={160} className="mt-1 block w-full rounded-lg border border-amber-200 bg-white px-3 py-2 text-sm font-semibold text-[#3d3122]" />
+            <input value={correctedSpeaker} disabled={saving} onChange={(event) => setCorrectedSpeaker(event.target.value)} maxLength={160} className="mt-1 block w-full rounded-lg border border-amber-200 bg-white px-3 py-2 text-sm font-semibold text-[#3d3122]" />
           </label>
           <label className="block text-xs font-black uppercase tracking-wide text-amber-950">Correct transcript words
-            <textarea value={correctedText} onChange={(event) => setCorrectedText(event.target.value)} maxLength={10000} rows={4} className="mt-1 block w-full rounded-lg border border-amber-200 bg-white px-3 py-2 text-sm font-semibold leading-relaxed text-[#3d3122]" />
+            <textarea value={correctedText} disabled={saving} onChange={(event) => setCorrectedText(event.target.value)} maxLength={10000} rows={4} className="mt-1 block w-full rounded-lg border border-amber-200 bg-white px-3 py-2 text-sm font-semibold leading-relaxed text-[#3d3122]" />
           </label>
           <label className="block text-xs font-black uppercase tracking-wide text-amber-950">Why this changed <span className="normal-case tracking-normal text-amber-800">(optional)</span>
-            <input value={reason} onChange={(event) => setReason(event.target.value)} maxLength={1000} placeholder="Name, wording, crosstalk, diarization…" className="mt-1 block w-full rounded-lg border border-amber-200 bg-white px-3 py-2 text-sm font-semibold text-[#3d3122]" />
+            <input value={reason} disabled={saving} onChange={(event) => setReason(event.target.value)} maxLength={1000} placeholder="Name, wording, crosstalk, diarization…" className="mt-1 block w-full rounded-lg border border-amber-200 bg-white px-3 py-2 text-sm font-semibold text-[#3d3122]" />
           </label>
           <p className={`rounded-lg border p-3 text-sm font-bold leading-relaxed ${playbackReviewed ? "border-emerald-200 bg-emerald-50 text-emerald-950" : "border-slate-200 bg-white text-slate-800"}`}>
             {playbackReviewed
@@ -1584,15 +1634,15 @@ function CorrectionEditor({
           </p>
           {error && <p role="alert" className="flex items-start gap-2 text-sm font-bold text-rose-800"><CircleAlert size={16} className="mt-0.5 shrink-0" aria-hidden="true" />{error}</p>}
           <div className="flex flex-wrap gap-2">
-            <button type="button" onClick={() => void save()} disabled={busy || (!correctedText.trim() && !correctedSpeaker.trim())} className="inline-flex items-center gap-2 rounded-full bg-[#3e2f21] px-4 py-2 text-xs font-black uppercase tracking-wide text-white disabled:opacity-50"><Check size={14} aria-hidden="true" />Save transcript correction</button>
-            <button type="button" onClick={() => { setEditing(false); setError(null); }} disabled={busy} className="inline-flex items-center gap-2 rounded-full border border-amber-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-amber-950 disabled:opacity-50"><X size={14} aria-hidden="true" />Cancel</button>
+            <button type="button" onClick={() => void save()} disabled={busy || saving || (!correctedText.trim() && !correctedSpeaker.trim())} className="inline-flex items-center gap-2 rounded-full bg-[#3e2f21] px-4 py-2 text-xs font-black uppercase tracking-wide text-white disabled:opacity-50">{saving ? <LoaderCircle size={14} className="animate-spin" aria-hidden="true" /> : <Check size={14} aria-hidden="true" />}{saving ? "Saving…" : "Save transcript correction"}</button>
+            <button type="button" onClick={() => { setEditing(false); setError(null); }} disabled={busy || saving} className="inline-flex items-center gap-2 rounded-full border border-amber-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-amber-950 disabled:opacity-50"><X size={14} aria-hidden="true" />Cancel</button>
           </div>
           <p className="text-xs font-bold leading-relaxed text-amber-800">Saving adds a versioned correction linked to this exact source moment. The original transcript and recording remain recoverable.</p>
         </div>
       ) : (
         <div className={onEditRecording ? "mt-3 grid grid-cols-3 gap-2" : "mt-3 grid grid-cols-2 gap-2"}>
-          <button type="button" onClick={() => void onPlay()} disabled={!playbackReady || busy} className="inline-flex min-h-10 items-center justify-center gap-1 rounded-full border border-sky-200 bg-sky-50 px-2 py-2 text-xs font-black text-sky-900 disabled:cursor-not-allowed disabled:opacity-50" aria-label={`Play transcript segment from Session time ${timestampForSeconds(programStartSeconds)}`}><Play size={14} fill="currentColor" aria-hidden="true" />Play</button>
-          <button type="button" onClick={() => setEditing(true)} disabled={busy} aria-label={segment.acceptedCorrection ? "Revise transcript" : "Edit transcript"} className="inline-flex min-h-10 items-center justify-center gap-1 rounded-full border border-[#d9c7a5] bg-white px-2 py-2 text-xs font-black text-[#5b472f] disabled:cursor-not-allowed disabled:opacity-50"><FilePenLine size={15} aria-hidden="true" />{segment.acceptedCorrection ? "Revise" : "Correct"}</button>
+          {passagePlayback}
+          <button type="button" onClick={beginEditing} disabled={busy} aria-label={segment.acceptedCorrection ? "Revise transcript" : "Edit transcript"} className="inline-flex min-h-10 items-center justify-center gap-1 rounded-full border border-[#d9c7a5] bg-white px-2 py-2 text-xs font-black text-[#5b472f] disabled:cursor-not-allowed disabled:opacity-50"><FilePenLine size={15} aria-hidden="true" />{segment.acceptedCorrection ? "Revise" : "Correct"}</button>
           {onEditRecording ? <button type="button" onClick={() => onEditRecording(segment)} disabled={busy} aria-label="Edit recording here" className="inline-flex min-h-10 items-center justify-center gap-1 rounded-full border border-sky-300 bg-sky-50 px-2 py-2 text-xs font-black text-sky-950 disabled:opacity-50"><Scissors size={15} aria-hidden="true" />Trim</button> : null}
           {!segment.acceptedCorrection && !segment.acceptedVerification && playbackReviewed && (
             <button type="button" onClick={() => void confirmAsIs()} disabled={!playbackReady || busy} className="col-span-full inline-flex min-h-10 items-center justify-center gap-2 rounded-full bg-emerald-800 px-3 py-2 text-xs font-black text-white disabled:cursor-not-allowed disabled:opacity-50"><ShieldCheck size={15} aria-hidden="true" />Mark correct</button>
@@ -1685,16 +1735,7 @@ function CorrectionEditor({
   );
 }
 
-export function TranscriptCorrectionDesk({
-  roomId,
-  sessionTitle = "Quipsly Session",
-  recordingAssetId = null,
-  initialPlaybackSeconds = null,
-  canUseProjectTeamNotes = false,
-  canEditRecording = false,
-  recordingEditor = null,
-  audioMastery = null,
-}: {
+type TranscriptCorrectionDeskProps = {
   roomId: string;
   sessionTitle?: string;
   recordingAssetId?: string | null;
@@ -1703,7 +1744,24 @@ export function TranscriptCorrectionDesk({
   canEditRecording?: boolean;
   recordingEditor?: ReactNode | ((focus: RecordingEditorFocus | null) => ReactNode);
   audioMastery?: ReactNode;
-}) {
+};
+
+export function TranscriptCorrectionDesk(props: TranscriptCorrectionDeskProps) {
+  // Preserve drafts during same-source refresh, never across navigation into
+  // a different Session or explicitly selected recording.
+  return <TranscriptCorrectionDeskContent key={JSON.stringify([props.roomId, props.recordingAssetId ?? null])} {...props} />;
+}
+
+function TranscriptCorrectionDeskContent({
+  roomId,
+  sessionTitle = "Quipsly Session",
+  recordingAssetId = null,
+  initialPlaybackSeconds = null,
+  canUseProjectTeamNotes = false,
+  canEditRecording = false,
+  recordingEditor = null,
+  audioMastery = null,
+}: TranscriptCorrectionDeskProps) {
   const [desk, setDesk] = useState<Desk | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -1722,6 +1780,8 @@ export function TranscriptCorrectionDesk({
     : 0;
   const [playbackSeconds, setPlaybackSeconds] = useState(normalizedInitialPlaybackSeconds);
   const [playbackState, setPlaybackState] = useState<"absent" | "loading" | "ready" | "error">("absent");
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [playbackSegmentID, setPlaybackSegmentID] = useState<string | null>(null);
   const [showQualityDetails, setShowQualityDetails] = useState(false);
   const [showSpeakerIdentity, setShowSpeakerIdentity] = useState(false);
   const [showRecordingEditor, setShowRecordingEditor] = useState(false);
@@ -1776,10 +1836,14 @@ export function TranscriptCorrectionDesk({
       if (recordingAssetId) query.set("recordingAssetId", recordingAssetId);
       const response = await fetch(`/api/mobile/capture/transcripts/corrections?${query.toString()}`, { cache: "no-store" });
       const payload = await response.json() as Desk;
-      if (!response.ok || !payload.ok) throw new Error(payload.error || "The correction desk could not load.");
+      if (!response.ok || !payload.ok) {
+        // A transient refresh error must not erase drafts. Revoked access must
+        // still remove the protected transcript, including during silent polls.
+        if ([401, 403, 404].includes(response.status)) setDesk(null);
+        throw new Error(payload.error || "The correction desk could not load.");
+      }
       setDesk(payload);
     } catch (error) {
-      if (!silent) setDesk(null);
       setMessage(error instanceof Error ? error.message : "The correction desk could not load.");
     } finally {
       if (!silent) setLoading(false);
@@ -1787,6 +1851,24 @@ export function TranscriptCorrectionDesk({
   }, [recordingAssetId, roomId]);
 
   useEffect(() => { void load(false); }, [load]);
+
+  useEffect(() => {
+    const media = mediaRef.current;
+    setIsPlaying(false);
+    if (!media) return;
+    const started = () => setIsPlaying(true);
+    const stopped = () => setIsPlaying(false);
+    media.addEventListener("play", started);
+    media.addEventListener("pause", stopped);
+    media.addEventListener("ended", stopped);
+    media.addEventListener("error", stopped);
+    return () => {
+      media.removeEventListener("play", started);
+      media.removeEventListener("pause", stopped);
+      media.removeEventListener("ended", stopped);
+      media.removeEventListener("error", stopped);
+    };
+  }, [currentPlayback?.sourceId]);
 
   useEffect(() => () => {
     if (preparedTranscript?.url) URL.revokeObjectURL(preparedTranscript.url);
@@ -1934,6 +2016,7 @@ export function TranscriptCorrectionDesk({
 
   function selectPlaybackSource(playback: TranscriptPlayback) {
     mediaRef.current?.pause();
+    setPlaybackSegmentID(null);
     pendingSourcePlaybackRef.current = null;
     lastPlaybackTimeRef.current = null;
     setPlaybackState("loading");
@@ -1954,6 +2037,7 @@ export function TranscriptCorrectionDesk({
       setMessage("This participant source still needs protected playback before it can be reviewed.");
       return;
     }
+    setPlaybackSegmentID(segment.id);
     return playSourceAt(playback, segment.sourceStartSeconds ?? segment.startSeconds);
   }
 
@@ -2150,7 +2234,7 @@ export function TranscriptCorrectionDesk({
     }
   }
 
-  if (loading) return <section className="rounded-2xl border border-[#e5d5b7] bg-white p-8 text-sm font-bold text-[#765f40]"><LoaderCircle className="mr-2 inline animate-spin" size={18} aria-hidden="true" />Loading transcript and recording…</section>;
+  if (loading && !desk) return <section className="rounded-2xl border border-[#e5d5b7] bg-white p-8 text-sm font-bold text-[#765f40]"><LoaderCircle className="mr-2 inline animate-spin" size={18} aria-hidden="true" />Loading transcript and recording…</section>;
   if (!desk) return <section className="rounded-2xl border border-rose-200 bg-rose-50 p-6" role="status"><CircleAlert className="text-rose-700" aria-hidden="true" /><h2 className="mt-3 font-serif text-2xl font-black text-[#3d3122]">Transcript correction is unavailable.</h2><p className="mt-2 text-sm font-semibold text-[#765f40]">{message || "No transcript text is substituted and no evidence was changed."}</p><button type="button" onClick={() => void load()} className="mt-4 inline-flex items-center gap-2 rounded-full border border-rose-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-rose-900"><RefreshCw size={14} aria-hidden="true" />Retry</button></section>;
 
   const reviewedSegmentCount = desk.segments.filter((segment) => segment.acceptedCorrection || segment.acceptedVerification).length;
@@ -2322,7 +2406,12 @@ export function TranscriptCorrectionDesk({
                   currentPlaybackPosition={() => currentPlayback?.sourceId === segmentPlayback?.sourceId ? mediaRef.current?.currentTime ?? null : null}
                   busy={busy}
                   onPlay={() => playFrom(segment)}
-                  onPlayAt={(seconds) => segmentPlayback ? playSourceAt(segmentPlayback, seconds) : playFromTime(seconds)}
+                  isPlaying={segmentIsCurrentSource && playbackSegmentID === segment.id && isPlaying}
+                  onPause={() => { mediaRef.current?.pause(); setIsPlaying(false); }}
+                  onPlayAt={(seconds) => {
+                    setPlaybackSegmentID(segment.id);
+                    return segmentPlayback ? playSourceAt(segmentPlayback, seconds) : playFromTime(seconds);
+                  }}
                   onEditRecording={canEditRecording && recordingEditor ? openRecordingEditorAt : undefined}
                   onSaved={saved}
                 />

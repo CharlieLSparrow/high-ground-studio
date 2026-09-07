@@ -1486,7 +1486,10 @@ function correctionMatchesActiveOverlay(input: {
 }) {
   if (!input.active) return false;
   return (input.correctedText ?? input.providerText) === (input.active.correctedText ?? input.providerText)
-    && (input.correctedSpeakerLabel ?? input.providerSpeakerLabel) === (input.active.correctedSpeakerLabel ?? input.providerSpeakerLabel);
+    // A manual name override and automatic attribution are different states,
+    // even when both currently display the same name. Allow clearing the
+    // override without requiring an invented name or a wording change.
+    && input.correctedSpeakerLabel === (input.active.correctedSpeakerLabel ?? null);
 }
 
 function assertPlaybackConfirmation(input: {

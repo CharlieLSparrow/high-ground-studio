@@ -1453,6 +1453,13 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
             errorMessage = "Preview transcript changes are intentionally disabled."
             return false
         }
+        let speakerWasChanged = correctedSpeaker.trimmingCharacters(in: .whitespacesAndNewlines)
+            != (segment.speakerLabel ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        // Editing words must not replace participant-derived identity with a
+        // manual speaker override. Keep an earlier explicit override intact.
+        let speakerCorrection = speakerWasChanged
+            ? correctedSpeaker
+            : segment.acceptedCorrection?.correctedSpeakerLabel ?? ""
         do {
             _ = try reviewDecisionOutbox.enqueueCorrection(
                 roomID: roomID,
@@ -1461,7 +1468,7 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
                 expectedProviderSpeakerLabel: segment.providerSpeakerLabel,
                 expectedAcceptedCorrectionID: segment.acceptedCorrection?.id,
                 correctedText: correctedText,
-                correctedSpeakerLabel: correctedSpeaker,
+                correctedSpeakerLabel: speakerCorrection,
                 reason: reason,
                 playbackPositionSeconds: playbackPosition
             )
