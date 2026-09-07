@@ -80,6 +80,7 @@
     ],
     "deterministic": [
       "pnpm --filter quipsly typecheck",
+      "pnpm --filter quipsly test --maxWorkers=2",
       "pnpm quipsly:contracts:test",
       "pnpm quipsly:release:local"
     ],
@@ -123,6 +124,7 @@
       "prisma.config.ts",
       "release/manifests/nest.json",
       "scripts/quipsly-owner-override-retirement.test.mjs",
+      "scripts/quipsly-retained-coaching-engagement-browser-operation.mjs",
       "scripts/prisma-generate-workspace-clients.mjs",
       "scripts/release",
       "scripts/scan-beta-blockers.mjs",

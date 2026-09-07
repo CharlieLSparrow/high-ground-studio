@@ -35,7 +35,9 @@ on:
         type: boolean
 
 concurrency:
-  group: cloud-run-deploy-${{ github.ref }}
+  # Every branch targets the same services and preview tags. A branch-specific
+  # lock allows simultaneous releases to replace each other's preview.
+  group: cloud-run-deploy-high-ground-odyssey-us-central1
   cancel-in-progress: false
 
 permissions:

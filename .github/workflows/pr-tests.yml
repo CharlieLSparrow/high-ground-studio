@@ -227,6 +227,8 @@ jobs:
           bash -n scripts/release/quipsly-transcript-worker-deploy.sh
           node --check scripts/release/quipsly-transcript-worker-cloud-fixture.mjs
           bash -n scripts/release/quipsly-release-preflight.sh
+          node --test scripts/release/quipsly-verify-release-build.test.mjs
+          node --test scripts/release/quipsly-canonical-deploy-entrypoints.test.mjs
           bash -n scripts/release/quipsly-smoke-preview.sh
           bash -n scripts/release/quipsly-production-status.sh
           node --test scripts/release/quipsly-production-status.test.mjs

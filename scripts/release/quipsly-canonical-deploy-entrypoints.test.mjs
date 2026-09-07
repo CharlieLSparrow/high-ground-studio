@@ -9,6 +9,13 @@ const readiness = readFileSync("scripts/hgo-quipsly-release-readiness.mjs", "utf
 const runway = readFileSync("scripts/hgo-quipsly-coaching-release-runway.mjs", "utf8");
 const workflow = readFileSync(".github/workflows/deploy-cloud-run.yml", "utf8");
 
+test("Cloud Run releases share one target lock across branches without cancelling an active deploy", () => {
+  const concurrency = workflow.split("\nconcurrency:\n")[1]?.split("\npermissions:")[0];
+  assert.match(concurrency, /group: cloud-run-deploy-high-ground-odyssey-us-central1/);
+  assert.match(concurrency, /cancel-in-progress: false/);
+  assert.doesNotMatch(concurrency, /github\.ref|inputs\.target/);
+});
+
 test("every supported Nest deploy entry point uses the committed-source preview pipeline", () => {
   assert.match(packageJson, /"quipsly:web:deploy": "bash scripts\/release\/quipsly-deploy-preview\.sh"/);
   assert.match(compatibility, /scripts\/release\/quipsly-deploy-preview\.sh/);

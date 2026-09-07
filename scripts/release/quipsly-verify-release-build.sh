@@ -24,18 +24,26 @@ echo "Installing the exact committed Nest release context."
   CI=1 corepack pnpm install --frozen-lockfile
 )
 
-echo "Testing Session recording evidence in the exact committed Nest release context."
-(
-  cd "${release_context}"
-  corepack pnpm quipsly:session-evidence:test
-)
-
 echo "Generating Prisma clients in the exact committed Nest release context."
 (
   cd "${release_context}"
   DATABASE_URL="${DATABASE_URL:-postgresql://build:build@127.0.0.1:5432/high_ground_build}" \
     corepack pnpm db:generate
   node scripts/sync-prisma-pnpm-clients.mjs
+)
+
+# Keep results outside the upload context, including when a test fails or Jest
+# exits before it can write JSON. This is the same application suite as PR CI;
+# the narrower Session-evidence suite is already included in it.
+test_results="$(mktemp -d "${TMPDIR:-/tmp}/quipsly-release-tests.XXXXXX")"
+echo "Testing application behavior in the exact committed Nest release context."
+echo "Application test results: ${test_results}"
+(
+  cd "${release_context}"
+  CI=1 QUIPSLY_LOCAL_DB_SMOKE=0 \
+    corepack pnpm --filter quipsly test --maxWorkers=2 --json \
+      --outputFile="${test_results}/jest-results.json" \
+      2>&1 | tee "${test_results}/jest.log"
 )
 
 echo "Building the exact Nest production bundle with strict type checking."

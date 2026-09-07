@@ -84,6 +84,15 @@ Its production builds use ignored `.next-release` directories, so the gate can
 run while the local Nest dev server continues using `.next`; a release check
 must not require restarting the dogfood app.
 
+The manual Nest deployment preflight also runs the full application Jest suite
+from its materialized commit before the production build. A failed test prevents
+the build from starting; stdout and JSON results remain in the printed temporary
+results directory outside the upload context. This does not opt into database
+tests or substitute for the separate database and operated-workflow checks.
+Cloud Run workflow runs use one deployment-target concurrency group across
+branches, without cancelling an active deployment. This coordinates GitHub
+runs; it is not a distributed lock against separately invoked local scripts.
+
 Each Next.js output directory also receives an ignored, generated
 `.quipsly-tsconfig-*.json` containing only that lane's route validators. The
 source `tsconfig.json` stays stable; stale generated routes from a different
