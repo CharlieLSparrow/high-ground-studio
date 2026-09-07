@@ -49,9 +49,10 @@ focused debugging can still use `--runInBand`. Database integration tests explic
 `QUIPSLY_LOCAL_DB_SMOKE=1` and `QUIPSLY_LOCAL_DATABASE_URL`; the ordinary Jest PR
 step does not claim those integration tests ran. A separate PR step applies all
 migrations to a fresh disposable PostgreSQL 15/pgvector service and executes the
-project-access, project-command, canonical-note-edit, and follow-through database
+project-access, project-command, canonical-note-edit, conversation, and follow-through database
 suites. It checks real membership, revocation, private-goal visibility,
-cross-project IDs, transactions, and persistence; only the request identity and
+cross-project IDs, transactions, message retry deduplication, complete paginated
+history, and persistence; only the request identity and
 Next.js cache adapter are mocked for the command tests. It does not prove the
 Firebase login flow or deployed permissions. No production database or cloud
 credentials are available to that step. Migration and test logs are retained.

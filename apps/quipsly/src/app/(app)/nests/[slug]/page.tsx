@@ -415,6 +415,7 @@ export default async function NestDashboardPage({ params, searchParams }: NestDa
           </div>
 
           <nav aria-label={`${project.name} workspace`} className="-mx-2 mt-6 flex gap-1 overflow-x-auto px-2 pb-1">
+            <Link href={`/nests/${encodeURIComponent(project.slug)}/workspace`} className="inline-flex min-h-11 shrink-0 items-center rounded-full px-4 text-xs font-black text-[#765f40] hover:bg-[#f7eddb]">Conversation</Link>
             {nav.map((item) => {
               const active = item.id === view;
               return (

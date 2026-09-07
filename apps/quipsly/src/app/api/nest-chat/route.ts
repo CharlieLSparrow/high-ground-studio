@@ -1,5 +1,4 @@
-import { createHash } from "node:crypto";
-
+import type { Prisma } from "@prisma/client";
 import { NextRequest, NextResponse } from "next/server";
 
 import { getPrismaClient } from "@/lib/prisma";
@@ -17,9 +16,6 @@ import {
 } from "@/lib/server/studio-project-access";
 
 const DEFAULT_THREAD_KEY = "default";
-const BELIEVE_GIF_PAGE_URL = "https://giphy.com/gifs/AppleTV-apple-tv-app-DEZA7FlHbMesUF1jm9";
-const BELIEVE_GIF_URL = "https://media.giphy.com/media/DEZA7FlHbMesUF1jm9/giphy.gif";
-const LEGACY_BELIEVE_GIF_ID = "5B925WaCAIWojy3KMG";
 const MAX_MESSAGE_LENGTH = 4_000;
 const MAX_THREAD_KEY_LENGTH = 120;
 const CLIENT_MESSAGE_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -66,12 +62,6 @@ function prismaErrorCode(error: unknown) {
     : "";
 }
 
-function threadSeedMessageId(threadId: string) {
-  return `nest-seed-${createHash("sha256")
-    .update(`believe:${threadId}`)
-    .digest("hex")
-    .slice(0, 36)}`;
-}
 
 function normalizeProjectSlug(input: string | null) {
   return String(input ?? "").trim().toLowerCase();
@@ -329,53 +319,6 @@ async function resolveActor(request: NextRequest) {
   };
 }
 
-async function normalizeBelieveSeedMessages(projectId: string, threadId: string) {
-  const prisma = getPrismaClient();
-  await prisma.studioNestChatMessage.updateMany({
-    where: {
-      authorEmail: "quipsly@nest.system",
-      projectId,
-      threadId,
-      OR: [
-        { body: { not: `Believe. Every Nest thread starts here. ${BELIEVE_GIF_PAGE_URL}` } },
-        { gifUrl: null },
-        { gifUrl: { not: BELIEVE_GIF_URL } },
-      ],
-    },
-    data: {
-      body: `Believe. Every Nest thread starts here. ${BELIEVE_GIF_PAGE_URL}`,
-      gifUrl: BELIEVE_GIF_URL,
-      metadataJson: {
-        seed: "ted-lasso-believe",
-        source: "giphy",
-        sourceUrl: BELIEVE_GIF_PAGE_URL,
-        note: "Seeded as the first message for every Nest chat thread.",
-      },
-    },
-  });
-
-  await prisma.studioNestChatMessage.updateMany({
-    where: {
-      body: { startsWith: "Codex smoke test: Believe." },
-      OR: [
-        { body: { contains: LEGACY_BELIEVE_GIF_ID } },
-        { gifUrl: { contains: LEGACY_BELIEVE_GIF_ID } },
-      ],
-      projectId,
-      threadId,
-    },
-    data: {
-      body: `Codex smoke test: Believe. ${BELIEVE_GIF_URL}`,
-      gifUrl: BELIEVE_GIF_URL,
-      metadataJson: {
-        seed: "codex-believe-smoke-test",
-        source: "giphy",
-        sourceUrl: BELIEVE_GIF_PAGE_URL,
-        note: "Legacy smoke-test GIF corrected to the AppleTV Believe GIF.",
-      },
-    },
-  });
-}
 
 async function ensureThread(projectId: string, projectName: string, key: string, titleOverride?: string) {
   const prisma = getPrismaClient();
@@ -414,43 +357,6 @@ async function ensureThread(projectId: string, projectName: string, key: string,
     });
   }
 
-  await normalizeBelieveSeedMessages(projectId, thread.id);
-
-  const existingMessage = await prisma.studioNestChatMessage.findFirst({
-    where: { threadId: thread.id },
-    select: { id: true },
-  });
-
-  if (!existingMessage) {
-    const seedId = threadSeedMessageId(thread.id);
-    const inserted = await prisma.studioNestChatMessage.createMany({
-      data: [{
-        id: seedId,
-        projectId,
-        threadId: thread.id,
-        authorEmail: "quipsly@nest.system",
-        authorName: "Quipsly",
-        body: `Believe. Every Nest thread starts here. ${BELIEVE_GIF_PAGE_URL}`,
-        gifUrl: BELIEVE_GIF_URL,
-        metadataJson: {
-          seed: "ted-lasso-believe",
-          source: "giphy",
-          sourceUrl: BELIEVE_GIF_PAGE_URL,
-          note: "Seeded as the first message for every Nest chat thread.",
-        },
-      }],
-      skipDuplicates: true,
-    });
-    if (inserted.count === 0) {
-      const racedSeed = await prisma.studioNestChatMessage.findUnique({
-        where: { id: seedId },
-        select: { id: true, projectId: true, threadId: true },
-      });
-      if (!racedSeed || racedSeed.projectId !== projectId || racedSeed.threadId !== thread.id) {
-        throw new Error("The deterministic Nest chat seed identity is already in use.");
-      }
-    }
-  }
 
   return thread;
 }
@@ -634,7 +540,7 @@ export async function GET(request: NextRequest) {
     const filterMode = request.nextUrl.searchParams.get("filterMode") || "all";
     const limit = 50;
 
-    const where: any = { threadId: loaded.thread.id };
+    const where: Prisma.StudioNestChatMessageWhereInput = { projectId: loaded.project.id, threadId: loaded.thread.id };
     if (filterMode === "tasks") {
       where.linkedGoalId = { not: null };
     } else if (filterMode === "decisions") {
@@ -645,9 +551,15 @@ export async function GET(request: NextRequest) {
     }
 
     const prisma = getPrismaClient();
+    if (cursor && !await prisma.studioNestChatMessage.findFirst({
+      where: { ...where, id: cursor },
+      select: { id: true },
+    })) {
+      return NextResponse.json({ ok: false, error: "This conversation page is no longer available. Reload the conversation." }, { status: 400 });
+    }
     const rawMessages = await prisma.studioNestChatMessage.findMany({
       where,
-      orderBy: { createdAt: "desc" },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       take: limit + 1,
       ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
     });
@@ -658,7 +570,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       ok: true,
       hasMore,
-      nextCursor: hasMore ? rawMessages[limit].id : null,
+      nextCursor: hasMore ? rawMessages[limit - 1].id : null,
       project: {
         id: loaded.project.id,
         slug: loaded.project.slug,

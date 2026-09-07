@@ -1,10 +1,12 @@
 import { notFound, redirect } from "next/navigation";
+import Link from "next/link";
 import { auth } from "@/auth";
 import { getPrismaClient } from "@/lib/prisma";
 import {
   findStudioProjectForAccess,
   normalizeAccessEmail,
   resolveStudioProjectAccess,
+  roleAllowsAction,
 } from "@/lib/server/studio-project-access";
 import { WorkspaceClient } from "./WorkspaceClient";
 
@@ -38,21 +40,19 @@ export default async function NestWorkspacePage({ params }: NestWorkspacePagePro
   if (!project) notFound();
 
   return (
-    <div className="flex h-[calc(100vh-64px)] w-full flex-col overflow-hidden bg-[#fffaf0]">
-      <div className="flex-none border-b border-[#e3d4b9] bg-white px-6 py-4">
-        <h1 className="font-serif text-2xl font-black text-[#3d3122]">
-          {project.name} Workspace
+    <div className="mx-auto w-full max-w-6xl space-y-6 px-4 py-6 sm:px-6">
+      <div>
+        <Link href={`/nests/${encodeURIComponent(slug)}`} className="inline-flex min-h-11 items-center text-sm text-muted-foreground underline">Back to {project.name}</Link>
+        <h1 className="font-serif text-3xl font-semibold text-foreground">
+          {project.name}
         </h1>
-        <p className="text-sm font-semibold text-[#765f40]">
-          Unified cyborg collaboration environment
-        </p>
       </div>
-      <div className="flex-1 overflow-hidden">
+      <div className="min-w-0">
         <WorkspaceClient 
-          projectId={project.id}
+          key={actorUserId}
           projectSlug={slug}
           projectName={project.name}
-          actorUserId={actorUserId}
+          canPost={access.role !== null && roleAllowsAction(access.role, "write")}
         />
       </div>
     </div>

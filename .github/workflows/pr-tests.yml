@@ -100,6 +100,7 @@ jobs:
             src/lib/server/studio-project-access.integration.test.ts \
             src/lib/server/canonical-document-note-edit.integration.test.ts \
             src/lib/server/nest-project-follow-through.integration.test.ts \
+            src/app/api/nest-chat/route.integration.test.ts \
             2>&1 | tee "${RUNNER_TEMP}/quipsly-db-tests.log"
 
       - name: Preserve database test results

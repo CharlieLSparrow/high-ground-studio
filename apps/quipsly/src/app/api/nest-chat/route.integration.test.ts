@@ -22,6 +22,10 @@ if (process.env.QUIPSLY_LOCAL_DB_SMOKE === "1") {
       "QUIPSLY_LOCAL_DATABASE_URL is required for the episode collaboration smoke.",
     );
   }
+  const database = new URL(process.env.QUIPSLY_LOCAL_DATABASE_URL);
+  if (!["localhost", "127.0.0.1", "[::1]"].includes(database.hostname)) {
+    throw new Error("Conversation integration tests require a local disposable database.");
+  }
   process.env.DATABASE_URL = process.env.QUIPSLY_LOCAL_DATABASE_URL;
 }
 
@@ -139,7 +143,7 @@ runLocalDatabaseSmoke("episode collaboration local database smoke", () => {
     }
   });
 
-  it("converges simultaneous first loads onto one thread and one seed message", async () => {
+  it("converges simultaneous first loads onto one empty thread without demo messages", async () => {
     jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({
       user: {
         id: "episode-chat-editor",
@@ -159,15 +163,14 @@ runLocalDatabaseSmoke("episode collaboration local database smoke", () => {
     });
     expect(threads).toHaveLength(1);
 
-    const seedMessages = await prisma.studioNestChatMessage.findMany({
+    const messages = await prisma.studioNestChatMessage.findMany({
       where: {
         projectId,
         threadId: threads[0]?.id,
-        metadataJson: { path: ["seed"], equals: "ted-lasso-believe" },
       },
       select: { id: true },
     });
-    expect(seedMessages).toHaveLength(1);
+    expect(messages).toHaveLength(0);
   });
 
   it("persists one exact episode message and deduplicates the retry", async () => {
@@ -242,6 +245,32 @@ runLocalDatabaseSmoke("episode collaboration local database smoke", () => {
         where: { projectId, authorEmail: viewerEmail },
       }),
     ).resolves.toBe(0);
+  });
+
+  it("reads every message once across pages even when timestamps tie", async () => {
+    jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({ user: { id: "episode-chat-editor", primaryEmail: editorEmail } } as never);
+    const thread = await prisma.studioNestChatThread.create({ data: { projectId, key: "default", title: "History QA" } });
+    const timestamp = new Date("2026-09-06T12:00:00Z");
+    await prisma.studioNestChatMessage.createMany({ data: Array.from({ length: 112 }, (_, index) => ({
+      id: `history-${nonce}-${String(index).padStart(3, "0")}`, projectId, threadId: thread.id,
+      body: `Message ${index}`, authorEmail: editorEmail, createdAt: timestamp,
+    })) });
+    const ids: string[] = [];
+    let cursor: string | null = null;
+    for (let page = 0; page < 4; page++) {
+      const url = new URL("http://localhost/api/nest-chat");
+      url.searchParams.set("projectSlug", projectSlug);
+      if (cursor) url.searchParams.set("cursor", cursor);
+      const result = await GET(new NextRequest(url));
+      expect(result.status).toBe(200);
+      const payload = await result.json();
+      ids.push(...payload.messages.map((message: { id: string }) => message.id));
+      cursor = payload.nextCursor;
+      if (!cursor) break;
+    }
+    expect(ids).toHaveLength(112);
+    expect(new Set(ids).size).toBe(112);
+    expect(cursor).toBeNull();
   });
 
   it("does not disclose the episode or create a shadow thread for an outsider", async () => {

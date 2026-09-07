@@ -230,33 +230,38 @@ describe("scoped Nest chat threads", () => {
     });
   });
 
-  it("converges a concurrent seed insert without duplicating the system message", async () => {
-    jest.mocked(resolveStudioProjectAccess).mockResolvedValue({
-      allowed: true,
-      projectId: "project-1",
-      role: "EDITOR",
-    } as never);
-    prisma.studioNestChatMessage.findFirst.mockResolvedValue(null);
-    prisma.studioNestChatMessage.createMany.mockResolvedValue({ count: 0 });
-    prisma.studioNestChatMessage.findUnique.mockImplementation(async (args: { where?: { id?: string } }) => ({
-      id: args.where?.id,
-      projectId: "project-1",
-      threadId: "thread-1",
-    }) as never);
-
-    const response = await GET(new NextRequest(
-      "http://localhost/api/nest-chat?projectSlug=high-ground-odyssey&episodeSlug=episode-4-part-2",
-    ));
-
+  it("leaves an empty thread empty and never rewrites messages while reading", async () => {
+    jest.mocked(resolveStudioProjectAccess).mockResolvedValue({ allowed: true, projectId: "project-1", role: "EDITOR" } as never);
+    const response = await GET(new NextRequest("http://localhost/api/nest-chat?projectSlug=high-ground-odyssey"));
     expect(response.status).toBe(200);
-    expect(prisma.studioNestChatMessage.createMany).toHaveBeenCalledWith({
-      data: [expect.objectContaining({
-        id: expect.stringMatching(/^nest-seed-[a-f0-9]{36}$/),
-        projectId: "project-1",
-        threadId: "thread-1",
-      })],
-      skipDuplicates: true,
-    });
+    await expect(response.json()).resolves.toMatchObject({ messages: [] });
+    expect(prisma.studioNestChatMessage.createMany).not.toHaveBeenCalled();
+    expect(prisma.studioNestChatMessage.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("cursors from the final returned message, not the unseen lookahead row", async () => {
+    jest.mocked(resolveStudioProjectAccess).mockResolvedValue({ allowed: true, projectId: "project-1", role: "EDITOR" } as never);
+    prisma.studioNestChatMessage.findMany.mockResolvedValue(Array.from({ length: 51 }, (_, index) => ({
+      id: `message-${index}`, projectId: "project-1", threadId: "thread-1",
+      body: `Message ${index}`, createdAt, updatedAt: createdAt, metadataJson: {},
+    })));
+    const response = await GET(new NextRequest("http://localhost/api/nest-chat?projectSlug=high-ground-odyssey"));
+    const payload = await response.json();
+    expect(payload.messages).toHaveLength(50);
+    expect(payload.nextCursor).toBe("message-49");
+    expect(payload.hasMore).toBe(true);
+    expect(prisma.studioNestChatMessage.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { projectId: "project-1", threadId: "thread-1" },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    }));
+  });
+
+  it("rejects a cursor that is not in the authorized conversation", async () => {
+    jest.mocked(resolveStudioProjectAccess).mockResolvedValue({ allowed: true, projectId: "project-1", role: "EDITOR" } as never);
+    prisma.studioNestChatMessage.findFirst.mockResolvedValue(null);
+    const response = await GET(new NextRequest("http://localhost/api/nest-chat?projectSlug=high-ground-odyssey&cursor=foreign-message"));
+    expect(response.status).toBe(400);
+    expect(prisma.studioNestChatMessage.findMany).not.toHaveBeenCalled();
   });
 
   it("does not hide an unrelated thread uniqueness failure", async () => {
