@@ -1,9 +1,13 @@
 # Quipsly Unified Product Goal and Execution Blueprint
 
-**Status:** Active product authority and implementation blueprint
+**Status:** Historical, superseded implementation plan—not current product authority
 **Date:** 2026-07-18
 **Scope:** Quipsly iPhone, Nest web, shared services and document kernel, QuipslyStudio handoff
 **Primary use cases:** High Ground Odyssey production, private coaching, research, writing, planning, and follow-through
+
+Current product direction lives in `AGENTS.md` and the active user goal. This
+historical plan contains obsolete proposal/review requirements and old release
+claims. Do not restore them as product behavior or treat them as current proof.
 
 ## Goal
 
@@ -7014,7 +7018,7 @@ source upload verified` blocked `Rough cut ready for review` until complete;
   at 244 suites / 1,309 tests, 258/258 repository Quipsly contracts, both strict
   TypeScript projects, the Capture contract, the retained operator contract,
   and 1,009/1,009 App Store static checks. Full evidence is in
-  `docs/coordination/2026-08-03-transcript-candidate-note-merge.md`.
+  [the historical note-merge record](https://github.com/CharlieLSparrow/high-ground-studio/blob/4139e1ee/docs/coordination/2026-08-03-transcript-candidate-note-merge.md).
 - This remains local simulator evidence. Physical-iPhone, production Nest,
   genuine coaching/HGO workflows, TestFlight, provider delivery, and the other
   unified-goal acceptance gates remain open. No cloud build, deploy, production

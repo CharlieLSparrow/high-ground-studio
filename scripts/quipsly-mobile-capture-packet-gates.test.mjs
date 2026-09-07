@@ -77,7 +77,8 @@ assert.ok(
   "packet creation and existing-packet reuse must follow the normalized transcript gate",
 );
 assert.match(packetRoute, /TRANSCRIPT_HELD/);
-assert.match(packetRoute, /Await reviewed transcript release/);
+// User-facing readiness wording is covered by route behavior tests; do not
+// require the old manual-review instruction as proof of recording permission.
 assert.match(packetRoute, /explicitReleaseRequired: true/);
 assert.match(
   packetRoute,

@@ -72,6 +72,14 @@ The same selected-suite list is passed to Jest and its result verifier. Each
 selected file must report executed passing assertions; skipped, empty, missing,
 substituted, or duplicated suites fail even if Jest exits successfully. This
 checks execution, not the completeness of the assertions or real login behavior.
+The transcript-note integration suite creates fresh users, a Session, synthetic
+recording metadata, and a three-passage transcript. It calls the real note API
+with mocked request identity, verifies unreviewed-source merging, prior-content
+recovery, exact retry, stale-source/target rejection, and private-note isolation,
+then verifies fixture rollback. It replaces the retired retained-account,
+mandatory-playback-review note-merge harness. It does not claim login, audio
+playback, native merge/relaunch, or concurrent-transaction proof; those remain
+separate runtime acceptance work.
 This follows GitHub's [PostgreSQL service-container pattern](https://docs.github.com/en/actions/tutorials/use-containerized-services/create-postgresql-service-containers)
 using the same [pgvector image family](https://github.com/pgvector/pgvector) as local development.
 The contracts runner uses

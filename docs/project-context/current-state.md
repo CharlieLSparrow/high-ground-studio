@@ -1,4 +1,9 @@
-# Current State
+# Historical product snapshots
+
+This file records earlier development checkpoints, not current product rules or
+release evidence. Use `AGENTS.md` for current direction and
+`docs/development/testing.md` for current validation. Old review-first workflows
+below are superseded; they must not be restored merely to match these snapshots.
 
 Date: 2026-08-26
 
@@ -1629,7 +1634,7 @@ release`, clear any prior confirmation, and keep release bound to the named
   No Cloud Build, deployment, production database write, TestFlight/App Store
   action, provider mutation, delivery, or publication occurred. Architecture
   and operated evidence are in
-  `docs/coordination/2026-08-03-transcript-candidate-note-merge.md`.
+  [the historical note-merge record](https://github.com/CharlieLSparrow/high-ground-studio/blob/4139e1ee/docs/coordination/2026-08-03-transcript-candidate-note-merge.md).
 
 ## Native coaching note candidate review checkpoint
 
