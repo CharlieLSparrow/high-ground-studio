@@ -11,12 +11,6 @@ extension Notification.Name {
         Notification.Name("quipslyCaptureAccountIdentityDidChange")
 }
 
-struct MobileCaptureWorkNoteBlock {
-    let id: String
-    let stableId: String
-    let order: Int
-    let body: String
-}
 #endif
 
 @main

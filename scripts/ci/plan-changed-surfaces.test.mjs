@@ -126,6 +126,9 @@ test("Capture release-tool families never wake a Nest deployment", () => {
     "scripts/release/quipsly-app-store-connect-diagnostics-readback.mjs",
     "scripts/release/quipsly-testflight-public-link-readback.mjs",
     "scripts/release/quipsly-xcode-cloud-workflow-audit.mjs",
+    "scripts/test-capture-document-note-edits.sh",
+    "scripts/test-capture-task-reminders.sh",
+    "scripts/quipsly-ios-capture-account-isolation.test.mjs",
   ];
 
   for (const path of paths) {
