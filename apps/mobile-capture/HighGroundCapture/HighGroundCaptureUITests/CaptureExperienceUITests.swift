@@ -1685,6 +1685,27 @@ final class CaptureExperienceUITests: XCTestCase {
         app.buttons["Cancel"].tap()
     }
 
+    func testSessionOpensNativeClientSpaceAndReturnsToTheSameSession() {
+        app.terminate()
+        app.launchArguments = ["--capture-ui-preview", "--capture-ui-preview-tab=record", "--capture-ui-preview-session=preview-coaching-ready"]
+        app.launch()
+        XCTAssertTrue(app.scrollViews["CaptureRecorderView"].firstMatch.waitForExistence(timeout: 15))
+        let open = app.buttons["CaptureOpenCoachingEngagement"].firstMatch
+        reveal(open, searchAboveFirst: false)
+        XCTAssertTrue(open.waitForExistence(timeout: 10))
+        open.tap()
+        XCTAssertTrue(app.descendants(matching: .any)["CaptureCoachingEngagementWorkspace"].firstMatch.waitForExistence(timeout: 10))
+        XCTAssertTrue(app.segmentedControls["CaptureCoachingWorkFilter"].exists)
+        XCTAssertTrue(app.buttons["CaptureCoachingQuickAdd_TASK"].exists)
+        let openSession = app.buttons["CaptureCoachingRelationshipPrimaryAction"].firstMatch
+        XCTAssertTrue(openSession.waitForExistence(timeout: 5))
+        openSession.tap()
+        XCTAssertTrue(app.scrollViews["CaptureRecorderView"].firstMatch.waitForExistence(timeout: 10))
+        let sameSession = app.descendants(matching: .any)["CaptureSessionEngagement_preview-coaching-ready"].firstMatch
+        reveal(sameSession, searchAboveFirst: true)
+        XCTAssertTrue(sameSession.exists)
+    }
+
     func testCoachingWorkReturnsToItsNativeTranscriptSource() {
         exerciseCoachingWorkSourceNavigation()
     }

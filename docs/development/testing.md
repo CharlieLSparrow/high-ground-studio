@@ -161,6 +161,30 @@ claims additionally require:
 4. TestFlight-installed smoke;
 5. App Store Connect processing and compliance readback.
 
+Native shared-work save recovery has a local fault-injection lane. Start Nest
+and Firebase Auth emulators, then run the proxy in a separate terminal:
+
+```bash
+CAPTURE_WORK_RETRY_TITLE='Unique synthetic retry test title' \
+  node apps/mobile-capture/HighGroundCapture/Testing/coaching-work-retry-proxy.mjs
+```
+
+Use the ordinary `run-capture-runtime-ui-smoke.sh` runner with mode
+`coaching-work-retry`, base URL `http://127.0.0.1:3014`, synthetic account
+credentials, an exact coaching Session ID/title, and task edit source/updated
+titles. The source title must match `CAPTURE_WORK_RETRY_TITLE`; use new titles
+for each run. The proxy forwards to local Nest on port 3012 only. It lets the
+real create and amendment persist, then substitutes a failure response once
+for each. The UI must retain the draft and finish with one work card. Also
+read back the client-space API and confirm one canonical entry, not merely
+one visible title. Stop the proxy after the run. Never use real client data.
+
+`test-coaching-work-save.sh` tests immutable retry commands and field-level
+amendments without a server. The native runtime runner also warms local
+startup routes before launch; authentication errors are expected for protected
+warm-up requests, but missing routes, redirects, and server failures stop the
+run. Neither check substitutes for authenticated runtime or device evidence.
+
 Use the checked-in toolchain runner so a collaborator and release operator use
 the same Ruby, Bundler, Fastlane, Gemfile, lock, and lane:
 

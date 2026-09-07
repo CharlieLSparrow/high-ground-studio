@@ -11306,6 +11306,7 @@ private struct CaptureRecorderView: View {
     @State private var focusedTool: CaptureRecorderFocusedTool?
     @State private var quickEntryKind: MobileQuickEntryKind?
     @State private var sessionNotesSession: MobileCaptureSession?
+    @State private var sessionClientSpace: MobileCaptureCoachingEngagement?
     @State private var recordingMode: CaptureRecordingMode = CaptureCallPreferences.recordingMode(for: nil)
     @State private var cameraPosition: VideoCaptureCameraPosition = CaptureCallPreferences.cameraPosition
     @State private var videoQualityIntent: VideoCaptureQualityIntent = CaptureCallPreferences.videoQualityIntent
@@ -11981,26 +11982,24 @@ private struct CaptureRecorderView: View {
                         }
                     }
 
-                    if let engagementURL = session.coachingEngagementURL(
-                        baseURLString: Bundle.main.object(
-                            forInfoDictionaryKey: "QUIPSLY_API_BASE_URL"
-                        ) as? String ?? "https://nest.quipsly.com"
-                    ) {
-                        Link(destination: engagementURL) {
+                    if let engagement = model.coachingEngagements.first(where: { $0.id == session.coachingEngagementId }) {
+                        Button {
+                            sessionClientSpace = engagement
+                        } label: {
                             HStack(spacing: 12) {
                                 Image(systemName: "person.2.circle.fill")
                                     .foregroundStyle(CapturePalette.accent)
                                 VStack(alignment: .leading, spacing: 3) {
-                                    Text(session.coachingEngagementTitle?.nonempty ?? "Coaching Engagement")
+                                    Text(session.coachingEngagementTitle?.nonempty ?? "Client space")
                                         .font(.headline)
                                         .foregroundStyle(.primary)
-                                    Text("Open the private history, shared goals, tasks, Sessions, and engagement chat in Nest")
+                                    Text("Shared notes, tasks, goals, and conversation")
                                         .font(.caption)
                                         .foregroundStyle(.secondary)
                                         .multilineTextAlignment(.leading)
                                 }
                                 Spacer()
-                                Image(systemName: "arrow.up.right.square")
+                                Image(systemName: "chevron.right")
                                     .foregroundStyle(.secondary)
                             }
                         }
@@ -12736,6 +12735,18 @@ private struct CaptureRecorderView: View {
                     .accessibilityIdentifier("CaptureSessionQuickAdd")
                 }
             }
+        }
+        .navigationDestination(item: $sessionClientSpace) { engagement in
+            CaptureCoachingEngagementWorkspaceView(
+                engagement: engagement,
+                sessions: model.sessions.filter { $0.coachingEngagementId == engagement.id },
+                previewOnly: model.usesPreviewData,
+                onOpenSession: { [model, destination = $sessionClientSpace] roomID in
+                    guard let selected = model.sessions.first(where: { $0.callRoomId == roomID }) else { return }
+                    destination.wrappedValue = nil
+                    model.select(selected)
+                }
+            )
         }
         .sheet(isPresented: $showsSessionPicker) {
             SessionPickerSheet(model: model, isPresented: $showsSessionPicker)

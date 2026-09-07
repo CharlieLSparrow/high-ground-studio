@@ -2792,6 +2792,44 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
 
     }
 
+    func testClientWorkCreationRetriesLostRepliesWithoutDuplicatingTheDraft() throws {
+        let credentials = try runtimeSmokeCredentials()
+        let originalTitle = try XCTUnwrap(credentials.taskEditSourceTitle)
+        let updatedTitle = try XCTUnwrap(credentials.taskEditUpdatedTitle)
+        let app = try launchSignedInCaptureApp(initialTab: "record")
+        selectRequestedSession(in: app, credentials: credentials)
+        let openSpace = app.buttons["CaptureOpenCoachingEngagement"].firstMatch
+        XCTAssertTrue(waitForRuntimeElement(openSpace, in: app, timeout: 30, swipeAttempts: 16))
+        openSpace.tap()
+        XCTAssertTrue(app.descendants(matching: .any)["CaptureCoachingEngagementWorkspace"].firstMatch.waitForExistence(timeout: 30))
+        let add = app.buttons["CaptureCoachingAddWork"].firstMatch
+        XCTAssertTrue(waitForRuntimeElement(add, in: app, timeout: 20, swipeAttempts: 12))
+        add.tap()
+        let editor = app.descendants(matching: .any)["CaptureCoachingWorkEditor"].firstMatch
+        XCTAssertTrue(editor.waitForExistence(timeout: 10))
+        app.buttons["Task"].firstMatch.tap()
+        let title = app.textFields["CaptureCoachingWorkTitle"].firstMatch
+        replaceText(in: title, with: originalTitle, app: app)
+        let save = app.buttons["CaptureCoachingSaveWork"].firstMatch
+        save.tap()
+        let firstFailure = app.staticTexts["Test connection interrupted after saving. Try Save again."].firstMatch
+        XCTAssertTrue(waitForRuntimeElement(firstFailure, in: app, timeout: 30, swipeAttempts: 10))
+        XCTAssertTrue(editor.exists, "A lost reply must not close the draft.")
+        replaceText(in: title, with: updatedTitle, app: app)
+        save.tap()
+        let secondFailure = app.staticTexts["Test connection interrupted after updating. Try Save again."].firstMatch
+        XCTAssertTrue(waitForRuntimeElement(secondFailure, in: app, timeout: 30, swipeAttempts: 10))
+        XCTAssertEqual(title.value as? String, updatedTitle)
+        save.tap()
+        XCTAssertTrue(editor.waitForNonExistence(timeout: 30))
+        XCTAssertTrue(waitForRuntimeElement(app.staticTexts[updatedTitle].firstMatch, in: app, timeout: 20, swipeAttempts: 16))
+        let workRows = app.otherElements.matching(NSPredicate(format: "identifier BEGINSWITH %@", "CaptureCoachingWork_"))
+        XCTAssertEqual(workRows.containing(.staticText, identifier: updatedTitle).count, 1,
+            "Count canonical work cards, not the same title repeated in the relationship summary.")
+        XCTAssertFalse(app.staticTexts[originalTitle].exists)
+        attachRuntimeScreenshot(app, name: "One shared task after two lost save replies")
+    }
+
     func testTranscriptEditsCanonicalClientTaskAndReadsItBackAfterRelaunch() throws {
         let credentials = try runtimeSmokeCredentials()
         guard let sessionID = credentials.sessionID, !sessionID.isEmpty,

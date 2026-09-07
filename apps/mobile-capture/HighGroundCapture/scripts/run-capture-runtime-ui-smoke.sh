@@ -181,6 +181,13 @@ case "$TEST_MODE" in
       exit 2
     fi
     ;;
+  coaching-work-retry)
+    TEST_CASE="testClientWorkCreationRetriesLostRepliesWithoutDuplicatingTheDraft"
+    if [[ -z "$TEST_SESSION_ID" || -z "$TEST_TASK_EDIT_SOURCE_TITLE" || -z "$TEST_TASK_EDIT_UPDATED_TITLE" || "$BASE_URL" != "http://127.0.0.1:3014" ]]; then
+      echo "Work retry mode requires the local fault-injection proxy, exact Session, and two synthetic titles." >&2
+      exit 2
+    fi
+    ;;
   transcript-task-readback)
     TEST_CASE="testReviewedTranscriptTaskAppearsInTodayAndReturnsToExactSourceOnIPhone"
     if [[ -z "$TEST_SESSION_ID" || -z "$TEST_TASK_ID" || -z "$TEST_EXPECTED_PACKET_TASK_TITLE" ]]; then

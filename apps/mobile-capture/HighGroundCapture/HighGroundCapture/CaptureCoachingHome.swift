@@ -322,6 +322,7 @@ final class MobileCoachingEngagementWorkspaceClient: ObservableObject {
     @Published private(set) var isSaving = false
     @Published private(set) var errorMessage: String?
     @Published private(set) var pendingUndo: MobileCoachingWorkUndo?
+    private var createAttempts: [String: CaptureCoachingCreateAttempt] = [:]
 
     let engagementID: String
     private let baseURL = normalizedNestBaseURL(
@@ -383,6 +384,7 @@ final class MobileCoachingEngagementWorkspaceClient: ObservableObject {
 
     @discardableResult
     func create(
+        clientRequestID: String,
         kind: String,
         title: String,
         body: String,
@@ -394,29 +396,62 @@ final class MobileCoachingEngagementWorkspaceClient: ObservableObject {
         isSaving = true
         defer { isSaving = false }
         errorMessage = nil
+        let draft = CaptureCoachingWorkDraft(
+            kind: kind, title: title.trimmingCharacters(in: .whitespacesAndNewlines),
+            body: body.trimmingCharacters(in: .whitespacesAndNewlines), visibility: visibility,
+            ownerUserID: ownerUserID, status: kind == "GOAL" ? "ACTIVE" : "OPEN",
+            targetAt: targetAt.map(coachingISO8601String)
+        )
+        let attempt = createAttempts[clientRequestID]
+            ?? CaptureCoachingCreateAttempt(requestID: clientRequestID, original: draft)
+        createAttempts[clientRequestID] = attempt
         do {
-            var requestBody: [String: Any] = [
-                "clientRequestId": UUID().uuidString.lowercased(),
-                "kind": kind,
-                "title": title.trimmingCharacters(in: .whitespacesAndNewlines),
-                "body": body.trimmingCharacters(in: .whitespacesAndNewlines),
-            ]
-            if kind == "NOTE" {
-                requestBody["visibility"] = visibility
-            } else {
-                requestBody["ownerUserId"] = ownerUserID
-                requestBody["targetAt"] = targetAt.map(coachingISO8601String) ?? NSNull()
+            guard kind == attempt.original.kind else {
+                throw coachingClientError("Finish saving this item before changing its type.")
             }
-            let (payload, response) = try await request(method: "POST", body: requestBody)
-            guard response.statusCode < 400, payload.ok, payload.entry != nil else {
+            // Replay the original command even if the person has since edited
+            // the draft. The server returns the same item after a lost reply.
+            let (payload, response) = try await request(method: "POST", body: attempt.body)
+            if response.statusCode == 400 {
+                // A definitive validation rejection created nothing. Let the
+                // person correct that command instead of replaying bad input.
+                createAttempts[clientRequestID] = nil
+            }
+            guard response.statusCode < 400, payload.ok, let created = payload.entry,
+                  created.kind == kind else {
                 throw coachingClientError(payload.error ?? "That coaching item could not be saved.")
             }
+            if draft != attempt.original {
+                let latest = CaptureCoachingWorkDraft(
+                    kind: created.kind, title: created.title ?? "", body: created.body ?? "",
+                    visibility: created.visibility, ownerUserID: created.owner?.id ?? "",
+                    status: created.status ?? "",
+                    targetAt: created.dueAt.flatMap(coachingISO8601Date).map(coachingISO8601String)
+                )
+                let amendment = draft.amendment(from: attempt.original, to: latest)
+                guard amendment.conflicts.isEmpty else {
+                    throw coachingClientError("This item was saved and also edited in your client space. Your draft is still here; open the saved item to combine those changes.")
+                }
+                var patch = amendment.body
+                patch["id"] = created.id
+                patch["kind"] = created.kind
+                patch["expectedUpdatedAt"] = created.updatedAt
+                let (updated, updateResponse) = try await request(method: "PATCH", body: patch)
+                guard updateResponse.statusCode < 400, updated.ok, updated.entry?.id == created.id else {
+                    throw coachingClientError(updated.error ?? "The item is saved, but your latest changes could not sync. Try Save again.")
+                }
+            }
+            createAttempts[clientRequestID] = nil
             await load()
             return true
         } catch {
             errorMessage = error.localizedDescription
             return false
         }
+    }
+
+    func hasPendingCreation(requestID: String) -> Bool {
+        createAttempts[requestID] != nil
     }
 
     @discardableResult
@@ -3166,7 +3201,9 @@ struct CaptureCoachingEngagementWorkspaceView: View {
     let engagement: MobileCaptureCoachingEngagement
     let sessions: [MobileCaptureSession]
     let previewOnly: Bool
-    let onOpenSession: (String) async -> Void
+    // Navigation changes UI state; isolation belongs in the callback contract,
+    // not only in the context where the closure happened to be created.
+    let onOpenSession: @MainActor (String) async -> Void
     @StateObject private var client: MobileCoachingEngagementWorkspaceClient
     @StateObject private var conversation: MobileEpisodeChatClient
     @State private var filter: MobileCoachingWorkFilter = .all
@@ -3177,7 +3214,7 @@ struct CaptureCoachingEngagementWorkspaceView: View {
         engagement: MobileCaptureCoachingEngagement,
         sessions: [MobileCaptureSession],
         previewOnly: Bool,
-        onOpenSession: @escaping (String) async -> Void
+        onOpenSession: @escaping @MainActor (String) async -> Void
     ) {
         self.engagement = engagement
         self.sessions = sessions
@@ -3930,6 +3967,7 @@ struct MobileCoachingWorkEditorSheet: View {
     @State private var hasTargetDate: Bool
     @State private var targetDate: Date
     @State private var isConfirmingRemoval = false
+    @State private var createRequestID = UUID().uuidString.lowercased()
 
     init(
         client: MobileCoachingEngagementWorkspaceClient,
@@ -3975,6 +4013,7 @@ struct MobileCoachingWorkEditorSheet: View {
                             Text("Goal").tag("GOAL")
                         }
                         .pickerStyle(.segmented)
+                        .disabled(client.hasPendingCreation(requestID: createRequestID))
                         .accessibilityIdentifier("CaptureCoachingWorkKind")
                     }
 
@@ -4067,12 +4106,14 @@ struct MobileCoachingWorkEditorSheet: View {
                 }
             }
             .accessibilityIdentifier("CaptureCoachingWorkEditorForm")
+            .disabled(client.isSaving)
             .captureFormSurface()
             .navigationTitle(entry == nil ? "Add coaching work" : "Edit \(entry?.kindLabel ?? "item")")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
+                        .disabled(client.isSaving)
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button(client.isSaving ? "Saving…" : "Save") {
@@ -4090,6 +4131,7 @@ struct MobileCoachingWorkEditorSheet: View {
                                 )
                             } else {
                                 saved = await client.create(
+                                    clientRequestID: createRequestID,
                                     kind: kind,
                                     title: title,
                                     body: detail,
