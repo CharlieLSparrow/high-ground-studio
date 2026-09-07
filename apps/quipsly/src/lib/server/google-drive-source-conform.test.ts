@@ -69,10 +69,14 @@ function prismaFixture(input: {
           ? []
           : [
               {
+                id: "executor_test_01",
+                hostName: "Media Mac",
                 capabilities: {
                   executorKind: "local-mac",
                   storage: {
                     schema: "quipsly-local-media-storage-v1",
+                    scopeId: "storage_test_01",
+                    workspaceMode: "durable",
                     status: "measured",
                     availableBytes: input.safeAvailableBytes + 500,
                     reserveBytes: 500,
@@ -94,7 +98,7 @@ function prismaFixture(input: {
 describe("Google Drive source package conform planning", () => {
   it("shows exact remaining bytes before any large original is queued", async () => {
     const plan = await planGoogleDriveSourceUnitConform({
-      prisma: prismaFixture({ source: sourceUnit({}) }),
+      prisma: prismaFixture({ source: sourceUnit({}), safeAvailableBytes: 10_000 }),
       projectId: "project_12345678",
       sourceUnitId: "source_unit_12345678",
       actorUserId: "user_12345678",
@@ -153,6 +157,7 @@ describe("Google Drive source package conform planning", () => {
     const plan = await planGoogleDriveSourceUnitConform({
       prisma: prismaFixture({
         source,
+        safeAvailableBytes: 10_000,
         sourceSets: [
           {
             id: "source_set_12345678",
@@ -180,6 +185,7 @@ describe("Google Drive source package conform planning", () => {
     const plan = await planGoogleDriveSourceUnitConform({
       prisma: prismaFixture({
         source,
+        safeAvailableBytes: 10_000,
         sourceSets: [
           {
             id: "source_set_12345678",
@@ -201,5 +207,14 @@ describe("Google Drive source package conform planning", () => {
       storage: { cachedBytes: "0", remainingBytes: "1100" },
       sourceSet: { id: "source_set_12345678", completeness: "complete" },
     });
+  });
+
+  it("does not advertise an available executor or queue a transfer when none is online", async () => {
+    const prisma = prismaFixture({ source: sourceUnit({}) });
+    const plan = await planGoogleDriveSourceUnitConform({ prisma, projectId: "project_12345678", sourceUnitId: "source_unit_12345678", actorUserId: "user_12345678" });
+    expect(plan.status).toBe("held");
+    expect(plan.storage.executorTarget).toBeNull();
+    expect(plan.storage.executor.status).toBe("unavailable");
+    expect(plan.holds).toContain("Start a Quipsly local media worker before preparing originals.");
   });
 });

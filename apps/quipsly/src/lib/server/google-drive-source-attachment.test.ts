@@ -88,10 +88,11 @@ describe("Google Drive selected-file package attachment", () => {
     attachExternal.mockImplementation(
       async ({ value }) =>
         ({
-          reference: { id: `reference_${value.verifiedFile.externalFileId}` },
+          reference: { id: `reference_${value.verifiedFile.externalFileId}` } as Awaited<ReturnType<typeof attachVerifiedExternalMediaSource>>["reference"],
           sourceRevisionId: `revision_${value.verifiedFile.externalFileId}`,
+          canonicalSourceRevisionId: `revision_${value.verifiedFile.externalFileId}`,
           replayed: false,
-        }) as Awaited<ReturnType<typeof attachVerifiedExternalMediaSource>>,
+        }),
     );
     recordLibrary.mockResolvedValue({
       replayed: false,

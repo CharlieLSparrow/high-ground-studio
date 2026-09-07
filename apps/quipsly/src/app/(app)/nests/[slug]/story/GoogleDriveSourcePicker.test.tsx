@@ -530,6 +530,7 @@ describe("Google Drive source picker entry", () => {
         expect(JSON.parse(String(init?.body))).toEqual({
           action: "plan-google-drive-library-conform",
           libraryId: "library-1",
+          executorNodeId: null,
         });
         return jsonResponse({
           operation: {

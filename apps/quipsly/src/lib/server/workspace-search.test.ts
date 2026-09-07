@@ -63,10 +63,12 @@ describe("permission-filtered workspace search", () => {
     expect(JSON.stringify(prisma.studioDocument.findMany.mock.calls[0][0].where)).toContain("taggedSpans");
     expect(prisma.studioDocument.findMany.mock.calls[0][0].where.AND).toEqual(
       expect.arrayContaining([
+        { projectId: { in: ["project-1"] } },
         {
           OR: [
             { personalOwnerUserId: null },
             { personalOwnerUserId: "user-1" },
+            { isPrivate: false },
           ],
         },
       ]),
