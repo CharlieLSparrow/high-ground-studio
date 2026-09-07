@@ -127,6 +127,21 @@ export default function ViewFilter({
 }) {
   const router = useRouter();
   const [isOpen, setIsOpen] = useState(false);
+  const [wideLayout, setWideLayout] = useState(false);
+  const pageDialogRef = useRef<HTMLDialogElement | null>(null);
+  useEffect(() => {
+    const query = window.matchMedia("(min-width: 768px)");
+    const update = () => { setWideLayout(query.matches); setIsOpen(false); };
+    update();
+    query.addEventListener("change", update);
+    return () => query.removeEventListener("change", update);
+  }, []);
+  useEffect(() => {
+    const dialog = pageDialogRef.current;
+    if (!dialog) return;
+    if (isOpen && !dialog.open) dialog.showModal();
+    else if (!isOpen && dialog.open) dialog.close();
+  }, [isOpen, wideLayout]);
   const [isCreatingDocument, startCreateDocumentTransition] = useTransition();
   const [isRenamingDocument, startRenameDocumentTransition] = useTransition();
   const [isDuplicatingDocument, startDuplicateDocumentTransition] = useTransition();
@@ -494,40 +509,24 @@ export default function ViewFilter({
     }
   ];
   const activeShelf = pageFilterItems.find((item) => item.id === pageFilter) ?? pageFilterItems[0];
-  return (
-    <>
-      {isOpen && (
-        <div
-          className="fixed inset-0 z-40 bg-[#3d3122]/40 backdrop-blur-sm transition-opacity md:hidden"
-          onClick={() => setIsOpen(false)}
-        />
-      )}
-
-      <button
-        onClick={() => setIsOpen(true)}
-        className="fixed bottom-20 right-4 z-30 flex items-center justify-center rounded-full border border-[#8c6b4a] bg-[#3d3122] p-3 text-white shadow-xl transition-all hover:bg-[#59442d] md:hidden"
-      >
-        <Filter size={20} />
-      </button>
-
-      <aside className={`fixed inset-y-0 left-0 z-50 flex h-full w-80 flex-col overflow-y-auto border-r border-[#e8dcc4] bg-white p-4 transition-transform duration-300 md:relative md:w-72 md:translate-x-0 ${isOpen ? "translate-x-0" : "-translate-x-full"}`}>
+  const sidebar = (
+      <aside aria-label="Pages" className="flex h-full w-80 max-w-[90vw] flex-col overflow-y-auto overscroll-contain border-r border-[#e8dcc4] bg-[#faf5eb] p-4 md:w-72 md:shrink-0">
         <div className="mb-4 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <div className="rounded-lg bg-[#3d3122] p-2 text-white shadow-sm">
               <Layers size={18} />
             </div>
             <div>
-              <h2 className="text-lg font-black tracking-tight text-[#3d3122]">Nest Notebook</h2>
-              <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#8c6b4a]">Documents - Sections - Pages</p>
+              <h2 className="text-lg font-semibold tracking-tight text-[#3d3122]">Pages</h2>
             </div>
           </div>
-          <button className="rounded-full p-1.5 text-[#8c6b4a] transition-colors hover:bg-[#ebdcc8] hover:text-[#3d3122] md:hidden" onClick={() => setIsOpen(false)}>
+          <button aria-label="Close pages" className="rounded-full p-3 text-[#8c6b4a] transition-colors hover:bg-[#ebdcc8] hover:text-[#3d3122] md:hidden" onClick={() => setIsOpen(false)}>
             <X size={20} />
           </button>
         </div>
 
-        <div className="mb-6 rounded-2xl border border-[#eadfca] bg-[#fffaf3] p-3">
-          <h3 className="mb-2 text-xs font-black uppercase tracking-[0.16em] text-[#8c6b4a]">You are here</h3>
+        <details className="mb-3 rounded-xl border border-[#eadfca] p-3">
+          <summary className="cursor-pointer text-sm font-medium text-[#5f4b36]">Page actions</summary>
           <div className="space-y-2 text-xs leading-5 text-[#6b5b45]">
             <div>
               <span className="font-black text-[#3d3122]">Nest</span>
@@ -667,11 +666,16 @@ export default function ViewFilter({
               ) : null}
             </div>
           ) : null}
-        </div>
+        </details>
 
-        <div className="mb-6">
+        {projectSlug && <button type="button" disabled={isCreatingDocument}
+          onClick={() => startCreateDocumentTransition(() => createDocumentAction(projectSlug, "draft"))}
+          className="mb-3 min-h-11 rounded-xl bg-[#405c43] px-3 text-left text-sm font-semibold text-white hover:bg-[#314a34] disabled:opacity-50">
+          {isCreatingDocument ? "Creating…" : "New page"}
+        </button>}
+        <div className="mb-3">
           <label className="mb-2 block text-[10px] font-black uppercase tracking-[0.16em] text-[#8c6b4a]" htmlFor="notebook-search">
-            Find in notebook
+            Find a page
           </label>
           <div className="flex items-center gap-2 rounded-2xl border border-[#eadfca] bg-[#fffaf3] px-3 py-2 shadow-inner">
             <Search size={14} className="shrink-0 text-[#8c6b4a]" />
@@ -697,7 +701,7 @@ export default function ViewFilter({
           </div>
         </div>
 
-        <div className="mb-6 rounded-2xl border border-[#eadfca] bg-[#fffaf3] p-2">
+        <div className="mb-3 rounded-xl border border-[#eadfca] p-1">
           <div className="grid grid-cols-3 gap-1">
             {notebookPanelItems.map((item) => {
               const isSelected = notebookPanel === item.id;
@@ -722,51 +726,17 @@ export default function ViewFilter({
               );
             })}
           </div>
-          <p className="mt-2 px-1 text-[10px] leading-4 text-[#8c6b4a]">
-            Pages first keeps the desk calm. Structure and tools stay one click away instead of crowding the writing room.
-          </p>
         </div>
 
         {notebookPanel === "pages" ? (
           <>
-        <div className="mb-7 rounded-2xl border border-[#eadfca] bg-[#fffaf3] p-3">
-          <h3 className="mb-2 flex items-center gap-1 text-xs font-bold uppercase tracking-wider text-[#8c6b4a]">
-            <BookOpen size={12} />
-            Notebook Sections
-          </h3>
-          <p className="mb-3 text-[10px] leading-4 text-[#8c6b4a]">
-            OneNote floor: sections help you find pages fast. This changes the view only; it does not move, rewrite, or publish anything.
-          </p>
-          <div className="grid grid-cols-2 gap-2">
-            {pageFilterItems.map((item) => {
-              const isSelected = pageFilter === item.id;
-              return (
-                <button
-                  key={item.id}
-                  type="button"
-                  onClick={() => setPageFilter(item.id)}
-                  title={`${item.description} - ${item.shortcut}`}
-                  className={`rounded-xl border px-3 py-2 text-left transition ${
-                    isSelected
-                      ? "border-[#3d3122] bg-[#3d3122] text-white shadow-sm"
-                      : "border-[#eadfca] bg-white text-[#5e4b33] hover:bg-amber-50"
-                  }`}
-                >
-                  <span className="flex items-center justify-between gap-2">
-                    <span className="text-[10px] font-black uppercase tracking-[0.14em]">{item.label}</span>
-                    <span className={`rounded-full px-1.5 py-0.5 text-[9px] font-black ${isSelected ? "bg-white/15 text-white" : "bg-[#fff1d8] text-[#8c6b4a]"}`}>
-                      {item.count}
-                    </span>
-                  </span>
-                  <span className={`mt-1 block text-[9px] leading-3 ${isSelected ? "text-white/70" : "text-[#9a815f]"}`}>
-                    {item.description}
-                  </span>
-                  <span className={`mt-2 inline-flex rounded px-1.5 py-0.5 text-[8px] font-black uppercase tracking-[0.12em] ${isSelected ? "bg-white/15 text-white/80" : "bg-[#f8f1e3] text-[#9a815f]"}`}>
-                    {item.shortcut}
-                  </span>
-                </button>
-              );
-            })}
+        <div className="mb-3">
+          <div role="group" aria-label="Page types" className="grid grid-cols-2 gap-1">
+            {pageFilterItems.map(item => <button key={item.id} type="button" aria-pressed={pageFilter === item.id}
+              onClick={() => setPageFilter(item.id)} title={item.description}
+              className={`flex min-h-11 items-center justify-between rounded-lg px-3 text-sm ${pageFilter === item.id ? "bg-[#e5ecdf] font-semibold text-[#304833]" : "text-[#6b5b45] hover:bg-[#eee4d3]"}`}>
+              <span>{item.label}</span><span className="text-xs">{item.count}</span>
+            </button>)}
           </div>
           {!activeDocumentVisible && activeDocument ? (
             <div className="mt-3 rounded-xl border border-amber-200 bg-white px-3 py-3 text-[10px] leading-4 text-[#8c6b4a]">
@@ -825,14 +795,8 @@ export default function ViewFilter({
         ) : null}
 
         {projectSlug ? (
-          <div className="mb-7 rounded-2xl border border-[#eadfca] bg-[#fffaf3] p-3">
-            <h3 className="mb-3 flex items-center gap-1 text-xs font-bold uppercase tracking-wider text-[#8c6b4a]">
-              <NotebookPen size={12} />
-              Quick Capture
-            </h3>
-            <p className="mb-3 text-xs leading-5 text-[#6b5b45]">
-              Make the new page first, organize it later. The notebook should catch ideas faster than anxiety can argue.
-            </p>
+          <details className="mb-3 rounded-xl border border-[#eadfca] p-3">
+            <summary className="cursor-pointer text-sm font-medium text-[#5f4b36]">More ways to create</summary>
             <div className="grid gap-2">
               <button
                 type="button"
@@ -883,7 +847,7 @@ export default function ViewFilter({
                 </span>
               </button>
             </div>
-          </div>
+          </details>
         ) : null}
 
         {(projectDocuments && projectDocuments.length > 0) && (
@@ -892,20 +856,6 @@ export default function ViewFilter({
               <BookOpen size={12} />
               Pages in {activeShelf.label}
             </h3>
-            <div className="mb-3 grid grid-cols-3 gap-2">
-              <div className="rounded-xl border border-[#eadfca] bg-[#fffaf3] px-2 py-2">
-                <div className="text-base font-black text-[#3d3122]">{visibleDocumentCount}</div>
-                <div className="text-[9px] font-black uppercase tracking-[0.14em] text-[#8c6b4a]">Visible</div>
-              </div>
-              <div className="rounded-xl border border-amber-200 bg-amber-50 px-2 py-2">
-                <div className="text-base font-black text-amber-900">{draftDocs.length}</div>
-                <div className="text-[9px] font-black uppercase tracking-[0.14em] text-amber-700">Pages</div>
-              </div>
-              <div className="rounded-xl border border-cyan-200 bg-cyan-50 px-2 py-2">
-                <div className="text-base font-black text-cyan-900">{libraryDocs.length}</div>
-                <div className="text-[9px] font-black uppercase tracking-[0.14em] text-cyan-700">Sources</div>
-              </div>
-            </div>
             {notebookQuery && visibleDocumentCount < totalDocumentCount ? (
               <p className="mb-3 rounded-xl border border-[#eadfca] bg-white px-3 py-2 text-[10px] leading-4 text-[#8c6b4a]">
                 Showing {visibleDocumentCount} of {totalDocumentCount} documents for "{notebookQuery}" in the {pageFilter} shelf. Search and shelf filters only change what is visible here.
@@ -915,9 +865,6 @@ export default function ViewFilter({
               {draftDocs.length > 0 && (
                 <div>
                   <h4 className="mb-1 text-[10px] font-bold uppercase tracking-wider text-[#8c6b4a] opacity-70">Writing pages, drafts, and notes</h4>
-                  <p className="mb-2 text-[10px] leading-4 text-[#8c6b4a]">
-                    The daily desk: manuscript pages, alternate passes, quick captures, and scraps before they belong in the polished spine.
-                  </p>
                   <div className="space-y-1">
                     {filteredDraftDocs.map(doc => (
                       <a
@@ -1167,6 +1114,24 @@ export default function ViewFilter({
           </>
         ) : null}
       </aside>
+  );
+  return (
+    <>
+      <button
+        onClick={() => setIsOpen(true)}
+        aria-label="Browse pages"
+        aria-expanded={isOpen}
+        className="flex min-h-11 shrink-0 items-center gap-2 border-b border-[#e8dcc4] bg-[#faf5eb] px-4 py-2 text-sm font-medium text-[#483727] hover:bg-[#f3e9d8] md:hidden"
+      >
+        <BookOpen size={18} aria-hidden="true" />
+        Browse pages
+      </button>
+      {wideLayout ? sidebar : <dialog ref={pageDialogRef} aria-label="Browse pages"
+        onCancel={() => setIsOpen(false)} onClose={() => setIsOpen(false)}
+        onClick={(event) => { if (event.target === event.currentTarget) setIsOpen(false); }}
+        className="fixed inset-y-0 left-0 m-0 h-dvh max-h-none max-w-[90vw] border-0 bg-transparent p-0 backdrop:bg-[#3d3122]/40 backdrop:backdrop-blur-sm">
+        {sidebar}
+      </dialog>}
     </>
   );
 }

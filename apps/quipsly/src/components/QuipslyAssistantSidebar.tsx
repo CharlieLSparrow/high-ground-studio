@@ -226,6 +226,8 @@ export function QuipslyAssistantSidebar({
       </button>
 
       <aside
+        inert={!isOpen}
+        aria-hidden={!isOpen}
         className={`fixed right-0 top-[60px] z-30 h-[calc(100vh-60px)] w-full max-w-[420px] border-l border-[#e8dcc4] bg-[#fffaf1] shadow-2xl transition-transform duration-300 ${
           isOpen ? "translate-x-0" : "translate-x-full"
         }`}

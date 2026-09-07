@@ -55,12 +55,9 @@ const DOCUMENT_PRESETS: Record<CreateNestDocumentKind, {
   blocks: string[];
 }> = {
   draft: {
-    title: "New Draft",
+    title: "Untitled page",
     sourceLabel: "document-kind:draft",
-    blocks: [
-      "Draft Title",
-      "Start drafting here. This is a side draft inside the Nest, not the canonical manuscript until you intentionally promote or copy it.",
-    ],
+    blocks: [""],
   },
   note: {
     title: "New Note",

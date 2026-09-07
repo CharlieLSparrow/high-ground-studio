@@ -212,6 +212,7 @@ function BlockItemComponent({
   const outlineGlow = isOutlineFocused ? "ring-2 ring-amber-300 bg-amber-50/50" : "";
   
   const blockAccent = blockAccents.find(a => a.shouldApply(block, blockTagIds))?.className || "border-l-4 border-l-transparent";
+  const Content = isImmutableSource ? "details" : "div";
 
   return (
     <div 
@@ -220,32 +221,44 @@ function BlockItemComponent({
       data-boundary-id={boundaryId ?? ""}
       className={`relative group px-4 py-3 -mx-4 rounded-lg hover:bg-[#fdfaf6] transition-colors ${blockAccent} ${structureGlow} ${outlineGlow}`}
     >
+      <Content onToggle={() => {
+        // A collapsed source has no layout height. Measure after opening so
+        // its full original text remains readable, without a nested scrollbar.
+        const textarea = internalTextareaRef.current;
+        if (textarea) {
+          textarea.style.height = "auto";
+          textarea.style.height = `${textarea.scrollHeight}px`;
+        }
+      }}>
+      {isImmutableSource && <summary className="min-h-11 cursor-pointer py-3 text-sm font-medium text-[#53684b]">
+        Source · {block.sourceEvidence?.citationLabel}
+      </summary>}
       {/* AI Assistant Margin */}
       {!isImmutableSource ? (
         <EditorMargin blockId={block.id} blockText={block.text} onTextChange={(text) => onTextChange(block.id, text)} />
       ) : null}
 
       {block.sourceEvidence ? (
-        <div className="mb-3 rounded-xl border border-cyan-200 bg-cyan-50 px-3 py-2.5 text-xs leading-5 text-cyan-950" aria-label="Source evidence provenance">
+        <div className="mb-3 rounded-xl border border-[#d4dccb] bg-[#f1f4ec] px-3 py-2.5 text-xs leading-5 text-[#3e5038]" aria-label="Source evidence provenance">
           <div className="flex flex-wrap items-center gap-2">
             <BookOpenCheck size={15} aria-hidden="true" />
             <span className="font-black uppercase tracking-[0.1em]">{sourceEvidenceLabel}</span>
-            <span className="text-cyan-800">{isImmutableSource ? "Read-only source snapshot" : "Immutable source unchanged"}</span>
+            <span>{isImmutableSource ? "Original text" : "Source preserved"}</span>
           </div>
           <p className="mt-1.5 font-semibold">{block.sourceEvidence.citationLabel}</p>
           <div className="mt-1 flex flex-wrap gap-3">
-            <Link
-              href={sourceAnnotationId ? `/research?annotation=${encodeURIComponent(sourceAnnotationId)}` : "/research"}
-              className="font-black underline decoration-cyan-300 underline-offset-4"
+            {sourceAnnotationId && <Link
+              href={`/research?annotation=${encodeURIComponent(sourceAnnotationId)}`}
+              className="font-semibold underline underline-offset-4"
             >
-              {sourceAnnotationId ? "Open exact source" : "Open Research"}
-            </Link>
+              Open exact source
+            </Link>}
             {sourcePathHref ? (
               <a
                 href={sourcePathHref}
                 target={sourcePathHref.startsWith("http") ? "_blank" : undefined}
                 rel={sourcePathHref.startsWith("http") ? "noreferrer" : undefined}
-                className="font-black underline decoration-cyan-300 underline-offset-4"
+                className="font-semibold underline underline-offset-4"
               >
                 {sourceAnnotationId ? "Open original source" : "Open exact Session source"}
               </a>
@@ -354,7 +367,7 @@ function BlockItemComponent({
       <textarea
         aria-label={isImmutableSource ? `Source evidence block ${blockIndex + 1}` : `Editor block ${blockIndex + 1}`}
         readOnly={isImmutableSource}
-        className={`w-full resize-none overflow-hidden rounded-xl px-4 py-3 font-serif text-xl leading-relaxed text-[#3d3122] outline-none transition-colors placeholder:text-[#d3c2a8] placeholder:opacity-70 ${isImmutableSource ? "cursor-text border border-cyan-200 bg-cyan-50/60" : "border border-transparent bg-transparent hover:border-[#eadfca] hover:bg-white/55 focus:border-[#d8b777] focus:bg-white focus:shadow-inner focus:ring-2 focus:ring-amber-100"}`}
+        className={`w-full resize-none overflow-hidden rounded-xl px-4 py-3 font-serif text-xl leading-relaxed text-[#3d3122] outline-none transition-colors placeholder:text-[#d3c2a8] placeholder:opacity-70 ${isImmutableSource ? "cursor-text border border-[#d4dccb] bg-[#f1f4ec]" : "border border-transparent bg-transparent hover:border-[#eadfca] hover:bg-white/55 focus:border-[#d8b777] focus:bg-white focus:shadow-inner focus:ring-2 focus:ring-amber-100"}`}
         value={block.text}
         placeholder="Type # for Chapter, Ep for Episode, or just write..."
         onChange={(e) => {
@@ -768,6 +781,7 @@ function BlockItemComponent({
           </div>
         ))}
       </div>
+      </Content>
     </div>
   );
 }

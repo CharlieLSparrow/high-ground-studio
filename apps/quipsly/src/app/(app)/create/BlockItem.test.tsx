@@ -97,6 +97,21 @@ function renderBlock(sourceEvidence?: {
 }
 
 describe("applied writing tags", () => {
+  it("keeps the original source available on demand without putting it ahead of writing", async () => {
+    const user = userEvent.setup();
+    renderBlock({ annotationId: "transcript:job-1:segment-1", citationLabel: "My first recording · 0:00–0:02",
+      sourcePath: "/sessions/room-1?mode=transcript#transcript-segment-segment-1", immutable: true });
+    const source = screen.getByLabelText("Source evidence block 1");
+    expect(source).not.toBeVisible();
+    await user.click(screen.getByText("Source · My first recording · 0:00–0:02"));
+    expect(source).toBeVisible();
+    expect(source).toHaveAttribute("readonly");
+    expect(source).toHaveValue("Proof-listen this Episode 8 source.");
+    expect(screen.getByRole("link", { name: "Open exact Session source" })).toHaveAttribute("href",
+      "/sessions/room-1?mode=transcript#transcript-segment-segment-1");
+    expect(screen.queryByRole("button", { name: "Delete this block" })).not.toBeInTheDocument();
+  });
+
   it("makes discovery the tag-label action and removal a separate explicit control", async () => {
     const user = userEvent.setup();
     const { onToggleTag } = renderBlock();

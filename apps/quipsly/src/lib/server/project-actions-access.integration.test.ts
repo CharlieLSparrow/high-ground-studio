@@ -7,6 +7,7 @@ import { requireProjectAccessById } from "./access";
 import { createGoalFromMessage, getGoalData, updateGoalStage } from "@/app/actions/kanban-actions";
 import { addClipToTimeline } from "@/app/actions/timeline-actions";
 import { createWorkflowStageAction, deleteWorkflowStageAction } from "@/app/(app)/nests/[slug]/settings/actions";
+import { createDocumentInNest } from "@/app/(app)/nests/[slug]/actions";
 
 jest.mock("@/auth", () => ({ auth: jest.fn() }));
 jest.mock("next/cache", () => ({ revalidatePath: jest.fn() }));
@@ -118,6 +119,29 @@ if (enabled) {
     signIn(null);
     await expect(createWorkflowStageAction(projectId, "Intrusion", "#456754", 0)).rejects.toThrow("UNAUTHORIZED");
     expect(await prisma.studioWorkflowStage.count({ where: { projectId } })).toBe(before);
+  });
+
+  it("creates an immediately writable blank page for owners and editors, without instructional body text", async () => {
+    const project = await prisma.studioProject.findUniqueOrThrow({ where: { id: projectId } });
+    for (const actor of [owner, member]) {
+      signIn(actor);
+      const result = await createDocumentInNest(project.slug, "draft");
+      const document = await prisma.studioDocument.findUniqueOrThrow({ where: { id: result.documentId }, include: { blocks: true } });
+      expect(document).toMatchObject({ projectId, title: "Untitled page", sourceLabel: "document-kind:draft" });
+      expect(document.blocks).toHaveLength(1);
+      expect(document.blocks[0]).toMatchObject({ body: "", order: 0 });
+      expect(result.href).toBe(`/create?project=${project.slug}&document=${document.id}`);
+    }
+  });
+
+  it("does not create a writing page for outsiders or signed-out visitors", async () => {
+    const project = await prisma.studioProject.findUniqueOrThrow({ where: { id: projectId } });
+    const before = await prisma.studioDocument.count({ where: { projectId } });
+    for (const actor of [outsider, null]) {
+      signIn(actor);
+      await expect(createDocumentInNest(project.slug, "draft")).rejects.toThrow("UNAUTHORIZED");
+    }
+    expect(await prisma.studioDocument.count({ where: { projectId } })).toBe(before);
   });
 
   it("enforces revocation and viewer read-only capability at each invocation", async () => {

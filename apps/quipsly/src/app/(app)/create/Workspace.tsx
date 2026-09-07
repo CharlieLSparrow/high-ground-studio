@@ -7,6 +7,7 @@ import Tagger, { type Block } from "./Tagger";
 import { EditorExtensionProvider } from "./registry/EditorExtensionRegistry";
 import { coreBlockCards } from "./registry/coreBlockCards";
 import ViewFilter from "./ViewFilter";
+import WritingPageHeader from "./WritingPageHeader";
 import {
   type DocumentBoundary,
   type ViewDefinition,
@@ -17,8 +18,6 @@ import { QuipslyAssistantSidebar } from "@/components/QuipslyAssistantSidebar";
 import { useQuipslyAssistant } from "@/components/useQuipslyAssistant";
 import { AssistantProvider } from "@/components/AssistantContext";
 import {
-  WORKFLOW_SYSTEM_DESCRIPTIONS,
-  WORKFLOW_SYSTEM_LABELS,
   normalizeNestKind,
   workflowSystemForNestKind,
 } from "@/lib/studio/project-registry";
@@ -205,42 +204,6 @@ function deriveDocumentBoundaries(blocks: Array<{ id: string; text: string; tags
   }));
 }
 
-function documentKindFromSourceLabel(sourceLabel?: string | null, title?: string | null) {
-  const normalizedSource = String(sourceLabel ?? "").toLowerCase();
-  const normalizedTitle = String(title ?? "").toLowerCase();
-
-  if (normalizedSource.includes("document-kind:fixed-source")) return "Study Source";
-  if (normalizedSource.includes("document-kind:note")) return "Note";
-  if (normalizedSource.includes("document-kind:draft")) return "Draft";
-  if (normalizedSource.includes("document-kind:manuscript")) return "Manuscript";
-  if (normalizedTitle.includes("manuscript") || normalizedTitle.includes("book")) return "Manuscript";
-  return "Document";
-}
-
-function documentKindBadgeClasses(kind: string) {
-  if (kind === "Study Source") return "border-cyan-200 bg-cyan-50 text-cyan-800";
-  if (kind === "Note") return "border-emerald-200 bg-emerald-50 text-emerald-800";
-  if (kind === "Draft") return "border-amber-200 bg-amber-50 text-amber-800";
-  if (kind === "Manuscript") return "border-rose-200 bg-rose-50 text-rose-800";
-  return "border-stone-200 bg-stone-50 text-stone-700";
-}
-
-function documentKindGuidance(kind: string) {
-  if (kind === "Study Source") {
-    return "This is a fixed source surface. Tag, highlight, annotate, and cite over it; do not silently rewrite the original text.";
-  }
-  if (kind === "Note") {
-    return "This is a quick capture surface. Use it for ideas, research hunches, reminders, connective tissue, and rough thinking.";
-  }
-  if (kind === "Draft") {
-    return "This is a working draft. Experiment freely, branch ideas, and promote the good parts when they become manuscript material.";
-  }
-  if (kind === "Manuscript") {
-    return "This is the living manuscript spine. Rewrite intentionally; structure tags, snapshots, and recovery exports keep the trail visible.";
-  }
-  return "This document is editable. If the role is unclear, use notes or drafts for experiments and keep the manuscript spine deliberate.";
-}
-
 const HGO_SOURCE_KEYS: HgoSourceKey[] = [
   "episode-1",
   "episode-2",
@@ -346,8 +309,6 @@ export default function Workspace({
     () => projectDocuments.find((doc) => doc.id === documentId) ?? null,
     [documentId, projectDocuments]
   );
-  const activeDocumentKind = documentKindFromSourceLabel(activeProjectDocument?.sourceLabel, documentTitle);
-  const activeDocumentKindGuidance = documentKindGuidance(activeDocumentKind);
   const activeHgoSourceKey = hgoSourceKeyFromLabel(activeProjectDocument?.sourceLabel);
   const handlePanicExport = async () => {
     setRecoveryExportState("exporting");
@@ -540,11 +501,6 @@ export default function Workspace({
     }
   };
 
-  const recoveryExportLabel = activeBoundary ? "Copy/export section" : "Copy/export page";
-  const recoveryExportScopeHelp = activeBoundary
-    ? "Copies and downloads Markdown for the focused Chapter/Episode section."
-    : "Copies and downloads Markdown for the current notebook page/document.";
-
   if (persistenceMode === "unavailable") {
     return (
       <main className="min-h-[calc(100vh-4rem)] bg-[#fdfaf6] px-4 py-10 text-[#3d3122] md:px-8" aria-labelledby="writing-unavailable-title">
@@ -580,7 +536,7 @@ export default function Workspace({
   }
 
   return (
-    <div className="flex flex-col md:flex-row h-[calc(100vh-4rem)] bg-[#fdfaf6] text-[#3d3122]">
+    <div className="flex min-w-0 flex-col md:flex-row h-[calc(100dvh-4rem)] overflow-hidden bg-[#fdfaf6] text-[#3d3122]">
       {/* Left sidebar - ViewFilter */}
       <ViewFilter
          activeView={activeView}
@@ -596,150 +552,30 @@ export default function Workspace({
          projectSlug={activeProjectSlug}
       />
       {/* Main editor area */}
-      <div ref={scrollContainerRef} className="flex-1 overflow-y-auto p-3 md:p-6 relative">
+      <div ref={scrollContainerRef} className="relative min-w-0 flex-1 overflow-y-auto overscroll-contain p-3 md:p-6">
         <div className="max-w-5xl mx-auto">
           <div className="mb-3 rounded-2xl border border-[#e8dcc4] bg-white/80 p-3 md:p-4 shadow-sm">
-            <div className="mb-2 flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <nav className="mb-3 flex flex-wrap items-center gap-2 text-[10px] font-black uppercase tracking-[0.16em] text-[#8c6b4a]">
-                  <Link href="/notebooks" className="rounded-full border border-[#eadfca] bg-[#fffaf3] px-2.5 py-1 transition hover:bg-[#fff4df]">
-                    Writing Desk
-                  </Link>
-                  {activeProjectSlug ? (
-                    <>
-                      <span className="text-[#c1a57d]">/</span>
-                      <Link
-                        href={`/notebooks/${encodeURIComponent(activeProjectSlug)}`}
-                        className="rounded-full border border-[#eadfca] bg-[#fffaf3] px-2.5 py-1 transition hover:bg-[#fff4df]"
-                      >
-                        Notebook
-                      </Link>
-                    </>
-                  ) : null}
-                  {notebookSectionLabel ? (
-                    <>
-                      <span className="text-[#c1a57d]">/</span>
-                      <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-emerald-900">
-                        {notebookSectionLabel}
-                      </span>
-                    </>
-                  ) : null}
-                </nav>
-                <div className="text-xs font-bold uppercase tracking-[0.22em] text-[#a36f2e] flex items-center gap-2">
-                  <span
-                    title={activeProjectDocument?.personal ? "Only you can open this document" : "Visible to members with access to this Nest"}
-                    className="flex items-center gap-1"
-                  >
-                    <span className="text-[10px]">🔒</span>
-                    {activeProjectDocument?.personal ? "Only you" : "Nest members"}
-                  </span>
-                  <span className="opacity-50">•</span>
-                  <span>{projectName ?? "Quipsly Live"} / Living Document Nest</span>
-                </div>
-                <h1 className="mt-1 text-2xl md:text-3xl font-bold font-serif text-[#342618]">
-                  {documentTitle ?? "High Ground Odyssey Tonight Pack"}
-                </h1>
-                <div className="mt-2 flex flex-wrap items-center gap-2">
-                  <span className={`rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-[0.16em] ${documentKindBadgeClasses(activeDocumentKind)}`}>
-                    {activeDocumentKind}
-                  </span>
-                  <span className="rounded-full border border-[#e8dcc4] bg-[#fffaf3] px-3 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-[#8c6b4a]">
-                    {projectDocuments.length} Nest docs
-                  </span>
-                </div>
-                <p className="mt-1 max-w-2xl text-xs leading-5 text-[#6b5b45]">
-                  {activeDocumentKindGuidance}
-                </p>
-                <DocumentTagEditor
-                  key={documentId}
-                  documentId={documentId}
-                  projectId={projectId}
-                  projectSlug={activeProjectSlug}
-                  projectTags={projectTags}
-                  initialDocumentTags={initialDocumentTags}
-                  initialUpdatedAt={documentUpdatedAt}
-                  initialTagRevision={documentTagRevision}
-                />
-              </div>
-              <span
-                title={WORKFLOW_SYSTEM_DESCRIPTIONS[resolvedWorkflowSystem]}
-                className="rounded-full border border-amber-300 bg-amber-100 px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-amber-900"
-              >
-                {WORKFLOW_SYSTEM_LABELS[resolvedWorkflowSystem]}
-              </span>
-              <div className="bg-amber-100 text-amber-800 px-3 py-1 rounded-full text-xs font-bold border border-amber-200 shadow-sm flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
-                View: {activeBoundary?.label ?? activeView.name}
-              </div>
-              {activeBoundary ? (
-                <button
-                  type="button"
-                  onClick={() => handleActiveBoundaryChange(null)}
-                  className="rounded-full border border-[#d9c7a5] bg-white px-3 py-1 text-xs font-bold text-[#6b5b45] shadow-sm transition-colors hover:bg-[#f8f1e3]"
-                >
-                  Show full document
-                </button>
-              ) : null}
-              <div className={`px-3 py-1 rounded-full text-xs font-bold border shadow-sm flex items-center gap-2 ${
-                saveState === "saving"
-                  ? "border-blue-200 bg-blue-50 text-blue-800"
-                  : saveState === "unsaved"
-                    ? "border-orange-200 bg-orange-50 text-orange-800"
-                    : "border-emerald-200 bg-emerald-50 text-emerald-800"
-              }`} role="status" aria-live="polite" data-testid="document-save-status">
-                <span className={`w-2 h-2 rounded-full ${
-                  saveState === "saving"
-                    ? "bg-blue-500 animate-pulse"
-                    : saveState === "unsaved"
-                      ? "bg-orange-500"
-                      : "bg-emerald-500"
-                }`}></span>
-                {saveState === "saving" ? "Saving" : saveState === "unsaved" ? "Unsaved edits" : "Saved"}
-              </div>
-              {publisherMode ? (
-                <button
-                  type="button"
-                  onClick={togglePublisherMode}
-                  className="rounded-full border border-[#d3a24f] bg-[#fff5df] px-3 py-1 text-xs font-bold text-[#9a5f13] shadow-sm transition-colors hover:bg-[#ffeac0]"
-                >
-                  Publisher Mode On
-                </button>
-              ) : null}
-            </div>
-            <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-emerald-200 bg-emerald-50/70 px-3 py-2">
-              <p className="text-[11px] leading-5 text-[#526b43]">
-                Canonical page · source-safe history · no silent rewrite
-              </p>
-              <div className="flex flex-wrap items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => void handlePanicExport()}
-                  title={recoveryExportScopeHelp}
-                  className="rounded-full border border-[#3d3122] bg-[#3d3122] px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-white transition hover:bg-[#59442d]"
-                >
-                  {recoveryExportState === "exporting"
-                    ? "Preparing..."
-                    : recoveryExportState === "copied"
-                      ? "Copied + Downloaded"
-                      : recoveryExportState === "failed"
-                        ? "Try Export Again"
-                        : recoveryExportLabel}
-                </button>
-                <button
-                  type="button"
-                  onClick={handleShowRecentChanges}
-                  className="rounded-full border border-[#d9c7a5] bg-white px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-[#5e4b33] transition hover:bg-[#f8f3e6]"
-                >
-                  Recent Changes
-                </button>
-              </div>
-            </div>
-            <DocumentSafetyPanel
-              documentId={documentId}
-              documentTitle={documentTitle ?? "Quipsly Writing Draft"}
-              projectSlug={activeProjectSlug}
+            <WritingPageHeader
+              title={documentTitle ?? "Untitled page"}
+              nestName={projectName ?? "Your Nest"}
+              nestSlug={activeProjectSlug}
+              personal={activeProjectDocument?.personal === true}
               saveState={saveState}
-            />
+              scope={activeBoundary?.label ?? (activeView.id !== DEFAULT_VIEW.id ? activeView.name : null)}
+              onClearScope={() => { handleActiveBoundaryChange(null); handleActiveViewChange(DEFAULT_VIEW); }}
+              exportLabel={recoveryExportState === "exporting" ? "Preparing…" : recoveryExportState === "copied" ? "Exported" : recoveryExportState === "failed" ? "Retry export" : "Export"}
+              onExport={() => void handlePanicExport()}
+              onRecentChanges={handleShowRecentChanges}
+            >
+              <DocumentTagEditor
+                key={documentId} documentId={documentId} projectId={projectId} projectSlug={activeProjectSlug}
+                projectTags={projectTags} initialDocumentTags={initialDocumentTags}
+                initialUpdatedAt={documentUpdatedAt} initialTagRevision={documentTagRevision}
+              />
+              <DocumentSafetyPanel documentId={documentId} documentTitle={documentTitle ?? "Untitled page"}
+                projectSlug={activeProjectSlug} saveState={saveState} />
+              {publisherMode && <button type="button" onClick={togglePublisherMode} className="min-h-11 underline">Leave publisher mode</button>}
+            </WritingPageHeader>
             {storyWritingContext ? <StoryWritingContextPanel context={storyWritingContext} /> : null}
             {activeHgoSourceKey ? (
               <div className="mb-4 rounded-2xl border border-cyan-200 bg-cyan-50/80 px-4 py-3 shadow-sm">
