@@ -6,6 +6,22 @@ import LocalDateTime from "./LocalDateTime";
 describe("LocalDateTime", () => {
   const instant = "2026-07-27T22:15:00.000Z";
 
+  it.each(["America/Denver", "Asia/Tokyo"])("hydrates appointment time for %s without moving its instant", (timeZone) => {
+    const Formatter = Intl.DateTimeFormat;
+    const spy = jest.spyOn(Intl, "DateTimeFormat").mockImplementation((locale, options) =>
+      new Formatter(locale || "en-US", { ...options, timeZone: options?.timeZone || timeZone }));
+    try {
+      const html = renderToString(<LocalDateTime value={instant} mode="appointment" />);
+      expect(html).toContain("UTC");
+      expect(html).toContain("10:15 PM");
+      const { container } = render(<LocalDateTime value={instant} mode="appointment" />);
+      const expected = new Formatter("en-US", { timeZone, weekday: "short", month: "short", day: "numeric",
+        hour: "numeric", minute: "2-digit", timeZoneName: "short" }).format(new Date(instant));
+      expect(container.querySelector("time")).toHaveTextContent(expected);
+      expect(container.querySelector("time")).toHaveAttribute("datetime", instant);
+    } finally { spy.mockRestore(); }
+  });
+
   it("renders a deterministic UTC server snapshot for hydration", () => {
     const html = renderToString(<LocalDateTime value={instant} />);
 
