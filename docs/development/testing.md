@@ -111,6 +111,26 @@ tokens, cookies, passwords, or database credentials.
 
 ## Capture
 
+Capture evaluates PRs into every branch. A lightweight Linux job uses the same
+release-manifest planner as local validation to decide whether Mac tests are
+needed; there is no separate workflow path allowlist. Manual runs always test
+Capture, with critical or full coverage selectable. The stable `Capture
+validation` check distinguishes an unaffected change from successful simulator
+tests and fails if required planning or testing failed, was cancelled, or was
+unexpectedly skipped. Use this stable check when configuring branch protection;
+workflow files alone do not enable protection. Pushes alone do not run this lane.
+
+The routing regression test executes the workflow's actual shell steps against
+a disposable Git repository, including multi-commit PRs, web-only changes,
+previously omitted release tools, invalid comparison refs, and failed jobs:
+
+```bash
+node --experimental-strip-types --test scripts/ci/capture-ci-routing.test.mjs
+```
+
+This avoids the skipped-workflow/pending-check problem described in
+[GitHub's workflow filtering documentation](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax#onpushpull_requestpull_request_targetpathspaths-ignore).
+
 CI runs the deterministic Capture suite on the pinned iOS simulator. Release
 claims additionally require:
 

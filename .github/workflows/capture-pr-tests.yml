@@ -2,47 +2,6 @@ name: Capture iPhone and iPad Tests
 
 on:
   pull_request:
-    branches:
-      - main
-      - master
-    paths:
-      - apps/mobile-capture/HighGroundCapture/**
-      - docs/quipsly/ios-capture-app-review-notes-draft.md
-      - docs/quipsly/ios-capture-app-store-listing.md
-      - docs/quipsly/ios-capture-app-store-readiness.md
-      - docs/quipsly/hgo-testflight-rehearsal-runbook.md
-      - docs/quipsly/ios-capture-privacy-label-matrix.md
-      - docs/quipsly/ios-capture-reviewer-smoke-checklist.md
-      - docs/quipsly/xcode-cloud-usage-policy.md
-      - release/app-store/quipsly-capture/**
-      - release/manifests/capture.json
-      - scripts/quipsly-ios-capture-app-store-static-smoke.mjs
-      - scripts/quipsly-hgo-rehearsal-live-preflight.sh
-      - scripts/quipsly-hgo-rehearsal-preflight.mjs
-      - scripts/quipsly-hgo-rehearsal-preflight.test.mjs
-      - scripts/release/quipsly-app-store-connect-readback.mjs
-      - scripts/release/quipsly-app-store-connect-readback.test.mjs
-      - scripts/release/quipsly-app-store-connect-assign-build.mjs
-      - scripts/release/quipsly-app-store-connect-assign-build.test.mjs
-      - scripts/release/quipsly-app-store-connect-external-beta.mjs
-      - scripts/release/quipsly-app-store-connect-external-beta.test.mjs
-      - scripts/release/quipsly-capture-app-store-metadata.mjs
-      - scripts/release/quipsly-capture-app-store-metadata.test.mjs
-      - scripts/release/quipsly-capture-privacy-questionnaire.mjs
-      - scripts/release/quipsly-capture-privacy-questionnaire.test.mjs
-      - scripts/release/quipsly-capture-physical-install-readback.mjs
-      - scripts/release/quipsly-capture-physical-install-readback.test.mjs
-      - scripts/release/quipsly-capture-ui-test-plan.mjs
-      - scripts/release/quipsly-capture-ui-test-plan.test.mjs
-      - scripts/release/quipsly-capture-ui-test-runner.mjs
-      - scripts/release/quipsly-capture-ui-test-runner.test.mjs
-      - scripts/release/quipsly-capture-release-target.mjs
-      - scripts/release/quipsly-capture-release-target.test.mjs
-      - scripts/release/quipsly-testflight-public-link-readback.mjs
-      - scripts/release/quipsly-testflight-public-link-readback.test.mjs
-      - scripts/release/quipsly-xcode-cloud-workflow-audit.mjs
-      - scripts/release/quipsly-xcode-cloud-workflow-audit.test.mjs
-      - .github/workflows/capture-pr-tests.yml
   workflow_dispatch:
     inputs:
       depth:
@@ -62,7 +21,45 @@ permissions:
   contents: read
 
 jobs:
+  changes:
+    name: Detect Capture changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      capture: ${{ steps.plan.outputs.capture }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+
+      - name: Test Capture CI routing
+        run: node --experimental-strip-types --test scripts/ci/capture-ci-routing.test.mjs scripts/ci/plan-changed-surfaces.test.mjs packages/repository-governance/src/release-manifest.test.ts
+
+      - name: Plan Capture validation
+        id: plan
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          if [[ "${EVENT_NAME}" == "workflow_dispatch" ]]; then
+            echo "capture=true" >> "${GITHUB_OUTPUT}"
+          else
+            base=$(git rev-parse --verify --end-of-options "${PR_BASE_SHA}^{commit}")
+            node --experimental-strip-types scripts/ci/plan-changed-surfaces.mjs \
+              --base "${base}" --head HEAD --github-output "${GITHUB_OUTPUT}"
+          fi
+
   deterministic-ui:
+    needs: changes
+    if: needs.changes.outputs.capture == 'true'
     name: Deterministic Apple UX (${{ matrix.shard == 0 && 'critical' || format('full {0}/4', matrix.shard) }})
     runs-on: macos-26
     timeout-minutes: 45
@@ -149,3 +146,30 @@ jobs:
             ${{ runner.temp }}/capture-ui-*/capture-ui-tests.log
           if-no-files-found: warn
           retention-days: 14
+
+  validation:
+    name: Capture validation
+    needs: [changes, deterministic-ui]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Report Capture validation
+        env:
+          PLAN_RESULT: ${{ needs.changes.result }}
+          CAPTURE_CHANGED: ${{ needs.changes.outputs.capture }}
+          UI_RESULT: ${{ needs.deterministic-ui.result }}
+        run: |
+          set -euo pipefail
+          if [[ "${PLAN_RESULT}" != "success" ]]; then
+            echo "FAIL Capture change detection did not succeed."
+            exit 1
+          fi
+          if [[ "${CAPTURE_CHANGED}" == "false" ]]; then
+            echo "PASS No Capture changes; native tests were not needed."
+          elif [[ "${CAPTURE_CHANGED}" == "true" && "${UI_RESULT}" == "success" ]]; then
+            echo "PASS Capture simulator tests passed. Device and delivery proof are separate."
+          else
+            echo "FAIL Required Capture tests did not succeed (${UI_RESULT})."
+            exit 1
+          fi

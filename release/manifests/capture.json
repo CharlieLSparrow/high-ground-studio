@@ -25,6 +25,8 @@
         "scripts/release/quipsly-xcode-cloud-"
       ],
       "files": [
+        "scripts/ci/capture-ci-routing.test.mjs",
+        "docs/quipsly/xcode-cloud-usage-policy.md",
         "docs/quipsly/hgo-testflight-rehearsal-runbook.md",
         "docs/quipsly/ios-capture-app-review-notes-draft.md",
         "docs/quipsly/ios-capture-app-store-listing.md",

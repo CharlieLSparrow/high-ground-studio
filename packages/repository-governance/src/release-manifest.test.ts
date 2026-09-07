@@ -23,6 +23,7 @@ test("loads one validated manifest for every supported release surface", () => {
     "quipsly-media-processor",
     "quipsly-media-verifier",
     "quipsly-studio",
+    "quipsly-transcript-worker",
   ]);
   assert.deepEqual(
     [...audit.manifests.map((manifest) => manifest.id)].sort(),
