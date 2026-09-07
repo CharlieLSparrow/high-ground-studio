@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { BrowserSourceRecorder } from "./browser-source-recorder";
 import type { BrowserCaptureStudioHandoff } from "@/lib/browser-capture-studio-handoff";
+import { issueBrowserRecordingDirective } from "@/lib/browser-recording-directive";
 
 let mockHandoff: BrowserCaptureStudioHandoff | null = null;
 jest.mock("@/lib/browser-capture-studio-handoff", () => ({
@@ -18,6 +19,7 @@ jest.mock("@/lib/browser-endpoint-queue", () => ({ publishBrowserEndpointQueue: 
 jest.mock("@/lib/browser-recording-directive", () => ({
   ...jest.requireActual("@/lib/browser-recording-directive"),
   readBrowserRecordingDirective: jest.fn(async () => null),
+  issueBrowserRecordingDirective: jest.fn(),
 }));
 
 const props = { callRoomId: "room", captureGroupId: "take", sessionTitle: "Coaching", sessionKind: "coaching" as const,
@@ -35,6 +37,7 @@ describe("browser recorder before recording", () => {
       recordingConsentCanRecordVideo: false, recordingConsentCanTranscribe: false,
       allRegisteredParticipantConsentGranted: false };
     fetchMock.mockReset();
+    jest.mocked(issueBrowserRecordingDirective).mockReset();
     fetchMock.mockImplementation(async (url: string, init?: RequestInit) => {
       if (url.includes("/consent")) {
         if (init?.method === "POST") {
@@ -125,5 +128,21 @@ describe("browser recorder before recording", () => {
     expect(screen.getByText("Preparing recordings")).toBeInTheDocument();
     expect(screen.getByText("client.webm")).toBeInTheDocument();
     expect(screen.queryByText("Waiting for upload")).not.toBeInTheDocument();
+  });
+
+  it("shows a failed Record command while devices remain ready and lets the coach retry", async () => {
+    session = { ...session, canControlRoom: true, recordingConsentStatus: "GRANTED",
+      recordingConsentId: "consent", recordingConsentCanRecordAudio: true,
+      allRegisteredParticipantConsentGranted: true };
+    jest.mocked(issueBrowserRecordingDirective).mockRejectedValue(new Error("Recording coordination is temporarily unavailable."));
+    render(<BrowserSourceRecorder {...props} />);
+    const record = await screen.findByRole("button", { name: "Record" });
+    await waitFor(() => expect(record).toBeEnabled());
+    fireEvent.click(record);
+    expect(await screen.findByRole("alert")).toHaveTextContent("Recording coordination is temporarily unavailable.");
+    expect(record).toBeEnabled();
+    fireEvent.click(record);
+    await waitFor(() => expect(issueBrowserRecordingDirective).toHaveBeenCalledTimes(2));
+    expect(screen.queryByRole("button", { name: "Stop recording" })).not.toBeInTheDocument();
   });
 });

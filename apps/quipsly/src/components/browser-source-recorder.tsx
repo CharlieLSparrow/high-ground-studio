@@ -387,6 +387,10 @@ export function BrowserSourceRecorder({
   const [recordingDirective, setRecordingDirective] =
     useState<BrowserRecordingDirective | null>(null);
   const [directiveBusy, setDirectiveBusy] = useState(false);
+  const [directiveError, setDirectiveError] = useState<string | null>(null);
+  useEffect(() => {
+    setDirectiveError(null);
+  }, [callRoomId, recordingDirective?.id]);
   const [pendingCoordinationReceiptCount, setPendingCoordinationReceiptCount] =
     useState(0);
   const [coordinationReceiptError, setCoordinationReceiptError] = useState<
@@ -2530,6 +2534,7 @@ export function BrowserSourceRecorder({
       if (directiveBusy) return;
       directiveBaselineEstablishedRef.current = true;
       setDirectiveBusy(true);
+      setDirectiveError(null);
       try {
         const next = await issueBrowserRecordingDirective(callRoomId, action);
         setRecordingDirective(next);
@@ -2539,7 +2544,7 @@ export function BrowserSourceRecorder({
             : "Stopping recording on each device…",
         );
       } catch (error) {
-        setMessage(
+        setDirectiveError(
           error instanceof Error
             ? error.message
             : "Recording coordination is temporarily unavailable.",
@@ -3185,6 +3190,11 @@ export function BrowserSourceRecorder({
             </span>
           )}
         </div>
+        {directiveError ? (
+          <p role="alert" className="mt-2 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-bold leading-5 text-amber-950">
+            {directiveError}
+          </p>
+        ) : null}
         {status !== "recording" && !retainedReadiness.ok && !["my-consent", "participant-consent"].includes(retainedReadiness.blocker ?? "") ? (
           <p
             data-testid="recording-readiness-message"
