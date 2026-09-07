@@ -9,6 +9,17 @@ import { fileURLToPath } from "node:url";
 const workflow = readFileSync(new URL("../../.github/workflows/pr-tests.yml", import.meta.url), "utf8");
 const step = (name) => workflow.split(`      - name: ${name}\n`)[1]?.split("\n      - name:")[0];
 
+test("release shell syntax executes before expensive dependency and application checks", () => {
+  const name = "Check release shell syntax before dependency installation";
+  assert.ok(workflow.indexOf(name) < workflow.indexOf("- name: Install dependencies"));
+  const script = step(name).split("        run: |\n")[1].split("\n")
+    .filter(line => line.startsWith("          ")).map(line => line.slice(10)).join("\n");
+  const result = spawnSync("bash", ["-c", script], {
+    cwd: fileURLToPath(new URL("../../", import.meta.url)), encoding: "utf8",
+  });
+  assert.equal(result.status, 0, result.stderr);
+});
+
 test("every filtered validation command rejects an unmatched package", () => {
   const commands = workflow.split("\n").filter((line) => line.includes("pnpm --filter "));
   assert.ok(commands.length > 0);
