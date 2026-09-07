@@ -6253,6 +6253,14 @@ final class CaptureExperienceUITests: XCTestCase {
         let elementIsReachable = {
             element.exists && (!requireHittable || element.isHittable)
         }
+        // Native navigation controls live above the scrollable content by
+        // design. Do not scroll the entire document looking for an already
+        // reachable toolbar button (for example, the current Nest switcher).
+        if elementIsReachable(), navigationBar.exists,
+           !element.frame.isEmpty,
+           navigationBar.frame.contains(element.frame) {
+            return
+        }
         let elementHasRequiredVisibleFrame = {
             if requireHittable {
                 return element.frame.minY >= visibleTop
