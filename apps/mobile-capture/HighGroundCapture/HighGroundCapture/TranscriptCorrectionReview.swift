@@ -2336,7 +2336,10 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
                 body["reviewNote"] = "Confirmed as-is in Quipsly Capture against the exact retained local recording."
             }
             request.httpBody = try JSONSerialization.data(withJSONObject: body)
-            let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
+            let (data, response) = try await AuthManager.shared.authenticatedData(
+                for: request,
+                expectedOwnerAccountID: decision.ownerAccountID
+            )
             let payload = try? JSONDecoder().decode(CaptureTranscriptMutationResponse.self, from: data)
             guard response.statusCode < 400, payload?.ok == true else {
                 let apiError = try? JSONDecoder().decode(CaptureTranscriptAPIError.self, from: data)
@@ -2466,7 +2469,10 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
                 "confirmedAgainstPlayback": true,
                 "reviewNote": "Identified in Quipsly Capture from exact retained local recording samples. No transcript words were marked reviewed.",
             ])
-            let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
+            let (data, response) = try await AuthManager.shared.authenticatedData(
+                for: request,
+                expectedOwnerAccountID: decision.ownerAccountID
+            )
             let payload = try? JSONDecoder().decode(CaptureTranscriptMutationResponse.self, from: data)
             guard response.statusCode < 400, payload?.ok == true else {
                 let apiError = try? JSONDecoder().decode(CaptureTranscriptAPIError.self, from: data)

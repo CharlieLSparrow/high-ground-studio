@@ -730,7 +730,10 @@ final class CaptureSourceInboxClient: ObservableObject {
                 ]
             }
             request.httpBody = try JSONSerialization.data(withJSONObject: requestBody)
-            let (data, urlResponse) = try await AuthManager.shared.authenticatedData(for: request)
+            let (data, urlResponse) = try await AuthManager.shared.authenticatedData(
+                for: request,
+                expectedOwnerAccountID: decision.ownerAccountID
+            )
             let payload = try JSONDecoder().decode(MobileSourceInboxFilingResponse.self, from: data)
             guard urlResponse.statusCode < 400, payload.ok else {
                 let message = payload.error ?? "Nest could not reconcile this Research filing."

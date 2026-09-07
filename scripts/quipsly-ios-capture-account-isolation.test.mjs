@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFileSync, mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { readFileSync, readdirSync, mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import os from "node:os";
 import path from "node:path";
@@ -28,7 +28,7 @@ function swiftFunction(source, name) {
   return source.slice(start, end + 6);
 }
 
-for (const [method, item] of [
+const queuedUploadOwners = [
   ["syncWritingDraftDecision", "decision"],
   ["syncWeeklyPlanDecision", "decision"],
   ["syncFocusPlan", "plan"],
@@ -38,14 +38,34 @@ for (const [method, item] of [
   ["syncDocumentNoteEdit", "edit"],
   ["syncQuickEntry", "entry"],
   ["syncSessionNoteEdit", "edit"],
-]) {
-  test(`${method} binds queued work to its stored owner before sending`, () => {
+].map(([method, item]) => ["BridgeModels.swift", method, item]);
+queuedUploadOwners.push(
+  ["CaptureRecordingCoordinator.swift", "deliver", "receipt"],
+  ["CaptureSessionPreflight.swift", "deliver", "receipt"],
+  ["CaptureSourceInbox.swift", "sync", "decision"],
+  ["TranscriptCorrectionReview.swift", "syncReviewDecision", "decision"],
+  ["TranscriptCorrectionReview.swift", "syncSpeakerAttribution", "decision"],
+);
+for (const [file, method, item] of queuedUploadOwners) {
+  test(`${file}/${method} binds queued work to its stored owner before sending`, () => {
     // Wiring evidence only; the Swift test below executes the request boundary.
-    assert.match(swiftFunction(bridge, method), new RegExp(
+    assert.match(swiftFunction(read(file), method), new RegExp(
       `authenticatedData\\(\\s*for: request,\\s*expectedOwnerAccountID: ${item}\\.ownerAccountID\\s*\\)`,
     ));
   });
 }
+
+test("new typed pending-work upload methods cannot silently inherit the current login", () => {
+  const unbound = [];
+  for (const file of readdirSync(root).filter((name) => name.endsWith(".swift"))) {
+    for (const match of read(file).matchAll(/func ([A-Za-z0-9_]+)\([\s\S]*?\n    }/g)) {
+      const body = match[0], signature = body.slice(0, body.indexOf("{"));
+      if (/:\s*Pending[A-Za-z]+/.test(signature) && body.includes("authenticatedData(")
+        && !body.includes("expectedOwnerAccountID:")) unbound.push(`${file}/${match[1]}`);
+    }
+  }
+  assert.deepEqual(unbound, []);
+});
 
 test("the actual Swift owner-binding methods reject a queued edit after account replacement", {
   skip: process.platform !== "darwin" ? "Requires the Apple Swift toolchain" : false,

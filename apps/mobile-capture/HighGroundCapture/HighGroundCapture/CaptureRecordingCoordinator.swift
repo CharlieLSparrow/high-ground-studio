@@ -388,7 +388,8 @@ final class CaptureRecordingCoordinator: ObservableObject {
             let encoder = JSONEncoder()
             request.httpBody = try encoder.encode(receipt.payload)
             let (data, response) = try await AuthManager.shared.authenticatedData(
-                for: request
+                for: request,
+                expectedOwnerAccountID: receipt.ownerAccountID
             )
             let packet = try AuthResponseDecoder.decode(
                 CaptureRecordingEndpointResponse.self,
