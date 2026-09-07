@@ -79,6 +79,31 @@ test("native preflight executes every command and stops at each injected failure
   }
 });
 
+for (const failureDevice of ["none", "iPhone 17 Pro", "iPad Air 13-inch (M3)"]) {
+  test(`simulator prewarm preserves diagnostics and ${failureDevice} failure`, (t) => {
+    const directory = mkdtempSync(path.join(os.tmpdir(), "quipsly-native-prewarm-"));
+    t.after(() => rmSync(directory, { recursive: true, force: true }));
+    const step = workflow.split("      - name: Prewarm deterministic simulator services\n")[1]?.split("\n      - name:")[0];
+    assert.match(step, /timeout-minutes: 8/);
+    assert.match(workflow, /\$\{\{ runner.temp \}\}\/capture-prewarm-\*\.log/);
+    const result = spawnSync("bash", ["-c", `
+      bash() {
+        [[ "$1" == apps/mobile-capture/HighGroundCapture/scripts/prepare-ci-simulator.sh ]] || return 98
+        echo "Preparing $2"
+        echo "Simulator diagnostics" >&2
+        [[ "$2" != "$FAILURE_DEVICE" ]] || return 37
+      }
+      ${stepScript("Prewarm deterministic simulator services")}
+    `], { encoding: "utf8", env: { ...process.env, RUNNER_TEMP: directory, FAILURE_DEVICE: failureDevice } });
+    assert.equal(result.status, failureDevice === "none" ? 0 : 37, result.stdout + result.stderr);
+    assert.equal(readFileSync(path.join(directory, "capture-prewarm-iphone.log"), "utf8"),
+      "Preparing iPhone 17 Pro\nSimulator diagnostics\n");
+    if (failureDevice === "iPhone 17 Pro") assert.doesNotMatch(result.stdout, /Preparing iPad/);
+    else assert.equal(readFileSync(path.join(directory, "capture-prewarm-ipad.log"), "utf8"),
+      "Preparing iPad Air 13-inch (M3)\nSimulator diagnostics\n");
+  });
+}
+
 for (const shard of [0, 3]) {
   for (const exitCode of [0, 17, 143]) {
     test(`native CI shard ${shard} preserves runner exit ${exitCode} and diagnostic output`, (t) => {

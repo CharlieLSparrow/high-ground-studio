@@ -120,9 +120,12 @@ jobs:
           node scripts/release/quipsly-capture-privacy-questionnaire.mjs --strict
 
       - name: Prewarm deterministic simulator services
+        timeout-minutes: 8
+        shell: bash
         run: |
-          bash apps/mobile-capture/HighGroundCapture/scripts/prepare-ci-simulator.sh "iPhone 17 Pro" "26.2"
-          bash apps/mobile-capture/HighGroundCapture/scripts/prepare-ci-simulator.sh "iPad Air 13-inch (M3)" "26.2"
+          set -euo pipefail
+          bash apps/mobile-capture/HighGroundCapture/scripts/prepare-ci-simulator.sh "iPhone 17 Pro" "26.2" 2>&1 | tee "${RUNNER_TEMP}/capture-prewarm-iphone.log"
+          bash apps/mobile-capture/HighGroundCapture/scripts/prepare-ci-simulator.sh "iPad Air 13-inch (M3)" "26.2" 2>&1 | tee "${RUNNER_TEMP}/capture-prewarm-ipad.log"
 
       - name: Run bounded deterministic Capture UI lane serially
         run: |
@@ -153,6 +156,7 @@ jobs:
         with:
           name: capture-apple-test-evidence-${{ github.run_attempt }}-${{ matrix.shard == 0 && 'critical' || format('full-{0}-of-4', matrix.shard) }}
           path: |
+            ${{ runner.temp }}/capture-prewarm-*.log
             ${{ runner.temp }}/capture-ui-*/*.xcresult
             ${{ runner.temp }}/capture-ui-*/capture-ui-tests.log
           if-no-files-found: warn
