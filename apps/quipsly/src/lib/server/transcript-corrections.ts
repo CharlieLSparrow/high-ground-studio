@@ -412,6 +412,7 @@ async function loadAccessibleRoom(
   actor: TranscriptCorrectionActor,
   recordingAssetId?: string | null,
   transcriptJobId?: string | null,
+  segmentId?: string | null,
 ) {
   const room = await prisma.callRoom.findFirst({
     where: accessibleRoomWhere(roomId, actor),
@@ -516,11 +517,12 @@ async function loadAccessibleRoom(
         },
       },
       transcriptJobs: {
-        ...((recordingAssetId || transcriptJobId)
+        ...((recordingAssetId || transcriptJobId || segmentId)
           ? {
               where: {
                 ...(recordingAssetId ? { assetId: recordingAssetId } : {}),
                 ...(transcriptJobId ? { id: transcriptJobId } : {}),
+                ...(segmentId ? { segments: { some: { id: segmentId } } } : {}),
               },
             }
           : {}),
@@ -654,6 +656,8 @@ export async function readTranscriptCorrectionDesk(input: {
   actor: TranscriptCorrectionActor;
   recordingAssetId?: string | null;
   transcriptJobId?: string | null;
+  /** Resolve a selected passage inside the authorized room, not its newest job. */
+  segmentId?: string | null;
 }) {
   let room = await loadAccessibleRoom(
     input.prisma,
@@ -661,9 +665,10 @@ export async function readTranscriptCorrectionDesk(input: {
     input.actor,
     input.recordingAssetId,
     input.transcriptJobId,
+    input.segmentId,
   );
   let job = room.transcriptJobs[0] ?? null;
-  if ((input.recordingAssetId || input.transcriptJobId) && !job) {
+  if ((input.recordingAssetId || input.transcriptJobId || input.segmentId) && !job) {
     throw new TranscriptCorrectionError(
       "The selected recording has no accessible transcript in this Session.",
       404,
@@ -685,9 +690,10 @@ export async function readTranscriptCorrectionDesk(input: {
         input.actor,
         input.recordingAssetId,
         input.transcriptJobId,
+        input.segmentId,
       );
       job = room.transcriptJobs[0] ?? null;
-      if ((input.recordingAssetId || input.transcriptJobId) && !job) {
+      if ((input.recordingAssetId || input.transcriptJobId || input.segmentId) && !job) {
         throw new TranscriptCorrectionError(
           "The selected recording transcript changed during reconciliation. Refresh its exact-source evidence.",
           409,

@@ -530,7 +530,7 @@ export async function POST(request: Request) {
         };
       }
 
-      const desk = await readTranscriptCorrectionDesk({ prisma: tx, roomId, actor });
+      const desk = await readTranscriptCorrectionDesk({ prisma: tx, roomId, actor, segmentId });
       if (!desk.gate.allowed || !desk.playback) {
         throw new TranscriptCorrectionError(
           desk.gate.error || "Released recording-backed transcript evidence is required.",

@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 
 import { getPrismaClient } from "@/lib/prisma";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
+import { ensureHomeNestForEmailInTransaction } from "@/lib/server/home-nest";
 import { readTranscriptCorrectionDesk, TranscriptCorrectionError } from "@/lib/server/transcript-corrections";
 
 export const dynamic = "force-dynamic";
@@ -42,7 +43,7 @@ function boundaries() {
 }
 
 function sourcePath(roomId: string, segmentId: string) {
-  return `/sessions/${encodeURIComponent(roomId)}#transcript-segment-${encodeURIComponent(segmentId)}`;
+  return `/sessions/${encodeURIComponent(roomId)}?mode=transcript#transcript-segment-${encodeURIComponent(segmentId)}`;
 }
 
 export async function POST(request: Request) {
@@ -74,21 +75,25 @@ export async function POST(request: Request) {
 
   try {
     const result = await prisma.$transaction(async (tx: any) => {
-      const desk = await readTranscriptCorrectionDesk({ prisma: tx, roomId, actor });
-      if (!desk.gate.allowed || !desk.playback || !desk.projectId) {
+      const desk = await readTranscriptCorrectionDesk({ prisma: tx, roomId, actor, segmentId });
+      if (!desk.gate.allowed || !desk.playback) {
         throw new TranscriptCorrectionError(
-          desk.gate.error || "Released recording-backed transcript evidence in a writable Nest is required.",
+          desk.gate.error || "The selected recording-backed transcript is unavailable.",
           409,
           "TRANSCRIPT_DRAFT_EVIDENCE_HELD",
         );
       }
-      const project = await tx.studioProject.findUnique({ where: { id: desk.projectId }, select: { slug: true } });
-      if (!project?.slug) throw new TranscriptCorrectionError("The transcript's writable Nest is unavailable.", 409, "TRANSCRIPT_DRAFT_PROJECT_HELD");
       const segment = desk.segments.find((candidate: any) => candidate.id === segmentId);
       if (!segment) throw new TranscriptCorrectionError("The transcript segment changed or is unavailable.", 409, "STALE_TRANSCRIPT_SEGMENT");
       if (segment.providerTextSha256 !== expectedProviderTextSha256) {
         throw new TranscriptCorrectionError("Provider transcript evidence changed. Refresh before starting the draft.", 409, "STALE_PROVIDER_EVIDENCE");
       }
+
+      // Session participation does not grant access to the coach's whole Nest.
+      // Private writing belongs in the author's Home Nest; the original Session
+      // and recording stay source links, not the destination's access policy.
+      if (!actor.email) throw new TranscriptCorrectionError("Sign in again to open your writing space.", 409, "TRANSCRIPT_DRAFT_ACCOUNT_REQUIRED");
+      const project = await ensureHomeNestForEmailInTransaction(actor.email, tx);
 
       const replay = await tx.studioDocument.findUnique({
         where: { stableId: documentStableId },
@@ -100,7 +105,7 @@ export async function POST(request: Request) {
           select: { payloadJson: true },
         });
         const payload = record(operation?.payloadJson);
-        if (replay.projectId !== desk.projectId
+        if (replay.projectId !== project.id
             || replay.personalOwnerUserId !== actor.id
             || replay.sourcePath !== exactSourcePath
             || payload.clientRequestId !== clientRequestId
@@ -124,7 +129,7 @@ export async function POST(request: Request) {
       const draftBody = openingNote || "Start writing from this exact source moment. The transcript and recording remain unchanged.";
       const document = await tx.studioDocument.create({
         data: {
-          projectId: desk.projectId,
+          projectId: project.id,
           personalOwnerUserId: actor.id,
           stableId: documentStableId,
           title,
@@ -164,7 +169,7 @@ export async function POST(request: Request) {
       const draftBlock = document.blocks.find((block: any) => block.order === 1) ?? document.blocks[0];
       await tx.studioDocumentOperation.create({
         data: {
-          projectId: desk.projectId,
+          projectId: project.id,
           documentId: document.id,
           actorEmail: text(actor.email, 320) || null,
           origin: "human",
@@ -177,6 +182,7 @@ export async function POST(request: Request) {
             clientRequestId,
             createdByUserId: actor.id,
             roomId,
+            sourceProjectId: desk.projectId,
             transcriptJobId: desk.transcriptJobId,
             segmentId,
             startSeconds: segment.startSeconds,

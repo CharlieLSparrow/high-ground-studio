@@ -115,6 +115,7 @@ export async function resolveTranscriptEvidenceInTransaction(input: {
     prisma: input.tx,
     roomId: input.roomId,
     actor: input.actor,
+    segmentId: input.segmentId,
   });
   const playback = desk.playback;
   if (!desk.gate.allowed || !playback) {

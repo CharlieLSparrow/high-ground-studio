@@ -73,7 +73,7 @@ export async function POST(request: Request) {
       // Access, consent/release evidence, playback promotion, and the current
       // correction overlay are re-read inside the same transaction that creates
       // committed work. A stale client snapshot cannot sever the source anchor.
-      const desk = await readTranscriptCorrectionDesk({ prisma: tx, roomId, actor });
+      const desk = await readTranscriptCorrectionDesk({ prisma: tx, roomId, actor, segmentId });
       if (!desk.gate.allowed || !desk.playback) {
         throw new TranscriptCorrectionError(
           desk.gate.error || "Released recording-backed transcript evidence is required.",

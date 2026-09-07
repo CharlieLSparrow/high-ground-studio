@@ -115,7 +115,7 @@ describe("explicit transcript-derived task", () => {
       body: JSON.stringify({ roomId: "room-1", segmentId: "segment-1", clientRequestId: "guessed-task", expectedProviderTextSha256: "a".repeat(64), title: "Unauthorized task" }),
     }));
     expect(response.status).toBe(404);
-    expect(readTranscriptCorrectionDesk).toHaveBeenCalledWith({ prisma: tx, roomId: "room-1", actor: expect.objectContaining({ id: "outsider" }) });
+    expect(readTranscriptCorrectionDesk).toHaveBeenCalledWith({ prisma: tx, roomId: "room-1", segmentId: "segment-1", actor: expect.objectContaining({ id: "outsider" }) });
     expect(tx.actionItem.findUnique).not.toHaveBeenCalled();
     expect(tx.actionItem.create).not.toHaveBeenCalled();
     expect(recordSucceededTranscriptWorkAction).not.toHaveBeenCalled();

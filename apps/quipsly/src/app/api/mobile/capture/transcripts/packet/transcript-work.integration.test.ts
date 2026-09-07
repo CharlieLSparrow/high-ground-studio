@@ -7,12 +7,16 @@ import { getPrismaClient } from "@/lib/prisma";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 import { buildCoachingPacketFromTranscriptJob, transcriptPacketSnapshot } from "@/lib/server/coaching-packets";
 import { loadSessionWork } from "@/lib/server/session-work";
+import { resolveStudioProjectAccess } from "@/lib/server/studio-project-access";
 import { MOBILE_CAPTURE_CONSENT_EVIDENCE_VERSION, MOBILE_CAPTURE_CONSENT_POLICY_VERSION,
   MOBILE_CAPTURE_CONSENT_TEXT, MOBILE_CAPTURE_CONSENT_TEXT_SHA256 } from "@/lib/mobile-capture-consent-policy.js";
 import { POST } from "../notes/route";
 import { POST as mergeTask } from "./actions/route";
 import { POST as mergeGoal } from "./goals/route";
 import { GET as readPacket } from "./route";
+import { POST as createTask } from "../tasks/route";
+import { POST as createGoal } from "../goals/route";
+import { POST as createDraft } from "../drafts/route";
 
 jest.mock("@/lib/prisma", () => ({ getPrismaClient: jest.fn() }));
 jest.mock("@/lib/server/quipsly-session", () => ({ getQuipslySessionFromRequest: jest.fn() }));
@@ -241,6 +245,75 @@ async function automaticSession(tx: Prisma.TransactionClient, f: Awaited<ReturnT
 
 (enabled ? describe : describe.skip)("transcript work against a fresh database fixture", () => {
   afterAll(async () => { if (enabled) await actualPrisma.getPrismaClient().$disconnect(); });
+
+  it.each(["task", "goal", "note", "draft"] as const)("creates a %s from the selected older recording while a newer recording is processing", async (kind) => {
+    await withFixture(async (tx, f) => {
+      await existingWork(tx, f, "task");
+      const newerAsset = await tx.recordingAsset.create({ data: {
+        roomId: f.room.id, kind: "LOCAL_AUDIO", status: "UPLOADING", fileName: "Newer recording.m4a",
+      } });
+      await tx.transcriptJob.create({ data: {
+        roomId: f.room.id, assetId: newerAsset.id, requestedBy: f.owner.id, status: "QUEUED",
+        createdAt: new Date(f.job.createdAt.getTime() + 60_000),
+      } });
+      const handler = { task: createTask, goal: createGoal, note: POST, draft: createDraft }[kind];
+      const response = await handler(new Request(`http://localhost/api/mobile/capture/transcripts/${kind}s`, {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ roomId: f.room.id, segmentId: f.segments[0]!.id,
+          expectedProviderTextSha256: sha(f.segments[0]!.text), clientRequestId: randomUUID(),
+          title: "Keep writing from this passage", body: f.sourceText,
+          kind: "SESSION_NOTE", visibility: "AUTHOR_PRIVATE" }),
+      }));
+      const payload = await response.json();
+      expect({ status: response.status, error: payload.error }).toEqual({ status: 200, error: undefined });
+      if (kind === "draft") {
+        const document = await tx.studioDocument.findUniqueOrThrow({ where: { id: payload.document.id }, include: { project: true } });
+        const sourceRoom = await tx.callRoom.findUniqueOrThrow({ where: { id: f.room.id } });
+        expect(document.projectId).not.toBe(sourceRoom.projectId);
+        expect(document.personalOwnerUserId).toBe(f.owner.id);
+        expect(document.isPrivate).toBe(true);
+        expect(payload.document.href).toContain(`project=${encodeURIComponent(document.project.slug)}`);
+        for (const [email, allowed] of [[f.owner.primaryEmail, true], [f.member.primaryEmail, false], [f.outsider.primaryEmail, false]] as const) {
+          expect(await resolveStudioProjectAccess({ projectSlug: document.project.slug, email, action: "write", prisma: tx as never }))
+            .toMatchObject({ allowed });
+        }
+        const operation = await tx.studioDocumentOperation.findFirstOrThrow({ where: { documentId: payload.document.id } });
+        expect(operation.projectId).toBe(document.projectId);
+        expect(operation.payloadJson).toMatchObject({ transcriptJobId: f.job.id, recordingAssetId: f.asset.id, segmentId: f.segments[0]!.id });
+      } else {
+        const saved = kind === "task" ? await tx.actionItem.findUniqueOrThrow({ where: { id: payload.task.id } })
+          : kind === "goal" ? await tx.goal.findUniqueOrThrow({ where: { id: payload.goal.id } })
+            : await tx.coachingNote.findUniqueOrThrow({ where: { id: payload.note.id } });
+        expect(saved.sourceJson).toMatchObject({ transcriptJobId: f.job.id, recordingAssetId: f.asset.id, segmentId: f.segments[0]!.id });
+      }
+    });
+  });
+
+  it.each(["task", "goal", "note", "draft"] as const)("does not create a %s from another room's passage or for an uninvited account", async (kind) => {
+    await withFixture(async (tx, f) => {
+      await existingWork(tx, f, "task");
+      const other = await fixture(tx);
+      const handler = { task: createTask, goal: createGoal, note: POST, draft: createDraft }[kind];
+      const counts = async () => Promise.all([
+        tx.actionItem.count({ where: { roomId: f.room.id } }),
+        tx.goal.count({ where: { roomId: f.room.id } }),
+        tx.coachingNote.count({ where: { roomId: f.room.id } }),
+        tx.studioDocument.count({ where: { personalOwnerUserId: { in: [f.owner.id, f.outsider.id] } } }),
+      ]);
+      const before = await counts();
+      for (const [user, segment] of [[f.owner, other.segments[0]!], [f.outsider, f.segments[0]!]] as const) {
+        f.actAs(user);
+        const response = await handler(new Request(`http://localhost/api/mobile/capture/transcripts/${kind}s`, {
+          method: "POST", headers: { "content-type": "application/json" },
+          body: JSON.stringify({ roomId: f.room.id, segmentId: segment.id,
+            expectedProviderTextSha256: sha(segment.text), clientRequestId: randomUUID(),
+            title: "Must not be created", body: segment.text, kind: "SESSION_NOTE", visibility: "AUTHOR_PRIVATE" }),
+        }));
+        expect(response.status).toBe(404);
+        expect(await counts()).toEqual(before);
+      }
+    });
+  });
 
   it("creates useful shared work automatically, attributes it to the speaker, and reuses it on retry", async () => {
     await withFixture(async (tx, f) => {

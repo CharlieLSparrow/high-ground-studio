@@ -3,11 +3,13 @@
 import { getPrismaClient } from "@/lib/prisma";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 import { readTranscriptCorrectionDesk } from "@/lib/server/transcript-corrections";
+import { ensureHomeNestForEmailInTransaction } from "@/lib/server/home-nest";
 
 import { POST } from "./route";
 
 jest.mock("@/lib/prisma", () => ({ getPrismaClient: jest.fn() }));
 jest.mock("@/lib/server/quipsly-session", () => ({ getQuipslySessionFromRequest: jest.fn() }));
+jest.mock("@/lib/server/home-nest", () => ({ ensureHomeNestForEmailInTransaction: jest.fn() }));
 jest.mock("@/lib/server/transcript-corrections", () => {
   class MockTranscriptCorrectionError extends Error {
     constructor(message: string, public status: number, public code: string) { super(message); }
@@ -34,7 +36,10 @@ function request(overrides: Record<string, unknown> = {}) {
 }
 
 describe("source-linked transcript writing draft", () => {
-  beforeEach(() => jest.clearAllMocks());
+  beforeEach(() => {
+    jest.clearAllMocks();
+    jest.mocked(ensureHomeNestForEmailInTransaction).mockResolvedValue({ id: "project-1", slug: "high-ground" } as never);
+  });
 
   it("rejects before private reads when signed out", async () => {
     jest.mocked(getQuipslySessionFromRequest).mockResolvedValue(null as any);
@@ -46,7 +51,8 @@ describe("source-linked transcript writing draft", () => {
   it("creates one private draft with exact immutable transcript provenance", async () => {
     jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({ user: { id: "user-1", primaryEmail: "person@example.com", isStaff: false } } as any);
     jest.mocked(readTranscriptCorrectionDesk).mockResolvedValue(desk as any);
-    const document = { id: "document-1", projectId: "project-1", title: "Episode opening", sourcePath: "/sessions/room-1#transcript-segment-segment-1", blocks: [{ id: "source-block", order: 0 }, { id: "draft-block", order: 1 }] };
+    jest.mocked(ensureHomeNestForEmailInTransaction).mockResolvedValue({ id: "project-home", slug: "my-home" } as never);
+    const document = { id: "document-1", projectId: "project-home", title: "Episode opening", sourcePath: "/sessions/room-1?mode=transcript#transcript-segment-segment-1", blocks: [{ id: "source-block", order: 0 }, { id: "draft-block", order: 1 }] };
     const tx = {
       studioProject: { findUnique: jest.fn().mockResolvedValue({ slug: "high-ground" }) },
       studioDocument: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn().mockResolvedValue(document) },
@@ -56,8 +62,10 @@ describe("source-linked transcript writing draft", () => {
     const response = await POST(request());
     const payload = await response.json();
     expect(response.status).toBe(200);
+    expect(payload.document.href).toContain("project=my-home");
+    expect(ensureHomeNestForEmailInTransaction).toHaveBeenCalledWith("person@example.com", tx);
     expect(payload).toMatchObject({ ok: true, idempotentReplay: false, document: { id: "document-1", href: expect.stringContaining("block=draft-block") }, boundaries: { sourceAnchorPreserved: true, taskCreated: false, goalCreated: false, calendarMutated: false, externalDelivery: false, publication: false } });
-    expect(tx.studioDocument.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ projectId: "project-1", personalOwnerUserId: "user-1", projectionStatus: "draft", isPrivate: true, blocks: { create: expect.arrayContaining([expect.objectContaining({ externalId: "transcript:job-1:segment-1", body: expect.stringContaining("> Why are you excited?") }), expect.objectContaining({ externalId: "transcript-draft:job-1:segment-1", body: "Answer this honestly." })]) } }) }));
+    expect(tx.studioDocument.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ projectId: "project-home", personalOwnerUserId: "user-1", projectionStatus: "draft", isPrivate: true, blocks: { create: expect.arrayContaining([expect.objectContaining({ externalId: "transcript:job-1:segment-1", body: expect.stringContaining("> Why are you excited?") }), expect.objectContaining({ externalId: "transcript-draft:job-1:segment-1", body: "Answer this honestly." })]) } }) }));
     expect(tx.studioDocumentOperation.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ operationType: "create-draft-from-transcript-segment", reversible: true, payloadJson: expect.objectContaining({ surface: "quipsly-transcript-review", segmentId: "segment-1", providerTextSha256: "a".repeat(64), recordingAssetId: "asset-1", sourceMutated: false, externalSideEffects: false, boundaries: expect.objectContaining({ providerTranscriptMutated: false, publication: false }) }) }) }));
   });
 
@@ -69,12 +77,13 @@ describe("source-linked transcript writing draft", () => {
     const response = await POST(request({ expectedProviderTextSha256: "b".repeat(64) }));
     expect(response.status).toBe(409);
     expect(tx.studioDocument.create).not.toHaveBeenCalled();
+    expect(ensureHomeNestForEmailInTransaction).not.toHaveBeenCalled();
   });
 
   it("replays the same actor request without duplicating the document", async () => {
     jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({ user: { id: "user-1", primaryEmail: "person@example.com" } } as any);
     jest.mocked(readTranscriptCorrectionDesk).mockResolvedValue(desk as any);
-    const document = { id: "document-1", projectId: "project-1", personalOwnerUserId: "user-1", title: "Episode opening", sourcePath: "/sessions/room-1#transcript-segment-segment-1", blocks: [{ id: "source-block", order: 0 }, { id: "draft-block", order: 1 }] };
+    const document = { id: "document-1", projectId: "project-1", personalOwnerUserId: "user-1", title: "Episode opening", sourcePath: "/sessions/room-1?mode=transcript#transcript-segment-segment-1", blocks: [{ id: "source-block", order: 0 }, { id: "draft-block", order: 1 }] };
     const tx = {
       studioProject: { findUnique: jest.fn().mockResolvedValue({ slug: "high-ground" }) },
       studioDocument: { findUnique: jest.fn().mockResolvedValue(document), create: jest.fn() },

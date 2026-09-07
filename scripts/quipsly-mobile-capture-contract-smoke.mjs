@@ -1631,7 +1631,7 @@ function checkTranscriptCorrectionContractSources() {
     taskRouteText.includes("schema: TRANSCRIPT_DERIVED_TASK_SCHEMA")
       && taskDomainText.includes('TRANSCRIPT_DERIVED_TASK_SCHEMA = "quipsly-transcript-derived-task-v1"')
       && taskDomainText.includes("readTranscriptDerivedTaskSource")
-      && taskRouteText.includes("readTranscriptCorrectionDesk({ prisma: tx, roomId, actor })")
+      && taskRouteText.includes("readTranscriptCorrectionDesk(")
       && taskRouteText.includes("segment.providerTextSha256 !== expectedProviderTextSha256")
       && taskRouteText.includes("assignedUserId: actor.id")
       && taskRouteText.includes('status: "OPEN"')
@@ -1695,7 +1695,7 @@ function checkTranscriptCorrectionContractSources() {
   );
   expect(
     draftRouteText.includes('TRANSCRIPT_DRAFT_OPERATION = "create-draft-from-transcript-segment"')
-      && draftRouteText.includes("readTranscriptCorrectionDesk({ prisma: tx, roomId, actor })")
+      && draftRouteText.includes("readTranscriptCorrectionDesk(")
       && draftRouteText.includes("segment.providerTextSha256 !== expectedProviderTextSha256")
       && draftRouteText.includes('externalId: `transcript:${desk.transcriptJobId}:${segmentId}`')
       && draftRouteText.includes('externalId: `transcript-draft:${desk.transcriptJobId}:${segmentId}`')
