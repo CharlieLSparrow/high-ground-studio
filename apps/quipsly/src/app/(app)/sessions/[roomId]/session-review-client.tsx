@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import {
+  ArrowLeft,
   ArrowRight,
   CalendarDays,
   CheckCircle2,
@@ -4116,6 +4117,13 @@ export function SessionReviewClient({
       : liveProjectSlug
         ? "Nest"
         : null;
+  const parentWorkspaceHref = episodeRoomHref(collaborationContext)
+    || coachingEngagementHref(collaborationContext)
+    || (collaborationContext.project ? `/nests/${encodeURIComponent(collaborationContext.project.slug)}` : null);
+  const parentWorkspaceTitle = collaborationContext.episode?.title
+    || collaborationContext.engagement?.title
+    || collaborationContext.project?.name
+    || "Shared space";
   const liveDockConfig = useMemo<LiveSessionDockConfig>(
     () => ({
       callRoomId: roomId,
@@ -4201,6 +4209,15 @@ export function SessionReviewClient({
   return (
     <div className="min-w-0 space-y-4 overflow-x-hidden sm:space-y-8">
       <section className="rounded-3xl border border-[#e5d5b7] bg-white/85 p-4 shadow-sm sm:p-6">
+        {parentWorkspaceHref ? (
+          <nav aria-label="Parent workspace" className="mb-2">
+            <Link href={parentWorkspaceHref} aria-label={`Back to ${parentWorkspaceTitle}`}
+              className="inline-flex min-h-11 max-w-full items-center gap-2 rounded-lg px-1 text-sm font-bold text-[#41624b] underline-offset-4 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2">
+              <ArrowLeft size={16} className="shrink-0" aria-hidden="true" />
+              <span className="break-words">{parentWorkspaceTitle}</span>
+            </Link>
+          </nav>
+        ) : null}
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#987443] sm:text-xs sm:tracking-[0.22em]">

@@ -362,6 +362,46 @@ describe("Session review goal candidates", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it.each(["transcript", "notes", "work", "recordings", "outputs"] as const)("keeps the shared client space one step away in %s", (mode) => {
+    global.fetch = jest.fn().mockResolvedValue({ ok: true, json: async () => packet() }) as typeof fetch;
+    render(<SessionReviewClient roomId="room-1" sessionTitle="Writing check-in" mode={mode}
+      collaborationContext={{ project: null, episode: null, binding: "COACHING_ENGAGEMENT",
+        engagement: { id: "client-space", title: "Riley's coaching space", status: "ACTIVE", projectSlug: "coach" } }}
+      consentSnapshot={{ total: 2, granted: 2, transcriptionPermitted: 2 }} />);
+    expect(within(screen.getByRole("navigation", { name: "Parent workspace" }))
+      .getByRole("link", { name: "Back to Riley's coaching space" }))
+      .toHaveAttribute("href", "/coaching/engagements/client-space");
+  });
+
+  it("does not invent a parent workspace for a standalone Session", () => {
+    global.fetch = jest.fn() as typeof fetch;
+    render(<SessionReviewClient roomId="room-1" sessionTitle="Personal recording" mode="notes"
+      consentSnapshot={{ total: 1, granted: 1, transcriptionPermitted: 1 }} />);
+    expect(screen.queryByRole("navigation", { name: "Parent workspace" })).not.toBeInTheDocument();
+  });
+
+  it("returns a podcast recording to its episode rather than the containing Nest", () => {
+    global.fetch = jest.fn() as typeof fetch;
+    render(<SessionReviewClient roomId="room-1" sessionTitle="Episode take" mode="notes"
+      collaborationContext={{ project: { id: "project-1", name: "Our podcast", slug: "our-podcast" },
+        episode: { id: "episode-1", title: "Be curious", slug: "episode-9" }, engagement: null, binding: "EPISODE" }}
+      consentSnapshot={{ total: 2, granted: 2, transcriptionPermitted: 2 }} />);
+    expect(within(screen.getByRole("navigation", { name: "Parent workspace" }))
+      .getByRole("link", { name: "Back to Be curious" }))
+      .toHaveAttribute("href", "/nests/our-podcast/episodes/episode-9");
+  });
+
+  it("returns other shared recordings to their canonical Nest", () => {
+    global.fetch = jest.fn() as typeof fetch;
+    render(<SessionReviewClient roomId="room-1" sessionTitle="Research conversation" mode="notes"
+      collaborationContext={{ project: { id: "project-1", name: "Our research", slug: "our-research" },
+        episode: null, engagement: null, binding: "PROJECT" }}
+      consentSnapshot={{ total: 2, granted: 2, transcriptionPermitted: 2 }} />);
+    expect(within(screen.getByRole("navigation", { name: "Parent workspace" }))
+      .getByRole("link", { name: "Back to Our research" }))
+      .toHaveAttribute("href", "/nests/our-research");
+  });
+
   it("does not mistake an empty standalone-consent projection for the complete release gate", () => {
     global.fetch = jest.fn() as typeof fetch;
     render(<SessionReviewClient
