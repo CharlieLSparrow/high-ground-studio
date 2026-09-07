@@ -49,6 +49,13 @@ Its production builds use ignored `.next-release` directories, so the gate can
 run while the local Nest dev server continues using `.next`; a release check
 must not require restarting the dogfood app.
 
+Each Next.js output directory also receives an ignored, generated
+`.quipsly-tsconfig-*.json` containing only that lane's route validators. The
+source `tsconfig.json` stays stable; stale generated routes from a different
+lab must not enter a production build. `pnpm --filter quipsly typecheck` runs
+route generation and TypeScript against the selected lane. Check this isolation
+with `node --test apps/quipsly/scripts/typescript-config.test.mjs`.
+
 For visible product behavior, use the signed-in dogfood sequence in
 [Nest local development](../runbooks/quipsly-nest-local.md): create records,
 link them, find them across Home Nest, Work, Today, and Search, then reload.

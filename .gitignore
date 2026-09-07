@@ -10,6 +10,7 @@ node_modules/
 dist/
 .next/
 **/.next-*/
+apps/quipsly/.quipsly-tsconfig-*.json
 out/
 .vite/
 .build/

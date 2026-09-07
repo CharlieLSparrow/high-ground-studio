@@ -19,17 +19,11 @@
     "plugins": [{ "name": "next" }]
   },
   "include": [
-    "next-env.d.ts",
-    "**/*.ts",
-    "**/*.tsx",
-    ".next/types/**/*.ts",
-    ".next/dev/types/**/*.ts",
-    ".next-release/types/**/*.ts",
-    ".next-release/dev/types/**/*.ts",
-    ".next-recovery-lab/types/**/*.ts",
-    ".next-recovery-lab/dev/types/**/*.ts",
-    ".next-mobile-dogfood/types/**/*.ts",
-    ".next-mobile-dogfood/dev/types/**/*.ts"
+    "*.ts",
+    "*.tsx",
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "scripts/**/*.ts"
   ],
   "exclude": ["node_modules"]
 }

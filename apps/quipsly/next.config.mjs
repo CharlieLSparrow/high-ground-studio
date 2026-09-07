@@ -1,5 +1,6 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { ensureBuildTypescriptConfig } from "./scripts/typescript-config.mjs";
 
 const studioDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.join(studioDir, "../..");
@@ -52,6 +53,7 @@ const config = {
     "esbuild",
   ],
   typescript: {
+    tsconfigPath: ensureBuildTypescriptConfig(buildDistDir),
     ignoreBuildErrors: ignoreBuildTypeErrors,
   },
   webpack(webpackConfig) {
