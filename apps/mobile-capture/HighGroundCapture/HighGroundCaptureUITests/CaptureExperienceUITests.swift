@@ -4590,14 +4590,7 @@ final class CaptureExperienceUITests: XCTestCase {
     }
 
     func testTranscriptPreviewVoiceIdentityStaysDisabled() throws {
-        app.tabBars.buttons["Notes"].tap()
-        XCTAssertTrue(app.descendants(matching: .any)["CaptureLibraryView"].waitForExistence(timeout: 5))
-
-        let reviewLink = app.buttons["CaptureTranscriptReviewPreviewLink"]
-        XCTAssertTrue(reviewLink.waitForExistence(timeout: 5))
-        reviewLink.tap()
-
-        XCTAssertTrue(app.scrollViews["CaptureTranscriptReviewView"].waitForExistence(timeout: 5))
+        openPreviewTranscriptReview()
         let tools = app.descendants(matching: .any)["CaptureTranscriptToolsDisclosure"].firstMatch
         reveal(tools, searchAboveFirst: false)
         XCTAssertTrue(tools.waitForExistence(timeout: 5))
@@ -4623,14 +4616,7 @@ final class CaptureExperienceUITests: XCTestCase {
     }
 
     func testTranscriptReviewKeepsPreviewAndAIBehindTruthBoundaries() throws {
-        app.tabBars.buttons["Notes"].tap()
-        XCTAssertTrue(app.descendants(matching: .any)["CaptureLibraryView"].waitForExistence(timeout: 5))
-
-        let reviewLink = app.buttons["CaptureTranscriptReviewPreviewLink"]
-        XCTAssertTrue(reviewLink.waitForExistence(timeout: 5))
-        reviewLink.tap()
-
-        XCTAssertTrue(app.scrollViews["CaptureTranscriptReviewView"].waitForExistence(timeout: 5))
+        openPreviewTranscriptReview()
         let previewBoundary = app.descendants(matching: .any)["CaptureTranscriptPreviewBoundary"].firstMatch
         reveal(previewBoundary)
         XCTAssertTrue(previewBoundary.exists)
