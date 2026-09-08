@@ -1,4 +1,5 @@
 import { fireEvent, render, screen } from "@testing-library/react";
+import { renderToString } from "react-dom/server";
 import { CoachingSpaceTabs } from "./coaching-space-tabs";
 
 const panels = {
@@ -10,6 +11,21 @@ const panels = {
 
 describe("CoachingSpaceTabs", () => {
   beforeEach(() => window.history.replaceState({}, "", "/"));
+
+  it("does not advertise clickable tabs before restoring the saved section during hydration", () => {
+    const shell = document.createElement("div");
+    shell.innerHTML = renderToString(<CoachingSpaceTabs {...panels} />);
+    const serverTabs = [...shell.querySelectorAll<HTMLButtonElement>('[role="tab"]')];
+    expect(serverTabs).toHaveLength(4);
+    expect(serverTabs.every((tab) => tab.disabled)).toBe(true);
+    window.history.replaceState({}, "", "#relationship-conversation");
+    render(<CoachingSpaceTabs {...panels} />);
+    expect(screen.getByRole("tab", { name: "Chat" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tab", { name: "Work" })).toBeEnabled();
+    fireEvent.click(screen.getByRole("tab", { name: "Work" }));
+    expect(window.location.hash).toBe("#relationship-work");
+    expect(screen.getByLabelText("Note draft")).toBeVisible();
+  });
 
   it("opens on work, keeps settings out of the way, and retains drafts across switches", () => {
     render(<CoachingSpaceTabs {...panels} />);

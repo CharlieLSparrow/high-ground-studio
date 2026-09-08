@@ -18,6 +18,9 @@ export function CoachingSpaceTabs({ work, conversation, sessions, people }: {
   people?: ReactNode;
 }) {
   const [active, setActive] = useState<Section>("work");
+  // The server cannot read the saved URL hash. Do not accept a click against
+  // its default section before hydration restores the actual navigation.
+  const [ready, setReady] = useState(false);
   const id = useId();
   const buttons = useRef<Partial<Record<Section, HTMLButtonElement | null>>>({});
   const available = sections.filter((section) => section.id !== "people" || people);
@@ -29,6 +32,7 @@ export function CoachingSpaceTabs({ work, conversation, sessions, people }: {
       setActive(target && (target.id !== "people" || people) ? target.id : "work");
     };
     restoreSection();
+    setReady(true);
     window.addEventListener("hashchange", restoreSection);
     return () => window.removeEventListener("hashchange", restoreSection);
   }, [people]);
@@ -46,6 +50,7 @@ export function CoachingSpaceTabs({ work, conversation, sessions, people }: {
         id={`${id}-${section.id}-tab`}
         role="tab"
         type="button"
+        disabled={!ready}
         aria-selected={active === section.id}
         aria-controls={`${id}-${section.id}-panel`}
         tabIndex={active === section.id ? 0 : -1}

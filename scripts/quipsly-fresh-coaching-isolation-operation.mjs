@@ -252,8 +252,9 @@ try {
       assert.equal(projectsResponse?.status(), 200);
       await page
         .getByRole("heading", {
-          name: "Nests hold the work. Documents hold the text.",
+          name: "Your Nests",
           exact: true,
+          level: 1,
         })
         .waitFor({ timeout: 30_000 });
       await assertNoHorizontalOverflow(
