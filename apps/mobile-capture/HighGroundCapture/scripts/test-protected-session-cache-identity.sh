@@ -9,6 +9,7 @@ trap 'rm -rf "$temporary_root"' EXIT
 
 xcrun swiftc \
   "$capture_root/HighGroundCapture/ProtectedSessionCacheIdentity.swift" \
+  "$capture_root/HighGroundCapture/CaptureTranscriptReadScope.swift" \
   "$capture_root/Testing/ProtectedSessionCacheIdentityTests.swift" \
   -o "$temporary_root/ProtectedSessionCacheIdentityTests"
 

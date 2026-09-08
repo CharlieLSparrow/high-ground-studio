@@ -113,6 +113,7 @@ jobs:
           bash apps/mobile-capture/HighGroundCapture/scripts/verify-release-source.sh
           bash scripts/test-capture-session-deep-links.sh
           bash apps/mobile-capture/HighGroundCapture/scripts/test-coaching-work-save.sh
+          bash apps/mobile-capture/HighGroundCapture/scripts/test-protected-session-cache-identity.sh
           bash scripts/test-capture-document-note-edits.sh
           bash scripts/test-capture-task-reminders.sh
           bash scripts/test-capture-voice-writing-continuation.sh

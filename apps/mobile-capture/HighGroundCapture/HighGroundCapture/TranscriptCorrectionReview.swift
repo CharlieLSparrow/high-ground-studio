@@ -1046,6 +1046,8 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
     private var activeRoomID: String?
     private var activeRecordingAssetID: String?
     private var activeTranscriptJobID: String?
+    private var activeReadScope: CaptureTranscriptReadScope?
+    private var packetReadID: UUID?
     private var includesFollowUpWorkspace = true
     private var automaticPacketAttemptKeys: Set<String> = []
     private var packetSnapshotSHA256: String?
@@ -1195,11 +1197,20 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
         let trimmedTranscriptJobID = transcriptJobID?.trimmingCharacters(in: .whitespacesAndNewlines)
         let normalizedRecordingAssetID = trimmedRecordingAssetID?.isEmpty == false ? trimmedRecordingAssetID : nil
         let normalizedTranscriptJobID = trimmedTranscriptJobID?.isEmpty == false ? trimmedTranscriptJobID : nil
+        let readScope = CaptureTranscriptReadScope(roomID: normalizedRoomID,
+            recordingAssetID: normalizedRecordingAssetID, transcriptJobID: normalizedTranscriptJobID,
+            ownerAccountID: AuthManager.currentStoredOwnerID())
         if activeRoomID != normalizedRoomID
             || activeRecordingAssetID != normalizedRecordingAssetID
-            || activeTranscriptJobID != normalizedTranscriptJobID {
+            || activeTranscriptJobID != normalizedTranscriptJobID
+            || activeReadScope?.ownerAccountID != readScope.ownerAccountID {
             removePreparedMentorReport()
+            clearFollowUpWorkspace()
+            desk = nil
         }
+        activeReadScope = readScope
+        packetReadID = nil
+        isLoading = false
         activeRoomID = normalizedRoomID
         activeRecordingAssetID = normalizedRecordingAssetID
         activeTranscriptJobID = normalizedTranscriptJobID
@@ -1315,12 +1326,13 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
 
         isLoading = true
         errorMessage = nil
-        defer { isLoading = false }
+        defer { if activeReadScope == readScope { isLoading = false } }
         do {
             var request = URLRequest(url: url)
             request.cachePolicy = .reloadIgnoringLocalCacheData
             request.setValue("no-cache", forHTTPHeaderField: "Cache-Control")
             let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
+            guard readScope.permitsDisplay(active: activeReadScope, currentOwnerAccountID: AuthManager.currentStoredOwnerID()) else { return }
             guard response.statusCode < 400 else {
                 throw captureTranscriptError(data: data, fallback: "Transcript review could not load.")
             }
@@ -1337,6 +1349,7 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
             message = nil
             if includeFollowUpWorkspace {
                 await loadPacketCandidates(roomID: roomID)
+                guard readScope.permitsDisplay(active: activeReadScope, currentOwnerAccountID: AuthManager.currentStoredOwnerID()) else { return }
                 await prepareFollowUpIfNeeded(roomID: roomID)
             } else {
                 clearFollowUpWorkspace()
@@ -1351,6 +1364,7 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
                 }
             }
         } catch {
+            guard readScope.permitsDisplay(active: activeReadScope, currentOwnerAccountID: AuthManager.currentStoredOwnerID()) else { return }
             packetGoalCandidates = []
             packetGoalMergeTargets = []
             packetNoteCandidates = []
@@ -2109,13 +2123,31 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
 
     func refreshFollowUp(roomID: String) async {
         guard activeRoomID == roomID, !isUsingProtectedCache else { return }
+        guard let scope = activeReadScope,
+              scope.permitsDisplay(active: activeReadScope, currentOwnerAccountID: AuthManager.currentStoredOwnerID()) else {
+            activeReadScope = nil
+            packetReadID = nil
+            clearFollowUpWorkspace()
+            desk = nil
+            return
+        }
         await loadPacketCandidates(roomID: roomID, preserveOnFailure: true)
     }
 
     private func loadPacketCandidates(roomID: String, preserveOnFailure: Bool = false) async {
-        let requestedOwnerID = AuthManager.currentStoredOwnerID()
+        guard let readScope = activeReadScope, readScope.roomID == roomID,
+              readScope.permitsDisplay(active: activeReadScope, currentOwnerAccountID: AuthManager.currentStoredOwnerID()) else { return }
+        // A background poll must not overtake an in-flight foreground refresh.
+        if preserveOnFailure, packetReadID != nil { return }
+        let requestID = UUID()
+        packetReadID = requestID
+        defer { if packetReadID == requestID { packetReadID = nil } }
         guard AuthManager.shared.networkActionsAllowed,
               var components = URLComponents(string: "\(baseURL)/api/mobile/capture/transcripts/packet") else {
+            if preserveOnFailure {
+                packetReviewError = "Updates paused. Your loaded work is still here; refresh when you're connected."
+                return
+            }
             packetGoalCandidates = []
             packetGoalMergeTargets = []
             packetNoteCandidates = []
@@ -2143,7 +2175,8 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
                 throw captureTranscriptError(data: data, fallback: "Packet goal candidates could not load.")
             }
             let payload = try JSONDecoder().decode(CapturePacketGoalReviewEnvelope.self, from: data)
-            guard activeRoomID == roomID, AuthManager.currentStoredOwnerID() == requestedOwnerID else { return }
+            guard packetReadID == requestID,
+                  readScope.permitsDisplay(active: activeReadScope, currentOwnerAccountID: AuthManager.currentStoredOwnerID()) else { return }
             guard payload.ok else { throw captureTranscriptError(data: data, fallback: payload.error ?? "Packet goal candidates could not load.") }
             packetGoalCandidates = payload.packet?.goalCandidates ?? []
             packetGoalMergeTargets = payload.packet?.goalMergeTargets ?? []
@@ -2178,7 +2211,8 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
                 followUpPreparationFailed = false
             }
         } catch {
-            guard activeRoomID == roomID, AuthManager.currentStoredOwnerID() == requestedOwnerID else { return }
+            guard packetReadID == requestID,
+                  readScope.permitsDisplay(active: activeReadScope, currentOwnerAccountID: AuthManager.currentStoredOwnerID()) else { return }
             if preserveOnFailure, ![401, 403, 404].contains(responseStatus ?? 0) {
                 packetReviewError = "Updates paused. Your loaded work is still here; refresh when you're connected."
                 return
