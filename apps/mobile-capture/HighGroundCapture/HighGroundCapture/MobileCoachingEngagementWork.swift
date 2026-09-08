@@ -62,6 +62,7 @@ struct MobileCoachingWorkPage: Codable, Hashable {
     let pageSize: Int
     let query: String
     let kind: String
+    var tag: String? = nil
 }
 
 /// Only completed reads extend the history. Changing search immediately drops
@@ -72,12 +73,16 @@ struct MobileCoachingWorkHistory {
     }
     private(set) var query = ""
     private(set) var kind = "ALL"
+    private(set) var tag = ""
     private(set) var cursors: [String?] = [nil]
 
-    mutating func request(search: String?, kind nextKind: String? = nil, including cursor: String?) -> [String?] {
+    mutating func request(search: String?, kind nextKind: String? = nil, tag nextTag: String? = nil, including cursor: String?) -> [String?] {
         let nextQuery = search.map(Self.normalizedSearch) ?? query
         let kind = nextKind ?? self.kind
-        if nextQuery != query || kind != self.kind { query = nextQuery; self.kind = kind; cursors = [nil] }
+        let tag = nextTag ?? self.tag
+        if nextQuery != query || kind != self.kind || tag != self.tag {
+            query = nextQuery; self.kind = kind; self.tag = tag; cursors = [nil]
+        }
         var requested = cursors
         if let cursor, !requested.contains(cursor) { requested.append(cursor) }
         return requested

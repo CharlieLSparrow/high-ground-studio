@@ -179,6 +179,15 @@ struct CaptureDeepLinkHarness {
         guard history.request(search: nil, kind: "TASK", including: nil) == [nil], history.kind == "TASK" else {
             fatalError("Changing the work type must not reuse the all-work cursor")
         }
+        history.didLoad(history.request(search: nil, including: "tasks-page"))
+        guard history.request(search: nil, tag: "research", including: nil) == [nil], history.tag == "research" else {
+            fatalError("Selecting a tag must reset the unfiltered page history")
+        }
+        history.didLoad(history.request(search: nil, including: "research-page"))
+        guard history.request(search: nil, including: nil) == [nil, "research-page"],
+              history.request(search: nil, tag: "", including: nil) == [nil], history.tag.isEmpty else {
+            fatalError("Refreshing retains the tag; clearing it resets its page history")
+        }
         let historyWorkspaceJSON = #"{"id":"space","title":"Our work","status":"ACTIVE","canWrite":true,"currentUserId":"client","members":[],"entries":[]}"#
         do {
             let old = try JSONDecoder().decode(MobileCoachingEngagementWorkspace.self, from: Data(historyWorkspaceJSON.utf8))

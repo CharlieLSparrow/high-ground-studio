@@ -20,6 +20,47 @@ describe("client-space live refresh", () => {
   });
   afterEach(() => {cleanup(); jest.useRealTimers(); jest.restoreAllMocks();});
 
+  it("follows a shared tag through server history and clears it without losing a draft", async () => {
+    const tag = {id: "research", label: "Research", hexColor: "#506b46", isActive: true};
+    const tagged = {...original, tags: [tag]};
+    const older = {...tagged, id: "older-research", title: "An earlier research thought"};
+    fetchMock.mockResolvedValueOnce(response(snapshot([older], {page: {nextCursor: null}})))
+      .mockResolvedValueOnce(response(snapshot([tagged])));
+    render(<CoachingEngagementWorkspace {...props} initialEntries={[tagged]} initialPage={{nextCursor: "unfiltered-page"}} />);
+    fireEvent.click(screen.getByRole("button", {name: `Open task: ${original.title}`}));
+    fireEvent.click(screen.getByText("Edit"));
+    fireEvent.change(screen.getByLabelText("task details"), {target: {value: "Keep this unfinished thought"}});
+    fireEvent.click(screen.getByRole("button", {name: "Show work tagged Research"}));
+    await act(async () => {jest.advanceTimersByTime(300);});
+    expect(fetchMock.mock.calls[0][0]).toContain("tag=research");
+    expect(fetchMock.mock.calls[0][0]).not.toContain("cursor=");
+    expect(screen.getByLabelText("Active tag filter")).toHaveTextContent("Research");
+    expect(screen.getByRole("button", {name: `Open task: ${older.title}`})).toBeVisible();
+    expect(screen.queryByRole("button", {name: `Open task: ${original.title}`})).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", {name: "Clear filter"}));
+    await act(async () => {jest.advanceTimersByTime(300);});
+    expect(fetchMock.mock.calls[1][0]).not.toContain("tag=");
+    fireEvent.click(screen.getByRole("button", {name: `Open task: ${original.title}`}));
+    expect(screen.getByRole("textbox", {name: "task details"})).toHaveValue("Keep this unfinished thought");
+  });
+
+  it("cancels an older refresh when a tag is selected and rejects its late response", async () => {
+    const tagged = {...original, tags: [{id: "research", label: "Research", hexColor: "#506b46"}]};
+    let finishOld!: (value: unknown) => void;
+    fetchMock.mockImplementationOnce(() => new Promise(resolve => {finishOld = resolve;}))
+      .mockResolvedValueOnce(response(snapshot([tagged])));
+    render(<CoachingEngagementWorkspace {...props} initialEntries={[tagged]} />);
+    fireEvent.click(screen.getByRole("button", {name: "Refresh work"}));
+    const signal = fetchMock.mock.calls[0][1].signal;
+    fireEvent.click(screen.getByRole("button", {name: "Show work tagged Research"}));
+    expect(signal.aborted).toBe(true);
+    await act(async () => {jest.advanceTimersByTime(300);});
+    expect(fetchMock.mock.calls[1][0]).toContain("tag=research");
+    await act(async () => {finishOld(response(snapshot([{...original, title: "Old unfiltered reply"}])));});
+    expect(screen.getByRole("button", {name: `Open task: ${original.title}`})).toBeVisible();
+    expect(screen.queryByText("Old unfiltered reply")).not.toBeInTheDocument();
+  });
+
   it("finds older tasks even when the initial page is filled with notes", async () => {
     fetchMock.mockResolvedValue(response(snapshot([original], {page: {nextCursor: null}})));
     render(<CoachingEngagementWorkspace {...props} initialEntries={[{...original, id: "new-note", kind: "NOTE", title: "A new reflection"}]}

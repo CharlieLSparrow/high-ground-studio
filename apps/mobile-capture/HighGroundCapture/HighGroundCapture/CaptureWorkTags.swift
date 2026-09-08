@@ -68,24 +68,36 @@ struct CaptureTaskTagPicker: View {
 struct CaptureWorkTags: View {
     let tags: [MobileWorkTagLabel]
     let workID: String
+    var onSelect: ((MobileWorkTagLabel) -> Void)? = nil
 
     var body: some View {
         CaptureTagWrapLayout(spacing: 6) {
             ForEach(tags) { tag in
-                let color = CaptureTagColor(hex: tag.hexColor)
-                Text(tag.label)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(color.map { $0.usesWhiteText ? Color.white : Color.black } ?? CapturePalette.ink)
-                    .padding(.horizontal, 9)
-                    .padding(.vertical, 5)
-                    .background(color.map { Color(.sRGB, red: $0.red, green: $0.green, blue: $0.blue, opacity: 1) }
-                        ?? CapturePalette.ink.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
-                    .fixedSize(horizontal: false, vertical: true)
-                    .accessibilityLabel("Tag: \(tag.label)\(tag.isActive ? "" : ", archived")")
-                    .accessibilityIdentifier("CaptureWorkTag_\(workID)_\(tag.id)")
+                if let onSelect {
+                    Button { onSelect(tag) } label: {
+                        chip(tag).frame(minHeight: 44).contentShape(Rectangle())
+                    }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Show work tagged \(tag.label)")
+                        .accessibilityIdentifier("CaptureWorkTagFilter_\(workID)_\(tag.id)")
+                } else { chip(tag) }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func chip(_ tag: MobileWorkTagLabel) -> some View {
+        let color = CaptureTagColor(hex: tag.hexColor)
+        return Text(tag.label)
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(color.map { $0.usesWhiteText ? Color.white : Color.black } ?? CapturePalette.ink)
+            .padding(.horizontal, 9)
+            .padding(.vertical, 5)
+            .background(color.map { Color(.sRGB, red: $0.red, green: $0.green, blue: $0.blue, opacity: 1) }
+                ?? CapturePalette.ink.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
+            .fixedSize(horizontal: false, vertical: true)
+            .accessibilityLabel("Tag: \(tag.label)\(tag.isActive ? "" : ", archived")")
+            .accessibilityIdentifier("CaptureWorkTag_\(workID)_\(tag.id)")
     }
 }
 

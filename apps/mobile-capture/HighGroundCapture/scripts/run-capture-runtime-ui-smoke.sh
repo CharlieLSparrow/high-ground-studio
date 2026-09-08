@@ -196,6 +196,13 @@ case "$TEST_MODE" in
       exit 2
     fi
     ;;
+  work-tag-filter)
+    TEST_CASE="testSharedWorkTagFiltersAndClears"
+    if [[ -z "$TEST_SESSION_ID" || -z "$TEST_TASK_ID" || -z "$TEST_TAG_LABEL" ]]; then
+      echo "Tag filtering requires an exact Session, retained task, and shared tag label." >&2
+      exit 2
+    fi
+    ;;
   conversation-task)
     TEST_CASE="testConversationCreatesCanonicalTaskAndEditsItAfterRelaunch"
     if [[ -z "$TEST_SESSION_ID" || -z "$TEST_TASK_EDIT_SOURCE_TITLE" || -z "$TEST_TASK_EDIT_UPDATED_TITLE" ]]; then

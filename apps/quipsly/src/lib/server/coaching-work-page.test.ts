@@ -4,10 +4,22 @@ const at = "2026-09-07T00:00:00.000Z";
 const page = (query = "", space = "space", actor = "client") => coachingWorkPage(new URLSearchParams(query), space, actor);
 
 it("bounds queries and pages before accessing the database", () => {
-  for (const query of ["pageSize=0", "pageSize=101", "pageSize=1.2", "pageSize=NaN", "kind=unknown", `q=${"x".repeat(201)}`, `item=${"x".repeat(241)}`]) {
+  for (const query of ["pageSize=0", "pageSize=101", "pageSize=1.2", "pageSize=NaN", "kind=unknown", `q=${"x".repeat(201)}`, `item=${"x".repeat(241)}`, `tag=${"x".repeat(241)}`]) {
     expect(() => page(query)).toThrow("INVALID_WORK_QUERY");
   }
   expect(page("q=++one+++thought++&kind=note&pageSize=12")).toMatchObject({q: "one thought", kind: "NOTE", take: 13});
+});
+
+it("filters by exact canonical tag before paging and cannot reuse another tag's cursor", () => {
+  const scoped = page("tag=research&pageSize=1");
+  for (const kind of ["NOTE", "TASK", "GOAL"] as const) {
+    expect(scoped.where(kind).AND).toContainEqual({tagLinks: {some: {tagId: "research"}}});
+  }
+  const result = scoped.result([{id: "t", kind: "TASK", updatedAt: at}, {id: "n", kind: "NOTE", updatedAt: at}]);
+  expect(result.page.tag).toBe("research");
+  expect(() => page(`tag=research&cursor=${result.page.nextCursor}`)).not.toThrow();
+  expect(() => page(`tag=writing&cursor=${result.page.nextCursor}`)).toThrow("INVALID_WORK_CURSOR");
+  expect(() => page(`cursor=${result.page.nextCursor}`)).toThrow("INVALID_WORK_CURSOR");
 });
 
 it("binds a continuation to its actor, space, query, kind, and exact-item scope", () => {

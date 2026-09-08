@@ -3068,6 +3068,47 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         reopened.tap()
         XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label == %@", "Tag: Draft ready")).firstMatch.waitForExistence(timeout: 15),
                       "Complete and reopen must preserve the task's tags.")
+        app.buttons["Cancel"].firstMatch.tap()
+        app.buttons["Done"].firstMatch.tap()
+        if let sharedTagLabel {
+            exerciseSharedTagFilter(app, taskID: taskID, label: sharedTagLabel)
+        }
+    }
+
+    func testSharedWorkTagFiltersAndClears() throws {
+        let credentials = try runtimeSmokeCredentials()
+        let taskID = try XCTUnwrap(credentials.taskID)
+        let label = try XCTUnwrap(credentials.tagLabel)
+        let app = try launchSignedInCaptureApp(initialTab: "record")
+        selectRequestedSession(in: app, credentials: credentials)
+        let space = app.buttons["CaptureOpenCoachingEngagement"].firstMatch
+        XCTAssertTrue(space.waitForExistence(timeout: 10))
+        space.tap()
+        exerciseSharedTagFilter(app, taskID: taskID, label: label)
+    }
+
+    private func exerciseSharedTagFilter(_ app: XCUIApplication, taskID: String, label: String) {
+        let workspace = app.scrollViews["CaptureCoachingEngagementWorkspace"].firstMatch
+        XCTAssertTrue(workspace.waitForExistence(timeout: 15))
+        let tagButton = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@ AND label == %@",
+            "CaptureWorkTagFilter_\(taskID)_", "Show work tagged \(label)")).firstMatch
+        XCTAssertTrue(waitForRuntimeElement(tagButton, in: app, timeout: 20, swipeAttempts: 12))
+        attachRuntimeScreenshot(app, name: "Before selecting shared work tag")
+        tagButton.tap()
+        let clear = app.buttons["CaptureCoachingClearTagFilter"].firstMatch
+        let filterOpened = clear.waitForExistence(timeout: 10)
+        if !filterOpened {
+            attachRuntimeScreenshot(app, name: "Tag selection did not reveal its filter")
+            attachRecordingIdentity(app.debugDescription, name: "Tag selection accessibility tree")
+        }
+        XCTAssertTrue(filterOpened)
+        XCTAssertTrue(clear.isHittable, "Clearing a tag stays available while scrolling through filtered work.")
+        let work = app.descendants(matching: .any)["CaptureCoachingWork_\(taskID)"].firstMatch
+        XCTAssertTrue(waitForRuntimeElement(work, in: app, timeout: 20, swipeAttempts: 8))
+        attachRuntimeScreenshot(app, name: "Related work under its shared tag")
+        clear.tap()
+        XCTAssertTrue(clear.waitForNonExistence(timeout: 10))
+        XCTAssertTrue(waitForRuntimeElement(work, in: app, timeout: 20, swipeAttempts: 8))
     }
 
     func testTranscriptWordsSaveWithoutListeningAndPersistAfterRelaunch() throws {

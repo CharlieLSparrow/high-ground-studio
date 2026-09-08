@@ -79,3 +79,12 @@ it("shows shared tag colors and searches their names without nesting links insid
   expect(screen.getByText("#Research")).toHaveStyle({backgroundColor: "#23543a", color: "#ffffff"});
   expect(screen.queryByRole("link")).not.toBeInTheDocument();
 });
+
+it("explains an empty tag result and provides a direct way back", () => {
+  const clear = jest.fn();
+  render(<CoachingWorkCollection entries={[]} selectedId={null} onSelect={jest.fn()}
+    tagFilter={{id: "research", label: "Research", hexColor: "#23543a", isActive: true}} onTagFilter={clear}>{null}</CoachingWorkCollection>);
+  expect(screen.getByRole("status")).toHaveTextContent("No matching work. Try another search or clear the tag filter.");
+  fireEvent.click(screen.getByRole("button", {name: "Clear filter"}));
+  expect(clear).toHaveBeenCalledWith(null);
+});

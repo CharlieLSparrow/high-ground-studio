@@ -41,6 +41,8 @@ export type CoachingEngagementWorkMember = {
   role: string;
 };
 
+export type CoachingWorkTag = NonNullable<CoachingEngagementWorkEntry["tags"]>[number];
+
 function activeStatus(entry: CoachingEngagementWorkEntry) {
   return entry.kind === "TASK"
     ? entry.status === "OPEN"
@@ -102,9 +104,10 @@ function CoachingEngagementWorkspaceContent({
     currentUserId;
   const [entries, setEntries] = useState(initialEntries);
   const [search, setSearch] = useState("");
+  const [tagFilter, setTagFilter] = useState<CoachingWorkTag | null>(null);
   const searchRef = useRef("");
   const [nextCursor, setNextCursor] = useState(initialPage?.nextCursor ?? null);
-  const history = useRef<{query: string; kind: string; cursors: Array<string | null>; ids: Set<string>}>({query: "", kind: "ALL", cursors: [null], ids: new Set(initialEntries.map((entry) => entry.id))});
+  const history = useRef<{query: string; kind: string; tag: string; cursors: Array<string | null>; ids: Set<string>}>({query: "", kind: "ALL", tag: "", cursors: [null], ids: new Set(initialEntries.map((entry) => entry.id))});
   const [resultIds, setResultIds] = useState<Set<string> | null>(null);
   const [createOpen, setCreateOpen] = useState(initialEntries.length === 0);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -158,9 +161,10 @@ function CoachingEngagementWorkspaceContent({
     [entries, resultIds],
   );
   const visibleEntries = entries.filter(
-    (entry) => (!resultIds || resultIds.has(entry.id)) && (workFilter === "ALL" || entry.kind === workFilter),
+    (entry) => (!resultIds || resultIds.has(entry.id)) && (workFilter === "ALL" || entry.kind === workFilter)
+      && (!tagFilter || entry.tags?.some(tag => tag.id === tagFilter.id)),
   );
-  const queryPending = !refreshError && (history.current.query !== search || history.current.kind !== workFilter);
+  const queryPending = !refreshError && (history.current.query !== search || history.current.kind !== workFilter || history.current.tag !== (tagFilter?.id ?? ""));
 
   // A saved link can point beyond the loaded history. Resolve that one item
   // through the same authorized read API, rather than downloading every page.
@@ -197,18 +201,19 @@ function CoachingEngagementWorkspaceContent({
     const timeout = window.setTimeout(() => controller.abort(), 10_000);
     setRefreshing(true);
     try {
-      const changedQuery = history.current.query !== search || history.current.kind !== workFilter;
+      const changedQuery = history.current.query !== search || history.current.kind !== workFilter || history.current.tag !== (tagFilter?.id ?? "");
       const cursors = changedQuery ? [null] : [...history.current.cursors];
       if (moreCursor && !cursors.includes(moreCursor)) cursors.push(moreCursor);
       const collected = new Map<string, CoachingEngagementWorkEntry>();
       let latest: {members: CoachingEngagementWorkMember[]; canWrite: boolean; page?: {nextCursor?: string | null}} | undefined;
       for (let index = 0; index <= cursors.length; index++) {
         const focusedItem = index === cursors.length ? selection.current : null;
-        if (index === cursors.length && (search || !focusedItem || collected.has(focusedItem))) break;
+        if (index === cursors.length && (search || tagFilter || !focusedItem || collected.has(focusedItem))) break;
         const cursor = cursors[index];
         const params = new URLSearchParams();
         if (search.trim()) params.set("q", search.trim());
         if (workFilter !== "ALL") params.set("kind", workFilter);
+        if (tagFilter) params.set("tag", tagFilter.id);
         if (cursor) params.set("cursor", cursor);
         if (focusedItem) params.set("item", focusedItem);
         const response = await fetch(`/api/coaching/engagements/${encodeURIComponent(engagementId)}/work${params.size ? `?${params}` : ""}`, {
@@ -242,7 +247,7 @@ function CoachingEngagementWorkspaceContent({
       const previousIds = history.current.ids;
       setEntries((current) => [...current.filter((entry) => !collected.has(entry.id) && (changedQuery || !previousIds.has(entry.id))), ...collected.values()]
         .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)));
-      history.current = {query: search, kind: workFilter, cursors, ids: new Set(collected.keys())};
+      history.current = {query: search, kind: workFilter, tag: tagFilter?.id ?? "", cursors, ids: new Set(collected.keys())};
       setResultIds(new Set(collected.keys()));
       setNextCursor(latest?.page?.nextCursor ?? null);
       setMembers(latest.members);
@@ -260,7 +265,7 @@ function CoachingEngagementWorkspaceContent({
         setRefreshing(false);
       }
     }
-  }, [engagementId, currentUserId, search, workFilter]);
+  }, [engagementId, currentUserId, search, workFilter, tagFilter]);
 
   const searchInitialized = useRef(false);
   useEffect(() => {
@@ -270,10 +275,25 @@ function CoachingEngagementWorkspaceContent({
   }, [search, refreshEntries]);
 
   function searchWork(value: string) {
+    cancelPriorRead();
     searchRef.current = value;
     setRefreshError(null);
     setSearch(value);
     setNextCursor(null);
+  }
+
+  function cancelPriorRead() {
+    refreshController.current?.abort();
+    refreshController.current = null;
+    setRefreshing(false);
+  }
+
+  function filterByTag(tag: CoachingWorkTag | null) {
+    cancelPriorRead();
+    setRefreshError(null);
+    setTagFilter(tag);
+    setNextCursor(null);
+    selectEntry(null);
   }
 
   useEffect(() => {
@@ -577,7 +597,7 @@ function CoachingEngagementWorkspaceContent({
           ["ALL", "All"], ["NOTE", "Notes"], ["TASK", "Tasks"], ["GOAL", "Goals"],
         ] as const).map(([value, label]) => (
           <button key={value} type="button" aria-pressed={workFilter === value}
-            onClick={() => {setRefreshError(null); setWorkFilter(value);}}
+            onClick={() => {cancelPriorRead(); setRefreshError(null); setWorkFilter(value); setNextCursor(null);}}
             className={`min-h-11 rounded-lg px-2 text-sm font-bold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#41624b] ${workFilter === value ? "bg-[#41624b] text-white shadow-sm" : "text-[#5e503c] hover:bg-[#e6dcc7]"}`}>
             {label}
           </button>
@@ -732,7 +752,8 @@ function CoachingEngagementWorkspaceContent({
 
       <CoachingWorkCollection entries={visibleEntries} selectedId={selectedId} onSelect={selectEntry}
         search={search} onSearch={searchWork} loading={refreshing || queryPending}
-        hasMore={Boolean(nextCursor) && history.current.kind === workFilter && history.current.query === search}
+        tagFilter={tagFilter} onTagFilter={filterByTag}
+        hasMore={Boolean(nextCursor) && history.current.kind === workFilter && history.current.query === search && history.current.tag === (tagFilter?.id ?? "")}
         onLoadMore={() => { if (nextCursor) void refreshEntries(nextCursor); }}
         busyIds={busyIds} onToggleTask={canWrite ? (entry) => void updateEntry(entry, {status: entry.status === "DONE" ? "OPEN" : "DONE"}) : undefined}>
         {entries.map((entry) => {
@@ -843,10 +864,10 @@ function CoachingEngagementWorkspaceContent({
           <div className="rounded-2xl border border-dashed border-[#d8c7a7] bg-white p-6 text-center">
             <CircleDot className="mx-auto text-[#41624b]" aria-hidden="true" />
             <p className="mt-3 font-black text-[#3d3122]">
-              {workFilter === "ALL" ? "Nothing to chase down yet." : `No ${workFilter === "NOTE" ? "notes" : workFilter === "TASK" ? "tasks" : "goals"} yet.`}
+              {tagFilter || search ? "No matching work." : workFilter === "ALL" ? "Nothing to chase down yet." : `No ${workFilter === "NOTE" ? "notes" : workFilter === "TASK" ? "tasks" : "goals"} yet.`}
             </p>
             <p className="mt-1 text-sm text-[#765f40]">
-              {canWrite
+              {tagFilter || search ? "Try another search or clear the tag filter." : canWrite
                 ? "Add a note, task, or goal above. It will still be here for the next session."
                 : "Shared work will appear here when someone in this space adds it."}
             </p>

@@ -330,6 +330,7 @@ final class MobileCoachingEngagementWorkspaceClient: ObservableObject {
     private var loadGeneration = 0
     var searchQuery: String { history.query }
     var searchKind: String { history.kind }
+    var searchTag: String { history.tag }
 
     let engagementID: String
     private let itemID: String?
@@ -377,11 +378,12 @@ final class MobileCoachingEngagementWorkspaceClient: ObservableObject {
         )
     }
 
-    func load(search: String? = nil, kind: String? = nil, including nextCursor: String? = nil, force: Bool = false) async {
+    func load(search: String? = nil, kind: String? = nil, tag: String? = nil, including nextCursor: String? = nil, force: Bool = false) async {
         let query = search.map(MobileCoachingWorkHistory.normalizedSearch) ?? history.query
         let kind = kind ?? history.kind
-        guard force || !isLoading || query != history.query || kind != history.kind else { return }
-        let cursors = history.request(search: query, kind: kind, including: nextCursor)
+        let tag = tag ?? history.tag
+        guard force || !isLoading || query != history.query || kind != history.kind || tag != history.tag else { return }
+        let cursors = history.request(search: query, kind: kind, tag: tag, including: nextCursor)
         loadGeneration += 1
         let generation = loadGeneration
         isLoading = true
@@ -391,7 +393,7 @@ final class MobileCoachingEngagementWorkspaceClient: ObservableObject {
             var latest: MobileCoachingEngagementWorkspace?
             var collected: [String: MobileCoachingEngagementWorkEntry] = [:]
             for cursor in cursors {
-                let (payload, response) = try await request(method: "GET", query: query, kind: kind, cursor: cursor)
+                let (payload, response) = try await request(method: "GET", query: query, kind: kind, tag: tag, cursor: cursor)
                 guard generation == loadGeneration else { return }
                 guard response.statusCode < 400, payload.ok, let engagement = payload.engagement,
                       engagement.id == engagementID,
@@ -636,6 +638,7 @@ final class MobileCoachingEngagementWorkspaceClient: ObservableObject {
         body: [String: Any]? = nil,
         query: String = "",
         kind: String = "ALL",
+        tag: String = "",
         cursor: String? = nil
     ) async throws -> (MobileCoachingEngagementWorkspaceResponse, HTTPURLResponse) {
         guard let encodedID = engagementID.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed),
@@ -646,6 +649,7 @@ final class MobileCoachingEngagementWorkspaceClient: ObservableObject {
         if method == "GET", let itemID { items.append(URLQueryItem(name: "item", value: itemID)) }
         if !query.isEmpty { items.append(URLQueryItem(name: "q", value: query)) }
         if kind != "ALL" { items.append(URLQueryItem(name: "kind", value: kind)) }
+        if !tag.isEmpty { items.append(URLQueryItem(name: "tag", value: tag)) }
         if let cursor { items.append(URLQueryItem(name: "cursor", value: cursor)) }
         if !items.isEmpty { components.queryItems = items }
         guard let url = components.url else { throw coachingClientError("This work list could not be opened.") }
@@ -3331,6 +3335,7 @@ struct CaptureCoachingEngagementWorkspaceView: View {
     @State private var newWorkDraft: MobileCoachingWorkDraft?
     @State private var editingEntry: MobileCoachingEngagementWorkEntry?
     @State private var workSearch = ""
+    @State private var selectedTag: MobileWorkTagLabel?
     @State private var showsConversation = false
 
     init(
@@ -3354,7 +3359,9 @@ struct CaptureCoachingEngagementWorkspaceView: View {
     }
 
     private var entries: [MobileCoachingEngagementWorkEntry] {
-        (client.workspace?.entries ?? []).filter(filter.includes)
+        (client.workspace?.entries ?? []).filter {
+            filter.includes($0) && (selectedTag == nil || $0.tags?.contains(where: { $0.id == selectedTag?.id }) == true)
+        }
     }
 
     var body: some View {
@@ -3374,16 +3381,18 @@ struct CaptureCoachingEngagementWorkspaceView: View {
                 .pickerStyle(.segmented)
                 .accessibilityIdentifier("CaptureCoachingWorkFilter")
 
-                if client.isLoading, client.workspace == nil {
+                if client.isLoading, client.workspace == nil || entries.isEmpty {
                     ProgressView("Loading client space…")
                         .frame(maxWidth: .infinity, alignment: .center)
                         .padding(.vertical, 40)
                 } else if entries.isEmpty {
                     ContentUnavailableView {
-                        Label("Ready when you are", systemImage: "square.and.pencil")
+                        Label(selectedTag != nil || !workSearch.isEmpty ? "No matching work" : "Ready when you are", systemImage: "square.and.pencil")
                     } description: {
                         Text(
-                            client.workspace?.canWrite == true
+                            selectedTag != nil || !workSearch.isEmpty
+                                ? "Try another search or clear the tag filter."
+                                : client.workspace?.canWrite == true
                                 ? "Use Note, Task, or Goal above whenever something is worth keeping."
                                 : "Shared work will appear here when it is available to you."
                         )
@@ -3396,7 +3405,8 @@ struct CaptureCoachingEngagementWorkspaceView: View {
                 }
 
                 if let page = client.workspace?.page, let cursor = page.nextCursor,
-                   page.kind == filter.apiKind, page.query == MobileCoachingWorkHistory.normalizedSearch(workSearch) {
+                   page.kind == filter.apiKind, page.query == MobileCoachingWorkHistory.normalizedSearch(workSearch),
+                   (page.tag ?? "") == (selectedTag?.id ?? "") {
                     Button {
                         Task { await client.load(including: cursor) }
                     } label: {
@@ -3426,11 +3436,30 @@ struct CaptureCoachingEngagementWorkspaceView: View {
         }
         .background(CaptureCanvas())
         .navigationTitle(client.workspace?.title ?? engagement.title)
+        .accessibilityIdentifier("CaptureCoachingEngagementWorkspace")
+        .safeAreaInset(edge: .top, spacing: 0) {
+            if let selectedTag {
+                HStack {
+                    CaptureWorkTags(tags: [selectedTag], workID: "filter")
+                    Button { self.selectedTag = nil } label: {
+                        Label("Clear filter", systemImage: "xmark")
+                            .frame(minHeight: 44)
+                            .contentShape(Rectangle())
+                    }
+                        .accessibilityIdentifier("CaptureCoachingClearTagFilter")
+                }
+                .padding(.horizontal, 20)
+                .padding(.vertical, 6)
+                .background(CapturePalette.canvas)
+                .accessibilityElement(children: .contain)
+                .accessibilityIdentifier("CaptureCoachingActiveTagFilter")
+            }
+        }
         .searchable(text: $workSearch, prompt: "Find notes, tasks, or goals")
-        .task(id: "\(workSearch)|\(filter.apiKind)") {
-            guard !previewOnly, MobileCoachingWorkHistory.normalizedSearch(workSearch) != client.searchQuery || filter.apiKind != client.searchKind else { return }
+        .task(id: "\(workSearch)|\(filter.apiKind)|\(selectedTag?.id ?? "")") {
+            guard !previewOnly, MobileCoachingWorkHistory.normalizedSearch(workSearch) != client.searchQuery || filter.apiKind != client.searchKind || (selectedTag?.id ?? "") != client.searchTag else { return }
             do { try await Task.sleep(for: .milliseconds(300)) } catch { return }
-            await client.load(search: workSearch, kind: filter.apiKind)
+            await client.load(search: workSearch, kind: filter.apiKind, tag: selectedTag?.id ?? "")
         }
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(CapturePalette.canvas, for: .navigationBar)
@@ -3537,7 +3566,6 @@ struct CaptureCoachingEngagementWorkspaceView: View {
                 .accessibilityIdentifier("CaptureCoachingRemovalUndoBar")
             }
         }
-        .accessibilityIdentifier("CaptureCoachingEngagementWorkspace")
     }
 
     private var quickAddWork: some View {
@@ -3960,7 +3988,7 @@ struct CaptureCoachingEngagementWorkspaceView: View {
                 .font(.headline)
                 .strikethrough(entry.isComplete)
             if let tags = entry.tags, !tags.isEmpty {
-                CaptureWorkTags(tags: tags, workID: entry.id)
+                CaptureWorkTags(tags: tags, workID: entry.id, onSelect: { selectedTag = $0 })
             }
             if entry.visibility == "PRIVATE" {
                 HStack(spacing: 6) {

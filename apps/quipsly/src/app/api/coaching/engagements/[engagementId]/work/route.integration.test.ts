@@ -413,6 +413,38 @@ if (enabled) {
     finally { await prisma.coachingEngagementMember.update({where: {engagementId_userId: {engagementId, userId: client!.id}}, data: {status: "ACTIVE"}}); }
   });
 
+  it("filters exact shared tags across history without exposing private or removed work", async () => {
+    const tag = await prisma.studioTag.create({data: {projectId, slug: `filter-${nonce}`, label: "Our focus", hexColor: "#506b46"}});
+    const other = await prisma.studioTag.create({data: {projectId, slug: `other-filter-${nonce}`, label: "Our focus"}});
+    const first = await seed("TASK");
+    const second = await seed("GOAL");
+    const removed = await seed("TASK", "engagement-shared", true);
+    await prisma.actionItemTagLink.createMany({data: [{actionItemId: first.id, tagId: tag.id}, {actionItemId: removed.id, tagId: tag.id}]});
+    await prisma.goalTagLink.create({data: {goalId: second.id, tagId: tag.id}});
+    const privateNote = await prisma.coachingNote.create({data: {engagementId, authorUserId: coach!.id,
+      title: "A private focus", body: "Not shared", visibility: "AUTHOR_PRIVATE", tagLinks: {create: {tagId: tag.id}}}});
+    await prisma.coachingNote.create({data: {engagementId, authorUserId: coach!.id, title: "Another focus", body: "Same label, different tag",
+      visibility: "SESSION_SHARED", tagLinks: {create: {tagId: other.id}}}});
+    const query = new URLSearchParams({tag: tag.id, pageSize: "1"});
+    const seen: string[] = [];
+    do {
+      const read = await act("GET", {}, client!, query.toString());
+      expect(read.status).toBe(200);
+      expect(read.body.engagement.page.tag).toBe(tag.id);
+      seen.push(...read.body.engagement.entries.map((entry: {id: string}) => entry.id));
+      const cursor = read.body.engagement.page.nextCursor;
+      if (!cursor) break;
+      expect(seen.length).toBeLessThan(3);
+      expect((await act("GET", {}, client!, new URLSearchParams({tag: other.id, cursor}).toString())).status).toBe(400);
+      query.set("cursor", cursor);
+    } while (true);
+    expect(new Set(seen)).toEqual(new Set([first.id, second.id]));
+    expect((await act("GET", {}, coach!, `tag=${tag.id}&kind=NOTE`)).body.engagement.entries.map((entry: {id: string}) => entry.id)).toEqual([privateNote.id]);
+    expect((await act("GET", {}, client!, `tag=${tag.id}&kind=NOTE`)).body.engagement.entries).toEqual([]);
+    expect((await act("GET", {}, client!, "tag=unknown-tag")).body.engagement.entries).toEqual([]);
+    expect((await act("GET", {}, outsider!, `tag=${tag.id}`)).status).toBe(404);
+  });
+
   it("searches beyond the first hundred records and excludes removed and private matches before paging", async () => {
     const at = new Date("2026-01-01T00:00:00Z");
     const records = Array.from({length: 125}, (_, index) => ({
