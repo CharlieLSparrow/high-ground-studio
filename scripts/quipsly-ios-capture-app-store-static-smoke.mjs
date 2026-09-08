@@ -2,6 +2,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { createSourceCheckReport } from "./lib/source-check-report.mjs";
+import { rawCaptureSemanticColor } from "./lib/capture-semantic-color-check.mjs";
 
 import { parseXmlPropertyList } from "./lib/parse-xml-property-list.mjs";
 import {
@@ -395,11 +396,11 @@ const allCaptureSwiftSource = fs.readdirSync(captureSwiftSourceDirectory)
   .filter((name) => name.endsWith(".swift"))
   .map((name) => fs.readFileSync(path.join(captureSwiftSourceDirectory, name), "utf8"))
   .join("\n");
-const rawSemanticOutlier = allCaptureSwiftSource.match(/(?:Color)?\.(?:green|orange)\b/);
+const rawSemanticOutlier = rawCaptureSemanticColor(allCaptureSwiftSource);
 assert(
   rawSemanticOutlier == null,
   "Capture success and warning states use the adaptive sage and aged-brass semantic tokens.",
-  { label: "shipping Capture Swift surfaces contain no raw system green or orange", forbidden: rawSemanticOutlier?.[0] },
+  { label: "shipping Capture Swift surfaces contain no raw system green or orange", forbidden: rawSemanticOutlier },
 );
 assert(
   (allCaptureSwiftSource.match(/\.buttonStyle\(\.borderedProminent\)/g) ?? []).length === 1,
