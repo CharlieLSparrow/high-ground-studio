@@ -253,6 +253,26 @@ export async function verifyResultBundle(bundlePath, selectors) {
   return verifyResultTests(JSON.parse(stdout), selectors);
 }
 
+// An exit-code failure must not hide the named test failures in the result
+// bundle. Keep both signals, including a missing/unreadable bundle, in the
+// final platform summary so diagnosing CI does not require scanning build logs.
+export async function verifyPlatformExecution({ result, bundlePath, selectors }, verifyBundle = verifyResultBundle) {
+  const problems = [];
+  let verifiedCount = 0;
+  try {
+    verifyExecution({ ...result, expectedCount: selectors.length });
+  } catch (error) {
+    problems.push(error instanceof Error ? error.message : String(error));
+  }
+  try {
+    verifiedCount = await verifyBundle(bundlePath, selectors);
+  } catch (error) {
+    problems.push(error instanceof Error ? error.message : String(error));
+  }
+  if (problems.length) throw new Error(problems.join("; "));
+  return verifiedCount;
+}
+
 async function runXcodebuild(arguments_) {
   return new Promise((resolve, reject) => {
     const child = spawn("xcodebuild", arguments_, {
@@ -320,11 +340,11 @@ async function main() {
           resultBundlePath: bundlePath,
         },
       ));
-      verifyExecution({
-        ...result,
-        expectedCount: execution.selectors.length,
+      executedCount += await verifyPlatformExecution({
+        result,
+        bundlePath,
+        selectors: execution.selectors,
       });
-      executedCount += await verifyResultBundle(bundlePath, execution.selectors);
     } catch (error) {
       // Platform failures are independent. Retain their evidence and exercise
       // the other destination once; do not retry failures into a green result.

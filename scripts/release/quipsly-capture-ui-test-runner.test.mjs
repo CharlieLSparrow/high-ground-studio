@@ -15,6 +15,7 @@ import {
   skippedTestCount,
   verifyExecution,
   verifyResultTests,
+  verifyPlatformExecution,
   resolvedSimulatorDestination,
   ensureXcodeDestination,
 } from "./quipsly-capture-ui-test-runner.mjs";
@@ -203,6 +204,25 @@ const planned = [
 
 test("structured results prove each planned identity regardless of execution order", () => {
   assert.equal(verifyResultTests(resultReport([["testSecond"], ["testFirst"]]), planned), 2);
+});
+
+test("a failed process still reports exact failed test identities from the bundle", async () => {
+  let reads = 0;
+  await assert.rejects(verifyPlatformExecution({
+    result: { output: "Executed 2 tests, with 1 failure", exitCode: 65 },
+    selectors: planned, bundlePath: "/tmp/failure.xcresult",
+  }, async (bundle, selectors) => {
+    reads += 1;
+    assert.equal(bundle, "/tmp/failure.xcresult");
+    return verifyResultTests(resultReport([["testFirst"], ["testSecond", "Failed"]]), selectors);
+  }), /exit code 65.*not passed: .*testSecond \(Failed\)/);
+  assert.equal(reads, 1);
+});
+
+test("unreadable diagnostic evidence cannot swallow the original process failure", async () => {
+  await assert.rejects(verifyPlatformExecution({
+    result: { output: "", exitCode: 65 }, selectors: planned, bundlePath: "/tmp/missing.xcresult",
+  }, async () => { throw new Error("result bundle unavailable"); }), /exit code 65.*result bundle unavailable/);
 });
 
 test("equal counts cannot hide a substituted, renamed, or wrong-target test", () => {
