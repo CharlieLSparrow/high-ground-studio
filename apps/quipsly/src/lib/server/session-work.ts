@@ -34,7 +34,7 @@ export async function loadSessionWork(input: {
   ] };
   const common = {
     id: true, title: true, status: true, sourceJson: true, createdAt: true, updatedAt: true,
-    tagLinks: { select: { tag: { select: { id: true, label: true, slug: true, isActive: true, projectId: true } } } },
+    tagLinks: { select: { tag: { select: { id: true, label: true, slug: true, isActive: true, projectId: true, hexColor: true } } } },
   };
   const [tasks, goals, writableTasks, writableGoals] = await Promise.all([
     prisma.actionItem.findMany({ where: taskWhere, orderBy: { createdAt: "desc" }, take: 100,
@@ -69,7 +69,7 @@ export async function loadSessionWork(input: {
         sourceHref,
         tags: (row.tagLinks || []).map((link: any) => link.tag)
           .filter((tag: any) => tag.isActive && tag.projectId === room.projectId)
-          .map(({ id, label, slug }: any) => ({ id, label, slug })),
+          .map(({ id, label, slug, hexColor }: any) => ({ id, label, slug, hexColor })),
       };
     }).sort((left, right) => right.createdAt.localeCompare(left.createdAt));
 }

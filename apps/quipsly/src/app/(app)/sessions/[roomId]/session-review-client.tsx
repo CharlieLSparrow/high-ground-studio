@@ -549,8 +549,8 @@ function ReviewPacketSummary({ summary }: { summary: PacketSummary }) {
 
 export type SessionTaxonomy = {
   project: { id: string; name: string; slug: string };
-  tags: Array<{ id: string; label: string; slug: string; category: string; projectId: string }>;
-  catalog: Array<{ id: string; label: string; slug: string; category: string; projectId: string }>;
+  tags: Array<{ id: string; label: string; slug: string; category: string; projectId: string; hexColor?: string | null }>;
+  catalog: Array<{ id: string; label: string; slug: string; category: string; projectId: string; hexColor?: string | null }>;
   canManage: boolean;
   canManageVocabulary: boolean;
   updatedAt: string;

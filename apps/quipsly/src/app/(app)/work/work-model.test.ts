@@ -21,6 +21,12 @@ function task(overrides: Record<string, unknown> = {}) {
 }
 
 describe("Work Queue model", () => {
+  it("preserves canonical tag color and archived state when projecting tasks", () => {
+    const tag = { id: "research", label: "Research", slug: "research", category: "meaning",
+      projectId: "nest-1", hexColor: "#23543a", isActive: false };
+    const snapshot = buildWorkSnapshot({ now, tasks: [task({tagLinks: [{tag}]})], goals: [], commitments: [] });
+    expect(snapshot.tasks[0].tags).toEqual([tag]);
+  });
   it("shares unbooked production work without leaking booking-backed coaching work to generic room participants", () => {
     expect(sharedWorkRoomIds([
       { id: "episode-room", bookingId: null },

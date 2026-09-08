@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import { tagChipColors } from "@/lib/tag-color";
 import { Plus, Trash2, Edit2, List, Hash } from "lucide-react";
 import {
   createWorkflowStageAction,
@@ -221,7 +222,7 @@ export function SettingsClient({
                 <div key={tag.id} className="flex items-center gap-2 p-2 bg-[#062d2a]/30 border border-studio-line rounded-lg">
                   <span
                     className="inline-flex items-center rounded-md px-1.5 py-0.5 text-xs font-bold ring-1 ring-inset"
-                    style={{ color: tag.hexColor || "#55663d", borderColor: tag.hexColor || "#55663d" }}
+                    style={tagChipColors(tag.hexColor)}
                   >
                     #{tag.label}
                   </span>
@@ -272,6 +273,7 @@ export function SettingsClient({
             <div className="flex flex-col gap-4">
               <input
                 autoFocus
+                aria-label="Stage name"
                 placeholder="Stage Name"
                 value={stageName}
                 onChange={(e) => setStageName(e.target.value)}
@@ -279,6 +281,7 @@ export function SettingsClient({
               />
               <input
                 type="color"
+                aria-label="Stage color"
                 value={stageColor}
                 onChange={(e) => setStageColor(e.target.value)}
                 className="bg-[#062d2a] border border-studio-line rounded-xl h-12 w-full outline-none"
@@ -308,6 +311,7 @@ export function SettingsClient({
               <input
                 autoFocus
                 placeholder="Tag Name"
+                aria-label="Tag name"
                 value={tagName}
                 onChange={(e) => setTagName(e.target.value)}
                 className="bg-[#062d2a] border border-studio-line rounded-xl px-4 py-3 text-sm text-studio-ink outline-none"
@@ -315,11 +319,13 @@ export function SettingsClient({
               <input
                 type="color"
                 value={tagColor}
+                aria-label="Tag color"
                 onChange={(e) => setTagColor(e.target.value)}
                 className="bg-[#062d2a] border border-studio-line rounded-xl h-12 w-full outline-none"
               />
               <select
                 value={tagUiCategory}
+                aria-label="Tag type"
                 onChange={(e) => setTagUiCategory(e.target.value as StudioTagUICategory)}
                 className="bg-[#062d2a] border border-studio-line rounded-xl px-4 py-3 text-sm text-studio-ink outline-none"
               >

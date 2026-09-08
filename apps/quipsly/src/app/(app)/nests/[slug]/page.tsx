@@ -29,7 +29,7 @@ import {
 import { getOutputFamilyLabel, listOutputsForNestKind } from "@high-ground/quipsly-domain/output-catalog";
 
 import { auth } from "@/auth";
-import { tagFocusHref } from "@/components/tag-search-chips";
+import { TagSearchChips } from "@/components/tag-search-chips";
 import { getPrismaClient } from "@/lib/prisma";
 import {
   PRIVATE_FICTION_ISSUE_SLUG,
@@ -252,7 +252,7 @@ export default async function NestDashboardPage({ params, searchParams }: NestDa
     }),
     prisma.studioTag.findMany({
       where: { projectId: project.id, isActive: true },
-      select: { id: true, label: true, slug: true, category: true },
+      select: { id: true, label: true, slug: true, category: true, hexColor: true },
       orderBy: [{ category: "asc" }, { label: "asc" }],
       take: 30,
     }),
@@ -524,11 +524,7 @@ export default async function NestDashboardPage({ params, searchParams }: NestDa
                 </div>
                 {tags.length ? (
                   <div className="mt-4 flex flex-wrap gap-2">
-                    {tags.map((tag) => (
-                      <Link key={tag.id} href={tagFocusHref(tag.id)} className="inline-flex min-h-11 items-center rounded-full border border-sky-200 bg-white px-4 text-xs font-black text-sky-950 hover:border-sky-500">
-                        #{tag.label}
-                      </Link>
-                    ))}
+                    <TagSearchChips tags={tags} className="" />
                   </div>
                 ) : (
                   <p className="mt-4 text-sm font-semibold leading-6 text-sky-950">Add tags as you work to make related ideas easier to find.</p>

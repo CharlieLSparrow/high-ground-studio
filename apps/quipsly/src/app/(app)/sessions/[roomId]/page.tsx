@@ -236,7 +236,7 @@ export default async function SessionReviewPage({
             _count: { select: { deliveries: true } },
           },
         },
-        tagLinks: { orderBy: { createdAt: "asc" }, select: { tag: { select: { id: true, label: true, slug: true, category: true, projectId: true } } } },
+        tagLinks: { orderBy: { createdAt: "asc" }, select: { tag: { select: { id: true, label: true, slug: true, category: true, projectId: true, hexColor: true } } } },
         recordingAssets: {
           orderBy: { createdAt: "asc" },
           select: {
@@ -646,7 +646,7 @@ export default async function SessionReviewPage({
     const tagCatalog = visibleProject ? await prisma.studioTag.findMany({
       where: { projectId: visibleProject.id, isActive: true },
       orderBy: [{ category: "asc" }, { label: "asc" }],
-      select: { id: true, label: true, slug: true, category: true, projectId: true },
+      select: { id: true, label: true, slug: true, category: true, projectId: true, hexColor: true },
     }) : [];
     const [sessionNoteRows, sessionWork] = await Promise.all([
       prisma.coachingNote.findMany({
@@ -671,7 +671,7 @@ export default async function SessionReviewPage({
           createdAt: true,
           updatedAt: true,
           authorUser: { select: { name: true, primaryEmail: true } },
-          tagLinks: { orderBy: { createdAt: "asc" }, select: { tag: { select: { id: true, label: true, slug: true, projectId: true, isActive: true } } } },
+          tagLinks: { orderBy: { createdAt: "asc" }, select: { tag: { select: { id: true, label: true, slug: true, projectId: true, isActive: true, hexColor: true } } } },
           _count: { select: { revisions: true } },
         },
       }),
@@ -684,7 +684,7 @@ export default async function SessionReviewPage({
     const quickEntryTags = (row: any) => (row.tagLinks || [])
       .map((link: any) => link.tag)
       .filter((tag: any) => tag.isActive && visibleProject && tag.projectId === visibleProject.id)
-      .map(({ id, label, slug }: any) => ({ id, label, slug }));
+      .map(({ id, label, slug, hexColor }: any) => ({ id, label, slug, hexColor }));
     const noteOriginLabel = (sourceJson: unknown) => {
       const source = jsonObject(sourceJson);
       if (readTranscriptDerivedNoteSource(sourceJson)) return "Transcript review";

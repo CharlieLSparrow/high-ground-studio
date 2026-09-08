@@ -71,7 +71,7 @@ async function loadWork(userId: string, visibleProjectIds: string[] = []) {
         evidenceReceipts: { where: { kind: "TRANSCRIPT_CANDIDATE_MERGED" }, orderBy: [{ occurredAt: "desc" }, { id: "desc" }], take: 1, select: { evidenceJson: true, occurredAt: true } },
         reminder: { select: { id: true, remindAt: true, status: true, updatedAt: true } },
         project: { select: { id: true, name: true, slug: true } },
-        tagLinks: { orderBy: { createdAt: "asc" }, select: { tag: { select: { id: true, label: true, slug: true, category: true, projectId: true } } } },
+        tagLinks: { orderBy: { createdAt: "asc" }, select: { tag: { select: { id: true, label: true, slug: true, category: true, projectId: true, hexColor: true, isActive: true } } } },
         room: { select: { id: true, title: true, status: true, nestSlug: true, projectSlug: true } },
         booking: { select: { id: true, scheduledStart: true, clientUser: { select: { name: true, primaryEmail: true } }, coachUser: { select: { name: true, primaryEmail: true } }, callRoom: { select: { id: true, title: true } } } },
         engagement: { select: {
@@ -116,7 +116,7 @@ async function loadWork(userId: string, visibleProjectIds: string[] = []) {
           },
         } },
         project: { select: { id: true, name: true, slug: true } },
-        tagLinks: { orderBy: { createdAt: "asc" }, select: { tag: { select: { id: true, label: true, slug: true, category: true, projectId: true } } } },
+        tagLinks: { orderBy: { createdAt: "asc" }, select: { tag: { select: { id: true, label: true, slug: true, category: true, projectId: true, hexColor: true, isActive: true } } } },
         parent: { select: { id: true, title: true } },
         taskLinks: { take: 100, select: { relationship: true, actionItem: { select: { id: true, title: true, status: true } } } },
         _count: { select: { children: true } },
@@ -197,7 +197,7 @@ async function loadProjectOptions(actorEmail: string): Promise<WorkProjectOption
       where: { projectId: { in: projectIds } },
       orderBy: [{ isActive: "desc" }, { category: "asc" }, { label: "asc" }],
       select: {
-        id: true, label: true, slug: true, category: true, projectId: true, isActive: true, archivedAt: true, updatedAt: true,
+        id: true, label: true, slug: true, category: true, projectId: true, hexColor: true, isActive: true, archivedAt: true, updatedAt: true,
         aliases: { orderBy: { createdAt: "asc" }, select: { id: true, label: true, slug: true } },
         mergedInto: { select: { id: true, label: true } },
       },

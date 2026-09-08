@@ -107,7 +107,7 @@ async function loadSchedule(): Promise<ScheduleSnapshot> {
       where: { tag: { projectId: { in: projectIds } } },
       orderBy: { createdAt: "asc" },
       take: 12,
-      select: { tag: { select: { id: true, label: true, isActive: true } } },
+      select: { tag: { select: { id: true, label: true, isActive: true, hexColor: true } } },
     };
 
     const [roomRows, taskRows, goalRows, planBlockRows, calendarOverview, calendarFeedRows, milestoneRows, episodeRows] = await Promise.all([

@@ -46,6 +46,7 @@ export type SourceCardTaskAnchor = {
 };
 export type WorkTag = {
   id: string;
+  hexColor?: string | null;
   label: string;
   slug: string;
   category: string;

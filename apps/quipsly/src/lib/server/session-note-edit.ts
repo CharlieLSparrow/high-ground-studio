@@ -41,7 +41,7 @@ export type SerializedEditedSessionNote = {
   visibility: string;
   updatedAt: string;
   revisionCount: number;
-  tags: Array<{ id: string; label: string; slug: string }>;
+  tags: Array<{ id: string; label: string; slug: string; hexColor?: string | null }>;
 };
 
 export type EditSessionNoteResult =
@@ -78,7 +78,7 @@ const NOTE_SELECT = {
   updatedAt: true,
   tagLinks: {
     orderBy: { createdAt: "asc" as const },
-    select: { tag: { select: { id: true, label: true, slug: true } } },
+    select: { tag: { select: { id: true, label: true, slug: true, hexColor: true } } },
   },
   _count: { select: { revisions: true } },
 };

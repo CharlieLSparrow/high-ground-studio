@@ -44,6 +44,9 @@ if (enabled) {
           title: "Generated commitment", sourceJson: sharedSource}});
         const generatedGoal = await tx.goal.create({data: {roomId: room.id, engagementId: engagement.id, ownerUserId: coach!.id,
           title: "Generated goal", sourceJson: sharedSource}});
+        const tag = await tx.studioTag.create({data: {projectId: project.id, slug: "research", label: "Research", hexColor: "#23543a"}});
+        await tx.actionItemTagLink.create({data: {actionItemId: generated.id, tagId: tag.id}});
+        await tx.goalTagLink.create({data: {goalId: generatedGoal.id, tagId: tag.id}});
         await tx.actionItem.create({data: {roomId: room.id, assignedUserId: coach!.id,
           title: "Manual shared task", sourceJson: {schema: "quipsly-session-work-entry-v1", visibility: "SESSION_SHARED"}}});
         const privateTask = await tx.actionItem.create({data: {roomId: room.id, engagementId: engagement.id, assignedUserId: coach!.id,
@@ -59,6 +62,10 @@ if (enabled) {
         const clientWork = await read(client!);
         expect(clientWork.map((entry) => entry.title).sort()).toEqual(["Generated commitment", "Generated goal", "Manual shared task"]);
         expect(clientWork.find((entry) => entry.id === generated.id)).toMatchObject({canEdit: true, ownerLabel: "coach", fromTranscript: true});
+        for (const id of [generated.id, generatedGoal.id]) {
+          expect(clientWork.find((entry) => entry.id === id)?.tags)
+            .toEqual([{id: tag.id, label: "Research", slug: "research", hexColor: "#23543a"}]);
+        }
         expect(clientWork.find((entry) => entry.id === generated.id)?.sourceHref).toBe(`/sessions/${room.id}?mode=transcript&source=synthetic-recording&at=12`);
         expect((await read(observer!)).every((entry) => !entry.canEdit)).toBe(true);
         expect((await read(guest!)).map((entry) => entry.title)).toEqual(["Manual shared task"]);
