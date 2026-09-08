@@ -550,7 +550,7 @@ describe("CloudEditor production truth UX", () => {
     }));
 
     await user.click(screen.getByRole("button", { name: /Proof-listen source for evidence/i }));
-    expect(await screen.findByRole("status")).toHaveTextContent(/Proof-listening to untouched source/i);
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent(/Proof-listening to untouched source/i));
     expect(screen.getByRole("status")).toHaveTextContent(/00:00 to 00:06/i);
     expect(screen.getByRole("status")).toHaveTextContent(/Nothing has been applied/i);
   });
