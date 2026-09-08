@@ -383,6 +383,8 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         switch initialTab {
         case "today": requestedTabTitle = "Home"
         case "record": requestedTabTitle = "Sessions"
+        case "work": requestedTabTitle = "Nests"
+        case "library": requestedTabTitle = "Notes"
         default: requestedTabTitle = initialTab.capitalized
         }
         let requestedTab = rootNavigationControl(requestedTabTitle, in: app)
@@ -538,7 +540,13 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         _ title: String,
         in app: XCUIApplication
     ) -> XCUIElement {
-        let normalizedTitle = title == "Today" ? "Home" : title
+        let normalizedTitle: String
+        switch title {
+        case "Today": normalizedTitle = "Home"
+        case "Work": normalizedTitle = "Nests"
+        case "Library": normalizedTitle = "Notes"
+        default: normalizedTitle = title
+        }
         let tabBar = app.tabBars.firstMatch
         if tabBar.exists {
             return tabBar.buttons[normalizedTitle].firstMatch
@@ -547,12 +555,12 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         switch normalizedTitle {
         case "Home": sidebarKey = "today"
         case "Sessions": sidebarKey = "record"
-        case "Work": sidebarKey = "work"
-        case "Library": sidebarKey = "library"
+        case "Nests": sidebarKey = "work"
+        case "Notes": sidebarKey = "library"
         case "Account": sidebarKey = "account"
         default: sidebarKey = normalizedTitle.lowercased()
         }
-        return app.staticTexts.matching(
+        return app.buttons.matching(
             identifier: "CaptureIPadSidebar_\(sidebarKey)"
         ).firstMatch
     }
@@ -2888,6 +2896,14 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         let title = app.descendants(matching: .any)["CaptureCoachingWorkTitle"].firstMatch
         XCTAssertTrue(title.waitForExistence(timeout: 15))
         XCTAssertEqual(title.value as? String, idea)
+        let tags = app.buttons["CaptureCoachingWorkTags"].firstMatch
+        XCTAssertTrue(waitForRuntimeElement(tags, in: app, timeout: 20, swipeAttempts: 5))
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "enabled == true"), object: tags)], timeout: 20), .completed)
+        tags.tap()
+        let newTag = app.textFields["CaptureTaskTagNewLabel"].firstMatch
+        XCTAssertTrue(newTag.waitForExistence(timeout: 10))
+        replaceText(in: newTag, with: "Chapter planning", app: app)
+        app.navigationBars["Tags"].buttons.element(boundBy: 0).tap()
         let save = app.buttons["CaptureCoachingSaveWork"].firstMatch
         XCTAssertTrue(save.isEnabled)
         save.tap()
@@ -2907,6 +2923,20 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         let reloadedTitle = app.descendants(matching: .any)["CaptureCoachingWorkTitle"].firstMatch
         XCTAssertTrue(reloadedTitle.waitForExistence(timeout: 15))
         XCTAssertEqual(reloadedTitle.value as? String, idea)
+        let persistedTag = app.staticTexts.matching(NSPredicate(format: "identifier BEGINSWITH %@ AND label == %@",
+            "CaptureWorkTag_draft_", "Tag: Chapter planning")).firstMatch
+        XCTAssertTrue(waitForRuntimeElement(persistedTag, in: app, timeout: 20, swipeAttempts: 5), "The tag must reload from the saved task, not the previous draft.")
+        let persistedTagID = String(persistedTag.identifier.dropFirst("CaptureWorkTag_draft_".count))
+        app.buttons["CaptureCoachingWorkTags"].firstMatch.tap()
+        let choice = app.buttons["CaptureTaskTagChoice_\(persistedTagID)"].firstMatch
+        XCTAssertTrue(waitForRuntimeElement(choice, in: app, timeout: 15, swipeAttempts: 8))
+        XCTAssertEqual(choice.value as? String, "Selected")
+        choice.tap()
+        let replacementTag = app.textFields["CaptureTaskTagNewLabel"].firstMatch
+        XCTAssertTrue(waitForRuntimeElement(replacementTag, in: app, timeout: 10, swipeAttempts: 8))
+        replaceText(in: replacementTag, with: "Draft ready", app: app)
+        app.navigationBars["Tags"].buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(waitForRuntimeElement(reloadedTitle, in: app, timeout: 10, swipeAttempts: 5))
         replaceText(in: reloadedTitle, with: revisedTitle, app: app)
         app.buttons["CaptureCoachingSaveWork"].firstMatch.tap()
         XCTAssertTrue(app.descendants(matching: .any)["CaptureCoachingWorkEditor"].firstMatch.waitForNonExistence(timeout: 30))
@@ -2916,6 +2946,24 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         expectation(for: titleUpdated, evaluatedWith: updated)
         waitForExpectations(timeout: 20)
         attachRuntimeScreenshot(app, name: "Same conversation task after relaunch and edit")
+        updated.tap()
+        let savedTag = app.staticTexts.matching(NSPredicate(format: "identifier BEGINSWITH %@ AND label == %@",
+            "CaptureWorkTag_draft_", "Tag: Draft ready")).firstMatch
+        XCTAssertTrue(waitForRuntimeElement(savedTag, in: app, timeout: 20, swipeAttempts: 5))
+        XCTAssertFalse(app.staticTexts["CaptureWorkTag_draft_\(persistedTagID)"].exists)
+        attachRuntimeScreenshot(app, name: "Task text and tags saved together")
+        app.buttons["CaptureCoachingWorkTags"].firstMatch.tap()
+        let canceledLabel = app.textFields["CaptureTaskTagNewLabel"].firstMatch
+        XCTAssertTrue(waitForRuntimeElement(canceledLabel, in: app, timeout: 10, swipeAttempts: 8))
+        replaceText(in: canceledLabel, with: "Discard this unsaved tag", app: app)
+        app.navigationBars["Tags"].buttons.element(boundBy: 0).tap()
+        app.buttons["Cancel"].firstMatch.tap()
+        let sameTask = app.buttons[taskIdentifier].firstMatch
+        XCTAssertTrue(sameTask.waitForExistence(timeout: 20))
+        sameTask.tap()
+        XCTAssertTrue(waitForRuntimeElement(savedTag, in: app, timeout: 20, swipeAttempts: 5))
+        XCTAssertFalse(app.staticTexts.matching(NSPredicate(format: "label == %@", "Tag: Discard this unsaved tag")).firstMatch.exists,
+                       "Cancel must not save labels separately from the task draft.")
     }
 
     func testTranscriptWordsSaveWithoutListeningAndPersistAfterRelaunch() throws {

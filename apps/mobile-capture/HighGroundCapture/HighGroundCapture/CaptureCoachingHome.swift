@@ -324,6 +324,7 @@ final class MobileCoachingEngagementWorkspaceClient: ObservableObject {
     @Published private(set) var errorMessage: String?
     @Published private(set) var pendingUndo: MobileCoachingWorkUndo?
     private var createAttempts: [String: CaptureCoachingCreateAttempt] = [:]
+    private var taskUpdateRequestIDs: [Data: String] = [:]
     private var history = MobileCoachingWorkHistory()
     private var loadGeneration = 0
     var searchQuery: String { history.query }
@@ -419,7 +420,8 @@ final class MobileCoachingEngagementWorkspaceClient: ObservableObject {
         visibility: String,
         ownerUserID: String,
         targetAt: Date?,
-        sourceMessageID: String? = nil
+        sourceMessageID: String? = nil,
+        tags: CaptureTaskTagSelection? = nil
     ) async -> Bool {
         guard !isSaving else { return false }
         isSaving = true
@@ -429,13 +431,14 @@ final class MobileCoachingEngagementWorkspaceClient: ObservableObject {
             kind: kind, title: title.trimmingCharacters(in: .whitespacesAndNewlines),
             body: body.trimmingCharacters(in: .whitespacesAndNewlines), visibility: visibility,
             ownerUserID: ownerUserID, status: kind == "GOAL" ? "ACTIVE" : "OPEN",
-            targetAt: targetAt.map(coachingISO8601String)
+            targetAt: targetAt.map(coachingISO8601String), tags: tags
         )
         let attempt = createAttempts[clientRequestID]
             ?? CaptureCoachingCreateAttempt(requestID: clientRequestID, original: draft, sourceMessageID: sourceMessageID)
         createAttempts[clientRequestID] = attempt
         do {
-            guard kind == attempt.original.kind, sourceMessageID == attempt.sourceMessageID else {
+            guard kind == attempt.original.kind, sourceMessageID == attempt.sourceMessageID,
+                  tags == attempt.original.tags else {
                 throw coachingClientError("Finish saving this item before changing its type.")
             }
             // Replay the original command even if the person has since edited
@@ -491,7 +494,8 @@ final class MobileCoachingEngagementWorkspaceClient: ObservableObject {
         visibility: String,
         ownerUserID: String,
         status: String,
-        targetAt: Date?
+        targetAt: Date?,
+        tags: CaptureTaskTagSelection? = nil
     ) async -> Bool {
         guard !isSaving else { return false }
         isSaving = true
@@ -512,10 +516,18 @@ final class MobileCoachingEngagementWorkspaceClient: ObservableObject {
                 requestBody["status"] = status
                 requestBody["targetAt"] = targetAt.map(coachingISO8601String) ?? NSNull()
             }
+            if entry.kind == "TASK", let tags { requestBody["tags"] = tags.body }
+            let identity = try JSONSerialization.data(withJSONObject: requestBody, options: [.sortedKeys])
+            if entry.kind == "TASK" {
+                let requestID = taskUpdateRequestIDs[identity] ?? UUID().uuidString.lowercased()
+                taskUpdateRequestIDs[identity] = requestID
+                requestBody["clientRequestId"] = requestID
+            }
             let (payload, response) = try await request(method: "PATCH", body: requestBody)
             guard response.statusCode < 400, payload.ok, payload.entry != nil else {
                 throw coachingClientError(payload.error ?? "That coaching item could not be updated.")
             }
+            taskUpdateRequestIDs[identity] = nil
             await load(force: true)
             return true
         } catch {
@@ -573,6 +585,24 @@ final class MobileCoachingEngagementWorkspaceClient: ObservableObject {
             errorMessage = error.localizedDescription
             return false
         }
+    }
+
+    func loadTaskTags(entryID: String?) async throws -> [MobileWorkTagLabel] {
+        guard var components = URLComponents(string: "\(baseURL)/api/work/tags") else {
+            throw coachingClientError("Tags couldn't open.")
+        }
+        components.queryItems = [URLQueryItem(name: "entityKind", value: "task"),
+            URLQueryItem(name: entryID == nil ? "engagementId" : "entityId", value: entryID ?? engagementID)]
+        guard let url = components.url else { throw coachingClientError("Tags couldn't open.") }
+        var request = URLRequest(url: url)
+        request.cachePolicy = .reloadIgnoringLocalCacheData
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
+        let payload = try decodeCoachingResponse(MobileTaskTagContextResponse.self, from: data, response: response)
+        guard response.statusCode < 400, payload.ok, let tags = payload.tags else {
+            throw coachingClientError(payload.error ?? "Tags couldn't load. Try again.")
+        }
+        return tags
     }
 
     private func request(
@@ -4095,6 +4125,10 @@ struct MobileCoachingWorkEditorSheet: View {
     @State private var targetDate: Date
     @State private var isConfirmingRemoval = false
     @State private var createRequestID = UUID().uuidString.lowercased()
+    @State private var tagSelection: CaptureTaskTagSelection
+    @State private var tagCatalog: [MobileWorkTagLabel] = []
+    @State private var tagsLoaded = false
+    @State private var tagLoadError: String?
 
     init(
         client: MobileCoachingEngagementWorkspaceClient,
@@ -4117,6 +4151,7 @@ struct MobileCoachingWorkEditorSheet: View {
         _visibility = State(initialValue: entry?.visibility ?? "SHARED")
         _ownerUserID = State(initialValue: entry?.owner?.id ?? workspace.currentUserId)
         _status = State(initialValue: entry?.status ?? "OPEN")
+        _tagSelection = State(initialValue: CaptureTaskTagSelection(tagIDs: (entry?.tags ?? []).map(\.id).sorted()))
         let existingTargetDate = entry?.dueAt.flatMap(coachingISO8601Date)
         _hasTargetDate = State(initialValue: existingTargetDate != nil)
         _targetDate = State(
@@ -4129,6 +4164,26 @@ struct MobileCoachingWorkEditorSheet: View {
     private var canSave: Bool {
         !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && (kind == "NOTE" || !ownerUserID.isEmpty)
+            && (kind != "TASK" || tagSelection.isValid)
+    }
+
+    private var editedTags: CaptureTaskTagSelection? {
+        guard kind == "TASK" else { return nil }
+        let original = CaptureTaskTagSelection(tagIDs: (entry?.tags ?? []).map(\.id).sorted())
+        return tagSelection == original ? nil : tagSelection
+    }
+
+    private var selectedTags: [MobileWorkTagLabel] {
+        let catalog = tagCatalog.isEmpty ? (entry?.tags ?? []) : tagCatalog
+        return catalog.filter { tagSelection.tagIDs.contains($0.id) }
+            + tagSelection.newTagLabels.map { MobileWorkTagLabel(id: "new-\($0)", label: $0, hexColor: nil, isActive: true) }
+    }
+
+    private func loadTags() async {
+        tagLoadError = nil
+        if previewOnly { tagCatalog = entry?.tags ?? []; tagsLoaded = true; return }
+        do { tagCatalog = try await client.loadTaskTags(entryID: entry?.id); tagsLoaded = true }
+        catch { tagLoadError = error.localizedDescription }
     }
 
     var body: some View {
@@ -4153,6 +4208,27 @@ struct MobileCoachingWorkEditorSheet: View {
                         .frame(minHeight: 120)
                         .accessibilityLabel("Details")
                         .accessibilityIdentifier("CaptureCoachingWorkDetail")
+                }
+
+                if kind == "TASK" {
+                    Section {
+                        NavigationLink {
+                            CaptureTaskTagPicker(tags: tagCatalog, selection: $tagSelection)
+                        } label: {
+                            VStack(alignment: .leading, spacing: 8) {
+                                Label("Tags", systemImage: "tag")
+                                if !selectedTags.isEmpty { CaptureWorkTags(tags: selectedTags, workID: "draft") }
+                            }
+                        }
+                        .disabled(!tagsLoaded || client.hasPendingCreation(requestID: createRequestID))
+                        .accessibilityIdentifier("CaptureCoachingWorkTags")
+                        if let tagLoadError {
+                            Text(tagLoadError).font(.caption).foregroundStyle(.secondary)
+                            Button("Retry loading tags") { Task { await loadTags() } }
+                        } else if !tagsLoaded {
+                            ProgressView("Loading tags…")
+                        }
+                    }
                 }
 
                 if kind == "NOTE" {
@@ -4257,7 +4333,8 @@ struct MobileCoachingWorkEditorSheet: View {
                                     visibility: visibility,
                                     ownerUserID: ownerUserID,
                                     status: status,
-                                    targetAt: hasTargetDate ? targetDate : nil
+                                    targetAt: hasTargetDate ? targetDate : nil,
+                                    tags: editedTags
                                 )
                             } else {
                                 saved = await client.create(
@@ -4268,7 +4345,8 @@ struct MobileCoachingWorkEditorSheet: View {
                                     visibility: visibility,
                                     ownerUserID: ownerUserID,
                                     targetAt: hasTargetDate ? targetDate : nil,
-                                    sourceMessageID: sourceMessage?.id
+                                    sourceMessageID: sourceMessage?.id,
+                                    tags: editedTags
                                 )
                             }
                             if saved { dismiss() }
@@ -4296,6 +4374,7 @@ struct MobileCoachingWorkEditorSheet: View {
             Text("It will disappear from this coaching space. Undo is available when you return.")
         }
         .interactiveDismissDisabled(client.isSaving)
+        .task(id: kind) { if kind == "TASK" { await loadTags() } }
         .accessibilityIdentifier("CaptureCoachingWorkEditor")
     }
 }

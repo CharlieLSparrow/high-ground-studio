@@ -1,5 +1,70 @@
 import SwiftUI
 
+/// Edits the parent task draft only. Its Save commits text and tags together.
+struct CaptureTaskTagPicker: View {
+    let tags: [MobileWorkTagLabel]
+    @Binding var selection: CaptureTaskTagSelection
+    @State private var search = ""
+
+    private var newLabel: Binding<String> {
+        Binding(get: { selection.newTagLabels.first ?? "" }, set: {
+            selection.newTagLabels = $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? [] : [$0]
+        })
+    }
+
+    private var visibleTags: [MobileWorkTagLabel] {
+        tags.filter { search.isEmpty || $0.label.localizedCaseInsensitiveContains(search) }
+    }
+
+    private func tagRow(_ tag: MobileWorkTagLabel) -> some View {
+        let selected = selection.tagIDs.contains(tag.id)
+        return Button {
+            if selected { selection.tagIDs.removeAll { $0 == tag.id } }
+            else if tag.isActive && selection.tagIDs.count + selection.newTagLabels.count < 24 {
+                selection.tagIDs.append(tag.id)
+                selection.tagIDs.sort()
+            }
+        } label: {
+            HStack(spacing: 12) {
+                CaptureWorkTags(tags: [tag], workID: "picker")
+                if selected { Image(systemName: "checkmark").foregroundStyle(CapturePalette.ink) }
+            }
+            .frame(minHeight: 44)
+        }
+        .accessibilityLabel(tag.label)
+        .accessibilityValue(selected ? "Selected" : "Not selected")
+        .accessibilityIdentifier("CaptureTaskTagChoice_\(tag.id)")
+        .disabled(!selected && !tag.isActive)
+    }
+
+    var body: some View {
+        List {
+            Section("Tags") {
+                ForEach(visibleTags) { tag in tagRow(tag) }
+                if tags.isEmpty { Text("Add your first tag below.").foregroundStyle(.secondary) }
+            }
+            Section {
+                TextField("Tag name", text: newLabel)
+                    .textInputAutocapitalization(.sentences)
+                    .accessibilityIdentifier("CaptureTaskTagNewLabel")
+                if !selection.isValid {
+                    Text("Use up to 24 tags, with names no longer than 80 characters.")
+                        .font(.caption).foregroundStyle(CapturePalette.brass)
+                }
+            } header: {
+                Text("New tag")
+            } footer: {
+                Text("Tags are saved with the task. An existing name reuses the same tag and color.")
+            }
+        }
+        .searchable(text: $search, prompt: "Find a tag")
+        .captureFormSurface()
+        .navigationTitle("Tags")
+        .navigationBarTitleDisplayMode(.inline)
+        .accessibilityIdentifier("CaptureTaskTagPicker")
+    }
+}
+
 struct CaptureWorkTags: View {
     let tags: [MobileWorkTagLabel]
     let workID: String

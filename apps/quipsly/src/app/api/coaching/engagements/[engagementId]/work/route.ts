@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import type { Prisma } from "@prisma/client";
 
 import { NextResponse } from "next/server";
 
@@ -9,6 +10,7 @@ import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 import { NOTE_SELECT, TASK_SELECT, GOAL_SELECT, notePayload, taskPayload, goalPayload } from "@/lib/server/coaching-work-projection";
 import { coachingWorkPage } from "@/lib/server/coaching-work-page";
 import { retryCoachingWorkTransaction } from "@/lib/server/coaching-work-transaction";
+import { parseWorkTagSelection, replaceWorkEntityTags } from "@/lib/server/work-tags";
 
 export const runtime = "nodejs";
 
@@ -18,6 +20,24 @@ const WORK_SCHEMA = "quipsly-coaching-engagement-work-v1";
 const RECEIPT_LIMIT = 24;
 
 type WorkKind = "NOTE" | "TASK" | "GOAL";
+
+class TaskTagSaveError extends Error {
+  constructor(message: string, readonly status: number) { super(message); }
+}
+
+async function saveTaskTags(tx: Prisma.TransactionClient, task: { id: string; updatedAt: Date },
+  actor: { id: string; primaryEmail?: string | null; email?: string | null },
+  selection: NonNullable<ReturnType<typeof parseWorkTagSelection>>) {
+  const result = await replaceWorkEntityTags({
+    prisma: getPrismaClient(), transaction: tx, actorUserId: actor.id,
+    actorEmail: actor.primaryEmail || actor.email || "", entityKind: "task", entityId: task.id,
+    expectedUpdatedAt: task.updatedAt, ...selection,
+  });
+  // Abort the owning work transaction too: no task-only or tag-only save.
+  if (!result.ok) throw new TaskTagSaveError(result.error,
+    result.code === "CONFLICT" ? 409 : result.code === "NOT_FOUND" ? 404 : 400);
+  return tx.actionItem.findUniqueOrThrow({ where: { id: task.id }, select: TASK_SELECT });
+}
 
 function record(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -126,7 +146,7 @@ export async function GET(
   let paging: ReturnType<typeof coachingWorkPage>;
   try { paging = coachingWorkPage(new URL(request.url).searchParams, engagementId, session.user.id); }
   catch { return privateJson({ok: false, code: "INVALID_WORK_QUERY", error: "Refresh this work list and try again."}, 400); }
-  const prisma = getPrismaClient() as any;
+  const prisma = getPrismaClient();
   try {
     const [engagement, writable] = await Promise.all([
       prisma.coachingEngagement.findFirst({
@@ -251,6 +271,10 @@ export async function POST(
   const input = record(await request.json().catch(() => ({})));
   const workKind = kind(input.kind);
   const clientRequestId = text(input.clientRequestId, 80).toLowerCase();
+  const tagSelection = input.tags === undefined ? undefined : parseWorkTagSelection(input.tags);
+  if (input.tags !== undefined && (workKind !== "TASK" || !tagSelection)) {
+    return NextResponse.json({ ok: false, error: "Choose up to 24 task tags." }, { status: 400 });
+  }
   const sourceMessageId = input.sourceMessageId == null ? null : input.sourceMessageId;
   if (sourceMessageId !== null && (typeof sourceMessageId !== "string" || !/^[a-zA-Z0-9_-]{1,240}$/.test(sourceMessageId))) {
     return NextResponse.json({ ok: false, error: "This conversation message is not available." }, { status: 400 });
@@ -293,6 +317,7 @@ export async function POST(
         targetAt: targetAt?.toISOString() ?? null,
         noteVisibility,
         ...(sourceMessageId ? { sourceMessageId } : {}),
+        ...(tagSelection ? { tags: tagSelection } : {}),
       }),
     )
     .digest("hex");
@@ -432,7 +457,7 @@ export async function POST(
           });
           return {
             kind: "saved" as const,
-            entry: taskPayload(created),
+            entry: taskPayload(tagSelection ? await saveTaskTags(tx, created, session.user, tagSelection) : created),
             replay: false,
           };
         }
@@ -517,6 +542,7 @@ export async function POST(
       },
     });
   } catch (error) {
+    if (error instanceof TaskTagSaveError) return NextResponse.json({ ok: false, error: error.message }, { status: error.status });
     console.error("Coaching engagement work creation failed", error);
     return NextResponse.json(
       { ok: false, error: "Quipsly could not save this coaching work." },
@@ -540,12 +566,21 @@ export async function PATCH(
   const input = record(await request.json().catch(() => ({})));
   const workKind = kind(input.kind);
   const id = text(input.id, 240);
+  const tagSelection = input.tags === undefined ? undefined : parseWorkTagSelection(input.tags);
+  const clientRequestId = text(input.clientRequestId, 80).toLowerCase();
+  if ((input.tags !== undefined && (workKind !== "TASK" || !tagSelection)) || (clientRequestId && !REQUEST_ID.test(clientRequestId))) {
+    return NextResponse.json({ ok: false, error: "Choose valid task tags and retry this save." }, { status: 400 });
+  }
   const title = text(input.title, 500);
   const detail = text(input.body, 20_000, true);
   const ownerUserId = text(input.ownerUserId, 240);
   const expectedUpdatedAt = new Date(text(input.expectedUpdatedAt, 100));
   const requestedStatus = text(input.status, 40).toUpperCase();
   const targetAt = optionalDate(input.targetAt);
+  const requestFingerprint = createHash("sha256").update(JSON.stringify({
+    engagementId, workKind, id, title, detail, ownerUserId, requestedStatus,
+    targetAt, ...(tagSelection ? { tags: tagSelection } : {}),
+  })).digest("hex");
   if (
     !workKind ||
     !id ||
@@ -572,9 +607,9 @@ export async function PATCH(
     );
   }
 
-  const prisma = getPrismaClient() as any;
+  const prisma = getPrismaClient();
   try {
-    const result = await prisma.$transaction(
+    const result = await retryCoachingWorkTransaction(() => prisma.$transaction(
       async (tx: any) => {
         const engagement = await tx.coachingEngagement.findFirst({
           where: coachingEngagementAccessWhere(
@@ -655,7 +690,7 @@ export async function PATCH(
         const current =
           workKind === "TASK"
             ? await tx.actionItem.findFirst({
-                where: { id, engagementId, updatedAt: expectedUpdatedAt, ...sharedCoachingWorkVisibilityWhere() },
+                where: { id, engagementId, ...sharedCoachingWorkVisibilityWhere() },
                 select: { ...TASK_SELECT, sourceJson: true },
               })
             : await tx.goal.findFirst({
@@ -664,10 +699,19 @@ export async function PATCH(
               });
         if (!current) return { kind: "conflict" as const };
         const source = record(current.sourceJson);
+        if (workKind === "TASK") {
+          const replay = clientRequestId && priorReceipts(source).map(record).find(receipt =>
+            receipt.clientRequestId === clientRequestId && receipt.actorUserId === session.user.id);
+          if (replay) return replay.requestFingerprint === requestFingerprint
+            ? { kind: "saved" as const, entry: taskPayload(current) }
+            : { kind: "conflict" as const };
+          if (current.updatedAt.getTime() !== expectedUpdatedAt.getTime()) return { kind: "conflict" as const };
+        }
         const editReceipt = {
           id: randomUUID(),
           schema: "quipsly-coaching-engagement-work-edit-v1",
           actorUserId: session.user.id,
+          ...(clientRequestId ? { clientRequestId, requestFingerprint } : {}),
           changedAt: new Date().toISOString(),
           previous: {
             title: current.title,
@@ -710,7 +754,7 @@ export async function PATCH(
             },
             select: TASK_SELECT,
           });
-          return { kind: "saved" as const, entry: taskPayload(updated) };
+          return { kind: "saved" as const, entry: taskPayload(tagSelection ? await saveTaskTags(tx, updated, session.user, tagSelection) : updated) };
         }
         const updated = await tx.goal.update({
           where: { id },
@@ -728,7 +772,7 @@ export async function PATCH(
         return { kind: "saved" as const, entry: goalPayload(updated) };
       },
       { isolationLevel: "Serializable" },
-    );
+    ));
 
     if (result.kind === "unavailable") {
       return NextResponse.json(
@@ -773,6 +817,7 @@ export async function PATCH(
       },
     });
   } catch (error) {
+    if (error instanceof TaskTagSaveError) return NextResponse.json({ ok: false, error: error.message }, { status: error.status });
     console.error("Coaching engagement work update failed", error);
     return NextResponse.json(
       { ok: false, error: "Quipsly could not update this coaching work." },

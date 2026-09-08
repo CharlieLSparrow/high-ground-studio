@@ -8,6 +8,7 @@ import {
   mutateWorkTagTaxonomy,
   replaceWorkEntityTags,
   readTaskTagContext,
+  readNewCoachingTaskTagContext,
 } from "@/lib/server/work-tags";
 
 import { GET, PATCH, POST } from "./route";
@@ -20,6 +21,7 @@ jest.mock("@/lib/server/work-tags", () => ({
   mutateWorkTagTaxonomy: jest.fn(),
   replaceWorkEntityTags: jest.fn(),
   readTaskTagContext: jest.fn(),
+  readNewCoachingTaskTagContext: jest.fn(),
 }));
 
 function request(body: unknown) {
@@ -52,6 +54,19 @@ describe("authenticated shared work tags route", () => {
     expect((await GET(new Request("http://localhost/api/work/tags?entityKind=unknown&entityId=private-task"))).status).toBe(400);
     jest.mocked(getQuipslySessionFromRequest).mockResolvedValue(null as any);
     expect((await GET(new Request("http://localhost/api/work/tags?entityKind=task&entityId=private-task"))).status).toBe(401);
+  });
+
+  it("loads a new task's client-space vocabulary without inventing a task or accepting ambiguous scopes", async () => {
+    jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({user: {id: "client", primaryEmail: "client@example.test"}} as any);
+    jest.mocked(readNewCoachingTaskTagContext).mockResolvedValue({projectId: "nest", selectedTagIds: [], tags: []});
+    const response = await GET(new Request("http://localhost/api/work/tags?entityKind=task&engagementId=space"));
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Cache-Control")).toBe("private, no-store");
+    expect(readNewCoachingTaskTagContext).toHaveBeenCalledWith(expect.objectContaining({actorUserId: "client", engagementId: "space"}));
+    expect(readTaskTagContext).not.toHaveBeenCalled();
+    expect((await GET(new Request("http://localhost/api/work/tags?entityKind=task&engagementId=space&entityId=task"))).status).toBe(400);
+    jest.mocked(readNewCoachingTaskTagContext).mockResolvedValue(null);
+    expect((await GET(new Request("http://localhost/api/work/tags?entityKind=task&engagementId=private-space"))).status).toBe(404);
   });
 
   it("rejects before database access when signed out", async () => {

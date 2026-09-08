@@ -14,6 +14,12 @@ struct MobileWorkTagLabel: Codable, Identifiable, Hashable {
     let isActive: Bool
 }
 
+struct MobileTaskTagContextResponse: Decodable {
+    let ok: Bool
+    let tags: [MobileWorkTagLabel]?
+    let error: String?
+}
+
 /// The canonical client-space response, shared by the web and native work views.
 struct MobileCoachingEngagementWorkEntry: Codable, Identifiable, Hashable {
     let id: String

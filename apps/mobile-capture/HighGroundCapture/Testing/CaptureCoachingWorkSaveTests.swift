@@ -9,6 +9,14 @@ enum CaptureCoachingWorkSaveTests {
                 ownerUserID: "client", status: kind == "GOAL" ? "ACTIVE" : "OPEN", targetAt: nil
             )
             let attempt = CaptureCoachingCreateAttempt(requestID: "one-command", original: original)
+            var tagged = original
+            tagged.tags = CaptureTaskTagSelection(tagIDs: ["research"], newTagLabels: ["Writing"])
+            let taggedBody = tagged.createBody(requestID: "tagged-command")
+            if kind == "TASK" {
+                let tags = taggedBody["tags"] as? [String: Any]
+                expect(tags?["tagIds"] as? [String] == ["research"], "task creation retains canonical selections")
+                expect(tags?["newTagLabels"] as? [String] == ["Writing"], "task creation includes new labels in its single save")
+            } else { expect(taggedBody["tags"] == nil, "task tags do not bleed into other work types") }
             var edited = original
             edited.title = "A clearer first step"
             expect(attempt.body["title"] as? String == original.title, "retry retains submitted content")
@@ -40,6 +48,10 @@ enum CaptureCoachingWorkSaveTests {
             }
         }
         print("PASS canonical work creation retry, source binding, and amendment checks")
+        expect(CaptureTaskTagSelection().isValid, "empty tags are optional")
+        expect(!CaptureTaskTagSelection(tagIDs: ["one", "one"]).isValid, "duplicate IDs are invalid")
+        expect(!CaptureTaskTagSelection(newTagLabels: [String(repeating: "x", count: 81)]).isValid, "long labels are rejected")
+        expect(!CaptureTaskTagSelection(newTagLabels: ["  "]).isValid, "blank labels are rejected")
         testScheduleUpdates()
     }
 

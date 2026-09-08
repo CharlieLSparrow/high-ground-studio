@@ -7,6 +7,7 @@ import { normalizeWorkTagLabel, workTagSlug } from "./work-tag-normalization";
 import { personalOrSharedSessionTaskAccessWhere } from "./task-access";
 import { activeCoachingWorkWhere } from "./coaching-work-page";
 import { activeCoachingEngagementParticipantWhere, sharedCoachingWorkVisibilityWhere } from "./coaching-work-access";
+import { coachingEngagementAccessWhere } from "./coaching-engagement";
 
 export { normalizeWorkTagLabel, workTagSlug } from "./work-tag-normalization";
 
@@ -106,6 +107,14 @@ function normalizedNewTagLabels(value: unknown) {
   const canonical = labels.map(canonicalTagLabel);
   if (new Set(canonical).size !== labels.length) return null;
   return labels;
+}
+
+export function parseWorkTagSelection(value: unknown) {
+  const selection = safeRecord(value);
+  const tagIds = normalizedTagIds(selection.tagIds);
+  const newTagLabels = normalizedNewTagLabels(selection.newTagLabels);
+  return tagIds && newTagLabels && tagIds.length + newTagLabels.length <= 24
+    ? { tagIds, newTagLabels } : null;
 }
 
 function canonicalTagLabel(label: string) {
@@ -572,6 +581,24 @@ export async function readTaskTagContext(input: {
     selectedTagIds: links.map(link => link.tagId), tags };
 }
 
+export async function readNewCoachingTaskTagContext(input: {
+  prisma: PrismaClient; actorUserId: string; actorEmail: string; engagementId: string;
+}) {
+  const engagement = await input.prisma.coachingEngagement.findFirst({
+    where: coachingEngagementAccessWhere(input.engagementId, { id: input.actorUserId }, "write"),
+    select: { id: true, projectId: true },
+  });
+  if (!engagement) return null;
+  const projects = await writableProjectIds(input.prisma, input.actorEmail);
+  const tags = await input.prisma.studioTag.findMany({
+    where: { projectId: engagement.projectId, isActive: true,
+      ...(projects.has(engagement.projectId) ? {} : sharedTaskTagCatalogWhere(engagement.id, "")) },
+    orderBy: [{ label: "asc" }, { id: "asc" }],
+    select: { id: true, label: true, hexColor: true, isActive: true },
+  });
+  return { projectId: engagement.projectId, selectedTagIds: [], tags };
+}
+
 /**
  * Create one reusable Nest tag and apply it to the current record in the same
  * transaction. Exact-label retries reuse the canonical tag; ambiguous slug
@@ -782,6 +809,8 @@ export async function createAndAssignWorkEntityTag(input: {
  */
 export async function replaceWorkEntityTags(input: {
   prisma: PrismaClient;
+  /** Join an already-authorized work command. Its caller must abort on failure. */
+  transaction?: Prisma.TransactionClient;
   actorUserId: string;
   actorEmail: string;
   entityKind: WorkTagEntityKind;
@@ -809,8 +838,15 @@ export async function replaceWorkEntityTags(input: {
     return { ok: false, code: "INVALID_INPUT", error: "The tag decision is incomplete or invalid." };
   }
 
-  const writableProjects = await writableProjectIds(input.prisma, actorEmail);
-  const prisma = input.prisma as any;
+  // A joined command must not borrow another pool connection while holding its
+  // transaction. Use the same active grant required by the write below.
+  const writableProjects = input.transaction
+    ? new Set((await input.transaction.studioProjectAccessGrant.findMany({
+      where: { email: actorEmail, status: "ACTIVE", role: { in: ["OWNER", "EDITOR"] } },
+      select: { projectId: true },
+    })).map(grant => grant.projectId))
+    : await writableProjectIds(input.prisma, actorEmail);
+  const prisma = (input.transaction ?? input.prisma) as any;
   const receiptId = clientRequestId ? `work-tags-${clientRequestId}` : randomUUID();
   const entity = await findOwnedTagEntity(
     prisma,
@@ -1097,13 +1133,16 @@ export async function replaceWorkEntityTags(input: {
       resolvedTags,
     };
   };
-  const saved = await prisma.$transaction(async (tx: any) => {
+  const applyOrAbort = async (tx: any) => {
     const result = await applyTagReplacement(tx);
     // A rejected second label or stale entity must roll back tags resolved
     // earlier in this same command, not leave orphaned vocabulary behind.
     if (result.kind !== "saved") throw new WorkTagTransactionAbort(result);
     return result;
-  }).catch((error: unknown) => {
+  };
+  const saved = await (input.transaction
+    ? applyOrAbort(input.transaction)
+    : prisma.$transaction(applyOrAbort)).catch((error: unknown) => {
     if (error instanceof WorkTagTransactionAbort) return error.result;
     throw error;
   });
