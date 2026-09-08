@@ -7,6 +7,7 @@ import {
   createWorkTagTaxonomy,
   mutateWorkTagTaxonomy,
   replaceWorkEntityTags,
+  readTaskTagContext,
   type WorkTagEntityKind,
   type WorkTagTaxonomyOperation,
 } from "@/lib/server/work-tags";
@@ -20,6 +21,24 @@ function record(value: unknown): Record<string, unknown> {
 
 function text(value: unknown, max = 200) {
   return typeof value === "string" ? value.trim().slice(0, max) : "";
+}
+
+export async function GET(request: Request) {
+  const session = await getQuipslySessionFromRequest(request);
+  const actorEmail = text(session?.user?.primaryEmail || session?.user?.email, 320).toLowerCase();
+  const headers = { "Cache-Control": "private, no-store" };
+  if (!session?.user?.id || !actorEmail) return NextResponse.json({ ok: false, error: "Sign in to edit tags." }, { status: 401, headers });
+  const query = new URL(request.url).searchParams;
+  const entityId = text(query.get("entityId"));
+  if (query.get("entityKind") !== "task" || !entityId) return NextResponse.json({ ok: false, error: "Choose a task." }, { status: 400, headers });
+  try {
+    const context = await readTaskTagContext({ prisma: getPrismaClient(), actorUserId: session.user.id, actorEmail, entityId });
+    return context ? NextResponse.json({ ok: true, ...context }, { headers })
+      : NextResponse.json({ ok: false, error: "This task isn't available to edit." }, { status: 404, headers });
+  } catch (error) {
+    console.error("[work-tags] task context read failed", error);
+    return NextResponse.json({ ok: false, error: "Tags couldn't load. Try again." }, { status: 503, headers });
+  }
 }
 
 export async function POST(request: Request) {

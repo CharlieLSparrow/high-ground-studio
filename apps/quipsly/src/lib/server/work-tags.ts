@@ -6,6 +6,7 @@ import { listProjectsVisibleToEmail } from "./home-nest";
 import { normalizeWorkTagLabel, workTagSlug } from "./work-tag-normalization";
 import { personalOrSharedSessionTaskAccessWhere } from "./task-access";
 import { activeCoachingWorkWhere } from "./coaching-work-page";
+import { activeCoachingEngagementParticipantWhere, sharedCoachingWorkVisibilityWhere } from "./coaching-work-access";
 
 export { normalizeWorkTagLabel, workTagSlug } from "./work-tag-normalization";
 
@@ -401,7 +402,12 @@ function entityWhere(
   actorEmail = "",
 ) {
   return entityKind === "task"
-    ? { id: entityId, AND: [{ OR: personalOrSharedSessionTaskAccessWhere(actorUserId, "write") }, activeCoachingWorkWhere()] }
+    ? { id: entityId, AND: [
+        { OR: personalOrSharedSessionTaskAccessWhere(actorUserId, "write") },
+        activeCoachingWorkWhere(),
+        // Retained task ownership must not bypass removal from a client space.
+        { OR: [{ engagementId: null }, { engagement: { is: activeCoachingEngagementParticipantWhere(actorUserId, "write") } }] },
+      ] }
     : entityKind === "goal"
       ? { id: entityId, ownerUserId: actorUserId }
       : entityKind === "note"
@@ -525,8 +531,45 @@ async function findOwnedTagEntity(
       ...where,
       ...(expectedProjectId ? { projectId: expectedProjectId } : {}),
     },
-    select: { id: true, projectId: true, updatedAt: true, [sourceField]: true },
+    select: { id: true, projectId: true, updatedAt: true, [sourceField]: true,
+      ...(entityKind === "task" ? { engagementId: true } : {}),
+    },
   });
+}
+
+/** Space-only collaborators see reusable tags from shared work in that space,
+ * not the vocabulary of other clients who happen to share the same Nest. */
+function sharedTaskTagCatalogWhere(engagementId: string, entityId: string) {
+  return { actionItems: { some: { actionItem: { OR: [
+    { id: entityId },
+    { engagementId, AND: [sharedCoachingWorkVisibilityWhere(), activeCoachingWorkWhere()] },
+  ] } } } };
+}
+
+class WorkTagTransactionAbort extends Error {
+  constructor(readonly result: { kind: string; [key: string]: any }) {
+    super("Work tag transaction was not applied");
+  }
+}
+
+export async function readTaskTagContext(input: {
+  prisma: PrismaClient; actorUserId: string; actorEmail: string; entityId: string;
+}) {
+  const entity = await findOwnedTagEntity(input.prisma, "task", input.entityId, input.actorUserId, input.actorEmail);
+  if (!entity?.projectId) return null;
+  const projects = await writableProjectIds(input.prisma, input.actorEmail);
+  const projectEditor = projects.has(entity.projectId);
+  if (!projectEditor && !entity.engagementId) return null;
+  const [tags, links] = await Promise.all([
+    input.prisma.studioTag.findMany({
+      where: { projectId: entity.projectId, ...(projectEditor ? {} : sharedTaskTagCatalogWhere(entity.engagementId, entity.id)) },
+      orderBy: [{ label: "asc" }, { id: "asc" }],
+      select: { id: true, label: true, hexColor: true, isActive: true },
+    }),
+    input.prisma.actionItemTagLink.findMany({ where: { actionItemId: entity.id }, select: { tagId: true } }),
+  ]);
+  return { entityId: entity.id, projectId: entity.projectId, updatedAt: entity.updatedAt.toISOString(),
+    selectedTagIds: links.map(link => link.tagId), tags };
 }
 
 /**
@@ -782,7 +825,10 @@ export async function replaceWorkEntityTags(input: {
 
   if (!entity) return { ok: false, code: "NOT_FOUND", error: `Only a ${entityMutationLabel(input.entityKind)} can change these tags.` };
   if (!entity.projectId) return { ok: false, code: "PROJECT_REQUIRED", error: "Choose a Nest before adding its tags." };
-  if (!writableProjects.has(entity.projectId)) return { ok: false, code: "FORBIDDEN", error: "Editor access to this Nest is required to change tags." };
+  const projectEditor = writableProjects.has(entity.projectId);
+  const sharedTask = input.entityKind === "task" && Boolean(entity.engagementId);
+  if (!projectEditor && !sharedTask) return { ok: false, code: "FORBIDDEN", error: "Editor access to this Nest is required to change tags." };
+  const scopedTags = projectEditor ? {} : sharedTaskTagCatalogWhere(entity.engagementId, entity.id);
   const priorReceipt = input.entityKind === "document"
     ? safeRecord(entity.documentOperations[0]?.afterJson)
     : safeRecord(safeRecord(entity[entitySourceField(input.entityKind)!]).lastTagReceipt);
@@ -857,7 +903,7 @@ export async function replaceWorkEntityTags(input: {
 
   if (requestedTagIds.length) {
     const validTags = await prisma.studioTag.findMany({
-      where: { id: { in: requestedTagIds }, projectId: entity.projectId, isActive: true },
+      where: { id: { in: requestedTagIds }, projectId: entity.projectId, isActive: true, ...scopedTags },
       select: { id: true },
     });
     if (validTags.length !== requestedTagIds.length) {
@@ -866,14 +912,21 @@ export async function replaceWorkEntityTags(input: {
   }
 
   const now = new Date();
-  const saved = await prisma.$transaction(async (tx: any) => {
+  const applyTagReplacement = async (tx: any) => {
     const activeGrant = await tx.studioProjectAccessGrant.findFirst({
       where: { projectId: entity.projectId, email: actorEmail, status: "ACTIVE", role: { in: ["OWNER", "EDITOR"] } },
       select: { id: true },
     });
-    if (!activeGrant) return { kind: "forbidden" as const };
+    // Read membership again inside the write transaction. An earlier read or
+    // project grant cannot authorize a removed client-space collaborator.
+    const currentTask = sharedTask ? await findOwnedTagEntity(tx, "task", entityId, actorUserId, actorEmail) : null;
+    if (sharedTask && !currentTask) return { kind: "forbidden" as const };
+    if (!activeGrant && !currentTask?.engagementId) return { kind: "forbidden" as const };
     if (requestedTagIds.length) {
-      const validTagCount = await tx.studioTag.count({ where: { id: { in: requestedTagIds }, projectId: entity.projectId, isActive: true } });
+      const validTagCount = await tx.studioTag.count({ where: {
+        id: { in: requestedTagIds }, projectId: entity.projectId, isActive: true,
+        ...(activeGrant ? {} : sharedTaskTagCatalogWhere(currentTask.engagementId, entityId)),
+      } });
       if (validTagCount !== requestedTagIds.length) return { kind: "forbidden" as const };
     }
     const resolvedTags: Array<{ id: string; requestedLabel: string; label: string; slug: string; created: boolean }> = [];
@@ -1043,6 +1096,16 @@ export async function replaceWorkEntityTags(input: {
       tagIds,
       resolvedTags,
     };
+  };
+  const saved = await prisma.$transaction(async (tx: any) => {
+    const result = await applyTagReplacement(tx);
+    // A rejected second label or stale entity must roll back tags resolved
+    // earlier in this same command, not leave orphaned vocabulary behind.
+    if (result.kind !== "saved") throw new WorkTagTransactionAbort(result);
+    return result;
+  }).catch((error: unknown) => {
+    if (error instanceof WorkTagTransactionAbort) return error.result;
+    throw error;
   });
 
   if (saved.kind === "forbidden") return { ok: false, code: "FORBIDDEN", error: "Editor access and active same-Nest tags are required." };

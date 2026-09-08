@@ -5,7 +5,7 @@ import { GET as readChat } from "@/app/api/nest-chat/route";
 import { getPrismaClient } from "@/lib/prisma";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 import { loadSessionWork } from "@/lib/server/session-work";
-import { createAndAssignWorkEntityTag, replaceWorkEntityTags } from "@/lib/server/work-tags";
+import { createAndAssignWorkEntityTag, replaceWorkEntityTags, readTaskTagContext, workTagSlug } from "@/lib/server/work-tags";
 import { DELETE, GET, PATCH, POST, PUT } from "./route";
 
 jest.mock("@/lib/server/quipsly-session", () => ({ getQuipslySessionFromRequest: jest.fn() }));
@@ -97,6 +97,64 @@ if (enabled) {
     for (const actor of [observer!, guest!, outsider!]) {
       expect((await act("POST", command, actor)).status).toBe(404);
     }
+  });
+
+  it("lets space members tag shared tasks without Nest grants and keeps unrelated vocabulary private", async () => {
+    const made = await act("POST", {kind: "TASK", clientRequestId: randomUUID(), title: "Organize the conversation", ownerUserId: coach!.id});
+    expect(made.status).toBe(200);
+    const task = made.body.entry;
+    const hidden = await prisma.studioTag.create({data: {projectId, slug: `hidden-${nonce}`, label: "Unrelated private material"}});
+    const privateTask = await prisma.actionItem.create({data: {engagementId, projectId, assignedUserId: coach!.id,
+      title: "Private thought", sourceJson: {visibility: "author-private"}, tagLinks: {create: {tagId: hidden.id}}}});
+    const privateContext = await readTaskTagContext({prisma, actorUserId: coach!.id, actorEmail: coach!.primaryEmail, entityId: privateTask.id});
+    expect(privateContext?.selectedTagIds).toEqual([hidden.id]);
+    expect(privateContext?.tags.some(tag => tag.id === hidden.id)).toBe(true);
+    expect(await readTaskTagContext({prisma, actorUserId: client!.id, actorEmail: client!.primaryEmail, entityId: privateTask.id})).toBeNull();
+    expect(await replaceWorkEntityTags({prisma, actorUserId: coach!.id, actorEmail: coach!.primaryEmail,
+      entityKind: "task", entityId: privateTask.id, expectedUpdatedAt: privateTask.updatedAt, tagIds: [hidden.id]})).toMatchObject({ok: true});
+    const context = (actor = client!) => readTaskTagContext({prisma, actorUserId: actor.id, actorEmail: actor.primaryEmail, entityId: task.id});
+    const initial = await context();
+    expect(initial).not.toBeNull();
+    expect(initial!.tags.some(tag => tag.id === hidden.id)).toBe(false);
+    const base = {prisma, actorUserId: client!.id, actorEmail: client!.primaryEmail, entityKind: "task" as const,
+      entityId: task.id, expectedUpdatedAt: new Date(task.updatedAt)};
+    expect(await replaceWorkEntityTags({...base, tagIds: [hidden.id]})).toMatchObject({ok: false, code: "FORBIDDEN"});
+    const command = {...base, tagIds: [], newTagLabels: [`Shared research ${nonce}`], clientRequestId: randomUUID()};
+    const saved = await replaceWorkEntityTags(command);
+    expect(saved.ok).toBe(true);
+    if (!saved.ok) throw new Error(saved.error);
+    expect(await replaceWorkEntityTags(command)).toMatchObject({ok: true, idempotentReplay: true, tagIds: saved.tagIds});
+    await prisma.studioTag.update({where: {id: saved.tagIds[0]!}, data: {hexColor: "#23543a"}});
+    for (const actor of [client!, coach!]) {
+      const read = await context(actor);
+      expect(read?.selectedTagIds).toEqual(saved.tagIds);
+      expect(read?.tags.find(tag => tag.id === saved.tagIds[0])).toMatchObject({hexColor: "#23543a"});
+      expect(read?.tags.some(tag => tag.id === hidden.id)).toBe(false);
+    }
+    for (const actor of [observer!, guest!, outsider!]) {
+      expect(await context(actor)).toBeNull();
+      expect(await replaceWorkEntityTags({...base, actorUserId: actor.id, actorEmail: actor.primaryEmail,
+        expectedUpdatedAt: saved.updatedAt, tagIds: []})).toMatchObject({ok: false, code: "NOT_FOUND"});
+    }
+    // Being the assignee is not a back door after leaving the private space.
+    await prisma.coachingEngagementMember.updateMany({where: {engagementId, userId: coach!.id}, data: {status: "REMOVED"}});
+    try {
+      expect(await context(coach!)).toBeNull();
+      expect(await replaceWorkEntityTags({...base, actorUserId: coach!.id, actorEmail: coach!.primaryEmail,
+        expectedUpdatedAt: saved.updatedAt, tagIds: []})).toMatchObject({ok: false, code: "NOT_FOUND"});
+    } finally {
+      await prisma.coachingEngagementMember.updateMany({where: {engagementId, userId: coach!.id}, data: {status: "ACTIVE"}});
+    }
+    const cleared = await replaceWorkEntityTags({...base, expectedUpdatedAt: saved.updatedAt, tagIds: []});
+    expect(cleared).toMatchObject({ok: true, tagIds: []});
+    if (!cleared.ok) throw new Error(cleared.error);
+    const archivedLabel = `Archived shared tag ${nonce}`;
+    await prisma.studioTag.create({data: {projectId, slug: workTagSlug(archivedLabel), label: archivedLabel, isActive: false}});
+    const uncommittedLabel = `Should roll back ${nonce}`;
+    expect(await replaceWorkEntityTags({...base, expectedUpdatedAt: cleared.updatedAt, tagIds: [],
+      newTagLabels: [uncommittedLabel, archivedLabel]})).toMatchObject({ok: false});
+    expect(await prisma.studioTag.count({where: {projectId, label: uncommittedLabel}})).toBe(0);
+    expect((await prisma.actionItem.findUniqueOrThrow({where: {id: task.id}})).updatedAt).toEqual(cleared.updatedAt);
   });
 
   it("turns a scoped conversation into shared editable work, retains its source, and reads it back in older chat history", async () => {

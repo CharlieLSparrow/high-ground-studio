@@ -7,9 +7,10 @@ import {
   createWorkTagTaxonomy,
   mutateWorkTagTaxonomy,
   replaceWorkEntityTags,
+  readTaskTagContext,
 } from "@/lib/server/work-tags";
 
-import { PATCH, POST } from "./route";
+import { GET, PATCH, POST } from "./route";
 
 jest.mock("@/lib/prisma", () => ({ getPrismaClient: jest.fn() }));
 jest.mock("@/lib/server/quipsly-session", () => ({ getQuipslySessionFromRequest: jest.fn() }));
@@ -18,6 +19,7 @@ jest.mock("@/lib/server/work-tags", () => ({
   createWorkTagTaxonomy: jest.fn(),
   mutateWorkTagTaxonomy: jest.fn(),
   replaceWorkEntityTags: jest.fn(),
+  readTaskTagContext: jest.fn(),
 }));
 
 function request(body: unknown) {
@@ -30,6 +32,27 @@ function patchRequest(body: unknown) {
 
 describe("authenticated shared work tags route", () => {
   beforeEach(() => jest.clearAllMocks());
+
+  it("reads the authorized task tag context without caching private vocabulary", async () => {
+    jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({user: {id: "client", primaryEmail: "Client@Example.test"}} as any);
+    const context = {entityId: "task", projectId: "nest", updatedAt: "2026-09-08T00:00:00Z", selectedTagIds: ["research"],
+      tags: [{id: "research", label: "Research", hexColor: "#23543a", isActive: true}]};
+    jest.mocked(readTaskTagContext).mockResolvedValue(context);
+    const response = await GET(new Request("http://localhost/api/work/tags?entityKind=task&entityId=task"));
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Cache-Control")).toBe("private, no-store");
+    expect(await response.json()).toEqual({ok: true, ...context});
+    expect(readTaskTagContext).toHaveBeenCalledWith(expect.objectContaining({actorUserId: "client", actorEmail: "client@example.test", entityId: "task"}));
+  });
+
+  it("does not disclose a missing or inaccessible tag context", async () => {
+    jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({user: {id: "outsider", primaryEmail: "outsider@example.test"}} as any);
+    jest.mocked(readTaskTagContext).mockResolvedValue(null);
+    expect((await GET(new Request("http://localhost/api/work/tags?entityKind=task&entityId=private-task"))).status).toBe(404);
+    expect((await GET(new Request("http://localhost/api/work/tags?entityKind=unknown&entityId=private-task"))).status).toBe(400);
+    jest.mocked(getQuipslySessionFromRequest).mockResolvedValue(null as any);
+    expect((await GET(new Request("http://localhost/api/work/tags?entityKind=task&entityId=private-task"))).status).toBe(401);
+  });
 
   it("rejects before database access when signed out", async () => {
     jest.mocked(getQuipslySessionFromRequest).mockResolvedValue(null as any);
