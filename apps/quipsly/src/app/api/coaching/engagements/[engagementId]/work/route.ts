@@ -6,8 +6,7 @@ import { getPrismaClient } from "@/lib/prisma";
 import { coachingEngagementAccessWhere } from "@/lib/server/coaching-engagement";
 import { sharedCoachingWorkVisibilityWhere } from "@/lib/server/coaching-work-access";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
-import { sessionWorkSourceHref } from "@/lib/session-work-source-link";
-import { conversationWorkSourceHref } from "@/lib/conversation-work-source";
+import { NOTE_SELECT, TASK_SELECT, GOAL_SELECT, notePayload, taskPayload, goalPayload } from "@/lib/server/coaching-work-projection";
 import { coachingWorkPage } from "@/lib/server/coaching-work-page";
 import { retryCoachingWorkTransaction } from "@/lib/server/coaching-work-transaction";
 
@@ -97,117 +96,6 @@ function collaborativeNoteWhere(actorUserId: string) {
     ],
   };
 }
-
-function notePayload(row: any, actorUserId: string, canWrite = true) {
-  const isAuthor = row.authorUserId === actorUserId;
-  const isShared = ["SESSION_SHARED", "CLIENT_SAFE"].includes(row.visibility);
-  return {
-    id: row.id,
-    kind: "NOTE" as const,
-    title: row.title,
-    body: row.body,
-    sourceHref: conversationWorkSourceHref(row.engagementId, row.sourceJson) ?? sessionWorkSourceHref(row.roomId, row.sourceJson),
-    status: null,
-    owner: row.authorUser
-      ? {
-          id: row.authorUserId,
-          label: row.authorUser.name || row.authorUser.primaryEmail,
-        }
-      : null,
-    visibility: row.visibility === "AUTHOR_PRIVATE" ? "PRIVATE" : "SHARED",
-    dueAt: null,
-    canEdit: canWrite && (isAuthor || isShared),
-    canChangeVisibility: canWrite && isAuthor,
-    createdAt: row.createdAt.toISOString(),
-    updatedAt: row.updatedAt.toISOString(),
-  };
-}
-
-function taskPayload(row: any, canWrite = true) {
-  return {
-    id: row.id,
-    kind: "TASK" as const,
-    title: row.title,
-    body: row.detail,
-    sourceHref: conversationWorkSourceHref(row.engagementId, row.sourceJson) ?? sessionWorkSourceHref(row.roomId, row.sourceJson),
-    status: String(row.status),
-    owner: row.assignedUser
-      ? {
-          id: row.assignedUserId,
-          label: row.assignedUser.name || row.assignedUser.primaryEmail,
-        }
-      : null,
-    visibility: "SHARED" as const,
-    dueAt: row.dueAt?.toISOString() ?? null,
-    canEdit: canWrite,
-    createdAt: row.createdAt.toISOString(),
-    updatedAt: row.updatedAt.toISOString(),
-  };
-}
-
-function goalPayload(row: any, canWrite = true) {
-  return {
-    id: row.id,
-    kind: "GOAL" as const,
-    title: row.title,
-    body: row.description,
-    sourceHref: conversationWorkSourceHref(row.engagementId, row.sourceJson) ?? sessionWorkSourceHref(row.roomId, row.sourceJson),
-    status: String(row.status),
-    owner: {
-      id: row.ownerUserId,
-      label: row.owner.name || row.owner.primaryEmail,
-    },
-    visibility: "SHARED" as const,
-    dueAt: row.targetAt?.toISOString() ?? null,
-    canEdit: canWrite,
-    createdAt: row.createdAt.toISOString(),
-    updatedAt: row.updatedAt.toISOString(),
-  };
-}
-
-const NOTE_SELECT = {
-  engagementId: true,
-  id: true,
-  roomId: true,
-  authorUserId: true,
-  title: true,
-  body: true,
-  visibility: true,
-  createdAt: true,
-  updatedAt: true,
-  sourceJson: true,
-  authorUser: { select: { name: true, primaryEmail: true } },
-} as const;
-
-const TASK_SELECT = {
-  engagementId: true,
-  id: true,
-  roomId: true,
-  assignedUserId: true,
-  title: true,
-  detail: true,
-  status: true,
-  dueAt: true,
-  createdAt: true,
-  updatedAt: true,
-  sourceJson: true,
-  assignedUser: { select: { name: true, primaryEmail: true } },
-} as const;
-
-const GOAL_SELECT = {
-  engagementId: true,
-  id: true,
-  roomId: true,
-  ownerUserId: true,
-  title: true,
-  description: true,
-  status: true,
-  targetAt: true,
-  createdAt: true,
-  updatedAt: true,
-  sourceJson: true,
-  owner: { select: { name: true, primaryEmail: true } },
-} as const;
 
 function privateJson(value: unknown, status = 200) {
   return NextResponse.json(value, {

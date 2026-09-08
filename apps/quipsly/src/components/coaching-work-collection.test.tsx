@@ -69,3 +69,13 @@ it("retains authorized server results that match a member email rather than the 
   fireEvent.click(screen.getByRole("button", {name: "Show more work"}));
   expect(more).toHaveBeenCalledTimes(1);
 });
+
+it("shows shared tag colors and searches their names without nesting links inside item buttons", () => {
+  render(<CoachingWorkCollection entries={[note, {...task, tags: [{id: "research", label: "Research", hexColor: "#23543a", isActive: true}]}]}
+    selectedId={null} onSelect={jest.fn()}>{null}</CoachingWorkCollection>);
+  fireEvent.change(screen.getByRole("searchbox"), {target: {value: "Research"}});
+  expect(screen.getByRole("button", {name: `Open task: ${task.title}`})).toBeVisible();
+  expect(screen.queryByRole("button", {name: `Open note: ${note.title}`})).not.toBeInTheDocument();
+  expect(screen.getByText("#Research")).toHaveStyle({backgroundColor: "#23543a", color: "#ffffff"});
+  expect(screen.queryByRole("link")).not.toBeInTheDocument();
+});

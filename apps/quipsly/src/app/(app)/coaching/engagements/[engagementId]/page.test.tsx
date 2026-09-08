@@ -15,7 +15,10 @@ jest.mock("@/components/session-thread", () => ({ CollaborationThread: () => nul
 jest.mock("@/components/coaching-engagement-member-manager", () => ({ CoachingEngagementMemberManager: () => <h2>Manage people</h2> }));
 jest.mock("@/components/coaching-engagement-workspace", () => ({ CoachingEngagementWorkspace: ({ canWrite, initialEntries }: { canWrite: boolean; initialEntries: CoachingEngagementWorkEntry[] }) => <>
   <button disabled={!canWrite}>Add shared note</button>
-  {initialEntries.map((entry) => entry.sourceHref ? <a key={entry.id} href={entry.sourceHref}>{entry.title} source</a> : null)}
+  {initialEntries.map((entry) => <div key={entry.id}>
+    {entry.sourceHref ? <a href={entry.sourceHref}>{entry.title} source</a> : null}
+    {(entry.tags ?? []).map(tag => <span key={tag.id} data-color={tag.hexColor}>{tag.label}</span>)}
+  </div>)}
 </> }));
 jest.mock("@/components/coaching-space-tabs", () => ({ CoachingSpaceTabs: ({ work, people, sessions }: { work: ReactNode; people?: ReactNode; sessions?: ReactNode }) => <>{work}{sessions}{people}</> }));
 
@@ -105,6 +108,21 @@ describe("client space page behavior", () => {
     render(await Page({ params }));
     expect(screen.getByRole("button", { name: "Add shared note" })).toBeDisabled();
     expect(screen.queryByRole("heading", { name: "Manage people" })).not.toBeInTheDocument();
+  });
+
+  it("uses the same source and colored tag projection on the initial page as on refresh", async () => {
+    arrange("CLIENT", false, {actionItems: [{id: "from-chat", engagementId: "space", roomId: null,
+      title: "Outline our chapter", detail: "Start with our first question", status: "OPEN", createdAt: new Date(), updatedAt: new Date(),
+      sourceJson: {conversationSource: {schema: "quipsly-conversation-work-v1", engagementId: "space", messageId: "chat-original"}},
+      tagLinks: [{tag: {id: "research", label: "Research", hexColor: "#23543a", isActive: true}}],
+    }]});
+    render(await Page({params}));
+    expect(screen.getByRole("link", {name: "Outline our chapter source"})).toHaveAttribute("href", "/coaching/engagements/space?message=chat-original#relationship-conversation");
+    expect(screen.getByText("Research")).toHaveAttribute("data-color", "#23543a");
+    const query = prisma.coachingEngagement.findFirst.mock.calls[0][0];
+    for (const relation of ["notes", "actionItems", "goals"]) {
+      expect(query.select[relation].select.tagLinks.select.tag.select).toEqual({id: true, label: true, hexColor: true, isActive: true});
+    }
   });
 
   it("does not reveal the space or its work when scoped lookup denies access", async () => {

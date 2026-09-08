@@ -5,6 +5,7 @@ import { GET as readChat } from "@/app/api/nest-chat/route";
 import { getPrismaClient } from "@/lib/prisma";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 import { loadSessionWork } from "@/lib/server/session-work";
+import { createAndAssignWorkEntityTag, replaceWorkEntityTags } from "@/lib/server/work-tags";
 import { DELETE, GET, PATCH, POST, PUT } from "./route";
 
 jest.mock("@/lib/server/quipsly-session", () => ({ getQuipslySessionFromRequest: jest.fn() }));
@@ -127,6 +128,52 @@ if (enabled) {
     const edited = await act("PATCH", { kind: "TASK", id: persisted.id, expectedUpdatedAt: persisted.updatedAt.toISOString(), title: "Introduction practiced together", body: message.body, ownerUserId: client!.id, status: "DONE" }, coach!);
     expect(edited.status).toBe(200);
     expect((await act("GET")).body.engagement.entries.find((entry: {id: string}) => entry.id === persisted.id)).toMatchObject({ status: "DONE", title: "Introduction practiced together" });
+  });
+
+  it("lets a shared task editor organize its tags while keeping private work and vocabulary scoped", async () => {
+    // Nest access alone is not access to a private client task. The client can
+    // read the tags on shared work without getting the whole Nest vocabulary.
+    await prisma.studioProjectAccessGrant.createMany({ data: [coach!, observer!, guest!, outsider!].map(actor => ({
+      projectId, email: actor.primaryEmail, role: "EDITOR", status: "ACTIVE", createdByUserId: coach!.id,
+    })) });
+    const created = await act("POST", { kind: "TASK", title: "Organize our opening", clientRequestId: randomUUID() });
+    const taskId = created.body.entry.id;
+    const command = { prisma, actorUserId: coach!.id, actorEmail: coach!.primaryEmail, entityKind: "task" as const,
+      entityId: taskId, expectedUpdatedAt: new Date(created.body.entry.updatedAt), label: "Shared research" };
+    const tagged = await createAndAssignWorkEntityTag(command);
+    expect(tagged.ok).toBe(true);
+    if (!tagged.ok) throw new Error(tagged.error);
+    await prisma.studioTag.update({ where: {id: tagged.tag.id}, data: {hexColor: "#23543a"} });
+    const privateTag = await prisma.studioTag.create({ data: {projectId, label: "Confidential reflection", slug: `private-${nonce}`, hexColor: "#aa1122"} });
+    const privateNote = await prisma.coachingNote.create({ data: {engagementId, roomId, authorUserId: coach!.id, title: "Private preparation", body: "Only the coach", visibility: "AUTHOR_PRIVATE",
+      tagLinks: {create: {tagId: privateTag.id, createdByUserId: coach!.id}}} });
+    for (const actor of [coach!, client!, observer!]) {
+      const read = await act("GET", {}, actor, "q=Shared%20research");
+      expect(read.status).toBe(200);
+      expect(read.body.engagement.entries.map((entry: {id: string}) => entry.id)).toEqual([taskId]);
+      expect(read.body.engagement.entries[0].tags).toEqual([{id: tagged.tag.id, label: "Shared research", hexColor: "#23543a", isActive: true}]);
+    }
+    const clientRead = await act("GET");
+    expect(JSON.stringify(clientRead.body)).not.toContain(privateTag.label);
+    expect(clientRead.body.engagement.entries.some((entry: {id: string}) => entry.id === privateNote.id)).toBe(false);
+    expect((await act("GET", {}, client!, "q=Confidential")).body.engagement.entries).toEqual([]);
+    expect((await act("GET", {}, outsider!, "q=Shared")).status).toBe(404);
+    for (const actor of [observer!, guest!, outsider!]) {
+      expect(await replaceWorkEntityTags({...command, actorUserId: actor.id, actorEmail: actor.primaryEmail,
+        tagIds: [], expectedUpdatedAt: tagged.updatedAt})).toMatchObject({ok: false, code: "NOT_FOUND"});
+    }
+    const replaced = await replaceWorkEntityTags({...command, tagIds: [tagged.tag.id], expectedUpdatedAt: tagged.updatedAt});
+    expect(replaced.ok).toBe(true);
+    if (!replaced.ok) throw new Error(replaced.error);
+    await prisma.coachingEngagementMember.updateMany({where: {engagementId, userId: coach!.id}, data: {status: "REMOVED"}});
+    try {
+      expect(await replaceWorkEntityTags({...command, tagIds: [], expectedUpdatedAt: replaced.updatedAt})).toMatchObject({ok: false, code: "NOT_FOUND"});
+    } finally {
+      await prisma.coachingEngagementMember.updateMany({where: {engagementId, userId: coach!.id}, data: {status: "ACTIVE"}});
+    }
+    await prisma.actionItem.update({where: {id: taskId}, data: {sourceJson: {visibility: "engagement-shared", relationshipWorkRemoval: {active: true}}}});
+    expect(await createAndAssignWorkEntityTag({...command, label: "Should not be created", expectedUpdatedAt: replaced.updatedAt})).toMatchObject({ok: false, code: "NOT_FOUND"});
+    expect(await prisma.studioTag.count({where: {projectId, label: "Should not be created"}})).toBe(0);
   });
 
   it.each(["TASK", "GOAL"] as const)("cannot change, remove, or restore a known private %s ID", async (kind) => {

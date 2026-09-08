@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { ArrowLeft, CheckCircle2, Circle, LockKeyhole, NotebookPen, Search, Target } from "lucide-react";
 import type { CoachingEngagementWorkEntry } from "./coaching-engagement-workspace";
+import { tagChipColors } from "@/lib/tag-color";
 
 export function CoachingWorkCollection({ entries, selectedId, onSelect, onToggleTask, busyIds, search, onSearch, loading, hasMore, onLoadMore, children }: {
   entries: CoachingEngagementWorkEntry[];
@@ -27,7 +28,7 @@ export function CoachingWorkCollection({ entries, selectedId, onSelect, onToggle
   // Controlled results have already been searched by the authorized server,
   // including fields (such as a member's email) not repeated in the UI label.
   const matches = onSearch ? entries : entries.filter((entry) => {
-    const searchable = [entry.title, entry.body, entry.owner?.label].filter(Boolean).join(" ").toLocaleLowerCase();
+    const searchable = [entry.title, entry.body, entry.owner?.label, ...(entry.tags ?? []).map(tag => tag.label)].filter(Boolean).join(" ").toLocaleLowerCase();
     return terms.every((term) => searchable.includes(term));
   });
 
@@ -78,6 +79,11 @@ export function CoachingWorkCollection({ entries, selectedId, onSelect, onToggle
                   {complete ? <span>Completed</span> : null}
                   {entry.dueAt ? <span>{entry.kind === "TASK" ? "Due" : "Target"} {new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", timeZone: "UTC" }).format(new Date(entry.dueAt))}</span> : null}
                 </span>
+                {!!entry.tags?.length && <span className="mt-2 flex flex-wrap gap-1" aria-label="Tags">
+                  {entry.tags.map(tag => <span key={tag.id} style={tagChipColors(tag.hexColor)} className="max-w-full rounded-full border border-border bg-muted px-2 py-0.5 text-xs font-semibold text-foreground [overflow-wrap:anywhere]">
+                    #{tag.label}{tag.isActive === false ? " · archived" : ""}
+                  </span>)}
+                </span>}
               </span>
             </button></div>;
           })}

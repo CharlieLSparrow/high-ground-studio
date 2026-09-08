@@ -493,7 +493,7 @@ export function buildWorkSnapshot(input: {
           && (task.assignedUserId === input.actorUserId || task.canEditByActor === true)
           && !recurrence
           && !historicalLocked,
-        canManageTags: Boolean(input.actorUserId) && task.assignedUserId === input.actorUserId,
+        canManageTags: Boolean(input.actorUserId) && (task.assignedUserId === input.actorUserId || task.canEditByActor === true),
         canManageReminder: Boolean(input.actorUserId)
           && task.assignedUserId === input.actorUserId
           && !recurrence,

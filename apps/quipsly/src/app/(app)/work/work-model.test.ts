@@ -214,6 +214,8 @@ describe("Work Queue model", () => {
       commitments: [],
     });
     const editability = Object.fromEntries(snapshot.tasks.map((item) => [item.id, item.canEdit]));
+    expect(snapshot.tasks.find(item => item.id === "shared-coaching")?.canManageTags).toBe(true);
+    expect(snapshot.tasks.find(item => item.id === "other-owner")?.canManageTags).toBe(false);
     expect(editability).toEqual({
       editable: true,
       "shared-coaching": true,

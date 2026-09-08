@@ -44,6 +44,7 @@ export function coachingWorkPage(params: URLSearchParams, space: string, actor: 
       const contains = { contains: term, mode: "insensitive" };
       conditions.push({ OR: [{ title: contains }, { [bodyField]: contains },
         { [ownerField]: { is: { OR: [{ name: contains }, { primaryEmail: contains }] } } },
+        { tagLinks: { some: { tag: { label: contains } } } },
       ] });
     }
     if (cursor) {

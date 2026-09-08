@@ -4,6 +4,8 @@ import type { Prisma, PrismaClient } from "@prisma/client";
 
 import { listProjectsVisibleToEmail } from "./home-nest";
 import { normalizeWorkTagLabel, workTagSlug } from "./work-tag-normalization";
+import { personalOrSharedSessionTaskAccessWhere } from "./task-access";
+import { activeCoachingWorkWhere } from "./coaching-work-page";
 
 export { normalizeWorkTagLabel, workTagSlug } from "./work-tag-normalization";
 
@@ -399,7 +401,7 @@ function entityWhere(
   actorEmail = "",
 ) {
   return entityKind === "task"
-    ? { id: entityId, assignedUserId: actorUserId }
+    ? { id: entityId, AND: [{ OR: personalOrSharedSessionTaskAccessWhere(actorUserId, "write") }, activeCoachingWorkWhere()] }
     : entityKind === "goal"
       ? { id: entityId, ownerUserId: actorUserId }
       : entityKind === "note"
@@ -456,6 +458,7 @@ function entitySourceField(entityKind: WorkTagEntityKind) {
 }
 
 function entityMutationLabel(entityKind: WorkTagEntityKind) {
+  if (entityKind === "task") return "task editor";
   if (entityKind === "document") return "Nest editor";
   if (entityKind === "note") return "note author or Nest editor";
   return `${entityKind} owner`;
@@ -993,7 +996,7 @@ export async function replaceWorkEntityTags(input: {
       };
     }
     const update = input.entityKind === "task"
-      ? await tx.actionItem.updateMany({ where: { id: entityId, assignedUserId: actorUserId, projectId: entity.projectId, updatedAt: input.expectedUpdatedAt }, data: { sourceJson: { ...safeRecord(entity.sourceJson), lastTagReceipt: receipt } } })
+      ? await tx.actionItem.updateMany({ where: { ...entityWhere("task", entityId, actorUserId, actorEmail), projectId: entity.projectId, updatedAt: input.expectedUpdatedAt }, data: { sourceJson: { ...safeRecord(entity.sourceJson), lastTagReceipt: receipt } } })
       : input.entityKind === "goal"
         ? await tx.goal.updateMany({ where: { id: entityId, ownerUserId: actorUserId, projectId: entity.projectId, updatedAt: input.expectedUpdatedAt }, data: { sourceJson: { ...safeRecord(entity.sourceJson), lastTagReceipt: receipt } } })
         : input.entityKind === "note"

@@ -575,7 +575,7 @@ describe("Work Queue interactions", () => {
     await user.click(screen.getByRole("checkbox", { name: "Episode 4" }));
     await user.click(screen.getByRole("button", { name: "Save tags" }));
     expect(replaceWorkTags).toHaveBeenCalledWith({ entityKind: "task", entityId: "task-1", tagIds: ["tag-proof", "tag-episode"], expectedUpdatedAt: snapshot.tasks[0].updatedAt });
-    expect(await screen.findByRole("status")).toHaveTextContent("No external action was taken");
+    expect(await screen.findByRole("status")).toHaveTextContent("Tags saved.");
     expect(refresh).toHaveBeenCalled();
   });
 

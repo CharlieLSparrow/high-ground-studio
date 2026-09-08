@@ -27,7 +27,7 @@ import {
 import { getPrismaClient } from "@/lib/prisma";
 import { coachingEngagementAccessWhere } from "@/lib/server/coaching-engagement";
 import { sharedCoachingWorkVisibilityWhere } from "@/lib/server/coaching-work-access";
-import { sessionWorkSourceHref } from "@/lib/session-work-source-link";
+import { NOTE_SELECT, TASK_SELECT, GOAL_SELECT, notePayload, taskPayload, goalPayload } from "@/lib/server/coaching-work-projection";
 import { coachingWorkPage } from "@/lib/server/coaching-work-page";
 import { getQuipslySession } from "@/lib/server/quipsly-session";
 
@@ -108,54 +108,19 @@ export default async function CoachingEngagementPage({
         },
         orderBy: workPage.orderBy,
         take: workPage.take,
-        select: {
-          id: true,
-          title: true,
-          body: true,
-          visibility: true,
-          authorUserId: true,
-          roomId: true,
-          sourceJson: true,
-          createdAt: true,
-          updatedAt: true,
-          authorUser: { select: { name: true, primaryEmail: true } },
-        },
+        select: NOTE_SELECT,
       },
       actionItems: {
         where: {...sharedCoachingWorkVisibilityWhere(), ...workPage.where("TASK")},
         orderBy: workPage.orderBy,
         take: workPage.take,
-        select: {
-          id: true,
-          title: true,
-          detail: true,
-          status: true,
-          dueAt: true,
-          assignedUserId: true,
-          roomId: true,
-          sourceJson: true,
-          createdAt: true,
-          updatedAt: true,
-          assignedUser: { select: { name: true, primaryEmail: true } },
-        },
+        select: TASK_SELECT,
       },
       goals: {
         where: {...sharedCoachingWorkVisibilityWhere(), ...workPage.where("GOAL")},
         orderBy: workPage.orderBy,
         take: workPage.take,
-        select: {
-          id: true,
-          title: true,
-          description: true,
-          status: true,
-          targetAt: true,
-          ownerUserId: true,
-          roomId: true,
-          sourceJson: true,
-          createdAt: true,
-          updatedAt: true,
-          owner: { select: { name: true, primaryEmail: true } },
-        },
+        select: GOAL_SELECT,
       },
       formAssignments: {
         where: { status: { not: "CANCELED" } },
@@ -197,62 +162,10 @@ export default async function CoachingEngagementPage({
   const activeTasks = engagement.actionItems.filter((task) => !isRelationshipWorkRemoved(task.sourceJson));
   const activeGoals = engagement.goals.filter((goal) => !isRelationshipWorkRemoved(goal.sourceJson));
   const workEntries: CoachingEngagementWorkEntry[] = [
-    ...activeNotes.map((note) => ({
-      id: note.id,
-      kind: "NOTE" as const,
-      title: note.title,
-      body: note.body,
-      sourceHref: sessionWorkSourceHref(note.roomId, note.sourceJson),
-      status: null,
-      owner: note.authorUser
-        ? { id: note.authorUserId!, label: personLabel(note.authorUser) }
-        : null,
-      visibility:
-        note.visibility === "AUTHOR_PRIVATE"
-          ? ("PRIVATE" as const)
-          : ("SHARED" as const),
-      dueAt: null,
-      canEdit: canPost && (
-        note.authorUserId === session.user.id ||
-        note.visibility !== "AUTHOR_PRIVATE"
-      ),
-      canChangeVisibility: note.authorUserId === session.user.id,
-      createdAt: note.createdAt.toISOString(),
-      updatedAt: note.updatedAt.toISOString(),
-    })),
-    ...activeTasks.map((task) => ({
-      id: task.id,
-      kind: "TASK" as const,
-      title: task.title,
-      body: task.detail,
-      sourceHref: sessionWorkSourceHref(task.roomId, task.sourceJson),
-      status: String(task.status),
-      owner: task.assignedUser
-        ? { id: task.assignedUserId!, label: personLabel(task.assignedUser) }
-        : null,
-      visibility: "SHARED" as const,
-      dueAt: task.dueAt?.toISOString() ?? null,
-      canEdit: canPost,
-      canChangeVisibility: false,
-      createdAt: task.createdAt.toISOString(),
-      updatedAt: task.updatedAt.toISOString(),
-    })),
-    ...activeGoals.map((goal) => ({
-      id: goal.id,
-      kind: "GOAL" as const,
-      title: goal.title,
-      body: goal.description,
-      sourceHref: sessionWorkSourceHref(goal.roomId, goal.sourceJson),
-      status: String(goal.status),
-      owner: { id: goal.ownerUserId, label: personLabel(goal.owner) },
-      visibility: "SHARED" as const,
-      dueAt: goal.targetAt?.toISOString() ?? null,
-      canEdit: canPost,
-      canChangeVisibility: false,
-      createdAt: goal.createdAt.toISOString(),
-      updatedAt: goal.updatedAt.toISOString(),
-    })),
-  ].sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+    ...activeNotes.map(note => notePayload(note, session.user.id, canPost)),
+    ...activeTasks.map(task => taskPayload(task, canPost)),
+    ...activeGoals.map(goal => goalPayload(goal, canPost)),
+  ];
   const initialWork = workPage.result(workEntries);
 
   const now = Date.now();

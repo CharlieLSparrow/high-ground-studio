@@ -24,6 +24,7 @@ export type CoachingEngagementWorkEntry = {
   title: string | null;
   body: string | null;
   sourceHref?: string | null;
+  tags?: Array<{ id: string; label: string; hexColor?: string | null; isActive?: boolean }>;
   status: string | null;
   owner: { id: string; label: string } | null;
   visibility: "PRIVATE" | "SHARED";

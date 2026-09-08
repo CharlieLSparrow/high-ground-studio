@@ -102,7 +102,7 @@ function TagEditor({ entityKind, entityId, project, tags, updatedAt, canManage, 
         startTransition(async () => {
           const result = await replaceWorkTags({ entityKind, entityId, tagIds: formData.getAll("tagId").map(String), expectedUpdatedAt: updatedAt });
           if (!result.ok) { setMessage(result.error); if (result.code === "CONFLICT") onRefresh(); return; }
-          setMessage("Tags saved inside this Nest. No external action was taken.");
+          setMessage("Tags saved.");
           onRefresh();
         });
       }} className="mt-3 space-y-3">
@@ -130,7 +130,7 @@ function TagEditor({ entityKind, entityId, project, tags, updatedAt, canManage, 
           <input id={`new-tag-${entityKind}-${entityId}`} name="newTagLabel" required maxLength={80} placeholder="e.g. Product development" aria-describedby={`new-tag-help-${entityKind}-${entityId}`} className="min-h-11 min-w-0 flex-1 rounded-xl border border-sky-200 bg-white px-3 text-sm font-semibold normal-case tracking-normal text-sky-950" />
           <button type="submit" disabled={creating} className="min-h-11 rounded-full border border-sky-700 bg-white px-4 py-2 text-[10px] font-black uppercase tracking-wide text-sky-900 disabled:opacity-50">{creating ? "Creating…" : "Create & apply"}</button>
         </div>
-        <p id={`new-tag-help-${entityKind}-${entityId}`} className="mt-2 text-[11px] font-semibold leading-5 text-sky-800">Shared only inside {project.name}. Exact-name retries reuse the existing tag; ambiguous names never merge silently.</p>
+        <p id={`new-tag-help-${entityKind}-${entityId}`} className="mt-2 text-[11px] font-semibold leading-5 text-sky-800">Reuse this tag across {project.name}.</p>
       </form>
       {message && <p role="status" className="mt-2 text-xs font-bold text-sky-950">{message}</p>}
     </details>
