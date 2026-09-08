@@ -246,20 +246,38 @@ export function SessionRecordingShareCard({
   const previewLastPlaybackTimeRef = useRef<number | null>(null);
   const reviewRequestStartedForRef = useRef<string | null>(null);
   const requestIds = useRef<Partial<Record<"PREPARE" | "REVIEW" | "RELEASE" | "REVOKE", string>>>({});
+  const requestFingerprints = useRef<Partial<Record<"PREPARE" | "RELEASE" | "REVOKE", string>>>({});
+  const draftRoom = useRef<string | null>(null);
+  const draftTouched = useRef(false);
 
-  const load = useCallback(async (quiet = false) => {
+  const load = useCallback(async (quiet = false, resetDraft = false) => {
     if (!quiet) { setBusy("LOAD"); setNotice(null); }
     try {
       const response = await fetch(`/api/sessions/${encodeURIComponent(roomId)}/recording-share`, { cache: "no-store" });
+      if ([401, 403, 404].includes(response.status)) {
+        setSnapshot(null);
+        setEditing(false);
+        draftRoom.current = null;
+        draftTouched.current = false;
+        requestIds.current = {};
+        requestFingerprints.current = {};
+      }
       const payload = await response.json() as Snapshot;
       if (!response.ok || !payload.ok) throw new Error(payload.error || "Quipsly could not load the recording workspace.");
       setSnapshot(payload);
-      if (payload.role === "COACH" && !payload.output) {
+      // Refresh and render polling update availability, not the person's draft.
+      // Untouched defaults can follow arriving sources; changed drafts stay put.
+      const initializeDraft = draftRoom.current !== roomId || resetDraft || !draftTouched.current;
+      if (initializeDraft && payload.role === "COACH" && !payload.output) {
         setSelected(new Set(defaultParticipantSources(payload.available?.sources || [])));
+        setStartSeconds(0);
         setEndSeconds(payload.available?.programDurationSeconds || 0);
         setTitle(`${payload.room?.title || "Coaching Session"} recording`);
+        setExcludedTranscriptKeys(new Set());
+        setOutputMediaKind("audio");
+        setPrimaryVideoSourceId("");
       }
-      if (payload.output) {
+      if (initializeDraft && payload.output) {
         setSelected(new Set(outputSourceIds(payload.output, payload.available?.sources || [])));
         setTitle(payload.output.title);
         setStartSeconds(Number(payload.output.body.edit?.startSeconds) || 0);
@@ -268,6 +286,8 @@ export function SessionRecordingShareCard({
         setOutputMediaKind(payload.output.render.mediaKind === "video" ? "video" : "audio");
         setPrimaryVideoSourceId(payload.output.render.primaryVideoSourceId || "");
       }
+      draftRoom.current = roomId;
+      if (initializeDraft) draftTouched.current = false;
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "Quipsly could not load the recording workspace.");
     } finally {
@@ -477,9 +497,7 @@ export function SessionRecordingShareCard({
     setNotice(null);
     try {
       const output = snapshot?.output;
-      const clientRequestId = requestIds.current[action] || crypto.randomUUID();
-      requestIds.current[action] = clientRequestId;
-      const body: Record<string, unknown> = { action, clientRequestId };
+      const body: Record<string, unknown> = { action };
       if (action === "PREPARE") Object.assign(body, {
         title,
         sourceIds: [...selected],
@@ -498,6 +516,12 @@ export function SessionRecordingShareCard({
         if (!output) throw new Error("Refresh before changing recording visibility.");
         Object.assign(body, { outputId: output.id, expectedRevision: output.revision });
       }
+      const fingerprint = JSON.stringify(body);
+      if (requestFingerprints.current[action] !== fingerprint) {
+        requestIds.current[action] = crypto.randomUUID();
+        requestFingerprints.current[action] = fingerprint;
+      }
+      body.clientRequestId = requestIds.current[action];
       const response = await fetch(`/api/sessions/${encodeURIComponent(roomId)}/recording-share`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
       const payload = await response.json() as Snapshot;
       if (!response.ok || !payload.ok) throw new Error(payload.error || "The recording decision was not confirmed.");
@@ -507,8 +531,9 @@ export function SessionRecordingShareCard({
           ? `Released inside ${output?.recipient.label}'s private Session. No email or public link was sent.`
           : "Client access revoked. Original masters and decision history remain intact.");
       delete requestIds.current[action];
+      delete requestFingerprints.current[action];
       if (action === "PREPARE") setEditing(false);
-      await load(true);
+      await load(true, action === "PREPARE");
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "The recording decision was not confirmed.");
     } finally {
@@ -545,7 +570,7 @@ export function SessionRecordingShareCard({
       {notice ? <p className="mt-4 rounded-xl border border-sky-200 bg-white p-3 text-sm font-bold text-sky-950" role="status">{notice}</p> : null}
 
       {coach && (!output || editing) ? (
-        <div className="mt-5 space-y-5">
+        <fieldset disabled={Boolean(busy)} onChange={() => { draftTouched.current = true; }} onClick={() => { draftTouched.current = true; }} aria-label="Recording edit" className="mt-5 min-w-0 space-y-5">
           {output && editing ? <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-sky-200 bg-white p-3"><p className="text-xs font-bold leading-5 text-sky-900">Editing starts from revision {output.revision}. Your current {output.status === "RELEASED" ? "shared recording stays available" : "private preview stays unchanged"} until a new preview finishes.</p><button type="button" onClick={() => { setSelected(new Set(outputSourceIds(output, snapshot.available?.sources || []))); setTitle(output.title); setStartSeconds(Number(output.body.edit?.startSeconds) || 0); setEndSeconds(Number(output.body.edit?.endSeconds) || duration); setExcludedTranscriptKeys(transcriptExclusionKeys(output)); setOutputMediaKind(output.render.mediaKind === "video" ? "video" : "audio"); setPrimaryVideoSourceId(output.render.primaryVideoSourceId || ""); setEditing(false); }} disabled={Boolean(busy)} className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-[11px] font-black text-sky-900 disabled:opacity-50">Cancel changes</button></div> : null}
           {output && editing && missingCurrentSources ? <p className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm font-bold leading-6 text-amber-950">{missingCurrentSources} source{missingCurrentSources === 1 ? " is" : "s are"} no longer in the verified Session take. Quipsly kept the remaining exact source selection and will not substitute another track. Restore or deliberately replace the missing source before creating a new preview.</p> : null}
           {!snapshot.readiness?.hasVerifiedParticipantSources ? <p className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm font-bold text-amber-950">No complete, verified participant masters are ready yet. Finish the Session recording upload first.</p> : null}
@@ -553,7 +578,7 @@ export function SessionRecordingShareCard({
           <div className="rounded-2xl border border-sky-200 bg-white p-4 sm:p-5" aria-label="Trim recording">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div><h3 className="text-sm font-black text-sky-950">Trim the beginning and end</h3><p className="mt-1 text-xs font-semibold text-sky-800">Quipsly already selected one high-quality track for each person.</p></div>
-              <button type="button" onClick={() => { setStartSeconds(0); setEndSeconds(duration); }} disabled={!duration || (startSeconds === 0 && endSeconds === duration)} className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-[11px] font-black text-sky-900 disabled:opacity-45"><RotateCcw className="mr-1 inline" size={12} />Use full recording</button>
+              <button type="button" onClick={() => { draftTouched.current = true; setStartSeconds(0); setEndSeconds(duration); }} disabled={!duration || (startSeconds === 0 && endSeconds === duration)} className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-[11px] font-black text-sky-900 disabled:opacity-45"><RotateCcw className="mr-1 inline" size={12} />Use full recording</button>
             </div>
             <div className="mt-5 space-y-5">
               <label className="block text-xs font-black uppercase tracking-wide text-sky-900"><span className="flex items-center justify-between gap-3"><span>Start</span><output className="rounded-full bg-sky-100 px-2.5 py-1 font-mono text-[11px] normal-case tracking-normal text-sky-950">{time(startSeconds)}</output></span><input aria-label="Recording start" type="range" min={0} max={duration} step="0.1" value={startSeconds} onChange={(event) => setStartSeconds(trimStart(Number(event.target.value), endSeconds, duration))} className="mt-2 block w-full accent-sky-800" /></label>
@@ -591,7 +616,7 @@ export function SessionRecordingShareCard({
                   <legend className="flex items-center gap-2 text-sm font-black text-sky-950"><FileText size={16} />Cut the recording by transcript</legend>
                   <p className="mt-1 text-xs font-semibold text-sky-800">Included passages stay in the recording. Clear a passage to remove it from this private preview. Transcript wording does not change.</p>
                 </div>
-                {excludedTranscriptSegments.length ? <button type="button" onClick={() => setExcludedTranscriptKeys(new Set())} className="rounded-lg border border-sky-200 bg-sky-50 px-2.5 py-1.5 text-[11px] font-black text-sky-900"><RotateCcw className="mr-1 inline" size={12} />Restore all</button> : null}
+                {excludedTranscriptSegments.length ? <button type="button" onClick={() => { draftTouched.current = true; setExcludedTranscriptKeys(new Set()); }} className="rounded-lg border border-sky-200 bg-sky-50 px-2.5 py-1.5 text-[11px] font-black text-sky-900"><RotateCcw className="mr-1 inline" size={12} />Restore all</button> : null}
               </div>
               {audition && auditionSource ? (
                 <div id="recording-cut-audition" className="mt-4 scroll-mt-28 rounded-xl border border-indigo-200 bg-indigo-50 p-3" aria-label="Exact passage audition">
@@ -699,7 +724,7 @@ export function SessionRecordingShareCard({
           <p className="text-xs font-bold text-sky-800"><Scissors className="mr-1 inline" size={14} />Prepared range {time(startSeconds)}–{time(endSeconds)} ({time(endSeconds - startSeconds)}) from {chosen.length} participant source{chosen.length === 1 ? "" : "s"}.</p>
           <button type="button" aria-label="Create private preview" disabled={Boolean(busy) || !chosen.length || !rangeValid || !videoSelectionValid || !verifiedRendererAvailable} onClick={() => void mutate("PREPARE")} className="w-full rounded-xl bg-sky-800 px-4 py-3 text-sm font-black text-white shadow-sm disabled:cursor-not-allowed disabled:opacity-50">{busy === "PREPARE" ? "Creating preview…" : `Create private ${outputMediaKind} preview`}</button>
           {!verifiedRendererAvailable ? <p className="text-xs font-bold text-amber-800">Preview preparation is temporarily unavailable. Your trim and transcript choices stay here; try again shortly.</p> : null}
-        </div>
+        </fieldset>
       ) : null}
 
       {output ? <div className="mt-5 space-y-4 rounded-2xl border border-sky-200 bg-white p-4 sm:p-5"><div className="flex flex-wrap items-center justify-between gap-3"><div><p className="font-black text-sky-950">{output.title}</p><p className="text-xs font-bold text-sky-700">Revision {output.revision} · {output.status === "DRAFT" ? "Private coach draft" : output.status === "RELEASED" ? `Visible to ${output.recipient.label}` : "Access revoked"}</p></div><span className="rounded-full bg-sky-100 px-3 py-1 text-[10px] font-black uppercase tracking-wide text-sky-900">{output.render.status}</span></div>

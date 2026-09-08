@@ -1,10 +1,19 @@
 #!/usr/bin/env node
 
+import { execFile } from "node:child_process";
+import { createHash } from "node:crypto";
+import { createReadStream } from "node:fs";
+import { mkdtemp, stat } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { promisify } from "node:util";
+
 import { loadFreshCoachingAcceptanceContext } from "./lib/coaching-acceptance-context.mjs";
 import { readRetainedQAPassword } from "./lib/retained-qa-keychain.mjs";
 import { assertNoHorizontalOverflow, clearRenderedSession, loadPlaywright, requireLoopbackOrigin, signInThroughRenderedLogin } from "./lib/retained-qa-browser.mjs";
 
 const enabled = process.env.QUIPSLY_LOCAL_RECORDING_SHARE_OPERATION === "1";
+const editRequested = process.env.QUIPSLY_LOCAL_RECORDING_SHARE_EDIT_OPERATION === "1";
 const baseURL = requireLoopbackOrigin(process.env.QUIPSLY_LOCAL_BASE_URL || "http://127.0.0.1:3012", "Local recording-share operation base URL");
 const retainedRoomId = "retained-browser-live-room-20260804";
 const retainedBookingId = "retained-browser-live-room-booking-20260819";
@@ -140,6 +149,12 @@ try {
     coachCard = coachPage.locator("#recording-share");
   }
   const prepareButton = coachCard.getByRole("button", { name: "Create private preview", exact: true });
+  if (editRequested) {
+    const editButton = coachCard.getByRole("button", { name: /^(Edit private preview|Create new private edit|Review trim and try again)$/ });
+    await Promise.race([prepareButton.waitFor(), editButton.waitFor()]);
+    if (await editButton.isVisible()) await editButton.click();
+    await prepareButton.waitFor();
+  }
   await Promise.race([
     prepareButton.waitFor({ state: "visible", timeout: 30_000 }),
     coachCard.getByText("VERIFIED", { exact: true }).waitFor({ timeout: 30_000 }),
@@ -162,6 +177,37 @@ try {
       JSON.stringify(availableSourceIds) === JSON.stringify(expectedSourceIds),
       `Rendered editor crossed recording-session boundaries. Expected ${expectedSourceIds.length} sources in ${room.captureGroupId}; received ${availableSourceIds.length}.`,
     );
+    if (editRequested) {
+      const duration = preparationSnapshot.available.programDurationSeconds;
+      assert(duration > 5, "The editing journey needs a recording longer than five seconds.");
+      const startSeconds = 0.5;
+      const endSeconds = Math.floor((duration - 0.5) * 10) / 10;
+      const passage = preparationSnapshot.available.transcriptSegments.find((segment) => (
+        segment.cutSafety === "safe" && segment.cutStartSeconds >= startSeconds && segment.cutEndSeconds <= endSeconds
+        && segment.cutEndSeconds > segment.cutStartSeconds && segment.cutEndSeconds - segment.cutStartSeconds < (endSeconds - startSeconds) / 2
+      ));
+      assert(passage, "No source-timed passage is available for a real text-based cut.");
+      const timing = coachCard.locator("details").filter({ hasText: "Precise timing" });
+      if (!(await timing.evaluate((element) => element.open))) await timing.locator("summary").click();
+      await timing.getByRole("spinbutton", { name: "Start (seconds)", exact: true }).fill(String(startSeconds));
+      await timing.getByRole("spinbutton", { name: "End (seconds)", exact: true }).fill(String(endSeconds));
+      const restoreAll = coachCard.getByRole("button", { name: "Restore all", exact: true });
+      if (await restoreAll.isVisible()) await restoreAll.click();
+      const keep = coachCard.getByRole("checkbox", { name: `Keep in recording: ${passage.text}`, exact: true });
+      await keep.uncheck();
+      await coachCard.getByRole("checkbox", { name: `Restore to recording: ${passage.text}`, exact: true }).waitFor();
+      results.edit = { startSeconds, endSeconds, segmentId: passage.segmentId,
+        expectedDurationSeconds: endSeconds - startSeconds - (passage.cutEndSeconds - passage.cutStartSeconds) };
+      const [refresh] = await Promise.all([
+        coachPage.waitForResponse((candidate) => candidate.request().method() === "GET" && new URL(candidate.url()).pathname === `/api/sessions/${ROOM_ID}/recording-share`),
+        coachCard.getByRole("button", { name: "Refresh", exact: true }).click(),
+      ]);
+      assert(refresh.ok(), "Recording availability refresh failed.");
+      await coachCard.getByRole("group", { name: "Recording edit", exact: true }).waitFor();
+      assert(Number(await timing.getByRole("spinbutton", { name: "Start (seconds)", exact: true }).inputValue()) === startSeconds, "Refresh replaced the unfinished start trim.");
+      assert(Number(await timing.getByRole("spinbutton", { name: "End (seconds)", exact: true }).inputValue()) === endSeconds, "Refresh replaced the unfinished end trim.");
+      assert(!await coachCard.getByRole("checkbox", { name: `Restore to recording: ${passage.text}`, exact: true }).isChecked(), "Refresh removed the unfinished transcript cut.");
+    }
     const [prepareResponse] = await Promise.all([
       coachPage.waitForResponse((response) => response.request().method() === "POST" && new URL(response.url()).pathname === `/api/sessions/${ROOM_ID}/recording-share`),
       prepareButton.click(),
@@ -171,6 +217,7 @@ try {
       prepareResponse.ok() && preparePacket?.ok === true,
       `Private preview request failed (${prepareResponse.status()}): ${JSON.stringify(preparePacket)}. Range: ${JSON.stringify(renderedRange)}. Capture group: ${room.captureGroupId}. Sources: ${availableSourceIds.length}.`,
     );
+    if (preparePacket.output) await coachCard.getByText(`Revision ${preparePacket.output.revision} · Private coach draft`, { exact: true }).waitFor({ timeout: 30_000 });
   }
   await coachCard.getByText("VERIFIED", { exact: true }).waitFor({ timeout: 120_000 });
   results.coachPreview = await decodeAndAdvance(coachCard);
@@ -180,6 +227,13 @@ try {
     identities.client.displayName,
   );
   const output = await prisma.sessionOutput.findFirstOrThrow({ where: { roomId: ROOM_ID, kind: "RECORDING_SHARE", status: "DRAFT" }, orderBy: { updatedAt: "desc" }, select: { id: true, revision: true, contentSha256: true, bodyJson: true, sourceManifestJson: true } });
+  if (editRequested) {
+    assert(output.bodyJson.edit.startSeconds === results.edit.startSeconds && output.bodyJson.edit.endSeconds === results.edit.endSeconds, "The saved edit lost its exact trim.");
+    assert(output.bodyJson.edit.transcriptExclusions.length === 1 && output.bodyJson.edit.transcriptExclusions[0].segmentId === results.edit.segmentId, "The saved edit lost or substituted its transcript cut.");
+    assert(Math.abs(Number(output.bodyJson.render.durationSeconds) - results.edit.expectedDurationSeconds) < 0.2, "The rendered duration did not match the trim and source-timed text cut.");
+  }
+  const previousDeliveryCount = await prisma.deliveryEvent.count({ where: { outputId: output.id } });
+  results.previousDeliveryCount = previousDeliveryCount;
   const derived = await prisma.recordingAsset.findUniqueOrThrow({ where: { id: output.bodyJson.render.recordingAssetId }, select: { id: true, checksum: true, byteSize: true, storageBucket: true, storageObjectPath: true, localManifestJson: true } });
   assert(derived.localManifestJson?.sessionRecordingShare?.outputId === output.id, "Derived recording omitted exact output lineage.");
   const [releaseRequest] = await Promise.all([
@@ -202,6 +256,26 @@ try {
   assert(results.clientPlayback.readyState >= 1 && results.clientPlayback.currentTimeSeconds > 0, "Recipient playback did not decode and advance.");
   results.clientMediaStatusBeforeRevoke = await clientPage.evaluate(async ({ roomId, outputId }) => (await fetch(`/api/sessions/${roomId}/recording-share/media/${outputId}`, { cache: "no-store" })).status, { roomId: ROOM_ID, outputId: output.id });
   assert(results.clientMediaStatusBeforeRevoke === 200, `Recipient media readback returned ${results.clientMediaStatusBeforeRevoke} before revoke.`);
+  const [download] = await Promise.all([
+    clientPage.waitForEvent("download"),
+    clientCard.getByRole("link", { name: "Download private copy", exact: true }).click(),
+  ]);
+  assert(!await download.failure(), "The recipient's recording download failed.");
+  assert(/^[a-z0-9-]+$/i.test(output.id), "Unexpected recording output filename.");
+  const downloadDirectory = freshContext ? path.dirname(freshContext.contextPath) : await mkdtemp(path.join(os.tmpdir(), "quipsly-recording-download-"));
+  const downloadPath = path.join(downloadDirectory, `${output.id}.m4a`);
+  await download.saveAs(downloadPath);
+  const hash = createHash("sha256");
+  for await (const chunk of createReadStream(downloadPath)) hash.update(chunk);
+  assert(hash.digest("hex") === derived.checksum, "The downloaded bytes do not match the verified recording.");
+  assert((await stat(downloadPath)).size === Number(derived.byteSize), "The downloaded recording is truncated.");
+  const { stdout } = await promisify(execFile)("ffprobe", ["-v", "error", "-show_format", "-show_streams", "-of", "json", downloadPath], { timeout: 30_000, maxBuffer: 1024 * 1024 });
+  const decoded = JSON.parse(stdout);
+  assert(decoded.streams.some((stream) => stream.codec_type === "audio"), "The downloaded recording has no audio stream.");
+  const downloadedDurationSeconds = Number(decoded.format?.duration);
+  const expectedDurationSeconds = results.edit?.expectedDurationSeconds ?? Number(output.bodyJson.render.durationSeconds);
+  assert(Number.isFinite(downloadedDurationSeconds) && Math.abs(downloadedDurationSeconds - expectedDurationSeconds) < 0.25, "The downloaded media duration does not match the edit.");
+  results.download = { path: downloadPath, sha256MatchesVerifiedAsset: true, durationSeconds: downloadedDurationSeconds, byteSize: Number(derived.byteSize) };
 
   const [revokeRequest] = await Promise.all([
     coachPage.waitForRequest((request) => request.method() === "POST" && new URL(request.url()).pathname === `/api/sessions/${ROOM_ID}/recording-share` && request.postDataJSON()?.action === "REVOKE"),
@@ -229,7 +303,7 @@ try {
 const sourceReadback = await prisma.recordingAsset.findMany({ where: { id: { in: [...originalHashes.keys()] } }, select: { id: true, checksum: true } });
 assert(sourceReadback.every((asset) => originalHashes.get(asset.id) === asset.checksum), "A source master checksum changed during non-destructive share preparation.");
 const deliveryEvents = await prisma.deliveryEvent.findMany({ where: { outputId: results.output.id }, orderBy: { occurredAt: "asc" }, select: { kind: true, status: true, recipientUserId: true, contentSha256: true } });
-assert(deliveryEvents.map((event) => event.kind).join(",") === "RELEASED_IN_APP,REVOKED", "Release and revoke did not create separate durable events.");
+assert(deliveryEvents.slice(results.previousDeliveryCount).map((event) => event.kind).join(",") === "RELEASED_IN_APP,REVOKED", "Release and revoke did not create separate durable events.");
 
 console.log(JSON.stringify({
   ok: true,
@@ -242,6 +316,8 @@ console.log(JSON.stringify({
   captureGroupId: room.captureGroupId,
   sourceAssetIds: [...originalHashes.keys()],
   sourceChecksumsUnchanged: true,
+  editedThroughRenderedUi: editRequested,
+  edit: results.edit || null,
   outputId: results.output.id,
   outputContentSha256: results.output.contentSha256,
   derivedAssetId: results.derived.id,
@@ -250,6 +326,7 @@ console.log(JSON.stringify({
   coachPreviewDecoded: true,
   shareAvailableWithoutListeningCeremony: results.playbackReview.shareAvailableNow,
   clientPlaybackDecoded: true,
+  recipientDownload: results.download,
   clientMediaStatusBeforeRevoke: results.clientMediaStatusBeforeRevoke,
   clientMediaStatusAfterRevoke: results.clientMediaStatusAfterRevoke,
   releaseRetryIdempotent: true,

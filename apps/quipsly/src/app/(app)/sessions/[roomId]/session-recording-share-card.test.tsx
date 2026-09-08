@@ -80,6 +80,74 @@ describe("SessionRecordingShareCard", () => {
     expect(screen.queryByRole("button", { name: "Create private preview" })).not.toBeInTheDocument();
   });
 
+  it("refreshes recording availability without replacing an unfinished trim or text cut", async () => {
+    const requests: Record<string, unknown>[] = [];
+    global.fetch = jest.fn(async (_url, init) => {
+      if (init?.method === "POST") requests.push(JSON.parse(String(init.body)));
+      return response(snapshot);
+    }) as jest.MockedFunction<typeof fetch>;
+    render(<SessionRecordingShareCard roomId="session_room_0001" />);
+    const start = await screen.findByRole("slider", { name: "Recording start" });
+    fireEvent.change(start, { target: { value: "2" } });
+    fireEvent.change(screen.getByRole("slider", { name: "Recording end" }), { target: { value: "28" } });
+    fireEvent.click(screen.getByRole("checkbox", { name: `Keep in recording: ${transcriptSegment.text}` }));
+    await userEvent.click(screen.getByRole("button", { name: "Refresh" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Refresh" })).toBeEnabled());
+    expect(start).toHaveValue("2");
+    expect(screen.getByRole("slider", { name: "Recording end" })).toHaveValue("28");
+    expect(screen.getByRole("checkbox", { name: `Restore to recording: ${transcriptSegment.text}` })).not.toBeChecked();
+    await userEvent.click(screen.getByRole("button", { name: "Create private preview" }));
+    await waitFor(() => expect(requests).toHaveLength(1));
+    expect(requests[0]).toEqual(expect.objectContaining({ startSeconds: 2, endSeconds: 28,
+      excludedTranscriptSegments: [expect.objectContaining({ segmentId: transcriptSegment.segmentId })] }));
+  });
+
+  it("reuses an exact failed preparation request but gives changed edits a new identity", async () => {
+    const requests: Record<string, unknown>[] = [];
+    global.fetch = jest.fn(async (_url, init) => {
+      if (init?.method === "POST") {
+        requests.push(JSON.parse(String(init.body)));
+        throw new Error(`Preview connection interrupted ${requests.length}`);
+      }
+      return response(snapshot);
+    }) as jest.MockedFunction<typeof fetch>;
+    render(<SessionRecordingShareCard roomId="session_room_0001" />);
+    const prepare = await screen.findByRole("button", { name: "Create private preview" });
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      await userEvent.click(prepare);
+      await screen.findByText(`Preview connection interrupted ${attempt}`);
+    }
+    fireEvent.change(screen.getByRole("slider", { name: "Recording start" }), { target: { value: "2" } });
+    await userEvent.click(prepare);
+    await screen.findByText("Preview connection interrupted 3");
+    expect(requests[0].clientRequestId).toBe(requests[1].clientRequestId);
+    expect(requests[2].clientRequestId).not.toBe(requests[1].clientRequestId);
+    expect(requests[2].startSeconds).toBe(2);
+  });
+
+  it("updates untouched defaults as participant recordings become available", async () => {
+    global.fetch = jest.fn().mockResolvedValueOnce(response({ ...snapshot,
+      available: { ...snapshot.available, programDurationSeconds: 0, sources: [], transcriptSegments: [] },
+      readiness: { ...snapshot.readiness, hasVerifiedParticipantSources: false },
+    })).mockResolvedValue(response(snapshot));
+    render(<SessionRecordingShareCard roomId="session_room_0001" />);
+    expect(await screen.findByRole("button", { name: "Create private preview" })).toBeDisabled();
+    await userEvent.click(screen.getByRole("button", { name: "Refresh" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Create private preview" })).toBeEnabled());
+    expect(screen.getByRole("slider", { name: "Recording end" })).toHaveValue("30");
+  });
+
+  it("removes cached recording tools after an explicit access denial", async () => {
+    global.fetch = jest.fn().mockResolvedValueOnce(response(snapshot))
+      .mockResolvedValue({ ok: false, status: 403, json: async () => ({ok: false, error: "Access removed"}) });
+    render(<SessionRecordingShareCard roomId="session_room_0001" />);
+    await screen.findByRole("button", { name: "Create private preview" });
+    await userEvent.click(screen.getByRole("button", { name: "Refresh" }));
+    await screen.findByText("Access removed");
+    expect(screen.queryByRole("button", { name: "Create private preview" })).not.toBeInTheDocument();
+    expect(screen.queryByText(transcriptSegment.text)).not.toBeInTheDocument();
+  });
+
   it("shows automatic sync quality without making it another required workflow", async () => {
     global.fetch = jest.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => response(snapshot)) as jest.MockedFunction<typeof fetch>;
 
@@ -598,6 +666,13 @@ describe("SessionRecordingShareCard", () => {
     await userEvent.click(screen.getByRole("button", { name: "Edit private preview" }));
     const restored = screen.getByText(transcriptSegment.text).closest("label")?.querySelector("input[type=checkbox]") as HTMLInputElement;
     expect(restored).not.toBeChecked();
+    await userEvent.click(screen.getByRole("button", { name: "Restore all" }));
+    await userEvent.click(screen.getByRole("button", { name: "Use full recording" }));
+    await userEvent.click(screen.getByRole("button", { name: "Refresh" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Refresh" })).toBeEnabled());
+    expect(screen.getByRole("slider", { name: "Recording start" })).toHaveValue("0");
+    expect(screen.getByRole("slider", { name: "Recording end" })).toHaveValue("30");
+    expect(restored).toBeChecked();
   });
 
   it("reopens from the exact reviewed source manifest instead of substituting the current default track", async () => {
