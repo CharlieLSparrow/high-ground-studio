@@ -11423,6 +11423,32 @@ private struct CaptureRecorderView: View {
                 })
 
                 if let session = model.selectedSession {
+                    // The ongoing shared space belongs beside the Session entry,
+                    // not below recording, transcript, and recovery controls.
+                    if let engagement = model.coachingEngagements.first(where: { $0.id == session.coachingEngagementId }) {
+                        Button {
+                            sessionClientSpace = engagement
+                        } label: {
+                            HStack(spacing: 12) {
+                                Image(systemName: "person.2.circle.fill")
+                                    .foregroundStyle(CapturePalette.accent)
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text(session.coachingEngagementTitle?.nonempty ?? "Client space")
+                                        .font(.headline)
+                                        .foregroundStyle(.primary)
+                                    Text("Shared notes, tasks, goals, and conversation")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                        .multilineTextAlignment(.leading)
+                                }
+                                Spacer()
+                                Image(systemName: "chevron.right")
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .captureCard()
+                        .accessibilityIdentifier("CaptureOpenCoachingEngagement")
+                    }
                     AnyView(Group {
                     if session.isPersonalVoiceNote {
                         CapturePersonalVoiceNoteHeader(
@@ -12012,31 +12038,6 @@ private struct CaptureRecorderView: View {
                             }
                             model.select(sourceSession)
                         }
-                    }
-
-                    if let engagement = model.coachingEngagements.first(where: { $0.id == session.coachingEngagementId }) {
-                        Button {
-                            sessionClientSpace = engagement
-                        } label: {
-                            HStack(spacing: 12) {
-                                Image(systemName: "person.2.circle.fill")
-                                    .foregroundStyle(CapturePalette.accent)
-                                VStack(alignment: .leading, spacing: 3) {
-                                    Text(session.coachingEngagementTitle?.nonempty ?? "Client space")
-                                        .font(.headline)
-                                        .foregroundStyle(.primary)
-                                    Text("Shared notes, tasks, goals, and conversation")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                        .multilineTextAlignment(.leading)
-                                }
-                                Spacer()
-                                Image(systemName: "chevron.right")
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                        .captureCard()
-                        .accessibilityIdentifier("CaptureOpenCoachingEngagement")
                     }
 
                     Button {

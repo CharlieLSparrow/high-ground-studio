@@ -23,9 +23,17 @@ export async function warmLocalRuntime(baseURL, { fetchImpl = fetch, timeoutMs =
   // Serial requests avoid competing Next compilers on developer machines.
   for (const route of startupRoutes) {
     const started = Date.now();
-    const response = await fetchImpl(new URL(route, base.origin), {
-      method: 'GET', redirect: 'manual', signal: AbortSignal.timeout(timeoutMs),
-    });
+    report(`Warming local route: ${route}`);
+    let response;
+    try {
+      response = await fetchImpl(new URL(route, base.origin), {
+        method: 'GET', redirect: 'manual', signal: AbortSignal.timeout(timeoutMs),
+      });
+    } catch (cause) {
+      const failure = new Error(`Local startup route ${route} did not respond after ${Date.now() - started}ms (${cause?.name || 'request error'}). Native tests have not started.`, { cause });
+      failure.name = cause?.name || 'Error';
+      throw failure;
+    }
     await response.body?.cancel();
     // Protected routes should reject this deliberately unauthenticated request.
     // Redirects, missing routes, rate limits, and server failures are not ready.

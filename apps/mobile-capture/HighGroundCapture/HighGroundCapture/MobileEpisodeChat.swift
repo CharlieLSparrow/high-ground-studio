@@ -854,7 +854,7 @@ final class MobileEpisodeChatClient: ObservableObject {
     }
 }
 
-private enum MobileCollaborationChatTarget {
+enum MobileCollaborationChatTarget {
     case session(MobileCaptureSession)
     case engagement(MobileCaptureCoachingEngagement)
 
@@ -1060,7 +1060,7 @@ struct MobileSessionChatCard: View {
     }
 }
 
-private struct MobileEpisodeChatThread: View {
+struct MobileEpisodeChatThread: View {
     @ObservedObject var client: MobileEpisodeChatClient
     let target: MobileCollaborationChatTarget
     let previewOnly: Bool
@@ -1068,6 +1068,9 @@ private struct MobileEpisodeChatThread: View {
     @Environment(\.dismiss) private var dismiss
     @State private var draft = ""
     @State private var workAction: MobileConversationWorkAction?
+    @State private var workSourceMessageID: String?
+    @State private var workReturnRevision = 0
+    @FocusState private var composerIsFocused: Bool
 
     var body: some View {
         NavigationStack {
@@ -1076,12 +1079,23 @@ private struct MobileEpisodeChatThread: View {
                     ScrollView {
                         LazyVStack(alignment: .leading, spacing: 12) {
                             if client.isUsingProtectedCache { boundary }
+                            if client.isLoading && client.messages.isEmpty {
+                                ProgressView("Loading conversation…")
+                                    .frame(maxWidth: .infinity)
+                            }
                             ForEach(client.messages) { message in
                                 messageCard(message)
                                     .id(message.id)
                             }
                         }
                         .padding()
+                    }
+                    .scrollDismissesKeyboard(.interactively)
+                    .onAppear {
+                        if let last = client.messages.last { proxy.scrollTo(last.id, anchor: .bottom) }
+                    }
+                    .onChange(of: workReturnRevision) {
+                        if let workSourceMessageID { proxy.scrollTo(workSourceMessageID, anchor: .center) }
                     }
                     .onChange(of: client.messages.count) {
                         guard let last = client.messages.last else { return }
@@ -1122,6 +1136,7 @@ private struct MobileEpisodeChatThread: View {
             Task {
                 await target.load(with: client, forceRefresh: true)
                 await onWorkChanged()
+                workReturnRevision += 1
             }
         }) { action in
             if case let .engagement(engagement) = target {
@@ -1179,6 +1194,8 @@ private struct MobileEpisodeChatThread: View {
             if case .engagement = target {
                 ForEach(message.linkedTasks ?? []) { task in
                     Button {
+                        composerIsFocused = false
+                        workSourceMessageID = message.id
                         workAction = .edit(task)
                     } label: {
                         HStack(alignment: .top, spacing: 8) {
@@ -1200,6 +1217,8 @@ private struct MobileEpisodeChatThread: View {
                 }
                 if client.canEdit, !message.suggestedTaskTitle.isEmpty {
                     Button {
+                        composerIsFocused = false
+                        workSourceMessageID = message.id
                         workAction = .create(message)
                     } label: {
                         Label("Create task", systemImage: "checkmark.circle.badge.plus")
@@ -1235,6 +1254,7 @@ private struct MobileEpisodeChatThread: View {
                     axis: .vertical
                 )
                 .lineLimit(2 ... 6)
+                .focused($composerIsFocused)
                 .textFieldStyle(.roundedBorder)
                 .disabled(!client.canEdit || previewOnly)
                 .accessibilityIdentifier("\(client.scope.accessibilityPrefix)Composer")

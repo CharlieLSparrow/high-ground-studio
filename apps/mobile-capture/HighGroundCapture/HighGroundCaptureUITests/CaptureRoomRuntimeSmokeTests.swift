@@ -453,6 +453,17 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         email: String,
         password: String
     ) {
+        if app.launchEnvironment["QUIPSLY_CAPTURE_UI_TEST_CREDENTIALS_FILE"] != nil {
+            // LoginView already owns this real authentication transaction.
+            // Typing a second request after 20 seconds races its completion
+            // on cold local routes and can target a disappearing login form.
+            XCTAssertTrue(
+                app.descendants(matching: .any)["CaptureSignedInShellAccount"]
+                    .firstMatch.waitForExistence(timeout: 60),
+                "The credential-file sign-in must finish before operating the workspace."
+            )
+            return
+        }
         // Runtime flights provide a credential file and LoginView begins that
         // transaction as soon as it appears. Prefer the stable signed-in shell
         // over interacting with a login form that may be disappearing while
@@ -2836,6 +2847,75 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             "Count canonical work cards, not the same title repeated in the relationship summary.")
         XCTAssertFalse(app.staticTexts[originalTitle].exists)
         attachRuntimeScreenshot(app, name: "One shared task after two lost save replies")
+    }
+
+    func testConversationCreatesCanonicalTaskAndEditsItAfterRelaunch() throws {
+        let credentials = try runtimeSmokeCredentials()
+        let idea = try XCTUnwrap(credentials.taskEditSourceTitle)
+        let revisedTitle = try XCTUnwrap(credentials.taskEditUpdatedTitle)
+
+        func openConversation(_ app: XCUIApplication) {
+            selectRequestedSession(in: app, credentials: credentials)
+            let space = app.buttons["CaptureOpenCoachingEngagement"].firstMatch
+            XCTAssertTrue(space.waitForExistence(timeout: 10))
+            XCTAssertTrue(space.isHittable, "Shared work should be reachable beside the Session heading without scrolling through recording tools.")
+            space.tap()
+            let conversation = app.buttons["CaptureCoachingConversationToolbarButton"].firstMatch
+            XCTAssertTrue(conversation.waitForExistence(timeout: 10))
+            XCTAssertTrue(conversation.isHittable)
+            conversation.tap()
+            XCTAssertTrue(app.descendants(matching: .any)["CaptureCoachingConversationThread"].firstMatch.waitForExistence(timeout: 15))
+        }
+
+        var app = try launchSignedInCaptureApp(initialTab: "record")
+        openConversation(app)
+        let composer = app.descendants(matching: .any)["CaptureCoachingConversationComposer"].firstMatch
+        XCTAssertTrue(composer.waitForExistence(timeout: 10))
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "enabled == true"), object: composer
+        )], timeout: 30), .completed, "The shared conversation must load the current member's writing access.")
+        replaceText(in: composer, with: idea, app: app)
+        app.buttons["CaptureCoachingConversationSendButton"].firstMatch.tap()
+        let message = app.descendants(matching: .any).matching(
+            NSPredicate(format: "identifier BEGINSWITH %@", "CaptureCoachingConversationMessage_")
+        ).containing(.staticText, identifier: idea).firstMatch
+        XCTAssertTrue(message.waitForExistence(timeout: 30), "The idea must be saved before becoming task source material.")
+        let messageID = String(message.identifier.dropFirst("CaptureCoachingConversationMessage_".count))
+        XCTAssertFalse(messageID.isEmpty)
+        let create = app.buttons["CaptureConversationCreateTask_\(messageID)"].firstMatch
+        XCTAssertTrue(waitForRuntimeElement(create, in: app, timeout: 10, swipeAttempts: 8))
+        create.tap()
+        let title = app.descendants(matching: .any)["CaptureCoachingWorkTitle"].firstMatch
+        XCTAssertTrue(title.waitForExistence(timeout: 15))
+        XCTAssertEqual(title.value as? String, idea)
+        let save = app.buttons["CaptureCoachingSaveWork"].firstMatch
+        XCTAssertTrue(save.isEnabled)
+        save.tap()
+        XCTAssertTrue(app.descendants(matching: .any)["CaptureCoachingWorkEditor"].firstMatch.waitForNonExistence(timeout: 30))
+        let linked = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@ AND label CONTAINS %@",
+            "CaptureConversationTask_", idea)).firstMatch
+        XCTAssertTrue(waitForRuntimeElement(linked, in: app, timeout: 30, swipeAttempts: 12))
+        let taskIdentifier = linked.identifier
+        attachRuntimeScreenshot(app, name: "Native message with its saved shared task")
+
+        app.terminate()
+        app = try launchSignedInCaptureApp(initialTab: "record")
+        openConversation(app)
+        let reloaded = app.buttons[taskIdentifier].firstMatch
+        XCTAssertTrue(waitForRuntimeElement(reloaded, in: app, timeout: 30, swipeAttempts: 20))
+        reloaded.tap()
+        let reloadedTitle = app.descendants(matching: .any)["CaptureCoachingWorkTitle"].firstMatch
+        XCTAssertTrue(reloadedTitle.waitForExistence(timeout: 15))
+        XCTAssertEqual(reloadedTitle.value as? String, idea)
+        replaceText(in: reloadedTitle, with: revisedTitle, app: app)
+        app.buttons["CaptureCoachingSaveWork"].firstMatch.tap()
+        XCTAssertTrue(app.descendants(matching: .any)["CaptureCoachingWorkEditor"].firstMatch.waitForNonExistence(timeout: 30))
+        XCTAssertTrue(app.buttons[taskIdentifier].firstMatch.waitForExistence(timeout: 30))
+        let updated = app.buttons[taskIdentifier].firstMatch
+        let titleUpdated = NSPredicate(format: "label CONTAINS %@", revisedTitle)
+        expectation(for: titleUpdated, evaluatedWith: updated)
+        waitForExpectations(timeout: 20)
+        attachRuntimeScreenshot(app, name: "Same conversation task after relaunch and edit")
     }
 
     func testTranscriptWordsSaveWithoutListeningAndPersistAfterRelaunch() throws {

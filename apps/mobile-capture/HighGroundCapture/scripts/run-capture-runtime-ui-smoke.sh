@@ -189,6 +189,13 @@ case "$TEST_MODE" in
       exit 2
     fi
     ;;
+  conversation-task)
+    TEST_CASE="testConversationCreatesCanonicalTaskAndEditsItAfterRelaunch"
+    if [[ -z "$TEST_SESSION_ID" || -z "$TEST_TASK_EDIT_SOURCE_TITLE" || -z "$TEST_TASK_EDIT_UPDATED_TITLE" ]]; then
+      echo "Conversation task mode requires an exact Session and unique idea and edited task titles." >&2
+      exit 2
+    fi
+    ;;
   transcript-task-readback)
     TEST_CASE="testReviewedTranscriptTaskAppearsInTodayAndReturnsToExactSourceOnIPhone"
     if [[ -z "$TEST_SESSION_ID" || -z "$TEST_TASK_ID" || -z "$TEST_EXPECTED_PACKET_TASK_TITLE" ]]; then

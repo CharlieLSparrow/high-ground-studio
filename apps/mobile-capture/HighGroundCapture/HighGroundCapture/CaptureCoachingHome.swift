@@ -3275,6 +3275,7 @@ struct CaptureCoachingEngagementWorkspaceView: View {
     @State private var newWorkDraft: MobileCoachingWorkDraft?
     @State private var editingEntry: MobileCoachingEngagementWorkEntry?
     @State private var workSearch = ""
+    @State private var showsConversation = false
 
     init(
         engagement: MobileCaptureCoachingEngagement,
@@ -3379,6 +3380,14 @@ struct CaptureCoachingEngagementWorkspaceView: View {
         .toolbarBackground(CapturePalette.canvas, for: .navigationBar)
         .toolbarBackground(.visible, for: .navigationBar)
         .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    showsConversation = true
+                } label: {
+                    Label("Conversation", systemImage: "bubble.left.and.bubble.right")
+                }
+                .accessibilityIdentifier("CaptureCoachingConversationToolbarButton")
+            }
             if client.workspace?.canWrite == true {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
@@ -3418,6 +3427,14 @@ struct CaptureCoachingEngagementWorkspaceView: View {
             }
         }
         .onDisappear { conversation.stopPolling() }
+        .sheet(isPresented: $showsConversation) {
+            MobileEpisodeChatThread(
+                client: conversation,
+                target: .engagement(engagement),
+                previewOnly: previewOnly,
+                onWorkChanged: { if !previewOnly { await client.load(force: true) } }
+            )
+        }
         .sheet(item: $newWorkDraft) { draft in
             if let workspace = client.workspace {
                 MobileCoachingWorkEditorSheet(

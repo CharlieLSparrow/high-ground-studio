@@ -47,5 +47,12 @@ test('does not accept an authorization failure on the public configuration route
 
 test('bounds stalled requests', async t => {
   const origin = await serve(t, () => {});
-  await assert.rejects(warmLocalRuntime(origin, { timeoutMs: 30, report() {} }), { name: 'TimeoutError' });
+  const progress = [];
+  await assert.rejects(warmLocalRuntime(origin, { timeoutMs: 30, report: message => progress.push(message) }), error => {
+    assert.equal(error.name, 'TimeoutError');
+    assert.match(error.message, /Local startup route \/api\/mac\/firebase-client-config did not respond after \d+ms/);
+    assert.match(error.message, /Native tests have not started/);
+    return true;
+  });
+  assert.deepEqual(progress, [`Warming local route: ${startupRoutes[0]}`]);
 });

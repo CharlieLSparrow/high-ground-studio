@@ -1759,8 +1759,8 @@ final class CaptureExperienceUITests: XCTestCase {
         app.launch()
         XCTAssertTrue(app.scrollViews["CaptureRecorderView"].firstMatch.waitForExistence(timeout: 15))
         let open = app.buttons["CaptureOpenCoachingEngagement"].firstMatch
-        reveal(open, searchAboveFirst: false)
         XCTAssertTrue(open.waitForExistence(timeout: 10))
+        XCTAssertTrue(open.isHittable, "The ongoing client space should be available without scrolling past the recording tools.")
         open.tap()
         XCTAssertTrue(app.descendants(matching: .any)["CaptureCoachingEngagementWorkspace"].firstMatch.waitForExistence(timeout: 10))
         XCTAssertTrue(app.segmentedControls["CaptureCoachingWorkFilter"].exists)
@@ -1799,8 +1799,9 @@ final class CaptureExperienceUITests: XCTestCase {
         let relationship = app.descendants(matching: .any)["CaptureCoachingRelationship_preview-engagement"].firstMatch
         reveal(relationship)
         relationship.tap()
-        let conversation = app.buttons["CaptureCoachingConversationOpenButton"]
-        reveal(conversation, searchAboveFirst: false)
+        let conversation = app.buttons["CaptureCoachingConversationToolbarButton"]
+        XCTAssertTrue(conversation.waitForExistence(timeout: 5))
+        XCTAssertTrue(conversation.isHittable)
         conversation.tap()
         let create = app.buttons["CaptureConversationCreateTask_preview-work-idea"]
         XCTAssertTrue(create.waitForExistence(timeout: 5))
