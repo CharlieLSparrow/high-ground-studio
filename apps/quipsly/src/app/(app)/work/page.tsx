@@ -7,7 +7,7 @@ import { listProjectsVisibleToEmail } from "@/lib/server/home-nest";
 import { loadLatestGoalReceiptProjection } from "@/lib/server/goal-receipt-projection";
 import { personalOrSharedCoachingGoalAccessWhere } from "@/lib/server/coaching-work-access";
 import { getQuipslySession } from "@/lib/server/quipsly-session";
-import { personalOrSharedSessionTaskAccessWhere } from "@/lib/server/task-access";
+import { readEditableWorkQueueTaskIds, workQueueTaskWhere } from "@/lib/server/work-queue-task-access";
 
 import { StudioAccessShell } from "../studio-access-shell";
 import { WorkClient } from "./work-client";
@@ -51,10 +51,8 @@ async function loadWork(userId: string, visibleProjectIds: string[] = []) {
   // their participants so episode collaboration still works as expected.
   const sharedProductionRoomIds = sharedWorkRoomIds(roomRows);
 
-  const taskOr: any[] = personalOrSharedSessionTaskAccessWhere(userId);
   const goalOr: any[] = [{ authorUserId: userId }];
   if (sharedProductionRoomIds.length) {
-    taskOr.push({ roomId: { in: sharedProductionRoomIds } });
     goalOr.push({ roomId: { in: sharedProductionRoomIds } });
   }
   if (bookingIds.length) {
@@ -63,7 +61,7 @@ async function loadWork(userId: string, visibleProjectIds: string[] = []) {
 
   const [taskRows, legacyGoalRows, canonicalGoalRows, commitmentRows] = await Promise.all([
     prisma.actionItem.findMany({
-      where: { OR: taskOr },
+      where: workQueueTaskWhere(userId),
       orderBy: [{ status: "asc" }, { dueAt: "asc" }, { updatedAt: "desc" }],
       take: 500,
       select: {
@@ -158,12 +156,11 @@ async function loadWork(userId: string, visibleProjectIds: string[] = []) {
   });
 
   const visibleProjects = new Set(visibleProjectIds);
+  const editableTaskIds = await readEditableWorkQueueTaskIds(prisma, userId, taskRows.map((task: { id: string }) => task.id));
   return buildWorkSnapshot({
     tasks: taskRows.filter((task: any) => !isUnreviewedTranscriptActionItemSource(task.sourceJson)).map((task: any) => ({
       ...task,
-      canEditByActor: task.assignedUserId === userId
-        || Boolean(!task.engagement && task.booking?.id)
-        || Boolean(task.engagement?.members?.length),
+      canEditByActor: editableTaskIds.has(task.id),
       project: task.project && visibleProjects.has(task.project.id) ? task.project : null,
       tagLinks: (task.tagLinks || []).filter((link: any) => visibleProjects.has(link.tag.projectId)),
     })),
