@@ -81,6 +81,7 @@ final class AudioCaptureController: NSObject, ObservableObject {
     #endif
     private var displayDurationTimer: Timer?
     private var startTask: Task<Void, Never>?
+    private var startTaskID: UUID?
     private var finalizationTask: Task<Void, Never>?
     private var providerAudioStartWatchdogTask: Task<Void, Never>?
     private var captureClockSamplingTask: Task<Void, Never>?
@@ -269,6 +270,7 @@ final class AudioCaptureController: NSObject, ObservableObject {
               pendingCaptureIntent != nil || captureState == .preparing else { return }
         startTask?.cancel()
         startTask = nil
+        startTaskID = nil
         let receiptFailure = closeStartBoundaryAfterFailedArm()
         captureOwnerAuthorityLost = true
         failureMessage = message
@@ -362,6 +364,7 @@ final class AudioCaptureController: NSObject, ObservableObject {
             } else if captureState == .preparing {
                 startTask?.cancel()
                 startTask = nil
+                startTaskID = nil
                 if let receiptFailure = closeStartBoundaryAfterFailedArm() {
                     lastErrorMessage = receiptFailure
                     broadcastError(message: receiptFailure)
@@ -418,6 +421,15 @@ final class AudioCaptureController: NSObject, ObservableObject {
     /// The LiveKit-backed path remains preparing until its first local-input
     /// PCM buffer arrives.
     func waitUntilRecordingOrTerminal(timeout: TimeInterval = 4, includingPausedSource: Bool = false) async -> Bool {
+        // Permission dialogs and source setup are not missing microphone PCM.
+        // Await the same start operation before timing its media callback; an
+        // expired observer must never report failure while that operation can
+        // still go on to start an unowned recording.
+        let startingCaptureID = pendingCaptureIntent?.captureID ?? activeLocalRecordingID
+        if let pendingStart = startTask {
+            await pendingStart.value
+            guard startingCaptureID == (activeLocalRecordingID ?? pendingCaptureIntent?.captureID) else { return false }
+        }
         let deadline = Date().addingTimeInterval(timeout)
         #if DEBUG && targetEnvironment(simulator)
         // Reproduce a busy executor observing startup only after the deadline:
@@ -722,14 +734,20 @@ final class AudioCaptureController: NSObject, ObservableObject {
         failureMessage = nil
         lastErrorMessage = nil
         startTask?.cancel()
+        let startID = UUID()
+        startTaskID = startID
         startTask = Task { [weak self] in
             guard let self else { return }
-            await self.beginRecordingAfterPreflight()
-            self.startTask = nil
+            await self.beginRecordingAfterPreflight(startID: startID)
+            if self.startTaskID == startID {
+                self.startTask = nil
+                self.startTaskID = nil
+            }
         }
     }
 
-    private func beginRecordingAfterPreflight() async {
+    private func beginRecordingAfterPreflight(startID: UUID) async {
+        guard startTaskID == startID else { return }
         guard !Task.isCancelled else {
             if let receiptFailure = closeStartBoundaryAfterFailedArm() {
                 lastErrorMessage = receiptFailure
@@ -743,6 +761,14 @@ final class AudioCaptureController: NSObject, ObservableObject {
         lastErrorMessage = nil
 
         let permissionGranted = await resolveMicrophonePermission()
+        #if DEBUG && targetEnvironment(simulator)
+        // First-use Speech permission and cold device setup can take longer
+        // than the PCM deadline. Exercise that delay before any source exists.
+        if CaptureLaunchConfiguration.usesAudioInterruptionDeterministicUITest {
+            try? await Task.sleep(for: .seconds(6))
+        }
+        #endif
+        guard startTaskID == startID else { return }
         guard !Task.isCancelled else {
             if let receiptFailure = closeStartBoundaryAfterFailedArm() {
                 lastErrorMessage = receiptFailure
@@ -777,6 +803,7 @@ final class AudioCaptureController: NSObject, ObservableObject {
             // cancellation into a second, misleading recorder failure.
             return
         } catch {
+            guard startTaskID == startID else { return }
             handleStartFailure(error)
         }
     }
