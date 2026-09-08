@@ -10,7 +10,7 @@ import { cn } from "@/app/(app)/studio-ui";
 import { NestChatPanel } from "@/components/NestChatPanel";
 import { WorkspaceMenu } from "./WorkspaceMenu";
 import { createPersonalNote } from "./workspace-create-actions";
-import { workspaceSections, workspaceSectionForPath, isClientSpacePath, type WorkspaceSectionId, type WorkspaceDestination } from "./workspace-navigation";
+import { workspaceSections, workspaceSectionForPath, isClientSpacePath, isSessionWorkspacePath, type WorkspaceSectionId, type WorkspaceDestination } from "./workspace-navigation";
 
 type CurrentUser = { email: string; name: string | null; image: string | null; isStaff: boolean };
 const icons: Record<WorkspaceSectionId, LucideIcon> = { home: Home, sessions: CalendarDays, nests: FolderOpen, notes: NotebookPen, account: UserRound };
@@ -60,7 +60,7 @@ export function SidebarLayout({ children, showPlatformAdminTools = false, showSu
     </header>
 
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-      {!isClientSpacePath(currentPath) && <nav aria-label={`${section.label} tools`} className="flex min-h-12 shrink-0 items-center gap-1 overflow-x-auto border-b border-quipsly-divider bg-quipsly-surface/60 px-4 lg:px-6">
+      {!isClientSpacePath(currentPath) && !isSessionWorkspacePath(currentPath) && <nav aria-label={`${section.label} tools`} className="flex min-h-12 shrink-0 items-center gap-1 overflow-x-auto border-b border-quipsly-divider bg-quipsly-surface/60 px-4 lg:px-6">
         {section.destinations.map((item) => <Link key={item.href} href={item.href} aria-current={currentPath === item.href ? "page" : undefined}
           className={cn("flex min-h-11 shrink-0 items-center rounded-lg px-3 text-sm focus-visible:outline-2 focus-visible:outline-quipsly-peacock-700", currentPath === item.href ? "font-semibold text-quipsly-ink underline decoration-quipsly-peacock-700 decoration-2 underline-offset-8" : "text-quipsly-muted hover:text-quipsly-ink")}>
           {item.label}

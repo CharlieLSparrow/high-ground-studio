@@ -28,7 +28,8 @@ jest.mock("./coaching-session-plan-card", () => ({
 }));
 jest.mock("@/components/session-invitations", () => ({ SessionInvitations: () => <div>Session invitation manager</div> }));
 const mockRouterRefresh = jest.fn();
-jest.mock("next/navigation", () => ({ useRouter: () => ({ refresh: mockRouterRefresh }) }));
+const mockRouterPush = jest.fn();
+jest.mock("next/navigation", () => ({ useRouter: () => ({ refresh: mockRouterRefresh, push: mockRouterPush }) }));
 
 const candidate: SessionReviewGoalCandidate = {
   id: "packet-goal-build-1-segment-1",
@@ -324,9 +325,27 @@ function heldSourceEvidence(): SessionSourceEvidence {
 describe("Session review goal candidates", () => {
   const originalFetch = global.fetch;
   beforeEach(() => {
+    mockRouterPush.mockClear();
     mockDockValue = null;
     jest.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined);
     jest.spyOn(HTMLMediaElement.prototype, "load").mockImplementation(() => undefined);
+  });
+
+  it("keeps every section in a stable order and provides a compact mobile section picker", async () => {
+    const consentSnapshot = { total: 1, granted: 1, transcriptionPermitted: 1 };
+    const { rerender } = render(<SessionReviewClient roomId="room-1" sessionTitle="Coaching review" mode="overview" consentSnapshot={consentSnapshot} />);
+    const nav = screen.getByRole("navigation", { name: "Session workspace modes" });
+    const destinations = within(nav).getAllByRole("link").map(link => link.getAttribute("href"));
+    const picker = within(nav).getByRole("combobox", { name: "Session section" });
+    expect(within(picker).getAllByRole("option")).toHaveLength(9);
+    await userEvent.selectOptions(picker, "outputs");
+    expect(mockRouterPush).toHaveBeenCalledWith("/sessions/room-1?mode=outputs");
+    rerender(<SessionReviewClient roomId="room-1" sessionTitle="Coaching review" mode="work" consentSnapshot={consentSnapshot} />);
+    expect(within(nav).getAllByRole("link").map(link => link.getAttribute("href"))).toEqual(destinations);
+    expect(within(nav).getByRole("link", { name: "Goals & commitments" })).toHaveAttribute("aria-current", "page");
+    expect(picker).toHaveValue("work");
+    expect(within(screen.getByRole("region", { name: "Session heading and navigation" })).getByRole("heading", { name: "Coaching review" }))
+      .toBeInTheDocument();
   });
   afterEach(() => {
     jest.useRealTimers();

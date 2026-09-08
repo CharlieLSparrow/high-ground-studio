@@ -3202,10 +3202,19 @@ function SessionWorkspaceNavigation({
   purpose: string;
 }) {
   const modes = sessionWorkspaceModesForPurpose(purpose);
+  const router = useRouter();
   return (
-    <section className="rounded-2xl border border-[#e5d5b7] bg-[#fffdf8]/90 p-2 shadow-sm sm:p-3">
-      <nav aria-label="Session workspace modes">
-        <div className="flex max-w-full gap-2 overflow-x-auto pb-1 sm:grid sm:grid-cols-3 sm:overflow-visible sm:pb-0 xl:grid-cols-9">
+      <nav aria-label="Session workspace modes" className="mt-3 border-t border-quipsly-divider pt-2">
+        <label className="flex min-h-11 items-center gap-3 text-sm font-semibold text-quipsly-ink sm:hidden">
+          <span>Session section</span>
+          <select aria-label="Session section" value={mode} onChange={event => {
+            const next = modes.find(item => item.id === event.target.value);
+            if (next) router.push(sessionWorkspaceHref(roomId, next.id));
+          }} className="min-h-11 min-w-0 flex-1 rounded-lg border border-quipsly-divider bg-quipsly-surface px-3 text-quipsly-ink">
+            {modes.map(definition => <option key={definition.id} value={definition.id}>{definition.label}</option>)}
+          </select>
+        </label>
+        <div className="hidden min-w-0 flex-wrap gap-1 sm:flex">
           {modes.map((definition) => {
             const selected = definition.id === mode;
             return (
@@ -3213,10 +3222,10 @@ function SessionWorkspaceNavigation({
                 key={definition.id}
                 href={sessionWorkspaceHref(roomId, definition.id)}
                 aria-current={selected ? "page" : undefined}
-                className={`flex min-h-11 shrink-0 items-center gap-2 rounded-xl border px-3 py-2 text-xs font-black transition sm:min-h-12 sm:shrink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-700 ${selected ? "order-first sm:order-none" : ""} ${
+                className={`flex min-h-11 items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-quipsly-peacock-700 ${
                   selected
-                    ? "border-violet-300 bg-violet-800 text-white shadow-sm"
-                    : "border-transparent bg-white text-[#5f4d37] hover:border-violet-200 hover:bg-violet-50"
+                    ? "bg-quipsly-peacock-800 text-white"
+                    : "text-quipsly-muted hover:bg-quipsly-surface-muted hover:text-quipsly-ink"
                 }`}
               >
                 <WorkspaceModeIcon mode={definition.id} />
@@ -3226,7 +3235,6 @@ function SessionWorkspaceNavigation({
           })}
         </div>
       </nav>
-    </section>
   );
 }
 
@@ -4097,7 +4105,6 @@ export function SessionReviewClient({
     sourceEvidence.sources.find(
       (source) => source.recordingAssetId === transcriptRecordingAssetId,
     )?.audioMastery ?? null;
-  const activeMode = sessionWorkspaceDefinitionForPurpose(mode, purpose);
   const liveProjectSlug =
     collaborationContext.project?.slug ||
     collaborationContext.engagement?.projectSlug ||
@@ -4204,28 +4211,22 @@ export function SessionReviewClient({
   }
 
   return (
-    <div className="min-w-0 space-y-4 overflow-x-hidden sm:space-y-8">
-      <section className="rounded-3xl border border-[#e5d5b7] bg-white/85 p-4 shadow-sm sm:p-6">
+    <div className="min-w-0 space-y-4 overflow-x-hidden">
+      <section aria-label="Session heading and navigation" className="min-w-0 rounded-2xl border border-quipsly-divider bg-quipsly-surface px-4 py-3 sm:px-5">
         {parentWorkspaceHref ? (
-          <nav aria-label="Parent workspace" className="mb-2">
+          <nav aria-label="Parent workspace">
             <Link href={parentWorkspaceHref} aria-label={`Back to ${parentWorkspaceTitle}`}
-              className="inline-flex min-h-11 max-w-full items-center gap-2 rounded-lg px-1 text-sm font-bold text-[#41624b] underline-offset-4 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2">
+              className="inline-flex min-h-11 max-w-full items-center gap-2 rounded-lg text-sm font-semibold text-quipsly-peacock-700 underline-offset-4 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2">
               <ArrowLeft size={16} className="shrink-0" aria-hidden="true" />
               <span className="break-words">{parentWorkspaceTitle}</span>
             </Link>
           </nav>
         ) : null}
         <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#987443] sm:text-xs sm:tracking-[0.22em]">
-              Session workspace · {activeMode.eyebrow}
-            </p>
-            <h1 className="mt-1 font-serif text-2xl font-black tracking-tight text-[#3d3122] sm:mt-2 sm:text-4xl">
+          <div className="min-w-0 flex-1">
+            <h1 className="font-serif text-xl font-bold tracking-tight text-quipsly-ink [overflow-wrap:anywhere] sm:text-2xl">
               {sessionTitle}
             </h1>
-            <p className="mt-1 hidden max-w-3xl text-xs font-semibold leading-5 text-[#765f40] sm:mt-2 sm:block sm:text-sm sm:leading-relaxed">
-              {activeMode.description}
-            </p>
           </div>
           {mode === "transcript" ? (
             <button
@@ -4254,13 +4255,12 @@ export function SessionReviewClient({
             {message}
           </p>
         ) : null}
-      </section>
-
       <SessionWorkspaceNavigation
         roomId={roomId}
         mode={mode}
         purpose={purpose}
       />
+      </section>
 
       {mode === "overview" && purpose === "COACHING" ? (
         <SessionCoachingQuickPath

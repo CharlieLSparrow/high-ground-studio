@@ -57,6 +57,28 @@ describe("SessionRecordingShareCard", () => {
     expect(screen.queryByText(/unavailable|recipient boundary/i)).not.toBeInTheDocument();
   });
 
+  it("does not keep a queued notice after the prepared edit is ready to play and share", async () => {
+    let prepared = false;
+    const ready = { ...snapshot, output: {
+      id: "private-edit-1", status: "DRAFT", title: "First coaching session recording", revision: 2,
+      contentSha256: "d".repeat(64), recipient: { id: "client_user_0001", label: "Client" },
+      render: { status: "VERIFIED", durationSeconds: 30, sizeBytes: 4_000, sha256: "a".repeat(64) },
+      mediaUrl: "/api/sessions/session_room_0001/recording-share/media/private-edit-1",
+      body: { edit: { startSeconds: 0, endSeconds: 30 } },
+    } };
+    const requests: string[] = [];
+    global.fetch = jest.fn(async (_url, init) => {
+      if (init?.method === "POST") { prepared = true; requests.push(JSON.parse(String(init.body)).action); }
+      return response(prepared ? ready : snapshot);
+    }) as jest.MockedFunction<typeof fetch>;
+    render(<SessionRecordingShareCard roomId="session_room_0001" />);
+    await userEvent.click(await screen.findByRole("button", { name: "Create private preview" }));
+    expect(await screen.findByLabelText("Private recording preview")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Share with Client" })).toBeEnabled();
+    expect(screen.queryByText(/preview queued/i)).not.toBeInTheDocument();
+    expect(requests).toEqual(["PREPARE"]);
+  });
+
   it("recovers a failed read through Try again without mutating or sharing the recording", async () => {
     const fetchMock = jest.fn().mockRejectedValueOnce(new Error("Connection interrupted"))
       .mockResolvedValue(response(snapshot));

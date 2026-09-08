@@ -526,7 +526,7 @@ export function SessionRecordingShareCard({
       const payload = await response.json() as Snapshot;
       if (!response.ok || !payload.ok) throw new Error(payload.error || "The recording decision was not confirmed.");
       setNotice(action === "PREPARE"
-        ? "Private preview queued from immutable participant masters. The client cannot see it yet."
+        ? null // The render state below owns progress; don't retain a stale queued notice.
         : action === "RELEASE"
           ? `Released inside ${output?.recipient.label}'s private Session. No email or public link was sent.`
           : "Client access revoked. Original masters and decision history remain intact.");

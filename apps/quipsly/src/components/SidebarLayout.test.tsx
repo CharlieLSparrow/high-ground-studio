@@ -76,6 +76,17 @@ describe("Quipsly workspace navigation", () => {
     expect(createPersonalNote).toHaveBeenCalledTimes(1);
   });
 
+  it("uses the session's own navigation without a second Sessions toolbar", () => {
+    jest.mocked(usePathname).mockReturnValue("/sessions/coaching-1");
+    const { rerender } = render(<SidebarLayout>Session recording</SidebarLayout>);
+    expect(screen.queryByRole("navigation", { name: "Sessions tools" })).not.toBeInTheDocument();
+    expect(within(screen.getByRole("navigation", { name: "Primary workspace" })).getByRole("link", { name: "Sessions" }))
+      .toHaveAttribute("aria-current", "page");
+    jest.mocked(usePathname).mockReturnValue("/sessions/join");
+    rerender(<SidebarLayout>Join a session</SidebarLayout>);
+    expect(screen.getByRole("navigation", { name: "Sessions tools" })).toBeInTheDocument();
+  });
+
   it("keeps creation failure recoverable in place", async () => {
     jest.mocked(createPersonalNote).mockRejectedValue(new Error("offline"));
     render(<SidebarLayout>Work</SidebarLayout>);

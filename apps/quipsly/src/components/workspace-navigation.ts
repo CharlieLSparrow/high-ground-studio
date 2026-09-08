@@ -61,6 +61,10 @@ export function isClientSpacePath(pathname: string): boolean {
   return /^\/coaching\/engagements\/[^/]+(?:\/|$)/.test(pathname);
 }
 
+export function isSessionWorkspacePath(pathname: string): boolean {
+  return /^\/sessions\/(?!join(?:\/|$))[^/]+(?:\/|$)/.test(pathname);
+}
+
 export function workspaceSectionForPath(pathname: string): WorkspaceSection {
   return workspaceSections.find((section) => section.paths.some((root) => pathIsWithin(pathname, root)))
     ?? workspaceSections[0];
