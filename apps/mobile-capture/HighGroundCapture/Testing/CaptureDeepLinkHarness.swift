@@ -41,6 +41,7 @@ struct CaptureDeepLinkHarness {
            {"id":"note-1","kind":"NOTE","title":null,"body":"My words","visibility":"SHARED","canEdit":false,
             "createdAt":"2026-09-07T00:00:00Z","updatedAt":"2026-09-07T00:00:00Z"},
            {"id":"task-1","kind":"TASK","title":"Next step","status":"DONE","visibility":"SHARED","canEdit":true,
+            "tags":[{"id":"research","label":"Research","hexColor":"#23543a","isActive":true}],
             "sourceHref":"/sessions/room-1?mode=transcript&source=asset-1&at=3.66",
             "createdAt":"2026-09-07T00:00:00Z","updatedAt":"2026-09-07T00:00:00Z"}]
         }
@@ -52,9 +53,27 @@ struct CaptureDeepLinkHarness {
                          "An untitled or source-less note must not break the whole workspace.")
             precondition(workspace.entries[1].sourceLink?.sourceSeconds == 3.66 && workspace.entries[1].isComplete,
                          "API source links must survive native decoding.")
+            precondition(workspace.entries[0].tags == nil && workspace.entries[1].tags == [
+                MobileWorkTagLabel(id: "research", label: "Research", hexColor: "#23543a", isActive: true)
+            ], "Canonical tag identity, labels, and colors must survive native decoding.")
             let roundTrip = try JSONDecoder().decode(MobileCoachingEngagementWorkspace.self, from: JSONEncoder().encode(workspace))
             precondition(roundTrip == workspace)
         } catch { fatalError("Canonical client-space response failed to decode: \(error)") }
+        precondition(CaptureTagColor(hex: "#23543a")?.usesWhiteText == true)
+        precondition(CaptureTagColor(hex: "#f2e4c5")?.usesWhiteText == false)
+        precondition(CaptureTagColor(hex: "#aBc") == CaptureTagColor(hex: "#aabbcc"))
+        for invalid: String? in [nil, "", "red", "#12345", "#12345678", "#ggg", "url(https://example.test)"] {
+            precondition(CaptureTagColor(hex: invalid) == nil, "Unspecified or invalid colors should inherit the app theme.")
+        }
+        for red in stride(from: 0, through: 255, by: 17) {
+            for green in stride(from: 0, through: 255, by: 17) {
+                for blue in stride(from: 0, through: 255, by: 17) {
+                    let hex = String(format: "#%02x%02x%02x", red, green, blue)
+                    precondition(CaptureTagColor(hex: hex)!.textContrastRatio >= 4.5,
+                                 "Every saved color must retain readable text: \(hex)")
+                }
+            }
+        }
         for invalid in [
             "https://evil.example/sessions/room-1?mode=transcript",
             "//evil.example/sessions/room-1?mode=transcript",

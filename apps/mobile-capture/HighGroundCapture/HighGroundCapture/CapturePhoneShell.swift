@@ -24000,6 +24000,7 @@ private struct CaptureRecordButtonStyle: ButtonStyle {
 /// levels on iPhone: the Nest that controls people/access, and the Space where
 /// the current coaching, episode, lesson, writing, or research work lives.
 private struct CaptureWorkLocationBar: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let nestName: String
     let nestIsPrivate: Bool
     let spaceName: String
@@ -24009,37 +24010,44 @@ private struct CaptureWorkLocationBar: View {
     var body: some View {
         Button(action: onSwitch) {
             HStack(spacing: 10) {
-                Image(systemName: nestIsPrivate ? "house.fill" : "q.circle.fill")
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(CapturePalette.accent)
-                    .frame(width: 30, height: 30)
-                    .background(CapturePalette.accent.opacity(0.12), in: Circle())
-                    .accessibilityHidden(true)
+                if !dynamicTypeSize.isAccessibilitySize {
+                    Image(systemName: nestIsPrivate ? "house.fill" : "q.circle.fill")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(CapturePalette.accent)
+                        .frame(width: 30, height: 30)
+                        .background(CapturePalette.accent.opacity(0.12), in: Circle())
+                        .accessibilityHidden(true)
+                }
                 VStack(alignment: .leading, spacing: 1) {
                     Text(nestName)
                         .font(.caption.weight(.bold))
                         .foregroundStyle(CapturePalette.primaryText)
-                        .fixedSize(horizontal: false, vertical: true)
+                        .lineLimit(1)
                     HStack(spacing: 5) {
                         Image(systemName: "chevron.right")
                             .font(.system(size: 8, weight: .black))
                             .accessibilityHidden(true)
                         Text(spaceName)
-                            .fixedSize(horizontal: false, vertical: true)
+                            .lineLimit(1)
                     }
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(CapturePalette.secondaryText)
                 }
+                .layoutPriority(1)
                 Spacer(minLength: 8)
-                Text(switchDisabled ? "Recording" : "Switch")
-                    .font(.caption2.weight(.bold))
-                    .foregroundStyle(switchDisabled ? .secondary : CapturePalette.accent)
+                if !dynamicTypeSize.isAccessibilitySize {
+                    Text(switchDisabled ? "Recording" : "Switch")
+                        .font(.caption2.weight(.bold))
+                        .foregroundStyle(switchDisabled ? .secondary : CapturePalette.accent)
+                        .lineLimit(1)
+                }
                 Image(systemName: switchDisabled ? "lock.fill" : "chevron.down")
                     .font(.caption2.weight(.black))
                     .foregroundStyle(switchDisabled ? .secondary : CapturePalette.accent)
                     .accessibilityHidden(true)
             }
             .padding(.horizontal, 16)
+            .padding(.vertical, 6)
             .frame(maxWidth: .infinity, minHeight: 48)
             .background(CapturePalette.locationBarBackground)
             .overlay(alignment: .bottom) {

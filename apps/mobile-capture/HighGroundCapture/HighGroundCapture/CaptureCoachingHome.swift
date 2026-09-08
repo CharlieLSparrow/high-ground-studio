@@ -357,7 +357,11 @@ final class MobileCoachingEngagementWorkspaceClient: ObservableObject {
                     body: "Return to what we discussed, then choose the next step.", status: "OPEN",
                     owner: nil, visibility: "SHARED", dueAt: nil, canEdit: true,
                     canChangeVisibility: false, createdAt: "2026-09-07T00:00:00Z", updatedAt: "2026-09-07T00:00:00Z",
-                    sourceHref: "/sessions/room-preview-coaching-ready?mode=transcript&source=preview-recording-asset&at=3.66"
+                    sourceHref: "/sessions/room-preview-coaching-ready?mode=transcript&source=preview-recording-asset&at=3.66",
+                    tags: [
+                        MobileWorkTagLabel(id: "research", label: "Research and source material", hexColor: "#23543a", isActive: true),
+                        MobileWorkTagLabel(id: "next", label: "Next conversation", hexColor: "#f2e4c5", isActive: true),
+                    ]
                 ),
                 MobileCoachingEngagementWorkEntry(
                     id: "preview-manual-note", kind: "NOTE", title: "Questions for next time",
@@ -2850,21 +2854,28 @@ struct CaptureCoachingHomeView: View {
                     } label: {
                         HStack(alignment: .center, spacing: 12) {
                             VStack(alignment: .leading, spacing: 5) {
-                                Label(engagement.title, systemImage: "person.2.fill")
-                                    .font(.headline)
+                                if dynamicTypeSize.isAccessibilitySize {
+                                    Text(engagement.title)
+                                        .font(.headline)
+                                        .lineLimit(2)
+                                } else {
+                                    Label(engagement.title, systemImage: "person.2.fill")
+                                        .font(.headline)
+                                        .lineLimit(2)
+                                }
                                 if !engagement.participantLine.isEmpty {
                                     Text(engagement.participantLine)
                                         .font(.caption)
                                         .foregroundStyle(.secondary)
+                                        .lineLimit(1)
                                 }
-                                Text("Open shared notes, goals, tasks, conversation, and Sessions")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
                             }
+                            .layoutPriority(1)
                             Spacer()
                             Image(systemName: "chevron.right")
-                                .font(.caption.weight(.bold))
+                                .font(.system(size: 14, weight: .bold))
                                 .foregroundStyle(.secondary)
+                                .accessibilityHidden(true)
                         }
                         .contentShape(Rectangle())
                     }
@@ -2872,6 +2883,7 @@ struct CaptureCoachingHomeView: View {
                     .captureCard()
                     .accessibilityElement(children: .combine)
                     .accessibilityLabel("Open client space, \(engagement.title)")
+                    .accessibilityValue(engagement.participantLine)
                     .accessibilityHint("Open this relationship's conversation, shared notes, goals, tasks, and Sessions.")
                     .accessibilityIdentifier("CaptureCoachingRelationship_\(engagement.id)")
                 }
@@ -3246,6 +3258,7 @@ private struct MobileCoachingInlineWarning: View {
 }
 
 struct CaptureCoachingEngagementWorkspaceView: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let engagement: MobileCaptureCoachingEngagement
     let sessions: [MobileCaptureSession]
     let previewOnly: Bool
@@ -3450,7 +3463,10 @@ struct CaptureCoachingEngagementWorkspaceView: View {
         VStack(alignment: .leading, spacing: 9) {
             Text("Add")
                 .font(.headline)
-            HStack(spacing: 8) {
+            let layout = dynamicTypeSize.isAccessibilitySize
+                ? AnyLayout(VStackLayout(alignment: .leading, spacing: 8))
+                : AnyLayout(HStackLayout(spacing: 8))
+            layout {
                 quickAddButton(title: "Note", kind: "NOTE", systemImage: "note.text")
                 quickAddButton(title: "Task", kind: "TASK", systemImage: "checkmark.circle")
                 quickAddButton(title: "Goal", kind: "GOAL", systemImage: "target")
@@ -3862,6 +3878,9 @@ struct CaptureCoachingEngagementWorkspaceView: View {
             Text(entry.displayTitle)
                 .font(.headline)
                 .strikethrough(entry.isComplete)
+            if let tags = entry.tags, !tags.isEmpty {
+                CaptureWorkTags(tags: tags, workID: entry.id)
+            }
             if entry.visibility == "PRIVATE" {
                 HStack(spacing: 6) {
                     Image(systemName: "lock.fill")

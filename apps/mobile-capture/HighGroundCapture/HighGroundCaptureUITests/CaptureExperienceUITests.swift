@@ -1793,7 +1793,29 @@ final class CaptureExperienceUITests: XCTestCase {
         coaching.tap()
         let relationship = app.descendants(matching: .any)["CaptureCoachingRelationship_preview-engagement"].firstMatch
         reveal(relationship)
+        XCTAssertLessThan(relationship.frame.height, app.frame.height * 0.6,
+                          "A client-space navigation row should not fill the screen at accessibility text sizes.")
         relationship.tap()
+        let researchTag = app.staticTexts["CaptureWorkTag_preview-linked-task_research"]
+        let nextTag = app.staticTexts["CaptureWorkTag_preview-linked-task_next"]
+        reveal(researchTag, searchAboveFirst: false)
+        XCTAssertTrue(researchTag.waitForExistence(timeout: 5))
+        XCTAssertEqual(researchTag.label, "Tag: Research and source material")
+        XCTAssertTrue(nextTag.exists)
+        let location = app.buttons["CaptureGlobalWorkLocation"]
+        if location.exists {
+            XCTAssertLessThan(location.frame.height, app.frame.height * 0.2,
+                              "The persistent location header must leave room for work at large text sizes.")
+        }
+        for tag in [researchTag, nextTag] {
+            XCTAssertGreaterThanOrEqual(tag.frame.minX, app.frame.minX)
+            XCTAssertLessThanOrEqual(tag.frame.maxX, app.frame.maxX,
+                                     "Shared tag labels must wrap inside the screen, not push it sideways.")
+        }
+        let tagsScreenshot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        tagsScreenshot.name = "shared-work-native-tags.png"
+        tagsScreenshot.lifetime = .keepAlways
+        add(tagsScreenshot)
         let source = app.descendants(matching: .any)["CaptureCoachingWorkSource_preview-linked-task"].firstMatch
         reveal(source, searchAboveFirst: false)
         if !source.exists || !source.isHittable {
@@ -1811,14 +1833,20 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(app.descendants(matching: .any)["CaptureTranscriptSourceBoundary_preview-segment"].firstMatch.waitForExistence(timeout: 8),
                       "The source-local timestamp should resolve to the linked passage.")
         let passage = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "My goal is to publish a thoughtful first episode")).firstMatch
-        XCTAssertTrue(passage.exists && passage.isHittable,
-                      "The linked words must be visible on arrival, not merely present offscreen.")
-        XCTAssertTrue(app.buttons["CaptureTranscriptCorrectButton_preview-segment"].isHittable,
-                      "Editing the linked words must not require scrolling through confidence and history.")
         let screenshot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
         screenshot.name = "shared-work-native-source.png"
         screenshot.lifetime = .keepAlways
         add(screenshot)
+        if !passage.exists || !passage.isHittable {
+            let tree = XCTAttachment(string: app.debugDescription)
+            tree.name = "shared-work-source-arrival.txt"
+            tree.lifetime = .keepAlways
+            add(tree)
+        }
+        XCTAssertTrue(passage.exists && passage.isHittable,
+                      "The linked words must be visible on arrival, not merely present offscreen.")
+        XCTAssertTrue(app.buttons["CaptureTranscriptCorrectButton_preview-segment"].isHittable,
+                      "Editing the linked words must not require scrolling through confidence and history.")
         let viewPicker = app.segmentedControls["CaptureTranscriptPresentationMode"].firstMatch
         reveal(viewPicker)
         viewPicker.buttons["Conversation"].tap()

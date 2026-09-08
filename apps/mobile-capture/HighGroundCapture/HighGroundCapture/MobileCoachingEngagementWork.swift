@@ -6,6 +6,14 @@ struct MobileCoachingEngagementMember: Codable, Identifiable, Hashable {
     let role: String?
 }
 
+/// Display projection of a canonical Nest tag, not a separate native taxonomy.
+struct MobileWorkTagLabel: Codable, Identifiable, Hashable {
+    let id: String
+    let label: String
+    let hexColor: String?
+    let isActive: Bool
+}
+
 /// The canonical client-space response, shared by the web and native work views.
 struct MobileCoachingEngagementWorkEntry: Codable, Identifiable, Hashable {
     let id: String
@@ -21,6 +29,7 @@ struct MobileCoachingEngagementWorkEntry: Codable, Identifiable, Hashable {
     let createdAt: String
     let updatedAt: String
     var sourceHref: String? = nil
+    var tags: [MobileWorkTagLabel]? = nil
 
     var displayTitle: String {
         let text = title?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""

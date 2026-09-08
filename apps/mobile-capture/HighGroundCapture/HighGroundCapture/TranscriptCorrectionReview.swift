@@ -3498,19 +3498,6 @@ struct CaptureTranscriptReviewView: View {
             .scrollPosition(id: $scrollTargetSegmentID, anchor: .top)
             .scrollDismissesKeyboard(.immediately)
             .background(CapturePalette.canvas)
-            .safeAreaInset(edge: .top, spacing: 0) {
-                if let focusSegmentID {
-                    Label("Opened from linked work", systemImage: "link.circle.fill")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity, minHeight: 28, alignment: .leading)
-                        .padding(.horizontal, 18)
-                        .padding(.vertical, 6)
-                        .background(CapturePalette.canvas)
-                        .accessibilityElement(children: .combine)
-                        .accessibilityIdentifier("CaptureTranscriptSourceBoundary_\(focusSegmentID)")
-                }
-            }
             .navigationTitle("Transcript")
             .navigationBarTitleDisplayMode(.inline)
             // Transcript review is a focused destination with its own reading,
@@ -4081,7 +4068,8 @@ struct CaptureTranscriptReviewView: View {
                             playback: playback,
                             protectedSource: segment.sourcePlayback ?? desk.playback,
                             protectedPlayback: protectedSessionPlayback,
-                            library: library
+                            library: library,
+                            isLinkedSource: segment.id == focusSegmentID
                         )
                         .id(segment.id)
                         .accessibilityFocused($accessibilityFocusedSegmentID, equals: segment.id)
@@ -6878,6 +6866,7 @@ private struct CaptureTranscriptSpeakerGroupCard: View {
 }
 
 private struct CaptureTranscriptSegmentCard: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let roomID: String
     let sessionTitle: String
     let transcriptJobID: String?
@@ -6894,6 +6883,7 @@ private struct CaptureTranscriptSegmentCard: View {
     let protectedSource: CaptureTranscriptPlayback?
     @ObservedObject var protectedPlayback: CaptureSessionProtectedPlaybackController
     let library: LocalRecordingLibrary
+    var isLinkedSource = false
 
     @State private var isEditing = false
     @State private var showsDetails = false
@@ -6925,12 +6915,16 @@ private struct CaptureTranscriptSegmentCard: View {
                     Text("\(segment.sessionStartSeconds.captureTranscriptTimestamp)–\(segment.sessionEndSeconds.captureTranscriptTimestamp)")
                         .font(.caption.monospacedDigit().weight(.bold))
                         .foregroundStyle(CapturePalette.ink)
+                        .accessibilityLabel("\(isLinkedSource ? "Linked source, " : "")Session time \(segment.sessionStartSeconds.captureTranscriptTimestamp) to \(segment.sessionEndSeconds.captureTranscriptTimestamp)")
+                        .accessibilityIdentifier(isLinkedSource ? "CaptureTranscriptSourceBoundary_\(segment.id)" : "CaptureTranscriptSegmentTime_\(segment.id)")
                     Text(captureTranscriptNonempty(segment.speakerLabel) ?? "Unlabelled speaker")
                         .font(.headline)
-                    CaptureTranscriptSpeakerEvidenceBadge(
-                        authority: segment.speakerAuthority,
-                        identifier: "CaptureTranscriptSegmentSpeakerEvidence_\(segment.id)"
-                    )
+                    if !dynamicTypeSize.isAccessibilitySize {
+                        CaptureTranscriptSpeakerEvidenceBadge(
+                            authority: segment.speakerAuthority,
+                            identifier: "CaptureTranscriptSegmentSpeakerEvidence_\(segment.id)"
+                        )
+                    }
                 }
                 Spacer(minLength: 12)
                 Button {
@@ -6948,6 +6942,9 @@ private struct CaptureTranscriptSegmentCard: View {
                     if protectedPlayback.isPreparing && !hasExactLocalSource {
                         Label("Preparing…", systemImage: "arrow.down.circle")
                             .frame(minHeight: 44)
+                    } else if dynamicTypeSize.isAccessibilitySize {
+                        Image(systemName: "play.fill")
+                            .frame(minWidth: 44, minHeight: 44)
                     } else {
                         Label("Play", systemImage: "play.fill")
                             .frame(minHeight: 44)
@@ -6957,13 +6954,6 @@ private struct CaptureTranscriptSegmentCard: View {
                 .disabled(!canPlaySource || client.isMutating || protectedPlayback.isPreparing)
                 .accessibilityLabel("Play transcript segment from Session time \(segment.sessionStartSeconds.captureTranscriptTimestamp)")
                 .accessibilityIdentifier("CaptureTranscriptPlayButton_\(segment.id)")
-            }
-
-            if !isEditing {
-                Text(segment.text)
-                    .textSelection(.enabled)
-                    .font(.body)
-                    .fixedSize(horizontal: false, vertical: true)
             }
 
             HStack {
@@ -6976,6 +6966,12 @@ private struct CaptureTranscriptSegmentCard: View {
                 }
                 Spacer(minLength: 8)
                 segmentCreationMenu
+            }
+            if !isEditing {
+                Text(segment.text)
+                    .textSelection(.enabled)
+                    .font(.body)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             if isEditing { correctionEditor }
 
@@ -7121,8 +7117,12 @@ private struct CaptureTranscriptSegmentCard: View {
             .accessibilityIdentifier("CaptureTranscriptMakeGoalButton")
             .accessibilityHint("Opens a goal with the transcript wording ready to adjust.")
         } label: {
-            Label("Create", systemImage: "plus")
-                .frame(minHeight: 44)
+            if dynamicTypeSize.isAccessibilitySize {
+                Image(systemName: "plus").frame(minWidth: 44, minHeight: 44)
+            } else {
+                Label("Create", systemImage: "plus")
+                    .frame(minHeight: 44)
+            }
         }
         .accessibilityLabel("Create from this passage")
         .accessibilityIdentifier("CaptureTranscriptCreateFromPassage_\(segment.id)")
@@ -7130,6 +7130,12 @@ private struct CaptureTranscriptSegmentCard: View {
 
     private var segmentDetails: some View {
         VStack(alignment: .leading, spacing: 12) {
+            if dynamicTypeSize.isAccessibilitySize {
+                CaptureTranscriptSpeakerEvidenceBadge(
+                    authority: segment.speakerAuthority,
+                    identifier: "CaptureTranscriptSegmentSpeakerEvidence_\(segment.id)"
+                )
+            }
             if !hasExactLocalSource && protectedSource?.kind == "video" {
                 Label(
                     "Quipsly will not download the full video just to review this sentence. Prepare an audio source or review the protected recording explicitly.",
