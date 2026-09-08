@@ -587,6 +587,9 @@ describe("Work Queue interactions", () => {
     render(<WorkClient initialSnapshot={snapshot} projectOptions={[project]} manageTags />);
     await user.click(screen.getByRole("button", { name: "Manage Proof listen" }));
     expect(screen.getByRole("button", { name: "Save color" })).toBeDisabled();
+    fireEvent.input(screen.getByLabelText("Color for Proof listen"), { target: { value: "#805a3b" } });
+    expect(screen.getByRole("button", { name: "Save color" })).toBeEnabled();
+    expect(screen.getAllByText("#Proof listen").some(element => element.style.backgroundColor === "rgb(128, 90, 59)")).toBe(true);
     fireEvent.change(screen.getByLabelText("Color for Proof listen"), { target: { value: "#506b46" } });
     expect(changeWorkTagTaxonomy).not.toHaveBeenCalled();
     expect(screen.getAllByText("#Proof listen").some(element => element.style.backgroundColor === "rgb(80, 107, 70)")).toBe(true);

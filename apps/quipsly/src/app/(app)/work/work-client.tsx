@@ -334,7 +334,7 @@ function TagColorControl({ tag, pending, onSave }: { tag: WorkTag; pending: bool
   return <form action={() => onSave(color)} className="mt-3 rounded-xl border border-sky-100 p-3">
     <div className="flex flex-wrap items-center gap-3">
       <label className="flex min-h-11 items-center gap-2 text-sm font-semibold">Color for {tag.label}
-        <input type="color" value={color ?? "#506b46"} onChange={(event) => setColor(event.target.value)} disabled={pending} className="h-11 w-12 cursor-pointer rounded border border-slate-300" />
+        <input type="color" value={color ?? "#506b46"} onInput={(event) => setColor(event.currentTarget.value)} onChange={(event) => setColor(event.target.value)} disabled={pending} className="h-11 w-12 cursor-pointer rounded border border-slate-300" />
       </label>
       <span style={tagChipColors(color)} className="rounded-full border border-slate-200 bg-slate-100 px-3 py-1 text-sm font-bold">#{tag.label}</span>
       <button type="button" disabled={pending || color === null} onClick={() => setColor(null)} className="min-h-11 rounded-full border border-slate-300 px-3 text-xs font-bold disabled:opacity-50">Use theme color</button>
