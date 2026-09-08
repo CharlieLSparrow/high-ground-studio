@@ -278,12 +278,11 @@ function TagMergeRollbackControl({ source, project, onRefresh }: { source: WorkT
   </details>;
 }
 
-function ImportedKeywordReview({ project, onRefresh }: { project: WorkProjectOption; onRefresh: () => void }) {
+function ImportedTagSuggestions({ project, onRefresh }: { project: WorkProjectOption; onRefresh: () => void }) {
   const candidates = project.tagCandidates ?? [];
   const pendingCandidates = candidates.filter((candidate) => candidate.status === "PENDING");
   const rejectedCandidates = candidates.filter((candidate) => candidate.status === "REJECTED");
   const promotedCandidates = candidates.filter((candidate) => candidate.status === "PROMOTED");
-  const [confirmedCandidateId, setConfirmedCandidateId] = useState<string | null>(null);
   const [saving, startSaving] = useTransition();
   const [message, setMessage] = useState<string | null>(null);
   if (!candidates.length) return null;
@@ -301,31 +300,29 @@ function ImportedKeywordReview({ project, onRefresh }: { project: WorkProjectOpt
         if (result.code === "CONFLICT" || result.code === "INVALID_STATE") onRefresh();
         return;
       }
-      setConfirmedCandidateId(null);
       setMessage(operation === "PROMOTE"
-        ? `#${result.tag?.label ?? candidate.label} is now intentional shared vocabulary. Imported evidence remains attached to receipt ${result.receiptId}.`
+        ? `Added #${result.tag?.label ?? candidate.label}. You can rename, color, or archive it with your other tags.`
         : operation === "REJECT"
-          ? `“${candidate.label}” stays preserved as imported evidence but is not available as a tag.`
-          : `“${candidate.label}” is back in review. It is still not available as a tag.`);
+          ? `Dismissed “${candidate.label}”. You can bring it back below.`
+          : `“${candidate.label}” is back in suggestions.`);
       onRefresh();
     });
   }
 
-  return <section aria-label={`Imported keyword review for ${project.name}`} className="mt-4 rounded-2xl border border-violet-200 bg-violet-50/60 p-3">
+  return <section aria-label={`Tag suggestions for ${project.name}`} className="mt-4 rounded-2xl border border-violet-200 bg-violet-50/60 p-3">
     <div className="flex flex-wrap items-start justify-between gap-2">
-      <div><p className="text-[10px] font-black uppercase tracking-wide text-violet-800">Imported keyword review</p><p className="mt-1 text-xs font-semibold leading-5 text-violet-950">Suggestions remain separate from shared tags until you deliberately promote them.</p></div>
-      <span className="rounded-full bg-violet-100 px-2.5 py-1 text-[10px] font-black uppercase tracking-wide text-violet-900">{pendingCandidates.length} pending</span>
+      <div><p className="text-[10px] font-black uppercase tracking-wide text-violet-800">Tag suggestions</p><p className="mt-1 text-xs font-semibold leading-5 text-violet-950">Keywords from imported material. Add any you find useful, or leave them here.</p></div>
+      <span className="rounded-full bg-violet-100 px-2.5 py-1 text-[10px] font-black uppercase tracking-wide text-violet-900">{pendingCandidates.length} available</span>
     </div>
     {pendingCandidates.length > 0 && <ul className="mt-3 space-y-3">{pendingCandidates.map((candidate) => <li key={candidate.id} className="rounded-xl border border-violet-200 bg-white p-3">
-      <div className="flex flex-wrap items-start justify-between gap-2"><div><p className="text-sm font-black">{candidate.label}</p><p className="mt-1 text-[11px] font-semibold text-violet-900">{candidate.evidenceCount} imported source {candidate.evidenceCount === 1 ? "receipt" : "receipts"} · not yet a tag</p></div><span className="rounded-full bg-amber-100 px-2.5 py-1 text-[10px] font-black uppercase tracking-wide text-amber-900">Suggestion only</span></div>
-      <details className="mt-2 text-[11px] font-semibold text-violet-900"><summary className="cursor-pointer font-black">Inspect source evidence</summary><ul className="mt-2 space-y-1 pl-4">{candidate.evidence.map((evidence) => <li key={evidence.id} className="list-disc break-all">{evidence.sourceKind}: {evidence.sourceIdentity}</li>)}</ul>{candidate.evidenceCount > candidate.evidence.length && <p className="mt-2">Showing {candidate.evidence.length} of {candidate.evidenceCount} receipts.</p>}</details>
-      <label className="mt-3 flex min-h-11 cursor-pointer items-start gap-3 rounded-xl border border-violet-200 bg-violet-50 p-3 text-xs font-bold leading-5 text-violet-950"><input type="checkbox" checked={confirmedCandidateId === candidate.id} onChange={(event) => setConfirmedCandidateId(event.target.checked ? candidate.id : null)} className="mt-1" />Add #{candidate.label} to intentional shared vocabulary.</label>
-      <div className="mt-3 flex flex-wrap gap-2"><button type="button" disabled={saving || confirmedCandidateId !== candidate.id} onClick={() => review(candidate, "PROMOTE")} className="min-h-11 rounded-full bg-violet-800 px-4 text-[10px] font-black uppercase tracking-wide text-white disabled:opacity-50">Promote to #{candidate.label}</button><button type="button" disabled={saving} onClick={() => review(candidate, "REJECT")} className="min-h-11 rounded-full border border-slate-300 bg-white px-4 text-[10px] font-black uppercase tracking-wide text-slate-700 disabled:opacity-50">Reject suggestion</button></div>
+      <p className="text-sm font-black">{candidate.label}</p>
+      <details className="mt-2 text-[11px] font-semibold text-violet-900"><summary className="cursor-pointer font-black">From {candidate.evidenceCount} imported {candidate.evidenceCount === 1 ? "source" : "sources"}</summary><ul className="mt-2 space-y-1 pl-4">{candidate.evidence.map((evidence) => <li key={evidence.id} className="list-disc break-all">{evidence.sourceKind}: {evidence.sourceIdentity}</li>)}</ul>{candidate.evidenceCount > candidate.evidence.length && <p className="mt-2">Showing {candidate.evidence.length} of {candidate.evidenceCount} sources.</p>}</details>
+      <div className="mt-3 flex flex-wrap gap-2"><button type="button" disabled={saving} onClick={() => review(candidate, "PROMOTE")} className="min-h-11 rounded-full bg-violet-800 px-4 text-[10px] font-black uppercase tracking-wide text-white disabled:opacity-50">Add tag #{candidate.label}</button><button type="button" disabled={saving} onClick={() => review(candidate, "REJECT")} className="min-h-11 rounded-full border border-slate-300 bg-white px-4 text-[10px] font-black uppercase tracking-wide text-slate-700 disabled:opacity-50">Dismiss {candidate.label}</button></div>
     </li>)}</ul>}
-    {pendingCandidates.length === 0 && <p className="mt-3 rounded-xl border border-dashed border-violet-200 bg-white/70 p-3 text-xs font-semibold text-violet-900">No imported keywords need a decision.</p>}
-    {(rejectedCandidates.length > 0 || promotedCandidates.length > 0) && <details className="mt-3 rounded-xl border border-violet-100 bg-white/70 p-3"><summary className="cursor-pointer text-[10px] font-black uppercase tracking-wide text-violet-800">Reviewed · {promotedCandidates.length} promoted · {rejectedCandidates.length} rejected</summary>
-      {promotedCandidates.length > 0 && <ul className="mt-3 space-y-2">{promotedCandidates.map((candidate) => <li key={candidate.id} className="text-xs font-semibold text-emerald-900">#{candidate.label} → {candidate.promotedTag ? `#${candidate.promotedTag.label}` : "preserved promotion receipt"}</li>)}</ul>}
-      {rejectedCandidates.length > 0 && <ul className="mt-3 space-y-2">{rejectedCandidates.map((candidate) => <li key={candidate.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3"><span className="text-xs font-semibold text-slate-800">{candidate.label} · evidence preserved, not a tag</span><button type="button" disabled={saving} onClick={() => review(candidate, "REOPEN")} className="min-h-11 rounded-full border border-slate-300 bg-white px-3 text-[10px] font-black uppercase tracking-wide text-slate-700 disabled:opacity-50">Reopen review</button></li>)}</ul>}
+    {pendingCandidates.length === 0 && <p className="mt-3 rounded-xl border border-dashed border-violet-200 bg-white/70 p-3 text-xs font-semibold text-violet-900">No new suggestions.</p>}
+    {(rejectedCandidates.length > 0 || promotedCandidates.length > 0) && <details className="mt-3 rounded-xl border border-violet-100 bg-white/70 p-3"><summary className="cursor-pointer text-[10px] font-black uppercase tracking-wide text-violet-800">{promotedCandidates.length} added · {rejectedCandidates.length} dismissed</summary>
+      {promotedCandidates.length > 0 && <ul className="mt-3 space-y-2">{promotedCandidates.map((candidate) => <li key={candidate.id} className="text-xs font-semibold text-emerald-900">#{candidate.promotedTag?.label ?? candidate.label}</li>)}</ul>}
+      {rejectedCandidates.length > 0 && <ul className="mt-3 space-y-2">{rejectedCandidates.map((candidate) => <li key={candidate.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3"><span className="text-xs font-semibold text-slate-800">{candidate.label}</span><button type="button" disabled={saving} onClick={() => review(candidate, "REOPEN")} className="min-h-11 rounded-full border border-slate-300 bg-white px-3 text-[10px] font-black uppercase tracking-wide text-slate-700 disabled:opacity-50">Show suggestion {candidate.label}</button></li>)}</ul>}
     </details>}
     {message && <p role="status" className="mt-3 rounded-xl border border-violet-200 bg-white px-3 py-2 text-xs font-bold leading-5 text-violet-950">{message}</p>}
   </section>;
@@ -478,7 +475,7 @@ function TagVocabulary({ projects, onRefresh, expanded = false, initialProjectId
             </div>}
           </li>;
         })}</ul> : <p className="mt-4 rounded-xl border border-dashed border-sky-200 p-4 text-sm font-semibold text-sky-900">{normalizedQuery ? "No tags or former names match this search." : "Create the first reusable tag above."}</p>}
-        <ImportedKeywordReview project={selectedProject} onRefresh={onRefresh} />
+        <ImportedTagSuggestions project={selectedProject} onRefresh={onRefresh} />
       </article>
       {message && <p role="status" className="mt-4 rounded-xl border border-sky-200 bg-white px-3 py-2 text-xs font-bold text-sky-950">{message}</p>}
     </details>

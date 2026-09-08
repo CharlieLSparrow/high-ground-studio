@@ -667,7 +667,7 @@ describe("Work Queue interactions", () => {
     expect(refresh).toHaveBeenCalled();
   });
 
-  it("keeps imported keywords out of canonical choices until explicit promotion", async () => {
+  it("adds an imported tag suggestion in one click without a review checkbox", async () => {
     const user = userEvent.setup();
     const project = {
       id: "project-1",
@@ -722,10 +722,9 @@ describe("Work Queue interactions", () => {
     expect(screen.getByText("This Nest has no active tags yet. Create the first reusable tag below.")).toBeInTheDocument();
 
     rerender(<WorkClient initialSnapshot={projectTaskSnapshot} projectOptions={[project]} manageTags />);
-    expect(screen.getByText("Suggestion only")).toBeInTheDocument();
-    const promoteButton = screen.getByRole("button", { name: "Promote to #Narrative evidence" });
-    expect(promoteButton).toBeDisabled();
-    await user.click(screen.getByRole("checkbox", { name: "Add #Narrative evidence to intentional shared vocabulary." }));
+    const suggestions = screen.getByRole("region", { name: "Tag suggestions for High Ground Odyssey" });
+    expect(within(suggestions).queryByRole("checkbox")).not.toBeInTheDocument();
+    const promoteButton = within(suggestions).getByRole("button", { name: "Add tag #Narrative evidence" });
     expect(promoteButton).toBeEnabled();
     await user.click(promoteButton);
     expect(reviewImportedWorkTag).toHaveBeenCalledWith({
@@ -733,7 +732,7 @@ describe("Work Queue interactions", () => {
       operation: "PROMOTE",
       expectedUpdatedAt: "2026-07-23T16:00:00.000Z",
     });
-    expect(await screen.findByRole("status")).toHaveTextContent("intentional shared vocabulary");
+    expect(await screen.findByRole("status")).toHaveTextContent("Added #Narrative evidence.");
     expect(refresh).toHaveBeenCalled();
   });
 
