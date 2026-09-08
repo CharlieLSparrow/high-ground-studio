@@ -1123,8 +1123,16 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             if let sessionTitle = credentials.sessionTitle,
                !sessionTitle.isEmpty {
                 let search = app.searchFields["Search sessions"].firstMatch
+                let searchIsVisible = search.waitForExistence(timeout: 8)
+                if !searchIsVisible {
+                    attachRuntimeScreenshot(app, name: "Session picker missing its search control")
+                    let hierarchy = XCTAttachment(string: app.debugDescription)
+                    hierarchy.name = "Session picker accessibility at navigation failure"
+                    hierarchy.lifetime = .keepAlways
+                    add(hierarchy)
+                }
                 XCTAssertTrue(
-                    search.waitForExistence(timeout: 8),
+                    searchIsVisible,
                     "The ordinary Session picker search should be available for exact navigation."
                 )
                 search.tap()
